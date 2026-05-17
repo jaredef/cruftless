@@ -729,7 +729,7 @@ impl Runtime {
         let ast = rusty_js_parser::parse_module(source)
             .map_err(|e| RuntimeError::CompileError(format!("parse: {} @byte{} @url={}", e.message, e.span.start, url)))?;
         let ast_rc = Rc::new(ast);
-        let bytecode = rusty_js_bytecode::compile_module(source)
+        let bytecode = rusty_js_bytecode::compile_module_with_url(source, url)
             .map_err(|e| RuntimeError::CompileError(format!("compile: {}", e.message)))?;
         let bytecode_rc = Rc::new(bytecode);
 
@@ -883,6 +883,10 @@ impl Runtime {
 
         // Build a module frame, pre-populate import slots, run body.
         let mut frame = Frame::new_module(&bytecode_rc);
+        // Ω.5.P51.E1: thread the URL through so the enrichment helper
+        // can emit `@url:line:col` instead of bare `@line:col`. Each
+        // module's frame carries its own URL.
+        frame.source_url = url;
         frame.import_meta = Some(meta_obj);
         for (slot, v, deferred) in &import_values {
             frame.write_local(*slot as usize, v.clone());
@@ -1082,7 +1086,7 @@ impl Runtime {
         let ast = rusty_js_parser::parse_module(&wrapped)
             .map_err(|e| RuntimeError::CompileError(format!("parse (cjs wrapper): {} @byte{} @url={}", e.message, e.span.start, url)))?;
         let _ast_rc = Rc::new(ast);
-        let bytecode = rusty_js_bytecode::compile_module(&wrapped)
+        let bytecode = rusty_js_bytecode::compile_module_with_url(&wrapped, url)
             .map_err(|e| RuntimeError::CompileError(format!("compile (cjs wrapper): {}", e.message)))?;
         let bytecode_rc = Rc::new(bytecode);
 
@@ -1093,6 +1097,7 @@ impl Runtime {
         // Ω.5.P45.E1: track the CJS module's URL for __dynamic_import
         // relative-specifier resolution.
         let mut frame = Frame::new_module(&bytecode_rc);
+        frame.source_url = url;
         self.current_module_url.push(url.to_string());
         let run_result = self.run_frame_module(&mut frame);
         self.current_module_url.pop();

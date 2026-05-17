@@ -88,9 +88,15 @@ impl Runtime {
             match ns_result {
                 Ok(ns) => crate::promise::resolve_promise(rt, p, Value::Object(ns)),
                 Err(e) => {
+                    // Ω.5.P51.E5: extract a readable message for Thrown(Object)
+                    // values. Got and other libraries throw Error instances at
+                    // module-init whose useful info lives on the .message and
+                    // .name properties; rb's Debug format printed Object IDs
+                    // like '[Object #4144]', erasing the diagnostic content.
+                    let detail = describe_thrown_for_diag(rt, &e);
                     let reason = Value::String(Rc::new(format!(
-                        "TypeError: dynamic import('{}') load failed: {:?}",
-                        spec, e
+                        "TypeError: dynamic import('{}') load failed: {}",
+                        spec, detail
                     )));
                     crate::promise::reject_promise(rt, p, reason);
                 }
@@ -3685,6 +3691,35 @@ pub(crate) fn collect_iterable(rt: &mut Runtime, src: Value) -> Result<Vec<Value
 
 fn num_arg(args: &[Value], i: usize) -> f64 {
     args.get(i).map(abstract_ops::to_number).unwrap_or(f64::NAN)
+}
+
+/// Ω.5.P51.E5: render a RuntimeError for diagnostic display when an Error
+/// thrown at module-init bubbles out of dynamic import. Thrown(Object) values
+/// — typically Error instances — get their .name + .message extracted so the
+/// dynamic-import wrapper's diagnostic carries the original cause text. Other
+/// thrown shapes (primitives, non-Error objects) fall back to Debug format.
+fn describe_thrown_for_diag(rt: &Runtime, e: &RuntimeError) -> String {
+    match e {
+        RuntimeError::Thrown(v) => match v {
+            Value::Object(id) => {
+                let name = rt.object_get(*id, "name");
+                let msg = rt.object_get(*id, "message");
+                let stack = rt.object_get(*id, "stack");
+                match (name, msg, stack) {
+                    (Value::String(n), Value::String(m), _) => format!("{}: {}", n, m),
+                    (_, Value::String(m), _) => (*m).to_string(),
+                    (_, _, Value::String(s)) => (*s).to_string(),
+                    _ => format!("{:?}", e),
+                }
+            }
+            Value::String(s) => (*s).to_string(),
+            other => format!("{:?}", other),
+        },
+        RuntimeError::TypeError(m) => format!("TypeError({:?})", m),
+        RuntimeError::RangeError(m) => format!("RangeError({:?})", m),
+        RuntimeError::ReferenceError(m) => format!("ReferenceError({:?})", m),
+        other => format!("{:?}", other),
+    }
 }
 
 pub(crate) fn make_native(name: &str, f: impl Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static) -> Object {

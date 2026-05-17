@@ -1727,7 +1727,7 @@ impl Runtime {
             constants: &proto.constants,
             source_map: &proto.source_map,
             line_starts: &proto.line_starts,
-            source_url: "",
+            source_url: &proto.source_url,
             locals_names: &proto.locals,
             upvalue_names: &proto.upvalues,
             locals,

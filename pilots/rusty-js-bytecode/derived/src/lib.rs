@@ -17,14 +17,19 @@ pub use disasm::disassemble;
 
 /// Convenience: parse + compile a module source string.
 pub fn compile_module(src: &str) -> Result<CompiledModule, CompileError> {
+    compile_module_with_url(src, "")
+}
+
+/// Ω.5.P51.E1: same as compile_module but threads a source URL so runtime
+/// errors can emit `@url:line:col` for closure frames whose defining module
+/// has long since returned. evaluate_module / evaluate_cjs_module call this
+/// directly to wire the resource locator.
+pub fn compile_module_with_url(src: &str, url: &str) -> Result<CompiledModule, CompileError> {
     let ast = rusty_js_parser::parse_module(src)
         .map_err(|e| CompileError { span: e.span, message: format!("parse: {} @byte{}", e.message, e.span.start) })?;
     let mut c = Compiler::new();
-    // Ω.5.P51.E1: precompute the source-line index. Stored on the resulting
-    // CompiledModule and propagated to all FunctionProtos (they share the
-    // same source). Runtime errors then convert pc → span → line:col without
-    // re-scanning the source string at fault time.
     c.set_source_line_starts(compute_line_starts(src));
+    c.set_source_url(url.to_string());
     c.compile_module(&ast)
 }
 
