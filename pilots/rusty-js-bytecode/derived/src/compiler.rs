@@ -87,6 +87,10 @@ pub struct FunctionProto {
     /// derive the line:col for a fault inside any function frame, not just
     /// the top-level module frame.
     pub source_map: Vec<(usize, Span)>,
+    /// Ω.5.P51.E1: URL of the source this function was compiled from.
+    /// Propagated from the parent module / compiler so closure-frame
+    /// errors can emit `@url:line:col`. Empty when not threaded.
+    pub source_url: String,
     /// Ω.5.P50.E1: async-function marker per ECMA-262 §15.7.5. AsyncFunction
     /// objects do not have a `prototype` own property (unlike base function
     /// declarations). MakeClosure consults this to skip the auto-prototype
@@ -255,6 +259,9 @@ pub struct Compiler {
     /// compile_module entry. Propagated to every CompiledModule and
     /// FunctionProto so runtime errors can derive line:col from any pc.
     source_line_starts: Vec<u32>,
+    /// Ω.5.P51.E1: URL of the source being compiled. Propagated to
+    /// every FunctionProto for closure-frame error enrichment.
+    source_url: String,
 }
 
 #[derive(Debug, Clone)]
@@ -357,7 +364,14 @@ impl Compiler {
             pending_named_exports: Vec::new(),
             pre_allocated_slots: std::collections::HashMap::new(),
             source_line_starts: Vec::new(),
+            source_url: String::new(),
         }
+    }
+
+    /// Ω.5.P51.E1: store the source URL for this compilation. Threaded to
+    /// every FunctionProto for closure-frame error enrichment.
+    pub fn set_source_url(&mut self, url: String) {
+        self.source_url = url;
     }
 
     /// Ω.5.P51.E1: store the source-line index for this compilation. Called
@@ -2571,6 +2585,7 @@ impl Compiler {
             // lookup uses the same line_starts vector. Cheap clone; the
             // vector is bounded by source line count.
             source_line_starts: self.source_line_starts.clone(),
+            source_url: self.source_url.clone(),
         };
         let param_count = params.len() as u16;
         // Tier-Ω.5.l: track the rest-parameter slot. Per spec only the
@@ -2582,7 +2597,19 @@ impl Compiler {
         // params, the param slot is the hidden source and additional locals
         // for inner names are allocated below; a prologue then runs the
         // pattern lowering at function entry.
+        // Ω.5.P51.E2: allocate ALL parameter source slots first in declaration
+        // order (slots 0..N-1 = arg positions), then allocate inner-destructured
+        // names afterward. Previously the code interleaved per-param: a
+        // destructure pattern at position 0 would consume slot 0 for the source
+        // PLUS slots 1..K for its inner names, pushing the next positional
+        // parameter to slot K+1. call_function stores args into slots 0..N-1,
+        // so positional params after a destructure pattern received the wrong
+        // value (or undefined when the inner-name slots ran past args).
+        // Manifested in axios as ({value}, key) reading undefined for key.
         let mut destr_prologue: Vec<(rusty_js_ast::BindingPattern, u16, Option<Expr>)> = Vec::new();
+        // Phase 1: one slot per parameter position. Destructure patterns get
+        // a hidden <param$i> slot; identifier params get their identifier name
+        // directly. This keeps slots 0..N-1 = arg positions exactly.
         for (i, p) in params.iter().enumerate() {
             match &p.target {
                 rusty_js_ast::BindingPattern::Identifier(n) => {
@@ -2604,21 +2631,28 @@ impl Compiler {
                 }
                 pat @ (rusty_js_ast::BindingPattern::Array(_)
                       | rusty_js_ast::BindingPattern::Object(_)) => {
-                    // Hidden source slot in the param position.
                     sub.alloc_local(LocalDescriptor {
                         name: format!("<param${}>", i),
                         kind: VariableKind::Let,
                         depth: 0,
                     });
-                    // Inner names.
-                    for id in pat.collect_names() {
-                        sub.alloc_local(LocalDescriptor {
-                            name: id.name.clone(),
-                            kind: VariableKind::Let,
-                            depth: 0,
-                        });
-                    }
                     destr_prologue.push((pat.clone(), i as u16, p.default.clone()));
+                }
+            }
+        }
+        // Phase 2: inner-destructured names allocated after all param sources.
+        // Their slot indices live beyond N-1 so they don't shadow argument
+        // positions. emit_destructure (called from the prologue below) writes
+        // to these by name, which resolves via the locals table.
+        for p in params.iter() {
+            if let pat @ (rusty_js_ast::BindingPattern::Array(_)
+                        | rusty_js_ast::BindingPattern::Object(_)) = &p.target {
+                for id in pat.collect_names() {
+                    sub.alloc_local(LocalDescriptor {
+                        name: id.name.clone(),
+                        kind: VariableKind::Let,
+                        depth: 0,
+                    });
                 }
             }
         }
@@ -2863,6 +2897,7 @@ impl Compiler {
             is_generator,
             line_starts: sub.source_line_starts,
             source_map: sub.source_map,
+            source_url: sub.source_url,
             is_async,
         })
     }
