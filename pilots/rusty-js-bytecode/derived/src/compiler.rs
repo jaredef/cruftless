@@ -2663,11 +2663,23 @@ impl Compiler {
                 }
                 pat @ (rusty_js_ast::BindingPattern::Array(_)
                       | rusty_js_ast::BindingPattern::Object(_)) => {
-                    sub.alloc_local(LocalDescriptor {
+                    let slot = sub.alloc_local(LocalDescriptor {
                         name: format!("<param${}>", i),
                         kind: VariableKind::Let,
                         depth: 0,
                     });
+                    // Ω.5.P51.E8: rest parameter with destructure binding
+                    // (`...[opts]` / `...{a, b}`). Previously rest_param_slot
+                    // was only set in the Identifier branch, so call_function's
+                    // rest-collection ran only for `...name` rest params. With
+                    // `...[opts]`, the rest slot received args[i] directly
+                    // (a single value), and the array-destructure then iterated
+                    // a non-Array value, yielding undefined for inner names.
+                    // arktype's @ark/util Callable uses `(fn, ...[opts])` as
+                    // its constructor signature.
+                    if p.rest {
+                        rest_param_slot = Some(slot);
+                    }
                     destr_prologue.push((pat.clone(), i as u16, p.default.clone()));
                 }
             }
