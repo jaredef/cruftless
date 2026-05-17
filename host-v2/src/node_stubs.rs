@@ -54,6 +54,21 @@ pub fn install_tls(rt: &mut Runtime) {
             register_method(rt, inst, "destroy", |rt, _a| Ok(rt.current_this()));
             register_method(rt, inst, "connect", |rt, _a| Ok(rt.current_this()));
             register_method(rt, inst, "setEncoding", |rt, _a| Ok(rt.current_this()));
+            // Ω.5.P51.E4: http2-wrapper's js-stream-socket.js extracts
+            //   JSStreamSocket = (new tls.TLSSocket(new stream.PassThrough()))
+            //     ._handle._parentWrap.constructor
+            // at module-init. The constructor extracted isn't actually used
+            // for anything useful at module-load time (it's stored for later
+            // construction inside http2-wrapper's stream-bridging path). A
+            // placeholder chain satisfies the access; the placeholder's
+            // .constructor is a no-op stub ctor.
+            let parent_wrap_ctor = rt.alloc_object(RtObject::new_ordinary());
+            register_method(rt, parent_wrap_ctor, "__call__", |_rt, _a| Ok(Value::Undefined));
+            let parent_wrap = rt.alloc_object(RtObject::new_ordinary());
+            rt.object_set(parent_wrap, "constructor".into(), Value::Object(parent_wrap_ctor));
+            let handle = rt.alloc_object(RtObject::new_ordinary());
+            rt.object_set(handle, "_parentWrap".into(), Value::Object(parent_wrap));
+            rt.object_set(inst, "_handle".into(), Value::Object(handle));
             Ok(Value::Object(inst))
         });
         rt.object_set(ctor, "prototype".into(), Value::Object(proto));
