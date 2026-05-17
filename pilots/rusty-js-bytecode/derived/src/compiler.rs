@@ -2104,7 +2104,7 @@ impl Compiler {
                     self.patch_jump_at(end);
                 }
             }
-            Expr::Call { callee, arguments, optional: _, .. } => {
+            Expr::Call { callee, arguments, optional: call_optional, .. } => {
                 let n = arguments.len();
                 if n > 255 {
                     return Err(self.err(e.span(), "too many call arguments (>255)"));
@@ -2209,6 +2209,30 @@ impl Compiler {
                                     encode_u16(&mut self.bytecode, idx);
                                 }
                             }
+                            // Ω.5.P51.E7: optional-call `obj.method?.(args)`.
+                            // Distinct from `obj?.method(args)` handled above —
+                            // here the `?` gates whether to invoke the method,
+                            // not whether the receiver was nullish. Per ECMA-262
+                            // §13.3.7: if the method value is null/undefined,
+                            // short-circuit the call to undefined. arktype's
+                            // @ark/schema/parse.js:57 has `impl.applyConfig?.(...)`
+                            // — when applyConfig isn't on impl, the access yields
+                            // undefined, the `?.()` must not invoke. v1 lowered
+                            // CallMethod regardless and surfaced 'callee not
+                            // callable: undefined'.
+                            let call_opt_sinks: Vec<usize> = if *call_optional {
+                                // Stack at this point: [receiver, method].
+                                // Test method's nullishness without consuming it.
+                                encode_op(&mut self.bytecode, Op::Dup);
+                                encode_op(&mut self.bytecode, Op::PushUndef);
+                                encode_op(&mut self.bytecode, Op::StrictEq);
+                                let s1 = self.emit_jump(Op::JumpIfTrue);
+                                encode_op(&mut self.bytecode, Op::Dup);
+                                encode_op(&mut self.bytecode, Op::PushNull);
+                                encode_op(&mut self.bytecode, Op::StrictEq);
+                                let s2 = self.emit_jump(Op::JumpIfTrue);
+                                vec![s1, s2]
+                            } else { Vec::new() };
                             // Now stack: [receiver, method]. Compile args.
                             for a in arguments {
                                 match a {
@@ -2218,13 +2242,21 @@ impl Compiler {
                             }
                             encode_op(&mut self.bytecode, Op::CallMethod);
                             encode_u8(&mut self.bytecode, n as u8);
-                            if !opt_sinks.is_empty() {
+                            let mut all_sinks = opt_sinks;
+                            all_sinks.extend(call_opt_sinks);
+                            if !all_sinks.is_empty() {
                                 let done = self.emit_jump(Op::Jump);
-                                for s in opt_sinks { self.patch_jump_at(s); }
+                                for s in all_sinks { self.patch_jump_at(s); }
                                 // Short-circuit landing: pop the leftover
-                                // receiver (still on stack from initial push),
-                                // push undefined as the call's result.
-                                encode_op(&mut self.bytecode, Op::Pop);
+                                // [receiver, method?] from the stack. For
+                                // member-?. it's [receiver]; for call-?. it's
+                                // [receiver, method]. Pop until we're past the
+                                // duplicate inserted for branching, then push
+                                // undefined as the call's result.
+                                if *call_optional {
+                                    encode_op(&mut self.bytecode, Op::Pop); // method
+                                }
+                                encode_op(&mut self.bytecode, Op::Pop); // receiver
                                 encode_op(&mut self.bytecode, Op::PushUndef);
                                 self.patch_jump_at(done);
                             }
