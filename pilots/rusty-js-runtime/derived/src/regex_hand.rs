@@ -130,7 +130,16 @@ pub fn compile(pattern: &str, flag_str: &str) -> Result<HandRolledRegex, String>
             'i' => flags.ignore_case = true,
             'm' => flags.multiline = true,
             's' => flags.dot_all = true,
-            'g' | 'y' | 'u' | 'd' => {}
+            // Ω.5.P51.E6: accept the 'v' flag (ES2024 Unicode sets). Strict
+            // superset of 'u'; patterns that don't use v-specific features
+            // (set difference [a&&b], set intersection [a--b], properties of
+            // strings \p{...}) behave identically to /pattern/u. Most consumer
+            // uses we've seen so far are plain class-bracket patterns with
+            // the v flag for forward-compat — @sindresorhus/is, several other
+            // modern shims. Accepting it as alias-of-u unblocks those at
+            // module-init. Patterns that DO use v-specific syntax will still
+            // fail downstream at the pattern parser, which is correct.
+            'g' | 'y' | 'u' | 'd' | 'v' => {}
             _ => return Err(format!("unsupported flag '{}'", c)),
         }
     }
