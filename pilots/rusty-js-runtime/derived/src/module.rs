@@ -952,6 +952,15 @@ impl Runtime {
         self.current_module_url.push(url.to_string());
         let run_result = self.run_frame_module(&mut frame);
         self.current_module_url.pop();
+        // Ω.5.P54.E8 (Axis-E probe extension): record throws too.
+        // Without this, post_eval_trace was empty for any module that
+        // threw during init — the most diagnostically-interesting case.
+        if let Err(e) = &run_result {
+            self.module_post_eval_trace.insert(
+                url.to_string(),
+                format!("kind=ESM threw: {:?}", e),
+            );
+        }
         run_result?;
         // Tier-Ω.5.jjj: read locals through the cell promotion seam.
         // If a slot was promoted to an upvalue cell (because a nested
@@ -1150,6 +1159,12 @@ impl Runtime {
         self.current_module_url.push(url.to_string());
         let run_result = self.run_frame_module(&mut frame);
         self.current_module_url.pop();
+        if let Err(e) = &run_result {
+            self.module_post_eval_trace.insert(
+                url.to_string(),
+                format!("kind=CJS-wrapper threw: {:?}", e),
+            );
+        }
         run_result?;
         let locals = frame.locals.clone();
 
