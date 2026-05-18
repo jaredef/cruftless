@@ -879,18 +879,66 @@ impl Runtime {
         // closure that yields globalThis. Everything else still
         // throws — full eval-via-Function needs a parser+compiler
         // dependency and is deferred.
+        // Ω.5.P59.E3: real Function constructor per ECMA §20.2.1. Up
+        // through P58 this was a stub recognizing only `Function('return
+        // this')`. exceljs, express-promise-router, gulp-uglify, keystone,
+        // metro, pug all use `new Function('p1', 'p2', 'body')` at
+        // module-init to compile templates / pre-allocate hot paths.
+        //
+        // Implementation: assemble `globalThis.__fc_out = function
+        // anonymous(p1, p2, ...) { body }; ` as a synthetic module
+        // source, evaluate it through evaluate_module under a synthetic
+        // URL, then read globalThis.__fc_out as the resulting closure.
+        // The closure has NO upvalue capture from the caller (per ECMA
+        // §20.2.1.1.1 CreateDynamicFunction step 4: the [[Environment]]
+        // is the realm's global environment, not the caller's). All
+        // free identifiers in the body resolve through globalThis.
+        //
+        // Special fast-path for `Function('return this')` retained for
+        // identity stability — the eager lookup of globalThis at create
+        // time is preserved.
         register_global_fn(self, "Function", |rt, args| {
             let body = match args.last() {
-                Some(Value::String(s)) => s.as_str().trim().to_string(),
+                Some(Value::String(s)) => s.as_str().to_string(),
                 _ => String::new(),
             };
-            if body == "return this" || body == "return this;" {
+            let body_trim = body.trim();
+            if body_trim == "return this" || body_trim == "return this;" {
                 let global_obj = rt.globals.get("globalThis").cloned().unwrap_or(Value::Undefined);
                 let f_obj = make_native("<Function('return this')>", move |_rt, _args| Ok(global_obj.clone()));
                 return Ok(Value::Object(rt.alloc_object(f_obj)));
             }
-            Err(RuntimeError::Thrown(Value::String(Rc::new(
-                "TypeError: Function constructor not yet supported in v1".into()))))
+            // Param list: all args except the last (which is the body).
+            let params: Vec<String> = if args.len() > 1 {
+                args[..args.len() - 1].iter()
+                    .map(|v| crate::abstract_ops::to_string(v).as_str().to_string())
+                    .collect()
+            } else { Vec::new() };
+            // Pick a per-call URL so the source map / line:col diagnostics
+            // are distinct across multiple Function() calls.
+            use std::sync::atomic::{AtomicUsize, Ordering};
+            static FC_COUNTER: AtomicUsize = AtomicUsize::new(0);
+            let n = FC_COUNTER.fetch_add(1, Ordering::Relaxed);
+            let url = format!("file://<Function:{}>", n);
+            let stash_key = format!("__fc_out_{}", n);
+            // Use bare assignment so the StoreGlobal opcode writes
+            // directly to runtime.globals (where we read it back).
+            // `globalThis.X = ...` would SetProp the globalThis Object
+            // instead of touching the globals map.
+            let source = format!(
+                "{} = function anonymous({}) {{\n{}\n}};",
+                stash_key, params.join(","), body
+            );
+            match rt.evaluate_module(&source, &url) {
+                Ok(_ns) => {
+                    let result = rt.globals.get(&stash_key).cloned().unwrap_or(Value::Undefined);
+                    // Clean up the stash key — it was a side-channel,
+                    // not a JS-visible global.
+                    rt.globals.remove(&stash_key);
+                    Ok(result)
+                }
+                Err(e) => Err(e),
+            }
         });
         // Tier-Ω.5.yyy: expose Function.prototype on the Function
         // global. The intrinsic %Function.prototype% is the same
