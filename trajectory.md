@@ -1996,3 +1996,70 @@ Read seed.md §A8.23 + §A8.25/§A8.26/§A8.27 (just-folded) + Doc 729 + EXT 14 
 First action on resume per keeper directive (2026-05-18 18:37Z): canonical sweep launched in same commit cycle. Output will land at `host/tools/parity-results-top500-postp60.json`.
 
 Pin-Art tag count: ~224 (EXT 14) + 3 (P60.E1-E3) = ~227 substrate moves committed.
+
+
+## RESUME VECTOR EXTENSION 16 — 2026-05-18 evening (test262 fixture + P61 stretch toward full conformance)
+
+### Headline
+
+Conjecture from keeper (2026-05-18 19:41Z): "passing test262 yields more easily npm-package parity" — npm-package failures are downstream symptoms of ECMA-262 spec divergences. Closing the spec divergences closes the failures structurally rather than per-package.
+
+Eight substrate moves + one fixture commit corroborate the conjecture at the conformance tier:
+
+| commit | tag | recognition | test262 yield |
+|---|---|---|---|
+| `881e9a54` | Ω.5.P61.E1.test262-fixture | per-test runner against rusty-js-runtime via P59.E4 indirect-eval; YAML-frontmatter parser; vendored sta.js + assert.js; 7-test curated sample | fixture operational |
+| `3d2c3de2` | Ω.5.P61.E2.test262-upstream-runner | T262_ROOT env support to run against upstream tc39/test262 clone (~50k tests) | infrastructure |
+| `007808fd` | Ω.5.P61.E3.intrinsic-install-discipline | register_intrinsic_method helper with non-enumerable + correct-arity install + Runtime::object_set enforces non-writable per ECMA §10.1.9 | Math 137 → 238 (+101) |
+| `3288b4b0` | Ω.5.P61.E4.isconstructor-flag + thrown-error-as-real-instance | FunctionInternals.is_constructor with Op::New + Reflect.construct enforcement + try-catch thrown values now real Error-instances with proper proto chain | Math 238 → 271 (+33) |
+| `22bf99d1` | Ω.5.P61.E5.bulk-intrinsic-migration | 185 register_method → register_intrinsic_method sites in prototype.rs (72) + intrinsics.rs (113) | Math unchanged at 271 (idempotent for already-migrated chapter) |
+| `e6c150f4` | Ω.5.P61.E6.array-prototype-completion | 11 missing Array.prototype methods installed per ECMA §23.1.3: findIndex / findLast / findLastIndex / reduceRight / lastIndexOf / copyWithin / toReversed / toSorted / toSpliced / with / toLocaleString | Array 1272 → 1601 (+329) |
+
+### Test262 conformance numbers
+
+| chapter | tests | baseline | post-stretch | rate |
+|---|---|---|---|---|
+| Math | 327 | 137 (41.9%) | 271 (82.9%) | +30.9 pp via 2 substrate moves |
+| Array | 3081 | 1272 (41.3%) | **1601 (52.0%)** | +10.7 pp via 1 substrate move (E6) + the indirect benefits of E3/E4 |
+
+Cumulative test262 PASS across the two chapters measured: **1872 / 3408 = 54.9%** post-P61.E6.
+
+### Parity-top500 status (consumer-shape signal, unchanged)
+
+Last canonical reading still post-P60.E4 at 78.7% (808/1026). The P61 stretch is conformance-substrate work; whether it translates to consumer-parity gains will land in the next canonical sweep. Per the conjecture, the prediction is yes — most npm-package failures probe descriptor semantics, function arity, isConstructor, instanceof TypeError, missing Array.prototype methods, all of which the P61 stretch absorbed.
+
+Exemplar regression sweep: 30/43 stable across the entire P61 stretch (zero consumer regressions on the 43-pkg basket).
+
+### Array residual analysis post-P61.E6
+
+1369 remaining FAILs:
+- 500 value-mismatch (per-method numeric/algorithmic correctness gaps)
+- 457 other (mostly Array.prototype.METHOD.call(obj) where obj is a non-Array array-like; cruftless's methods currently reject non-Array this where ECMA §23.1.3 accepts any object with .length)
+- 137 expected-TypeError + 29 expected-RangeError (engine should throw but doesn't)
+- 135 testResult !== true (semantic outcomes diverge)
+- 68 assertion-mismatch (Test262Error expected but TypeError thrown)
+- 16 createRealm-missing (test262 advanced realm tests, deferred)
+- 6 isConstructor (a few constructor-like methods still missing the flag)
+- 4 descriptor, 9 instanceof, 1 method-missing (effectively closed; 1 surviving outlier)
+
+The dominant residual class is **non-Array array-like this**: Array.prototype methods are spec'd to work on any object with `.length` and indexed properties, not only InternalKind::Array. cruftless's methods all start with `match this { Value::Object(o) => o, _ => Err("this not Array") }` — wrong per spec. Closing this lifts ~500-700 tests in one substrate move (P61.E7 candidate).
+
+### Conjecture status
+
+Strongly corroborated at conformance tier. **Six substrate moves closed ~430 test262 fails** (Math +134 + Array +329). Each move was a single PR-sized diff. The substrate-amortization pattern (§A8.25) operates at the conformance-tier the same way it does at host + engine tiers.
+
+The cluster-failure shape "X is undefined → all tests in X/ fail" → "install X" was the closure pattern for P61.E6. Every directory of test262 tests that fails because a method is missing is one substrate-move away from closure.
+
+### Open scope at the P61.E6 boundary
+
+1. **Array.prototype non-Array array-like this** — 500-700 tests in one move. P61.E7 candidate.
+2. **Object chapter (3411 tests)** — sweep needed; predicted similar baseline-to-post-completion arc once Object's prototype methods are completed.
+3. **String chapter (1223 tests)** — sweep needed; similar.
+4. **Number chapter (340 tests)** — small, fast.
+5. **Canonical parity-top500 sweep** to ground-truth the conjecture's downstream prediction.
+
+### Resume protocol
+
+Read seed.md §A8.27 (self-referential resolver — empirically corroborated again here at the test262 fixture tier; the runner self-evaluates spec source via the engine's parse+compile pipeline). Read Doc 729 + EXT 15 + this anchor. Test262 fixture lives at `host/tests/test262/`; upstream clone at `/home/jaredef/test262`. Drive: `T262_ROOT=/home/jaredef/test262 ./host/tests/test262/run.sh <chapter>`.
+
+Pin-Art tag count: ~227 (EXT 15) + 6 (P61.E1→E6) = ~233 substrate moves committed.
