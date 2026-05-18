@@ -114,7 +114,35 @@ pub fn install(rt: &mut Runtime) {
         // was leaking name/length/prototype), kleur (object default, was
         // leaking bg* color methods), upath (similar pattern). All now
         // produce keyCount=1 matching Bun.
-        let _ = (has_default, default_value, named_count); // silence unused
+
+        // Ω.5.P53.E11: when the default value is a function, Bun lifts
+        // the function's own name / length / prototype to the namespace
+        // level. Observed across mri, sleep-promise, sinon-test, es6-error,
+        // fuzzyset.js, rollup-plugin-commonjs — all `export default function`
+        // (or `module.exports = fn` reaching the ESM hook through a
+        // .mjs build). Lift them only when default is a function and
+        // the property isn't already explicitly named.
+        if has_default {
+            if let Value::Object(fn_id) = default_value {
+                use rusty_js_runtime::value::InternalKind;
+                let is_fn = matches!(
+                    rt.obj(fn_id).internal_kind,
+                    InternalKind::Function(_) | InternalKind::Closure(_) | InternalKind::BoundFunction(_)
+                );
+                if is_fn {
+                    for key in ["name", "length", "prototype"] {
+                        let already = rt.obj(ns).properties.contains_key(key);
+                        if !already {
+                            let v = rt.object_get(fn_id, key);
+                            if !matches!(v, Value::Undefined) {
+                                rt.object_set(ns, key.to_string(), v);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let _ = named_count; // silence unused
 
         Ok(())
     })));
