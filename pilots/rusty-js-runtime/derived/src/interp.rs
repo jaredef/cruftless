@@ -428,6 +428,34 @@ impl Runtime {
         None
     }
 
+    /// Ω.5.P61.E13: getter-dispatching property read for Array.prototype
+    /// iteration methods + spec sites that must invoke accessor getters
+    /// per ECMA §10.1.8.1 [[Get]]. object_get returns the raw descriptor
+    /// value (cheap, no getter dispatch); read_property invokes the
+    /// getter if present. Array.prototype.reduce/forEach/map/filter use
+    /// this so accessor-defined indices contribute their getter results
+    /// rather than Undefined.
+    pub fn read_property(&mut self, id: ObjectRef, key: &str) -> Result<Value, RuntimeError> {
+        if let Some(getter) = self.find_getter(id, key) {
+            return self.call_function(getter, Value::Object(id), Vec::new());
+        }
+        Ok(self.object_get(id, key))
+    }
+
+    /// Ω.5.P61.E13: HasProperty per ECMA §10.1.7.1 — walks own +
+    /// prototype chain for the key. Used by Array.prototype iteration
+    /// methods to skip sparse holes (a property present along the chain,
+    /// even if its value is Undefined, is NOT a hole).
+    pub fn has_property(&self, id: ObjectRef, key: &str) -> bool {
+        let mut cur = Some(id);
+        while let Some(c) = cur {
+            let o = self.obj(c);
+            if o.properties.contains_key(key) { return true; }
+            cur = o.proto;
+        }
+        false
+    }
+
     pub fn object_get(&self, id: ObjectRef, key: &str) -> Value {
         if key == "length" {
             let o = self.obj(id);

@@ -510,12 +510,17 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(Value::Object(out))
     });
     register_intrinsic_method(rt, host, "forEach", 1, |rt, args| {
+        // Ω.5.P61.E13: skip sparse holes per ECMA §23.1.3.15 (HasProperty
+        // check before invoking callback); dispatch via read_property
+        // so accessor-defined indices contribute their getter values.
         let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("Array.prototype.forEach: callback required".into()))?;
         let len = rt.array_length(id);
         for i in 0..len {
-            let v = rt.object_get(id, &i.to_string());
+            let key = i.to_string();
+            if !rt.has_property(id, &key) { continue; }
+            let v = rt.read_property(id, &key)?;
             rt.call_function(cb.clone(), Value::Undefined,
                 vec![v, Value::Number(i as f64), Value::Object(id)])?;
         }
@@ -541,6 +546,11 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(Value::Object(out))
     });
     register_intrinsic_method(rt, host, "reduce", 1, |rt, args| {
+        // Ω.5.P61.E13: per ECMA §23.1.3.24 skip sparse holes (HasProperty
+        // check before invoking callback) and dispatch accessor reads
+        // through read_property. Empty-with-no-initial throws even if
+        // there are no enumerable elements (the spec's "no initial value
+        // and no present elements" condition).
         let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("Array.prototype.reduce: callback required".into()))?;
@@ -550,14 +560,30 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         let mut acc = if has_init {
             args[1].clone()
         } else {
-            if len == 0 { return Err(RuntimeError::TypeError("reduce of empty array with no initial value".into())); }
-            i = 1;
-            rt.object_get(id, "0")
+            // Find first present index to seed the accumulator.
+            let mut seed: Option<(usize, Value)> = None;
+            while i < len {
+                let key = i.to_string();
+                if rt.has_property(id, &key) {
+                    let v = rt.read_property(id, &key)?;
+                    seed = Some((i, v));
+                    break;
+                }
+                i += 1;
+            }
+            match seed {
+                Some((start, v)) => { i = start + 1; v }
+                None => return Err(RuntimeError::TypeError(
+                    "reduce of empty array with no initial value".into())),
+            }
         };
         while i < len {
-            let v = rt.object_get(id, &i.to_string());
-            acc = rt.call_function(cb.clone(), Value::Undefined,
-                vec![acc, v, Value::Number(i as f64), Value::Object(id)])?;
+            let key = i.to_string();
+            if rt.has_property(id, &key) {
+                let v = rt.read_property(id, &key)?;
+                acc = rt.call_function(cb.clone(), Value::Undefined,
+                    vec![acc, v, Value::Number(i as f64), Value::Object(id)])?;
+            }
             i += 1;
         }
         Ok(acc)
@@ -739,6 +765,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     });
 
     register_intrinsic_method(rt, host, "reduceRight", 1, |rt, args| {
+        // Ω.5.P61.E13: sparse-skip + getter dispatch per ECMA §23.1.3.25.
         let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("reduceRight: callback required".into()))?;
@@ -746,15 +773,29 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         let has_init = args.len() >= 2;
         let mut i: i64 = (len as i64) - 1;
         let mut acc = if has_init { args[1].clone() } else {
-            if len == 0 { return Err(RuntimeError::TypeError(
-                "reduce of empty array with no initial value".into())); }
-            let v = rt.object_get(id, &i.to_string());
-            i -= 1; v
+            // Find last present index.
+            let mut seed: Option<(i64, Value)> = None;
+            while i >= 0 {
+                let key = i.to_string();
+                if rt.has_property(id, &key) {
+                    let v = rt.read_property(id, &key)?;
+                    seed = Some((i, v)); break;
+                }
+                i -= 1;
+            }
+            match seed {
+                Some((start, v)) => { i = start - 1; v }
+                None => return Err(RuntimeError::TypeError(
+                    "reduce of empty array with no initial value".into())),
+            }
         };
         while i >= 0 {
-            let v = rt.object_get(id, &i.to_string());
-            acc = rt.call_function(cb.clone(), Value::Undefined,
-                vec![acc, v, Value::Number(i as f64), Value::Object(id)])?;
+            let key = i.to_string();
+            if rt.has_property(id, &key) {
+                let v = rt.read_property(id, &key)?;
+                acc = rt.call_function(cb.clone(), Value::Undefined,
+                    vec![acc, v, Value::Number(i as f64), Value::Object(id)])?;
+            }
             i -= 1;
         }
         Ok(acc)
@@ -1523,14 +1564,17 @@ pub(crate) fn to_array_this(rt: &mut Runtime) -> Result<ObjectRef, RuntimeError>
         Value::Undefined | Value::Null => Err(RuntimeError::TypeError(
             "Array.prototype method called on null or undefined".into())),
         Value::Boolean(b) => {
-            // Box as Boolean wrapper.
+            // Ω.5.P61.E13: Box as Boolean wrapper. Per ECMA §7.1.18
+            // ToObject, the box has [[BooleanData]] internal slot and
+            // [[Prototype]] = %Boolean.prototype%. The boxed object does
+            // NOT shadow Boolean.prototype.length — tests like
+            //   Boolean.prototype[1] = obj; Boolean.prototype.length = 2;
+            //   Array.prototype.indexOf.call(true, obj)
+            // rely on the boxed wrapper inheriting length from the
+            // prototype. Pre-P61.E13 cruftless set length=0 on the box,
+            // shadowing the prototype's length.
             let mut o = Object::new_ordinary();
-            o.set_own("length".into(), Value::Number(0.0));
             o.set_own_internal("__primitive".into(), Value::Boolean(b));
-            // Set prototype to Boolean.prototype if available so
-            // instanceof Boolean works in the test262 call-with-boolean
-            // patterns. The boxing pattern matches ECMA §7.1.18 ToObject
-            // for primitive values.
             if let Some(Value::Object(bid)) = rt.globals.get("Boolean").cloned() {
                 if let Value::Object(p) = rt.object_get(bid, "prototype") {
                     o.proto = Some(p);
@@ -1540,7 +1584,6 @@ pub(crate) fn to_array_this(rt: &mut Runtime) -> Result<ObjectRef, RuntimeError>
         }
         Value::Number(n) => {
             let mut o = Object::new_ordinary();
-            o.set_own("length".into(), Value::Number(0.0));
             o.set_own_internal("__primitive".into(), Value::Number(n));
             if let Some(p) = rt.number_prototype { o.proto = Some(p); }
             Ok(rt.alloc_object(o))
