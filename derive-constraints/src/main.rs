@@ -94,7 +94,7 @@ enum Cmd {
         #[arg(long)]
         summary: bool,
     },
-    /// Run the full rusty-bun analysis pipeline end-to-end on a corpus.
+    /// Run the full cruftless analysis pipeline end-to-end on a corpus.
     /// Orchestrates: derive-constraints scan → welch scan(impl) →
     /// welch scan(baseline) → welch baseline → welch compare → cluster →
     /// invert (namespace) → invert (--by-seams) → seams → couple.
@@ -120,7 +120,7 @@ enum Cmd {
         #[arg(long)]
         out: PathBuf,
         /// Path to the `welch` binary. Defaults to a sibling location
-        /// inside the rusty-bun checkout.
+        /// inside the cruftless checkout.
         #[arg(long)]
         welch_binary: Option<PathBuf>,
         /// Optional spec-source directory of *.spec.md files. When
@@ -341,7 +341,7 @@ fn run_pipeline(
         anyhow::bail!("welch binary does not exist at {}", welch_binary.display());
     }
 
-    eprintln!("=== rusty-bun pipeline ===");
+    eprintln!("=== cruftless pipeline ===");
     eprintln!("test_corpus: {}", test_corpus.display());
     eprintln!("impl_source: {}", impl_source.display());
     eprintln!("baseline:    {}", baseline.display());
@@ -518,7 +518,7 @@ fn run_pipeline(
 }
 
 /// Heuristic for finding the welch binary when --welch-binary is absent.
-/// The rusty-bun checkout lays out the two crates as siblings; the welch
+/// The cruftless checkout lays out the two crates as siblings; the welch
 /// binary lives at `../welch/target/release/welch` from
 /// `derive-constraints/target/release/derive-constraints`.
 fn guess_welch_binary() -> Option<PathBuf> {
@@ -526,7 +526,7 @@ fn guess_welch_binary() -> Option<PathBuf> {
     let derive_release = exe.parent()?; // .../derive-constraints/target/release/
     let derive_target = derive_release.parent()?; // .../derive-constraints/target/
     let derive_dir = derive_target.parent()?; // .../derive-constraints/
-    let workspace = derive_dir.parent()?; // .../rusty-bun/
+    let workspace = derive_dir.parent()?; // .../cruftless/
     let candidate = workspace.join("welch/target/release/welch");
     if candidate.exists() {
         Some(candidate)

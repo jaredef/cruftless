@@ -7,13 +7,13 @@
 // First pilot with real filesystem I/O. Tests use std::env::temp_dir() for
 // isolation; each test creates and cleans up its own fixture file.
 
-use rusty_bun_file::*;
+use bun_file::*;
 use std::fs;
 use std::io::Write;
 
 fn make_fixture(name: &str, contents: &[u8]) -> std::path::PathBuf {
     let mut p = std::env::temp_dir();
-    p.push(format!("rusty-bun-file-{}-{}", name, std::process::id()));
+    p.push(format!("cruftless-file-{}-{}", name, std::process::id()));
     let mut f = fs::File::create(&p).unwrap();
     f.write_all(contents).unwrap();
     p

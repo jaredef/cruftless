@@ -1,6 +1,6 @@
 // Consumer-regression suite for Bun.spawn.
 
-use rusty_bun_spawn::*;
+use bun_spawn::*;
 
 // ────────── Bun.serve dev workflow — shell out to a build tool ──────────
 //

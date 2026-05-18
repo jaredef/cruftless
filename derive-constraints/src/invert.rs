@@ -403,7 +403,7 @@ fn render_surface(surface: &str, props: &[&Property]) -> String {
 This file is a draft constraint document in the [rederive grammar](https://github.com/jaredef/rederive). \
 The substrate at rederive's derive step interprets the prose into target-language code; this draft is keeper-authorable scaffold, not final spec. \
 See [Doc 704 (The 'Port' as Translation Is a Category Error)](https://jaredfoy.com/resolve/doc/704-the-port-as-translation-is-a-category-error) for the apparatus this output serves.*\n\n",
-        "rusty-bun"
+        "cruftless"
     ));
 
     let threshold_id = if let Some(p) = props.first() {

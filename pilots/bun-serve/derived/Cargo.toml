@@ -1,5 +1,5 @@
 [package]
-name = "rusty-bun-serve"
+name = "bun-serve"
 version = "0.1.0"
 edition = "2021"
 

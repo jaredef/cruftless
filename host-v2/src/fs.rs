@@ -1444,7 +1444,7 @@ mod tests {
 
     fn tmpdir(label: &str) -> std::path::PathBuf {
         let pid = std::process::id();
-        let p = std::env::temp_dir().join(format!("rusty-bun-fs-unit-{}-{}", pid, label));
+        let p = std::env::temp_dir().join(format!("cruftless-fs-unit-{}-{}", pid, label));
         let _ = std::fs::remove_dir_all(&p);
         std::fs::create_dir_all(&p).expect("mkdir tmp");
         p

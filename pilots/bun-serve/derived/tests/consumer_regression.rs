@@ -1,6 +1,6 @@
 // Consumer-regression suite for Bun.serve.
 
-use rusty_bun_serve::*;
+use bun_serve::*;
 
 fn req(method: &str, url: &str) -> Request {
     Request::new(url, RequestInit {

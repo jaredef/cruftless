@@ -1,4 +1,4 @@
-# rusty-bun workspace — registers all per-pilot crates plus the apparatus
+# cruftless workspace — registers all per-pilot crates plus the apparatus
 # binaries (derive-constraints, welch).
 #
 # Per Doc 581 trajectory §II Tier-D #9: workspace consolidation lets

@@ -1556,7 +1556,7 @@ fn js_compose_node_http_with_url_search_params() {
 
 fn cjs_test_setup(pid_suffix: &str) -> (String, String) {
     let pid = std::process::id();
-    let root = format!("/tmp/rusty-bun-cjs-{}-{}", pid, pid_suffix);
+    let root = format!("/tmp/cruftless-cjs-{}-{}", pid, pid_suffix);
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).unwrap();
     (root.clone(), root)
@@ -1593,11 +1593,11 @@ fn js_cjs_module_cache_returns_same_exports() {
 fn js_cjs_json_module() {
     let (root, _) = cjs_test_setup("json");
     std::fs::write(format!("{}/data.json", root),
-        r#"{"name": "rusty-bun", "version": 1}"#).unwrap();
+        r#"{"name": "cruftless", "version": 1}"#).unwrap();
     std::fs::write(format!("{}/main.js", root),
         r#"const d = require("./data.json"); module.exports = d.name + ":" + d.version;"#).unwrap();
     let r = eval_string(&format!(r#"bootRequire("{}/main.js")"#, root)).unwrap();
-    assert_eq!(r, "rusty-bun:1");
+    assert_eq!(r, "cruftless:1");
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -1742,7 +1742,7 @@ use cruftless_rquickjs::eval_esm_module;
 
 fn esm_test_setup(suffix: &str) -> String {
     let pid = std::process::id();
-    let root = format!("/tmp/rusty-bun-esm-{}-{}", pid, suffix);
+    let root = format!("/tmp/cruftless-esm-{}-{}", pid, suffix);
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).unwrap();
     root
@@ -2118,7 +2118,7 @@ fn js_compose_url_canonical_pattern() {
 // module boundaries, bare-specifier resolution through node_modules,
 // Bun.serve route tables, URL + URLSearchParams, Request + Response,
 // structuredClone, Date, Map, Set, Buffer, JSON. If this runs cleanly,
-// at least one real-shape consumer can swap rusty-bun for Bun.
+// at least one real-shape consumer can swap cruftless for Bun.
 //
 // Sub-criterion 5 of the engagement telos. The diff against actual Bun
 // is a follow-up — it requires running both runtimes against the same
@@ -2155,7 +2155,7 @@ fn js_consumer_stream_processor_runs_clean() {
 //
 // Runs the same JS script against both Bun (subprocess) and cruftless-rquickjs,
 // captures both outputs, asserts they match line-by-line. This is the
-// J.2/J.3 work — actual differential evidence that rusty-bun produces
+// J.2/J.3 work — actual differential evidence that cruftless produces
 // outcomes equivalent to Bun for the spec-portable surface.
 //
 // Skipped at compile-time if `bun` is not on $PATH, so the test suite
@@ -2191,7 +2191,7 @@ fn js_differential_portable_matches_bun() {
     let bun_lines: Vec<&str> = bun_stdout.lines().collect();
 
     if rb_lines.len() != bun_lines.len() {
-        panic!("line count differs: rusty-bun={} bun={}\nrb:\n{}\nbun:\n{}",
+        panic!("line count differs: cruftless={} bun={}\nrb:\n{}\nbun:\n{}",
             rb_lines.len(), bun_lines.len(), rb_result, bun_stdout);
     }
 
@@ -2215,7 +2215,7 @@ fn js_differential_consumer_todo_api_matches_bun() {
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-todo-api/src/main.js");
 
-    // rusty-bun side.
+    // cruftless side.
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
 
     // Bun side. Bun's Bun.serve keeps the process alive on listening, so
@@ -2237,7 +2237,7 @@ fn js_differential_consumer_todo_api_matches_bun() {
     assert_eq!(rb.trim(), bun_stdout.trim(),
         "consumer-todo-api differential mismatch:\nrb={}\nbun={}",
         rb, bun_stdout);
-    assert!(rb.starts_with("10/10"), "rusty-bun side did not pass: {}", rb);
+    assert!(rb.starts_with("10/10"), "cruftless side did not pass: {}", rb);
     assert!(bun_stdout.starts_with("10/10"), "Bun side did not pass: {}", bun_stdout);
 }
 
@@ -2250,7 +2250,7 @@ fn js_differential_consumer_stream_processor_matches_bun() {
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-stream-processor/index.js");
 
-    // rusty-bun side: CJS via bootRequire + microtask pump.
+    // cruftless side: CJS via bootRequire + microtask pump.
     let rb = eval_cjs_module_async(fixture.to_str().unwrap()).unwrap();
 
     // Bun side.
@@ -2269,7 +2269,7 @@ fn js_differential_consumer_stream_processor_matches_bun() {
 
     assert_eq!(rb.trim(), bun_stdout.trim(),
         "stream-processor differential mismatch:\nrb={}\nbun={}", rb, bun_stdout);
-    assert!(rb.starts_with("8/8"), "rusty-bun did not pass: {}", rb);
+    assert!(rb.starts_with("8/8"), "cruftless did not pass: {}", rb);
     assert!(bun_stdout.starts_with("8/8"), "Bun did not pass: {}", bun_stdout);
 }
 
@@ -2298,7 +2298,7 @@ fn js_differential_consumer_request_signer_matches_bun() {
     let bun_stdout = String::from_utf8_lossy(&bun.stdout).trim().to_string();
     assert_eq!(rb.trim(), bun_stdout.trim(),
         "request-signer mismatch:\nrb={}\nbun={}", rb, bun_stdout);
-    assert!(rb.starts_with("6/6"), "rusty-bun did not pass: {}", rb);
+    assert!(rb.starts_with("6/6"), "cruftless did not pass: {}", rb);
 }
 
 #[test]
@@ -8312,7 +8312,7 @@ fn api_surface_enumerator_reports_coverage() {
     eprintln!("BUN     coverage: {} / {} = {}%",
         bun_summary["passed"], bun_summary["total"], bun_summary["percent"]);
 
-    // Report gaps: surfaces Bun has that rusty-bun lacks.
+    // Report gaps: surfaces Bun has that cruftless lacks.
     let rb_fail: std::collections::HashSet<String> = rb_v["failures"].as_array().unwrap()
         .iter().map(|f| format!("{}/{}", f["category"].as_str().unwrap_or(""), f["name"].as_str().unwrap_or(""))).collect();
     let bun_fail: std::collections::HashSet<String> = bun_v["failures"].as_array().unwrap()
@@ -8321,7 +8321,7 @@ fn api_surface_enumerator_reports_coverage() {
     let mut sorted_gaps: Vec<String> = gaps.iter().map(|s| s.to_string()).collect();
     sorted_gaps.sort();
     if !sorted_gaps.is_empty() {
-        eprintln!("\nRUSTY-BUN GAPS (Bun has, rusty-bun lacks): {}", sorted_gaps.len());
+        eprintln!("\nRUSTY-BUN GAPS (Bun has, cruftless lacks): {}", sorted_gaps.len());
         for g in &sorted_gaps { eprintln!("  {}", g); }
     }
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# rusty-bun pilot runner — runs every pilot's verifier + consumer-regression
+# cruftless pilot runner — runs every pilot's verifier + consumer-regression
 # suite through the workspace and emits a structured summary.
 #
 # Per Doc 581 trajectory §II Tier-D #10. Used for the live-state spot-check
@@ -36,7 +36,7 @@ SUMMARY=$(echo "$OUT" | grep -E "^test result:" | awk '
 ')
 
 echo "================================================================"
-echo "  rusty-bun pilot runner — workspace status"
+echo "  cruftless pilot runner — workspace status"
 echo "================================================================"
 echo
 echo "$SUMMARY"

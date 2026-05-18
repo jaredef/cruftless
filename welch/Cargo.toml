@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "Welch-bound packing diagnostic for AI-assisted cross-language code translation. Scans Rust source for unsafe-density and other idiomaticity markers, fits distributions on a baseline corpus, and flags anomalous regions in a target crate. Companion tool to RESOLVE Doc 702."
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/jaredef/rusty-bun"
+repository = "https://github.com/jaredef/cruftless"
 
 [dependencies]
 syn = { version = "2", features = ["full", "visit", "extra-traits"] }

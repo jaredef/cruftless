@@ -1,6 +1,6 @@
 // Verifier for the Bun.spawn pilot. Tests actually invoke child processes.
 
-use rusty_bun_spawn::*;
+use bun_spawn::*;
 
 // ════════════════════ SPAWN_SYNC ════════════════════
 

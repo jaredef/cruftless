@@ -93,6 +93,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "bun-file"
+version = "0.1.0"
+dependencies = [
+ "rusty-blob",
+]
+
+[[package]]
+name = "bun-serve"
+version = "0.1.0"
+dependencies = [
+ "rusty-fetch-api",
+]
+
+[[package]]
+name = "bun-spawn"
+version = "0.1.0"
+
+[[package]]
 name = "cc"
 version = "1.0.106"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -190,15 +208,15 @@ dependencies = [
 name = "cruftless-rquickjs"
 version = "0.1.0"
 dependencies = [
+ "bun-file",
+ "bun-serve",
+ "bun-spawn",
  "libc",
  "mio",
  "rquickjs",
  "rusty-abort-controller",
  "rusty-blob",
  "rusty-buffer",
- "rusty-bun-file",
- "rusty-bun-serve",
- "rusty-bun-spawn",
  "rusty-compression",
  "rusty-fetch-api",
  "rusty-http-codec",
@@ -438,24 +456,6 @@ version = "0.1.0"
 
 [[package]]
 name = "rusty-buffer"
-version = "0.1.0"
-
-[[package]]
-name = "rusty-bun-file"
-version = "0.1.0"
-dependencies = [
- "rusty-blob",
-]
-
-[[package]]
-name = "rusty-bun-serve"
-version = "0.1.0"
-dependencies = [
- "rusty-fetch-api",
-]
-
-[[package]]
-name = "rusty-bun-spawn"
 version = "0.1.0"
 
 [[package]]

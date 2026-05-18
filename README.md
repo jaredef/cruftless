@@ -8,8 +8,8 @@ The corpus articulation is [Doc 729 — Cruftless](https://jaredfoy.com/resolve/
 
 A JavaScript runtime, built against ECMA-262 + WHATWG, with two binaries:
 
-- **`host/`** — `rusty-bun-host`. Wraps rquickjs (Rust bindings over QuickJS). Above-engine substrate matured; serves as the parity ceiling reference.
-- **`host-v2/`** — `rusty-bun-host-v2`. Wraps the hand-rolled rusty-js engine (`pilots/rusty-js-{ast,parser,bytecode,gc,runtime}` crate family). Active development focus per the engagement's §A8.23 directive.
+- **`host/`** — `cruftless-rquickjs` binary. Wraps rquickjs (Rust bindings over QuickJS). Above-engine substrate matured; serves as the parity ceiling reference.
+- **`host-v2/`** — `cruftless` binary. Wraps the hand-rolled rusty-js engine (`pilots/rusty-js-{ast,parser,bytecode,gc,runtime}` crate family). Active development focus per the engagement's §A8.23 directive.
 
 Both binaries run the same parity sweep against a 1026-package basket; the migration-cost gap between them reads the engine maturity directly.
 
@@ -19,7 +19,7 @@ The runtime is composed of five vertically-stacked resolver-instances, each a `s
 
 | Layer | Source | Resolver | Artifact |
 |---|---|---|---|
-| Cargo build | `Cargo.toml` + source tree | rustc + cargo | `rusty-bun-host-v2` binary |
+| Cargo build | `Cargo.toml` + source tree | rustc + cargo | `cruftless` binary |
 | Bootstrap | `host-v2/src/lib.rs::init()` | Runtime allocator + host-stub install | populated Runtime graph |
 | Module load | ESM source + imports | parser + bytecode compiler + linker | `ModuleRecord` with `Namespace` |
 | Execution | bytecode + constants | `interp.rs` dispatch loop | resolved JS values |

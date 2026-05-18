@@ -4,13 +4,13 @@
 // spec). Consumer regressions cite Bun's own test corpus and Bun-using
 // production code as authoritative.
 
-use rusty_bun_file::*;
+use bun_file::*;
 use std::fs;
 use std::io::Write;
 
 fn make_fixture(name: &str, contents: &[u8]) -> std::path::PathBuf {
     let mut p = std::env::temp_dir();
-    p.push(format!("rusty-bun-file-cons-{}-{}", name, std::process::id()));
+    p.push(format!("cruftless-file-cons-{}-{}", name, std::process::id()));
     let mut f = fs::File::create(&p).unwrap();
     f.write_all(contents).unwrap();
     p

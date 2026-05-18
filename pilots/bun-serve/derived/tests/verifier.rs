@@ -5,7 +5,7 @@
 //       canonicalization)
 // REF = Bun docs at https://bun.sh/docs/api/http
 
-use rusty_bun_serve::*;
+use bun_serve::*;
 
 fn req(method: &str, url: &str) -> Request {
     Request::new(url, RequestInit {

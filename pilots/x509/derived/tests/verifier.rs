@@ -32,7 +32,7 @@ fn gen_self_signed_rsa() -> Option<(Vec<u8>, Vec<u8>)> {
         "-keyout", key_path.to_str().unwrap(),
         "-out", cert_path.to_str().unwrap(),
         "-days", "365", "-nodes",
-        "-subj", "/CN=test.rusty-bun.local",
+        "-subj", "/CN=test.cruftless.local",
     ]).output().ok()?;
     if !r.status.success() { return None; }
     let cert = std::fs::read(&cert_path).ok()?;
@@ -58,7 +58,7 @@ fn gen_self_signed_p256() -> Option<(Vec<u8>, Vec<u8>)> {
         "-key", key_path.to_str().unwrap(),
         "-out", cert_path.to_str().unwrap(),
         "-days", "365",
-        "-subj", "/CN=ec.rusty-bun.local",
+        "-subj", "/CN=ec.cruftless.local",
     ]).output().ok()?;
     if !r.status.success() { return None; }
     let cert = std::fs::read(&cert_path).ok()?;
@@ -91,7 +91,7 @@ fn parse_self_signed_rsa() {
     // Subject CN.
     let cn = cert.subject.attributes.iter()
         .find(|(o, _)| o == OID_RDN_CN).map(|(_, v)| v.clone()).unwrap_or_default();
-    assert_eq!(cn, "test.rusty-bun.local");
+    assert_eq!(cn, "test.cruftless.local");
 }
 
 #[test]

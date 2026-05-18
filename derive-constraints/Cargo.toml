@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "Extracts behavioural constraints from a test corpus by AST-walking test files (.test.ts / .test.js / .zig with test blocks / .rs with #[test] fns) and emitting per-file JSON of named tests + their assertion clauses. The first phase (scan) of the four-phase pipeline articulated in docs/derivation-inversion-on-bun-tests.md."
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/jaredef/rusty-bun"
+repository = "https://github.com/jaredef/cruftless"
 
 [dependencies]
 syn = { version = "2", features = ["full", "visit", "extra-traits"] }

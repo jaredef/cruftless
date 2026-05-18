@@ -1,6 +1,6 @@
-//! cruftless-rquickjs — JS host integration for the rusty-bun derivation pilots.
+//! cruftless-rquickjs — JS host integration for the cruftless derivation pilots.
 //!
-//! Per the rusty-bun engagement seed §VII (Sub-criterion 4: JS host
+//! Per the cruftless engagement seed §VII (Sub-criterion 4: JS host
 //! integration). This crate embeds rquickjs (a Rust binding for QuickJS)
 //! and exposes existing pilots to JS code, transforming the piloted
 //! surfaces from "Rust modules with Rust tests" into "callable from JS".
@@ -32,14 +32,14 @@ mod signals;
 mod dns_async;
 mod tz;
 
-/// Build a fresh rquickjs Runtime + Context with all rusty-bun pilots wired
+/// Build a fresh rquickjs Runtime + Context with all cruftless pilots wired
 /// into globalThis. Includes the ESM node-style module resolver/loader
 /// (Tier-H.3); CommonJS is still wired JS-side via `bootRequire(absPath)`.
 pub fn new_runtime() -> JsResult<(Runtime, Context)> {
     let runtime = Runtime::new()?;
     // Bump the QuickJS stack ceiling. Default (~256KB) trips on
     // codegen-heavy libs like ajv that recursively walk schema ASTs.
-    // 8MB matches V8/Bun's default; rusty-bun is not memory-pressured
+    // 8MB matches V8/Bun's default; cruftless is not memory-pressured
     // at engagement scale so the larger ceiling is safe.
     runtime.set_max_stack_size(8 * 1024 * 1024);
     runtime.set_loader(NodeResolver, FsLoader);
@@ -5020,7 +5020,7 @@ const BUFFER_CLASS_JS: &str = r#"
             if (a.length > b.length) return 1;
             return 0;
         }
-        // Preserve the rusty-bun-only static-helper API alongside the
+        // Preserve the cruftless-only static-helper API alongside the
         // Bun-portable instance-method API. Both shapes work.
         static decodeUtf8(bytes) { return S.decodeUtf8(Array.from(bytes)); }
         static encodeBase64(bytes) { return S.encodeBase64(Array.from(bytes)); }
@@ -5464,7 +5464,7 @@ const FINALIZATION_REGISTRY_STUB_JS: &str = r#"
 })();
 (function () {
     // MessagePort + MessageChannel + BroadcastChannel stubs. Worker-thread
-    // and worker-API related; rusty-bun is single-thread so the messaging
+    // and worker-API related; cruftless is single-thread so the messaging
     // is no-op but the classes need to exist for transitive deps that
     // top-level-check `typeof MessagePort` or call new MessageChannel().
     if (typeof globalThis.MessagePort !== "function") {
@@ -7208,20 +7208,20 @@ fn wire_bun_namespace_static<'js>(
     ns.set(
         "fileMimeType",
         Function::new(ctx.clone(), |path: String| -> String {
-            // Use rusty-bun-file's extension-to-MIME mapping.
-            rusty_bun_file::BunFile::open(&path).mime_type()
+            // Use cruftless-file's extension-to-MIME mapping.
+            bun_file::BunFile::open(&path).mime_type()
         })?,
     )?;
     ns.set(
         "fileExists",
         Function::new(ctx.clone(), |path: String| -> bool {
-            rusty_bun_file::BunFile::open(&path).exists()
+            bun_file::BunFile::open(&path).exists()
         })?,
     )?;
     ns.set(
         "fileSize",
         Function::new(ctx.clone(), |path: String| -> JsResult<i64> {
-            rusty_bun_file::BunFile::open(&path)
+            bun_file::BunFile::open(&path)
                 .size()
                 .map(|s| s as i64)
                 .map_err(|e| rquickjs::Error::new_from_js_message(
@@ -7231,7 +7231,7 @@ fn wire_bun_namespace_static<'js>(
     ns.set(
         "fileText",
         Function::new(ctx.clone(), |path: String| -> JsResult<String> {
-            rusty_bun_file::BunFile::open(&path).text().map_err(|e| {
+            bun_file::BunFile::open(&path).text().map_err(|e| {
                 rquickjs::Error::new_from_js_message("fileText", "string", format!("{}", e))
             })
         })?,
@@ -7239,7 +7239,7 @@ fn wire_bun_namespace_static<'js>(
     ns.set(
         "fileBytes",
         Function::new(ctx.clone(), |path: String| -> JsResult<Vec<u8>> {
-            rusty_bun_file::BunFile::open(&path).bytes().map_err(|e| {
+            bun_file::BunFile::open(&path).bytes().map_err(|e| {
                 rquickjs::Error::new_from_js_message("fileBytes", "Vec<u8>", format!("{}", e))
             })
         })?,
@@ -7312,7 +7312,7 @@ fn wire_bun_serve_static<'js>(
         Function::new(ctx.clone(), |pattern: String, url: String| -> Vec<Vec<String>> {
             // Return pair-list of captures, OR a single pair ["__nomatch__",
             // ""] sentinel when the pattern doesn't match.
-            match rusty_bun_serve::match_pattern(&pattern, &url) {
+            match bun_serve::match_pattern(&pattern, &url) {
                 Some(params) => params
                     .captures
                     .into_iter()
@@ -7613,7 +7613,7 @@ fn install_bun_serve_js<'js>(ctx: &rquickjs::Ctx<'js>) -> JsResult<()> {
 fn wire_bun_spawn_static<'js>(
     ctx: &rquickjs::Ctx<'js>, global: &Object<'js>,
 ) -> JsResult<()> {
-    use rusty_bun_spawn::{SpawnOptions, StdinInput, StdioMode};
+    use bun_spawn::{SpawnOptions, StdinInput, StdioMode};
     use std::path::PathBuf;
 
     let ns = Object::new(ctx.clone())?;
@@ -7654,7 +7654,7 @@ fn wire_bun_spawn_static<'js>(
                 stdout: StdioMode::Pipe,
                 stderr: StdioMode::Pipe,
             };
-            match rusty_bun_spawn::spawn_sync(&args_refs, opts) {
+            match bun_spawn::spawn_sync(&args_refs, opts) {
                 Ok(r) => Ok(vec![
                     vec!["stdout".into(), String::from_utf8_lossy(&r.stdout).into_owned()],
                     vec!["stderr".into(), String::from_utf8_lossy(&r.stderr).into_owned()],
@@ -12528,7 +12528,7 @@ fn install_node_extra_builtins_js<'js>(ctx: &Ctx<'js>) -> JsResult<()> {
                 },
             };
             // Π2.6.substrate-tail: node:sqlite stub. Node 22+
-            // experimental. Bun has bun:sqlite; rusty-bun doesn't
+            // experimental. Bun has bun:sqlite; cruftless doesn't
             // ship native sqlite. Stub: constructable shape with
             // throw-on-call methods so packages that top-level
             // import (undici's optional cache, etc.) load cleanly.
@@ -12579,7 +12579,7 @@ fn install_node_extra_builtins_js<'js>(ctx: &Ctx<'js>) -> JsResult<()> {
                 EACCES: 13, EEXIST: 17, ENOENT: 2, EPERM: 1, EBADF: 9,
                 EINVAL: 22, EIO: 5, EISDIR: 21, ENOTDIR: 20, ENOSPC: 28,
             };
-            // node:cluster stub — rusty-bun is single-process. Master flag
+            // node:cluster stub — cruftless is single-process. Master flag
             // is true, worker is undefined. Surface matches the read-mostly
             // pattern (libs check isMaster / worker.id to derive a unique
             // ID and otherwise no-op).
