@@ -54,6 +54,13 @@ pub struct Runtime {
     /// queryable record rather than projecting downstream onto
     /// "callee_val=undefined" type failures.
     pub module_post_eval_trace: HashMap<String, String>,
+    /// Ω.5.P54.E3 (Axis-N probe — Doc 729 §XII): namespace synth-path
+    /// tag keyed by URL. Records which composition path produced the
+    /// namespace: "CJS-populate __esModule=B strip=B", "ESM-finalize
+    /// Tuple-A-empty", "ESM-finalize Tuple-A-wide", "P53.E13 lift
+    /// {gate=A/B/C}". Property-miss diagnostics append the tag so
+    /// Axis-N walks can locate which synth branch produced the surface.
+    pub module_ns_synth_trace: HashMap<String, String>,
     /// Managed heap. Wired but not yet authoritative for Value::Object;
     /// round 3.e.d migrates Value::Object from Rc<RefCell<Object>> to
     /// ObjectId, at which point this heap becomes the storage for every
@@ -177,6 +184,7 @@ impl Runtime {
             pkg_json_cache: HashMap::new(),
             module_resolution_trace: HashMap::new(),
             module_post_eval_trace: HashMap::new(),
+            module_ns_synth_trace: HashMap::new(),
             heap: rusty_js_gc::Heap::new(),
             job_queue: crate::job_queue::JobQueue::new(),
             pending_unhandled: HashSet::new(),

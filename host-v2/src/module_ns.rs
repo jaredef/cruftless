@@ -83,6 +83,11 @@ fn is_js_under_non_type_module_package(url: &str) -> bool {
 }
 
 pub fn install(rt: &mut Runtime) {
+    // Ω.5.P54.E3 (Axis-N probe): the FinalizeModuleNamespace hook decides
+    // one of four synth paths (Tuple-A-empty, Tuple-A-wide, no-op-pass-
+    // through, P53.E13-fn-lift). Each branch records the path taken to
+    // module_ns_synth_trace so downstream Axis-N walks can locate which
+    // branch produced the resulting surface.
     rt.install_host_hook(HostHook::FinalizeModuleNamespace(Box::new(|rt, _ast, ns, url| {
         let (has_default, default_value, named_count): (bool, Value, usize) = {
             let o = rt.obj(ns);
@@ -110,6 +115,7 @@ pub fn install(rt: &mut Runtime) {
             // Tuple A (narrow): module exports nothing — install default
             // as a fallback handle pointing at the empty namespace.
             rt.object_set(ns, "default".to_string(), Value::Object(ns));
+            rt.module_ns_synth_trace.insert(url.to_string(), "ESM-finalize Tuple-A-empty".to_string());
             return Ok(());
         }
         if !has_default && is_module_field_esm {
@@ -118,6 +124,7 @@ pub fn install(rt: &mut Runtime) {
             // the module-field-ESM case. Matches the @opentelemetry/core
             // / @xstate/fsm / many-TS-compiled-packages shape.
             rt.object_set(ns, "default".to_string(), Value::Object(ns));
+            rt.module_ns_synth_trace.insert(url.to_string(), "ESM-finalize Tuple-A-wide (P43.E1)".to_string());
             return Ok(());
         }
 
@@ -154,6 +161,10 @@ pub fn install(rt: &mut Runtime) {
         // same fn-default + no-named-exports shape, and Bun doesn't lift
         // because their ESM path is the canonical entry.
         let pkg_is_type_module = package_is_type_module(url);
+        let mut synth_path = format!(
+            "ESM-finalize pass-through (has_default={} named_count={} pkg_type_module={})",
+            has_default, named_count, pkg_is_type_module,
+        );
         if has_default && named_count == 0 && !pkg_is_type_module {
             if let Value::Object(fn_id) = default_value {
                 use rusty_js_runtime::value::InternalKind;
@@ -162,6 +173,10 @@ pub fn install(rt: &mut Runtime) {
                     InternalKind::Function(_) | InternalKind::Closure(_) | InternalKind::BoundFunction(_)
                 );
                 if is_fn {
+                    synth_path = format!(
+                        "P53.E13 fn-lift applied (gates: default-only={} fn={} not-type-module={})",
+                        named_count == 0, is_fn, !pkg_is_type_module,
+                    );
                     for key in ["name", "length", "prototype"] {
                         let already = rt.obj(ns).properties.contains_key(key);
                         if !already {
@@ -175,6 +190,7 @@ pub fn install(rt: &mut Runtime) {
             }
         }
         let _ = named_count; // silence unused
+        rt.module_ns_synth_trace.insert(url.to_string(), synth_path);
 
         Ok(())
     })));

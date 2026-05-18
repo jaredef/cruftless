@@ -159,6 +159,25 @@ impl Runtime {
             }
             Ok(Value::Undefined)
         });
+        // Ω.5.P54.E3 (Axis-N probe surface): __ns_synth_trace(spec_or_url)
+        // returns the namespace-synthesis-path tag recorded by the ESM
+        // FinalizeModuleNamespace hook (and, when threaded, the CJS
+        // populator). Names which branch composed the surface.
+        register_global_fn(self, "__ns_synth_trace", |rt, args| {
+            let q = match args.first() {
+                Some(Value::String(s)) => s.as_str().to_string(),
+                _ => return Ok(Value::Undefined),
+            };
+            if let Some(t) = rt.module_ns_synth_trace.get(&q) {
+                return Ok(Value::String(std::rc::Rc::new(t.clone())));
+            }
+            for (url, t) in rt.module_ns_synth_trace.iter() {
+                if url.contains(&q) {
+                    return Ok(Value::String(std::rc::Rc::new(t.clone())));
+                }
+            }
+            Ok(Value::Undefined)
+        });
         register_global_fn(self, "__await", |rt, args| {
             let v = args.first().cloned().unwrap_or(Value::Undefined);
             let id = match v {
