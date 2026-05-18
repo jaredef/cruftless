@@ -65,14 +65,14 @@ pub fn install_tls(rt: &mut Runtime) {
             let parent_wrap_ctor = rt.alloc_object(RtObject::new_ordinary());
             register_method(rt, parent_wrap_ctor, "__call__", |_rt, _a| Ok(Value::Undefined));
             let parent_wrap = rt.alloc_object(RtObject::new_ordinary());
-            rt.object_set(parent_wrap, "constructor".into(), Value::Object(parent_wrap_ctor));
+            rt.obj_mut(parent_wrap).set_own_internal("constructor".into(), Value::Object(parent_wrap_ctor));
             let handle = rt.alloc_object(RtObject::new_ordinary());
             rt.object_set(handle, "_parentWrap".into(), Value::Object(parent_wrap));
             rt.object_set(inst, "_handle".into(), Value::Object(handle));
             Ok(Value::Object(inst))
         });
         rt.object_set(ctor, "prototype".into(), Value::Object(proto));
-        rt.object_set(proto, "constructor".into(), Value::Object(ctor));
+        rt.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(ctor));
         rt.object_set(ns, (*cls).into(), Value::Object(ctor));
     }
     rt.globals.insert("tls".into(), Value::Object(ns));
@@ -798,7 +798,7 @@ pub fn install_dom_exception(rt: &mut Runtime) {
         Ok(Value::Object(inst))
     });
     rt.object_set(ctor, "prototype".into(), Value::Object(proto));
-    rt.object_set(proto, "constructor".into(), Value::Object(ctor));
+    rt.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(ctor));
     // WHATWG-spec numeric constants on the constructor.
     for (name, code) in &[
         ("INDEX_SIZE_ERR", 1), ("HIERARCHY_REQUEST_ERR", 3),
@@ -878,7 +878,7 @@ pub fn install_performance(rt: &mut Runtime) {
     });
     let po_proto = new_object(rt);
     rt.object_set(po_ctor, "prototype".into(), Value::Object(po_proto));
-    rt.object_set(po_proto, "constructor".into(), Value::Object(po_ctor));
+    rt.obj_mut(po_proto).set_own_internal("constructor".into(), Value::Object(po_ctor));
     let st_arr = rt.alloc_object(RtObject::new_array());
     for (i, t) in ["mark","measure","resource","navigation","function"].iter().enumerate() {
         rt.object_set(st_arr, i.to_string(), Value::String(Rc::new((*t).into())));
@@ -939,7 +939,7 @@ pub fn install_async_hooks(rt: &mut Runtime) {
         Ok(Value::Object(inst))
     });
     rt.object_set(ar_ctor, "prototype".into(), Value::Object(ar_proto));
-    rt.object_set(ar_proto, "constructor".into(), Value::Object(ar_ctor));
+    rt.obj_mut(ar_proto).set_own_internal("constructor".into(), Value::Object(ar_ctor));
     register_method(rt, ar_ctor, "bind", |rt, args| Ok(args.first().cloned().unwrap_or(rt.current_this())));
     rt.object_set(ns, "AsyncResource".into(), Value::Object(ar_ctor));
 
@@ -964,7 +964,7 @@ pub fn install_async_hooks(rt: &mut Runtime) {
         Ok(Value::Object(inst))
     });
     rt.object_set(als_ctor, "prototype".into(), Value::Object(als_proto));
-    rt.object_set(als_proto, "constructor".into(), Value::Object(als_ctor));
+    rt.obj_mut(als_proto).set_own_internal("constructor".into(), Value::Object(als_ctor));
     register_method(rt, als_ctor, "bind", |rt, args| Ok(args.first().cloned().unwrap_or(rt.current_this())));
     register_method(rt, als_ctor, "snapshot", |_rt, _a| {
         Ok(Value::Undefined)
@@ -1092,7 +1092,7 @@ pub fn install_vm(rt: &mut Runtime) {
             Ok(Value::Object(inst))
         });
         rt.object_set(ctor, "prototype".into(), Value::Object(proto));
-        rt.object_set(proto, "constructor".into(), Value::Object(ctor));
+        rt.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(ctor));
         rt.object_set(ns, (*cls).into(), Value::Object(ctor));
     }
     rt.globals.insert("vm".into(), Value::Object(ns));

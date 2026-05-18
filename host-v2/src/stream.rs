@@ -72,7 +72,7 @@ pub fn install(rt: &mut Runtime) {
         // enough because Op::New picks up the returned object.
         let proto = new_object(rt);
         rt.object_set(ctor, "prototype".into(), Value::Object(proto));
-        rt.object_set(proto, "constructor".into(), Value::Object(ctor));
+        rt.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(ctor));
         // The ctor itself: accepting an optional options object.
         let nm = *name;
         register_method(rt, ctor, "__call__", move |_rt, _args| {
@@ -114,7 +114,7 @@ pub fn install(rt: &mut Runtime) {
         let proto = new_object(rt);
         if let Value::Object(ctor) = rt.object_get(stream, name) {
             rt.object_set(ctor, "prototype".into(), Value::Object(proto));
-            rt.object_set(proto, "constructor".into(), Value::Object(ctor));
+            rt.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(ctor));
         }
     }
     // Tier-Ω.5.gggg: stream.pipeline / .finished return undefined

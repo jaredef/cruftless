@@ -279,7 +279,7 @@ impl Runtime {
         if let Some(proto) = self.promise_prototype {
             self.object_set(promise_obj, "prototype".into(), Value::Object(proto));
             // Ω.5.P58.E7: Promise.prototype.constructor = Promise per ECMA §27.2.5.
-            self.object_set(proto, "constructor".into(), Value::Object(promise_obj));
+            self.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(promise_obj));
             // Ω.5.P61.E11: Promise.prototype.finally per ECMA §27.2.5.3.
             crate::intrinsics::register_intrinsic_method(self, proto, "finally", 1, |rt, args| {
                 let source = match rt.current_this() {

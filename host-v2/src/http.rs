@@ -109,7 +109,7 @@ pub fn install(rt: &mut Runtime) {
             )))
         });
         rt.object_set(ctor, "prototype".into(), Value::Object(proto));
-        rt.object_set(proto, "constructor".into(), Value::Object(ctor));
+        rt.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(ctor));
         set_constant(rt, http, class_name, Value::Object(ctor));
     }
 

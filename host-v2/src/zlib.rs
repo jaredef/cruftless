@@ -45,7 +45,7 @@ pub fn install(rt: &mut Runtime) {
         let ctor = new_object(rt);
         let proto = new_object(rt);
         rt.object_set(ctor, "prototype".into(), Value::Object(proto));
-        rt.object_set(proto, "constructor".into(), Value::Object(ctor));
+        rt.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(ctor));
         rt.object_set(z, name.to_string(), Value::Object(ctor));
     }
     // Ω.5.P51.E3: zlib.constants — flush flags, return codes, compression

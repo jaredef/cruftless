@@ -377,7 +377,7 @@ impl Runtime {
                 Ok(Value::Object(id))
             });
             let stub_id = self.alloc_object(stub);
-            self.object_set(proto, "constructor".into(), Value::Object(stub_id));
+            self.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(stub_id));
             register_intrinsic_method(self, proto, "format", 1, |_rt, args| {
                 Ok(Value::String(std::rc::Rc::new(
                     crate::abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined)).as_str().to_string()
@@ -1000,7 +1000,7 @@ impl Runtime {
         if let Some(fp) = self.function_prototype {
             if let Some(Value::Object(fn_global)) = self.globals.get("Function").cloned() {
                 self.object_set(fn_global, "prototype".into(), Value::Object(fp));
-                self.object_set(fp, "constructor".into(), Value::Object(fn_global));
+                self.obj_mut(fp).set_own_internal("constructor".into(), Value::Object(fn_global));
             }
         }
     }
@@ -1911,7 +1911,7 @@ impl Runtime {
             // `(ctor=foo.constructor) === bar.constructor` followed by
             // `ctor === Date` / `ctor === RegExp` / `ctor === Array`
             // dispatch.
-            self.object_set(proto, "constructor".into(), Value::Object(obj_ctor));
+            self.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(obj_ctor));
         }
         self.globals.insert("Object".into(), Value::Object(obj_ctor));
     }
@@ -2003,7 +2003,7 @@ impl Runtime {
         if let Some(proto) = self.array_prototype {
             self.object_set(arr_ctor, "prototype".into(), Value::Object(proto));
             // Ω.5.P58.E4: Array.prototype.constructor = Array per ECMA §10.2.12.
-            self.object_set(proto, "constructor".into(), Value::Object(arr_ctor));
+            self.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(arr_ctor));
         }
         self.globals.insert("Array".into(), Value::Object(arr_ctor));
     }
@@ -2077,7 +2077,7 @@ impl Runtime {
         if let Some(proto) = self.number_prototype {
             self.object_set(num, "prototype".into(), Value::Object(proto));
             // Ω.5.P58.E4: Number.prototype.constructor = Number per ECMA §10.2.12.
-            self.object_set(proto, "constructor".into(), Value::Object(num));
+            self.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(num));
         }
         self.globals.insert("Number".into(), Value::Object(num));
         self.install_string_global();
@@ -2159,7 +2159,7 @@ impl Runtime {
             // String.prototype.constructor was a separate Object (named
             // "Object"), so `"x".constructor === String` returned false and
             // the ast-types lookup fell through to the `missing name` throw.
-            self.object_set(proto, "constructor".into(), Value::Object(str_id));
+            self.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(str_id));
         }
         self.globals.insert("String".into(), Value::Object(str_id));
     }
@@ -2331,7 +2331,7 @@ impl Runtime {
         });
         let abort_signal_id = self.alloc_object(abort_signal_ctor);
         self.object_set(abort_signal_id, "prototype".into(), Value::Object(abort_signal_proto));
-        self.object_set(abort_signal_proto, "constructor".into(), Value::Object(abort_signal_id));
+        self.obj_mut(abort_signal_proto).set_own_internal("constructor".into(), Value::Object(abort_signal_id));
         // Static factories per spec §3.1.3.
         register_method(self, abort_signal_id, "abort", |rt, args| {
             let sig = rt.alloc_object(Object::new_ordinary());
@@ -2359,7 +2359,7 @@ impl Runtime {
         });
         let abort_controller_id = self.alloc_object(abort_controller_ctor);
         self.object_set(abort_controller_id, "prototype".into(), Value::Object(abort_controller_proto));
-        self.object_set(abort_controller_proto, "constructor".into(), Value::Object(abort_controller_id));
+        self.obj_mut(abort_controller_proto).set_own_internal("constructor".into(), Value::Object(abort_controller_id));
         self.globals.insert("AbortController".into(), Value::Object(abort_controller_id));
 
         // Tier-Ω.5.xxxxxx: URLSearchParams as a callable global Function with
@@ -2378,7 +2378,7 @@ impl Runtime {
         let usp_id = self.alloc_object(usp_ctor);
         let usp_proto = self.alloc_object(Object::new_ordinary());
         self.object_set(usp_id, "prototype".into(), Value::Object(usp_proto));
-        self.object_set(usp_proto, "constructor".into(), Value::Object(usp_id));
+        self.obj_mut(usp_proto).set_own_internal("constructor".into(), Value::Object(usp_id));
         self.globals.insert("URLSearchParams".into(), Value::Object(usp_id));
 
         // Ω.5.P49.E3: Fetch-API constructor stubs as callable globals.
@@ -2414,7 +2414,7 @@ impl Runtime {
             });
             let id = self.alloc_object(ctor);
             self.object_set(id, "prototype".into(), Value::Object(proto));
-            self.object_set(proto, "constructor".into(), Value::Object(id));
+            self.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(id));
             self.globals.insert((*name).into(), Value::Object(id));
         }
 
@@ -2461,7 +2461,7 @@ impl Runtime {
         });
         let headers_ctor_id = self.alloc_object(headers_ctor_fn);
         self.object_set(headers_ctor_id, "prototype".into(), Value::Object(headers_proto));
-        self.object_set(headers_proto, "constructor".into(), Value::Object(headers_ctor_id));
+        self.obj_mut(headers_proto).set_own_internal("constructor".into(), Value::Object(headers_ctor_id));
         register_method(self, headers_proto, "has", |rt, args| {
             let this_id = match rt.current_this() { Value::Object(o) => o, _ => return Ok(Value::Boolean(false)) };
             let bag = match rt.object_get(this_id, "__headers") { Value::Object(b) => b, _ => return Ok(Value::Boolean(false)) };
@@ -2588,7 +2588,7 @@ impl Runtime {
         });
         let request_ctor_id = self.alloc_object(request_ctor_fn);
         self.object_set(request_ctor_id, "prototype".into(), Value::Object(request_proto));
-        self.object_set(request_proto, "constructor".into(), Value::Object(request_ctor_id));
+        self.obj_mut(request_proto).set_own_internal("constructor".into(), Value::Object(request_ctor_id));
         self.globals.insert("Request".into(), Value::Object(request_ctor_id));
         // fetch() as a callable global that returns a rejected-Promise-shaped
         // value (host-v2 lacks real Promise scheduling for fetch; the call
@@ -2675,7 +2675,7 @@ impl Runtime {
         });
         self.object_set(bool_id, "prototype".into(), Value::Object(bool_proto));
         // Ω.5.P58.E4: Boolean.prototype.constructor = Boolean per ECMA §10.2.12.
-        self.object_set(bool_proto, "constructor".into(), Value::Object(bool_id));
+        self.obj_mut(bool_proto).set_own_internal("constructor".into(), Value::Object(bool_id));
         self.globals.insert("Boolean".into(), Value::Object(bool_id));
         // Tier-Ω.5.tttttt: EventTarget + Event + CustomEvent global stubs
         // (chai / web-platform-ish libs). v1: ordinary objects with the
@@ -2749,7 +2749,7 @@ impl Runtime {
         let bc_id = self.alloc_object(bc);
         let bc_proto = self.alloc_object(Object::new_ordinary());
         self.object_set(bc_id, "prototype".into(), Value::Object(bc_proto));
-        self.object_set(bc_proto, "constructor".into(), Value::Object(bc_id));
+        self.obj_mut(bc_proto).set_own_internal("constructor".into(), Value::Object(bc_id));
         self.globals.insert("BroadcastChannel".into(), Value::Object(bc_id));
         for name in &["MessageEvent", "ErrorEvent", "CloseEvent", "ProgressEvent", "BeforeUnloadEvent", "FocusEvent"] {
             let ctor_name = *name;
@@ -2766,7 +2766,7 @@ impl Runtime {
             let nm_id = self.alloc_object(nm);
             let nm_proto = self.alloc_object(Object::new_ordinary());
             self.object_set(nm_id, "prototype".into(), Value::Object(nm_proto));
-            self.object_set(nm_proto, "constructor".into(), Value::Object(nm_id));
+            self.obj_mut(nm_proto).set_own_internal("constructor".into(), Value::Object(nm_id));
             self.globals.insert((*name).into(), Value::Object(nm_id));
         }
         self.install_error_globals();
@@ -3053,7 +3053,7 @@ impl Runtime {
             });
             let ctor = self.alloc_object(ctor_obj);
             self.object_set(ctor, "prototype".into(), Value::Object(proto));
-            self.object_set(proto, "constructor".into(), Value::Object(ctor));
+            self.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(ctor));
             self.globals.insert((*collection).to_string(), Value::Object(ctor));
         }
         for collection in &["Set", "WeakSet"] {
@@ -3343,7 +3343,7 @@ impl Runtime {
             });
             let ctor = self.alloc_object(ctor_obj);
             self.object_set(ctor, "prototype".into(), Value::Object(proto));
-            self.object_set(proto, "constructor".into(), Value::Object(ctor));
+            self.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(ctor));
             self.globals.insert((*collection).to_string(), Value::Object(ctor));
         }
     }
@@ -3700,7 +3700,7 @@ impl Runtime {
         register_intrinsic_method(self, ctor, "parse", 2, |_rt, _args| Ok(Value::Number(0.0)));
         register_intrinsic_method(self, ctor, "UTC", 1, |_rt, _args| Ok(Value::Number(0.0)));
         self.object_set(ctor, "prototype".into(), Value::Object(proto));
-        self.object_set(proto, "constructor".into(), Value::Object(ctor));
+        self.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(ctor));
         self.globals.insert("Date".into(), Value::Object(ctor));
     }
 
@@ -4242,7 +4242,7 @@ impl Runtime {
         });
         let wr = self.alloc_object(weakref_ctor);
         self.object_set(wr, "prototype".into(), Value::Object(weakref_proto));
-        self.object_set(weakref_proto, "constructor".into(), Value::Object(wr));
+        self.obj_mut(weakref_proto).set_own_internal("constructor".into(), Value::Object(wr));
         self.globals.insert("WeakRef".into(), Value::Object(wr));
 
         let fr_proto = self.alloc_object(Object::new_ordinary());
@@ -4256,7 +4256,7 @@ impl Runtime {
         });
         let fr = self.alloc_object(fr_ctor);
         self.object_set(fr, "prototype".into(), Value::Object(fr_proto));
-        self.object_set(fr_proto, "constructor".into(), Value::Object(fr));
+        self.obj_mut(fr_proto).set_own_internal("constructor".into(), Value::Object(fr));
         self.globals.insert("FinalizationRegistry".into(), Value::Object(fr));
     }
 
@@ -4528,7 +4528,7 @@ impl Runtime {
             let ctor_id = self.alloc_object(ctor_obj);
             self.object_set(ctor_id, "prototype".into(), Value::Object(proto_id));
             // proto.constructor = ctor (per spec).
-            self.object_set(proto_id, "constructor".into(), Value::Object(ctor_id));
+            self.obj_mut(proto_id).set_own_internal("constructor".into(), Value::Object(ctor_id));
             // Tier-Ω.5.JJJJJJJ: Error.captureStackTrace(target, ctorOpt) per V8
             // convention. http-errors / koa / serve-static (via depd) call it
             // at module-init to attach a `stack` string to a fresh error-like

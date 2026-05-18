@@ -124,7 +124,7 @@ pub fn install(rt: &mut Runtime) {
             let _ = rt.obj_mut(new_proto);
             rt.obj_mut(new_proto).proto = Some(sp);
         }
-        rt.object_set(new_proto, "constructor".into(), Value::Object(ctor_id));
+        rt.obj_mut(new_proto).set_own_internal("constructor".into(), Value::Object(ctor_id));
         rt.object_set(ctor_id, "prototype".into(), Value::Object(new_proto));
         Ok(Value::Undefined)
     });
