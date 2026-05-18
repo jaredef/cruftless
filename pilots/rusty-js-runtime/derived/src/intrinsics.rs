@@ -3523,6 +3523,63 @@ impl Runtime {
             let (y, mo, d) = date_components(ms);
             Ok(Value::String(Rc::new(format!("{:04}-{:02}-{:02}T00:00:00Z", y, mo + 1, d))))
         });
+        // Ω.5.P61.E12: Date.prototype additional format + legacy methods
+        // per ECMA §21.4.4. v1 deviates from locale-sensitive output;
+        // returns the ISO-like form (sufficient for module-init presence
+        // probes; consumer-locale-display gaps not yet surfaced).
+        let date_fmt_date = |rt: &mut Runtime, _args: &[Value]| -> Result<Value, RuntimeError> {
+            let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::String(Rc::new(String::new()))) };
+            let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::String(Rc::new("Invalid Date".into()))) };
+            let (y, mo, d) = date_components(ms);
+            Ok(Value::String(Rc::new(format!("{:04}-{:02}-{:02}", y, mo + 1, d))))
+        };
+        let date_fmt_time = |rt: &mut Runtime, _args: &[Value]| -> Result<Value, RuntimeError> {
+            let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::String(Rc::new(String::new()))) };
+            let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::String(Rc::new("Invalid Date".into()))) };
+            let h = (ms / 3_600_000.0).floor() as i64 % 24;
+            let mi = (ms / 60_000.0).floor() as i64 % 60;
+            let se = (ms / 1000.0).floor() as i64 % 60;
+            Ok(Value::String(Rc::new(format!("{:02}:{:02}:{:02}", h, mi, se))))
+        };
+        let date_fmt_utc = |rt: &mut Runtime, _args: &[Value]| -> Result<Value, RuntimeError> {
+            let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::String(Rc::new(String::new()))) };
+            let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::String(Rc::new("Invalid Date".into()))) };
+            let (y, mo, d) = date_components(ms);
+            let h = (ms / 3_600_000.0).floor() as i64 % 24;
+            let mi = (ms / 60_000.0).floor() as i64 % 60;
+            let se = (ms / 1000.0).floor() as i64 % 60;
+            Ok(Value::String(Rc::new(format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02} GMT", y, mo + 1, d, h, mi, se))))
+        };
+        register_intrinsic_method(self, proto, "toDateString", 0, date_fmt_date);
+        register_intrinsic_method(self, proto, "toLocaleDateString", 0, date_fmt_date);
+        register_intrinsic_method(self, proto, "toTimeString", 0, date_fmt_time);
+        register_intrinsic_method(self, proto, "toLocaleTimeString", 0, date_fmt_time);
+        register_intrinsic_method(self, proto, "toUTCString", 0, date_fmt_utc);
+        // getYear / setYear per Annex B.2.4 (legacy). getYear returns
+        // year - 1900; setYear sets full year, with two-digit values
+        // mapped to 1900s for 0-99.
+        register_intrinsic_method(self, proto, "getYear", 0, |rt, _args| {
+            let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
+            let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::Number(f64::NAN)) };
+            let (y, _, _) = date_components(ms);
+            Ok(Value::Number((y - 1900) as f64))
+        });
+        register_intrinsic_method(self, proto, "setYear", 1, |rt, args| {
+            let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
+            let y_raw = args.first().map(crate::abstract_ops::to_number).unwrap_or(f64::NAN);
+            let full_year = if y_raw >= 0.0 && y_raw <= 99.0 { y_raw + 1900.0 } else { y_raw };
+            // Crude: re-encode the current ms with adjusted year. Use the
+            // existing components and convert back.
+            let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => 0.0 };
+            let (_, mo, d) = date_components(ms);
+            // Approximate ms-for-year (ignores leap-second / DST nuance).
+            let days_per_year = 365.25;
+            let new_ms = ((full_year - 1970.0) * days_per_year * 86_400_000.0)
+                + ((mo as f64) * 30.0 * 86_400_000.0)
+                + ((d as f64 - 1.0) * 86_400_000.0);
+            rt.object_set(this_id, "__date_ms".into(), Value::Number(new_ms));
+            Ok(Value::Number(new_ms))
+        });
         let proto_for_ctor = proto;
         let ctor_obj = make_native("Date", move |rt, args| {
             // Tier-Ω.5.iiiii: Date(y, mo, d, h, m, s, ms) multi-arg ctor

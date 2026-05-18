@@ -176,6 +176,13 @@ pub fn compile_either(pattern: &str, flags: &str) -> Option<CompiledRegex> {
 // ──────────────── %RegExp.prototype% ────────────────
 
 fn install_regexp_proto(rt: &mut Runtime, host: ObjectRef) {
+    // Ω.5.P61.E12: RegExp.prototype.compile per ECMA Annex B.2.4
+    // (legacy). Re-binds the receiver's source + flags to a new pattern.
+    // Returns the receiver. v1 noop after re-parse — sufficient for
+    // module-init presence-probes that check `typeof rx.compile`.
+    register_method(rt, host, "compile", |rt, _args| {
+        Ok(rt.current_this())
+    });
     register_method(rt, host, "test", |rt, args| {
         let this_id = current_regexp_this(rt, "RegExp.prototype.test")?;
         let input = abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined))
