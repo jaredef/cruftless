@@ -2049,14 +2049,22 @@ impl Runtime {
             "ByteLengthQueuingStrategy", "CountQueuingStrategy",
             "TextEncoderStream", "TextDecoderStream",
         ] {
-            let nm = *name;
-            let ctor = make_native(name, move |_rt, _args| {
-                Err(RuntimeError::TypeError(format!(
-                    "{nm} constructor not yet implemented (Tier-Ω.5.P49.E3 stub)"
-                )))
+            let proto = self.alloc_object(Object::new_ordinary());
+            let proto_for_closure = proto;
+            // Ω.5.P53.E3: WHATWG-stream + fetch-API ctors now benign at
+            // module-init. Pre-fix the ctor throw fired at construction
+            // time, killing import of ky / package-json / update-notifier
+            // and other consumers that instantiate streams during init.
+            // Mirrors the http.Agent / https.Agent benign-at-init pattern
+            // (P51.E4). Real stream behavior is still deferred to a
+            // substrate round; only construction succeeds here.
+            let ctor = make_native(name, move |rt, _args| {
+                let mut inst = Object::new_ordinary();
+                inst.proto = Some(proto_for_closure);
+                let id = rt.alloc_object(inst);
+                Ok(Value::Object(id))
             });
             let id = self.alloc_object(ctor);
-            let proto = self.alloc_object(Object::new_ordinary());
             self.object_set(id, "prototype".into(), Value::Object(proto));
             self.object_set(proto, "constructor".into(), Value::Object(id));
             self.globals.insert((*name).into(), Value::Object(id));
