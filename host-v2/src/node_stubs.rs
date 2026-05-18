@@ -626,6 +626,43 @@ pub fn install_dns(rt: &mut Runtime) {
 }
 
 // Tier-Ω.5.llll: node:module stub for `yargs` cluster.
+/// Ω.5.P58.E3: install `require` as a global in module contexts, matching
+/// Bun's permissive ESM-cum-CJS behavior. Node-spec ESM does NOT expose
+/// `require` as a global (you must call `createRequire(import.meta.url)`).
+/// Bun does, and many real-world packages (turndown, jest's synckit,
+/// rollup-plugin-typescript2, playwright-core) rely on this. The implementation
+/// reads `current_module_url.last()` to discover the calling frame's URL and
+/// delegates to `cjs_require`, which is the same path `createRequire`'s
+/// returned function uses.
+pub fn install_global_require(rt: &mut Runtime) {
+    let require_obj = crate::register::make_callable(rt, "require", |rt, args| {
+        let spec = match args.first() {
+            Some(Value::String(s)) => s.as_str().to_string(),
+            _ => return Err(rusty_js_runtime::RuntimeError::TypeError(
+                "require: specifier must be a string".into())),
+        };
+        let parent = rt.current_module_url.last().cloned().unwrap_or_default();
+        rt.cjs_require(&parent, &spec)
+    });
+    // require.resolve(spec) — same path as createRequire's bound resolve.
+    let resolve_fn = crate::register::make_callable(rt, "resolve", |rt, args| {
+        let spec = match args.first() {
+            Some(Value::String(s)) => s.as_str().to_string(),
+            _ => return Err(rusty_js_runtime::RuntimeError::TypeError(
+                "require.resolve: specifier must be a string".into())),
+        };
+        let parent = rt.current_module_url.last().cloned().unwrap_or_default();
+        match rt.resolve_module_full(&parent, &spec, rusty_js_runtime::ModuleKind::CJS) {
+            Ok(url) => Ok(Value::String(std::rc::Rc::new(
+                url.strip_prefix("file://").map(|s| s.to_string()).unwrap_or(url),
+            ))),
+            Err(e) => Err(e),
+        }
+    });
+    rt.object_set(require_obj, "resolve".into(), Value::Object(resolve_fn));
+    rt.globals.insert("require".into(), Value::Object(require_obj));
+}
+
 pub fn install_module(rt: &mut Runtime) {
     let ns = new_object(rt);
     // Ω.5.P47.E1.create-require-real: createRequire(parent_url) returns a
@@ -690,6 +727,7 @@ pub fn install_all(rt: &mut Runtime) {
     install_buffer(rt);
     install_dns(rt);
     install_module(rt);
+    install_global_require(rt);
     install_http2(rt);
     install_diagnostics_channel(rt);
     install_v8(rt);
