@@ -1655,8 +1655,12 @@ impl Runtime {
                 Some(Value::Object(id)) => *id,
                 _ => return Ok(Value::Undefined),
             };
-            let key = abstract_ops::to_string(&args.get(1).cloned().unwrap_or(Value::Undefined))
-                .as_str().to_string();
+            // Ω.5.P61.E18: ToPropertyKey per ECMA §7.1.19 — dispatch through
+            // @@toPrimitive/toString/valueOf so non-string keys (Array via
+            // toString-join, Object via @@toPrimitive, etc.) coerce per spec.
+            // Plain ToString gave "[object Object]" for arrays, breaking
+            // gOPD-2-{38..47} which pass [1]/[true]/etc. as the key.
+            let key = rt.coerce_to_string(&args.get(1).cloned().unwrap_or(Value::Undefined))?;
             // Tier-Ω.5.ZZZZZZZ: distinguish accessor descriptors (return {get,
             // set, enumerable, configurable}) from data descriptors (return
             // {value, writable, enumerable, configurable}). Previously
@@ -1773,8 +1777,7 @@ impl Runtime {
                 Some(Value::Object(id)) => *id,
                 _ => return Ok(Value::Boolean(false)),
             };
-            let key = abstract_ops::to_string(&args.get(1).cloned().unwrap_or(Value::Undefined))
-                .as_str().to_string();
+            let key = rt.coerce_to_string(&args.get(1).cloned().unwrap_or(Value::Undefined))?;
             Ok(Value::Boolean(rt.obj(id).properties.contains_key(&key)))
         });
         // Tier-Ω.5.v: Object.create(proto, propertiesObject?). Per

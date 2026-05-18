@@ -83,6 +83,24 @@ pub fn number_to_string(n: f64) -> String {
         }
         return format!("{:.0}", n);
     }
+    // Small-magnitude branch: ECMA §6.1.6.1.20 step uses exponential
+    // notation when the decimal exponent is < -6, i.e., |n| < 1e-6.
+    // Rust's default Display gives "0.0000001" for 1e-7; spec wants "1e-7".
+    if n.abs() < 1e-6 {
+        let s = format!("{:e}", n);
+        let mut out = String::new();
+        let bytes = s.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            let c = bytes[i] as char;
+            out.push(c);
+            if c == 'e' && i + 1 < bytes.len() && bytes[i + 1] as char != '-' && bytes[i + 1] as char != '+' {
+                out.push('+');
+            }
+            i += 1;
+        }
+        return out;
+    }
     if n.abs() >= 1e21 {
         // ECMA-style exponential: 1e+21, 1.5e+22, -1e+21, etc.
         // Rust's {:e} gives 1e21; need 1e+21 prefix.
