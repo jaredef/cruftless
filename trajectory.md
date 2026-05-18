@@ -1626,3 +1626,99 @@ Beyond CompileError:
 Read seed.md §A8.23 (current operative discipline). Canonical reading: `host/tools/parity-results-top500-postp49.json` (71.1%, 730/1026). Ceiling reference: `host/tools/parity-results-top500-postext7.json` (75.2%, host/). Migration-cost gap: 4.1 pp.
 
 First action on resume: pick from the open-scope list. The III.a kc±1-2 long-tail (Symbol-keys filter) is the highest-yield single move at this anchor since it addresses 55 packages with a single ECMA-spec fix. Pin-Art tag count this engagement: ~167 (EXT 9) + 5 (P49.E1-E5) = ~172 substrate moves committed.
+
+
+## RESUME VECTOR EXTENSION 11 — 2026-05-17 evening → 2026-05-18 (P50→P54 + Cruftless rename + Doc 729 published)
+
+### Headline
+
+No fresh canonical sweep landed in this stretch. Last canonical reading remains EXT 10's post-P49 **71.1% (730/1026)** on parity-top500 host-v2. Fast exemplar sweep (30/43, 69.7%) held flat across all 28 commits in this stretch — diagnostic-additive moves and probe instrumentation by design do not move the exemplar headline.
+
+Yield was measured at the *targeted-cluster* level per the no-auto-sweeps directive (seed feedback). Per-cluster movements:
+- **kc-pm-1-2 (55-pkg cluster, EXT 8 priority):** 0 → 4 (P50.E1) → 25 (P50.E2) → 27 (P50.E3) → 29 (P50.E4) PASS.
+- **dyn-import (119-pkg cluster):** 5 → 6 (P51.E7) → 11 (P51.E3+E5+E6 got chain) → 14 (P53.E3) → 17 (P53.E4 + headers chain) → 19 (P53.E7 logical-assign) → expected ~19 post-P53.E13 closure.
+- **kc-pm-3-10 (14-pkg cluster):** 0 → 6 (P53.E11) → narrowed under regression-fold P53.E12/E13 → 7/14 (P54.E7 heap-js).
+- **III.a typeof-diff (15-pkg cluster):** 0 → 7/15 (P53.E10 __esModule explicit-default preservation).
+- **III.c CompileError (5 sub-pkgs):** 0 → 1 (P53.E8 legacy octals) → 2 (P53.E9 yield-as-AssignmentExpression).
+
+### Structural moves in this stretch
+
+**Doc 729 published — Cruftless: A Primary Articulation of the Resolver-Instance Pattern.** Names the destination toward which the engagement morphs. Five stacked resolver-instances (Cargo build, bootstrap/SERVER, module load, PRESTO/execution, job-queue drain) per §IV. Induced property: vertically-recursive directive consumption with stage-deterministic emission (§V). Three forward applications (§VII): (A) bootstrap-as-seed extraction, (B) engine-internal bilateral boundary tightening, (C) host-module privilege accumulation. Seven constraint axes (§XII: M/N/S/E/R/H/O) operationalized as engine probes in P54. Methodology refinement (§XIII): regression-as-implicit-constraint-probe; co-equal walk + regression sweep. Four engine-tier inductive property targets named: P-M, P-N, P-S, P-E.
+
+**Cruftless rename (4 commits, `cdb5212f` → `8879f484`).** Repo renamed jaredef/rusty-bun → jaredef/cruftless. Binary names: `rusty-bun-host-v2` → `cruftless` (the primary substrate target per §A8.23); `rusty-bun-host` → `cruftless-rquickjs` (reference ceiling). Library names: `rusty_bun_host_v2` → `cruftless`; `rusty_bun_host` → `cruftless_rquickjs`. ~252 references rewritten across `*.rs`/`*.sh`/`*.py`. Preserved as-is per the rename commit message: `trajectory.md` EXT 1-10 anchors, `seed.md`, commit messages with Ω.5.P* tags, sweep JSONs under `host/tools/parity-results-*.json`. The `rusty-js-{ast,parser,bytecode,gc,runtime}` crate family preserved (separable JS-engine-in-Rust subject, not coupled to the runtime brand). The `bun-*` surface-named pilots preserved. LICENSE added (MIT, Copyright 2026 Jared Foy). README rewritten against the resolver-instance design.
+
+### Substrate moves this stretch (P50.E1 → P54.E8)
+
+Twenty-eight tagged moves across two days. Tag-on-DAG coordinates per seed §A8.21.
+
+| Tag-on-DAG | Commit | Mode | Recognition |
+|---|---|---|---|
+| Ω.5.P50.E1.async-fn-no-prototype | `6517c841` | engine-substrate (correctness) | Per ECMA §15.7.5: async functions have no auto-`prototype`. Closes 4 in kc-pm-1-2 (fast-glob, prompts, proper-lockfile, write-file-atomic). |
+| Ω.5.P50.E2.bound-fn-name-and-length | `f36a527f` | engine-substrate (totality-of-consumption at function-creation sub-resolver) | Per ECMA §20.2.5.5 + §10.4.1: bound functions carry spec-mandated own `name='bound '+target.name` and `length=max(0, target.length-boundArgs.length)`. C1 of the Pin-Art constraint analysis on kc±1-2. +21 in cluster (call-bind / setFunctionLength polyfill family). |
+| Ω.5.P50.E3.cjs-default-synth-narrowed | `0b8b7d7e` | engine-substrate (C2 of Pin-Art) | CJS-as-ESM namespace skips `default=module.exports` synth when `module.exports` is the unwritten initial-exports object. Closes 2 (abortcontroller-polyfill, ts-toolbelt). |
+| Ω.5.P50.E4.cond-exports-decl-order | `e19a9182` | engine-substrate (C3 of Pin-Art) | Conditional-exports matched in declaration order per Node packages spec, not hardcoded priority. Requires serde_json `preserve_order`. +2 (fflate, solid-js). |
+| Ω.5.P51.E1.runtime-error-line-col | `62cd94f3` | meta-substrate (Layer-A indexing per Doc 723 / 725) | Runtime errors gain `@line:col` (and `@url:line:col` via P51.E5 URL threading). `compute_line_starts` at top-level compile; `CompiledModule` + `FunctionProto` gain `line_starts` + `source_map`; Frame gains the trio. `enrich_with_source_pos()` is idempotent via `@` marker. Self-authorization instrument per Doc 432 §4.5. |
+| Ω.5.P51.E2.destructure-param-slot-allocation | `b20d9165` | engine-substrate (boundary-integrity, AST-to-bytecode) | Inner-destructured names were eating positional-param slots; split allocation into Phase 1 (one slot per param position) + Phase 2 (inner names beyond N-1). Restores `slots[0..N-1] == argument positions` invariant. Discovered by axios `({value}, key) => ...` callback. |
+| Ω.5.P51.E3.zlib-constants | `24f94cc7` | host-substrate (totality-of-consumption at bootstrap) | 79-entry `zlib.constants` namespace per zlib.h / Node bindings (flush values, return codes, levels, strategies, types, engines, brotli params). axios full PASS; +2 silent compounders (axios-mock-adapter, postgrest-js). |
+| Ω.5.P51.E4.tls-socket-handle-chain | `9d6e02b9` | host-substrate (totality-of-consumption at bootstrap) | TLSSocket stub gains `_handle._parentWrap.constructor` placeholder for http2-wrapper's module-init constructor-extraction hack. |
+| Ω.5.P51.E5.diag-extensions | `f853aadc` | meta-substrate | URL threading via `compile_module_with_url(src, url)` so closure frames inherit `source_url`. `describe_thrown_for_diag()` reads `.name` + `.message` + `.stack` so `Thrown(Object)` rejections name themselves in dyn-import-load-failure messages. |
+| Ω.5.P51.E6.regex-v-flag-as-u | `99152b46` | engine-substrate (correctness) | ES2024 `/v` flag accepted as alias of `/u` in the flag-parser (no v-specific-syntax support). Unblocks @sindresorhus/is's `/HTML\w+Element/v.test(name)`. got full PASS; +1 silent (got-fetch). |
+| Ω.5.P51.E7.optional-call | `8b5dcaaa` | engine-substrate (correctness, AST-to-bytecode) | Per ECMA §13.3.7: `Foo?.(args)` short-circuits to undefined when Foo is nullish. Compiler ignored `Call.optional` in the method-call lowering; added post-method-lookup pre-CallMethod sinks. arktype advances; +1 silent (lint-staged). |
+| Ω.5.P51.E8.rest-param-destructure | `f91b64d1` | engine-substrate (boundary-integrity) | `function f(...{a,b})` — rest-binding-as-pattern: set `rest_param_slot` so destructure phase sees the gathered array. |
+| Ω.5.P52.E1.object-literal-accessors | `917c92f5` | engine-substrate (boundary-integrity, parser-to-AST) | Accessor-kind threaded through parser → compile_object_literal dispatches to accessor-installation helper. `{get x() {...}, set x(v) {...}}` now produces a real accessor descriptor pair. |
+| Ω.5.P52.E2.intl-prototype-methods | `5d06050d` | host-substrate (totality-of-consumption) | `Intl.DateTimeFormat.prototype` / `Intl.NumberFormat.prototype` etc. now carry `resolvedOptions` + `format` method stubs. |
+| Ω.5.P52.E3.block-scope-gate-pre-alloc | `88f39e3d` | engine-substrate (boundary-integrity, scope tracking) | Inner-block `let`/`const` no longer reuses outer-scope pre-allocated slots; block-depth gate forces fresh slot allocation per block, with binding resolved to outer slot on block exit. |
+| Ω.5.P52.E4.block-scope-loops-catch | `b2f042cf` | engine-substrate (boundary-integrity, scope tracking) | Same discipline applied to `for`/`for-in`/`for-of` heads + `try`/`catch` binding: snapshot-and-rename around the scoped construct. |
+| **EXT-rename block** | `cdb5212f`→`8879f484` | naming-tier morph (Doc 729) | README + LICENSE; binaries renamed `cruftless` / `cruftless-rquickjs`; ~252 references rewritten; historical artifacts (trajectory/seed/commits/sweep JSONs) preserved. |
+| Ω.5.P53.E1.optional-chain-cascade-landings | `f3c2e308` | engine-substrate (boundary-integrity) | Optional-chain short-circuit: separate member/call short-circuit pads. Per Doc 729 §VII.E (retrospective reading). |
+| Ω.5.P53.E2.construct-probes-at-ast-to-bytecode | `14f94674` | meta-substrate | Tag bug-prone compile sites — construct_tags machinery surfacing later in P54's axis probes. |
+| Ω.5.P53.E3.whatwg-stream-fetch-ctors-benign | `369c6118` | host-substrate (Doc 729 §VII.B-adjacent: bootstrap totality with benign-at-init pattern) | Replace `throw 'X constructor not yet implemented'` with `return Object.create(ctor.prototype)` for Request/Response/Headers/FormData/Blob/File + ReadableStream/WritableStream/TransformStream + controllers/readers + queuing strategies + TextEncoderStream/TextDecoderStream. Module-init shape probes pass; downstream method calls still fail (which is correct — the methods aren't implemented). |
+| Ω.5.P53.E4.headers-request-populated-prototype | `77ae527f` | host-substrate | Headers prototype: has/get/set/append/delete/forEach; Request ctor populates .url/.method/.body/.headers. ky/package-json/update-notifier full PASS. |
+| Ω.5.P53.E5.node-builtin-aliases | `dfa6b1eb` | host-substrate | node:sys → util; node:cluster + node:repl → events stub. +2 (node-config, rate-limiter-flexible). |
+| Ω.5.P53.E6.util-inspect-custom-as-symbol | `1b6a28a3` | engine-substrate (Axis S per Doc 729 §XII) | `util.inspect.custom` is a real `Value::Symbol('@@sym:nodejs.util.inspect.custom')` (Symbol.for canonical, ===-stable). ts-node PASS. |
+| Ω.5.P53.E7.logical-assign-stack-effect | `4fbe63c3` | engine-substrate (boundary-integrity, AST-to-bytecode) | `&&=`/`||=`: JumpIfTrue/FalseKeep peek (don't pop); leading `Dup` removed from identifier-target lowering. `f(x ||= 9)` now passes x's new value, not old. +2 dyn-import (pkg-types, unimport). |
+| Ω.5.P53.E8.legacy-octal-escapes | `ae519255` | engine-substrate (correctness) | Sloppy-mode string literals accept `\033`-style octals (CJS-wrapped consumer files run sloppy; strict-mode threading not yet wired). qrcode-terminal PASS. |
+| Ω.5.P53.E9.yield-arg-assignment-expression | `97904974` | engine-substrate (correctness, parser) | `yield X` parses X as AssignmentExpression per spec, not UnaryExpression. `yield o = JSON.parse(s)` works. @urql/core PASS. |
+| Ω.5.P53.E10.cjs-esmodule-preserve-default | `dfd02e79` | engine-substrate (correctness, namespace synthesis) | When `__esModule===true` AND source set explicit `exports.default`, skip the `default = module.exports` overwrite. +7 (xstream, node-html-parser, sorted-btree, xmldoc, webpack-cli, dayjs-plugin-utc, event-iterator) + fs-extra bonus. |
+| **P53.E11→E13 regression-sequence** | `ae3d7503`→`08097ef0`→`475d911c` | three-conjunct property surfaced by regression-as-implicit-constraint-probe (Doc 729 §XIII worked example) | E11 lifted function-default's `name`/`length`/`prototype` to namespace (+6 in kc-pm-3-10). E11 regressed dyn-import 19→12 (axios/got/ky/package-json/got-fetch). E12 narrowed: lift only when `named_count == 0`. E12 still regressed lint-staged/update-notifier (type:module pkgs Bun loads via canonical ESM, no fn-intrinsic lift). E13 added the third conjunct: enclosing package not type:module. Final gate: `(a) default is sole explicit export ∧ (b) default is Function/Closure/BoundFunction ∧ (c) enclosing pkg not type:module`. Doc 729 §XIII annotation discipline: this is one row in the trajectory log with three sub-moves; E11/E12 retroactively become annotation revisions of E13. |
+| **Ω.5.P54.E1→E8** | `b372fbc1`→`6ab24a32` | engine-instrumentation (Doc 729 §XII seven-axes operationalization) | Six of seven §XII axes now have engine-site probes surfacing self-naming traces queryable from JS via `__resolution_trace` / `__post_eval_trace` / `__ns_synth_trace` / `__symbol_lookup_log` / `__host_stub_log` / `__operator_trace_size`. R-axis (stack-effect assert) partially carried by P53.E2; full stack-depth model is queued. P54.E7 is the first probe-driven substrate move: composed M+E probes located the kind-detection misroute on heap-js (.es5.js export-at-bottom past 64KB sniff window); fix replaced the first-64KB sniff with full-source-already-in-hand scan, without misclassifying rollup-plugin-commonjs (no top-level import/export). P54.E8 extended Axis-E probe to record throws (initial probe missed exactly the diagnostically-interesting case). |
+
+### Methodology operationalization
+
+**Three-coordinate trajectory log discipline (Doc 729 §VIII + §XII).** Every move from P53.E4 forward carries Pin-Art locator coordinates in its commit message: (resolver-instance, property-class, axis). The table above adopts the discipline retroactively. P54.E1-E8's commit messages explicitly cite Doc 729 §XII axes.
+
+**Regression-as-implicit-constraint-probe (Doc 729 §XIII).** P53.E11→E12→E13 is the worked example: walk-mode named one explicit constraint (default-is-function); regression sweep named two implicit constraints (named_count==0; pkg not-type:module). The three-conjunct property is the engine-tier near-necessity articulation. Per §XIII, E12 and E13 are annotation revisions of E11's row, not three separate moves at the apparatus tier.
+
+**Probes-drive-substrate-moves (Doc 729 §XII as instrument).** P54.E7 is the first move *located by* the axis probes rather than by per-package walking. The Axis-M probe reported the resolver chose the correct file (.es5.js via module-field); the Axis-E probe reported the namespace came out empty (kind=CJS key_count=0); composition named the cut precisely (kind-detector first-64KB sniff misroute on a file with the export-statement at byte ~84000). The §XIII three-conjunct discovery cost is repaid here as one move named by two composed probes.
+
+### Doc 727 / 729 alignment
+
+**Doc 727 §V substrate-tracking falsifier.** This stretch dispatched 28 moves with zero apparatus reconciliations and zero new alphabet kinds named. P54 added a probe stratum (Vec<String>/HashMap<String,String> accumulators on Runtime), not a new alphabet element. The probe stratum is itself a Doc 716 K3 (hardcoded-sentinel) sub-class — accumulators return whatever the engine has logged, no behavior. Alphabet stability holds at cardinality three through this stretch.
+
+**Doc 729 §A8 candidates surfaced.** Two near-rule-level recognitions in this stretch that may institute as seed disciplines on a future fold-back:
+- **(candidate) Three-coordinate trajectory log.** Commit messages and trajectory rows carry (resolver-instance, property-class, axis). Operative from P53.E4 forward.
+- **(candidate) Annotation-revision pattern for regression-folded sub-moves.** Per Doc 729 §XIII the trajectory log treats sub-moves of a multi-conjunct property as one row with annotation revisions. P53.E11/E12/E13 is the worked example. Composes with seed §A8.21's tag-on-DAG: when handle is identical across sub-moves, the position-in-DAG is the same row; only the conjunct count grows.
+
+Neither is being instituted as a seed §A8.* entry at this anchor — the empirical record is two days of practice with one strong worked example. M7 fold-back trigger conditions are met for "yes, fold back" but the keeper-mediation decision is the standing question; current disposition: hold pending direction.
+
+### Operational notes this anchor
+
+- Pi shutdown 2026-05-17 at the post-EXT 8 burst tail (logged at EXT 9). A *second* shutdown happened at the end of the P50→P54 burst, pre-EXT-11 anchor write: a context-fresh summary sent to keeper before the shutdown anchored at Ω.5.P17, missing the ~50 moves between EXT 8 and EXT 11. This anchor closes the trajectory.md→commit-log gap.
+- Disk pressure on T7 (per §A8.20 + EXT 8 disk-pressure notes) remained operative through this stretch; no further shutdowns from voltage spikes after the EXT 8 throttling.
+
+### Open scope at this anchor
+
+1. **(B) engine-internal bilateral boundary tightening (Doc 729 §VII.B).** Eleven engine-orchestration helpers currently live in JS global namespace at `pilots/rusty-js-runtime/derived/src/intrinsics.rs`: `__await`, `__dynamic_import`, `__install_accessor__`, `__yield_push__`, `__yield_delegate__`, `__object_spread`, `__array_push_single`, `__array_extend`, `__apply`, `__construct`, `__destr_array_rest`, `__destr_object_rest`. The (B) move relocates these to a Symbol-keyed registry or non-enumerable internal slot, accessed by the engine via direct internal lookup rather than JavaScript-name resolution. Six diagnostic probes (`__resolution_trace`, `__post_eval_trace`, `__ns_synth_trace`, `__symbol_lookup_log`, `__host_stub_log`, `__operator_trace_size`) stay JS-callable by design — they are parity-script consumers, not engine-orchestration internals.
+2. **Fresh canonical sweep.** Last canonical reading is EXT 10 post-P49 (71.1%). The 28-commit stretch should produce a measurable headline movement; the no-auto-sweeps directive defers it to keeper authorization.
+3. **III.c dyn-import sub-dep chain (119 → ~119, mostly unmoved).** Per-package walks per Doc 721 Step 2 against inherited Layer-D probes.
+4. **III.a kc±1-2 long tail (post-P50: 26 remaining).** Symbol-keyed leakage into Object.keys per ECMA §7.3.21 still queued; this is the candidate Ω.5.P55.E1.object-keys-symbol-filter.
+5. **III.a typeof-diff post-P53.E10 (~8 remaining).** zod $brand pattern persists per EXT 9/10 carry.
+6. **Substantive engine investments still deferred:** real Proxy interception, real fetch + Request/Response (P53.E3/E4 are benign-at-init stubs, not implementations), Unicode regex properties, AST-level predictor v2 per Doc 724 §XI.d, full BigInt arithmetic parity at host-v2 (cruftless) substrate, R-axis full stack-depth model.
+
+### Resume protocol
+
+Read seed.md §A8.23 (host-v2 as primary substrate target, now binary `cruftless`). Read Doc 729 for the destination + the seven-axes + the regression-as-implicit-constraint methodology. Read this anchor (EXT 11) for the P50→P54 trajectory and the rename. Canonical reading: `host/tools/parity-results-top500-postp49.json` (71.1%, 730/1026). Ceiling reference: `host/tools/parity-results-top500-postext7.json` (75.2%). Migration-cost gap at last measurement: 4.1 pp.
+
+**Measurement entry post-rename (the script naming inverted with the rename).** The default `parity-measure.sh` now targets `cruftless` (host-v2, the primary substrate per §A8.23) directly — `RB="${RB_BIN:-$ROOT/target/release/cruftless}"` at line 32. The ceiling sweep is wrapped at `parity-measure-rquickjs.sh` (sets `RB_BIN=target/release/cruftless-rquickjs` and execs `parity-measure.sh`). Fast iteration: `parity-fast.sh` runs the exemplar basket against host-v2. Cluster-targeted: `parity-cluster.sh <cluster-name>` extracts one residual cluster from a prior canonical sweep and re-measures only that basket. Per keeper directive (seed `feedback_no_auto_sweeps`): default to `parity-fast.sh` (exemplars) for substrate-work iteration; canonical `parity-measure.sh host/tools/parity-top500.txt` runs only on keeper request.
+
+Pin-Art tag count this engagement: ~172 (EXT 10) + 28 (this stretch) = ~200 substrate moves committed.
