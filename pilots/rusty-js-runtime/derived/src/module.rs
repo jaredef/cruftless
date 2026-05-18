@@ -528,7 +528,32 @@ impl Runtime {
             }
         }
 
-        probe_with_extensions(&candidate, specifier)
+        let resolved_url = probe_with_extensions(&candidate, specifier)?;
+        // Ω.5.P54.E1 (Axis-M probe): record the decision trace.
+        // Cheap derivation from pkg fields + the chosen path. Surfaced by
+        // diagnostic formatters that see a Value whose source URL has a
+        // trace registered. Doc 729 §XII Axis M, §XIII methodology.
+        let rule = {
+            let has_exports = pkg.raw.get("exports").is_some();
+            let chosen_str = candidate.display().to_string();
+            let from_module_field = pkg.module_field.as_ref()
+                .map(|m| chosen_str.contains(m.trim_start_matches("./")))
+                .unwrap_or(false);
+            let from_main = pkg.main.as_ref()
+                .map(|m| chosen_str.contains(m.trim_start_matches("./")))
+                .unwrap_or(false);
+            if has_exports { "exports" }
+            else if from_module_field { "module-field" }
+            else if from_main { "main" }
+            else { "index-fallback" }
+        };
+        let trace = format!(
+            "spec='{}' chose={} via={} (alternatives: main={:?} module={:?} type={:?})",
+            specifier, candidate.display(), rule,
+            pkg.main, pkg.module_field, pkg.type_field,
+        );
+        self.module_resolution_trace.insert(resolved_url.clone(), trace);
+        Ok(resolved_url)
     }
 
     /// Tier-Ω.5.q: read+parse package.json with caching. Returns an Rc so

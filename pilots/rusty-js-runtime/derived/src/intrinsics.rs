@@ -115,6 +115,30 @@ impl Runtime {
         //   require frame park/resume; deferred. The dynamic-import path
         //   synthesizes synchronously-settled Promises, so the probe never
         //   hits this branch.
+        // Ω.5.P54.E1 (Axis-M probe — Doc 729 §XII surface):
+        // __resolution_trace(spec_or_url) returns the captured entry-point
+        // decision string. Walks the trace map by exact URL key first,
+        // then by substring match against the spec the trace recorded.
+        // Diagnostic-only; no behavior change. Lets parity probes ask the
+        // engine "which file did you actually pick?" so Axis-M wrong-file
+        // picks (heap-js .umd over .es5, mri-class divergences) become
+        // observable from JS-side test scripts rather than requiring
+        // engine recompilation with a debug print.
+        register_global_fn(self, "__resolution_trace", |rt, args| {
+            let q = match args.first() {
+                Some(Value::String(s)) => s.as_str().to_string(),
+                _ => return Ok(Value::Undefined),
+            };
+            if let Some(t) = rt.module_resolution_trace.get(&q) {
+                return Ok(Value::String(std::rc::Rc::new(t.clone())));
+            }
+            for (url, t) in rt.module_resolution_trace.iter() {
+                if t.contains(&format!("spec='{}'", q)) || url.contains(&q) {
+                    return Ok(Value::String(std::rc::Rc::new(t.clone())));
+                }
+            }
+            Ok(Value::Undefined)
+        });
         register_global_fn(self, "__await", |rt, args| {
             let v = args.first().cloned().unwrap_or(Value::Undefined);
             let id = match v {

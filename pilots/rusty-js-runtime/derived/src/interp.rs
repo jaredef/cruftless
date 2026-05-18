@@ -37,6 +37,14 @@ pub struct Runtime {
     /// Inserted on first read; never invalidated (filesystem changes during
     /// runtime are out-of-scope for v1).
     pub pkg_json_cache: HashMap<std::path::PathBuf, std::rc::Rc<crate::module::ParsedPackageJson>>,
+    /// Ω.5.P54.E1 (Axis-M probe — Doc 729 §XII): resolution-decision
+    /// trace keyed by resolved URL. Populated by resolve_entry_point
+    /// when a bare specifier maps to a file under a node_modules pkg.
+    /// Trace string format: "spec='X' chose={url} via={rule}; alternatives={k=v,...}".
+    /// Surfaced in error formatters whose receiver carries an attached
+    /// source URL — turns Axis-M wrong-file picks (mri/heap-js/etc.)
+    /// into self-naming failures rather than downstream callee_val-undefined.
+    pub module_resolution_trace: HashMap<String, String>,
     /// Managed heap. Wired but not yet authoritative for Value::Object;
     /// round 3.e.d migrates Value::Object from Rc<RefCell<Object>> to
     /// ObjectId, at which point this heap becomes the storage for every
@@ -158,6 +166,7 @@ impl Runtime {
             host_hooks: crate::module::HostHooks::default(),
             modules: HashMap::new(),
             pkg_json_cache: HashMap::new(),
+            module_resolution_trace: HashMap::new(),
             heap: rusty_js_gc::Heap::new(),
             job_queue: crate::job_queue::JobQueue::new(),
             pending_unhandled: HashSet::new(),
