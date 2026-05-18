@@ -494,11 +494,29 @@ impl<'src> Lexer<'src> {
             b'f' => out.push('\u{000C}'),
             b'v' => out.push('\u{000B}'),
             b'0' => {
-                // Only valid when not followed by a digit.
+                // Ω.5.P53.E8: accept legacy octal escapes in string
+                // literals. Spec forbids them in strict mode and templates;
+                // we don't currently track strict-mode context per source,
+                // and the entire failing residual (forever/eyes,
+                // qrcode-terminal) lives in CJS wrappers where they're
+                // legal. Parse 1-3 octal digits after \0.
                 if self.peek_byte().map_or(false, |b| b.is_ascii_digit()) {
-                    return Err(self.err(LexErrorKind::InvalidEscape, start, "octal escape forbidden"));
+                    let mut v: u32 = 0;
+                    let mut n = 0;
+                    while n < 3 {
+                        match self.peek_byte() {
+                            Some(b) if (b'0'..=b'7').contains(&b) => {
+                                v = v * 8 + (b - b'0') as u32;
+                                self.pos += 1;
+                                n += 1;
+                            }
+                            _ => break,
+                        }
+                    }
+                    push_char(out, v);
+                } else {
+                    out.push('\0');
                 }
-                out.push('\0');
             }
             b'\'' | b'"' | b'\\' => out.push(c as char),
             b'x' => {
@@ -520,10 +538,25 @@ impl<'src> Lexer<'src> {
             b'\r' => {
                 if self.peek_byte() == Some(b'\n') { self.pos += 1; }
             }
-            // Octal escape forbidden in strict (and modules are strict)
-            b'1'..=b'9' => {
-                return Err(self.err(LexErrorKind::InvalidEscape, start, "octal escape forbidden in module"));
+            // Ω.5.P53.E8: legacy octal (\1-\7) and non-octal-decimal (\8\9).
+            // Same rationale as the b'0' case — CJS-wrapped consumer files
+            // (eyes/qrcode-terminal) use \033-style ANSI codes.
+            b'1'..=b'7' => {
+                let mut v: u32 = (c - b'0') as u32;
+                let mut n = 1;
+                while n < 3 {
+                    match self.peek_byte() {
+                        Some(b) if (b'0'..=b'7').contains(&b) => {
+                            v = v * 8 + (b - b'0') as u32;
+                            self.pos += 1;
+                            n += 1;
+                        }
+                        _ => break,
+                    }
+                }
+                push_char(out, v);
             }
+            b'8' | b'9' => out.push(c as char),
             _ => out.push(c as char),
         }
         Ok(())
