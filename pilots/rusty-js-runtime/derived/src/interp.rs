@@ -1750,9 +1750,23 @@ impl Runtime {
                     // it isn't actually an own property of the function.
                     if !is_arrow && !is_async && !is_gen {
                         let mut proto_obj = Object::new_ordinary();
-                        proto_obj.set_own("constructor".into(), Value::Object(id));
+                        // Ω.5.P61.E19 (revised by E20): constructor backlink
+                        // is { writable:true, enumerable:false, configurable:true } per §10.2.4.
+                        proto_obj.set_own_internal("constructor".into(), Value::Object(id));
                         let proto_id = self.alloc_object(proto_obj);
-                        self.obj_mut(id).set_own_frozen("prototype".into(), Value::Object(proto_id));
+                        // Ω.5.P62.E7: user-function .prototype is per ECMA §10.2.4
+                        // { writable:true, enumerable:false, configurable:false }.
+                        // Pre-E7 used set_own_frozen (P61.E20 collateral) which
+                        // made .prototype non-writable, so `F.prototype = X`
+                        // silently no-op'd and Con.prototype-style inheritance
+                        // broke. Built-in ctor .prototype stays frozen via
+                        // the intrinsics-side install (P61.E20).
+                        self.obj_mut(id).properties.insert("prototype".into(),
+                            crate::value::PropertyDescriptor {
+                                value: Value::Object(proto_id),
+                                writable: true, enumerable: false, configurable: false,
+                                getter: None, setter: None,
+                            });
                     }
                     frame.push(Value::Object(id));
                 }
