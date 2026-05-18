@@ -69,7 +69,9 @@ for pkg in $PKGS; do
     status="SKIP_INSTALL_FAILED"
     n_skip=$((n_skip + 1))
     if [ $first -eq 0 ]; then echo "," >> "$OUT"; fi
-    printf '  {"pkg":%q,"status":%q}\n' "$pkg" "$status" >> "$OUT"
+    pkg_json=$(printf '%s' "$pkg" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')
+    status_json=$(printf '%s' "$status" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')
+    echo "  {\"pkg\":$pkg_json,\"status\":$status_json}" >> "$OUT"
     first=0
     continue
   fi
