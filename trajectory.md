@@ -1784,3 +1784,37 @@ The kc±1-2 cluster — EXT 8's named priority absorption target (237 packages a
 Read seed.md §A8.23 + Doc 729 + EXT 11 + this anchor (EXT 12). Canonical reading: `host/tools/parity-results-top500-postp55.json` (76.4%, 784/1026). Ceiling reference: `host/tools/parity-results-top500-postext7.json` (75.2%, host/). Migration-cost gap: **−1.2 pp (host-v2 ahead)**.
 
 Pin-Art tag count this engagement: ~200 (EXT 11) + 1 (P55.E1) = ~201 substrate moves committed.
+
+### Post-canonical-sweep continuation in this same anchor (2026-05-18, P56→P57 stretch)
+
+Five additional moves landed against the post-P55 residual without a re-running canonical sweep (held per `feedback_no_auto_sweeps`):
+
+| Tag-on-DAG | Commit | Mode | Recognition |
+|---|---|---|---|
+| Ω.5.P55.E2.skip-install-failed-json-quoting | `9679dce9` | harness fix | `parity-measure.sh` line 72 emitted `printf '%q'` (shell-quoting) for SKIP_INSTALL_FAILED entries, producing JSON like `{"pkg":tinyhttp,"status":SKIP_INSTALL_FAILED}` that strict-mode parsers reject. Mirrored the success-path `python3 json.dumps` pattern. Surfaced by P55.E1's post-sweep cluster scan. |
+| Ω.5.P56.E1.fs-permission-and-stat-stubs | `80afc06a` | host-substrate | Seventeen throw-on-call stubs for fs methods host-v2 was missing: chmod/chown/fchmod/fchown/lchmod/lchown sync+async + fstat/fstatSync/lstat/lstatSync/stat. Mirrors host/'s JS-eval throwStub pattern. Closes fs-extra's 17-key typeof-diff (the largest typeof-diff contributor at canonical scale). |
+| Ω.5.P56.E2.path-matches-glob | `32519174` | host-substrate | path.matchesGlob per Node v20: minimal glob matcher (`*` non-slash, `**` any, `?` one non-slash, literal). Mirrored onto path.posix/path.win32. Closes upath's 1-key typeof-diff. |
+| Ω.5.P57.E1.tuple-a-empty-suppress-type-module | `028a7c25` | engine-substrate (Axis-N) | Probe-driven move via __ns_synth_trace. P18.E1's Tuple-A-empty fallback was firing on type:module ESM with zero exports (micromark-util-types: rb `{default: <ns>}` vs Bun `{}`). Gated on `!package_is_type_module(url)`. Closes micromark-util-types + vite-node (silent compounder). Cluster yield on kc-pm-1-2: 0/28 → 2/28. |
+| Ω.5.P57.E2.fs-readv-writev-stubs | `7a3d0ac3` | host-substrate | readv + writev added to P56.E1's stub set. Closes graceful-fs (the largest −Δ at canonical scale, −2). |
+
+**Recorded failed move per Doc 729 §XIII (regression as inverse implicit-constraint discovery): Ω.5.P57.E2.alt (reverted in same working session).** Attempted: generalize P43.E1's Tuple-A-wide rule (synthesize default = namespace) to type:module ESM with named exports + no explicit default, based on the −Δ-default sub-cluster walk (superstruct/shallow-equal/joi-extract-type/liquidjs/graphql). Cluster yield +1; exemplar sweep regressed 29/43 → 26/43 (3 previously-passing pkgs broke). Bun's actual discriminator for the synthesize-vs-not-synthesize branch is more nuanced than uniform — depends on a packaging-tool marker or static-bundle property not exposed to the current Axis-N probe surface. Reverted; baseline restored. Per Doc 729 §XIII this is the falsifier-direction of regression sweep: the hypothesis was refuted by the implicit-constraint surface. The −Δ-default sub-cluster (5 pkgs) remains open scope, awaiting an Axis-N probe extension (candidate P58.E1.axis-n-probe-extension) that captures the discriminator.
+
+### Open scope at the P57 boundary
+
+1. **III.c dyn-import (105 pkgs, dominant residual at 60% of FAILs post-P55).** arktype walk surfaced `meta.onFail` at `@ark/schema/out/node.js:37:23`: `this.meta` is undefined when the constructor reads it. Per-package walks; each surfaces an engine-substrate primitive. Yield 1-2 closes per move with possible silent compounders per Doc 725.
+2. **−Δ-default sub-cluster (5 pkgs: superstruct, shallow-equal, joi-extract-type, liquidjs, graphql).** Blocked on P58.E1.axis-n-probe-extension. Need to capture the static discriminator Bun uses for the "synthesize default = namespace on type:module ESM with named exports" decision. Candidate discriminators to instrument: source body's first statement shape (function-call expression suggests CJS-as-ESM bundle), presence of `Object.defineProperty(exports, "__esModule", {value: true})` markers, presence of `__exportStar` calls (TS-emit), the package's `sideEffects` field, whether the package is the entry of a single-namespace bundle vs multi-file.
+3. **Symbol-typeof for well-known Symbols (Doc 729 §XII Axis S).** Substantive engine-substrate refactor: Symbol.iterator / Symbol.asyncIterator / Symbol.hasInstance / Symbol.toStringTag / etc. currently stored as sentinel `Value::String("@@iterator")`; consumers' `typeof Symbol.iterator` reads `"string"` not `"symbol"`. Closes async-iterator-to-stream + the long-named zod $brand pattern at deeper scope. Per Doc 717 §VIII / Doc 729 §XII Axis S.
+4. **__resolution_trace probe-matcher tightening.** The current substring `url.contains(&q)` is overly permissive when the sandbox path itself contains the queried package name. Workaround: query with `/node_modules/<spec>/`. Fix: require exact spec match or `/node_modules/<spec>/` substring. Candidate small follow-up.
+5. **§A8.24 IMPROVES_OVER_BUN harness classifier.** 3-4 packages where bun=ERR + rb=OK (ast-types-flow, later, proxyquire). Per §A8.24 / Doc 729 §VII these are improvement-candidates the harness should classify as PASS-at-telos-level. Candidate harness extension.
+
+### Continuation pace
+
+Eight commits, P55→P57 stretch:
+- 1 ceiling-crossing canonical sweep
+- 1 anchor write (EXT 12, this entry)
+- 1 engine-substrate move (P55.E1, §VII.B bilateral-boundary closure)
+- 1 harness fix (P55.E2, JSON-quoting)
+- 4 host-substrate moves (P56.E1, P56.E2, P57.E1, P57.E2)
+- 1 recorded failed-move with revert (P57.E2.alt)
+
+Pin-Art tag count: ~201 (post-P55.E1) + 7 (P56-P57 stretch including the recorded revert) = ~208 substrate moves committed.
