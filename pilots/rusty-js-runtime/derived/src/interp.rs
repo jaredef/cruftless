@@ -61,6 +61,25 @@ pub struct Runtime {
     /// {gate=A/B/C}". Property-miss diagnostics append the tag so
     /// Axis-N walks can locate which synth branch produced the surface.
     pub module_ns_synth_trace: HashMap<String, String>,
+    /// Ω.5.P54.E4 (Axis-S probe — Doc 729 §XII): well-known-symbol-key
+    /// access misses keyed by the canonical name. Recorded by GetProp /
+    /// GetIndex / CallMethod when the key matches a Symbol.X sentinel
+    /// AND the lookup returned Undefined. Empty in the happy path; on
+    /// failure surfaces "looked for Symbol.X on receiver-shape Y".
+    pub symbol_lookup_miss_log: Vec<String>,
+    /// Ω.5.P54.E5 (Axis-H probe — Doc 729 §XII): host-built-in surface
+    /// gap log. Each entry records "{module_namespace}.{method}" when
+    /// a CallMethod on a node:* namespace yielded method=Undefined.
+    /// Distinct from symbol-miss; this targets the Bun-version-cadence
+    /// catch-up problem (events, es-errors, etc).
+    pub host_stub_miss_log: Vec<String>,
+    /// Ω.5.P54.E6 (Axis-O probe — Doc 729 §XII): operator-lowering name
+    /// trail keyed by source span (start,end). Each compile_logical_assign
+    /// / compile_compound_member / compile_optional_chain emits its
+    /// operator's canonical name; error formatter walks pc → span → name
+    /// to surface "in compile_X(operator)" rather than bytecode-level
+    /// stack diagnostics. Stub map; population threads through compiler.rs.
+    pub operator_lowering_trace: HashMap<(usize, usize), String>,
     /// Managed heap. Wired but not yet authoritative for Value::Object;
     /// round 3.e.d migrates Value::Object from Rc<RefCell<Object>> to
     /// ObjectId, at which point this heap becomes the storage for every
@@ -185,6 +204,9 @@ impl Runtime {
             module_resolution_trace: HashMap::new(),
             module_post_eval_trace: HashMap::new(),
             module_ns_synth_trace: HashMap::new(),
+            symbol_lookup_miss_log: Vec::new(),
+            host_stub_miss_log: Vec::new(),
+            operator_lowering_trace: HashMap::new(),
             heap: rusty_js_gc::Heap::new(),
             job_queue: crate::job_queue::JobQueue::new(),
             pending_unhandled: HashSet::new(),
@@ -1454,6 +1476,39 @@ impl Runtime {
                     // have been overwritten by arg-load).
                     let method_name = frame.pending_method_name.take()
                         .or_else(|| frame.last_property_lookup.clone());
+                    // Ω.5.P54.E4/E5 (Axis-S + Axis-H probe population):
+                    // when the resolved method is Undefined, record the
+                    // miss against the appropriate trace. Symbol.X-keyed
+                    // lookups go to symbol_lookup_miss_log; node:* host
+                    // namespace lookups go to host_stub_miss_log. The
+                    // discriminator is the method name shape.
+                    if matches!(method, Value::Undefined) {
+                        if let Some(name) = method_name.as_deref() {
+                            if name.starts_with("@@sym:Symbol.") || name.starts_with("@@") {
+                                let entry = format!("{} on receiver={}",
+                                    name,
+                                    describe_value_for_diag(self, &receiver));
+                                if !self.symbol_lookup_miss_log.contains(&entry) {
+                                    self.symbol_lookup_miss_log.push(entry);
+                                }
+                            } else if let Value::Object(r_id) = &receiver {
+                                // Check if receiver is from a node:* namespace
+                                // by inspecting whether it has the global-namespace
+                                // shape we install for host stubs.
+                                let is_likely_host_stub = {
+                                    let o = self.obj(*r_id);
+                                    matches!(o.internal_kind, crate::value::InternalKind::Ordinary | crate::value::InternalKind::ModuleNamespace) &&
+                                        o.properties.keys().any(|k| k.starts_with("__"))
+                                };
+                                if is_likely_host_stub {
+                                    let entry = format!("missing method '{}'", name);
+                                    if !self.host_stub_miss_log.contains(&entry) {
+                                        self.host_stub_miss_log.push(entry);
+                                    }
+                                }
+                            }
+                        }
+                    }
                     // Tier-Ω.5.MMMMMMM: route-(b) escalation per Doc 723 §IV.b.
                     // When the method lookup yields undefined and the method
                     // name is itself uninformative (e.g. '@@iterator' — Symbol-

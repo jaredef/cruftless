@@ -178,6 +178,19 @@ impl Runtime {
             }
             Ok(Value::Undefined)
         });
+        // Ω.5.P54.E4/E5/E6 (Axis-S / Axis-H / Axis-O probe surfaces).
+        // Each returns the accumulated miss list (S, H) or trace map (O).
+        register_global_fn(self, "__symbol_lookup_log", |rt, _args| {
+            let s = rt.symbol_lookup_miss_log.join(" | ");
+            Ok(Value::String(std::rc::Rc::new(s)))
+        });
+        register_global_fn(self, "__host_stub_log", |rt, _args| {
+            let s = rt.host_stub_miss_log.join(" | ");
+            Ok(Value::String(std::rc::Rc::new(s)))
+        });
+        register_global_fn(self, "__operator_trace_size", |rt, _args| {
+            Ok(Value::Number(rt.operator_lowering_trace.len() as f64))
+        });
         register_global_fn(self, "__await", |rt, args| {
             let v = args.first().cloned().unwrap_or(Value::Undefined);
             let id = match v {
