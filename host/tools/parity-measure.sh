@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Doc 715 §VII shift 2 + Doc 716 operational metric.
-# Measures cruftless-rquickjs's parity against Bun at the load-and-shape
+# Measures cruftless's parity against Bun at the load-and-shape
 # layer across a curated list of npm packages.
 #
 # For each package in the list:
@@ -29,7 +29,7 @@ mkdir -p "$SANDBOX"
 # host (e.g. host-v2's cruftless) per seed §A8.20 + the Ω.4.f
 # Tuple A/B-close falsifier loop. The output file path can also be
 # overridden via the second positional arg or OUT= for parallel runs.
-RB="${RB_BIN:-$ROOT/target/release/cruftless-rquickjs}"
+RB="${RB_BIN:-$ROOT/target/release/cruftless}"
 if [ ! -x "$RB" ]; then
   echo "Binary not found: $RB"
   echo "Build first: cargo build --release --bin $(basename "$RB")"

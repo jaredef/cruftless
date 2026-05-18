@@ -6,7 +6,7 @@
 # sweep cost.
 #
 # Usage:
-#   parity-cluster-v2.sh <cluster-name> [results.json] [out.json]
+#   parity-cluster.sh <cluster-name> [results.json] [out.json]
 #
 # Defaults:
 #   results.json = host/tools/parity-results-top500-postp49.json (newest canonical)
@@ -46,4 +46,4 @@ echo "Cluster '$CLUSTER': $N packages from $(basename "$RESULTS")" >&2
 echo "Basket: $BASKET" >&2
 echo "Out:    $OUT" >&2
 
-exec "$TOOLS/parity-measure-v2.sh" "$BASKET" "$OUT"
+exec "$TOOLS/parity-measure.sh" "$BASKET" "$OUT"

@@ -1,6 +1,6 @@
-# rusty-bun-host — JS host integration (Tier-H #1+#2)
+# cruftless-host — JS host integration (Tier-H #1+#2)
 
-**Pilots running as a JS runtime.** The host crate embeds rquickjs (a Rust binding for QuickJS) and exposes the rusty-bun derivation pilots to JS code through a working FFI bridge. Per seed §VII Sub-criterion 4 and trajectory §II Tier-H. Iterated across two sessions on 2026-05-10: spike (9 surfaces) → expanded (~25 surfaces across 8 wirings) including JS-class wrappers for stateful types.
+**Pilots running as a JS runtime.** The host crate embeds rquickjs (a Rust binding for QuickJS) and exposes the cruftless derivation pilots to JS code through a working FFI bridge. Per seed §VII Sub-criterion 4 and trajectory §II Tier-H. Iterated across two sessions on 2026-05-10: spike (9 surfaces) → expanded (~25 surfaces across 8 wirings) including JS-class wrappers for stateful types.
 
 ## Wired surface
 
@@ -43,9 +43,9 @@ Cross-pilot composition (Buffer⨯TextDecoder, URL⨯Buffer,
 ## CLI demo
 
 ```bash
-$ ./target/release/rusty-bun-host host/examples/runtime-demo.js
-=== rusty-bun-host runtime demo ===
-Hello from rusty-bun-host. 1+2 = 3
+$ ./target/release/cruftless-host host/examples/runtime-demo.js
+=== cruftless-host runtime demo ===
+Hello from cruftless-host. 1+2 = 3
 btoa('Hello, world!') = SGVsbG8sIHdvcmxkIQ==
 atob(...)              = Hello, world!
 path.basename('/usr/local/bin/node') = node
@@ -66,7 +66,7 @@ $ echo $?
 0
 ```
 
-This output came from JS code running through QuickJS, calling into rusty-bun pilot implementations through Rust FFI. Eight wired surfaces composed in a single script.
+This output came from JS code running through QuickJS, calling into cruftless pilot implementations through Rust FFI. Eight wired surfaces composed in a single script.
 
 ## Findings
 
@@ -83,8 +83,8 @@ This output came from JS code running through QuickJS, calling into rusty-bun pi
 ## What this enables
 
 - **Future Tier-F pilots can be wired into the same host as they land.** The integration model is proven; each new pilot is a small wiring task (~10-30 LOC of FFI per surface, plus a JS-side class for stateful types).
-- **Differential testing prep.** Once enough surface is wired, real Bun-using JS scripts can be run under `rusty-bun-host` and compared against `bun` invocations. That's Tier-J in the trajectory.
-- **WPT runner candidacy.** `rusty-bun-host <wpt-test.js>` could be wired into the WPT harness. That's Tier-I.
+- **Differential testing prep.** Once enough surface is wired, real Bun-using JS scripts can be run under `cruftless-host` and compared against `bun` invocations. That's Tier-J in the trajectory.
+- **WPT runner candidacy.** `cruftless-host <wpt-test.js>` could be wired into the WPT harness. That's Tier-I.
 
 ## What's still missing
 

@@ -43,9 +43,9 @@ The design is articulated across the RESOLVE corpus:
 
 - `seed.md` — engagement-level resume vector and operative discipline.
 - `trajectory.md` — round log; latest anchor at the most recent EXT.
-- `host/tools/parity-measure-v2.sh` — canonical sweep entry against the parity basket; outputs JSON.
-- `host/tools/parity-fast-v2.sh` — 43-package exemplar sweep for fast iteration during substrate moves.
-- `host/tools/parity-cluster-v2.sh` — per-cluster targeted sweep extracted from the latest canonical reading.
+- `host/tools/parity-measure.sh` — canonical sweep entry against the parity basket; outputs JSON.
+- `host/tools/parity-fast.sh` — 43-package exemplar sweep for fast iteration during substrate moves.
+- `host/tools/parity-cluster.sh` — per-cluster targeted sweep extracted from the latest canonical reading.
 - `host/tools/select-cluster.py` / `host/tools/select-exemplars.py` — basket extractors for the targeted sweeps.
 
 ## Status

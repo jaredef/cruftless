@@ -1,10 +1,10 @@
-// Demonstrates a richer set of wired pilots running through rusty-bun-host.
-// Run: ./target/release/rusty-bun-host host/examples/runtime-demo.js
+// Demonstrates a richer set of wired pilots running through cruftless-host.
+// Run: ./target/release/cruftless-host host/examples/runtime-demo.js
 
-console.log("=== rusty-bun-host runtime demo ===");
+console.log("=== cruftless-host runtime demo ===");
 
 // 1. console.log + JS pure-language sanity
-console.log("Hello from rusty-bun-host. 1+2 =", 1 + 2);
+console.log("Hello from cruftless-host. 1+2 =", 1 + 2);
 
 // 2. atob / btoa
 const encoded = btoa("Hello, world!");
@@ -37,7 +37,7 @@ console.log("URLSearchParams.toString() =", params.toString());
 console.log("params.getAll('a')         =", params.getAll("a"));
 
 // 8. fs round-trip
-const tmp = "/tmp/rusty-bun-host-demo-" + crypto.randomUUID();
+const tmp = "/tmp/cruftless-host-demo-" + crypto.randomUUID();
 fs.writeFileSync(tmp, "demo content");
 console.log("fs.existsSync(tmp)         =", fs.existsSync(tmp));
 console.log("fs.readFileSyncUtf8(tmp)   =", fs.readFileSyncUtf8(tmp));
