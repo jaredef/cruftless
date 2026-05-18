@@ -1175,6 +1175,33 @@ impl Runtime {
                                     .unwrap_or(Value::Undefined)
                             } else if key == "length" {
                                 Value::Number(s.chars().count() as f64)
+                            } else {
+                                // Ω.5.P59.E5: primitive-string method auto-boxing
+                                // via String.prototype for computed-key reads
+                                // (mirrors Op::GetProp's branch). Pre-P59.E5
+                                // `""[Symbol.iterator]` returned undefined
+                                // because GetIndex didn't consult the
+                                // prototype chain. After P59.E1 made well-
+                                // known Symbols real Value::Symbol values,
+                                // 8 packages started failing here at module-
+                                // init (es-abstract, sinon, superagent,
+                                // supertest, strapi, keystone, pug, express-
+                                // promise-router) — they iterate over empty
+                                // strings via the iterator protocol.
+                                if let Some(proto) = self.string_prototype {
+                                    self.object_get(proto, &key)
+                                } else { Value::Undefined }
+                            }
+                        }
+                        Value::Number(_) => {
+                            // Mirror GetProp's number auto-box.
+                            if let Some(proto) = self.number_prototype {
+                                self.object_get(proto, &key)
+                            } else { Value::Undefined }
+                        }
+                        Value::BigInt(_) => {
+                            if let Some(proto) = self.bigint_prototype {
+                                self.object_get(proto, &key)
                             } else { Value::Undefined }
                         }
                         Value::Undefined | Value::Null =>
