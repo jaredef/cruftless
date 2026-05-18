@@ -1482,17 +1482,38 @@ impl Runtime {
                 // already-present properties); for a new property, absent
                 // attributes default to false.
                 let exists = rt.obj(target).properties.contains_key(&key);
-                let (default_w, default_e, default_c) = if exists {
+                let (default_w, default_e, default_c, existing_value) = if exists {
                     let d = &rt.obj(target).properties[&key];
-                    (d.writable, d.enumerable, d.configurable)
+                    (d.writable, d.enumerable, d.configurable, d.value.clone())
                 } else {
-                    (false, false, false)
+                    (false, false, false, Value::Undefined)
                 };
+                let new_w = writable.unwrap_or(default_w);
+                let new_e = enumerable.unwrap_or(default_e);
+                let new_c = configurable.unwrap_or(default_c);
+                // Ω.5.P61.E9: ValidateAndApplyPropertyDescriptor per ECMA
+                // §10.1.6.2. When existing is non-configurable, redefining
+                // it to differ in attributes/value (beyond writable:
+                // true→false, which is permitted) throws TypeError.
+                if exists && !default_c {
+                    let value_changed = has_value && !crate::abstract_ops::is_strictly_equal(&value, &existing_value);
+                    let attrs_changed = new_e != default_e || new_c != default_c
+                        || (default_w == false && new_w == true); // writable false → true not allowed
+                    // Going from writable:true → writable:false IS allowed
+                    // per §10.1.6.3 step 4.a even if non-configurable.
+                    // Value change is allowed only if existing is writable.
+                    let value_change_allowed = if value_changed { default_w } else { true };
+                    if attrs_changed || !value_change_allowed {
+                        return Err(RuntimeError::TypeError(format!(
+                            "Cannot redefine non-configurable property '{}'", key
+                        )));
+                    }
+                }
                 rt.obj_mut(target).properties.insert(key, crate::value::PropertyDescriptor {
                     value,
-                    writable: writable.unwrap_or(default_w),
-                    enumerable: enumerable.unwrap_or(default_e),
-                    configurable: configurable.unwrap_or(default_c),
+                    writable: new_w,
+                    enumerable: new_e,
+                    configurable: new_c,
                     getter: None,
                     setter: None,
                 });
