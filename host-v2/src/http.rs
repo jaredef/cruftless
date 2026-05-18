@@ -73,8 +73,14 @@ pub fn install(rt: &mut Runtime) {
     set_constant(rt, http, "STATUS_CODES", Value::Object(codes));
 
     // METHODS — list of supported HTTP method names. node-fetch and
-    // similar shims occasionally read this.
-    let methods = new_object(rt);
+    // similar shims occasionally read this; express's lib/utils.js:30
+    // calls `METHODS.map(m => m.toLowerCase())`, requiring METHODS to
+    // be a real Array (not a plain Object with integer keys + length).
+    // Ω.5.P58.E2: allocate as Array so Array.prototype.map (and the
+    // rest of the iteration protocol) resolves through the prototype
+    // chain. Pre-P58.E2 METHODS was a plain Object; consumers that
+    // probed it as iterable broke at module-init.
+    let methods = rt.alloc_object(rusty_js_runtime::value::Object::new_array());
     let names = [
         "ACL", "BIND", "CHECKOUT", "CONNECT", "COPY", "DELETE", "GET", "HEAD",
         "LINK", "LOCK", "M-SEARCH", "MERGE", "MKACTIVITY", "MKCALENDAR", "MKCOL",
@@ -83,9 +89,9 @@ pub fn install(rt: &mut Runtime) {
         "TRACE", "UNBIND", "UNLINK", "UNLOCK", "UNSUBSCRIBE",
     ];
     for (i, n) in names.iter().enumerate() {
-        set_constant(rt, methods, &i.to_string(), Value::String(Rc::new((*n).into())));
+        rt.object_set(methods, i.to_string(), Value::String(Rc::new((*n).into())));
     }
-    set_constant(rt, methods, "length", Value::Number(names.len() as f64));
+    rt.object_set(methods, "length".into(), Value::Number(names.len() as f64));
     set_constant(rt, http, "METHODS", Value::Object(methods));
 
     // Tier-Ω.5.xxxxxx: http.ServerResponse / IncomingMessage / Server class
