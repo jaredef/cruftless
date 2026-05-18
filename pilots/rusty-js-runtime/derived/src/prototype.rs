@@ -80,15 +80,24 @@ fn install_object_proto(rt: &mut Runtime, host: ObjectRef) {
             Value::BigInt(_) => "[object BigInt]".to_string(),
             Value::Symbol(_) => "[object Symbol]".to_string(),
             Value::Object(id) => {
-                let tag = match &rt.obj(id).internal_kind {
-                    InternalKind::Array => "Array",
-                    InternalKind::Function(_)
-                    | InternalKind::Closure(_)
-                    | InternalKind::BoundFunction(_) => "Function",
-                    InternalKind::Promise(_) => "Promise",
-                    InternalKind::Error => "Error",
-                    InternalKind::RegExp(_) => "RegExp",
-                    _ => "Object",
+                // Ω.5.P62.E4: ECMA §20.1.3.6 step 15 — read @@toStringTag
+                // up the proto chain; a String value overrides the
+                // internal-kind tag. Math/JSON set this to "Math"/"JSON";
+                // user objects can set their own custom tag.
+                let tag_val = rt.object_get(id, "@@toStringTag");
+                let tag = if let Value::String(s) = &tag_val {
+                    s.as_str().to_string()
+                } else {
+                    match &rt.obj(id).internal_kind {
+                        InternalKind::Array => "Array",
+                        InternalKind::Function(_)
+                        | InternalKind::Closure(_)
+                        | InternalKind::BoundFunction(_) => "Function",
+                        InternalKind::Promise(_) => "Promise",
+                        InternalKind::Error => "Error",
+                        InternalKind::RegExp(_) => "RegExp",
+                        _ => "Object",
+                    }.to_string()
                 };
                 format!("[object {}]", tag)
             }
@@ -510,12 +519,13 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("Array.prototype.flatMap: callback required".into()))?;
+        let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
         let len = rt.array_length(id);
         let out = rt.alloc_object(Object::new_array());
         let mut out_idx = 0usize;
         for i in 0..len {
             let v = rt.object_get(id, &i.to_string());
-            let mapped = rt.call_function(cb.clone(), Value::Undefined,
+            let mapped = rt.call_function(cb.clone(), this_arg.clone(),
                 vec![v, Value::Number(i as f64), Value::Object(id)])?;
             if let Value::Object(nid) = &mapped {
                 if matches!(rt.obj(*nid).internal_kind, InternalKind::Array) {
@@ -541,13 +551,14 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("Array.prototype.map: callback required".into()))?;
+        let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
         let len = rt.array_length(id);
         let out = rt.alloc_object(Object::new_array());
         for i in 0..len {
             let key = i.to_string();
             if !rt.has_property(id, &key) { continue; }
             let v = rt.read_property(id, &key)?;
-            let mapped = rt.call_function(cb.clone(), Value::Undefined,
+            let mapped = rt.call_function(cb.clone(), this_arg.clone(),
                 vec![v, Value::Number(i as f64), Value::Object(id)])?;
             rt.object_set(out, i.to_string(), mapped);
         }
@@ -561,12 +572,13 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("Array.prototype.forEach: callback required".into()))?;
+        let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
         let len = rt.array_length(id);
         for i in 0..len {
             let key = i.to_string();
             if !rt.has_property(id, &key) { continue; }
             let v = rt.read_property(id, &key)?;
-            rt.call_function(cb.clone(), Value::Undefined,
+            rt.call_function(cb.clone(), this_arg.clone(),
                 vec![v, Value::Number(i as f64), Value::Object(id)])?;
         }
         Ok(Value::Undefined)
@@ -576,6 +588,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("Array.prototype.filter: callback required".into()))?;
+        let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
         let len = rt.array_length(id);
         let out = rt.alloc_object(Object::new_array());
         let mut j = 0usize;
@@ -583,7 +596,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
             let key = i.to_string();
             if !rt.has_property(id, &key) { continue; }
             let v = rt.read_property(id, &key)?;
-            let r = rt.call_function(cb.clone(), Value::Undefined,
+            let r = rt.call_function(cb.clone(), this_arg.clone(),
                 vec![v.clone(), Value::Number(i as f64), Value::Object(id)])?;
             if abstract_ops::to_boolean(&r) {
                 rt.object_set(out, j.to_string(), v);
@@ -640,10 +653,11 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("find: callback required".into()))?;
+        let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
         let len = rt.array_length(id);
         for i in 0..len {
             let v = rt.object_get(id, &i.to_string());
-            let r = rt.call_function(cb.clone(), Value::Undefined,
+            let r = rt.call_function(cb.clone(), this_arg.clone(),
                 vec![v.clone(), Value::Number(i as f64), Value::Object(id)])?;
             if abstract_ops::to_boolean(&r) { return Ok(v); }
         }
@@ -654,12 +668,13 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("some: callback required".into()))?;
+        let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
         let len = rt.array_length(id);
         for i in 0..len {
             let key = i.to_string();
             if !rt.has_property(id, &key) { continue; }
             let v = rt.read_property(id, &key)?;
-            let r = rt.call_function(cb.clone(), Value::Undefined,
+            let r = rt.call_function(cb.clone(), this_arg.clone(),
                 vec![v, Value::Number(i as f64), Value::Object(id)])?;
             if abstract_ops::to_boolean(&r) { return Ok(Value::Boolean(true)); }
         }
@@ -718,12 +733,13 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("every: callback required".into()))?;
+        let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
         let len = rt.array_length(id);
         for i in 0..len {
             let key = i.to_string();
             if !rt.has_property(id, &key) { continue; }
             let v = rt.read_property(id, &key)?;
-            let r = rt.call_function(cb.clone(), Value::Undefined,
+            let r = rt.call_function(cb.clone(), this_arg.clone(),
                 vec![v, Value::Number(i as f64), Value::Object(id)])?;
             if !abstract_ops::to_boolean(&r) { return Ok(Value::Boolean(false)); }
         }
@@ -780,10 +796,11 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("findIndex: callback required".into()))?;
+        let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
         let len = rt.array_length(id);
         for i in 0..len {
             let v = rt.object_get(id, &i.to_string());
-            let r = rt.call_function(cb.clone(), Value::Undefined,
+            let r = rt.call_function(cb.clone(), this_arg.clone(),
                 vec![v, Value::Number(i as f64), Value::Object(id)])?;
             if abstract_ops::to_boolean(&r) { return Ok(Value::Number(i as f64)); }
         }
@@ -794,10 +811,11 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("findLast: callback required".into()))?;
+        let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
         let len = rt.array_length(id);
         for i in (0..len).rev() {
             let v = rt.object_get(id, &i.to_string());
-            let r = rt.call_function(cb.clone(), Value::Undefined,
+            let r = rt.call_function(cb.clone(), this_arg.clone(),
                 vec![v.clone(), Value::Number(i as f64), Value::Object(id)])?;
             if abstract_ops::to_boolean(&r) { return Ok(v); }
         }
@@ -808,10 +826,11 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("findLastIndex: callback required".into()))?;
+        let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
         let len = rt.array_length(id);
         for i in (0..len).rev() {
             let v = rt.object_get(id, &i.to_string());
-            let r = rt.call_function(cb.clone(), Value::Undefined,
+            let r = rt.call_function(cb.clone(), this_arg.clone(),
                 vec![v, Value::Number(i as f64), Value::Object(id)])?;
             if abstract_ops::to_boolean(&r) { return Ok(Value::Number(i as f64)); }
         }

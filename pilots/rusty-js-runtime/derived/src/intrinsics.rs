@@ -1148,6 +1148,12 @@ impl Runtime {
             Ok(Value::Number(args.first().map(abstract_ops::to_number).unwrap_or(f64::NAN).atanh()))
         });
 
+        // Ω.5.P62.E4: Math[Symbol.toStringTag] === "Math" per ECMA §21.3.1.9.
+        // Drives Object.prototype.toString.call(Math) → "[object Math]"
+        // (test262 Array.prototype.map-1-10 + many ducktyping libs rely
+        // on this).
+        self.obj_mut(math).set_own_frozen("@@toStringTag".into(),
+            Value::String(Rc::new("Math".into())));
         self.globals.insert("Math".into(), Value::Object(math));
     }
 
@@ -1163,6 +1169,9 @@ impl Runtime {
             };
             json_parse(rt, s.as_str())
         });
+        // Ω.5.P62.E4: JSON[Symbol.toStringTag] === "JSON" per §25.5.1.5.
+        self.obj_mut(json).set_own_frozen("@@toStringTag".into(),
+            Value::String(Rc::new("JSON".into())));
         self.globals.insert("JSON".into(), Value::Object(json));
     }
 
