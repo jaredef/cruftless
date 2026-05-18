@@ -1137,6 +1137,25 @@ impl Runtime {
                     let value = frame.pop()?;
                     let obj_v = frame.pop()?;
                     if let Value::Object(id) = &obj_v {
+                        // Ω.5.P60.E2: Proxy set-trap dispatch.
+                        let proxy_dispatch = if let crate::value::InternalKind::Proxy(p) =
+                            &self.obj(*id).internal_kind
+                        {
+                            Some((p.target, p.handler))
+                        } else { None };
+                        if let Some((target, handler)) = proxy_dispatch {
+                            let trap = self.object_get(handler, "set");
+                            if matches!(trap, Value::Object(_)) {
+                                self.call_function(trap, Value::Object(handler), vec![
+                                    Value::Object(target),
+                                    Value::String(Rc::new(key.clone())),
+                                    value.clone(),
+                                    Value::Object(*id),
+                                ])?;
+                            } else {
+                                self.object_set(target, key, value.clone());
+                            }
+                        } else
                         // Tier-Ω.5.vvvv: same setter dispatch on identifier-
                         // keyed writes.
                         if let Some(setter) = self.find_setter(*id, &key) {
@@ -1298,10 +1317,29 @@ impl Runtime {
                     };
                     let removed = match obj_v {
                         Value::Object(id) => {
+                            // Ω.5.P60.E2: Proxy deleteProperty-trap dispatch.
+                            let proxy_dispatch = if let crate::value::InternalKind::Proxy(p) =
+                                &self.obj(id).internal_kind
+                            {
+                                Some((p.target, p.handler))
+                            } else { None };
+                            if let Some((target, handler)) = proxy_dispatch {
+                                let trap = self.object_get(handler, "deleteProperty");
+                                if matches!(trap, Value::Object(_)) {
+                                    let r = self.call_function(trap, Value::Object(handler), vec![
+                                        Value::Object(target),
+                                        Value::String(Rc::new(key.clone())),
+                                    ])?;
+                                    crate::abstract_ops::to_boolean(&r)
+                                } else {
+                                    self.obj_mut(target).properties.shift_remove(&key).is_some()
+                                }
+                            } else {
                             // Per §10.1.10 [[Delete]] returns false for
                             // non-configurable own properties. v1: always
                             // remove and return true.
                             self.obj_mut(id).properties.shift_remove(&key).is_some()
+                            }
                         }
                         _ => false,
                     };
@@ -1313,7 +1351,26 @@ impl Runtime {
                     let key = crate::abstract_ops::to_string(&key_v).as_str().to_string();
                     let removed = match obj_v {
                         Value::Object(id) => {
+                            // Ω.5.P60.E2: same Proxy dispatch as DeleteProp.
+                            let proxy_dispatch = if let crate::value::InternalKind::Proxy(p) =
+                                &self.obj(id).internal_kind
+                            {
+                                Some((p.target, p.handler))
+                            } else { None };
+                            if let Some((target, handler)) = proxy_dispatch {
+                                let trap = self.object_get(handler, "deleteProperty");
+                                if matches!(trap, Value::Object(_)) {
+                                    let r = self.call_function(trap, Value::Object(handler), vec![
+                                        Value::Object(target),
+                                        Value::String(Rc::new(key.clone())),
+                                    ])?;
+                                    crate::abstract_ops::to_boolean(&r)
+                                } else {
+                                    self.obj_mut(target).properties.shift_remove(&key).is_some()
+                                }
+                            } else {
                             self.obj_mut(id).properties.shift_remove(&key).is_some()
+                            }
                         }
                         _ => false,
                     };
@@ -1342,11 +1399,34 @@ impl Runtime {
                         }
                     };
                     let key = property_key(&key_v);
-                    let mut cur = Some(obj_id);
+                    // Ω.5.P60.E2: Proxy has-trap dispatch.
+                    let proxy_dispatch = if let crate::value::InternalKind::Proxy(p) =
+                        &self.obj(obj_id).internal_kind
+                    {
+                        Some((p.target, p.handler))
+                    } else { None };
                     let mut found = false;
+                    if let Some((target, handler)) = proxy_dispatch {
+                        let trap = self.object_get(handler, "has");
+                        if matches!(trap, Value::Object(_)) {
+                            let r = self.call_function(trap, Value::Object(handler), vec![
+                                Value::Object(target),
+                                Value::String(Rc::new(key.clone())),
+                            ])?;
+                            found = crate::abstract_ops::to_boolean(&r);
+                        } else {
+                            let mut cur = Some(target);
+                            while let Some(c) = cur {
+                                if self.obj(c).properties.contains_key(&key) { found = true; break; }
+                                cur = self.obj(c).proto;
+                            }
+                        }
+                    } else {
+                    let mut cur = Some(obj_id);
                     while let Some(c) = cur {
                         if self.obj(c).properties.contains_key(&key) { found = true; break; }
                         cur = self.obj(c).proto;
+                    }
                     }
                     frame.push(Value::Boolean(found));
                 }
@@ -1410,6 +1490,25 @@ impl Runtime {
                     let obj_v = frame.pop()?;
                     let key = property_key(&key_v);
                     if let Value::Object(id) = &obj_v {
+                        // Ω.5.P60.E2: Proxy set-trap dispatch at computed-key writes.
+                        let proxy_dispatch = if let crate::value::InternalKind::Proxy(p) =
+                            &self.obj(*id).internal_kind
+                        {
+                            Some((p.target, p.handler))
+                        } else { None };
+                        if let Some((target, handler)) = proxy_dispatch {
+                            let trap = self.object_get(handler, "set");
+                            if matches!(trap, Value::Object(_)) {
+                                self.call_function(trap, Value::Object(handler), vec![
+                                    Value::Object(target),
+                                    Value::String(Rc::new(key.clone())),
+                                    value.clone(),
+                                    Value::Object(*id),
+                                ])?;
+                            } else {
+                                self.object_set(target, key, value.clone());
+                            }
+                        } else
                         // Tier-Ω.5.vvvv: dispatch accessor setters, mirror of
                         // Ω.5.uuuu for GetIndex. Without this, writes through
                         // computed keys to lazy-defined properties silently
