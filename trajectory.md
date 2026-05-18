@@ -2063,3 +2063,57 @@ The cluster-failure shape "X is undefined → all tests in X/ fail" → "install
 Read seed.md §A8.27 (self-referential resolver — empirically corroborated again here at the test262 fixture tier; the runner self-evaluates spec source via the engine's parse+compile pipeline). Read Doc 729 + EXT 15 + this anchor. Test262 fixture lives at `host/tests/test262/`; upstream clone at `/home/jaredef/test262`. Drive: `T262_ROOT=/home/jaredef/test262 ./host/tests/test262/run.sh <chapter>`.
 
 Pin-Art tag count: ~227 (EXT 15) + 6 (P61.E1→E6) = ~233 substrate moves committed.
+
+
+## RESUME VECTOR EXTENSION 17 — 2026-05-18 night (test262 P61.E7→E9; Array + Object chapters absorbed; conjecture status)
+
+### Headline
+
+Three follow-on test262 substrate moves on Array + Object chapters per the keeper conjecture extension (2026-05-18 20:38Z: "continue with non-Array array-like this", 20:51Z: "continue with the next biggest cluster").
+
+| commit | tag | recognition | yield |
+|---|---|---|---|
+| `bf342bd9` | Ω.5.P61.E7.array-prototype-non-array-this | ToObject coercion per ECMA §7.1.18 for Array.prototype methods. Boxes Boolean/Number/String primitive this with correct proto. Throws TypeError on null/undefined. 24 this-check sites migrated. | Array 1601 → 1622 (+21) |
+| `2def1e47` | Ω.5.P61.E8.this-coerce-extended | The 13 Array.prototype Ok-fallback this-checks P61.E7's regex missed (nested-paren value-returns). All sites now route through to_array_this. | Array 1622 → 1641 (+19) |
+| `a7e09f56` | Ω.5.P61.E9.defineproperty-validate | ValidateAndApplyPropertyDescriptor enforcement per ECMA §10.1.6.2. Object.defineProperty now throws TypeError on non-configurable redefinition (with value-change-when-writable + writable:true→false transition allowed per §10.1.6.3 step 4.a). | Object 1629 → 1662 (+33) |
+
+### Test262 numbers post-stretch
+
+| chapter | tests | baseline | post-stretch | rate |
+|---|---|---|---|---|
+| Math | 327 | 137 (41.9%) | 271 (82.9%) | +134 (+41 pp) |
+| Array | 3081 | 1272 (41.3%) | 1641 (53.3%) | +369 (+12 pp) |
+| Object | 3411 | n/a | 1662 (48.7%) | baseline + 33 |
+| **total** | **6819** | n/a | **3574 (52.4%)** | nine substrate moves total |
+
+Math + Array combined: 1912 / 3408 = **56.1%**.
+
+### Conjecture re-evaluation post-P61.E9
+
+Strongly corroborated for P61.E3/E4 (Math +134) and P61.E6 (Array +329, single move). **Diminishing returns visible at P61.E7-E9**: each closed only 20-30 tests, much less than the EXT 16 prediction of 500-700 / hundreds. The decomposition:
+
+- **P61.E3/E4** were *structural* fixes — descriptor-discipline + isConstructor + Error-instance instanceof. Each shifted the entire engine surface uniformly.
+- **P61.E6** was a *completion* fix — installing 11 missing methods. Each missing method had been blocking an entire test directory.
+- **P61.E7-E9** were *gate* fixes — relaxing this-coercion, enforcing one descriptor rule. Each closed a thin sub-cluster.
+
+The pattern: **structural and completion fixes give large yields; gate fixes give thin yields** because subsequent tests gate on follow-on semantics. The keeper conjecture holds in strong form for structural/completion, in weak form for gate fixes.
+
+### Open scope at P61.E9 boundary
+
+The remaining Array + Object residuals decompose into many small clusters (per-method semantic gaps + edge-case throw conditions). Each is its own small-yield substrate move. The conformance trajectory toward 80%+ on each chapter requires either:
+
+1. **A new completion-class fix surfaces** (e.g., Object.prototype.* methods that may be missing) — high-yield per move.
+2. **A new structural-class fix surfaces** (e.g., generic-this for Object.prototype, or descriptor-attribute defaults across all install paths) — high-yield per move.
+3. **Per-method semantic correctness rounds** — low-yield per move; many rounds to lift each percentage point.
+
+### Cumulative session totals
+
+- Commits: 42
+- Substrate moves: ~237
+- Canonical parity-top500 (post-P60.E4): 78.7% (host-v2 ahead of rquickjs ceiling by 3.5 pp)
+- Test262 across three chapters: 52.4% / 6819 tests
+- Exemplar parity (43-pkg basket): 30/43 stable across the entire P61.E1→E9 stretch
+
+The conjecture's downstream prediction (closing test262 → closing npm parity) remains testable via the next canonical sweep. Predicted lift over 78.7% baseline: small-to-moderate (the P61 stretch's structural fixes are spec-correctness gains that don't directly affect the typical npm-package module-init shape probe, but indirectly affect packages that depend on descriptor enforcement or proper TypeError instanceof).
+
+Pin-Art tag count: ~233 (EXT 16) + 3 (P61.E7→E9) = ~236 substrate moves committed.
