@@ -711,7 +711,7 @@ impl Runtime {
             bytecode: Vec::new(), constants: Default::default(),
             locals: Vec::new(), source_map: Vec::new(),
             imports: Vec::new(), exports: Vec::new(),
-            reexport_sources: Vec::new(), side_effect_imports: Vec::new(), line_starts: Vec::new(),
+            reexport_sources: Vec::new(), side_effect_imports: Vec::new(), construct_tags: Vec::new(), line_starts: Vec::new(),
         });
         self.modules.insert(specifier.to_string(), Rc::new(RefCell::new(ModuleRecord {
             url: specifier.to_string(), status: ModuleStatus::Evaluated,
@@ -1043,7 +1043,7 @@ impl Runtime {
             bytecode: Vec::new(), constants: Default::default(),
             locals: Vec::new(), source_map: Vec::new(),
             imports: Vec::new(), exports: Vec::new(),
-            reexport_sources: Vec::new(), side_effect_imports: Vec::new(), line_starts: Vec::new(),
+            reexport_sources: Vec::new(), side_effect_imports: Vec::new(), construct_tags: Vec::new(), line_starts: Vec::new(),
         });
         let record = Rc::new(RefCell::new(ModuleRecord {
             url: url.to_string(),
@@ -1323,7 +1323,7 @@ impl Runtime {
             bytecode: Vec::new(), constants: Default::default(),
             locals: Vec::new(), source_map: Vec::new(),
             imports: Vec::new(), exports: Vec::new(),
-            reexport_sources: Vec::new(), side_effect_imports: Vec::new(), line_starts: Vec::new(),
+            reexport_sources: Vec::new(), side_effect_imports: Vec::new(), construct_tags: Vec::new(), line_starts: Vec::new(),
         });
         self.modules.insert(url.to_string(), Rc::new(RefCell::new(ModuleRecord {
             url: url.to_string(), status: ModuleStatus::Evaluated,
@@ -1527,7 +1527,7 @@ impl Runtime {
             bytecode: Vec::new(), constants: Default::default(),
             locals: Vec::new(), source_map: Vec::new(),
             imports: Vec::new(), exports: Vec::new(),
-            reexport_sources: Vec::new(), side_effect_imports: Vec::new(), line_starts: Vec::new(),
+            reexport_sources: Vec::new(), side_effect_imports: Vec::new(), construct_tags: Vec::new(), line_starts: Vec::new(),
         });
         self.modules.insert(spec.to_string(), Rc::new(RefCell::new(ModuleRecord {
             url: spec.to_string(), status: ModuleStatus::Evaluated,

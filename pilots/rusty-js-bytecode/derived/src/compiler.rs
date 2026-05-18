@@ -87,6 +87,14 @@ pub struct FunctionProto {
     /// derive the line:col for a fault inside any function frame, not just
     /// the top-level module frame.
     pub source_map: Vec<(usize, Span)>,
+    /// Ω.5.P53.E2: per-function AST-construct probe tags. (bytecode_offset,
+    /// construct_name) pairs marking the entry of bug-prone compile sites
+    /// (optional-chain member, optional call, try/catch handler, loop
+    /// bodies). Runtime error enrichment looks up the most recent tag
+    /// with offset <= failing_pc to attribute faults to a named construct
+    /// at the AST-to-bytecode resolver boundary. Doc 729 §VIII property-
+    /// class: §2 boundary-integrity instrumentation.
+    pub construct_tags: Vec<(usize, &'static str)>,
     /// Ω.5.P51.E1: URL of the source this function was compiled from.
     /// Propagated from the parent module / compiler so closure-frame
     /// errors can emit `@url:line:col`. Empty when not threaded.
@@ -128,6 +136,9 @@ pub struct CompiledModule {
     /// silently no-ops (autoprefixer / many node_modules use this for
     /// CSS / runtime-side-effect setup).
     pub side_effect_imports: Vec<String>,
+    /// Ω.5.P53.E2: module-level construct tags. Same shape as
+    /// FunctionProto.construct_tags; covers the module-body bytecode.
+    pub construct_tags: Vec<(usize, &'static str)>,
     /// Ω.5.P51.E1: byte offsets of the start of each line in the source
     /// (line 0 starts at 0; line N starts at line_starts[N]). Computed
     /// once at compile time. Lets the runtime convert a Span's byte offset
@@ -262,6 +273,10 @@ pub struct Compiler {
     /// Ω.5.P51.E1: URL of the source being compiled. Propagated to
     /// every FunctionProto for closure-frame error enrichment.
     source_url: String,
+    /// Ω.5.P53.E2: accumulator for per-construct probe tags emitted via
+    /// emit_construct_tag(). Drained into CompiledModule.construct_tags
+    /// or FunctionProto.construct_tags at compile-finish.
+    construct_tags: Vec<(usize, &'static str)>,
     /// Ω.5.P52.E3: nesting depth of block-scoped constructs (Stmt::Block
     /// and friends). 0 = function-body top level; >0 inside any block.
     /// Gates pre_allocated_slots reuse for let/const: top-level let/const
@@ -376,7 +391,23 @@ impl Compiler {
             source_line_starts: Vec::new(),
             source_url: String::new(),
             block_depth: 0,
+            construct_tags: Vec::new(),
         }
+    }
+
+    /// Ω.5.P53.E2: mark the current bytecode offset with an AST-construct
+    /// tag. Runtime error enrichment looks up the most recent tag at the
+    /// failing pc to attribute faults to a named construct ("optional-chain
+    /// member", "optional-chain call", etc.). Light-weight probe; one tag
+    /// per construct entry, no per-op tracking.
+    fn emit_construct_tag(&mut self, name: &'static str) {
+        let off = self.bytecode.len();
+        // Dedupe consecutive identical tags at the same offset (nested
+        // constructs that share an entry point only need one tag).
+        if let Some(&(prev_off, prev_name)) = self.construct_tags.last() {
+            if prev_off == off && prev_name == name { return; }
+        }
+        self.construct_tags.push((off, name));
     }
 
     /// Ω.5.P51.E1: store the source URL for this compilation. Threaded to
@@ -651,6 +682,7 @@ impl Compiler {
             exports: std::mem::take(&mut self.exports),
             reexport_sources: std::mem::take(&mut self.reexport_sources),
             side_effect_imports: std::mem::take(&mut self.side_effect_imports),
+            construct_tags: std::mem::take(&mut self.construct_tags),
             line_starts: std::mem::take(&mut self.source_line_starts),
         })
     }
@@ -1270,6 +1302,7 @@ impl Compiler {
                 }
             }
             Stmt::Try { block, handler, finalizer, .. } => {
+                self.emit_construct_tag("try-block");
                 // v1 minimal: encode TRY_ENTER with catch offset, compile block,
                 // TRY_EXIT, jump past handler/finalizer; emit handler/finalizer
                 // bodies. No exception-value binding to catch parameter yet
@@ -2152,6 +2185,7 @@ impl Compiler {
                     self.compile_super_member_load(e.span(), property)?;
                     return Ok(());
                 }
+                if *optional { self.emit_construct_tag("optional-chain member"); }
                 self.compile_expr(object)?;
                 // Tier-Ω.5.cc: optional chaining (`obj?.prop`). If `obj` is
                 // null or undefined, short-circuit: pop it, push undefined,
@@ -2200,6 +2234,7 @@ impl Compiler {
                 }
             }
             Expr::Call { callee, arguments, optional: call_optional, .. } => {
+                if *call_optional { self.emit_construct_tag("optional-chain call"); }
                 let n = arguments.len();
                 if n > 255 {
                     return Err(self.err(e.span(), "too many call arguments (>255)"));
@@ -2794,6 +2829,8 @@ impl Compiler {
             // Ω.5.P52.E3: sub-compilers reset block_depth — the function body
             // is its own top level for scope tracking.
             block_depth: 0,
+            // Ω.5.P53.E2: each function has its own tag list.
+            construct_tags: Vec::new(),
         };
         let param_count = params.len() as u16;
         // Tier-Ω.5.l: track the rest-parameter slot. Per spec only the
@@ -3117,6 +3154,7 @@ impl Compiler {
             is_generator,
             line_starts: sub.source_line_starts,
             source_map: sub.source_map,
+            construct_tags: sub.construct_tags,
             source_url: sub.source_url,
             is_async,
         })

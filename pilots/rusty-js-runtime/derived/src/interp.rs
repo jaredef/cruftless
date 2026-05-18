@@ -1728,6 +1728,7 @@ impl Runtime {
             source_map: &proto.source_map,
             line_starts: &proto.line_starts,
             source_url: &proto.source_url,
+            construct_tags: &proto.construct_tags,
             locals_names: &proto.locals,
             upvalue_names: &proto.upvalues,
             locals,
@@ -1856,6 +1857,11 @@ pub struct Frame<'a> {
     /// Ω.5.P51.E1: URL of the source this frame was compiled from. Prepended
     /// to line:col in error messages. Empty when unknown.
     pub source_url: &'a str,
+    /// Ω.5.P53.E2: AST-construct probe tags emitted by the compiler at
+    /// known bug-prone sites (optional chains, try/catch, loops). Runtime
+    /// error enrichment names the construct surrounding a fault. Empty
+    /// for hand-built frames or modules compiled without probes.
+    pub construct_tags: &'a [(usize, &'static str)],
     /// Tier-Ω.5.jj.diag: parallel to `locals`, carries the compiler's
     /// local-descriptor names so error messages can name which local
     /// resolved to an undefined callee. Empty when the frame doesn't
@@ -1920,6 +1926,7 @@ impl<'a> Frame<'a> {
             source_map: &m.source_map,
             line_starts: &m.line_starts,
             source_url: "",
+            construct_tags: &m.construct_tags,
             locals_names: &m.locals,
             upvalue_names: &[],
             locals,
@@ -2018,10 +2025,22 @@ fn enrich_with_source_pos(e: RuntimeError, frame: &Frame) -> RuntimeError {
         let (line, col) = rusty_js_bytecode::byte_offset_to_line_col(
             frame.line_starts, span.start as u32,
         );
-        if frame.source_url.is_empty() {
-            format!("{} @{}:{}", msg, line, col)
+        // Ω.5.P53.E2: look up the most-recent construct tag at this pc.
+        // If present, prepend the construct name so the diagnostic says
+        // e.g. 'TypeError: operand stack underflow [optional-chain call] @file:line:col'.
+        let construct = frame
+            .construct_tags
+            .iter()
+            .rposition(|&(off, _)| off <= pc)
+            .map(|i| frame.construct_tags[i].1);
+        let pos = if frame.source_url.is_empty() {
+            format!("@{}:{}", line, col)
         } else {
-            format!("{} @{}:{}:{}", msg, frame.source_url, line, col)
+            format!("@{}:{}:{}", frame.source_url, line, col)
+        };
+        match construct {
+            Some(c) => format!("{} [in {}] {}", msg, c, pos),
+            None => format!("{} {}", msg, pos),
         }
     }
     match e {
