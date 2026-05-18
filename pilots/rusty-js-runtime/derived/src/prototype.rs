@@ -181,10 +181,7 @@ fn install_object_proto(rt: &mut Runtime, host: ObjectRef) {
 
 fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     register_intrinsic_method(rt, host, "push", 1, |rt, args| {
-        let id = match rt.current_this() {
-            Value::Object(id) => id,
-            _ => return Err(RuntimeError::TypeError("Array.prototype.push: this is not an Array".into())),
-        };
+        let id = to_array_this(rt)?;
         let mut len = rt.array_length(id);
         for a in args {
             rt.object_set(id, len.to_string(), a.clone());
@@ -195,10 +192,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(Value::Number(len as f64))
     });
     register_intrinsic_method(rt, host, "pop", 0, |rt, _args| {
-        let id = match rt.current_this() {
-            Value::Object(id) => id,
-            _ => return Ok(Value::Undefined),
-        };
+        let id = to_array_this(rt)?;
         let len = rt.array_length(id);
         if len == 0 { return Ok(Value::Undefined); }
         let last_key = (len - 1).to_string();
@@ -208,10 +202,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(v)
     });
     register_intrinsic_method(rt, host, "shift", 0, |rt, _args| {
-        let id = match rt.current_this() {
-            Value::Object(id) => id,
-            _ => return Ok(Value::Undefined),
-        };
+        let id = to_array_this(rt)?;
         let len = rt.array_length(id);
         if len == 0 { return Ok(Value::Undefined); }
         let first = rt.object_get(id, "0");
@@ -276,10 +267,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     // micromark slices events then reverses; without this, .reverse() was
     // undefined and every state-machine token finalization failed.
     register_intrinsic_method(rt, host, "reverse", 0, |rt, _args| {
-        let id = match rt.current_this() {
-            Value::Object(id) => id,
-            _ => return Err(RuntimeError::TypeError("Array.prototype.reverse: this is not an Array".into())),
-        };
+        let id = to_array_this(rt)?;
         let len = rt.array_length(id) as i64;
         let mid = len / 2;
         for i in 0..mid {
@@ -292,10 +280,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(Value::Object(id))
     });
     register_intrinsic_method(rt, host, "slice", 2, |rt, args| {
-        let id = match rt.current_this() {
-            Value::Object(id) => id,
-            _ => return Err(RuntimeError::TypeError("Array.prototype.slice: this is not an Array".into())),
-        };
+        let id = to_array_this(rt)?;
         let len = rt.array_length(id) as i64;
         let start_arg = args.first().map(abstract_ops::to_number).unwrap_or(0.0) as i64;
         let end_arg = args.get(1).map(abstract_ops::to_number).unwrap_or(len as f64) as i64;
@@ -318,10 +303,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     // inserting items in their place. Returns the removed elements.
     // object-hash uses splice on its internal stream buffer.
     register_intrinsic_method(rt, host, "splice", 2, |rt, args| {
-        let id = match rt.current_this() {
-            Value::Object(id) => id,
-            _ => return Err(RuntimeError::TypeError("Array.prototype.splice: this is not an Array".into())),
-        };
+        let id = to_array_this(rt)?;
         let len = rt.array_length(id) as i64;
         let start_arg = args.first().map(abstract_ops::to_number).unwrap_or(0.0) as i64;
         let start = clamp_index(start_arg, len);
@@ -369,10 +351,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(Value::Object(removed))
     });
     register_intrinsic_method(rt, host, "concat", 1, |rt, args| {
-        let id = match rt.current_this() {
-            Value::Object(id) => id,
-            _ => return Err(RuntimeError::TypeError("Array.prototype.concat: this not Array".into())),
-        };
+        let id = to_array_this(rt)?;
         let len = rt.array_length(id);
         let out = rt.alloc_object(Object::new_array());
         let mut j = 0usize;
@@ -427,10 +406,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(Value::String(Rc::new(parts.join(&sep))))
     });
     register_intrinsic_method(rt, host, "at", 1, |rt, args| {
-        let id = match rt.current_this() {
-            Value::Object(id) => id,
-            _ => return Ok(Value::Undefined),
-        };
+        let id = to_array_this(rt)?;
         let len = rt.array_length(id) as i64;
         let i = args.first().map(abstract_ops::to_number).unwrap_or(0.0) as i64;
         let idx = if i < 0 { len + i } else { i };
@@ -441,10 +417,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     // is this; fills positions [start, end) with the value. lru-cache's
     // ZeroArray ctor does `super(size); this.fill(0)` to zero-initialize.
     register_intrinsic_method(rt, host, "fill", 1, |rt, args| {
-        let id = match rt.current_this() {
-            Value::Object(id) => id,
-            _ => return Err(RuntimeError::TypeError("Array.prototype.fill: this not Array".into())),
-        };
+        let id = to_array_this(rt)?;
         let value = args.first().cloned().unwrap_or(Value::Undefined);
         let len = rt.array_length(id);
         let start = match args.get(1) {
@@ -468,10 +441,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     });
     // Tier-Ω.5.iiiiii: Array.prototype.flat per ECMA §23.1.3.10.
     register_intrinsic_method(rt, host, "flat", 0, |rt, args| {
-        let id = match rt.current_this() {
-            Value::Object(id) => id,
-            _ => return Err(RuntimeError::TypeError("Array.prototype.flat: this not Array".into())),
-        };
+        let id = to_array_this(rt)?;
         let depth = args.first().map(abstract_ops::to_number).unwrap_or(1.0) as i64;
         let out = rt.alloc_object(Object::new_array());
         fn flat_into(rt: &mut Runtime, src: ObjectRef, out: ObjectRef, mut out_idx: usize, depth: i64) -> usize {
@@ -496,10 +466,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(Value::Object(out))
     });
     register_intrinsic_method(rt, host, "flatMap", 1, |rt, args| {
-        let id = match rt.current_this() {
-            Value::Object(id) => id,
-            _ => return Err(RuntimeError::TypeError("Array.prototype.flatMap: this not Array".into())),
-        };
+        let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("Array.prototype.flatMap: callback required".into()))?;
         let len = rt.array_length(id);
@@ -527,10 +494,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(Value::Object(out))
     });
     register_intrinsic_method(rt, host, "map", 1, |rt, args| {
-        let id = match rt.current_this() {
-            Value::Object(id) => id,
-            _ => return Err(RuntimeError::TypeError("Array.prototype.map: this not Array".into())),
-        };
+        let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("Array.prototype.map: callback required".into()))?;
         let len = rt.array_length(id);
@@ -545,10 +509,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(Value::Object(out))
     });
     register_intrinsic_method(rt, host, "forEach", 1, |rt, args| {
-        let id = match rt.current_this() {
-            Value::Object(id) => id,
-            _ => return Err(RuntimeError::TypeError("forEach: this not Array".into())),
-        };
+        let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("Array.prototype.forEach: callback required".into()))?;
         let len = rt.array_length(id);
@@ -560,10 +521,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(Value::Undefined)
     });
     register_intrinsic_method(rt, host, "filter", 1, |rt, args| {
-        let id = match rt.current_this() {
-            Value::Object(id) => id,
-            _ => return Err(RuntimeError::TypeError("filter: this not Array".into())),
-        };
+        let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("Array.prototype.filter: callback required".into()))?;
         let len = rt.array_length(id);
@@ -582,10 +540,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(Value::Object(out))
     });
     register_intrinsic_method(rt, host, "reduce", 1, |rt, args| {
-        let id = match rt.current_this() {
-            Value::Object(id) => id,
-            _ => return Err(RuntimeError::TypeError("reduce: this not Array".into())),
-        };
+        let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("Array.prototype.reduce: callback required".into()))?;
         let len = rt.array_length(id);
@@ -607,10 +562,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(acc)
     });
     register_intrinsic_method(rt, host, "find", 1, |rt, args| {
-        let id = match rt.current_this() {
-            Value::Object(id) => id,
-            _ => return Ok(Value::Undefined),
-        };
+        let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("find: callback required".into()))?;
         let len = rt.array_length(id);
@@ -639,10 +591,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(Value::Boolean(false))
     });
     register_intrinsic_method(rt, host, "@@iterator", 0, |rt, _args| {
-        let id = match rt.current_this() {
-            Value::Object(id) => id,
-            _ => return Err(RuntimeError::TypeError("@@iterator: this is not an Array".into())),
-        };
+        let id = to_array_this(rt)?;
         Ok(Value::Object(crate::iterator::make_array_iterator(rt, id)))
     });
     // Tier-Ω.5.j.proto: Array.prototype.sort(comparator?).
@@ -651,10 +600,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     // - With comparator: call comparator(a,b); sign of return → Ordering.
     // v1 ignores spec's sparse-array semantics; sorts dense own indices 0..length-1.
     register_intrinsic_method(rt, host, "sort", 1, |rt, args| {
-        let id = match rt.current_this() {
-            Value::Object(id) => id,
-            _ => return Err(RuntimeError::TypeError("Array.prototype.sort: this is not an Array".into())),
-        };
+        let id = to_array_this(rt)?;
         let comparator = args.first().cloned().filter(|v| !matches!(v, Value::Undefined));
         let len = rt.array_length(id);
         let mut items: Vec<Value> = (0..len).map(|i| rt.object_get(id, &i.to_string())).collect();
@@ -781,9 +727,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     });
 
     register_intrinsic_method(rt, host, "findLast", 1, |rt, args| {
-        let id = match rt.current_this() {
-            Value::Object(o) => o, _ => return Ok(Value::Undefined),
-        };
+        let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("findLast: callback required".into()))?;
         let len = rt.array_length(id);
@@ -813,10 +757,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     });
 
     register_intrinsic_method(rt, host, "reduceRight", 1, |rt, args| {
-        let id = match rt.current_this() {
-            Value::Object(o) => o,
-            _ => return Err(RuntimeError::TypeError("reduceRight: this not Array".into())),
-        };
+        let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("reduceRight: callback required".into()))?;
         let len = rt.array_length(id);
@@ -862,13 +803,9 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     });
 
     register_intrinsic_method(rt, host, "copyWithin", 2, |rt, args| {
-        // ECMA §23.1.3.4: arr.copyWithin(target, start, end). Returns this.
-        let id = match rt.current_this() {
-            Value::Object(o) => o,
-            // For non-Array this (per spec, applies to length-having objects);
-            // return this unchanged to satisfy the call-with-boolean style tests.
-            _ => return Ok(rt.current_this()),
-        };
+        // ECMA §23.1.3.4: arr.copyWithin(target, start, end). Returns this
+        // (or the boxed primitive when called on a non-Object this).
+        let id = to_array_this(rt)?;
         let len = rt.array_length(id) as i64;
         let arg_n = |i: usize| -> i64 {
             args.get(i).map(abstract_ops::to_number).unwrap_or(0.0) as i64
@@ -887,10 +824,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     });
 
     register_intrinsic_method(rt, host, "toReversed", 0, |rt, _args| {
-        let id = match rt.current_this() {
-            Value::Object(o) => o,
-            _ => return Err(RuntimeError::TypeError("toReversed: this not Array".into())),
-        };
+        let id = to_array_this(rt)?;
         let len = rt.array_length(id);
         let out = rt.alloc_object(Object::new_array());
         for i in 0..len {
@@ -902,10 +836,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     });
 
     register_intrinsic_method(rt, host, "toSorted", 1, |rt, args| {
-        let id = match rt.current_this() {
-            Value::Object(o) => o,
-            _ => return Err(RuntimeError::TypeError("toSorted: this not Array".into())),
-        };
+        let id = to_array_this(rt)?;
         let len = rt.array_length(id);
         let out = rt.alloc_object(Object::new_array());
         for i in 0..len {
@@ -948,10 +879,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     });
 
     register_intrinsic_method(rt, host, "toSpliced", 2, |rt, args| {
-        let id = match rt.current_this() {
-            Value::Object(o) => o,
-            _ => return Err(RuntimeError::TypeError("toSpliced: this not Array".into())),
-        };
+        let id = to_array_this(rt)?;
         let len = rt.array_length(id) as i64;
         let start = clamp_index(args.first().map(abstract_ops::to_number).unwrap_or(0.0) as i64, len);
         let del = match args.get(1) {
@@ -982,10 +910,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     });
 
     register_intrinsic_method(rt, host, "with", 2, |rt, args| {
-        let id = match rt.current_this() {
-            Value::Object(o) => o,
-            _ => return Err(RuntimeError::TypeError("with: this not Array".into())),
-        };
+        let id = to_array_this(rt)?;
         let len = rt.array_length(id) as i64;
         let idx = args.first().map(abstract_ops::to_number).unwrap_or(0.0) as i64;
         let actual = if idx < 0 { len + idx } else { idx };
@@ -1538,6 +1463,58 @@ where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
     };
     let fn_id = rt.alloc_object(fn_obj);
     rt.object_set(host, name.into(), Value::Object(fn_id));
+}
+
+/// Ω.5.P61.E7: ToObject coercion for Array.prototype `this`. Per ECMA
+/// §23.1.3 the Array.prototype methods are generic — they accept any
+/// object with `.length` and indexed properties, plus boxed primitive
+/// `this` (Boolean / Number / String wrappers). Pre-P61.E7 cruftless's
+/// methods all rejected non-Array.Object this with TypeError, which
+/// failed ~500 test262 tests that call `Array.prototype.X.call(true)`
+/// / `.call(123)` / `.call("abc")` patterns. Returns the coerced
+/// ObjectRef; throws TypeError on null/undefined per ToObject step 1.
+pub(crate) fn to_array_this(rt: &mut Runtime) -> Result<ObjectRef, RuntimeError> {
+    match rt.current_this() {
+        Value::Object(id) => Ok(id),
+        Value::Undefined | Value::Null => Err(RuntimeError::TypeError(
+            "Array.prototype method called on null or undefined".into())),
+        Value::Boolean(b) => {
+            // Box as Boolean wrapper.
+            let mut o = Object::new_ordinary();
+            o.set_own("length".into(), Value::Number(0.0));
+            o.set_own_internal("__primitive".into(), Value::Boolean(b));
+            // Set prototype to Boolean.prototype if available so
+            // instanceof Boolean works in the test262 call-with-boolean
+            // patterns. The boxing pattern matches ECMA §7.1.18 ToObject
+            // for primitive values.
+            if let Some(Value::Object(bid)) = rt.globals.get("Boolean").cloned() {
+                if let Value::Object(p) = rt.object_get(bid, "prototype") {
+                    o.proto = Some(p);
+                }
+            }
+            Ok(rt.alloc_object(o))
+        }
+        Value::Number(n) => {
+            let mut o = Object::new_ordinary();
+            o.set_own("length".into(), Value::Number(0.0));
+            o.set_own_internal("__primitive".into(), Value::Number(n));
+            if let Some(p) = rt.number_prototype { o.proto = Some(p); }
+            Ok(rt.alloc_object(o))
+        }
+        Value::String(s) => {
+            // String wrappers per §6.1.4 expose length + indexed chars.
+            let mut o = Object::new_ordinary();
+            let n = s.chars().count();
+            o.set_own("length".into(), Value::Number(n as f64));
+            for (i, c) in s.chars().enumerate() {
+                o.set_own(i.to_string(), Value::String(Rc::new(c.to_string())));
+            }
+            if let Some(p) = rt.string_prototype { o.proto = Some(p); }
+            Ok(rt.alloc_object(o))
+        }
+        Value::BigInt(_) | Value::Symbol(_) => Err(RuntimeError::TypeError(
+            "Array.prototype method called on BigInt/Symbol".into())),
+    }
 }
 
 /// Ω.5.P61.E5: prototype-local intrinsic-method installer. Same semantics
