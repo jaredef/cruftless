@@ -215,10 +215,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(first)
     });
     register_intrinsic_method(rt, host, "unshift", 1, |rt, args| {
-        let id = match rt.current_this() {
-            Value::Object(id) => id,
-            _ => return Ok(Value::Number(0.0)),
-        };
+        let id = to_array_this(rt)?;
         let n = args.len();
         let len = rt.array_length(id);
         // Shift existing right by n.
@@ -234,10 +231,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(Value::Number(new_len as f64))
     });
     register_intrinsic_method(rt, host, "indexOf", 1, |rt, args| {
-        let id = match rt.current_this() {
-            Value::Object(id) => id,
-            _ => return Ok(Value::Number(-1.0)),
-        };
+        let id = to_array_this(rt)?;
         let needle = args.first().cloned().unwrap_or(Value::Undefined);
         let len = rt.array_length(id);
         for i in 0..len {
@@ -249,10 +243,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(Value::Number(-1.0))
     });
     register_intrinsic_method(rt, host, "includes", 1, |rt, args| {
-        let id = match rt.current_this() {
-            Value::Object(id) => id,
-            _ => return Ok(Value::Boolean(false)),
-        };
+        let id = to_array_this(rt)?;
         let needle = args.first().cloned().unwrap_or(Value::Undefined);
         let len = rt.array_length(id);
         for i in 0..len {
@@ -385,10 +376,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(Value::Object(out))
     });
     register_intrinsic_method(rt, host, "join", 1, |rt, args| {
-        let id = match rt.current_this() {
-            Value::Object(id) => id,
-            _ => return Ok(Value::String(Rc::new(String::new()))),
-        };
+        let id = to_array_this(rt)?;
         let sep = match args.first() {
             Some(Value::Undefined) | None => ",".to_string(),
             Some(v) => abstract_ops::to_string(v).as_str().to_string(),
@@ -575,10 +563,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(Value::Undefined)
     });
     register_intrinsic_method(rt, host, "some", 1, |rt, args| {
-        let id = match rt.current_this() {
-            Value::Object(id) => id,
-            _ => return Ok(Value::Boolean(false)),
-        };
+        let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("some: callback required".into()))?;
         let len = rt.array_length(id);
@@ -639,10 +624,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(Value::Object(id))
     });
     register_intrinsic_method(rt, host, "every", 1, |rt, args| {
-        let id = match rt.current_this() {
-            Value::Object(id) => id,
-            _ => return Ok(Value::Boolean(true)),
-        };
+        let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("every: callback required".into()))?;
         let len = rt.array_length(id);
@@ -660,10 +642,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     // used by Map.prototype.entries above. Surfaces from the Ω.5.P24.E1
     // proto-chain probe: arktype's constraintKinds.entries() lands here.
     register_intrinsic_method(rt, host, "entries", 0, |rt, _args| {
-        let id = match rt.current_this() {
-            Value::Object(id) => id,
-            _ => return Ok(Value::Object(rt.alloc_object(Object::new_array()))),
-        };
+        let id = to_array_this(rt)?;
         let len = rt.array_length(id);
         let out = rt.alloc_object(Object::new_array());
         for i in 0..len {
@@ -678,10 +657,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(Value::Object(out))
     });
     register_intrinsic_method(rt, host, "keys", 0, |rt, _args| {
-        let id = match rt.current_this() {
-            Value::Object(id) => id,
-            _ => return Ok(Value::Object(rt.alloc_object(Object::new_array()))),
-        };
+        let id = to_array_this(rt)?;
         let len = rt.array_length(id);
         let out = rt.alloc_object(Object::new_array());
         for i in 0..len {
@@ -691,10 +667,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(Value::Object(out))
     });
     register_intrinsic_method(rt, host, "values", 0, |rt, _args| {
-        let id = match rt.current_this() {
-            Value::Object(id) => id,
-            _ => return Ok(Value::Object(rt.alloc_object(Object::new_array()))),
-        };
+        let id = to_array_this(rt)?;
         let len = rt.array_length(id);
         let out = rt.alloc_object(Object::new_array());
         for i in 0..len {
@@ -711,9 +684,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     // Each spec-arity per §23.1.3 + ECMA 2023 additions.
 
     register_intrinsic_method(rt, host, "findIndex", 1, |rt, args| {
-        let id = match rt.current_this() {
-            Value::Object(o) => o, _ => return Ok(Value::Number(-1.0)),
-        };
+        let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("findIndex: callback required".into()))?;
         let len = rt.array_length(id);
@@ -741,9 +712,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     });
 
     register_intrinsic_method(rt, host, "findLastIndex", 1, |rt, args| {
-        let id = match rt.current_this() {
-            Value::Object(o) => o, _ => return Ok(Value::Number(-1.0)),
-        };
+        let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("findLastIndex: callback required".into()))?;
         let len = rt.array_length(id);
@@ -779,9 +748,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     });
 
     register_intrinsic_method(rt, host, "lastIndexOf", 1, |rt, args| {
-        let id = match rt.current_this() {
-            Value::Object(o) => o, _ => return Ok(Value::Number(-1.0)),
-        };
+        let id = to_array_this(rt)?;
         let needle = args.first().cloned().unwrap_or(Value::Undefined);
         let len = rt.array_length(id) as i64;
         let from = match args.get(1) {
@@ -929,10 +896,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
 
     register_intrinsic_method(rt, host, "toLocaleString", 0, |rt, _args| {
         // v1: toLocaleString as locale-insensitive toString — comma-join.
-        let id = match rt.current_this() {
-            Value::Object(o) => o,
-            _ => return Ok(Value::String(Rc::new(String::new()))),
-        };
+        let id = to_array_this(rt)?;
         let len = rt.array_length(id);
         let mut out = String::new();
         for i in 0..len {
