@@ -940,6 +940,58 @@ impl Runtime {
                 Err(e) => Err(e),
             }
         });
+        // Ω.5.P59.E4: indirect eval per ECMA §19.2.1.2 PerformEval (case
+        // strictCaller=false, direct=false). Source is parsed + compiled
+        // as a Script, evaluated in the global Lexical Environment. Free
+        // identifiers in the source resolve through globalThis, NOT
+        // through the caller's lexical scope.
+        //
+        // ECMA's spec-correct direct-eval — where eval is invoked by the
+        // literal name `eval` at the call site and the source DOES see
+        // the caller's lexical scope — requires runtime frame-walking to
+        // snapshot/restore caller locals into a synthetic scope. The
+        // Runtime today has no frame-stack field (cf. interp.rs:286 —
+        // frames live on Rust's call stack via recursive call_function).
+        // Direct-eval-with-closure-capture is therefore deferred as a
+        // separate engine investment. Indirect eval covers cases like:
+        //   eval('1 + 2')                                     // → 3
+        //   eval('(function () { return 42; })')()             // → 42
+        //   eval('({ a: 1 })')                                 // → {a:1}
+        //   bundler-emitted eval('module.exports = ...')      // top-level
+        // depd's eval('(function (...) { ... })') wraps in a function
+        // expression whose body references outer-scope locals (log,
+        // deprecate, ...); the eval'd function compiles but those refs
+        // resolve via globalThis at runtime. Module-init usually doesn't
+        // invoke the deprecation wrapper, so the package loads — the
+        // wrapper would only throw at the deprecation site itself.
+        register_global_fn(self, "eval", |rt, args| {
+            let source = match args.first() {
+                Some(Value::String(s)) => s.as_str().to_string(),
+                Some(v) => return Ok(v.clone()), // eval(non-string) returns the arg unchanged per §19.2.1.1
+                None => return Ok(Value::Undefined),
+            };
+            use std::sync::atomic::{AtomicUsize, Ordering};
+            static EVAL_COUNTER: AtomicUsize = AtomicUsize::new(0);
+            let n = EVAL_COUNTER.fetch_add(1, Ordering::Relaxed);
+            let url = format!("file://<eval:{}>", n);
+            // Try expression form first: wrap as assignment so the value
+            // is captured in a stash global. If parse fails, fall through
+            // to raw-statements form (no return value).
+            let stash_key = format!("__eval_out_{}", n);
+            let expr_source = format!("{} = ({});", stash_key, source);
+            if rt.evaluate_module(&expr_source, &url).is_ok() {
+                let result = rt.globals.get(&stash_key).cloned().unwrap_or(Value::Undefined);
+                rt.globals.remove(&stash_key);
+                return Ok(result);
+            }
+            // Statement form: run as-is, no captured result.
+            let stmt_url = format!("file://<eval:{}:stmt>", n);
+            match rt.evaluate_module(&source, &stmt_url) {
+                Ok(_) => Ok(Value::Undefined),
+                Err(e) => Err(e),
+            }
+        });
+
         // Tier-Ω.5.yyy: expose Function.prototype on the Function
         // global. The intrinsic %Function.prototype% is the same
         // function_prototype that backs all callable instances. Adding
