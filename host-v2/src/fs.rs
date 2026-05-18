@@ -572,6 +572,8 @@ pub fn install(rt: &mut Runtime) {
         "lchown", "lchownSync",
         "lstat", "lstatSync",
         "stat",
+        // Ω.5.P57.E2: scatter-gather IO; graceful-fs re-exports these.
+        "readv", "writev",
     ] {
         let nm: &'static str = stub;
         let cb = make_callable(rt, nm, move |_rt, _args| {
