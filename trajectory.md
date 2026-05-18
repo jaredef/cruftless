@@ -1880,3 +1880,55 @@ Read seed.md §A8.23 + Doc 729 + EXT 11 + EXT 12 (incl. the addendum) + this anc
 Predicted post-P58 canonical headline if sweep ran: ~78-80% range (76.4% baseline + ~14 dyn-import cluster + a few silent compounders).
 
 Pin-Art tag count: ~208 (EXT 12 addendum) + 10 (P58.E1→E10) = ~218 substrate moves committed.
+
+
+## RESUME VECTOR EXTENSION 14 — 2026-05-18 (P59 engine-substrate stretch; dyn-import 18/102)
+
+### Headline
+
+Six engine-substrate moves per keeper directive "invest in engine substrate before canonical sweep". Each at Doc 729 §IV resolver-instance #4 (PRESTO / execution) or parser-tier; the stretch operationalizes the resolver-instance pattern at runtime tier per Doc 729 §V — the engine now invokes its own parse+compile pipeline as a JS-side value-producing operation at TWO new entry points (Function constructor + indirect eval).
+
+| Tag-on-DAG | Commit | Mode | Recognition |
+|---|---|---|---|
+| Ω.5.P59.E1.symbol-typeof | `a9bff2f3` | engine-substrate (Axis-S, well-known-Symbol identity) | Fifteen well-known Symbol globals (iterator/asyncIterator/hasInstance/toPrimitive/toStringTag/etc.) migrated from Value::String sentinels to real Value::Symbol per ECMA §6.1.5. String content preserved so property_key's to_string coercion lets existing iterator-protocol callsites keep working unchanged. typeof-diff cluster 1/9 → 3/9, exemplar 29→30. |
+| Ω.5.P59.E2.for-init-destructure-declarator | `884800d9` | parser correctness | Multi-binding C-style for-init now accepts BindingPattern (destructure) in subsequent declarators per ECMA §14.4.4. flatted's `for (let ke = keys(o), {length} = ke, y = 0; ...)` shape; pre-P59.E2 cruftless's parser broke at `expected Semicolon`. stylelint advances past CompileError. |
+| Ω.5.P59.E3.function-constructor-real | `1f49cda2` | engine-substrate (parse+compile at runtime, Function ctor surface) | `new Function('p1', 'body')` parses + compiles via evaluate_module under a synthetic URL; result captured via stash global. ECMA §20.2.1.1.1: constructed function's [[Environment]] is realm-global, NOT caller's lexical scope (matches our impl). exceljs, pug, et al. unblocked at module-init. +1 cluster. |
+| Ω.5.P59.E4.eval-indirect | `5cd13922` | engine-substrate (parse+compile at runtime, eval surface) | `eval(source)` parses + compiles via evaluate_module. Indirect-eval semantics only — caller's lexical scope NOT captured. Direct-eval requires Runtime-side frame stack (deferred — interp.rs:286 names the absence). Smoke matches Bun byte-for-byte. depd-dependent packages compile but the deprecation wrappers don't fire at module-init, so packages load. +1 cluster. |
+| Ω.5.P59.E5.get-index-primitive-autobox | `193c3349` | engine-substrate (regression-as-implicit-constraint discovery per Doc 729 §XIII) | GetIndex on primitive String/Number/BigInt now routes through their prototypes. P59.E1's Symbol-typeof exposed 8 packages (es-abstract, sinon, superagent, supertest, strapi, keystone, pug, express-promise-router) doing `""[Symbol.iterator]` at module-init — GetIndex (computed-key) didn't auto-box where GetProp (static-key) did. +2 cluster. |
+| Ω.5.P59.E6.typedarray-species-create-and-bpe | `17cf9a32` | engine-substrate (correctness) | TypedArray.prototype.map/.filter return same-kind TypedArrays per ECMA §23.2.3.21. Plus typed-array ctor bytes-per-element correctness — pre-P59.E6 cruftless hardcoded `byteLength = len * 4.0` which was wrong for every width except 32-bit. Closes a long-standing semantic divergence noted at P58.E9. 0 cluster yield; pure correctness. |
+
+**Cumulative dyn-import absorption** since post-P55 baseline:
+- post-P55: 0/102 PASS
+- post-P58.E10: 14/102 PASS
+- **post-P59.E6: 18/102 PASS** (17.6% of cluster basket)
+
+### Methodology observations
+
+**Substrate-amortization at engine-tier (Doc 729 §A8.13 / Doc 729 §V).** P59.E1 (Symbol-typeof) was the substrate-introduction move. P59.E5 (GetIndex auto-box) was the closure move absorbing the downstream pattern P59.E1 exposed. Same shape as the P58.E6+E7 absorption chain at host-tier and the P58.E7 async-fn-Promise unblocking 6 packages. Per Doc 729 §V vertically-recursive directive consumption, the substrate-amortization pattern recurs at the engine-substrate stratum.
+
+**Self-referential resolver per Doc 729 §V.** P59.E3 (Function ctor) and P59.E4 (eval) both call back into evaluate_module from native handlers — the engine's parse+compile pipeline (Doc 729 §IV resolver-instance #3) is now driven by runtime-tier value-producing operations (resolver-instance #4) as well. The same resolver appears at two strata. This is the empirical signature of the Doc 729 §V "vertically-recursive directive consumption with stage-deterministic emission" claim at engine tier.
+
+**Recorded deferral scope (Doc 729 §XIII falsifier-direction not invoked).** Direct-eval with closure capture and the depd-style eval pattern need a Runtime-side frame stack. interp.rs:286 names this absence — frames live on Rust's call stack via recursive call_function. A frame stack is precondition for: direct eval, structured stack traces, debuggers, time-travel debugging. Substantial engine refactor; logged as the next-largest queued investment.
+
+### Open scope at P59.E6 boundary
+
+The residual dyn-import patterns post-P59 have all flattened to ≤3 packages each (no large sub-cluster remains):
+- 3-pkg `Error: missing name` (ast-types/recast/jscodeshift) — package-internal cuts.
+- 3-pkg `regex must be a RegExp` — likely a Bun-API surface (Bun.escapeRegExp arg validation).
+- ~2-pkg each: SetProp non-object, defineProperty target undefined, Object.create proto, deep dyn-import chains, Reflect-method-missing.
+
+The cluster shape transition matches Doc 725 §VII mode/zone product: large-cluster mode has saturated; the residual is now flat-mode + walk-mode territory. Per Doc 725, the next-leverage move at this point is either:
+1. **Doc 717 / Doc 729 §VII Application A** — bootstrap-as-seed extraction (`cruftless-bootstrap-seed.md`). High-leverage architectural move; doesn't directly close packages but produces the cross-substrate-portability evidence Doc 729 §IX Pred-729.3 wants.
+2. **Runtime-side frame stack** — enables direct-eval (closes 3-pkg depd-args cluster downstream consumers) + stack traces + future debugging surface. Substantial engine refactor.
+3. **AST-level predictor v2 per Doc 724 §XI.d** — diagnostic instrument; would predict which packages will load before running them. No direct yield.
+4. **Canonical parity-top500 sweep** to confirm the predicted ~78-80% headline.
+
+### Predicted post-P59 canonical headline
+
+Aggregate gains across all P56-P59 stretches: ~18 dyn-import + ~4 typeof-diff (incl. async-iterator-to-stream from P59.E1) + ~2 kc-pm-1-2 (P57.E1) + 1 graceful-fs (P57.E2) + a few silent compounders. Total estimated gain: **~25-30 packages over the 76.4% baseline = predicted 78-79% canonical post-P59.**
+
+### Resume protocol
+
+Read seed.md §A8.23 + Doc 729 + EXT 11/12/13 + this anchor. Canonical reading still post-P55 (76.4%, 784/1026). The next canonical sweep will land the predicted ~78-79% headline if launched.
+
+Pin-Art tag count: ~218 (EXT 13) + 6 (P59.E1-E6) = ~224 substrate moves committed.
