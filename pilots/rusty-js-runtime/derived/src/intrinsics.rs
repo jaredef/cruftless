@@ -47,7 +47,7 @@ impl Runtime {
         // Parent URL is synthetic — bare and `node:` specifiers don't consult
         // it. Relative specifiers in dynamic imports would need real caller-
         // frame plumbing; deferred until a consumer needs it.
-        register_global_fn(self, "__dynamic_import", |rt, args| {
+        register_engine_helper(self, "__dynamic_import", |rt, args| {
             let spec = args.first()
                 .map(|v| crate::abstract_ops::to_string(v).as_str().to_string())
                 .unwrap_or_else(|| "<unknown>".into());
@@ -191,7 +191,7 @@ impl Runtime {
         register_global_fn(self, "__operator_trace_size", |rt, _args| {
             Ok(Value::Number(rt.operator_lowering_trace.len() as f64))
         });
-        register_global_fn(self, "__await", |rt, args| {
+        register_engine_helper(self, "__await", |rt, args| {
             let v = args.first().cloned().unwrap_or(Value::Undefined);
             let id = match v {
                 Value::Object(id) => id,
@@ -524,7 +524,7 @@ impl Runtime {
         // Tier-Ω.5.kkkkkk: __install_accessor__(target, key, "get"|"set", fn).
         // Installs an accessor property descriptor on target. Class
         // getters / setters lower to this call.
-        register_global_fn(self, "__install_accessor__", |rt, args| {
+        register_engine_helper(self, "__install_accessor__", |rt, args| {
             let target = match args.first() { Some(Value::Object(id)) => *id, _ => return Ok(Value::Undefined) };
             let key: String = match args.get(1) { Some(Value::String(s)) => (**s).clone(), _ => return Ok(Value::Undefined) };
             let kind: String = match args.get(2) { Some(Value::String(s)) => (**s).clone(), _ => return Ok(Value::Undefined) };
@@ -539,7 +539,7 @@ impl Runtime {
             else if kind == "set" { desc.setter = Some(fn_v); }
             Ok(Value::Undefined)
         });
-        register_global_fn(self, "__yield_push__", |rt, args| {
+        register_engine_helper(self, "__yield_push__", |rt, args| {
             if let Some(&arr) = rt.gen_yields_stack.last() {
                 let v = args.first().cloned().unwrap_or(Value::Undefined);
                 let len = rt.array_length(arr);
@@ -548,7 +548,7 @@ impl Runtime {
             }
             Ok(Value::Undefined)
         });
-        register_global_fn(self, "__yield_delegate__", |rt, args| {
+        register_engine_helper(self, "__yield_delegate__", |rt, args| {
             let target_arr = match rt.gen_yields_stack.last().copied() { Some(a) => a, None => return Ok(Value::Undefined) };
             let it_arg = args.first().cloned().unwrap_or(Value::Undefined);
             // Iterate via Symbol.iterator / @@iterator / array length.
@@ -592,7 +592,7 @@ impl Runtime {
             }
             Ok(Value::Undefined)
         });
-        register_global_fn(self, "__object_spread", |rt, args| {
+        register_engine_helper(self, "__object_spread", |rt, args| {
             let target = match args.first() {
                 Some(Value::Object(id)) => *id,
                 _ => return Err(RuntimeError::TypeError(
@@ -617,7 +617,7 @@ impl Runtime {
             Ok(Value::Object(target))
         });
         // __array_push_single(arr, v) → arr. Appends one value.
-        register_global_fn(self, "__array_push_single", |rt, args| {
+        register_engine_helper(self, "__array_push_single", |rt, args| {
             let arr = match args.first() {
                 Some(Value::Object(id)) => *id,
                 _ => return Err(RuntimeError::TypeError(
@@ -631,7 +631,7 @@ impl Runtime {
         });
         // __array_extend(arr, iter) → arr. Iterates iter via @@iterator
         // protocol and appends each yielded value.
-        register_global_fn(self, "__array_extend", |rt, args| {
+        register_engine_helper(self, "__array_extend", |rt, args| {
             let arr = match args.first() {
                 Some(Value::Object(id)) => *id,
                 _ => return Err(RuntimeError::TypeError(
@@ -649,7 +649,7 @@ impl Runtime {
         });
         // __apply(callee, thisArg, argsArray) → callee.apply(thisArg, argsArray).
         // Used by the compiler to lower spread-argument calls.
-        register_global_fn(self, "__apply", |rt, args| {
+        register_engine_helper(self, "__apply", |rt, args| {
             let callee = args.first().cloned().unwrap_or(Value::Undefined);
             let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
             let arr = args.get(2).cloned().unwrap_or(Value::Undefined);
@@ -665,7 +665,7 @@ impl Runtime {
         // __construct(callee, argsArray) → new callee(...argsArray).
         // Mirrors the Op::New handler: consults callee.prototype for the
         // new instance's [[Prototype]] and discards non-object returns.
-        register_global_fn(self, "__construct", |rt, args| {
+        register_engine_helper(self, "__construct", |rt, args| {
             let callee = args.first().cloned().unwrap_or(Value::Undefined);
             let arr = args.get(1).cloned().unwrap_or(Value::Undefined);
             let collected: Vec<Value> = match arr {
@@ -699,7 +699,7 @@ impl Runtime {
     /// rest-collection during destructure. Installed as plain globals
     /// under `__`-prefixed names so user JS sees them.
     fn install_destructure_helpers(&mut self) {
-        register_global_fn(self, "__destr_array_rest", |rt, args| {
+        register_engine_helper(self, "__destr_array_rest", |rt, args| {
             let src = args.first().cloned().unwrap_or(Value::Undefined);
             let start = abstract_ops::to_number(args.get(1).unwrap_or(&Value::Undefined)) as usize;
             let out_id = rt.alloc_object(Object::new_array());
@@ -716,7 +716,7 @@ impl Runtime {
             }
             Ok(Value::Object(out_id))
         });
-        register_global_fn(self, "__destr_object_rest", |rt, args| {
+        register_engine_helper(self, "__destr_object_rest", |rt, args| {
             let src = args.first().cloned().unwrap_or(Value::Undefined);
             let excluded = args.get(1).cloned().unwrap_or(Value::Undefined);
             let out_id = rt.alloc_object(Object::new_ordinary());
@@ -4081,6 +4081,18 @@ where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
     let fn_obj = make_native(name, f);
     let fn_id = rt.alloc_object(fn_obj);
     rt.globals.insert(name.into(), Value::Object(fn_id));
+}
+
+/// Ω.5.P55.E1 (Doc 729 §VII.B): register a compiler-emitted lowering
+/// behind the engine-internal bilateral boundary. The helper resolves
+/// through `Op::LoadGlobal`'s fallback path (interp.rs) but does not
+/// appear in `globals`, so `globalThis.__X` reads as `undefined` and
+/// `Object.keys(globalThis)` does not enumerate it.
+fn register_engine_helper<F>(rt: &mut Runtime, name: &str, f: F)
+where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
+    let fn_obj = make_native(name, f);
+    let fn_id = rt.alloc_object(fn_obj);
+    rt.engine_helpers.insert(name.into(), Value::Object(fn_id));
 }
 
 // ──────────────── JSON.stringify (limited) ────────────────

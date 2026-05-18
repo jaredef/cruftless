@@ -37,8 +37,10 @@ impl Runtime {
         self.regexp_prototype = Some(proto);
         install_regexp_proto(self, proto);
 
-        // Hidden global helper the compiler emits LoadGlobal+Call into.
-        register_global_native(self, "__createRegExp", |rt, args| {
+        // Ω.5.P55.E1: compiler-emitted lowering. Lives behind the
+        // engine-internal bilateral boundary (Doc 729 §VII.B) so
+        // `globalThis.__createRegExp` reads as undefined from JS.
+        let crx_obj = make_native("__createRegExp", |rt, args| {
             let pattern = abstract_ops::to_string(
                 &args.first().cloned().unwrap_or(Value::Undefined)
             ).as_str().to_string();
@@ -47,6 +49,8 @@ impl Runtime {
             ).as_str().to_string();
             Ok(Value::Object(new_regexp(rt, &pattern, &flags)?))
         });
+        let crx_id = self.alloc_object(crx_obj);
+        self.engine_helpers.insert("__createRegExp".into(), Value::Object(crx_id));
 
         // RegExp constructor — `new RegExp(p, f)` and `RegExp(p, f)` are
         // both routed through this. If `p` is itself a RegExp the spec

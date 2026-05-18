@@ -23,6 +23,23 @@ pub enum RuntimeError {
 
 pub struct Runtime {
     pub globals: HashMap<String, Value>,
+    /// Ω.5.P55.E1 (Doc 729 §VII.B — engine-internal bilateral boundary).
+    /// Compiler-emitted lowerings (`__await`, `__dynamic_import`, `__apply`,
+    /// `__construct`, `__install_accessor__`, `__yield_push__`,
+    /// `__yield_delegate__`, `__object_spread`, `__array_push_single`,
+    /// `__array_extend`, `__destr_array_rest`, `__destr_object_rest`)
+    /// resolve through this table on a LoadGlobal miss. They do not live
+    /// in `globals`, so `Object.keys(globalThis)` does not enumerate them
+    /// and `globalThis.__apply` reads as `undefined` from JS — closing the
+    /// SERVER §4.1 engine-internal bilateral boundary per Doc 432.
+    /// A JS-side `globalThis.X = ...` assignment writes to `globals` and
+    /// thereby shadows the engine helper (standard global-resolution
+    /// semantics); the fallback only fires on the unshadowed path.
+    /// Diagnostic probes (`__resolution_trace`, `__post_eval_trace`,
+    /// `__ns_synth_trace`, `__symbol_lookup_log`, `__host_stub_log`,
+    /// `__operator_trace_size`) remain in `globals` — they are
+    /// parity-script-callable by design (Doc 729 §XII probe surface).
+    pub engine_helpers: HashMap<String, Value>,
     pub last_value: Value,
     pub host_hooks: crate::module::HostHooks,
     /// Tier-Ω.5.b: ESM module cache keyed by resolved URL
@@ -197,6 +214,7 @@ impl Runtime {
     pub fn new() -> Self {
         Self {
             globals: HashMap::new(),
+            engine_helpers: HashMap::new(),
             last_value: Value::Undefined,
             host_hooks: crate::module::HostHooks::default(),
             modules: HashMap::new(),
@@ -568,7 +586,12 @@ impl Runtime {
                     let idx = decode_u16(&frame.bytecode, frame.pc);
                     frame.pc += 2;
                     let name = self.constant_name(frame, idx)?;
-                    let v = self.globals.get(&name).cloned().unwrap_or(Value::Undefined);
+                    // Ω.5.P55.E1: JS-visible globals first; engine_helpers
+                    // is the unshadowed fallback for compiler-emitted
+                    // lowerings (Doc 729 §VII.B).
+                    let v = self.globals.get(&name).cloned()
+                        .or_else(|| self.engine_helpers.get(&name).cloned())
+                        .unwrap_or(Value::Undefined);
                     frame.last_property_lookup = Some(format!("<global>{}", name));
                     frame.push(v);
                 }
