@@ -548,12 +548,26 @@ impl Runtime {
                     if frame.try_stack.is_empty() { return Err(e); }
                     let v = if let RuntimeError::Thrown(v) = e { v } else {
                         let msg = catchable_msg.unwrap();
-                        let mut o = crate::value::Object::new_ordinary();
-                        if let Some(ep) = self.object_prototype { o.proto = Some(ep); }
-                        o.set_own("message".into(), Value::String(std::rc::Rc::new(msg.clone())));
-                        o.set_own("name".into(), Value::String(std::rc::Rc::new(catchable_name.into())));
-                        o.set_own("stack".into(), Value::String(std::rc::Rc::new(format!("{}: {}", catchable_name, msg))));
-                        Value::Object(self.alloc_object(o))
+                        // Ω.5.P61.E4: route through make_error_instance so the
+                        // thrown value's [[Prototype]] is the named ctor's
+                        // .prototype. Without it, `e instanceof TypeError`
+                        // returned false and test262's `assert.throws(TypeError,
+                        // ...)` failed even when the engine threw TypeError.
+                        let id_opt = crate::intrinsics::make_error_instance(
+                            self, catchable_name, &msg);
+                        match id_opt {
+                            Some(id) => Value::Object(id),
+                            None => {
+                                // Bootstrap edge: ctor not yet installed. Fall
+                                // back to bare ordinary object with name/message.
+                                let mut o = crate::value::Object::new_ordinary();
+                                if let Some(ep) = self.object_prototype { o.proto = Some(ep); }
+                                o.set_own("message".into(), Value::String(std::rc::Rc::new(msg.clone())));
+                                o.set_own("name".into(), Value::String(std::rc::Rc::new(catchable_name.into())));
+                                o.set_own("stack".into(), Value::String(std::rc::Rc::new(format!("{}: {}", catchable_name, msg))));
+                                Value::Object(self.alloc_object(o))
+                            }
+                        }
                     };
                     let t = frame.try_stack.pop().unwrap();
                     frame.operand_stack.truncate(t.sp_at_entry);
@@ -1847,6 +1861,22 @@ impl Runtime {
                     }
                     args.reverse();
                     let callee = frame.pop()?;
+                    // Ω.5.P61.E4: enforce [[Construct]] per ECMA §10.3.3 +
+                    // EvaluateNew step 7 (IsConstructor check). Native
+                    // functions marked is_constructor=false (Math.abs,
+                    // Object.keys, String.prototype.includes, etc.) throw
+                    // TypeError on `new fn()`.
+                    if let Value::Object(cid) = &callee {
+                        if let crate::value::InternalKind::Function(fi) =
+                            &self.obj(*cid).internal_kind
+                        {
+                            if !fi.is_constructor {
+                                return Err(RuntimeError::TypeError(format!(
+                                    "{} is not a constructor", fi.name
+                                )));
+                            }
+                        }
+                    }
                     // Tier-Ω.5.f: consult callee.prototype property to set
                     // the new instance's [[Prototype]]. This is the load-
                     // bearing engine change that makes user-defined classes

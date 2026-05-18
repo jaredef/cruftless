@@ -75,7 +75,7 @@ where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
         proto: None,
         extensible: true,
         properties,
-        internal_kind: InternalKind::Function(FunctionInternals { name: "next".into(), length: 0, native }),
+        internal_kind: InternalKind::Function(FunctionInternals { name: "next".into(), length: 0, native, is_constructor: true }),
     };
     let fn_id = rt.alloc_object(fn_obj);
     rt.object_set(host, "next".into(), Value::Object(fn_id));

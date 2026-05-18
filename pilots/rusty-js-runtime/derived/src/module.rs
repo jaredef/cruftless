@@ -1202,11 +1202,9 @@ impl Runtime {
             extensible: true,
             properties: require_props,
             internal_kind: crate::value::InternalKind::Function(
-                crate::value::FunctionInternals {
-                    name: "require".to_string(),
+                crate::value::FunctionInternals { name: "require".to_string(),
                     length: 1,
-                    native: require_fn,
-                }
+                    native: require_fn, is_constructor: true }
             ),
         };
         let require_id = self.alloc_object(require_obj);
@@ -1235,9 +1233,7 @@ impl Runtime {
         let require_resolve_obj = Object {
             proto: None, extensible: true, properties: resolve_props,
             internal_kind: crate::value::InternalKind::Function(
-                crate::value::FunctionInternals {
-                    name: "resolve".to_string(), length: 1, native: require_resolve_fn,
-                }
+                crate::value::FunctionInternals { name: "resolve".to_string(), length: 1, native: require_resolve_fn, is_constructor: true }
             ),
         };
         let require_resolve_id = self.alloc_object(require_resolve_obj);
@@ -1252,9 +1248,7 @@ impl Runtime {
         let require_paths_obj = Object {
             proto: None, extensible: true, properties: paths_props,
             internal_kind: crate::value::InternalKind::Function(
-                crate::value::FunctionInternals {
-                    name: "paths".to_string(), length: 1, native: require_paths_fn,
-                }
+                crate::value::FunctionInternals { name: "paths".to_string(), length: 1, native: require_paths_fn, is_constructor: true }
             ),
         };
         let require_paths_id = self.alloc_object(require_paths_obj);

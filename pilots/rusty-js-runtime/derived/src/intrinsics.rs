@@ -4017,6 +4017,28 @@ impl Runtime {
         });
         register_method(self, r, "construct", |rt, args| {
             let target = args.first().cloned().unwrap_or(Value::Undefined);
+            // Ω.5.P61.E4: IsConstructor check per ECMA §10.5.13. The
+            // new-target (3rd arg, falls back to target if missing) is
+            // what must satisfy IsConstructor — test262's isConstructor
+            // helper passes the candidate as newTarget. Both target and
+            // newTarget must be constructors per §28.1.5.
+            let new_target = args.get(2).cloned().unwrap_or(target.clone());
+            for v in [&target, &new_target] {
+                if let Value::Object(id) = v {
+                    if let crate::value::InternalKind::Function(fi) =
+                        &rt.obj(*id).internal_kind
+                    {
+                        if !fi.is_constructor {
+                            return Err(RuntimeError::TypeError(format!(
+                                "Reflect.construct: {} is not a constructor", fi.name
+                            )));
+                        }
+                    }
+                } else {
+                    return Err(RuntimeError::TypeError(
+                        "Reflect.construct: target/newTarget must be a constructor".into()));
+                }
+            }
             let arg_list: Vec<Value> = match args.get(1) {
                 Some(Value::Object(arr)) => {
                     let len = rt.array_length(*arr);
@@ -4036,7 +4058,7 @@ impl Runtime {
             o.proto = proto_id;
             let this_id = rt.alloc_object(o);
             let this_obj = Value::Object(this_id);
-            rt.pending_new_target = Some(target.clone());
+            rt.pending_new_target = Some(new_target);
             let ret = rt.call_function(target, this_obj.clone(), arg_list)?;
             Ok(match ret { Value::Object(_) => ret, _ => this_obj })
         });
@@ -4414,7 +4436,7 @@ fn num_arg(args: &[Value], i: usize) -> f64 {
 /// the named constructor isn't installed yet (early-bootstrap edge).
 /// Used by the dynamic-import reject path so promise rejections carry
 /// real Error-instance shape rather than a raw string.
-fn make_error_instance(rt: &mut Runtime, ctor_name: &str, message: &str) -> Option<rusty_js_gc::ObjectId> {
+pub(crate) fn make_error_instance(rt: &mut Runtime, ctor_name: &str, message: &str) -> Option<rusty_js_gc::ObjectId> {
     let ctor_id = match rt.globals.get(ctor_name).cloned() {
         Some(Value::Object(id)) => id,
         _ => return None,
@@ -4504,6 +4526,32 @@ pub(crate) fn make_native_with_length(
             name: name.to_string(),
             length,
             native,
+            is_constructor: true,
+        }),
+    }
+}
+
+/// Ω.5.P61.E4: build a non-constructor native (Math.abs, Object.keys,
+/// String.prototype.includes, ...). Mirrors make_native_with_length but
+/// sets FunctionInternals.is_constructor = false; Op::New and
+/// Reflect.construct check the flag and throw TypeError per ECMA §21.3.
+pub(crate) fn make_native_non_ctor(
+    name: &str,
+    length: u32,
+    f: impl Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static,
+) -> Object {
+    let native: NativeFn = Rc::new(f);
+    let mut properties = indexmap::IndexMap::new();
+    crate::value::install_function_meta_props(&mut properties, name, length as f64);
+    Object {
+        proto: None,
+        extensible: true,
+        properties,
+        internal_kind: InternalKind::Function(FunctionInternals {
+            name: name.to_string(),
+            length,
+            native,
+            is_constructor: false,
         }),
     }
 }
@@ -4527,7 +4575,12 @@ where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
 /// CreateDataPropertyOrThrow defaults).
 fn register_intrinsic_method<F>(rt: &mut Runtime, host: ObjectRef, name: &str, length: u32, f: F)
 where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
-    let fn_obj = make_native_with_length(name, length, f);
+    // Ω.5.P61.E4: intrinsic methods are non-constructors per ECMA §21.3
+    // (and the same applies to every built-in not identified as a
+    // constructor — Object.keys, String.prototype.includes, Array.
+    // prototype.map, etc.). make_native_non_ctor sets the flag so
+    // Op::New + Reflect.construct throw TypeError on `new Math.abs()`.
+    let fn_obj = make_native_non_ctor(name, length, f);
     let fn_id = rt.alloc_object(fn_obj);
     rt.obj_mut(host).properties.insert(name.to_string(), crate::value::PropertyDescriptor {
         value: Value::Object(fn_id),

@@ -454,6 +454,14 @@ pub struct FunctionInternals {
     /// Spec-mandated arity; intrinsics that do not declare one default to 0.
     pub length: u32,
     pub native: NativeFn,
+    /// Ω.5.P61.E4: ECMA-262 §10.3.3 + §21.3 — built-in functions that
+    /// are not identified as constructors lack a [[Construct]] internal
+    /// slot. `new Math.abs()` and `Reflect.construct(fn, [], Math.abs)`
+    /// must throw TypeError. true = constructor (default for backward
+    /// compatibility with existing intrinsics like Object, Array, etc.
+    /// that are constructors); false = non-constructor (Math.*, Object.keys,
+    /// String.prototype.includes, etc.).
+    pub is_constructor: bool,
 }
 
 impl std::fmt::Debug for FunctionInternals {

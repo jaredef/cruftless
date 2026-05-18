@@ -104,7 +104,7 @@ pub fn install(rt: &mut Runtime, argv: Vec<String>) {
         let bigint_obj = rusty_js_runtime::value::Object {
             proto: None, extensible: true, properties: bigint_props,
             internal_kind: rusty_js_runtime::value::InternalKind::Function(
-                rusty_js_runtime::value::FunctionInternals { name: "bigint".into(), length: 0, native: bigint_fn }
+                rusty_js_runtime::value::FunctionInternals { name: "bigint".into(), length: 0, native: bigint_fn , is_constructor: true }
             ),
         };
         let bigint_id = rt.alloc_object(bigint_obj);
