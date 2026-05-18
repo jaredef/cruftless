@@ -1376,6 +1376,69 @@ impl Runtime {
             let frozen = !o.extensible && o.properties.values().all(|d| !d.writable && !d.configurable);
             Ok(Value::Boolean(frozen))
         });
+        // Ω.5.P61.E10: Object.seal / isSealed / preventExtensions /
+        // isExtensible per ECMA §20.1.2. seal makes properties non-
+        // configurable but leaves writable. preventExtensions blocks new
+        // properties without touching existing.
+        register_intrinsic_method(self, obj_ctor, "seal", 1, |rt, args| {
+            let v = args.first().cloned().unwrap_or(Value::Undefined);
+            if let Value::Object(id) = &v {
+                let o = rt.obj_mut(*id);
+                o.extensible = false;
+                for d in o.properties.values_mut() {
+                    d.configurable = false;
+                }
+            }
+            Ok(v)
+        });
+        register_intrinsic_method(self, obj_ctor, "isSealed", 1, |rt, args| {
+            let id = match args.first() { Some(Value::Object(id)) => *id, _ => return Ok(Value::Boolean(true)) };
+            let o = rt.obj(id);
+            let sealed = !o.extensible && o.properties.values().all(|d| !d.configurable);
+            Ok(Value::Boolean(sealed))
+        });
+        register_intrinsic_method(self, obj_ctor, "preventExtensions", 1, |rt, args| {
+            let v = args.first().cloned().unwrap_or(Value::Undefined);
+            if let Value::Object(id) = &v {
+                rt.obj_mut(*id).extensible = false;
+            }
+            Ok(v)
+        });
+        register_intrinsic_method(self, obj_ctor, "isExtensible", 1, |rt, args| {
+            match args.first() {
+                Some(Value::Object(id)) => Ok(Value::Boolean(rt.obj(*id).extensible)),
+                _ => Ok(Value::Boolean(false)),
+            }
+        });
+        register_intrinsic_method(self, obj_ctor, "groupBy", 2, |rt, args| {
+            // Object.groupBy(items, callbackFn) per ECMA §20.1.2.10.
+            // Returns an Object whose keys are callback results and
+            // values are arrays of items mapped to that key.
+            let items = args.first().cloned().unwrap_or(Value::Undefined);
+            let cb = args.get(1).cloned().ok_or_else(||
+                RuntimeError::TypeError("Object.groupBy: callbackFn required".into()))?;
+            let entries = collect_iterable(rt, items)?;
+            let out = rt.alloc_object(Object::new_ordinary());
+            for (i, v) in entries.into_iter().enumerate() {
+                let key_v = rt.call_function(cb.clone(), Value::Undefined,
+                    vec![v.clone(), Value::Number(i as f64)])?;
+                let key = crate::abstract_ops::to_string(&key_v).as_str().to_string();
+                // Append v to out[key] (array). Allocate array if missing.
+                let arr_id = match rt.object_get(out, &key) {
+                    Value::Object(id) => id,
+                    _ => {
+                        let a = rt.alloc_object(Object::new_array());
+                        rt.object_set(out, key.clone(), Value::Object(a));
+                        rt.object_set(a, "length".into(), Value::Number(0.0));
+                        a
+                    }
+                };
+                let n = rt.array_length(arr_id);
+                rt.object_set(arr_id, n.to_string(), v);
+                rt.object_set(arr_id, "length".into(), Value::Number((n + 1) as f64));
+            }
+            Ok(Value::Object(out))
+        });
         register_intrinsic_method(self, obj_ctor, "fromEntries", 1, |rt, args| {
             let out = rt.alloc_object(Object::new_ordinary());
             let src = match args.first() { Some(v) => v.clone(), None => return Ok(Value::Object(out)) };
