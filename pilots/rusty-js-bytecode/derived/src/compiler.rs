@@ -262,6 +262,16 @@ pub struct Compiler {
     /// Ω.5.P51.E1: URL of the source being compiled. Propagated to
     /// every FunctionProto for closure-frame error enrichment.
     source_url: String,
+    /// Ω.5.P52.E3: nesting depth of block-scoped constructs (Stmt::Block
+    /// and friends). 0 = function-body top level; >0 inside any block.
+    /// Gates pre_allocated_slots reuse for let/const: top-level let/const
+    /// share Phase A's pre-allocated slot (necessary for closure capture
+    /// across hoisted function decls — the chalk/supports-color pattern),
+    /// but inside a nested block a fresh let/const MUST get a fresh slot
+    /// per ES §13.2 lexical scope. Without the gate, an inner-block const
+    /// reused the outer slot index from pre_allocated_slots, writing the
+    /// inner value into the outer's slot and breaking shadow semantics.
+    block_depth: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -365,6 +375,7 @@ impl Compiler {
             pre_allocated_slots: std::collections::HashMap::new(),
             source_line_starts: Vec::new(),
             source_url: String::new(),
+            block_depth: 0,
         }
     }
 
@@ -813,7 +824,9 @@ impl Compiler {
                 // hit exactly this when the first branch redeclared
                 // `r` and `i` via destructuring.
                 let snapshot = self.locals.len();
+                self.block_depth += 1;
                 for s in body { self.compile_stmt(s)?; }
+                self.block_depth -= 1;
                 for i in snapshot..self.locals.len() {
                     // Don't rename pre-allocated names (let/const var
                     // hoisted from outer); they're meant to outlive.
@@ -841,8 +854,34 @@ impl Compiler {
                             // Reuse pre-allocated slot if the H1 hoisting
                             // pass already created one; else reuse a slot
                             // from earlier-in-this-list; else alloc.
-                            let slot = if let Some(s) = self.pre_allocated_slots.get(&id.name).copied() {
-                                s
+                            //
+                            // Ω.5.P52.E3: gate pre_allocated_slots reuse by
+                            // block_depth + v.kind. Pre-allocation is the
+                            // function-body top-level Phase A — its slots
+                            // belong to the function scope. For let/const
+                            // inside a nested block, the spec mandates a
+                            // FRESH binding (block scope, §13.2); reusing
+                            // the pre-allocated slot would write the inner
+                            // value into the outer's slot, defeating the
+                            // existing Stmt::Block rename-on-exit machinery.
+                            // var always hoists to function scope, so its
+                            // reuse remains correct at any depth.
+                            let pre_reuse_ok = self.block_depth == 0
+                                || matches!(v.kind, VariableKind::Var);
+                            let slot = if pre_reuse_ok {
+                                if let Some(s) = self.pre_allocated_slots.get(&id.name).copied() {
+                                    s
+                                } else if let Some(s) = local_slots.get(&id.name).copied() {
+                                    s
+                                } else {
+                                    let s = self.alloc_local(LocalDescriptor {
+                                        name: id.name.clone(),
+                                        kind: v.kind,
+                                        depth: 0,
+                                    });
+                                    local_slots.insert(id.name.clone(), s);
+                                    s
+                                }
                             } else if let Some(s) = local_slots.get(&id.name).copied() {
                                 s
                             } else {
@@ -878,8 +917,15 @@ impl Compiler {
                             // point at the wrong slot (the pre-allocated
                             // one stays Undefined; this fresh one gets
                             // the value).
+                            // Ω.5.P52.E3: same block-scope gate as the
+                            // identifier branch above. Inside a nested block,
+                            // let/const destructure introduces fresh bindings
+                            // per spec — pre-allocated slot reuse would
+                            // shadow-write the outer slot.
+                            let pre_reuse_ok = self.block_depth == 0
+                                || matches!(v.kind, VariableKind::Var);
                             for id in pat.collect_names() {
-                                if self.pre_allocated_slots.contains_key(&id.name) {
+                                if pre_reuse_ok && self.pre_allocated_slots.contains_key(&id.name) {
                                     // Slot already exists; skip re-alloc.
                                     continue;
                                 }
@@ -2672,6 +2718,9 @@ impl Compiler {
             // vector is bounded by source line count.
             source_line_starts: self.source_line_starts.clone(),
             source_url: self.source_url.clone(),
+            // Ω.5.P52.E3: sub-compilers reset block_depth — the function body
+            // is its own top level for scope tracking.
+            block_depth: 0,
         };
         let param_count = params.len() as u16;
         // Tier-Ω.5.l: track the rest-parameter slot. Per spec only the
