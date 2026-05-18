@@ -1007,22 +1007,22 @@ impl Runtime {
 
     fn install_math(&mut self) {
         let math = self.alloc_object(Object::new_ordinary());
-        register_method(self, math, "abs", |_rt, args|Ok(Value::Number(num_arg(args, 0).abs())));
-        register_method(self, math, "floor", |_rt, args|Ok(Value::Number(num_arg(args, 0).floor())));
-        register_method(self, math, "ceil", |_rt, args|Ok(Value::Number(num_arg(args, 0).ceil())));
-        register_method(self, math, "round", |_rt, args|{
+        register_intrinsic_method(self, math, "abs", 1, |_rt, args|Ok(Value::Number(num_arg(args, 0).abs())));
+        register_intrinsic_method(self, math, "floor", 1, |_rt, args|Ok(Value::Number(num_arg(args, 0).floor())));
+        register_intrinsic_method(self, math, "ceil", 1, |_rt, args|Ok(Value::Number(num_arg(args, 0).ceil())));
+        register_intrinsic_method(self, math, "round", 1, |_rt, args|{
             // JS Math.round rounds half-to-positive-infinity, not Rust's
             // half-to-even. Reimplement.
             let x = num_arg(args, 0);
             Ok(Value::Number((x + 0.5).floor()))
         });
-        register_method(self, math,"trunc", |_rt, args|Ok(Value::Number(num_arg(args, 0).trunc())));
-        register_method(self, math,"sqrt", |_rt, args|Ok(Value::Number(num_arg(args, 0).sqrt())));
-        register_method(self, math,"cbrt", |_rt, args|Ok(Value::Number(num_arg(args, 0).cbrt())));
-        register_method(self, math,"pow", |_rt, args|{
+        register_intrinsic_method(self, math, "trunc", 1, |_rt, args|Ok(Value::Number(num_arg(args, 0).trunc())));
+        register_intrinsic_method(self, math, "sqrt", 1, |_rt, args|Ok(Value::Number(num_arg(args, 0).sqrt())));
+        register_intrinsic_method(self, math, "cbrt", 1, |_rt, args|Ok(Value::Number(num_arg(args, 0).cbrt())));
+        register_intrinsic_method(self, math, "pow", 2, |_rt, args|{
             Ok(Value::Number(num_arg(args, 0).powf(num_arg(args, 1))))
         });
-        register_method(self, math,"max", |_rt, args|{
+        register_intrinsic_method(self, math, "max", 2, |_rt, args|{
             let mut m = f64::NEG_INFINITY;
             for a in args {
                 let n = abstract_ops::to_number(a);
@@ -1031,7 +1031,7 @@ impl Runtime {
             }
             Ok(Value::Number(m))
         });
-        register_method(self, math,"min", |_rt, args|{
+        register_intrinsic_method(self, math, "min", 2, |_rt, args|{
             let mut m = f64::INFINITY;
             for a in args {
                 let n = abstract_ops::to_number(a);
@@ -1040,20 +1040,20 @@ impl Runtime {
             }
             Ok(Value::Number(m))
         });
-        register_method(self, math,"sign", |_rt, args|{
+        register_intrinsic_method(self, math, "sign", 1, |_rt, args|{
             let x = num_arg(args, 0);
             Ok(Value::Number(if x.is_nan() { f64::NAN } else if x > 0.0 { 1.0 } else if x < 0.0 { -1.0 } else { x }))
         });
-        register_method(self, math,"exp", |_rt, args|Ok(Value::Number(num_arg(args, 0).exp())));
-        register_method(self, math,"log", |_rt, args|Ok(Value::Number(num_arg(args, 0).ln())));
-        register_method(self, math,"log2", |_rt, args|Ok(Value::Number(num_arg(args, 0).log2())));
-        register_method(self, math,"log10", |_rt, args|Ok(Value::Number(num_arg(args, 0).log10())));
-        register_method(self, math,"sin", |_rt, args|Ok(Value::Number(num_arg(args, 0).sin())));
-        register_method(self, math,"cos", |_rt, args|Ok(Value::Number(num_arg(args, 0).cos())));
-        register_method(self, math,"tan", |_rt, args|Ok(Value::Number(num_arg(args, 0).tan())));
-        register_method(self, math,"atan", |_rt, args|Ok(Value::Number(num_arg(args, 0).atan())));
-        register_method(self, math,"atan2", |_rt, args|Ok(Value::Number(num_arg(args, 0).atan2(num_arg(args, 1))))) ;
-        register_method(self, math,"random", |_rt, _|{
+        register_intrinsic_method(self, math, "exp", 1, |_rt, args|Ok(Value::Number(num_arg(args, 0).exp())));
+        register_intrinsic_method(self, math, "log", 1, |_rt, args|Ok(Value::Number(num_arg(args, 0).ln())));
+        register_intrinsic_method(self, math, "log2", 1, |_rt, args|Ok(Value::Number(num_arg(args, 0).log2())));
+        register_intrinsic_method(self, math, "log10", 1, |_rt, args|Ok(Value::Number(num_arg(args, 0).log10())));
+        register_intrinsic_method(self, math, "sin", 1, |_rt, args|Ok(Value::Number(num_arg(args, 0).sin())));
+        register_intrinsic_method(self, math, "cos", 1, |_rt, args|Ok(Value::Number(num_arg(args, 0).cos())));
+        register_intrinsic_method(self, math, "tan", 1, |_rt, args|Ok(Value::Number(num_arg(args, 0).tan())));
+        register_intrinsic_method(self, math, "atan", 1, |_rt, args|Ok(Value::Number(num_arg(args, 0).atan())));
+        register_intrinsic_method(self, math, "atan2", 2, |_rt, args|Ok(Value::Number(num_arg(args, 0).atan2(num_arg(args, 1))))) ;
+        register_intrinsic_method(self, math, "random", 0, |_rt, _|{
             // v1: simple LCG-style PRNG seeded from time. Not crypto-grade.
             use std::time::{SystemTime, UNIX_EPOCH};
             let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.subsec_nanos()).unwrap_or(0);
@@ -1080,68 +1080,68 @@ impl Runtime {
         // secp256k1 generator-point validation fails with 'Invalid curve'
         // (4-package cluster: ethereumjs-tx / ethereumjs-util /
         // ethereumjs-wallet / secp256k1).
-        register_method(self, math, "imul", |_rt, args| {
+        register_intrinsic_method(self, math, "imul", 2, |_rt, args| {
             let a = args.first().map(abstract_ops::to_number).unwrap_or(0.0) as i64 as i32;
             let b = args.get(1).map(abstract_ops::to_number).unwrap_or(0.0) as i64 as i32;
             Ok(Value::Number((a.wrapping_mul(b)) as f64))
         });
-        register_method(self, math, "fround", |_rt, args| {
+        register_intrinsic_method(self, math, "fround", 1, |_rt, args| {
             let n = args.first().map(abstract_ops::to_number).unwrap_or(f64::NAN);
             Ok(Value::Number(n as f32 as f64))
         });
-        register_method(self, math, "clz32", |_rt, args| {
+        register_intrinsic_method(self, math, "clz32", 1, |_rt, args| {
             let n = args.first().map(abstract_ops::to_number).unwrap_or(0.0) as i64 as u32;
             Ok(Value::Number(n.leading_zeros() as f64))
         });
-        register_method(self, math, "sign", |_rt, args| {
+        register_intrinsic_method(self, math, "sign", 1, |_rt, args| {
             let n = args.first().map(abstract_ops::to_number).unwrap_or(f64::NAN);
             if n.is_nan() { Ok(Value::Number(f64::NAN)) }
             else if n > 0.0 { Ok(Value::Number(1.0)) }
             else if n < 0.0 { Ok(Value::Number(-1.0)) }
             else { Ok(Value::Number(n)) } // preserves +0/-0
         });
-        register_method(self, math, "expm1", |_rt, args| {
+        register_intrinsic_method(self, math, "expm1", 1, |_rt, args| {
             let n = args.first().map(abstract_ops::to_number).unwrap_or(f64::NAN);
             Ok(Value::Number(n.exp_m1()))
         });
-        register_method(self, math, "log1p", |_rt, args| {
+        register_intrinsic_method(self, math, "log1p", 1, |_rt, args| {
             let n = args.first().map(abstract_ops::to_number).unwrap_or(f64::NAN);
             Ok(Value::Number(n.ln_1p()))
         });
-        register_method(self, math, "log2", |_rt, args| {
+        register_intrinsic_method(self, math, "log2", 1, |_rt, args| {
             let n = args.first().map(abstract_ops::to_number).unwrap_or(f64::NAN);
             Ok(Value::Number(n.log2()))
         });
-        register_method(self, math, "log10", |_rt, args| {
+        register_intrinsic_method(self, math, "log10", 1, |_rt, args| {
             let n = args.first().map(abstract_ops::to_number).unwrap_or(f64::NAN);
             Ok(Value::Number(n.log10()))
         });
-        register_method(self, math, "cbrt", |_rt, args| {
+        register_intrinsic_method(self, math, "cbrt", 1, |_rt, args| {
             let n = args.first().map(abstract_ops::to_number).unwrap_or(f64::NAN);
             Ok(Value::Number(n.cbrt()))
         });
-        register_method(self, math, "hypot", |_rt, args| {
+        register_intrinsic_method(self, math, "hypot", 2, |_rt, args| {
             let s: f64 = args.iter()
                 .map(|v| { let n = abstract_ops::to_number(v); n * n })
                 .sum();
             Ok(Value::Number(s.sqrt()))
         });
-        register_method(self, math, "sinh", |_rt, args| {
+        register_intrinsic_method(self, math, "sinh", 1, |_rt, args| {
             Ok(Value::Number(args.first().map(abstract_ops::to_number).unwrap_or(f64::NAN).sinh()))
         });
-        register_method(self, math, "cosh", |_rt, args| {
+        register_intrinsic_method(self, math, "cosh", 1, |_rt, args| {
             Ok(Value::Number(args.first().map(abstract_ops::to_number).unwrap_or(f64::NAN).cosh()))
         });
-        register_method(self, math, "tanh", |_rt, args| {
+        register_intrinsic_method(self, math, "tanh", 1, |_rt, args| {
             Ok(Value::Number(args.first().map(abstract_ops::to_number).unwrap_or(f64::NAN).tanh()))
         });
-        register_method(self, math, "asinh", |_rt, args| {
+        register_intrinsic_method(self, math, "asinh", 1, |_rt, args| {
             Ok(Value::Number(args.first().map(abstract_ops::to_number).unwrap_or(f64::NAN).asinh()))
         });
-        register_method(self, math, "acosh", |_rt, args| {
+        register_intrinsic_method(self, math, "acosh", 1, |_rt, args| {
             Ok(Value::Number(args.first().map(abstract_ops::to_number).unwrap_or(f64::NAN).acosh()))
         });
-        register_method(self, math, "atanh", |_rt, args| {
+        register_intrinsic_method(self, math, "atanh", 1, |_rt, args| {
             Ok(Value::Number(args.first().map(abstract_ops::to_number).unwrap_or(f64::NAN).atanh()))
         });
 
@@ -4513,6 +4513,27 @@ where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
     let fn_obj = make_native(name, f);
     let fn_id = rt.alloc_object(fn_obj);
     rt.object_set(host, name.into(), Value::Object(fn_id));
+}
+
+/// Ω.5.P61.E3: install an intrinsic method (Math.abs, Object.keys, etc.)
+/// with ECMA-correct descriptor + arity per §10.2.9/§10.2.10 + §6.2.5.4:
+/// length set to `arity`; the property on `host` is
+/// {writable: true, enumerable: false, configurable: true} — non-enum
+/// is the ECMA invariant for built-ins (Object.keys(Math) returns only
+/// numeric constants, not method names).
+///
+/// Use at intrinsic-install sites; user-code property assignment
+/// continues to use `register_method` (enumerable per spec for
+/// CreateDataPropertyOrThrow defaults).
+fn register_intrinsic_method<F>(rt: &mut Runtime, host: ObjectRef, name: &str, length: u32, f: F)
+where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
+    let fn_obj = make_native_with_length(name, length, f);
+    let fn_id = rt.alloc_object(fn_obj);
+    rt.obj_mut(host).properties.insert(name.to_string(), crate::value::PropertyDescriptor {
+        value: Value::Object(fn_id),
+        writable: true, enumerable: false, configurable: true,
+        getter: None, setter: None,
+    });
 }
 
 fn register_global_fn<F>(rt: &mut Runtime, name: &str, f: F)

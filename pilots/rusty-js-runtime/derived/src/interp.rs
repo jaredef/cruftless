@@ -467,6 +467,17 @@ impl Runtime {
 
     /// OrdinaryDefineOwnProperty — own-key set on the named object.
     pub fn object_set(&mut self, id: ObjectRef, key: String, value: Value) {
+        // Ω.5.P61.E3: enforce non-writable descriptors per ECMA §10.1.9
+        // OrdinarySet step 3 — assigning to a non-writable own data
+        // property is a silent no-op (sloppy mode; strict mode throws,
+        // but throwing is deferred since cruftless's strict-mode tracking
+        // is incomplete). Object.freeze + the function-meta-props
+        // (name/length descriptor non-writable) both depend on this.
+        if let Some(d) = self.obj(id).properties.get(&key) {
+            if !d.writable && d.getter.is_none() && d.setter.is_none() {
+                return; // silent no-op for non-writable data property
+            }
+        }
         self.obj_mut(id).set_own(key, value);
     }
 
