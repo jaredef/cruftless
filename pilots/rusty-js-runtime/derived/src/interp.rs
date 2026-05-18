@@ -292,6 +292,46 @@ impl Runtime {
         v.clone()
     }
 
+    /// Ω.5.P62.E9: ToNumber per ECMA §7.1.4 with Object→primitive dispatch.
+    /// For Objects, dispatch through @@toPrimitive("number") → valueOf →
+    /// toString (number-hint OrdinaryToPrimitive order, §7.1.1) and
+    /// ToNumber the primitive result. Used by array_length to allow
+    /// `length: {valueOf(){return 2}}` etc.
+    pub fn coerce_to_number(&mut self, v: &Value) -> Result<f64, RuntimeError> {
+        if let Value::Object(id) = v {
+            let id = *id;
+            // (1) @@toPrimitive.
+            let tp = self.object_get(id, "@@toPrimitive");
+            if matches!(tp, Value::Object(_)) {
+                let r = self.call_function(tp, v.clone(), vec![
+                    Value::String(Rc::new("number".into())),
+                ])?;
+                if !matches!(r, Value::Object(_)) {
+                    return Ok(crate::abstract_ops::to_number(&r));
+                }
+            }
+            // (2) valueOf (number hint prefers valueOf first per §7.1.1.1).
+            let vo = self.object_get(id, "valueOf");
+            if matches!(vo, Value::Object(_)) {
+                let r = self.call_function(vo, v.clone(), Vec::new())?;
+                if !matches!(r, Value::Object(_)) {
+                    return Ok(crate::abstract_ops::to_number(&r));
+                }
+            }
+            // (3) toString.
+            let ts = self.object_get(id, "toString");
+            if matches!(ts, Value::Object(_)) {
+                let r = self.call_function(ts, v.clone(), Vec::new())?;
+                if !matches!(r, Value::Object(_)) {
+                    return Ok(crate::abstract_ops::to_number(&r));
+                }
+            }
+            return Err(RuntimeError::TypeError(
+                "Cannot convert object to primitive value".into()));
+        }
+        Ok(crate::abstract_ops::to_number(v))
+    }
+
     pub fn coerce_to_string(&mut self, v: &Value) -> Result<String, RuntimeError> {
         if let Value::Object(id) = v {
             let id = *id;
@@ -530,7 +570,7 @@ impl Runtime {
         // {get: ...})) dispatch their getter rather than returning the
         // raw undefined data slot.
         let v = self.read_property(id, "length").unwrap_or(Value::Undefined);
-        let n = crate::abstract_ops::to_number(&v);
+        let n = self.coerce_to_number(&v).unwrap_or(f64::NAN);
         if n.is_nan() || n <= 0.0 { return 0; }
         if !n.is_finite() { return usize::MAX; }
         let n = n.floor();
