@@ -122,7 +122,11 @@ pub fn install(rt: &mut Runtime) {
         // (or `module.exports = fn` reaching the ESM hook through a
         // .mjs build). Lift them only when default is a function and
         // the property isn't already explicitly named.
-        if has_default {
+        // Ω.5.P53.E12: narrow the lift to the case where `default` is
+        // the sole explicit export. axios / got / ky / package-json have
+        // named exports alongside default and Bun does NOT lift on those —
+        // P53.E11 widened too aggressively and regressed 7 dyn-import pkgs.
+        if has_default && named_count == 0 {
             if let Value::Object(fn_id) = default_value {
                 use rusty_js_runtime::value::InternalKind;
                 let is_fn = matches!(
