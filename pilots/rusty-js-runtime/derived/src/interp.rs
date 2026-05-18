@@ -261,6 +261,22 @@ impl Runtime {
     /// (2) else call obj.toString() if callable and primitive return;
     /// (3) else call obj.valueOf() if callable and primitive return;
     /// (4) all three returned Objects → TypeError per §7.1.1.1 step 6.
+    /// Ω.5.P62.E5: IsCallable per ECMA §7.2.4 — true iff `v` is an Object
+    /// whose internal kind is one of the callable forms (Function,
+    /// Closure, BoundFunction, Proxy with callable target). Used by
+    /// Array.prototype.{map,forEach,filter,...} step 3 to throw
+    /// TypeError before invoking a non-callable callback.
+    pub fn is_callable(&self, v: &Value) -> bool {
+        if let Value::Object(id) = v {
+            return matches!(self.obj(*id).internal_kind,
+                crate::value::InternalKind::Function(_)
+                | crate::value::InternalKind::Closure(_)
+                | crate::value::InternalKind::BoundFunction(_)
+                | crate::value::InternalKind::Proxy(_));
+        }
+        false
+    }
+
     /// Ω.5.P62.E1: unwrap a primitive-wrapper object's [[__primitive__]]
     /// slot. Returns the boxed primitive Value (String/Number/Boolean/
     /// BigInt/Symbol) if `v` is a wrapper, else returns `v` unchanged.
@@ -508,10 +524,16 @@ impl Runtime {
 
     /// Array length helper used by Array.prototype.* methods.
     pub fn array_length(&self, id: ObjectRef) -> usize {
-        match self.object_get(id, "length") {
-            Value::Number(n) if n.is_finite() && n >= 0.0 => n as usize,
-            _ => 0,
-        }
+        // Ω.5.P62.E6: ToLength per ECMA §7.1.20 — ToNumber(v) then clamp.
+        // Array.prototype.map.call({length: "2"}, ...) must read 2.
+        let v = self.object_get(id, "length");
+        let n = crate::abstract_ops::to_number(&v);
+        if n.is_nan() || n <= 0.0 { return 0; }
+        if !n.is_finite() { return usize::MAX; }
+        let n = n.floor();
+        let max_safe = 9007199254740991.0_f64; // 2^53 - 1
+        let clamped = if n > max_safe { max_safe } else { n };
+        clamped as usize
     }
 
     /// OrdinaryDefineOwnProperty — own-key set on the named object.

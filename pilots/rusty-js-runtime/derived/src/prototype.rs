@@ -519,6 +519,9 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("Array.prototype.flatMap: callback required".into()))?;
+        if !rt.is_callable(&cb) {
+            return Err(RuntimeError::TypeError("Array.prototype.flatMap: callback is not callable".into()));
+        }
         let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
         let len = rt.array_length(id);
         let out = rt.alloc_object(Object::new_array());
@@ -551,6 +554,9 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("Array.prototype.map: callback required".into()))?;
+        if !rt.is_callable(&cb) {
+            return Err(RuntimeError::TypeError("Array.prototype.map: callback is not callable".into()));
+        }
         let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
         let len = rt.array_length(id);
         let out = rt.alloc_object(Object::new_array());
@@ -572,6 +578,9 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("Array.prototype.forEach: callback required".into()))?;
+        if !rt.is_callable(&cb) {
+            return Err(RuntimeError::TypeError("Array.prototype.forEach: callback is not callable".into()));
+        }
         let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
         let len = rt.array_length(id);
         for i in 0..len {
@@ -588,6 +597,9 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("Array.prototype.filter: callback required".into()))?;
+        if !rt.is_callable(&cb) {
+            return Err(RuntimeError::TypeError("Array.prototype.filter: callback is not callable".into()));
+        }
         let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
         let len = rt.array_length(id);
         let out = rt.alloc_object(Object::new_array());
@@ -615,6 +627,9 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("Array.prototype.reduce: callback required".into()))?;
+        if !rt.is_callable(&cb) {
+            return Err(RuntimeError::TypeError("Array.prototype.reduce: callback is not callable".into()));
+        }
         let len = rt.array_length(id);
         let has_init = args.len() >= 2;
         let mut i = 0usize;
@@ -653,6 +668,9 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("find: callback required".into()))?;
+        if !rt.is_callable(&cb) {
+            return Err(RuntimeError::TypeError("Array.prototype.find: callback is not callable".into()));
+        }
         let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
         let len = rt.array_length(id);
         for i in 0..len {
@@ -668,6 +686,9 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("some: callback required".into()))?;
+        if !rt.is_callable(&cb) {
+            return Err(RuntimeError::TypeError("Array.prototype.some: callback is not callable".into()));
+        }
         let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
         let len = rt.array_length(id);
         for i in 0..len {
@@ -733,6 +754,9 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("every: callback required".into()))?;
+        if !rt.is_callable(&cb) {
+            return Err(RuntimeError::TypeError("Array.prototype.every: callback is not callable".into()));
+        }
         let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
         let len = rt.array_length(id);
         for i in 0..len {
@@ -796,6 +820,9 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("findIndex: callback required".into()))?;
+        if !rt.is_callable(&cb) {
+            return Err(RuntimeError::TypeError("Array.prototype.findIndex: callback is not callable".into()));
+        }
         let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
         let len = rt.array_length(id);
         for i in 0..len {
@@ -811,6 +838,9 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("findLast: callback required".into()))?;
+        if !rt.is_callable(&cb) {
+            return Err(RuntimeError::TypeError("Array.prototype.findLast: callback is not callable".into()));
+        }
         let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
         let len = rt.array_length(id);
         for i in (0..len).rev() {
@@ -826,6 +856,9 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("findLastIndex: callback required".into()))?;
+        if !rt.is_callable(&cb) {
+            return Err(RuntimeError::TypeError("Array.prototype.findLastIndex: callback is not callable".into()));
+        }
         let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
         let len = rt.array_length(id);
         for i in (0..len).rev() {
@@ -842,6 +875,9 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("reduceRight: callback required".into()))?;
+        if !rt.is_callable(&cb) {
+            return Err(RuntimeError::TypeError("Array.prototype.reduceRight: callback is not callable".into()));
+        }
         let len = rt.array_length(id);
         let has_init = args.len() >= 2;
         let mut i: i64 = (len as i64) - 1;
