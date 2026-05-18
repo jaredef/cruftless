@@ -1006,6 +1006,12 @@ impl Compiler {
                 for site in frame.break_patches { self.patch_jump_at(site); }
             }
             Stmt::For { init, test, update, body, .. } => {
+                // Ω.5.P52.E4: scope let/const declared in the for-header to
+                // the entire for-statement, not the enclosing function.
+                // Mirrors Stmt::Block's snapshot+rename pattern so resolve_local
+                // stops matching the header bindings after loop exit.
+                let scope_snapshot = self.locals.len();
+                self.block_depth += 1;
                 if let Some(init) = init {
                     match init {
                         ForInit::Variable(v) => self.compile_stmt(&Stmt::Variable(v.clone()))?,
@@ -1042,6 +1048,13 @@ impl Compiler {
                 if let Some(j) = jump_if_false { self.patch_jump(j); }
                 let frame = self.loop_stack.pop().unwrap();
                 for site in frame.break_patches { self.patch_jump_at(site); }
+                self.block_depth -= 1;
+                for i in scope_snapshot..self.locals.len() {
+                    let nm = &self.locals[i].name;
+                    if !nm.starts_with('<') {
+                        self.locals[i].name = format!("<scoped@{}>{}", i, nm);
+                    }
+                }
             }
             Stmt::ForOf { left, right, body, await_, .. } => {
                 // Tier-Ω.5.cc: for-await-of lowers identically to for-of.
@@ -1050,6 +1063,11 @@ impl Compiler {
                 // suspension is dropped. Iterator-protocol-with-async-
                 // iterators handling is queued for a substrate round.
                 let _ = await_;
+                // Ω.5.P52.E4: scope the for-of binding (`for (const x of arr)`)
+                // to the for-statement, not the function. Snapshot + rename
+                // mirrors Stmt::Block.
+                let scope_snapshot = self.locals.len();
+                self.block_depth += 1;
                 // Allocate hidden slot for the iterator and a binding slot
                 // for the loop variable.
                 let iter_slot = self.alloc_local(LocalDescriptor {
@@ -1188,6 +1206,13 @@ impl Compiler {
                 encode_op(&mut self.bytecode, Op::Pop);
                 let frame = self.loop_stack.pop().unwrap();
                 for site in frame.break_patches { self.patch_jump_at(site); }
+                self.block_depth -= 1;
+                for i in scope_snapshot..self.locals.len() {
+                    let nm = &self.locals[i].name;
+                    if !nm.starts_with('<') {
+                        self.locals[i].name = format!("<scoped@{}>{}", i, nm);
+                    }
+                }
             }
             Stmt::Break { label, .. } => {
                 match label {
@@ -1263,6 +1288,12 @@ impl Compiler {
                 self.bytecode[catch_off_patch..catch_off_patch + 4]
                     .copy_from_slice(&(catch_pos as u32).to_le_bytes());
                 if let Some(h) = handler {
+                    // Ω.5.P52.E4: scope the catch parameter to the handler
+                    // body. Pre-fix the catch-param slot persisted in the
+                    // function's locals, leaking the thrown value into outer
+                    // resolve_local lookups.
+                    let scope_snapshot = self.locals.len();
+                    self.block_depth += 1;
                     // Binding the catch param to a local: v1 pops the thrown
                     // value into a fresh slot if param present, else discards.
                     if let Some(p) = &h.param {
@@ -1277,6 +1308,13 @@ impl Compiler {
                         encode_op(&mut self.bytecode, Op::Pop);
                     }
                     self.compile_stmt(&h.body)?;
+                    self.block_depth -= 1;
+                    for i in scope_snapshot..self.locals.len() {
+                        let nm = &self.locals[i].name;
+                        if !nm.starts_with('<') {
+                            self.locals[i].name = format!("<scoped@{}>{}", i, nm);
+                        }
+                    }
                 }
                 self.patch_jump(jump_to_end);
                 if let Some(fin) = finalizer {
@@ -1427,6 +1465,10 @@ impl Compiler {
                 //
                 // Lower as: keys = Object.keys(obj); for (i=0; i<keys.length; i++)
                 //   bind = keys[i]; body.
+                //
+                // Ω.5.P52.E4: scope the for-in binding (`for (const k in obj)`).
+                let scope_snapshot = self.locals.len();
+                self.block_depth += 1;
                 let keys_slot = self.alloc_temp("<forin.keys>");
                 let len_slot = self.alloc_temp("<forin.len>");
                 let idx_slot = self.alloc_temp("<forin.idx>");
@@ -1547,6 +1589,13 @@ impl Compiler {
                 self.patch_jump(j_done);
                 let frame = self.loop_stack.pop().unwrap();
                 for site in frame.break_patches { self.patch_jump_at(site); }
+                self.block_depth -= 1;
+                for i in scope_snapshot..self.locals.len() {
+                    let nm = &self.locals[i].name;
+                    if !nm.starts_with('<') {
+                        self.locals[i].name = format!("<scoped@{}>{}", i, nm);
+                    }
+                }
             }
             Stmt::Labelled { label, body, .. } => {
                 // Tier-Ω.5.o: LabelledStatement. If the body is a loop,
