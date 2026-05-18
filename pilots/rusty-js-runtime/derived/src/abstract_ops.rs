@@ -70,8 +70,36 @@ pub fn number_to_string(n: f64) -> String {
     if n == f64::INFINITY { return "Infinity".to_string(); }
     if n == f64::NEG_INFINITY { return "-Infinity".to_string(); }
     if n == 0.0 { return "0".to_string(); }
+    // Ω.5.P61.E17: number-to-string per ECMA §6.1.6.1.20.
+    // - Integers below 2^53 use the exact i64 representation.
+    // - Integers between 2^53 and 10^21 use {:.0} (no exponential).
+    // - Values >= 10^21 use exponential notation per spec step 9.
+    // Pre-E17 cruftless used `n as i64` for everything < 1e21 which
+    // overflowed past ~9e18; test262 Object.getOwnPropertyDescriptor
+    // 2-16/17 surfaced this via numeric keys past 9e18.
     if n.fract() == 0.0 && n.abs() < 1e21 {
-        return format!("{}", n as i64);
+        if n.abs() < (1u64 << 53) as f64 {
+            return format!("{}", n as i64);
+        }
+        return format!("{:.0}", n);
+    }
+    if n.abs() >= 1e21 {
+        // ECMA-style exponential: 1e+21, 1.5e+22, -1e+21, etc.
+        // Rust's {:e} gives 1e21; need 1e+21 prefix.
+        let s = format!("{:e}", n);
+        // Patch sign: Rust gives 'e21', spec wants 'e+21' for positive.
+        let mut out = String::new();
+        let mut i = 0;
+        let bytes = s.as_bytes();
+        while i < bytes.len() {
+            let c = bytes[i] as char;
+            out.push(c);
+            if c == 'e' && i + 1 < bytes.len() && bytes[i + 1] as char != '-' && bytes[i + 1] as char != '+' {
+                out.push('+');
+            }
+            i += 1;
+        }
+        return out;
     }
     format!("{}", n)
 }
