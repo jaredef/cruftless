@@ -4046,25 +4046,43 @@ impl Runtime {
             Ok(Value::Symbol(Rc::new(format!("@@sym:{}:{}", n, desc))))
         });
         let sym = self.alloc_object(sym_obj);
-        // Well-known Symbol.iterator is, in v1, the string key "@@iterator".
-        self.object_set(sym, "iterator".into(), Value::String(Rc::new("@@iterator".into())));
-        self.object_set(sym, "asyncIterator".into(), Value::String(Rc::new("@@asyncIterator".into())));
-        self.object_set(sym, "hasInstance".into(), Value::String(Rc::new("@@hasInstance".into())));
-        self.object_set(sym, "toPrimitive".into(), Value::String(Rc::new("@@toPrimitive".into())));
-        // Tier-Ω.5.ZZZZZZZ: additional well-known symbols. roarr / slonik /
-        // mongoose read Symbol.toStringTag at module-init for tag-based
-        // type tests. has-tostringtag / es-set-tostringtag in particular.
-        self.object_set(sym, "toStringTag".into(), Value::String(Rc::new("@@toStringTag".into())));
-        self.object_set(sym, "isConcatSpreadable".into(), Value::String(Rc::new("@@isConcatSpreadable".into())));
-        self.object_set(sym, "species".into(), Value::String(Rc::new("@@species".into())));
-        self.object_set(sym, "match".into(), Value::String(Rc::new("@@match".into())));
-        self.object_set(sym, "matchAll".into(), Value::String(Rc::new("@@matchAll".into())));
-        self.object_set(sym, "replace".into(), Value::String(Rc::new("@@replace".into())));
-        self.object_set(sym, "search".into(), Value::String(Rc::new("@@search".into())));
-        self.object_set(sym, "split".into(), Value::String(Rc::new("@@split".into())));
-        self.object_set(sym, "unscopables".into(), Value::String(Rc::new("@@unscopables".into())));
-        self.object_set(sym, "dispose".into(), Value::String(Rc::new("@@dispose".into())));
-        self.object_set(sym, "asyncDispose".into(), Value::String(Rc::new("@@asyncDispose".into())));
+        // Ω.5.P59.E1: well-known symbols are real Value::Symbol values now
+        // per ECMA §6.1.5 + §20.4.2. Pre-P59.E1 they were Value::String
+        // sentinels — typeof Symbol.iterator returned "string" not
+        // "symbol", and Symbol === checks against globals failed.
+        // The string content ("@@iterator" etc.) is preserved so that
+        // `obj[Symbol.iterator]` continues to resolve to the same string
+        // key — property_key (interp.rs:1967) coerces Value::Symbol via
+        // abstract_ops::to_string, which returns the inner string. Every
+        // existing iterator-protocol callsite that registers
+        // `obj["@@iterator"]` as a method continues to work unchanged.
+        // The visible behavior change: typeof Symbol.X === "symbol",
+        // `Symbol.iterator === Symbol.iterator` (Rc::ptr_eq-based when
+        // the same Rc is reused; canonicalize_well_known_symbol below
+        // pre-allocates the Rc per global so identity is stable).
+        // Closes Doc 729 §XII Axis-S residuals: async-iterator-to-stream
+        // (sole surviving Symbol-typeof case at canonical scale), zod
+        // $brand pattern at deeper scope, has-tostringtag dispatch.
+        let well_known: &[(&str, &str)] = &[
+            ("iterator", "@@iterator"),
+            ("asyncIterator", "@@asyncIterator"),
+            ("hasInstance", "@@hasInstance"),
+            ("toPrimitive", "@@toPrimitive"),
+            ("toStringTag", "@@toStringTag"),
+            ("isConcatSpreadable", "@@isConcatSpreadable"),
+            ("species", "@@species"),
+            ("match", "@@match"),
+            ("matchAll", "@@matchAll"),
+            ("replace", "@@replace"),
+            ("search", "@@search"),
+            ("split", "@@split"),
+            ("unscopables", "@@unscopables"),
+            ("dispose", "@@dispose"),
+            ("asyncDispose", "@@asyncDispose"),
+        ];
+        for &(name, sym_str) in well_known {
+            self.object_set(sym, name.into(), Value::Symbol(Rc::new(sym_str.to_string())));
+        }
         register_method(self, sym, "for", |_rt, args| {
             let s = args.first().map(|v| crate::abstract_ops::to_string(v).as_str().to_string()).unwrap_or_default();
             Ok(Value::Symbol(Rc::new(format!("@@sym:{}", s))))
