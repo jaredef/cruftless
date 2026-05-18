@@ -197,8 +197,18 @@ fn install_regexp_proto(rt: &mut Runtime, host: ObjectRef) {
 
     register_method(rt, host, "exec", |rt, args| {
         let this_id = current_regexp_this(rt, "RegExp.prototype.exec")?;
-        let input = abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined))
-            .as_str().to_string();
+        // Ω.5.P60.E4: full ECMA §7.1.17 ToString on the argument — for
+        // Object inputs this dispatches @@toPrimitive('string') first, then
+        // toString(), then valueOf() per OrdinaryToPrimitive. is-regex
+        // detects RegExps by passing a badStringifier-Object whose
+        // @@toPrimitive / toString / valueOf throw a marker; pre-P60.E4
+        // cruftless's static to_string returned "[object Object]" for
+        // Objects without dispatch and is-regex returned undefined → 27-
+        // package regression visible post-P59.E1 once Symbol.toPrimitive
+        // became a real Value::Symbol and the polyfill entered the
+        // toPrimitive-trap branch.
+        let arg = args.first().cloned().unwrap_or(Value::Undefined);
+        let input = rt.coerce_to_string(&arg)?;
         regexp_exec(rt, this_id, &input)
     });
 
