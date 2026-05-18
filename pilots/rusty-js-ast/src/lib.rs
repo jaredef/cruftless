@@ -166,8 +166,21 @@ pub enum ArrayElement {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ObjectProperty {
-    Property { key: ObjectKey, value: Expr, shorthand: bool, span: Span },
+    Property { key: ObjectKey, value: Expr, shorthand: bool, kind: ObjectPropertyKind, span: Span },
     Spread { expr: Expr, span: Span },
+}
+
+/// Ω.5.P52.E1: distinguishes data property vs accessor-pair members in
+/// object literals. Defaults to Init for normal `{key: value}` / shorthand
+/// methods. Get / Set are produced by the parser's accessor-shorthand path
+/// (`get name() {}` / `set name(v) {}`). The compiler dispatches: Init
+/// emits a data InitProp; Get / Set install accessor descriptors via the
+/// `__install_accessor__` global helper.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ObjectPropertyKind {
+    Init,
+    Get,
+    Set,
 }
 
 #[derive(Debug, Clone, PartialEq)]

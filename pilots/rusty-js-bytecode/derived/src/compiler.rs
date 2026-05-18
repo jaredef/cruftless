@@ -2375,7 +2375,61 @@ impl Compiler {
                 encode_op(&mut self.bytecode, Op::NewObject);
                 for p in properties {
                     match p {
-                        ObjectProperty::Property { key, value, .. } => {
+                        ObjectProperty::Property { key, value, kind, .. } => {
+                            // Ω.5.P52.E1: getter/setter object-literal shorthand
+                            // (`{get name(){...}, set name(v){...}}`) installs an
+                            // accessor descriptor pair on the target via the
+                            // __install_accessor__ global helper. The data-property
+                            // path remains unchanged for `kind == Init`. Mirrors
+                            // the class-member getter/setter compile path at
+                            // Ω.5.kkkkkk; consumers writing `o.name = v` now hit
+                            // the setter instead of overwriting the accessor with
+                            // a fresh data property.
+                            if matches!(kind, rusty_js_ast::ObjectPropertyKind::Get
+                                            | rusty_js_ast::ObjectPropertyKind::Set) {
+                                let helper = self.constants.intern(
+                                    Constant::String("__install_accessor__".into()));
+                                let kind_str = if matches!(kind, rusty_js_ast::ObjectPropertyKind::Get) { "get" } else { "set" };
+                                let kind_idx = self.constants.intern(Constant::String(kind_str.into()));
+                                // Stack: [target] -> dup so target survives the call.
+                                encode_op(&mut self.bytecode, Op::Dup);                  // [t, t]
+                                encode_op(&mut self.bytecode, Op::LoadGlobal);           // [t, t, helper]
+                                encode_u16(&mut self.bytecode, helper);
+                                encode_op(&mut self.bytecode, Op::Swap);                 // [t, helper, t]
+                                // Push the key — static keys as a PushConst string;
+                                // computed keys via compile_expr (the key value at
+                                // runtime gets ToString'd by __install_accessor__).
+                                match key {
+                                    ObjectKey::Identifier { name, .. } => {
+                                        let key_idx = self.constants.intern(Constant::String(name.clone()));
+                                        encode_op(&mut self.bytecode, Op::PushConst);
+                                        encode_u16(&mut self.bytecode, key_idx);
+                                    }
+                                    ObjectKey::String { value: name, .. } => {
+                                        let key_idx = self.constants.intern(Constant::String(name.clone()));
+                                        encode_op(&mut self.bytecode, Op::PushConst);
+                                        encode_u16(&mut self.bytecode, key_idx);
+                                    }
+                                    ObjectKey::Number { value: num, .. } => {
+                                        let s = if num.fract() == 0.0 {
+                                            format!("{}", *num as i64)
+                                        } else { format!("{}", num) };
+                                        let key_idx = self.constants.intern(Constant::String(s));
+                                        encode_op(&mut self.bytecode, Op::PushConst);
+                                        encode_u16(&mut self.bytecode, key_idx);
+                                    }
+                                    ObjectKey::Computed { expr: key_expr, .. } => {
+                                        self.compile_expr(key_expr)?;
+                                    }
+                                }
+                                encode_op(&mut self.bytecode, Op::PushConst);            // [t, helper, t, key, kind]
+                                encode_u16(&mut self.bytecode, kind_idx);
+                                self.compile_expr(value)?;                                // [t, helper, t, key, kind, fn]
+                                encode_op(&mut self.bytecode, Op::Call);                 // [t, result]
+                                encode_u8(&mut self.bytecode, 4);
+                                encode_op(&mut self.bytecode, Op::Pop);                  // [t]
+                                continue;
+                            }
                             match key {
                                 ObjectKey::Identifier { name, .. } | ObjectKey::String { value: name, .. } => {
                                     // Tier-Ω.5.ssssss: `{__proto__: X}` sets

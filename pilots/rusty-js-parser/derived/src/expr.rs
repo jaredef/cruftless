@@ -14,7 +14,7 @@ use crate::parser::{ParseError, Parser};
 use crate::token::{Punct, TokenKind};
 use rusty_js_ast::{
     Argument, ArrayElement, ArrowBody, AssignOp, BinaryOp, Expr, MemberProperty,
-    ObjectKey, ObjectProperty, Span, UnaryOp, UpdateOp,
+    ObjectKey, ObjectProperty, ObjectPropertyKind, Span, UnaryOp, UpdateOp,
 };
 
 impl<'src> Parser<'src> {
@@ -713,7 +713,7 @@ impl<'src> Parser<'src> {
                     span: Span::new(prop_start, end),
                 };
                 properties.push(ObjectProperty::Property {
-                    key, value: func, shorthand: false, span: Span::new(prop_start, end),
+                    key, value: func, shorthand: false, kind: ObjectPropertyKind::Init, span: Span::new(prop_start, end),
                 });
             } else if self.looks_like_async_method_shorthand() {
                 // Tier-Ω.5.vv: `async name(...) { body }` object method
@@ -743,16 +743,21 @@ impl<'src> Parser<'src> {
                     span: Span::new(prop_start, end),
                 };
                 properties.push(ObjectProperty::Property {
-                    key, value: func, shorthand: false, span: Span::new(prop_start, end),
+                    key, value: func, shorthand: false, kind: ObjectPropertyKind::Init, span: Span::new(prop_start, end),
                 });
             } else if self.looks_like_accessor_shorthand() {
-                // Tier-Ω.5.p.parse: getter/setter shorthand `get name() { body }` /
-                // `set name(v) { body }`. v1 deviation: drop accessor-descriptor
-                // semantics — the accessor function is stored as a plain
-                // function-valued property under the accessor's name. Real
-                // getter/setter behavior is queued for a follow-on substrate
-                // round when Object.defineProperty accessor descriptors land.
+                // Ω.5.P52.E1: getter/setter shorthand `get name() {body}` /
+                // `set name(v) {body}` now records its accessor kind on the
+                // ObjectProperty::Property variant. The compiler dispatches
+                // Get / Set kinds to install accessor descriptors via the
+                // __install_accessor__ global helper (mirrors class-member
+                // accessor compilation at Ω.5.kkkkkk).
                 let prop_start = self.lookahead_span().start;
+                let kind = match self.current_kind() {
+                    TokenKind::Ident(n) if n == "get" => ObjectPropertyKind::Get,
+                    TokenKind::Ident(n) if n == "set" => ObjectPropertyKind::Set,
+                    _ => unreachable!("looks_like_accessor_shorthand returned true without get/set token"),
+                };
                 self.bump()?; // consume `get` or `set`
                 let key = self.parse_object_key()?;
                 let params = self.parse_function_parameters()?;
@@ -767,7 +772,7 @@ impl<'src> Parser<'src> {
                     span: Span::new(prop_start, end),
                 };
                 properties.push(ObjectProperty::Property {
-                    key, value: func, shorthand: false, span: Span::new(prop_start, end),
+                    key, value: func, shorthand: false, kind, span: Span::new(prop_start, end),
                 });
             } else {
                 let prop_start = self.lookahead_span().start;
@@ -777,7 +782,7 @@ impl<'src> Parser<'src> {
                     let value = self.parse_assignment_expression()?;
                     let end = value.span().end;
                     properties.push(ObjectProperty::Property {
-                        key, value, shorthand: false, span: Span::new(prop_start, end),
+                        key, value, shorthand: false, kind: ObjectPropertyKind::Init, span: Span::new(prop_start, end),
                     });
                 } else if matches!(self.current_kind(), TokenKind::Punct(Punct::LParen)) {
                     // Tier-Ω.5.l: method shorthand `{ name(params) { body } }` —
@@ -798,7 +803,7 @@ impl<'src> Parser<'src> {
                         span: Span::new(prop_start, end),
                     };
                     properties.push(ObjectProperty::Property {
-                        key, value: func, shorthand: false, span: Span::new(prop_start, end),
+                        key, value: func, shorthand: false, kind: ObjectPropertyKind::Init, span: Span::new(prop_start, end),
                     });
                 } else {
                     // Bare shorthand `{ x }` — value is Identifier with same name.
@@ -829,7 +834,7 @@ impl<'src> Parser<'src> {
                     };
                     let val_end = value.span().end;
                     properties.push(ObjectProperty::Property {
-                        key, value, shorthand: true, span: Span::new(prop_start, val_end),
+                        key, value, shorthand: true, kind: ObjectPropertyKind::Init, span: Span::new(prop_start, val_end),
                     });
                 }
             }
