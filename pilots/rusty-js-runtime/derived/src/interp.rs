@@ -255,25 +255,20 @@ impl Runtime {
     /// `this` for the active native call. Returns Undefined outside one.
     pub fn current_this(&self) -> Value { self.current_this.clone() }
 
-    /// Ω.5.P60.E4: full ECMA §7.1.17 ToString. For non-Object values
-    /// defers to `abstract_ops::to_string` (the cheap path). For Object
-    /// values runs OrdinaryToPrimitive('string') per §7.1.1.1:
-    /// (1) if obj[@@toPrimitive] is callable, call it with hint 'string'
-    ///     and ToString the result;
-    /// (2) else call obj.toString() if callable and the return is
-    ///     primitive;
-    /// (3) else call obj.valueOf() if callable and the return is
-    ///     primitive;
-    /// (4) else throw TypeError ("[object Object]" fallback retained for
-    ///     ToString — only OrdinaryToPrimitive throws).
-    /// Errors thrown by the callbacks propagate so the
-    /// `try { exec(value, badStringifier) } catch (e) { ... }` idiom in
-    /// is-regex et al. observes them.
+    /// Ω.5.P60.E4 + Ω.5.P61.E16: full ECMA §7.1.17 ToString with
+    /// §7.1.1.1 OrdinaryToPrimitive('string') for Object values:
+    /// (1) if obj[@@toPrimitive] is callable, call with hint 'string';
+    /// (2) else call obj.toString() if callable and primitive return;
+    /// (3) else call obj.valueOf() if callable and primitive return;
+    /// (4) all three returned Objects → TypeError per §7.1.1.1 step 6.
     pub fn coerce_to_string(&mut self, v: &Value) -> Result<String, RuntimeError> {
         if let Value::Object(id) = v {
+            let id = *id;
+            let mut tried = false;
             // (1) @@toPrimitive.
-            let tp = self.object_get(*id, "@@toPrimitive");
+            let tp = self.object_get(id, "@@toPrimitive");
             if matches!(tp, Value::Object(_)) {
+                tried = true;
                 let r = self.call_function(tp, v.clone(), vec![
                     Value::String(Rc::new("string".into())),
                 ])?;
@@ -282,20 +277,31 @@ impl Runtime {
                 }
             }
             // (2) toString.
-            let ts = self.object_get(*id, "toString");
+            let ts = self.object_get(id, "toString");
             if matches!(ts, Value::Object(_)) {
+                tried = true;
                 let r = self.call_function(ts, v.clone(), Vec::new())?;
                 if !matches!(r, Value::Object(_)) {
                     return Ok(crate::abstract_ops::to_string(&r).as_str().to_string());
                 }
             }
             // (3) valueOf.
-            let vo = self.object_get(*id, "valueOf");
+            let vo = self.object_get(id, "valueOf");
             if matches!(vo, Value::Object(_)) {
+                tried = true;
                 let r = self.call_function(vo, v.clone(), Vec::new())?;
                 if !matches!(r, Value::Object(_)) {
                     return Ok(crate::abstract_ops::to_string(&r).as_str().to_string());
                 }
+            }
+            // (4) All callable methods returned Objects (or none were
+            // callable). Per spec, if any of them were called and all
+            // returned Object, throw TypeError. If NONE were callable,
+            // fall through to the static "[object Object]" form (which
+            // is what abstract_ops::to_string yields).
+            if tried {
+                return Err(RuntimeError::TypeError(
+                    "Cannot convert object to primitive value".into()));
             }
         }
         Ok(crate::abstract_ops::to_string(v).as_str().to_string())

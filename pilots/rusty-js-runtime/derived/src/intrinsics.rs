@@ -1474,8 +1474,11 @@ impl Runtime {
                     }).unwrap_or_else(|| "missing".into())
                 ))),
             };
-            let key = abstract_ops::to_string(&args.get(1).cloned().unwrap_or(Value::Undefined))
-                .as_str().to_string();
+            // Ω.5.P61.E16: ToPropertyKey on the key argument per
+            // ECMA §7.1.19. For Object values, dispatches @@toPrimitive /
+            // toString / valueOf; throws TypeError if all return Objects.
+            let key_v = args.get(1).cloned().unwrap_or(Value::Undefined);
+            let key = rt.coerce_to_string(&key_v)?;
             let desc = args.get(2).cloned().unwrap_or(Value::Undefined);
             let desc_id = match desc {
                 Value::Object(id) => id,
@@ -1488,6 +1491,17 @@ impl Runtime {
             let setter = rt.object_get(desc_id, "set");
             let has_getter = matches!(&getter, Value::Object(_));
             let has_setter = matches!(&setter, Value::Object(_));
+            // Ω.5.P61.E16: §6.2.5.5 ToPropertyDescriptor step 10 — a
+            // descriptor that mixes accessor (get/set) and data
+            // (value/writable) attributes throws TypeError.
+            let has_value_key = rt.obj(desc_id).properties.contains_key("value")
+                || rt.obj(desc_id).properties.contains_key("writable");
+            let has_accessor_key = rt.obj(desc_id).properties.contains_key("get")
+                || rt.obj(desc_id).properties.contains_key("set");
+            if has_value_key && has_accessor_key {
+                return Err(RuntimeError::TypeError(
+                    "Invalid property descriptor: cannot both specify accessors and a value or writable attribute".into()));
+            }
             if has_getter || has_setter {
                 rt.obj_mut(target).properties.insert(key, crate::value::PropertyDescriptor {
                     value: Value::Undefined,
