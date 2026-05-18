@@ -2038,9 +2038,13 @@ impl Runtime {
         // `.constructor` backref — sufficient for the [[Prototype]] wiring
         // at class-init, and for util.inherits(X, Request) which reads
         // super_.prototype. Real implementations are deferred.
+        // Bulk-install: WHATWG stream ctors + the fetch-API ctors that
+        // don't need post-construction state (Response/Blob/File/FormData
+        // + the stream sub-types). These return an empty-prototype'd
+        // instance; method calls on the returned value still fail
+        // downstream — only the construction gate is open.
         for name in &[
-            "Request", "Response", "Headers", "FormData", "Blob", "File",
-            // WHATWG Streams — playwright extends TransformStream.
+            "Response", "FormData", "Blob", "File",
             "ReadableStream", "WritableStream", "TransformStream",
             "ReadableStreamDefaultReader", "ReadableStreamBYOBReader",
             "ReadableStreamDefaultController", "ReadableByteStreamController",
@@ -2051,13 +2055,6 @@ impl Runtime {
         ] {
             let proto = self.alloc_object(Object::new_ordinary());
             let proto_for_closure = proto;
-            // Ω.5.P53.E3: WHATWG-stream + fetch-API ctors now benign at
-            // module-init. Pre-fix the ctor throw fired at construction
-            // time, killing import of ky / package-json / update-notifier
-            // and other consumers that instantiate streams during init.
-            // Mirrors the http.Agent / https.Agent benign-at-init pattern
-            // (P51.E4). Real stream behavior is still deferred to a
-            // substrate round; only construction succeeds here.
             let ctor = make_native(name, move |rt, _args| {
                 let mut inst = Object::new_ordinary();
                 inst.proto = Some(proto_for_closure);
@@ -2069,6 +2066,179 @@ impl Runtime {
             self.object_set(proto, "constructor".into(), Value::Object(id));
             self.globals.insert((*name).into(), Value::Object(id));
         }
+
+        // Ω.5.P53.E4: Headers ctor with populated prototype. ky and many
+        // other consumers do `new Request(url, opts).headers.has(...)` at
+        // module-init; the prior empty-prototype Headers instances tripped
+        // every method access. Implement the spec surface that consumers
+        // touch at module-init: has/get/set/append/delete, entries/keys/
+        // values, forEach. Instance state: a __headers Object keyed by
+        // lowercased name → string value.
+        let headers_proto = self.alloc_object(Object::new_ordinary());
+        let headers_proto_for_closure = headers_proto;
+        let headers_ctor_fn = make_native("Headers", move |rt, args| {
+            let mut inst = Object::new_ordinary();
+            inst.proto = Some(headers_proto_for_closure);
+            let id = rt.alloc_object(inst);
+            let bag = rt.alloc_object(Object::new_ordinary());
+            rt.object_set(id, "__headers".into(), Value::Object(bag));
+            // Init from arg 0: undefined / Object / Array / Headers-instance.
+            if let Some(init) = args.first() {
+                if let Value::Object(src) = init {
+                    // Try as plain object: copy own enumerable string keys.
+                    let pairs: Vec<(String, Value)> = rt.obj(*src).properties
+                        .iter()
+                        .filter(|(k, d)| d.enumerable && k.as_str() != "__headers")
+                        .map(|(k, d)| (k.clone(), d.value.clone()))
+                        .collect();
+                    for (k, v) in pairs {
+                        let lk = k.to_ascii_lowercase();
+                        let s = abstract_ops::to_string(&v).as_str().to_string();
+                        rt.object_set(bag, lk, Value::String(Rc::new(s)));
+                    }
+                    // If the src is itself a Headers instance, fold in its __headers too.
+                    if let Value::Object(src_bag) = rt.object_get(*src, "__headers") {
+                        let inner: Vec<(String, Value)> = rt.obj(src_bag).properties
+                            .iter().map(|(k, d)| (k.clone(), d.value.clone())).collect();
+                        for (k, v) in inner {
+                            rt.object_set(bag, k, v);
+                        }
+                    }
+                }
+            }
+            Ok(Value::Object(id))
+        });
+        let headers_ctor_id = self.alloc_object(headers_ctor_fn);
+        self.object_set(headers_ctor_id, "prototype".into(), Value::Object(headers_proto));
+        self.object_set(headers_proto, "constructor".into(), Value::Object(headers_ctor_id));
+        register_method(self, headers_proto, "has", |rt, args| {
+            let this_id = match rt.current_this() { Value::Object(o) => o, _ => return Ok(Value::Boolean(false)) };
+            let bag = match rt.object_get(this_id, "__headers") { Value::Object(b) => b, _ => return Ok(Value::Boolean(false)) };
+            let name = abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined))
+                .as_str().to_ascii_lowercase();
+            Ok(Value::Boolean(!matches!(rt.object_get(bag, &name), Value::Undefined)))
+        });
+        register_method(self, headers_proto, "get", |rt, args| {
+            let this_id = match rt.current_this() { Value::Object(o) => o, _ => return Ok(Value::Null) };
+            let bag = match rt.object_get(this_id, "__headers") { Value::Object(b) => b, _ => return Ok(Value::Null) };
+            let name = abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined))
+                .as_str().to_ascii_lowercase();
+            match rt.object_get(bag, &name) {
+                Value::Undefined => Ok(Value::Null),
+                v => Ok(v),
+            }
+        });
+        register_method(self, headers_proto, "set", |rt, args| {
+            let this_id = match rt.current_this() { Value::Object(o) => o, _ => return Ok(Value::Undefined) };
+            let bag = match rt.object_get(this_id, "__headers") { Value::Object(b) => b, _ => return Ok(Value::Undefined) };
+            let name = abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined))
+                .as_str().to_ascii_lowercase();
+            let value = abstract_ops::to_string(&args.get(1).cloned().unwrap_or(Value::Undefined))
+                .as_str().to_string();
+            rt.object_set(bag, name, Value::String(Rc::new(value)));
+            Ok(Value::Undefined)
+        });
+        register_method(self, headers_proto, "append", |rt, args| {
+            let this_id = match rt.current_this() { Value::Object(o) => o, _ => return Ok(Value::Undefined) };
+            let bag = match rt.object_get(this_id, "__headers") { Value::Object(b) => b, _ => return Ok(Value::Undefined) };
+            let name = abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined))
+                .as_str().to_ascii_lowercase();
+            let value = abstract_ops::to_string(&args.get(1).cloned().unwrap_or(Value::Undefined))
+                .as_str().to_string();
+            let existing = rt.object_get(bag, &name);
+            let combined = match existing {
+                Value::String(s) => format!("{}, {}", s, value),
+                _ => value,
+            };
+            rt.object_set(bag, name, Value::String(Rc::new(combined)));
+            Ok(Value::Undefined)
+        });
+        register_method(self, headers_proto, "delete", |rt, args| {
+            let this_id = match rt.current_this() { Value::Object(o) => o, _ => return Ok(Value::Undefined) };
+            let bag = match rt.object_get(this_id, "__headers") { Value::Object(b) => b, _ => return Ok(Value::Undefined) };
+            let name = abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined))
+                .as_str().to_ascii_lowercase();
+            rt.object_set(bag, name, Value::Undefined);
+            Ok(Value::Undefined)
+        });
+        register_method(self, headers_proto, "forEach", |rt, args| {
+            let this_id = match rt.current_this() { Value::Object(o) => o, _ => return Ok(Value::Undefined) };
+            let bag = match rt.object_get(this_id, "__headers") { Value::Object(b) => b, _ => return Ok(Value::Undefined) };
+            let cb = args.first().cloned().unwrap_or(Value::Undefined);
+            let pairs: Vec<(String, Value)> = rt.obj(bag).properties
+                .iter().map(|(k, d)| (k.clone(), d.value.clone())).collect();
+            for (k, v) in pairs {
+                rt.call_function(cb.clone(), Value::Undefined,
+                    vec![v, Value::String(Rc::new(k)), Value::Object(this_id)])?;
+            }
+            Ok(Value::Undefined)
+        });
+        self.globals.insert("Headers".into(), Value::Object(headers_ctor_id));
+
+        // Ω.5.P53.E4: Request ctor populates .headers from opts.headers, plus
+        // .url, .method, .body. Empty-instance pre-fix tripped consumers that
+        // chained off .headers immediately at module-init (ky's
+        // constants.js:12 supportsRequestStreams probe).
+        let request_proto = self.alloc_object(Object::new_ordinary());
+        let request_proto_for_closure = request_proto;
+        let request_ctor_fn = make_native("Request", move |rt, args| {
+            let mut inst = Object::new_ordinary();
+            inst.proto = Some(request_proto_for_closure);
+            let id = rt.alloc_object(inst);
+            let url = args.first().cloned().unwrap_or(Value::String(Rc::new(String::new())));
+            rt.object_set(id, "url".into(), url);
+            let opts = args.get(1).cloned().unwrap_or(Value::Undefined);
+            let (method, body, headers_init) = if let Value::Object(opts_id) = &opts {
+                let m = rt.object_get(*opts_id, "method");
+                let b = rt.object_get(*opts_id, "body");
+                let h = rt.object_get(*opts_id, "headers");
+                (m, b, h)
+            } else { (Value::Undefined, Value::Undefined, Value::Undefined) };
+            let method_s = match method {
+                Value::String(s) => (*s).clone(),
+                _ => "GET".to_string(),
+            };
+            rt.object_set(id, "method".into(), Value::String(Rc::new(method_s)));
+            rt.object_set(id, "body".into(), body);
+            // Synthesize a Headers via the global Headers ctor.
+            let h_inst = match rt.globals.get("Headers").cloned() {
+                Some(Value::Object(_)) => {
+                    // Inline: build a fresh Headers, fold headers_init.
+                    let mut h_obj = Object::new_ordinary();
+                    h_obj.proto = Some(headers_proto_for_closure);
+                    let h_id = rt.alloc_object(h_obj);
+                    let bag = rt.alloc_object(Object::new_ordinary());
+                    rt.object_set(h_id, "__headers".into(), Value::Object(bag));
+                    if let Value::Object(src) = headers_init {
+                        let pairs: Vec<(String, Value)> = rt.obj(src).properties
+                            .iter()
+                            .filter(|(k, d)| d.enumerable && k.as_str() != "__headers")
+                            .map(|(k, d)| (k.clone(), d.value.clone()))
+                            .collect();
+                        for (k, v) in pairs {
+                            let lk = k.to_ascii_lowercase();
+                            let s = abstract_ops::to_string(&v).as_str().to_string();
+                            rt.object_set(bag, lk, Value::String(Rc::new(s)));
+                        }
+                        if let Value::Object(src_bag) = rt.object_get(src, "__headers") {
+                            let inner: Vec<(String, Value)> = rt.obj(src_bag).properties
+                                .iter().map(|(k, d)| (k.clone(), d.value.clone())).collect();
+                            for (k, v) in inner {
+                                rt.object_set(bag, k, v);
+                            }
+                        }
+                    }
+                    Value::Object(h_id)
+                }
+                _ => Value::Undefined,
+            };
+            rt.object_set(id, "headers".into(), h_inst);
+            Ok(Value::Object(id))
+        });
+        let request_ctor_id = self.alloc_object(request_ctor_fn);
+        self.object_set(request_ctor_id, "prototype".into(), Value::Object(request_proto));
+        self.object_set(request_proto, "constructor".into(), Value::Object(request_ctor_id));
+        self.globals.insert("Request".into(), Value::Object(request_ctor_id));
         // fetch() as a callable global that returns a rejected-Promise-shaped
         // value (host-v2 lacks real Promise scheduling for fetch; the call
         // surface exists for module-init read-shape probes).
