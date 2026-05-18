@@ -2337,22 +2337,46 @@ impl Compiler {
                             }
                             encode_op(&mut self.bytecode, Op::CallMethod);
                             encode_u8(&mut self.bytecode, n as u8);
-                            let mut all_sinks = opt_sinks;
-                            all_sinks.extend(call_opt_sinks);
-                            if !all_sinks.is_empty() {
+                            // Ω.5.P53.E1: separate landing pads for member-?.
+                            // vs call-?. short-circuits. Pre-fix the two sink
+                            // sets fed a single landing that always popped as
+                            // if it came from the call-?. site (stack
+                            // [receiver, method]). When BOTH were optional and
+                            // the member-?. short-circuit fired (stack
+                            // [receiver]), the landing popped one too many
+                            // → 'operand stack underflow'. Manifested in
+                            // execa's transitive yoctocolors/base.js:6 chain
+                            // tty?.WriteStream?.prototype?.hasColors?.().
+                            //
+                            // Fix: jump to two distinct labels per sink class.
+                            // member-?. sinks land at a pad that pops [recv]
+                            // + pushes undef. call-?. sinks land at a pad
+                            // that pops [recv, method] + pushes undef.
+                            let has_mem_sinks = !opt_sinks.is_empty();
+                            let has_call_sinks = !call_opt_sinks.is_empty();
+                            if has_mem_sinks || has_call_sinks {
                                 let done = self.emit_jump(Op::Jump);
-                                for s in all_sinks { self.patch_jump_at(s); }
-                                // Short-circuit landing: pop the leftover
-                                // [receiver, method?] from the stack. For
-                                // member-?. it's [receiver]; for call-?. it's
-                                // [receiver, method]. Pop until we're past the
-                                // duplicate inserted for branching, then push
-                                // undefined as the call's result.
-                                if *call_optional {
-                                    encode_op(&mut self.bytecode, Op::Pop); // method
+                                // Member-?. landing: stack here is [receiver].
+                                if has_mem_sinks {
+                                    for s in opt_sinks { self.patch_jump_at(s); }
+                                    encode_op(&mut self.bytecode, Op::Pop); // receiver
+                                    encode_op(&mut self.bytecode, Op::PushUndef);
                                 }
-                                encode_op(&mut self.bytecode, Op::Pop); // receiver
-                                encode_op(&mut self.bytecode, Op::PushUndef);
+                                // Call-?. landing: stack here is [receiver, method].
+                                if has_call_sinks {
+                                    let skip_call_pad = if has_mem_sinks {
+                                        // After the member pad lands we'd
+                                        // fall through into the call pad,
+                                        // which would pop a non-existent
+                                        // method. Jump past it.
+                                        Some(self.emit_jump(Op::Jump))
+                                    } else { None };
+                                    for s in call_opt_sinks { self.patch_jump_at(s); }
+                                    encode_op(&mut self.bytecode, Op::Pop); // method
+                                    encode_op(&mut self.bytecode, Op::Pop); // receiver
+                                    encode_op(&mut self.bytecode, Op::PushUndef);
+                                    if let Some(j) = skip_call_pad { self.patch_jump_at(j); }
+                                }
                                 self.patch_jump_at(done);
                             }
                         }
