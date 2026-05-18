@@ -193,6 +193,22 @@ fn install_object_proto(rt: &mut Runtime, host: ObjectRef) {
 // ──────────────── %Array.prototype% ────────────────
 
 fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
+    // Ω.5.P61.E21: Array.prototype.toString per ECMA §23.1.3.34 —
+    // dispatch to this.join, falling back to Object.prototype.toString
+    // form when join is not callable. Pre-E21 cruftless inherited
+    // Object.prototype.toString which returned "[object Array]",
+    // breaking String([1])/ToPrimitive(arr) → joined-string and the
+    // ToPropertyKey-on-Array test262 tests.
+    register_intrinsic_method(rt, host, "toString", 0, |rt, _args| {
+        let this = rt.current_this();
+        if let Value::Object(id) = this {
+            let join = rt.object_get(id, "join");
+            if matches!(join, Value::Object(_)) {
+                return rt.call_function(join, Value::Object(id), Vec::new());
+            }
+        }
+        Ok(Value::String(Rc::new("[object Array]".into())))
+    });
     register_intrinsic_method(rt, host, "push", 1, |rt, args| {
         let id = to_array_this(rt)?;
         let mut len = rt.array_length(id);

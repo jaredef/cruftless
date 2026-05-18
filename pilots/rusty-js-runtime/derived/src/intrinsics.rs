@@ -2089,9 +2089,20 @@ impl Runtime {
     /// Carries `String.prototype` for the dense `String.prototype.X`
     /// access idiom (axios, etc.) used by polyfills + duck-type checks.
     fn install_string_global(&mut self) {
-        let str_obj = make_native("String", |_rt, args| {
+        let str_obj = make_native("String", |rt, args| {
+            // Ω.5.P61.E21: String(v) per ECMA §22.1.1.1 — when v is an
+            // Object, dispatch through ToPrimitive(string) → toString →
+            // valueOf so `String([1])` joins to "1" and
+            // `String(new Number(5))` → "5", not "[object Object]".
             let v = args.first().cloned().unwrap_or(Value::Undefined);
-            Ok(Value::String(Rc::new(abstract_ops::to_string(&v).as_str().to_string())))
+            if args.is_empty() {
+                return Ok(Value::String(Rc::new(String::new())));
+            }
+            if let Value::Symbol(_) = &v {
+                // Spec: String(sym) returns the description form, not TypeError.
+                return Ok(Value::String(Rc::new(abstract_ops::to_string(&v).as_str().to_string())));
+            }
+            Ok(Value::String(Rc::new(rt.coerce_to_string(&v)?)))
         });
         let str_id = self.alloc_object(str_obj);
         register_intrinsic_method(self, str_id, "fromCharCode", 1, |_rt, args| {
