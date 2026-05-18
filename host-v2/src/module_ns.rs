@@ -112,10 +112,28 @@ pub fn install(rt: &mut Runtime) {
         let is_module_field_esm = is_js_under_non_type_module_package(url);
 
         if !has_default && named_count == 0 {
-            // Tuple A (narrow): module exports nothing — install default
-            // as a fallback handle pointing at the empty namespace.
-            rt.object_set(ns, "default".to_string(), Value::Object(ns));
-            rt.module_ns_synth_trace.insert(url.to_string(), "ESM-finalize Tuple-A-empty".to_string());
+            // Ω.5.P57.E1: Tuple-A-empty further narrowed. Pre-P57.E1, any
+            // ESM module with zero exports got `default = namespace` as
+            // a fallback handle. micromark-util-types (type:module ESM,
+            // pure-types package with empty runtime exports) ended up
+            // with namespace `{default: {}}` where Bun produced just `{}`.
+            // Per Doc 729 §XIII the implicit constraint surfaced by
+            // walking the +Δ-default sub-cluster: don't synthesize even
+            // the empty fallback when the enclosing package is
+            // type:module — those packages are canonical ESM and Bun
+            // treats them as authoritative-empty rather than fallback-
+            // empty. The narrow keeps the fallback for the CJS-shimmed-
+            // as-ESM path (P43.E1's siblings) while closing the
+            // type:module-empty sub-cut.
+            let pkg_is_type_module = package_is_type_module(url);
+            if !pkg_is_type_module {
+                rt.object_set(ns, "default".to_string(), Value::Object(ns));
+                rt.module_ns_synth_trace.insert(url.to_string(),
+                    "ESM-finalize Tuple-A-empty (gated: not-type-module)".to_string());
+            } else {
+                rt.module_ns_synth_trace.insert(url.to_string(),
+                    "ESM-finalize Tuple-A-empty-suppressed (pkg type:module)".to_string());
+            }
             return Ok(());
         }
         if !has_default && is_module_field_esm {
