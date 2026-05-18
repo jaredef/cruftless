@@ -9,7 +9,9 @@
 #   parity-cluster.sh <cluster-name> [results.json] [out.json]
 #
 # Defaults:
-#   results.json = host/tools/parity-results-top500-postp49.json (newest canonical)
+#   results.json = host/tools/parity-results-top500-postp55.json (newest canonical
+#                  with broad sub-cluster coverage; post-P60.* sweeps will land
+#                  alongside as they're run)
 #   out.json     = host/tools/parity-results-cluster-<cluster-name>.json
 #
 # Cluster names: see select-cluster.py --help. Typical:
@@ -28,7 +30,7 @@ fi
 
 CLUSTER="$1"
 TOOLS="$(cd "$(dirname "$0")" && pwd)"
-RESULTS="${2:-$TOOLS/parity-results-top500-postp49.json}"
+RESULTS="${2:-$TOOLS/parity-results-top500-postp55.json}"
 OUT="${3:-$TOOLS/parity-results-cluster-${CLUSTER}.json}"
 
 if [ ! -f "$RESULTS" ]; then
