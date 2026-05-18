@@ -1039,6 +1039,29 @@ impl Runtime {
                     // receiver before calling so re-entrant access works.
                     let v = match &obj_v {
                         Value::Object(id) => {
+                            // Ω.5.P60.E1: Proxy get-trap dispatch. If obj
+                            // is a Proxy and handler.get is callable, call
+                            // handler.get(target, key, receiver) and use
+                            // its return value. Missing trap falls through
+                            // to target.
+                            let proxy_dispatch = if let crate::value::InternalKind::Proxy(p) =
+                                &self.obj(*id).internal_kind
+                            {
+                                Some((p.target, p.handler))
+                            } else { None };
+                            if let Some((target, handler)) = proxy_dispatch {
+                                let trap = self.object_get(handler, "get");
+                                if matches!(trap, Value::Object(_)) {
+                                    let receiver = obj_v.clone();
+                                    self.call_function(trap, Value::Object(handler), vec![
+                                        Value::Object(target),
+                                        Value::String(Rc::new(key.clone())),
+                                        receiver,
+                                    ])?
+                                } else {
+                                    self.object_get(target, &key)
+                                }
+                            } else {
                             // Tier-Ω.5.nnn: only check for accessor when the
                             // descriptor actually has one. Walking find_getter
                             // for every prop access has a cost; gate on
@@ -1060,6 +1083,7 @@ impl Runtime {
                                 self.call_function(getter, obj_v.clone(), Vec::new())?
                             } else {
                                 self.object_get(*id, &key)
+                            }
                             }
                         }
                         Value::String(s) if key == "length" => Value::Number(s.chars().count() as f64),
@@ -1162,7 +1186,25 @@ impl Runtime {
                         // {jsonSchema:...}) got undefined and bailed out
                         // of every schema-construction path.
                         Value::Object(id) => {
-                            if let Some(getter) = self.find_getter(id, &key) {
+                            // Ω.5.P60.E1: Proxy get-trap dispatch at
+                            // computed-key reads. Mirrors Op::GetProp.
+                            let proxy_dispatch = if let crate::value::InternalKind::Proxy(p) =
+                                &self.obj(id).internal_kind
+                            {
+                                Some((p.target, p.handler))
+                            } else { None };
+                            if let Some((target, handler)) = proxy_dispatch {
+                                let trap = self.object_get(handler, "get");
+                                if matches!(trap, Value::Object(_)) {
+                                    self.call_function(trap, Value::Object(handler), vec![
+                                        Value::Object(target),
+                                        Value::String(Rc::new(key.clone())),
+                                        Value::Object(id),
+                                    ])?
+                                } else {
+                                    self.object_get(target, &key)
+                                }
+                            } else if let Some(getter) = self.find_getter(id, &key) {
                                 self.call_function(getter, Value::Object(id), Vec::new())?
                             } else {
                                 self.object_get(id, &key)

@@ -252,6 +252,17 @@ pub enum InternalKind {
     Promise(PromiseState),
     /// Regular expression object per ECMA-262 §22.2. Tier-Ω.5.i.
     RegExp(RegExpInternals),
+    /// Ω.5.P60.E1: Proxy exotic object per ECMA-262 §10.5. Stores
+    /// target + handler ObjectIds. Property-access opcodes dispatch
+    /// through the handler's traps when present; missing-trap path
+    /// delegates to the target.
+    Proxy(ProxyInternals),
+}
+
+#[derive(Debug)]
+pub struct ProxyInternals {
+    pub target: ObjectRef,
+    pub handler: ObjectRef,
 }
 
 /// RegExp instance internals. `source` and `flags` retain the original JS
@@ -415,6 +426,7 @@ impl InternalKind {
             InternalKind::Error => "error",
             InternalKind::ModuleNamespace => "module-namespace",
             InternalKind::RegExp(_) => "regexp",
+            InternalKind::Proxy(_) => "proxy",
         }
     }
 }

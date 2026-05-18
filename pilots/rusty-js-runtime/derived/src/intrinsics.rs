@@ -2632,6 +2632,65 @@ impl Runtime {
         self.install_date_global();
         self.install_typed_array_stubs();
         self.install_weak_ref_globals();
+        self.install_proxy();
+    }
+
+    /// Ω.5.P60.E1: Proxy(target, handler) per ECMA-262 §28.2 + §10.5.
+    /// Creates a Proxy exotic object that delegates property access through
+    /// the handler's traps (get/set/has/deleteProperty/ownKeys/...) when
+    /// present; missing-trap path delegates to the target.
+    ///
+    /// v1 implementation scope: Op::GetProp / Op::GetIndex consult the
+    /// handler's `get` trap if present. Other traps (set/has/deleteProperty/
+    /// apply/construct/ownKeys/getOwnPropertyDescriptor/getPrototypeOf/
+    /// setPrototypeOf/isExtensible/preventExtensions/defineProperty) are
+    /// not yet dispatched — those reads fall through to the target. The
+    /// `get` trap is the load-bearing path for module-init parity (lazy
+    /// property loading, defineLazy patterns, ESM-namespace proxies).
+    fn install_proxy(&mut self) {
+        let proxy_obj = make_native("Proxy", |rt, args| {
+            let target = match args.first() {
+                Some(Value::Object(id)) => *id,
+                _ => return Err(RuntimeError::TypeError("Proxy: target must be an object".into())),
+            };
+            let handler = match args.get(1) {
+                Some(Value::Object(id)) => *id,
+                _ => return Err(RuntimeError::TypeError("Proxy: handler must be an object".into())),
+            };
+            let mut o = Object::new_ordinary();
+            o.internal_kind = InternalKind::Proxy(crate::value::ProxyInternals {
+                target, handler,
+            });
+            // Proxy's [[Prototype]] is the target's prototype so that
+            // `instanceof` and prototype-chain walks see the same chain.
+            o.proto = rt.obj(target).proto;
+            Ok(Value::Object(rt.alloc_object(o)))
+        });
+        let pid = self.alloc_object(proxy_obj);
+        // Proxy.revocable(target, handler) — for revocable proxies.
+        register_method(self, pid, "revocable", |rt, args| {
+            let target = match args.first() {
+                Some(Value::Object(id)) => *id,
+                _ => return Err(RuntimeError::TypeError("Proxy.revocable: target must be an object".into())),
+            };
+            let handler = match args.get(1) {
+                Some(Value::Object(id)) => *id,
+                _ => return Err(RuntimeError::TypeError("Proxy.revocable: handler must be an object".into())),
+            };
+            let mut o = Object::new_ordinary();
+            o.internal_kind = InternalKind::Proxy(crate::value::ProxyInternals {
+                target, handler,
+            });
+            o.proto = rt.obj(target).proto;
+            let proxy_id = rt.alloc_object(o);
+            let mut result = Object::new_ordinary();
+            result.set_own("proxy".into(), Value::Object(proxy_id));
+            let revoke = make_native("revoke", move |_rt, _args| Ok(Value::Undefined));
+            let revoke_id = rt.alloc_object(revoke);
+            result.set_own("revoke".into(), Value::Object(revoke_id));
+            Ok(Value::Object(rt.alloc_object(result)))
+        });
+        self.globals.insert("Proxy".into(), Value::Object(pid));
     }
 
     /// Tier-Ω.5.dd: Map / Set / WeakMap / WeakSet as real implementations.
