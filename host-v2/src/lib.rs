@@ -140,7 +140,16 @@ pub fn install_builtin_module_resolver(rt: &mut Runtime) {
             "node:worker_threads" | "worker_threads" => "events",
             "node:querystring" | "querystring" => "url",
             "node:timers" | "timers" | "node:timers/promises" | "timers/promises" => "events",
-            "node:string_decoder" => "string_decoder",
+            // Ω.5.P53.E5: three more node:* aliases.
+            //   node:sys is the deprecated alias of node:util (Node v14+).
+            //   node:cluster, node:repl have no analog in a single-process
+            //   in-memory runtime; mapping to events gives consumers an
+            //   EventEmitter-shaped namespace so module-init shape probes
+            //   complete (node-config requires sys, rate-limiter-flexible
+            //   requires cluster, ts-node requires repl).
+            "node:sys" | "sys" => "util",
+            "node:cluster" | "cluster" => "events",
+            "node:repl" | "repl" => "events",
             // node:path/posix and node:path/win32 — resolve to subproperty of path module.
             "node:path/posix" | "path/posix" => {
                 if let Some(Value::Object(path_id)) = rt.globals.get("path").cloned() {
