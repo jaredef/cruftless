@@ -173,6 +173,23 @@ pub fn install(rt: &mut Runtime) {
         Ok(args.first().cloned().unwrap_or(Value::Undefined))
     });
 
+    // Ω.5.P56.E2: path.matchesGlob per Node v20 / Bun. Minimal glob
+    // matcher covering literal / * / ** / ? — sufficient for upath's
+    // re-export-of-Object.keys(path) shape probe and for any consumer
+    // that only checks truthy/falsy. Mirrors host/'s JS-eval-time wire
+    // (host/src/lib.rs:2348+).
+    register_method(rt, path, "matchesGlob", |_rt, args| {
+        let p = match args.first() {
+            Some(Value::String(s)) => s.as_str().to_string(),
+            _ => return Ok(Value::Boolean(false)),
+        };
+        let pat = match args.get(1) {
+            Some(Value::String(s)) => s.as_str().to_string(),
+            _ => return Ok(Value::Boolean(false)),
+        };
+        Ok(Value::Boolean(glob_match(pat.as_bytes(), p.as_bytes())))
+    });
+
     // Tier-Ω.5.oooo: path.posix + path.win32 namespaces. fast-glob and many
     // cross-platform libs reach for `path.posix.dirname` directly. v1
     // exposes both as references to the same set of POSIX implementations
@@ -191,6 +208,14 @@ pub fn install(rt: &mut Runtime) {
         rt.object_set(posix, name.into(), v.clone());
         rt.object_set(win32, name.into(), v);
     }
+    // Mirror matchesGlob + toNamespacedPath onto posix/win32. Both
+    // resolve to the same underlying function object (host/'s wire at
+    // lib.rs:2362-2365 does the same).
+    for nm in &["matchesGlob", "toNamespacedPath"] {
+        let v = rt.object_get(path, &nm.to_string());
+        rt.object_set(posix, (*nm).into(), v.clone());
+        rt.object_set(win32, (*nm).into(), v);
+    }
     rt.object_set(posix, "sep".into(), Value::String(Rc::new("/".into())));
     rt.object_set(posix, "delimiter".into(), Value::String(Rc::new(":".into())));
     rt.object_set(win32, "sep".into(), Value::String(Rc::new("\\".into())));
@@ -199,4 +224,39 @@ pub fn install(rt: &mut Runtime) {
     rt.object_set(path, "win32".into(), Value::Object(win32));
 
     rt.globals.insert("path".into(), Value::Object(path));
+}
+
+/// Glob matcher for path.matchesGlob (Ω.5.P56.E2). Recursive over (pat, s).
+/// `*` matches zero or more non-`/`; `**` matches anything; `?` matches one
+/// non-`/`; everything else is literal. Sufficient for v20-shape probes.
+fn glob_match(pat: &[u8], s: &[u8]) -> bool {
+    fn rec(p: &[u8], pi: usize, s: &[u8], si: usize) -> bool {
+        if pi == p.len() { return si == s.len(); }
+        let c = p[pi];
+        if c == b'*' {
+            if pi + 1 < p.len() && p[pi + 1] == b'*' {
+                // `**` — match any (including empty / cross-slash) suffix.
+                let mut j = si;
+                loop {
+                    if rec(p, pi + 2, s, j) { return true; }
+                    if j == s.len() { return false; }
+                    j += 1;
+                }
+            } else {
+                // `*` — zero or more non-slash.
+                let mut j = si;
+                loop {
+                    if rec(p, pi + 1, s, j) { return true; }
+                    if j == s.len() { return false; }
+                    if s[j] == b'/' { return false; }
+                    j += 1;
+                }
+            }
+        } else if c == b'?' {
+            if si < s.len() && s[si] != b'/' { rec(p, pi + 1, s, si + 1) } else { false }
+        } else {
+            if si < s.len() && s[si] == c { rec(p, pi + 1, s, si + 1) } else { false }
+        }
+    }
+    rec(pat, 0, s, 0)
 }
