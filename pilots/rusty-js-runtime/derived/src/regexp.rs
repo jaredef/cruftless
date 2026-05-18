@@ -95,6 +95,8 @@ impl Runtime {
         // see a real function rather than undefined.
         if let Some(Value::Object(ctor_id)) = self.globals.get("RegExp").cloned() {
             self.object_set(ctor_id, "prototype".into(), Value::Object(proto));
+            // Ω.5.P58.E4: RegExp.prototype.constructor = RegExp per ECMA §10.2.12.
+            self.object_set(proto, "constructor".into(), Value::Object(ctor_id));
         }
 
         install_string_regex_methods(self);

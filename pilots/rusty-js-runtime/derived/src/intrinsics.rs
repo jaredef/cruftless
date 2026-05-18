@@ -1739,6 +1739,8 @@ impl Runtime {
         });
         if let Some(proto) = self.array_prototype {
             self.object_set(arr_ctor, "prototype".into(), Value::Object(proto));
+            // Ω.5.P58.E4: Array.prototype.constructor = Array per ECMA §10.2.12.
+            self.object_set(proto, "constructor".into(), Value::Object(arr_ctor));
         }
         self.globals.insert("Array".into(), Value::Object(arr_ctor));
     }
@@ -1811,6 +1813,8 @@ impl Runtime {
         }
         if let Some(proto) = self.number_prototype {
             self.object_set(num, "prototype".into(), Value::Object(proto));
+            // Ω.5.P58.E4: Number.prototype.constructor = Number per ECMA §10.2.12.
+            self.object_set(proto, "constructor".into(), Value::Object(num));
         }
         self.globals.insert("Number".into(), Value::Object(num));
         self.install_string_global();
@@ -1885,6 +1889,14 @@ impl Runtime {
         });
         if let Some(proto) = self.string_prototype {
             self.object_set(str_id, "prototype".into(), Value::Object(proto));
+            // Ω.5.P58.E4: Constructor.prototype.constructor === Constructor
+            // per ECMA-262 §10.2.12. ast-types' Type.from uses indexOf on
+            // builtInCtorFns (which holds `"x".constructor`, `(123).constructor`,
+            // etc.) to recognize built-in types. Pre-P58.E4 cruftless's
+            // String.prototype.constructor was a separate Object (named
+            // "Object"), so `"x".constructor === String` returned false and
+            // the ast-types lookup fell through to the `missing name` throw.
+            self.object_set(proto, "constructor".into(), Value::Object(str_id));
         }
         self.globals.insert("String".into(), Value::Object(str_id));
     }
@@ -2399,6 +2411,8 @@ impl Runtime {
             }
         });
         self.object_set(bool_id, "prototype".into(), Value::Object(bool_proto));
+        // Ω.5.P58.E4: Boolean.prototype.constructor = Boolean per ECMA §10.2.12.
+        self.object_set(bool_proto, "constructor".into(), Value::Object(bool_id));
         self.globals.insert("Boolean".into(), Value::Object(bool_id));
         // Tier-Ω.5.tttttt: EventTarget + Event + CustomEvent global stubs
         // (chai / web-platform-ish libs). v1: ordinary objects with the
