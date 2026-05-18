@@ -1898,7 +1898,31 @@ impl Runtime {
             self.object_set(it_id, "@@iterator".into(), Value::Object(iter_fn_id));
             return Ok(Value::Object(it_id));
         }
-        let body_result = body_result?;
+        let body_result_v = body_result;
+        // Ω.5.P58.E7: async function calls always return a Promise. Per
+        // ECMA-262 §27.7 AsyncFunctionStart: the result is the
+        // already-resolved Promise wrapping the body's return value
+        // (resolve-with-throw if the body threw). Pre-P58.E7 cruftless
+        // returned the body's value directly (or threw), so
+        // (async () => 42)() returned 42 (number) rather than Promise.
+        // execa, yeoman-environment, and many libs do
+        // `(async () => {})().constructor.prototype` at module-init to
+        // recover the native Promise prototype — that pattern requires
+        // a real Promise to be returned.
+        if proto.is_async {
+            let p = crate::promise::new_promise(self);
+            match body_result_v {
+                Ok(v) => crate::promise::resolve_promise(self, p, v),
+                Err(RuntimeError::Thrown(v)) => crate::promise::reject_promise(self, p, v),
+                Err(e) => {
+                    let msg = format!("{:?}", e);
+                    let reason = Value::String(Rc::new(msg));
+                    crate::promise::reject_promise(self, p, reason);
+                }
+            }
+            return Ok(Value::Object(p));
+        }
+        let body_result = body_result_v?;
         // Tier-Ω.5.nnnnn: implicit-return-this for derived ctors.
         let result = if nt_for_this_call.is_some() && matches!(body_result, Value::Undefined) {
             inner.this_value.clone()

@@ -133,6 +133,56 @@ pub fn install(rt: &mut Runtime) {
         rt.object_set(stream, "EventEmitterAsyncResource".into(), Value::Object(ee_ctor));
     }
 
+    // Ω.5.P58.E6: Readable/Writable static surface for Node v18+ stream
+    // helpers. execa, yeoman-environment, get-stream, and many others
+    // call `Readable.getDefaultHighWaterMark(false)` at module-init.
+    // host/ ported this in EXT 7 era; host-v2 was missing it. Mirrors
+    // host/'s wire (lib.rs:11034).
+    let static_helpers: &[(&str, Value)] = &[
+        ("getDefaultHighWaterMark", Value::Undefined),
+        ("setDefaultHighWaterMark", Value::Undefined),
+        ("isReadable", Value::Undefined),
+        ("isWritable", Value::Undefined),
+        ("isDisturbed", Value::Undefined),
+        ("isErrored", Value::Undefined),
+    ];
+    // Install on Readable + Writable AND as top-level node:stream exports.
+    // execa imports `{ getDefaultHighWaterMark }` directly from 'node:stream'.
+    // Bun exposes both surfaces.
+    for &(name, _) in static_helpers {
+        for ctor_key in &["Readable", "Writable"] {
+            if let Value::Object(ctor) = rt.object_get(stream, ctor_key) {
+                let nm = name.to_string();
+                register_method(rt, ctor, name, move |_rt, args| {
+                    match nm.as_str() {
+                        "getDefaultHighWaterMark" => {
+                            let object_mode = matches!(args.first(), Some(Value::Boolean(true)));
+                            Ok(Value::Number(if object_mode { 16.0 } else { 16.0 * 1024.0 }))
+                        }
+                        "setDefaultHighWaterMark" => Ok(Value::Undefined),
+                        "isReadable" | "isWritable" => Ok(Value::Boolean(false)),
+                        "isDisturbed" | "isErrored" => Ok(Value::Boolean(false)),
+                        _ => Ok(Value::Undefined),
+                    }
+                });
+            }
+        }
+        // Top-level node:stream export.
+        let nm = name.to_string();
+        register_method(rt, stream, name, move |_rt, args| {
+            match nm.as_str() {
+                "getDefaultHighWaterMark" => {
+                    let object_mode = matches!(args.first(), Some(Value::Boolean(true)));
+                    Ok(Value::Number(if object_mode { 16.0 } else { 16.0 * 1024.0 }))
+                }
+                "setDefaultHighWaterMark" => Ok(Value::Undefined),
+                "isReadable" | "isWritable" => Ok(Value::Boolean(false)),
+                "isDisturbed" | "isErrored" => Ok(Value::Boolean(false)),
+                _ => Ok(Value::Undefined),
+            }
+        });
+    }
+
     set_constant(rt, stream, "default", Value::Object(stream));
     rt.globals.insert("stream".into(), Value::Object(stream));
 }

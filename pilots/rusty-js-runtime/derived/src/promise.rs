@@ -135,6 +135,8 @@ impl Runtime {
         });
         if let Some(proto) = self.promise_prototype {
             self.object_set(promise_obj, "prototype".into(), Value::Object(proto));
+            // Ω.5.P58.E7: Promise.prototype.constructor = Promise per ECMA §27.2.5.
+            self.object_set(proto, "constructor".into(), Value::Object(promise_obj));
         }
         self.globals.insert("Promise".into(), Value::Object(promise_obj));
     }
@@ -142,8 +144,13 @@ impl Runtime {
 
 /// Create a new Pending Promise object on the managed heap.
 pub fn new_promise(rt: &mut Runtime) -> ObjectRef {
+    // Ω.5.P58.E7: set [[Prototype]] to Promise.prototype so
+    // `promise.constructor === Promise` per ECMA §27.2.3.1. execa /
+    // yeoman / many libs walk `p.constructor.prototype` at module-init
+    // to recover the native Promise prototype.
+    let proto = rt.promise_prototype;
     rt.alloc_object(Object {
-        proto: None,
+        proto,
         extensible: true,
         properties: indexmap::IndexMap::new(),
         internal_kind: InternalKind::Promise(PromiseState {
