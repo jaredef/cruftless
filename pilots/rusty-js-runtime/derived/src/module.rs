@@ -1415,7 +1415,20 @@ impl Runtime {
                     .iter()
                     .any(|(k, _)| k.as_str() != "__esModule");
                 let has_explicit_default = !matches!(self.object_get(*oid, "default"), Value::Undefined);
-                if exports_reassigned || exports_has_user_keys || has_explicit_default {
+                // Ω.5.P53.E10: when the source flags itself as a
+                // transpiled ES module (__esModule===true) and explicitly
+                // set `exports.default = X`, the loop above already copied
+                // X into ns.default. Overwriting it with the wrapping
+                // exports object (as the historical "synthesize default"
+                // step did unconditionally) corrupts the default value's
+                // shape — every `export default function...` in a TS/Babel
+                // build came through as `typeof default === 'object'`
+                // instead of 'function' (xstream, node-html-parser,
+                // sorted-btree, xmldoc, webpack-cli, dayjs-plugin-utc,
+                // event-iterator all hit this path).
+                let is_transpiled_esm = matches!(esmod_v, Value::Boolean(true));
+                let preserve_explicit_default = is_transpiled_esm && has_explicit_default;
+                if !preserve_explicit_default && (exports_reassigned || exports_has_user_keys || has_explicit_default) {
                     self.object_set(ns, "default".to_string(), exports.clone());
                 }
             }
