@@ -63,7 +63,7 @@ impl Runtime {
 // ──────────────── %Object.prototype% ────────────────
 
 fn install_object_proto(rt: &mut Runtime, host: ObjectRef) {
-    register_method(rt, host, "toString", |rt, _args| {
+    register_intrinsic_method(rt, host, "toString", 0, |rt, _args| {
         // Tier-Ω.5.lllll: Object.prototype.toString per ECMA-262 §20.1.3.6.
         // Internal-slot tags drive the output; spec-named tags are
         // PascalCase. Prior impl returned "[object string]" / "[object
@@ -95,7 +95,7 @@ fn install_object_proto(rt: &mut Runtime, host: ObjectRef) {
         };
         Ok(Value::String(Rc::new(s)))
     });
-    register_method(rt, host, "hasOwnProperty", |rt, args| {
+    register_intrinsic_method(rt, host, "hasOwnProperty", 1, |rt, args| {
         let key = arg_string(args, 0);
         let owns = match rt.current_this() {
             Value::Object(id) => rt.obj(id).properties.contains_key(&key),
@@ -103,11 +103,11 @@ fn install_object_proto(rt: &mut Runtime, host: ObjectRef) {
         };
         Ok(Value::Boolean(owns))
     });
-    register_method(rt, host, "valueOf", |rt, _args| Ok(rt.current_this()));
+    register_intrinsic_method(rt, host, "valueOf", 0, |rt, _args| Ok(rt.current_this()));
     // Tier-Ω.5.DDDDDDDD: Object.prototype.__defineGetter__/__defineSetter__
     // per ECMA Annex B.2.2.2/2.2.3 (legacy but ubiquitous — pg, slonik,
     // sockjs, mongoose use them at module-init for shape augmentation).
-    register_method(rt, host, "__defineGetter__", |rt, args| {
+    register_intrinsic_method(rt, host, "__defineGetter__", 1, |rt, args| {
         let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
         let key = abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined)).as_str().to_string();
         let getter = args.get(1).cloned().unwrap_or(Value::Undefined);
@@ -121,7 +121,7 @@ fn install_object_proto(rt: &mut Runtime, host: ObjectRef) {
         });
         Ok(Value::Undefined)
     });
-    register_method(rt, host, "__defineSetter__", |rt, args| {
+    register_intrinsic_method(rt, host, "__defineSetter__", 1, |rt, args| {
         let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
         let key = abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined)).as_str().to_string();
         let setter = args.get(1).cloned().unwrap_or(Value::Undefined);
@@ -136,12 +136,12 @@ fn install_object_proto(rt: &mut Runtime, host: ObjectRef) {
         });
         Ok(Value::Undefined)
     });
-    register_method(rt, host, "__lookupGetter__", |rt, args| {
+    register_intrinsic_method(rt, host, "__lookupGetter__", 1, |rt, args| {
         let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
         let key = abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined)).as_str().to_string();
         Ok(rt.obj(this).properties.get(&key).and_then(|d| d.getter.clone()).unwrap_or(Value::Undefined))
     });
-    register_method(rt, host, "__lookupSetter__", |rt, args| {
+    register_intrinsic_method(rt, host, "__lookupSetter__", 1, |rt, args| {
         let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
         let key = abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined)).as_str().to_string();
         Ok(rt.obj(this).properties.get(&key).and_then(|d| d.setter.clone()).unwrap_or(Value::Undefined))
@@ -150,7 +150,7 @@ fn install_object_proto(rt: &mut Runtime, host: ObjectRef) {
     // §20.1.3.4. Returns true if the receiver has an own enumerable
     // property at the given key. v1 returns true for any own property
     // (we don't track enumerable bit precisely).
-    register_method(rt, host, "propertyIsEnumerable", |rt, args| {
+    register_intrinsic_method(rt, host, "propertyIsEnumerable", 1, |rt, args| {
         let key = abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined))
             .as_str().to_string();
         let owns = match rt.current_this() {
@@ -159,7 +159,7 @@ fn install_object_proto(rt: &mut Runtime, host: ObjectRef) {
         };
         Ok(Value::Boolean(owns))
     });
-    register_method(rt, host, "isPrototypeOf", |rt, args| {
+    register_intrinsic_method(rt, host, "isPrototypeOf", 1, |rt, args| {
         let target = match args.first() {
             Some(Value::Object(id)) => *id,
             _ => return Ok(Value::Boolean(false)),
@@ -180,7 +180,7 @@ fn install_object_proto(rt: &mut Runtime, host: ObjectRef) {
 // ──────────────── %Array.prototype% ────────────────
 
 fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
-    register_method(rt, host, "push", |rt, args| {
+    register_intrinsic_method(rt, host, "push", 1, |rt, args| {
         let id = match rt.current_this() {
             Value::Object(id) => id,
             _ => return Err(RuntimeError::TypeError("Array.prototype.push: this is not an Array".into())),
@@ -194,7 +194,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         rt.object_set(id, "length".into(), Value::Number(len as f64));
         Ok(Value::Number(len as f64))
     });
-    register_method(rt, host, "pop", |rt, _args| {
+    register_intrinsic_method(rt, host, "pop", 0, |rt, _args| {
         let id = match rt.current_this() {
             Value::Object(id) => id,
             _ => return Ok(Value::Undefined),
@@ -207,7 +207,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         rt.object_set(id, "length".into(), Value::Number((len - 1) as f64));
         Ok(v)
     });
-    register_method(rt, host, "shift", |rt, _args| {
+    register_intrinsic_method(rt, host, "shift", 0, |rt, _args| {
         let id = match rt.current_this() {
             Value::Object(id) => id,
             _ => return Ok(Value::Undefined),
@@ -223,7 +223,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         rt.object_set(id, "length".into(), Value::Number((len - 1) as f64));
         Ok(first)
     });
-    register_method(rt, host, "unshift", |rt, args| {
+    register_intrinsic_method(rt, host, "unshift", 1, |rt, args| {
         let id = match rt.current_this() {
             Value::Object(id) => id,
             _ => return Ok(Value::Number(0.0)),
@@ -242,7 +242,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         rt.object_set(id, "length".into(), Value::Number(new_len as f64));
         Ok(Value::Number(new_len as f64))
     });
-    register_method(rt, host, "indexOf", |rt, args| {
+    register_intrinsic_method(rt, host, "indexOf", 1, |rt, args| {
         let id = match rt.current_this() {
             Value::Object(id) => id,
             _ => return Ok(Value::Number(-1.0)),
@@ -257,7 +257,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         }
         Ok(Value::Number(-1.0))
     });
-    register_method(rt, host, "includes", |rt, args| {
+    register_intrinsic_method(rt, host, "includes", 1, |rt, args| {
         let id = match rt.current_this() {
             Value::Object(id) => id,
             _ => return Ok(Value::Boolean(false)),
@@ -275,7 +275,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     // Tier-Ω.5.cccccc: Array.prototype.reverse per ECMA-262 §23.1.3.21.
     // micromark slices events then reverses; without this, .reverse() was
     // undefined and every state-machine token finalization failed.
-    register_method(rt, host, "reverse", |rt, _args| {
+    register_intrinsic_method(rt, host, "reverse", 0, |rt, _args| {
         let id = match rt.current_this() {
             Value::Object(id) => id,
             _ => return Err(RuntimeError::TypeError("Array.prototype.reverse: this is not an Array".into())),
@@ -291,7 +291,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         }
         Ok(Value::Object(id))
     });
-    register_method(rt, host, "slice", |rt, args| {
+    register_intrinsic_method(rt, host, "slice", 2, |rt, args| {
         let id = match rt.current_this() {
             Value::Object(id) => id,
             _ => return Err(RuntimeError::TypeError("Array.prototype.slice: this is not an Array".into())),
@@ -317,7 +317,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     // Removes deleteCount elements starting at start, optionally
     // inserting items in their place. Returns the removed elements.
     // object-hash uses splice on its internal stream buffer.
-    register_method(rt, host, "splice", |rt, args| {
+    register_intrinsic_method(rt, host, "splice", 2, |rt, args| {
         let id = match rt.current_this() {
             Value::Object(id) => id,
             _ => return Err(RuntimeError::TypeError("Array.prototype.splice: this is not an Array".into())),
@@ -368,7 +368,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         rt.object_set(id, "length".into(), Value::Number(new_len as f64));
         Ok(Value::Object(removed))
     });
-    register_method(rt, host, "concat", |rt, args| {
+    register_intrinsic_method(rt, host, "concat", 1, |rt, args| {
         let id = match rt.current_this() {
             Value::Object(id) => id,
             _ => return Err(RuntimeError::TypeError("Array.prototype.concat: this not Array".into())),
@@ -405,7 +405,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         rt.object_set(out, "length".into(), Value::Number(j as f64));
         Ok(Value::Object(out))
     });
-    register_method(rt, host, "join", |rt, args| {
+    register_intrinsic_method(rt, host, "join", 1, |rt, args| {
         let id = match rt.current_this() {
             Value::Object(id) => id,
             _ => return Ok(Value::String(Rc::new(String::new()))),
@@ -426,7 +426,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         }
         Ok(Value::String(Rc::new(parts.join(&sep))))
     });
-    register_method(rt, host, "at", |rt, args| {
+    register_intrinsic_method(rt, host, "at", 1, |rt, args| {
         let id = match rt.current_this() {
             Value::Object(id) => id,
             _ => return Ok(Value::Undefined),
@@ -440,7 +440,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     // Tier-Ω.5.DDDDDDD: Array.prototype.fill per ECMA §23.1.3.7. Receiver
     // is this; fills positions [start, end) with the value. lru-cache's
     // ZeroArray ctor does `super(size); this.fill(0)` to zero-initialize.
-    register_method(rt, host, "fill", |rt, args| {
+    register_intrinsic_method(rt, host, "fill", 1, |rt, args| {
         let id = match rt.current_this() {
             Value::Object(id) => id,
             _ => return Err(RuntimeError::TypeError("Array.prototype.fill: this not Array".into())),
@@ -467,7 +467,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(Value::Object(id))
     });
     // Tier-Ω.5.iiiiii: Array.prototype.flat per ECMA §23.1.3.10.
-    register_method(rt, host, "flat", |rt, args| {
+    register_intrinsic_method(rt, host, "flat", 0, |rt, args| {
         let id = match rt.current_this() {
             Value::Object(id) => id,
             _ => return Err(RuntimeError::TypeError("Array.prototype.flat: this not Array".into())),
@@ -495,7 +495,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         rt.object_set(out, "length".into(), Value::Number(final_len as f64));
         Ok(Value::Object(out))
     });
-    register_method(rt, host, "flatMap", |rt, args| {
+    register_intrinsic_method(rt, host, "flatMap", 1, |rt, args| {
         let id = match rt.current_this() {
             Value::Object(id) => id,
             _ => return Err(RuntimeError::TypeError("Array.prototype.flatMap: this not Array".into())),
@@ -526,7 +526,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         rt.object_set(out, "length".into(), Value::Number(out_idx as f64));
         Ok(Value::Object(out))
     });
-    register_method(rt, host, "map", |rt, args| {
+    register_intrinsic_method(rt, host, "map", 1, |rt, args| {
         let id = match rt.current_this() {
             Value::Object(id) => id,
             _ => return Err(RuntimeError::TypeError("Array.prototype.map: this not Array".into())),
@@ -544,7 +544,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         rt.object_set(out, "length".into(), Value::Number(len as f64));
         Ok(Value::Object(out))
     });
-    register_method(rt, host, "forEach", |rt, args| {
+    register_intrinsic_method(rt, host, "forEach", 1, |rt, args| {
         let id = match rt.current_this() {
             Value::Object(id) => id,
             _ => return Err(RuntimeError::TypeError("forEach: this not Array".into())),
@@ -559,7 +559,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         }
         Ok(Value::Undefined)
     });
-    register_method(rt, host, "filter", |rt, args| {
+    register_intrinsic_method(rt, host, "filter", 1, |rt, args| {
         let id = match rt.current_this() {
             Value::Object(id) => id,
             _ => return Err(RuntimeError::TypeError("filter: this not Array".into())),
@@ -581,7 +581,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         rt.object_set(out, "length".into(), Value::Number(j as f64));
         Ok(Value::Object(out))
     });
-    register_method(rt, host, "reduce", |rt, args| {
+    register_intrinsic_method(rt, host, "reduce", 1, |rt, args| {
         let id = match rt.current_this() {
             Value::Object(id) => id,
             _ => return Err(RuntimeError::TypeError("reduce: this not Array".into())),
@@ -606,7 +606,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         }
         Ok(acc)
     });
-    register_method(rt, host, "find", |rt, args| {
+    register_intrinsic_method(rt, host, "find", 1, |rt, args| {
         let id = match rt.current_this() {
             Value::Object(id) => id,
             _ => return Ok(Value::Undefined),
@@ -622,7 +622,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         }
         Ok(Value::Undefined)
     });
-    register_method(rt, host, "some", |rt, args| {
+    register_intrinsic_method(rt, host, "some", 1, |rt, args| {
         let id = match rt.current_this() {
             Value::Object(id) => id,
             _ => return Ok(Value::Boolean(false)),
@@ -638,7 +638,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         }
         Ok(Value::Boolean(false))
     });
-    register_method(rt, host, "@@iterator", |rt, _args| {
+    register_intrinsic_method(rt, host, "@@iterator", 0, |rt, _args| {
         let id = match rt.current_this() {
             Value::Object(id) => id,
             _ => return Err(RuntimeError::TypeError("@@iterator: this is not an Array".into())),
@@ -650,7 +650,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     // - No comparator: ToString each element, lexicographic compare.
     // - With comparator: call comparator(a,b); sign of return → Ordering.
     // v1 ignores spec's sparse-array semantics; sorts dense own indices 0..length-1.
-    register_method(rt, host, "sort", |rt, args| {
+    register_intrinsic_method(rt, host, "sort", 1, |rt, args| {
         let id = match rt.current_this() {
             Value::Object(id) => id,
             _ => return Err(RuntimeError::TypeError("Array.prototype.sort: this is not an Array".into())),
@@ -692,7 +692,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         rt.object_set(id, "length".into(), Value::Number(len as f64));
         Ok(Value::Object(id))
     });
-    register_method(rt, host, "every", |rt, args| {
+    register_intrinsic_method(rt, host, "every", 1, |rt, args| {
         let id = match rt.current_this() {
             Value::Object(id) => id,
             _ => return Ok(Value::Boolean(true)),
@@ -713,7 +713,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     // of [i, v] / i / v entries, matching the for-of-array-compatible shape
     // used by Map.prototype.entries above. Surfaces from the Ω.5.P24.E1
     // proto-chain probe: arktype's constraintKinds.entries() lands here.
-    register_method(rt, host, "entries", |rt, _args| {
+    register_intrinsic_method(rt, host, "entries", 0, |rt, _args| {
         let id = match rt.current_this() {
             Value::Object(id) => id,
             _ => return Ok(Value::Object(rt.alloc_object(Object::new_array()))),
@@ -731,7 +731,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         rt.object_set(out, "length".into(), Value::Number(len as f64));
         Ok(Value::Object(out))
     });
-    register_method(rt, host, "keys", |rt, _args| {
+    register_intrinsic_method(rt, host, "keys", 0, |rt, _args| {
         let id = match rt.current_this() {
             Value::Object(id) => id,
             _ => return Ok(Value::Object(rt.alloc_object(Object::new_array()))),
@@ -744,7 +744,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         rt.object_set(out, "length".into(), Value::Number(len as f64));
         Ok(Value::Object(out))
     });
-    register_method(rt, host, "values", |rt, _args| {
+    register_intrinsic_method(rt, host, "values", 0, |rt, _args| {
         let id = match rt.current_this() {
             Value::Object(id) => id,
             _ => return Ok(Value::Object(rt.alloc_object(Object::new_array()))),
@@ -768,36 +768,36 @@ fn clamp_index(i: i64, len: i64) -> i64 {
 // ──────────────── %String.prototype% ────────────────
 
 fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
-    register_method(rt, host, "toUpperCase", |rt, _args| {
+    register_intrinsic_method(rt, host, "toUpperCase", 0, |rt, _args| {
         let s = abstract_ops::to_string(&rt.current_this()).as_str().to_uppercase();
         Ok(Value::String(Rc::new(s)))
     });
-    register_method(rt, host, "toLowerCase", |rt, _args| {
+    register_intrinsic_method(rt, host, "toLowerCase", 0, |rt, _args| {
         let s = abstract_ops::to_string(&rt.current_this()).as_str().to_lowercase();
         Ok(Value::String(Rc::new(s)))
     });
     // Tier-Ω.5.ooo: toLocale variants. v1 deviation: locale-insensitive
     // (uses Rust's default lowercasing). change-case + many libs assume
     // these exist even when they default-call without locale.
-    register_method(rt, host, "toLocaleLowerCase", |rt, _args| {
+    register_intrinsic_method(rt, host, "toLocaleLowerCase", 0, |rt, _args| {
         let s = abstract_ops::to_string(&rt.current_this()).as_str().to_lowercase();
         Ok(Value::String(Rc::new(s)))
     });
-    register_method(rt, host, "toLocaleUpperCase", |rt, _args| {
+    register_intrinsic_method(rt, host, "toLocaleUpperCase", 0, |rt, _args| {
         let s = abstract_ops::to_string(&rt.current_this()).as_str().to_uppercase();
         Ok(Value::String(Rc::new(s)))
     });
-    register_method(rt, host, "trim", |rt, _args| {
+    register_intrinsic_method(rt, host, "trim", 0, |rt, _args| {
         let s = abstract_ops::to_string(&rt.current_this()).as_str().trim().to_string();
         Ok(Value::String(Rc::new(s)))
     });
-    register_method(rt, host, "charAt", |rt, args| {
+    register_intrinsic_method(rt, host, "charAt", 1, |rt, args| {
         let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
         let i = args.first().map(abstract_ops::to_number).unwrap_or(0.0) as usize;
         let c = s.chars().nth(i).map(|c| c.to_string()).unwrap_or_default();
         Ok(Value::String(Rc::new(c)))
     });
-    register_method(rt, host, "charCodeAt", |rt, args| {
+    register_intrinsic_method(rt, host, "charCodeAt", 1, |rt, args| {
         let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
         let i = args.first().map(abstract_ops::to_number).unwrap_or(0.0) as usize;
         match s.chars().nth(i) {
@@ -808,7 +808,7 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
     // Tier-Ω.5.TTTTTTT: String.prototype.concat per ECMA-262 §22.1.3.3.
     // Returns the receiver concatenated with all string-coerced args.
     // mathjs / io-ts-types use it in variadic shape; receiver is a string.
-    register_method(rt, host, "concat", |rt, args| {
+    register_intrinsic_method(rt, host, "concat", 1, |rt, args| {
         let mut s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
         for a in args {
             s.push_str(&abstract_ops::to_string(a).as_str().to_string());
@@ -819,7 +819,7 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
     // Used by sort comparators throughout the corpus (read-pkg/spdx-correct
     // family, conventional-changelog, meow). v1 deviation: locale-insensitive
     // lexicographic compare (real impl needs full Intl Collator chain).
-    register_method(rt, host, "localeCompare", |rt, args| {
+    register_intrinsic_method(rt, host, "localeCompare", 1, |rt, args| {
         let a = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
         let b = abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined)).as_str().to_string();
         Ok(Value::Number(match a.cmp(&b) {
@@ -833,7 +833,7 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
     // UTF-16 index; returns undefined if the index is out of range.
     // cli-truncate/execa/multiformats/strip-final-newline/tar all read
     // codePointAt at module-init for ANSI / encoding detection.
-    register_method(rt, host, "codePointAt", |rt, args| {
+    register_intrinsic_method(rt, host, "codePointAt", 1, |rt, args| {
         let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
         let i = args.first().map(abstract_ops::to_number).unwrap_or(0.0) as i64;
         if i < 0 { return Ok(Value::Undefined); }
@@ -854,7 +854,7 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
         }
         Ok(Value::Undefined)
     });
-    register_method(rt, host, "slice", |rt, args| {
+    register_intrinsic_method(rt, host, "slice", 2, |rt, args| {
         let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
         let chars: Vec<char> = s.chars().collect();
         let len = chars.len() as i64;
@@ -867,7 +867,7 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
     // Tier-Ω.5.aaaaaa: String.prototype.substr (legacy but still ubiquitous —
     // moment.js uses it for token-parsing). Per ECMA Annex B.2.2.1:
     // substr(start, length). Negative start counts from end.
-    register_method(rt, host, "substr", |rt, args| {
+    register_intrinsic_method(rt, host, "substr", 2, |rt, args| {
         let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
         let chars: Vec<char> = s.chars().collect();
         let len = chars.len() as i64;
@@ -880,7 +880,7 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
         let out: String = chars[start..end].iter().collect();
         Ok(Value::String(Rc::new(out)))
     });
-    register_method(rt, host, "substring", |rt, args| {
+    register_intrinsic_method(rt, host, "substring", 2, |rt, args| {
         let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
         let chars: Vec<char> = s.chars().collect();
         let len = chars.len() as i64;
@@ -892,7 +892,7 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
         let out: String = chars[a as usize..b as usize].iter().collect();
         Ok(Value::String(Rc::new(out)))
     });
-    register_method(rt, host, "indexOf", |rt, args| {
+    register_intrinsic_method(rt, host, "indexOf", 1, |rt, args| {
         let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
         let needle = abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined))
             .as_str().to_string();
@@ -902,7 +902,7 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
             None => Ok(Value::Number(-1.0)),
         }
     });
-    register_method(rt, host, "lastIndexOf", |rt, args| {
+    register_intrinsic_method(rt, host, "lastIndexOf", 1, |rt, args| {
         let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
         let needle = abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined))
             .as_str().to_string();
@@ -911,25 +911,25 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
             None => Ok(Value::Number(-1.0)),
         }
     });
-    register_method(rt, host, "includes", |rt, args| {
+    register_intrinsic_method(rt, host, "includes", 1, |rt, args| {
         let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
         let needle = abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined))
             .as_str().to_string();
         Ok(Value::Boolean(s.contains(&needle)))
     });
-    register_method(rt, host, "startsWith", |rt, args| {
+    register_intrinsic_method(rt, host, "startsWith", 1, |rt, args| {
         let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
         let needle = abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined))
             .as_str().to_string();
         Ok(Value::Boolean(s.starts_with(&needle)))
     });
-    register_method(rt, host, "endsWith", |rt, args| {
+    register_intrinsic_method(rt, host, "endsWith", 1, |rt, args| {
         let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
         let needle = abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined))
             .as_str().to_string();
         Ok(Value::Boolean(s.ends_with(&needle)))
     });
-    register_method(rt, host, "split", |rt, args| {
+    register_intrinsic_method(rt, host, "split", 2, |rt, args| {
         let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
         let out = rt.alloc_object(Object::new_array());
         let parts: Vec<String> = match args.first() {
@@ -949,14 +949,14 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
         rt.object_set(out, "length".into(), Value::Number(parts.len() as f64));
         Ok(Value::Object(out))
     });
-    register_method(rt, host, "repeat", |rt, args| {
+    register_intrinsic_method(rt, host, "repeat", 1, |rt, args| {
         let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
         let n = args.first().map(abstract_ops::to_number).unwrap_or(0.0) as usize;
         Ok(Value::String(Rc::new(s.repeat(n))))
     });
     // Tier-Ω.5.iiiiii: String.prototype.matchAll per ECMA §22.1.3.13.
     // Returns an iterator over all matches of a regex with the /g flag.
-    register_method(rt, host, "matchAll", |rt, args| {
+    register_intrinsic_method(rt, host, "matchAll", 1, |rt, args| {
         let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
         let regex_v = args.first().cloned().unwrap_or(Value::Undefined);
         let regex_id = match &regex_v {
@@ -988,7 +988,7 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
     });
     // Tier-Ω.5.ppppp: padStart / padEnd per ECMA-262 §22.1.3.16 / §22.1.3.17.
     // date-fns / left-pad / many formatting libs reach for these.
-    register_method(rt, host, "padStart", |rt, args| {
+    register_intrinsic_method(rt, host, "padStart", 1, |rt, args| {
         let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
         let target = args.first().map(abstract_ops::to_number).unwrap_or(0.0) as usize;
         let pad = match args.get(1) {
@@ -1004,7 +1004,7 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
         let prefix: String = prefix.chars().take(need).collect();
         Ok(Value::String(Rc::new(prefix + &s)))
     });
-    register_method(rt, host, "padEnd", |rt, args| {
+    register_intrinsic_method(rt, host, "padEnd", 1, |rt, args| {
         let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
         let target = args.first().map(abstract_ops::to_number).unwrap_or(0.0) as usize;
         let pad = match args.get(1) {
@@ -1020,7 +1020,7 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
         let suffix: String = suffix.chars().take(need).collect();
         Ok(Value::String(Rc::new(s + &suffix)))
     });
-    register_method(rt, host, "replace", |rt, args| {
+    register_intrinsic_method(rt, host, "replace", 2, |rt, args| {
         let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
         let needle = abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined))
             .as_str().to_string();
@@ -1028,7 +1028,7 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
             .as_str().to_string();
         Ok(Value::String(Rc::new(s.replacen(&needle, &repl, 1))))
     });
-    register_method(rt, host, "at", |rt, args| {
+    register_intrinsic_method(rt, host, "at", 1, |rt, args| {
         let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
         let chars: Vec<char> = s.chars().collect();
         let len = chars.len() as i64;
@@ -1037,10 +1037,10 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
         if idx < 0 || idx >= len { return Ok(Value::Undefined); }
         Ok(Value::String(Rc::new(chars[idx as usize].to_string())))
     });
-    register_method(rt, host, "toString", |rt, _args| {
+    register_intrinsic_method(rt, host, "toString", 0, |rt, _args| {
         Ok(Value::String(Rc::new(abstract_ops::to_string(&rt.current_this()).as_str().to_string())))
     });
-    register_method(rt, host, "@@iterator", |rt, _args| {
+    register_intrinsic_method(rt, host, "@@iterator", 0, |rt, _args| {
         let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
         Ok(Value::Object(crate::iterator::make_string_iterator(rt, s)))
     });
@@ -1055,7 +1055,7 @@ fn install_function_proto(rt: &mut Runtime, host: ObjectRef) {
     // "[native code]" for natives; v1 returns the native-shape for
     // all functions. object-hash detects native functions by regex-
     // matching this output. Sufficient for the duck-test.
-    register_method(rt, host, "toString", |rt, _args| {
+    register_intrinsic_method(rt, host, "toString", 0, |rt, _args| {
         let this = rt.current_this();
         let s = match &this {
             Value::Object(id) => {
@@ -1076,13 +1076,13 @@ fn install_function_proto(rt: &mut Runtime, host: ObjectRef) {
         };
         Ok(Value::String(Rc::new(s)))
     });
-    register_method(rt, host, "call", |rt, args| {
+    register_intrinsic_method(rt, host, "call", 1, |rt, args| {
         let f = rt.current_this();
         let this_arg = args.first().cloned().unwrap_or(Value::Undefined);
         let rest: Vec<Value> = args.iter().skip(1).cloned().collect();
         rt.call_function(f, this_arg, rest)
     });
-    register_method(rt, host, "apply", |rt, args| {
+    register_intrinsic_method(rt, host, "apply", 2, |rt, args| {
         let f = rt.current_this();
         let this_arg = args.first().cloned().unwrap_or(Value::Undefined);
         let arr_v = args.get(1).cloned().unwrap_or(Value::Undefined);
@@ -1096,7 +1096,7 @@ fn install_function_proto(rt: &mut Runtime, host: ObjectRef) {
         };
         rt.call_function(f, this_arg, call_args)
     });
-    register_method(rt, host, "bind", |rt, args| {
+    register_intrinsic_method(rt, host, "bind", 1, |rt, args| {
         let target = match rt.current_this() {
             Value::Object(id) => id,
             _ => return Err(RuntimeError::TypeError("bind: this is not callable".into())),
@@ -1146,14 +1146,14 @@ fn install_function_proto(rt: &mut Runtime, host: ObjectRef) {
 // that argument list here.
 
 fn install_promise_proto(rt: &mut Runtime, host: ObjectRef) {
-    register_method(rt, host, "then", |rt, args| {
+    register_intrinsic_method(rt, host, "then", 1, |rt, args| {
         let source = match rt.current_this() {
             Value::Object(id) => id,
             _ => return Err(RuntimeError::TypeError("Promise.prototype.then: this is not a Promise".into())),
         };
         promise_then_impl(rt, source, args.first().cloned(), args.get(1).cloned())
     });
-    register_method(rt, host, "catch", |rt, args| {
+    register_intrinsic_method(rt, host, "catch", 1, |rt, args| {
         let source = match rt.current_this() {
             Value::Object(id) => id,
             _ => return Err(RuntimeError::TypeError("Promise.prototype.catch: this is not a Promise".into())),
@@ -1227,7 +1227,7 @@ fn enqueue_handler(
 // ──────────────── %Number.prototype% ────────────────
 
 fn install_number_proto(rt: &mut Runtime, host: ObjectRef) {
-    register_method(rt, host, "toString", |rt, args| {
+    register_intrinsic_method(rt, host, "toString", 0, |rt, args| {
         let n = abstract_ops::to_number(&rt.current_this());
         let radix = args.first().map(abstract_ops::to_number).unwrap_or(10.0) as i32;
         if radix == 10 || radix == 0 {
@@ -1252,12 +1252,12 @@ fn install_number_proto(rt: &mut Runtime, host: ObjectRef) {
             Ok(Value::String(Rc::new(abstract_ops::number_to_string(n))))
         }
     });
-    register_method(rt, host, "toFixed", |rt, args| {
+    register_intrinsic_method(rt, host, "toFixed", 1, |rt, args| {
         let n = abstract_ops::to_number(&rt.current_this());
         let digits = args.first().map(abstract_ops::to_number).unwrap_or(0.0) as usize;
         Ok(Value::String(Rc::new(format!("{:.*}", digits, n))))
     });
-    register_method(rt, host, "valueOf", |rt, _args| Ok(rt.current_this()));
+    register_intrinsic_method(rt, host, "valueOf", 0, |rt, _args| Ok(rt.current_this()));
 }
 
 // ──────────────── helpers ────────────────
@@ -1279,4 +1279,29 @@ where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
     };
     let fn_id = rt.alloc_object(fn_obj);
     rt.object_set(host, name.into(), Value::Object(fn_id));
+}
+
+/// Ω.5.P61.E5: prototype-local intrinsic-method installer. Same semantics
+/// as the one in intrinsics.rs but kept here to avoid module-cycle issues
+/// with the prototype.rs install paths that pre-date intrinsics.rs's
+/// availability. Sets length, marks non-constructor, installs non-enum.
+fn register_intrinsic_method<F>(rt: &mut Runtime, host: ObjectRef, name: &str, length: u32, f: F)
+where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
+    let native: NativeFn = Rc::new(f);
+    let mut properties = indexmap::IndexMap::new();
+    crate::value::install_function_meta_props(&mut properties, name, length as f64);
+    let fn_obj = Object {
+        proto: None,
+        extensible: true,
+        properties,
+        internal_kind: InternalKind::Function(FunctionInternals {
+            name: name.to_string(), length, native, is_constructor: false,
+        }),
+    };
+    let fn_id = rt.alloc_object(fn_obj);
+    rt.obj_mut(host).properties.insert(name.to_string(), crate::value::PropertyDescriptor {
+        value: Value::Object(fn_id),
+        writable: true, enumerable: false, configurable: true,
+        getter: None, setter: None,
+    });
 }

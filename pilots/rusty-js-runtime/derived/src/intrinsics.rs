@@ -378,12 +378,12 @@ impl Runtime {
             });
             let stub_id = self.alloc_object(stub);
             self.object_set(proto, "constructor".into(), Value::Object(stub_id));
-            register_method(self, proto, "format", |_rt, args| {
+            register_intrinsic_method(self, proto, "format", 1, |_rt, args| {
                 Ok(Value::String(std::rc::Rc::new(
                     crate::abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined)).as_str().to_string()
                 )))
             });
-            register_method(self, proto, "formatToParts", |rt, args| {
+            register_intrinsic_method(self, proto, "formatToParts", 1, |rt, args| {
                 let arr = Object::new_array();
                 let aid = rt.alloc_object(arr);
                 let part = rt.alloc_object(Object::new_ordinary());
@@ -395,7 +395,7 @@ impl Runtime {
                 rt.object_set(aid, "length".into(), Value::Number(1.0));
                 Ok(Value::Object(aid))
             });
-            register_method(self, proto, "resolvedOptions", |rt, _args| {
+            register_intrinsic_method(self, proto, "resolvedOptions", 1, |rt, _args| {
                 let this_id = match rt.current_this() {
                     Value::Object(o) => o,
                     _ => return Ok(Value::Undefined),
@@ -422,7 +422,7 @@ impl Runtime {
             });
             self.object_set(stub_id, "prototype".into(), Value::Object(proto));
             // Static method on the ctor itself.
-            register_method(self, stub_id, "supportedLocalesOf", |_rt, _args| {
+            register_intrinsic_method(self, stub_id, "supportedLocalesOf", 1, |_rt, _args| {
                 let o = Object::new_array();
                 let id = _rt.alloc_object(o);
                 _rt.object_set(id, "length".into(), Value::Number(0.0));
@@ -431,7 +431,7 @@ impl Runtime {
             self.object_set(intl, ctor_name.to_string(), Value::Object(stub_id));
         }
         // getCanonicalLocales(locales) → array of canonical locale tags.
-        register_method(self, intl, "getCanonicalLocales", |rt, _args| {
+        register_intrinsic_method(self, intl, "getCanonicalLocales", 1, |rt, _args| {
             let arr = Object::new_array();
             let id = rt.alloc_object(arr);
             rt.object_set(id, "length".into(), Value::Number(0.0));
@@ -447,7 +447,7 @@ impl Runtime {
             let mut o = Object::new_ordinary();
             o.set_own("encoding".into(), Value::String(Rc::new("utf-8".to_string())));
             let id = rt.alloc_object(o);
-            register_method(rt, id, "encode", |rt, args| {
+            register_intrinsic_method(rt, id, "encode", 1, |rt, args| {
                 let s = match args.first() {
                     Some(Value::String(s)) => s.as_str().to_string(),
                     None => String::new(),
@@ -492,7 +492,7 @@ impl Runtime {
             let mut o = Object::new_ordinary();
             o.set_own("encoding".into(), Value::String(Rc::new(encoding)));
             let id = rt.alloc_object(o);
-            register_method(rt, id, "decode", |rt, args| {
+            register_intrinsic_method(rt, id, "decode", 1, |rt, args| {
                 let bytes_id = match args.first() {
                     Some(Value::Object(id)) => *id,
                     _ => return Ok(Value::String(Rc::new(String::new()))),
@@ -1150,11 +1150,11 @@ impl Runtime {
 
     fn install_json(&mut self) {
         let json = self.alloc_object(Object::new_ordinary());
-        register_method(self, json, "stringify", |rt, args|{
+        register_intrinsic_method(self, json, "stringify", 3, |rt, args|{
             let v = args.first().cloned().unwrap_or(Value::Undefined);
             Ok(Value::String(Rc::new(json_stringify(rt, &v))))
         });
-        register_method(self, json, "parse", |rt, args|{
+        register_intrinsic_method(self, json, "parse", 2, |rt, args|{
             let s = if let Some(v) = args.first() { abstract_ops::to_string(v) } else {
                 return Err(RuntimeError::TypeError("JSON.parse requires a string".into()));
             };
@@ -1191,7 +1191,7 @@ impl Runtime {
             }
         });
         let obj_ctor = self.alloc_object(obj_ctor_native);
-        register_method(self, obj_ctor, "keys", |rt, args| {
+        register_intrinsic_method(self, obj_ctor, "keys", 1, |rt, args| {
             let id = match args.first() {
                 Some(Value::Object(id)) => *id,
                 _ => return Ok(Value::Object(rt.alloc_object(Object::new_array()))),
@@ -1251,7 +1251,7 @@ impl Runtime {
             rt.object_set(arr, "length".into(), Value::Number(keys.len() as f64));
             Ok(Value::Object(arr))
         });
-        register_method(self, obj_ctor, "values", |rt, args| {
+        register_intrinsic_method(self, obj_ctor, "values", 1, |rt, args| {
             let id = match args.first() {
                 Some(Value::Object(id)) => *id,
                 _ => return Ok(Value::Object(rt.alloc_object(Object::new_array()))),
@@ -1285,7 +1285,7 @@ impl Runtime {
             rt.object_set(arr, "length".into(), Value::Number(kvs.len() as f64));
             Ok(Value::Object(arr))
         });
-        register_method(self, obj_ctor, "entries", |rt, args| {
+        register_intrinsic_method(self, obj_ctor, "entries", 1, |rt, args| {
             let id = match args.first() {
                 Some(Value::Object(id)) => *id,
                 _ => return Ok(Value::Object(rt.alloc_object(Object::new_array()))),
@@ -1323,7 +1323,7 @@ impl Runtime {
             rt.object_set(arr, "length".into(), Value::Number(kvs.len() as f64));
             Ok(Value::Object(arr))
         });
-        register_method(self, obj_ctor, "assign", |rt, args| {
+        register_intrinsic_method(self, obj_ctor, "assign", 2, |rt, args| {
             let target = match args.first() {
                 Some(Value::Object(id)) => *id,
                 // Tier-Ω.5.tttt: name the offending target type per Doc 721
@@ -1359,7 +1359,7 @@ impl Runtime {
             }
             Ok(Value::Object(target))
         });
-        register_method(self, obj_ctor, "freeze", |rt, args| {
+        register_intrinsic_method(self, obj_ctor, "freeze", 1, |rt, args| {
             let v = args.first().cloned().unwrap_or(Value::Undefined);
             if let Value::Object(id) = &v {
                 let o = rt.obj_mut(*id);
@@ -1370,13 +1370,13 @@ impl Runtime {
             }
             Ok(v)
         });
-        register_method(self, obj_ctor, "isFrozen", |rt, args| {
+        register_intrinsic_method(self, obj_ctor, "isFrozen", 1, |rt, args| {
             let id = match args.first() { Some(Value::Object(id)) => *id, _ => return Ok(Value::Boolean(true)) };
             let o = rt.obj(id);
             let frozen = !o.extensible && o.properties.values().all(|d| !d.writable && !d.configurable);
             Ok(Value::Boolean(frozen))
         });
-        register_method(self, obj_ctor, "fromEntries", |rt, args| {
+        register_intrinsic_method(self, obj_ctor, "fromEntries", 1, |rt, args| {
             let out = rt.alloc_object(Object::new_ordinary());
             let src = match args.first() { Some(v) => v.clone(), None => return Ok(Value::Object(out)) };
             // Iterate via @@iterator protocol.
@@ -1396,7 +1396,7 @@ impl Runtime {
         // v1 reads only `value` from the descriptor; writable/enumerable/
         // configurable are tracked as defaults via existing object_set.
         // Accessor descriptors (get/set) are not yet honored.
-        register_method(self, obj_ctor, "defineProperty", |rt, args| {
+        register_intrinsic_method(self, obj_ctor, "defineProperty", 3, |rt, args| {
             let target = match args.first() {
                 Some(Value::Object(id)) => *id,
                 other => return Err(RuntimeError::TypeError(format!(
@@ -1499,7 +1499,7 @@ impl Runtime {
             }
             Ok(Value::Object(target))
         });
-        register_method(self, obj_ctor, "defineProperties", |rt, args| {
+        register_intrinsic_method(self, obj_ctor, "defineProperties", 2, |rt, args| {
             let target = match args.first() {
                 Some(Value::Object(id)) => *id,
                 _ => return Err(RuntimeError::TypeError("Object.defineProperties: target must be an object".into())),
@@ -1537,7 +1537,7 @@ impl Runtime {
             }
             Ok(Value::Object(target))
         });
-        register_method(self, obj_ctor, "getOwnPropertyDescriptor", |rt, args| {
+        register_intrinsic_method(self, obj_ctor, "getOwnPropertyDescriptor", 2, |rt, args| {
             let id = match args.first() {
                 Some(Value::Object(id)) => *id,
                 _ => return Ok(Value::Undefined),
@@ -1573,7 +1573,7 @@ impl Runtime {
             Ok(Value::Object(out))
         });
         // Tier-Ω.5.rrrrrr: Object.getOwnPropertyDescriptors per §20.1.2.10.
-        register_method(self, obj_ctor, "getOwnPropertyDescriptors", |rt, args| {
+        register_intrinsic_method(self, obj_ctor, "getOwnPropertyDescriptors", 1, |rt, args| {
             let id = match args.first() {
                 Some(Value::Object(id)) => *id,
                 _ => return Ok(Value::Object(rt.alloc_object(Object::new_ordinary()))),
@@ -1595,7 +1595,7 @@ impl Runtime {
             }
             Ok(Value::Object(out))
         });
-        register_method(self, obj_ctor, "getOwnPropertyNames", |rt, args| {
+        register_intrinsic_method(self, obj_ctor, "getOwnPropertyNames", 1, |rt, args| {
             let id = match args.first() {
                 Some(Value::Object(id)) => *id,
                 _ => return Ok(Value::Object(rt.alloc_object(Object::new_array()))),
@@ -1633,7 +1633,7 @@ impl Runtime {
         // get the same string). Sufficient for define-properties-checks
         // (es-define-property / set-function-length / onetime) which probe
         // for Symbol.toStringTag / iterator placement.
-        register_method(self, obj_ctor, "getOwnPropertySymbols", |rt, args| {
+        register_intrinsic_method(self, obj_ctor, "getOwnPropertySymbols", 1, |rt, args| {
             let id = match args.first() {
                 Some(Value::Object(id)) => *id,
                 _ => return Ok(Value::Object(rt.alloc_object(Object::new_array()))),
@@ -1655,7 +1655,7 @@ impl Runtime {
         });
         // Object.hasOwn per ECMA 2022 §20.1.2.13 — static convenience for
         // Object.prototype.hasOwnProperty.call. Many modern packages prefer it.
-        register_method(self, obj_ctor, "hasOwn", |rt, args| {
+        register_intrinsic_method(self, obj_ctor, "hasOwn", 2, |rt, args| {
             let id = match args.first() {
                 Some(Value::Object(id)) => *id,
                 _ => return Ok(Value::Boolean(false)),
@@ -1668,7 +1668,7 @@ impl Runtime {
         // ECMA-262 §20.1.2.2: proto must be Object or null; otherwise
         // throw TypeError. Subset: properties handled via the `value`
         // field of each descriptor (matches our defineProperty subset).
-        register_method(self, obj_ctor, "create", |rt, args| {
+        register_intrinsic_method(self, obj_ctor, "create", 2, |rt, args| {
             let proto_arg = args.first().cloned().unwrap_or(Value::Undefined);
             let proto_id = match proto_arg {
                 Value::Null => None,
@@ -1702,7 +1702,7 @@ impl Runtime {
         // at module top level. Without these statics, getPrototypeOf is
         // undefined and `getPrototypeOf(Uint8Array)` errors. The Reflect
         // variant existed (Ω.5.cc) but consumer code uses Object.X.
-        register_method(self, obj_ctor, "getPrototypeOf", |rt, args| {
+        register_intrinsic_method(self, obj_ctor, "getPrototypeOf", 1, |rt, args| {
             let v = args.first().cloned().unwrap_or(Value::Undefined);
             match v {
                 Value::Object(id) => match rt.obj(id).proto {
@@ -1712,7 +1712,7 @@ impl Runtime {
                 _ => Ok(Value::Null),
             }
         });
-        register_method(self, obj_ctor, "setPrototypeOf", |rt, args| {
+        register_intrinsic_method(self, obj_ctor, "setPrototypeOf", 2, |rt, args| {
             let target = match args.first() {
                 Some(Value::Object(id)) => *id,
                 _ => return Ok(args.first().cloned().unwrap_or(Value::Undefined)),
@@ -1726,7 +1726,7 @@ impl Runtime {
             rt.obj_mut(target).proto = new_proto;
             Ok(Value::Object(target))
         });
-        register_method(self, obj_ctor, "create", |rt, args| {
+        register_intrinsic_method(self, obj_ctor, "create", 2, |rt, args| {
             let proto_arg = args.first().cloned().unwrap_or(Value::Undefined);
             let mut obj = Object::new_ordinary();
             obj.proto = match proto_arg {
@@ -1750,7 +1750,7 @@ impl Runtime {
             }
             Ok(Value::Object(id))
         });
-        register_method(self, obj_ctor, "is", |_rt, args| {
+        register_intrinsic_method(self, obj_ctor, "is", 2, |_rt, args| {
             let a = args.first().cloned().unwrap_or(Value::Undefined);
             let b = args.get(1).cloned().unwrap_or(Value::Undefined);
             Ok(Value::Boolean(crate::value::Value::same_value(&a, &b)))
@@ -1816,11 +1816,11 @@ impl Runtime {
             Ok(Value::Object(id))
         });
         let arr_ctor = self.alloc_object(arr_ctor_native);
-        register_method(self, arr_ctor, "isArray", |rt, args| {
+        register_intrinsic_method(self, arr_ctor, "isArray", 1, |rt, args| {
             Ok(Value::Boolean(matches!(args.first(),
                 Some(Value::Object(id)) if matches!(rt.obj(*id).internal_kind, InternalKind::Array))))
         });
-        register_method(self, arr_ctor, "of", |rt, args| {
+        register_intrinsic_method(self, arr_ctor, "of", 0, |rt, args| {
             let out = rt.alloc_object(Object::new_array());
             for (i, v) in args.iter().enumerate() {
                 rt.object_set(out, i.to_string(), v.clone());
@@ -1828,7 +1828,7 @@ impl Runtime {
             rt.object_set(out, "length".into(), Value::Number(args.len() as f64));
             Ok(Value::Object(out))
         });
-        register_method(self, arr_ctor, "from", |rt, args| {
+        register_intrinsic_method(self, arr_ctor, "from", 1, |rt, args| {
             let src = args.first().cloned().unwrap_or(Value::Undefined);
             let map_fn = args.get(1).cloned();
             let out = rt.alloc_object(Object::new_array());
@@ -1896,28 +1896,28 @@ impl Runtime {
         self.globals.insert("undefined".into(), Value::Undefined);
         // Predicates. Note: Number.isX (capital-N) differs from global
         // isX in NOT coercing — typeof check first, false otherwise.
-        register_method(self, num, "isInteger", |_rt, args| {
+        register_intrinsic_method(self, num, "isInteger", 1, |_rt, args| {
             let n = match args.first() {
                 Some(Value::Number(n)) => *n,
                 _ => return Ok(Value::Boolean(false)),
             };
             Ok(Value::Boolean(n.is_finite() && n.floor() == n))
         });
-        register_method(self, num, "isFinite", |_rt, args| {
+        register_intrinsic_method(self, num, "isFinite", 1, |_rt, args| {
             let n = match args.first() {
                 Some(Value::Number(n)) => *n,
                 _ => return Ok(Value::Boolean(false)),
             };
             Ok(Value::Boolean(n.is_finite()))
         });
-        register_method(self, num, "isNaN", |_rt, args| {
+        register_intrinsic_method(self, num, "isNaN", 1, |_rt, args| {
             let n = match args.first() {
                 Some(Value::Number(n)) => *n,
                 _ => return Ok(Value::Boolean(false)),
             };
             Ok(Value::Boolean(n.is_nan()))
         });
-        register_method(self, num, "isSafeInteger", |_rt, args| {
+        register_intrinsic_method(self, num, "isSafeInteger", 1, |_rt, args| {
             let n = match args.first() {
                 Some(Value::Number(n)) => *n,
                 _ => return Ok(Value::Boolean(false)),
@@ -1951,7 +1951,7 @@ impl Runtime {
             Ok(Value::String(Rc::new(abstract_ops::to_string(&v).as_str().to_string())))
         });
         let str_id = self.alloc_object(str_obj);
-        register_method(self, str_id, "fromCharCode", |_rt, args| {
+        register_intrinsic_method(self, str_id, "fromCharCode", 1, |_rt, args| {
             let mut s = String::new();
             for a in args {
                 let n = abstract_ops::to_number(a);
@@ -1959,7 +1959,7 @@ impl Runtime {
             }
             Ok(Value::String(Rc::new(s)))
         });
-        register_method(self, str_id, "fromCodePoint", |_rt, args| {
+        register_intrinsic_method(self, str_id, "fromCodePoint", 1, |_rt, args| {
             let mut s = String::new();
             for a in args {
                 let n = abstract_ops::to_number(a);
@@ -1972,7 +1972,7 @@ impl Runtime {
         // strings array (Tier-Ω.5.ww doesn't populate .raw yet). Sufficient
         // for the camelcase / consola / styled-components patterns where
         // .raw vs cooked agree (no escape sequences requiring raw).
-        register_method(self, str_id, "raw", |rt, args| {
+        register_intrinsic_method(self, str_id, "raw", 1, |rt, args| {
             let template = match args.first() {
                 Some(Value::Object(id)) => *id,
                 _ => return Err(RuntimeError::TypeError("String.raw: first argument must be an object".into())),
@@ -2485,18 +2485,18 @@ impl Runtime {
             }
         });
         let bi_id = self.alloc_object(bi_obj);
-        register_method(self, bi_id, "asIntN", |_rt, args| Ok(args.get(1).cloned().unwrap_or(Value::Undefined)));
-        register_method(self, bi_id, "asUintN", |_rt, args| Ok(args.get(1).cloned().unwrap_or(Value::Undefined)));
+        register_intrinsic_method(self, bi_id, "asIntN", 2, |_rt, args| Ok(args.get(1).cloned().unwrap_or(Value::Undefined)));
+        register_intrinsic_method(self, bi_id, "asUintN", 2, |_rt, args| Ok(args.get(1).cloned().unwrap_or(Value::Undefined)));
         // Tier-Ω.5.oooooo: BigInt.prototype with valueOf + toString. unbox-
         // primitive / is-bigint reach for `BigInt.prototype.valueOf`.
         let bi_proto = self.alloc_object(Object::new_ordinary());
-        register_method(self, bi_proto, "valueOf", |rt, _args| {
+        register_intrinsic_method(self, bi_proto, "valueOf", 0, |rt, _args| {
             match rt.current_this() {
                 Value::BigInt(b) => Ok(Value::BigInt(b)),
                 _ => Err(RuntimeError::TypeError("BigInt.prototype.valueOf: this is not a BigInt".into())),
             }
         });
-        register_method(self, bi_proto, "toString", |rt, args| {
+        register_intrinsic_method(self, bi_proto, "toString", 0, |rt, args| {
             let b = match rt.current_this() {
                 Value::BigInt(b) => b,
                 _ => return Err(RuntimeError::TypeError("BigInt.prototype.toString: this is not a BigInt".into())),
@@ -2518,13 +2518,13 @@ impl Runtime {
         });
         let bool_id = self.alloc_object(bool_obj);
         let bool_proto = self.alloc_object(Object::new_ordinary());
-        register_method(self, bool_proto, "valueOf", |rt, _args| {
+        register_intrinsic_method(self, bool_proto, "valueOf", 0, |rt, _args| {
             match rt.current_this() {
                 Value::Boolean(b) => Ok(Value::Boolean(b)),
                 _ => Err(RuntimeError::TypeError("Boolean.prototype.valueOf: this is not a Boolean".into())),
             }
         });
-        register_method(self, bool_proto, "toString", |rt, _args| {
+        register_intrinsic_method(self, bool_proto, "toString", 0, |rt, _args| {
             match rt.current_this() {
                 Value::Boolean(b) => Ok(Value::String(Rc::new(b.to_string()))),
                 _ => Err(RuntimeError::TypeError("Boolean.prototype.toString: this is not a Boolean".into())),
@@ -2544,9 +2544,9 @@ impl Runtime {
         });
         let et_id = self.alloc_object(et);
         let et_proto = self.alloc_object(Object::new_ordinary());
-        register_method(self, et_proto, "addEventListener", |rt, _args| { let _=rt; Ok(Value::Undefined) });
-        register_method(self, et_proto, "removeEventListener", |rt, _args| { let _=rt; Ok(Value::Undefined) });
-        register_method(self, et_proto, "dispatchEvent", |_rt, _args| Ok(Value::Boolean(false)));
+        register_intrinsic_method(self, et_proto, "addEventListener", 1, |rt, _args| { let _=rt; Ok(Value::Undefined) });
+        register_intrinsic_method(self, et_proto, "removeEventListener", 1, |rt, _args| { let _=rt; Ok(Value::Undefined) });
+        register_intrinsic_method(self, et_proto, "dispatchEvent", 1, |_rt, _args| Ok(Value::Boolean(false)));
         self.object_set(et_id, "prototype".into(), Value::Object(et_proto));
         self.globals.insert("EventTarget".into(), Value::Object(et_id));
         let ev = make_native("Event", |rt, args| {
@@ -2668,7 +2668,7 @@ impl Runtime {
         });
         let pid = self.alloc_object(proxy_obj);
         // Proxy.revocable(target, handler) — for revocable proxies.
-        register_method(self, pid, "revocable", |rt, args| {
+        register_intrinsic_method(self, pid, "revocable", 1, |rt, args| {
             let target = match args.first() {
                 Some(Value::Object(id)) => *id,
                 _ => return Err(RuntimeError::TypeError("Proxy.revocable: target must be an object".into())),
@@ -2703,7 +2703,7 @@ impl Runtime {
     fn install_map_set_globals(&mut self) {
         for collection in &["Map", "WeakMap"] {
             let proto = self.alloc_object(Object::new_ordinary());
-            register_method(self, proto, "get", |rt, args| {
+            register_intrinsic_method(self, proto, "get", 2, |rt, args| {
                 let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
                 let key = args.first().cloned().unwrap_or(Value::Undefined);
                 let key_s = abstract_ops::to_string(&key).as_str().to_string();
@@ -2713,7 +2713,7 @@ impl Runtime {
                 };
                 Ok(rt.object_get(storage, &key_s))
             });
-            register_method(self, proto, "set", |rt, args| {
+            register_intrinsic_method(self, proto, "set", 3, |rt, args| {
                 let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
                 let key = args.first().cloned().unwrap_or(Value::Undefined);
                 let val = args.get(1).cloned().unwrap_or(Value::Undefined);
@@ -2737,7 +2737,7 @@ impl Runtime {
                 }
                 Ok(Value::Object(this))
             });
-            register_method(self, proto, "has", |rt, args| {
+            register_intrinsic_method(self, proto, "has", 2, |rt, args| {
                 let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Boolean(false)) };
                 let key = args.first().cloned().unwrap_or(Value::Undefined);
                 let key_s = abstract_ops::to_string(&key).as_str().to_string();
@@ -2747,7 +2747,7 @@ impl Runtime {
                 };
                 Ok(Value::Boolean(rt.obj(storage).properties.contains_key(&key_s)))
             });
-            register_method(self, proto, "delete", |rt, args| {
+            register_intrinsic_method(self, proto, "delete", 1, |rt, args| {
                 let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Boolean(false)) };
                 let key = args.first().cloned().unwrap_or(Value::Undefined);
                 let key_s = abstract_ops::to_string(&key).as_str().to_string();
@@ -2765,14 +2765,14 @@ impl Runtime {
                 }
                 Ok(Value::Boolean(existed))
             });
-            register_method(self, proto, "clear", |rt, _args| {
+            register_intrinsic_method(self, proto, "clear", 1, |rt, _args| {
                 let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
                 let fresh = rt.alloc_object(Object::new_ordinary());
                 rt.object_set(this, "__map_data".into(), Value::Object(fresh));
                 rt.object_set(this, "size".into(), Value::Number(0.0));
                 Ok(Value::Undefined)
             });
-            register_method(self, proto, "forEach", |rt, args| {
+            register_intrinsic_method(self, proto, "forEach", 1, |rt, args| {
                 let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
                 let cb = args.first().cloned().unwrap_or(Value::Undefined);
                 let storage = match rt.object_get(this, "__map_data") {
@@ -2795,7 +2795,7 @@ impl Runtime {
             // via `new Set(m.values())` which exercises Symbol.iterator on
             // the returned object; an Array satisfies both the iterator
             // (via @@iterator on Array.prototype) and the spread protocol.
-            register_method(self, proto, "values", |rt, _args| {
+            register_intrinsic_method(self, proto, "values", 1, |rt, _args| {
                 let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
                 let storage = match rt.object_get(this, "__map_data") {
                     Value::Object(id) => id,
@@ -2811,7 +2811,7 @@ impl Runtime {
                 rt.object_set(arr, "length".into(), Value::Number(len as f64));
                 Ok(Value::Object(arr))
             });
-            register_method(self, proto, "keys", |rt, _args| {
+            register_intrinsic_method(self, proto, "keys", 1, |rt, _args| {
                 let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
                 let storage = match rt.object_get(this, "__map_data") {
                     Value::Object(id) => id,
@@ -2826,7 +2826,7 @@ impl Runtime {
                 rt.object_set(arr, "length".into(), Value::Number(len as f64));
                 Ok(Value::Object(arr))
             });
-            register_method(self, proto, "entries", |rt, _args| {
+            register_intrinsic_method(self, proto, "entries", 1, |rt, _args| {
                 let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
                 let storage = match rt.object_get(this, "__map_data") {
                     Value::Object(id) => id,
@@ -2853,7 +2853,7 @@ impl Runtime {
             // cli-truncate/fast-xml-parser/log-update cluster, naming Map
             // as the iterated receiver. for-of and spread reach for
             // [Symbol.iterator], which on Map is Map.prototype.entries.
-            register_method(self, proto, "@@iterator", |rt, _args| {
+            register_intrinsic_method(self, proto, "@@iterator", 1, |rt, _args| {
                 let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
                 let storage = match rt.object_get(this, "__map_data") {
                     Value::Object(id) => id,
@@ -2915,7 +2915,7 @@ impl Runtime {
         }
         for collection in &["Set", "WeakSet"] {
             let proto = self.alloc_object(Object::new_ordinary());
-            register_method(self, proto, "add", |rt, args| {
+            register_intrinsic_method(self, proto, "add", 1, |rt, args| {
                 let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
                 let v = args.first().cloned().unwrap_or(Value::Undefined);
                 let key_s = abstract_ops::to_string(&v).as_str().to_string();
@@ -2938,7 +2938,7 @@ impl Runtime {
                 }
                 Ok(Value::Object(this))
             });
-            register_method(self, proto, "has", |rt, args| {
+            register_intrinsic_method(self, proto, "has", 2, |rt, args| {
                 let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Boolean(false)) };
                 let v = args.first().cloned().unwrap_or(Value::Undefined);
                 let key_s = abstract_ops::to_string(&v).as_str().to_string();
@@ -2948,7 +2948,7 @@ impl Runtime {
                 };
                 Ok(Value::Boolean(rt.obj(storage).properties.contains_key(&key_s)))
             });
-            register_method(self, proto, "delete", |rt, args| {
+            register_intrinsic_method(self, proto, "delete", 1, |rt, args| {
                 let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Boolean(false)) };
                 let v = args.first().cloned().unwrap_or(Value::Undefined);
                 let key_s = abstract_ops::to_string(&v).as_str().to_string();
@@ -2966,14 +2966,14 @@ impl Runtime {
                 }
                 Ok(Value::Boolean(existed))
             });
-            register_method(self, proto, "clear", |rt, _args| {
+            register_intrinsic_method(self, proto, "clear", 1, |rt, _args| {
                 let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
                 let fresh = rt.alloc_object(Object::new_ordinary());
                 rt.object_set(this, "__set_data".into(), Value::Object(fresh));
                 rt.object_set(this, "size".into(), Value::Number(0.0));
                 Ok(Value::Undefined)
             });
-            register_method(self, proto, "forEach", |rt, args| {
+            register_intrinsic_method(self, proto, "forEach", 1, |rt, args| {
                 let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
                 let cb = args.first().cloned().unwrap_or(Value::Undefined);
                 let storage = match rt.object_get(this, "__set_data") {
@@ -2991,11 +2991,11 @@ impl Runtime {
             // Tier-Ω.5.rrr: @@iterator returns a values-iterator. Per
             // spec Set.prototype[Symbol.iterator] === Set.prototype.values.
             // Required for `[...new Set(arr)]` to spread.
-            register_method(self, proto, "@@iterator", |rt, _args| {
+            register_intrinsic_method(self, proto, "@@iterator", 1, |rt, _args| {
                 let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
                 make_set_values_iterator(rt, this)
             });
-            register_method(self, proto, "values", |rt, _args| {
+            register_intrinsic_method(self, proto, "values", 1, |rt, _args| {
                 let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
                 make_set_values_iterator(rt, this)
             });
@@ -3037,30 +3037,30 @@ impl Runtime {
     /// per-spec getter methods.
     fn install_date_global(&mut self) {
         let proto = self.alloc_object(Object::new_ordinary());
-        register_method(self, proto, "getTime", |rt, _args| {
+        register_intrinsic_method(self, proto, "getTime", 1, |rt, _args| {
             let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(0.0)) };
             Ok(rt.object_get(this, "__date_ms"))
         });
-        register_method(self, proto, "valueOf", |rt, _args| {
+        register_intrinsic_method(self, proto, "valueOf", 0, |rt, _args| {
             let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(0.0)) };
             Ok(rt.object_get(this, "__date_ms"))
         });
-        register_method(self, proto, "getFullYear", |rt, _args| {
+        register_intrinsic_method(self, proto, "getFullYear", 1, |rt, _args| {
             let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
             let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::Number(f64::NAN)) };
             Ok(Value::Number(date_components(ms).0 as f64))
         });
-        register_method(self, proto, "getMonth", |rt, _args| {
+        register_intrinsic_method(self, proto, "getMonth", 1, |rt, _args| {
             let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
             let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::Number(f64::NAN)) };
             Ok(Value::Number(date_components(ms).1 as f64))
         });
-        register_method(self, proto, "getDate", |rt, _args| {
+        register_intrinsic_method(self, proto, "getDate", 1, |rt, _args| {
             let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
             let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::Number(f64::NAN)) };
             Ok(Value::Number(date_components(ms).2 as f64))
         });
-        register_method(self, proto, "getDay", |rt, _args| {
+        register_intrinsic_method(self, proto, "getDay", 1, |rt, _args| {
             let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
             let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::Number(f64::NAN)) };
             // Jan 1 1970 was a Thursday (day 4).
@@ -3068,27 +3068,27 @@ impl Runtime {
             let dow = ((days % 7) + 7 + 4) % 7;
             Ok(Value::Number(dow as f64))
         });
-        register_method(self, proto, "getHours", |rt, _args| {
+        register_intrinsic_method(self, proto, "getHours", 1, |rt, _args| {
             let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
             let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::Number(f64::NAN)) };
             Ok(Value::Number(((ms / 3_600_000.0).floor() as i64 % 24) as f64))
         });
-        register_method(self, proto, "getMinutes", |rt, _args| {
+        register_intrinsic_method(self, proto, "getMinutes", 1, |rt, _args| {
             let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
             let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::Number(f64::NAN)) };
             Ok(Value::Number(((ms / 60_000.0).floor() as i64 % 60) as f64))
         });
-        register_method(self, proto, "getSeconds", |rt, _args| {
+        register_intrinsic_method(self, proto, "getSeconds", 1, |rt, _args| {
             let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
             let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::Number(f64::NAN)) };
             Ok(Value::Number(((ms / 1000.0).floor() as i64 % 60) as f64))
         });
-        register_method(self, proto, "getMilliseconds", |rt, _args| {
+        register_intrinsic_method(self, proto, "getMilliseconds", 1, |rt, _args| {
             let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
             let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::Number(f64::NAN)) };
             Ok(Value::Number((ms as i64 % 1000) as f64))
         });
-        register_method(self, proto, "getTimezoneOffset", |_rt, _args| Ok(Value::Number(0.0)));
+        register_intrinsic_method(self, proto, "getTimezoneOffset", 1, |_rt, _args| Ok(Value::Number(0.0)));
         // Tier-Ω.5.P31.E1.date-utc-getters-setters: getUTC* mirror the
         // non-UTC getters (we treat __date_ms as UTC throughout — no
         // local-time conversion). setUTC* mutate the date by replacing
@@ -3135,7 +3135,7 @@ impl Runtime {
         }
         // setUTC* family. Each replaces the named component(s) in the
         // current ms and returns the new ms per ECMA §21.4.4.x.
-        register_method(self, proto, "setUTCHours", |rt, args| {
+        register_intrinsic_method(self, proto, "setUTCHours", 1, |rt, args| {
             let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
             let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::Number(f64::NAN)) };
             let (y, mo, d) = date_components(ms);
@@ -3150,7 +3150,7 @@ impl Runtime {
             rt.object_set(this_id, "__date_ms".into(), Value::Number(new_ms));
             Ok(Value::Number(new_ms))
         });
-        register_method(self, proto, "setUTCMinutes", |rt, args| {
+        register_intrinsic_method(self, proto, "setUTCMinutes", 1, |rt, args| {
             let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
             let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::Number(f64::NAN)) };
             let (y, mo, d) = date_components(ms);
@@ -3164,7 +3164,7 @@ impl Runtime {
             rt.object_set(this_id, "__date_ms".into(), Value::Number(new_ms));
             Ok(Value::Number(new_ms))
         });
-        register_method(self, proto, "setUTCSeconds", |rt, args| {
+        register_intrinsic_method(self, proto, "setUTCSeconds", 1, |rt, args| {
             let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
             let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::Number(f64::NAN)) };
             let (y, mo, d) = date_components(ms);
@@ -3177,7 +3177,7 @@ impl Runtime {
             rt.object_set(this_id, "__date_ms".into(), Value::Number(new_ms));
             Ok(Value::Number(new_ms))
         });
-        register_method(self, proto, "setUTCMilliseconds", |rt, args| {
+        register_intrinsic_method(self, proto, "setUTCMilliseconds", 1, |rt, args| {
             let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
             let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::Number(f64::NAN)) };
             let mss = args.first().map(crate::abstract_ops::to_number).unwrap_or(0.0) as i64;
@@ -3186,7 +3186,7 @@ impl Runtime {
             rt.object_set(this_id, "__date_ms".into(), Value::Number(new_ms));
             Ok(Value::Number(new_ms))
         });
-        register_method(self, proto, "setUTCDate", |rt, args| {
+        register_intrinsic_method(self, proto, "setUTCDate", 1, |rt, args| {
             let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
             let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::Number(f64::NAN)) };
             let (y, mo, _d) = date_components(ms);
@@ -3196,7 +3196,7 @@ impl Runtime {
             rt.object_set(this_id, "__date_ms".into(), Value::Number(new_ms));
             Ok(Value::Number(new_ms))
         });
-        register_method(self, proto, "setUTCMonth", |rt, args| {
+        register_intrinsic_method(self, proto, "setUTCMonth", 1, |rt, args| {
             let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
             let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::Number(f64::NAN)) };
             let (y, _mo, d) = date_components(ms);
@@ -3206,7 +3206,7 @@ impl Runtime {
             rt.object_set(this_id, "__date_ms".into(), Value::Number(new_ms));
             Ok(Value::Number(new_ms))
         });
-        register_method(self, proto, "setUTCFullYear", |rt, args| {
+        register_intrinsic_method(self, proto, "setUTCFullYear", 1, |rt, args| {
             let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
             let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::Number(f64::NAN)) };
             let (_y, mo, d) = date_components(ms);
@@ -3218,7 +3218,7 @@ impl Runtime {
             rt.object_set(this_id, "__date_ms".into(), Value::Number(new_ms));
             Ok(Value::Number(new_ms))
         });
-        register_method(self, proto, "setTime", |rt, args| {
+        register_intrinsic_method(self, proto, "setTime", 1, |rt, args| {
             let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
             let v = args.first().map(crate::abstract_ops::to_number).unwrap_or(f64::NAN);
             rt.object_set(this_id, "__date_ms".into(), Value::Number(v));
@@ -3243,7 +3243,7 @@ impl Runtime {
                 rt.call_function(f, Value::Object(this_id), args.to_vec())
             });
         }
-        register_method(self, proto, "toISOString", |rt, _args| {
+        register_intrinsic_method(self, proto, "toISOString", 1, |rt, _args| {
             let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::String(Rc::new("".into()))) };
             let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::String(Rc::new("".into()))) };
             let (y, mo, d) = date_components(ms);
@@ -3254,13 +3254,13 @@ impl Runtime {
             Ok(Value::String(Rc::new(format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}Z",
                 y, mo + 1, d, h, mi, se, mss))))
         });
-        register_method(self, proto, "toJSON", |rt, _args| {
+        register_intrinsic_method(self, proto, "toJSON", 1, |rt, _args| {
             let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::String(Rc::new("".into()))) };
             let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::String(Rc::new("".into()))) };
             let (y, mo, d) = date_components(ms);
             Ok(Value::String(Rc::new(format!("{:04}-{:02}-{:02}T00:00:00.000Z", y, mo + 1, d))))
         });
-        register_method(self, proto, "toString", |rt, _args| {
+        register_intrinsic_method(self, proto, "toString", 0, |rt, _args| {
             let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::String(Rc::new("Invalid Date".into()))) };
             let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::String(Rc::new("Invalid Date".into()))) };
             let (y, mo, d) = date_components(ms);
@@ -3319,13 +3319,13 @@ impl Runtime {
             Ok(Value::Object(id))
         });
         let ctor = self.alloc_object(ctor_obj);
-        register_method(self, ctor, "now", |_rt, _args| {
+        register_intrinsic_method(self, ctor, "now", 0, |_rt, _args| {
             use std::time::{SystemTime, UNIX_EPOCH};
             let ms = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as f64).unwrap_or(0.0);
             Ok(Value::Number(ms))
         });
-        register_method(self, ctor, "parse", |_rt, _args| Ok(Value::Number(0.0)));
-        register_method(self, ctor, "UTC", |_rt, _args| Ok(Value::Number(0.0)));
+        register_intrinsic_method(self, ctor, "parse", 2, |_rt, _args| Ok(Value::Number(0.0)));
+        register_intrinsic_method(self, ctor, "UTC", 1, |_rt, _args| Ok(Value::Number(0.0)));
         self.object_set(ctor, "prototype".into(), Value::Object(proto));
         self.object_set(proto, "constructor".into(), Value::Object(ctor));
         self.globals.insert("Date".into(), Value::Object(ctor));
@@ -3429,7 +3429,7 @@ impl Runtime {
             o.set_own_internal("__it_src__".into(), Value::Object(src_id));
             o.set_own_internal("__it_idx__".into(), Value::Number(0.0));
             let it_id = rt.alloc_object(o);
-            register_method(rt, it_id, "next", |rt, _args| {
+            register_intrinsic_method(rt, it_id, "next", 1, |rt, _args| {
                 let this_id = match rt.current_this() { Value::Object(o) => o, _ => return Ok(Value::Undefined) };
                 let src = match rt.object_get(this_id, "__it_src__") { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
                 let idx = match rt.object_get(this_id, "__it_idx__") { Value::Number(n) => n as usize, _ => 0 };
@@ -3810,10 +3810,10 @@ impl Runtime {
                 Ok(Value::Object(id))
             });
             let id = self.alloc_object(ctor_obj);
-            register_method(self, id, "isView", |_rt, _args| Ok(Value::Boolean(false)));
+            register_intrinsic_method(self, id, "isView", 1, |_rt, _args| Ok(Value::Boolean(false)));
             let from_proto = ta_proto;
             let of_proto = ta_proto;
-            register_method(self, id, "of", move |rt, args| {
+            register_intrinsic_method(self, id, "of", 0, move |rt, args| {
                 // TypedArray.of(...items) per ECMA §23.2.2.2 — pack args.
                 let len = args.len();
                 let mut o = Object::new_ordinary();
@@ -3825,7 +3825,7 @@ impl Runtime {
                 }
                 Ok(Value::Object(new_id))
             });
-            register_method(self, id, "from", move |rt, args| {
+            register_intrinsic_method(self, id, "from", 1, move |rt, args| {
                 let src = args.first().cloned().unwrap_or(Value::Undefined);
                 let len: usize = match &src {
                     Value::Object(id) => rt.array_length(*id) as usize,
@@ -3873,8 +3873,8 @@ impl Runtime {
         self.globals.insert("WeakRef".into(), Value::Object(wr));
 
         let fr_proto = self.alloc_object(Object::new_ordinary());
-        register_method(self, fr_proto, "register", |_rt, _args| Ok(Value::Undefined));
-        register_method(self, fr_proto, "unregister", |_rt, _args| Ok(Value::Boolean(true)));
+        register_intrinsic_method(self, fr_proto, "register", 1, |_rt, _args| Ok(Value::Undefined));
+        register_intrinsic_method(self, fr_proto, "unregister", 1, |_rt, _args| Ok(Value::Boolean(true)));
         let fr_proto_for_ctor = fr_proto;
         let fr_ctor = make_native("FinalizationRegistry", move |rt, _args| {
             let mut o = Object::new_ordinary();
@@ -3892,7 +3892,7 @@ impl Runtime {
     /// many packages doing duck-type checks.
     fn install_reflect(&mut self) {
         let r = self.alloc_object(Object::new_ordinary());
-        register_method(self, r, "has", |rt, args| {
+        register_intrinsic_method(self, r, "has", 2, |rt, args| {
             let obj = args.first().cloned().unwrap_or(Value::Undefined);
             let key = args.get(1).cloned().unwrap_or(Value::Undefined);
             let key_s = abstract_ops::to_string(&key).as_str().to_string();
@@ -3908,7 +3908,7 @@ impl Runtime {
             }
             Ok(Value::Boolean(found))
         });
-        register_method(self, r, "get", |rt, args| {
+        register_intrinsic_method(self, r, "get", 2, |rt, args| {
             let obj = args.first().cloned().unwrap_or(Value::Undefined);
             let key = args.get(1).cloned().unwrap_or(Value::Undefined);
             let key_s = abstract_ops::to_string(&key).as_str().to_string();
@@ -3917,7 +3917,7 @@ impl Runtime {
                 _ => Err(RuntimeError::TypeError("Reflect.get: target must be object".into())),
             }
         });
-        register_method(self, r, "set", |rt, args| {
+        register_intrinsic_method(self, r, "set", 3, |rt, args| {
             let obj = args.first().cloned().unwrap_or(Value::Undefined);
             let key = args.get(1).cloned().unwrap_or(Value::Undefined);
             let val = args.get(2).cloned().unwrap_or(Value::Undefined);
@@ -3927,7 +3927,7 @@ impl Runtime {
                 _ => Err(RuntimeError::TypeError("Reflect.set: target must be object".into())),
             }
         });
-        register_method(self, r, "deleteProperty", |rt, args| {
+        register_intrinsic_method(self, r, "deleteProperty", 2, |rt, args| {
             let obj = args.first().cloned().unwrap_or(Value::Undefined);
             let key = args.get(1).cloned().unwrap_or(Value::Undefined);
             let key_s = abstract_ops::to_string(&key).as_str().to_string();
@@ -3939,7 +3939,7 @@ impl Runtime {
                 _ => Err(RuntimeError::TypeError("Reflect.deleteProperty: target must be object".into())),
             }
         });
-        register_method(self, r, "ownKeys", |rt, args| {
+        register_intrinsic_method(self, r, "ownKeys", 1, |rt, args| {
             let obj = args.first().cloned().unwrap_or(Value::Undefined);
             match obj {
                 Value::Object(id) => {
@@ -3965,7 +3965,7 @@ impl Runtime {
                 _ => Err(RuntimeError::TypeError("Reflect.ownKeys: target must be object".into())),
             }
         });
-        register_method(self, r, "getPrototypeOf", |rt, args| {
+        register_intrinsic_method(self, r, "getPrototypeOf", 1, |rt, args| {
             let obj = args.first().cloned().unwrap_or(Value::Undefined);
             match obj {
                 Value::Object(id) => match rt.obj(id).proto {
@@ -3988,7 +3988,7 @@ impl Runtime {
         // ansi-colors uses Reflect.setPrototypeOf at module-init time;
         // without it, the import of `ansi-colors` (which calls
         // create() at the bottom) failed before module.exports was set.
-        register_method(self, r, "setPrototypeOf", |rt, args| {
+        register_intrinsic_method(self, r, "setPrototypeOf", 2, |rt, args| {
             let obj = args.first().cloned().unwrap_or(Value::Undefined);
             let proto = args.get(1).cloned().unwrap_or(Value::Null);
             let id = match obj {
@@ -4003,7 +4003,7 @@ impl Runtime {
             rt.obj_mut(id).proto = new_proto;
             Ok(Value::Boolean(true))
         });
-        register_method(self, r, "apply", |rt, args| {
+        register_intrinsic_method(self, r, "apply", 3, |rt, args| {
             let target = args.first().cloned().unwrap_or(Value::Undefined);
             let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
             let arg_list: Vec<Value> = match args.get(2) {
@@ -4015,7 +4015,7 @@ impl Runtime {
             };
             rt.call_function(target, this_arg, arg_list)
         });
-        register_method(self, r, "construct", |rt, args| {
+        register_intrinsic_method(self, r, "construct", 2, |rt, args| {
             let target = args.first().cloned().unwrap_or(Value::Undefined);
             // Ω.5.P61.E4: IsConstructor check per ECMA §10.5.13. The
             // new-target (3rd arg, falls back to target if missing) is
@@ -4062,13 +4062,13 @@ impl Runtime {
             let ret = rt.call_function(target, this_obj.clone(), arg_list)?;
             Ok(match ret { Value::Object(_) => ret, _ => this_obj })
         });
-        register_method(self, r, "isExtensible", |rt, args| {
+        register_intrinsic_method(self, r, "isExtensible", 1, |rt, args| {
             match args.first() {
                 Some(Value::Object(id)) => Ok(Value::Boolean(rt.obj(*id).extensible)),
                 _ => Ok(Value::Boolean(false)),
             }
         });
-        register_method(self, r, "preventExtensions", |rt, args| {
+        register_intrinsic_method(self, r, "preventExtensions", 1, |rt, args| {
             if let Some(Value::Object(id)) = args.first() {
                 rt.obj_mut(*id).extensible = false;
                 return Ok(Value::Boolean(true));
@@ -4098,7 +4098,7 @@ impl Runtime {
             let proto_id = self.alloc_object(Object::new_ordinary());
             self.object_set(proto_id, "name".into(), Value::String(Rc::new((*default_name).to_string())));
             self.object_set(proto_id, "message".into(), Value::String(Rc::new("".to_string())));
-            register_method(self, proto_id, "toString", |rt, _args| {
+            register_intrinsic_method(self, proto_id, "toString", 0, |rt, _args| {
                 let this = rt.current_this();
                 let (name, message) = match &this {
                     Value::Object(id) => {
@@ -4164,7 +4164,7 @@ impl Runtime {
             // frame data) so callers' presence-and-shape checks pass.
             // Installed on every Error-family constructor (TypeError /
             // RangeError / etc.) since real Node attaches it to all of them.
-            register_method(self, ctor_id, "captureStackTrace", |rt, args| {
+            register_intrinsic_method(self, ctor_id, "captureStackTrace", 1, |rt, args| {
                 if let Some(Value::Object(target)) = args.first() {
                     // Per V8 convention, if Error.prepareStackTrace is set, it
                     // is invoked with (target, framesArray) and its return
@@ -4279,11 +4279,11 @@ impl Runtime {
         for &(name, sym_str) in well_known {
             self.object_set(sym, name.into(), Value::Symbol(Rc::new(sym_str.to_string())));
         }
-        register_method(self, sym, "for", |_rt, args| {
+        register_intrinsic_method(self, sym, "for", 1, |_rt, args| {
             let s = args.first().map(|v| crate::abstract_ops::to_string(v).as_str().to_string()).unwrap_or_default();
             Ok(Value::Symbol(Rc::new(format!("@@sym:{}", s))))
         });
-        register_method(self, sym, "keyFor", |_rt, args| {
+        register_intrinsic_method(self, sym, "keyFor", 1, |_rt, args| {
             // Ω.5.P19.E1: Symbol value type. Accept Value::Symbol only
             // (spec § 20.4.2.7 throws TypeError on non-Symbol; we return
             // undefined to match prior pragmatic laxity). Recover the key
@@ -4301,7 +4301,7 @@ impl Runtime {
         // Tier-Ω.5.wwww: Symbol.prototype with a toString that returns the
         // description. yup captures Symbol.prototype.toString at module init.
         let sym_proto = self.alloc_object(Object::new_ordinary());
-        register_method(self, sym_proto, "toString", |rt, _args| {
+        register_intrinsic_method(self, sym_proto, "toString", 0, |rt, _args| {
             match rt.current_this() {
                 Value::Symbol(s) => {
                     let body = s.strip_prefix("@@sym:").unwrap_or(&s);
@@ -4370,7 +4370,7 @@ pub(crate) fn make_set_values_iterator(rt: &mut Runtime, set_id: crate::value::O
     rt.object_set(vals_arr, "length".into(), Value::Number(values.len() as f64));
     rt.object_set(iter, "__vals".into(), Value::Object(vals_arr));
     rt.object_set(iter, "__idx".into(), Value::Number(0.0));
-    register_method(rt, iter, "next", |rt, _args| {
+    register_intrinsic_method(rt, iter, "next", 1, |rt, _args| {
         let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
         let idx = match rt.object_get(this, "__idx") {
             Value::Number(n) => n as usize,
@@ -4573,7 +4573,7 @@ where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
 /// Use at intrinsic-install sites; user-code property assignment
 /// continues to use `register_method` (enumerable per spec for
 /// CreateDataPropertyOrThrow defaults).
-fn register_intrinsic_method<F>(rt: &mut Runtime, host: ObjectRef, name: &str, length: u32, f: F)
+pub(crate) fn register_intrinsic_method<F>(rt: &mut Runtime, host: ObjectRef, name: &str, length: u32, f: F)
 where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
     // Ω.5.P61.E4: intrinsic methods are non-constructors per ECMA §21.3
     // (and the same applies to every built-in not identified as a
