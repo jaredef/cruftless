@@ -1324,10 +1324,25 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(Value::String(Rc::new(chars[idx as usize].to_string())))
     });
     register_intrinsic_method(rt, host, "toString", 0, |rt, _args| {
-        Ok(Value::String(Rc::new(abstract_ops::to_string(&rt.current_this()).as_str().to_string())))
+        // Ω.5.P62.E1: unwrap String-wrapper [[StringData]] before coerce.
+        let this = rt.current_this();
+        let t = rt.unwrap_primitive(&this);
+        match t {
+            Value::String(s) => Ok(Value::String(s)),
+            _ => Err(RuntimeError::TypeError("String.prototype.toString: this is not a String".into())),
+        }
+    });
+    register_intrinsic_method(rt, host, "valueOf", 0, |rt, _args| {
+        let this = rt.current_this();
+        let t = rt.unwrap_primitive(&this);
+        match t {
+            Value::String(s) => Ok(Value::String(s)),
+            _ => Err(RuntimeError::TypeError("String.prototype.valueOf: this is not a String".into())),
+        }
     });
     register_intrinsic_method(rt, host, "@@iterator", 0, |rt, _args| {
-        let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
+        let this = rt.current_this();
+        let s = abstract_ops::to_string(&rt.unwrap_primitive(&this)).as_str().to_string();
         Ok(Value::Object(crate::iterator::make_string_iterator(rt, s)))
     });
 }
@@ -1513,8 +1528,19 @@ fn enqueue_handler(
 // ──────────────── %Number.prototype% ────────────────
 
 fn install_number_proto(rt: &mut Runtime, host: ObjectRef) {
+    // Ω.5.P62.E1: Number.prototype.valueOf returns [[NumberData]] for
+    // Number-exotic wrapper objects (modeled via __primitive__ slot).
+    register_intrinsic_method(rt, host, "valueOf", 0, |rt, _args| {
+        let this = rt.current_this();
+        let t = rt.unwrap_primitive(&this);
+        match t {
+            Value::Number(n) => Ok(Value::Number(n)),
+            _ => Err(RuntimeError::TypeError("Number.prototype.valueOf: this is not a Number".into())),
+        }
+    });
     register_intrinsic_method(rt, host, "toString", 0, |rt, args| {
-        let n = abstract_ops::to_number(&rt.current_this());
+        let this = rt.current_this();
+        let n = abstract_ops::to_number(&rt.unwrap_primitive(&this));
         let radix = args.first().map(abstract_ops::to_number).unwrap_or(10.0) as i32;
         if radix == 10 || radix == 0 {
             Ok(Value::String(Rc::new(abstract_ops::number_to_string(n))))

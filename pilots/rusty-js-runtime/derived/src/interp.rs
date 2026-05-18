@@ -261,6 +261,21 @@ impl Runtime {
     /// (2) else call obj.toString() if callable and primitive return;
     /// (3) else call obj.valueOf() if callable and primitive return;
     /// (4) all three returned Objects → TypeError per §7.1.1.1 step 6.
+    /// Ω.5.P62.E1: unwrap a primitive-wrapper object's [[__primitive__]]
+    /// slot. Returns the boxed primitive Value (String/Number/Boolean/
+    /// BigInt/Symbol) if `v` is a wrapper, else returns `v` unchanged.
+    /// Used by Number/String/Boolean.prototype.{toString,valueOf} so
+    /// `(new Number(5)).toString()` and `(new String("hi")).valueOf()`
+    /// resolve through the spec [[NumberData]]/[[StringData]] slots.
+    pub fn unwrap_primitive(&self, v: &Value) -> Value {
+        if let Value::Object(id) = v {
+            if let Some(d) = self.obj(*id).properties.get("__primitive__") {
+                return d.value.clone();
+            }
+        }
+        v.clone()
+    }
+
     pub fn coerce_to_string(&mut self, v: &Value) -> Result<String, RuntimeError> {
         if let Value::Object(id) = v {
             let id = *id;

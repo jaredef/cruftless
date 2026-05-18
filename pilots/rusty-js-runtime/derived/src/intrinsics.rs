@@ -2015,9 +2015,27 @@ impl Runtime {
     /// is load-bearing for the parity corpus.
     fn install_number_static(&mut self) {
         // Tier-Ω.5.z: Number is also callable: `Number("3") === 3`.
-        let num_obj = make_native("Number", |_rt, args| {
+        let num_obj = make_native("Number", |rt, args| {
+            // Ω.5.P62.E1: `new Number(v)` per ECMA §21.1.1 produces a
+            // Number-exotic object with [[NumberData]]. We model
+            // [[NumberData]] via the non-enumerable __primitive__ slot,
+            // which Number.prototype.{valueOf,toString} unwrap.
             let v = args.first().cloned().unwrap_or(Value::Undefined);
-            Ok(Value::Number(abstract_ops::to_number(&v)))
+            let n = if args.is_empty() { 0.0 } else { abstract_ops::to_number(&v) };
+            if rt.current_new_target.is_some() {
+                let mut obj = crate::value::Object::new_ordinary();
+                obj.set_own_internal("__primitive__".into(), Value::Number(n));
+                let proto = match rt.globals.get("Number").cloned() {
+                    Some(Value::Object(id)) => match rt.object_get(id, "prototype") {
+                        Value::Object(p) => Some(p), _ => None,
+                    },
+                    _ => None,
+                };
+                if let Some(p) = proto { obj.proto = Some(p); }
+                let id = rt.alloc_object(obj);
+                return Ok(Value::Object(id));
+            }
+            Ok(Value::Number(n))
         });
         let num = self.alloc_object(num_obj);
         // Constants per ECMA-262 §21.1.2.
@@ -2090,19 +2108,44 @@ impl Runtime {
     /// access idiom (axios, etc.) used by polyfills + duck-type checks.
     fn install_string_global(&mut self) {
         let str_obj = make_native("String", |rt, args| {
-            // Ω.5.P61.E21: String(v) per ECMA §22.1.1.1 — when v is an
-            // Object, dispatch through ToPrimitive(string) → toString →
-            // valueOf so `String([1])` joins to "1" and
-            // `String(new Number(5))` → "5", not "[object Object]".
+            // Ω.5.P61.E21: String(v) — coerce per ECMA §22.1.1.1.
+            // Ω.5.P62.E1: `new String(v)` per §22.1.1 produces a
+            // String-exotic object with [[StringData]] = s. Modeled via
+            // non-enumerable __primitive__ slot.
             let v = args.first().cloned().unwrap_or(Value::Undefined);
-            if args.is_empty() {
-                return Ok(Value::String(Rc::new(String::new())));
+            let s_rc: Rc<String> = if args.is_empty() {
+                Rc::new(String::new())
+            } else if let Value::Symbol(_) = &v {
+                if rt.current_new_target.is_some() {
+                    return Err(RuntimeError::TypeError(
+                        "Cannot convert a Symbol value to a string".into()));
+                }
+                Rc::new(abstract_ops::to_string(&v).as_str().to_string())
+            } else {
+                Rc::new(rt.coerce_to_string(&v)?)
+            };
+            if rt.current_new_target.is_some() {
+                let mut obj = crate::value::Object::new_ordinary();
+                obj.set_own_internal("__primitive__".into(), Value::String(s_rc.clone()));
+                // Index-access compatibility: install per-char own props +
+                // length so `new String("ab")[0]` reads "a" and "length"
+                // is the codepoint count. Spec models these as exotic
+                // own properties on the String object.
+                for (i, ch) in s_rc.chars().enumerate() {
+                    obj.set_own(i.to_string(), Value::String(Rc::new(ch.to_string())));
+                }
+                obj.set_own_frozen("length".into(), Value::Number(s_rc.chars().count() as f64));
+                let proto = match rt.globals.get("String").cloned() {
+                    Some(Value::Object(id)) => match rt.object_get(id, "prototype") {
+                        Value::Object(p) => Some(p), _ => None,
+                    },
+                    _ => None,
+                };
+                if let Some(p) = proto { obj.proto = Some(p); }
+                let id = rt.alloc_object(obj);
+                return Ok(Value::Object(id));
             }
-            if let Value::Symbol(_) = &v {
-                // Spec: String(sym) returns the description form, not TypeError.
-                return Ok(Value::String(Rc::new(abstract_ops::to_string(&v).as_str().to_string())));
-            }
-            Ok(Value::String(Rc::new(rt.coerce_to_string(&v)?)))
+            Ok(Value::String(s_rc))
         });
         let str_id = self.alloc_object(str_obj);
         register_intrinsic_method(self, str_id, "fromCharCode", 1, |_rt, args| {
@@ -2666,20 +2709,40 @@ impl Runtime {
         self.bigint_prototype = Some(bi_proto);
         self.globals.insert("BigInt".into(), Value::Object(bi_id));
         // Boolean ctor with prototype.valueOf.
-        let bool_obj = make_native("Boolean", |_rt, args| {
+        let bool_obj = make_native("Boolean", |rt, args| {
+            // Ω.5.P62.E1: `new Boolean(v)` per ECMA §20.3.1 produces a
+            // Boolean-exotic object with [[BooleanData]]. Modeled via
+            // non-enumerable __primitive__ slot.
             let v = args.first().cloned().unwrap_or(Value::Undefined);
-            Ok(Value::Boolean(crate::abstract_ops::to_boolean(&v)))
+            let b = crate::abstract_ops::to_boolean(&v);
+            if rt.current_new_target.is_some() {
+                let mut obj = crate::value::Object::new_ordinary();
+                obj.set_own_internal("__primitive__".into(), Value::Boolean(b));
+                let proto = match rt.globals.get("Boolean").cloned() {
+                    Some(Value::Object(id)) => match rt.object_get(id, "prototype") {
+                        Value::Object(p) => Some(p), _ => None,
+                    },
+                    _ => None,
+                };
+                if let Some(p) = proto { obj.proto = Some(p); }
+                let id = rt.alloc_object(obj);
+                return Ok(Value::Object(id));
+            }
+            Ok(Value::Boolean(b))
         });
         let bool_id = self.alloc_object(bool_obj);
         let bool_proto = self.alloc_object(Object::new_ordinary());
         register_intrinsic_method(self, bool_proto, "valueOf", 0, |rt, _args| {
-            match rt.current_this() {
+            // Ω.5.P62.E1: unwrap Boolean-wrapper [[BooleanData]].
+            let this = rt.current_this();
+            match rt.unwrap_primitive(&this) {
                 Value::Boolean(b) => Ok(Value::Boolean(b)),
                 _ => Err(RuntimeError::TypeError("Boolean.prototype.valueOf: this is not a Boolean".into())),
             }
         });
         register_intrinsic_method(self, bool_proto, "toString", 0, |rt, _args| {
-            match rt.current_this() {
+            let this = rt.current_this();
+            match rt.unwrap_primitive(&this) {
                 Value::Boolean(b) => Ok(Value::String(Rc::new(b.to_string()))),
                 _ => Err(RuntimeError::TypeError("Boolean.prototype.toString: this is not a Boolean".into())),
             }
