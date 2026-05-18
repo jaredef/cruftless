@@ -22,7 +22,17 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
 RB="${RB_BIN:-$ROOT/target/release/cruftless}"
 RUNNER="$HERE/runner.mjs"
-HARNESS_DIR="$HERE/harness"
+# Ω.5.P61.E2: support running against the upstream test262 tree by
+# setting T262_ROOT to the cloned repo. Harness + tests both come from
+# upstream in that mode. Without T262_ROOT, use the cruftless-vendored
+# curated tests + harness stand-ins.
+if [ -n "${T262_ROOT:-}" ]; then
+  HARNESS_DIR="$T262_ROOT/harness"
+  DEFAULT_TESTS="$T262_ROOT/test"
+else
+  HARNESS_DIR="$HERE/harness"
+  DEFAULT_TESTS="$HERE/tests"
+fi
 
 if [ ! -x "$RB" ]; then
   echo "cruftless binary not found at $RB" >&2
@@ -34,7 +44,7 @@ if [ ! -f "$RUNNER" ]; then
   exit 2
 fi
 
-ROOT_ARG="${1:-$HERE/tests}"
+ROOT_ARG="${1:-$DEFAULT_TESTS}"
 if [ -f "$ROOT_ARG" ]; then
   TESTS="$ROOT_ARG"
 elif [ -d "$ROOT_ARG" ]; then
@@ -53,7 +63,8 @@ fails=()
 
 for t in $TESTS; do
   total=$((total + 1))
-  rel="${t#$HERE/tests/}"
+  rel="${t#$DEFAULT_TESTS/}"
+  rel="${rel#$HERE/tests/}"
   out=$(T262_TEST_PATH="$t" T262_HARNESS_DIR="$HARNESS_DIR" \
         timeout 10s "$RB" "$RUNNER" 2>/dev/null)
   rc=$?
