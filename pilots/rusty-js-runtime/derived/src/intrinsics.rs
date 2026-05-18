@@ -1060,14 +1060,17 @@ impl Runtime {
             let pseudo = ((nanos as u64).wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407)) as f64;
             Ok(Value::Number((pseudo / u64::MAX as f64).abs().fract()))
         });
-        // Constants
-        self.object_set(math, "PI".into(), Value::Number(std::f64::consts::PI));
-        self.object_set(math, "E".into(), Value::Number(std::f64::consts::E));
-        self.object_set(math, "LN2".into(), Value::Number(std::f64::consts::LN_2));
-        self.object_set(math, "LN10".into(), Value::Number(std::f64::consts::LN_10));
-        self.object_set(math, "LOG2E".into(), Value::Number(std::f64::consts::LOG2_E));
-        self.object_set(math, "LOG10E".into(), Value::Number(std::f64::consts::LOG10_E));
-        self.object_set(math, "SQRT2".into(), Value::Number(std::f64::consts::SQRT_2));
+        // Ω.5.P62.E3: Math constants per ECMA §21.3.1 — all
+        // { writable:false, enumerable:false, configurable:false }.
+        self.obj_mut(math).set_own_frozen("PI".into(), Value::Number(std::f64::consts::PI));
+        self.obj_mut(math).set_own_frozen("E".into(), Value::Number(std::f64::consts::E));
+        self.obj_mut(math).set_own_frozen("LN2".into(), Value::Number(std::f64::consts::LN_2));
+        self.obj_mut(math).set_own_frozen("LN10".into(), Value::Number(std::f64::consts::LN_10));
+        self.obj_mut(math).set_own_frozen("LOG2E".into(), Value::Number(std::f64::consts::LOG2_E));
+        self.obj_mut(math).set_own_frozen("LOG10E".into(), Value::Number(std::f64::consts::LOG10_E));
+        self.obj_mut(math).set_own_frozen("SQRT2".into(), Value::Number(std::f64::consts::SQRT_2));
+        // SQRT1_2 absent pre-E3.
+        self.obj_mut(math).set_own_frozen("SQRT1_2".into(), Value::Number(std::f64::consts::FRAC_1_SQRT_2));
 
         // Tier-Ω.5.JJJJJJJJ: Math.imul / Math.fround / Math.clz32 / Math.sign /
         // Math.expm1 / Math.log1p / Math.log2 / Math.log10 / Math.cbrt /
@@ -2039,14 +2042,16 @@ impl Runtime {
         });
         let num = self.alloc_object(num_obj);
         // Constants per ECMA-262 §21.1.2.
-        self.object_set(num, "MAX_SAFE_INTEGER".into(), Value::Number(9007199254740991.0));
-        self.object_set(num, "MIN_SAFE_INTEGER".into(), Value::Number(-9007199254740991.0));
-        self.object_set(num, "MAX_VALUE".into(), Value::Number(f64::MAX));
-        self.object_set(num, "MIN_VALUE".into(), Value::Number(5e-324));
-        self.object_set(num, "EPSILON".into(), Value::Number(f64::EPSILON));
-        self.object_set(num, "POSITIVE_INFINITY".into(), Value::Number(f64::INFINITY));
-        self.object_set(num, "NEGATIVE_INFINITY".into(), Value::Number(f64::NEG_INFINITY));
-        self.object_set(num, "NaN".into(), Value::Number(f64::NAN));
+        // Ω.5.P62.E3: Number namespace constants per ECMA §21.1.2 — all
+        // { writable:false, enumerable:false, configurable:false }.
+        self.obj_mut(num).set_own_frozen("MAX_SAFE_INTEGER".into(), Value::Number(9007199254740991.0));
+        self.obj_mut(num).set_own_frozen("MIN_SAFE_INTEGER".into(), Value::Number(-9007199254740991.0));
+        self.obj_mut(num).set_own_frozen("MAX_VALUE".into(), Value::Number(f64::MAX));
+        self.obj_mut(num).set_own_frozen("MIN_VALUE".into(), Value::Number(5e-324));
+        self.obj_mut(num).set_own_frozen("EPSILON".into(), Value::Number(f64::EPSILON));
+        self.obj_mut(num).set_own_frozen("POSITIVE_INFINITY".into(), Value::Number(f64::INFINITY));
+        self.obj_mut(num).set_own_frozen("NEGATIVE_INFINITY".into(), Value::Number(f64::NEG_INFINITY));
+        self.obj_mut(num).set_own_frozen("NaN".into(), Value::Number(f64::NAN));
         // Tier-Ω.5.ggggg: global Infinity / NaN / undefined per ECMA-262
         // §19.1. acorn's tokenizer uses `Infinity` as a sentinel in
         // `for (var i=0, e=Infinity; i<e; ...)`; without the global,
