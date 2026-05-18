@@ -633,7 +633,21 @@ impl Runtime {
             if stripped.ends_with(".json") {
                 return self.evaluate_json_module(&source, url);
             }
-            match detect_module_kind(url) {
+            // Ω.5.P54.E7 (Axis-M walk consequence): scan the ALREADY-
+            // LOADED source for ESM markers instead of re-reading the
+            // first 64KB. heap-js's .es5.js is 84KB with `export {...}`
+            // past the prior sniff window — full-source scan closes it.
+            // rollup-plugin-commonjs's .es.js stays CJS-shaped (uses
+            // `require` at top level, no top-level import/export) so the
+            // .cjs.js-equivalent load path remains. The probe-revealed
+            // constraint: kind-detect needs the full body, not just its
+            // head — source-sniff was an optimization that hid divergence.
+            let kind = if source_has_esm_markers(&source) {
+                ModuleKind::ESM
+            } else {
+                detect_module_kind(url)
+            };
+            match kind {
                 ModuleKind::ESM => self.evaluate_module(&source, url),
                 ModuleKind::CJS => self.evaluate_cjs_module(&source, url),
             }
