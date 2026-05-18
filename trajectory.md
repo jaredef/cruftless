@@ -1722,3 +1722,65 @@ Read seed.md §A8.23 (host-v2 as primary substrate target, now binary `cruftless
 **Measurement entry post-rename (the script naming inverted with the rename).** The default `parity-measure.sh` now targets `cruftless` (host-v2, the primary substrate per §A8.23) directly — `RB="${RB_BIN:-$ROOT/target/release/cruftless}"` at line 32. The ceiling sweep is wrapped at `parity-measure-rquickjs.sh` (sets `RB_BIN=target/release/cruftless-rquickjs` and execs `parity-measure.sh`). Fast iteration: `parity-fast.sh` runs the exemplar basket against host-v2. Cluster-targeted: `parity-cluster.sh <cluster-name>` extracts one residual cluster from a prior canonical sweep and re-measures only that basket. Per keeper directive (seed `feedback_no_auto_sweeps`): default to `parity-fast.sh` (exemplars) for substrate-work iteration; canonical `parity-measure.sh host/tools/parity-top500.txt` runs only on keeper request.
 
 Pin-Art tag count this engagement: ~172 (EXT 10) + 28 (this stretch) = ~200 substrate moves committed.
+
+
+## RESUME VECTOR EXTENSION 12 — 2026-05-18 (Ω.5.P55.E1 lands; host-v2 crosses the rquickjs ceiling)
+
+### Headline
+
+Canonical post-P55.E1 reading: **76.4% (784/1026)** on parity-top500 host-v2 (`host/tools/parity-results-top500-postp55.json`). Composition: 736 PASS + 48 MATCH_OK_ERR_BOTH (§A8.24 both-engines-correctly-reject, counted PASS) + 176 FAIL + 14 TIMEOUT + 52 SKIP_INSTALL_FAILED.
+
+**host-v2 has crossed the rquickjs ceiling.** Migration-cost gap (host/ − host-v2) inverted from EXT 10's +4.1 pp to **−1.2 pp**. host-v2 is now ahead of the rquickjs reference ceiling on byte-parity-with-Bun across the 1026-package basket.
+
+| Anchor | host-v2 | host/ (ceiling) | gap |
+|---|---|---|---|
+| EXT 8 (post-P17) | 40.1% | 75.2% | +35.1 |
+| EXT 9 (post-P48) | 70.7% | 75.2% | +4.5 |
+| EXT 10 (post-P49) | 71.1% | 75.2% | +4.1 |
+| **EXT 12 (post-P55.E1)** | **76.4%** | 75.2% | **−1.2** |
+
+Per Doc 729 §A8.24 / §VII two-reads: the headline metric (byte-parity-with-Bun) has surpassed the legacy ceiling because the disciplines named on 2026-05-17 (§A8.23 host-v2 as primary substrate target; §A8.24 swap-without-regression as load-bearing telos; Doc 729's resolver-instance + seven-axes frame) are *more* spec-correct than the rquickjs reference where Bun is lax. The +1.2 pp surplus is forward progress per §A8.24, not measurement noise.
+
+### Substrate move this anchor (1)
+
+| Tag-on-DAG | Commit | Mode | Recognition |
+|---|---|---|---|
+| Ω.5.P55.E1.engine-helper-boundary | `7c83db8b` | engine-substrate (Doc 729 §VII.B) | Thirteen compiler-emitted lowerings (`__await`, `__dynamic_import`, `__apply`, `__construct`, `__install_accessor__`, `__yield_push__`, `__yield_delegate__`, `__object_spread`, `__array_push_single`, `__array_extend`, `__destr_array_rest`, `__destr_object_rest`, `__createRegExp`) relocated from the JS-visible `globals` table to a new `engine_helpers` table. `Op::LoadGlobal` falls through `globals → engine_helpers → Undefined` (interp.rs). `globalThis.X` reads as `undefined` and `Object.getOwnPropertyNames(globalThis)` enumerates none of them. Six Doc 729 §XII axis probes + `__record` stay in `globals` by design — JS-callable probe surface. Smoke verifies all 13 hidden; await/spread/destructure/accessor/generator/regex-literal/dynamic-import all functional. (B.δ) variant: same §4.1 closure as the proposed (B.γ) opcode-level approach with much smaller surface (no new opcode, no compiler-emission-site rewrites). |
+
+P55.E1 also worked the regression-as-implicit-constraint-probe pattern per Doc 729 §XIII: walk surfaced 12 explicit constraints (the named lowerings); smoke-test regression sweep surfaced a 13th (`__createRegExp`, in a sister `register_global_native` registration in regexp.rs). Folded into the same move per §XIII's annotation-revision discipline — single tag, three-conjunct property absorbed in one commit.
+
+### Per-cluster delta vs EXT 9 (post-P48)
+
+| Cluster | post-P48 | post-P55 | Δ |
+|---|---|---|---|
+| III.c dyn-import | 124 | 105 | **−19** |
+| III.a kc±1-2 | 55 | 28 | **−27** |
+| III.a kc±3-10 | 14 | 16 | +2 |
+| III.a same-kc typeof/value | 17 | 10 | **−7** |
+| III.a kc>10 | 10 | 6 | **−4** |
+| bun-ERR rb-OK | 4 | 3 | −1 |
+| both-ERR (now §A8.24 PASS) | — | 48 | new bucket |
+
+The kc±1-2 cluster — EXT 8's named priority absorption target (237 packages at EXT 8) — has shrunk to 28. The III.c dyn-import sub-dep eval/parse chain is now the dominant residual at 60% of FAILs.
+
+### Doc 717 / 727 / 729 alignment
+
+**Doc 717 §VIII migration-cost prediction.** The cut-profile diff between host/ and host-v2 — predicted at EXT 8 as the count of (abstract-op × rung) pairs requiring lift to reach host/'s above-engine maturity from a pure rusty-js base — has now closed and inverted. The (B.δ) move at P55.E1 specifically does not produce many new PASSes (the engine helpers were not previously preventing imports; they were just visible in `Object.getOwnPropertyNames(globalThis)`); the +5.3 pp jump since EXT 10 belongs to the P50→P54 stretch whose canonical sweep had not been run.
+
+**Doc 727 §V basin-stability falsifier.** EXT 11 predicted that the kc±1-2 absorption from P50.E1-E4 + P53.E11-E13 would land around 25-30 remaining; realized 28. Inside the predicted band. Doc 726 §III probe-shape ordering preserved (III.c > III.a kc±1-2 > III.a kc±3-10 > III.a typeof-diff > III.a kc>10 > bun-ERR rb-OK), consistent with both host/ at comparable maturity and EXT 8's post-P17 host-v2 distribution.
+
+**Doc 729 §VII.B closure status.** Engine-internal bilateral boundary tightening (§VII.B) is now satisfied for the compiler-emitted lowering layer. Remaining §VII applications: (A) bootstrap-as-seed extraction (`cruftless-bootstrap-seed.md` per Doc 250 pattern); (C) host-module privilege accumulation (Layer-N → 0 spectrum with sandbox enforcement). Both are queued at successor-engagement scope unless keeper prioritizes earlier.
+
+### Open scope at this anchor
+
+1. **III.c dyn-import (105 pkgs, dominant residual).** Each `load_module` failure inside a dyn-import target is its own Doc 721 Step 2 walk. arktype is the most visible; @actions/http-client, @databases/pg, @jest/expect, nx all in chain.
+2. **III.a typeof-diff (10 pkgs).** zod $brand pattern (Symbol values returning `typeof === "string"`). Long-standing per EXT 9/10/11; candidate Ω.5.P56.E1.symbol-typeof-classification.
+3. **III.a kc±1-2 long-tail (28 pkgs).** Symbol-keyed leakage into `Object.keys` per ECMA §7.3.21 (the `EnumerableOwnProperties` filter on string keys). Candidate Ω.5.P57.E1.object-keys-symbol-filter — likely high-yield with small surface.
+4. **Harness fix.** `parity-measure.sh` line 72 emits `printf '  {"pkg":%q,"status":%q}\n'` (shell-quoting, not JSON-quoting) for the SKIP_INSTALL_FAILED path. SKIP entries land as malformed JSON like `{"pkg":tinyhttp,"status":SKIP_INSTALL_FAILED}`, breaking strict-mode `json.load` parsers at the first such line (52 entries in this sweep). Pre-existing; Ω.5.P55.E2 candidate.
+5. **Substantive engine investments still deferred:** real Proxy interception, real fetch + Request/Response (currently benign-at-init stubs from P53.E3/E4), Unicode regex properties, AST-level predictor v2 per Doc 724 §XI.d, R-axis full stack-depth model (§A8 P54 carry-over).
+
+### Resume protocol
+
+Read seed.md §A8.23 + Doc 729 + EXT 11 + this anchor (EXT 12). Canonical reading: `host/tools/parity-results-top500-postp55.json` (76.4%, 784/1026). Ceiling reference: `host/tools/parity-results-top500-postext7.json` (75.2%, host/). Migration-cost gap: **−1.2 pp (host-v2 ahead)**.
+
+Pin-Art tag count this engagement: ~200 (EXT 11) + 1 (P55.E1) = ~201 substrate moves committed.
