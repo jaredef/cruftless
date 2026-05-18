@@ -248,6 +248,11 @@ impl<'src> Parser<'src> {
                 let delegate = matches!(self.current_kind(), TokenKind::Punct(Punct::Star));
                 if delegate { self.bump()?; }
                 // yield with no argument: next token is statement terminator.
+                // Ω.5.P53.E9: yield's argument is an AssignmentExpression
+                // per spec — recurse at the assignment level so
+                // `yield x = expr` parses as `yield (x = expr)` rather
+                // than `(yield x) = expr`. urql-core's streaming branch
+                // uses this in a generator body.
                 let arg = match self.current_kind() {
                     TokenKind::Punct(Punct::Semicolon)
                     | TokenKind::Punct(Punct::RParen)
@@ -255,7 +260,7 @@ impl<'src> Parser<'src> {
                     | TokenKind::Punct(Punct::RBracket)
                     | TokenKind::Punct(Punct::Comma)
                     | TokenKind::Eof => Expr::Identifier { name: "undefined".into(), span: Span::new(start, start) },
-                    _ => self.parse_unary_expression()?,
+                    _ => self.parse_assignment_expression()?,
                 };
                 let op = if delegate { UnaryOp::YieldDelegate } else { UnaryOp::Yield };
                 let span = Span::new(start, arg.span().end);
