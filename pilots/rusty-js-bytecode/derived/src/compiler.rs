@@ -4239,6 +4239,27 @@ impl Compiler {
         encode_op(&mut self.bytecode, Op::StoreLocal);
         encode_u16(&mut self.bytecode, ctor_slot);
 
+        // Ω.5.P58.E10: the class binding must be available to static field
+        // initializers per ECMA §15.7.10 ClassDefinitionEvaluation step
+        // 26 (the classScope binds the class name to F before
+        // InitializeBoundName is called on the outer scope). bson's
+        // Long.fromInt access inside `static ZERO = Long.fromInt(0)`
+        // would otherwise resolve via the outer class-decl slot which
+        // gets written only after compile_class returns.
+        // Copy ctor_slot → outer class-name slot here so static-init
+        // expressions referencing the class name LoadLocal find the
+        // ctor object. The outer slot was pre-allocated at line ~1399.
+        if let Some(n) = name {
+            if let Some(outer_slot) = self.resolve_local(&n.name) {
+                if outer_slot != ctor_slot {
+                    encode_op(&mut self.bytecode, Op::LoadLocal);
+                    encode_u16(&mut self.bytecode, ctor_slot);
+                    encode_op(&mut self.bytecode, Op::StoreLocal);
+                    encode_u16(&mut self.bytecode, outer_slot);
+                }
+            }
+        }
+
         // ctor.prototype = <proto>
         let key_proto = self.constants.intern(Constant::String("prototype".into()));
         encode_op(&mut self.bytecode, Op::LoadLocal);
@@ -4268,8 +4289,32 @@ impl Compiler {
             encode_op(&mut self.bytecode, Op::SetPrototype);
         }
 
-        // ── 4. methods ─────────────────────────────────────────────
+        // ── 4. methods + static-init ───────────────────────────────
+        //
+        // Ω.5.P58.E10: two-pass member processing per ECMA §15.7.10 step
+        // 30-31. Methods (including static methods) are installed first;
+        // static field initializers and static blocks then run in source
+        // order. Pre-P58.E10 a single source-order pass meant a class
+        // body like
+        //   class Long {
+        //     static TWO_PWR_24 = Long.fromInt(...);  // line 1263
+        //     ...
+        //     static fromInt(value, unsigned) { ... }  // line 1275
+        //   }
+        // had the static field init run before fromInt was installed.
+        // bson.cjs's Long, and any class with field-before-method order,
+        // tripped on this. Two passes — pass A installs methods, pass B
+        // evaluates fields + static blocks — matches the spec ordering.
+        //
+        // Two-pass: pass=0 installs methods, pass=1 evaluates static
+        // fields + static blocks in source order. Skips at the arm head.
+        for pass in 0u8..2 {
         for m in members {
+            // Pass-A skip for non-methods; pass-B skip for methods.
+            match m {
+                ClassMember::Method { .. } => { if pass != 0 { continue; } }
+                ClassMember::Field { .. } | ClassMember::StaticBlock { .. } => { if pass != 1 { continue; } }
+            }
             match m {
                 ClassMember::Method { kind, params, body, name: m_name, is_static, is_async, is_generator, span: m_span } => {
                     if matches!(kind, MethodKind::Constructor) { continue; }
@@ -4379,9 +4424,13 @@ impl Compiler {
                     }
                 }
                 ClassMember::Field { name: f_name, is_static, init, span: _ } => {
-                    // Tier-Ω.5.o: instance fields were folded into the
-                    // constructor body above. Static fields run once at
-                    // class-definition time: lower as `ctor.<key> = init`.
+                    // Ω.5.P58.E10 pass B start (see end of pass A's loop
+                    // for the spec rationale). Static fields run AFTER
+                    // all static methods are installed, in source order.
+                    // The pass A→B split keeps the original code below
+                    // intact; the same body runs unchanged. Per
+                    // ECMA §15.7.10 step 30 (methods) precedes step 31
+                    // (fields/blocks).
                     if !*is_static { continue; }
                     encode_op(&mut self.bytecode, Op::LoadLocal);
                     encode_u16(&mut self.bytecode, ctor_slot);
@@ -4453,6 +4502,7 @@ impl Compiler {
                 }
             }
         }
+        } // end two-pass loop
 
         // Tier-Ω.5.uuuuu: write the finalized constructor into the
         // self-name slot before pushing as expression value, so methods
