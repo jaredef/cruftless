@@ -1602,21 +1602,36 @@ impl Runtime {
             };
             for (k, dv) in entries {
                 if let Value::Object(did) = dv {
+                    // Ω.5.P61.E15: full descriptor semantics per ECMA
+                    // §20.1.2.4 + §6.2.5.4. Pre-E15 the data path called
+                    // object_set which defaulted everything to enumerable;
+                    // accessor path forced enumerable:true. Now reads the
+                    // descriptor's own writable/enumerable/configurable
+                    // (default false when absent) per CompletePropertyDescriptor.
+                    let read_bool = |rt: &Runtime, name: &str| -> Option<bool> {
+                        if !rt.obj(did).properties.contains_key(name) { return None; }
+                        match rt.object_get(did, name) {
+                            Value::Boolean(b) => Some(b),
+                            Value::Undefined | Value::Null => Some(false),
+                            _ => Some(true),
+                        }
+                    };
                     let getter = rt.object_get(did, "get");
                     let setter = rt.object_get(did, "set");
                     let has_getter = matches!(&getter, Value::Object(_));
                     let has_setter = matches!(&setter, Value::Object(_));
-                    if has_getter || has_setter {
-                        rt.obj_mut(target).properties.insert(k, crate::value::PropertyDescriptor {
-                            value: Value::Undefined,
-                            writable: false, enumerable: true, configurable: true,
-                            getter: if has_getter { Some(getter) } else { None },
-                            setter: if has_setter { Some(setter) } else { None },
-                        });
-                    } else {
-                        let value = rt.object_get(did, "value");
-                        rt.object_set(target, k, value);
-                    }
+                    let writable = read_bool(rt, "writable").unwrap_or(false);
+                    let enumerable = read_bool(rt, "enumerable").unwrap_or(false);
+                    let configurable = read_bool(rt, "configurable").unwrap_or(false);
+                    let value = if rt.obj(did).properties.contains_key("value") {
+                        rt.object_get(did, "value")
+                    } else { Value::Undefined };
+                    rt.obj_mut(target).properties.insert(k, crate::value::PropertyDescriptor {
+                        value,
+                        writable, enumerable, configurable,
+                        getter: if has_getter { Some(getter) } else { None },
+                        setter: if has_setter { Some(setter) } else { None },
+                    });
                 }
             }
             Ok(Value::Object(target))
@@ -1811,6 +1826,12 @@ impl Runtime {
             Ok(Value::Object(target))
         });
         register_intrinsic_method(self, obj_ctor, "create", 2, |rt, args| {
+            // Ω.5.P61.E15: apply full descriptor semantics per ECMA
+            // §20.1.2.2 (Object.create) + §10.1.6.1 OrdinaryDefineOwnProperty.
+            // Pre-E15 the impl wrote values via object_set which defaulted
+            // writable/enumerable/configurable to true. Per §6.2.5.4
+            // CompletePropertyDescriptor the absent attributes default to
+            // false on a new property.
             let proto_arg = args.first().cloned().unwrap_or(Value::Undefined);
             let mut obj = Object::new_ordinary();
             obj.proto = match proto_arg {
@@ -1819,7 +1840,6 @@ impl Runtime {
                 _ => return Err(RuntimeError::TypeError("Object.create: prototype must be object or null".into())),
             };
             let id = rt.alloc_object(obj);
-            // Properties argument (descriptor map) — implement same shape as defineProperties.
             if let Some(Value::Object(props_id)) = args.get(1) {
                 let entries: Vec<(String, Value)> = rt.obj(*props_id).properties.iter()
                     .filter(|(_, d)| d.enumerable)
@@ -1827,8 +1847,30 @@ impl Runtime {
                     .collect();
                 for (k, dv) in entries {
                     if let Value::Object(did) = dv {
-                        let value = rt.object_get(did, "value");
-                        rt.object_set(id, k, value);
+                        let read_bool = |rt: &Runtime, name: &str| -> Option<bool> {
+                            if !rt.obj(did).properties.contains_key(name) { return None; }
+                            match rt.object_get(did, name) {
+                                Value::Boolean(b) => Some(b),
+                                Value::Undefined | Value::Null => Some(false),
+                                _ => Some(true),
+                            }
+                        };
+                        let getter = rt.object_get(did, "get");
+                        let setter = rt.object_get(did, "set");
+                        let has_getter = matches!(getter, Value::Object(_));
+                        let has_setter = matches!(setter, Value::Object(_));
+                        let writable = read_bool(rt, "writable").unwrap_or(false);
+                        let enumerable = read_bool(rt, "enumerable").unwrap_or(false);
+                        let configurable = read_bool(rt, "configurable").unwrap_or(false);
+                        let value = if rt.obj(did).properties.contains_key("value") {
+                            rt.object_get(did, "value")
+                        } else { Value::Undefined };
+                        rt.obj_mut(id).properties.insert(k, crate::value::PropertyDescriptor {
+                            value,
+                            writable, enumerable, configurable,
+                            getter: if has_getter { Some(getter) } else { None },
+                            setter: if has_setter { Some(setter) } else { None },
+                        });
                     }
                 }
             }
