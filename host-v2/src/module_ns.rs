@@ -30,6 +30,27 @@ use rusty_js_runtime::{HostHook, Runtime, Value};
 /// is whole-tree ESM via `type:module`). Bun's namespace synth treats
 /// this case as "needs default", matching the @opentelemetry/core /
 /// @xstate/fsm / minified-rollup-TypeScript pattern.
+/// Ω.5.P53.E13: walk parent dirs to find the enclosing package.json
+/// and report whether it declares `"type":"module"`. Returns false when
+/// the package is non-type-module (CJS-default, with module field /
+/// .mjs handling making certain files ESM).
+fn package_is_type_module(url: &str) -> bool {
+    let path_str = match url.strip_prefix("file://") { Some(p) => p, None => return false };
+    let path = std::path::Path::new(path_str);
+    let mut cur = path.parent();
+    while let Some(d) = cur {
+        let candidate = d.join("package.json");
+        if candidate.is_file() {
+            if let Ok(text) = std::fs::read_to_string(&candidate) {
+                let lower = text.replace(char::is_whitespace, "");
+                return lower.contains("\"type\":\"module\"");
+            }
+        }
+        cur = d.parent();
+    }
+    false
+}
+
 fn is_js_under_non_type_module_package(url: &str) -> bool {
     let path_str = match url.strip_prefix("file://") { Some(p) => p, None => return false };
     let path = std::path::Path::new(path_str);
@@ -122,11 +143,18 @@ pub fn install(rt: &mut Runtime) {
         // (or `module.exports = fn` reaching the ESM hook through a
         // .mjs build). Lift them only when default is a function and
         // the property isn't already explicitly named.
-        // Ω.5.P53.E12: narrow the lift to the case where `default` is
-        // the sole explicit export. axios / got / ky / package-json have
-        // named exports alongside default and Bun does NOT lift on those —
-        // P53.E11 widened too aggressively and regressed 7 dyn-import pkgs.
-        if has_default && named_count == 0 {
+        // Ω.5.P53.E13: lift requires THREE constraints together —
+        //   (a) default is the sole explicit export (named_count == 0)
+        //   (b) default is a function-shaped object
+        //   (c) the enclosing package is NOT type:module (i.e. Bun would
+        //       have resolved this as CJS; the lift restores parity with
+        //       CJS's namespace surface)
+        // P53.E11 named (a)+(b); the lint-staged / update-notifier
+        // regression-probe surfaced (c) — they're type:module with the
+        // same fn-default + no-named-exports shape, and Bun doesn't lift
+        // because their ESM path is the canonical entry.
+        let pkg_is_type_module = package_is_type_module(url);
+        if has_default && named_count == 0 && !pkg_is_type_module {
             if let Value::Object(fn_id) = default_value {
                 use rusty_js_runtime::value::InternalKind;
                 let is_fn = matches!(
