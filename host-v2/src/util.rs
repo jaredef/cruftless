@@ -26,11 +26,22 @@ pub fn install(rt: &mut Runtime) {
         Ok(args.first().cloned().unwrap_or(Value::Undefined))
     });
     // inspect(v) → JSON.stringify(v, null, 2). Close enough for v1.
-    register_method(rt, util, "inspect", |rt, args| {
+    // Ω.5.P53.E6: inspect carries a `custom` symbol property whose value
+    // is Symbol.for('nodejs.util.inspect.custom'). ts-node and other
+    // consumers test `util.inspect.custom` and re-export its typeof —
+    // returning a real Symbol (not undefined → string-fallback) closes
+    // the L5 cut surfaced by the ts-node probe.
+    let inspect_fn = crate::register::make_callable(rt, "inspect", |rt, args| {
         let v = args.first().cloned().unwrap_or(Value::Undefined);
         let s = json_stringify_via_intrinsic(rt, &v)?;
         Ok(Value::String(Rc::new(s)))
     });
+    rt.object_set(
+        inspect_fn,
+        "custom".into(),
+        Value::Symbol(Rc::new("@@sym:nodejs.util.inspect.custom".to_string())),
+    );
+    rt.object_set(util, "inspect".into(), Value::Object(inspect_fn));
 
     // format(fmt, ...args) → printf-style substitution with %s/%d/%j.
     register_method(rt, util, "format", |rt, args| {
