@@ -555,6 +555,33 @@ pub fn install(rt: &mut Runtime) {
     });
     rt.object_set(fs, "createReadStream".into(), Value::Object(create_read_stream));
 
+    // Ω.5.P56.E1: throw-on-call stubs for the permission + stat fs surface
+    // not yet implemented at host-v2. Module-init shape probes pass
+    // (typeof === 'function'); actual invocation throws. fs-extra and
+    // similar packages enumerate Object.keys(fs) and filter by typeof at
+    // module load; the present-as-function shape closes their 17-key
+    // typeof-diff residual surfaced at EXT 12. Mirrors the throwStub
+    // pattern host/ uses post-install (host/src/lib.rs:6296+).
+    for stub in &[
+        "chmod", "chmodSync",
+        "chown", "chownSync",
+        "fchmod", "fchmodSync",
+        "fchown", "fchownSync",
+        "fstat", "fstatSync",
+        "lchmod", "lchmodSync",
+        "lchown", "lchownSync",
+        "lstat", "lstatSync",
+        "stat",
+    ] {
+        let nm: &'static str = stub;
+        let cb = make_callable(rt, nm, move |_rt, _args| {
+            Err(RuntimeError::TypeError(
+                format!("fs.{} is not yet implemented in cruftless host-v2", nm)
+            ))
+        });
+        rt.object_set(fs, (*stub).into(), Value::Object(cb));
+    }
+
     // Tier-Ω.5.wwwwww: fs.realpath / fs.realpathSync with .native sub-property.
     // glob / rimraf / fs-extra read `fs.realpath.native` at module init —
     // Node exposes both fs.realpath (libuv-backed) and fs.realpath.native
