@@ -3083,6 +3083,179 @@ impl Runtime {
                 let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
                 make_set_values_iterator(rt, this)
             });
+            // Ω.5.P61.E11: Set.prototype.keys is alias for values per ECMA §24.2.4.
+            register_intrinsic_method(self, proto, "keys", 0, |rt, _args| {
+                let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
+                make_set_values_iterator(rt, this)
+            });
+            // Set.prototype.entries returns iterator of [v, v] pairs.
+            register_intrinsic_method(self, proto, "entries", 0, |rt, _args| {
+                let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
+                let storage = match rt.object_get(this, "__set_data") {
+                    Value::Object(id) => id, _ => return Ok(Value::Undefined),
+                };
+                let vals: Vec<Value> = rt.obj(storage).properties.values()
+                    .map(|d| d.value.clone()).collect();
+                let arr = rt.alloc_object(Object::new_array());
+                for (i, v) in vals.iter().enumerate() {
+                    let pair = rt.alloc_object(Object::new_array());
+                    rt.object_set(pair, "0".into(), v.clone());
+                    rt.object_set(pair, "1".into(), v.clone());
+                    rt.object_set(pair, "length".into(), Value::Number(2.0));
+                    rt.object_set(arr, i.to_string(), Value::Object(pair));
+                }
+                rt.object_set(arr, "length".into(), Value::Number(vals.len() as f64));
+                // Return an iterator over the pairs.
+                Ok(Value::Object(crate::iterator::make_array_iterator(rt, arr)))
+            });
+            // Set-theoretic operations per ECMA §24.2.4 (ES2024).
+            let set_op_union = |rt: &mut Runtime, args: &[Value]| -> Result<Value, RuntimeError> {
+                let this = match rt.current_this() { Value::Object(id) => id, _ => return Err(RuntimeError::TypeError("union: this not Set".into())) };
+                let other = args.first().cloned().unwrap_or(Value::Undefined);
+                let other_vals = collect_iterable(rt, other)?;
+                // Build new Set
+                let out_proto = match rt.globals.get("Set").cloned() {
+                    Some(Value::Object(cid)) => match rt.object_get(cid, "prototype") { Value::Object(p) => Some(p), _ => None },
+                    _ => None,
+                };
+                let mut o = Object::new_ordinary();
+                o.proto = out_proto;
+                let new_set = rt.alloc_object(o);
+                let storage = rt.alloc_object(Object::new_ordinary());
+                rt.object_set(new_set, "__set_data".into(), Value::Object(storage));
+                let mut size = 0.0;
+                let this_storage = match rt.object_get(this, "__set_data") { Value::Object(id) => Some(id), _ => None };
+                if let Some(s) = this_storage {
+                    let kvs: Vec<(String, Value)> = rt.obj(s).properties.iter().map(|(k,d)| (k.clone(), d.value.clone())).collect();
+                    for (k, v) in kvs { rt.object_set(storage, k, v); size += 1.0; }
+                }
+                for v in other_vals {
+                    let k = abstract_ops::to_string(&v).as_str().to_string();
+                    if !rt.obj(storage).properties.contains_key(&k) {
+                        rt.object_set(storage, k, v); size += 1.0;
+                    }
+                }
+                rt.object_set(new_set, "size".into(), Value::Number(size));
+                Ok(Value::Object(new_set))
+            };
+            register_intrinsic_method(self, proto, "union", 1, set_op_union);
+            register_intrinsic_method(self, proto, "intersection", 1, |rt, args| {
+                let this = match rt.current_this() { Value::Object(id) => id, _ => return Err(RuntimeError::TypeError("intersection: this not Set".into())) };
+                let other = args.first().cloned().unwrap_or(Value::Undefined);
+                let other_vals = collect_iterable(rt, other)?;
+                let other_keys: std::collections::HashSet<String> = other_vals.iter()
+                    .map(|v| abstract_ops::to_string(v).as_str().to_string()).collect();
+                let out_proto = match rt.globals.get("Set").cloned() {
+                    Some(Value::Object(cid)) => match rt.object_get(cid, "prototype") { Value::Object(p) => Some(p), _ => None },
+                    _ => None,
+                };
+                let mut o = Object::new_ordinary(); o.proto = out_proto;
+                let new_set = rt.alloc_object(o);
+                let storage = rt.alloc_object(Object::new_ordinary());
+                rt.object_set(new_set, "__set_data".into(), Value::Object(storage));
+                let mut size = 0.0;
+                if let Value::Object(s) = rt.object_get(this, "__set_data") {
+                    let kvs: Vec<(String, Value)> = rt.obj(s).properties.iter().map(|(k,d)| (k.clone(), d.value.clone())).collect();
+                    for (k, v) in kvs {
+                        if other_keys.contains(&k) { rt.object_set(storage, k, v); size += 1.0; }
+                    }
+                }
+                rt.object_set(new_set, "size".into(), Value::Number(size));
+                Ok(Value::Object(new_set))
+            });
+            register_intrinsic_method(self, proto, "difference", 1, |rt, args| {
+                let this = match rt.current_this() { Value::Object(id) => id, _ => return Err(RuntimeError::TypeError("difference: this not Set".into())) };
+                let other = args.first().cloned().unwrap_or(Value::Undefined);
+                let other_vals = collect_iterable(rt, other)?;
+                let other_keys: std::collections::HashSet<String> = other_vals.iter()
+                    .map(|v| abstract_ops::to_string(v).as_str().to_string()).collect();
+                let out_proto = match rt.globals.get("Set").cloned() {
+                    Some(Value::Object(cid)) => match rt.object_get(cid, "prototype") { Value::Object(p) => Some(p), _ => None },
+                    _ => None,
+                };
+                let mut o = Object::new_ordinary(); o.proto = out_proto;
+                let new_set = rt.alloc_object(o);
+                let storage = rt.alloc_object(Object::new_ordinary());
+                rt.object_set(new_set, "__set_data".into(), Value::Object(storage));
+                let mut size = 0.0;
+                if let Value::Object(s) = rt.object_get(this, "__set_data") {
+                    let kvs: Vec<(String, Value)> = rt.obj(s).properties.iter().map(|(k,d)| (k.clone(), d.value.clone())).collect();
+                    for (k, v) in kvs {
+                        if !other_keys.contains(&k) { rt.object_set(storage, k, v); size += 1.0; }
+                    }
+                }
+                rt.object_set(new_set, "size".into(), Value::Number(size));
+                Ok(Value::Object(new_set))
+            });
+            register_intrinsic_method(self, proto, "symmetricDifference", 1, |rt, args| {
+                let this = match rt.current_this() { Value::Object(id) => id, _ => return Err(RuntimeError::TypeError("symmetricDifference: this not Set".into())) };
+                let other = args.first().cloned().unwrap_or(Value::Undefined);
+                let other_vals = collect_iterable(rt, other)?;
+                let other_keys: std::collections::HashSet<String> = other_vals.iter()
+                    .map(|v| abstract_ops::to_string(v).as_str().to_string()).collect();
+                let out_proto = match rt.globals.get("Set").cloned() {
+                    Some(Value::Object(cid)) => match rt.object_get(cid, "prototype") { Value::Object(p) => Some(p), _ => None },
+                    _ => None,
+                };
+                let mut o = Object::new_ordinary(); o.proto = out_proto;
+                let new_set = rt.alloc_object(o);
+                let storage = rt.alloc_object(Object::new_ordinary());
+                rt.object_set(new_set, "__set_data".into(), Value::Object(storage));
+                let mut size = 0.0;
+                // In this but not other.
+                if let Value::Object(s) = rt.object_get(this, "__set_data") {
+                    let kvs: Vec<(String, Value)> = rt.obj(s).properties.iter().map(|(k,d)| (k.clone(), d.value.clone())).collect();
+                    for (k, v) in kvs {
+                        if !other_keys.contains(&k) { rt.object_set(storage, k, v); size += 1.0; }
+                    }
+                }
+                // In other but not this.
+                let this_storage = match rt.object_get(this, "__set_data") { Value::Object(id) => Some(id), _ => None };
+                for v in other_vals {
+                    let k = abstract_ops::to_string(&v).as_str().to_string();
+                    let in_this = this_storage.map(|s| rt.obj(s).properties.contains_key(&k)).unwrap_or(false);
+                    if !in_this { rt.object_set(storage, k, v); size += 1.0; }
+                }
+                rt.object_set(new_set, "size".into(), Value::Number(size));
+                Ok(Value::Object(new_set))
+            });
+            register_intrinsic_method(self, proto, "isSubsetOf", 1, |rt, args| {
+                let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Boolean(false)) };
+                let other = args.first().cloned().unwrap_or(Value::Undefined);
+                let other_vals = collect_iterable(rt, other)?;
+                let other_keys: std::collections::HashSet<String> = other_vals.iter()
+                    .map(|v| abstract_ops::to_string(v).as_str().to_string()).collect();
+                if let Value::Object(s) = rt.object_get(this, "__set_data") {
+                    for k in rt.obj(s).properties.keys() {
+                        if !other_keys.contains(k) { return Ok(Value::Boolean(false)); }
+                    }
+                }
+                Ok(Value::Boolean(true))
+            });
+            register_intrinsic_method(self, proto, "isSupersetOf", 1, |rt, args| {
+                let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Boolean(false)) };
+                let other = args.first().cloned().unwrap_or(Value::Undefined);
+                let other_vals = collect_iterable(rt, other)?;
+                let this_storage = match rt.object_get(this, "__set_data") { Value::Object(id) => Some(id), _ => None };
+                for v in other_vals {
+                    let k = abstract_ops::to_string(&v).as_str().to_string();
+                    let in_this = this_storage.map(|s| rt.obj(s).properties.contains_key(&k)).unwrap_or(false);
+                    if !in_this { return Ok(Value::Boolean(false)); }
+                }
+                Ok(Value::Boolean(true))
+            });
+            register_intrinsic_method(self, proto, "isDisjointFrom", 1, |rt, args| {
+                let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Boolean(true)) };
+                let other = args.first().cloned().unwrap_or(Value::Undefined);
+                let other_vals = collect_iterable(rt, other)?;
+                let this_storage = match rt.object_get(this, "__set_data") { Value::Object(id) => Some(id), _ => None };
+                for v in other_vals {
+                    let k = abstract_ops::to_string(&v).as_str().to_string();
+                    let in_this = this_storage.map(|s| rt.obj(s).properties.contains_key(&k)).unwrap_or(false);
+                    if in_this { return Ok(Value::Boolean(false)); }
+                }
+                Ok(Value::Boolean(true))
+            });
             let proto_for_ctor = proto;
             let name = (*collection).to_string();
             let ctor_obj = make_native(&name, move |rt, args| {
