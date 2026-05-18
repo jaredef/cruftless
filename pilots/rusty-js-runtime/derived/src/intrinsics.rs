@@ -3543,12 +3543,15 @@ impl Runtime {
         });
 
         // Ω.5.P58.E9: TypedArray.prototype.{map, filter, reduce, reduceRight,
-        // sort, copyWithin, toString} per ECMA §23.2.3. Closes csso /
-        // stylelint / express-family chains that call .map / .filter on
-        // typed-array results, plus any Buffer-as-Uint8Array consumer in
-        // the basket. Result of .map/.filter is a fresh array (not the
-        // strict ECMA-spec same-kind TypedArray — but the parity probe
-        // and most consumers only care about iteration shape).
+        // sort, copyWithin, toString} per ECMA §23.2.3.
+        // Ω.5.P59.E6: results of .map/.filter are same-kind TypedArrays
+        // per §23.2.3.21 (TypedArraySpeciesCreate). Pre-P59.E6 result was
+        // a plain Array, which JSON.stringify serialized as `[...]`
+        // (vs Bun's `{0:...}` object shape) — visible byte-shape
+        // divergence in any consumer that probed map/filter outputs.
+        // The shape: an ordinary Object with the source's proto (ta_proto
+        // via the type-specific subtype chain), length, byteLength,
+        // __kind sentinel (non-enumerable per P58.E1).
         register_method(self, ta_proto, "map", |rt, args| {
             let this_id = match rt.current_this() {
                 Value::Object(o) => o,
@@ -3559,13 +3562,12 @@ impl Runtime {
                 _ => return Err(RuntimeError::TypeError("TypedArray.prototype.map: callback must be a function".into())),
             };
             let len = match rt.object_get(this_id, "length") { Value::Number(n) => n as usize, _ => 0 };
-            let out = rt.alloc_object(Object::new_array());
+            let out = make_typed_array_like(rt, this_id, len);
             for i in 0..len {
                 let v = rt.object_get(this_id, &i.to_string());
                 let r = rt.call_function(f.clone(), Value::Undefined, vec![v, Value::Number(i as f64), Value::Object(this_id)])?;
                 rt.object_set(out, i.to_string(), r);
             }
-            rt.object_set(out, "length".into(), Value::Number(len as f64));
             Ok(Value::Object(out))
         });
         register_method(self, ta_proto, "filter", |rt, args| {
@@ -3578,17 +3580,19 @@ impl Runtime {
                 _ => return Err(RuntimeError::TypeError("TypedArray.prototype.filter: callback must be a function".into())),
             };
             let len = match rt.object_get(this_id, "length") { Value::Number(n) => n as usize, _ => 0 };
-            let out = rt.alloc_object(Object::new_array());
-            let mut k = 0;
+            // Two-pass: first collect matches, then alloc with right length.
+            let mut keeps: Vec<Value> = Vec::with_capacity(len);
             for i in 0..len {
                 let v = rt.object_get(this_id, &i.to_string());
                 let pred = rt.call_function(f.clone(), Value::Undefined, vec![v.clone(), Value::Number(i as f64), Value::Object(this_id)])?;
                 if abstract_ops::to_boolean(&pred) {
-                    rt.object_set(out, k.to_string(), v);
-                    k += 1;
+                    keeps.push(v);
                 }
             }
-            rt.object_set(out, "length".into(), Value::Number(k as f64));
+            let out = make_typed_array_like(rt, this_id, keeps.len());
+            for (i, v) in keeps.into_iter().enumerate() {
+                rt.object_set(out, i.to_string(), v);
+            }
             Ok(Value::Object(out))
         });
         register_method(self, ta_proto, "reduce", |rt, args| {
@@ -3713,9 +3717,20 @@ impl Runtime {
                     }
                     _ => 0.0,
                 };
+                // Ω.5.P59.E6 byteLength correctness: bytes-per-element
+                // per typed-array kind. Pre-P59.E6 cruftless hardcoded
+                // `len * 4.0` which was wrong for every element type
+                // except 32-bit ones. Bun's Uint8Array(4).byteLength === 4.
+                let bpe: f64 = match n.as_str() {
+                    "Int8Array" | "Uint8Array" | "Uint8ClampedArray" => 1.0,
+                    "Int16Array" | "Uint16Array" => 2.0,
+                    "Int32Array" | "Uint32Array" | "Float32Array" => 4.0,
+                    "Float64Array" | "BigInt64Array" | "BigUint64Array" => 8.0,
+                    _ => 4.0,
+                };
                 let mut o = Object::new_ordinary();
                 o.set_own("length".into(), Value::Number(len));
-                o.set_own("byteLength".into(), Value::Number(len * 4.0));
+                o.set_own("byteLength".into(), Value::Number(len * bpe));
                 o.set_own_internal("__kind".into(), Value::String(Rc::new(n.clone())));
                 o.proto = Some(proto_id);
                 let id = rt.alloc_object(o);
@@ -4355,6 +4370,31 @@ fn make_error_instance(rt: &mut Runtime, ctor_name: &str, message: &str) -> Opti
     o.set_own("message".into(), Value::String(Rc::new(message.to_string())));
     o.set_own("stack".into(), Value::String(Rc::new(String::new())));
     Some(rt.alloc_object(o))
+}
+
+/// Ω.5.P59.E6: allocate a same-kind TypedArray-like instance from a
+/// source TypedArray, used by .map / .filter to satisfy ECMA §23.2.3.21
+/// TypedArraySpeciesCreate semantics at the shape level (length +
+/// byteLength + __kind sentinel + proto inheritance from source).
+fn make_typed_array_like(rt: &mut Runtime, src: rusty_js_gc::ObjectId, len: usize) -> rusty_js_gc::ObjectId {
+    let src_kind = match rt.object_get(src, "__kind") {
+        Value::String(s) | Value::Symbol(s) => (*s).clone(),
+        _ => "Uint8Array".into(),
+    };
+    let src_proto = rt.obj(src).proto;
+    let mut o = Object::new_ordinary();
+    o.proto = src_proto;
+    o.set_own("length".into(), Value::Number(len as f64));
+    // byteLength approximation: same per-element width as source.
+    let src_byte_len = match rt.object_get(src, "byteLength") {
+        Value::Number(n) => n,
+        _ => 0.0,
+    };
+    let src_len = match rt.object_get(src, "length") { Value::Number(n) => n, _ => 1.0 };
+    let bpe = if src_len > 0.0 { src_byte_len / src_len } else { 1.0 };
+    o.set_own("byteLength".into(), Value::Number(len as f64 * bpe));
+    o.set_own_internal("__kind".into(), Value::String(Rc::new(src_kind)));
+    rt.alloc_object(o)
 }
 
 fn describe_thrown_for_diag(rt: &Runtime, e: &RuntimeError) -> String {
