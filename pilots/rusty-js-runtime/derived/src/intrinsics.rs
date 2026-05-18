@@ -5005,9 +5005,17 @@ pub(crate) fn make_native_non_ctor(
 
 fn register_method<F>(rt: &mut Runtime, host: ObjectRef, name: &str, f: F)
 where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
-    let fn_obj = make_native(name, f);
+    // Ω.5.P62.E2: built-in methods installed via register_method are
+    // intrinsics per ECMA §10.2.x — non-enumerable + non-constructor.
+    // Only register_method's length/arity stays at 0 (callers that need
+    // spec-correct arity reach for register_intrinsic_method directly).
+    // User-code property assignment goes through Op::SetProperty, never
+    // this path, so making the default non-enumerable closes the
+    // Date.prototype.getUTC* enumerability hole + the symmetric cluster
+    // across most built-in protos exposed by Object.gOPD test262 slice.
+    let fn_obj = make_native_non_ctor(name, 0, f);
     let fn_id = rt.alloc_object(fn_obj);
-    rt.object_set(host, name.into(), Value::Object(fn_id));
+    rt.obj_mut(host).set_own_internal(name.into(), Value::Object(fn_id));
 }
 
 /// Ω.5.P61.E3: install an intrinsic method (Math.abs, Object.keys, etc.)
