@@ -431,7 +431,13 @@ impl Runtime {
                 let o = self.obj(*id);
                 if matches!(o.internal_kind,
                     InternalKind::Function(_) | InternalKind::Closure(_) | InternalKind::BoundFunction(_))
-                { "function" } else { "object" }
+                { "function" }
+                else if let InternalKind::Proxy(p) = &o.internal_kind {
+                    // Ω.5.P60.E3: Proxy's typeof reflects target's callability
+                    // per ECMA §10.5 (proxy is callable iff target is callable).
+                    self.type_of_value(&Value::Object(p.target))
+                }
+                else { "object" }
             }
             other => other.type_of(),
         }
@@ -1897,6 +1903,41 @@ impl Runtime {
                     (Some(c.proto.clone()), None, actual_this, args)
                 }
                 crate::value::InternalKind::Function(f) => (None, Some(f.native.clone()), this, args),
+                crate::value::InternalKind::Proxy(p) => {
+                    // Ω.5.P60.E3: apply / construct trap dispatch. When the
+                    // proxy is invoked as a callable (Op::Call) or as a ctor
+                    // (Op::New), consult handler.apply / handler.construct
+                    // respectively; missing trap delegates to the target.
+                    let target = p.target;
+                    let handler = p.handler;
+                    drop(o);
+                    let is_construct = nt_for_this_call.is_some();
+                    let trap_name = if is_construct { "construct" } else { "apply" };
+                    let trap = self.object_get(handler, trap_name);
+                    if matches!(trap, Value::Object(_)) {
+                        // Pack args into a real Array.
+                        let arr = self.alloc_object(Object::new_array());
+                        for (i, v) in args.iter().enumerate() {
+                            self.object_set(arr, i.to_string(), v.clone());
+                        }
+                        self.object_set(arr, "length".into(), Value::Number(args.len() as f64));
+                        if is_construct {
+                            // handler.construct(target, argsArray, newTarget).
+                            let nt = nt_for_this_call.clone().unwrap_or(Value::Object(target));
+                            return self.call_function(trap, Value::Object(handler), vec![
+                                Value::Object(target), Value::Object(arr), nt,
+                            ]);
+                        } else {
+                            // handler.apply(target, thisArg, argsArray).
+                            return self.call_function(trap, Value::Object(handler), vec![
+                                Value::Object(target), this, Value::Object(arr),
+                            ]);
+                        }
+                    }
+                    // Missing trap: delegate to target.
+                    self.pending_new_target = nt_for_this_call;
+                    return self.call_function(Value::Object(target), this, args);
+                }
                 crate::value::InternalKind::BoundFunction(b) => {
                     // One level of unwrap is sufficient for v1; nested
                     // bindings recurse via tail-call into call_function.
