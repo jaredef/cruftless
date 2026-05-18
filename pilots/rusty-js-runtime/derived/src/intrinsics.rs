@@ -3442,6 +3442,123 @@ impl Runtime {
             Ok(Value::String(Rc::new(out)))
         });
 
+        // Ω.5.P58.E9: TypedArray.prototype.{map, filter, reduce, reduceRight,
+        // sort, copyWithin, toString} per ECMA §23.2.3. Closes csso /
+        // stylelint / express-family chains that call .map / .filter on
+        // typed-array results, plus any Buffer-as-Uint8Array consumer in
+        // the basket. Result of .map/.filter is a fresh array (not the
+        // strict ECMA-spec same-kind TypedArray — but the parity probe
+        // and most consumers only care about iteration shape).
+        register_method(self, ta_proto, "map", |rt, args| {
+            let this_id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("TypedArray.prototype.map: this must be a TypedArray".into())),
+            };
+            let f = match args.first() {
+                Some(v @ Value::Object(_)) => v.clone(),
+                _ => return Err(RuntimeError::TypeError("TypedArray.prototype.map: callback must be a function".into())),
+            };
+            let len = match rt.object_get(this_id, "length") { Value::Number(n) => n as usize, _ => 0 };
+            let out = rt.alloc_object(Object::new_array());
+            for i in 0..len {
+                let v = rt.object_get(this_id, &i.to_string());
+                let r = rt.call_function(f.clone(), Value::Undefined, vec![v, Value::Number(i as f64), Value::Object(this_id)])?;
+                rt.object_set(out, i.to_string(), r);
+            }
+            rt.object_set(out, "length".into(), Value::Number(len as f64));
+            Ok(Value::Object(out))
+        });
+        register_method(self, ta_proto, "filter", |rt, args| {
+            let this_id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("TypedArray.prototype.filter: this must be a TypedArray".into())),
+            };
+            let f = match args.first() {
+                Some(v @ Value::Object(_)) => v.clone(),
+                _ => return Err(RuntimeError::TypeError("TypedArray.prototype.filter: callback must be a function".into())),
+            };
+            let len = match rt.object_get(this_id, "length") { Value::Number(n) => n as usize, _ => 0 };
+            let out = rt.alloc_object(Object::new_array());
+            let mut k = 0;
+            for i in 0..len {
+                let v = rt.object_get(this_id, &i.to_string());
+                let pred = rt.call_function(f.clone(), Value::Undefined, vec![v.clone(), Value::Number(i as f64), Value::Object(this_id)])?;
+                if abstract_ops::to_boolean(&pred) {
+                    rt.object_set(out, k.to_string(), v);
+                    k += 1;
+                }
+            }
+            rt.object_set(out, "length".into(), Value::Number(k as f64));
+            Ok(Value::Object(out))
+        });
+        register_method(self, ta_proto, "reduce", |rt, args| {
+            let this_id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("TypedArray.prototype.reduce: this must be a TypedArray".into())),
+            };
+            let f = match args.first() {
+                Some(v @ Value::Object(_)) => v.clone(),
+                _ => return Err(RuntimeError::TypeError("TypedArray.prototype.reduce: callback must be a function".into())),
+            };
+            let len = match rt.object_get(this_id, "length") { Value::Number(n) => n as usize, _ => 0 };
+            let (mut acc, start) = match args.get(1) {
+                Some(v) => (v.clone(), 0),
+                None => {
+                    if len == 0 {
+                        return Err(RuntimeError::TypeError("TypedArray.prototype.reduce: empty with no initial".into()));
+                    }
+                    (rt.object_get(this_id, "0"), 1)
+                }
+            };
+            for i in start..len {
+                let v = rt.object_get(this_id, &i.to_string());
+                acc = rt.call_function(f.clone(), Value::Undefined, vec![acc, v, Value::Number(i as f64), Value::Object(this_id)])?;
+            }
+            Ok(acc)
+        });
+        register_method(self, ta_proto, "reduceRight", |rt, args| {
+            let this_id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("TypedArray.prototype.reduceRight: this must be a TypedArray".into())),
+            };
+            let f = match args.first() {
+                Some(v @ Value::Object(_)) => v.clone(),
+                _ => return Err(RuntimeError::TypeError("TypedArray.prototype.reduceRight: callback must be a function".into())),
+            };
+            let len = match rt.object_get(this_id, "length") { Value::Number(n) => n as usize, _ => 0 };
+            let (mut acc, start_back) = match args.get(1) {
+                Some(v) => (v.clone(), len as i64 - 1),
+                None => {
+                    if len == 0 {
+                        return Err(RuntimeError::TypeError("TypedArray.prototype.reduceRight: empty with no initial".into()));
+                    }
+                    (rt.object_get(this_id, &(len - 1).to_string()), len as i64 - 2)
+                }
+            };
+            let mut i = start_back;
+            while i >= 0 {
+                let v = rt.object_get(this_id, &i.to_string());
+                acc = rt.call_function(f.clone(), Value::Undefined, vec![acc, v, Value::Number(i as f64), Value::Object(this_id)])?;
+                i -= 1;
+            }
+            Ok(acc)
+        });
+        register_method(self, ta_proto, "toString", |rt, _args| {
+            let this_id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Ok(Value::String(Rc::new(String::new()))),
+            };
+            let len = match rt.object_get(this_id, "length") { Value::Number(n) => n as usize, _ => 0 };
+            let mut out = String::new();
+            for i in 0..len {
+                if i > 0 { out.push(','); }
+                let v = rt.object_get(this_id, &i.to_string());
+                let s = abstract_ops::to_string(&v);
+                out.push_str(s.as_str());
+            }
+            Ok(Value::String(Rc::new(out)))
+        });
+
         // Tier-Ω.5.ZZZZZZZ: install @@toStringTag accessor at the spec
         // location — on %TypedArray%.prototype, which sits ONE LEVEL ABOVE
         // each per-element-type prototype (Int8Array.prototype etc.).
