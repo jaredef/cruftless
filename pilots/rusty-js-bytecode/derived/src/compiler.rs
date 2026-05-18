@@ -3709,14 +3709,18 @@ impl Compiler {
         match target {
             Expr::Identifier { name, .. } => {
                 self.emit_load_ident(name);
-                encode_op(&mut self.bytecode, Op::Dup);
                 let j_end = match operator {
                     AssignOp::LogicalAndAssign => {
-                        // assign if truthy → short-circuit-end on falsy
+                        // Ω.5.P53.E7: JumpIfFalseKeep peeks (doesn't pop).
+                        // Truthy path falls through with [x]; falsy path
+                        // jumps to end with [x] kept. Either way the stack
+                        // ends with one value, so no leading Dup/trailing
+                        // Pop is needed (previous lowering left a residual,
+                        // breaking f(x ||= v) — the spare value became the
+                        // callee). For &&= the assign branch fires on truthy.
                         Some(self.emit_jump(Op::JumpIfFalseKeep))
                     }
                     AssignOp::LogicalOrAssign => {
-                        // assign if falsy → short-circuit-end on truthy
                         Some(self.emit_jump(Op::JumpIfTrueKeep))
                     }
                     AssignOp::NullishAssign => None, // handled below with custom flow
@@ -3724,7 +3728,8 @@ impl Compiler {
                 };
 
                 if let Some(j) = j_end {
-                    // assign branch
+                    // assign branch: drop the kept x, evaluate value,
+                    // store with one residual copy for the expression result.
                     encode_op(&mut self.bytecode, Op::Pop);
                     self.compile_expr(value)?;
                     encode_op(&mut self.bytecode, Op::Dup);
@@ -3736,6 +3741,11 @@ impl Compiler {
                     //   Jump end
                     //   do_assign: Pop → []; eval v; Dup; Store     → [v]
                     //   end:                                         → [result]
+                    // Ω.5.P53.E7: the leading Dup the parent used to emit
+                    // unconditionally was removed; ??= still needs [x, x]
+                    // because JumpIfNullish pops its operand. Re-emit it
+                    // locally so the non-nullish path retains [x].
+                    encode_op(&mut self.bytecode, Op::Dup);
                     let j_assign = self.emit_jump(Op::JumpIfNullish);
                     let j_end2 = self.emit_jump(Op::Jump);
                     self.patch_jump(j_assign);
