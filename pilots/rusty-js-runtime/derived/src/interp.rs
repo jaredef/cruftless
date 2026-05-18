@@ -523,10 +523,13 @@ impl Runtime {
     }
 
     /// Array length helper used by Array.prototype.* methods.
-    pub fn array_length(&self, id: ObjectRef) -> usize {
-        // Ω.5.P62.E6: ToLength per ECMA §7.1.20 — ToNumber(v) then clamp.
-        // Array.prototype.map.call({length: "2"}, ...) must read 2.
-        let v = self.object_get(id, "length");
+    pub fn array_length(&mut self, id: ObjectRef) -> usize {
+        // Ω.5.P62.E6: ToLength per ECMA §7.1.20.
+        // Ω.5.P62.E8: read via read_property so accessor `length` getters
+        // (test262 map-2-7/2-10: Object.defineProperty(obj, "length",
+        // {get: ...})) dispatch their getter rather than returning the
+        // raw undefined data slot.
+        let v = self.read_property(id, "length").unwrap_or(Value::Undefined);
         let n = crate::abstract_ops::to_number(&v);
         if n.is_nan() || n <= 0.0 { return 0; }
         if !n.is_finite() { return usize::MAX; }
