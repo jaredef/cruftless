@@ -254,13 +254,78 @@ impl Runtime {
         let intl = self.alloc_object(Object::new_ordinary());
         for ctor_name in &["DateTimeFormat", "NumberFormat", "Collator", "PluralRules", "RelativeTimeFormat", "ListFormat", "Segmenter", "DisplayNames", "Locale"] {
             let name = (*ctor_name).to_string();
-            let stub = make_native(&name, move |rt, _args| {
-                let o = Object::new_ordinary();
+            // Ω.5.P52.E2: Intl-instance constructor now captures locale + options
+            // on the instance and exposes resolvedOptions() returning the merged
+            // shape (input options + sensible defaults). temporal-polyfill probes
+            // `new Intl.DateTimeFormat(undefined, {calendar: 'iso8601'}).resolvedOptions().calendar === 'iso8601'`
+            // at module-init to detect bug-resilient implementations; the prior
+            // stub returned an empty Object instance with no methods, hard-failing
+            // the .resolvedOptions() call.
+            // Ω.5.P52.E2: install a populated .prototype on the Intl ctor stub.
+            // temporal-polyfill iterates Object.getOwnPropertyDescriptors(en.prototype)
+            // and inspects each entry's .value to wrap callable members. The prior
+            // empty prototype caused the iteration to see only `constructor`, which
+            // bypassed the consumer's wrap logic. Real spec exposes format /
+            // formatToParts / resolvedOptions as prototype methods that read
+            // instance state (the captured locale + options).
+            let proto = self.alloc_object(Object::new_ordinary());
+            let proto_for_closure = proto;
+            let stub = make_native(&name, move |rt, args| {
+                let mut o = Object::new_ordinary();
+                o.proto = Some(proto_for_closure);
                 let id = rt.alloc_object(o);
+                let locale = args.first().cloned().unwrap_or(Value::Undefined);
+                let opts = args.get(1).cloned().unwrap_or(Value::Undefined);
+                rt.object_set(id, "__locale".into(), locale);
+                rt.object_set(id, "__opts".into(), opts);
                 Ok(Value::Object(id))
             });
             let stub_id = self.alloc_object(stub);
-            // Methods on instance proto for shape: format, formatToParts, resolvedOptions.
+            self.object_set(proto, "constructor".into(), Value::Object(stub_id));
+            register_method(self, proto, "format", |_rt, args| {
+                Ok(Value::String(std::rc::Rc::new(
+                    crate::abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined)).as_str().to_string()
+                )))
+            });
+            register_method(self, proto, "formatToParts", |rt, args| {
+                let arr = Object::new_array();
+                let aid = rt.alloc_object(arr);
+                let part = rt.alloc_object(Object::new_ordinary());
+                rt.object_set(part, "type".into(), Value::String(std::rc::Rc::new("literal".into())));
+                rt.object_set(part, "value".into(), Value::String(std::rc::Rc::new(
+                    crate::abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined)).as_str().to_string()
+                )));
+                rt.object_set(aid, "0".into(), Value::Object(part));
+                rt.object_set(aid, "length".into(), Value::Number(1.0));
+                Ok(Value::Object(aid))
+            });
+            register_method(self, proto, "resolvedOptions", |rt, _args| {
+                let this_id = match rt.current_this() {
+                    Value::Object(o) => o,
+                    _ => return Ok(Value::Undefined),
+                };
+                let opts = rt.object_get(this_id, "__opts");
+                let locale_v = rt.object_get(this_id, "__locale");
+                let res = rt.alloc_object(Object::new_ordinary());
+                let locale_str = match &locale_v {
+                    Value::String(s) => (**s).clone(),
+                    _ => "en-US".to_string(),
+                };
+                rt.object_set(res, "locale".into(), Value::String(std::rc::Rc::new(locale_str)));
+                rt.object_set(res, "calendar".into(), Value::String(std::rc::Rc::new("iso8601".into())));
+                rt.object_set(res, "numberingSystem".into(), Value::String(std::rc::Rc::new("latn".into())));
+                rt.object_set(res, "timeZone".into(), Value::String(std::rc::Rc::new("UTC".into())));
+                if let Value::Object(opts_id) = opts {
+                    let pairs: Vec<(String, Value)> = rt.obj(opts_id).properties
+                        .iter().map(|(k, d)| (k.clone(), d.value.clone())).collect();
+                    for (k, v) in pairs {
+                        rt.object_set(res, k, v);
+                    }
+                }
+                Ok(Value::Object(res))
+            });
+            self.object_set(stub_id, "prototype".into(), Value::Object(proto));
+            // Static method on the ctor itself.
             register_method(self, stub_id, "supportedLocalesOf", |_rt, _args| {
                 let o = Object::new_array();
                 let id = _rt.alloc_object(o);
