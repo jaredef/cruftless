@@ -45,6 +45,15 @@ pub struct Runtime {
     /// source URL — turns Axis-M wrong-file picks (mri/heap-js/etc.)
     /// into self-naming failures rather than downstream callee_val-undefined.
     pub module_resolution_trace: HashMap<String, String>,
+    /// Ω.5.P54.E2 (Axis-E probe — Doc 729 §XII): post-evaluation
+    /// observations keyed by URL. Records (key_count, kind, last_throw_msg).
+    /// Populated by evaluate_module / evaluate_cjs_module after namespace
+    /// finalization. Empty-namespace results — whether from a swallowed
+    /// throw, a kind-detection cut (heap-js .js-treated-as-CJS), or an
+    /// otherwise-correct module that exports nothing — surface as a
+    /// queryable record rather than projecting downstream onto
+    /// "callee_val=undefined" type failures.
+    pub module_post_eval_trace: HashMap<String, String>,
     /// Managed heap. Wired but not yet authoritative for Value::Object;
     /// round 3.e.d migrates Value::Object from Rc<RefCell<Object>> to
     /// ObjectId, at which point this heap becomes the storage for every
@@ -167,6 +176,7 @@ impl Runtime {
             modules: HashMap::new(),
             pkg_json_cache: HashMap::new(),
             module_resolution_trace: HashMap::new(),
+            module_post_eval_trace: HashMap::new(),
             heap: rusty_js_gc::Heap::new(),
             job_queue: crate::job_queue::JobQueue::new(),
             pending_unhandled: HashSet::new(),

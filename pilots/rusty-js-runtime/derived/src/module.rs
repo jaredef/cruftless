@@ -1021,6 +1021,16 @@ impl Runtime {
         // Flip the record to Evaluated.
         record.borrow_mut().status = ModuleStatus::Evaluated;
 
+        // Ω.5.P54.E2 (Axis-E probe): post-eval observation. Note when
+        // an ESM evaluation finishes with an empty namespace — that
+        // shape is almost always a downstream-invisible bug (kind-detect
+        // misroute, exports-statements parsed-but-discarded, etc.).
+        let key_count = self.obj(namespace).properties.len();
+        self.module_post_eval_trace.insert(
+            url.to_string(),
+            format!("kind=ESM key_count={} status=Evaluated", key_count),
+        );
+
         // Ω.5.P23.E1.live-import-bindings: drain any deferred import
         // bindings that were registered against THIS module's URL by
         // earlier-in-the-cycle importers. Each deferred entry's cell is
@@ -1294,6 +1304,13 @@ impl Runtime {
         // ObjectRef (e.g. an ESM importer holding `ns`) sees the final
         // exports shape.
         self.populate_cjs_namespace_view(placeholder, &final_exports, exports_reassigned);
+
+        // Ω.5.P54.E2 (Axis-E probe): post-eval observation for CJS path.
+        let key_count = self.obj(placeholder).properties.len();
+        self.module_post_eval_trace.insert(
+            url.to_string(),
+            format!("kind=CJS key_count={} exports_reassigned={}", key_count, exports_reassigned),
+        );
 
         Ok(placeholder)
     }

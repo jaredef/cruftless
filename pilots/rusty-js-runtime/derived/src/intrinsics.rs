@@ -139,6 +139,26 @@ impl Runtime {
             }
             Ok(Value::Undefined)
         });
+        // Ω.5.P54.E2 (Axis-E probe surface): __post_eval_trace(spec_or_url)
+        // returns the post-evaluation observation for a module:
+        // "kind=ESM|CJS key_count=N status=... exports_reassigned=...".
+        // Empty-namespace results are the predicate Axis-E catches; this
+        // surface lets parity probes query them.
+        register_global_fn(self, "__post_eval_trace", |rt, args| {
+            let q = match args.first() {
+                Some(Value::String(s)) => s.as_str().to_string(),
+                _ => return Ok(Value::Undefined),
+            };
+            if let Some(t) = rt.module_post_eval_trace.get(&q) {
+                return Ok(Value::String(std::rc::Rc::new(t.clone())));
+            }
+            for (url, t) in rt.module_post_eval_trace.iter() {
+                if url.contains(&q) {
+                    return Ok(Value::String(std::rc::Rc::new(t.clone())));
+                }
+            }
+            Ok(Value::Undefined)
+        });
         register_global_fn(self, "__await", |rt, args| {
             let v = args.first().cloned().unwrap_or(Value::Undefined);
             let id = match v {
