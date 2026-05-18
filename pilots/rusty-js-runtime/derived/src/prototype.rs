@@ -244,26 +244,50 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(Value::Number(new_len as f64))
     });
     register_intrinsic_method(rt, host, "indexOf", 1, |rt, args| {
+        // Ω.5.P61.E14: sparse-skip per ECMA §23.1.3.16; honor fromIndex
+        // (second arg, default 0; negative = len + arg).
         let id = to_array_this(rt)?;
         let needle = args.first().cloned().unwrap_or(Value::Undefined);
-        let len = rt.array_length(id);
-        for i in 0..len {
-            let v = rt.object_get(id, &i.to_string());
-            if abstract_ops::is_strictly_equal(&v, &needle) {
-                return Ok(Value::Number(i as f64));
+        let len = rt.array_length(id) as i64;
+        let from = match args.get(1) {
+            Some(v) if !matches!(v, Value::Undefined) => {
+                let n = abstract_ops::to_number(v) as i64;
+                if n < 0 { (len + n).max(0) } else { n.min(len) }
             }
+            _ => 0,
+        };
+        let mut i = from;
+        while i < len {
+            let key = i.to_string();
+            if rt.has_property(id, &key) {
+                let v = rt.read_property(id, &key)?;
+                if abstract_ops::is_strictly_equal(&v, &needle) {
+                    return Ok(Value::Number(i as f64));
+                }
+            }
+            i += 1;
         }
         Ok(Value::Number(-1.0))
     });
     register_intrinsic_method(rt, host, "includes", 1, |rt, args| {
+        // Ω.5.P61.E14: includes does NOT skip sparse per ECMA §23.1.3.14
+        // (treats holes as undefined and applies SameValueZero).
         let id = to_array_this(rt)?;
         let needle = args.first().cloned().unwrap_or(Value::Undefined);
         let len = rt.array_length(id);
         for i in 0..len {
-            let v = rt.object_get(id, &i.to_string());
-            if abstract_ops::is_strictly_equal(&v, &needle) {
-                return Ok(Value::Boolean(true));
-            }
+            let key = i.to_string();
+            let v = if rt.has_property(id, &key) {
+                rt.read_property(id, &key)?
+            } else {
+                Value::Undefined
+            };
+            // SameValueZero: like strict equal except NaN === NaN.
+            let eq = match (&v, &needle) {
+                (Value::Number(a), Value::Number(b)) if a.is_nan() && b.is_nan() => true,
+                _ => abstract_ops::is_strictly_equal(&v, &needle),
+            };
+            if eq { return Ok(Value::Boolean(true)); }
         }
         Ok(Value::Boolean(false))
     });
@@ -495,13 +519,18 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(Value::Object(out))
     });
     register_intrinsic_method(rt, host, "map", 1, |rt, args| {
+        // Ω.5.P61.E14: sparse-preserving per ECMA §23.1.3.20 — skips
+        // holes, output has same indices populated. read_property
+        // dispatches accessor getters.
         let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("Array.prototype.map: callback required".into()))?;
         let len = rt.array_length(id);
         let out = rt.alloc_object(Object::new_array());
         for i in 0..len {
-            let v = rt.object_get(id, &i.to_string());
+            let key = i.to_string();
+            if !rt.has_property(id, &key) { continue; }
+            let v = rt.read_property(id, &key)?;
             let mapped = rt.call_function(cb.clone(), Value::Undefined,
                 vec![v, Value::Number(i as f64), Value::Object(id)])?;
             rt.object_set(out, i.to_string(), mapped);
@@ -527,6 +556,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(Value::Undefined)
     });
     register_intrinsic_method(rt, host, "filter", 1, |rt, args| {
+        // Ω.5.P61.E14: sparse-skip + getter-dispatch per ECMA §23.1.3.7.
         let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("Array.prototype.filter: callback required".into()))?;
@@ -534,7 +564,9 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         let out = rt.alloc_object(Object::new_array());
         let mut j = 0usize;
         for i in 0..len {
-            let v = rt.object_get(id, &i.to_string());
+            let key = i.to_string();
+            if !rt.has_property(id, &key) { continue; }
+            let v = rt.read_property(id, &key)?;
             let r = rt.call_function(cb.clone(), Value::Undefined,
                 vec![v.clone(), Value::Number(i as f64), Value::Object(id)])?;
             if abstract_ops::to_boolean(&r) {
@@ -602,12 +634,15 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(Value::Undefined)
     });
     register_intrinsic_method(rt, host, "some", 1, |rt, args| {
+        // Ω.5.P61.E14: sparse-skip per ECMA §23.1.3.27.
         let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("some: callback required".into()))?;
         let len = rt.array_length(id);
         for i in 0..len {
-            let v = rt.object_get(id, &i.to_string());
+            let key = i.to_string();
+            if !rt.has_property(id, &key) { continue; }
+            let v = rt.read_property(id, &key)?;
             let r = rt.call_function(cb.clone(), Value::Undefined,
                 vec![v, Value::Number(i as f64), Value::Object(id)])?;
             if abstract_ops::to_boolean(&r) { return Ok(Value::Boolean(true)); }
@@ -663,12 +698,15 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(Value::Object(id))
     });
     register_intrinsic_method(rt, host, "every", 1, |rt, args| {
+        // Ω.5.P61.E14: sparse-skip per ECMA §23.1.3.6.
         let id = to_array_this(rt)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("every: callback required".into()))?;
         let len = rt.array_length(id);
         for i in 0..len {
-            let v = rt.object_get(id, &i.to_string());
+            let key = i.to_string();
+            if !rt.has_property(id, &key) { continue; }
+            let v = rt.read_property(id, &key)?;
             let r = rt.call_function(cb.clone(), Value::Undefined,
                 vec![v, Value::Number(i as f64), Value::Object(id)])?;
             if !abstract_ops::to_boolean(&r) { return Ok(Value::Boolean(false)); }
@@ -802,21 +840,25 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     });
 
     register_intrinsic_method(rt, host, "lastIndexOf", 1, |rt, args| {
+        // Ω.5.P61.E14: sparse-skip per ECMA §23.1.3.18.
         let id = to_array_this(rt)?;
         let needle = args.first().cloned().unwrap_or(Value::Undefined);
         let len = rt.array_length(id) as i64;
         let from = match args.get(1) {
-            Some(Value::Number(n)) => {
-                let n = *n as i64;
-                if n < 0 { (len + n).max(0) } else { (n.min(len - 1)).max(0) }
+            Some(v) if !matches!(v, Value::Undefined) => {
+                let n = abstract_ops::to_number(v) as i64;
+                if n < 0 { (len + n).max(-1) } else { (n.min(len - 1)).max(-1) }
             }
-            _ => (len - 1).max(0),
+            _ => (len - 1).max(-1),
         };
         let mut i = from;
         while i >= 0 {
-            let v = rt.object_get(id, &i.to_string());
-            if abstract_ops::is_strictly_equal(&v, &needle) {
-                return Ok(Value::Number(i as f64));
+            let key = i.to_string();
+            if rt.has_property(id, &key) {
+                let v = rt.read_property(id, &key)?;
+                if abstract_ops::is_strictly_equal(&v, &needle) {
+                    return Ok(Value::Number(i as f64));
+                }
             }
             i -= 1;
         }
