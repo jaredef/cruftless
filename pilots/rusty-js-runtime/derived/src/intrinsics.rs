@@ -72,10 +72,14 @@ impl Runtime {
             let resolved = match rt.resolve_module_full(&parent, &spec, crate::module::ModuleKind::ESM) {
                 Ok(r) => r,
                 Err(e) => {
-                    let reason = Value::String(Rc::new(format!(
-                        "TypeError: dynamic import('{}') resolve failed: {:?}",
-                        spec, e
-                    )));
+                    // Ω.5.P58.E5: same Error-instance reject as the load-failed
+                    // branch below.
+                    let message = format!("dynamic import('{}') resolve failed: {:?}", spec, e);
+                    let err_id = make_error_instance(rt, "TypeError", &message);
+                    let reason = match err_id {
+                        Some(id) => Value::Object(id),
+                        None => Value::String(Rc::new(format!("TypeError: {}", message))),
+                    };
                     crate::promise::reject_promise(rt, p, reason);
                     return Ok(Value::Object(p));
                 }
@@ -94,10 +98,26 @@ impl Runtime {
                     // .name properties; rb's Debug format printed Object IDs
                     // like '[Object #4144]', erasing the diagnostic content.
                     let detail = describe_thrown_for_diag(rt, &e);
-                    let reason = Value::String(Rc::new(format!(
-                        "TypeError: dynamic import('{}') load failed: {}",
+                    // Ω.5.P58.E5: reject with a real TypeError-instance, not a
+                    // Value::String. Bun rejects dynamic-import failures with
+                    // Error instances; consumer catch handlers do
+                    // `e instanceof Error`, read `e.message`, dispatch on
+                    // `e.constructor.name`. Pre-P58.E5 cruftless rejected with
+                    // a string, breaking those patterns and projecting onto
+                    // the parity probe as `error:"String"` (cf. ast-types,
+                    // many others). Construct the instance by looking up the
+                    // global TypeError ctor's prototype and assembling an
+                    // ordinary object with the spec-mandated {name, message,
+                    // stack} surface.
+                    let message = format!(
+                        "dynamic import('{}') load failed: {}",
                         spec, detail
-                    )));
+                    );
+                    let err_id = make_error_instance(rt, "TypeError", &message);
+                    let reason = match err_id {
+                        Some(id) => Value::Object(id),
+                        None => Value::String(Rc::new(format!("TypeError: {}", message))),
+                    };
                     crate::promise::reject_promise(rt, p, reason);
                 }
             }
@@ -4031,6 +4051,28 @@ fn num_arg(args: &[Value], i: usize) -> f64 {
 /// — typically Error instances — get their .name + .message extracted so the
 /// dynamic-import wrapper's diagnostic carries the original cause text. Other
 /// thrown shapes (primitives, non-Error objects) fall back to Debug format.
+/// Ω.5.P58.E5: construct a {name, message, stack} ordinary object whose
+/// [[Prototype]] is `globalThis[ctor_name].prototype`. Returns None if
+/// the named constructor isn't installed yet (early-bootstrap edge).
+/// Used by the dynamic-import reject path so promise rejections carry
+/// real Error-instance shape rather than a raw string.
+fn make_error_instance(rt: &mut Runtime, ctor_name: &str, message: &str) -> Option<rusty_js_gc::ObjectId> {
+    let ctor_id = match rt.globals.get(ctor_name).cloned() {
+        Some(Value::Object(id)) => id,
+        _ => return None,
+    };
+    let proto = match rt.object_get(ctor_id, "prototype") {
+        Value::Object(id) => Some(id),
+        _ => None,
+    };
+    let mut o = Object::new_ordinary();
+    o.proto = proto;
+    o.set_own("name".into(), Value::String(Rc::new(ctor_name.to_string())));
+    o.set_own("message".into(), Value::String(Rc::new(message.to_string())));
+    o.set_own("stack".into(), Value::String(Rc::new(String::new())));
+    Some(rt.alloc_object(o))
+}
+
 fn describe_thrown_for_diag(rt: &Runtime, e: &RuntimeError) -> String {
     match e {
         RuntimeError::Thrown(v) => match v {
