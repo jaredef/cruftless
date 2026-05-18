@@ -2477,6 +2477,55 @@ impl Runtime {
         let ce_proto = self.alloc_object(Object::new_ordinary());
         self.object_set(ce_id, "prototype".into(), Value::Object(ce_proto));
         self.globals.insert("CustomEvent".into(), Value::Object(ce_id));
+        // Ω.5.P58.E8: MessageEvent, ErrorEvent, CloseEvent, ProgressEvent,
+        // BeforeUnloadEvent stubs. @mswjs/data does
+        // `class X extends MessageEvent` at module-init; many web-ish
+        // consumers extend Event subclasses. Each is a callable that
+        // returns an ordinary object; .prototype set so class-extends
+        // can read it.
+        // BroadcastChannel stub: same pattern but exposes .postMessage,
+        // .close, .onmessage stubs since consumers may attach handlers
+        // at module-init (msw / @mswjs/data instance pattern).
+        let bc = make_native("BroadcastChannel", |rt, args| {
+            let mut o = Object::new_ordinary();
+            let name = match args.first() { Some(Value::String(s)) => (**s).clone(), _ => String::new() };
+            o.set_own("name".into(), Value::String(Rc::new(name)));
+            let id = rt.alloc_object(o);
+            // Install no-op methods on the instance.
+            let postm = make_native("postMessage", |_rt, _a| Ok(Value::Undefined));
+            let postm_id = rt.alloc_object(postm);
+            rt.object_set(id, "postMessage".into(), Value::Object(postm_id));
+            let close = make_native("close", |_rt, _a| Ok(Value::Undefined));
+            let close_id = rt.alloc_object(close);
+            rt.object_set(id, "close".into(), Value::Object(close_id));
+            let addel = make_native("addEventListener", |_rt, _a| Ok(Value::Undefined));
+            let addel_id = rt.alloc_object(addel);
+            rt.object_set(id, "addEventListener".into(), Value::Object(addel_id));
+            Ok(Value::Object(id))
+        });
+        let bc_id = self.alloc_object(bc);
+        let bc_proto = self.alloc_object(Object::new_ordinary());
+        self.object_set(bc_id, "prototype".into(), Value::Object(bc_proto));
+        self.object_set(bc_proto, "constructor".into(), Value::Object(bc_id));
+        self.globals.insert("BroadcastChannel".into(), Value::Object(bc_id));
+        for name in &["MessageEvent", "ErrorEvent", "CloseEvent", "ProgressEvent", "BeforeUnloadEvent", "FocusEvent"] {
+            let ctor_name = *name;
+            let nm = make_native(ctor_name, move |rt, args| {
+                let mut o = Object::new_ordinary();
+                let ty = match args.first() { Some(Value::String(s)) => (**s).clone(), _ => String::new() };
+                o.set_own("type".into(), Value::String(Rc::new(ty)));
+                if let Some(Value::Object(init_id)) = args.get(1) {
+                    let data = rt.object_get(*init_id, "data");
+                    o.set_own("data".into(), data);
+                }
+                Ok(Value::Object(rt.alloc_object(o)))
+            });
+            let nm_id = self.alloc_object(nm);
+            let nm_proto = self.alloc_object(Object::new_ordinary());
+            self.object_set(nm_id, "prototype".into(), Value::Object(nm_proto));
+            self.object_set(nm_proto, "constructor".into(), Value::Object(nm_id));
+            self.globals.insert((*name).into(), Value::Object(nm_id));
+        }
         self.install_error_globals();
         self.install_reflect();
         self.install_map_set_globals();
