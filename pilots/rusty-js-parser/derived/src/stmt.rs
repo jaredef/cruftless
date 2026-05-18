@@ -540,18 +540,29 @@ impl<'src> Parser<'src> {
                 while matches!(self.current_kind(), TokenKind::Punct(Punct::Comma)) {
                     self.bump()?;
                     let d_start = self.lookahead_span().start;
-                    if let TokenKind::Ident(nn) = self.current_kind().clone() {
+                    // Ω.5.P59.E2: accept BindingPattern (identifier OR
+                    // destructure) for subsequent declarators in a
+                    // multi-binding C-style for-init. flatted (and
+                    // therefore stylelint downstream) uses
+                    //   for (let ke = keys(o), {length} = ke, y = 0; ...)
+                    // which is spec-permitted but pre-P59.E2 cruftless's
+                    // parser broke on the {length} = ke declarator.
+                    let target = if matches!(self.current_kind(),
+                        TokenKind::Punct(Punct::LBracket) | TokenKind::Punct(Punct::LBrace))
+                    {
+                        self.parse_binding_target()?
+                    } else if let TokenKind::Ident(nn) = self.current_kind().clone() {
                         let nn_span = self.lookahead_span();
                         self.bump()?;
-                        let init = if matches!(self.current_kind(), TokenKind::Punct(Punct::Assign)) {
-                            self.bump()?;
-                            Some(self.parse_assignment_expression()?)
-                        } else { None };
-                        declarators.push(VariableDeclarator {
-                            target: BindingPattern::Identifier(BindingIdentifier { name: nn, span: nn_span }),
-                            init, span: Span::new(d_start, self.last_span_end()),
-                        });
-                    } else { break; }
+                        BindingPattern::Identifier(BindingIdentifier { name: nn, span: nn_span })
+                    } else { break; };
+                    let init = if matches!(self.current_kind(), TokenKind::Punct(Punct::Assign)) {
+                        self.bump()?;
+                        Some(self.parse_assignment_expression()?)
+                    } else { None };
+                    declarators.push(VariableDeclarator {
+                        target, init, span: Span::new(d_start, self.last_span_end()),
+                    });
                 }
                 self.expect_punct(Punct::Semicolon)?;
                 let test = if !matches!(self.current_kind(), TokenKind::Punct(Punct::Semicolon)) {
