@@ -2405,7 +2405,7 @@ impl Runtime {
         // standard surface; no actual dispatch.
         let et = make_native("EventTarget", |rt, _args| {
             let mut o = Object::new_ordinary();
-            o.set_own("__listeners__".into(), Value::Object(rt.alloc_object(Object::new_ordinary())));
+            o.set_own_internal("__listeners__".into(), Value::Object(rt.alloc_object(Object::new_ordinary())));
             Ok(Value::Object(rt.alloc_object(o)))
         });
         let et_id = self.alloc_object(et);
@@ -3115,7 +3115,7 @@ impl Runtime {
             let kind = match rt.object_get(this_id, "__kind") { Value::String(s) => (*s).clone(), _ => "Uint8Array".into() };
             let mut o = Object::new_ordinary();
             o.set_own("length".into(), Value::Number(slice_len as f64));
-            o.set_own("__kind".into(), Value::String(Rc::new(kind)));
+            o.set_own_internal("__kind".into(), Value::String(Rc::new(kind)));
             let new_id = rt.alloc_object(o);
             for i in 0..slice_len {
                 let v = rt.object_get(this_id, &(start + i).to_string());
@@ -3184,8 +3184,8 @@ impl Runtime {
                 _ => return Err(RuntimeError::TypeError("@@iterator: this must be TypedArray".into())),
             };
             let mut o = Object::new_ordinary();
-            o.set_own("__it_src__".into(), Value::Object(src_id));
-            o.set_own("__it_idx__".into(), Value::Number(0.0));
+            o.set_own_internal("__it_src__".into(), Value::Object(src_id));
+            o.set_own_internal("__it_idx__".into(), Value::Number(0.0));
             let it_id = rt.alloc_object(o);
             register_method(rt, it_id, "next", |rt, _args| {
                 let this_id = match rt.current_this() { Value::Object(o) => o, _ => return Ok(Value::Undefined) };
@@ -3416,7 +3416,7 @@ impl Runtime {
                 let mut o = Object::new_ordinary();
                 o.set_own("length".into(), Value::Number(len));
                 o.set_own("byteLength".into(), Value::Number(len * 4.0));
-                o.set_own("__kind".into(), Value::String(Rc::new(n.clone())));
+                o.set_own_internal("__kind".into(), Value::String(Rc::new(n.clone())));
                 o.proto = Some(proto_id);
                 let id = rt.alloc_object(o);
                 // Copy from source if first arg was an object.

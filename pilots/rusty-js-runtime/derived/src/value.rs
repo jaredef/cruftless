@@ -203,6 +203,25 @@ impl Object {
             setter: None,
         });
     }
+
+    /// Ω.5.P58.E1 (Doc 729 §VII.B engine-internal-bilateral-boundary,
+    /// per-object stratum): set an own property as **non-enumerable**.
+    /// Use for engine-internal sentinels (`__kind`, `__is_buffer__`,
+    /// `__buffer_data`, `__listeners__`, `__it_src__`, etc.) that the
+    /// runtime needs to dispatch on but JS consumers should not see in
+    /// `Object.keys` / `for-in` enumeration. Equivalent to
+    /// `Object.defineProperty(o, k, {value, writable: true,
+    /// configurable: true, enumerable: false})`.
+    pub fn set_own_internal(&mut self, key: String, value: Value) {
+        self.properties.insert(key, PropertyDescriptor {
+            value,
+            writable: true,
+            enumerable: false,
+            configurable: true,
+            getter: None,
+            setter: None,
+        });
+    }
 }
 
 #[derive(Debug, Clone)]

@@ -193,7 +193,7 @@ fn install_buffer_methods(rt: &mut Runtime, id: rusty_js_runtime::ObjectRef) {
         let slice_len = end.saturating_sub(start);
         let mut o = RtObject::new_ordinary();
         o.set_own("length".into(), Value::Number(slice_len as f64));
-        o.set_own("__is_buffer__".into(), Value::Boolean(true));
+        o.set_own_internal("__is_buffer__".into(), Value::Boolean(true));
         let new_id = rt.alloc_object(o);
         install_buffer_methods(rt, new_id);
         for i in 0..slice_len {
@@ -244,7 +244,7 @@ fn install_buffer_methods(rt: &mut Runtime, id: rusty_js_runtime::ObjectRef) {
         let slice_len = end.saturating_sub(start);
         let mut o = RtObject::new_ordinary();
         o.set_own("length".into(), Value::Number(slice_len as f64));
-        o.set_own("__is_buffer__".into(), Value::Boolean(true));
+        o.set_own_internal("__is_buffer__".into(), Value::Boolean(true));
         let new_id = rt.alloc_object(o);
         install_buffer_methods(rt, new_id);
         for i in 0..slice_len {
@@ -315,7 +315,7 @@ pub fn install_buffer(rt: &mut Runtime) {
                 let n = *n as usize;
                 let mut o = RtObject::new_ordinary();
                 o.set_own("length".into(), Value::Number(n as f64));
-                o.set_own("__is_buffer__".into(), Value::Boolean(true));
+                o.set_own_internal("__is_buffer__".into(), Value::Boolean(true));
                 for i in 0..n.min(65536) {
                     o.set_own(i.to_string(), Value::Number(0.0));
                 }
@@ -326,9 +326,9 @@ pub fn install_buffer(rt: &mut Runtime) {
             Some(Value::String(s)) => {
                 let s = s.as_str().to_string();
                 let mut o = RtObject::new_ordinary();
-                o.set_own("__buffer_data".into(), Value::String(Rc::new(s.clone())));
+                o.set_own_internal("__buffer_data".into(), Value::String(Rc::new(s.clone())));
                 o.set_own("length".into(), Value::Number(s.as_bytes().len() as f64));
-                o.set_own("__is_buffer__".into(), Value::Boolean(true));
+                o.set_own_internal("__is_buffer__".into(), Value::Boolean(true));
                 for (i, b) in s.as_bytes().iter().enumerate() {
                     o.set_own(i.to_string(), Value::Number(*b as f64));
                 }
@@ -340,7 +340,7 @@ pub fn install_buffer(rt: &mut Runtime) {
                 // Treat array-like / other: empty buffer fallback.
                 let mut o = RtObject::new_ordinary();
                 o.set_own("length".into(), Value::Number(0.0));
-                o.set_own("__is_buffer__".into(), Value::Boolean(true));
+                o.set_own_internal("__is_buffer__".into(), Value::Boolean(true));
                 let id = rt.alloc_object(o);
                 install_buffer_methods(rt, id);
                 Ok(Value::Object(id))
@@ -354,9 +354,9 @@ pub fn install_buffer(rt: &mut Runtime) {
             _ => String::new(),
         };
         let mut o = RtObject::new_ordinary();
-        o.set_own("__buffer_data".into(), Value::String(Rc::new(s.clone())));
+        o.set_own_internal("__buffer_data".into(), Value::String(Rc::new(s.clone())));
         o.set_own("length".into(), Value::Number(s.as_bytes().len() as f64));
-        o.set_own("__is_buffer__".into(), Value::Boolean(true));
+        o.set_own_internal("__is_buffer__".into(), Value::Boolean(true));
         let id = rt.alloc_object(o);
         // Tier-Ω.5.wwwww: populate indexed byte access. csv-parse reads
         // bytes via buf[i] to compare escape/quote/delimiter byte streams.
@@ -373,7 +373,7 @@ pub fn install_buffer(rt: &mut Runtime) {
         };
         let mut o = RtObject::new_ordinary();
         o.set_own("length".into(), Value::Number(n as f64));
-        o.set_own("__is_buffer__".into(), Value::Boolean(true));
+        o.set_own_internal("__is_buffer__".into(), Value::Boolean(true));
         // Zero-initialized indexable bytes per Node spec.
         for i in 0..n.min(65536) {
             o.set_own(i.to_string(), Value::Number(0.0));
@@ -392,7 +392,7 @@ pub fn install_buffer(rt: &mut Runtime) {
         };
         let mut o = RtObject::new_ordinary();
         o.set_own("length".into(), Value::Number(n as f64));
-        o.set_own("__is_buffer__".into(), Value::Boolean(true));
+        o.set_own_internal("__is_buffer__".into(), Value::Boolean(true));
         for i in 0..n.min(65536) {
             o.set_own(i.to_string(), Value::Number(0.0));
         }
@@ -408,7 +408,7 @@ pub fn install_buffer(rt: &mut Runtime) {
         };
         let mut o = RtObject::new_ordinary();
         o.set_own("length".into(), Value::Number(n as f64));
-        o.set_own("__is_buffer__".into(), Value::Boolean(true));
+        o.set_own_internal("__is_buffer__".into(), Value::Boolean(true));
         // Pre-populate indices with 0 so subsequent SetIndex via
         // crypto.getRandomValues has slots to write into.
         for i in 0..n.min(65536) {
@@ -504,7 +504,7 @@ pub fn install_buffer(rt: &mut Runtime) {
         }
         let mut o = RtObject::new_ordinary();
         o.set_own("length".into(), Value::Number(bytes.len() as f64));
-        o.set_own("__is_buffer__".into(), Value::Boolean(true));
+        o.set_own_internal("__is_buffer__".into(), Value::Boolean(true));
         let id = rt.alloc_object(o);
         for (i, b) in bytes.iter().enumerate() {
             rt.object_set(id, i.to_string(), Value::Number(*b as f64));
