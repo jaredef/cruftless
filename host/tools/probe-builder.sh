@@ -17,7 +17,7 @@
 # is a small JS fragment with a stable role in the emitted file.
 
 set -u
-RB=/media/jaredef/T7/rusty-bun-target/debug/rusty-bun-host-v2
+RB=/media/jaredef/T7/rusty-bun-target/debug/cruftless
 OUT_DIR=${OUT_DIR:-/tmp/rb-probes}
 mkdir -p "$OUT_DIR"
 

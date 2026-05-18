@@ -6,7 +6,7 @@
 use std::process::Command;
 
 fn bin() -> &'static str {
-    env!("CARGO_BIN_EXE_rusty-bun-host-v2")
+    env!("CARGO_BIN_EXE_cruftless")
 }
 
 fn run() -> std::process::Output {

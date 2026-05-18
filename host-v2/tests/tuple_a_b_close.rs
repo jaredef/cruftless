@@ -1,7 +1,7 @@
 //! Ω.5.P16.E2.ns-default-synth — integration coverage for the
 //! HostFinalizeModuleNamespace install in host-v2.
 
-use rusty_bun_host_v2::module_ns;
+use cruftless::module_ns;
 use rusty_js_runtime::{Runtime, Value};
 
 fn new_rt() -> Runtime {

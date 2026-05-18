@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Doc 715 §VII shift 2 + Doc 716 operational metric.
-# Measures rusty-bun-host's parity against Bun at the load-and-shape
+# Measures cruftless-rquickjs's parity against Bun at the load-and-shape
 # layer across a curated list of npm packages.
 #
 # For each package in the list:
 #   1. bun install into an isolated tempdir
 #   2. Run parity-probe.mjs under Bun → record output
-#   3. Run parity-probe.mjs under rusty-bun-host via cargo test path → record output
+#   3. Run parity-probe.mjs under cruftless-rquickjs via cargo test path → record output
 #   4. Compare byte-for-byte
 #
 # Output: per-package status + aggregate parity-percentage.
@@ -25,11 +25,11 @@ OUT="${2:-$TOOLS/parity-results.json}"
 SANDBOX="${PARITY_SANDBOX:-/tmp/parity-sandbox}"
 mkdir -p "$SANDBOX"
 
-# rusty-bun-host binary. Override via RB_BIN= to point at an alternate
-# host (e.g. host-v2's rusty-bun-host-v2) per seed §A8.20 + the Ω.4.f
+# cruftless-rquickjs binary. Override via RB_BIN= to point at an alternate
+# host (e.g. host-v2's cruftless) per seed §A8.20 + the Ω.4.f
 # Tuple A/B-close falsifier loop. The output file path can also be
 # overridden via the second positional arg or OUT= for parallel runs.
-RB="${RB_BIN:-$ROOT/target/release/rusty-bun-host}"
+RB="${RB_BIN:-$ROOT/target/release/cruftless-rquickjs}"
 if [ ! -x "$RB" ]; then
   echo "Binary not found: $RB"
   echo "Build first: cargo build --release --bin $(basename "$RB")"

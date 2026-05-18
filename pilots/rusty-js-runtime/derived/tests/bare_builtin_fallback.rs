@@ -32,7 +32,7 @@ fn entry_url(path: &PathBuf) -> String {
 fn fresh_runtime_with_host() -> Runtime {
     let mut rt = Runtime::new();
     rt.install_intrinsics();
-    rusty_bun_host_v2::install_bun_host(&mut rt, vec![]);
+    cruftless::install_bun_host(&mut rt, vec![]);
     rt
 }
 

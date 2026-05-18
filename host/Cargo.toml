@@ -1,13 +1,14 @@
 [package]
-name = "rusty-bun-host"
+name = "cruftless-rquickjs"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
+name = "cruftless_rquickjs"
 path = "src/lib.rs"
 
 [[bin]]
-name = "rusty-bun-host"
+name = "cruftless-rquickjs"
 path = "src/main.rs"
 
 [dependencies]

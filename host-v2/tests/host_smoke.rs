@@ -1,14 +1,14 @@
-//! Smoke tests for rusty-bun-host-v2. Each test drives the host's API
+//! Smoke tests for cruftless. Each test drives the host's API
 //! programmatically (without going through the binary's argv path).
 
-use rusty_bun_host_v2::install_bun_host;
+use cruftless::install_bun_host;
 use rusty_js_runtime::{Runtime, Value};
 
 fn run(src: &str) -> Runtime {
     let module = rusty_js_bytecode::compile_module(src).expect("compile");
     let mut rt = Runtime::new();
     rt.install_intrinsics();
-    install_bun_host(&mut rt, vec!["rusty-bun-host-v2".to_string()]);
+    install_bun_host(&mut rt, vec!["cruftless".to_string()]);
     rt.run_module(&module).expect("run module");
     rt.run_to_completion().expect("run to completion");
     rt
@@ -146,7 +146,7 @@ fn process_platform() {
 fn process_argv() {
     let rt = run("__record(process.argv[0]);");
     if let Some(Value::String(s)) = recorded(&rt) {
-        assert_eq!(s.as_str(), "rusty-bun-host-v2");
+        assert_eq!(s.as_str(), "cruftless");
     } else { panic!(); }
 }
 

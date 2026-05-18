@@ -1418,7 +1418,7 @@ pub unsafe extern "C" fn napi_new_instance(
 pub unsafe extern "C" fn napi_fatal_exception(env: napi_env, err: napi_value) -> napi_status {
     let env_ref = env_mut!(env);
     let v = env_ref.get_handle(err).cloned().unwrap_or(Value::Undefined);
-    eprintln!("rusty-bun-host-v2: napi fatal exception: {:?}", v);
+    eprintln!("cruftless: napi fatal exception: {:?}", v);
     napi_ok
 }
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -u
-RB=/media/jaredef/T7/rusty-bun-target/debug/rusty-bun-host-v2
+RB=/media/jaredef/T7/rusty-bun-target/debug/cruftless
 SANDBOX="${PARITY_SANDBOX:-/tmp/parity-sandbox}"
 declare -A probes
 probes[nanoid]='import { nanoid } from "nanoid"; const id = nanoid(); console.log(typeof id, id?.length===21 ? "OK" : "BAD len="+id?.length);'

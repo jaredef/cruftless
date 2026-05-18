@@ -7,7 +7,7 @@ use std::rc::Rc;
 pub fn install(rt: &mut Runtime, argv: Vec<String>) {
     let process = new_object(rt);
 
-    // argv: ["rusty-bun-host-v2", <script>, ...rest]
+    // argv: ["cruftless", <script>, ...rest]
     let argv_array = rt.alloc_object(rusty_js_runtime::value::Object::new_array());
     for (i, s) in argv.iter().enumerate() {
         rt.object_set(argv_array, i.to_string(), Value::String(Rc::new(s.clone())));

@@ -176,6 +176,44 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 
 [[package]]
+name = "cruftless"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "rusty-js-ast",
+ "rusty-js-bytecode",
+ "rusty-js-parser",
+ "rusty-js-runtime",
+]
+
+[[package]]
+name = "cruftless-rquickjs"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "mio",
+ "rquickjs",
+ "rusty-abort-controller",
+ "rusty-blob",
+ "rusty-buffer",
+ "rusty-bun-file",
+ "rusty-bun-serve",
+ "rusty-bun-spawn",
+ "rusty-compression",
+ "rusty-fetch-api",
+ "rusty-http-codec",
+ "rusty-node-fs",
+ "rusty-node-path",
+ "rusty-sockets",
+ "rusty-textencoder",
+ "rusty-tls",
+ "rusty-urlsearchparams",
+ "rusty-web-crypto",
+ "rusty-websocket",
+ "serde_json",
+]
+
+[[package]]
 name = "derive-constraints"
 version = "0.1.0"
 dependencies = [
@@ -410,44 +448,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rusty-bun-host"
-version = "0.1.0"
-dependencies = [
- "libc",
- "mio",
- "rquickjs",
- "rusty-abort-controller",
- "rusty-blob",
- "rusty-buffer",
- "rusty-bun-file",
- "rusty-bun-serve",
- "rusty-bun-spawn",
- "rusty-compression",
- "rusty-fetch-api",
- "rusty-http-codec",
- "rusty-node-fs",
- "rusty-node-path",
- "rusty-sockets",
- "rusty-textencoder",
- "rusty-tls",
- "rusty-urlsearchparams",
- "rusty-web-crypto",
- "rusty-websocket",
- "serde_json",
-]
-
-[[package]]
-name = "rusty-bun-host-v2"
-version = "0.1.0"
-dependencies = [
- "indexmap",
- "rusty-js-ast",
- "rusty-js-bytecode",
- "rusty-js-parser",
- "rusty-js-runtime",
-]
-
-[[package]]
 name = "rusty-bun-serve"
 version = "0.1.0"
 dependencies = [
@@ -507,10 +507,10 @@ dependencies = [
 name = "rusty-js-runtime"
 version = "0.1.0"
 dependencies = [
+ "cruftless",
  "indexmap",
  "libloading",
  "regex",
- "rusty-bun-host-v2",
  "rusty-js-ast",
  "rusty-js-bytecode",
  "rusty-js-gc",

@@ -9,9 +9,9 @@ fn main() {
     let target = std::env::var("TARGET").unwrap_or_default();
     let is_macos = target.contains("apple-darwin");
     if is_macos {
-        println!("cargo:rustc-link-arg-bin=rusty-bun-host-v2=-Wl,-export_dynamic");
+        println!("cargo:rustc-link-arg-bin=cruftless=-Wl,-export_dynamic");
     } else {
         // Linux + most other unix-likes.
-        println!("cargo:rustc-link-arg-bin=rusty-bun-host-v2=-Wl,--export-dynamic");
+        println!("cargo:rustc-link-arg-bin=cruftless=-Wl,--export-dynamic");
     }
 }

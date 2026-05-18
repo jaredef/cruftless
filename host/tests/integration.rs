@@ -1,8 +1,8 @@
-// Integration tests for rusty-bun-host. These tests run JS code through
+// Integration tests for cruftless-rquickjs. These tests run JS code through
 // the rquickjs-embedded host with all pilots wired into globalThis,
 // validating that the integration layer works end-to-end.
 
-use rusty_bun_host::{eval_bool, eval_i64, eval_string, eval_string_async};
+use cruftless_rquickjs::{eval_bool, eval_i64, eval_string, eval_string_async};
 
 // ════════════════════ atob / btoa ════════════════════
 
@@ -228,7 +228,7 @@ fn js_url_search_params_sort() {
 
 #[test]
 fn js_fs_write_then_read_roundtrip() {
-    let tmp = format!("/tmp/rusty-bun-host-fs-{}", std::process::id());
+    let tmp = format!("/tmp/cruftless-rquickjs-fs-{}", std::process::id());
     let script = format!(r#"
         const path = "{}";
         fs.writeFileSync(path, "test content");
@@ -250,7 +250,7 @@ fn js_fs_exists_for_missing_file() {
 #[test]
 fn js_fs_mkdir_then_rmdir_recursive() {
     let pid = std::process::id();
-    let parent = format!("/tmp/rusty-bun-host-mkdir-{}", pid);
+    let parent = format!("/tmp/cruftless-rquickjs-mkdir-{}", pid);
     let dir = format!("{}/a/b/c", parent);
     let script = format!(r#"
         fs.mkdirSyncRecursive("{}");
@@ -295,7 +295,7 @@ fn js_compose_url_params_and_buffer() {
 
 #[test]
 fn js_compose_fs_text_encoder_decoder_chain() {
-    let tmp = format!("/tmp/rusty-bun-host-chain-{}", std::process::id());
+    let tmp = format!("/tmp/cruftless-rquickjs-chain-{}", std::process::id());
     let script = format!(r#"
         const path = "{}";
         fs.writeFileSync(path, "hello, world!");
@@ -744,7 +744,7 @@ fn js_bun_file_construction_lazy() {
 
 #[test]
 fn js_bun_file_text_round_trip() {
-    let tmp = format!("/tmp/rusty-bun-host-bunfile-{}", std::process::id());
+    let tmp = format!("/tmp/cruftless-rquickjs-bunfile-{}", std::process::id());
     let script = format!(r#"
         const path = "{}";
         fs.writeFileSync(path, "Bun.file demo");
@@ -758,7 +758,7 @@ fn js_bun_file_text_round_trip() {
 
 #[test]
 fn js_bun_file_size() {
-    let tmp = format!("/tmp/rusty-bun-host-bunfile-size-{}", std::process::id());
+    let tmp = format!("/tmp/cruftless-rquickjs-bunfile-size-{}", std::process::id());
     let script = format!(r#"
         const path = "{}";
         fs.writeFileSync(path, "12345");
@@ -806,7 +806,7 @@ fn js_compose_request_response_roundtrip() {
 
 #[test]
 fn js_compose_bun_file_to_response() {
-    let tmp = format!("/tmp/rusty-bun-host-compose-{}", std::process::id());
+    let tmp = format!("/tmp/cruftless-rquickjs-compose-{}", std::process::id());
     let script = format!(r#"
         const path = "{}";
         fs.writeFileSync(path, "static file content");
@@ -999,7 +999,7 @@ fn js_bun_spawn_sync_stdin_text() {
 
 #[test]
 fn js_compose_bun_serve_canonical_pattern() {
-    // The canonical Bun docs example, running through rusty-bun-host.
+    // The canonical Bun docs example, running through cruftless-rquickjs.
     let r = eval_string_async(r#"
         const server = Bun.serve({
             routes: {
@@ -1738,7 +1738,7 @@ fn js_compose_cjs_with_pilots_canonical_pattern() {
 
 // ════════════════════ ESM module loading (Tier-H.3 #2) ═══════════════════
 
-use rusty_bun_host::eval_esm_module;
+use cruftless_rquickjs::eval_esm_module;
 
 fn esm_test_setup(suffix: &str) -> String {
     let pid = std::process::id();
@@ -2140,7 +2140,7 @@ fn js_consumer_todo_api_runs_clean() {
 // pipeline (streams + AbortController + setTimeout + fs across module
 // boundaries).
 
-use rusty_bun_host::eval_cjs_module_async;
+use cruftless_rquickjs::eval_cjs_module_async;
 
 #[test]
 fn js_consumer_stream_processor_runs_clean() {
@@ -2153,7 +2153,7 @@ fn js_consumer_stream_processor_runs_clean() {
 
 // ════════════════════ Tier-J #3: differential against actual Bun ═════════
 //
-// Runs the same JS script against both Bun (subprocess) and rusty-bun-host,
+// Runs the same JS script against both Bun (subprocess) and cruftless-rquickjs,
 // captures both outputs, asserts they match line-by-line. This is the
 // J.2/J.3 work — actual differential evidence that rusty-bun produces
 // outcomes equivalent to Bun for the spec-portable surface.
@@ -2166,7 +2166,7 @@ fn js_differential_portable_matches_bun() {
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/differential/portable.js");
 
-    // Run under rusty-bun-host.
+    // Run under cruftless-rquickjs.
     let rb_result = eval_esm_module(fixture.to_str().unwrap()).unwrap();
 
     // Run under Bun (as a subprocess). Skip cleanly if Bun isn't installed.
@@ -2208,7 +2208,7 @@ fn js_differential_portable_matches_bun() {
 }
 
 // Tier-J differential: consumer-todo-api runs identically on Bun and
-// rusty-bun-host. Both should print "10/10". Per M8: divergences are
+// cruftless-rquickjs. Both should print "10/10". Per M8: divergences are
 // reconciled in-round, not deferred.
 #[test]
 fn js_differential_consumer_todo_api_matches_bun() {
@@ -2242,7 +2242,7 @@ fn js_differential_consumer_todo_api_matches_bun() {
 }
 
 // Tier-J differential: consumer-stream-processor runs identically on Bun
-// and rusty-bun-host post-M8 reconciliation (Buffer-as-class + node:fs
+// and cruftless-rquickjs post-M8 reconciliation (Buffer-as-class + node:fs
 // builtin resolution + fixture-side rewrite to use require("node:fs") and
 // Buffer.toString("hex") and process.stdout.write).
 #[test]
@@ -3710,7 +3710,7 @@ fn js_differential_consumer_sockets_suite_matches_bun() {
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-sockets-suite/src/main.js");
     let path = fixture.to_str().unwrap().to_string();
-    // rusty-bun-host: runs with harness echo-server + SOCKETS_TEST_PORT.
+    // cruftless-rquickjs: runs with harness echo-server + SOCKETS_TEST_PORT.
     let rb = {
         let mut out = String::new();
         with_echo_server(|| { out = eval_esm_module(&path).unwrap(); });
@@ -4226,7 +4226,7 @@ fn js_differential_consumer_pbkdf2_suite_matches_bun() {
 
 #[test]
 fn bun_password_hash_returns_phc_string() {
-    let r = rusty_bun_host::eval_string_async(r#"
+    let r = cruftless_rquickjs::eval_string_async(r#"
         const enc = await Bun.password.hash("hunter2", { timeCost: 2, memoryCost: 1024 });
         return enc;
     "#).unwrap();
@@ -4238,7 +4238,7 @@ fn bun_password_hash_returns_phc_string() {
 
 #[test]
 fn bun_password_hash_verify_roundtrip() {
-    let r = rusty_bun_host::eval_string_async(r#"
+    let r = cruftless_rquickjs::eval_string_async(r#"
         const enc = await Bun.password.hash("correct horse", { timeCost: 2, memoryCost: 1024 });
         const ok = await Bun.password.verify("correct horse", enc);
         const bad = await Bun.password.verify("wrong", enc);
@@ -4253,7 +4253,7 @@ fn bun_password_verify_upstream_phc_string() {
     //   argon2.hash("hunter2", { type:argon2id, salt:"saltsaltsaltsalt",
     //                            timeCost:2, memoryCost:1024, parallelism:1,
     //                            hashLength:32, version:0x13 })
-    let r = rusty_bun_host::eval_string_async(r#"
+    let r = cruftless_rquickjs::eval_string_async(r#"
         const enc = "$argon2id$v=19$m=1024,t=2,p=1$c2FsdHNhbHRzYWx0c2FsdA$8Ay6op+3TmdW+WkH0Q1ci5BobdmPnyvp2rUlv7zx/IE";
         const ok = await Bun.password.verify("hunter2", enc);
         const bad = await Bun.password.verify("hunter3", enc);
@@ -4264,7 +4264,7 @@ fn bun_password_verify_upstream_phc_string() {
 
 #[test]
 fn bun_password_verify_via_argon2id_substrate() {
-    let r = rusty_bun_host::eval_string_async(r#"
+    let r = cruftless_rquickjs::eval_string_async(r#"
         const pwBytes = new TextEncoder().encode("pw");
         const salt = new TextEncoder().encode("saltsaltsaltsalt");
         const tag = new Uint8Array(globalThis.crypto.subtle.argon2idBytes(
@@ -4280,7 +4280,7 @@ fn bun_password_verify_via_argon2id_substrate() {
 
 #[test]
 fn bun_password_hash_sync_verify_sync_roundtrip() {
-    let r = rusty_bun_host::eval_string(r#"
+    let r = cruftless_rquickjs::eval_string(r#"
         const enc = Bun.password.hashSync("hunter2", { timeCost: 2, memoryCost: 1024 });
         const ok = Bun.password.verifySync("hunter2", enc);
         const bad = Bun.password.verifySync("wrong", enc);
@@ -4291,7 +4291,7 @@ fn bun_password_hash_sync_verify_sync_roundtrip() {
 
 #[test]
 fn bun_password_verify_sync_accepts_upstream_phc() {
-    let r = rusty_bun_host::eval_string(r#"
+    let r = cruftless_rquickjs::eval_string(r#"
         const enc = "$argon2id$v=19$m=1024,t=2,p=1$c2FsdHNhbHRzYWx0c2FsdA$8Ay6op+3TmdW+WkH0Q1ci5BobdmPnyvp2rUlv7zx/IE";
         Bun.password.verifySync("hunter2", enc) ? "ok" : "bad"
     "#).unwrap();
@@ -4302,7 +4302,7 @@ fn bun_password_verify_sync_accepts_upstream_phc() {
 
 #[test]
 fn bun_gzip_sync_round_trips() {
-    let r = rusty_bun_host::eval_string(r#"
+    let r = cruftless_rquickjs::eval_string(r#"
         const input = "hello compression world";
         const enc = Bun.gzipSync(input);
         const dec = new TextDecoder().decode(Bun.gunzipSync(enc));
@@ -4313,7 +4313,7 @@ fn bun_gzip_sync_round_trips() {
 
 #[test]
 fn bun_deflate_sync_round_trips() {
-    let r = rusty_bun_host::eval_string(r#"
+    let r = cruftless_rquickjs::eval_string(r#"
         const input = "deflate this";
         const enc = Bun.deflateSync(input);
         const dec = new TextDecoder().decode(Bun.inflateSync(enc));
@@ -4328,7 +4328,7 @@ fn bun_gzip_sync_decodes_under_bun() {
     // (and any conforming gzip decoder) accepts our stored-block output.
     // We don't have Bun in-process here, so emit bytes and trust the
     // pilot-level system-gunzip differential to anchor wire compatibility.
-    let r = rusty_bun_host::eval_string(r#"
+    let r = cruftless_rquickjs::eval_string(r#"
         const enc = Bun.gzipSync("xyz");
         // gzip magic 0x1f 0x8b
         (enc[0] === 0x1f && enc[1] === 0x8b) ? "ok" : "bad"
@@ -4344,7 +4344,7 @@ fn autoserve_self_fetch_round_trips() {
     // autoServe:true, then fetches itself. The cooperative loop (fetch's
     // nonblocking tryRead + __tickKeepAlive + microtask yield) lets the
     // server's __tick handler run between fetch's read attempts.
-    let r = rusty_bun_host::eval_string_async(r#"
+    let r = cruftless_rquickjs::eval_string_async(r#"
         const server = Bun.serve({
             port: 0,
             hostname: "127.0.0.1",
@@ -4382,7 +4382,7 @@ fn autoserve_self_fetch_round_trips() {
 
 #[test]
 fn consumer_itty_router_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-itty-router-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -4400,7 +4400,7 @@ fn consumer_itty_router_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_jose_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-jose-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -4419,7 +4419,7 @@ fn consumer_jose_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_zod_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-zod-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -4437,7 +4437,7 @@ fn consumer_zod_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_dayjs_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-dayjs-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -4458,7 +4458,7 @@ fn consumer_stack_app_byte_identical_to_bun() {
     // Composed fixture: itty-router + zod + jose on Bun.serve + same-process
     // fetch via Π2.6.b. Strongest single piece of telos evidence — multiple
     // vendored OSS libs orchestrated in one process matching Bun byte-for-byte.
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-stack-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -4476,7 +4476,7 @@ fn consumer_stack_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_nanoid_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-nanoid-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -4501,7 +4501,7 @@ fn nanoid_probe_diag_removed() {
 
 #[test]
 fn consumer_valibot_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-valibot-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -4519,7 +4519,7 @@ fn consumer_valibot_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_uuid_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-uuid-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -4537,7 +4537,7 @@ fn consumer_uuid_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_ulid_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-ulid-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -4559,7 +4559,7 @@ fn consumer_picocolors_app_byte_identical_to_bun() {
     // E.13 closure validator: picocolors is CJS-only; FsLoader bridges
     // CJS to ESM by evaluating eagerly via bootRequire then synthesizing
     // a re-export shim. import pc from "picocolors" works.
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-picocolors-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -4577,7 +4577,7 @@ fn consumer_picocolors_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_ms_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-ms-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -4598,7 +4598,7 @@ fn consumer_mini_app_byte_identical_to_bun() {
     // Composed mini API server: 6 vendored OSS libs in one process via
     // Bun.serve + Π2.6.b self-fetch. Strongest single composition
     // telos validator the engagement has produced.
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-mini-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -4619,7 +4619,7 @@ fn node_net_socket_to_bun_serve_round_trip() {
     // node:net.Socket client → Bun.serve HTTP server, same-process via
     // Π2.6.b cooperative loop. The Socket sends a raw HTTP/1.1 request,
     // server responds, client reads response via data events, parses.
-    let r = rusty_bun_host::eval_string_async(r#"
+    let r = cruftless_rquickjs::eval_string_async(r#"
         const net = globalThis.nodeNet;
         const server = Bun.serve({
             port: 0, hostname: "127.0.0.1", autoServe: true,
@@ -4670,7 +4670,7 @@ fn node_net_socket_to_bun_serve_round_trip() {
 
 #[test]
 fn consumer_lodash_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-lodash-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -4688,7 +4688,7 @@ fn consumer_lodash_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_debug_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-debug-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -4709,7 +4709,7 @@ fn consumer_debug_app_byte_identical_to_bun() {
 fn node_http_create_server_listen_round_trip() {
     // node:http.createServer + .listen + Π2.6.b self-fetch round-trip.
     // Bridges the Node-style (req, res) handler to Bun.serve internally.
-    let r = rusty_bun_host::eval_string_async(r#"
+    let r = cruftless_rquickjs::eval_string_async(r#"
         const http = globalThis.nodeHttp;
         const server = http.createServer((req, res) => {
             const body = req._body || "";  // body bridged in via IncomingMessage init
@@ -4736,7 +4736,7 @@ fn node_http_create_server_listen_round_trip() {
 
 #[test]
 fn consumer_yaml_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-yaml-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -4758,7 +4758,7 @@ fn consumer_yaml_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_express_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-express-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -4776,7 +4776,7 @@ fn consumer_express_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_koa_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-koa-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -4796,7 +4796,7 @@ fn consumer_koa_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_semver_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-semver-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -4814,7 +4814,7 @@ fn consumer_semver_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_picomatch_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-picomatch-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -4832,7 +4832,7 @@ fn consumer_picomatch_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_marked_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-marked-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -4850,7 +4850,7 @@ fn consumer_marked_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_acorn_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-acorn-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -4868,7 +4868,7 @@ fn consumer_acorn_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_chai_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-chai-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -4887,7 +4887,7 @@ fn consumer_chai_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_diff_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-diff-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -4905,7 +4905,7 @@ fn consumer_diff_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_eventemitter3_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-eventemitter3-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -4923,7 +4923,7 @@ fn consumer_eventemitter3_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_decimal_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-decimal-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -4941,7 +4941,7 @@ fn consumer_decimal_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_xstate_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-xstate-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -4959,7 +4959,7 @@ fn consumer_xstate_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_lrucache_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-lrucache-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -4978,7 +4978,7 @@ fn consumer_lrucache_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_hashids_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-hashids-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -4996,7 +4996,7 @@ fn consumer_hashids_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_immer_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-immer-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5014,7 +5014,7 @@ fn consumer_immer_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_bcryptjs_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-bcryptjs-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5032,7 +5032,7 @@ fn consumer_bcryptjs_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_rxjs_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-rxjs-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5050,7 +5050,7 @@ fn consumer_rxjs_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_hljs_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-hljs-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5069,7 +5069,7 @@ fn consumer_hljs_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_kleur_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-kleur-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5087,7 +5087,7 @@ fn consumer_kleur_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_fde_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-fde-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5105,7 +5105,7 @@ fn consumer_fde_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_escodegen_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-escodegen-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5123,7 +5123,7 @@ fn consumer_escodegen_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_htmlparser2_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-htmlparser2-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5141,7 +5141,7 @@ fn consumer_htmlparser2_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_mitt_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-mitt-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5159,7 +5159,7 @@ fn consumer_mitt_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_fxp_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-fxp-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5177,7 +5177,7 @@ fn consumer_fxp_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_eta_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-eta-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5195,7 +5195,7 @@ fn consumer_eta_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_fjp_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-fjp-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5214,7 +5214,7 @@ fn consumer_fjp_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_once_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-once-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5233,7 +5233,7 @@ fn consumer_once_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_superstruct_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-superstruct-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5253,7 +5253,7 @@ fn consumer_superstruct_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_pluralize_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-pluralize-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5271,7 +5271,7 @@ fn consumer_pluralize_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_toml_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-toml-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5289,7 +5289,7 @@ fn consumer_toml_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_rfdc_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-rfdc-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5307,7 +5307,7 @@ fn consumer_rfdc_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_arg_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-arg-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5326,7 +5326,7 @@ fn consumer_arg_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_basex_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-basex-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5344,7 +5344,7 @@ fn consumer_basex_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_immutable_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-immutable-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5362,7 +5362,7 @@ fn consumer_immutable_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_sss_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-sss-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5380,7 +5380,7 @@ fn consumer_sss_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_flatted_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-flatted-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5398,7 +5398,7 @@ fn consumer_flatted_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_rfc4648_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-rfc4648-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5416,7 +5416,7 @@ fn consumer_rfc4648_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_bytes_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-bytes-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5434,7 +5434,7 @@ fn consumer_bytes_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_urijs_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-urijs-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5452,7 +5452,7 @@ fn consumer_urijs_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_p2r_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-p2r-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5470,7 +5470,7 @@ fn consumer_p2r_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_nhp_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-nhp-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5488,7 +5488,7 @@ fn consumer_nhp_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_dm_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-dm-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5506,7 +5506,7 @@ fn consumer_dm_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_ss2_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-ss2-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5524,7 +5524,7 @@ fn consumer_ss2_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_slug_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-slug-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5543,7 +5543,7 @@ fn consumer_slug_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_htmlent_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-htmlent-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5561,7 +5561,7 @@ fn consumer_htmlent_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_mime_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-mime-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5579,7 +5579,7 @@ fn consumer_mime_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_cookie_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-cookie-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5597,7 +5597,7 @@ fn consumer_cookie_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_qs_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-qs-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5615,7 +5615,7 @@ fn consumer_qs_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_bowser_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-bowser-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5633,7 +5633,7 @@ fn consumer_bowser_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_validatorjs_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-validatorjs-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5651,7 +5651,7 @@ fn consumer_validatorjs_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_jsep_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-jsep-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5669,7 +5669,7 @@ fn consumer_jsep_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_mustache_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-mustache-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5687,7 +5687,7 @@ fn consumer_mustache_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_handlebars_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-handlebars-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5705,7 +5705,7 @@ fn consumer_handlebars_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_ejs_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-ejs-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5723,7 +5723,7 @@ fn consumer_ejs_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_color_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-color-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5741,7 +5741,7 @@ fn consumer_color_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_arraysort_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-arraysort-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5759,7 +5759,7 @@ fn consumer_arraysort_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_jsondiffpatch_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-jsondiffpatch-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5778,7 +5778,7 @@ fn consumer_jsondiffpatch_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_hyperid_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-hyperid-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5796,7 +5796,7 @@ fn consumer_hyperid_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_tslib_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-tslib-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5814,7 +5814,7 @@ fn consumer_tslib_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_fastfifo_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-fastfifo-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5832,7 +5832,7 @@ fn consumer_fastfifo_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_debounce_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-debounce-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5850,7 +5850,7 @@ fn consumer_debounce_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_papaparse_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-papaparse-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5868,7 +5868,7 @@ fn consumer_papaparse_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_mathexpr_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-mathexpr-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5886,7 +5886,7 @@ fn consumer_mathexpr_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_fraction_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-fraction-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5904,7 +5904,7 @@ fn consumer_fraction_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_bignumberjs_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-bignumberjs-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5923,7 +5923,7 @@ fn consumer_bignumberjs_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_strfmt_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-strfmt-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5941,7 +5941,7 @@ fn consumer_strfmt_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_stringz_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-stringz-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5959,7 +5959,7 @@ fn consumer_stringz_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_tweetnacl_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-tweetnacl-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5979,7 +5979,7 @@ fn consumer_tweetnacl_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_clone_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-clone-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -5997,7 +5997,7 @@ fn consumer_clone_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_leftpad_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-leftpad-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6015,7 +6015,7 @@ fn consumer_leftpad_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_just_extend_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-just-extend-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6033,7 +6033,7 @@ fn consumer_just_extend_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_randomstring_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-randomstring-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6051,7 +6051,7 @@ fn consumer_randomstring_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_tldextract_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-tldextract-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6069,7 +6069,7 @@ fn consumer_tldextract_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_bnstr_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-bnstr-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6087,7 +6087,7 @@ fn consumer_bnstr_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_ipaddr_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-ipaddr-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6106,7 +6106,7 @@ fn consumer_ipaddr_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_defu_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-defu-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6124,7 +6124,7 @@ fn consumer_defu_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_pathe_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-pathe-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6142,7 +6142,7 @@ fn consumer_pathe_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_destr_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-destr-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6160,7 +6160,7 @@ fn consumer_destr_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_ufo_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-ufo-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6178,7 +6178,7 @@ fn consumer_ufo_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_radash_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-radash-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6196,7 +6196,7 @@ fn consumer_radash_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_remeda_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-remeda-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6214,7 +6214,7 @@ fn consumer_remeda_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_tinyemit_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-tinyemit-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6232,7 +6232,7 @@ fn consumer_tinyemit_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_events3_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-events3-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6250,7 +6250,7 @@ fn consumer_events3_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_strstrip_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-strstrip-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6268,7 +6268,7 @@ fn consumer_strstrip_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_pluralize2_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-pluralize2-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6287,7 +6287,7 @@ fn consumer_pluralize2_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_msig_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-msig-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6305,7 +6305,7 @@ fn consumer_msig_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_cjsparse_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-cjsparse-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6324,7 +6324,7 @@ fn consumer_cjsparse_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_streamfilter_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-streamfilter-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6342,7 +6342,7 @@ fn consumer_streamfilter_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_snakecase_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-snakecase-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6360,7 +6360,7 @@ fn consumer_snakecase_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_stringcase_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-stringcase-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6378,7 +6378,7 @@ fn consumer_stringcase_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_stitches_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-stitches-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6396,7 +6396,7 @@ fn consumer_stitches_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_natural_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-natural-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6414,7 +6414,7 @@ fn consumer_natural_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_deepfreeze_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-deepfreeze-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6432,7 +6432,7 @@ fn consumer_deepfreeze_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_async_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-async-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6450,7 +6450,7 @@ fn consumer_async_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_arrify_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-arrify-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6469,7 +6469,7 @@ fn consumer_arrify_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_deeperseq_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-deeperseq-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6487,7 +6487,7 @@ fn consumer_deeperseq_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_fastdeep_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-fastdeep-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6505,7 +6505,7 @@ fn consumer_fastdeep_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_merge2_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-merge2-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6524,7 +6524,7 @@ fn consumer_merge2_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_typeguard_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-typeguard-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6542,7 +6542,7 @@ fn consumer_typeguard_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_mapobj_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-mapobj-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6561,7 +6561,7 @@ fn consumer_mapobj_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_parseduration_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-parseduration-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6580,7 +6580,7 @@ fn consumer_parseduration_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_setcookieparser_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-setcookieparser-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6598,7 +6598,7 @@ fn consumer_setcookieparser_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_querystringes_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-querystringes-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6616,7 +6616,7 @@ fn consumer_querystringes_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_urlparse_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-urlparse-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6634,7 +6634,7 @@ fn consumer_urlparse_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_uniqid_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-uniqid-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6652,7 +6652,7 @@ fn consumer_uniqid_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_strsim_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-strsim-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6670,7 +6670,7 @@ fn consumer_strsim_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_leven_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-leven-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6688,7 +6688,7 @@ fn consumer_leven_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_pmap_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-pmap-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6706,7 +6706,7 @@ fn consumer_pmap_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_pretry_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-pretry-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6724,7 +6724,7 @@ fn consumer_pretry_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_ptimeout_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-ptimeout-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6742,7 +6742,7 @@ fn consumer_ptimeout_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_pqueue_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-pqueue-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6760,7 +6760,7 @@ fn consumer_pqueue_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_pall_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-pall-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6778,7 +6778,7 @@ fn consumer_pall_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_pevent_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-pevent-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6796,7 +6796,7 @@ fn consumer_pevent_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_tsmixer_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-tsmixer-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6814,7 +6814,7 @@ fn consumer_tsmixer_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_pdefer_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-pdefer-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6833,7 +6833,7 @@ fn consumer_pdefer_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_prettyms_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-prettyms-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6851,7 +6851,7 @@ fn consumer_prettyms_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_titlecase_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-titlecase-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6869,7 +6869,7 @@ fn consumer_titlecase_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_fastsafestringify_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-fastsafestringify-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6888,7 +6888,7 @@ fn consumer_fastsafestringify_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_circjson_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-circjson-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6906,7 +6906,7 @@ fn consumer_circjson_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_curlyjson_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-curlyjson-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6924,7 +6924,7 @@ fn consumer_curlyjson_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_encodeurl_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-encodeurl-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6942,7 +6942,7 @@ fn consumer_encodeurl_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_pjson_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-pjson-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6961,7 +6961,7 @@ fn consumer_pjson_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_strargv_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-strargv-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6979,7 +6979,7 @@ fn consumer_strargv_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_fastglob_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-fastglob-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -6997,7 +6997,7 @@ fn consumer_fastglob_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_microee_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-microee-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7015,7 +7015,7 @@ fn consumer_microee_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_randomint_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-randomint-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7033,7 +7033,7 @@ fn consumer_randomint_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_pdebounce_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-pdebounce-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7052,7 +7052,7 @@ fn consumer_pdebounce_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_strindent_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-strindent-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7070,7 +7070,7 @@ fn consumer_strindent_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_indentstr_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-indentstr-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7089,7 +7089,7 @@ fn consumer_indentstr_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_stripjson_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-stripjson-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7107,7 +7107,7 @@ fn consumer_stripjson_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_onetime_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-onetime-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7126,7 +7126,7 @@ fn consumer_onetime_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_asciitable_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-asciitable-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7145,7 +7145,7 @@ fn consumer_asciitable_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_yallist_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-yallist-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7163,7 +7163,7 @@ fn consumer_yallist_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_funccache_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-funccache-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7181,7 +7181,7 @@ fn consumer_funccache_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_tinypool_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-tinypool-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7199,7 +7199,7 @@ fn consumer_tinypool_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_listr_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-listr-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7218,7 +7218,7 @@ fn consumer_listr_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_pcommitthrough_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-pcommitthrough-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7236,7 +7236,7 @@ fn consumer_pcommitthrough_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_perclas_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-perclas-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7254,7 +7254,7 @@ fn consumer_perclas_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_clsxt_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-clsxt-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7272,7 +7272,7 @@ fn consumer_clsxt_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_typecheck_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-typecheck-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7292,7 +7292,7 @@ fn consumer_typecheck_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_arrutils_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-arrutils-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7310,7 +7310,7 @@ fn consumer_arrutils_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_promiselib_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-promiselib-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7329,7 +7329,7 @@ fn consumer_promiselib_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_uuidv4_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-uuidv4-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7347,7 +7347,7 @@ fn consumer_uuidv4_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_hashobj_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-hashobj-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7365,7 +7365,7 @@ fn consumer_hashobj_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_base32enc_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-base32enc-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7383,7 +7383,7 @@ fn consumer_base32enc_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_mathint_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-mathint-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7402,7 +7402,7 @@ fn consumer_mathint_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_arrhelpers_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-arrhelpers-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7421,7 +7421,7 @@ fn consumer_arrhelpers_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_fastclonex_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-fastclonex-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7439,7 +7439,7 @@ fn consumer_fastclonex_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_svgpathp_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-svgpathp-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7457,7 +7457,7 @@ fn consumer_svgpathp_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_flexsearch_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-flexsearch-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7475,7 +7475,7 @@ fn consumer_flexsearch_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_pino_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-pino-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7494,7 +7494,7 @@ fn consumer_pino_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_onceev_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-onceev-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7513,7 +7513,7 @@ fn consumer_onceev_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_readablestreamx_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-readablestreamx-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7531,7 +7531,7 @@ fn consumer_readablestreamx_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_tinyglob_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-tinyglob-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7550,7 +7550,7 @@ fn consumer_tinyglob_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_camelcase_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-camelcase-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7568,7 +7568,7 @@ fn consumer_camelcase_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_camelize2_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-camelize2-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7587,7 +7587,7 @@ fn consumer_camelize2_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_pwait_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-pwait-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7610,7 +7610,7 @@ fn consumer_pwait_app_byte_identical_to_bun() {
 
 #[test]
 fn probe_asciitable() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let p = std::path::Path::new("/home/jaredef/rusty-bun/host/tests/fixtures/consumer-asciitable-app/main.mjs");
     eprintln!("RESULT: {:?}", eval_esm_module(p.to_str().unwrap()));
 }
@@ -7620,7 +7620,7 @@ fn probe_asciitable() {
 
 #[test]
 fn consumer_fastify_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-fastify-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7639,7 +7639,7 @@ fn consumer_fastify_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_prettybytes_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-prettybytes-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7658,7 +7658,7 @@ fn consumer_prettybytes_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_luxon_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-luxon-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7677,7 +7677,7 @@ fn consumer_luxon_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_chalk5_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-chalk5-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7696,7 +7696,7 @@ fn consumer_chalk5_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_ndjsonp_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-ndjsonp-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7715,7 +7715,7 @@ fn consumer_ndjsonp_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_plimit_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-plimit-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7734,7 +7734,7 @@ fn consumer_plimit_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_b64u_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-b64u-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7755,7 +7755,7 @@ fn consumer_b64u_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_md5h_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-md5h-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7774,7 +7774,7 @@ fn consumer_md5h_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_wrapa_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-wrapa-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7793,7 +7793,7 @@ fn consumer_wrapa_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_clitrunc_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-clitrunc-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7812,7 +7812,7 @@ fn consumer_clitrunc_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_glob_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-glob-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7831,7 +7831,7 @@ fn consumer_glob_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_suppco_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-suppco-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7850,7 +7850,7 @@ fn consumer_suppco_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_ohash2_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-ohash2-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7869,7 +7869,7 @@ fn consumer_ohash2_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_reflectmetadata_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-reflectmetadata-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7889,7 +7889,7 @@ fn consumer_reflectmetadata_app_byte_identical_to_bun() {
 #[test]
 #[ignore]
 fn consumer_subtle_ec_keygen_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-subtle-ec-keygen-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -7910,7 +7910,7 @@ macro_rules! consumer_test {
     ($name:ident, $dir:literal) => {
         #[test]
         fn $name() {
-            use rusty_bun_host::eval_esm_module;
+            use cruftless_rquickjs::eval_esm_module;
             let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join(concat!("tests/fixtures/", $dir, "/main.mjs"));
             let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -8027,7 +8027,7 @@ consumer_test!(consumer_execa_app_byte_identical_to_bun, "consumer-execa-app");
 
 #[test]
 fn consumer_micromatch_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-micromatch-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -8046,7 +8046,7 @@ fn consumer_micromatch_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_moment_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-moment-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -8065,7 +8065,7 @@ fn consumer_moment_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_nodehtmlparser_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-nodehtmlparser-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -8084,7 +8084,7 @@ fn consumer_nodehtmlparser_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_commander_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-commander-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -8106,7 +8106,7 @@ fn consumer_bun_connect_app_byte_identical_to_bun() {
     // Bun.connect end-to-end against a same-process Bun.serve. The Pi2.6.b
     // cooperative-loop substrate drives both the server's __tick and the
     // client socket's __tick during the eval loop's microtask drain.
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-bun-connect-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -8138,7 +8138,7 @@ fn consumer_brotli_app_decodes_known_streams() {
     // Π1.3.c integration validates that __compression.brotli_decode
     // round-trips two known streams (RFC 7932 empty + a Python-
     // brotli-compressed "Hello, World!" reference vector).
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-brotli-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -8151,7 +8151,7 @@ fn consumer_brotli_app_decodes_known_streams() {
 
 #[test]
 fn consumer_subtle_keygen_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-subtle-keygen-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -8170,7 +8170,7 @@ fn consumer_subtle_keygen_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_bunyaml_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-bunyaml-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -8189,7 +8189,7 @@ fn consumer_bunyaml_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_nodetls_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-nodetls-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -8208,7 +8208,7 @@ fn consumer_nodetls_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_effect_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-effect-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -8227,7 +8227,7 @@ fn consumer_effect_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_mathjs_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-mathjs-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -8246,7 +8246,7 @@ fn consumer_mathjs_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_hono_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-hono-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -8265,7 +8265,7 @@ fn consumer_hono_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_prismjs_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-prismjs-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -8286,8 +8286,8 @@ fn consumer_prismjs_app_byte_identical_to_bun() {
 fn api_surface_enumerator_reports_coverage() {
     // Per Doc 714 sub-§4.c: enumerate the documented Node + Bun + Web
     // platform surface, generate L2/L3 micro-tests, run under both
-    // rusty-bun-host and Bun, compute coverage + diff to surface gaps.
-    use rusty_bun_host::eval_esm_module;
+    // cruftless-rquickjs and Bun, compute coverage + diff to surface gaps.
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/api-surface-enumerator/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -8329,7 +8329,7 @@ fn api_surface_enumerator_reports_coverage() {
 
 #[test]
 fn consumer_yup_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-yup-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -8348,7 +8348,7 @@ fn consumer_yup_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_csvparse_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-csvparse-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -8367,7 +8367,7 @@ fn consumer_csvparse_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_pug_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-pug-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -8386,7 +8386,7 @@ fn consumer_pug_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_pwaitfor_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-pwaitfor-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -8405,7 +8405,7 @@ fn consumer_pwaitfor_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_cborx_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-cborx-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -8424,7 +8424,7 @@ fn consumer_cborx_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_msgpackr_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-msgpackr-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -8443,7 +8443,7 @@ fn consumer_msgpackr_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_jsonpathplus_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-jsonpathplus-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -8462,7 +8462,7 @@ fn consumer_jsonpathplus_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_jsonschema_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-jsonschema-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -8481,7 +8481,7 @@ fn consumer_jsonschema_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_nodeemoji_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-nodeemoji-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -8500,7 +8500,7 @@ fn consumer_nodeemoji_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_iconvlite_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-iconvlite-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -8519,7 +8519,7 @@ fn consumer_iconvlite_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_shortid_app_shape_matches_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-shortid-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -8542,7 +8542,7 @@ fn consumer_shortid_app_shape_matches_bun() {
 
 #[test]
 fn consumer_pthrottle_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-pthrottle-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -8561,7 +8561,7 @@ fn consumer_pthrottle_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_normaldist_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-normaldist-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -8580,7 +8580,7 @@ fn consumer_normaldist_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_unraw_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-unraw-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -8599,7 +8599,7 @@ fn consumer_unraw_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_cleanstack_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-cleanstack-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -8618,7 +8618,7 @@ fn consumer_cleanstack_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_dotenv_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-dotenv-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();
@@ -8637,7 +8637,7 @@ fn consumer_dotenv_app_byte_identical_to_bun() {
 
 #[test]
 fn consumer_yargsp_app_byte_identical_to_bun() {
-    use rusty_bun_host::eval_esm_module;
+    use cruftless_rquickjs::eval_esm_module;
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/consumer-yargsp-app/main.mjs");
     let rb = eval_esm_module(fixture.to_str().unwrap()).unwrap();

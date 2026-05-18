@@ -43,7 +43,7 @@ pub struct Runtime {
     /// allocated Object.
     pub heap: rusty_js_gc::Heap<crate::value::Object>,
     /// Event-loop job queue per ECMA-262 §9.4 + WHATWG HTML §8.
-    /// Engine-owned; replaces the pre-Ω rusty-bun-host's mio + JS-side
+    /// Engine-owned; replaces the pre-Ω cruftless-rquickjs's mio + JS-side
     /// __keepAlive + __tickKeepAlive split. Per Doc 714 §VI Consequence 5.
     pub job_queue: crate::job_queue::JobQueue,
     /// Promises that have been rejected with no reject handler attached.

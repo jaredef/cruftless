@@ -1,15 +1,15 @@
 [package]
-name = "rusty-bun-host-v2"
+name = "cruftless"
 version = "0.1.0"
 edition = "2021"
 build = "build.rs"
 
 [lib]
-name = "rusty_bun_host_v2"
+name = "cruftless"
 path = "src/lib.rs"
 
 [[bin]]
-name = "rusty-bun-host-v2"
+name = "cruftless"
 path = "src/main.rs"
 
 [dependencies]

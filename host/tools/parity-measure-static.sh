@@ -15,7 +15,7 @@
 # This keeps host-v2's substrate-honest "throw at module-eval" path
 # legible to downstream jq queries.
 #
-# Override target host via RB_BIN= (default $ROOT/target/release/rusty-bun-host-v2).
+# Override target host via RB_BIN= (default $ROOT/target/release/cruftless).
 # Override package list via positional arg (default parity-top100.txt).
 # Override output via second positional arg (default parity-results-static.json).
 #
@@ -26,7 +26,7 @@ ROOT="$(cd "$TOOLS/../.." && pwd)"
 LIST="${1:-$TOOLS/parity-top100.txt}"
 OUT="${2:-$TOOLS/parity-results-static.json}"
 SANDBOX="${PARITY_SANDBOX:-/tmp/parity-sandbox}"
-RB="${RB_BIN:-$ROOT/target/release/rusty-bun-host-v2}"
+RB="${RB_BIN:-$ROOT/target/release/cruftless}"
 
 mkdir -p "$SANDBOX"
 

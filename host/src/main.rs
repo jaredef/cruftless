@@ -1,4 +1,4 @@
-// rusty-bun-host CLI: `rusty-bun-host <script>` runs a file under the
+// cruftless-rquickjs CLI: `cruftless-rquickjs <script>` runs a file under the
 // rquickjs-embedded host with all wired pilots in globalThis.
 //
 // Two execution modes selected by file extension:
@@ -15,12 +15,12 @@ use std::process;
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
-        eprintln!("usage: rusty-bun-host <script.js|script.mjs>");
+        eprintln!("usage: cruftless-rquickjs <script.js|script.mjs>");
         process::exit(1);
     }
     let path = &args[1];
     if path.ends_with(".mjs") {
-        match rusty_bun_host::eval_esm_module(path) {
+        match cruftless_rquickjs::eval_esm_module(path) {
             Ok(s) => {
                 print!("{}", s);
                 if !s.ends_with('\n') { println!(); }
@@ -40,7 +40,7 @@ fn main() {
             process::exit(1);
         }
     };
-    let (_runtime, context) = match rusty_bun_host::new_runtime() {
+    let (_runtime, context) = match cruftless_rquickjs::new_runtime() {
         Ok(r) => r,
         Err(e) => {
             eprintln!("runtime init: {:?}", e);

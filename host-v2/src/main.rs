@@ -1,8 +1,8 @@
-//! rusty-bun-host-v2 entry point. Reads a JS source file, evaluates it
+//! cruftless entry point. Reads a JS source file, evaluates it
 //! through the rusty-js-runtime engine, drives the event loop to
 //! completion, exits.
 
-use rusty_bun_host_v2::install_bun_host;
+use cruftless::install_bun_host;
 use rusty_js_runtime::{Runtime, Value};
 use std::process::ExitCode;
 
@@ -38,14 +38,14 @@ fn format_thrown(rt: &Runtime, v: &Value) -> String {
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {
-        eprintln!("usage: {} <file.mjs>", args.get(0).map(|s| s.as_str()).unwrap_or("rusty-bun-host-v2"));
+        eprintln!("usage: {} <file.mjs>", args.get(0).map(|s| s.as_str()).unwrap_or("cruftless"));
         return ExitCode::from(64); // EX_USAGE
     }
     let path = args[1].clone();
     let source = match std::fs::read_to_string(&path) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("rusty-bun-host-v2: cannot read {}: {}", path, e);
+            eprintln!("cruftless: cannot read {}: {}", path, e);
             return ExitCode::from(66); // EX_NOINPUT
         }
     };
@@ -66,20 +66,20 @@ fn main() -> ExitCode {
                 rusty_js_runtime::RuntimeError::Thrown(v) => format_thrown(&rt, v),
                 _ => format!("{:?}", e),
             };
-            eprintln!("rusty-bun-host-v2: evaluation error: {}", msg);
+            eprintln!("cruftless: evaluation error: {}", msg);
             return ExitCode::from(70);
         }
     }
 
     if let Err(e) = rt.run_to_completion() {
-        eprintln!("rusty-bun-host-v2: event-loop error: {:?}", e);
+        eprintln!("cruftless: event-loop error: {:?}", e);
         return ExitCode::from(70);
     }
 
     let unhandled = rt.drain_unhandled_rejections();
     if !unhandled.is_empty() {
         for (_id, reason) in &unhandled {
-            eprintln!("rusty-bun-host-v2: unhandled promise rejection: {:?}", reason);
+            eprintln!("cruftless: unhandled promise rejection: {:?}", reason);
         }
         return ExitCode::from(70);
     }

@@ -2,7 +2,7 @@
 # Expanded route-2 value probe — covers shape-passers beyond the
 # original 24-package sample.
 set -u
-RB=/media/jaredef/T7/rusty-bun-target/release/rusty-bun-host-v2
+RB=/media/jaredef/T7/rusty-bun-target/release/cruftless
 SANDBOX="${PARITY_SANDBOX:-/tmp/parity-sandbox}"
 declare -A probes
 

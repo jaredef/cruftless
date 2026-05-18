@@ -1,4 +1,4 @@
-//! rusty-bun-host-v2 — host wiring for the rusty-js-runtime engine.
+//! cruftless — host wiring for the rusty-js-runtime engine.
 //! Per specs/omega-4-host-migration-design.md.
 //!
 //! Round Ω.4.b scope: Cargo skeleton + binary entry point + first

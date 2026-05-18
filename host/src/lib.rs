@@ -1,4 +1,4 @@
-//! rusty-bun-host — JS host integration for the rusty-bun derivation pilots.
+//! cruftless-rquickjs — JS host integration for the rusty-bun derivation pilots.
 //!
 //! Per the rusty-bun engagement seed §VII (Sub-criterion 4: JS host
 //! integration). This crate embeds rquickjs (a Rust binding for QuickJS)
@@ -1060,7 +1060,7 @@ struct FsLoader;
 /// cleanly and only fail if they actually invoke the dynamic surface.
 fn inert_stub_esm(known_names: &[&str]) -> String {
     let mut src = String::new();
-    src.push_str("const __throw = (n) => { throw new Error('rusty-bun-host: inert stub for ' + n); };\n");
+    src.push_str("const __throw = (n) => { throw new Error('cruftless-rquickjs: inert stub for ' + n); };\n");
     for n in known_names {
         src.push_str(&format!(
             "export const {0} = new Proxy(function() {{ __throw('{0}'); }}, {{\n\
@@ -1744,7 +1744,7 @@ fn wire_process<'js>(ctx: &rquickjs::Ctx<'js>, global: &Object<'js>) -> JsResult
     // node:process / globalThis.process. Bun-portable subset.
     // stdout.write / stderr.write accumulate into globalThis.__stdoutBuf
     // and globalThis.__stderrBuf respectively so eval_esm_module can read
-    // them. Real Bun writes to actual fd 1/2; rusty-bun-host captures
+    // them. Real Bun writes to actual fd 1/2; cruftless-rquickjs captures
     // them into JS-side buffers for test inspection (and for the
     // Tier-J differential path).
     let process = Object::new(ctx.clone())?;
@@ -1759,9 +1759,9 @@ fn wire_process<'js>(ctx: &rquickjs::Ctx<'js>, global: &Object<'js>) -> JsResult
     // argv: in the host context, populate with a synthetic two-element
     // array similar to ["bun", "<entry-script>"]. eval_esm_module knows
     // the entry path; for the host-internal eval helpers, default to
-    // ["rusty-bun-host", "<eval>"]. The test fixtures don't depend on
+    // ["cruftless-rquickjs", "<eval>"]. The test fixtures don't depend on
     // argv content; what they depend on is argv being an Array.
-    let argv: Vec<String> = vec!["rusty-bun-host".to_string(), "<eval>".to_string()];
+    let argv: Vec<String> = vec!["cruftless-rquickjs".to_string(), "<eval>".to_string()];
     process.set("argv", argv)?;
 
     process.set("platform", if cfg!(target_os = "linux") { "linux" }
@@ -1773,12 +1773,12 @@ fn wire_process<'js>(ctx: &rquickjs::Ctx<'js>, global: &Object<'js>) -> JsResult
         else { "unknown" })?;
     // Claim Node v20 compat. yargs-parser, undici, fastify and many
     // modern libs gate on minimum Node major; we satisfy "≥ 20" while
-    // recording the actual rusty-bun-host version too.
+    // recording the actual cruftless-rquickjs version too.
     process.set("version", "v20.0.0")?;
     process.set("versions", {
         let v = Object::new(ctx.clone())?;
         v.set("node", "20.0.0")?;
-        v.set("rusty_bun_host", "0.0.0")?;
+        v.set("cruftless_rquickjs", "0.0.0")?;
         v
     })?;
 
@@ -1791,10 +1791,10 @@ fn wire_process<'js>(ctx: &rquickjs::Ctx<'js>, global: &Object<'js>) -> JsResult
     process.set("ppid", 0_i64)?;
     process.set("execPath", std::env::current_exe()
         .ok().and_then(|p| p.to_str().map(|s| s.to_string()))
-        .unwrap_or_else(|| "rusty-bun-host".to_string()))?;
+        .unwrap_or_else(|| "cruftless-rquickjs".to_string()))?;
     process.set("execArgv", Vec::<String>::new())?;
-    process.set("argv0", "rusty-bun-host")?;
-    process.set("title", "rusty-bun-host")?;
+    process.set("argv0", "cruftless-rquickjs")?;
+    process.set("title", "cruftless-rquickjs")?;
     process.set("allowedNodeEnvironmentFlags", Vec::<String>::new())?;
     process.set("umask", Function::new(ctx.clone(), || -> i32 { 0o022 })?)?;
     process.set("uptime", Function::new(ctx.clone(), || -> f64 { 0.0 })?)?;
@@ -1867,12 +1867,12 @@ fn wire_process<'js>(ctx: &rquickjs::Ctx<'js>, global: &Object<'js>) -> JsResult
     // exit is a sentinel — we cannot actually exit the test process; the
     // function records the code on globalThis.__exitCode and throws to
     // unwind. Real consumer code that calls process.exit will surface as
-    // an uncaught error in rusty-bun-host but won't kill the process.
+    // an uncaught error in cruftless-rquickjs but won't kill the process.
     process.set("exit", Function::new(ctx.clone(), |code: Opt<i32>| -> JsResult<()> {
         let _ = code;
         Err(rquickjs::Error::new_from_js_message(
             "process.exit", "void",
-            "process.exit called in rusty-bun-host (no-op; check __exitCode)",
+            "process.exit called in cruftless-rquickjs (no-op; check __exitCode)",
         ))
     })?)?;
 
@@ -3904,7 +3904,7 @@ fn wire_crypto<'js>(ctx: &rquickjs::Ctx<'js>, global: &Object<'js>) -> JsResult<
     )?;
     crypto.set("subtle", subtle)?;
     global.set("crypto", crypto)?;
-    // Spec-compliant WebCrypto wrappers. Per M8/M9: aligns rusty-bun-host's
+    // Spec-compliant WebCrypto wrappers. Per M8/M9: aligns cruftless-rquickjs's
     // crypto.subtle with Bun's surface so consumer code using the standard
     // import/sign/verify/digest pattern works portably.
     //
@@ -5335,9 +5335,9 @@ fn install_buffer_class_js<'js>(ctx: &rquickjs::Ctx<'js>) -> JsResult<()> {
 
 // ─── Set.prototype ES2025 set-methods polyfill (closes E.10) ──────────
 //
-// Bun has these natively via JSC. rusty-bun-host's embedded QuickJS
+// Bun has these natively via JSC. cruftless-rquickjs's embedded QuickJS
 // predates the TC39 set-methods Stage 4 merge. The polyfill is ~30
-// LOC JS and brings the rusty-bun-host basin into alignment with Bun
+// LOC JS and brings the cruftless-rquickjs basin into alignment with Bun
 // on the ES2025 Set algebra surface.
 
 const SET_METHODS_POLYFILL_JS: &str = r#"
@@ -6294,7 +6294,7 @@ fn wire_fs<'js>(ctx: &rquickjs::Ctx<'js>, global: &Object<'js>) -> JsResult<()> 
             // Stubs for the Node fs surface we don't yet implement. Throws
             // on invocation; namespace-shape parity is satisfied by typeof.
             const throwStub = (name) => function() {
-                throw new Error("fs." + name + " is not yet implemented in rusty-bun-host");
+                throw new Error("fs." + name + " is not yet implemented in cruftless-rquickjs");
             };
             for (const n of ["Dir","_toUnixTimestamp","accessSync","appendFile",
                              "copyFile","cp","cpSync","fdatasync","fdatasyncSync",
@@ -6720,7 +6720,7 @@ globalThis.Request = class Request {
         if (this._body === null || this._body === undefined) return new Uint8Array(0);
         if (typeof this._body === "string") {
             const arr = new TextEncoder().encode(this._body);
-            // arr may be plain Array in rusty-bun-host runtime; coerce to Uint8Array.
+            // arr may be plain Array in cruftless-rquickjs runtime; coerce to Uint8Array.
             return arr instanceof Uint8Array ? arr : new Uint8Array(arr);
         }
         if (this._body instanceof Uint8Array) return this._body;
@@ -6870,7 +6870,7 @@ if (typeof globalThis.fetch === "undefined" ||
     globalThis.fetch = async function fetch(input, init) {
         if (typeof globalThis.TCP === "undefined" ||
             typeof globalThis.HTTP === "undefined") {
-            throw new TypeError("rusty-bun-host: fetch requires globalThis.TCP + globalThis.HTTP (Tier-G substrate)");
+            throw new TypeError("cruftless-rquickjs: fetch requires globalThis.TCP + globalThis.HTTP (Tier-G substrate)");
         }
         // Accept string URL, URL object, or Request object.
         let url, method, headers, body;
@@ -6891,7 +6891,7 @@ if (typeof globalThis.fetch === "undefined" ||
         // Scheme + host validation. http: + https: supported per Tier-Π1.1-Π1.4.
         const isHttps = (url.protocol === "https:");
         if (url.protocol !== "http:" && !isHttps) {
-            throw new TypeError("rusty-bun-host: unsupported scheme '" + url.protocol + "' (only http: and https:)");
+            throw new TypeError("cruftless-rquickjs: unsupported scheme '" + url.protocol + "' (only http: and https:)");
         }
         let host = url.hostname;
         if (host === "localhost") host = "127.0.0.1";
@@ -6909,7 +6909,7 @@ if (typeof globalThis.fetch === "undefined" ||
                 try {
                     host = globalThis.__dns.lookup_sync(host);
                 } catch (e) {
-                    throw new TypeError("rusty-bun-host: DNS resolution failed for '" + url.hostname + "': " + e.message);
+                    throw new TypeError("cruftless-rquickjs: DNS resolution failed for '" + url.hostname + "': " + e.message);
                 }
             }
         }
@@ -6986,7 +6986,7 @@ if (typeof globalThis.fetch === "undefined" ||
                 } catch (_) {}
             }
             if (!caPem) {
-                throw new TypeError("rusty-bun-host: no CA bundle found for https; tried RUSTY_BUN_CA / NODE_EXTRA_CA_CERTS / system paths");
+                throw new TypeError("cruftless-rquickjs: no CA bundle found for https; tried RUSTY_BUN_CA / NODE_EXTRA_CA_CERTS / system paths");
             }
             sid = globalThis.__tls.connect(host, port, caPem);
         } else {
@@ -7053,7 +7053,7 @@ if (typeof globalThis.fetch === "undefined" ||
                             });
                             idleSpins++;
                             if (idleSpins > maxIdleSpins) {
-                                throw new Error("rusty-bun-host fetch (TLS): read stalled (no data, no progress)");
+                                throw new Error("cruftless-rquickjs fetch (TLS): read stalled (no data, no progress)");
                             }
                             continue;
                         }
@@ -7076,7 +7076,7 @@ if (typeof globalThis.fetch === "undefined" ||
                         await globalThis.TCP.waitReadable(sid);
                         idleSpins++;
                         if (idleSpins > maxIdleSpins) {
-                            throw new Error("rusty-bun-host fetch: read stalled (no data, no progress)");
+                            throw new Error("cruftless-rquickjs fetch: read stalled (no data, no progress)");
                         }
                         continue;
                     }
@@ -7086,7 +7086,7 @@ if (typeof globalThis.fetch === "undefined" ||
                 chunks.push(chunk);
                 total += chunk.length;
                 if (total > 32 * 1024 * 1024) {
-                    throw new RangeError("rusty-bun-host fetch: response exceeds 32 MB buffered limit");
+                    throw new RangeError("cruftless-rquickjs fetch: response exceeds 32 MB buffered limit");
                 }
                 // HTTP/1.1 typically frames by Content-Length or
                 // Transfer-Encoding: chunked. If the headers carry one
@@ -7168,7 +7168,7 @@ if (typeof globalThis.fetch === "undefined" ||
                     } else if (c === "br") {
                         respBody = new Uint8Array(globalThis.__compression.brotli_decode(inArr));
                     } else {
-                        throw new TypeError("rusty-bun-host: unsupported Content-Encoding '" + c + "'");
+                        throw new TypeError("cruftless-rquickjs: unsupported Content-Encoding '" + c + "'");
                     }
                 }
                 respHeaders.delete("content-encoding");
@@ -7574,7 +7574,7 @@ const BUN_SERVE_JS: &str = r#"
             // serve(): run tick() in a loop until stop() is called. Returns
             // when stopped. This is the engagement-bridge equivalent of
             // Bun.serve's implicit background loop — explicit here because
-            // rusty-bun-host's single-threaded JS model can't run the loop
+            // cruftless-rquickjs's single-threaded JS model can't run the loop
             // in the background while other JS code runs synchronously.
             async serve() {
                 if (this._tcpListenerId == null) await this.listen();
@@ -7844,7 +7844,7 @@ const BUN_SPAWN_JS: &str = r#"
 
         // ReadableStream of Uint8Array chunks. Real WHATWG shape so
         // `new Response(proc.stdout).text()` works portably across
-        // Bun and rusty-bun-host.
+        // Bun and cruftless-rquickjs.
         function makeStream(isDone, drain, chunks) {
             let cursor = 0;
             return new ReadableStream({
@@ -9614,7 +9614,7 @@ fn install_websocket_class_js<'js>(ctx: &rquickjs::Ctx<'js>) -> JsResult<()> {
     // Tier-3 implementation-contingent divergence from real Bun per
     // seed C1: the connection driver runs synchronously during
     // construction (open TCP + Upgrade handshake + verify Accept),
-    // since rusty-bun-host has no real event loop. The result is that
+    // since cruftless-rquickjs has no real event loop. The result is that
     // by the time `new WebSocket(url)` returns, readyState is either
     // OPEN (success) or CLOSED (failure). onopen fires via microtask
     // after construction returns. Real Bun async-emits 'open' from
@@ -11279,7 +11279,7 @@ fn install_node_zlib_js<'js>(ctx: &Ctx<'js>) -> JsResult<()> {
                 return typeof Buffer !== "undefined" ? Buffer.from(out) : new Uint8Array(out);
             };
             const stub = (name) => () => {
-                throw new Error("rusty-bun-host: zlib." + name +
+                throw new Error("cruftless-rquickjs: zlib." + name +
                     " (stream variant) not implemented — use *Sync");
             };
             globalThis.nodeZlib = {
@@ -11304,7 +11304,7 @@ fn install_node_zlib_js<'js>(ctx: &Ctx<'js>) -> JsResult<()> {
 fn install_node_tty_js<'js>(ctx: &Ctx<'js>) -> JsResult<()> {
     // node:tty — minimal stub. debug + many libs top-level-require this.
     // isatty(fd) returns false in non-TTY contexts (which we always are
-    // in the rusty-bun-host eval-loop runtime since stdout is piped to
+    // in the cruftless-rquickjs eval-loop runtime since stdout is piped to
     // tests). ReadStream/WriteStream are placeholder classes for shape.
     ctx.eval::<(), _>(r#"
         (function() {
@@ -11323,7 +11323,7 @@ fn install_node_tty_js<'js>(ctx: &Ctx<'js>) -> JsResult<()> {
 fn install_node_diagnostics_channel_js<'js>(ctx: &Ctx<'js>) -> JsResult<()> {
     // node:diagnostics_channel — observability hooks (Node 15+, fastify
     // top-level-imports it). Real implementation publishes events to
-    // subscribers; no instrumentation lives in rusty-bun-host yet, so this
+    // subscribers; no instrumentation lives in cruftless-rquickjs yet, so this
     // is a faithful no-op surface: Channel objects with subscribe/publish
     // exist, hasSubscribers always false, publish drops messages on the
     // floor. Allows libraries that gate optional tracing on the API's
@@ -12245,7 +12245,7 @@ fn install_node_extra_builtins_js<'js>(ctx: &Ctx<'js>) -> JsResult<()> {
                 TextDecoderStream: globalThis.TextDecoderStream,
             };
 
-            // node:test → no-op stubs; the rusty-bun-host doesn't run Node's
+            // node:test → no-op stubs; the cruftless-rquickjs doesn't run Node's
             // built-in test runner. Libraries import this only when their
             // own test mode is active (a self-test guarded by a flag).
             const noop = () => {};
@@ -12266,7 +12266,7 @@ fn install_node_extra_builtins_js<'js>(ctx: &Ctx<'js>) -> JsResult<()> {
             // thread"; calling Worker throws.
             class Worker {
                 constructor() {
-                    throw new Error("rusty-bun-host: node:worker_threads.Worker not supported");
+                    throw new Error("cruftless-rquickjs: node:worker_threads.Worker not supported");
                 }
             }
             globalThis.nodeWorkerThreads = {
@@ -12283,7 +12283,7 @@ fn install_node_extra_builtins_js<'js>(ctx: &Ctx<'js>) -> JsResult<()> {
             // but only exercises it under explicit allowHTTP2 opts (off by
             // default). Plain http path remains intact.
             const http2Throws = (name) => () => {
-                throw new Error("rusty-bun-host: node:http2." + name + " not supported");
+                throw new Error("cruftless-rquickjs: node:http2." + name + " not supported");
             };
             globalThis.nodeHttp2 = {
                 constants: {
@@ -12429,7 +12429,7 @@ fn install_node_extra_builtins_js<'js>(ctx: &Ctx<'js>) -> JsResult<()> {
             // throwing createInterface and accept the divergence per
             // the L5 cut.
             const rlThrows = (n) => () => {
-                throw new Error("rusty-bun-host: node:readline." + n + " not supported");
+                throw new Error("cruftless-rquickjs: node:readline." + n + " not supported");
             };
             globalThis.nodeReadline = {
                 createInterface: rlThrows("createInterface"),
@@ -12535,7 +12535,7 @@ fn install_node_extra_builtins_js<'js>(ctx: &Ctx<'js>) -> JsResult<()> {
             globalThis.nodeSqlite = (function() {
                 class DatabaseSync {
                     constructor() {
-                        throw new Error("node:sqlite not implemented in rusty-bun-host");
+                        throw new Error("node:sqlite not implemented in cruftless-rquickjs");
                     }
                 }
                 return {
@@ -12932,7 +12932,7 @@ fn install_node_child_process_js<'js>(ctx: &Ctx<'js>) -> JsResult<()> {
     ctx.eval::<(), _>(r#"
         (function() {
             const stub = (name) => () => {
-                throw new Error("rusty-bun-host: node:child_process." + name +
+                throw new Error("cruftless-rquickjs: node:child_process." + name +
                     " not implemented (only spawnSync composes on Bun.spawnSync)");
             };
             // ChildProcess class — stub for libs that import the class
@@ -14404,7 +14404,7 @@ const URL_CLASS_JS: &str = r##"
     };
 
     URL.createObjectURL = function () {
-        throw new Error("URL.createObjectURL is not supported in rusty-bun-host");
+        throw new Error("URL.createObjectURL is not supported in cruftless-rquickjs");
     };
     URL.revokeObjectURL = function () {
         // No-op (matches the no-objectURL substrate state).
