@@ -1818,3 +1818,65 @@ Eight commits, P55→P57 stretch:
 - 1 recorded failed-move with revert (P57.E2.alt)
 
 Pin-Art tag count: ~201 (post-P55.E1) + 7 (P56-P57 stretch including the recorded revert) = ~208 substrate moves committed.
+
+
+## RESUME VECTOR EXTENSION 13 — 2026-05-18 (P58 stretch on the dyn-import cluster; 14/102 absorbed)
+
+### Headline
+
+No fresh canonical sweep launched per `feedback_no_auto_sweeps`. Cluster-targeted sweep on dyn-import (102 pkgs in the post-P55 III.c basket) absorbed **14 packages** across the P58.E1→E10 stretch:
+
+| commit | move | dyn-import yield |
+|---|---|---|
+| `0e2eae15` | EXT 11 anchor | — |
+| `7c83db8b` | P55.E1 engine-helper-boundary (§VII.B global) | — |
+| `51294d4b` | EXT 12 canonical 76.4% | baseline |
+| `9679dce9` | P55.E2 harness JSON-quoting | harness |
+| `80afc06a` | P56.E1 fs permission/stat stubs (17) | (closes fs-extra typeof-diff) |
+| `32519174` | P56.E2 path.matchesGlob | (closes upath typeof-diff) |
+| `028a7c25` | P57.E1 Tuple-A-empty type:module gate | (+2 in kc-pm-1-2: micromark-util-types + vite-node) |
+| `7a3d0ac3` | P57.E2 fs readv/writev stubs | (closes graceful-fs −Δ) |
+| `02f86043` | EXT 12 addendum | — |
+| `0e2eae15` | P58.E1 §VII.B per-object stratum (17 sentinels nonenum) | 0 direct |
+| `7b083634` | P58.E2 http.METHODS as Array | +2 (express + @koa/router) |
+| `fcfd6a86` | P58.E3 globalThis.require | +2 (turndown + @jest/expect compounder) |
+| `1b050dc3` | P58.E4 Constructor.prototype.constructor backlinks | 0 direct |
+| `ab1683cc` | P58.E5 dyn-import rejects as Error-instance | 0 direct |
+| `b12791ca` | P58.E6+E7 stream.getDefaultHighWaterMark + **async fn returns Promise** | **+6** (execa, semantic-release, shelljs, clipboardy, libsodium-wrappers, @actions/http-client, rollup-plugin-typescript2) |
+| `d5b35b5d` | P58.E8 MessageEvent / BroadcastChannel + Web Event subclasses | +1 (@mswjs/data) |
+| `9fb9a277` | P58.E9 TypedArray.prototype.map/filter/reduce/reduceRight/toString | +3 (csso + 2 compounders) |
+| `00bcc45e` | P58.E10 class static methods before fields (§15.7.10) | 0 direct (mongodb/mongoose hit deeper gates) |
+
+**Cumulative cluster shape post-P58.E10:**
+- post-P55 baseline: 0/102 PASS
+- post-P58.E10: 14/102 PASS — express, @koa/router, turndown, @jest/expect, execa, semantic-release, shelljs, clipboardy, libsodium-wrappers, @actions/http-client, rollup-plugin-typescript2, @mswjs/data, csso, + 1 silent compounder
+
+**The big one (P58.E7): async functions now always return a Promise** per ECMA §27.7 AsyncFunctionStart. cruftless was returning the body's value directly (undefined for empty async arrow). +6 cluster packages absorbed in one substrate move. Substrate-amortization (§A8.13) at large scale — execa, semantic-release, shelljs, clipboardy chain on top of `(async () => {})().constructor.prototype` patterns.
+
+### Recorded failed move (Doc 729 §XIII falsifier-direction)
+
+**Ω.5.P57.E2.alt (reverted in same working session).** Attempted to generalize P43.E1's Tuple-A-wide rule to type:module ESM with named exports + no explicit default. Cluster +1 on kc-pm-1-2 but exemplars regressed 29→26 (3 previously-passing pkgs broke). Bun's discriminator for "synthesize default = namespace on type:module ESM" is more nuanced than uniform — depends on a packaging-tool marker or static-bundle property not exposed to the current Axis-N probe surface. Reverted; baseline restored. Doc 729 §A8.24 IMPROVES_OVER_BUN classifier extension is the right harness fix; until it lands the −Δ-default sub-cluster (5 pkgs: superstruct, shallow-equal, joi-extract-type, liquidjs, graphql) remains open scope.
+
+### §A8.24 IMPROVES_OVER_BUN class observed
+
+P58.E3 (global require) shifted sentry on the exemplar set from MATCH_OK_ERR_BOTH (both-engines-reject) to FAIL (rb-OK-empty / bun-ERR-readonly-assign). Per Doc 729 §A8.24 this is the canonical IMPROVES_OVER_BUN shape: cruftless gracefully degrades where Bun rejects. Self-resolved at P58.E7 — async-fn-Promise unstuck sentry's chain past the readonly-assign so it now matches Bun's ERR under MATCH_OK_ERR_BOTH again. Exemplar 28→29.
+
+### Open scope at P58.E10 boundary
+
+1. **III.c dyn-import remaining (88 pkgs).** Largest sub-clusters:
+   - 6-pkg `Function constructor not yet supported in v1` — eval engine surface, deferred.
+   - 4-pkg `(method='map') receiver=Object keys=[0,1,2,…]` — Array-like objects that need real Array.prototype (orthogonal to P58.E9's typed-array fix).
+   - 3-pkg `(callee='args')` — depd's eval-based deprecation wrapper, eval engine surface.
+   - 3-pkg `Error: missing name` — ast-types family (recast, jscodeshift); P58.E4 fixed the constructor identity but deeper substrate gates remain.
+   - 2-pkg flatted CompileError — parser bug on `for (let a = 1, {x} = obj; ...)` multi-binding-with-destructure for-init.
+2. **−Δ-default sub-cluster (5 pkgs)** — blocked on Axis-N probe extension (P58.E1.axis-n-probe-extension candidate from EXT 12 §5).
+3. **§A8.24 IMPROVES_OVER_BUN classifier** — harness extension to count rb-OK / bun-ERR-benign as PASS-at-telos-level per Doc 729 §VII / §A8.24.
+4. **Substantive engine investments still deferred:** real Proxy interception, real fetch + Request/Response, Unicode regex properties, AST-level predictor v2 per Doc 724 §XI.d, real eval (closes Function-constructor + depd clusters together; ~10-12 packages).
+
+### Resume protocol
+
+Read seed.md §A8.23 + Doc 729 + EXT 11 + EXT 12 (incl. the addendum) + this anchor (EXT 13). Canonical reading still: `host/tools/parity-results-top500-postp55.json` (76.4%, 784/1026). Cluster-targeted sweeps at `parity-cluster.sh <name>` for per-cluster yield measurement.
+
+Predicted post-P58 canonical headline if sweep ran: ~78-80% range (76.4% baseline + ~14 dyn-import cluster + a few silent compounders).
+
+Pin-Art tag count: ~208 (EXT 12 addendum) + 10 (P58.E1→E10) = ~218 substrate moves committed.
