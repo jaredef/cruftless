@@ -1932,3 +1932,67 @@ Aggregate gains across all P56-P59 stretches: ~18 dyn-import + ~4 typeof-diff (i
 Read seed.md §A8.23 + Doc 729 + EXT 11/12/13 + this anchor. Canonical reading still post-P55 (76.4%, 784/1026). The next canonical sweep will land the predicted ~78-79% headline if launched.
 
 Pin-Art tag count: ~218 (EXT 13) + 6 (P59.E1-E6) = ~224 substrate moves committed.
+
+
+## RESUME VECTOR EXTENSION 15 — 2026-05-18 (P60 Proxy stretch; engine-substrate maturity)
+
+### Headline
+
+Three engine-substrate moves wiring Proxy exotic-object dispatch per ECMA §10.5 + §28.2. Proxy now has five core trap categories live (get / set / has / deleteProperty / apply / construct); the seven reflection-API traps (ownKeys / getOwnPropertyDescriptor / getPrototypeOf / setPrototypeOf / isExtensible / preventExtensions / defineProperty) remain deferred — less common at module-init.
+
+| Tag-on-DAG | Commit | Mode | Recognition |
+|---|---|---|---|
+| Ω.5.P60.E1.proxy-get-trap | `7381528e` | engine-substrate (new exotic-kind) | New `InternalKind::Proxy(ProxyInternals { target, handler })` variant. Global `Proxy` ctor + `Proxy.revocable`. Op::GetProp + Op::GetIndex consult handler.get(target, key, receiver); missing trap delegates to target. Proxy [[Prototype]] copied from target for instanceof / proto-chain compatibility. |
+| Ω.5.P60.E2.proxy-set-has-delete-traps | `68ab4bef` | engine-substrate | Op::SetProp/SetIndex → handler.set(target, key, value, receiver). Op::In → handler.has(target, key). Op::DeleteProp/DeleteIndex → handler.deleteProperty(target, key). Each mirrors P60.E1's branch-then-delegate pattern. |
+| Ω.5.P60.E3.proxy-apply-construct-typeof | `677933e2` | engine-substrate (call-surface) | call_function gains InternalKind::Proxy arm before BoundFunction. Op::Call → handler.apply(target, thisArg, argsArray). Op::New → handler.construct(target, argsArray, newTarget). typeof reflects target callability — `typeof new Proxy(fn, {}) === 'function'`. |
+
+**Cluster yield on dyn-import (102 pkgs):** 18/102 unchanged across the P60 stretch. No basket package's module-init exercises Proxy as a yielding gate. Substrate correctness gain only — future Proxy-heavy consumers (Vue 3 reactivity, MobX, Immer, bundler-emitted lazy ESM namespaces) gain spec-correct behavior on this substrate.
+
+**Exemplar regression sweep:** 30/43, stable across the entire P59 + P60 stretches (~10 engine moves).
+
+### Apparatus state at the telos boundary (seed §VII sub-criteria realignment)
+
+Sub-criterion 1 (apparatus saturation, Doc 708): **MET** (2026-05-10).
+
+Sub-criterion 2 (surface-API completeness): **largely MET on the rquickjs host (host/)** since EXT 7; **substantially advanced on host-v2 (cruftless)** this session. Surface-by-surface state at canonical scale on host-v2 post-P60.E3 (predicted, not measured):
+- Engine intrinsics: Object, Function (with real constructor P59.E3 + indirect eval P59.E4), Array, String/Number/Boolean, RegExp, Date, Map/Set, Promise (with §27.7 async-wrap P58.E7), Symbol (real Value::Symbol identity P59.E1), Proxy (5 trap categories P60.E1-E3), Reflect, TypedArrays + species-create + bpe (P58.E9 + P59.E6), Error subclasses with proto-backlinks (P58.E4).
+- node:* breadth: fs (incl. permission/stat stubs P56.E1, readv/writev P57.E2), path (matchesGlob P56.E2), os, events, stream (getDefaultHighWaterMark P58.E6), http (METHODS as Array P58.E2), https, url, util, querystring, buffer, crypto, tls, child_process, dns, zlib, assert, v8, cluster, inspector, vm, module (createRequire + globalThis.require P58.E3).
+- Web Platform: URL, URLSearchParams, fetch+Request+Response (P53.E3/E4), Headers, Blob, File, FormData, AbortController/Signal, ReadableStream/WritableStream/TransformStream, Event/CustomEvent + MessageEvent/ErrorEvent/CloseEvent/etc (P58.E8), BroadcastChannel (P58.E8), TextEncoder/Decoder, EventTarget, FinalizationRegistry+WeakRef stubs.
+
+**Largest remaining surface-API gaps** (each its own engine investment):
+- Real Unicode regex `\p{...}` and full ES2024 `/v` flag semantics (P51.E6 has flag-acceptance only).
+- Async-await full suspension semantics (P17 closed already-settled; pending suspension deferred).
+- Full WeakMap/WeakSet GC semantics.
+- WPT runner adapter (per seed §VII sub-criterion 5 secondary signal).
+
+Sub-criterion 3 (transport layer, the wire-format pilots): **on host/, MET via EXT 7's TLS substrate + http-codec + WebSocket pilots**; on host-v2 (cruftless), these need porting — currently no Tier-G transport on cruftless. The substrate move would be substantial but follows the host/ blueprint.
+
+Sub-criterion 4 (JS host integration): **MET structurally** — cruftless IS the JS host now (host-v2 + rusty-js-runtime, per §A8.23). The original criterion named rquickjs embedding; the engagement's pivot to host-v2 over the EXT 7→13 stretch has made this sub-criterion outdated in its original framing. Doc 729 §IV resolver-instance #2 (bootstrap / SERVER) IS the host integration tier; the apparatus has migrated to the substrate the criterion named as the goal.
+
+Sub-criterion 5 (differential testing against Bun-using applications): **the load-bearing telos**. Current canonical headline 76.4% (784/1026 packages byte-identical to Bun on the parity-top500 basket, post-P55). Predicted post-P59/P60: ~78-79% (the P56-P60 stretch absorbed ~25-30 packages across multiple clusters).
+
+The trajectory toward full plug-and-play parity is now bottlenecked at:
+1. **III.c dyn-import residual (88 pkgs post-P59)**, mostly at ≤3 packages per sub-cluster — flat-mode walks (per Doc 725 §VII), no large gates remain.
+2. **Direct-eval with closure capture** — closes the depd-args 3-pkg cluster downstream consumers; requires Runtime-side frame stack.
+3. **The 5-pkg −Δ-default sub-cluster** (superstruct/shallow-equal/joi-extract-type/liquidjs/graphql) — blocked on Axis-N probe extension per EXT 12 §5.
+4. **Bun-API surface coverage gaps** (Bun.sql, Bun.SQLite, bundler internals) — opportunistic.
+
+### Methodology fold-backs (candidate seed §A8 disciplines, instituted in this commit)
+
+The session surfaced three patterns at the rule-discovery tier per Doc 708 §IV.M7 fold-back trigger conditions:
+
+**Candidate §A8.25 — Substrate-amortization at engine tier.** The §A8.13 pattern (corpus-tier rule about closure rounds reusing introduced substrate; instituted at host-tier) was observed twice this session at engine-tier: P58.E7 async-fn-Promise (+6 packages in one substrate move) and P59.E1→E5 Symbol-typeof+GetIndex-autobox chain. Doc 729 §V "vertically-recursive directive consumption" predicts the pattern recurs across strata; the seed should record the empirical second corroboration.
+
+**Candidate §A8.26 — Doc 729 §VII.B closure stratification.** §VII.B's engine-internal-bilateral-boundary closure has now operated at three strata in this engagement: P55.E1 (global), P58.E1 (per-object sentinel), P59.E1 (well-known-Symbol identity). The discipline emerging: any engine-internal representation choice that becomes JS-observable (via enumeration, typeof, or property access) should be audited across all three strata. Doc 729 §IV resolver-instance #4 (PRESTO/execution) is the recurring site.
+
+**Candidate §A8.27 — Self-referential resolver pattern at engine tier.** P59.E3 (Function constructor) and P59.E4 (indirect eval) both call back into `evaluate_module` from native handlers — the engine's parse+compile pipeline (Doc 729 §IV resolver-instance #3, module load) is now driven by runtime-tier value-producing operations (resolver-instance #4, PRESTO/execution). The same resolver appears at two strata within one stack. This is Doc 729 §V's "vertically-recursive directive consumption with stage-deterministic emission" claim empirically confirmed at engine substrate — the pattern Doc 729 articulated at design tier is now visible in cruftless's resolver call graph.
+
+Per §IV.M7 the three candidates land as seed entries in this same commit cycle.
+
+### Resume protocol
+
+Read seed.md §A8.23 + §A8.25/§A8.26/§A8.27 (just-folded) + Doc 729 + EXT 14 + this anchor. Canonical reading still pre-P59 (76.4%, 784/1026, `host/tools/parity-results-top500-postp55.json`). Predicted post-P60 canonical: 78-79% range.
+
+First action on resume per keeper directive (2026-05-18 18:37Z): canonical sweep launched in same commit cycle. Output will land at `host/tools/parity-results-top500-postp60.json`.
+
+Pin-Art tag count: ~224 (EXT 14) + 3 (P60.E1-E3) = ~227 substrate moves committed.
