@@ -71,7 +71,7 @@ pub fn install(rt: &mut Runtime) {
         // module-load substrate, the ctor body returning an object is
         // enough because Op::New picks up the returned object.
         let proto = new_object(rt);
-        rt.object_set(ctor, "prototype".into(), Value::Object(proto));
+        rt.obj_mut(ctor).set_own_frozen("prototype".into(), Value::Object(proto));
         rt.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(ctor));
         // The ctor itself: accepting an optional options object.
         let nm = *name;
@@ -113,7 +113,7 @@ pub fn install(rt: &mut Runtime) {
         // `Object.create(Stream.Transform.prototype)` → must be object.
         let proto = new_object(rt);
         if let Value::Object(ctor) = rt.object_get(stream, name) {
-            rt.object_set(ctor, "prototype".into(), Value::Object(proto));
+            rt.obj_mut(ctor).set_own_frozen("prototype".into(), Value::Object(proto));
             rt.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(ctor));
         }
     }

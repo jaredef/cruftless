@@ -1715,7 +1715,7 @@ impl Runtime {
                         let mut proto_obj = Object::new_ordinary();
                         proto_obj.set_own("constructor".into(), Value::Object(id));
                         let proto_id = self.alloc_object(proto_obj);
-                        self.object_set(id, "prototype".into(), Value::Object(proto_id));
+                        self.obj_mut(id).set_own_frozen("prototype".into(), Value::Object(proto_id));
                     }
                     frame.push(Value::Object(id));
                 }

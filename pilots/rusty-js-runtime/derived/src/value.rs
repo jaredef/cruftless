@@ -222,6 +222,21 @@ impl Object {
             setter: None,
         });
     }
+
+    /// Ω.5.P61.E20: set an own property as **fully locked** — non-writable,
+    /// non-enumerable, non-configurable. Per ECMA §10.2.4 + §20.x, every
+    /// built-in constructor's `.prototype` slot has this descriptor shape.
+    /// User-defined function `.prototype` differs (writable: true).
+    pub fn set_own_frozen(&mut self, key: String, value: Value) {
+        self.properties.insert(key, PropertyDescriptor {
+            value,
+            writable: false,
+            enumerable: false,
+            configurable: false,
+            getter: None,
+            setter: None,
+        });
+    }
 }
 
 #[derive(Debug, Clone)]

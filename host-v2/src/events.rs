@@ -294,7 +294,7 @@ pub fn install(rt: &mut Runtime) {
             }
         }
     });
-    rt.object_set(ctor, "prototype".into(), Value::Object(proto));
+    rt.obj_mut(ctor).set_own_frozen("prototype".into(), Value::Object(proto));
     rt.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(ctor));
 
     // Tier-Ω.5.llllll: node:events module-exports IS the EventEmitter

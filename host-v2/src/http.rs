@@ -108,7 +108,7 @@ pub fn install(rt: &mut Runtime) {
                 "node:http class constructor not yet implemented (Tier-Ω.5.xxxxxx stub)",
             )))
         });
-        rt.object_set(ctor, "prototype".into(), Value::Object(proto));
+        rt.obj_mut(ctor).set_own_frozen("prototype".into(), Value::Object(proto));
         rt.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(ctor));
         set_constant(rt, http, class_name, Value::Object(ctor));
     }

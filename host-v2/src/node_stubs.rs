@@ -71,7 +71,7 @@ pub fn install_tls(rt: &mut Runtime) {
             rt.object_set(inst, "_handle".into(), Value::Object(handle));
             Ok(Value::Object(inst))
         });
-        rt.object_set(ctor, "prototype".into(), Value::Object(proto));
+        rt.obj_mut(ctor).set_own_frozen("prototype".into(), Value::Object(proto));
         rt.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(ctor));
         rt.object_set(ns, (*cls).into(), Value::Object(ctor));
     }
@@ -534,7 +534,7 @@ pub fn install_buffer(rt: &mut Runtime) {
     // `Object.create(Buffer.prototype)` (safe-buffer / many polyfills)
     // and inheritance chains terminate properly.
     let buf_proto = new_object(rt);
-    rt.object_set(buf_ctor, "prototype".into(), Value::Object(buf_proto));
+    rt.obj_mut(buf_ctor).set_own_frozen("prototype".into(), Value::Object(buf_proto));
     rt.object_set(ns, "Buffer".into(), Value::Object(buf_ctor));
     // Tier-Ω.5.EEEEEEEE: node:buffer.constants. pino / pino-http read
     // MAX_STRING_LENGTH at module-init for string-truncation thresholds.
@@ -797,7 +797,7 @@ pub fn install_dom_exception(rt: &mut Runtime) {
         rt.object_set(inst, "stack".into(), Value::String(Rc::new("".into())));
         Ok(Value::Object(inst))
     });
-    rt.object_set(ctor, "prototype".into(), Value::Object(proto));
+    rt.obj_mut(ctor).set_own_frozen("prototype".into(), Value::Object(proto));
     rt.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(ctor));
     // WHATWG-spec numeric constants on the constructor.
     for (name, code) in &[
@@ -877,7 +877,7 @@ pub fn install_performance(rt: &mut Runtime) {
         Ok(Value::Object(inst))
     });
     let po_proto = new_object(rt);
-    rt.object_set(po_ctor, "prototype".into(), Value::Object(po_proto));
+    rt.obj_mut(po_ctor).set_own_frozen("prototype".into(), Value::Object(po_proto));
     rt.obj_mut(po_proto).set_own_internal("constructor".into(), Value::Object(po_ctor));
     let st_arr = rt.alloc_object(RtObject::new_array());
     for (i, t) in ["mark","measure","resource","navigation","function"].iter().enumerate() {
@@ -938,7 +938,7 @@ pub fn install_async_hooks(rt: &mut Runtime) {
         register_method(rt, inst, "bind", |rt, args| Ok(args.first().cloned().unwrap_or(rt.current_this())));
         Ok(Value::Object(inst))
     });
-    rt.object_set(ar_ctor, "prototype".into(), Value::Object(ar_proto));
+    rt.obj_mut(ar_ctor).set_own_frozen("prototype".into(), Value::Object(ar_proto));
     rt.obj_mut(ar_proto).set_own_internal("constructor".into(), Value::Object(ar_ctor));
     register_method(rt, ar_ctor, "bind", |rt, args| Ok(args.first().cloned().unwrap_or(rt.current_this())));
     rt.object_set(ns, "AsyncResource".into(), Value::Object(ar_ctor));
@@ -963,7 +963,7 @@ pub fn install_async_hooks(rt: &mut Runtime) {
         register_method(rt, inst, "disable", |_rt, _a| Ok(Value::Undefined));
         Ok(Value::Object(inst))
     });
-    rt.object_set(als_ctor, "prototype".into(), Value::Object(als_proto));
+    rt.obj_mut(als_ctor).set_own_frozen("prototype".into(), Value::Object(als_proto));
     rt.obj_mut(als_proto).set_own_internal("constructor".into(), Value::Object(als_ctor));
     register_method(rt, als_ctor, "bind", |rt, args| Ok(args.first().cloned().unwrap_or(rt.current_this())));
     register_method(rt, als_ctor, "snapshot", |_rt, _a| {
@@ -1091,7 +1091,7 @@ pub fn install_vm(rt: &mut Runtime) {
             });
             Ok(Value::Object(inst))
         });
-        rt.object_set(ctor, "prototype".into(), Value::Object(proto));
+        rt.obj_mut(ctor).set_own_frozen("prototype".into(), Value::Object(proto));
         rt.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(ctor));
         rt.object_set(ns, (*cls).into(), Value::Object(ctor));
     }

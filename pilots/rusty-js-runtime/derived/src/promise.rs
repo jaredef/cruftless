@@ -277,7 +277,7 @@ impl Runtime {
             Ok(Value::Object(rt.alloc_object(out)))
         });
         if let Some(proto) = self.promise_prototype {
-            self.object_set(promise_obj, "prototype".into(), Value::Object(proto));
+            self.obj_mut(promise_obj).set_own_frozen("prototype".into(), Value::Object(proto));
             // Ω.5.P58.E7: Promise.prototype.constructor = Promise per ECMA §27.2.5.
             self.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(promise_obj));
             // Ω.5.P61.E11: Promise.prototype.finally per ECMA §27.2.5.3.

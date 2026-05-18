@@ -420,7 +420,7 @@ impl Runtime {
                 }
                 Ok(Value::Object(res))
             });
-            self.object_set(stub_id, "prototype".into(), Value::Object(proto));
+            self.obj_mut(stub_id).set_own_frozen("prototype".into(), Value::Object(proto));
             // Static method on the ctor itself.
             register_intrinsic_method(self, stub_id, "supportedLocalesOf", 1, |_rt, _args| {
                 let o = Object::new_array();
@@ -482,7 +482,7 @@ impl Runtime {
             }
             Ok(Value::Object(rt.alloc_object(out)))
         });
-        self.object_set(te_id, "prototype".into(), Value::Object(te_proto));
+        self.obj_mut(te_id).set_own_frozen("prototype".into(), Value::Object(te_proto));
         self.globals.insert("TextEncoder".into(), Value::Object(te_id));
         let td = make_native("TextDecoder", |rt, args| {
             let encoding = match args.first() {
@@ -526,7 +526,7 @@ impl Runtime {
             let s = String::from_utf8_lossy(&bytes).to_string();
             Ok(Value::String(Rc::new(s)))
         });
-        self.object_set(td_id, "prototype".into(), Value::Object(td_proto));
+        self.obj_mut(td_id).set_own_frozen("prototype".into(), Value::Object(td_proto));
         self.globals.insert("TextDecoder".into(), Value::Object(td_id));
     }
 
@@ -999,7 +999,7 @@ impl Runtime {
         // hash, immer-style native-function detection) resolve.
         if let Some(fp) = self.function_prototype {
             if let Some(Value::Object(fn_global)) = self.globals.get("Function").cloned() {
-                self.object_set(fn_global, "prototype".into(), Value::Object(fp));
+                self.obj_mut(fn_global).set_own_frozen("prototype".into(), Value::Object(fp));
                 self.obj_mut(fp).set_own_internal("constructor".into(), Value::Object(fn_global));
             }
         }
@@ -1904,7 +1904,7 @@ impl Runtime {
         // dequal/acorn/fast-equals idiom) errors "Cannot read property
         // 'hasOwnProperty' of undefined".
         if let Some(proto) = self.object_prototype {
-            self.object_set(obj_ctor, "prototype".into(), Value::Object(proto));
+            self.obj_mut(obj_ctor).set_own_frozen("prototype".into(), Value::Object(proto));
             // Tier-Ω.5.lll: Object.prototype.constructor = Object. Per
             // ECMA-262 §20.1.3.1. Without this, plain-object `.constructor`
             // returns undefined, breaking type-tag idioms like dequal's
@@ -2001,7 +2001,7 @@ impl Runtime {
             Ok(Value::Object(out))
         });
         if let Some(proto) = self.array_prototype {
-            self.object_set(arr_ctor, "prototype".into(), Value::Object(proto));
+            self.obj_mut(arr_ctor).set_own_frozen("prototype".into(), Value::Object(proto));
             // Ω.5.P58.E4: Array.prototype.constructor = Array per ECMA §10.2.12.
             self.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(arr_ctor));
         }
@@ -2075,7 +2075,7 @@ impl Runtime {
             self.object_set(num, "parseFloat".into(), pf);
         }
         if let Some(proto) = self.number_prototype {
-            self.object_set(num, "prototype".into(), Value::Object(proto));
+            self.obj_mut(num).set_own_frozen("prototype".into(), Value::Object(proto));
             // Ω.5.P58.E4: Number.prototype.constructor = Number per ECMA §10.2.12.
             self.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(num));
         }
@@ -2151,7 +2151,7 @@ impl Runtime {
             Ok(Value::String(Rc::new(out)))
         });
         if let Some(proto) = self.string_prototype {
-            self.object_set(str_id, "prototype".into(), Value::Object(proto));
+            self.obj_mut(str_id).set_own_frozen("prototype".into(), Value::Object(proto));
             // Ω.5.P58.E4: Constructor.prototype.constructor === Constructor
             // per ECMA-262 §10.2.12. ast-types' Type.from uses indexOf on
             // builtInCtorFns (which holds `"x".constructor`, `(123).constructor`,
@@ -2306,7 +2306,7 @@ impl Runtime {
         });
         let url_id = self.alloc_object(url_ctor);
         let url_proto = self.alloc_object(Object::new_ordinary());
-        self.object_set(url_id, "prototype".into(), Value::Object(url_proto));
+        self.obj_mut(url_id).set_own_frozen("prototype".into(), Value::Object(url_proto));
         register_method(self, url_id, "canParse", |_rt, args| {
             let s = match args.first() { Some(Value::String(s)) => s.as_str().to_string(), _ => return Ok(Value::Boolean(false)) };
             Ok(Value::Boolean(s.contains("://") || s.starts_with("file:") || s.starts_with("data:")))
@@ -2330,7 +2330,7 @@ impl Runtime {
             ))
         });
         let abort_signal_id = self.alloc_object(abort_signal_ctor);
-        self.object_set(abort_signal_id, "prototype".into(), Value::Object(abort_signal_proto));
+        self.obj_mut(abort_signal_id).set_own_frozen("prototype".into(), Value::Object(abort_signal_proto));
         self.obj_mut(abort_signal_proto).set_own_internal("constructor".into(), Value::Object(abort_signal_id));
         // Static factories per spec §3.1.3.
         register_method(self, abort_signal_id, "abort", |rt, args| {
@@ -2358,7 +2358,7 @@ impl Runtime {
             Ok(Value::Object(inst))
         });
         let abort_controller_id = self.alloc_object(abort_controller_ctor);
-        self.object_set(abort_controller_id, "prototype".into(), Value::Object(abort_controller_proto));
+        self.obj_mut(abort_controller_id).set_own_frozen("prototype".into(), Value::Object(abort_controller_proto));
         self.obj_mut(abort_controller_proto).set_own_internal("constructor".into(), Value::Object(abort_controller_id));
         self.globals.insert("AbortController".into(), Value::Object(abort_controller_id));
 
@@ -2377,7 +2377,7 @@ impl Runtime {
         });
         let usp_id = self.alloc_object(usp_ctor);
         let usp_proto = self.alloc_object(Object::new_ordinary());
-        self.object_set(usp_id, "prototype".into(), Value::Object(usp_proto));
+        self.obj_mut(usp_id).set_own_frozen("prototype".into(), Value::Object(usp_proto));
         self.obj_mut(usp_proto).set_own_internal("constructor".into(), Value::Object(usp_id));
         self.globals.insert("URLSearchParams".into(), Value::Object(usp_id));
 
@@ -2413,7 +2413,7 @@ impl Runtime {
                 Ok(Value::Object(id))
             });
             let id = self.alloc_object(ctor);
-            self.object_set(id, "prototype".into(), Value::Object(proto));
+            self.obj_mut(id).set_own_frozen("prototype".into(), Value::Object(proto));
             self.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(id));
             self.globals.insert((*name).into(), Value::Object(id));
         }
@@ -2460,7 +2460,7 @@ impl Runtime {
             Ok(Value::Object(id))
         });
         let headers_ctor_id = self.alloc_object(headers_ctor_fn);
-        self.object_set(headers_ctor_id, "prototype".into(), Value::Object(headers_proto));
+        self.obj_mut(headers_ctor_id).set_own_frozen("prototype".into(), Value::Object(headers_proto));
         self.obj_mut(headers_proto).set_own_internal("constructor".into(), Value::Object(headers_ctor_id));
         register_method(self, headers_proto, "has", |rt, args| {
             let this_id = match rt.current_this() { Value::Object(o) => o, _ => return Ok(Value::Boolean(false)) };
@@ -2587,7 +2587,7 @@ impl Runtime {
             Ok(Value::Object(id))
         });
         let request_ctor_id = self.alloc_object(request_ctor_fn);
-        self.object_set(request_ctor_id, "prototype".into(), Value::Object(request_proto));
+        self.obj_mut(request_ctor_id).set_own_frozen("prototype".into(), Value::Object(request_proto));
         self.obj_mut(request_proto).set_own_internal("constructor".into(), Value::Object(request_ctor_id));
         self.globals.insert("Request".into(), Value::Object(request_ctor_id));
         // fetch() as a callable global that returns a rejected-Promise-shaped
@@ -2651,7 +2651,7 @@ impl Runtime {
             };
             Ok(Value::String(std::rc::Rc::new(b.to_radix(radix))))
         });
-        self.object_set(bi_id, "prototype".into(), Value::Object(bi_proto));
+        self.obj_mut(bi_id).set_own_frozen("prototype".into(), Value::Object(bi_proto));
         self.bigint_prototype = Some(bi_proto);
         self.globals.insert("BigInt".into(), Value::Object(bi_id));
         // Boolean ctor with prototype.valueOf.
@@ -2673,7 +2673,7 @@ impl Runtime {
                 _ => Err(RuntimeError::TypeError("Boolean.prototype.toString: this is not a Boolean".into())),
             }
         });
-        self.object_set(bool_id, "prototype".into(), Value::Object(bool_proto));
+        self.obj_mut(bool_id).set_own_frozen("prototype".into(), Value::Object(bool_proto));
         // Ω.5.P58.E4: Boolean.prototype.constructor = Boolean per ECMA §10.2.12.
         self.obj_mut(bool_proto).set_own_internal("constructor".into(), Value::Object(bool_id));
         self.globals.insert("Boolean".into(), Value::Object(bool_id));
@@ -2690,7 +2690,7 @@ impl Runtime {
         register_intrinsic_method(self, et_proto, "addEventListener", 1, |rt, _args| { let _=rt; Ok(Value::Undefined) });
         register_intrinsic_method(self, et_proto, "removeEventListener", 1, |rt, _args| { let _=rt; Ok(Value::Undefined) });
         register_intrinsic_method(self, et_proto, "dispatchEvent", 1, |_rt, _args| Ok(Value::Boolean(false)));
-        self.object_set(et_id, "prototype".into(), Value::Object(et_proto));
+        self.obj_mut(et_id).set_own_frozen("prototype".into(), Value::Object(et_proto));
         self.globals.insert("EventTarget".into(), Value::Object(et_id));
         let ev = make_native("Event", |rt, args| {
             let mut o = Object::new_ordinary();
@@ -2703,7 +2703,7 @@ impl Runtime {
         });
         let ev_id = self.alloc_object(ev);
         let ev_proto = self.alloc_object(Object::new_ordinary());
-        self.object_set(ev_id, "prototype".into(), Value::Object(ev_proto));
+        self.obj_mut(ev_id).set_own_frozen("prototype".into(), Value::Object(ev_proto));
         self.globals.insert("Event".into(), Value::Object(ev_id));
         let ce = make_native("CustomEvent", |rt, args| {
             let mut o = Object::new_ordinary();
@@ -2718,7 +2718,7 @@ impl Runtime {
         });
         let ce_id = self.alloc_object(ce);
         let ce_proto = self.alloc_object(Object::new_ordinary());
-        self.object_set(ce_id, "prototype".into(), Value::Object(ce_proto));
+        self.obj_mut(ce_id).set_own_frozen("prototype".into(), Value::Object(ce_proto));
         self.globals.insert("CustomEvent".into(), Value::Object(ce_id));
         // Ω.5.P58.E8: MessageEvent, ErrorEvent, CloseEvent, ProgressEvent,
         // BeforeUnloadEvent stubs. @mswjs/data does
@@ -2748,7 +2748,7 @@ impl Runtime {
         });
         let bc_id = self.alloc_object(bc);
         let bc_proto = self.alloc_object(Object::new_ordinary());
-        self.object_set(bc_id, "prototype".into(), Value::Object(bc_proto));
+        self.obj_mut(bc_id).set_own_frozen("prototype".into(), Value::Object(bc_proto));
         self.obj_mut(bc_proto).set_own_internal("constructor".into(), Value::Object(bc_id));
         self.globals.insert("BroadcastChannel".into(), Value::Object(bc_id));
         for name in &["MessageEvent", "ErrorEvent", "CloseEvent", "ProgressEvent", "BeforeUnloadEvent", "FocusEvent"] {
@@ -2765,7 +2765,7 @@ impl Runtime {
             });
             let nm_id = self.alloc_object(nm);
             let nm_proto = self.alloc_object(Object::new_ordinary());
-            self.object_set(nm_id, "prototype".into(), Value::Object(nm_proto));
+            self.obj_mut(nm_id).set_own_frozen("prototype".into(), Value::Object(nm_proto));
             self.obj_mut(nm_proto).set_own_internal("constructor".into(), Value::Object(nm_id));
             self.globals.insert((*name).into(), Value::Object(nm_id));
         }
@@ -3052,7 +3052,7 @@ impl Runtime {
                 Ok(Value::Object(id))
             });
             let ctor = self.alloc_object(ctor_obj);
-            self.object_set(ctor, "prototype".into(), Value::Object(proto));
+            self.obj_mut(ctor).set_own_frozen("prototype".into(), Value::Object(proto));
             self.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(ctor));
             self.globals.insert((*collection).to_string(), Value::Object(ctor));
         }
@@ -3342,7 +3342,7 @@ impl Runtime {
                 Ok(Value::Object(id))
             });
             let ctor = self.alloc_object(ctor_obj);
-            self.object_set(ctor, "prototype".into(), Value::Object(proto));
+            self.obj_mut(ctor).set_own_frozen("prototype".into(), Value::Object(proto));
             self.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(ctor));
             self.globals.insert((*collection).to_string(), Value::Object(ctor));
         }
@@ -3699,7 +3699,7 @@ impl Runtime {
         });
         register_intrinsic_method(self, ctor, "parse", 2, |_rt, _args| Ok(Value::Number(0.0)));
         register_intrinsic_method(self, ctor, "UTC", 1, |_rt, _args| Ok(Value::Number(0.0)));
-        self.object_set(ctor, "prototype".into(), Value::Object(proto));
+        self.obj_mut(ctor).set_own_frozen("prototype".into(), Value::Object(proto));
         self.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(ctor));
         self.globals.insert("Date".into(), Value::Object(ctor));
     }
@@ -4217,7 +4217,7 @@ impl Runtime {
                 }
                 Ok(Value::Object(new_id))
             });
-            self.object_set(id, "prototype".into(), Value::Object(ta_proto));
+            self.obj_mut(id).set_own_frozen("prototype".into(), Value::Object(ta_proto));
             self.globals.insert((*name).to_string(), Value::Object(id));
         }
     }
@@ -4241,7 +4241,7 @@ impl Runtime {
             Ok(Value::Object(id))
         });
         let wr = self.alloc_object(weakref_ctor);
-        self.object_set(wr, "prototype".into(), Value::Object(weakref_proto));
+        self.obj_mut(wr).set_own_frozen("prototype".into(), Value::Object(weakref_proto));
         self.obj_mut(weakref_proto).set_own_internal("constructor".into(), Value::Object(wr));
         self.globals.insert("WeakRef".into(), Value::Object(wr));
 
@@ -4255,7 +4255,7 @@ impl Runtime {
             Ok(Value::Object(rt.alloc_object(o)))
         });
         let fr = self.alloc_object(fr_ctor);
-        self.object_set(fr, "prototype".into(), Value::Object(fr_proto));
+        self.obj_mut(fr).set_own_frozen("prototype".into(), Value::Object(fr_proto));
         self.obj_mut(fr_proto).set_own_internal("constructor".into(), Value::Object(fr));
         self.globals.insert("FinalizationRegistry".into(), Value::Object(fr));
     }
@@ -4526,7 +4526,7 @@ impl Runtime {
                 Ok(Value::Object(id))
             });
             let ctor_id = self.alloc_object(ctor_obj);
-            self.object_set(ctor_id, "prototype".into(), Value::Object(proto_id));
+            self.obj_mut(ctor_id).set_own_frozen("prototype".into(), Value::Object(proto_id));
             // proto.constructor = ctor (per spec).
             self.obj_mut(proto_id).set_own_internal("constructor".into(), Value::Object(ctor_id));
             // Tier-Ω.5.JJJJJJJ: Error.captureStackTrace(target, ctorOpt) per V8
@@ -4684,7 +4684,7 @@ impl Runtime {
                 v => Ok(Value::String(Rc::new(crate::abstract_ops::to_string(&v).as_str().to_string()))),
             }
         });
-        self.object_set(sym, "prototype".into(), Value::Object(sym_proto));
+        self.obj_mut(sym).set_own_frozen("prototype".into(), Value::Object(sym_proto));
         self.globals.insert("Symbol".into(), Value::Object(sym));
     }
 

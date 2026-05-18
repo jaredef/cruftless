@@ -1463,7 +1463,7 @@ pub unsafe extern "C" fn napi_define_class(
     let ctor_id = rt.alloc_object(ctor_obj);
     // Allocate prototype object; ctor.prototype = proto; proto.constructor = ctor.
     let proto_id = rt.alloc_object(Object::new_ordinary());
-    rt.object_set(ctor_id, "prototype".into(), Value::Object(proto_id));
+    rt.obj_mut(ctor_id).set_own_frozen("prototype".into(), Value::Object(proto_id));
     rt.obj_mut(proto_id).set_own_internal("constructor".into(), Value::Object(ctor_id));
     // Attach properties.
     for i in 0..property_count {
