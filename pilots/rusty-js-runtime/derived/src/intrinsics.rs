@@ -1554,37 +1554,9 @@ impl Runtime {
             }
             Ok(Value::Object(out))
         });
+        // Ω.5.P63.E15: getOwnPropertyNames routed through IR.
         register_intrinsic_method(self, obj_ctor, "getOwnPropertyNames", 1, |rt, args| {
-            let id = match args.first() {
-                Some(Value::Object(id)) => *id,
-                _ => return Ok(Value::Object(rt.alloc_object(Object::new_array()))),
-            };
-            let arr = rt.alloc_object(Object::new_array());
-            let keys: Vec<String> = {
-                let o = rt.obj(id);
-                let is_array = matches!(o.internal_kind, InternalKind::Array);
-                if is_array {
-                    let mut ks: Vec<(u64, String)> = o.properties.iter()
-                        .filter_map(|(k, _)| if k.starts_with("@@") { None } else {
-                            k.parse::<u64>().ok().map(|n| (n, k.clone()))
-                        })
-                        .collect();
-                    ks.sort_by_key(|(n, _)| *n);
-                    let mut out: Vec<String> = ks.into_iter().map(|(_, k)| k).collect();
-                    if o.properties.contains_key("length") { out.push("length".into()); }
-                    out
-                } else {
-                    // Ω.5.P19.E1: getOwnPropertyNames is string-keyed only
-                    // per ECMA §20.1.2.10. Symbol-keyed properties surface
-                    // through getOwnPropertySymbols instead.
-                    o.properties.keys().filter(|k| !k.starts_with("@@")).cloned().collect()
-                }
-            };
-            for (i, k) in keys.iter().enumerate() {
-                rt.object_set(arr, i.to_string(), Value::String(Rc::new(k.clone())));
-            }
-            rt.object_set(arr, "length".into(), Value::Number(keys.len() as f64));
-            Ok(Value::Object(arr))
+            crate::generated::object_get_own_property_names(rt, Value::Undefined, args)
         });
         // Tier-Ω.5.LLLLLLLL: Object.getOwnPropertySymbols per ECMA-262 §20.1.2.11.
         // V1 representation: symbols are strings prefixed '@@'; return only the
@@ -1592,25 +1564,9 @@ impl Runtime {
         // get the same string). Sufficient for define-properties-checks
         // (es-define-property / set-function-length / onetime) which probe
         // for Symbol.toStringTag / iterator placement.
+        // Ω.5.P63.E15: getOwnPropertySymbols routed through IR.
         register_intrinsic_method(self, obj_ctor, "getOwnPropertySymbols", 1, |rt, args| {
-            let id = match args.first() {
-                Some(Value::Object(id)) => *id,
-                _ => return Ok(Value::Object(rt.alloc_object(Object::new_array()))),
-            };
-            // Ω.5.P19.E1: narrow to user-created Symbol-keyed properties
-            // (`@@sym:` prefix). Well-known symbol slots (`@@iterator`,
-            // `@@toStringTag`, ...) are storage details, not what consumers
-            // expect from getOwnPropertySymbols. Values surface as
-            // Value::Symbol so `typeof getOwnPropertySymbols(o)[0] === 'symbol'`.
-            let keys: Vec<String> = rt.obj(id).properties.keys()
-                .filter(|k| k.starts_with("@@sym:"))
-                .cloned().collect();
-            let arr = rt.alloc_object(Object::new_array());
-            for (i, k) in keys.iter().enumerate() {
-                rt.object_set(arr, i.to_string(), Value::Symbol(Rc::new(k.clone())));
-            }
-            rt.object_set(arr, "length".into(), Value::Number(keys.len() as f64));
-            Ok(Value::Object(arr))
+            crate::generated::object_get_own_property_symbols(rt, Value::Undefined, args)
         });
         // Object.hasOwn per ECMA 2022 §20.1.2.13 — static convenience for
         // Object.prototype.hasOwnProperty.call. Many modern packages prefer it.

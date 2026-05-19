@@ -98,3 +98,61 @@ pub fn spec_steps_entries() -> Vec<SpecStepRecord> {
         SpecStepRecord { step_id: "2".into(), abstract_ops: vec!["enumerable_own_entries"], throws: None, prose: "Return ? EnumerableOwnPropertyNames(obj, key+value)." },
     ]
 }
+
+// ──────────────── §20.1.2.10/.11 getOwnPropertyNames / Symbols ────────────────
+
+pub fn build_get_own_property_names() -> IRFunction {
+    let body = vec![
+        Step { spec_step: "param.target".into(),
+            node: IRNode::Let { name: "target".into(), value: Expr::Arg(0) }},
+        Step { spec_step: "1".into(),
+            node: IRNode::Let { name: "obj".into(),
+                value: Expr::ToObject(b(v("target"))) }},
+        Step { spec_step: "2".into(),
+            node: IRNode::Return(Expr::CallBuiltin {
+                name: "own_property_names_via",
+                args: vec![v("obj")],
+            }) },
+    ];
+    IRFunction {
+        spec_section: "20.1.2.10".into(),
+        rust_name: "object_get_own_property_names".into(),
+        title: "Object.getOwnPropertyNames ( O )".into(),
+        body,
+    }
+}
+
+pub fn build_get_own_property_symbols() -> IRFunction {
+    let body = vec![
+        Step { spec_step: "param.target".into(),
+            node: IRNode::Let { name: "target".into(), value: Expr::Arg(0) }},
+        Step { spec_step: "1".into(),
+            node: IRNode::Let { name: "obj".into(),
+                value: Expr::ToObject(b(v("target"))) }},
+        Step { spec_step: "2".into(),
+            node: IRNode::Return(Expr::CallBuiltin {
+                name: "own_property_symbols_via",
+                args: vec![v("obj")],
+            }) },
+    ];
+    IRFunction {
+        spec_section: "20.1.2.11".into(),
+        rust_name: "object_get_own_property_symbols".into(),
+        title: "Object.getOwnPropertySymbols ( O )".into(),
+        body,
+    }
+}
+
+pub fn spec_steps_get_own_property_names() -> Vec<SpecStepRecord> {
+    vec![
+        SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["ToObject"], throws: None, prose: "Let obj be ? ToObject(O)." },
+        SpecStepRecord { step_id: "2".into(), abstract_ops: vec!["own_property_names_via"], throws: None, prose: "Return CreateArrayFromList(? GetOwnPropertyKeys(obj, string))." },
+    ]
+}
+
+pub fn spec_steps_get_own_property_symbols() -> Vec<SpecStepRecord> {
+    vec![
+        SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["ToObject"], throws: None, prose: "Let obj be ? ToObject(O)." },
+        SpecStepRecord { step_id: "2".into(), abstract_ops: vec!["own_property_symbols_via"], throws: None, prose: "Return CreateArrayFromList(? GetOwnPropertyKeys(obj, symbol))." },
+    ]
+}

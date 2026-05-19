@@ -86,6 +86,8 @@ fn main() {
         ("Math.max",   math_binary_variadic::build_max(),   math_binary_variadic::spec_steps_max()),
         ("Math.min",   math_binary_variadic::build_min(),   math_binary_variadic::spec_steps_min()),
         ("Math.hypot", math_binary_variadic::build_hypot(), math_binary_variadic::spec_steps_hypot()),
+        ("Object.getOwnPropertyNames", object_static::build_get_own_property_names(), object_static::spec_steps_get_own_property_names()),
+        ("Object.getOwnPropertySymbols", object_static::build_get_own_property_symbols(), object_static::spec_steps_get_own_property_symbols()),
     ];
 
     let mut total_unexpected = 0;

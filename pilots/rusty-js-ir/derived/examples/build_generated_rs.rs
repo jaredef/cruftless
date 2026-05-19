@@ -84,6 +84,8 @@ fn main() {
         math_binary_variadic::build_max(),
         math_binary_variadic::build_min(),
         math_binary_variadic::build_hypot(),
+        object_static::build_get_own_property_names(),
+        object_static::build_get_own_property_symbols(),
     ];
 
     for f in &sections {

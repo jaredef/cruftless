@@ -430,6 +430,61 @@ impl Runtime {
         Ok(())
     }
 
+    /// Object.getOwnPropertyNames(O) per ECMA §20.1.2.10 — returns Array
+    /// of own string-keyed property names (excluding @@-prefixed symbols).
+    /// Integer-indexed keys first in ascending order.
+    pub fn own_property_names_via(&mut self, v: &Value) -> Result<Value, RuntimeError> {
+        let id = match v {
+            Value::Object(id) => *id,
+            _ => return Ok(Value::Object(self.alloc_object(crate::value::Object::new_array()))),
+        };
+        let arr = self.alloc_object(crate::value::Object::new_array());
+        let keys: Vec<String> = {
+            let o = self.obj(id);
+            let is_array = matches!(o.internal_kind, crate::value::InternalKind::Array);
+            if is_array {
+                let mut ks: Vec<(u64, String)> = o.properties.iter()
+                    .filter_map(|(k, _)| if k.starts_with("@@") { None } else {
+                        k.parse::<u64>().ok().map(|n| (n, k.clone()))
+                    })
+                    .collect();
+                ks.sort_by_key(|(n, _)| *n);
+                let mut out: Vec<String> = ks.into_iter().map(|(_, k)| k).collect();
+                // Arrays always have a "length" own property per §10.4.2.4;
+                // unconditionally include it to match Bun + spec.
+                out.push("length".into());
+                out
+            } else {
+                o.properties.keys().filter(|k| !k.starts_with("@@")).cloned().collect()
+            }
+        };
+        for (i, k) in keys.iter().enumerate() {
+            self.object_set(arr, i.to_string(), Value::String(std::rc::Rc::new(k.clone())));
+        }
+        self.object_set(arr, "length".into(), Value::Number(keys.len() as f64));
+        Ok(Value::Object(arr))
+    }
+
+    /// Object.getOwnPropertySymbols(O) per ECMA §20.1.2.11 — returns Array
+    /// of user-created Symbol-keyed properties. Well-known slots
+    /// (@@iterator etc.) are filtered out per cruftless convention.
+    pub fn own_property_symbols_via(&mut self, v: &Value) -> Result<Value, RuntimeError> {
+        let id = match v {
+            Value::Object(id) => *id,
+            _ => return Ok(Value::Object(self.alloc_object(crate::value::Object::new_array()))),
+        };
+        let arr = self.alloc_object(crate::value::Object::new_array());
+        let syms: Vec<String> = self.obj(id).properties.keys()
+            .filter(|k| k.starts_with("@@sym:"))
+            .cloned()
+            .collect();
+        for (i, s) in syms.iter().enumerate() {
+            self.object_set(arr, i.to_string(), Value::Symbol(std::rc::Rc::new(s.clone())));
+        }
+        self.object_set(arr, "length".into(), Value::Number(syms.len() as f64));
+        Ok(Value::Object(arr))
+    }
+
     /// Math.* binary op dispatcher per ECMA §21.3.2.{27, 8} — pow, atan2.
     pub fn math_binary_op_via(&self, op: &Value, x: &Value, y: &Value) -> Result<Value, RuntimeError> {
         let op_name = match op {
