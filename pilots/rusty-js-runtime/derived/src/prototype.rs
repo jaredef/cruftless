@@ -1721,28 +1721,11 @@ fn install_number_proto(rt: &mut Runtime, host: ObjectRef) {
             Ok(Value::String(Rc::new(abstract_ops::number_to_string(n))))
         }
     });
+    // Ω.5.P63.E18: Number.prototype.toFixed routed through IR.
     register_intrinsic_method(rt, host, "toFixed", 1, |rt, args| {
-        // ThisNumberValue brand + RangeError on out-of-range digits.
         let this = rt.current_this();
-        let n = match rt.unwrap_primitive(&this) {
-            Value::Number(n) => n,
-            _ => return Err(RuntimeError::TypeError(
-                "Number.prototype.toFixed: this is not a Number".into())),
-        };
-        let digits_n = match args.first().cloned() {
-            None | Some(Value::Undefined) => 0.0,
-            Some(v) => rt.coerce_to_number(&v)?,
-        };
-        if digits_n.is_nan() || digits_n < 0.0 || digits_n > 100.0 {
-            return Err(RuntimeError::RangeError(
-                "toFixed() digits argument must be between 0 and 100".into()));
-        }
-        let digits = digits_n as usize;
-        if n.is_nan() { return Ok(Value::String(Rc::new("NaN".into()))); }
-        if !n.is_finite() {
-            return Ok(Value::String(Rc::new(if n > 0.0 { "Infinity".into() } else { "-Infinity".into() })));
-        }
-        Ok(Value::String(Rc::new(format!("{:.*}", digits, n))))
+        let digits = args.first().cloned().unwrap_or(Value::Undefined);
+        crate::generated::number_prototype_to_fixed(rt, this, std::slice::from_ref(&digits))
     });
     // Ω.5.P61.E10: toExponential, toPrecision, toLocaleString per
     // ECMA §21.1.3.

@@ -7,8 +7,8 @@ use rusty_js_ir::sections::{
     array_prototype_find as find, array_prototype_index_search as index_search,
     array_prototype_iteration as iter, array_prototype_map,
     array_prototype_reduce as reduce, global_predicates, math_binary_variadic,
-    math_unary, number_static, object_integrity, object_proto_ops,
-    object_static, promise_static, reflect_static,
+    math_unary, number_prototype, number_static, object_integrity,
+    object_proto_ops, object_static, promise_static, reflect_static,
 };
 
 fn main() {
@@ -90,6 +90,7 @@ fn main() {
         ("Object.getOwnPropertySymbols", object_static::build_get_own_property_symbols(), object_static::spec_steps_get_own_property_symbols()),
         ("Object.assign", object_static::build_assign(), object_static::spec_steps_assign()),
         ("Object.fromEntries", object_static::build_from_entries(), object_static::spec_steps_from_entries()),
+        ("Number.prototype.toFixed", number_prototype::build_to_fixed(), number_prototype::spec_steps_to_fixed()),
     ];
 
     let mut total_unexpected = 0;

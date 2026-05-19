@@ -430,6 +430,32 @@ impl Runtime {
         Ok(())
     }
 
+    /// Number.prototype.toFixed(digits) per ECMA §21.1.3.3 — ThisNumberValue
+    /// brand + RangeError on digits not in [0, 100] + NaN/Infinity
+    /// short-circuit + Rust's f64 fixed-point formatting.
+    pub fn number_proto_to_fixed_via(&mut self, this: &Value, digits_arg: &Value) -> Result<Value, RuntimeError> {
+        let n = match self.unwrap_primitive(this) {
+            Value::Number(n) => n,
+            _ => return Err(RuntimeError::TypeError(
+                "Number.prototype.toFixed: this is not a Number".into())),
+        };
+        let digits_n = match digits_arg {
+            Value::Undefined => 0.0,
+            v => self.coerce_to_number(v)?,
+        };
+        if digits_n.is_nan() || digits_n < 0.0 || digits_n > 100.0 {
+            return Err(RuntimeError::RangeError(
+                "toFixed() digits argument must be between 0 and 100".into()));
+        }
+        let digits = digits_n as usize;
+        if n.is_nan() { return Ok(Value::String(std::rc::Rc::new("NaN".into()))); }
+        if !n.is_finite() {
+            return Ok(Value::String(std::rc::Rc::new(
+                if n > 0.0 { "Infinity".into() } else { "-Infinity".into() })));
+        }
+        Ok(Value::String(std::rc::Rc::new(format!("{:.*}", digits, n))))
+    }
+
     /// Object.fromEntries(iter) per ECMA §20.1.2.7 — iterates the
     /// iterable and constructs an object from [key, value] pairs.
     /// Tier 1.10 simplification: uses cruftless's existing collect_iterable
