@@ -126,6 +126,8 @@ fn main() {
         misc::build_map_get(), misc::build_map_set(), misc::build_map_has(),
         misc::build_map_delete(), misc::build_map_clear(), misc::build_map_for_each(),
         misc::build_map_values(), misc::build_map_keys(), misc::build_map_entries(),
+        misc::build_set_add(), misc::build_set_has(), misc::build_set_delete(),
+        misc::build_set_clear(), misc::build_set_for_each(),
         object_static::build_keys(),
         object_static::build_values(),
         object_static::build_entries(),

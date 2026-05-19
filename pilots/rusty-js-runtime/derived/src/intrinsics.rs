@@ -2587,102 +2587,11 @@ impl Runtime {
         }
         for collection in &["Set", "WeakSet"] {
             let proto = self.alloc_object(Object::new_ordinary());
-            register_intrinsic_method(self, proto, "add", 1, |rt, args| {
-                // Ω.5.P62.E23: §24.2.3.1 step 3 — brand-check [[SetData]];
-                // throw TypeError when receiver lacks the internal slot.
-                let this = match rt.current_this() {
-                    Value::Object(id) => id,
-                    _ => return Err(RuntimeError::TypeError(
-                        "Set.prototype.add: this is not a Set object".into())),
-                };
-                let v = args.first().cloned().unwrap_or(Value::Undefined);
-                let key_s = abstract_ops::to_string(&v).as_str().to_string();
-                let storage = match rt.object_get(this, "__set_data") {
-                    Value::Object(id) => id,
-                    _ => return Err(RuntimeError::TypeError(
-                        "Set.prototype.add: this is not a Set object".into())),
-                };
-                let existed = !matches!(rt.object_get(storage, &key_s), Value::Undefined);
-                rt.object_set(storage, key_s, v);
-                if !existed {
-                    let prev = match rt.object_get(this, "size") {
-                        Value::Number(n) => n,
-                        _ => 0.0,
-                    };
-                    rt.object_set(this, "size".into(), Value::Number(prev + 1.0));
-                }
-                Ok(Value::Object(this))
-            });
-            register_intrinsic_method(self, proto, "has", 2, |rt, args| {
-                // Ω.5.P62.E23: [[SetData]] brand check.
-                let this = match rt.current_this() {
-                    Value::Object(id) => id,
-                    _ => return Err(RuntimeError::TypeError(
-                        "Set.prototype.has: this is not a Set object".into())),
-                };
-                let v = args.first().cloned().unwrap_or(Value::Undefined);
-                let key_s = abstract_ops::to_string(&v).as_str().to_string();
-                let storage = match rt.object_get(this, "__set_data") {
-                    Value::Object(id) => id,
-                    _ => return Err(RuntimeError::TypeError(
-                        "Set.prototype.has: this is not a Set object".into())),
-                };
-                Ok(Value::Boolean(rt.obj(storage).properties.contains_key(&key_s)))
-            });
-            register_intrinsic_method(self, proto, "delete", 1, |rt, args| {
-                let this = match rt.current_this() {
-                    Value::Object(id) => id,
-                    _ => return Err(RuntimeError::TypeError(
-                        "Set.prototype.delete: this is not a Set object".into())),
-                };
-                let v = args.first().cloned().unwrap_or(Value::Undefined);
-                let key_s = abstract_ops::to_string(&v).as_str().to_string();
-                let storage = match rt.object_get(this, "__set_data") {
-                    Value::Object(id) => id,
-                    _ => return Err(RuntimeError::TypeError(
-                        "Set.prototype.delete: this is not a Set object".into())),
-                };
-                let existed = rt.obj_mut(storage).properties.shift_remove(&key_s).is_some();
-                if existed {
-                    let prev = match rt.object_get(this, "size") {
-                        Value::Number(n) => n,
-                        _ => 0.0,
-                    };
-                    rt.object_set(this, "size".into(), Value::Number((prev - 1.0).max(0.0)));
-                }
-                Ok(Value::Boolean(existed))
-            });
-            register_intrinsic_method(self, proto, "clear", 1, |rt, _args| {
-                let this = match rt.current_this() { Value::Object(id) => id, _ => return Err(RuntimeError::TypeError("Set.prototype method: this is not a Set object".into())) };
-                let fresh = rt.alloc_object(Object::new_ordinary());
-                rt.object_set(this, "__set_data".into(), Value::Object(fresh));
-                rt.object_set(this, "size".into(), Value::Number(0.0));
-                Ok(Value::Undefined)
-            });
-            register_intrinsic_method(self, proto, "forEach", 1, |rt, args| {
-                let this = match rt.current_this() {
-                    Value::Object(id) => id,
-                    _ => return Err(RuntimeError::TypeError(
-                        "Set.prototype.forEach: this is not a Set object".into())),
-                };
-                let cb = args.first().cloned().unwrap_or(Value::Undefined);
-                if !rt.is_callable(&cb) {
-                    return Err(RuntimeError::TypeError(
-                        "Set.prototype.forEach: callback is not callable".into()));
-                }
-                let storage = match rt.object_get(this, "__set_data") {
-                    Value::Object(id) => id,
-                    _ => return Err(RuntimeError::TypeError(
-                        "Set.prototype.forEach: this is not a Set object".into())),
-                };
-                let vals: Vec<Value> = rt.obj(storage).properties.values()
-                    .map(|d| d.value.clone())
-                    .collect();
-                for v in vals {
-                    rt.call_function(cb.clone(), Value::Undefined, vec![v.clone(), v, Value::Object(this)])?;
-                }
-                Ok(Value::Undefined)
-            });
+            register_intrinsic_method(self, proto, "add",     1, |rt, args| crate::generated::set_prototype_add(rt, rt.current_this(), args));
+            register_intrinsic_method(self, proto, "has",     2, |rt, args| crate::generated::set_prototype_has(rt, rt.current_this(), args));
+            register_intrinsic_method(self, proto, "delete",  1, |rt, args| crate::generated::set_prototype_delete(rt, rt.current_this(), args));
+            register_intrinsic_method(self, proto, "clear",   1, |rt, args| crate::generated::set_prototype_clear(rt, rt.current_this(), args));
+            register_intrinsic_method(self, proto, "forEach", 1, |rt, args| crate::generated::set_prototype_for_each(rt, rt.current_this(), args));
             // Tier-Ω.5.rrr: @@iterator returns a values-iterator. Per
             // spec Set.prototype[Symbol.iterator] === Set.prototype.values.
             // Required for `[...new Set(arr)]` to spread.

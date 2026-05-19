@@ -663,6 +663,80 @@ impl Runtime {
         Ok(Value::Number(new_ms))
     }
 
+    fn set_this_and_storage(&mut self, who: &str) -> Result<(crate::value::ObjectRef, crate::value::ObjectRef), RuntimeError> {
+        let this = match self.current_this() {
+            Value::Object(id) => id,
+            _ => return Err(RuntimeError::TypeError(format!("Set.prototype.{}: this is not a Set object", who))),
+        };
+        let storage = match self.object_get(this, "__set_data") {
+            Value::Object(id) => id,
+            _ => return Err(RuntimeError::TypeError(format!("Set.prototype.{}: this is not a Set object", who))),
+        };
+        Ok((this, storage))
+    }
+
+    /// Set.prototype.add(value).
+    pub fn set_proto_add_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let (this, storage) = self.set_this_and_storage("add")?;
+        let v = args.first().cloned().unwrap_or(Value::Undefined);
+        let key_s = crate::abstract_ops::to_string(&v).as_str().to_string();
+        let existed = !matches!(self.object_get(storage, &key_s), Value::Undefined);
+        self.object_set(storage, key_s, v);
+        if !existed {
+            let prev = match self.object_get(this, "size") { Value::Number(n) => n, _ => 0.0 };
+            self.object_set(this, "size".into(), Value::Number(prev + 1.0));
+        }
+        Ok(Value::Object(this))
+    }
+
+    /// Set.prototype.has(value).
+    pub fn set_proto_has_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let (_this, storage) = self.set_this_and_storage("has")?;
+        let v = args.first().cloned().unwrap_or(Value::Undefined);
+        let key_s = crate::abstract_ops::to_string(&v).as_str().to_string();
+        Ok(Value::Boolean(self.obj(storage).properties.contains_key(&key_s)))
+    }
+
+    /// Set.prototype.delete(value).
+    pub fn set_proto_delete_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let (this, storage) = self.set_this_and_storage("delete")?;
+        let v = args.first().cloned().unwrap_or(Value::Undefined);
+        let key_s = crate::abstract_ops::to_string(&v).as_str().to_string();
+        let existed = self.obj_mut(storage).properties.shift_remove(&key_s).is_some();
+        if existed {
+            let prev = match self.object_get(this, "size") { Value::Number(n) => n, _ => 0.0 };
+            self.object_set(this, "size".into(), Value::Number((prev - 1.0).max(0.0)));
+        }
+        Ok(Value::Boolean(existed))
+    }
+
+    /// Set.prototype.clear().
+    pub fn set_proto_clear_via(&mut self) -> Result<Value, RuntimeError> {
+        let this = match self.current_this() {
+            Value::Object(id) => id,
+            _ => return Err(RuntimeError::TypeError("Set.prototype.clear: this is not a Set object".into())),
+        };
+        let fresh = self.alloc_object(crate::value::Object::new_ordinary());
+        self.object_set(this, "__set_data".into(), Value::Object(fresh));
+        self.object_set(this, "size".into(), Value::Number(0.0));
+        Ok(Value::Undefined)
+    }
+
+    /// Set.prototype.forEach(cb).
+    pub fn set_proto_for_each_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let (this, storage) = self.set_this_and_storage("forEach")?;
+        let cb = args.first().cloned().unwrap_or(Value::Undefined);
+        if !self.is_callable(&cb) {
+            return Err(RuntimeError::TypeError("Set.prototype.forEach: callback is not callable".into()));
+        }
+        let vals: Vec<Value> = self.obj(storage).properties.values()
+            .map(|d| d.value.clone()).collect();
+        for v in vals {
+            self.call_function(cb.clone(), Value::Undefined, vec![v.clone(), v, Value::Object(this)])?;
+        }
+        Ok(Value::Undefined)
+    }
+
     fn map_this_and_storage(&mut self, who: &str) -> Result<(crate::value::ObjectRef, crate::value::ObjectRef), RuntimeError> {
         let this = match self.current_this() {
             Value::Object(id) => id,

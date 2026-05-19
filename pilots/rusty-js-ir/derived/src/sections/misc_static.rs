@@ -21,6 +21,18 @@ fn nullary_section(spec: &str, rust_name: &str, title: &str, via: &'static str) 
     }
 }
 
+pub fn build_set_add()      -> IRFunction { variadic_section("24.2.3.1", "set_prototype_add",      "Set.prototype.add ( value )",    "set_proto_add_via") }
+pub fn build_set_has()      -> IRFunction { variadic_section("24.2.3.6", "set_prototype_has",      "Set.prototype.has ( value )",    "set_proto_has_via") }
+pub fn build_set_delete()   -> IRFunction { variadic_section("24.2.3.5", "set_prototype_delete",   "Set.prototype.delete ( value )", "set_proto_delete_via") }
+pub fn build_set_clear()    -> IRFunction { nullary_section ("24.2.3.4", "set_prototype_clear",    "Set.prototype.clear ( )",        "set_proto_clear_via") }
+pub fn build_set_for_each() -> IRFunction { variadic_section("24.2.3.7", "set_prototype_for_each", "Set.prototype.forEach ( cb )",   "set_proto_for_each_via") }
+
+pub fn spec_steps_set_add()      -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["set_proto_add_via"],      throws: None, prose: "Brand-check Set; add value (no duplicates); bump size; return this." }] }
+pub fn spec_steps_set_has()      -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["set_proto_has_via"],      throws: None, prose: "Brand-check Set; return whether the value is present." }] }
+pub fn spec_steps_set_delete()   -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["set_proto_delete_via"],   throws: None, prose: "Brand-check Set; remove; decrement size; return whether removal occurred." }] }
+pub fn spec_steps_set_clear()    -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["set_proto_clear_via"],    throws: None, prose: "Brand-check Set; reset storage and size; return undefined." }] }
+pub fn spec_steps_set_for_each() -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["set_proto_for_each_via"], throws: None, prose: "Brand-check Set; iterate (value, value, set) over entries calling cb." }] }
+
 pub fn build_map_get()      -> IRFunction { variadic_section("24.1.3.5",  "map_prototype_get",      "Map.prototype.get ( key )",            "map_proto_get_via") }
 pub fn build_map_set()      -> IRFunction { variadic_section("24.1.3.9",  "map_prototype_set",      "Map.prototype.set ( key, value )",     "map_proto_set_via") }
 pub fn build_map_has()      -> IRFunction { variadic_section("24.1.3.6",  "map_prototype_has",      "Map.prototype.has ( key )",            "map_proto_has_via") }
