@@ -450,6 +450,27 @@ impl Runtime {
             "trunc" => n.trunc(),
             "sqrt" => n.sqrt(),
             "cbrt" => n.cbrt(),
+            // Exponential / logarithmic family (ECMA §21.3.2.14/.20-.24).
+            "exp" => n.exp(),
+            "expm1" => n.exp_m1(),
+            "log" => n.ln(),
+            "log1p" => n.ln_1p(),
+            "log2" => n.log2(),
+            "log10" => n.log10(),
+            // Trigonometric family (ECMA §21.3.2.5-.7, .29, .31, .33).
+            "sin" => n.sin(),
+            "cos" => n.cos(),
+            "tan" => n.tan(),
+            "asin" => n.asin(),
+            "acos" => n.acos(),
+            "atan" => n.atan(),
+            // Hyperbolic family (ECMA §21.3.2.34, .8, .12, .2, .4, .3).
+            "sinh" => n.sinh(),
+            "cosh" => n.cosh(),
+            "tanh" => n.tanh(),
+            "asinh" => n.asinh(),
+            "acosh" => n.acosh(),
+            "atanh" => n.atanh(),
             "sign" => {
                 if n.is_nan() { f64::NAN }
                 else if n > 0.0 { 1.0 }

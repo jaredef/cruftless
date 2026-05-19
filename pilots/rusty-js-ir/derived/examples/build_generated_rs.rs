@@ -63,6 +63,13 @@ fn main() {
         math_unary::build_sqrt(),
         math_unary::build_cbrt(),
         math_unary::build_sign(),
+        math_unary::build_exp(), math_unary::build_expm1(),
+        math_unary::build_log(), math_unary::build_log1p(),
+        math_unary::build_log2(), math_unary::build_log10(),
+        math_unary::build_sin(), math_unary::build_cos(), math_unary::build_tan(),
+        math_unary::build_asin(), math_unary::build_acos(), math_unary::build_atan(),
+        math_unary::build_sinh(), math_unary::build_cosh(), math_unary::build_tanh(),
+        math_unary::build_asinh(), math_unary::build_acosh(), math_unary::build_atanh(),
     ];
 
     for f in &sections {

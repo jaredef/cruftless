@@ -1039,14 +1039,18 @@ impl Runtime {
         // installation at line ~1094 below is harmless: register order
         // overwrites and both paths produce identical results.)
         register_intrinsic_method(self, math, "sign", 1, |rt, args| crate::generated::math_sign(rt, Value::Undefined, args));
-        register_intrinsic_method(self, math, "exp", 1, |_rt, args|Ok(Value::Number(num_arg(args, 0).exp())));
-        register_intrinsic_method(self, math, "log", 1, |_rt, args|Ok(Value::Number(num_arg(args, 0).ln())));
-        register_intrinsic_method(self, math, "log2", 1, |_rt, args|Ok(Value::Number(num_arg(args, 0).log2())));
-        register_intrinsic_method(self, math, "log10", 1, |_rt, args|Ok(Value::Number(num_arg(args, 0).log10())));
-        register_intrinsic_method(self, math, "sin", 1, |_rt, args|Ok(Value::Number(num_arg(args, 0).sin())));
-        register_intrinsic_method(self, math, "cos", 1, |_rt, args|Ok(Value::Number(num_arg(args, 0).cos())));
-        register_intrinsic_method(self, math, "tan", 1, |_rt, args|Ok(Value::Number(num_arg(args, 0).tan())));
-        register_intrinsic_method(self, math, "atan", 1, |_rt, args|Ok(Value::Number(num_arg(args, 0).atan())));
+        // Ω.5.P63.E11: Math exp/log/trig family routed through IR.
+        register_intrinsic_method(self, math, "exp", 1, |rt, args| crate::generated::math_exp(rt, Value::Undefined, args));
+        register_intrinsic_method(self, math, "log", 1, |rt, args| crate::generated::math_log(rt, Value::Undefined, args));
+        register_intrinsic_method(self, math, "log2", 1, |rt, args| crate::generated::math_log2(rt, Value::Undefined, args));
+        register_intrinsic_method(self, math, "log10", 1, |rt, args| crate::generated::math_log10(rt, Value::Undefined, args));
+        register_intrinsic_method(self, math, "sin", 1, |rt, args| crate::generated::math_sin(rt, Value::Undefined, args));
+        register_intrinsic_method(self, math, "cos", 1, |rt, args| crate::generated::math_cos(rt, Value::Undefined, args));
+        register_intrinsic_method(self, math, "tan", 1, |rt, args| crate::generated::math_tan(rt, Value::Undefined, args));
+        register_intrinsic_method(self, math, "atan", 1, |rt, args| crate::generated::math_atan(rt, Value::Undefined, args));
+        // Ω.5.P63.E11: asin / acos newly installed via IR (were missing from cruftless).
+        register_intrinsic_method(self, math, "asin", 1, |rt, args| crate::generated::math_asin(rt, Value::Undefined, args));
+        register_intrinsic_method(self, math, "acos", 1, |rt, args| crate::generated::math_acos(rt, Value::Undefined, args));
         register_intrinsic_method(self, math, "atan2", 2, |_rt, args|Ok(Value::Number(num_arg(args, 0).atan2(num_arg(args, 1))))) ;
         register_intrinsic_method(self, math, "random", 0, |_rt, _|{
             // v1: simple LCG-style PRNG seeded from time. Not crypto-grade.
@@ -1098,22 +1102,11 @@ impl Runtime {
             else if n < 0.0 { Ok(Value::Number(-1.0)) }
             else { Ok(Value::Number(n)) } // preserves +0/-0
         });
-        register_intrinsic_method(self, math, "expm1", 1, |_rt, args| {
-            let n = args.first().map(abstract_ops::to_number).unwrap_or(f64::NAN);
-            Ok(Value::Number(n.exp_m1()))
-        });
-        register_intrinsic_method(self, math, "log1p", 1, |_rt, args| {
-            let n = args.first().map(abstract_ops::to_number).unwrap_or(f64::NAN);
-            Ok(Value::Number(n.ln_1p()))
-        });
-        register_intrinsic_method(self, math, "log2", 1, |_rt, args| {
-            let n = args.first().map(abstract_ops::to_number).unwrap_or(f64::NAN);
-            Ok(Value::Number(n.log2()))
-        });
-        register_intrinsic_method(self, math, "log10", 1, |_rt, args| {
-            let n = args.first().map(abstract_ops::to_number).unwrap_or(f64::NAN);
-            Ok(Value::Number(n.log10()))
-        });
+        // Ω.5.P63.E11: expm1/log1p routed through IR.
+        // (log2/log10 already routed above; this block previously
+        // installed duplicates — preserve only the unique ones here.)
+        register_intrinsic_method(self, math, "expm1", 1, |rt, args| crate::generated::math_expm1(rt, Value::Undefined, args));
+        register_intrinsic_method(self, math, "log1p", 1, |rt, args| crate::generated::math_log1p(rt, Value::Undefined, args));
         register_intrinsic_method(self, math, "cbrt", 1, |_rt, args| {
             let n = args.first().map(abstract_ops::to_number).unwrap_or(f64::NAN);
             Ok(Value::Number(n.cbrt()))
@@ -1124,24 +1117,13 @@ impl Runtime {
                 .sum();
             Ok(Value::Number(s.sqrt()))
         });
-        register_intrinsic_method(self, math, "sinh", 1, |_rt, args| {
-            Ok(Value::Number(args.first().map(abstract_ops::to_number).unwrap_or(f64::NAN).sinh()))
-        });
-        register_intrinsic_method(self, math, "cosh", 1, |_rt, args| {
-            Ok(Value::Number(args.first().map(abstract_ops::to_number).unwrap_or(f64::NAN).cosh()))
-        });
-        register_intrinsic_method(self, math, "tanh", 1, |_rt, args| {
-            Ok(Value::Number(args.first().map(abstract_ops::to_number).unwrap_or(f64::NAN).tanh()))
-        });
-        register_intrinsic_method(self, math, "asinh", 1, |_rt, args| {
-            Ok(Value::Number(args.first().map(abstract_ops::to_number).unwrap_or(f64::NAN).asinh()))
-        });
-        register_intrinsic_method(self, math, "acosh", 1, |_rt, args| {
-            Ok(Value::Number(args.first().map(abstract_ops::to_number).unwrap_or(f64::NAN).acosh()))
-        });
-        register_intrinsic_method(self, math, "atanh", 1, |_rt, args| {
-            Ok(Value::Number(args.first().map(abstract_ops::to_number).unwrap_or(f64::NAN).atanh()))
-        });
+        // Ω.5.P63.E11: hyperbolic family routed through IR.
+        register_intrinsic_method(self, math, "sinh", 1, |rt, args| crate::generated::math_sinh(rt, Value::Undefined, args));
+        register_intrinsic_method(self, math, "cosh", 1, |rt, args| crate::generated::math_cosh(rt, Value::Undefined, args));
+        register_intrinsic_method(self, math, "tanh", 1, |rt, args| crate::generated::math_tanh(rt, Value::Undefined, args));
+        register_intrinsic_method(self, math, "asinh", 1, |rt, args| crate::generated::math_asinh(rt, Value::Undefined, args));
+        register_intrinsic_method(self, math, "acosh", 1, |rt, args| crate::generated::math_acosh(rt, Value::Undefined, args));
+        register_intrinsic_method(self, math, "atanh", 1, |rt, args| crate::generated::math_atanh(rt, Value::Undefined, args));
 
         // Ω.5.P62.E4: Math[Symbol.toStringTag] === "Math" per ECMA §21.3.1.9.
         // Drives Object.prototype.toString.call(Math) → "[object Math]"
