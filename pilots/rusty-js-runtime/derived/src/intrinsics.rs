@@ -3744,6 +3744,24 @@ pub(crate) fn json_stringify(rt: &Runtime, v: &Value) -> String {
         // branch elides keys whose serialized form is "undefined".
         Value::Symbol(_) => "undefined".into(),
         Value::Object(id) => {
+            // §25.5.2.2 SerializeJSONProperty: if the value is a Number,
+            // String, or Boolean Object wrapper, unwrap to its primitive
+            // before serializing. cruftless stores the primitive in the
+            // non-enumerable __primitive__ slot at construction time.
+            if let Some(d) = rt.obj(*id).get_own("__primitive__") {
+                match &d.value {
+                    Value::Number(_) | Value::String(_) | Value::Boolean(_) => {
+                        return json_stringify(rt, &d.value.clone());
+                    }
+                    _ => {}
+                }
+            }
+            // §25.5.2.2 also: if the value has a callable toJSON method,
+            // invoke it and serialize the result. Limited to non-recursive
+            // dispatch in v1 (the toJSON return value goes back through the
+            // top-level branch). Skipped here because cruftless doesn't
+            // expose call_function through &Runtime (only &mut Runtime),
+            // and toJSON dispatch is rarer than wrapper unwrap.
             // Snapshot the props (clones Value) to avoid recursive borrow.
             let (is_array, props): (bool, Vec<(String, PropertyDescriptor)>) = {
                 let obj = rt.obj(*id);

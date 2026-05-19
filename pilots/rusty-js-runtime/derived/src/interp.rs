@@ -1147,6 +1147,12 @@ impl Runtime {
             Value::Object(id) => *id,
             _ => return Err(RuntimeError::TypeError("Object.defineProperty: descriptor must be an object".into())),
         };
+        // §10.1.6.3 step 2: if target is not extensible and the property
+        // does not already exist, throw TypeError.
+        if !self.obj(target).has_own_str(&key) && !self.obj(target).extensible {
+            return Err(RuntimeError::TypeError(format!(
+                "Cannot add property '{}': object is not extensible", key)));
+        }
         // §6.2.5.5 ToPropertyDescriptor: HasProperty + Get dispatch through
         // the prototype chain (test262 15.2.3.6-3-129 et al. inherit descriptor
         // attrs through proto). Previously used has_own_str + object_get.
@@ -1168,9 +1174,10 @@ impl Runtime {
             return Err(RuntimeError::TypeError(
                 "Invalid property descriptor: cannot both specify accessors and a value or writable attribute".into()));
         }
-        if has_getter || has_setter {
-            // Per §6.2.5.5: when descriptor has enumerable/configurable bits,
-            // honor them; otherwise default to false (CompletePropertyDescriptor).
+        // Accessor branch — has get and/or set in descriptor, possibly with
+        // enumerable/configurable. §10.1.6.3 ValidateAndApply enforcement
+        // applies symmetrically to data and accessor properties.
+        if has_get_key || has_set_key {
             let read_bool_via = |rt: &mut Runtime, name: &str| -> Result<Option<bool>, RuntimeError> {
                 if !rt.has_property(desc_id, name) { return Ok(None); }
                 let v = rt.read_property(desc_id, name)?;
@@ -1179,17 +1186,67 @@ impl Runtime {
             let enumerable = read_bool_via(self, "enumerable")?;
             let configurable = read_bool_via(self, "configurable")?;
             let exists = self.obj(target).has_own_str(&key);
-            let (default_e, default_c) = if exists {
+            let (default_e, default_c, existing_getter, existing_setter, existing_is_accessor) = if exists {
                 let d = self.obj(target).get_own(&key).unwrap();
-                (d.enumerable, d.configurable)
-            } else { (false, false) };
+                let is_acc = d.getter.is_some() || d.setter.is_some();
+                (d.enumerable, d.configurable, d.getter.clone(), d.setter.clone(), is_acc)
+            } else { (false, false, None, None, false) };
             let new_e = enumerable.unwrap_or(default_e);
             let new_c = configurable.unwrap_or(default_c);
+            // §10.1.6.3 step 4: when existing is non-configurable.
+            if exists && !default_c {
+                // 4.a: configurable change disallowed.
+                if configurable == Some(true) {
+                    return Err(RuntimeError::TypeError(format!(
+                        "Cannot redefine non-configurable property '{}': configurable would change", key)));
+                }
+                // 4.b: enumerable change disallowed.
+                if enumerable.is_some() && new_e != default_e {
+                    return Err(RuntimeError::TypeError(format!(
+                        "Cannot redefine non-configurable property '{}': enumerable would change", key)));
+                }
+                // 4.c-d: data ⇄ accessor conversion disallowed.
+                if !existing_is_accessor {
+                    return Err(RuntimeError::TypeError(format!(
+                        "Cannot redefine non-configurable data property '{}' as accessor", key)));
+                }
+                // 4.e: replacing existing get/set with a different one disallowed.
+                if has_get_key {
+                    let same = match (&existing_getter, &getter) {
+                        (None, Value::Undefined) => true,
+                        (Some(Value::Object(a)), Value::Object(b)) => a == b,
+                        _ => false,
+                    };
+                    if !same {
+                        return Err(RuntimeError::TypeError(format!(
+                            "Cannot redefine non-configurable accessor '{}': [[Get]] would change", key)));
+                    }
+                }
+                if has_set_key {
+                    let same = match (&existing_setter, &setter) {
+                        (None, Value::Undefined) => true,
+                        (Some(Value::Object(a)), Value::Object(b)) => a == b,
+                        _ => false,
+                    };
+                    if !same {
+                        return Err(RuntimeError::TypeError(format!(
+                            "Cannot redefine non-configurable accessor '{}': [[Set]] would change", key)));
+                    }
+                }
+            }
+            // Final getter/setter values: when descriptor key is absent, keep
+            // existing. When present-and-undefined, set to None (not callable).
+            let final_getter = if has_get_key {
+                if has_getter { Some(getter) } else { None }
+            } else { existing_getter };
+            let final_setter = if has_set_key {
+                if has_setter { Some(setter) } else { None }
+            } else { existing_setter };
             self.obj_mut(target).properties.insert(crate::value::PropertyKey::String(key), crate::value::PropertyDescriptor {
                 value: Value::Undefined,
                 writable: false, enumerable: new_e, configurable: new_c,
-                getter: if has_getter { Some(getter) } else { None },
-                setter: if has_setter { Some(setter) } else { None },
+                getter: final_getter,
+                setter: final_setter,
             });
         } else {
             let has_value = self.has_property(desc_id, "value");
@@ -1211,23 +1268,42 @@ impl Runtime {
                 }
             };
             let exists = self.obj(target).has_own_str(&key);
-            let (default_w, default_e, default_c, existing_value) = if exists {
+            let (default_w, default_e, default_c, existing_value, existing_is_accessor) = if exists {
                 let d = self.obj(target).get_own(&key).unwrap();
-                (d.writable, d.enumerable, d.configurable, d.value.clone())
+                let is_acc = d.getter.is_some() || d.setter.is_some();
+                (d.writable, d.enumerable, d.configurable, d.value.clone(), is_acc)
             } else {
-                (false, false, false, Value::Undefined)
+                (false, false, false, Value::Undefined, false)
             };
             let new_w = writable.unwrap_or(default_w);
             let new_e = enumerable.unwrap_or(default_e);
             let new_c = configurable.unwrap_or(default_c);
             if exists && !default_c {
-                let value_changed = has_value && !crate::abstract_ops::is_strictly_equal(&value, &existing_value);
-                let attrs_changed = new_e != default_e || new_c != default_c
-                    || (default_w == false && new_w == true);
-                let value_change_allowed = if value_changed { default_w } else { true };
-                if attrs_changed || !value_change_allowed {
+                // §10.1.6.3 step 4.a: configurable promotion disallowed.
+                if configurable == Some(true) {
                     return Err(RuntimeError::TypeError(format!(
-                        "Cannot redefine non-configurable property '{}'", key)));
+                        "Cannot redefine non-configurable property '{}': configurable would change", key)));
+                }
+                // §10.1.6.3 step 4.b: enumerable change disallowed.
+                if enumerable.is_some() && new_e != default_e {
+                    return Err(RuntimeError::TypeError(format!(
+                        "Cannot redefine non-configurable property '{}': enumerable would change", key)));
+                }
+                // §10.1.6.3 step 4.c-d: accessor → data conversion disallowed.
+                if existing_is_accessor {
+                    return Err(RuntimeError::TypeError(format!(
+                        "Cannot redefine non-configurable accessor '{}' as data property", key)));
+                }
+                // Data → data: writable promotion (false → true) and value
+                // change while non-writable are forbidden.
+                if default_w == false && new_w == true {
+                    return Err(RuntimeError::TypeError(format!(
+                        "Cannot redefine non-configurable non-writable property '{}': writable would change", key)));
+                }
+                let value_changed = has_value && !crate::abstract_ops::is_strictly_equal(&value, &existing_value);
+                if value_changed && !default_w {
+                    return Err(RuntimeError::TypeError(format!(
+                        "Cannot redefine non-configurable non-writable property '{}'", key)));
                 }
             }
             self.obj_mut(target).properties.insert(crate::value::PropertyKey::String(key), crate::value::PropertyDescriptor {
