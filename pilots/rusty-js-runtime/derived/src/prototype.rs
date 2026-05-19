@@ -1082,6 +1082,23 @@ fn clamp_index(i: i64, len: i64) -> i64 {
 
 // ──────────────── %String.prototype% ────────────────
 
+/// Ω.5.P62.E13: IsRegExp per ECMA §7.2.8 — checks @@match first
+/// (allowing custom RegExp-like duck types to opt in/out) then falls
+/// back to the [[RegExpMatcher]] internal slot (InternalKind::RegExp).
+fn is_regexp_like(rt: &mut Runtime, v: &Value) -> Result<bool, RuntimeError> {
+    let id = match v {
+        Value::Object(id) => *id,
+        _ => return Ok(false),
+    };
+    let matcher = rt.read_property(id, "@@match")?;
+    match matcher {
+        Value::Undefined => {
+            Ok(matches!(rt.obj(id).internal_kind, InternalKind::RegExp(_)))
+        }
+        _ => Ok(crate::abstract_ops::to_boolean(&matcher)),
+    }
+}
+
 fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
     register_intrinsic_method(rt, host, "toUpperCase", 0, |rt, _args| {
         let s = abstract_ops::to_string(&rt.current_this()).as_str().to_uppercase();
@@ -1253,21 +1270,50 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
         }
     });
     register_intrinsic_method(rt, host, "includes", 1, |rt, args| {
-        let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
-        let needle = abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined))
-            .as_str().to_string();
+        // Ω.5.P62.E13: spec §22.1.3.7 — RequireObjectCoercible, then
+        // reject RegExp searchStr (IsRegExp), then ToString both sides,
+        // then ToInteger position. Symbol surfaces as TypeError via
+        // to_string_strict; throwing valueOf/toString propagates.
+        let this = rt.current_this();
+        rt.require_object_coercible(&this)?;
+        let needle_v = args.first().cloned().unwrap_or(Value::Undefined);
+        if is_regexp_like(rt, &needle_v)? {
+            return Err(RuntimeError::TypeError(
+                "String.prototype.includes: searchString cannot be a RegExp".into()));
+        }
+        let s = rt.to_string_strict(&this)?;
+        let needle = rt.to_string_strict(&needle_v)?;
+        if let Some(pv) = args.get(1).cloned() {
+            // ToInteger via coerce_to_number — abrupt completion
+            // propagates through ? naturally.
+            let _ = rt.coerce_to_number(&pv)?;
+        }
         Ok(Value::Boolean(s.contains(&needle)))
     });
     register_intrinsic_method(rt, host, "startsWith", 1, |rt, args| {
-        let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
-        let needle = abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined))
-            .as_str().to_string();
+        let this = rt.current_this();
+        rt.require_object_coercible(&this)?;
+        let needle_v = args.first().cloned().unwrap_or(Value::Undefined);
+        if is_regexp_like(rt, &needle_v)? {
+            return Err(RuntimeError::TypeError(
+                "String.prototype.startsWith: searchString cannot be a RegExp".into()));
+        }
+        let s = rt.to_string_strict(&this)?;
+        let needle = rt.to_string_strict(&needle_v)?;
+        if let Some(pv) = args.get(1).cloned() { let _ = rt.coerce_to_number(&pv)?; }
         Ok(Value::Boolean(s.starts_with(&needle)))
     });
     register_intrinsic_method(rt, host, "endsWith", 1, |rt, args| {
-        let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
-        let needle = abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined))
-            .as_str().to_string();
+        let this = rt.current_this();
+        rt.require_object_coercible(&this)?;
+        let needle_v = args.first().cloned().unwrap_or(Value::Undefined);
+        if is_regexp_like(rt, &needle_v)? {
+            return Err(RuntimeError::TypeError(
+                "String.prototype.endsWith: searchString cannot be a RegExp".into()));
+        }
+        let s = rt.to_string_strict(&this)?;
+        let needle = rt.to_string_strict(&needle_v)?;
+        if let Some(pv) = args.get(1).cloned() { let _ = rt.coerce_to_number(&pv)?; }
         Ok(Value::Boolean(s.ends_with(&needle)))
     });
     register_intrinsic_method(rt, host, "split", 2, |rt, args| {

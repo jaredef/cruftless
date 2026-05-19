@@ -332,6 +332,31 @@ impl Runtime {
         Ok(crate::abstract_ops::to_number(v))
     }
 
+    /// Ω.5.P62.E13: strict ToString per ECMA §7.1.17 — throws TypeError
+    /// on Symbol (and is the canonical path for built-in methods like
+    /// String.prototype.includes/startsWith/endsWith/indexOf where the
+    /// search-string-as-Symbol case is a test262 invariant). Also
+    /// throws on null/undefined for RequireObjectCoercible-style use.
+    /// Differs from coerce_to_string which preserves the @@sym: form
+    /// (load-bearing for property-key dispatch in ToPropertyKey).
+    pub fn to_string_strict(&mut self, v: &Value) -> Result<String, RuntimeError> {
+        if matches!(v, Value::Symbol(_)) {
+            return Err(RuntimeError::TypeError(
+                "Cannot convert a Symbol value to a string".into()));
+        }
+        self.coerce_to_string(v)
+    }
+
+    /// Ω.5.P62.E13: RequireObjectCoercible per ECMA §7.2.1 — throws
+    /// TypeError if value is null or undefined.
+    pub fn require_object_coercible(&self, v: &Value) -> Result<(), RuntimeError> {
+        if matches!(v, Value::Undefined | Value::Null) {
+            return Err(RuntimeError::TypeError(
+                "Cannot convert undefined or null to object".into()));
+        }
+        Ok(())
+    }
+
     pub fn coerce_to_string(&mut self, v: &Value) -> Result<String, RuntimeError> {
         if let Value::Object(id) = v {
             let id = *id;
