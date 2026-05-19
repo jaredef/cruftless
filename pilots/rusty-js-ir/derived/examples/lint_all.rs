@@ -112,6 +112,14 @@ fn main() {
         ("String.prototype.repeat",     string_prototype::build_repeat(),     string_prototype::spec_steps_repeat()),
         ("String.prototype.padStart",   string_prototype::build_pad_start(),  string_prototype::spec_steps_pad_start()),
         ("String.prototype.padEnd",     string_prototype::build_pad_end(),    string_prototype::spec_steps_pad_end()),
+        ("String.prototype.slice",         string_prototype::build_slice(),         string_prototype::spec_steps_slice()),
+        ("String.prototype.substring",     string_prototype::build_substring(),     string_prototype::spec_steps_substring()),
+        ("String.prototype.substr",        string_prototype::build_substr(),        string_prototype::spec_steps_substr()),
+        ("String.prototype.indexOf",       string_prototype::build_index_of(),      string_prototype::spec_steps_index_of()),
+        ("String.prototype.lastIndexOf",   string_prototype::build_last_index_of(), string_prototype::spec_steps_last_index_of()),
+        ("String.prototype.includes",      string_prototype::build_includes(),      string_prototype::spec_steps_includes()),
+        ("String.prototype.startsWith",    string_prototype::build_starts_with(),   string_prototype::spec_steps_starts_with()),
+        ("String.prototype.endsWith",      string_prototype::build_ends_with(),     string_prototype::spec_steps_ends_with()),
     ];
 
     let mut total_unexpected = 0;

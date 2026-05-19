@@ -110,6 +110,14 @@ fn main() {
         string_prototype::build_repeat(),
         string_prototype::build_pad_start(),
         string_prototype::build_pad_end(),
+        string_prototype::build_slice(),
+        string_prototype::build_substring(),
+        string_prototype::build_substr(),
+        string_prototype::build_index_of(),
+        string_prototype::build_last_index_of(),
+        string_prototype::build_includes(),
+        string_prototype::build_starts_with(),
+        string_prototype::build_ends_with(),
     ];
 
     for f in &sections {

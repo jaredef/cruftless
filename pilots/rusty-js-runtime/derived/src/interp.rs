@@ -484,6 +484,122 @@ impl Runtime {
         Ok(Value::String(std::rc::Rc::new(s + &suffix)))
     }
 
+    /// Helper: IsRegExp per §7.2.8 — checks @@match then InternalKind::RegExp.
+    pub fn is_regexp_like_via(&mut self, v: &Value) -> Result<bool, RuntimeError> {
+        let id = match v { Value::Object(id) => *id, _ => return Ok(false) };
+        let matcher = self.read_property(id, "@@match")?;
+        match matcher {
+            Value::Undefined => Ok(matches!(self.obj(id).internal_kind, crate::value::InternalKind::RegExp(_))),
+            _ => Ok(crate::abstract_ops::to_boolean(&matcher)),
+        }
+    }
+
+    /// String.prototype.slice(start, end) per ECMA §22.1.3.22.
+    pub fn string_proto_slice_via(&mut self, this: &Value, start: &Value, end: &Value) -> Result<Value, RuntimeError> {
+        self.require_object_coercible(this)?;
+        let s = self.to_string_strict(this)?;
+        let chars: Vec<char> = s.chars().collect();
+        let len = chars.len() as i64;
+        let start_n = match start { Value::Undefined => 0.0, v => self.coerce_to_number(v)? };
+        let end_n = match end { Value::Undefined => len as f64, v => self.coerce_to_number(v)? };
+        let from = { let i = start_n as i64; if i < 0 { (len + i).max(0) } else { i.min(len) } };
+        let to = { let i = end_n as i64; if i < 0 { (len + i).max(0) } else { i.min(len) } };
+        if to <= from { return Ok(Value::String(std::rc::Rc::new(String::new()))); }
+        let out: String = chars[from as usize..to as usize].iter().collect();
+        Ok(Value::String(std::rc::Rc::new(out)))
+    }
+
+    /// String.prototype.substring(start, end) per ECMA §22.1.3.24.
+    pub fn string_proto_substring_via(&mut self, this: &Value, a: &Value, b: &Value) -> Result<Value, RuntimeError> {
+        self.require_object_coercible(this)?;
+        let s = self.to_string_strict(this)?;
+        let chars: Vec<char> = s.chars().collect();
+        let len = chars.len() as i64;
+        let a_n = match a { Value::Undefined => 0.0, v => self.coerce_to_number(v)? };
+        let b_n = match b { Value::Undefined => len as f64, v => self.coerce_to_number(v)? };
+        let mut lo = (a_n as i64).clamp(0, len);
+        let mut hi = (b_n as i64).clamp(0, len);
+        if lo > hi { std::mem::swap(&mut lo, &mut hi); }
+        let out: String = chars[lo as usize..hi as usize].iter().collect();
+        Ok(Value::String(std::rc::Rc::new(out)))
+    }
+
+    /// String.prototype.substr(start, length) per Annex B.2.2.1.
+    pub fn string_proto_substr_via(&mut self, this: &Value, start: &Value, count: &Value) -> Result<Value, RuntimeError> {
+        self.require_object_coercible(this)?;
+        let s = self.to_string_strict(this)?;
+        let chars: Vec<char> = s.chars().collect();
+        let len = chars.len() as i64;
+        let mut from = match start { Value::Undefined => 0, v => self.coerce_to_number(v)? as i64 };
+        if from < 0 { from = (len + from).max(0); }
+        let from = from.min(len) as usize;
+        let count_n = match count { Value::Undefined => (len - from as i64) as f64, v => self.coerce_to_number(v)? };
+        let n = (count_n as i64).max(0) as usize;
+        let to = (from + n).min(chars.len());
+        let out: String = chars[from..to].iter().collect();
+        Ok(Value::String(std::rc::Rc::new(out)))
+    }
+
+    /// String.prototype.indexOf(search, position) per ECMA §22.1.3.8.
+    pub fn string_proto_index_of_via(&mut self, this: &Value, search: &Value, position: &Value) -> Result<Value, RuntimeError> {
+        self.require_object_coercible(this)?;
+        let s = self.to_string_strict(this)?;
+        let needle = self.to_string_strict(search)?;
+        if !matches!(position, Value::Undefined) { let _ = self.coerce_to_number(position)?; }
+        match s.find(&needle) {
+            Some(byte_off) => Ok(Value::Number(s[..byte_off].chars().count() as f64)),
+            None => Ok(Value::Number(-1.0)),
+        }
+    }
+
+    /// String.prototype.lastIndexOf(search, position) per ECMA §22.1.3.10.
+    pub fn string_proto_last_index_of_via(&mut self, this: &Value, search: &Value, position: &Value) -> Result<Value, RuntimeError> {
+        self.require_object_coercible(this)?;
+        let s = self.to_string_strict(this)?;
+        let needle = self.to_string_strict(search)?;
+        if !matches!(position, Value::Undefined) { let _ = self.coerce_to_number(position)?; }
+        match s.rfind(&needle) {
+            Some(byte_off) => Ok(Value::Number(s[..byte_off].chars().count() as f64)),
+            None => Ok(Value::Number(-1.0)),
+        }
+    }
+
+    /// String.prototype.includes(search, position) per ECMA §22.1.3.7.
+    pub fn string_proto_includes_via(&mut self, this: &Value, search: &Value, position: &Value) -> Result<Value, RuntimeError> {
+        self.require_object_coercible(this)?;
+        if self.is_regexp_like_via(search)? {
+            return Err(RuntimeError::TypeError("String.prototype.includes: searchString cannot be a RegExp".into()));
+        }
+        let s = self.to_string_strict(this)?;
+        let needle = self.to_string_strict(search)?;
+        if !matches!(position, Value::Undefined) { let _ = self.coerce_to_number(position)?; }
+        Ok(Value::Boolean(s.contains(&needle)))
+    }
+
+    /// String.prototype.startsWith(search, position) per ECMA §22.1.3.23.
+    pub fn string_proto_starts_with_via(&mut self, this: &Value, search: &Value, position: &Value) -> Result<Value, RuntimeError> {
+        self.require_object_coercible(this)?;
+        if self.is_regexp_like_via(search)? {
+            return Err(RuntimeError::TypeError("String.prototype.startsWith: searchString cannot be a RegExp".into()));
+        }
+        let s = self.to_string_strict(this)?;
+        let needle = self.to_string_strict(search)?;
+        if !matches!(position, Value::Undefined) { let _ = self.coerce_to_number(position)?; }
+        Ok(Value::Boolean(s.starts_with(&needle)))
+    }
+
+    /// String.prototype.endsWith(search, position) per ECMA §22.1.3.6.
+    pub fn string_proto_ends_with_via(&mut self, this: &Value, search: &Value, position: &Value) -> Result<Value, RuntimeError> {
+        self.require_object_coercible(this)?;
+        if self.is_regexp_like_via(search)? {
+            return Err(RuntimeError::TypeError("String.prototype.endsWith: searchString cannot be a RegExp".into()));
+        }
+        let s = self.to_string_strict(this)?;
+        let needle = self.to_string_strict(search)?;
+        if !matches!(position, Value::Undefined) { let _ = self.coerce_to_number(position)?; }
+        Ok(Value::Boolean(s.ends_with(&needle)))
+    }
+
     /// String.prototype.trim() per ECMA §22.1.3.32.
     pub fn string_proto_trim_via(&mut self, this: &Value) -> Result<Value, RuntimeError> {
         self.require_object_coercible(this)?;

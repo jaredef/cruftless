@@ -1128,136 +1128,54 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
         }
         Ok(Value::Undefined)
     });
+    // Ω.5.P63.E24: slice/substring/substr/indexOf/lastIndexOf/includes/startsWith/endsWith routed through IR.
     register_intrinsic_method(rt, host, "slice", 2, |rt, args| {
-        // Ω.5.P62.E14: RequireObjectCoercible + strict ToString(this);
-        // ToInteger args propagates abrupt completions.
         let this = rt.current_this();
-        rt.require_object_coercible(&this)?;
-        let s = rt.to_string_strict(&this)?;
-        let chars: Vec<char> = s.chars().collect();
-        let len = chars.len() as i64;
-        let start_n = match args.first().cloned() {
-            Some(v) => rt.coerce_to_number(&v)?,
-            None => 0.0,
-        };
-        let end_n = match args.get(1).cloned() {
-            Some(Value::Undefined) | None => len as f64,
-            Some(v) => rt.coerce_to_number(&v)?,
-        };
-        let start = clamp_index(start_n as i64, len);
-        let end = clamp_index(end_n as i64, len);
-        if end <= start { return Ok(Value::String(Rc::new(String::new()))); }
-        let out: String = chars[start as usize..end as usize].iter().collect();
-        Ok(Value::String(Rc::new(out)))
+        let a = args.first().cloned().unwrap_or(Value::Undefined);
+        let b = args.get(1).cloned().unwrap_or(Value::Undefined);
+        crate::generated::string_prototype_slice(rt, this, &[a, b])
     });
-    // Tier-Ω.5.aaaaaa: String.prototype.substr (legacy Annex B.2.2.1).
     register_intrinsic_method(rt, host, "substr", 2, |rt, args| {
         let this = rt.current_this();
-        rt.require_object_coercible(&this)?;
-        let s = rt.to_string_strict(&this)?;
-        let chars: Vec<char> = s.chars().collect();
-        let len = chars.len() as i64;
-        let mut start = match args.first().cloned() {
-            Some(v) => rt.coerce_to_number(&v)? as i64, None => 0,
-        };
-        if start < 0 { start = (len + start).max(0); }
-        let start = start.min(len) as usize;
-        let count_n = match args.get(1).cloned() {
-            Some(Value::Undefined) | None => (len - start as i64) as f64,
-            Some(v) => rt.coerce_to_number(&v)?,
-        };
-        let count = (count_n as i64).max(0) as usize;
-        let end = (start + count).min(chars.len());
-        let out: String = chars[start..end].iter().collect();
-        Ok(Value::String(Rc::new(out)))
+        let a = args.first().cloned().unwrap_or(Value::Undefined);
+        let b = args.get(1).cloned().unwrap_or(Value::Undefined);
+        crate::generated::string_prototype_substr(rt, this, &[a, b])
     });
     register_intrinsic_method(rt, host, "substring", 2, |rt, args| {
         let this = rt.current_this();
-        rt.require_object_coercible(&this)?;
-        let s = rt.to_string_strict(&this)?;
-        let chars: Vec<char> = s.chars().collect();
-        let len = chars.len() as i64;
-        let a_n = match args.first().cloned() {
-            Some(v) => rt.coerce_to_number(&v)?, None => 0.0,
-        };
-        let b_n = match args.get(1).cloned() {
-            Some(Value::Undefined) | None => len as f64,
-            Some(v) => rt.coerce_to_number(&v)?,
-        };
-        let mut a = (a_n as i64).clamp(0, len);
-        let mut b = (b_n as i64).clamp(0, len);
-        if a > b { std::mem::swap(&mut a, &mut b); }
-        let out: String = chars[a as usize..b as usize].iter().collect();
-        Ok(Value::String(Rc::new(out)))
+        let a = args.first().cloned().unwrap_or(Value::Undefined);
+        let b = args.get(1).cloned().unwrap_or(Value::Undefined);
+        crate::generated::string_prototype_substring(rt, this, &[a, b])
     });
     register_intrinsic_method(rt, host, "indexOf", 1, |rt, args| {
         let this = rt.current_this();
-        rt.require_object_coercible(&this)?;
-        let s = rt.to_string_strict(&this)?;
-        let needle = rt.to_string_strict(&args.first().cloned().unwrap_or(Value::Undefined))?;
-        if let Some(pv) = args.get(1).cloned() { let _ = rt.coerce_to_number(&pv)?; }
-        match s.find(&needle) {
-            Some(byte_off) => Ok(Value::Number(s[..byte_off].chars().count() as f64)),
-            None => Ok(Value::Number(-1.0)),
-        }
+        let a = args.first().cloned().unwrap_or(Value::Undefined);
+        let b = args.get(1).cloned().unwrap_or(Value::Undefined);
+        crate::generated::string_prototype_index_of(rt, this, &[a, b])
     });
     register_intrinsic_method(rt, host, "lastIndexOf", 1, |rt, args| {
         let this = rt.current_this();
-        rt.require_object_coercible(&this)?;
-        let s = rt.to_string_strict(&this)?;
-        let needle = rt.to_string_strict(&args.first().cloned().unwrap_or(Value::Undefined))?;
-        if let Some(pv) = args.get(1).cloned() { let _ = rt.coerce_to_number(&pv)?; }
-        match s.rfind(&needle) {
-            Some(byte_off) => Ok(Value::Number(s[..byte_off].chars().count() as f64)),
-            None => Ok(Value::Number(-1.0)),
-        }
+        let a = args.first().cloned().unwrap_or(Value::Undefined);
+        let b = args.get(1).cloned().unwrap_or(Value::Undefined);
+        crate::generated::string_prototype_last_index_of(rt, this, &[a, b])
     });
     register_intrinsic_method(rt, host, "includes", 1, |rt, args| {
-        // Ω.5.P62.E13: spec §22.1.3.7 — RequireObjectCoercible, then
-        // reject RegExp searchStr (IsRegExp), then ToString both sides,
-        // then ToInteger position. Symbol surfaces as TypeError via
-        // to_string_strict; throwing valueOf/toString propagates.
         let this = rt.current_this();
-        rt.require_object_coercible(&this)?;
-        let needle_v = args.first().cloned().unwrap_or(Value::Undefined);
-        if is_regexp_like(rt, &needle_v)? {
-            return Err(RuntimeError::TypeError(
-                "String.prototype.includes: searchString cannot be a RegExp".into()));
-        }
-        let s = rt.to_string_strict(&this)?;
-        let needle = rt.to_string_strict(&needle_v)?;
-        if let Some(pv) = args.get(1).cloned() {
-            // ToInteger via coerce_to_number — abrupt completion
-            // propagates through ? naturally.
-            let _ = rt.coerce_to_number(&pv)?;
-        }
-        Ok(Value::Boolean(s.contains(&needle)))
+        let a = args.first().cloned().unwrap_or(Value::Undefined);
+        let b = args.get(1).cloned().unwrap_or(Value::Undefined);
+        crate::generated::string_prototype_includes(rt, this, &[a, b])
     });
     register_intrinsic_method(rt, host, "startsWith", 1, |rt, args| {
         let this = rt.current_this();
-        rt.require_object_coercible(&this)?;
-        let needle_v = args.first().cloned().unwrap_or(Value::Undefined);
-        if is_regexp_like(rt, &needle_v)? {
-            return Err(RuntimeError::TypeError(
-                "String.prototype.startsWith: searchString cannot be a RegExp".into()));
-        }
-        let s = rt.to_string_strict(&this)?;
-        let needle = rt.to_string_strict(&needle_v)?;
-        if let Some(pv) = args.get(1).cloned() { let _ = rt.coerce_to_number(&pv)?; }
-        Ok(Value::Boolean(s.starts_with(&needle)))
+        let a = args.first().cloned().unwrap_or(Value::Undefined);
+        let b = args.get(1).cloned().unwrap_or(Value::Undefined);
+        crate::generated::string_prototype_starts_with(rt, this, &[a, b])
     });
     register_intrinsic_method(rt, host, "endsWith", 1, |rt, args| {
         let this = rt.current_this();
-        rt.require_object_coercible(&this)?;
-        let needle_v = args.first().cloned().unwrap_or(Value::Undefined);
-        if is_regexp_like(rt, &needle_v)? {
-            return Err(RuntimeError::TypeError(
-                "String.prototype.endsWith: searchString cannot be a RegExp".into()));
-        }
-        let s = rt.to_string_strict(&this)?;
-        let needle = rt.to_string_strict(&needle_v)?;
-        if let Some(pv) = args.get(1).cloned() { let _ = rt.coerce_to_number(&pv)?; }
-        Ok(Value::Boolean(s.ends_with(&needle)))
+        let a = args.first().cloned().unwrap_or(Value::Undefined);
+        let b = args.get(1).cloned().unwrap_or(Value::Undefined);
+        crate::generated::string_prototype_ends_with(rt, this, &[a, b])
     });
     register_intrinsic_method(rt, host, "split", 2, |rt, args| {
         // §22.1.3.23: RequireObjectCoercible(this), then dispatch to

@@ -235,6 +235,35 @@ pub fn build_pad_end() -> IRFunction {
         title: "String.prototype.padEnd ( maxLength [ , fillString ] )".into(), body }
 }
 
+fn two_arg_section(spec: &str, rust_name: &str, title: &str, via: &'static str, p0: &str, p1: &str) -> IRFunction {
+    let body = vec![
+        Step { spec_step: format!("param.{}", p0), node: IRNode::Let { name: p0.into(), value: Expr::Arg(0) }},
+        Step { spec_step: format!("param.{}", p1), node: IRNode::Let { name: p1.into(), value: Expr::Arg(1) }},
+        Step { spec_step: "1".into(), node: IRNode::Return(Expr::CallBuiltin {
+            name: via, args: vec![Expr::This, v(p0), v(p1)],
+        })},
+    ];
+    IRFunction { spec_section: spec.into(), rust_name: rust_name.into(), title: title.into(), body }
+}
+
+pub fn build_slice()         -> IRFunction { two_arg_section("22.1.3.22", "string_prototype_slice",         "String.prototype.slice ( start, end )",                     "string_proto_slice_via",         "start", "end") }
+pub fn build_substring()     -> IRFunction { two_arg_section("22.1.3.24", "string_prototype_substring",     "String.prototype.substring ( start, end )",                  "string_proto_substring_via",     "start", "end") }
+pub fn build_substr()        -> IRFunction { two_arg_section("B.2.2.2",   "string_prototype_substr",        "String.prototype.substr ( start, length )",                  "string_proto_substr_via",        "start", "length") }
+pub fn build_index_of()      -> IRFunction { two_arg_section("22.1.3.8",  "string_prototype_index_of",      "String.prototype.indexOf ( searchString, position )",        "string_proto_index_of_via",      "search", "position") }
+pub fn build_last_index_of() -> IRFunction { two_arg_section("22.1.3.10", "string_prototype_last_index_of", "String.prototype.lastIndexOf ( searchString, position )",    "string_proto_last_index_of_via", "search", "position") }
+pub fn build_includes()      -> IRFunction { two_arg_section("22.1.3.7",  "string_prototype_includes",      "String.prototype.includes ( searchString, position )",       "string_proto_includes_via",      "search", "position") }
+pub fn build_starts_with()   -> IRFunction { two_arg_section("22.1.3.23", "string_prototype_starts_with",   "String.prototype.startsWith ( searchString, position )",     "string_proto_starts_with_via",   "search", "position") }
+pub fn build_ends_with()     -> IRFunction { two_arg_section("22.1.3.6",  "string_prototype_ends_with",     "String.prototype.endsWith ( searchString, endPosition )",    "string_proto_ends_with_via",     "search", "position") }
+
+pub fn spec_steps_slice()         -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["string_proto_slice_via"],         throws: None, prose: "Return the substring of S between clamped start and end indices." }] }
+pub fn spec_steps_substring()     -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["string_proto_substring_via"],     throws: None, prose: "Return the substring of S between clamped, ordered start and end indices." }] }
+pub fn spec_steps_substr()        -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["string_proto_substr_via"],        throws: None, prose: "Return a length-bounded substring of S starting at clamped start." }] }
+pub fn spec_steps_index_of()      -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["string_proto_index_of_via"],      throws: None, prose: "Return the index of the first occurrence of searchString in S, or -1." }] }
+pub fn spec_steps_last_index_of() -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["string_proto_last_index_of_via"], throws: None, prose: "Return the index of the last occurrence of searchString in S, or -1." }] }
+pub fn spec_steps_includes()      -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["string_proto_includes_via"],      throws: None, prose: "Throw if searchString is a RegExp; otherwise return whether S contains it." }] }
+pub fn spec_steps_starts_with()   -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["string_proto_starts_with_via"],   throws: None, prose: "Throw if searchString is a RegExp; otherwise return whether S starts with it." }] }
+pub fn spec_steps_ends_with()     -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["string_proto_ends_with_via"],     throws: None, prose: "Throw if searchString is a RegExp; otherwise return whether S ends with it." }] }
+
 pub fn spec_steps_repeat() -> Vec<SpecStepRecord> {
     vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["string_proto_repeat_via"], throws: None,
         prose: "Let O be ? RequireObjectCoercible(this). Let S be ? ToString(O). Let n be ? ToIntegerOrInfinity(count). If n < 0 or n is +∞, throw RangeError. Return S repeated n times." }]
