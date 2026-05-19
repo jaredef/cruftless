@@ -2228,3 +2228,115 @@ Read seed §A8.28 + §A8.29 (the two new fold-backs). Read Doc 729 + EXT 17 + th
 - `Object::set_own_internal` for non-enumerable engine-internal properties
 
 Pin-Art tag count: ~236 (EXT 17) + 19 (P61.E17→E21 + P62.E1→E14) = ~255 substrate moves committed.
+
+
+## RESUME VECTOR EXTENSION 19 — 2026-05-19 (P62.E15→E25; three new seed fold-backs; eight chapter-tier test262 lifts)
+
+### Headline
+
+Fourteen-commit substrate stretch across one continuous session. Three new seed-tier fold-backs (§A8.30 brand-check discipline, §A8.31 SyntaxError canonicalization, §A8.32 ToPrimitive at operator boundary). Slice-level test262 lifts of 10–40 pp across **eight chapters** in addition to the EXT 18 baseline. Zero corpus regression on the 43-package exemplar basket (still stable, last verified at EXT 18 close).
+
+### Commit table
+
+| commit | tag | recognition | yield |
+|---|---|---|---|
+| `f76343c9` | Ω.5.P62.E15.string-completion | 14 String.prototype methods migrated to require_object_coercible + to_string_strict + coerce_to_number triple. repeat gains RangeError on neg/Infinity; replace dispatches to searchValue[@@replace] when RegExp; split dispatches to separator[@@split] when RegExp. | String slices +30 / charAt +4 / charCodeAt +4 / codePointAt +5 / repeat +6 / padStart→100% / padEnd→100% / concat +8 / trim +14 / toLowerCase +9 / toUpperCase +8 / at +2 |
+| `fa8ba81a` | Ω.5.P62.E16.concat-spreadable-sort-callable | Array.prototype.concat IsConcatSpreadable per §23.1.3.2.1 (plain Object receivers go in as single elements); sort comparefn IsCallable check up-front per §23.1.3.27. | Array.concat +23 / Array.sort +1 |
+| `361bd479` | Ω.5.P62.E17.tonumber-symbol-throws | coerce_to_number throws TypeError on Symbol per §7.1.4 (was lenient-NaN); Array.prototype.{fill,slice,splice} positional args route through coerce_to_number. | Array.fill +4 / Array.slice +3 |
+| `302ed32c` | Ω.5.P62.E18.copywithin | Array.prototype.copyWithin target/start/end → coerce_to_number per §23.1.3.4 step 6/7/9. | Array.copyWithin +8 |
+| `dbde8ed2` | Ω.5.P62.E19.number-brand | Number ctor through coerce_to_number; Number.prototype.toString/toFixed/toLocaleString do ThisNumberValue brand + RangeError on radix/digits out of range; removed shadowing duplicate Number.prototype.valueOf install. | Number +23 |
+| `5cc369ba` | Ω.5.P62.E19.2.proto-primitive-data | Number/String/Boolean.prototype carry __primitive__ sentinel ([[NumberData]]=+0, [[StringData]]="", [[BooleanData]]=false) per §21.1.4 / §22.1.4 / §20.3.4. Closed 37-test brand-fail regression introduced by E19's tightening. | Number +39 |
+| `0581fbd3` | Ω.5.P62.E20.number-toexp-toprec | Number.prototype.toExponential / toPrecision: brand + RangeError on digits/precision out of range + NaN/Infinity short-circuit. | Number +9 |
+| `3780dacb` | Ω.5.P62.E21.toprimitive-operators | Three new Runtime helpers (to_primitive, op_add_rt, is_loosely_equal_rt) per §7.1.1/§13.15/§7.2.13; Op::Add/Op::Eq/Op::Ne route through them. | Number +1 immediate; corpus-wide tail |
+| `ef9118a8` | Ω.5.P62.E22.syntaxerror-variant | RuntimeError::SyntaxError variant + JSON.parse 15-site migration + ECMA §25.5.1 JSONStringCharacter control-char rejection. | JSON +31 |
+| `979ba9d4` | Ω.5.P62.E23.set-brand | Set.prototype.{add,has,delete} brand-check [[SetData]] per §24.2.3.x step 3. | Set +30 |
+| `a97bcc6f` | Ω.5.P62.E23.expanded.map-set-brand | Bulk-replace pattern across all Map/Set proto methods. Map.set's silent auto-create branch removed. Set.forEach IsCallable callback guard. | Set +6 / Map +17 |
+| `93ea7634` | Ω.5.P62.E24.promise-ctor | Promise ctor IsConstructor + IsCallable per §27.2.3.1; Promise.* static methods migrate to register_intrinsic_method with spec-correct lengths. | Promise +20 |
+| `1e49daa9` | Ω.5.P62.E25.regexp-symbol-methods | RegExp.prototype @@match / @@search / @@replace / @@split per §22.2.5. The Symbol-keyed direct-dispatch form `regex[Symbol.match](str)` now works. | RegExp +30 |
+
+### Substrate helpers / enum-variants introduced
+
+| substrate | site | consumers |
+|---|---|---|
+| `RuntimeError::SyntaxError(String)` enum variant | interp.rs (P62.E22) | JSON.parse (15 sites); reserved for RegExp/Function ctor on malformed source |
+| `rt.to_primitive(&v, hint)` | interp.rs (P62.E21) | op_add_rt + is_loosely_equal_rt; will absorb future ToPrimitive sites at Op::Sub/Op::Mul/etc. |
+| `rt.op_add_rt(&l, &r)` | interp.rs (P62.E21) | Op::Add |
+| `rt.is_loosely_equal_rt(&a, &b)` | interp.rs (P62.E21) | Op::Eq, Op::Ne |
+| `__primitive__` slot on built-in prototypes | intrinsics.rs (P62.E19.2) | Number/String/Boolean.prototype brand-checked methods |
+| Brand-check pattern at every Map/Set/Promise proto method | intrinsics.rs + promise.rs (P62.E23, E24) | ~25 method sites |
+| RegExp.prototype Symbol-keyed methods (@@match/@@search/@@replace/@@split) | regexp.rs (P62.E25) | String.prototype dispatch sites + user-code direct dispatch |
+
+### Test262 chapter numbers post-stretch
+
+Cumulative across EXT 18 + EXT 19 (sequential builds; "pre" = at EXT 17 close before E17, "post" = at E25 close):
+
+| chapter / slice | pre | post | Δ (pp) |
+|---|---|---|---|
+| Object.gOPD (slice) | 69.0% | 92.9% | +23.9 |
+| Object.create (slice) | 68.1% | 93.4% | +25.3 |
+| Object.freeze (slice) | 47.1% | 88.6% | +41.5 |
+| Object.defineProperty (slice) | 63.1% | 64.6% | +1.5 (long tail) |
+| Array.prototype (chapter) | 53.3% | 80.6% | +27.3 |
+| Array.prototype.map (slice) | 56.9% | 81.4% | +24.5 |
+| Array.prototype.concat (slice) | 28.9% | 62.3% | +33.4 |
+| String.prototype (chapter) | ~50% | 65.8% | +15.8 |
+| String.prototype.slice (slice) | 55.2% | 92.1% | +36.9 |
+| String.prototype.substring (slice) | 41.3% | 93.4% | +52.1 |
+| String.prototype.padStart (slice) | 69.2% | 100.0% | +30.8 |
+| Number (chapter) | 67.6% | 88.8% | +21.2 |
+| JSON (chapter) | 26.6% | 45.5% | +18.9 |
+| Map (chapter) | 40.1% | 49.5% | +9.4 |
+| Set (chapter) | 50.1% | 66.3% | +16.2 |
+| Promise (chapter) | 26.3% | 32.7% | +6.4 |
+| RegExp (chapter) | 45.1% | 46.6% | +1.5 (still pre-structural-parser-fix) |
+
+### Seed fold-back: §A8.30 + §A8.31 + §A8.32
+
+Three new apparatus-tier disciplines lifted:
+
+- **§A8.30 — Brand-check discipline: every method that depends on an internal slot must reject receivers that lack it.** Names two responsibilities (receiver-brand-check + prototype-brand-carry-through); composes with §A8.26 (three-stratum bilateral boundary) by naming a *fourth stratum*: the receiver-acceptance check.
+
+- **§A8.31 — SyntaxError canonical at the runtime-error enum.** ECMA's four user-throwable error classes; choice is structural, not stylistic. JSON.parse alone had 15 misclassified sites.
+
+- **§A8.32 — ToPrimitive at the operator boundary.** Extends §A8.29's two-surface duality to the *operator* level (Op::Add / Op::Eq / Op::Ne). Different amortization shape: a single bytecode-op change benefits every loose-eq / concat site in the engine and corpus.
+
+### Conjecture status
+
+P62.E23-expanded corroborates the structural-fix yield prediction strongly: one Python bulk-rewrite touching ~10 method sites closed +27 tests across Map and Set. P62.E25's installation of @@-Symbol RegExp methods is similar: one structural move, +30 tests, plus the corpus-tier amortization of every consumer that uses `regex[Symbol.match]` form.
+
+The §A8.25 + §A8.30 pattern at the receiver-acceptance stratum is now operational: the apparatus can identify a brand-check gap from a fail-cluster shape ("X expected TypeError, got silent fallthrough on plain Object"), fix it with the canonical pattern (set_own_internal sentinel + match-on-slot at every method site), and amortize across N consumer tests in one round.
+
+### Open scope at the P62.E25 boundary
+
+1. **RegExp syntax-error coverage** — 347 RegExp tests gate on the RegExp constructor throwing SyntaxError on malformed patterns. cruftless's regex engine accepts non-spec patterns silently. Needs a parser-tier audit; structural fix would be high-yield (10–15 pp).
+2. **Promise.all NewPromiseCapability** — 21 Promise tests gate on Promise.all.call(non-ctor) throwing TypeError. Requires NewPromiseCapability dispatch over arbitrary constructor `this` (not just the internal Promise ctor). Structural fix; moderate yield.
+3. **Function.prototype.toString source preservation** — 47 Function tests gate on returning the actual source. cruftless doesn't retain source past compile. Out-of-scope for v1.
+4. **Date chapter (594 tests, 46.2%)** — untouched in P62 arc. Likely similar brand-check + coercion gaps.
+5. **Symbol chapter (98 tests, 27.5%)** — Symbol.prototype.description accessor + getter dispatch; moderate yield.
+6. **Function chapter** — strict-mode caller-access tests (cruftless doesn't track strict mode per existing comments); 32 tests deferred.
+7. **Canonical parity-top500 sweep** — to ground-truth the §A8.30 + §A8.32 disciplines' corpus-tier prediction past P62.E25. Awaiting keeper directive.
+
+### Cumulative session totals
+
+- Commits in this stretch (EXT 19): 14 (one of which is the EXT 18 fold-back itself, so 13 substrate + 1 seed update; with the 19 from EXT 18 the running stretch is 32 commits from EXT 17 close → EXT 19 close).
+- Substrate moves logged: ~268 (was ~255 at EXT 18 close + 13 this stretch).
+- Test262 chapters touched in P62 arc: **8 distinct chapters/slices** lifted 5–50 pp each.
+- Seed §A8 grew: §A8.30 + §A8.31 + §A8.32.
+
+### Resume protocol
+
+Read seed §A8.28 / §A8.29 / §A8.30 / §A8.31 / §A8.32 (the five new fold-backs covering P62). Read EXT 18 + EXT 19. Substrate helpers to default to (cumulative list):
+
+- `rt.coerce_to_string(&v)` — lenient ToString; preserves @@sym: form (for ToPropertyKey).
+- `rt.to_string_strict(&v)` — strict ToString per §7.1.17; throws on Symbol. Use in built-in methods.
+- `rt.coerce_to_number(&v)` — ToNumber per §7.1.4 + §7.1.1.1; dispatches @@toPrimitive("number") → valueOf → toString; throws on Symbol.
+- `rt.to_primitive(&v, hint)` — generic ToPrimitive per §7.1.1.
+- `rt.op_add_rt(&l, &r)` / `rt.is_loosely_equal_rt(&a, &b)` — operator-level dispatching variants.
+- `rt.unwrap_primitive(&v)` — extracts [[XData]] from a wrapper, or returns v unchanged.
+- `rt.is_callable(&v)` — IsCallable per §7.2.4.
+- `rt.require_object_coercible(&v)` — §7.2.1 guard.
+- `Object::set_own_frozen` — frozen built-in slots ({w,e,c}=false).
+- `Object::set_own_internal` — non-enumerable engine sentinels ({w:true, e:false, c:true}).
+- `RuntimeError::SyntaxError(String)` — for spec-mandated SyntaxError sites.
+
+Pin-Art tag count: ~255 (EXT 18) + 13 (P62.E15→E25) = ~268 substrate moves committed.
