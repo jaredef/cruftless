@@ -2432,16 +2432,7 @@ impl Runtime {
             }
         });
         register_intrinsic_method(self, bi_proto, "toString", 0, |rt, args| {
-            let b = match rt.current_this() {
-                Value::BigInt(b) => b,
-                _ => return Err(RuntimeError::TypeError("BigInt.prototype.toString: this is not a BigInt".into())),
-            };
-            let radix = match args.first() {
-                Some(Value::Number(n)) if (2.0..=36.0).contains(n) => *n as u32,
-                Some(Value::Undefined) | None => 10,
-                _ => return Err(RuntimeError::TypeError("BigInt.prototype.toString radix out of range".into())),
-            };
-            Ok(Value::String(std::rc::Rc::new(b.to_radix(radix))))
+            crate::generated::bigint_prototype_to_string(rt, rt.current_this(), args)
         });
         self.obj_mut(bi_id).set_own_frozen("prototype".into(), Value::Object(bi_proto));
         self.bigint_prototype = Some(bi_proto);
@@ -4414,15 +4405,8 @@ impl Runtime {
         // Tier-Ω.5.wwww: Symbol.prototype with a toString that returns the
         // description. yup captures Symbol.prototype.toString at module init.
         let sym_proto = self.alloc_object(Object::new_ordinary());
-        register_intrinsic_method(self, sym_proto, "toString", 0, |rt, _args| {
-            match rt.current_this() {
-                Value::Symbol(s) => {
-                    let body = s.strip_prefix("@@sym:").unwrap_or(&s);
-                    let desc = body.split_once(':').map(|(_, d)| d).unwrap_or(body);
-                    Ok(Value::String(Rc::new(format!("Symbol({})", desc))))
-                }
-                v => Ok(Value::String(Rc::new(crate::abstract_ops::to_string(&v).as_str().to_string()))),
-            }
+        register_intrinsic_method(self, sym_proto, "toString", 0, |rt, args| {
+            crate::generated::symbol_prototype_to_string(rt, rt.current_this(), args)
         });
         self.obj_mut(sym).set_own_frozen("prototype".into(), Value::Object(sym_proto));
         self.globals.insert("Symbol".into(), Value::Object(sym));

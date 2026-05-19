@@ -21,6 +21,14 @@ fn nullary_section(spec: &str, rust_name: &str, title: &str, via: &'static str) 
     }
 }
 
+pub fn build_symbol_proto_to_string()   -> IRFunction { nullary_section ("20.4.3.3", "symbol_prototype_to_string",   "Symbol.prototype.toString ( )",   "symbol_proto_to_string_via") }
+pub fn build_bigint_proto_to_string()   -> IRFunction { variadic_section("21.2.3.4", "bigint_prototype_to_string",   "BigInt.prototype.toString ( [ radix ] )", "bigint_proto_to_string_via") }
+pub fn build_function_proto_to_string() -> IRFunction { nullary_section ("20.2.3.5", "function_prototype_to_string", "Function.prototype.toString ( )", "function_proto_to_string_via") }
+
+pub fn spec_steps_symbol_proto_to_string()   -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["symbol_proto_to_string_via"],   throws: None, prose: "Return \"Symbol(<description>)\" for a Symbol receiver; fall through to ToString for non-Symbol (per v1 deviation)." }] }
+pub fn spec_steps_bigint_proto_to_string()   -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["bigint_proto_to_string_via"],   throws: None, prose: "Brand-check BigInt; radix default 10, range 2..=36; format in radix." }] }
+pub fn spec_steps_function_proto_to_string() -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["function_proto_to_string_via"], throws: None, prose: "Brand-check Function/Closure/BoundFunction; return native-shape \"function NAME() { [native code] }\"." }] }
+
 pub fn build_error_proto_to_string() -> IRFunction { nullary_section("20.5.3.4", "error_prototype_to_string", "Error.prototype.toString ( )", "error_proto_to_string_via") }
 pub fn spec_steps_error_proto_to_string() -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["error_proto_to_string_via"], throws: None, prose: "Return name (default \"Error\") and message (default \"\") concatenated as \"name: message\" when message is non-empty, else just name." }] }
 

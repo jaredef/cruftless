@@ -562,26 +562,8 @@ fn install_function_proto(rt: &mut Runtime, host: ObjectRef) {
     // "[native code]" for natives; v1 returns the native-shape for
     // all functions. object-hash detects native functions by regex-
     // matching this output. Sufficient for the duck-test.
-    register_intrinsic_method(rt, host, "toString", 0, |rt, _args| {
-        let this = rt.current_this();
-        let s = match &this {
-            Value::Object(id) => {
-                let name = match &rt.obj(*id).internal_kind {
-                    InternalKind::Function(f) => f.name.clone(),
-                    InternalKind::Closure(c) => {
-                        // FunctionProto carries no name field directly;
-                        // use a generic placeholder for closures.
-                        let _ = c;
-                        "anonymous".to_string()
-                    }
-                    InternalKind::BoundFunction(_) => "bound".to_string(),
-                    _ => return Err(RuntimeError::TypeError("Function.prototype.toString: not a function".into())),
-                };
-                format!("function {}() {{ [native code] }}", name)
-            }
-            _ => return Err(RuntimeError::TypeError("Function.prototype.toString: not a function".into())),
-        };
-        Ok(Value::String(Rc::new(s)))
+    register_intrinsic_method(rt, host, "toString", 0, |rt, args| {
+        crate::generated::function_prototype_to_string(rt, rt.current_this(), args)
     });
     register_intrinsic_method(rt, host, "call", 1, |rt, args| {
         let f = rt.current_this();

@@ -560,6 +560,50 @@ impl Runtime {
         Ok(Value::String(std::rc::Rc::new(s)))
     }
 
+    /// Symbol.prototype.toString() per ECMA §20.4.3.3.
+    pub fn symbol_proto_to_string_via(&mut self) -> Result<Value, RuntimeError> {
+        match self.current_this() {
+            Value::Symbol(s) => {
+                let body = s.strip_prefix("@@sym:").unwrap_or(&s);
+                let desc = body.split_once(':').map(|(_, d)| d).unwrap_or(body);
+                Ok(Value::String(std::rc::Rc::new(format!("Symbol({})", desc))))
+            }
+            v => Ok(Value::String(std::rc::Rc::new(crate::abstract_ops::to_string(&v).as_str().to_string()))),
+        }
+    }
+
+    /// BigInt.prototype.toString(radix) per ECMA §21.2.3.4.
+    pub fn bigint_proto_to_string_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let b = match self.current_this() {
+            Value::BigInt(b) => b,
+            _ => return Err(RuntimeError::TypeError("BigInt.prototype.toString: this is not a BigInt".into())),
+        };
+        let radix = match args.first() {
+            Some(Value::Number(n)) if (2.0..=36.0).contains(n) => *n as u32,
+            Some(Value::Undefined) | None => 10,
+            _ => return Err(RuntimeError::TypeError("BigInt.prototype.toString radix out of range".into())),
+        };
+        Ok(Value::String(std::rc::Rc::new(b.to_radix(radix))))
+    }
+
+    /// Function.prototype.toString() per ECMA §20.2.3.5 (v1: native shape for all functions).
+    pub fn function_proto_to_string_via(&mut self) -> Result<Value, RuntimeError> {
+        let this = self.current_this();
+        let s = match &this {
+            Value::Object(id) => {
+                let name = match &self.obj(*id).internal_kind {
+                    crate::value::InternalKind::Function(f) => f.name.clone(),
+                    crate::value::InternalKind::Closure(_) => "anonymous".to_string(),
+                    crate::value::InternalKind::BoundFunction(_) => "bound".to_string(),
+                    _ => return Err(RuntimeError::TypeError("Function.prototype.toString: not a function".into())),
+                };
+                format!("function {}() {{ [native code] }}", name)
+            }
+            _ => return Err(RuntimeError::TypeError("Function.prototype.toString: not a function".into())),
+        };
+        Ok(Value::String(std::rc::Rc::new(s)))
+    }
+
     /// Error.prototype.toString() per ECMA §20.5.3.4.
     pub fn error_proto_to_string_via(&mut self) -> Result<Value, RuntimeError> {
         let this = self.current_this();
