@@ -663,6 +663,66 @@ impl Runtime {
         Ok(Value::Number(new_ms))
     }
 
+    /// JSON.stringify(value, replacer, space) per ECMA §24.5.2.
+    /// v1: replacer + space ignored; thin wrapper around the existing free fn.
+    pub fn json_stringify_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let v = args.first().cloned().unwrap_or(Value::Undefined);
+        let s = crate::intrinsics::json_stringify(self, &v);
+        Ok(Value::String(std::rc::Rc::new(s)))
+    }
+
+    /// JSON.parse(text, reviver) per ECMA §24.5.1.
+    pub fn json_parse_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let s = if let Some(v) = args.first() {
+            crate::abstract_ops::to_string(v)
+        } else {
+            return Err(RuntimeError::SyntaxError("JSON.parse requires a string".into()));
+        };
+        crate::intrinsics::json_parse(self, s.as_str())
+    }
+
+    /// Symbol.for(key) per ECMA §20.4.2.6 — interns a registry symbol.
+    pub fn symbol_for_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let s = args.first().map(|v| crate::abstract_ops::to_string(v).as_str().to_string()).unwrap_or_default();
+        Ok(Value::Symbol(std::rc::Rc::new(format!("@@sym:{}", s))))
+    }
+
+    /// Symbol.keyFor(sym) per ECMA §20.4.2.7 — recovers the key, or undefined.
+    pub fn symbol_key_for_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let s = args.first().and_then(|v| if let Value::Symbol(s) = v { Some(s.clone()) } else { None });
+        match s {
+            Some(s) if s.starts_with("@@sym:") && !s.contains(':') => Ok(Value::Undefined),
+            Some(s) => {
+                let body = s.strip_prefix("@@sym:").unwrap_or(&s);
+                Ok(Value::String(std::rc::Rc::new(body.split_once(':').map(|(_, d)| d.to_string()).unwrap_or_else(|| body.to_string()))))
+            }
+            _ => Ok(Value::Undefined),
+        }
+    }
+
+    /// Date.prototype.getYear() per Annex B.2.4.1 — year minus 1900.
+    pub fn date_proto_get_year_via(&mut self) -> Result<Value, RuntimeError> {
+        let id = match self.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
+        let ms = match self.object_get(id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::Number(f64::NAN)) };
+        let (y, _, _) = crate::intrinsics::date_components(ms);
+        Ok(Value::Number((y - 1900) as f64))
+    }
+
+    /// Date.prototype.setYear(y) per Annex B.2.4.2 — 0..99 maps to 1900+y.
+    pub fn date_proto_set_year_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let id = match self.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
+        let y_raw = args.first().map(crate::abstract_ops::to_number).unwrap_or(f64::NAN);
+        let full_year = if y_raw >= 0.0 && y_raw <= 99.0 { y_raw + 1900.0 } else { y_raw };
+        let ms = match self.object_get(id, "__date_ms") { Value::Number(n) => n, _ => 0.0 };
+        let (_, mo, d) = crate::intrinsics::date_components(ms);
+        let days_per_year = 365.25;
+        let new_ms = ((full_year - 1970.0) * days_per_year * 86_400_000.0)
+            + ((mo as f64) * 30.0 * 86_400_000.0)
+            + ((d as f64 - 1.0) * 86_400_000.0);
+        self.object_set(id, "__date_ms".into(), Value::Number(new_ms));
+        Ok(Value::Number(new_ms))
+    }
+
     /// parseInt(string, radix) per ECMA §19.2.5.
     pub fn parse_int_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         if args.is_empty() { return Ok(Value::Number(f64::NAN)); }

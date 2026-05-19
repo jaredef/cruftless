@@ -21,6 +21,20 @@ fn nullary_section(spec: &str, rust_name: &str, title: &str, via: &'static str) 
     }
 }
 
+pub fn build_json_stringify()      -> IRFunction { variadic_section("24.5.2", "json_stringify",                "JSON.stringify ( value, replacer, space )", "json_stringify_via") }
+pub fn build_json_parse()          -> IRFunction { variadic_section("24.5.1", "json_parse",                    "JSON.parse ( text, reviver )",              "json_parse_via") }
+pub fn build_symbol_for()          -> IRFunction { variadic_section("20.4.2.6", "symbol_for",                  "Symbol.for ( key )",                         "symbol_for_via") }
+pub fn build_symbol_key_for()      -> IRFunction { variadic_section("20.4.2.7", "symbol_key_for",              "Symbol.keyFor ( sym )",                      "symbol_key_for_via") }
+pub fn build_date_get_year()       -> IRFunction { nullary_section ("B.2.4.1",  "date_prototype_get_year",     "Date.prototype.getYear ( )",                 "date_proto_get_year_via") }
+pub fn build_date_set_year()       -> IRFunction { variadic_section("B.2.4.2",  "date_prototype_set_year",     "Date.prototype.setYear ( y )",               "date_proto_set_year_via") }
+
+pub fn spec_steps_json_stringify() -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["json_stringify_via"], throws: None, prose: "Serialize value to JSON text (v1: replacer + space args ignored)." }] }
+pub fn spec_steps_json_parse()     -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["json_parse_via"],     throws: None, prose: "Parse JSON text to a Value tree; SyntaxError on malformed input (v1: reviver ignored)." }] }
+pub fn spec_steps_symbol_for()     -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["symbol_for_via"],     throws: None, prose: "Return a registry-interned Symbol value with the given key (v1: prefix-encoded as @@sym:KEY)." }] }
+pub fn spec_steps_symbol_key_for() -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["symbol_key_for_via"], throws: None, prose: "Return the registry key for a Symbol, or undefined for non-registry / non-Symbol values." }] }
+pub fn spec_steps_date_get_year()  -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["date_proto_get_year_via"], throws: None, prose: "Return year - 1900 (Annex B legacy)." }] }
+pub fn spec_steps_date_set_year()  -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["date_proto_set_year_via"], throws: None, prose: "Set year (0-99 maps to 1900+y; full years pass through)." }] }
+
 pub fn build_parse_int()   -> IRFunction { variadic_section("19.2.5", "parse_int",   "parseInt ( string, radix )",   "parse_int_via") }
 pub fn build_parse_float() -> IRFunction { variadic_section("19.2.4", "parse_float", "parseFloat ( string )",        "parse_float_via") }
 

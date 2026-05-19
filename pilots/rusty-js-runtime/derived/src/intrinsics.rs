@@ -1063,16 +1063,8 @@ impl Runtime {
 
     fn install_json(&mut self) {
         let json = self.alloc_object(Object::new_ordinary());
-        register_intrinsic_method(self, json, "stringify", 3, |rt, args|{
-            let v = args.first().cloned().unwrap_or(Value::Undefined);
-            Ok(Value::String(Rc::new(json_stringify(rt, &v))))
-        });
-        register_intrinsic_method(self, json, "parse", 2, |rt, args|{
-            let s = if let Some(v) = args.first() { abstract_ops::to_string(v) } else {
-                return Err(RuntimeError::SyntaxError("JSON.parse requires a string".into()));
-            };
-            json_parse(rt, s.as_str())
-        });
+        register_intrinsic_method(self, json, "stringify", 3, |rt, args| crate::generated::json_stringify(rt, rt.current_this(), args));
+        register_intrinsic_method(self, json, "parse",     2, |rt, args| crate::generated::json_parse(rt, rt.current_this(), args));
         // Ω.5.P62.E4: JSON[Symbol.toStringTag] === "JSON" per §25.5.1.5.
         self.obj_mut(json).set_own_frozen("@@toStringTag".into(),
             Value::String(Rc::new("JSON".into())));
@@ -3156,28 +3148,8 @@ impl Runtime {
         // getYear / setYear per Annex B.2.4 (legacy). getYear returns
         // year - 1900; setYear sets full year, with two-digit values
         // mapped to 1900s for 0-99.
-        register_intrinsic_method(self, proto, "getYear", 0, |rt, _args| {
-            let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
-            let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::Number(f64::NAN)) };
-            let (y, _, _) = date_components(ms);
-            Ok(Value::Number((y - 1900) as f64))
-        });
-        register_intrinsic_method(self, proto, "setYear", 1, |rt, args| {
-            let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
-            let y_raw = args.first().map(crate::abstract_ops::to_number).unwrap_or(f64::NAN);
-            let full_year = if y_raw >= 0.0 && y_raw <= 99.0 { y_raw + 1900.0 } else { y_raw };
-            // Crude: re-encode the current ms with adjusted year. Use the
-            // existing components and convert back.
-            let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => 0.0 };
-            let (_, mo, d) = date_components(ms);
-            // Approximate ms-for-year (ignores leap-second / DST nuance).
-            let days_per_year = 365.25;
-            let new_ms = ((full_year - 1970.0) * days_per_year * 86_400_000.0)
-                + ((mo as f64) * 30.0 * 86_400_000.0)
-                + ((d as f64 - 1.0) * 86_400_000.0);
-            rt.object_set(this_id, "__date_ms".into(), Value::Number(new_ms));
-            Ok(Value::Number(new_ms))
-        });
+        register_intrinsic_method(self, proto, "getYear", 0, |rt, args| crate::generated::date_prototype_get_year(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "setYear", 1, |rt, args| crate::generated::date_prototype_set_year(rt, rt.current_this(), args));
         let proto_for_ctor = proto;
         let ctor_obj = make_native("Date", move |rt, args| {
             // Tier-Ω.5.iiiii: Date(y, mo, d, h, m, s, ms) multi-arg ctor
@@ -4097,25 +4069,8 @@ impl Runtime {
         for &(name, sym_str) in well_known {
             self.object_set(sym, name.into(), Value::Symbol(Rc::new(sym_str.to_string())));
         }
-        register_intrinsic_method(self, sym, "for", 1, |_rt, args| {
-            let s = args.first().map(|v| crate::abstract_ops::to_string(v).as_str().to_string()).unwrap_or_default();
-            Ok(Value::Symbol(Rc::new(format!("@@sym:{}", s))))
-        });
-        register_intrinsic_method(self, sym, "keyFor", 1, |_rt, args| {
-            // Ω.5.P19.E1: Symbol value type. Accept Value::Symbol only
-            // (spec § 20.4.2.7 throws TypeError on non-Symbol; we return
-            // undefined to match prior pragmatic laxity). Recover the key
-            // from the canonical `@@sym:<key>` form Symbol.for produces.
-            let s = args.first().and_then(|v| if let Value::Symbol(s) = v { Some(s.clone()) } else { None });
-            match s {
-                Some(s) if s.starts_with("@@sym:") && !s.contains(':') => Ok(Value::Undefined),
-                Some(s) => {
-                    let body = s.strip_prefix("@@sym:").unwrap_or(&s);
-                    Ok(Value::String(Rc::new(body.split_once(':').map(|(_, d)| d.to_string()).unwrap_or_else(|| body.to_string()))))
-                }
-                _ => Ok(Value::Undefined),
-            }
-        });
+        register_intrinsic_method(self, sym, "for",    1, |rt, args| crate::generated::symbol_for(rt, rt.current_this(), args));
+        register_intrinsic_method(self, sym, "keyFor", 1, |rt, args| crate::generated::symbol_key_for(rt, rt.current_this(), args));
         // Tier-Ω.5.wwww: Symbol.prototype with a toString that returns the
         // description. yup captures Symbol.prototype.toString at module init.
         let sym_proto = self.alloc_object(Object::new_ordinary());
@@ -4429,7 +4384,7 @@ where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
 
 // ──────────────── JSON.stringify (limited) ────────────────
 
-fn json_stringify(rt: &Runtime, v: &Value) -> String {
+pub(crate) fn json_stringify(rt: &Runtime, v: &Value) -> String {
     match v {
         Value::Undefined => "undefined".into(),
         Value::Null => "null".into(),
