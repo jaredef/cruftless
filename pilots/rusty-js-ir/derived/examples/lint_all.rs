@@ -6,6 +6,7 @@ use rusty_js_ir::lint::lint;
 use rusty_js_ir::sections::{
     array_prototype_find as find, array_prototype_index_search as index_search,
     array_prototype_iteration as iter, array_prototype_map,
+    array_prototype_reduce as reduce,
 };
 
 fn main() {
@@ -21,6 +22,7 @@ fn main() {
         ("Array.prototype.findLastIndex", find::build_find_last_index(), find::spec_steps_find()),
         ("Array.prototype.indexOf", index_search::build_index_of(), index_search::spec_steps_index_of()),
         ("Array.prototype.includes", index_search::build_includes(), index_search::spec_steps_includes()),
+        ("Array.prototype.reduce", reduce::build_reduce(), reduce::spec_steps_reduce()),
     ];
 
     let mut total_unexpected = 0;

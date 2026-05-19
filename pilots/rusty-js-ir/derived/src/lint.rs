@@ -322,7 +322,11 @@ fn collect_abstract_ops_in_expr(
         }
         Expr::Var(_) | Expr::Undefined | Expr::Null | Expr::Bool(_) |
         Expr::Number(_) | Expr::Str(_) | Expr::Arg(_) | Expr::This |
-        Expr::IntConst(_) => {}
+        Expr::HasArg(_) | Expr::IntConst(_) => {}
+        Expr::CallBuiltin { name, args } => {
+            set.insert(name);
+            for a in args { collect_abstract_ops_in_expr(a, set); }
+        }
         Expr::AsIndex(v) => collect_abstract_ops_in_expr(v, set),
         Expr::IndexAsValue(v) => collect_abstract_ops_in_expr(v, set),
         Expr::IndexAsKey(v) => {

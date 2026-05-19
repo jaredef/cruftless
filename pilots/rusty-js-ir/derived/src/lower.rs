@@ -128,6 +128,11 @@ fn emit_expr(e: &Expr) -> String {
             i
         ),
         Expr::This => "this.clone()".into(),
+        Expr::HasArg(i) => format!("(args.len() > {})", i),
+        Expr::CallBuiltin { name, args } => {
+            let args_str = args.iter().map(emit_expr).collect::<Vec<_>>().join(", ");
+            format!("rt.{}({})?", name, args_str)
+        }
         Expr::IntConst(n) => format!("{}_usize", n),
         Expr::AsIndex(v) => format!("rt.value_to_index(&{})?", emit_expr(v)),
         Expr::IndexAsValue(v) => format!("Value::Number({} as f64)", emit_expr(v)),

@@ -109,6 +109,22 @@ pub enum Expr {
     /// Argument access — args[i], defaulting to Undefined.
     Arg(usize),
 
+    /// HasArg(i) — true iff args.len() > i. Distinguishes "arg passed
+    /// as undefined" from "arg not passed at all". Used by methods whose
+    /// spec distinguishes these cases (e.g., Array.prototype.reduce's
+    /// initialValue presence check per §23.1.3.24 step 4).
+    HasArg(usize),
+
+    /// CallBuiltin(name, args) — invoke a Runtime helper that isn't a
+    /// JS-side method dispatch. Used for spec-prescribed abstract ops
+    /// that don't model as Get-then-Call (EnumerableOwnPropertyNames,
+    /// SpeciesConstructor, NewPromiseCapability, etc.). Lowers to
+    /// `rt.<name>(arg1, arg2, ...)?`.
+    CallBuiltin {
+        name: &'static str,
+        args: Vec<Expr>,
+    },
+
     /// Receiver — `this` value.
     This,
 
