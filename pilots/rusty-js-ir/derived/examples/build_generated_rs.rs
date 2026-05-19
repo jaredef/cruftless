@@ -144,6 +144,7 @@ fn main() {
         promise_static::build_any(),
         promise_static::build_race(),
         promise_static::build_with_resolvers(),
+        promise_static::build_all_resolve_element_factory(),
         object_proto_ops::build_get_prototype_of(),
         object_proto_ops::build_set_prototype_of(),
         object_proto_ops::build_is_extensible(),

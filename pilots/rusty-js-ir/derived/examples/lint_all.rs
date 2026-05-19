@@ -148,6 +148,7 @@ fn main() {
         ("Promise.any",               promise_static::build_any(),          promise_static::spec_steps_any()),
         ("Promise.race",              promise_static::build_race(),         promise_static::spec_steps_race()),
         ("Promise.withResolvers",     promise_static::build_with_resolvers(), promise_static::spec_steps_with_resolvers()),
+        ("Promise.all Resolve Element Factory", promise_static::build_all_resolve_element_factory(), promise_static::spec_steps_all_resolve_element_factory()),
         ("Object.getPrototypeOf", object_proto_ops::build_get_prototype_of(), object_proto_ops::spec_steps_get_prototype_of()),
         ("Object.setPrototypeOf", object_proto_ops::build_set_prototype_of(), object_proto_ops::spec_steps_set_prototype_of()),
         ("Object.isExtensible", object_proto_ops::build_is_extensible(), object_proto_ops::spec_steps_is_extensible()),

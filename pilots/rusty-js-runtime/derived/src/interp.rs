@@ -1015,6 +1015,68 @@ impl Runtime {
         Ok(Value::Undefined)
     }
 
+    /// Ω.5.P63.E55 Stage 3 helper: per Promise.all Resolve Element Function
+    /// "maybe-complete" step. Decrements remaining; when it hits zero,
+    /// assembles the values array and invokes the capability resolve.
+    /// Takes the shared values cell, the remaining counter cell, and the
+    /// capability resolve as Value (cells held as Rc<RefCell<Value>> can't
+    /// be expressed as Values without boxing; instead, we model them as
+    /// host-side Objects carrying a __cell_slot internal — kept simple here
+    /// by representing the cells as plain mutable JS Arrays whose [0]
+    /// element is the contained value).
+    pub fn promise_all_maybe_complete_via(&mut self, values_arr: &Value, remaining_cell: &Value, cap_resolve: &Value) -> Result<Value, RuntimeError> {
+        // remaining_cell is a host Array with [0]=Number(count); decrement.
+        let remaining_id = match remaining_cell {
+            Value::Object(id) => *id,
+            _ => return Err(RuntimeError::TypeError("promise_all_maybe_complete: remaining_cell must be a cell".into())),
+        };
+        let cur = match self.object_get(remaining_id, "0") {
+            Value::Number(n) => n,
+            _ => return Err(RuntimeError::TypeError("promise_all_maybe_complete: cell[0] must be Number".into())),
+        };
+        let new_n = cur - 1.0;
+        self.object_set(remaining_id, "0".into(), Value::Number(new_n));
+        if new_n == 0.0 {
+            self.call_function(cap_resolve.clone(), Value::Undefined, vec![values_arr.clone()])?;
+        }
+        Ok(Value::Undefined)
+    }
+
+    /// Ω.5.P63.E55 Stage 3 helper: cell-style accessors so IR can model the
+    /// spec's "Set values[index] to value" step. Uses a JS Array as the
+    /// shared cell substrate (cells held as Value::Object).
+    pub fn cell_array_set_via(&mut self, cell_array: &Value, index: &Value, value: &Value) -> Result<Value, RuntimeError> {
+        let id = match cell_array {
+            Value::Object(id) => *id,
+            _ => return Err(RuntimeError::TypeError("cell_array_set: cell must be Object".into())),
+        };
+        let i = match index { Value::Number(n) => *n as usize, _ => 0 };
+        self.object_set(id, i.to_string(), value.clone());
+        Ok(Value::Undefined)
+    }
+
+    /// Ω.5.P63.E55 Stage 3 helper: returns true and sets the already_called
+    /// flag to true if it was previously false. Atomic "first-call wins"
+    /// semantics modeling the [[AlreadyCalled]] slot.
+    pub fn cell_check_and_set_via(&mut self, cell: &Value) -> Result<Value, RuntimeError> {
+        let id = match cell {
+            Value::Object(id) => *id,
+            _ => return Err(RuntimeError::TypeError("cell_check_and_set: cell must be Object".into())),
+        };
+        let prev = match self.object_get(id, "0") { Value::Boolean(b) => b, _ => false };
+        if prev { return Ok(Value::Boolean(false)); }
+        self.object_set(id, "0".into(), Value::Boolean(true));
+        Ok(Value::Boolean(true))
+    }
+
+    /// Ω.5.P63.E55 Stage 3 helper: allocate a cell (host Array with [0]=init).
+    pub fn cell_array_new_via(&mut self, init: &Value) -> Result<Value, RuntimeError> {
+        let arr = self.alloc_object(crate::value::Object::new_array());
+        self.object_set(arr, "0".into(), init.clone());
+        self.object_set(arr, "length".into(), Value::Number(1.0));
+        Ok(Value::Object(arr))
+    }
+
     /// Ω.5.P63.E55 helper: assemble the {promise, resolve, reject} object
     /// returned by Promise.withResolvers.
     pub fn promise_with_resolvers_assemble_via(&mut self, promise: &Value, resolve: &Value, reject: &Value) -> Result<Value, RuntimeError> {
@@ -1159,41 +1221,25 @@ impl Runtime {
         let iter_v = args.first().cloned().unwrap_or(Value::Undefined);
         let entries = crate::intrinsics::collect_iterable(self, iter_v)?;
         let n = entries.len();
-        // Shared state: values vector, remaining count.
-        let values: std::rc::Rc<std::cell::RefCell<Vec<Value>>> =
-            std::rc::Rc::new(std::cell::RefCell::new(vec![Value::Undefined; n]));
-        let remaining: std::rc::Rc<std::cell::RefCell<usize>> =
-            std::rc::Rc::new(std::cell::RefCell::new(1));
+        // Cells via IR-shaped helpers: values array preallocated, remaining cell at count=1.
+        let values_arr = self.alloc_object(crate::value::Object::new_array());
+        for j in 0..n {
+            self.object_set(values_arr, j.to_string(), Value::Undefined);
+        }
+        self.object_set(values_arr, "length".into(), Value::Number(n as f64));
+        let values_v = Value::Object(values_arr);
+        let remaining_v = self.cell_array_new_via(&Value::Number(1.0))?;
         for (i, entry) in entries.into_iter().enumerate() {
-            *remaining.borrow_mut() += 1;
-            let already_called = std::rc::Rc::new(std::cell::RefCell::new(false));
-            let values_for = values.clone();
-            let remaining_for = remaining.clone();
-            let already_for = already_called.clone();
-            let cap_resolve_for = cap_resolve.clone();
-            let resolve_element = crate::intrinsics::make_native(
-                "<Promise.all Resolve Element>",
-                move |rt, args| {
-                    if *already_for.borrow() { return Ok(Value::Undefined); }
-                    *already_for.borrow_mut() = true;
-                    let v = args.first().cloned().unwrap_or(Value::Undefined);
-                    values_for.borrow_mut()[i] = v;
-                    let mut r = remaining_for.borrow_mut();
-                    *r -= 1;
-                    if *r == 0 {
-                        // Build the values array now, hand to cap_resolve.
-                        let arr = rt.alloc_object(crate::value::Object::new_array());
-                        let vs = values_for.borrow();
-                        for (j, val) in vs.iter().enumerate() {
-                            rt.object_set(arr, j.to_string(), val.clone());
-                        }
-                        rt.object_set(arr, "length".into(), Value::Number(vs.len() as f64));
-                        rt.call_function(cap_resolve_for.clone(), Value::Undefined,
-                            vec![Value::Object(arr)])?;
-                    }
-                    Ok(Value::Undefined)
-                });
-            let resolve_element_id = self.alloc_object(resolve_element);
+            // remaining += 1
+            let cur = match self.object_get(match &remaining_v { Value::Object(id)=>*id, _=>unreachable!() }, "0") {
+                Value::Number(n) => n, _ => 0.0,
+            };
+            self.object_set(match &remaining_v { Value::Object(id)=>*id, _=>unreachable!() }, "0".into(), Value::Number(cur + 1.0));
+            let already_v = self.cell_array_new_via(&Value::Boolean(false))?;
+            let resolve_element = crate::generated::promise_all_resolve_element_factory(
+                self, Value::Undefined,
+                &[Value::Number(i as f64), values_v.clone(), already_v, remaining_v.clone(), cap_resolve.clone()],
+            )?;
             let next_promise = self.call_function(promise_resolve.clone(), ctor.clone(), vec![entry])?;
             let then_fn = match &next_promise {
                 Value::Object(id) => self.object_get(*id, "then"),
@@ -1204,23 +1250,10 @@ impl Runtime {
                     "Promise.all: next.then is not callable".into()));
             }
             self.call_function(then_fn, next_promise,
-                vec![Value::Object(resolve_element_id), cap_reject.clone()])?;
+                vec![resolve_element, cap_reject.clone()])?;
         }
-        // After the loop: decrement remaining (for the loop itself), check zero.
-        let final_zero = {
-            let mut r = remaining.borrow_mut();
-            *r -= 1;
-            *r == 0
-        };
-        if final_zero {
-            let arr = self.alloc_object(crate::value::Object::new_array());
-            let vs = values.borrow();
-            for (j, val) in vs.iter().enumerate() {
-                self.object_set(arr, j.to_string(), val.clone());
-            }
-            self.object_set(arr, "length".into(), Value::Number(vs.len() as f64));
-            self.call_function(cap_resolve, Value::Undefined, vec![Value::Object(arr)])?;
-        }
+        // Final loop-self decrement via the same maybe-complete primitive.
+        self.promise_all_maybe_complete_via(&values_v, &remaining_v, &cap_resolve)?;
         Ok(capability_promise)
     }
 

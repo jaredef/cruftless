@@ -41,6 +41,90 @@ fn v(name: &str) -> Expr { Expr::Var(name.to_string()) }
 // settle it on invocation. Each closure body is a single CallBuiltin to the
 // settling helper.
 
+// ──────────────── Ω.5.P63.E55 Stage 3: Promise.all Resolve Element Function factory ────────────────
+//
+// ECMA §27.2.4.1.2 defines "Promise.all Resolve Element Functions" as
+// fresh built-in functions allocated per iteration whose internal slots
+// are [[AlreadyCalled]], [[Index]], [[Values]], [[Capability]], and
+// [[RemainingElementsCount]]. The spec text:
+//
+//   1. Let alreadyCalled be the value of F's [[AlreadyCalled]] internal slot.
+//   2. If alreadyCalled.[[value]] is true, return undefined.
+//   3. Set alreadyCalled.[[value]] to true.
+//   4. Let index be the value of F's [[Index]] internal slot.
+//   5. Let values be the value of F's [[Values]] internal slot.
+//   6. Let promiseCapability be the value of F's [[Capability]] internal slot.
+//   7. Let remainingElementsCount be the value of F's
+//      [[RemainingElementsCount]] internal slot.
+//   8. Set values[index] to x.
+//   9. Set remainingElementsCount.[[value]] to remainingElementsCount.[[value]] - 1.
+//   10. If remainingElementsCount.[[value]] is 0, then
+//       a. Let valuesArray be CreateArrayFromList(values).
+//       b. Return ? Call(promiseCapability.[[Resolve]], undefined, « valuesArray »).
+//   11. Return undefined.
+//
+// The IR factory takes the per-iteration captures (index, values, already,
+// remaining, cap_resolve) as args, binds them as locals, and returns a
+// Closure value capturing them. The closure body is the spec's steps 1-11.
+
+pub fn build_all_resolve_element_factory() -> IRFunction {
+    let body = vec![
+        Step { spec_step: "param.index".into(),       node: IRNode::Let { name: "index".into(),       value: Expr::Arg(0) }},
+        Step { spec_step: "param.values".into(),      node: IRNode::Let { name: "values".into(),      value: Expr::Arg(1) }},
+        Step { spec_step: "param.already".into(),     node: IRNode::Let { name: "already".into(),     value: Expr::Arg(2) }},
+        Step { spec_step: "param.remaining".into(),   node: IRNode::Let { name: "remaining".into(),   value: Expr::Arg(3) }},
+        Step { spec_step: "param.cap_resolve".into(), node: IRNode::Let { name: "cap_resolve".into(), value: Expr::Arg(4) }},
+        Step { spec_step: "1".into(), node: IRNode::Return(Expr::Closure {
+            label: "<Promise.all Resolve Element>",
+            params: vec!["x".into()],
+            captures: vec!["index".into(), "values".into(), "already".into(), "remaining".into(), "cap_resolve".into()],
+            body: vec![
+                // steps 1-3: AlreadyCalled brand-check + set.
+                Step { spec_step: "1".into(), node: IRNode::If {
+                    cond: Expr::Not(Box::new(Expr::ToBoolean(Box::new(Expr::CallBuiltin {
+                        name: "cell_check_and_set_via",
+                        args: vec![v("already")],
+                    })))),
+                    then_body: vec![
+                        Step { spec_step: "1.return".into(), node: IRNode::Return(Expr::Undefined) },
+                    ],
+                    else_body: vec![],
+                }},
+                // step 8: values[index] = x.
+                Step { spec_step: "8".into(), node: IRNode::Expr(Expr::CallBuiltin {
+                    name: "cell_array_set_via",
+                    args: vec![v("values"), v("index"), v("x")],
+                })},
+                // steps 9-10: decrement remaining; if zero, resolve capability.
+                Step { spec_step: "9".into(), node: IRNode::Expr(Expr::CallBuiltin {
+                    name: "promise_all_maybe_complete_via",
+                    args: vec![v("values"), v("remaining"), v("cap_resolve")],
+                })},
+                // step 11: implicit Undefined return (the closure's default tail).
+            ],
+        })},
+    ];
+    IRFunction {
+        spec_section: "27.2.4.1.2".into(),
+        rust_name: "promise_all_resolve_element_factory".into(),
+        title: "Promise.all Resolve Element Function (factory)".into(),
+        body,
+    }
+}
+
+pub fn spec_steps_all_resolve_element_factory() -> Vec<SpecStepRecord> {
+    vec![
+        SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["cell_check_and_set_via"], throws: None,
+            prose: "If alreadyCalled.[[Value]] is true, return undefined; otherwise set it to true." },
+        SpecStepRecord { step_id: "1.return".into(), abstract_ops: vec![], throws: None,
+            prose: "Already-called: return undefined." },
+        SpecStepRecord { step_id: "8".into(), abstract_ops: vec!["cell_array_set_via"], throws: None,
+            prose: "Set values[index] to x." },
+        SpecStepRecord { step_id: "9".into(), abstract_ops: vec!["promise_all_maybe_complete_via"], throws: None,
+            prose: "Decrement remaining; if zero, resolve the capability with the values array." },
+    ]
+}
+
 pub fn build_with_resolvers() -> IRFunction {
     let body = vec![
         // step 1 alt: allocate the fresh pending Promise.
