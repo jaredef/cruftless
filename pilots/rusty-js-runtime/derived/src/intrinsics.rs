@@ -1870,37 +1870,61 @@ impl Runtime {
             };
             let id = rt.alloc_object(obj);
             if let Some(Value::Object(props_id)) = args.get(1) {
-                let entries: Vec<(String, Value)> = rt.obj(*props_id).properties.iter()
+                let props_id = *props_id;
+                let keys: Vec<String> = rt.obj(props_id).properties.iter()
                     .filter(|(_, d)| d.enumerable)
-                    .map(|(k, d)| (k.clone(), d.value.clone()))
+                    .map(|(k, _)| k.clone())
                     .collect();
-                for (k, dv) in entries {
-                    if let Value::Object(did) = dv {
-                        let read_bool = |rt: &Runtime, name: &str| -> Option<bool> {
-                            if !rt.obj(did).properties.contains_key(name) { return None; }
-                            match rt.object_get(did, name) {
-                                Value::Boolean(b) => Some(b),
-                                Value::Undefined | Value::Null => Some(false),
-                                _ => Some(true),
-                            }
-                        };
-                        let getter = rt.object_get(did, "get");
-                        let setter = rt.object_get(did, "set");
-                        let has_getter = matches!(getter, Value::Object(_));
-                        let has_setter = matches!(setter, Value::Object(_));
-                        let writable = read_bool(rt, "writable").unwrap_or(false);
-                        let enumerable = read_bool(rt, "enumerable").unwrap_or(false);
-                        let configurable = read_bool(rt, "configurable").unwrap_or(false);
-                        let value = if rt.obj(did).properties.contains_key("value") {
-                            rt.object_get(did, "value")
-                        } else { Value::Undefined };
-                        rt.obj_mut(id).properties.insert(k, crate::value::PropertyDescriptor {
-                            value,
-                            writable, enumerable, configurable,
-                            getter: if has_getter { Some(getter) } else { None },
-                            setter: if has_setter { Some(setter) } else { None },
-                        });
+                for k in keys {
+                    // §20.1.2.2 step 5 + §10.1.6.1: Get(props, key) dispatches
+                    // accessor getters per §10.1.8.1.
+                    let dv = rt.read_property(props_id, &k)?;
+                    let did = match dv {
+                        Value::Object(d) => d,
+                        _ => return Err(RuntimeError::TypeError(
+                            "Property description must be an object".into())),
+                    };
+                    // Ω.5.P62.E11: ToPropertyDescriptor per ECMA §6.2.5.5.
+                    let has = |rt: &mut Runtime, name: &str| -> bool {
+                        rt.has_property(did, name)
+                    };
+                    let has_value = has(rt, "value");
+                    let has_writable = has(rt, "writable");
+                    let has_get = has(rt, "get");
+                    let has_set = has(rt, "set");
+                    // Step 5/7: get + set must be callable or undefined.
+                    let getter_v = if has_get { rt.read_property(did, "get")? } else { Value::Undefined };
+                    let setter_v = if has_set { rt.read_property(did, "set")? } else { Value::Undefined };
+                    if has_get && !matches!(getter_v, Value::Undefined) && !rt.is_callable(&getter_v) {
+                        return Err(RuntimeError::TypeError(
+                            "Object.create: getter must be callable".into()));
                     }
+                    if has_set && !matches!(setter_v, Value::Undefined) && !rt.is_callable(&setter_v) {
+                        return Err(RuntimeError::TypeError(
+                            "Object.create: setter must be callable".into()));
+                    }
+                    // Step 9: cannot mix data + accessor.
+                    if (has_value || has_writable) && (has_get || has_set) {
+                        return Err(RuntimeError::TypeError(
+                            "Object.create: cannot both specify accessors and a value or writable".into()));
+                    }
+                    let read_bool = |rt: &mut Runtime, name: &str| -> Result<Option<bool>, RuntimeError> {
+                        if !rt.has_property(did, name) { return Ok(None); }
+                        let v = rt.read_property(did, name)?;
+                        Ok(Some(crate::abstract_ops::to_boolean(&v)))
+                    };
+                    let writable = read_bool(rt, "writable")?.unwrap_or(false);
+                    let enumerable = read_bool(rt, "enumerable")?.unwrap_or(false);
+                    let configurable = read_bool(rt, "configurable")?.unwrap_or(false);
+                    let value = if has_value { rt.read_property(did, "value")? } else { Value::Undefined };
+                    let has_getter = matches!(getter_v, Value::Object(_));
+                    let has_setter = matches!(setter_v, Value::Object(_));
+                    rt.obj_mut(id).properties.insert(k, crate::value::PropertyDescriptor {
+                        value,
+                        writable, enumerable, configurable,
+                        getter: if has_getter { Some(getter_v) } else { None },
+                        setter: if has_setter { Some(setter_v) } else { None },
+                    });
                 }
             }
             Ok(Value::Object(id))
