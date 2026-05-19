@@ -1165,7 +1165,7 @@ impl Runtime {
         });
         register_intrinsic_method(self, json, "parse", 2, |rt, args|{
             let s = if let Some(v) = args.first() { abstract_ops::to_string(v) } else {
-                return Err(RuntimeError::TypeError("JSON.parse requires a string".into()));
+                return Err(RuntimeError::SyntaxError("JSON.parse requires a string".into()));
             };
             json_parse(rt, s.as_str())
         });
@@ -5203,7 +5203,7 @@ pub fn json_parse(rt: &mut Runtime, s: &str) -> Result<Value, RuntimeError> {
     let v = json_parse_value(rt, bytes, &mut p)?;
     skip_ws(bytes, &mut p);
     if p != bytes.len() {
-        return Err(RuntimeError::TypeError("JSON.parse: trailing characters".into()));
+        return Err(RuntimeError::SyntaxError("JSON.parse: trailing characters".into()));
     }
     Ok(v)
 }
@@ -5214,7 +5214,7 @@ fn skip_ws(b: &[u8], p: &mut usize) {
 
 fn json_parse_value(rt: &mut Runtime, b: &[u8], p: &mut usize) -> Result<Value, RuntimeError> {
     skip_ws(b, p);
-    if *p >= b.len() { return Err(RuntimeError::TypeError("JSON.parse: unexpected end".into())); }
+    if *p >= b.len() { return Err(RuntimeError::SyntaxError("JSON.parse: unexpected end".into())); }
     match b[*p] {
         b'{' => json_parse_object(rt, b, p),
         b'[' => json_parse_array(rt, b, p),
@@ -5223,7 +5223,7 @@ fn json_parse_value(rt: &mut Runtime, b: &[u8], p: &mut usize) -> Result<Value, 
         b'f' if b[*p..].starts_with(b"false") => { *p += 5; Ok(Value::Boolean(false)) }
         b'n' if b[*p..].starts_with(b"null") => { *p += 4; Ok(Value::Null) }
         b'-' | b'0'..=b'9' => json_parse_number(b, p),
-        _ => Err(RuntimeError::TypeError(format!("JSON.parse: unexpected character at offset {}", p))),
+        _ => Err(RuntimeError::SyntaxError(format!("JSON.parse: unexpected character at offset {}", p))),
     }
 }
 
@@ -5236,7 +5236,7 @@ fn json_parse_object(rt: &mut Runtime, b: &[u8], p: &mut usize) -> Result<Value,
         skip_ws(b, p);
         let key = json_parse_string(b, p)?;
         skip_ws(b, p);
-        if *p >= b.len() || b[*p] != b':' { return Err(RuntimeError::TypeError("JSON.parse: expected ':'".into())); }
+        if *p >= b.len() || b[*p] != b':' { return Err(RuntimeError::SyntaxError("JSON.parse: expected ':'".into())); }
         *p += 1;
         let value = json_parse_value(rt, b, p)?;
         rt.object_set(obj, key, value);
@@ -5244,7 +5244,7 @@ fn json_parse_object(rt: &mut Runtime, b: &[u8], p: &mut usize) -> Result<Value,
         match b.get(*p) {
             Some(&b',') => { *p += 1; continue; }
             Some(&b'}') => { *p += 1; return Ok(Value::Object(obj)); }
-            _ => return Err(RuntimeError::TypeError("JSON.parse: expected ',' or '}'".into())),
+            _ => return Err(RuntimeError::SyntaxError("JSON.parse: expected ',' or '}'".into())),
         }
     }
 }
@@ -5263,14 +5263,14 @@ fn json_parse_array(rt: &mut Runtime, b: &[u8], p: &mut usize) -> Result<Value, 
         match b.get(*p) {
             Some(&b',') => { *p += 1; continue; }
             Some(&b']') => { *p += 1; return Ok(Value::Object(arr)); }
-            _ => return Err(RuntimeError::TypeError("JSON.parse: expected ',' or ']'".into())),
+            _ => return Err(RuntimeError::SyntaxError("JSON.parse: expected ',' or ']'".into())),
         }
     }
 }
 
 fn json_parse_string(b: &[u8], p: &mut usize) -> Result<String, RuntimeError> {
     if *p >= b.len() || b[*p] != b'"' {
-        return Err(RuntimeError::TypeError("JSON.parse: expected string".into()));
+        return Err(RuntimeError::SyntaxError("JSON.parse: expected string".into()));
     }
     *p += 1;
     let mut out = String::new();
@@ -5279,7 +5279,7 @@ fn json_parse_string(b: &[u8], p: &mut usize) -> Result<String, RuntimeError> {
         if c == b'"' { *p += 1; return Ok(out); }
         if c == b'\\' {
             *p += 1;
-            if *p >= b.len() { return Err(RuntimeError::TypeError("JSON.parse: dangling \\".into())); }
+            if *p >= b.len() { return Err(RuntimeError::SyntaxError("JSON.parse: dangling \\".into())); }
             match b[*p] {
                 b'"' => out.push('"'),
                 b'\\' => out.push('\\'),
@@ -5290,20 +5290,26 @@ fn json_parse_string(b: &[u8], p: &mut usize) -> Result<String, RuntimeError> {
                 b'b' => out.push('\u{0008}'),
                 b'f' => out.push('\u{000C}'),
                 b'u' if *p + 4 < b.len() => {
-                    let hex = std::str::from_utf8(&b[*p+1..*p+5]).map_err(|_|RuntimeError::TypeError("JSON.parse: bad \\u".into()))?;
-                    let cp = u32::from_str_radix(hex, 16).map_err(|_|RuntimeError::TypeError("JSON.parse: bad \\u".into()))?;
+                    let hex = std::str::from_utf8(&b[*p+1..*p+5]).map_err(|_|RuntimeError::SyntaxError("JSON.parse: bad \\u".into()))?;
+                    let cp = u32::from_str_radix(hex, 16).map_err(|_|RuntimeError::SyntaxError("JSON.parse: bad \\u".into()))?;
                     if let Some(ch) = char::from_u32(cp) { out.push(ch); }
                     *p += 4;
                 }
-                _ => return Err(RuntimeError::TypeError("JSON.parse: bad escape".into())),
+                _ => return Err(RuntimeError::SyntaxError("JSON.parse: bad escape".into())),
             }
             *p += 1;
         } else {
+            // Ω.5.P62.E22: ECMA §25.5.1 JSONStringCharacter excludes
+            // U+0000 through U+001F; control chars must be escaped.
+            if c < 0x20 {
+                return Err(RuntimeError::SyntaxError(
+                    "JSON.parse: invalid control character in string".into()));
+            }
             out.push(c as char);
             *p += 1;
         }
     }
-    Err(RuntimeError::TypeError("JSON.parse: unterminated string".into()))
+    Err(RuntimeError::SyntaxError("JSON.parse: unterminated string".into()))
 }
 
 fn json_parse_number(b: &[u8], p: &mut usize) -> Result<Value, RuntimeError> {
@@ -5319,8 +5325,8 @@ fn json_parse_number(b: &[u8], p: &mut usize) -> Result<Value, RuntimeError> {
         if *p < b.len() && (b[*p] == b'+' || b[*p] == b'-') { *p += 1; }
         while *p < b.len() && b[*p].is_ascii_digit() { *p += 1; }
     }
-    let s = std::str::from_utf8(&b[start..*p]).map_err(|_|RuntimeError::TypeError("JSON.parse: bad number".into()))?;
-    let n = s.parse::<f64>().map_err(|_|RuntimeError::TypeError("JSON.parse: bad number".into()))?;
+    let s = std::str::from_utf8(&b[start..*p]).map_err(|_|RuntimeError::SyntaxError("JSON.parse: bad number".into()))?;
+    let n = s.parse::<f64>().map_err(|_|RuntimeError::SyntaxError("JSON.parse: bad number".into()))?;
     Ok(Value::Number(n))
 }
 

@@ -16,6 +16,9 @@ pub enum RuntimeError {
     TypeError(String),
     ReferenceError(String),
     RangeError(String),
+    /// Ω.5.P62.E22: SyntaxError per ECMA — used by JSON.parse,
+    /// RegExp ctor, Function ctor on malformed source, etc.
+    SyntaxError(String),
     Unimplemented(String),
     /// Thrown JS value bubbling up the call stack.
     Thrown(Value),
@@ -762,6 +765,7 @@ impl Runtime {
                         RuntimeError::TypeError(m) => (Some(m.clone()), "TypeError"),
                         RuntimeError::RangeError(m) => (Some(m.clone()), "RangeError"),
                         RuntimeError::ReferenceError(m) => (Some(m.clone()), "ReferenceError"),
+                        RuntimeError::SyntaxError(m) => (Some(m.clone()), "SyntaxError"),
                         _ => return Err(e),
                     };
                     if frame.try_stack.is_empty() { return Err(e); }
