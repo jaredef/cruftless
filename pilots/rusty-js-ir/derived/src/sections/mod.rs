@@ -23,3 +23,4 @@ pub mod reflect_static;               // Reflect.{has, get, set, deleteProperty,
 pub mod array_prototype_mutators;     // push, pop, shift, unshift, reverse
 pub mod object_prototype;             // Object.prototype.{toString, hasOwnProperty, valueOf, propertyIsEnumerable, isPrototypeOf, toLocaleString}
 pub mod misc_static;                  // Math.{imul, fround, clz32}, Array.{isArray, of}
+pub mod object_descriptors;           // Object.{defineProperty, defineProperties, getOwnPropertyDescriptor(s), create} + Object.prototype.{__defineGetter__, __defineSetter__, __lookupGetter__, __lookupSetter__}

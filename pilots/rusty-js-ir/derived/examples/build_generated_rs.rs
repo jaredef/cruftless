@@ -7,6 +7,7 @@ use rusty_js_ir::lower_to_rust;
 use rusty_js_ir::sections::array_prototype_mutators as mutators;
 use rusty_js_ir::sections::object_prototype as objproto;
 use rusty_js_ir::sections::misc_static as misc;
+use rusty_js_ir::sections::object_descriptors as desc;
 use rusty_js_ir::sections::{
     array_prototype_find as find, array_prototype_index_search as index_search,
     array_prototype_iteration as iter, array_prototype_map,
@@ -148,6 +149,15 @@ fn main() {
         promise_static::build_all_settled_resolve_element_factory(),
         promise_static::build_all_settled_reject_element_factory(),
         promise_static::build_any_reject_element_factory(),
+        desc::build_define_property(),
+        desc::build_define_properties(),
+        desc::build_get_own_property_descriptor(),
+        desc::build_get_own_property_descriptors(),
+        desc::build_create(),
+        desc::build_proto_define_getter(),
+        desc::build_proto_define_setter(),
+        desc::build_proto_lookup_getter(),
+        desc::build_proto_lookup_setter(),
         object_proto_ops::build_get_prototype_of(),
         object_proto_ops::build_set_prototype_of(),
         object_proto_ops::build_is_extensible(),

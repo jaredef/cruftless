@@ -899,3 +899,58 @@ Remaining queued alphabet extensions from EXT 52:
 Item 3 (NewPromiseCapability) was queued at EXT 52 and is now closed by EXT 53. Items 1-2 above are zero-novelty applications of the EXT 55 alphabet extension.
 
 Pin-Art tag count: 65 commits as of IR-EXT 55.
+
+
+## IR-EXT 56 — 2026-05-19 (descriptor surface lift; non-extension finding)
+
+**Stretch summary**: lift Object.{defineProperty, defineProperties, getOwnPropertyDescriptor, getOwnPropertyDescriptors, create} + Object.prototype.{__defineGetter__, __defineSetter__, __lookupGetter__, __lookupSetter__} from hand-written intrinsics into IR sections. 9 new sections (231 → 240 lint clean) — and the §I.1.b "alphabet extension" reading at EXT 52 close was *wrong*: this family does NOT need new IR primitives. Since a property descriptor in v1 is just a JS Object, the existing CallBuiltin + via-helper pattern handles every section as a 1-step IR. The "descriptor builder" alphabet extension queued at EXT 52 reduces to a runtime extension.
+
+This is the third §I-strengthened corroboration of the workstream's alphabet-completeness conjecture: the queued primitive families predicted at EXT 52 close included one (descriptor-builders) that turns out to be redundant. The remaining queued extensions (iterator-protocol, ...) may merit re-examination through the same lens before being committed.
+
+### Substrate at EXT 56 close
+
+**IR alphabet**: **58 nodes** (unchanged from EXT 55). The descriptor lift used zero new IR primitives.
+
+**Sections IR-encoded**: 240. Wired: 240. The IR-only category is empty.
+
+**Runtime helpers cumulative**: ~164 (9 new descriptor-family _via helpers: object_define_property_via, object_define_properties_via, object_get_own_property_descriptor_via, object_get_own_property_descriptors_via, object_create_via, object_proto_define_getter_via, object_proto_define_setter_via, object_proto_lookup_getter_via, object_proto_lookup_setter_via).
+
+**Linter**: 240/240 clean.
+
+### Commits
+
+| commit | recognition |
+|---|---|
+| (in progress) | IR-EXT 56: descriptor surface lift. 9 sections + 9 _via helpers. Removes ~360 LOC of inline impl from intrinsics.rs (1156–1564) and ~40 LOC from prototype.rs (Annex B family). All registrations now route through generated.rs. |
+
+### Test262 baseline (descriptor chapters, pre-lift)
+
+| chapter | baseline | files |
+|---|---|---|
+| Object/defineProperty | 64.5% (730/1131) | 1131 |
+| Object/defineProperties | 49.6% (314/632) | 632 |
+| Object/getOwnPropertyDescriptor | 93.5% (290/310) | 310 |
+| Object/getOwnPropertyDescriptors | 55.5% (10/18) | 18 |
+| Object/create | 93.4% (299/320) | 320 |
+| Object/prototype (includes __define*__) | 56.8% (141/248) | 248 |
+
+The lift is structural (same code, different shape) so post-lift rates must match these exactly — any movement is regression, not progress. The coverage *wins* come later by editing the runtime _via helpers (now the single point of truth) toward fuller spec semantics.
+
+### Test262 result (descriptor chapters, post-lift)
+
+| chapter | pre | post | Δ |
+|---|---|---|---|
+| Object/defineProperty | 64.5% (730/1131) | 64.5% (730/1131) | 0 |
+| Object/defineProperties | 49.6% (314/632) | **63.9% (404/632)** | **+90** |
+| Object/getOwnPropertyDescriptor | 93.5% (290/310) | 93.5% (290/310) | 0 |
+| Object/getOwnPropertyDescriptors | 55.5% (10/18) | 55.5% (10/18) | 0 |
+| Object/create | 93.4% (299/320) | 93.4% (299/320) | 0 |
+| Object/prototype | 56.8% (141/248) | 57.2% (142/248) | +1 |
+
+**Net: +91 tests.** This is a §I-strengthened **coverage-discovery** corroboration. The lift was supposed to be purely structural, but it accidentally collapsed two slightly-divergent code paths (Object.defineProperties had its own inline ToPropertyDescriptor logic that lacked some of the accessor-conflict / ValidateAndApply non-configurable-redef checks that defineProperty had). Lifting both through `object_define_property_via` made them share a single canonical implementation, fixing the divergence.
+
+This is the **5th coverage-discovery corroboration** of the workstream (after Math.asin/acos absence at EXT 14, Reflect.deleteProperty configurable at EXT 15, three Reflect.* throw-vs-fallback at EXT 16, Array getOwnPropertyNames length at EXT 18). All five share the same shape: IR construction *forces* algorithmic equivalence between code paths that the hand-written substrate had silently drifted apart.
+
+### Conjecture status
+
+**§I-strengthened corroboration #5 (2026-05-19, EXT 56)**: a queued alphabet extension predicted at EXT 52 close (property-descriptor builders) was empirically shown to be unnecessary upon implementation. The existing alphabet was already sufficient. This is the strongest corroboration of §I.1.b yet — the alphabet-completeness criterion is not just stable in practice but predictively *over-conservative* when projected forward.

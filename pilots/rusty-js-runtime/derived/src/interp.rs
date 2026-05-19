@@ -1126,6 +1126,294 @@ impl Runtime {
         Ok(Value::Undefined)
     }
 
+    /// IR-EXT 56 — Object.defineProperty body lifted from intrinsics.rs.
+    /// Implements §10.1.6 ValidateAndApplyPropertyDescriptor + §6.2.5.5
+    /// ToPropertyDescriptor: validates the desc object, throws TypeError on
+    /// non-callable get/set or mixed data+accessor, honors generic-data
+    /// preservation of existing [[Value]], enforces non-configurable redef.
+    pub fn object_define_property_via(&mut self, target_v: &Value, key_v: &Value, desc_v: &Value) -> Result<Value, RuntimeError> {
+        let target = match target_v {
+            Value::Object(id) => *id,
+            other => return Err(RuntimeError::TypeError(format!(
+                "Object.defineProperty: target must be an object (got {})",
+                match other {
+                    Value::Undefined => "undefined", Value::Null => "null",
+                    Value::Boolean(_) => "boolean", Value::Number(_) => "number",
+                    Value::String(_) => "string", _ => "other",
+                }))),
+        };
+        let key = self.coerce_to_string(key_v)?;
+        let desc_id = match desc_v {
+            Value::Object(id) => *id,
+            _ => return Err(RuntimeError::TypeError("Object.defineProperty: descriptor must be an object".into())),
+        };
+        let has_get_key = self.has_property(desc_id, "get");
+        let has_set_key = self.has_property(desc_id, "set");
+        let getter = if has_get_key { self.read_property(desc_id, "get")? } else { Value::Undefined };
+        let setter = if has_set_key { self.read_property(desc_id, "set")? } else { Value::Undefined };
+        if has_get_key && !matches!(getter, Value::Undefined) && !self.is_callable(&getter) {
+            return Err(RuntimeError::TypeError("Invalid property descriptor: getter must be callable".into()));
+        }
+        if has_set_key && !matches!(setter, Value::Undefined) && !self.is_callable(&setter) {
+            return Err(RuntimeError::TypeError("Invalid property descriptor: setter must be callable".into()));
+        }
+        let has_getter = matches!(&getter, Value::Object(_));
+        let has_setter = matches!(&setter, Value::Object(_));
+        let has_value_key = self.obj(desc_id).has_own_str("value") || self.obj(desc_id).has_own_str("writable");
+        let has_accessor_key = has_get_key || has_set_key;
+        if has_value_key && has_accessor_key {
+            return Err(RuntimeError::TypeError(
+                "Invalid property descriptor: cannot both specify accessors and a value or writable attribute".into()));
+        }
+        if has_getter || has_setter {
+            self.obj_mut(target).properties.insert(crate::value::PropertyKey::String(key), crate::value::PropertyDescriptor {
+                value: Value::Undefined,
+                writable: false, enumerable: true, configurable: true,
+                getter: if has_getter { Some(getter) } else { None },
+                setter: if has_setter { Some(setter) } else { None },
+            });
+        } else {
+            let has_value = self.obj(desc_id).has_own_str("value");
+            let read_attr = |rt: &Runtime, name: &str| -> Option<bool> {
+                if !rt.obj(desc_id).has_own_str(name) { return None; }
+                match rt.object_get(desc_id, name) {
+                    Value::Boolean(b) => Some(b),
+                    Value::Undefined | Value::Null => Some(false),
+                    Value::Number(n) => Some(n != 0.0),
+                    Value::String(s) => Some(!s.as_str().is_empty()),
+                    _ => Some(true),
+                }
+            };
+            let writable = read_attr(self, "writable");
+            let enumerable = read_attr(self, "enumerable");
+            let configurable = read_attr(self, "configurable");
+            let value = if has_value {
+                self.object_get(desc_id, "value")
+            } else {
+                match self.obj(target).get_own(&key) {
+                    Some(d) => d.value.clone(),
+                    None => Value::Undefined,
+                }
+            };
+            let exists = self.obj(target).has_own_str(&key);
+            let (default_w, default_e, default_c, existing_value) = if exists {
+                let d = self.obj(target).get_own(&key).unwrap();
+                (d.writable, d.enumerable, d.configurable, d.value.clone())
+            } else {
+                (false, false, false, Value::Undefined)
+            };
+            let new_w = writable.unwrap_or(default_w);
+            let new_e = enumerable.unwrap_or(default_e);
+            let new_c = configurable.unwrap_or(default_c);
+            if exists && !default_c {
+                let value_changed = has_value && !crate::abstract_ops::is_strictly_equal(&value, &existing_value);
+                let attrs_changed = new_e != default_e || new_c != default_c
+                    || (default_w == false && new_w == true);
+                let value_change_allowed = if value_changed { default_w } else { true };
+                if attrs_changed || !value_change_allowed {
+                    return Err(RuntimeError::TypeError(format!(
+                        "Cannot redefine non-configurable property '{}'", key)));
+                }
+            }
+            self.obj_mut(target).properties.insert(crate::value::PropertyKey::String(key), crate::value::PropertyDescriptor {
+                value, writable: new_w, enumerable: new_e, configurable: new_c,
+                getter: None, setter: None,
+            });
+        }
+        Ok(Value::Object(target))
+    }
+
+    /// IR-EXT 56 — Object.defineProperties: snapshot enumerable keys of props,
+    /// then dispatch to object_define_property_via for each.
+    pub fn object_define_properties_via(&mut self, target_v: &Value, props_v: &Value) -> Result<Value, RuntimeError> {
+        let target = match target_v {
+            Value::Object(id) => *id,
+            _ => return Err(RuntimeError::TypeError("Object.defineProperties: target must be an object".into())),
+        };
+        let props = match props_v {
+            Value::Object(id) => *id,
+            _ => return Err(RuntimeError::TypeError("Object.defineProperties: props must be an object".into())),
+        };
+        let entries: Vec<(String, Value)> = {
+            let o = self.obj(props);
+            o.properties.iter()
+                .filter(|(_, d)| d.enumerable)
+                .map(|(k, d)| (k.to_string_content(), d.value.clone()))
+                .collect()
+        };
+        for (k, dv) in entries {
+            if matches!(dv, Value::Object(_)) {
+                self.object_define_property_via(
+                    &Value::Object(target),
+                    &Value::String(std::rc::Rc::new(k)),
+                    &dv,
+                )?;
+            }
+        }
+        Ok(Value::Object(target))
+    }
+
+    /// IR-EXT 56 — Object.getOwnPropertyDescriptor per §20.1.2.10. Returns
+    /// {value,writable,enumerable,configurable} for data or
+    /// {get,set,enumerable,configurable} for accessor; undefined if absent.
+    pub fn object_get_own_property_descriptor_via(&mut self, obj_v: &Value, key_v: &Value) -> Result<Value, RuntimeError> {
+        let id = match obj_v {
+            Value::Object(id) => *id,
+            _ => return Ok(Value::Undefined),
+        };
+        let key = self.coerce_to_string(key_v)?;
+        let (has, value, writable, enumerable, configurable, getter, setter) = {
+            let o = self.obj(id);
+            match o.get_own(&key) {
+                Some(d) => (true, d.value.clone(), d.writable, d.enumerable, d.configurable, d.getter.clone(), d.setter.clone()),
+                None => (false, Value::Undefined, false, false, false, None, None),
+            }
+        };
+        if !has { return Ok(Value::Undefined); }
+        let out = self.alloc_object(crate::value::Object::new_ordinary());
+        if getter.is_some() || setter.is_some() {
+            self.object_set(out, "get".into(), getter.unwrap_or(Value::Undefined));
+            self.object_set(out, "set".into(), setter.unwrap_or(Value::Undefined));
+        } else {
+            self.object_set(out, "value".into(), value);
+            self.object_set(out, "writable".into(), Value::Boolean(writable));
+        }
+        self.object_set(out, "enumerable".into(), Value::Boolean(enumerable));
+        self.object_set(out, "configurable".into(), Value::Boolean(configurable));
+        Ok(Value::Object(out))
+    }
+
+    /// IR-EXT 56 — Object.getOwnPropertyDescriptors per §20.1.2.10.
+    pub fn object_get_own_property_descriptors_via(&mut self, obj_v: &Value) -> Result<Value, RuntimeError> {
+        let id = match obj_v {
+            Value::Object(id) => *id,
+            _ => return Ok(Value::Object(self.alloc_object(crate::value::Object::new_ordinary()))),
+        };
+        let entries: Vec<(String, Value, bool, bool, bool, Option<Value>, Option<Value>)> = {
+            let o = self.obj(id);
+            o.properties.iter()
+                .map(|(k, d)| (k.to_string_content(), d.value.clone(), d.writable, d.enumerable, d.configurable, d.getter.clone(), d.setter.clone()))
+                .collect()
+        };
+        let out = self.alloc_object(crate::value::Object::new_ordinary());
+        for (k, v, w, e, c, getter, setter) in entries {
+            let desc = self.alloc_object(crate::value::Object::new_ordinary());
+            if let Some(g) = getter { self.object_set(desc, "get".into(), g); }
+            if let Some(s) = setter { self.object_set(desc, "set".into(), s); }
+            if !matches!(v, Value::Undefined) { self.object_set(desc, "value".into(), v); }
+            self.object_set(desc, "writable".into(), Value::Boolean(w));
+            self.object_set(desc, "enumerable".into(), Value::Boolean(e));
+            self.object_set(desc, "configurable".into(), Value::Boolean(c));
+            self.object_set(out, k, Value::Object(desc));
+        }
+        Ok(Value::Object(out))
+    }
+
+    /// IR-EXT 56 — Object.create per §20.1.2.2 with full descriptor semantics.
+    pub fn object_create_via(&mut self, proto_v: &Value, props_v: &Value) -> Result<Value, RuntimeError> {
+        let mut obj = crate::value::Object::new_ordinary();
+        obj.proto = match proto_v {
+            Value::Object(id) => Some(*id),
+            Value::Null => None,
+            _ => return Err(RuntimeError::TypeError("Object.create: prototype must be object or null".into())),
+        };
+        let id = self.alloc_object(obj);
+        if let Value::Object(props_id) = props_v {
+            let props_id = *props_id;
+            let keys: Vec<String> = self.obj(props_id).properties.iter()
+                .filter(|(_, d)| d.enumerable)
+                .map(|(k, _)| k.as_str().to_string())
+                .collect();
+            for k in keys {
+                let dv = self.read_property(props_id, &k)?;
+                let did = match dv {
+                    Value::Object(d) => d,
+                    _ => return Err(RuntimeError::TypeError(
+                        "Property description must be an object".into())),
+                };
+                let has_value = self.has_property(did, "value");
+                let has_writable = self.has_property(did, "writable");
+                let has_get = self.has_property(did, "get");
+                let has_set = self.has_property(did, "set");
+                let getter_v = if has_get { self.read_property(did, "get")? } else { Value::Undefined };
+                let setter_v = if has_set { self.read_property(did, "set")? } else { Value::Undefined };
+                if has_get && !matches!(getter_v, Value::Undefined) && !self.is_callable(&getter_v) {
+                    return Err(RuntimeError::TypeError("Object.create: getter must be callable".into()));
+                }
+                if has_set && !matches!(setter_v, Value::Undefined) && !self.is_callable(&setter_v) {
+                    return Err(RuntimeError::TypeError("Object.create: setter must be callable".into()));
+                }
+                if (has_value || has_writable) && (has_get || has_set) {
+                    return Err(RuntimeError::TypeError(
+                        "Object.create: cannot both specify accessors and a value or writable".into()));
+                }
+                let read_bool = |rt: &mut Runtime, name: &str| -> Result<Option<bool>, RuntimeError> {
+                    if !rt.has_property(did, name) { return Ok(None); }
+                    let v = rt.read_property(did, name)?;
+                    Ok(Some(crate::abstract_ops::to_boolean(&v)))
+                };
+                let writable = read_bool(self, "writable")?.unwrap_or(false);
+                let enumerable = read_bool(self, "enumerable")?.unwrap_or(false);
+                let configurable = read_bool(self, "configurable")?.unwrap_or(false);
+                let value = if has_value { self.read_property(did, "value")? } else { Value::Undefined };
+                let has_getter = matches!(getter_v, Value::Object(_));
+                let has_setter = matches!(setter_v, Value::Object(_));
+                self.obj_mut(id).properties.insert(crate::value::PropertyKey::String(k), crate::value::PropertyDescriptor {
+                    value, writable, enumerable, configurable,
+                    getter: if has_getter { Some(getter_v) } else { None },
+                    setter: if has_setter { Some(setter_v) } else { None },
+                });
+            }
+        }
+        Ok(Value::Object(id))
+    }
+
+    /// IR-EXT 56 — Object.prototype.__defineGetter__ per Annex B.2.2.2.
+    pub fn object_proto_define_getter_via(&mut self, this_v: &Value, key_v: &Value, fn_v: &Value) -> Result<Value, RuntimeError> {
+        let this = match this_v { Value::Object(id) => *id, _ => return Ok(Value::Undefined) };
+        let key = crate::abstract_ops::to_string(key_v).as_str().to_string();
+        if !matches!(fn_v, Value::Object(_)) {
+            return Err(RuntimeError::TypeError("__defineGetter__: getter must be callable".into()));
+        }
+        let existing_setter = self.obj(this).get_own(&key).and_then(|d| d.setter.clone());
+        self.obj_mut(this).properties.insert(crate::value::PropertyKey::String(key), crate::value::PropertyDescriptor {
+            value: Value::Undefined,
+            writable: false, enumerable: true, configurable: true,
+            getter: Some(fn_v.clone()), setter: existing_setter,
+        });
+        Ok(Value::Undefined)
+    }
+
+    /// IR-EXT 56 — Object.prototype.__defineSetter__ per Annex B.2.2.3.
+    pub fn object_proto_define_setter_via(&mut self, this_v: &Value, key_v: &Value, fn_v: &Value) -> Result<Value, RuntimeError> {
+        let this = match this_v { Value::Object(id) => *id, _ => return Ok(Value::Undefined) };
+        let key = crate::abstract_ops::to_string(key_v).as_str().to_string();
+        if !matches!(fn_v, Value::Object(_)) {
+            return Err(RuntimeError::TypeError("__defineSetter__: setter must be callable".into()));
+        }
+        let existing_getter = self.obj(this).get_own(&key).and_then(|d| d.getter.clone());
+        self.obj_mut(this).properties.insert(crate::value::PropertyKey::String(key), crate::value::PropertyDescriptor {
+            value: Value::Undefined,
+            writable: false, enumerable: true, configurable: true,
+            getter: existing_getter, setter: Some(fn_v.clone()),
+        });
+        Ok(Value::Undefined)
+    }
+
+    /// IR-EXT 56 — Object.prototype.__lookupGetter__ per Annex B.2.2.4.
+    pub fn object_proto_lookup_getter_via(&mut self, this_v: &Value, key_v: &Value) -> Result<Value, RuntimeError> {
+        let this = match this_v { Value::Object(id) => *id, _ => return Ok(Value::Undefined) };
+        let key = crate::abstract_ops::to_string(key_v).as_str().to_string();
+        Ok(self.obj(this).get_own(&key).and_then(|d| d.getter.clone()).unwrap_or(Value::Undefined))
+    }
+
+    /// IR-EXT 56 — Object.prototype.__lookupSetter__ per Annex B.2.2.5.
+    pub fn object_proto_lookup_setter_via(&mut self, this_v: &Value, key_v: &Value) -> Result<Value, RuntimeError> {
+        let this = match this_v { Value::Object(id) => *id, _ => return Ok(Value::Undefined) };
+        let key = crate::abstract_ops::to_string(key_v).as_str().to_string();
+        Ok(self.obj(this).get_own(&key).and_then(|d| d.setter.clone()).unwrap_or(Value::Undefined))
+    }
+
     /// Ω.5.P63.E55 helper: assemble the {promise, resolve, reject} object
     /// returned by Promise.withResolvers.
     pub fn promise_with_resolvers_assemble_via(&mut self, promise: &Value, resolve: &Value, reject: &Value) -> Result<Value, RuntimeError> {
