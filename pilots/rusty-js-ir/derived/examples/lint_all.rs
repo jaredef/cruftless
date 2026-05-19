@@ -120,6 +120,10 @@ fn main() {
         ("String.prototype.includes",      string_prototype::build_includes(),      string_prototype::spec_steps_includes()),
         ("String.prototype.startsWith",    string_prototype::build_starts_with(),   string_prototype::spec_steps_starts_with()),
         ("String.prototype.endsWith",      string_prototype::build_ends_with(),     string_prototype::spec_steps_ends_with()),
+        ("String.prototype.codePointAt",   string_prototype::build_code_point_at(),  string_prototype::spec_steps_code_point_at()),
+        ("String.prototype.at",            string_prototype::build_at(),             string_prototype::spec_steps_at()),
+        ("String.prototype.normalize",     string_prototype::build_normalize(),      string_prototype::spec_steps_normalize()),
+        ("String.prototype.localeCompare", string_prototype::build_locale_compare(), string_prototype::spec_steps_locale_compare()),
     ];
 
     let mut total_unexpected = 0;

@@ -484,6 +484,60 @@ impl Runtime {
         Ok(Value::String(std::rc::Rc::new(s + &suffix)))
     }
 
+    /// String.prototype.codePointAt(pos) per ECMA §22.1.3.4.
+    pub fn string_proto_code_point_at_via(&mut self, this: &Value, pos: &Value) -> Result<Value, RuntimeError> {
+        self.require_object_coercible(this)?;
+        let s = self.to_string_strict(this)?;
+        let i_n = match pos { Value::Undefined => 0.0, v => self.coerce_to_number(v)? };
+        if !i_n.is_finite() || i_n < 0.0 { return Ok(Value::Undefined); }
+        let i = i_n as i64;
+        let mut u16_idx: i64 = 0;
+        for c in s.chars() {
+            let units = c.len_utf16() as i64;
+            if u16_idx == i { return Ok(Value::Number(c as u32 as f64)); }
+            if u16_idx < i && i < u16_idx + units {
+                let cp = c as u32;
+                let low = 0xDC00 + ((cp - 0x10000) & 0x3FF);
+                return Ok(Value::Number(low as f64));
+            }
+            u16_idx += units;
+        }
+        Ok(Value::Undefined)
+    }
+
+    /// String.prototype.at(index) per ECMA §22.1.3.2.
+    pub fn string_proto_at_via(&mut self, this: &Value, index: &Value) -> Result<Value, RuntimeError> {
+        self.require_object_coercible(this)?;
+        let s = self.to_string_strict(this)?;
+        let chars: Vec<char> = s.chars().collect();
+        let len = chars.len() as i64;
+        let i_n = match index { Value::Undefined => 0.0, v => self.coerce_to_number(v)? };
+        let i = i_n as i64;
+        let idx = if i < 0 { len + i } else { i };
+        if idx < 0 || idx >= len { return Ok(Value::Undefined); }
+        Ok(Value::String(std::rc::Rc::new(chars[idx as usize].to_string())))
+    }
+
+    /// String.prototype.normalize(form) per ECMA §22.1.3.13.
+    /// v1 deviation: no actual NFC/NFD/NFKC/NFKD; coerces this and returns it.
+    pub fn string_proto_normalize_via(&mut self, this: &Value) -> Result<Value, RuntimeError> {
+        self.require_object_coercible(this)?;
+        Ok(Value::String(std::rc::Rc::new(self.to_string_strict(this)?)))
+    }
+
+    /// String.prototype.localeCompare(that) per ECMA §22.1.3.10.
+    /// v1 deviation: locale-insensitive lexicographic compare.
+    pub fn string_proto_locale_compare_via(&mut self, this: &Value, that: &Value) -> Result<Value, RuntimeError> {
+        self.require_object_coercible(this)?;
+        let a = self.to_string_strict(this)?;
+        let b = self.to_string_strict(that)?;
+        Ok(Value::Number(match a.cmp(&b) {
+            std::cmp::Ordering::Less => -1.0,
+            std::cmp::Ordering::Equal => 0.0,
+            std::cmp::Ordering::Greater => 1.0,
+        }))
+    }
+
     /// Helper: IsRegExp per §7.2.8 — checks @@match then InternalKind::RegExp.
     pub fn is_regexp_like_via(&mut self, v: &Value) -> Result<bool, RuntimeError> {
         let id = match v { Value::Object(id) => *id, _ => return Ok(false) };

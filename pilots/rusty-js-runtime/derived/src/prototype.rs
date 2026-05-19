@@ -1068,8 +1068,8 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
     // is already ASCII; the cluster's load-bearing test is presence, not
     // correctness of NFC/NFD/NFKC/NFKD conversion.
     register_intrinsic_method(rt, host, "normalize", 0, |rt, _args| {
-        let this = rt.current_this(); rt.require_object_coercible(&this)?;
-        Ok(Value::String(Rc::new(rt.to_string_strict(&this)?)))
+        let this = rt.current_this();
+        crate::generated::string_prototype_normalize(rt, this, &[])
     });
     // Ω.5.P63.E20: String.prototype.{charAt, charCodeAt, concat} routed through IR.
     register_intrinsic_method(rt, host, "charAt", 1, |rt, args| {
@@ -1091,14 +1091,9 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
     // family, conventional-changelog, meow). v1 deviation: locale-insensitive
     // lexicographic compare (real impl needs full Intl Collator chain).
     register_intrinsic_method(rt, host, "localeCompare", 1, |rt, args| {
-        let this = rt.current_this(); rt.require_object_coercible(&this)?;
-        let a = rt.to_string_strict(&this)?;
-        let b = rt.to_string_strict(&args.first().cloned().unwrap_or(Value::Undefined))?;
-        Ok(Value::Number(match a.cmp(&b) {
-            std::cmp::Ordering::Less => -1.0,
-            std::cmp::Ordering::Equal => 0.0,
-            std::cmp::Ordering::Greater => 1.0,
-        }))
+        let this = rt.current_this();
+        let that = args.first().cloned().unwrap_or(Value::Undefined);
+        crate::generated::string_prototype_locale_compare(rt, this, &[that])
     });
     // Tier-Ω.5.GGGGGGG: String.prototype.codePointAt per ECMA-262 §22.1.3.4.
     // Returns the full code point (handles surrogate pairs) at the given
@@ -1106,27 +1101,9 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
     // cli-truncate/execa/multiformats/strip-final-newline/tar all read
     // codePointAt at module-init for ANSI / encoding detection.
     register_intrinsic_method(rt, host, "codePointAt", 1, |rt, args| {
-        let this = rt.current_this(); rt.require_object_coercible(&this)?;
-        let s = rt.to_string_strict(&this)?;
-        let i_n = match args.first().cloned() { Some(v) => rt.coerce_to_number(&v)?, None => 0.0 };
-        if !i_n.is_finite() || i_n < 0.0 { return Ok(Value::Undefined); }
-        let i = i_n as i64;
-        // The spec is UTF-16 indexed; our Rust strings are UTF-8 / chars().
-        // Iterate chars accumulating UTF-16 code-units; when the cumulative
-        // count crosses i, return the current char's code point.
-        let mut u16_idx: i64 = 0;
-        for c in s.chars() {
-            let units = c.len_utf16() as i64;
-            if u16_idx == i { return Ok(Value::Number(c as u32 as f64)); }
-            if u16_idx < i && i < u16_idx + units {
-                // Trail surrogate — return the low surrogate value.
-                let cp = c as u32;
-                let low = 0xDC00 + ((cp - 0x10000) & 0x3FF);
-                return Ok(Value::Number(low as f64));
-            }
-            u16_idx += units;
-        }
-        Ok(Value::Undefined)
+        let this = rt.current_this();
+        let pos = args.first().cloned().unwrap_or(Value::Undefined);
+        crate::generated::string_prototype_code_point_at(rt, this, &[pos])
     });
     // Ω.5.P63.E24: slice/substring/substr/indexOf/lastIndexOf/includes/startsWith/endsWith routed through IR.
     register_intrinsic_method(rt, host, "slice", 2, |rt, args| {
@@ -1327,15 +1304,9 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(Value::String(Rc::new(s.replacen(&needle, &repl, 1))))
     });
     register_intrinsic_method(rt, host, "at", 1, |rt, args| {
-        let this = rt.current_this(); rt.require_object_coercible(&this)?;
-        let s = rt.to_string_strict(&this)?;
-        let chars: Vec<char> = s.chars().collect();
-        let len = chars.len() as i64;
-        let i_n = match args.first().cloned() { Some(v) => rt.coerce_to_number(&v)?, None => 0.0 };
-        let i = i_n as i64;
-        let idx = if i < 0 { len + i } else { i };
-        if idx < 0 || idx >= len { return Ok(Value::Undefined); }
-        Ok(Value::String(Rc::new(chars[idx as usize].to_string())))
+        let this = rt.current_this();
+        let idx = args.first().cloned().unwrap_or(Value::Undefined);
+        crate::generated::string_prototype_at(rt, this, &[idx])
     });
     register_intrinsic_method(rt, host, "toString", 0, |rt, _args| {
         // Ω.5.P62.E1: unwrap String-wrapper [[StringData]] before coerce.

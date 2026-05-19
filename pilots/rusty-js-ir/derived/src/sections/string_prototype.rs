@@ -246,6 +246,35 @@ fn two_arg_section(spec: &str, rust_name: &str, title: &str, via: &'static str, 
     IRFunction { spec_section: spec.into(), rust_name: rust_name.into(), title: title.into(), body }
 }
 
+fn one_arg_section(spec: &str, rust_name: &str, title: &str, via: &'static str, p0: &str) -> IRFunction {
+    let body = vec![
+        Step { spec_step: format!("param.{}", p0), node: IRNode::Let { name: p0.into(), value: Expr::Arg(0) }},
+        Step { spec_step: "1".into(), node: IRNode::Return(Expr::CallBuiltin {
+            name: via, args: vec![Expr::This, v(p0)],
+        })},
+    ];
+    IRFunction { spec_section: spec.into(), rust_name: rust_name.into(), title: title.into(), body }
+}
+
+fn zero_arg_section(spec: &str, rust_name: &str, title: &str, via: &'static str) -> IRFunction {
+    let body = vec![
+        Step { spec_step: "1".into(), node: IRNode::Return(Expr::CallBuiltin {
+            name: via, args: vec![Expr::This],
+        })},
+    ];
+    IRFunction { spec_section: spec.into(), rust_name: rust_name.into(), title: title.into(), body }
+}
+
+pub fn build_code_point_at()  -> IRFunction { one_arg_section("22.1.3.4",  "string_prototype_code_point_at",  "String.prototype.codePointAt ( pos )",       "string_proto_code_point_at_via",  "pos") }
+pub fn build_at()             -> IRFunction { one_arg_section("22.1.3.2",  "string_prototype_at",             "String.prototype.at ( index )",              "string_proto_at_via",             "index") }
+pub fn build_normalize()      -> IRFunction { zero_arg_section("22.1.3.13", "string_prototype_normalize",     "String.prototype.normalize ( [ form ] )",    "string_proto_normalize_via") }
+pub fn build_locale_compare() -> IRFunction { one_arg_section("22.1.3.10", "string_prototype_locale_compare", "String.prototype.localeCompare ( that )",    "string_proto_locale_compare_via", "that") }
+
+pub fn spec_steps_code_point_at()  -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["string_proto_code_point_at_via"],  throws: None, prose: "Return the code point at the given UTF-16 index, or undefined if out of range." }] }
+pub fn spec_steps_at()             -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["string_proto_at_via"],             throws: None, prose: "Return the character at the relative index (negative counts from end), or undefined." }] }
+pub fn spec_steps_normalize()      -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["string_proto_normalize_via"],      throws: None, prose: "Return ? ToString(? RequireObjectCoercible(this))." }] }
+pub fn spec_steps_locale_compare() -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["string_proto_locale_compare_via"], throws: None, prose: "Return -1/0/1 comparing this and that as strings." }] }
+
 pub fn build_slice()         -> IRFunction { two_arg_section("22.1.3.22", "string_prototype_slice",         "String.prototype.slice ( start, end )",                     "string_proto_slice_via",         "start", "end") }
 pub fn build_substring()     -> IRFunction { two_arg_section("22.1.3.24", "string_prototype_substring",     "String.prototype.substring ( start, end )",                  "string_proto_substring_via",     "start", "end") }
 pub fn build_substr()        -> IRFunction { two_arg_section("B.2.2.2",   "string_prototype_substr",        "String.prototype.substr ( start, length )",                  "string_proto_substr_via",        "start", "length") }

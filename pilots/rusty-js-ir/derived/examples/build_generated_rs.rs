@@ -118,6 +118,10 @@ fn main() {
         string_prototype::build_includes(),
         string_prototype::build_starts_with(),
         string_prototype::build_ends_with(),
+        string_prototype::build_code_point_at(),
+        string_prototype::build_at(),
+        string_prototype::build_normalize(),
+        string_prototype::build_locale_compare(),
     ];
 
     for f in &sections {
