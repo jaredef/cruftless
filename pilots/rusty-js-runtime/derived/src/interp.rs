@@ -701,12 +701,12 @@ impl Runtime {
         let (new_set, storage) = self.new_empty_set();
         let mut size = 0.0;
         if let Value::Object(s) = self.object_get(this, "__set_data") {
-            let kvs: Vec<(String, Value)> = self.obj(s).properties.iter().map(|(k,d)| (k.clone(), d.value.clone())).collect();
+            let kvs: Vec<(String, Value)> = self.obj(s).properties.iter().map(|(k,d)| (k.to_string_content(), d.value.clone())).collect();
             for (k, v) in kvs { self.object_set(storage, k, v); size += 1.0; }
         }
         for v in other_vals {
             let k = crate::abstract_ops::to_string(&v).as_str().to_string();
-            if !self.obj(storage).properties.contains_key(&k) {
+            if !self.obj(storage).has_own_str(&k) {
                 self.object_set(storage, k, v); size += 1.0;
             }
         }
@@ -727,7 +727,7 @@ impl Runtime {
         let (new_set, storage) = self.new_empty_set();
         let mut size = 0.0;
         if let Value::Object(s) = self.object_get(this, "__set_data") {
-            let kvs: Vec<(String, Value)> = self.obj(s).properties.iter().map(|(k,d)| (k.clone(), d.value.clone())).collect();
+            let kvs: Vec<(String, Value)> = self.obj(s).properties.iter().map(|(k,d)| (k.to_string_content(), d.value.clone())).collect();
             for (k, v) in kvs {
                 if other_keys.contains(&k) { self.object_set(storage, k, v); size += 1.0; }
             }
@@ -749,7 +749,7 @@ impl Runtime {
         let (new_set, storage) = self.new_empty_set();
         let mut size = 0.0;
         if let Value::Object(s) = self.object_get(this, "__set_data") {
-            let kvs: Vec<(String, Value)> = self.obj(s).properties.iter().map(|(k,d)| (k.clone(), d.value.clone())).collect();
+            let kvs: Vec<(String, Value)> = self.obj(s).properties.iter().map(|(k,d)| (k.to_string_content(), d.value.clone())).collect();
             for (k, v) in kvs {
                 if !other_keys.contains(&k) { self.object_set(storage, k, v); size += 1.0; }
             }
@@ -771,7 +771,7 @@ impl Runtime {
         let (new_set, storage) = self.new_empty_set();
         let mut size = 0.0;
         if let Value::Object(s) = self.object_get(this, "__set_data") {
-            let kvs: Vec<(String, Value)> = self.obj(s).properties.iter().map(|(k,d)| (k.clone(), d.value.clone())).collect();
+            let kvs: Vec<(String, Value)> = self.obj(s).properties.iter().map(|(k,d)| (k.to_string_content(), d.value.clone())).collect();
             for (k, v) in kvs {
                 if !other_keys.contains(&k) { self.object_set(storage, k, v); size += 1.0; }
             }
@@ -779,7 +779,7 @@ impl Runtime {
         let this_storage = match self.object_get(this, "__set_data") { Value::Object(id) => Some(id), _ => None };
         for v in other_vals {
             let k = crate::abstract_ops::to_string(&v).as_str().to_string();
-            let in_this = this_storage.map(|s| self.obj(s).properties.contains_key(&k)).unwrap_or(false);
+            let in_this = this_storage.map(|s| self.obj(s).has_own_str(&k)).unwrap_or(false);
             if !in_this { self.object_set(storage, k, v); size += 1.0; }
         }
         self.object_set(new_set, "size".into(), Value::Number(size));
@@ -798,7 +798,7 @@ impl Runtime {
             .map(|v| crate::abstract_ops::to_string(v).as_str().to_string()).collect();
         if let Value::Object(s) = self.object_get(this, "__set_data") {
             for k in self.obj(s).properties.keys() {
-                if !other_keys.contains(k) { return Ok(Value::Boolean(false)); }
+                if !other_keys.contains(k.as_str()) { return Ok(Value::Boolean(false)); }
             }
         }
         Ok(Value::Boolean(true))
@@ -815,7 +815,7 @@ impl Runtime {
         let this_storage = match self.object_get(this, "__set_data") { Value::Object(id) => Some(id), _ => None };
         for v in other_vals {
             let k = crate::abstract_ops::to_string(&v).as_str().to_string();
-            let in_this = this_storage.map(|s| self.obj(s).properties.contains_key(&k)).unwrap_or(false);
+            let in_this = this_storage.map(|s| self.obj(s).has_own_str(&k)).unwrap_or(false);
             if !in_this { return Ok(Value::Boolean(false)); }
         }
         Ok(Value::Boolean(true))
@@ -829,7 +829,7 @@ impl Runtime {
         let this_storage = match self.object_get(this, "__set_data") { Value::Object(id) => Some(id), _ => None };
         for v in other_vals {
             let k = crate::abstract_ops::to_string(&v).as_str().to_string();
-            let in_this = this_storage.map(|s| self.obj(s).properties.contains_key(&k)).unwrap_or(false);
+            let in_this = this_storage.map(|s| self.obj(s).has_own_str(&k)).unwrap_or(false);
             if in_this { return Ok(Value::Boolean(false)); }
         }
         Ok(Value::Boolean(true))
@@ -866,7 +866,7 @@ impl Runtime {
         let (_this, storage) = self.set_this_and_storage("has")?;
         let v = args.first().cloned().unwrap_or(Value::Undefined);
         let key_s = crate::abstract_ops::to_string(&v).as_str().to_string();
-        Ok(Value::Boolean(self.obj(storage).properties.contains_key(&key_s)))
+        Ok(Value::Boolean(self.obj(storage).has_own_str(&key_s)))
     }
 
     /// Set.prototype.delete(value).
@@ -874,7 +874,7 @@ impl Runtime {
         let (this, storage) = self.set_this_and_storage("delete")?;
         let v = args.first().cloned().unwrap_or(Value::Undefined);
         let key_s = crate::abstract_ops::to_string(&v).as_str().to_string();
-        let existed = self.obj_mut(storage).properties.shift_remove(&key_s).is_some();
+        let existed = self.obj_mut(storage).remove_str(&key_s).is_some();
         if existed {
             let prev = match self.object_get(this, "size") { Value::Number(n) => n, _ => 0.0 };
             self.object_set(this, "size".into(), Value::Number((prev - 1.0).max(0.0)));
@@ -1047,7 +1047,7 @@ impl Runtime {
                 let mut cur = Some(*id);
                 let mut found = Value::Undefined;
                 while let Some(c) = cur {
-                    if let Some(d) = self.obj(c).properties.get("then") {
+                    if let Some(d) = self.obj(c).get_own("then") {
                         found = d.value.clone();
                         if let Some(g) = d.getter.clone() {
                             found = self.call_function(g, source.clone(), Vec::new())?;
@@ -1457,7 +1457,7 @@ impl Runtime {
         let (_this, storage) = self.map_this_and_storage("has")?;
         let key = args.first().cloned().unwrap_or(Value::Undefined);
         let key_s = crate::abstract_ops::to_string(&key).as_str().to_string();
-        Ok(Value::Boolean(self.obj(storage).properties.contains_key(&key_s)))
+        Ok(Value::Boolean(self.obj(storage).has_own_str(&key_s)))
     }
 
     /// Map.prototype.delete(key).
@@ -1465,7 +1465,7 @@ impl Runtime {
         let (this, storage) = self.map_this_and_storage("delete")?;
         let key = args.first().cloned().unwrap_or(Value::Undefined);
         let key_s = crate::abstract_ops::to_string(&key).as_str().to_string();
-        let existed = self.obj_mut(storage).properties.shift_remove(&key_s).is_some();
+        let existed = self.obj_mut(storage).remove_str(&key_s).is_some();
         if existed {
             let prev = match self.object_get(this, "size") { Value::Number(n) => n, _ => 0.0 };
             self.object_set(this, "size".into(), Value::Number((prev - 1.0).max(0.0)));
@@ -1490,7 +1490,7 @@ impl Runtime {
         let (this, storage) = self.map_this_and_storage("forEach")?;
         let cb = args.first().cloned().unwrap_or(Value::Undefined);
         let pairs: Vec<(String, Value)> = self.obj(storage).properties.iter()
-            .map(|(k, d)| (k.clone(), d.value.clone())).collect();
+            .map(|(k, d)| (k.to_string_content(), d.value.clone())).collect();
         for (k, v) in pairs {
             let key_v = Value::String(std::rc::Rc::new(k));
             self.call_function(cb.clone(), Value::Undefined, vec![v, key_v, Value::Object(this)])?;
@@ -1528,7 +1528,7 @@ impl Runtime {
             Value::Object(id) => id,
             _ => return Ok(Value::Object(self.alloc_object(crate::value::Object::new_array()))),
         };
-        let ks: Vec<String> = self.obj(storage).properties.keys().cloned().collect();
+        let ks: Vec<String> = self.obj(storage).string_key_clones().collect();
         let arr = self.alloc_object(crate::value::Object::new_array());
         for (i, k) in ks.into_iter().enumerate() {
             self.object_set(arr, i.to_string(), Value::String(std::rc::Rc::new(k)));
@@ -1549,7 +1549,7 @@ impl Runtime {
             _ => return Ok(Value::Object(self.alloc_object(crate::value::Object::new_array()))),
         };
         let pairs: Vec<(String, Value)> = self.obj(storage).properties.iter()
-            .map(|(k, d)| (k.clone(), d.value.clone())).collect();
+            .map(|(k, d)| (k.to_string_content(), d.value.clone())).collect();
         let arr = self.alloc_object(crate::value::Object::new_array());
         for (i, (k, v)) in pairs.into_iter().enumerate() {
             let pair = self.alloc_object(crate::value::Object::new_array());
@@ -2054,7 +2054,7 @@ impl Runtime {
     pub fn object_proto_has_own_property_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let key = crate::abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined)).as_str().to_string();
         let owns = match self.current_this() {
-            Value::Object(id) => self.obj(id).properties.contains_key(&key),
+            Value::Object(id) => self.obj(id).has_own_str(&key),
             _ => false,
         };
         Ok(Value::Boolean(owns))
@@ -2070,7 +2070,7 @@ impl Runtime {
         let key = crate::abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined))
             .as_str().to_string();
         let owns = match self.current_this() {
-            Value::Object(id) => self.obj(id).properties.contains_key(&key),
+            Value::Object(id) => self.obj(id).has_own_str(&key),
             _ => false,
         };
         Ok(Value::Boolean(owns))
@@ -2395,7 +2395,7 @@ impl Runtime {
                 i += 1;
             }
             for i in new_len..len {
-                self.obj_mut(id).properties.shift_remove(&i.to_string());
+                self.obj_mut(id).remove_str(&i.to_string());
             }
         }
         for (k, v) in items.into_iter().enumerate() {
@@ -2669,7 +2669,7 @@ impl Runtime {
         if len == 0 { return Ok(Value::Undefined); }
         let last_key = (len - 1).to_string();
         let v = self.object_get(id, &last_key);
-        self.obj_mut(id).properties.shift_remove(&last_key);
+        self.obj_mut(id).remove_str(&last_key);
         self.object_set(id, "length".into(), Value::Number((len - 1) as f64));
         Ok(v)
     }
@@ -2684,7 +2684,7 @@ impl Runtime {
             let v = self.object_get(id, &i.to_string());
             self.object_set(id, (i - 1).to_string(), v);
         }
-        self.obj_mut(id).properties.shift_remove(&(len - 1).to_string());
+        self.obj_mut(id).remove_str(&(len - 1).to_string());
         self.object_set(id, "length".into(), Value::Number((len - 1) as f64));
         Ok(first)
     }
@@ -3373,7 +3373,7 @@ impl Runtime {
             if let Value::Object(sid) = src {
                 let entries: Vec<(String, Option<Value>, bool)> = self.obj(*sid).properties.iter()
                     .filter(|(_, d)| d.enumerable)
-                    .map(|(k, d)| (k.clone(), d.getter.clone(), d.getter.is_none()))
+                    .map(|(k, d)| (k.to_string_content(), d.getter.clone(), d.getter.is_none()))
                     .collect();
                 for (k, getter_opt, is_data) in entries {
                     let v = if let Some(getter) = getter_opt {
@@ -3403,8 +3403,8 @@ impl Runtime {
             let is_array = matches!(o.internal_kind, crate::value::InternalKind::Array);
             if is_array {
                 let mut ks: Vec<(u64, String)> = o.properties.iter()
-                    .filter_map(|(k, _)| if k.starts_with("@@") { None } else {
-                        k.parse::<u64>().ok().map(|n| (n, k.clone()))
+                    .filter_map(|(k, _)| if k.is_symbol() { None } else {
+                        k.as_str().parse::<u64>().ok().map(|n| (n, k.as_str().to_string()))
                     })
                     .collect();
                 ks.sort_by_key(|(n, _)| *n);
@@ -3414,7 +3414,9 @@ impl Runtime {
                 out.push("length".into());
                 out
             } else {
-                o.properties.keys().filter(|k| !k.starts_with("@@")).cloned().collect()
+                o.properties.keys()
+                    .filter(|k| k.is_string())
+                    .map(|k| k.as_str().to_string()).collect()
             }
         };
         for (i, k) in keys.iter().enumerate() {
@@ -3433,12 +3435,18 @@ impl Runtime {
             _ => return Ok(Value::Object(self.alloc_object(crate::value::Object::new_array()))),
         };
         let arr = self.alloc_object(crate::value::Object::new_array());
-        let syms: Vec<String> = self.obj(id).properties.keys()
-            .filter(|k| k.starts_with("@@sym:"))
-            .cloned()
+        // PropertyKey migration: real Symbol-keyed properties live in the
+        // Symbol variant; the legacy `@@sym:` string filter is now obsolete
+        // (it would match well-known-Symbol names too but those are Symbol-
+        // typed natively now).
+        let syms: Vec<std::rc::Rc<String>> = self.obj(id).properties.keys()
+            .filter_map(|k| match k {
+                crate::value::PropertyKey::Symbol(rc) => Some(rc.clone()),
+                _ => None,
+            })
             .collect();
         for (i, s) in syms.iter().enumerate() {
-            self.object_set(arr, i.to_string(), Value::Symbol(std::rc::Rc::new(s.clone())));
+            self.object_set(arr, i.to_string(), Value::Symbol(s.clone()));
         }
         self.object_set(arr, "length".into(), Value::Number(syms.len() as f64));
         Ok(Value::Object(arr))
@@ -3579,9 +3587,9 @@ impl Runtime {
             _ => return Err(RuntimeError::TypeError("Reflect.deleteProperty: target must be Object".into())),
         };
         let key_s = self.coerce_to_string(key)?;
-        let configurable = self.obj(id).properties.get(&key_s).map(|d| d.configurable).unwrap_or(true);
+        let configurable = self.obj(id).get_own(&key_s).map(|d| d.configurable).unwrap_or(true);
         if !configurable { return Ok(Value::Boolean(false)); }
-        self.obj_mut(id).properties.shift_remove(&key_s);
+        self.obj_mut(id).remove_str(&key_s);
         Ok(Value::Boolean(true))
     }
 
@@ -3592,10 +3600,10 @@ impl Runtime {
             Value::Object(id) => *id,
             _ => return Err(RuntimeError::TypeError("Reflect.ownKeys: target must be Object".into())),
         };
-        let keys: Vec<String> = self.obj(id).properties.keys().cloned().collect();
+        let keys: Vec<String> = self.obj(id).string_key_clones().collect();
         let arr = self.alloc_object(crate::value::Object::new_array());
         for (i, k) in keys.iter().enumerate() {
-            let v = if k.starts_with("@@sym:") {
+            let v = if k.as_str().starts_with("@@sym:") {
                 Value::Symbol(std::rc::Rc::new(k.clone()))
             } else {
                 Value::String(std::rc::Rc::new(k.clone()))
@@ -3749,7 +3757,7 @@ impl Runtime {
             Value::Object(id) => *id,
             _ => return Ok(Value::Boolean(false)),
         };
-        Ok(Value::Boolean(self.obj(id).properties.contains_key(&key_s)))
+        Ok(Value::Boolean(self.obj(id).has_own_str(&key_s)))
     }
 
     /// Object.is(a, b) per ECMA §20.1.2.14 — SameValue.
@@ -3861,16 +3869,16 @@ impl Runtime {
             let is_array = matches!(o.internal_kind, crate::value::InternalKind::Array);
             if is_array {
                 let mut ks: Vec<(u64, String)> = o.properties.iter()
-                    .filter_map(|(k, d)| if d.enumerable && k != "length" && !k.starts_with("@@") {
-                        k.parse::<u64>().ok().map(|n| (n, k.clone()))
+                    .filter_map(|(k, d)| if d.enumerable && k.is_string() && k.as_str() != "length" {
+                        k.as_str().parse::<u64>().ok().map(|n| (n, k.as_str().to_string()))
                     } else { None })
                     .collect();
                 ks.sort_by_key(|(n, _)| *n);
                 ks.into_iter().map(|(_, k)| k).collect()
             } else {
                 let all: Vec<(String, bool)> = o.properties.iter()
-                    .filter(|(k, d)| d.enumerable && !k.starts_with("@@"))
-                    .map(|(k, _)| (k.clone(), crate::intrinsics::is_integer_index(k)))
+                    .filter(|(k, d)| d.enumerable && k.is_string())
+                    .map(|(k, _)| (k.as_str().to_string(), crate::intrinsics::is_integer_index(k.as_str())))
                     .collect();
                 let mut numeric: Vec<(u64, String)> = all.iter()
                     .filter(|(_, idx)| *idx)
@@ -3905,11 +3913,11 @@ impl Runtime {
             let o = self.obj(id);
             let is_array = matches!(o.internal_kind, crate::value::InternalKind::Array);
             let mut es: Vec<(String, Option<Value>)> = o.properties.iter()
-                .filter(|(k, d)| d.enumerable && !(is_array && *k == "length") && !k.starts_with("@@"))
-                .map(|(k, d)| (k.clone(), d.getter.clone()))
+                .filter(|(k, d)| d.enumerable && !(is_array && k.as_str() == "length") && k.is_string())
+                .map(|(k, d)| (k.to_string_content(), d.getter.clone()))
                 .collect();
             if is_array {
-                es.sort_by_key(|(k, _)| k.parse::<u64>().unwrap_or(u64::MAX));
+                es.sort_by_key(|(k, _)| k.as_str().parse::<u64>().unwrap_or(u64::MAX));
             }
             es
         };
@@ -3941,11 +3949,11 @@ impl Runtime {
             let o = self.obj(id);
             let is_array = matches!(o.internal_kind, crate::value::InternalKind::Array);
             let mut es: Vec<(String, Option<Value>)> = o.properties.iter()
-                .filter(|(k, d)| d.enumerable && !(is_array && *k == "length") && !k.starts_with("@@"))
-                .map(|(k, d)| (k.clone(), d.getter.clone()))
+                .filter(|(k, d)| d.enumerable && !(is_array && k.as_str() == "length") && k.is_string())
+                .map(|(k, d)| (k.to_string_content(), d.getter.clone()))
                 .collect();
             if is_array {
-                es.sort_by_key(|(k, _)| k.parse::<u64>().unwrap_or(u64::MAX));
+                es.sort_by_key(|(k, _)| k.as_str().parse::<u64>().unwrap_or(u64::MAX));
             }
             es
         };
@@ -4028,7 +4036,7 @@ impl Runtime {
     /// resolve through the spec [[NumberData]]/[[StringData]] slots.
     pub fn unwrap_primitive(&self, v: &Value) -> Value {
         if let Value::Object(id) = v {
-            if let Some(d) = self.obj(*id).properties.get("__primitive__") {
+            if let Some(d) = self.obj(*id).get_own("__primitive__") {
                 return d.value.clone();
             }
         }
@@ -4257,7 +4265,7 @@ impl Runtime {
         let mut cur = Some(id);
         while let Some(c) = cur {
             let o = self.obj(c);
-            if let Some(d) = o.properties.get(key) {
+            if let Some(d) = o.get_own(key) {
                 return d.getter.clone();
             }
             cur = o.proto;
@@ -4270,7 +4278,7 @@ impl Runtime {
         let mut cur = Some(id);
         while let Some(c) = cur {
             let o = self.obj(c);
-            if let Some(d) = o.properties.get(key) {
+            if let Some(d) = o.get_own(key) {
                 return d.setter.clone();
             }
             cur = o.proto;
@@ -4300,7 +4308,7 @@ impl Runtime {
         let mut cur = Some(id);
         while let Some(c) = cur {
             let o = self.obj(c);
-            if o.properties.contains_key(key) { return true; }
+            if o.has_own_str(key) { return true; }
             cur = o.proto;
         }
         false
@@ -4312,12 +4320,12 @@ impl Runtime {
             if matches!(o.internal_kind, InternalKind::Array) {
                 // If explicit "length" property is set, prefer it; otherwise
                 // derive from max numeric index + 1.
-                if let Some(d) = o.properties.get("length") {
+                if let Some(d) = o.get_own("length") {
                     return d.value.clone();
                 }
                 let mut max: i64 = -1;
                 for k in o.properties.keys() {
-                    if let Ok(i) = k.parse::<i64>() {
+                    if let Ok(i) = k.as_str().parse::<i64>() {
                         if i > max { max = i; }
                     }
                 }
@@ -4327,7 +4335,7 @@ impl Runtime {
         let mut cur = Some(id);
         while let Some(c) = cur {
             let o = self.obj(c);
-            if let Some(d) = o.properties.get(key) {
+            if let Some(d) = o.get_own(key) {
                 return d.value.clone();
             }
             cur = o.proto;
@@ -4360,7 +4368,7 @@ impl Runtime {
         // but throwing is deferred since cruftless's strict-mode tracking
         // is incomplete). Object.freeze + the function-meta-props
         // (name/length descriptor non-writable) both depend on this.
-        if let Some(d) = self.obj(id).properties.get(&key) {
+        if let Some(d) = self.obj(id).get_own(&key) {
             if !d.writable && d.getter.is_none() && d.setter.is_none() {
                 return; // silent no-op for non-writable data property
             }
@@ -5043,7 +5051,7 @@ impl Runtime {
                                 let mut cur = Some(*id);
                                 let mut found = false;
                                 while let Some(c) = cur {
-                                    if let Some(d) = self.obj(c).properties.get(&key) {
+                                    if let Some(d) = self.obj(c).get_own(&key) {
                                         if d.getter.is_some() { found = true; }
                                         break;
                                     }
@@ -5087,7 +5095,7 @@ impl Runtime {
                                     let mut cur = Some(proto);
                                     let mut g = None;
                                     while let Some(c) = cur {
-                                        if let Some(d) = self.obj(c).properties.get(&key) {
+                                        if let Some(d) = self.obj(c).get_own(&key) {
                                             g = d.getter.clone();
                                             break;
                                         }
@@ -5273,7 +5281,7 @@ impl Runtime {
                                     let mut cur = Some(proto);
                                     let mut g = None;
                                     while let Some(c) = cur {
-                                        if let Some(d) = self.obj(c).properties.get(&key) {
+                                        if let Some(d) = self.obj(c).get_own(&key) {
                                             g = d.getter.clone();
                                             break;
                                         }
@@ -5355,7 +5363,7 @@ impl Runtime {
                                     ])?;
                                     crate::abstract_ops::to_boolean(&r)
                                 } else {
-                                    self.obj_mut(target).properties.shift_remove(&key).is_some()
+                                    self.obj_mut(target).remove_str(&key).is_some()
                                 }
                             } else {
                                 // Ω.5.P62.E10: ECMA §10.1.10 OrdinaryDelete —
@@ -5364,11 +5372,11 @@ impl Runtime {
                                 // strict mode throws but cruftless's strict
                                 // tracking is incomplete (parity with sloppy
                                 // delete semantics in P61.E3).
-                                if let Some(d) = self.obj(id).properties.get(&key) {
+                                if let Some(d) = self.obj(id).get_own(&key) {
                                     if !d.configurable {
                                         false
                                     } else {
-                                        self.obj_mut(id).properties.shift_remove(&key).is_some()
+                                        self.obj_mut(id).remove_str(&key).is_some()
                                     }
                                 } else {
                                     true
@@ -5400,13 +5408,13 @@ impl Runtime {
                                     ])?;
                                     crate::abstract_ops::to_boolean(&r)
                                 } else {
-                                    self.obj_mut(target).properties.shift_remove(&key).is_some()
+                                    self.obj_mut(target).remove_str(&key).is_some()
                                 }
                             } else {
                                 // Ω.5.P62.E10: §10.1.10 non-configurable guard.
-                                if let Some(d) = self.obj(id).properties.get(&key) {
+                                if let Some(d) = self.obj(id).get_own(&key) {
                                     if !d.configurable { false }
-                                    else { self.obj_mut(id).properties.shift_remove(&key).is_some() }
+                                    else { self.obj_mut(id).remove_str(&key).is_some() }
                                 } else { true }
                             }
                         }
@@ -5455,14 +5463,14 @@ impl Runtime {
                         } else {
                             let mut cur = Some(target);
                             while let Some(c) = cur {
-                                if self.obj(c).properties.contains_key(&key) { found = true; break; }
+                                if self.obj(c).has_own_str(&key) { found = true; break; }
                                 cur = self.obj(c).proto;
                             }
                         }
                     } else {
                     let mut cur = Some(obj_id);
                     while let Some(c) = cur {
-                        if self.obj(c).properties.contains_key(&key) { found = true; break; }
+                        if self.obj(c).has_own_str(&key) { found = true; break; }
                         cur = self.obj(c).proto;
                     }
                     }
@@ -5741,7 +5749,7 @@ impl Runtime {
                                 let is_likely_host_stub = {
                                     let o = self.obj(*r_id);
                                     matches!(o.internal_kind, crate::value::InternalKind::Ordinary | crate::value::InternalKind::ModuleNamespace) &&
-                                        o.properties.keys().any(|k| k.starts_with("__"))
+                                        o.properties.keys().any(|k| k.as_str().starts_with("__"))
                                 };
                                 if is_likely_host_stub {
                                     let entry = format!("missing method '{}'", name);
@@ -6018,7 +6026,7 @@ impl Runtime {
                     // called. Also note presence of toString tag.
                     let kind = other.kind_name().to_string();
                     drop(o);
-                    let keys: Vec<String> = self.obj(id).properties.keys().take(5).cloned().collect();
+                    let keys: Vec<String> = self.obj(id).properties.keys().take(5).map(|k| k.as_str().to_string()).collect();
                     let nkeys = self.obj(id).properties.len();
                     let preview = if keys.is_empty() { String::new() } else { format!(" keys=[{}{}]", keys.join(","), if nkeys > 5 { ",…" } else { "" }) };
                     return Err(RuntimeError::TypeError(format!(
@@ -6482,7 +6490,7 @@ fn describe_proto_chain_for_key(rt: &Runtime, receiver: &Value, key: &str) -> St
         if !links.last().map(|s| s.as_str() == kind.as_str()).unwrap_or(false) {
             links.push(kind);
         }
-        if o.properties.contains_key(key) {
+        if o.has_own_str(key) {
             // Found the slot, but its value resolved to non-callable.
             // The descriptor itself is present at this link.
             found_link = Some(links.len() - 1);
@@ -6554,7 +6562,7 @@ fn describe_value_for_diag(rt: &Runtime, v: &Value) -> String {
                     }
                 }
                 crate::value::InternalKind::Array => {
-                    let len = match o.properties.get("length") {
+                    let len = match o.get_own("length") {
                         Some(d) => match &d.value {
                             Value::Number(n) => *n as usize,
                             _ => 0,
@@ -6564,7 +6572,7 @@ fn describe_value_for_diag(rt: &Runtime, v: &Value) -> String {
                     // First few elements' shape (recursion-safe — only one level).
                     let mut elems = Vec::new();
                     for i in 0..len.min(2) {
-                        match o.properties.get(&i.to_string()).map(|d| &d.value) {
+                        match o.get_own(&i.to_string()).map(|d| &d.value) {
                             Some(Value::Number(n)) => elems.push(format!("{}", n)),
                             Some(Value::String(s)) => {
                                 let t = s.as_str();
@@ -6592,7 +6600,7 @@ fn describe_value_for_diag(rt: &Runtime, v: &Value) -> String {
                         crate::value::InternalKind::Ordinary => "Object",
                         _ => "Object",
                     };
-                    let keys: Vec<String> = o.properties.keys().take(3).cloned().collect();
+                    let keys: Vec<String> = o.properties.keys().take(3).map(|k| k.as_str().to_string()).collect();
                     let preview = if keys.is_empty() {
                         String::new()
                     } else {

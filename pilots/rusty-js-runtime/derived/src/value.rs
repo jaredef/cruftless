@@ -154,15 +154,74 @@ impl PartialEq for Value {
     }
 }
 
-#[derive(Debug)]
+/// Property key per ECMA §6.1.7 PropertyKey type. A property key is either
+/// a String value or a Symbol value. The two are stored under the same
+/// IndexMap but compared/hashed with distinct semantics:
+///   - String keys hash by string content; equal iff content matches.
+///   - Symbol keys hash by Rc identity (pointer); equal iff same Rc.
+///
+/// This carries the spec-mandated discrimination needed for [[OwnPropertyKeys]]
+/// (§10.1.11.1) to split into [int-indexed, string-keyed, symbol-keyed] groups,
+/// for Object.getOwnPropertyNames / Object.getOwnPropertySymbols to return
+/// disjoint sets, for JSON.stringify / Object.keys to skip Symbol keys, and
+/// for Reflect.ownKeys to emit them in the spec-required order.
+#[derive(Clone, Debug)]
+pub enum PropertyKey {
+    String(String),
+    Symbol(Rc<String>),
+}
+
+impl PartialEq for PropertyKey {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::String(a), Self::String(b)) => a == b,
+            // Symbols are identity-equal: same Rc allocation = same Symbol value.
+            (Self::Symbol(a), Self::Symbol(b)) => Rc::ptr_eq(a, b),
+            _ => false,
+        }
+    }
+}
+
+impl Eq for PropertyKey {}
+
+impl std::hash::Hash for PropertyKey {
+    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
+        match self {
+            Self::String(s) => { 0u8.hash(h); s.hash(h); }
+            Self::Symbol(rc) => { 1u8.hash(h); (Rc::as_ptr(rc) as usize).hash(h); }
+        }
+    }
+}
+
+impl PropertyKey {
+    /// Always-non-None content view. For String variant returns the inner
+    /// string; for Symbol variant returns the Symbol's internal identifier.
+    /// Callers that need to discriminate Symbol-typed should use is_symbol().
+    pub fn as_str(&self) -> &str {
+        match self { Self::String(s) => s.as_str(), Self::Symbol(rc) => rc.as_str() }
+    }
+    pub fn is_symbol(&self) -> bool { matches!(self, Self::Symbol(_)) }
+    pub fn is_string(&self) -> bool { matches!(self, Self::String(_)) }
+    /// String-content view; for Symbol returns the internal identifier
+    /// (used by debug printing, JSON keys, and the @@-prefix discrimination
+    /// migration shim).
+    pub fn to_string_content(&self) -> String {
+        match self { Self::String(s) => s.clone(), Self::Symbol(rc) => (**rc).clone() }
+    }
+}
+
+impl From<&str> for PropertyKey { fn from(s: &str) -> Self { Self::String(s.to_string()) } }
+impl From<String> for PropertyKey { fn from(s: String) -> Self { Self::String(s) } }
+impl From<&String> for PropertyKey { fn from(s: &String) -> Self { Self::String(s.clone()) } }
+
 pub struct Object {
     pub proto: Option<ObjectRef>,
     pub extensible: bool,
     // ECMA §10.1.11 OrdinaryOwnPropertyKeys requires integer-indexed keys
-    // in ascending order, then string keys in insertion order. IndexMap
-    // preserves insertion order; the integer-index branch is sorted at
-    // enumeration sites.
-    pub properties: IndexMap<String, PropertyDescriptor>,
+    // in ascending order, then string keys in insertion order, then Symbol
+    // keys in insertion order. IndexMap preserves insertion order; the
+    // integer-index branch is sorted at enumeration sites.
+    pub properties: IndexMap<PropertyKey, PropertyDescriptor>,
     pub internal_kind: InternalKind,
 }
 
@@ -188,13 +247,60 @@ impl Object {
     /// OrdinaryGet per §10.1.8.1. Own-property only. Prototype-chain
     /// walk moved to Runtime::object_get (proto deref requires heap).
     pub fn get_own(&self, key: &str) -> Option<&PropertyDescriptor> {
-        self.properties.get(key)
+        // Backwards-compat shim during PropertyKey migration: callers
+        // passing &str look up the String-variant; Symbol-keyed reads
+        // go through the dedicated get_own_symbol below.
+        self.properties.get(&PropertyKey::String(key.to_string()))
+    }
+
+    /// Symbol-keyed own-property lookup. Identity-equal to the storage
+    /// key by Rc::ptr_eq.
+    pub fn get_own_symbol(&self, sym: &std::rc::Rc<String>) -> Option<&PropertyDescriptor> {
+        self.properties.get(&PropertyKey::Symbol(sym.clone()))
+    }
+
+    /// Mutable own-property lookup for string keys. PropertyKey migration shim.
+    pub fn get_own_mut(&mut self, key: &str) -> Option<&mut PropertyDescriptor> {
+        self.properties.get_mut(&PropertyKey::String(key.to_string()))
+    }
+
+    /// String-key membership test (migration shim).
+    pub fn has_own_str(&self, key: &str) -> bool {
+        self.properties.contains_key(&PropertyKey::String(key.to_string()))
+    }
+
+    /// String-key delete (migration shim).
+    pub fn remove_str(&mut self, key: &str) -> Option<PropertyDescriptor> {
+        self.properties.shift_remove(&PropertyKey::String(key.to_string()))
+    }
+
+    /// String-key insert with full descriptor (migration shim).
+    pub fn insert_str(&mut self, key: impl Into<String>, desc: PropertyDescriptor) -> Option<PropertyDescriptor> {
+        self.properties.insert(PropertyKey::String(key.into()), desc)
+    }
+
+    /// Iterate string-keyed entries only (migration shim — most legacy callers
+    /// expected an IndexMap<String, _>).
+    pub fn string_keys(&self) -> impl Iterator<Item = &str> {
+        self.properties.keys().filter_map(|k| match k {
+            PropertyKey::String(s) => Some(s.as_str()),
+            PropertyKey::Symbol(_) => None,
+        })
+    }
+
+    /// String-key content as String for the convenience of callers that need
+    /// owned strings. Skips Symbol keys.
+    pub fn string_key_clones(&self) -> impl Iterator<Item = String> + '_ {
+        self.properties.keys().filter_map(|k| match k {
+            PropertyKey::String(s) => Some(s.clone()),
+            PropertyKey::Symbol(_) => None,
+        })
     }
 
     /// OrdinaryDefineOwnProperty per §10.1.6.1 (simplified — full
     /// invariants check lands with intrinsics).
     pub fn set_own(&mut self, key: String, value: Value) {
-        self.properties.insert(key, PropertyDescriptor {
+        self.properties.insert(PropertyKey::String(key), PropertyDescriptor {
             value,
             writable: true,
             enumerable: true,
@@ -213,7 +319,7 @@ impl Object {
     /// `Object.defineProperty(o, k, {value, writable: true,
     /// configurable: true, enumerable: false})`.
     pub fn set_own_internal(&mut self, key: String, value: Value) {
-        self.properties.insert(key, PropertyDescriptor {
+        self.properties.insert(PropertyKey::String(key), PropertyDescriptor {
             value,
             writable: true,
             enumerable: false,
@@ -228,7 +334,7 @@ impl Object {
     /// built-in constructor's `.prototype` slot has this descriptor shape.
     /// User-defined function `.prototype` differs (writable: true).
     pub fn set_own_frozen(&mut self, key: String, value: Value) {
-        self.properties.insert(key, PropertyDescriptor {
+        self.properties.insert(PropertyKey::String(key), PropertyDescriptor {
             value,
             writable: false,
             enumerable: false,
@@ -491,16 +597,16 @@ impl std::fmt::Debug for FunctionInternals {
 /// configurable: true}` — invisible to Object.keys but visible to
 /// reflection, and overrideable by Object.defineProperty.
 pub fn install_function_meta_props(
-    properties: &mut indexmap::IndexMap<String, PropertyDescriptor>,
+    properties: &mut indexmap::IndexMap<PropertyKey, PropertyDescriptor>,
     name: &str,
     length: f64,
 ) {
-    properties.insert("length".to_string(), PropertyDescriptor {
+    properties.insert(PropertyKey::String("length".to_string()), PropertyDescriptor {
         value: Value::Number(length),
         writable: false, enumerable: false, configurable: true,
         getter: None, setter: None,
     });
-    properties.insert("name".to_string(), PropertyDescriptor {
+    properties.insert(PropertyKey::String("name".to_string()), PropertyDescriptor {
         value: Value::String(std::rc::Rc::new(name.to_string())),
         writable: false, enumerable: false, configurable: true,
         getter: None, setter: None,

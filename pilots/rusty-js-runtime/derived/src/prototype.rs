@@ -83,7 +83,7 @@ fn install_object_proto(rt: &mut Runtime, host: ObjectRef) {
         if !matches!(getter, Value::Object(_)) {
             return Err(RuntimeError::TypeError("__defineGetter__: getter must be callable".into()));
         }
-        rt.obj_mut(this).properties.insert(key, crate::value::PropertyDescriptor {
+        rt.obj_mut(this).properties.insert(crate::value::PropertyKey::String(key), crate::value::PropertyDescriptor {
             value: Value::Undefined,
             writable: false, enumerable: true, configurable: true,
             getter: Some(getter), setter: None,
@@ -97,8 +97,8 @@ fn install_object_proto(rt: &mut Runtime, host: ObjectRef) {
         if !matches!(setter, Value::Object(_)) {
             return Err(RuntimeError::TypeError("__defineSetter__: setter must be callable".into()));
         }
-        let existing_getter = rt.obj(this).properties.get(&key).and_then(|d| d.getter.clone());
-        rt.obj_mut(this).properties.insert(key, crate::value::PropertyDescriptor {
+        let existing_getter = rt.obj(this).get_own(&key).and_then(|d| d.getter.clone());
+        rt.obj_mut(this).properties.insert(crate::value::PropertyKey::String(key), crate::value::PropertyDescriptor {
             value: Value::Undefined,
             writable: false, enumerable: true, configurable: true,
             getter: existing_getter, setter: Some(setter),
@@ -108,12 +108,12 @@ fn install_object_proto(rt: &mut Runtime, host: ObjectRef) {
     register_intrinsic_method(rt, host, "__lookupGetter__", 1, |rt, args| {
         let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
         let key = abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined)).as_str().to_string();
-        Ok(rt.obj(this).properties.get(&key).and_then(|d| d.getter.clone()).unwrap_or(Value::Undefined))
+        Ok(rt.obj(this).get_own(&key).and_then(|d| d.getter.clone()).unwrap_or(Value::Undefined))
     });
     register_intrinsic_method(rt, host, "__lookupSetter__", 1, |rt, args| {
         let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
         let key = abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined)).as_str().to_string();
-        Ok(rt.obj(this).properties.get(&key).and_then(|d| d.setter.clone()).unwrap_or(Value::Undefined))
+        Ok(rt.obj(this).get_own(&key).and_then(|d| d.setter.clone()).unwrap_or(Value::Undefined))
     });
     // Tier-Ω.5.jjjj: Object.prototype.propertyIsEnumerable per ECMA-262
     // §20.1.3.4. Returns true if the receiver has an own enumerable
@@ -847,7 +847,7 @@ where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
         }),
     };
     let fn_id = rt.alloc_object(fn_obj);
-    rt.obj_mut(host).properties.insert(name.to_string(), crate::value::PropertyDescriptor {
+    rt.obj_mut(host).properties.insert(crate::value::PropertyKey::String(name.to_string()), crate::value::PropertyDescriptor {
         value: Value::Object(fn_id),
         writable: true, enumerable: false, configurable: true,
         getter: None, setter: None,

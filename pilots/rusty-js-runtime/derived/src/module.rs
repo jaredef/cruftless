@@ -1014,7 +1014,7 @@ impl Runtime {
                             o.properties
                                 .iter()
                                 .filter(|(k, _)| k.as_str() != "default")
-                                .map(|(k, d)| (k.clone(), d.value.clone()))
+                                .map(|(k, d)| (k.to_string_content(), d.value.clone()))
                                 .collect()
                         }
                         None => Vec::new(),
@@ -1371,7 +1371,7 @@ impl Runtime {
         // numeric status codes, then codes[code].toLowerCase() failed).
         if let Value::Object(oid) = &value {
             let pairs: Vec<(String, Value)> = self.obj(*oid).properties.iter()
-                .map(|(k, d)| (k.clone(), d.value.clone())).collect();
+                .map(|(k, d)| (k.to_string_content(), d.value.clone())).collect();
             for (k, v) in pairs {
                 self.object_set(ns, k, v);
             }
@@ -1453,7 +1453,7 @@ impl Runtime {
                         }
                         true
                     })
-                    .map(|(k, d)| (k.clone(), d.value.clone(), d.getter.clone()))
+                    .map(|(k, d)| (k.to_string_content(), d.value.clone(), d.getter.clone()))
                     .collect();
                 let mut pairs: Vec<(String, Value)> = Vec::with_capacity(triples.len());
                 for (k, v, getter) in triples {

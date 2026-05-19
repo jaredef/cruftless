@@ -425,7 +425,7 @@ pub unsafe extern "C" fn napi_has_named_property(
     };
     let name = CStr::from_ptr(utf8name).to_string_lossy().into_owned();
     let rt = &mut *env.rt;
-    *result = rt.obj(target).properties.contains_key(&name);
+    *result = rt.obj(target).has_own_str(&name);
     napi_ok
 }
 
@@ -1250,8 +1250,8 @@ pub unsafe extern "C" fn napi_get_property_names(env: napi_env, object: napi_val
     let id = match env.get_handle(object) { Some(Value::Object(id)) => *id, _ => return napi_object_expected };
     let rt = &mut *env.rt;
     let keys: Vec<String> = rt.obj(id).properties.iter()
-        .filter(|(k, d)| d.enumerable && !k.starts_with("@@"))
-        .map(|(k, _)| k.clone()).collect();
+        .filter(|(k, d)| d.enumerable && k.is_string())
+        .map(|(k, _)| k.as_str().to_string()).collect();
     let arr = rt.alloc_object(Object::new_array());
     for (i, k) in keys.iter().enumerate() {
         rt.object_set(arr, i.to_string(), Value::String(Rc::new(k.clone())));
@@ -1543,7 +1543,7 @@ pub unsafe extern "C" fn napi_remove_wrap(env: napi_env, object: napi_value, res
         Value::Number(n) => n as usize as *mut c_void,
         _ => std::ptr::null_mut(),
     };
-    rt.obj_mut(id).properties.shift_remove("__napi_wrapped");
+    rt.obj_mut(id).remove_str("__napi_wrapped");
     napi_ok
 }
 

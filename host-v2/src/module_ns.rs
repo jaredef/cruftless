@@ -114,8 +114,8 @@ pub fn install(rt: &mut Runtime) {
     rt.install_host_hook(HostHook::FinalizeModuleNamespace(Box::new(|rt, _ast, ns, url| {
         let (has_default, default_value, named_count): (bool, Value, usize) = {
             let o = rt.obj(ns);
-            let has = o.properties.contains_key("default");
-            let dv = o.properties.get("default").map(|d| d.value.clone()).unwrap_or(Value::Undefined);
+            let has = o.has_own_str("default");
+            let dv = o.get_own("default").map(|d| d.value.clone()).unwrap_or(Value::Undefined);
             let other = o.properties.keys().filter(|k| k.as_str() != "default").count();
             (has, dv, other)
         };
@@ -229,7 +229,7 @@ pub fn install(rt: &mut Runtime) {
                         named_count == 0, is_fn, !pkg_is_type_module,
                     );
                     for key in ["name", "length", "prototype"] {
-                        let already = rt.obj(ns).properties.contains_key(key);
+                        let already = rt.obj(ns).has_own_str(key);
                         if !already {
                             let v = rt.object_get(fn_id, key);
                             if !matches!(v, Value::Undefined) {

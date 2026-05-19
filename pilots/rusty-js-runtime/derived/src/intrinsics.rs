@@ -413,7 +413,7 @@ impl Runtime {
                 rt.object_set(res, "timeZone".into(), Value::String(std::rc::Rc::new("UTC".into())));
                 if let Value::Object(opts_id) = opts {
                     let pairs: Vec<(String, Value)> = rt.obj(opts_id).properties
-                        .iter().map(|(k, d)| (k.clone(), d.value.clone())).collect();
+                        .iter().map(|(k, d)| (k.to_string_content(), d.value.clone())).collect();
                     for (k, v) in pairs {
                         rt.object_set(res, k, v);
                     }
@@ -550,7 +550,7 @@ impl Runtime {
             let kind: String = match args.get(2) { Some(Value::String(s)) => (**s).clone(), _ => return Ok(Value::Undefined) };
             let fn_v = args.get(3).cloned().unwrap_or(Value::Undefined);
             let o = rt.obj_mut(target);
-            let desc = o.properties.entry(key).or_insert_with(|| crate::value::PropertyDescriptor {
+            let desc = o.properties.entry(crate::value::PropertyKey::String(key)).or_insert_with(|| crate::value::PropertyDescriptor {
                 value: Value::Undefined,
                 writable: true, enumerable: true, configurable: true,
                 getter: None, setter: None,
@@ -622,7 +622,7 @@ impl Runtime {
                 // Tier-Ω.5.bbbbb: dispatch accessor getters during spread.
                 let entries: Vec<(String, Option<Value>)> = rt.obj(*sid).properties.iter()
                     .filter(|(_, d)| d.enumerable)
-                    .map(|(k, d)| (k.clone(), d.getter.clone()))
+                    .map(|(k, d)| (k.to_string_content(), d.getter.clone()))
                     .collect();
                 for (k, getter_opt) in entries {
                     let v = if let Some(getter) = getter_opt {
@@ -758,7 +758,7 @@ impl Runtime {
                 let o = rt.obj(src_id);
                 o.properties.iter()
                     .filter(|(_, d)| d.enumerable)
-                    .map(|(k, d)| (k.clone(), d.value.clone()))
+                    .map(|(k, d)| (k.to_string_content(), d.value.clone()))
                     .collect()
             };
             for (k, v) in entries {
@@ -783,7 +783,7 @@ impl Runtime {
             let target = args.first().cloned().unwrap_or(Value::Undefined);
             let key = abstract_ops::to_string(&args.get(1).cloned().unwrap_or(Value::Undefined));
             match target {
-                Value::Object(id) => Ok(Value::Boolean(rt.obj(id).properties.contains_key(key.as_str()))),
+                Value::Object(id) => Ok(Value::Boolean(rt.obj(id).has_own_str(key.as_str()))),
                 _ => Ok(Value::Boolean(false)),
             }
         });
@@ -1205,15 +1205,15 @@ impl Runtime {
             let has_getter = matches!(&getter, Value::Object(_));
             let has_setter = matches!(&setter, Value::Object(_));
             // §6.2.5.5 step 10 — cannot mix accessor + data attrs.
-            let has_value_key = rt.obj(desc_id).properties.contains_key("value")
-                || rt.obj(desc_id).properties.contains_key("writable");
+            let has_value_key = rt.obj(desc_id).has_own_str("value")
+                || rt.obj(desc_id).has_own_str("writable");
             let has_accessor_key = has_get_key || has_set_key;
             if has_value_key && has_accessor_key {
                 return Err(RuntimeError::TypeError(
                     "Invalid property descriptor: cannot both specify accessors and a value or writable attribute".into()));
             }
             if has_getter || has_setter {
-                rt.obj_mut(target).properties.insert(key, crate::value::PropertyDescriptor {
+                rt.obj_mut(target).properties.insert(crate::value::PropertyKey::String(key), crate::value::PropertyDescriptor {
                     value: Value::Undefined,
                     writable: false, enumerable: true, configurable: true,
                     getter: if has_getter { Some(getter) } else { None },
@@ -1240,9 +1240,9 @@ impl Runtime {
                 // like color-convert's conversions.js then saw 'channels'
                 // and 'labels' in Object.keys() despite being explicitly
                 // defined as non-enumerable.
-                let has_value = rt.obj(desc_id).properties.contains_key("value");
+                let has_value = rt.obj(desc_id).has_own_str("value");
                 let read_attr = |rt: &Runtime, name: &str| -> Option<bool> {
-                    if !rt.obj(desc_id).properties.contains_key(name) { return None; }
+                    if !rt.obj(desc_id).has_own_str(name) { return None; }
                     match rt.object_get(desc_id, name) {
                         Value::Boolean(b) => Some(b),
                         Value::Undefined => Some(false),
@@ -1259,7 +1259,7 @@ impl Runtime {
                     rt.object_get(desc_id, "value")
                 } else {
                     // Preserve existing value when descriptor lacks `value`.
-                    match rt.obj(target).properties.get(&key) {
+                    match rt.obj(target).get_own(&key) {
                         Some(d) => d.value.clone(),
                         None => Value::Undefined,
                     }
@@ -1268,9 +1268,9 @@ impl Runtime {
                 // is partial (matches CompletePropertyDescriptor for
                 // already-present properties); for a new property, absent
                 // attributes default to false.
-                let exists = rt.obj(target).properties.contains_key(&key);
+                let exists = rt.obj(target).has_own_str(&key);
                 let (default_w, default_e, default_c, existing_value) = if exists {
-                    let d = &rt.obj(target).properties[&key];
+                    let d = rt.obj(target).get_own(&key).unwrap();
                     (d.writable, d.enumerable, d.configurable, d.value.clone())
                 } else {
                     (false, false, false, Value::Undefined)
@@ -1296,7 +1296,7 @@ impl Runtime {
                         )));
                     }
                 }
-                rt.obj_mut(target).properties.insert(key, crate::value::PropertyDescriptor {
+                rt.obj_mut(target).properties.insert(crate::value::PropertyKey::String(key), crate::value::PropertyDescriptor {
                     value,
                     writable: new_w,
                     enumerable: new_e,
@@ -1321,7 +1321,7 @@ impl Runtime {
                 let o = rt.obj(props);
                 o.properties.iter()
                     .filter(|(_, d)| d.enumerable)
-                    .map(|(k, d)| (k.clone(), d.value.clone()))
+                    .map(|(k, d)| (k.to_string_content(), d.value.clone()))
                     .collect()
             };
             for (k, dv) in entries {
@@ -1333,7 +1333,7 @@ impl Runtime {
                     // descriptor's own writable/enumerable/configurable
                     // (default false when absent) per CompletePropertyDescriptor.
                     let read_bool = |rt: &Runtime, name: &str| -> Option<bool> {
-                        if !rt.obj(did).properties.contains_key(name) { return None; }
+                        if !rt.obj(did).has_own_str(name) { return None; }
                         match rt.object_get(did, name) {
                             Value::Boolean(b) => Some(b),
                             Value::Undefined | Value::Null => Some(false),
@@ -1347,10 +1347,10 @@ impl Runtime {
                     let writable = read_bool(rt, "writable").unwrap_or(false);
                     let enumerable = read_bool(rt, "enumerable").unwrap_or(false);
                     let configurable = read_bool(rt, "configurable").unwrap_or(false);
-                    let value = if rt.obj(did).properties.contains_key("value") {
+                    let value = if rt.obj(did).has_own_str("value") {
                         rt.object_get(did, "value")
                     } else { Value::Undefined };
-                    rt.obj_mut(target).properties.insert(k, crate::value::PropertyDescriptor {
+                    rt.obj_mut(target).properties.insert(crate::value::PropertyKey::String(k), crate::value::PropertyDescriptor {
                         value,
                         writable, enumerable, configurable,
                         getter: if has_getter { Some(getter) } else { None },
@@ -1381,7 +1381,7 @@ impl Runtime {
             //   Object.getOwnPropertyDescriptor(TypedArrayProto, @@toStringTag).get
             let (has, value, writable, enumerable, configurable, getter, setter) = {
                 let o = rt.obj(id);
-                match o.properties.get(&key) {
+                match o.get_own(&key) {
                     Some(d) => (true, d.value.clone(), d.writable, d.enumerable, d.configurable, d.getter.clone(), d.setter.clone()),
                     None => (false, Value::Undefined, false, false, false, None, None),
                 }
@@ -1407,7 +1407,7 @@ impl Runtime {
             };
             let entries: Vec<(String, Value, bool, bool, bool, Option<Value>, Option<Value>)> = {
                 let o = rt.obj(id);
-                o.properties.iter().map(|(k, d)| (k.clone(), d.value.clone(), d.writable, d.enumerable, d.configurable, d.getter.clone(), d.setter.clone())).collect()
+                o.properties.iter().map(|(k, d)| (k.to_string_content(), d.value.clone(), d.writable, d.enumerable, d.configurable, d.getter.clone(), d.setter.clone())).collect()
             };
             let out = rt.alloc_object(Object::new_ordinary());
             for (k, v, w, e, c, getter, setter) in entries {
@@ -1462,7 +1462,7 @@ impl Runtime {
                     let o = rt.obj(*props_id);
                     o.properties.iter()
                         .filter(|(_, d)| d.enumerable)
-                        .map(|(k, d)| (k.clone(), d.value.clone()))
+                        .map(|(k, d)| (k.to_string_content(), d.value.clone()))
                         .collect()
                 };
                 for (k, dv) in entries {
@@ -1506,7 +1506,7 @@ impl Runtime {
                 let props_id = *props_id;
                 let keys: Vec<String> = rt.obj(props_id).properties.iter()
                     .filter(|(_, d)| d.enumerable)
-                    .map(|(k, _)| k.clone())
+                    .filter_map(|(k, _)| k.as_str().to_string().into()).map(|s: String| s)
                     .collect();
                 for k in keys {
                     // §20.1.2.2 step 5 + §10.1.6.1: Get(props, key) dispatches
@@ -1552,7 +1552,7 @@ impl Runtime {
                     let value = if has_value { rt.read_property(did, "value")? } else { Value::Undefined };
                     let has_getter = matches!(getter_v, Value::Object(_));
                     let has_setter = matches!(setter_v, Value::Object(_));
-                    rt.obj_mut(id).properties.insert(k, crate::value::PropertyDescriptor {
+                    rt.obj_mut(id).properties.insert(crate::value::PropertyKey::String(k), crate::value::PropertyDescriptor {
                         value,
                         writable, enumerable, configurable,
                         getter: if has_getter { Some(getter_v) } else { None },
@@ -2088,7 +2088,7 @@ impl Runtime {
                     let pairs: Vec<(String, Value)> = rt.obj(*src).properties
                         .iter()
                         .filter(|(k, d)| d.enumerable && k.as_str() != "__headers")
-                        .map(|(k, d)| (k.clone(), d.value.clone()))
+                        .map(|(k, d)| (k.to_string_content(), d.value.clone()))
                         .collect();
                     for (k, v) in pairs {
                         let lk = k.to_ascii_lowercase();
@@ -2098,7 +2098,7 @@ impl Runtime {
                     // If the src is itself a Headers instance, fold in its __headers too.
                     if let Value::Object(src_bag) = rt.object_get(*src, "__headers") {
                         let inner: Vec<(String, Value)> = rt.obj(src_bag).properties
-                            .iter().map(|(k, d)| (k.clone(), d.value.clone())).collect();
+                            .iter().map(|(k, d)| (k.to_string_content(), d.value.clone())).collect();
                         for (k, v) in inner {
                             rt.object_set(bag, k, v);
                         }
@@ -2165,7 +2165,7 @@ impl Runtime {
             let bag = match rt.object_get(this_id, "__headers") { Value::Object(b) => b, _ => return Ok(Value::Undefined) };
             let cb = args.first().cloned().unwrap_or(Value::Undefined);
             let pairs: Vec<(String, Value)> = rt.obj(bag).properties
-                .iter().map(|(k, d)| (k.clone(), d.value.clone())).collect();
+                .iter().map(|(k, d)| (k.to_string_content(), d.value.clone())).collect();
             for (k, v) in pairs {
                 rt.call_function(cb.clone(), Value::Undefined,
                     vec![v, Value::String(Rc::new(k)), Value::Object(this_id)])?;
@@ -2212,7 +2212,7 @@ impl Runtime {
                         let pairs: Vec<(String, Value)> = rt.obj(src).properties
                             .iter()
                             .filter(|(k, d)| d.enumerable && k.as_str() != "__headers")
-                            .map(|(k, d)| (k.clone(), d.value.clone()))
+                            .map(|(k, d)| (k.to_string_content(), d.value.clone()))
                             .collect();
                         for (k, v) in pairs {
                             let lk = k.to_ascii_lowercase();
@@ -2221,7 +2221,7 @@ impl Runtime {
                         }
                         if let Value::Object(src_bag) = rt.object_get(src, "__headers") {
                             let inner: Vec<(String, Value)> = rt.obj(src_bag).properties
-                                .iter().map(|(k, d)| (k.clone(), d.value.clone())).collect();
+                                .iter().map(|(k, d)| (k.to_string_content(), d.value.clone())).collect();
                             for (k, v) in inner {
                                 rt.object_set(bag, k, v);
                             }
@@ -2532,7 +2532,7 @@ impl Runtime {
                     _ => return Ok(Value::Object(rt.alloc_object(Object::new_array()))),
                 };
                 let pairs: Vec<(String, Value)> = rt.obj(storage).properties.iter()
-                    .map(|(k, d)| (k.clone(), d.value.clone())).collect();
+                    .map(|(k, d)| (k.to_string_content(), d.value.clone())).collect();
                 let arr = rt.alloc_object(Object::new_array());
                 for (i, (k, v)) in pairs.into_iter().enumerate() {
                     let pair = rt.alloc_object(Object::new_array());
@@ -4051,7 +4051,7 @@ where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
     // Op::New + Reflect.construct throw TypeError on `new Math.abs()`.
     let fn_obj = make_native_non_ctor(name, length, f);
     let fn_id = rt.alloc_object(fn_obj);
-    rt.obj_mut(host).properties.insert(name.to_string(), crate::value::PropertyDescriptor {
+    rt.obj_mut(host).properties.insert(crate::value::PropertyKey::String(name.to_string()), crate::value::PropertyDescriptor {
         value: Value::Object(fn_id),
         writable: true, enumerable: false, configurable: true,
         getter: None, setter: None,
@@ -4100,12 +4100,12 @@ pub(crate) fn json_stringify(rt: &Runtime, v: &Value) -> String {
                 let obj = rt.obj(*id);
                 let is_array = matches!(obj.internal_kind, InternalKind::Array);
                 let v: Vec<_> = obj.properties.iter()
-                    .map(|(k, d)| (k.clone(), d.clone())).collect();
+                    .map(|(k, d)| (k.to_string_content(), d.clone())).collect();
                 (is_array, v)
             };
             if is_array {
                 let mut entries: Vec<(usize, String)> = props.iter()
-                    .filter_map(|(k, d)| k.parse::<usize>().ok().map(|i| (i, json_stringify(rt, &d.value))))
+                    .filter_map(|(k, d)| k.as_str().parse::<usize>().ok().map(|i| (i, json_stringify(rt, &d.value))))
                     .collect();
                 entries.sort_by_key(|(i, _)| *i);
                 let body: Vec<String> = entries.into_iter().map(|(_, s)| s).collect();
@@ -4117,7 +4117,7 @@ pub(crate) fn json_stringify(rt: &Runtime, v: &Value) -> String {
                 // serialized form is `"undefined"` (covers Symbol values
                 // too — the upper-level Symbol match returns "undefined").
                 let entries: Vec<String> = props.iter()
-                    .filter(|(k, d)| d.enumerable && !k.starts_with("@@") && !matches!(d.value, Value::Undefined | Value::Symbol(_)))
+                    .filter(|(k, d)| d.enumerable && !k.as_str().starts_with("@@") && !matches!(d.value, Value::Undefined | Value::Symbol(_)))
                     .map(|(k, d)| format!("{}:{}", json_quote_string(k), json_stringify(rt, &d.value)))
                     .collect();
                 format!("{{{}}}", entries.join(","))

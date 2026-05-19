@@ -246,7 +246,7 @@ pub fn install(rt: &mut Runtime) {
     register_method(rt, proto, "eventNames", |rt, _args| {
         let em = this_emitter(rt).ok_or_else(|| RuntimeError::TypeError("eventNames: this is not an EventEmitter".into()))?;
         let bag = get_or_create_listeners(rt, em);
-        let names: Vec<String> = rt.obj(bag).properties.keys().cloned().collect();
+        let names: Vec<String> = rt.obj(bag).properties.keys().map(|k| k.as_str().to_string()).collect();
         let arr = rt.alloc_object(RtObject::new_array());
         for (i, n) in names.iter().enumerate() {
             rt.object_set(arr, i.to_string(), Value::String(Rc::new(n.clone())));
