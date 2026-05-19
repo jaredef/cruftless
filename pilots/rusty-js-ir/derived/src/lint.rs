@@ -163,7 +163,47 @@ fn collect_steps<'a>(
             IRNode::While { body, .. } => collect_steps(body, out),
             _ => {}
         }
+        // Ω.5.P63.E55: closure bodies may carry their own spec-step IDs
+        // (e.g., "2.a" for "When F is called with v, fulfill the captured
+        // promise"). Walk the Expr tree on every node to surface nested
+        // Expr::Closure bodies.
+        collect_steps_from_node(&s.node, out);
     }
+}
+
+fn collect_steps_from_node<'a>(node: &'a IRNode, out: &mut std::collections::HashMap<&'a str, &'a Step>) {
+    match node {
+        IRNode::Let { value, .. }
+        | IRNode::LetIndex { value, .. }
+        | IRNode::AssignIndex { value, .. }
+        | IRNode::Assign { value, .. }
+        | IRNode::Return(value)
+        | IRNode::Expr(value) => collect_steps_from_expr(value, out),
+        IRNode::CellSet { cell, value } => {
+            collect_steps_from_expr(cell, out);
+            collect_steps_from_expr(value, out);
+        }
+        IRNode::If { cond, then_body, else_body } => {
+            collect_steps_from_expr(cond, out);
+            collect_steps(then_body, out);
+            collect_steps(else_body, out);
+        }
+        IRNode::While { cond, body } => {
+            collect_steps_from_expr(cond, out);
+            collect_steps(body, out);
+        }
+        IRNode::Throw { .. } => {}
+    }
+}
+
+fn collect_steps_from_expr<'a>(e: &'a Expr, out: &mut std::collections::HashMap<&'a str, &'a Step>) {
+    if let Expr::Closure { body, .. } = e {
+        collect_steps(body, out);
+    }
+    // Other Expr variants are leaf or composed of sub-Exprs; we only
+    // need to surface Closure bodies for step-ID indexing. The lint's
+    // abstract-op walker (walk_step_collecting + collect_abstract_ops_in_expr)
+    // handles the rest.
 }
 
 fn collect_abstract_ops_in_step(step: &Step) -> std::collections::HashSet<&'static str> {

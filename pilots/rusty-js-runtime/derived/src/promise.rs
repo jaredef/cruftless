@@ -96,28 +96,11 @@ impl Runtime {
         crate::intrinsics::register_intrinsic_method(self, promise_obj, "race", 1, |rt, args| {
             crate::generated::promise_race(rt, rt.current_this(), args)
         });
-        crate::intrinsics::register_intrinsic_method(self, promise_obj, "withResolvers", 0, |rt, _args| {
-            // ECMA §27.2.4.4: returns {promise, resolve, reject}.
-            let p = new_promise(rt);
-            let p_for_resolve = p;
-            let p_for_reject = p;
-            let resolve_fn = crate::intrinsics::make_native("resolve", move |rt, args| {
-                let v = args.first().cloned().unwrap_or(Value::Undefined);
-                resolve_promise(rt, p_for_resolve, v);
-                Ok(Value::Undefined)
-            });
-            let reject_fn = crate::intrinsics::make_native("reject", move |rt, args| {
-                let v = args.first().cloned().unwrap_or(Value::Undefined);
-                reject_promise(rt, p_for_reject, v);
-                Ok(Value::Undefined)
-            });
-            let resolve_id = rt.alloc_object(resolve_fn);
-            let reject_id = rt.alloc_object(reject_fn);
-            let mut out = Object::new_ordinary();
-            out.set_own("promise".into(), Value::Object(p));
-            out.set_own("resolve".into(), Value::Object(resolve_id));
-            out.set_own("reject".into(), Value::Object(reject_id));
-            Ok(Value::Object(rt.alloc_object(out)))
+        // Ω.5.P63.E55 Stage 2: routed through IR (uses Expr::Closure for the
+        // resolve/reject functions; first IR section to demonstrate the
+        // alphabet-closures primitive).
+        crate::intrinsics::register_intrinsic_method(self, promise_obj, "withResolvers", 0, |rt, args| {
+            crate::generated::promise_with_resolvers(rt, rt.current_this(), args)
         });
         if let Some(proto) = self.promise_prototype {
             self.obj_mut(promise_obj).set_own_frozen("prototype".into(), Value::Object(proto));

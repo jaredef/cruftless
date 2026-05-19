@@ -23,6 +23,93 @@ use crate::lint::SpecStepRecord;
 fn b(e: Expr) -> Box<Expr> { Box::new(e) }
 fn v(name: &str) -> Expr { Expr::Var(name.to_string()) }
 
+// ──────────────── Ω.5.P63.E55 Stage 2: Promise.withResolvers via alphabet closures ────────────────
+//
+// First IR section that uses Expr::Closure end-to-end. Models §27.2.4.4:
+//
+//   1. Let C be the this value.
+//   2. Let promiseCapability be ? NewPromiseCapability(C).
+//   3. Let obj be OrdinaryObjectCreate(%Object.prototype%).
+//   4. Perform ! CreateDataProperty(obj, "promise", promiseCapability.[[Promise]]).
+//   5. Perform ! CreateDataProperty(obj, "resolve", promiseCapability.[[Resolve]]).
+//   6. Perform ! CreateDataProperty(obj, "reject", promiseCapability.[[Reject]]).
+//   7. Return obj.
+//
+// We inline NewPromiseCapability for the built-in Promise constructor case
+// (the spec's most common path): allocate a fresh pending promise, then
+// construct two resolve/reject closures that capture the promise handle and
+// settle it on invocation. Each closure body is a single CallBuiltin to the
+// settling helper.
+
+pub fn build_with_resolvers() -> IRFunction {
+    let body = vec![
+        // step 1 alt: allocate the fresh pending Promise.
+        Step { spec_step: "1".into(), node: IRNode::Let {
+            name: "p".into(),
+            value: Expr::CallBuiltin { name: "new_promise_value_via", args: vec![] },
+        }},
+        // steps 2/5: resolve function. Captures `p`; the body settles `p`
+        // with the first arg.
+        Step { spec_step: "2".into(), node: IRNode::Let {
+            name: "resolve_fn".into(),
+            value: Expr::Closure {
+                label: "<Promise.withResolvers resolve>",
+                params: vec!["v".into()],
+                captures: vec!["p".into()],
+                body: vec![
+                    Step { spec_step: "2.a".into(), node: IRNode::Expr(Expr::CallBuiltin {
+                        name: "promise_settle_fulfilled_via",
+                        args: vec![v("p"), v("v")],
+                    })},
+                ],
+            },
+        }},
+        // steps 3/6: reject function. Symmetric to resolve.
+        Step { spec_step: "3".into(), node: IRNode::Let {
+            name: "reject_fn".into(),
+            value: Expr::Closure {
+                label: "<Promise.withResolvers reject>",
+                params: vec!["v".into()],
+                captures: vec!["p".into()],
+                body: vec![
+                    Step { spec_step: "3.a".into(), node: IRNode::Expr(Expr::CallBuiltin {
+                        name: "promise_settle_rejected_via",
+                        args: vec![v("p"), v("v")],
+                    })},
+                ],
+            },
+        }},
+        // step 7 (combined with 4/5/6): assemble the {promise, resolve, reject} object.
+        Step { spec_step: "7".into(), node: IRNode::Return(Expr::CallBuiltin {
+            name: "promise_with_resolvers_assemble_via",
+            args: vec![v("p"), v("resolve_fn"), v("reject_fn")],
+        })},
+    ];
+    IRFunction {
+        spec_section: "27.2.4.4".into(),
+        rust_name: "promise_with_resolvers".into(),
+        title: "Promise.withResolvers ( )".into(),
+        body,
+    }
+}
+
+pub fn spec_steps_with_resolvers() -> Vec<SpecStepRecord> {
+    vec![
+        SpecStepRecord { step_id: "1".into(),     abstract_ops: vec!["new_promise_value_via"],            throws: None,
+            prose: "Let promiseCapability.[[Promise]] be a new pending Promise." },
+        SpecStepRecord { step_id: "2".into(),     abstract_ops: vec![],                                    throws: None,
+            prose: "Let resolveFn be a new built-in function whose internal slot captures the promise." },
+        SpecStepRecord { step_id: "2.a".into(),   abstract_ops: vec!["promise_settle_fulfilled_via"],     throws: None,
+            prose: "When called with v, fulfill the captured promise with v." },
+        SpecStepRecord { step_id: "3".into(),     abstract_ops: vec![],                                    throws: None,
+            prose: "Let rejectFn be a new built-in function whose internal slot captures the promise." },
+        SpecStepRecord { step_id: "3.a".into(),   abstract_ops: vec!["promise_settle_rejected_via"],      throws: None,
+            prose: "When called with v, reject the captured promise with v." },
+        SpecStepRecord { step_id: "7".into(),     abstract_ops: vec!["promise_with_resolvers_assemble_via"], throws: None,
+            prose: "Return { promise, resolve: resolveFn, reject: rejectFn }." },
+    ]
+}
+
 pub fn build_resolve() -> IRFunction {
     let body = vec![
         Step {

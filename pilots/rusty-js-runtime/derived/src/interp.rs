@@ -987,6 +987,44 @@ impl Runtime {
         Ok((promise, resolve, reject))
     }
 
+    /// Ω.5.P63.E55 helper: allocate a fresh pending Promise and return its
+    /// Value::Object handle. Exposed as a CallBuiltin target for IR sections
+    /// that construct Promise capabilities (Promise.withResolvers,
+    /// NewPromiseCapability, the capability-style allocation in
+    /// Promise.all/race etc.).
+    pub fn new_promise_value_via(&mut self) -> Result<Value, RuntimeError> {
+        Ok(Value::Object(crate::promise::new_promise(self)))
+    }
+
+    /// Ω.5.P63.E55 helper: settle a promise with a fulfillment value.
+    /// First arg must be the Promise object; second is the resolved value.
+    /// Used inside IR-Expr::Closure bodies that model Promise capability
+    /// resolve functions.
+    pub fn promise_settle_fulfilled_via(&mut self, promise: &Value, value: &Value) -> Result<Value, RuntimeError> {
+        if let Value::Object(id) = promise {
+            crate::promise::resolve_promise(self, *id, value.clone());
+        }
+        Ok(Value::Undefined)
+    }
+
+    /// Ω.5.P63.E55 helper: settle a promise with a rejection reason.
+    pub fn promise_settle_rejected_via(&mut self, promise: &Value, value: &Value) -> Result<Value, RuntimeError> {
+        if let Value::Object(id) = promise {
+            crate::promise::reject_promise(self, *id, value.clone());
+        }
+        Ok(Value::Undefined)
+    }
+
+    /// Ω.5.P63.E55 helper: assemble the {promise, resolve, reject} object
+    /// returned by Promise.withResolvers.
+    pub fn promise_with_resolvers_assemble_via(&mut self, promise: &Value, resolve: &Value, reject: &Value) -> Result<Value, RuntimeError> {
+        let mut out = crate::value::Object::new_ordinary();
+        out.set_own("promise".into(), promise.clone());
+        out.set_own("resolve".into(), resolve.clone());
+        out.set_own("reject".into(), reject.clone());
+        Ok(Value::Object(self.alloc_object(out)))
+    }
+
     /// Promise.prototype.then(onFulfilled, onRejected) per ECMA §27.2.5.4.
     /// First arg is the source Promise (passed by call site via Expr::This).
     pub fn promise_then_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
