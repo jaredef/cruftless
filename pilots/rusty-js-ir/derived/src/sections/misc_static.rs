@@ -21,6 +21,22 @@ fn nullary_section(spec: &str, rust_name: &str, title: &str, via: &'static str) 
     }
 }
 
+pub fn build_set_union()                -> IRFunction { variadic_section("24.2.4.x", "set_prototype_union",                "Set.prototype.union ( other )",                "set_proto_union_via") }
+pub fn build_set_intersection()         -> IRFunction { variadic_section("24.2.4.x", "set_prototype_intersection",         "Set.prototype.intersection ( other )",          "set_proto_intersection_via") }
+pub fn build_set_difference()           -> IRFunction { variadic_section("24.2.4.x", "set_prototype_difference",           "Set.prototype.difference ( other )",            "set_proto_difference_via") }
+pub fn build_set_symmetric_difference() -> IRFunction { variadic_section("24.2.4.x", "set_prototype_symmetric_difference", "Set.prototype.symmetricDifference ( other )",   "set_proto_symmetric_difference_via") }
+pub fn build_set_is_subset_of()         -> IRFunction { variadic_section("24.2.4.x", "set_prototype_is_subset_of",         "Set.prototype.isSubsetOf ( other )",            "set_proto_is_subset_of_via") }
+pub fn build_set_is_superset_of()       -> IRFunction { variadic_section("24.2.4.x", "set_prototype_is_superset_of",       "Set.prototype.isSupersetOf ( other )",          "set_proto_is_superset_of_via") }
+pub fn build_set_is_disjoint_from()     -> IRFunction { variadic_section("24.2.4.x", "set_prototype_is_disjoint_from",     "Set.prototype.isDisjointFrom ( other )",        "set_proto_is_disjoint_from_via") }
+
+pub fn spec_steps_set_union()                -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["set_proto_union_via"],                throws: None, prose: "Brand-check Set; iterate other; return new Set with union of values." }] }
+pub fn spec_steps_set_intersection()         -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["set_proto_intersection_via"],         throws: None, prose: "Return new Set of values present in both this and other." }] }
+pub fn spec_steps_set_difference()           -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["set_proto_difference_via"],           throws: None, prose: "Return new Set of values in this but not in other." }] }
+pub fn spec_steps_set_symmetric_difference() -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["set_proto_symmetric_difference_via"], throws: None, prose: "Return new Set of values in exactly one of this and other." }] }
+pub fn spec_steps_set_is_subset_of()         -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["set_proto_is_subset_of_via"],         throws: None, prose: "Return whether every value of this is in other." }] }
+pub fn spec_steps_set_is_superset_of()       -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["set_proto_is_superset_of_via"],       throws: None, prose: "Return whether every value of other is in this." }] }
+pub fn spec_steps_set_is_disjoint_from()     -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["set_proto_is_disjoint_from_via"],     throws: None, prose: "Return whether this and other share no values." }] }
+
 pub fn build_set_add()      -> IRFunction { variadic_section("24.2.3.1", "set_prototype_add",      "Set.prototype.add ( value )",    "set_proto_add_via") }
 pub fn build_set_has()      -> IRFunction { variadic_section("24.2.3.6", "set_prototype_has",      "Set.prototype.has ( value )",    "set_proto_has_via") }
 pub fn build_set_delete()   -> IRFunction { variadic_section("24.2.3.5", "set_prototype_delete",   "Set.prototype.delete ( value )", "set_proto_delete_via") }

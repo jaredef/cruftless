@@ -663,6 +663,164 @@ impl Runtime {
         Ok(Value::Number(new_ms))
     }
 
+    fn new_empty_set(&mut self) -> (crate::value::ObjectRef, crate::value::ObjectRef) {
+        let out_proto = match self.globals.get("Set").cloned() {
+            Some(Value::Object(cid)) => match self.object_get(cid, "prototype") { Value::Object(p) => Some(p), _ => None },
+            _ => None,
+        };
+        let mut o = crate::value::Object::new_ordinary();
+        o.proto = out_proto;
+        let new_set = self.alloc_object(o);
+        let storage = self.alloc_object(crate::value::Object::new_ordinary());
+        self.object_set(new_set, "__set_data".into(), Value::Object(storage));
+        (new_set, storage)
+    }
+
+    /// Set.prototype.union(other).
+    pub fn set_proto_union_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let this = match self.current_this() {
+            Value::Object(id) => id,
+            _ => return Err(RuntimeError::TypeError("Set.prototype.union: this is not a Set object".into())),
+        };
+        let other = args.first().cloned().unwrap_or(Value::Undefined);
+        let other_vals = crate::intrinsics::collect_iterable(self, other)?;
+        let (new_set, storage) = self.new_empty_set();
+        let mut size = 0.0;
+        if let Value::Object(s) = self.object_get(this, "__set_data") {
+            let kvs: Vec<(String, Value)> = self.obj(s).properties.iter().map(|(k,d)| (k.clone(), d.value.clone())).collect();
+            for (k, v) in kvs { self.object_set(storage, k, v); size += 1.0; }
+        }
+        for v in other_vals {
+            let k = crate::abstract_ops::to_string(&v).as_str().to_string();
+            if !self.obj(storage).properties.contains_key(&k) {
+                self.object_set(storage, k, v); size += 1.0;
+            }
+        }
+        self.object_set(new_set, "size".into(), Value::Number(size));
+        Ok(Value::Object(new_set))
+    }
+
+    /// Set.prototype.intersection(other).
+    pub fn set_proto_intersection_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let this = match self.current_this() {
+            Value::Object(id) => id,
+            _ => return Err(RuntimeError::TypeError("Set.prototype.intersection: this is not a Set object".into())),
+        };
+        let other = args.first().cloned().unwrap_or(Value::Undefined);
+        let other_vals = crate::intrinsics::collect_iterable(self, other)?;
+        let other_keys: std::collections::HashSet<String> = other_vals.iter()
+            .map(|v| crate::abstract_ops::to_string(v).as_str().to_string()).collect();
+        let (new_set, storage) = self.new_empty_set();
+        let mut size = 0.0;
+        if let Value::Object(s) = self.object_get(this, "__set_data") {
+            let kvs: Vec<(String, Value)> = self.obj(s).properties.iter().map(|(k,d)| (k.clone(), d.value.clone())).collect();
+            for (k, v) in kvs {
+                if other_keys.contains(&k) { self.object_set(storage, k, v); size += 1.0; }
+            }
+        }
+        self.object_set(new_set, "size".into(), Value::Number(size));
+        Ok(Value::Object(new_set))
+    }
+
+    /// Set.prototype.difference(other).
+    pub fn set_proto_difference_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let this = match self.current_this() {
+            Value::Object(id) => id,
+            _ => return Err(RuntimeError::TypeError("Set.prototype.difference: this is not a Set object".into())),
+        };
+        let other = args.first().cloned().unwrap_or(Value::Undefined);
+        let other_vals = crate::intrinsics::collect_iterable(self, other)?;
+        let other_keys: std::collections::HashSet<String> = other_vals.iter()
+            .map(|v| crate::abstract_ops::to_string(v).as_str().to_string()).collect();
+        let (new_set, storage) = self.new_empty_set();
+        let mut size = 0.0;
+        if let Value::Object(s) = self.object_get(this, "__set_data") {
+            let kvs: Vec<(String, Value)> = self.obj(s).properties.iter().map(|(k,d)| (k.clone(), d.value.clone())).collect();
+            for (k, v) in kvs {
+                if !other_keys.contains(&k) { self.object_set(storage, k, v); size += 1.0; }
+            }
+        }
+        self.object_set(new_set, "size".into(), Value::Number(size));
+        Ok(Value::Object(new_set))
+    }
+
+    /// Set.prototype.symmetricDifference(other).
+    pub fn set_proto_symmetric_difference_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let this = match self.current_this() {
+            Value::Object(id) => id,
+            _ => return Err(RuntimeError::TypeError("Set.prototype.symmetricDifference: this is not a Set object".into())),
+        };
+        let other = args.first().cloned().unwrap_or(Value::Undefined);
+        let other_vals = crate::intrinsics::collect_iterable(self, other)?;
+        let other_keys: std::collections::HashSet<String> = other_vals.iter()
+            .map(|v| crate::abstract_ops::to_string(v).as_str().to_string()).collect();
+        let (new_set, storage) = self.new_empty_set();
+        let mut size = 0.0;
+        if let Value::Object(s) = self.object_get(this, "__set_data") {
+            let kvs: Vec<(String, Value)> = self.obj(s).properties.iter().map(|(k,d)| (k.clone(), d.value.clone())).collect();
+            for (k, v) in kvs {
+                if !other_keys.contains(&k) { self.object_set(storage, k, v); size += 1.0; }
+            }
+        }
+        let this_storage = match self.object_get(this, "__set_data") { Value::Object(id) => Some(id), _ => None };
+        for v in other_vals {
+            let k = crate::abstract_ops::to_string(&v).as_str().to_string();
+            let in_this = this_storage.map(|s| self.obj(s).properties.contains_key(&k)).unwrap_or(false);
+            if !in_this { self.object_set(storage, k, v); size += 1.0; }
+        }
+        self.object_set(new_set, "size".into(), Value::Number(size));
+        Ok(Value::Object(new_set))
+    }
+
+    /// Set.prototype.isSubsetOf(other).
+    pub fn set_proto_is_subset_of_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let this = match self.current_this() {
+            Value::Object(id) => id,
+            _ => return Err(RuntimeError::TypeError("Set.prototype.isSubsetOf: this is not a Set object".into())),
+        };
+        let other = args.first().cloned().unwrap_or(Value::Undefined);
+        let other_vals = crate::intrinsics::collect_iterable(self, other)?;
+        let other_keys: std::collections::HashSet<String> = other_vals.iter()
+            .map(|v| crate::abstract_ops::to_string(v).as_str().to_string()).collect();
+        if let Value::Object(s) = self.object_get(this, "__set_data") {
+            for k in self.obj(s).properties.keys() {
+                if !other_keys.contains(k) { return Ok(Value::Boolean(false)); }
+            }
+        }
+        Ok(Value::Boolean(true))
+    }
+
+    /// Set.prototype.isSupersetOf(other).
+    pub fn set_proto_is_superset_of_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let this = match self.current_this() {
+            Value::Object(id) => id,
+            _ => return Err(RuntimeError::TypeError("Set.prototype.isSupersetOf: this is not a Set object".into())),
+        };
+        let other = args.first().cloned().unwrap_or(Value::Undefined);
+        let other_vals = crate::intrinsics::collect_iterable(self, other)?;
+        let this_storage = match self.object_get(this, "__set_data") { Value::Object(id) => Some(id), _ => None };
+        for v in other_vals {
+            let k = crate::abstract_ops::to_string(&v).as_str().to_string();
+            let in_this = this_storage.map(|s| self.obj(s).properties.contains_key(&k)).unwrap_or(false);
+            if !in_this { return Ok(Value::Boolean(false)); }
+        }
+        Ok(Value::Boolean(true))
+    }
+
+    /// Set.prototype.isDisjointFrom(other).
+    pub fn set_proto_is_disjoint_from_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let this = match self.current_this() { Value::Object(id) => id, _ => return Ok(Value::Boolean(true)) };
+        let other = args.first().cloned().unwrap_or(Value::Undefined);
+        let other_vals = crate::intrinsics::collect_iterable(self, other)?;
+        let this_storage = match self.object_get(this, "__set_data") { Value::Object(id) => Some(id), _ => None };
+        for v in other_vals {
+            let k = crate::abstract_ops::to_string(&v).as_str().to_string();
+            let in_this = this_storage.map(|s| self.obj(s).properties.contains_key(&k)).unwrap_or(false);
+            if in_this { return Ok(Value::Boolean(false)); }
+        }
+        Ok(Value::Boolean(true))
+    }
+
     fn set_this_and_storage(&mut self, who: &str) -> Result<(crate::value::ObjectRef, crate::value::ObjectRef), RuntimeError> {
         let this = match self.current_this() {
             Value::Object(id) => id,
