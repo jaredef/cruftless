@@ -560,6 +560,56 @@ impl Runtime {
         Ok(Value::String(std::rc::Rc::new(s)))
     }
 
+    /// Date.prototype.toString() (v1: ISO-like YYYY-MM-DDT00:00:00Z).
+    pub fn date_proto_to_string_via(&mut self) -> Result<Value, RuntimeError> {
+        let this_id = match self.current_this() { Value::Object(id) => id, _ => return Ok(Value::String(std::rc::Rc::new("Invalid Date".into()))) };
+        let ms = match self.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::String(std::rc::Rc::new("Invalid Date".into()))) };
+        let (y, mo, d) = crate::intrinsics::date_components(ms);
+        Ok(Value::String(std::rc::Rc::new(format!("{:04}-{:02}-{:02}T00:00:00Z", y, mo + 1, d))))
+    }
+
+    /// Date.prototype.toJSON() per ECMA §21.4.4.37 (v1: midnight ISO).
+    pub fn date_proto_to_json_via(&mut self) -> Result<Value, RuntimeError> {
+        let this_id = match self.current_this() { Value::Object(id) => id, _ => return Ok(Value::String(std::rc::Rc::new("".into()))) };
+        let ms = match self.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::String(std::rc::Rc::new("".into()))) };
+        let (y, mo, d) = crate::intrinsics::date_components(ms);
+        Ok(Value::String(std::rc::Rc::new(format!("{:04}-{:02}-{:02}T00:00:00.000Z", y, mo + 1, d))))
+    }
+
+    fn date_ms_field(&mut self) -> Option<f64> {
+        let id = match self.current_this() { Value::Object(id) => id, _ => return None };
+        match self.object_get(id, "__date_ms") { Value::Number(n) => Some(n), _ => None }
+    }
+
+    /// Date.prototype.getFullYear() per ECMA §21.4.4.4.
+    pub fn date_proto_get_full_year_via(&mut self) -> Result<Value, RuntimeError> {
+        Ok(Value::Number(self.date_ms_field().map(|ms| crate::intrinsics::date_components(ms).0 as f64).unwrap_or(f64::NAN)))
+    }
+    pub fn date_proto_get_month_via(&mut self) -> Result<Value, RuntimeError> {
+        Ok(Value::Number(self.date_ms_field().map(|ms| crate::intrinsics::date_components(ms).1 as f64).unwrap_or(f64::NAN)))
+    }
+    pub fn date_proto_get_date_via(&mut self) -> Result<Value, RuntimeError> {
+        Ok(Value::Number(self.date_ms_field().map(|ms| crate::intrinsics::date_components(ms).2 as f64).unwrap_or(f64::NAN)))
+    }
+    pub fn date_proto_get_day_via(&mut self) -> Result<Value, RuntimeError> {
+        Ok(Value::Number(self.date_ms_field().map(|ms| {
+            let days = (ms / 86_400_000.0).floor() as i64;
+            (((days % 7) + 7 + 4) % 7) as f64
+        }).unwrap_or(f64::NAN)))
+    }
+    pub fn date_proto_get_hours_via(&mut self) -> Result<Value, RuntimeError> {
+        Ok(Value::Number(self.date_ms_field().map(|ms| ((ms / 3_600_000.0).floor() as i64 % 24) as f64).unwrap_or(f64::NAN)))
+    }
+    pub fn date_proto_get_minutes_via(&mut self) -> Result<Value, RuntimeError> {
+        Ok(Value::Number(self.date_ms_field().map(|ms| ((ms / 60_000.0).floor() as i64 % 60) as f64).unwrap_or(f64::NAN)))
+    }
+    pub fn date_proto_get_seconds_via(&mut self) -> Result<Value, RuntimeError> {
+        Ok(Value::Number(self.date_ms_field().map(|ms| ((ms / 1000.0).floor() as i64 % 60) as f64).unwrap_or(f64::NAN)))
+    }
+    pub fn date_proto_get_milliseconds_via(&mut self) -> Result<Value, RuntimeError> {
+        Ok(Value::Number(self.date_ms_field().map(|ms| (ms as i64 % 1000) as f64).unwrap_or(f64::NAN)))
+    }
+
     /// Date.prototype.getTime() per ECMA §21.4.4.10.
     pub fn date_proto_get_time_via(&mut self) -> Result<Value, RuntimeError> {
         let this = match self.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(0.0)) };

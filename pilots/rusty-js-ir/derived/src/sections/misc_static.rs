@@ -21,6 +21,28 @@ fn nullary_section(spec: &str, rust_name: &str, title: &str, via: &'static str) 
     }
 }
 
+pub fn build_date_to_string()        -> IRFunction { nullary_section("21.4.4.41a", "date_prototype_to_string",        "Date.prototype.toString ( )",        "date_proto_to_string_via") }
+pub fn build_date_to_json()          -> IRFunction { nullary_section("21.4.4.37",  "date_prototype_to_json",          "Date.prototype.toJSON ( )",          "date_proto_to_json_via") }
+pub fn build_date_get_full_year()    -> IRFunction { nullary_section("21.4.4.4",   "date_prototype_get_full_year",    "Date.prototype.getFullYear ( )",     "date_proto_get_full_year_via") }
+pub fn build_date_get_month()        -> IRFunction { nullary_section("21.4.4.8",   "date_prototype_get_month",        "Date.prototype.getMonth ( )",        "date_proto_get_month_via") }
+pub fn build_date_get_date()         -> IRFunction { nullary_section("21.4.4.2",   "date_prototype_get_date",         "Date.prototype.getDate ( )",         "date_proto_get_date_via") }
+pub fn build_date_get_day()          -> IRFunction { nullary_section("21.4.4.3",   "date_prototype_get_day",          "Date.prototype.getDay ( )",          "date_proto_get_day_via") }
+pub fn build_date_get_hours()        -> IRFunction { nullary_section("21.4.4.5",   "date_prototype_get_hours",        "Date.prototype.getHours ( )",        "date_proto_get_hours_via") }
+pub fn build_date_get_minutes()      -> IRFunction { nullary_section("21.4.4.7",   "date_prototype_get_minutes",      "Date.prototype.getMinutes ( )",      "date_proto_get_minutes_via") }
+pub fn build_date_get_seconds()      -> IRFunction { nullary_section("21.4.4.9",   "date_prototype_get_seconds",      "Date.prototype.getSeconds ( )",      "date_proto_get_seconds_via") }
+pub fn build_date_get_milliseconds() -> IRFunction { nullary_section("21.4.4.6",   "date_prototype_get_milliseconds", "Date.prototype.getMilliseconds ( )", "date_proto_get_milliseconds_via") }
+
+pub fn spec_steps_date_to_string()        -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["date_proto_to_string_via"],        throws: None, prose: "Format [[DateValue]] as YYYY-MM-DDT00:00:00Z (v1 deviation; spec uses RFC 7231 local-time form)." }] }
+pub fn spec_steps_date_to_json()          -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["date_proto_to_json_via"],          throws: None, prose: "Format [[DateValue]] as midnight ISO YYYY-MM-DDT00:00:00.000Z (v1)." }] }
+pub fn spec_steps_date_get_full_year()    -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["date_proto_get_full_year_via"],    throws: None, prose: "Return the year component of [[DateValue]]." }] }
+pub fn spec_steps_date_get_month()        -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["date_proto_get_month_via"],        throws: None, prose: "Return the month component (0-based) of [[DateValue]]." }] }
+pub fn spec_steps_date_get_date()         -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["date_proto_get_date_via"],         throws: None, prose: "Return the day-of-month (1-based) of [[DateValue]]." }] }
+pub fn spec_steps_date_get_day()          -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["date_proto_get_day_via"],          throws: None, prose: "Return the day-of-week (0=Sunday) of [[DateValue]]." }] }
+pub fn spec_steps_date_get_hours()        -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["date_proto_get_hours_via"],        throws: None, prose: "Return the hours component of [[DateValue]]." }] }
+pub fn spec_steps_date_get_minutes()      -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["date_proto_get_minutes_via"],      throws: None, prose: "Return the minutes component of [[DateValue]]." }] }
+pub fn spec_steps_date_get_seconds()      -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["date_proto_get_seconds_via"],      throws: None, prose: "Return the seconds component of [[DateValue]]." }] }
+pub fn spec_steps_date_get_milliseconds() -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["date_proto_get_milliseconds_via"], throws: None, prose: "Return the milliseconds component of [[DateValue]]." }] }
+
 pub fn build_date_get_time()      -> IRFunction { nullary_section("21.4.4.10", "date_prototype_get_time",       "Date.prototype.getTime ( )",       "date_proto_get_time_via") }
 pub fn build_date_value_of()      -> IRFunction { nullary_section("21.4.4.44", "date_prototype_value_of",       "Date.prototype.valueOf ( )",       "date_proto_value_of_via") }
 pub fn build_date_to_iso_string() -> IRFunction { nullary_section("21.4.4.36", "date_prototype_to_iso_string",  "Date.prototype.toISOString ( )",   "date_proto_to_iso_string_via") }

@@ -3180,49 +3180,14 @@ impl Runtime {
         register_intrinsic_method(self, proto, "valueOf", 0, |rt, args| {
             crate::generated::date_prototype_value_of(rt, rt.current_this(), args)
         });
-        register_intrinsic_method(self, proto, "getFullYear", 1, |rt, _args| {
-            let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
-            let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::Number(f64::NAN)) };
-            Ok(Value::Number(date_components(ms).0 as f64))
-        });
-        register_intrinsic_method(self, proto, "getMonth", 1, |rt, _args| {
-            let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
-            let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::Number(f64::NAN)) };
-            Ok(Value::Number(date_components(ms).1 as f64))
-        });
-        register_intrinsic_method(self, proto, "getDate", 1, |rt, _args| {
-            let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
-            let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::Number(f64::NAN)) };
-            Ok(Value::Number(date_components(ms).2 as f64))
-        });
-        register_intrinsic_method(self, proto, "getDay", 1, |rt, _args| {
-            let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
-            let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::Number(f64::NAN)) };
-            // Jan 1 1970 was a Thursday (day 4).
-            let days = (ms / 86_400_000.0).floor() as i64;
-            let dow = ((days % 7) + 7 + 4) % 7;
-            Ok(Value::Number(dow as f64))
-        });
-        register_intrinsic_method(self, proto, "getHours", 1, |rt, _args| {
-            let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
-            let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::Number(f64::NAN)) };
-            Ok(Value::Number(((ms / 3_600_000.0).floor() as i64 % 24) as f64))
-        });
-        register_intrinsic_method(self, proto, "getMinutes", 1, |rt, _args| {
-            let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
-            let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::Number(f64::NAN)) };
-            Ok(Value::Number(((ms / 60_000.0).floor() as i64 % 60) as f64))
-        });
-        register_intrinsic_method(self, proto, "getSeconds", 1, |rt, _args| {
-            let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
-            let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::Number(f64::NAN)) };
-            Ok(Value::Number(((ms / 1000.0).floor() as i64 % 60) as f64))
-        });
-        register_intrinsic_method(self, proto, "getMilliseconds", 1, |rt, _args| {
-            let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
-            let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::Number(f64::NAN)) };
-            Ok(Value::Number((ms as i64 % 1000) as f64))
-        });
+        register_intrinsic_method(self, proto, "getFullYear", 1, |rt, args| crate::generated::date_prototype_get_full_year(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "getMonth",        1, |rt, args| crate::generated::date_prototype_get_month(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "getDate",         1, |rt, args| crate::generated::date_prototype_get_date(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "getDay",          1, |rt, args| crate::generated::date_prototype_get_day(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "getHours",        1, |rt, args| crate::generated::date_prototype_get_hours(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "getMinutes",      1, |rt, args| crate::generated::date_prototype_get_minutes(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "getSeconds",      1, |rt, args| crate::generated::date_prototype_get_seconds(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "getMilliseconds", 1, |rt, args| crate::generated::date_prototype_get_milliseconds(rt, rt.current_this(), args));
         register_intrinsic_method(self, proto, "getTimezoneOffset", 1, |_rt, _args| Ok(Value::Number(0.0)));
         // Tier-Ω.5.P31.E1.date-utc-getters-setters: getUTC* mirror the
         // non-UTC getters (we treat __date_ms as UTC throughout — no
@@ -3381,18 +3346,8 @@ impl Runtime {
         register_intrinsic_method(self, proto, "toISOString", 1, |rt, args| {
             crate::generated::date_prototype_to_iso_string(rt, rt.current_this(), args)
         });
-        register_intrinsic_method(self, proto, "toJSON", 1, |rt, _args| {
-            let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::String(Rc::new("".into()))) };
-            let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::String(Rc::new("".into()))) };
-            let (y, mo, d) = date_components(ms);
-            Ok(Value::String(Rc::new(format!("{:04}-{:02}-{:02}T00:00:00.000Z", y, mo + 1, d))))
-        });
-        register_intrinsic_method(self, proto, "toString", 0, |rt, _args| {
-            let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::String(Rc::new("Invalid Date".into()))) };
-            let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::String(Rc::new("Invalid Date".into()))) };
-            let (y, mo, d) = date_components(ms);
-            Ok(Value::String(Rc::new(format!("{:04}-{:02}-{:02}T00:00:00Z", y, mo + 1, d))))
-        });
+        register_intrinsic_method(self, proto, "toJSON",   1, |rt, args| crate::generated::date_prototype_to_json(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "toString", 0, |rt, args| crate::generated::date_prototype_to_string(rt, rt.current_this(), args));
         // Ω.5.P61.E12: Date.prototype additional format + legacy methods
         // per ECMA §21.4.4. v1 deviates from locale-sensitive output;
         // returns the ISO-like form (sufficient for module-init presence
