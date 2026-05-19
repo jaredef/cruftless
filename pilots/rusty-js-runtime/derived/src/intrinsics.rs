@@ -858,15 +858,14 @@ impl Runtime {
             if end == 0 { return Ok(Value::Number(f64::NAN)); }
             Ok(Value::Number(trimmed[..end].parse().unwrap_or(f64::NAN)))
         });
-        register_global_fn(self, "isNaN", |_rt, args|{
-            let v = args.first().cloned().unwrap_or(Value::Undefined);
-            let n = abstract_ops::to_number(&v);
-            Ok(Value::Boolean(n.is_nan()))
+        // Ω.5.P63.E9: global isNaN / isFinite routed through IR-lowered
+        // generated::global_is_*. Differ from Number.isNaN / Number.isFinite
+        // by coercing the arg via ToNumber.
+        register_global_fn(self, "isNaN", |rt, args|{
+            crate::generated::global_is_nan(rt, Value::Undefined, args)
         });
-        register_global_fn(self, "isFinite", |_rt, args|{
-            let v = args.first().cloned().unwrap_or(Value::Undefined);
-            let n = abstract_ops::to_number(&v);
-            Ok(Value::Boolean(n.is_finite()))
+        register_global_fn(self, "isFinite", |rt, args|{
+            crate::generated::global_is_finite(rt, Value::Undefined, args)
         });
         // Tier-Ω.5.j.proto: Function global as a non-constructible stub.
         // Full eval-via-Function would need parser+compiler dependency

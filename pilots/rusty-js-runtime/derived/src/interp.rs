@@ -430,6 +430,19 @@ impl Runtime {
         Ok(())
     }
 
+    /// Global isNaN(v) per ECMA §19.2.3 — coerces via ToNumber unlike
+    /// Number.isNaN which returns false on non-Number args.
+    pub fn global_is_nan_via(&mut self, v: &Value) -> Result<Value, RuntimeError> {
+        let n = self.coerce_to_number(v)?;
+        Ok(Value::Boolean(n.is_nan()))
+    }
+
+    /// Global isFinite(v) per ECMA §19.2.2.
+    pub fn global_is_finite_via(&mut self, v: &Value) -> Result<Value, RuntimeError> {
+        let n = self.coerce_to_number(v)?;
+        Ok(Value::Boolean(n.is_finite()))
+    }
+
     /// Number.isInteger(v) per ECMA §21.1.2.3 — Number-typed + finite + integer.
     pub fn number_is_integer_via(&self, v: &Value) -> Result<Value, RuntimeError> {
         let n = match v {

@@ -14,3 +14,4 @@ pub mod promise_static;               // Promise.resolve, Promise.reject
 pub mod object_proto_ops;             // getPrototypeOf, setPrototypeOf, isExtensible, isFrozen, isSealed
 pub mod object_integrity;             // freeze, seal, preventExtensions, hasOwn, is
 pub mod number_static;                // Number.{isFinite, isInteger, isNaN, isSafeInteger}
+pub mod global_predicates;            // global isFinite, isNaN (coerce; differ from Number.* versions)
