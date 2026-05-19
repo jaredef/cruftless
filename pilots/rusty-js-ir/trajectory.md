@@ -585,3 +585,62 @@ Tier 1.11+ alphabet extensions (queued):
 6. Property-descriptor builders (unblocks Object.{defineProperty, getOwnPropertyDescriptor}).
 
 Pin-Art tag count: 22 commits as of IR-EXT 18.
+
+
+## IR-EXT 19 → 23 — 2026-05-19 night-very-late (Object.assign/fromEntries + Number/Boolean/String prototype methods)
+
+**Stretch summary**: 5 EXT rounds adding 9 more sections + 1 alphabet extension. Brand-checked proto-method pattern crystallized across Number / Boolean / String.
+
+86 IR-encoded total, 81 wired.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| `6ea20dee` | IR-EXT 19: Object.assign + Expr::ArgsRest | Variadic-with-positional-prefix IR primitive. |
+| `7e3e9c89` | IR-EXT 20: Object.fromEntries | CallBuiltin via existing collect_iterable Tier-1.10 approximation. |
+| `ad22a4c2` | IR-EXT 21: Number.prototype.toFixed | First brand-checked proto-method via IR. |
+| `9a4ed692` | IR-EXT 22: Number.prototype.{valueOf, toExp, toPrec} + Boolean.prototype.{valueOf, toString} | Five proto methods via the brand-check pattern. |
+| `6bf783d3` | IR-EXT 23: String.prototype.{charAt, charCodeAt, concat} | Brand-check pattern extended to String. |
+
+### Substrate at IR-EXT 23 close
+
+**IR alphabet**: 54 nodes (52 stable + AllArgs + ArgsRest).
+
+**Sections IR-encoded**: 86 across 9 chapters:
+- Array.prototype: 12 (map, forEach, filter, every, some, find, findIndex, findLast, findLastIndex, indexOf, includes, reduce)
+- Object.{static, integrity, proto-ops}: 17 (keys, values, entries, getOwnPropertyNames, getOwnPropertySymbols, assign, fromEntries, getPrototypeOf, setPrototypeOf, isExtensible, isFrozen, isSealed, freeze, seal, preventExtensions, hasOwn, is)
+- Promise: 2 (resolve, reject)
+- Number static: 4 (isFinite, isInteger, isNaN, isSafeInteger)
+- Number.prototype: 4 (toFixed, valueOf, toExponential, toPrecision)
+- Math: 31 (8 IR-EXT 13 + 18 IR-EXT 14 + 5 IR-EXT 17)
+- Reflect: 9 (has, get, set, deleteProperty, ownKeys, getPrototypeOf, setPrototypeOf, isExtensible, preventExtensions)
+- Global predicates: 2 (isFinite, isNaN)
+- Boolean.prototype: 2 (valueOf, toString)
+- String.prototype: 3 (charAt, charCodeAt, concat)
+
+**Runtime helpers cumulative**: 47.
+
+**Linter**: 86/86 clean.
+
+### Conjecture status
+
+The brand-checked proto-method pattern (Number, Boolean, String) crystallized. Each new proto-cluster requires: one helper per method that does (unwrap_primitive + brand-throw + arg-coerce + format), one IR section per method that's a 1-step CallBuiltin via Expr::This + arg-binding. Pattern is now mechanical.
+
+Pre-existing bug surfaced (not regression): `(true).valueOf()` fails cruftless's proto-chain auto-boxing — primitive-to-method dispatch for Boolean isn't installing the wrapper. `Boolean.prototype.valueOf.call(true)` works. Filed for later runtime fix; IR translation is faithful to existing impl semantics.
+
+### Open scope at IR-EXT 23 close
+
+Tier 1.10 cont (mechanical):
+1. **More String.prototype methods**: codePointAt, at, normalize, trim/trimStart/trimEnd (5+ sections).
+2. **String.prototype case + locale family**: toLowerCase, toUpperCase, toLocaleLowerCase, toLocaleUpperCase (4 sections).
+3. **String.prototype pad family**: padStart, padEnd (2 sections).
+4. **String.prototype substring family**: slice, substring, substr (3 sections).
+5. **Error.prototype.toString** (1 section).
+
+Tier 1.11+ alphabet extensions (still queued):
+6. Signed-Int + IndexSub (unblocks lastIndexOf, reduceRight strict, etc.).
+7. Iterator-protocol primitives (unblocks Promise.all family).
+8. Property-descriptor builders (unblocks Object.{defineProperty, getOwnPropertyDescriptor}).
+
+Pin-Art tag count: 27 commits as of IR-EXT 23.
