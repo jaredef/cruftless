@@ -2547,7 +2547,7 @@ impl Runtime {
                 Some(v)
             }
         };
-        let len = self.array_length(id);
+        let len = self.try_array_length(id)?;
         let mut items: Vec<Value> = (0..len).map(|i| self.object_get(id, &i.to_string())).collect();
         let mut err: Option<RuntimeError> = None;
         match comparator {
@@ -2588,7 +2588,7 @@ impl Runtime {
     /// for every test262 case that consumes the iterator protocol.
     pub fn array_proto_entries_via(&mut self) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;
-        let len = self.array_length(id);
+        let len = self.try_array_length(id)?;
         let pairs = self.alloc_object(crate::value::Object::new_array());
         for i in 0..len {
             let v = self.object_get(id, &i.to_string());
@@ -2606,7 +2606,7 @@ impl Runtime {
     /// Iterator yielding indices.
     pub fn array_proto_keys_via(&mut self) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;
-        let len = self.array_length(id);
+        let len = self.try_array_length(id)?;
         let keys = self.alloc_object(crate::value::Object::new_array());
         for i in 0..len {
             self.object_set(keys, i.to_string(), Value::Number(i as f64));
@@ -2619,7 +2619,7 @@ impl Runtime {
     /// Iterator yielding values.
     pub fn array_proto_values_via(&mut self) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;
-        let len = self.array_length(id);
+        let len = self.try_array_length(id)?;
         let vals = self.alloc_object(crate::value::Object::new_array());
         for i in 0..len {
             let v = self.object_get(id, &i.to_string());
@@ -2632,7 +2632,7 @@ impl Runtime {
     /// Array.prototype.toReversed() per ECMA §23.1.3.33.
     pub fn array_proto_to_reversed_via(&mut self) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;
-        let len = self.array_length(id);
+        let len = self.try_array_length(id)?;
         let out = self.alloc_object(crate::value::Object::new_array());
         for i in 0..len {
             let v = self.object_get(id, &(len - 1 - i).to_string());
@@ -2645,7 +2645,7 @@ impl Runtime {
     /// Array.prototype.toSorted(comparefn) per ECMA §23.1.3.34.
     pub fn array_proto_to_sorted_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;
-        let len = self.array_length(id);
+        let len = self.try_array_length(id)?;
         let out = self.alloc_object(crate::value::Object::new_array());
         for i in 0..len {
             self.object_set(out, i.to_string(), self.object_get(id, &i.to_string()));
@@ -2687,7 +2687,7 @@ impl Runtime {
     /// Array.prototype.toSpliced(start, deleteCount, ...items) per ECMA §23.1.3.35.
     pub fn array_proto_to_spliced_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;
-        let len = self.array_length(id) as i64;
+        let len = self.try_array_length(id)? as i64;
         let clamp = |i: i64, l: i64| if i < 0 { (l + i).max(0) } else { i.min(l) };
         let start = clamp(args.first().map(crate::abstract_ops::to_number).unwrap_or(0.0) as i64, len);
         let del = match args.get(1) {
@@ -2720,7 +2720,7 @@ impl Runtime {
     /// Array.prototype.with(index, value) per ECMA §23.1.3.39.
     pub fn array_proto_with_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;
-        let len = self.array_length(id) as i64;
+        let len = self.try_array_length(id)? as i64;
         let idx = args.first().map(crate::abstract_ops::to_number).unwrap_or(0.0) as i64;
         let actual = if idx < 0 { len + idx } else { idx };
         if actual < 0 || actual >= len {
@@ -2739,7 +2739,7 @@ impl Runtime {
     /// Array.prototype.toLocaleString() per ECMA §23.1.3.30 (v1: comma-join).
     pub fn array_proto_to_locale_string_via(&mut self) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;
-        let len = self.array_length(id);
+        let len = self.try_array_length(id)?;
         let mut out = String::new();
         for i in 0..len {
             if i > 0 { out.push(','); }
@@ -2764,7 +2764,7 @@ impl Runtime {
     /// Array.prototype.slice(start, end) per ECMA §23.1.3.28.
     pub fn array_proto_slice_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;
-        let len = self.array_length(id) as i64;
+        let len = self.try_array_length(id)? as i64;
         let start_arg = match args.first().cloned() {
             Some(Value::Undefined) | None => 0,
             Some(v) => self.coerce_to_number(&v)? as i64,
@@ -2792,7 +2792,7 @@ impl Runtime {
     /// Array.prototype.splice(start, deleteCount, ...items) per ECMA §23.1.3.31.
     pub fn array_proto_splice_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;
-        let len = self.array_length(id) as i64;
+        let len = self.try_array_length(id)? as i64;
         let start_arg = match args.first().cloned() {
             Some(Value::Undefined) | None => 0,
             Some(v) => self.coerce_to_number(&v)? as i64,
@@ -2885,7 +2885,7 @@ impl Runtime {
             Some(Value::Undefined) | None => ",".to_string(),
             Some(v) => crate::abstract_ops::to_string(v).as_str().to_string(),
         };
-        let len = self.array_length(id);
+        let len = self.try_array_length(id)?;
         let mut parts = Vec::with_capacity(len);
         for i in 0..len {
             let v = self.object_get(id, &i.to_string());
@@ -2901,7 +2901,7 @@ impl Runtime {
     /// Array.prototype.at(index) per ECMA §23.1.3.1.
     pub fn array_proto_at_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;
-        let len = self.array_length(id) as i64;
+        let len = self.try_array_length(id)? as i64;
         let i = args.first().map(crate::abstract_ops::to_number).unwrap_or(0.0) as i64;
         let idx = if i < 0 { len + i } else { i };
         if idx < 0 || idx >= len { return Ok(Value::Undefined); }
@@ -2912,7 +2912,7 @@ impl Runtime {
     pub fn array_proto_fill_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;
         let value = args.first().cloned().unwrap_or(Value::Undefined);
-        let len = self.array_length(id);
+        let len = self.try_array_length(id)?;
         let start = match args.get(1).cloned() {
             Some(Value::Undefined) | None => 0,
             Some(v) => {
@@ -2937,7 +2937,7 @@ impl Runtime {
     pub fn array_proto_last_index_of_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;
         let needle = args.first().cloned().unwrap_or(Value::Undefined);
-        let len = self.array_length(id) as i64;
+        let len = self.try_array_length(id)? as i64;
         let from = match args.get(1) {
             Some(v) if !matches!(v, Value::Undefined) => {
                 let n = crate::abstract_ops::to_number(v) as i64;
@@ -2967,7 +2967,7 @@ impl Runtime {
         if !self.is_callable(&cb) {
             return Err(RuntimeError::TypeError("Array.prototype.reduceRight: callback is not callable".into()));
         }
-        let len = self.array_length(id);
+        let len = self.try_array_length(id)?;
         let has_init = args.len() >= 2;
         let mut i: i64 = (len as i64) - 1;
         let mut acc = if has_init { args[1].clone() } else {
@@ -3001,7 +3001,7 @@ impl Runtime {
     /// Array.prototype.copyWithin(target, start, end) per ECMA §23.1.3.4.
     pub fn array_proto_copy_within_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;
-        let len = self.array_length(id) as i64;
+        let len = self.try_array_length(id)? as i64;
         let clamp = |i: i64, l: i64| if i < 0 { (l + i).max(0) } else { i.min(l) };
         let arg_n = |slf: &mut Runtime, i: usize, default: i64| -> Result<i64, RuntimeError> {
             match args.get(i).cloned() {
@@ -3057,7 +3057,7 @@ impl Runtime {
             return Err(RuntimeError::TypeError("Array.prototype.flatMap: callback is not callable".into()));
         }
         let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
-        let len = self.array_length(id);
+        let len = self.try_array_length(id)?;
         let out = self.alloc_object(crate::value::Object::new_array());
         let mut out_idx = 0usize;
         for i in 0..len {
@@ -3097,7 +3097,7 @@ impl Runtime {
     /// Array.prototype.pop() per ECMA §23.1.3.19.
     pub fn array_proto_pop_via(&mut self) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;
-        let len = self.array_length(id);
+        let len = self.try_array_length(id)?;
         if len == 0 { return Ok(Value::Undefined); }
         let last_key = (len - 1).to_string();
         let v = self.object_get(id, &last_key);
@@ -3109,7 +3109,7 @@ impl Runtime {
     /// Array.prototype.shift() per ECMA §23.1.3.26.
     pub fn array_proto_shift_via(&mut self) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;
-        let len = self.array_length(id);
+        let len = self.try_array_length(id)?;
         if len == 0 { return Ok(Value::Undefined); }
         let first = self.object_get(id, "0");
         for i in 1..len {
@@ -3125,7 +3125,7 @@ impl Runtime {
     pub fn array_proto_unshift_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;
         let n = args.len();
-        let len = self.array_length(id);
+        let len = self.try_array_length(id)?;
         for i in (0..len).rev() {
             let v = self.object_get(id, &i.to_string());
             self.object_set(id, (i + n).to_string(), v);
@@ -3141,7 +3141,7 @@ impl Runtime {
     /// Array.prototype.reverse() per ECMA §23.1.3.21.
     pub fn array_proto_reverse_via(&mut self) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;
-        let len = self.array_length(id) as i64;
+        let len = self.try_array_length(id)? as i64;
         let mid = len / 2;
         for i in 0..mid {
             let j = len - 1 - i;
@@ -3157,7 +3157,7 @@ impl Runtime {
     pub fn array_proto_index_of_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;
         let needle = args.first().cloned().unwrap_or(Value::Undefined);
-        let len = self.array_length(id) as i64;
+        let len = self.try_array_length(id)? as i64;
         let from = match args.get(1) {
             Some(v) if !matches!(v, Value::Undefined) => {
                 let n = crate::abstract_ops::to_number(v) as i64;
@@ -3183,7 +3183,7 @@ impl Runtime {
     pub fn array_proto_includes_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;
         let needle = args.first().cloned().unwrap_or(Value::Undefined);
-        let len = self.array_length(id);
+        let len = self.try_array_length(id)?;
         for i in 0..len {
             let key = i.to_string();
             let v = if self.has_property(id, &key) {
@@ -3209,7 +3209,7 @@ impl Runtime {
             return Err(RuntimeError::TypeError("Array.prototype.findLast: callback is not callable".into()));
         }
         let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
-        let len = self.array_length(id);
+        let len = self.try_array_length(id)?;
         for i in (0..len).rev() {
             let v = self.object_get(id, &i.to_string());
             let r = self.call_function(cb.clone(), this_arg.clone(),
@@ -3228,7 +3228,7 @@ impl Runtime {
             return Err(RuntimeError::TypeError("Array.prototype.findLastIndex: callback is not callable".into()));
         }
         let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
-        let len = self.array_length(id);
+        let len = self.try_array_length(id)?;
         for i in (0..len).rev() {
             let v = self.object_get(id, &i.to_string());
             let r = self.call_function(cb.clone(), this_arg.clone(),
@@ -3246,7 +3246,7 @@ impl Runtime {
         if !self.is_callable(&cb) {
             return Err(RuntimeError::TypeError("Array.prototype.reduce: callback is not callable".into()));
         }
-        let len = self.array_length(id);
+        let len = self.try_array_length(id)?;
         let has_init = args.len() >= 2;
         let mut i = 0usize;
         let mut acc = if has_init {
@@ -4866,20 +4866,27 @@ impl Runtime {
     }
 
     /// Array length helper used by Array.prototype.* methods.
+    /// Backward-compatible non-propagating variant. Errors from a length
+    /// accessor getter are swallowed (length → 0). For spec-strict
+    /// propagation, callers should use try_array_length.
     pub fn array_length(&mut self, id: ObjectRef) -> usize {
-        // Ω.5.P62.E6: ToLength per ECMA §7.1.20.
-        // Ω.5.P62.E8: read via read_property so accessor `length` getters
-        // (test262 map-2-7/2-10: Object.defineProperty(obj, "length",
-        // {get: ...})) dispatch their getter rather than returning the
-        // raw undefined data slot.
-        let v = self.read_property(id, "length").unwrap_or(Value::Undefined);
-        let n = self.coerce_to_number(&v).unwrap_or(f64::NAN);
-        if n.is_nan() || n <= 0.0 { return 0; }
-        if !n.is_finite() { return usize::MAX; }
+        self.try_array_length(id).unwrap_or(0)
+    }
+
+    /// Spec-strict variant of array_length that propagates errors from
+    /// the length accessor getter or ToNumber coercion. Use this in
+    /// Array.prototype.* methods that test262 probes with throwing
+    /// length getters (every/filter/find/forEach/map/some/reduce/etc.).
+    pub fn try_array_length(&mut self, id: ObjectRef) -> Result<usize, RuntimeError> {
+        // §7.1.20 ToLength.
+        let v = self.read_property(id, "length")?;
+        let n = self.coerce_to_number(&v)?;
+        if n.is_nan() || n <= 0.0 { return Ok(0); }
+        if !n.is_finite() { return Ok(usize::MAX); }
         let n = n.floor();
-        let max_safe = 9007199254740991.0_f64; // 2^53 - 1
+        let max_safe = 9007199254740991.0_f64;
         let clamped = if n > max_safe { max_safe } else { n };
-        clamped as usize
+        Ok(clamped as usize)
     }
 
     /// OrdinaryDefineOwnProperty — own-key set on the named object.
