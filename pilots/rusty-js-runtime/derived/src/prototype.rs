@@ -404,34 +404,45 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(Value::Object(removed))
     });
     register_intrinsic_method(rt, host, "concat", 1, |rt, args| {
-        let id = to_array_this(rt)?;
-        let len = rt.array_length(id);
+        // Ω.5.P62.E16: concat per ECMA §23.1.3.2 — intentionally generic.
+        // IsConcatSpreadable per §23.1.3.2.1: check @@isConcatSpreadable;
+        // if undefined, fall back to IsArray(E). Otherwise it's a single
+        // element (including plain Object receivers).
+        let this = rt.current_this();
+        rt.require_object_coercible(&this)?;
         let out = rt.alloc_object(Object::new_array());
         let mut j = 0usize;
-        for i in 0..len {
-            let v = rt.object_get(id, &i.to_string());
-            rt.object_set(out, j.to_string(), v);
-            j += 1;
-        }
-        for a in args {
-            match a {
-                Value::Object(aid) => {
-                    if matches!(rt.obj(*aid).internal_kind, InternalKind::Array) {
-                        let al = rt.array_length(*aid);
-                        for i in 0..al {
-                            let v = rt.object_get(*aid, &i.to_string());
+        // Collect this + args.
+        let mut items: Vec<Value> = Vec::with_capacity(args.len() + 1);
+        items.push(this);
+        items.extend(args.iter().cloned());
+        for e in items {
+            let spreadable = match &e {
+                Value::Object(eid) => {
+                    let flag = rt.read_property(*eid, "@@isConcatSpreadable")?;
+                    match flag {
+                        Value::Undefined => matches!(
+                            rt.obj(*eid).internal_kind, InternalKind::Array),
+                        v => crate::abstract_ops::to_boolean(&v),
+                    }
+                }
+                _ => false,
+            };
+            if spreadable {
+                if let Value::Object(eid) = e {
+                    let el = rt.array_length(eid);
+                    for i in 0..el {
+                        let key = i.to_string();
+                        if rt.has_property(eid, &key) {
+                            let v = rt.read_property(eid, &key)?;
                             rt.object_set(out, j.to_string(), v);
-                            j += 1;
                         }
-                    } else {
-                        rt.object_set(out, j.to_string(), a.clone());
                         j += 1;
                     }
                 }
-                _ => {
-                    rt.object_set(out, j.to_string(), a.clone());
-                    j += 1;
-                }
+            } else {
+                rt.object_set(out, j.to_string(), e);
+                j += 1;
             }
         }
         rt.object_set(out, "length".into(), Value::Number(j as f64));
@@ -711,8 +722,20 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     // - With comparator: call comparator(a,b); sign of return → Ordering.
     // v1 ignores spec's sparse-array semantics; sorts dense own indices 0..length-1.
     register_intrinsic_method(rt, host, "sort", 1, |rt, args| {
+        // Ω.5.P62.E16: §23.1.3.27 — comparefn must be callable or
+        // undefined; non-callable non-undefined throws TypeError up-front.
         let id = to_array_this(rt)?;
-        let comparator = args.first().cloned().filter(|v| !matches!(v, Value::Undefined));
+        let cmp_arg = args.first().cloned();
+        let comparator = match cmp_arg {
+            None | Some(Value::Undefined) => None,
+            Some(v) => {
+                if !rt.is_callable(&v) {
+                    return Err(RuntimeError::TypeError(
+                        "Array.prototype.sort: comparefn must be callable".into()));
+                }
+                Some(v)
+            }
+        };
         let len = rt.array_length(id);
         let mut items: Vec<Value> = (0..len).map(|i| rt.object_get(id, &i.to_string())).collect();
         // Stable sort. With comparator, use call_function; on error propagate.
