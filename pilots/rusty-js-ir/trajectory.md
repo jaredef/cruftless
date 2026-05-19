@@ -1186,6 +1186,59 @@ The higher-resolution-IR pattern is now proven across two sections. Next-natural
 
 Pin-Art tag count: 90 commits as of EXT 68.
 
+
+## IR-EXT 69 → 71b — 2026-05-19 (higher-resolution continuation + wrapper-coercion discovery)
+
+**Stretch summary**: Three higher-resolution-IR continuations after the EXT 66-68 opening, then one substrate-discovery round that surfaced the largest single-fix yield of the session.
+
+### Commits
+
+| EXT | commit | recognition |
+|---|---|---|
+| 69  | `da724385` | Third higher-resolution-IR section: §20.1.2.1 Object.assign per-source step lifted as 14-step IR section. Four runtime _via primitives (to_object_strict_via, own_enumerable_string_keys_via, get_via, set_via). Object/assign 44.7% → 50.0% + structural correctness (String-source spread now works). Alphabet stable at 63 nodes (the EXT 67/68 promotions covered the surface). |
+| 70  | `ea85d7b0` | Array.from substrate fix: mapfn callable check (was missing — silent acceptance of non-callable), thisArg propagation (was always undefined), items null/undefined TypeError, try_array_length for accessor error propagation. Array/from 38.2% → 46.8% (+4). Discovery: while sampling String failures, noticed `new String("abc").split(/[a-z]/)` returns 12-element junk — wrapper-coercion bug. |
+| 71  | `f234ab9a` | **Largest single-fix yield of the session.** install_string_regex_methods in regexp.rs (overwriting the IR-routed match/search/replace/replaceAll/split registrations) used static `abstract_ops::to_string` for receiver coercion — yields '[object Object]' for any Object including String wrappers. Routed all five sites + separator coercion through rt.to_string_strict (proper @@toPrimitive/toString/valueOf dispatch). String chapter: 69.2% → **75.3%** (+74 tests). 9th coverage-discovery corroboration of §I conjecture. |
+| 71b | `4de42925` | Same shape applied to String.prototype.matchAll. No measurable movement (matchAll tests fail on other features). |
+
+### Substrate at EXT 71b close
+
+**IR alphabet**: 63 nodes (unchanged across EXT 69 → 71b). The §I.1.b' adaptive-by-extension cycle has rhythm — three substrate-fix rounds followed an alphabet-extension round without need for new promotion.
+
+**Sections IR-encoded**: 243. Three higher-resolution-IR sections (ArraySetLength, SerializeJSONProperty, Object.assign per-source).
+
+**Session running total (EXT 56 → EXT 71b)**: **+734 test262 wins** across 24 commits, 9 chapters touched.
+
+### Conjecture — §I has now produced three operationally-measurable forms
+
+1. **Substrate-fix LOC-per-test ratio** (saturating per chapter): defineProperty grind went 5.5 → 0.4 then plateaued. String chapter just opened with 74 tests / 5 LOC = **14.8 tests/LOC** at EXT 71 — by far the highest ratio of the session. The pattern: substrate-divergence in widely-shared coercion paths produces outsized yield.
+
+2. **Alphabet adaptive-extension rhythm**: poverty signal → promote → absorb cleanly. EXT 67's Number* + EXT 68's TypeOf covered three subsequent lifts (EXT 68, 69, 70) without needing new primitives.
+
+3. **Coverage-discovery shape**: the IR-pinning at the @@-method dispatch tier makes substrate-divergence visible by tracing what stringifies/coerces incorrectly. The String wrapper bug was visible only after IR EXT 56-69 had pinned dispatch sequence; pre-IR work would have papered over it via the "happened to work for primitives" fallback.
+
+### Test262 cumulative session yield
+
+| Chapter | Pre-session | Post-EXT-71b | Δ |
+|---|---|---|---|
+| Object/defineProperty | 64.5% | 89.0% (1007/1131) | +277 |
+| Object/defineProperties | 49.6% | 85.9% (543/632) | +229 |
+| Object/{others} | various | various | +14 |
+| Array (chapter) | 79% | 80.0% (2394/2991) | +29 |
+| Array/{values, keys, entries, from} | 41.6% | 66.6/46.8% | +13 |
+| Map | 51.9% | 59.3% (121/204) | +15 |
+| Set | 66.3% | 68.9% (264/383) | +10 |
+| RegExp/prototype | 28.1% | 37.7% (184/487) | +47 |
+| Promise | 51.6% | 55.0% (163/296) | +10 |
+| Error | 41.3% | 46.5% (27/58) | +3 |
+| JSON | 45.4% | 49.0% (81/165) | +6 |
+| Object/assign | 44.7% | 50.0% (19/38) | +2 |
+| **String** | **69.2%** | **75.3%** (921/1223) | **+74** |
+| **Cumulative (de-duped)** | | | **+729** |
+
+(The +734 session count includes Map/Set arity propagation +5 not visible in chapter delta.)
+
+Pin-Art tag count: 96 commits as of EXT 71b.
+
 ### Conjecture status
 
 **§I-strengthened corroboration #5 (2026-05-19, EXT 56)**: a queued alphabet extension predicted at EXT 52 close (property-descriptor builders) was empirically shown to be unnecessary upon implementation. The existing alphabet was already sufficient. This is the strongest corroboration of §I.1.b yet — the alphabet-completeness criterion is not just stable in practice but predictively *over-conservative* when projected forward.
