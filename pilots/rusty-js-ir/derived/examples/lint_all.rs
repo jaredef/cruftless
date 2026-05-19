@@ -6,8 +6,8 @@ use rusty_js_ir::lint::lint;
 use rusty_js_ir::sections::{
     array_prototype_find as find, array_prototype_index_search as index_search,
     array_prototype_iteration as iter, array_prototype_map,
-    array_prototype_reduce as reduce, object_integrity, object_proto_ops,
-    object_static, promise_static,
+    array_prototype_reduce as reduce, number_static, object_integrity,
+    object_proto_ops, object_static, promise_static,
 };
 
 fn main() {
@@ -39,6 +39,10 @@ fn main() {
         ("Object.preventExtensions", object_integrity::build_prevent_extensions(), object_integrity::spec_steps_prevent_extensions()),
         ("Object.hasOwn", object_integrity::build_has_own(), object_integrity::spec_steps_has_own()),
         ("Object.is", object_integrity::build_is(), object_integrity::spec_steps_is()),
+        ("Number.isFinite", number_static::build_is_finite(), number_static::spec_steps_is_finite()),
+        ("Number.isInteger", number_static::build_is_integer(), number_static::spec_steps_is_integer()),
+        ("Number.isNaN", number_static::build_is_nan(), number_static::spec_steps_is_nan()),
+        ("Number.isSafeInteger", number_static::build_is_safe_integer(), number_static::spec_steps_is_safe_integer()),
     ];
 
     let mut total_unexpected = 0;

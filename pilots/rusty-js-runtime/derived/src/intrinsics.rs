@@ -1949,33 +1949,19 @@ impl Runtime {
         self.globals.insert("undefined".into(), Value::Undefined);
         // Predicates. Note: Number.isX (capital-N) differs from global
         // isX in NOT coercing — typeof check first, false otherwise.
-        register_intrinsic_method(self, num, "isInteger", 1, |_rt, args| {
-            let n = match args.first() {
-                Some(Value::Number(n)) => *n,
-                _ => return Ok(Value::Boolean(false)),
-            };
-            Ok(Value::Boolean(n.is_finite() && n.floor() == n))
+        // Ω.5.P63.E8: Number.{isInteger, isFinite, isNaN, isSafeInteger}
+        // routed through IR-lowered generated::number_is_*.
+        register_intrinsic_method(self, num, "isInteger", 1, |rt, args| {
+            crate::generated::number_is_integer(rt, Value::Undefined, args)
         });
-        register_intrinsic_method(self, num, "isFinite", 1, |_rt, args| {
-            let n = match args.first() {
-                Some(Value::Number(n)) => *n,
-                _ => return Ok(Value::Boolean(false)),
-            };
-            Ok(Value::Boolean(n.is_finite()))
+        register_intrinsic_method(self, num, "isFinite", 1, |rt, args| {
+            crate::generated::number_is_finite(rt, Value::Undefined, args)
         });
-        register_intrinsic_method(self, num, "isNaN", 1, |_rt, args| {
-            let n = match args.first() {
-                Some(Value::Number(n)) => *n,
-                _ => return Ok(Value::Boolean(false)),
-            };
-            Ok(Value::Boolean(n.is_nan()))
+        register_intrinsic_method(self, num, "isNaN", 1, |rt, args| {
+            crate::generated::number_is_nan(rt, Value::Undefined, args)
         });
-        register_intrinsic_method(self, num, "isSafeInteger", 1, |_rt, args| {
-            let n = match args.first() {
-                Some(Value::Number(n)) => *n,
-                _ => return Ok(Value::Boolean(false)),
-            };
-            Ok(Value::Boolean(n.is_finite() && n.floor() == n && n.abs() <= 9007199254740991.0))
+        register_intrinsic_method(self, num, "isSafeInteger", 1, |rt, args| {
+            crate::generated::number_is_safe_integer(rt, Value::Undefined, args)
         });
         // Alias the global parseInt / parseFloat onto Number.
         if let Some(pi) = self.globals.get("parseInt").cloned() {

@@ -430,6 +430,42 @@ impl Runtime {
         Ok(())
     }
 
+    /// Number.isInteger(v) per ECMA §21.1.2.3 — Number-typed + finite + integer.
+    pub fn number_is_integer_via(&self, v: &Value) -> Result<Value, RuntimeError> {
+        let n = match v {
+            Value::Number(n) => *n,
+            _ => return Ok(Value::Boolean(false)),
+        };
+        Ok(Value::Boolean(n.is_finite() && n.floor() == n))
+    }
+
+    /// Number.isFinite(v) per ECMA §21.1.2.2 — Number-typed AND finite.
+    pub fn number_is_finite_via(&self, v: &Value) -> Result<Value, RuntimeError> {
+        let n = match v {
+            Value::Number(n) => *n,
+            _ => return Ok(Value::Boolean(false)),
+        };
+        Ok(Value::Boolean(n.is_finite()))
+    }
+
+    /// Number.isNaN(v) per ECMA §21.1.2.4 — Number-typed AND NaN.
+    pub fn number_is_nan_via(&self, v: &Value) -> Result<Value, RuntimeError> {
+        let n = match v {
+            Value::Number(n) => *n,
+            _ => return Ok(Value::Boolean(false)),
+        };
+        Ok(Value::Boolean(n.is_nan()))
+    }
+
+    /// Number.isSafeInteger(v) per ECMA §21.1.2.5.
+    pub fn number_is_safe_integer_via(&self, v: &Value) -> Result<Value, RuntimeError> {
+        let n = match v {
+            Value::Number(n) => *n,
+            _ => return Ok(Value::Boolean(false)),
+        };
+        Ok(Value::Boolean(n.is_finite() && n.floor() == n && n.abs() <= 9007199254740991.0))
+    }
+
     /// Object.freeze(O) per ECMA §20.1.2.7 — sets extensible:false and
     /// every own property to non-writable + non-configurable. Returns O.
     pub fn object_freeze_via(&mut self, v: &Value) -> Result<Value, RuntimeError> {
