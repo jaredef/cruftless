@@ -1147,6 +1147,9 @@ impl Runtime {
             Value::Object(id) => *id,
             _ => return Err(RuntimeError::TypeError("Object.defineProperty: descriptor must be an object".into())),
         };
+        // §6.2.5.5 ToPropertyDescriptor: HasProperty + Get dispatch through
+        // the prototype chain (test262 15.2.3.6-3-129 et al. inherit descriptor
+        // attrs through proto). Previously used has_own_str + object_get.
         let has_get_key = self.has_property(desc_id, "get");
         let has_set_key = self.has_property(desc_id, "set");
         let getter = if has_get_key { self.read_property(desc_id, "get")? } else { Value::Undefined };
@@ -1159,36 +1162,48 @@ impl Runtime {
         }
         let has_getter = matches!(&getter, Value::Object(_));
         let has_setter = matches!(&setter, Value::Object(_));
-        let has_value_key = self.obj(desc_id).has_own_str("value") || self.obj(desc_id).has_own_str("writable");
+        let has_value_key = self.has_property(desc_id, "value") || self.has_property(desc_id, "writable");
         let has_accessor_key = has_get_key || has_set_key;
         if has_value_key && has_accessor_key {
             return Err(RuntimeError::TypeError(
                 "Invalid property descriptor: cannot both specify accessors and a value or writable attribute".into()));
         }
         if has_getter || has_setter {
+            // Per §6.2.5.5: when descriptor has enumerable/configurable bits,
+            // honor them; otherwise default to false (CompletePropertyDescriptor).
+            let read_bool_via = |rt: &mut Runtime, name: &str| -> Result<Option<bool>, RuntimeError> {
+                if !rt.has_property(desc_id, name) { return Ok(None); }
+                let v = rt.read_property(desc_id, name)?;
+                Ok(Some(crate::abstract_ops::to_boolean(&v)))
+            };
+            let enumerable = read_bool_via(self, "enumerable")?;
+            let configurable = read_bool_via(self, "configurable")?;
+            let exists = self.obj(target).has_own_str(&key);
+            let (default_e, default_c) = if exists {
+                let d = self.obj(target).get_own(&key).unwrap();
+                (d.enumerable, d.configurable)
+            } else { (false, false) };
+            let new_e = enumerable.unwrap_or(default_e);
+            let new_c = configurable.unwrap_or(default_c);
             self.obj_mut(target).properties.insert(crate::value::PropertyKey::String(key), crate::value::PropertyDescriptor {
                 value: Value::Undefined,
-                writable: false, enumerable: true, configurable: true,
+                writable: false, enumerable: new_e, configurable: new_c,
                 getter: if has_getter { Some(getter) } else { None },
                 setter: if has_setter { Some(setter) } else { None },
             });
         } else {
-            let has_value = self.obj(desc_id).has_own_str("value");
-            let read_attr = |rt: &Runtime, name: &str| -> Option<bool> {
-                if !rt.obj(desc_id).has_own_str(name) { return None; }
-                match rt.object_get(desc_id, name) {
-                    Value::Boolean(b) => Some(b),
-                    Value::Undefined | Value::Null => Some(false),
-                    Value::Number(n) => Some(n != 0.0),
-                    Value::String(s) => Some(!s.as_str().is_empty()),
-                    _ => Some(true),
-                }
+            let has_value = self.has_property(desc_id, "value");
+            // §6.2.5.5 attribute reads use ToBoolean per abstract_ops.
+            let read_bool_via = |rt: &mut Runtime, name: &str| -> Result<Option<bool>, RuntimeError> {
+                if !rt.has_property(desc_id, name) { return Ok(None); }
+                let v = rt.read_property(desc_id, name)?;
+                Ok(Some(crate::abstract_ops::to_boolean(&v)))
             };
-            let writable = read_attr(self, "writable");
-            let enumerable = read_attr(self, "enumerable");
-            let configurable = read_attr(self, "configurable");
+            let writable = read_bool_via(self, "writable")?;
+            let enumerable = read_bool_via(self, "enumerable")?;
+            let configurable = read_bool_via(self, "configurable")?;
             let value = if has_value {
-                self.object_get(desc_id, "value")
+                self.read_property(desc_id, "value")?
             } else {
                 match self.obj(target).get_own(&key) {
                     Some(d) => d.value.clone(),
