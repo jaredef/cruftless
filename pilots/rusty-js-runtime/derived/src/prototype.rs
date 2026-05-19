@@ -1042,25 +1042,26 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
         let this = rt.current_this();
         crate::generated::string_prototype_to_locale_upper_case(rt, this, &[])
     });
+    // Ω.5.P63.E22: trim family routed through IR.
     register_intrinsic_method(rt, host, "trim", 0, |rt, _args| {
-        let this = rt.current_this(); rt.require_object_coercible(&this)?;
-        Ok(Value::String(Rc::new(rt.to_string_strict(&this)?.trim().to_string())))
+        let this = rt.current_this();
+        crate::generated::string_prototype_trim(rt, this, &[])
     });
     register_intrinsic_method(rt, host, "trimStart", 0, |rt, _args| {
-        let this = rt.current_this(); rt.require_object_coercible(&this)?;
-        Ok(Value::String(Rc::new(rt.to_string_strict(&this)?.trim_start().to_string())))
+        let this = rt.current_this();
+        crate::generated::string_prototype_trim_start(rt, this, &[])
     });
     register_intrinsic_method(rt, host, "trimEnd", 0, |rt, _args| {
-        let this = rt.current_this(); rt.require_object_coercible(&this)?;
-        Ok(Value::String(Rc::new(rt.to_string_strict(&this)?.trim_end().to_string())))
+        let this = rt.current_this();
+        crate::generated::string_prototype_trim_end(rt, this, &[])
     });
     register_intrinsic_method(rt, host, "trimLeft", 0, |rt, _args| {
-        let this = rt.current_this(); rt.require_object_coercible(&this)?;
-        Ok(Value::String(Rc::new(rt.to_string_strict(&this)?.trim_start().to_string())))
+        let this = rt.current_this();
+        crate::generated::string_prototype_trim_left(rt, this, &[])
     });
     register_intrinsic_method(rt, host, "trimRight", 0, |rt, _args| {
-        let this = rt.current_this(); rt.require_object_coercible(&this)?;
-        Ok(Value::String(Rc::new(rt.to_string_strict(&this)?.trim_end().to_string())))
+        let this = rt.current_this();
+        crate::generated::string_prototype_trim_right(rt, this, &[])
     });
     // normalize(form?) — Unicode normalization. v1 deviation: pass-through
     // (return source unchanged). Most consumer code only invokes when input

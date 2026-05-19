@@ -430,6 +430,27 @@ impl Runtime {
         Ok(())
     }
 
+    /// String.prototype.trim() per ECMA §22.1.3.32.
+    pub fn string_proto_trim_via(&mut self, this: &Value) -> Result<Value, RuntimeError> {
+        self.require_object_coercible(this)?;
+        let s = self.to_string_strict(this)?;
+        Ok(Value::String(std::rc::Rc::new(s.trim().to_string())))
+    }
+
+    /// String.prototype.trimStart() per ECMA §22.1.3.34.
+    pub fn string_proto_trim_start_via(&mut self, this: &Value) -> Result<Value, RuntimeError> {
+        self.require_object_coercible(this)?;
+        let s = self.to_string_strict(this)?;
+        Ok(Value::String(std::rc::Rc::new(s.trim_start().to_string())))
+    }
+
+    /// String.prototype.trimEnd() per ECMA §22.1.3.33.
+    pub fn string_proto_trim_end_via(&mut self, this: &Value) -> Result<Value, RuntimeError> {
+        self.require_object_coercible(this)?;
+        let s = self.to_string_strict(this)?;
+        Ok(Value::String(std::rc::Rc::new(s.trim_end().to_string())))
+    }
+
     /// String.prototype.toLowerCase() per ECMA §22.1.3.28.
     pub fn string_proto_to_lower_case_via(&mut self, this: &Value) -> Result<Value, RuntimeError> {
         self.require_object_coercible(this)?;

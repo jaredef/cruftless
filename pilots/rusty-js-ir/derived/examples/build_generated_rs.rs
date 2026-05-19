@@ -102,6 +102,11 @@ fn main() {
         string_prototype::build_to_upper_case(),
         string_prototype::build_to_locale_lower_case(),
         string_prototype::build_to_locale_upper_case(),
+        string_prototype::build_trim(),
+        string_prototype::build_trim_start(),
+        string_prototype::build_trim_end(),
+        string_prototype::build_trim_left(),
+        string_prototype::build_trim_right(),
     ];
 
     for f in &sections {

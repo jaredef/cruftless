@@ -104,6 +104,11 @@ fn main() {
         ("String.prototype.toUpperCase", string_prototype::build_to_upper_case(), string_prototype::spec_steps_to_upper_case()),
         ("String.prototype.toLocaleLowerCase", string_prototype::build_to_locale_lower_case(), string_prototype::spec_steps_to_locale_lower_case()),
         ("String.prototype.toLocaleUpperCase", string_prototype::build_to_locale_upper_case(), string_prototype::spec_steps_to_locale_upper_case()),
+        ("String.prototype.trim",       string_prototype::build_trim(),       string_prototype::spec_steps_trim()),
+        ("String.prototype.trimStart",  string_prototype::build_trim_start(), string_prototype::spec_steps_trim_start()),
+        ("String.prototype.trimEnd",    string_prototype::build_trim_end(),   string_prototype::spec_steps_trim_end()),
+        ("String.prototype.trimLeft",   string_prototype::build_trim_left(),  string_prototype::spec_steps_trim_left()),
+        ("String.prototype.trimRight",  string_prototype::build_trim_right(), string_prototype::spec_steps_trim_right()),
     ];
 
     let mut total_unexpected = 0;
