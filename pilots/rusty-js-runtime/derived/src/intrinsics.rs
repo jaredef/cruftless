@@ -2151,11 +2151,12 @@ impl Runtime {
     fn install_map_set_globals(&mut self) {
         for collection in &["Map", "WeakMap"] {
             let proto = self.alloc_object(Object::new_ordinary());
-            register_intrinsic_method(self, proto, "get",     2, |rt, args| crate::generated::map_prototype_get(rt, rt.current_this(), args));
-            register_intrinsic_method(self, proto, "set",     3, |rt, args| crate::generated::map_prototype_set(rt, rt.current_this(), args));
-            register_intrinsic_method(self, proto, "has",     2, |rt, args| crate::generated::map_prototype_has(rt, rt.current_this(), args));
+            // §24.1.3 / §24.3.3 spec arities (.length values).
+            register_intrinsic_method(self, proto, "get",     1, |rt, args| crate::generated::map_prototype_get(rt, rt.current_this(), args));
+            register_intrinsic_method(self, proto, "set",     2, |rt, args| crate::generated::map_prototype_set(rt, rt.current_this(), args));
+            register_intrinsic_method(self, proto, "has",     1, |rt, args| crate::generated::map_prototype_has(rt, rt.current_this(), args));
             register_intrinsic_method(self, proto, "delete",  1, |rt, args| crate::generated::map_prototype_delete(rt, rt.current_this(), args));
-            register_intrinsic_method(self, proto, "clear",   1, |rt, args| crate::generated::map_prototype_clear(rt, rt.current_this(), args));
+            register_intrinsic_method(self, proto, "clear",   0, |rt, args| crate::generated::map_prototype_clear(rt, rt.current_this(), args));
             register_intrinsic_method(self, proto, "forEach", 1, |rt, args| crate::generated::map_prototype_for_each(rt, rt.current_this(), args));
             // Tier-Ω.5.KKKKKKK: Map.prototype.values / keys / entries per ECMA
             // §24.1.3.3 / .4 / .5. Returns an array (eager-collect — full
@@ -2164,9 +2165,9 @@ impl Runtime {
             // via `new Set(m.values())` which exercises Symbol.iterator on
             // the returned object; an Array satisfies both the iterator
             // (via @@iterator on Array.prototype) and the spread protocol.
-            register_intrinsic_method(self, proto, "values",  1, |rt, args| crate::generated::map_prototype_values(rt, rt.current_this(), args));
-            register_intrinsic_method(self, proto, "keys",    1, |rt, args| crate::generated::map_prototype_keys(rt, rt.current_this(), args));
-            register_intrinsic_method(self, proto, "entries", 1, |rt, args| crate::generated::map_prototype_entries(rt, rt.current_this(), args));
+            register_intrinsic_method(self, proto, "values",  0, |rt, args| crate::generated::map_prototype_values(rt, rt.current_this(), args));
+            register_intrinsic_method(self, proto, "keys",    0, |rt, args| crate::generated::map_prototype_keys(rt, rt.current_this(), args));
+            register_intrinsic_method(self, proto, "entries", 0, |rt, args| crate::generated::map_prototype_entries(rt, rt.current_this(), args));
             // Tier-Ω.5.MMMMMMM: Map.prototype[@@iterator] aliases entries
             // per ECMA §24.1.3.12. Surfaced by Step-6 route-(b) escalation:
             // adding receiver-shape tags to the CallMethod undef-fault
@@ -2236,10 +2237,11 @@ impl Runtime {
         }
         for collection in &["Set", "WeakSet"] {
             let proto = self.alloc_object(Object::new_ordinary());
+            // §24.2.3 spec arities.
             register_intrinsic_method(self, proto, "add",     1, |rt, args| crate::generated::set_prototype_add(rt, rt.current_this(), args));
-            register_intrinsic_method(self, proto, "has",     2, |rt, args| crate::generated::set_prototype_has(rt, rt.current_this(), args));
+            register_intrinsic_method(self, proto, "has",     1, |rt, args| crate::generated::set_prototype_has(rt, rt.current_this(), args));
             register_intrinsic_method(self, proto, "delete",  1, |rt, args| crate::generated::set_prototype_delete(rt, rt.current_this(), args));
-            register_intrinsic_method(self, proto, "clear",   1, |rt, args| crate::generated::set_prototype_clear(rt, rt.current_this(), args));
+            register_intrinsic_method(self, proto, "clear",   0, |rt, args| crate::generated::set_prototype_clear(rt, rt.current_this(), args));
             register_intrinsic_method(self, proto, "forEach", 1, |rt, args| crate::generated::set_prototype_for_each(rt, rt.current_this(), args));
             // Tier-Ω.5.rrr: @@iterator returns a values-iterator. Per
             // spec Set.prototype[Symbol.iterator] === Set.prototype.values.
