@@ -29,6 +29,10 @@ pub fn make_array_iterator(rt: &mut Runtime, src: ObjectRef) -> ObjectRef {
     let iter = rt.alloc_object(Object::new_ordinary());
     rt.object_set(iter, "_arr".into(), Value::Object(src));
     rt.object_set(iter, "_i".into(), Value::Number(0.0));
+    // §23.1.5.2 %ArrayIteratorPrototype%[@@toStringTag] = "Array Iterator".
+    rt.object_set(iter, "@@toStringTag".into(), Value::String(Rc::new("Array Iterator".into())));
+    // §23.1.5.2.2 the iterator IS itself iterable — [@@iterator]() returns this.
+    install_self_returning_iterator(rt, iter);
     install_next(rt, iter, |rt, _args| {
         let it = match rt.current_this() {
             Value::Object(id) => id,
@@ -64,6 +68,20 @@ pub fn make_string_iterator(rt: &mut Runtime, s: String) -> ObjectRef {
     }
     rt.object_set(arr, "length".into(), Value::Number(chars.len() as f64));
     make_array_iterator(rt, arr)
+}
+
+fn install_self_returning_iterator(rt: &mut Runtime, host: ObjectRef) {
+    let native: NativeFn = Rc::new(|rt, _args| Ok(rt.current_this()));
+    let mut properties = indexmap::IndexMap::new();
+    crate::value::install_function_meta_props(&mut properties, "[Symbol.iterator]", 0.0);
+    let fn_obj = Object {
+        proto: None,
+        extensible: true,
+        properties,
+        internal_kind: InternalKind::Function(FunctionInternals { name: "[Symbol.iterator]".into(), length: 0, native, is_constructor: false }),
+    };
+    let fn_id = rt.alloc_object(fn_obj);
+    rt.object_set(host, "@@iterator".into(), Value::Object(fn_id));
 }
 
 fn install_next<F>(rt: &mut Runtime, host: ObjectRef, f: F)
