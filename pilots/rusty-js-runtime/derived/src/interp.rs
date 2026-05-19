@@ -4559,6 +4559,31 @@ impl Runtime {
                                 self.object_get(proto, &key)
                             } else { Value::Undefined }
                         }
+                        Value::Symbol(_) => {
+                            // Ω.5.P63.E51: Symbol primitive prop access walks
+                            // %Symbol.prototype% and dispatches accessor
+                            // getters (e.g. .description) with the primitive
+                            // as `this`.
+                            if let Some(proto) = self.symbol_prototype {
+                                let getter = {
+                                    let mut cur = Some(proto);
+                                    let mut g = None;
+                                    while let Some(c) = cur {
+                                        if let Some(d) = self.obj(c).properties.get(&key) {
+                                            g = d.getter.clone();
+                                            break;
+                                        }
+                                        cur = self.obj(c).proto;
+                                    }
+                                    g
+                                };
+                                if let Some(get_fn) = getter {
+                                    self.call_function(get_fn, obj_v.clone(), Vec::new())?
+                                } else {
+                                    self.object_get(proto, &key)
+                                }
+                            } else { Value::Undefined }
+                        }
                         Value::Undefined | Value::Null => {
                             // Tier-Ω.5.uuu: enrich the fault with the
                             // last LoadLocal/GetProp hint. Doc 723's
@@ -4718,6 +4743,31 @@ impl Runtime {
                         Value::BigInt(_) => {
                             if let Some(proto) = self.bigint_prototype {
                                 self.object_get(proto, &key)
+                            } else { Value::Undefined }
+                        }
+                        Value::Symbol(_) => {
+                            // Ω.5.P63.E51: Symbol primitive prop access walks
+                            // %Symbol.prototype% and dispatches accessor
+                            // getters (e.g. .description) with the primitive
+                            // as `this`.
+                            if let Some(proto) = self.symbol_prototype {
+                                let getter = {
+                                    let mut cur = Some(proto);
+                                    let mut g = None;
+                                    while let Some(c) = cur {
+                                        if let Some(d) = self.obj(c).properties.get(&key) {
+                                            g = d.getter.clone();
+                                            break;
+                                        }
+                                        cur = self.obj(c).proto;
+                                    }
+                                    g
+                                };
+                                if let Some(get_fn) = getter {
+                                    self.call_function(get_fn, obj_v.clone(), Vec::new())?
+                                } else {
+                                    self.object_get(proto, &key)
+                                }
                             } else { Value::Undefined }
                         }
                         Value::Undefined | Value::Null =>
