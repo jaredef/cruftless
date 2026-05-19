@@ -130,6 +130,7 @@ fn emit_expr(e: &Expr) -> String {
         Expr::This => "this.clone()".into(),
         Expr::HasArg(i) => format!("(args.len() > {})", i),
         Expr::AllArgs => "args_slice_for_builtin".into(),
+        Expr::ArgsRest(start) => format!("if args.len() > {} {{ &args[{}..] }} else {{ &[] }}", start, start),
         Expr::CallBuiltin { name, args } => {
             // CallBuiltin args are passed by reference (matches the
             // convention of the existing IR-target helpers
@@ -140,6 +141,10 @@ fn emit_expr(e: &Expr) -> String {
             let args_str = args.iter()
                 .map(|a| match a {
                     Expr::AllArgs => "args".into(),
+                    // ArgsRest already emits `&args[start..]`; don't double-prefix.
+                    Expr::ArgsRest(start) => format!(
+                        "if args.len() > {} {{ &args[{}..] }} else {{ &[] }}",
+                        start, start),
                     _ => format!("&{}", emit_expr(a)),
                 })
                 .collect::<Vec<_>>().join(", ");

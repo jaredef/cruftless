@@ -109,6 +109,13 @@ pub enum Expr {
     /// Argument access — args[i], defaulting to Undefined.
     Arg(usize),
 
+    /// ArgsRest(start) — lowers to `&args[start..]` (a slice from `start`
+    /// onward, or empty if args has fewer than `start` items). Used by
+    /// variadic spec ops whose first N args are positional (e.g.,
+    /// Object.assign with target + sources, Reflect.construct with
+    /// ctor + args-array + newTarget).
+    ArgsRest(usize),
+
     /// AllArgs — lowers to `args` (the raw Rust slice). Used by
     /// variadic spec ops (Math.max, Math.min, Math.hypot, etc.) whose
     /// Runtime helpers consume the full arg list. Distinct from

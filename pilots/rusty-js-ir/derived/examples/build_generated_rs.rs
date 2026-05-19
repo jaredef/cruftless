@@ -86,6 +86,7 @@ fn main() {
         math_binary_variadic::build_hypot(),
         object_static::build_get_own_property_names(),
         object_static::build_get_own_property_symbols(),
+        object_static::build_assign(),
     ];
 
     for f in &sections {

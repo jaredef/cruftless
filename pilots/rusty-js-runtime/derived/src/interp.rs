@@ -430,6 +430,41 @@ impl Runtime {
         Ok(())
     }
 
+    /// Object.assign(target, ...sources) per ECMA §20.1.2.1 — copies
+    /// enumerable own props from each source to target, dispatching
+    /// accessor getters. Target must be coercible (throws otherwise).
+    pub fn object_assign_via(&mut self, target: &Value, sources: &[Value]) -> Result<Value, RuntimeError> {
+        let target_id = match target {
+            Value::Object(id) => *id,
+            Value::Undefined | Value::Null => return Err(RuntimeError::TypeError(
+                "Object.assign: target cannot be undefined or null".into())),
+            _ => {
+                let boxed = self.to_object(target)?;
+                if let Value::Object(id) = boxed { id }
+                else { return Err(RuntimeError::TypeError(
+                    "Object.assign: target must be coercible to Object".into())); }
+            }
+        };
+        for src in sources {
+            if let Value::Object(sid) = src {
+                let entries: Vec<(String, Option<Value>, bool)> = self.obj(*sid).properties.iter()
+                    .filter(|(_, d)| d.enumerable)
+                    .map(|(k, d)| (k.clone(), d.getter.clone(), d.getter.is_none()))
+                    .collect();
+                for (k, getter_opt, is_data) in entries {
+                    let v = if let Some(getter) = getter_opt {
+                        self.call_function(getter, Value::Object(*sid), Vec::new())?
+                    } else if is_data {
+                        self.object_get(*sid, &k)
+                    } else { continue };
+                    self.object_set(target_id, k, v);
+                }
+            }
+            // null/undefined sources are silently ignored per spec step 4.b.
+        }
+        Ok(Value::Object(target_id))
+    }
+
     /// Object.getOwnPropertyNames(O) per ECMA §20.1.2.10 — returns Array
     /// of own string-keyed property names (excluding @@-prefixed symbols).
     /// Integer-indexed keys first in ascending order.

@@ -88,6 +88,7 @@ fn main() {
         ("Math.hypot", math_binary_variadic::build_hypot(), math_binary_variadic::spec_steps_hypot()),
         ("Object.getOwnPropertyNames", object_static::build_get_own_property_names(), object_static::spec_steps_get_own_property_names()),
         ("Object.getOwnPropertySymbols", object_static::build_get_own_property_symbols(), object_static::spec_steps_get_own_property_symbols()),
+        ("Object.assign", object_static::build_assign(), object_static::spec_steps_assign()),
     ];
 
     let mut total_unexpected = 0;

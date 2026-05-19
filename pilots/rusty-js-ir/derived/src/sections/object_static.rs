@@ -156,3 +156,30 @@ pub fn spec_steps_get_own_property_symbols() -> Vec<SpecStepRecord> {
         SpecStepRecord { step_id: "2".into(), abstract_ops: vec!["own_property_symbols_via"], throws: None, prose: "Return CreateArrayFromList(? GetOwnPropertyKeys(obj, symbol))." },
     ]
 }
+
+// ──────────────── §20.1.2.1 Object.assign ────────────────
+
+pub fn build_assign() -> IRFunction {
+    let body = vec![
+        Step { spec_step: "param.target".into(),
+            node: IRNode::Let { name: "target".into(), value: Expr::Arg(0) }},
+        Step { spec_step: "1".into(),
+            node: IRNode::Return(Expr::CallBuiltin {
+                name: "object_assign_via",
+                args: vec![v("target"), Expr::ArgsRest(1)],
+            }) },
+    ];
+    IRFunction {
+        spec_section: "20.1.2.1".into(),
+        rust_name: "object_assign".into(),
+        title: "Object.assign ( target, ...sources )".into(),
+        body,
+    }
+}
+
+pub fn spec_steps_assign() -> Vec<SpecStepRecord> {
+    vec![
+        SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["object_assign_via"], throws: None,
+            prose: "Let to be ? ToObject(target). For each source S, for each own enumerable key K of S, set to[K] = ? Get(S, K). Return to." },
+    ]
+}

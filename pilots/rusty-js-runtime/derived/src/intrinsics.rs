@@ -1177,41 +1177,9 @@ impl Runtime {
         register_intrinsic_method(self, obj_ctor, "entries", 1, |rt, args| {
             crate::generated::object_entries(rt, Value::Undefined, args)
         });
+        // Ω.5.P63.E16: Object.assign routed through IR.
         register_intrinsic_method(self, obj_ctor, "assign", 2, |rt, args| {
-            let target = match args.first() {
-                Some(Value::Object(id)) => *id,
-                // Tier-Ω.5.tttt: name the offending target type per Doc 721
-                // §VI.6 / Doc 723 Layer-B. zod's "target must be an object"
-                // chain was a dead-end tag; now the type is part of the chain.
-                Some(other) => return Err(RuntimeError::TypeError(format!(
-                    "Object.assign: target must be an object (target-type='{}')",
-                    other.type_of()
-                ))),
-                None => return Err(RuntimeError::TypeError(
-                    "Object.assign: target must be an object (target-type='missing')".into())),
-            };
-            for src in args.iter().skip(1) {
-                if let Value::Object(sid) = src {
-                    // Tier-Ω.5.bbbbb: dispatch accessor getters when reading
-                    // source properties, mirror of Ω.5.aaaaa for module
-                    // import-binding paths. Babel/TS-compiled libs export
-                    // via Object.defineProperty getters; Object.assign was
-                    // copying d.value (undefined) instead of invoking.
-                    let entries: Vec<(String, Option<Value>, bool)> = rt.obj(*sid).properties.iter()
-                        .filter(|(_, d)| d.enumerable)
-                        .map(|(k, d)| (k.clone(), d.getter.clone(), d.getter.is_none()))
-                        .collect();
-                    for (k, getter_opt, is_data) in entries {
-                        let v = if let Some(getter) = getter_opt {
-                            rt.call_function(getter, Value::Object(*sid), Vec::new())?
-                        } else if is_data {
-                            rt.object_get(*sid, &k)
-                        } else { continue };
-                        rt.object_set(target, k, v);
-                    }
-                }
-            }
-            Ok(Value::Object(target))
+            crate::generated::object_assign(rt, Value::Undefined, args)
         });
         // Ω.5.P63.E7: freeze routed through IR.
         register_intrinsic_method(self, obj_ctor, "freeze", 1, |rt, args| {
