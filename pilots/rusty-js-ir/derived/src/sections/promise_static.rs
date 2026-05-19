@@ -125,6 +125,191 @@ pub fn spec_steps_all_resolve_element_factory() -> Vec<SpecStepRecord> {
     ]
 }
 
+// IR-EXT 55 Stage 3 — Promise.allSettled per-iteration element factories.
+// §27.2.4.2.2 (Resolve Element) and §27.2.4.2.3 (Reject Element). Both
+// share an [[AlreadyCalled]] cell so the first settlement wins. The
+// resolve element writes {status:"fulfilled", value:x}; the reject
+// element writes {status:"rejected", reason:r}; then maybe-complete.
+
+pub fn build_all_settled_resolve_element_factory() -> IRFunction {
+    let body = vec![
+        Step { spec_step: "param.index".into(),       node: IRNode::Let { name: "index".into(),       value: Expr::Arg(0) }},
+        Step { spec_step: "param.values".into(),      node: IRNode::Let { name: "values".into(),      value: Expr::Arg(1) }},
+        Step { spec_step: "param.already".into(),     node: IRNode::Let { name: "already".into(),     value: Expr::Arg(2) }},
+        Step { spec_step: "param.remaining".into(),   node: IRNode::Let { name: "remaining".into(),   value: Expr::Arg(3) }},
+        Step { spec_step: "param.cap_resolve".into(), node: IRNode::Let { name: "cap_resolve".into(), value: Expr::Arg(4) }},
+        Step { spec_step: "1".into(), node: IRNode::Return(Expr::Closure {
+            label: "<Promise.allSettled Resolve Element>",
+            params: vec!["x".into()],
+            captures: vec!["index".into(), "values".into(), "already".into(), "remaining".into(), "cap_resolve".into()],
+            body: vec![
+                Step { spec_step: "1".into(), node: IRNode::If {
+                    cond: Expr::Not(Box::new(Expr::ToBoolean(Box::new(Expr::CallBuiltin {
+                        name: "cell_check_and_set_via",
+                        args: vec![v("already")],
+                    })))),
+                    then_body: vec![
+                        Step { spec_step: "1.return".into(), node: IRNode::Return(Expr::Undefined) },
+                    ],
+                    else_body: vec![],
+                }},
+                Step { spec_step: "8.entry".into(), node: IRNode::Let {
+                    name: "entry".into(),
+                    value: Expr::CallBuiltin { name: "make_settled_fulfilled_entry_via", args: vec![v("x")] },
+                }},
+                Step { spec_step: "9.store".into(), node: IRNode::Expr(Expr::CallBuiltin {
+                    name: "cell_array_set_via",
+                    args: vec![v("values"), v("index"), v("entry")],
+                })},
+                Step { spec_step: "12".into(), node: IRNode::Expr(Expr::CallBuiltin {
+                    name: "promise_all_maybe_complete_via",
+                    args: vec![v("values"), v("remaining"), v("cap_resolve")],
+                })},
+            ],
+        })},
+    ];
+    IRFunction {
+        spec_section: "27.2.4.2.2".into(),
+        rust_name: "promise_all_settled_resolve_element_factory".into(),
+        title: "Promise.allSettled Resolve Element Function (factory)".into(),
+        body,
+    }
+}
+
+pub fn spec_steps_all_settled_resolve_element_factory() -> Vec<SpecStepRecord> {
+    vec![
+        SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["cell_check_and_set_via"], throws: None,
+            prose: "If alreadyCalled.[[Value]] is true, return undefined; otherwise set it to true." },
+        SpecStepRecord { step_id: "1.return".into(), abstract_ops: vec![], throws: None,
+            prose: "Already-called: return undefined." },
+        SpecStepRecord { step_id: "8.entry".into(), abstract_ops: vec!["make_settled_fulfilled_entry_via"], throws: None,
+            prose: "Let entry be OrdinaryObjectCreate with status fulfilled and value x." },
+        SpecStepRecord { step_id: "9.store".into(), abstract_ops: vec!["cell_array_set_via"], throws: None,
+            prose: "Set values[index] to entry." },
+        SpecStepRecord { step_id: "12".into(), abstract_ops: vec!["promise_all_maybe_complete_via"], throws: None,
+            prose: "Decrement remaining; if zero, resolve the capability with the values array." },
+    ]
+}
+
+pub fn build_all_settled_reject_element_factory() -> IRFunction {
+    let body = vec![
+        Step { spec_step: "param.index".into(),       node: IRNode::Let { name: "index".into(),       value: Expr::Arg(0) }},
+        Step { spec_step: "param.values".into(),      node: IRNode::Let { name: "values".into(),      value: Expr::Arg(1) }},
+        Step { spec_step: "param.already".into(),     node: IRNode::Let { name: "already".into(),     value: Expr::Arg(2) }},
+        Step { spec_step: "param.remaining".into(),   node: IRNode::Let { name: "remaining".into(),   value: Expr::Arg(3) }},
+        Step { spec_step: "param.cap_resolve".into(), node: IRNode::Let { name: "cap_resolve".into(), value: Expr::Arg(4) }},
+        Step { spec_step: "1".into(), node: IRNode::Return(Expr::Closure {
+            label: "<Promise.allSettled Reject Element>",
+            params: vec!["x".into()],
+            captures: vec!["index".into(), "values".into(), "already".into(), "remaining".into(), "cap_resolve".into()],
+            body: vec![
+                Step { spec_step: "1".into(), node: IRNode::If {
+                    cond: Expr::Not(Box::new(Expr::ToBoolean(Box::new(Expr::CallBuiltin {
+                        name: "cell_check_and_set_via",
+                        args: vec![v("already")],
+                    })))),
+                    then_body: vec![
+                        Step { spec_step: "1.return".into(), node: IRNode::Return(Expr::Undefined) },
+                    ],
+                    else_body: vec![],
+                }},
+                Step { spec_step: "8.entry".into(), node: IRNode::Let {
+                    name: "entry".into(),
+                    value: Expr::CallBuiltin { name: "make_settled_rejected_entry_via", args: vec![v("x")] },
+                }},
+                Step { spec_step: "9.store".into(), node: IRNode::Expr(Expr::CallBuiltin {
+                    name: "cell_array_set_via",
+                    args: vec![v("values"), v("index"), v("entry")],
+                })},
+                Step { spec_step: "12".into(), node: IRNode::Expr(Expr::CallBuiltin {
+                    name: "promise_all_maybe_complete_via",
+                    args: vec![v("values"), v("remaining"), v("cap_resolve")],
+                })},
+            ],
+        })},
+    ];
+    IRFunction {
+        spec_section: "27.2.4.2.3".into(),
+        rust_name: "promise_all_settled_reject_element_factory".into(),
+        title: "Promise.allSettled Reject Element Function (factory)".into(),
+        body,
+    }
+}
+
+pub fn spec_steps_all_settled_reject_element_factory() -> Vec<SpecStepRecord> {
+    vec![
+        SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["cell_check_and_set_via"], throws: None,
+            prose: "If alreadyCalled.[[Value]] is true, return undefined; otherwise set it to true." },
+        SpecStepRecord { step_id: "1.return".into(), abstract_ops: vec![], throws: None,
+            prose: "Already-called: return undefined." },
+        SpecStepRecord { step_id: "8.entry".into(), abstract_ops: vec!["make_settled_rejected_entry_via"], throws: None,
+            prose: "Let entry be OrdinaryObjectCreate with status rejected and reason x." },
+        SpecStepRecord { step_id: "9.store".into(), abstract_ops: vec!["cell_array_set_via"], throws: None,
+            prose: "Set values[index] to entry." },
+        SpecStepRecord { step_id: "12".into(), abstract_ops: vec!["promise_all_maybe_complete_via"], throws: None,
+            prose: "Decrement remaining; if zero, resolve the capability with the values array." },
+    ]
+}
+
+// IR-EXT 55 Stage 3 — Promise.any per-iteration Reject Element factory.
+// §27.2.4.3.1. Captures (index, errors, already, remaining, cap_reject).
+// Stores the rejection reason at errors[index]; when remaining hits zero,
+// builds an AggregateError carrying errors and rejects the capability.
+
+pub fn build_any_reject_element_factory() -> IRFunction {
+    let body = vec![
+        Step { spec_step: "param.index".into(),      node: IRNode::Let { name: "index".into(),      value: Expr::Arg(0) }},
+        Step { spec_step: "param.errors".into(),     node: IRNode::Let { name: "errors".into(),     value: Expr::Arg(1) }},
+        Step { spec_step: "param.already".into(),    node: IRNode::Let { name: "already".into(),    value: Expr::Arg(2) }},
+        Step { spec_step: "param.remaining".into(),  node: IRNode::Let { name: "remaining".into(),  value: Expr::Arg(3) }},
+        Step { spec_step: "param.cap_reject".into(), node: IRNode::Let { name: "cap_reject".into(), value: Expr::Arg(4) }},
+        Step { spec_step: "1".into(), node: IRNode::Return(Expr::Closure {
+            label: "<Promise.any Reject Element>",
+            params: vec!["x".into()],
+            captures: vec!["index".into(), "errors".into(), "already".into(), "remaining".into(), "cap_reject".into()],
+            body: vec![
+                Step { spec_step: "1".into(), node: IRNode::If {
+                    cond: Expr::Not(Box::new(Expr::ToBoolean(Box::new(Expr::CallBuiltin {
+                        name: "cell_check_and_set_via",
+                        args: vec![v("already")],
+                    })))),
+                    then_body: vec![
+                        Step { spec_step: "1.return".into(), node: IRNode::Return(Expr::Undefined) },
+                    ],
+                    else_body: vec![],
+                }},
+                Step { spec_step: "8".into(), node: IRNode::Expr(Expr::CallBuiltin {
+                    name: "cell_array_set_via",
+                    args: vec![v("errors"), v("index"), v("x")],
+                })},
+                Step { spec_step: "11".into(), node: IRNode::Expr(Expr::CallBuiltin {
+                    name: "promise_any_maybe_reject_via",
+                    args: vec![v("errors"), v("remaining"), v("cap_reject")],
+                })},
+            ],
+        })},
+    ];
+    IRFunction {
+        spec_section: "27.2.4.3.1".into(),
+        rust_name: "promise_any_reject_element_factory".into(),
+        title: "Promise.any Reject Element Function (factory)".into(),
+        body,
+    }
+}
+
+pub fn spec_steps_any_reject_element_factory() -> Vec<SpecStepRecord> {
+    vec![
+        SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["cell_check_and_set_via"], throws: None,
+            prose: "If alreadyCalled.[[Value]] is true, return undefined; otherwise set it to true." },
+        SpecStepRecord { step_id: "1.return".into(), abstract_ops: vec![], throws: None,
+            prose: "Already-called: return undefined." },
+        SpecStepRecord { step_id: "8".into(), abstract_ops: vec!["cell_array_set_via"], throws: None,
+            prose: "Set errors[index] to reason x." },
+        SpecStepRecord { step_id: "11".into(), abstract_ops: vec!["promise_any_maybe_reject_via"], throws: None,
+            prose: "Decrement remaining; if zero, build AggregateError(errors) and reject the capability." },
+    ]
+}
+
 pub fn build_with_resolvers() -> IRFunction {
     let body = vec![
         // step 1 alt: allocate the fresh pending Promise.

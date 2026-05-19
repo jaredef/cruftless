@@ -1077,6 +1077,55 @@ impl Runtime {
         Ok(Value::Object(arr))
     }
 
+    /// IR-EXT 55 Stage 3 helper: build the §27.2.4.2 settled-fulfilled entry
+    /// `{status: "fulfilled", value: v}` for Promise.allSettled.
+    pub fn make_settled_fulfilled_entry_via(&mut self, v: &Value) -> Result<Value, RuntimeError> {
+        let mut entry = crate::value::Object::new_ordinary();
+        entry.set_own("status".into(), Value::String(std::rc::Rc::new("fulfilled".into())));
+        entry.set_own("value".into(), v.clone());
+        Ok(Value::Object(self.alloc_object(entry)))
+    }
+
+    /// IR-EXT 55 Stage 3 helper: build the §27.2.4.2 settled-rejected entry
+    /// `{status: "rejected", reason: r}` for Promise.allSettled.
+    pub fn make_settled_rejected_entry_via(&mut self, r: &Value) -> Result<Value, RuntimeError> {
+        let mut entry = crate::value::Object::new_ordinary();
+        entry.set_own("status".into(), Value::String(std::rc::Rc::new("rejected".into())));
+        entry.set_own("reason".into(), r.clone());
+        Ok(Value::Object(self.alloc_object(entry)))
+    }
+
+    /// IR-EXT 55 Stage 3 helper: build the §27.2.4.3 AggregateError that
+    /// Promise.any throws when all input promises reject.
+    pub fn make_aggregate_error_via(&mut self, errors_arr: &Value) -> Result<Value, RuntimeError> {
+        let mut agg = crate::value::Object::new_ordinary();
+        agg.set_own("name".into(), Value::String(std::rc::Rc::new("AggregateError".into())));
+        agg.set_own("message".into(), Value::String(std::rc::Rc::new("All promises were rejected".into())));
+        agg.set_own("errors".into(), errors_arr.clone());
+        Ok(Value::Object(self.alloc_object(agg)))
+    }
+
+    /// IR-EXT 55 Stage 3 helper: §27.2.4.3 step 11.d/e — decrement remaining,
+    /// and when it hits zero build an AggregateError from the errors cell-array
+    /// and reject the capability with it.
+    pub fn promise_any_maybe_reject_via(&mut self, errors_arr: &Value, remaining_cell: &Value, cap_reject: &Value) -> Result<Value, RuntimeError> {
+        let id = match remaining_cell {
+            Value::Object(id) => *id,
+            _ => return Err(RuntimeError::TypeError("promise_any_maybe_reject: remaining_cell must be a cell".into())),
+        };
+        let cur = match self.object_get(id, "0") {
+            Value::Number(n) => n,
+            _ => return Err(RuntimeError::TypeError("promise_any_maybe_reject: cell[0] must be Number".into())),
+        };
+        let new_n = cur - 1.0;
+        self.object_set(id, "0".into(), Value::Number(new_n));
+        if new_n == 0.0 {
+            let agg = self.make_aggregate_error_via(errors_arr)?;
+            self.call_function(cap_reject.clone(), Value::Undefined, vec![agg])?;
+        }
+        Ok(Value::Undefined)
+    }
+
     /// Ω.5.P63.E55 helper: assemble the {promise, resolve, reject} object
     /// returned by Promise.withResolvers.
     pub fn promise_with_resolvers_assemble_via(&mut self, promise: &Value, resolve: &Value, reject: &Value) -> Result<Value, RuntimeError> {
@@ -1264,8 +1313,7 @@ impl Runtime {
         let default_promise = self.globals.get("Promise").cloned().unwrap_or(Value::Undefined);
         let ctor = if matches!(c, Value::Object(_)) && self.is_callable(&c) { c }
                    else { default_promise.clone() };
-        let (capability_promise, cap_resolve, cap_reject) = self.new_promise_capability(&ctor)?;
-        let _ = cap_reject;
+        let (capability_promise, cap_resolve, _cap_reject) = self.new_promise_capability(&ctor)?;
         let promise_resolve = match &ctor {
             Value::Object(cid) => self.object_get(*cid, "resolve"),
             _ => Value::Undefined,
@@ -1277,72 +1325,24 @@ impl Runtime {
         let iter_v = args.first().cloned().unwrap_or(Value::Undefined);
         let entries = crate::intrinsics::collect_iterable(self, iter_v)?;
         let n = entries.len();
-        let values: std::rc::Rc<std::cell::RefCell<Vec<Value>>> =
-            std::rc::Rc::new(std::cell::RefCell::new(vec![Value::Undefined; n]));
-        let remaining: std::rc::Rc<std::cell::RefCell<usize>> =
-            std::rc::Rc::new(std::cell::RefCell::new(1));
+        let values_arr = self.alloc_object(crate::value::Object::new_array());
+        for j in 0..n {
+            self.object_set(values_arr, j.to_string(), Value::Undefined);
+        }
+        self.object_set(values_arr, "length".into(), Value::Number(n as f64));
+        let values_v = Value::Object(values_arr);
+        let remaining_v = self.cell_array_new_via(&Value::Number(1.0))?;
         for (i, entry) in entries.into_iter().enumerate() {
-            *remaining.borrow_mut() += 1;
-            let already_f = std::rc::Rc::new(std::cell::RefCell::new(false));
-            let already_r = already_f.clone();
-            let values_f = values.clone();
-            let values_r = values.clone();
-            let remaining_f = remaining.clone();
-            let remaining_r = remaining.clone();
-            let cap_resolve_f = cap_resolve.clone();
-            let cap_resolve_r = cap_resolve.clone();
-            let make_entry = |status: &str, val_key: &str, val: Value, rt: &mut Runtime| {
-                let mut entry = crate::value::Object::new_ordinary();
-                entry.set_own("status".into(), Value::String(std::rc::Rc::new(status.into())));
-                entry.set_own(val_key.into(), val);
-                Value::Object(rt.alloc_object(entry))
+            let cur = match self.object_get(match &remaining_v { Value::Object(id)=>*id, _=>unreachable!() }, "0") {
+                Value::Number(n) => n, _ => 0.0,
             };
-            let resolve_element = crate::intrinsics::make_native(
-                "<Promise.allSettled Resolve Element>",
-                move |rt, args| {
-                    if *already_f.borrow() { return Ok(Value::Undefined); }
-                    *already_f.borrow_mut() = true;
-                    let v = args.first().cloned().unwrap_or(Value::Undefined);
-                    let entry = make_entry("fulfilled", "value", v, rt);
-                    values_f.borrow_mut()[i] = entry;
-                    let mut r = remaining_f.borrow_mut();
-                    *r -= 1;
-                    if *r == 0 {
-                        let arr = rt.alloc_object(crate::value::Object::new_array());
-                        let vs = values_f.borrow();
-                        for (j, val) in vs.iter().enumerate() {
-                            rt.object_set(arr, j.to_string(), val.clone());
-                        }
-                        rt.object_set(arr, "length".into(), Value::Number(vs.len() as f64));
-                        rt.call_function(cap_resolve_f.clone(), Value::Undefined,
-                            vec![Value::Object(arr)])?;
-                    }
-                    Ok(Value::Undefined)
-                });
-            let reject_element = crate::intrinsics::make_native(
-                "<Promise.allSettled Reject Element>",
-                move |rt, args| {
-                    if *already_r.borrow() { return Ok(Value::Undefined); }
-                    *already_r.borrow_mut() = true;
-                    let v = args.first().cloned().unwrap_or(Value::Undefined);
-                    let entry = make_entry("rejected", "reason", v, rt);
-                    values_r.borrow_mut()[i] = entry;
-                    let mut r = remaining_r.borrow_mut();
-                    *r -= 1;
-                    if *r == 0 {
-                        let arr = rt.alloc_object(crate::value::Object::new_array());
-                        let vs = values_r.borrow();
-                        for (j, val) in vs.iter().enumerate() {
-                            rt.object_set(arr, j.to_string(), val.clone());
-                        }
-                        rt.object_set(arr, "length".into(), Value::Number(vs.len() as f64));
-                        rt.call_function(cap_resolve_r.clone(), Value::Undefined,
-                            vec![Value::Object(arr)])?;
-                    }
-                    Ok(Value::Undefined)
-                });
-            let resolve_element_id = self.alloc_object(resolve_element);
-            let reject_element_id = self.alloc_object(reject_element);
+            self.object_set(match &remaining_v { Value::Object(id)=>*id, _=>unreachable!() }, "0".into(), Value::Number(cur + 1.0));
+            let already_v = self.cell_array_new_via(&Value::Boolean(false))?;
+            let factory_args = vec![Value::Number(i as f64), values_v.clone(), already_v, remaining_v.clone(), cap_resolve.clone()];
+            let resolve_element = crate::generated::promise_all_settled_resolve_element_factory(
+                self, Value::Undefined, &factory_args)?;
+            let reject_element = crate::generated::promise_all_settled_reject_element_factory(
+                self, Value::Undefined, &factory_args)?;
             let next_promise = self.call_function(promise_resolve.clone(), ctor.clone(), vec![entry])?;
             let then_fn = match &next_promise {
                 Value::Object(id) => self.object_get(*id, "then"),
@@ -1353,22 +1353,9 @@ impl Runtime {
                     "Promise.allSettled: next.then is not callable".into()));
             }
             self.call_function(then_fn, next_promise,
-                vec![Value::Object(resolve_element_id), Value::Object(reject_element_id)])?;
+                vec![resolve_element, reject_element])?;
         }
-        let final_zero = {
-            let mut r = remaining.borrow_mut();
-            *r -= 1;
-            *r == 0
-        };
-        if final_zero {
-            let arr = self.alloc_object(crate::value::Object::new_array());
-            let vs = values.borrow();
-            for (j, val) in vs.iter().enumerate() {
-                self.object_set(arr, j.to_string(), val.clone());
-            }
-            self.object_set(arr, "length".into(), Value::Number(vs.len() as f64));
-            self.call_function(cap_resolve, Value::Undefined, vec![Value::Object(arr)])?;
-        }
+        self.promise_all_maybe_complete_via(&values_v, &remaining_v, &cap_resolve)?;
         Ok(capability_promise)
     }
 
@@ -1392,44 +1379,22 @@ impl Runtime {
         let iter_v = args.first().cloned().unwrap_or(Value::Undefined);
         let entries = crate::intrinsics::collect_iterable(self, iter_v)?;
         let n = entries.len();
-        let errors: std::rc::Rc<std::cell::RefCell<Vec<Value>>> =
-            std::rc::Rc::new(std::cell::RefCell::new(vec![Value::Undefined; n]));
-        let remaining: std::rc::Rc<std::cell::RefCell<usize>> =
-            std::rc::Rc::new(std::cell::RefCell::new(1));
+        let errors_arr = self.alloc_object(crate::value::Object::new_array());
+        for j in 0..n {
+            self.object_set(errors_arr, j.to_string(), Value::Undefined);
+        }
+        self.object_set(errors_arr, "length".into(), Value::Number(n as f64));
+        let errors_v = Value::Object(errors_arr);
+        let remaining_v = self.cell_array_new_via(&Value::Number(1.0))?;
         for (i, entry) in entries.into_iter().enumerate() {
-            *remaining.borrow_mut() += 1;
-            let already_called = std::rc::Rc::new(std::cell::RefCell::new(false));
-            let already_for = already_called.clone();
-            let errors_for = errors.clone();
-            let remaining_for = remaining.clone();
-            let cap_reject_for = cap_reject.clone();
-            let reject_element = crate::intrinsics::make_native(
-                "<Promise.any Reject Element>",
-                move |rt, args| {
-                    if *already_for.borrow() { return Ok(Value::Undefined); }
-                    *already_for.borrow_mut() = true;
-                    let v = args.first().cloned().unwrap_or(Value::Undefined);
-                    errors_for.borrow_mut()[i] = v;
-                    let mut r = remaining_for.borrow_mut();
-                    *r -= 1;
-                    if *r == 0 {
-                        let mut agg = crate::value::Object::new_ordinary();
-                        agg.set_own("name".into(), Value::String(std::rc::Rc::new("AggregateError".into())));
-                        agg.set_own("message".into(), Value::String(std::rc::Rc::new("All promises were rejected".into())));
-                        let arr = rt.alloc_object(crate::value::Object::new_array());
-                        let es = errors_for.borrow();
-                        for (j, val) in es.iter().enumerate() {
-                            rt.object_set(arr, j.to_string(), val.clone());
-                        }
-                        rt.object_set(arr, "length".into(), Value::Number(es.len() as f64));
-                        agg.set_own("errors".into(), Value::Object(arr));
-                        let aid = rt.alloc_object(agg);
-                        rt.call_function(cap_reject_for.clone(), Value::Undefined,
-                            vec![Value::Object(aid)])?;
-                    }
-                    Ok(Value::Undefined)
-                });
-            let reject_element_id = self.alloc_object(reject_element);
+            let cur = match self.object_get(match &remaining_v { Value::Object(id)=>*id, _=>unreachable!() }, "0") {
+                Value::Number(n) => n, _ => 0.0,
+            };
+            self.object_set(match &remaining_v { Value::Object(id)=>*id, _=>unreachable!() }, "0".into(), Value::Number(cur + 1.0));
+            let already_v = self.cell_array_new_via(&Value::Boolean(false))?;
+            let reject_element = crate::generated::promise_any_reject_element_factory(
+                self, Value::Undefined,
+                &[Value::Number(i as f64), errors_v.clone(), already_v, remaining_v.clone(), cap_reject.clone()])?;
             let next_promise = self.call_function(promise_resolve.clone(), ctor.clone(), vec![entry])?;
             let then_fn = match &next_promise {
                 Value::Object(id) => self.object_get(*id, "then"),
@@ -1440,27 +1405,9 @@ impl Runtime {
                     "Promise.any: next.then is not callable".into()));
             }
             self.call_function(then_fn, next_promise,
-                vec![cap_resolve.clone(), Value::Object(reject_element_id)])?;
+                vec![cap_resolve.clone(), reject_element])?;
         }
-        let final_zero = {
-            let mut r = remaining.borrow_mut();
-            *r -= 1;
-            *r == 0
-        };
-        if final_zero {
-            let mut agg = crate::value::Object::new_ordinary();
-            agg.set_own("name".into(), Value::String(std::rc::Rc::new("AggregateError".into())));
-            agg.set_own("message".into(), Value::String(std::rc::Rc::new("All promises were rejected".into())));
-            let arr = self.alloc_object(crate::value::Object::new_array());
-            let es = errors.borrow();
-            for (j, val) in es.iter().enumerate() {
-                self.object_set(arr, j.to_string(), val.clone());
-            }
-            self.object_set(arr, "length".into(), Value::Number(es.len() as f64));
-            agg.set_own("errors".into(), Value::Object(arr));
-            let aid = self.alloc_object(agg);
-            self.call_function(cap_reject, Value::Undefined, vec![Value::Object(aid)])?;
-        }
+        self.promise_any_maybe_reject_via(&errors_v, &remaining_v, &cap_reject)?;
         Ok(capability_promise)
     }
 
