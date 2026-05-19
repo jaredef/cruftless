@@ -484,6 +484,82 @@ impl Runtime {
         Ok(Value::String(std::rc::Rc::new(s + &suffix)))
     }
 
+    /// Number.prototype.toString(radix) per ECMA §21.1.3.6.
+    pub fn number_proto_to_string_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let this = self.current_this();
+        let unwrapped = self.unwrap_primitive(&this);
+        let n = match unwrapped {
+            Value::Number(n) => n,
+            _ => return Err(RuntimeError::TypeError(
+                "Number.prototype.toString: this is not a Number".into())),
+        };
+        let radix = match args.first().cloned() {
+            None | Some(Value::Undefined) => 10,
+            Some(v) => {
+                let n = self.coerce_to_number(&v)? as i32;
+                if n < 2 || n > 36 {
+                    return Err(RuntimeError::RangeError(
+                        "toString() radix must be between 2 and 36".into()));
+                }
+                n
+            }
+        };
+        if radix == 10 {
+            Ok(Value::String(std::rc::Rc::new(crate::abstract_ops::number_to_string(n))))
+        } else if (2..=36).contains(&radix) && n.is_finite() && n.fract() == 0.0 {
+            let mut x = n as i64;
+            if x == 0 { return Ok(Value::String(std::rc::Rc::new("0".into()))); }
+            let neg = x < 0;
+            if neg { x = -x; }
+            let mut digits = Vec::new();
+            while x > 0 {
+                let d = (x % radix as i64) as u32;
+                let c = if d < 10 { (b'0' + d as u8) as char } else { (b'a' + (d - 10) as u8) as char };
+                digits.push(c);
+                x /= radix as i64;
+            }
+            if neg { digits.push('-'); }
+            digits.reverse();
+            Ok(Value::String(std::rc::Rc::new(digits.into_iter().collect())))
+        } else {
+            Ok(Value::String(std::rc::Rc::new(crate::abstract_ops::number_to_string(n))))
+        }
+    }
+
+    /// Number.prototype.toLocaleString() per ECMA §21.1.3.4 (v1: same as toString).
+    pub fn number_proto_to_locale_string_via(&mut self) -> Result<Value, RuntimeError> {
+        let this = self.current_this();
+        let n = match self.unwrap_primitive(&this) {
+            Value::Number(n) => n,
+            _ => return Err(RuntimeError::TypeError(
+                "Number.prototype.toLocaleString: this is not a Number".into())),
+        };
+        Ok(Value::String(std::rc::Rc::new(crate::abstract_ops::number_to_string(n))))
+    }
+
+    /// String.fromCharCode(...codeUnits) per ECMA §22.1.2.1.
+    pub fn string_from_char_code_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let mut s = String::new();
+        for v in args {
+            let n = self.coerce_to_number(v)? as u32 & 0xFFFF;
+            if let Some(c) = char::from_u32(n) { s.push(c); }
+        }
+        Ok(Value::String(std::rc::Rc::new(s)))
+    }
+
+    /// String.fromCodePoint(...codePoints) per ECMA §22.1.2.2.
+    pub fn string_from_code_point_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let mut s = String::new();
+        for v in args {
+            let n = self.coerce_to_number(v)?;
+            if !n.is_finite() || n.fract() != 0.0 || n < 0.0 || n > 0x10FFFF as f64 {
+                return Err(RuntimeError::RangeError(format!("Invalid code point {}", n)));
+            }
+            if let Some(c) = char::from_u32(n as u32) { s.push(c); }
+        }
+        Ok(Value::String(std::rc::Rc::new(s)))
+    }
+
     /// Math.imul(a, b) per ECMA §21.3.2.19.
     pub fn math_imul_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let a = args.first().map(crate::abstract_ops::to_number).unwrap_or(0.0) as i64 as i32;

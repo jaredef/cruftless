@@ -1892,21 +1892,11 @@ impl Runtime {
             Ok(Value::String(s_rc))
         });
         let str_id = self.alloc_object(str_obj);
-        register_intrinsic_method(self, str_id, "fromCharCode", 1, |_rt, args| {
-            let mut s = String::new();
-            for a in args {
-                let n = abstract_ops::to_number(a);
-                if let Some(c) = char::from_u32(n as u32) { s.push(c); }
-            }
-            Ok(Value::String(Rc::new(s)))
+        register_intrinsic_method(self, str_id, "fromCharCode", 1, |rt, args| {
+            crate::generated::string_from_char_code(rt, rt.current_this(), args)
         });
-        register_intrinsic_method(self, str_id, "fromCodePoint", 1, |_rt, args| {
-            let mut s = String::new();
-            for a in args {
-                let n = abstract_ops::to_number(a);
-                if let Some(c) = char::from_u32(n as u32) { s.push(c); }
-            }
-            Ok(Value::String(Rc::new(s)))
+        register_intrinsic_method(self, str_id, "fromCodePoint", 1, |rt, args| {
+            crate::generated::string_from_code_point(rt, rt.current_this(), args)
         });
         // Tier-Ω.5.ww.b: String.raw(template, ...subs). Spec uses
         // template.raw; v1 falls back to indexed cooked values from the

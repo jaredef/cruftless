@@ -742,48 +742,7 @@ fn install_number_proto(rt: &mut Runtime, host: ObjectRef) {
         crate::generated::number_prototype_value_of(rt, this, &[])
     });
     register_intrinsic_method(rt, host, "toString", 0, |rt, args| {
-        // Ω.5.P62.E19: ThisNumberValue per §21.1.3 — receiver must be a
-        // Number primitive or Number-wrapper exotic ([[NumberData]]).
-        let this = rt.current_this();
-        let unwrapped = rt.unwrap_primitive(&this);
-        let n = match unwrapped {
-            Value::Number(n) => n,
-            _ => return Err(RuntimeError::TypeError(
-                "Number.prototype.toString: this is not a Number".into())),
-        };
-        // Radix: undefined → 10; else ToInteger and validate 2..=36 or throw RangeError.
-        let radix = match args.first().cloned() {
-            None | Some(Value::Undefined) => 10,
-            Some(v) => {
-                let n = rt.coerce_to_number(&v)? as i32;
-                if n < 2 || n > 36 {
-                    return Err(RuntimeError::RangeError(
-                        "toString() radix must be between 2 and 36".into()));
-                }
-                n
-            }
-        };
-        if radix == 10 {
-            Ok(Value::String(Rc::new(abstract_ops::number_to_string(n))))
-        } else if (2..=36).contains(&radix) && n.is_finite() && n.fract() == 0.0 {
-            // Integer-radix only — fractional radix conversion is rare.
-            let mut x = n as i64;
-            if x == 0 { return Ok(Value::String(Rc::new("0".into()))); }
-            let neg = x < 0;
-            if neg { x = -x; }
-            let mut digits = Vec::new();
-            while x > 0 {
-                let d = (x % radix as i64) as u32;
-                let c = if d < 10 { (b'0' + d as u8) as char } else { (b'a' + (d - 10) as u8) as char };
-                digits.push(c);
-                x /= radix as i64;
-            }
-            if neg { digits.push('-'); }
-            digits.reverse();
-            Ok(Value::String(Rc::new(digits.into_iter().collect())))
-        } else {
-            Ok(Value::String(Rc::new(abstract_ops::number_to_string(n))))
-        }
+        crate::generated::number_prototype_to_string(rt, rt.current_this(), args)
     });
     // Ω.5.P63.E18: Number.prototype.toFixed routed through IR.
     register_intrinsic_method(rt, host, "toFixed", 1, |rt, args| {
@@ -805,15 +764,8 @@ fn install_number_proto(rt: &mut Runtime, host: ObjectRef) {
         let precision = args.first().cloned().unwrap_or(Value::Undefined);
         crate::generated::number_prototype_to_precision(rt, this, std::slice::from_ref(&precision))
     });
-    register_intrinsic_method(rt, host, "toLocaleString", 0, |rt, _args| {
-        // ThisNumberValue brand.
-        let this = rt.current_this();
-        let n = match rt.unwrap_primitive(&this) {
-            Value::Number(n) => n,
-            _ => return Err(RuntimeError::TypeError(
-                "Number.prototype.toLocaleString: this is not a Number".into())),
-        };
-        Ok(Value::String(Rc::new(crate::abstract_ops::number_to_string(n))))
+    register_intrinsic_method(rt, host, "toLocaleString", 0, |rt, args| {
+        crate::generated::number_prototype_to_locale_string(rt, rt.current_this(), args)
     });
     // Ω.5.P62.E19: removed duplicate valueOf install (line 1785's
     // brand-checked + __primitive__-unwrapping version is the canonical).
