@@ -1054,6 +1054,64 @@ Remaining identified targets, sorted by expected yield-per-LOC:
 
 Pin-Art tag count: 74 commits as of EXT 59c.
 
+
+## IR-EXT 60 → 62 — 2026-05-19 (substrate-fix continuation; Array length + global-fn + error propagation)
+
+**Stretch summary**: keeper directive "continue as coherent". Four commits landing five distinct substrate fixes across Array length, descriptor coercion, global-fn constructability, Error metadata, and length-accessor error propagation. Cumulative session yield reaches **+494 test262 wins**.
+
+### Commits
+
+| EXT | commit | recognition |
+|---|---|---|
+| 60  | `258e6999` | (a) set_own preserves existing descriptor flags on update — only [[Value]] changes per §10.1.9 OrdinarySet. Critical for Array.length non-configurable preservation. (b) object_get_own_property_descriptor_via synthesizes Array length as {writable, !enumerable, !configurable}. (c) object_define_property_via rejects configurable/enumerable promotion on Array length per §10.4.2.1. (d) Lowering compiler emits make_native_with_length(label, params.len(), ...) for IR-derived closures. Object.defineProperty 84.7%→85.1%, defineProperties 78.0%→78.4%, Promise 51.6%→53.3%. |
+| 60b | `4a0a1133` | gOPD/gOPDs apply §20.1.2.9/11 step 1 ToObject coerce. Filter __primitive__ slot out of gOPDs return. Object/gOPD 93.8%→94.5%, gOPDs 55.5%→61.1%. |
+| 61  | `e6e042e3` | register_global_fn → make_native_non_ctor (parseInt/parseFloat/isNaN/isFinite no longer constructors). Error.prototype.{name, message} via set_own_internal (non-enumerable per §20.5.6.{1,2}). Error.length = 1 per §20.5.7.1 (AggregateError = 2). Error 41.3% → 46.5% (+3). |
+| 62  | `9a1eb121` | try_array_length variant propagates errors from a throwing length-accessor getter. Replaced 25 call sites in Array.prototype.* methods via bulk substitution. Array chapter 79.0% → 80.0% (+29). The 7th coverage-discovery corroboration. |
+
+### Substrate at EXT 62 close
+
+**IR alphabet**: still 58 nodes. Eight consecutive substrate-fix rounds without IR-alphabet extension.
+
+**Sections IR-encoded**: 240 (unchanged).
+
+**Runtime helpers**: ~170 (1 new: try_array_length; 4 modified to route through it; 3 modified for ToObject coerce).
+
+**Session running total (EXT 56 → EXT 62)**: **+494 test262 wins**.
+
+| Chapter | Pre-session | Post-EXT-62 | Δ |
+|---|---|---|---|
+| Object/defineProperty | 64.5% | **85.1%** (963/1131) | +233 |
+| Object/defineProperties | 49.6% | **78.4%** (496/632) | +182 |
+| Object/getOwnPropertyDescriptor | 93.5% | 94.5% (293/310) | +3 |
+| Object/getOwnPropertyDescriptors | 55.5% | 61.1% (11/18) | +1 |
+| Object/create | 93.4% | 93.7% (300/320) | +1 |
+| Object/prototype | 56.8% | 57.2% (142/248) | +1 |
+| Array (chapter) | (pre-EXT-60 ≈79.0%) | **80.0%** (2394/2991) | +29 |
+| Array/values, /keys, /entries | 41.6% | 66.6% (8/12 each) | +9 |
+| Map (chapter) | 51.9% | 55.8% (114/204) | +8 |
+| Set (chapter) | 66.3% | 68.4% (262/383) | +8 |
+| Promise (chapter) | (pre 51.6%) | 53.3% (158/296) | +5 |
+| Error | 41.3% | 46.5% (27/58) | +3 |
+| **Cumulative (de-duped)** | | | **+494** |
+
+### Conjecture status — saturation continuing
+
+The saturation pattern from EXT 56-59c continues. Marginal yield is decreasing per round on a given chapter:
+- defineProperty: +166 (EXT 58) → +63 (EXT 59) → +4 (EXT 60) → stable
+- defineProperties: +90 (EXT 56) → +60 (EXT 58 propagation) → +29 (EXT 59 propagation) → +3 (EXT 60) → stable
+- Array: +29 (EXT 62) — first major hit; saturation begins next round
+
+The dominant remaining failure types across all touched chapters are now (a) intricate spec edge cases (Array length-clamping, regex parsing errors, Function.prototype.toString decompilation), (b) features not yet implemented (Error.isError, JSON.rawJSON, Iterator helpers, resizable ArrayBuffers), (c) cross-realm tests (require $262.createRealm — out of scope for v1).
+
+### Open scope at EXT 62 close
+
+- **RegExp.prototype** (28.1%, 350 failing): accessors not installed on RegExp.prototype (~25 tests), regex parser error→SyntaxError (~29), getter error propagation (~28). Substantial.
+- **Function.prototype** (44.0%, 173 failing): toString decompilation + bind() edge cases.
+- **JSON** (45.4%, 90 failing): replacer + space + toJSON.
+- **defineProperty residual** (~168 failing): Array length-clamping (§10.4.2.1 ArraySetLength, ~20 tests, ~80 LOC).
+
+Pin-Art tag count: 78 commits as of EXT 62.
+
 ### Conjecture status
 
 **§I-strengthened corroboration #5 (2026-05-19, EXT 56)**: a queued alphabet extension predicted at EXT 52 close (property-descriptor builders) was empirically shown to be unnecessary upon implementation. The existing alphabet was already sufficient. This is the strongest corroboration of §I.1.b yet — the alphabet-completeness criterion is not just stable in practice but predictively *over-conservative* when projected forward.
