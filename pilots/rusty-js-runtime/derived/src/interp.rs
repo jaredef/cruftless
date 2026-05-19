@@ -663,6 +663,23 @@ impl Runtime {
         Ok(Value::Number(new_ms))
     }
 
+    /// Date.now() per ECMA §21.4.3.1 — current epoch ms.
+    pub fn date_now_via(&mut self) -> Result<Value, RuntimeError> {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let ms = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as f64).unwrap_or(0.0);
+        Ok(Value::Number(ms))
+    }
+
+    /// Date.parse(s) per ECMA §21.4.3.2 — v1 stub returns 0.
+    pub fn date_parse_via(&mut self, _args: &[Value]) -> Result<Value, RuntimeError> {
+        Ok(Value::Number(0.0))
+    }
+
+    /// Date.UTC(...) per ECMA §21.4.3.4 — v1 stub returns 0.
+    pub fn date_utc_via(&mut self, _args: &[Value]) -> Result<Value, RuntimeError> {
+        Ok(Value::Number(0.0))
+    }
+
     /// String.raw(template, ...subs) per ECMA §22.1.2.4.
     pub fn string_raw_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let template = match args.first() {

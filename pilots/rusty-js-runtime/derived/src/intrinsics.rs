@@ -3281,13 +3281,9 @@ impl Runtime {
             Ok(Value::Object(id))
         });
         let ctor = self.alloc_object(ctor_obj);
-        register_intrinsic_method(self, ctor, "now", 0, |_rt, _args| {
-            use std::time::{SystemTime, UNIX_EPOCH};
-            let ms = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as f64).unwrap_or(0.0);
-            Ok(Value::Number(ms))
-        });
-        register_intrinsic_method(self, ctor, "parse", 2, |_rt, _args| Ok(Value::Number(0.0)));
-        register_intrinsic_method(self, ctor, "UTC", 1, |_rt, _args| Ok(Value::Number(0.0)));
+        register_intrinsic_method(self, ctor, "now",   0, |rt, args| crate::generated::date_now(rt, rt.current_this(), args));
+        register_intrinsic_method(self, ctor, "parse", 2, |rt, args| crate::generated::date_parse(rt, rt.current_this(), args));
+        register_intrinsic_method(self, ctor, "UTC",   1, |rt, args| crate::generated::date_utc(rt, rt.current_this(), args));
         self.obj_mut(ctor).set_own_frozen("prototype".into(), Value::Object(proto));
         self.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(ctor));
         self.globals.insert("Date".into(), Value::Object(ctor));

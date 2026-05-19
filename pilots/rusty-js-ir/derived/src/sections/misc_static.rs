@@ -21,6 +21,14 @@ fn nullary_section(spec: &str, rust_name: &str, title: &str, via: &'static str) 
     }
 }
 
+pub fn build_date_now()   -> IRFunction { nullary_section ("21.4.3.1", "date_now",   "Date.now ( )",                   "date_now_via") }
+pub fn build_date_parse() -> IRFunction { variadic_section("21.4.3.2", "date_parse", "Date.parse ( string )",          "date_parse_via") }
+pub fn build_date_utc()   -> IRFunction { variadic_section("21.4.3.4", "date_utc",   "Date.UTC ( y, mo, d, h, mi, s )","date_utc_via") }
+
+pub fn spec_steps_date_now()   -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["date_now_via"],   throws: None, prose: "Return the current epoch milliseconds." }] }
+pub fn spec_steps_date_parse() -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["date_parse_via"], throws: None, prose: "Parse a Date string (v1 deviation: returns 0 — full ISO/RFC parser deferred)." }] }
+pub fn spec_steps_date_utc()   -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["date_utc_via"],   throws: None, prose: "Compute epoch ms from year/month/day/... (v1 stub returns 0)." }] }
+
 pub fn build_string_raw() -> IRFunction { variadic_section("22.1.2.4", "string_raw", "String.raw ( template, ...subs )", "string_raw_via") }
 pub fn build_array_from() -> IRFunction { variadic_section("23.1.2.1", "array_from", "Array.from ( arrayLike, mapfn, thisArg )", "array_from_via") }
 
