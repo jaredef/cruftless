@@ -240,38 +240,6 @@ pub fn install(rt: &mut Runtime) {
                 }
             }
         }
-        // Ω.5.P63.E49: default-function-name lift for ESM-with-both.
-        // When an ESM module declares `export default function NAMED` AND
-        // ALSO has at least one named export, Bun exposes NAMED as a named
-        // export pointing at the same function value. mitt has only the
-        // default (single key) so this doesn't apply; node-fetch has
-        // `export default async function fetch` alongside FormData/Headers/...
-        // and Bun's namespace contains both `default:<fn>` and `fetch:<fn>`.
-        // Gate on named_count > 0 to avoid regressing the single-default cluster.
-        if has_default && named_count > 0 {
-            if let Value::Object(fn_id) = &default_value {
-                use rusty_js_runtime::value::InternalKind;
-                let is_fn = matches!(
-                    rt.obj(*fn_id).internal_kind,
-                    InternalKind::Function(_) | InternalKind::Closure(_) | InternalKind::BoundFunction(_)
-                );
-                if is_fn {
-                    if let Value::String(name_str) = rt.object_get(*fn_id, "name") {
-                        let n = name_str.as_str().to_string();
-                        if !n.is_empty()
-                            && n != "default"
-                            && !rt.obj(ns).properties.contains_key(&n)
-                        {
-                            rt.object_set(ns, n.clone(), default_value.clone());
-                            synth_path = format!(
-                                "{}; P63.E49 default-fn-name-lift ({})",
-                                synth_path, n
-                            );
-                        }
-                    }
-                }
-            }
-        }
         let _ = named_count; // silence unused
         rt.module_ns_synth_trace.insert(url.to_string(), synth_path);
 
