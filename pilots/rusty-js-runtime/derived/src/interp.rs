@@ -663,6 +663,152 @@ impl Runtime {
         Ok(Value::Number(new_ms))
     }
 
+    fn map_this_and_storage(&mut self, who: &str) -> Result<(crate::value::ObjectRef, crate::value::ObjectRef), RuntimeError> {
+        let this = match self.current_this() {
+            Value::Object(id) => id,
+            _ => return Err(RuntimeError::TypeError(format!("Map.prototype.{}: this is not a Map object", who))),
+        };
+        let storage = match self.object_get(this, "__map_data") {
+            Value::Object(id) => id,
+            _ => return Err(RuntimeError::TypeError(format!("Map.prototype.{}: this is not a Map object", who))),
+        };
+        Ok((this, storage))
+    }
+
+    /// Map.prototype.get(key).
+    pub fn map_proto_get_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let (_this, storage) = self.map_this_and_storage("get")?;
+        let key = args.first().cloned().unwrap_or(Value::Undefined);
+        let key_s = crate::abstract_ops::to_string(&key).as_str().to_string();
+        Ok(self.object_get(storage, &key_s))
+    }
+
+    /// Map.prototype.set(key, value).
+    pub fn map_proto_set_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let (this, storage) = self.map_this_and_storage("set")?;
+        let key = args.first().cloned().unwrap_or(Value::Undefined);
+        let val = args.get(1).cloned().unwrap_or(Value::Undefined);
+        let key_s = crate::abstract_ops::to_string(&key).as_str().to_string();
+        let existed = !matches!(self.object_get(storage, &key_s), Value::Undefined);
+        self.object_set(storage, key_s, val);
+        if !existed {
+            let prev = match self.object_get(this, "size") { Value::Number(n) => n, _ => 0.0 };
+            self.object_set(this, "size".into(), Value::Number(prev + 1.0));
+        }
+        Ok(Value::Object(this))
+    }
+
+    /// Map.prototype.has(key).
+    pub fn map_proto_has_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let (_this, storage) = self.map_this_and_storage("has")?;
+        let key = args.first().cloned().unwrap_or(Value::Undefined);
+        let key_s = crate::abstract_ops::to_string(&key).as_str().to_string();
+        Ok(Value::Boolean(self.obj(storage).properties.contains_key(&key_s)))
+    }
+
+    /// Map.prototype.delete(key).
+    pub fn map_proto_delete_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let (this, storage) = self.map_this_and_storage("delete")?;
+        let key = args.first().cloned().unwrap_or(Value::Undefined);
+        let key_s = crate::abstract_ops::to_string(&key).as_str().to_string();
+        let existed = self.obj_mut(storage).properties.shift_remove(&key_s).is_some();
+        if existed {
+            let prev = match self.object_get(this, "size") { Value::Number(n) => n, _ => 0.0 };
+            self.object_set(this, "size".into(), Value::Number((prev - 1.0).max(0.0)));
+        }
+        Ok(Value::Boolean(existed))
+    }
+
+    /// Map.prototype.clear().
+    pub fn map_proto_clear_via(&mut self) -> Result<Value, RuntimeError> {
+        let this = match self.current_this() {
+            Value::Object(id) => id,
+            _ => return Err(RuntimeError::TypeError("Map.prototype.clear: this is not a Map object".into())),
+        };
+        let fresh = self.alloc_object(crate::value::Object::new_ordinary());
+        self.object_set(this, "__map_data".into(), Value::Object(fresh));
+        self.object_set(this, "size".into(), Value::Number(0.0));
+        Ok(Value::Undefined)
+    }
+
+    /// Map.prototype.forEach(cb).
+    pub fn map_proto_for_each_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let (this, storage) = self.map_this_and_storage("forEach")?;
+        let cb = args.first().cloned().unwrap_or(Value::Undefined);
+        let pairs: Vec<(String, Value)> = self.obj(storage).properties.iter()
+            .map(|(k, d)| (k.clone(), d.value.clone())).collect();
+        for (k, v) in pairs {
+            let key_v = Value::String(std::rc::Rc::new(k));
+            self.call_function(cb.clone(), Value::Undefined, vec![v, key_v, Value::Object(this)])?;
+        }
+        Ok(Value::Undefined)
+    }
+
+    /// Map.prototype.values() — v1 eager-collect.
+    pub fn map_proto_values_via(&mut self) -> Result<Value, RuntimeError> {
+        let this = match self.current_this() {
+            Value::Object(id) => id,
+            _ => return Err(RuntimeError::TypeError("Map.prototype.values: this is not a Map object".into())),
+        };
+        let storage = match self.object_get(this, "__map_data") {
+            Value::Object(id) => id,
+            _ => return Ok(Value::Object(self.alloc_object(crate::value::Object::new_array()))),
+        };
+        let vs: Vec<Value> = self.obj(storage).properties.iter().map(|(_k, d)| d.value.clone()).collect();
+        let arr = self.alloc_object(crate::value::Object::new_array());
+        for (i, v) in vs.into_iter().enumerate() {
+            self.object_set(arr, i.to_string(), v);
+        }
+        let len = self.array_length(arr);
+        self.object_set(arr, "length".into(), Value::Number(len as f64));
+        Ok(Value::Object(arr))
+    }
+
+    /// Map.prototype.keys() — v1 eager-collect.
+    pub fn map_proto_keys_via(&mut self) -> Result<Value, RuntimeError> {
+        let this = match self.current_this() {
+            Value::Object(id) => id,
+            _ => return Err(RuntimeError::TypeError("Map.prototype.keys: this is not a Map object".into())),
+        };
+        let storage = match self.object_get(this, "__map_data") {
+            Value::Object(id) => id,
+            _ => return Ok(Value::Object(self.alloc_object(crate::value::Object::new_array()))),
+        };
+        let ks: Vec<String> = self.obj(storage).properties.keys().cloned().collect();
+        let arr = self.alloc_object(crate::value::Object::new_array());
+        for (i, k) in ks.into_iter().enumerate() {
+            self.object_set(arr, i.to_string(), Value::String(std::rc::Rc::new(k)));
+        }
+        let len = self.array_length(arr);
+        self.object_set(arr, "length".into(), Value::Number(len as f64));
+        Ok(Value::Object(arr))
+    }
+
+    /// Map.prototype.entries() — v1 eager-collect array-of-pairs.
+    pub fn map_proto_entries_via(&mut self) -> Result<Value, RuntimeError> {
+        let this = match self.current_this() {
+            Value::Object(id) => id,
+            _ => return Err(RuntimeError::TypeError("Map.prototype.entries: this is not a Map object".into())),
+        };
+        let storage = match self.object_get(this, "__map_data") {
+            Value::Object(id) => id,
+            _ => return Ok(Value::Object(self.alloc_object(crate::value::Object::new_array()))),
+        };
+        let pairs: Vec<(String, Value)> = self.obj(storage).properties.iter()
+            .map(|(k, d)| (k.clone(), d.value.clone())).collect();
+        let arr = self.alloc_object(crate::value::Object::new_array());
+        for (i, (k, v)) in pairs.into_iter().enumerate() {
+            let pair = self.alloc_object(crate::value::Object::new_array());
+            self.object_set(pair, "0".into(), Value::String(std::rc::Rc::new(k)));
+            self.object_set(pair, "1".into(), v);
+            self.object_set(pair, "length".into(), Value::Number(2.0));
+            self.object_set(arr, i.to_string(), Value::Object(pair));
+        }
+        let len = self.array_length(arr);
+        self.object_set(arr, "length".into(), Value::Number(len as f64));
+        Ok(Value::Object(arr))
+    }
+
     /// Object.groupBy(items, callbackFn) per ECMA §20.1.2.10.
     pub fn object_group_by_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let items = args.first().cloned().unwrap_or(Value::Undefined);

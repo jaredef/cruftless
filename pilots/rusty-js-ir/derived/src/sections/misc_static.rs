@@ -21,6 +21,26 @@ fn nullary_section(spec: &str, rust_name: &str, title: &str, via: &'static str) 
     }
 }
 
+pub fn build_map_get()      -> IRFunction { variadic_section("24.1.3.5",  "map_prototype_get",      "Map.prototype.get ( key )",            "map_proto_get_via") }
+pub fn build_map_set()      -> IRFunction { variadic_section("24.1.3.9",  "map_prototype_set",      "Map.prototype.set ( key, value )",     "map_proto_set_via") }
+pub fn build_map_has()      -> IRFunction { variadic_section("24.1.3.6",  "map_prototype_has",      "Map.prototype.has ( key )",            "map_proto_has_via") }
+pub fn build_map_delete()   -> IRFunction { variadic_section("24.1.3.3",  "map_prototype_delete",   "Map.prototype.delete ( key )",         "map_proto_delete_via") }
+pub fn build_map_clear()    -> IRFunction { nullary_section ("24.1.3.2",  "map_prototype_clear",    "Map.prototype.clear ( )",              "map_proto_clear_via") }
+pub fn build_map_for_each() -> IRFunction { variadic_section("24.1.3.4",  "map_prototype_for_each", "Map.prototype.forEach ( cb )",         "map_proto_for_each_via") }
+pub fn build_map_values()   -> IRFunction { nullary_section ("24.1.3.10", "map_prototype_values",   "Map.prototype.values ( )",             "map_proto_values_via") }
+pub fn build_map_keys()     -> IRFunction { nullary_section ("24.1.3.7",  "map_prototype_keys",     "Map.prototype.keys ( )",               "map_proto_keys_via") }
+pub fn build_map_entries()  -> IRFunction { nullary_section ("24.1.3.4a", "map_prototype_entries",  "Map.prototype.entries ( )",            "map_proto_entries_via") }
+
+pub fn spec_steps_map_get()      -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["map_proto_get_via"],      throws: None, prose: "Brand-check Map; return the value for the stringified key (undefined if absent)." }] }
+pub fn spec_steps_map_set()      -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["map_proto_set_via"],      throws: None, prose: "Brand-check Map; insert/update; bump size on new key; return this." }] }
+pub fn spec_steps_map_has()      -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["map_proto_has_via"],      throws: None, prose: "Brand-check Map; return whether the key is present." }] }
+pub fn spec_steps_map_delete()   -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["map_proto_delete_via"],   throws: None, prose: "Brand-check Map; remove the key; decrement size; return whether removal occurred." }] }
+pub fn spec_steps_map_clear()    -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["map_proto_clear_via"],    throws: None, prose: "Brand-check Map; reset storage and size; return undefined." }] }
+pub fn spec_steps_map_for_each() -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["map_proto_for_each_via"], throws: None, prose: "Brand-check Map; iterate (value, key, map) over entries calling cb." }] }
+pub fn spec_steps_map_values()   -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["map_proto_values_via"],   throws: None, prose: "Brand-check Map; return eager array of values (v1 deviation)." }] }
+pub fn spec_steps_map_keys()     -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["map_proto_keys_via"],     throws: None, prose: "Brand-check Map; return eager array of keys." }] }
+pub fn spec_steps_map_entries()  -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["map_proto_entries_via"],  throws: None, prose: "Brand-check Map; return eager array of [k, v] pairs." }] }
+
 pub fn build_object_group_by() -> IRFunction { variadic_section("20.1.2.10", "object_group_by", "Object.groupBy ( items, callbackFn )", "object_group_by_via") }
 pub fn spec_steps_object_group_by() -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["object_group_by_via"], throws: None, prose: "Iterate items; bucket each by ToString(callbackFn(item, i)) into an Object-of-arrays." }] }
 
