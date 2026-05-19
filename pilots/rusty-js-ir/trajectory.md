@@ -491,3 +491,51 @@ Tier 1.10 cont:
 4. **String.prototype trim cluster** — already P62.E15 spec-compliant.
 
 Pin-Art tag count: 19 commits as of IR-EXT 15.
+
+
+## IR-EXT 16 — 2026-05-19 night-very-late (Reflect proto-ops; cluster closure)
+
+**Headline**: 4 more Reflect.* sections (getPrototypeOf, setPrototypeOf, isExtensible, preventExtensions). The Reflect.* cluster is now ~complete (9 of 10 core methods translated; Reflect.{apply, construct, defineProperty, getOwnPropertyDescriptor} remain, each with structural complexity).
+
+68 IR-encoded total, 63 wired.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| `1b125adc` | IR-EXT 16: Reflect proto-ops | Four runtime helpers + four 1-step IR sections. Reflect's "throw on non-Object" semantics now correctly distinct from Object.*'s "return null/false" — three latent semantics-differences corrected via the IR's spec-faithful authoring. |
+
+### Substrate at IR-EXT 16 close
+
+**Sections IR-encoded**: 68 (64 from IR-EXT 15 + 4 Reflect proto-ops).
+**Wired**: 63.
+**Linter**: 68/68 clean.
+**Runtime helpers cumulative**: 31.
+
+### Coverage-discovery instance #3
+
+Three latent semantic-difference bugs surfaced and corrected via Reflect IR authoring:
+- Reflect.getPrototypeOf was returning null on non-Object (Object.getPrototypeOf's semantics); spec requires TypeError.
+- Reflect.isExtensible was returning false on non-Object; spec requires TypeError.
+- Reflect.preventExtensions was returning false on non-Object; spec requires TypeError.
+
+Each is a subtle behavioral divergence between Object.* and Reflect.* that the pre-IR cruftless impls had collapsed via "if Object, do X; else fallback". The IR's spec-faithful authoring (one helper per spec method, with the spec's exact error/return contract) caught all three in one cluster.
+
+### Conjecture status
+
+§I's strengthened claim ("exhaustive coverage discovery during translation") now corroborated 3× in the last 3 rounds:
+- IR-EXT 14: missing Math.asin / Math.acos.
+- IR-EXT 15: Reflect.deleteProperty non-configurable bug.
+- IR-EXT 16: three Reflect.* "throw vs fallback" bugs.
+
+The IR's value isn't just lint-clean translations — it's the *audit* the translation forces: one Rust author writing a spec-faithful Runtime helper inspects the existing cruftless behavior side-by-side with the ECMA prose, catching every divergence.
+
+### Open scope at IR-EXT 16 close
+
+Tier 1.10 cont:
+1. **Reflect.{apply, construct}** — structurally complex (variadic args from array, new-target dispatch). Need a new IR shape for spread-args.
+2. **Reflect.{defineProperty, getOwnPropertyDescriptor}** — property-descriptor cluster shared with Object.defineProperty / getOwnPropertyDescriptor.
+3. **Math.{pow, atan2, hypot, max, min}** — binary/variadic; needs math_binary_op_via dispatcher.
+4. **Number.prototype.{toString, toFixed, toExponential, toPrecision}** — already P62 spec-compliant.
+
+Pin-Art tag count: 20 commits as of IR-EXT 16.
