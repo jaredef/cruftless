@@ -497,6 +497,10 @@ name = "rusty-js-gc"
 version = "0.1.0"
 
 [[package]]
+name = "rusty-js-ir"
+version = "0.1.0"
+
+[[package]]
 name = "rusty-js-parser"
 version = "0.1.0"
 dependencies = [

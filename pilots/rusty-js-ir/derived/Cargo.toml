@@ -1,0 +1,20 @@
+[package]
+name = "rusty-js-ir"
+version = "0.1.0"
+edition = "2021"
+description = "Spec-as-source-of-truth IR for ECMA-262 algorithm sections. Per IR-DESIGN.md."
+
+[lib]
+path = "src/lib.rs"
+
+[[example]]
+name = "lower_array_map"
+path = "examples/lower_array_map.rs"
+
+[[example]]
+name = "lint_array_map"
+path = "examples/lint_array_map.rs"
+
+[[example]]
+name = "lint_drift_demo"
+path = "examples/lint_drift_demo.rs"

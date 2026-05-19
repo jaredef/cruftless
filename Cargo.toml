@@ -33,6 +33,8 @@ members = [
     "pilots/rusty-js-gc/derived",
     "pilots/rusty-js-parser/derived",
     "pilots/rusty-js-runtime/derived",
+    # IR-DESIGN.md Tier 1: spec-as-source-of-truth IR for ECMA-262 sections.
+    "pilots/rusty-js-ir/derived",
     "pilots/streams/derived",
     "pilots/structured-clone/derived",
     "pilots/textencoder/derived",
