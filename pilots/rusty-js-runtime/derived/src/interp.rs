@@ -430,6 +430,101 @@ impl Runtime {
         Ok(())
     }
 
+    /// Number.prototype.valueOf() per ECMA §21.1.3.7 — ThisNumberValue.
+    pub fn number_proto_value_of_via(&self, this: &Value) -> Result<Value, RuntimeError> {
+        match self.unwrap_primitive(this) {
+            Value::Number(n) => Ok(Value::Number(n)),
+            _ => Err(RuntimeError::TypeError(
+                "Number.prototype.valueOf: this is not a Number".into())),
+        }
+    }
+
+    /// Number.prototype.toExponential(digits) per ECMA §21.1.3.2.
+    pub fn number_proto_to_exponential_via(&mut self, this: &Value, digits_arg: &Value) -> Result<Value, RuntimeError> {
+        let n = match self.unwrap_primitive(this) {
+            Value::Number(n) => n,
+            _ => return Err(RuntimeError::TypeError(
+                "Number.prototype.toExponential: this is not a Number".into())),
+        };
+        let digits = match digits_arg {
+            Value::Undefined => None,
+            v => {
+                let dn = self.coerce_to_number(v)?;
+                if dn.is_nan() || dn < 0.0 || dn > 100.0 {
+                    return Err(RuntimeError::RangeError(
+                        "toExponential() digits argument must be between 0 and 100".into()));
+                }
+                Some(dn as usize)
+            }
+        };
+        if n.is_nan() { return Ok(Value::String(std::rc::Rc::new("NaN".into()))); }
+        if !n.is_finite() {
+            return Ok(Value::String(std::rc::Rc::new(
+                if n > 0.0 { "Infinity".into() } else { "-Infinity".into() })));
+        }
+        let s = match digits {
+            Some(d) => format!("{:.*e}", d, n),
+            None => format!("{:e}", n),
+        };
+        // Rust uses "1e0"; JS uses "1e+0" — patch.
+        let mut out = String::new();
+        let mut chars = s.chars().peekable();
+        while let Some(c) = chars.next() {
+            out.push(c);
+            if c == 'e' {
+                if let Some(&next) = chars.peek() {
+                    if next != '-' && next != '+' { out.push('+'); }
+                }
+            }
+        }
+        Ok(Value::String(std::rc::Rc::new(out)))
+    }
+
+    /// Number.prototype.toPrecision(precision) per ECMA §21.1.3.5.
+    pub fn number_proto_to_precision_via(&mut self, this: &Value, precision_arg: &Value) -> Result<Value, RuntimeError> {
+        let n = match self.unwrap_primitive(this) {
+            Value::Number(n) => n,
+            _ => return Err(RuntimeError::TypeError(
+                "Number.prototype.toPrecision: this is not a Number".into())),
+        };
+        match precision_arg {
+            Value::Undefined => Ok(Value::String(std::rc::Rc::new(
+                crate::abstract_ops::number_to_string(n)))),
+            v => {
+                let pn = self.coerce_to_number(v)?;
+                if pn.is_nan() || pn < 1.0 || pn > 100.0 {
+                    return Err(RuntimeError::RangeError(
+                        "toPrecision() argument must be between 1 and 100".into()));
+                }
+                let p = pn as usize;
+                if n.is_nan() { return Ok(Value::String(std::rc::Rc::new("NaN".into()))); }
+                if !n.is_finite() {
+                    return Ok(Value::String(std::rc::Rc::new(
+                        if n > 0.0 { "Infinity".into() } else { "-Infinity".into() })));
+                }
+                Ok(Value::String(std::rc::Rc::new(format!("{:.*}", p.saturating_sub(1), n))))
+            }
+        }
+    }
+
+    /// Boolean.prototype.valueOf() per ECMA §20.3.3.3 — ThisBooleanValue.
+    pub fn boolean_proto_value_of_via(&self, this: &Value) -> Result<Value, RuntimeError> {
+        match self.unwrap_primitive(this) {
+            Value::Boolean(b) => Ok(Value::Boolean(b)),
+            _ => Err(RuntimeError::TypeError(
+                "Boolean.prototype.valueOf: this is not a Boolean".into())),
+        }
+    }
+
+    /// Boolean.prototype.toString() per ECMA §20.3.3.2.
+    pub fn boolean_proto_to_string_via(&self, this: &Value) -> Result<Value, RuntimeError> {
+        match self.unwrap_primitive(this) {
+            Value::Boolean(b) => Ok(Value::String(std::rc::Rc::new(b.to_string()))),
+            _ => Err(RuntimeError::TypeError(
+                "Boolean.prototype.toString: this is not a Boolean".into())),
+        }
+    }
+
     /// Number.prototype.toFixed(digits) per ECMA §21.1.3.3 — ThisNumberValue
     /// brand + RangeError on digits not in [0, 100] + NaN/Infinity
     /// short-circuit + Rust's f64 fixed-point formatting.

@@ -91,6 +91,11 @@ fn main() {
         ("Object.assign", object_static::build_assign(), object_static::spec_steps_assign()),
         ("Object.fromEntries", object_static::build_from_entries(), object_static::spec_steps_from_entries()),
         ("Number.prototype.toFixed", number_prototype::build_to_fixed(), number_prototype::spec_steps_to_fixed()),
+        ("Number.prototype.valueOf", number_prototype::build_value_of(), number_prototype::spec_steps_value_of()),
+        ("Number.prototype.toExponential", number_prototype::build_to_exponential(), number_prototype::spec_steps_to_exponential()),
+        ("Number.prototype.toPrecision", number_prototype::build_to_precision(), number_prototype::spec_steps_to_precision()),
+        ("Boolean.prototype.valueOf", number_prototype::build_boolean_value_of(), number_prototype::spec_steps_boolean_value_of()),
+        ("Boolean.prototype.toString", number_prototype::build_boolean_to_string(), number_prototype::spec_steps_boolean_to_string()),
     ];
 
     let mut total_unexpected = 0;

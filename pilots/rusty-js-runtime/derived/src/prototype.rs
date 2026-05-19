@@ -1669,13 +1669,10 @@ fn enqueue_handler(
 fn install_number_proto(rt: &mut Runtime, host: ObjectRef) {
     // Ω.5.P62.E1: Number.prototype.valueOf returns [[NumberData]] for
     // Number-exotic wrapper objects (modeled via __primitive__ slot).
+    // Ω.5.P63.E19: Number.prototype.valueOf routed through IR.
     register_intrinsic_method(rt, host, "valueOf", 0, |rt, _args| {
         let this = rt.current_this();
-        let t = rt.unwrap_primitive(&this);
-        match t {
-            Value::Number(n) => Ok(Value::Number(n)),
-            _ => Err(RuntimeError::TypeError("Number.prototype.valueOf: this is not a Number".into())),
-        }
+        crate::generated::number_prototype_value_of(rt, this, &[])
     });
     register_intrinsic_method(rt, host, "toString", 0, |rt, args| {
         // Ω.5.P62.E19: ThisNumberValue per §21.1.3 — receiver must be a
@@ -1729,62 +1726,17 @@ fn install_number_proto(rt: &mut Runtime, host: ObjectRef) {
     });
     // Ω.5.P61.E10: toExponential, toPrecision, toLocaleString per
     // ECMA §21.1.3.
+    // Ω.5.P63.E19: Number.prototype.toExponential routed through IR.
     register_intrinsic_method(rt, host, "toExponential", 1, |rt, args| {
-        // ThisNumberValue brand + RangeError on digits out of range.
         let this = rt.current_this();
-        let n = match rt.unwrap_primitive(&this) {
-            Value::Number(n) => n,
-            _ => return Err(RuntimeError::TypeError(
-                "Number.prototype.toExponential: this is not a Number".into())),
-        };
-        let digits = match args.first().cloned() {
-            None | Some(Value::Undefined) => None,
-            Some(v) => {
-                let dn = rt.coerce_to_number(&v)?;
-                if dn.is_nan() || dn < 0.0 || dn > 100.0 {
-                    return Err(RuntimeError::RangeError(
-                        "toExponential() digits argument must be between 0 and 100".into()));
-                }
-                Some(dn as usize)
-            }
-        };
-        let s = match digits {
-            Some(d) => format!("{:.*e}", d, n),
-            None => format!("{:e}", n),
-        };
-        // Rust uses "1e0" form; JS uses "1e+0" — patch the e-sign.
-        let s = s.replace("e0", "e+0").replace("e1", "e+1").replace("e2", "e+2")
-                 .replace("e3", "e+3").replace("e4", "e+4").replace("e5", "e+5")
-                 .replace("e6", "e+6").replace("e7", "e+7").replace("e8", "e+8")
-                 .replace("e9", "e+9");
-        Ok(Value::String(Rc::new(s)))
+        let digits = args.first().cloned().unwrap_or(Value::Undefined);
+        crate::generated::number_prototype_to_exponential(rt, this, std::slice::from_ref(&digits))
     });
+    // Ω.5.P63.E19: Number.prototype.toPrecision routed through IR.
     register_intrinsic_method(rt, host, "toPrecision", 1, |rt, args| {
-        // ThisNumberValue brand + RangeError per §21.1.3.5.
         let this = rt.current_this();
-        let n = match rt.unwrap_primitive(&this) {
-            Value::Number(n) => n,
-            _ => return Err(RuntimeError::TypeError(
-                "Number.prototype.toPrecision: this is not a Number".into())),
-        };
-        match args.first().cloned() {
-            None | Some(Value::Undefined) => Ok(Value::String(Rc::new(
-                crate::abstract_ops::number_to_string(n)))),
-            Some(v) => {
-                let pn = rt.coerce_to_number(&v)?;
-                if pn.is_nan() || pn < 1.0 || pn > 100.0 {
-                    return Err(RuntimeError::RangeError(
-                        "toPrecision() argument must be between 1 and 100".into()));
-                }
-                let p = pn as usize;
-                if n.is_nan() { return Ok(Value::String(Rc::new("NaN".into()))); }
-                if !n.is_finite() {
-                    return Ok(Value::String(Rc::new(
-                        if n > 0.0 { "Infinity".into() } else { "-Infinity".into() })));
-                }
-                Ok(Value::String(Rc::new(format!("{:.*}", p.saturating_sub(1), n))))
-            }
-        }
+        let precision = args.first().cloned().unwrap_or(Value::Undefined);
+        crate::generated::number_prototype_to_precision(rt, this, std::slice::from_ref(&precision))
     });
     register_intrinsic_method(rt, host, "toLocaleString", 0, |rt, _args| {
         // ThisNumberValue brand.

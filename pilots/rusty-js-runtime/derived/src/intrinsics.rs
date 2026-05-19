@@ -2489,20 +2489,14 @@ impl Runtime {
         });
         let bool_id = self.alloc_object(bool_obj);
         let bool_proto = self.alloc_object(Object::new_ordinary());
+        // Ω.5.P63.E19: Boolean.prototype.{valueOf, toString} routed through IR.
         register_intrinsic_method(self, bool_proto, "valueOf", 0, |rt, _args| {
-            // Ω.5.P62.E1: unwrap Boolean-wrapper [[BooleanData]].
             let this = rt.current_this();
-            match rt.unwrap_primitive(&this) {
-                Value::Boolean(b) => Ok(Value::Boolean(b)),
-                _ => Err(RuntimeError::TypeError("Boolean.prototype.valueOf: this is not a Boolean".into())),
-            }
+            crate::generated::boolean_prototype_value_of(rt, this, &[])
         });
         register_intrinsic_method(self, bool_proto, "toString", 0, |rt, _args| {
             let this = rt.current_this();
-            match rt.unwrap_primitive(&this) {
-                Value::Boolean(b) => Ok(Value::String(Rc::new(b.to_string()))),
-                _ => Err(RuntimeError::TypeError("Boolean.prototype.toString: this is not a Boolean".into())),
-            }
+            crate::generated::boolean_prototype_to_string(rt, this, &[])
         });
         self.obj_mut(bool_id).set_own_frozen("prototype".into(), Value::Object(bool_proto));
         // Ω.5.P58.E4: Boolean.prototype.constructor = Boolean per ECMA §10.2.12.

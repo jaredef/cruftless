@@ -89,6 +89,11 @@ fn main() {
         object_static::build_assign(),
         object_static::build_from_entries(),
         number_prototype::build_to_fixed(),
+        number_prototype::build_value_of(),
+        number_prototype::build_to_exponential(),
+        number_prototype::build_to_precision(),
+        number_prototype::build_boolean_value_of(),
+        number_prototype::build_boolean_to_string(),
     ];
 
     for f in &sections {
