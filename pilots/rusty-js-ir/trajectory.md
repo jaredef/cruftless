@@ -345,3 +345,44 @@ Tier 2.5 (mid-term):
 5. **Mass parse**: feed multiple emu-alg blocks through spec_parser; cross-check all 17 hand-translated sections against parser-derived records.
 
 Pin-Art tag count for the IR workstream: 11 commits as of IR-EXT 7.
+
+
+## IR-EXT 8 + 9 — 2026-05-19 night-late (Object proto-ops + integrity clusters)
+
+**Headline**: 10 more sections wired across two clusters (Object proto-ops + Object integrity). 27 IR-encoded total, 22 wired. The CallBuiltin pattern's per-section LOC cost has stabilized at ~25-45 LOC; the IR continues to scale linearly per chapter.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| `daaeb759` | IR-EXT 8: proto-ops cluster | Object.{getPrototypeOf, setPrototypeOf, isExtensible, isFrozen, isSealed} via CallBuiltin. Five new runtime helpers (rt.get_prototype_of_via / set_prototype_of_via / is_extensible_via / is_frozen_via / is_sealed_via). |
+| `23672dc5` | IR-EXT 9: integrity cluster | Object.{freeze, seal, preventExtensions, hasOwn, is} via CallBuiltin. Five new runtime helpers. Five hand-written closures replaced. |
+
+### Substrate at IR-EXT 9 close
+
+**Runtime helper coverage**: 10 new IR-target helpers added (one per section across the two clusters). All on `Runtime` taking `&Value` and returning `Result<Value, RuntimeError>`.
+
+**Sections IR-encoded**: 27 (17 from IR-EXT 7 + 10 new). Wired: 22 (17 + 5 proto-ops + 5 integrity = 27 minus 5 IR-only). Wait — recount: 17 wired at IR-EXT 7 close + 5 proto-ops (E8) + 5 integrity (E9) = 27 wired in theory, but the 5 IR-only stays IR-only. Wired at IR-EXT 9 close = 17 + 10 = 27 minus 5 = 22.
+
+Cumulative wired: 22 of 27 sections route through generated.rs.
+
+**Linter**: 27/27 clean.
+
+### Conjecture status
+
+The cross-chapter portability claim (IR-EXT 7) is now strongly corroborated. CallBuiltin has been used to wire sections across three chapters (Array, Object, Promise) without any new IR primitives. The lowering compiler, linter, and spec-parser are chapter-agnostic. Each new section requires:
+- One file under sections/ (~30-100 LOC, depending on step count)
+- One or more runtime helpers if the spec abstract op isn't a JS-side method dispatch (~5-30 LOC each)
+- One wiring edit per section in the registration file (1 line)
+
+That's it. The bulk of the apparatus is in place.
+
+### Open scope at IR-EXT 9 close
+
+Tier 1.10 (continuing):
+1. **Math.* cluster** — Math.abs, floor, ceil, round, trunc, sign, sqrt, cbrt, pow, max, min. Mostly one-liners on Number; the question is whether the IR overhead pays for itself for performance-sensitive ops. Defer until other higher-yield clusters are done.
+2. **Array.prototype.{push, pop, shift, unshift}** — mutating methods. Adds one new pattern (mutate `this`, return new length / popped element).
+3. **String.prototype.{includes, startsWith, endsWith}** — already P62.E13 spec-compliant; would benefit from IR encoding for spec-step traceability.
+4. **Promise.all / allSettled / any / race** — adds iterator-protocol IR primitives (deferred to Tier 1.11).
+
+Pin-Art tag count for the IR workstream: 13 commits as of IR-EXT 9.
