@@ -313,3 +313,35 @@ Tier 1.10 (parallel work, unchanged from IR-EXT 5):
 6. More built-in sections.
 
 Pin-Art tag count for the IR workstream: 10 commits as of IR-EXT 6.
+
+
+## IR-EXT 7 — 2026-05-19 night (Tier 1.10 begin: Promise.{resolve, reject})
+
+**Headline**: 47 commits pushed to origin/main (cumulative cruftless + IR work since the prior remote). Two more sections wired in this round; 17 IR-encoded total, 12 wired. CallBuiltin demonstrated portable across chapters.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| `8a58d556` | IR-EXT 7: Promise.{resolve, reject} via CallBuiltin | Two runtime helpers (rt.promise_resolve_via / rt.promise_reject_via) extracted; two 1-step IR sections; wired in promise.rs replacing 4-line hand-written closures. |
+
+### Substrate at IR-EXT 7 close
+
+**Runtime helper coverage**: added rt.promise_resolve_via / rt.promise_reject_via.
+
+**Sections IR-encoded**: 17 (15 from IR-EXT 6 + Promise.resolve + Promise.reject). Wired: 12 (10 + 2 new). IR-only-not-wired: 5 (findLast, findLastIndex, indexOf, includes, reduce).
+
+**Linter**: 17/17 clean.
+
+### Open scope at IR-EXT 7 close
+
+Tier 1.10 (in progress):
+1. **Signed-Int IR primitive** — unblocks ~6 sections (lastIndexOf, reduceRight, copyWithin, the backward-iterating find variants, fromIndex normalization).
+2. **find_first_present_index helper** — unblocks reduce wiring.
+3. **Promise.all / allSettled / any / race** — adds iterator-protocol IR primitives (GetIterator / IteratorNext / IteratorClose).
+4. **Object.{getPrototypeOf, setPrototypeOf, freeze, isFrozen, seal, isSealed, getOwnPropertyDescriptor, getOwnPropertyDescriptors, defineProperty, defineProperties}** — adds OrdinaryDefineOwnProperty IR primitive + property-descriptor builders.
+
+Tier 2.5 (mid-term):
+5. **Mass parse**: feed multiple emu-alg blocks through spec_parser; cross-check all 17 hand-translated sections against parser-derived records.
+
+Pin-Art tag count for the IR workstream: 11 commits as of IR-EXT 7.
