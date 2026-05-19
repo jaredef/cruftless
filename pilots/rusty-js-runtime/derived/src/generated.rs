@@ -2142,11 +2142,11 @@ pub fn array_set_length(rt: &mut Runtime, this: Value, args: &[Value])
         new_writable = rt.read_property_via(&desc.clone(), "writable")?;
     }
     // step 12.maybe_shrink (§12.maybe_shrink step 12.maybe_shrink)
-    if crate::abstract_ops::to_boolean(&rt.number_lt_via(&new_len.clone(), &old_len.clone())?) {
+    if (rt.coerce_to_number(&new_len.clone())? < rt.coerce_to_number(&old_len.clone())?) {
         // step 12.idx.init (§12.idx.init step 12.idx.init)
-        let mut idx = rt.number_sub_via(&old_len.clone(), &Value::Number(1_f64))?;
+        let mut idx = Value::Number(rt.coerce_to_number(&old_len.clone())? - rt.coerce_to_number(&Value::Number(1_f64))?);
         // step 12.loop (§12.loop step 12.loop)
-        while crate::abstract_ops::to_boolean(&rt.number_ge_via(&idx.clone(), &new_len.clone())?) {
+        while (rt.coerce_to_number(&idx.clone())? >= rt.coerce_to_number(&new_len.clone())?) {
             // step 13.idx_key (§13.idx_key step 13.idx_key)
             let mut idx_key = rt.number_to_string_key_via(&idx.clone())?;
             // step 13.try_delete (§13.try_delete step 13.try_delete)
@@ -2154,14 +2154,14 @@ pub fn array_set_length(rt: &mut Runtime, this: Value, args: &[Value])
             // step 13.delete_check (§13.delete_check step 13.delete_check)
             if !crate::abstract_ops::to_boolean(&deleted.clone()) {
                 // step 13.stuck.idx_plus (§13.stuck.idx_plus step 13.stuck.idx_plus)
-                let mut stuck_len = rt.number_add_via(&idx.clone(), &Value::Number(1_f64))?;
+                let mut stuck_len = Value::Number(rt.coerce_to_number(&idx.clone())? + rt.coerce_to_number(&Value::Number(1_f64))?);
                 // step 13.stuck.length (§13.stuck.length step 13.stuck.length)
                 rt.array_length_set_internal_via(&target.clone(), &stuck_len.clone(), &new_writable.clone())?;
                 // step 13.stuck.throw (§13.stuck.throw step 13.stuck.throw)
                 return Err(RuntimeError::TypeError("Cannot truncate Array: non-configurable element".into()));
             }
             // step 14.decrement (§14.decrement step 14.decrement)
-            idx = rt.number_sub_via(&idx.clone(), &Value::Number(1_f64))?;
+            idx = Value::Number(rt.coerce_to_number(&idx.clone())? - rt.coerce_to_number(&Value::Number(1_f64))?);
         }
     }
     // step 15.install (§15.install step 15.install)

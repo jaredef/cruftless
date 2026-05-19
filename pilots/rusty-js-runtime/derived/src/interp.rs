@@ -1321,31 +1321,6 @@ impl Runtime {
         Ok(Value::Object(target))
     }
 
-    /// IR-EXT 66 runtime primitives for Value::Number arithmetic.
-    /// These exist because the IR alphabet's OpSub/Lt operators were
-    /// designed for usize/i64 counter math; Value::Number arithmetic
-    /// requires going through these for now. Future alphabet extension:
-    /// lift to Expr::NumberSub / Expr::NumberLt / Expr::NumberAdd.
-    pub fn number_sub_via(&mut self, a: &Value, b: &Value) -> Result<Value, RuntimeError> {
-        let an = self.coerce_to_number(a)?;
-        let bn = self.coerce_to_number(b)?;
-        Ok(Value::Number(an - bn))
-    }
-    pub fn number_add_via(&mut self, a: &Value, b: &Value) -> Result<Value, RuntimeError> {
-        let an = self.coerce_to_number(a)?;
-        let bn = self.coerce_to_number(b)?;
-        Ok(Value::Number(an + bn))
-    }
-    pub fn number_lt_via(&mut self, a: &Value, b: &Value) -> Result<Value, RuntimeError> {
-        let an = self.coerce_to_number(a)?;
-        let bn = self.coerce_to_number(b)?;
-        Ok(Value::Boolean(an < bn))
-    }
-    pub fn number_ge_via(&mut self, a: &Value, b: &Value) -> Result<Value, RuntimeError> {
-        let an = self.coerce_to_number(a)?;
-        let bn = self.coerce_to_number(b)?;
-        Ok(Value::Boolean(an >= bn))
-    }
     pub fn number_to_string_key_via(&mut self, n: &Value) -> Result<Value, RuntimeError> {
         let num = self.coerce_to_number(n)?;
         Ok(Value::String(std::rc::Rc::new((num as u32).to_string())))

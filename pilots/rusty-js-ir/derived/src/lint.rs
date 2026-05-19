@@ -394,6 +394,8 @@ fn collect_abstract_ops_in_expr(
             collect_abstract_ops_in_expr(b, set);
         }
         Expr::OpAdd(a, b) | Expr::OpSub(a, b) | Expr::OpMul(a, b) |
+        Expr::NumberAdd(a, b) | Expr::NumberSub(a, b) |
+        Expr::NumberLt(a, b) | Expr::NumberGe(a, b) |
         Expr::LooseEq(a, b) |
         Expr::Lt(a, b) | Expr::Le(a, b) => {
             collect_abstract_ops_in_expr(a, set);

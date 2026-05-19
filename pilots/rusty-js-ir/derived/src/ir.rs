@@ -106,6 +106,17 @@ pub enum Expr {
     Le(Box<Expr>, Box<Expr>),
     Not(Box<Expr>),
 
+    // IR-EXT 67 alphabet promotion: typed Number arithmetic on Value::Number.
+    // The original OpAdd/OpSub/OpMul/Lt/Le were designed for usize/i64 counter
+    // math; these Number* variants explicitly operate on Value::Number,
+    // dispatching through coerce_to_number at the lowering boundary. Used by
+    // higher-resolution-IR spec-step sections (e.g. §10.4.2.1) that
+    // manipulate spec-Number values like Array length.
+    NumberAdd(Box<Expr>, Box<Expr>),
+    NumberSub(Box<Expr>, Box<Expr>),
+    NumberLt(Box<Expr>, Box<Expr>),
+    NumberGe(Box<Expr>, Box<Expr>),
+
     /// Argument access — args[i], defaulting to Undefined.
     Arg(usize),
 

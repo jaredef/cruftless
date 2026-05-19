@@ -351,6 +351,27 @@ fn emit_expr(e: &Expr) -> String {
         Expr::Lt(a, b) => format!("({} < {})", emit_expr(a), emit_expr(b)),
         Expr::Le(a, b) => format!("({} <= {})", emit_expr(a), emit_expr(b)),
         Expr::Not(v) => format!("!{}", emit_expr(v)),
+
+        // IR-EXT 67 Number-typed arithmetic — dispatches through
+        // coerce_to_number at the runtime boundary and returns Value-typed
+        // results. The bool-returning variants (NumberLt/Ge) wrap in
+        // Value::Boolean per IR convention.
+        Expr::NumberAdd(a, b) => format!(
+            "Value::Number(rt.coerce_to_number(&{})? + rt.coerce_to_number(&{})?)",
+            emit_expr(a), emit_expr(b)),
+        Expr::NumberSub(a, b) => format!(
+            "Value::Number(rt.coerce_to_number(&{})? - rt.coerce_to_number(&{})?)",
+            emit_expr(a), emit_expr(b)),
+        // NumberLt/NumberGe return raw bool (matching Expr::Lt convention)
+        // so they slot directly into IR If/While conditions without an
+        // extra ToBoolean wrapping. Use Expr::ToBoolean explicitly to lift
+        // into a Value::Boolean for value contexts.
+        Expr::NumberLt(a, b) => format!(
+            "(rt.coerce_to_number(&{})? < rt.coerce_to_number(&{})?)",
+            emit_expr(a), emit_expr(b)),
+        Expr::NumberGe(a, b) => format!(
+            "(rt.coerce_to_number(&{})? >= rt.coerce_to_number(&{})?)",
+            emit_expr(a), emit_expr(b)),
         Expr::LengthOfArrayLike(o) => format!("rt.length_of_array_like(&{})?", emit_expr(o)),
         Expr::CreateDataPropertyOrThrow(o, p, v) => format!(
             "{{ rt.create_data_property_or_throw(&{}, &{}, {})?; Value::Undefined }}",

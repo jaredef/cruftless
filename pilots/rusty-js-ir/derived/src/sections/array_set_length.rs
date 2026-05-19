@@ -188,28 +188,17 @@ pub fn build_array_set_length() -> IRFunction {
         }},
 
         // §10.4.2.1 step 12-14: shrink trailing elements when new_len < old_len.
-        // Number arithmetic routes through CallBuiltin helpers (alphabet
-        // poverty: OpSub/Lt operate on usize counters, not Value::Number).
+        // IR-EXT 67: Number arithmetic via Expr::NumberSub/NumberLt/NumberGe
+        // (promoted alphabet — Value::Number-typed operators).
         Step { spec_step: "12.maybe_shrink".into(), node: IRNode::If {
-            cond: Expr::ToBoolean(b(Expr::CallBuiltin {
-                name: "number_lt_via",
-                args: vec![v("new_len"), v("old_len")],
-            })),
+            cond: Expr::NumberLt(b(v("new_len")), b(v("old_len"))),
             then_body: vec![
-                // idx starts at old_len - 1.
                 Step { spec_step: "12.idx.init".into(), node: IRNode::Let {
                     name: "idx".into(),
-                    value: Expr::CallBuiltin {
-                        name: "number_sub_via",
-                        args: vec![v("old_len"), Expr::Number(1.0)],
-                    },
+                    value: Expr::NumberSub(b(v("old_len")), b(Expr::Number(1.0))),
                 }},
-                // Loop while idx >= new_len.
                 Step { spec_step: "12.loop".into(), node: IRNode::While {
-                    cond: Expr::ToBoolean(b(Expr::CallBuiltin {
-                        name: "number_ge_via",
-                        args: vec![v("idx"), v("new_len")],
-                    })),
+                    cond: Expr::NumberGe(b(v("idx")), b(v("new_len"))),
                     body: vec![
                         Step { spec_step: "13.idx_key".into(), node: IRNode::Let {
                             name: "idx_key".into(),
@@ -230,10 +219,7 @@ pub fn build_array_set_length() -> IRFunction {
                             then_body: vec![
                                 Step { spec_step: "13.stuck.idx_plus".into(), node: IRNode::Let {
                                     name: "stuck_len".into(),
-                                    value: Expr::CallBuiltin {
-                                        name: "number_add_via",
-                                        args: vec![v("idx"), Expr::Number(1.0)],
-                                    },
+                                    value: Expr::NumberAdd(b(v("idx")), b(Expr::Number(1.0))),
                                 }},
                                 Step { spec_step: "13.stuck.length".into(), node: IRNode::Expr(Expr::CallBuiltin {
                                     name: "array_length_set_internal_via",
@@ -248,10 +234,7 @@ pub fn build_array_set_length() -> IRFunction {
                         }},
                         Step { spec_step: "14.decrement".into(), node: IRNode::Assign {
                             name: "idx".into(),
-                            value: Expr::CallBuiltin {
-                                name: "number_sub_via",
-                                args: vec![v("idx"), Expr::Number(1.0)],
-                            },
+                            value: Expr::NumberSub(b(v("idx")), b(Expr::Number(1.0))),
                         }},
                     ],
                 }},
@@ -313,7 +296,7 @@ pub fn spec_steps_array_set_length() -> Vec<SpecStepRecord> {
         SpecStepRecord { step_id: "13.idx_key".into(), abstract_ops: vec!["number_to_string_key_via"], throws: None, prose: "Stringify idx to key form." },
         SpecStepRecord { step_id: "13.try_delete".into(), abstract_ops: vec!["delete_own_via"], throws: None, prose: "Attempt delete of arr[idx]." },
         SpecStepRecord { step_id: "13.delete_check".into(), abstract_ops: vec![], throws: None, prose: "If deletion failed, set stuck length and throw." },
-        SpecStepRecord { step_id: "13.stuck.idx_plus".into(), abstract_ops: vec!["number_add_via"], throws: None, prose: "Compute idx+1 for stuck length." },
+        SpecStepRecord { step_id: "13.stuck.idx_plus".into(), abstract_ops: vec![], throws: None, prose: "Compute idx+1 for stuck length." },
         SpecStepRecord { step_id: "13.stuck.length".into(), abstract_ops: vec!["array_length_set_internal_via"], throws: None, prose: "Set length to idx+1 (stop point)." },
         SpecStepRecord { step_id: "13.stuck.throw".into(), abstract_ops: vec![], throws: Some("TypeError"), prose: "Cannot truncate Array: non-configurable element." },
         SpecStepRecord { step_id: "14.decrement".into(), abstract_ops: vec![], throws: None, prose: "Decrement idx." },
