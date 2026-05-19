@@ -430,6 +430,72 @@ impl Runtime {
         Ok(())
     }
 
+    /// Reflect.has(target, key) per ECMA §28.1.9 — proto-chain HasProperty.
+    pub fn reflect_has_via(&mut self, target: &Value, key: &Value) -> Result<Value, RuntimeError> {
+        let id = match target {
+            Value::Object(id) => *id,
+            _ => return Err(RuntimeError::TypeError("Reflect.has: target must be Object".into())),
+        };
+        let key_s = self.coerce_to_string(key)?;
+        Ok(Value::Boolean(self.has_property(id, &key_s)))
+    }
+
+    /// Reflect.get(target, key) per ECMA §28.1.8 — dispatches accessor getters.
+    pub fn reflect_get_via(&mut self, target: &Value, key: &Value) -> Result<Value, RuntimeError> {
+        let id = match target {
+            Value::Object(id) => *id,
+            _ => return Err(RuntimeError::TypeError("Reflect.get: target must be Object".into())),
+        };
+        let key_s = self.coerce_to_string(key)?;
+        self.read_property(id, &key_s)
+    }
+
+    /// Reflect.set(target, key, value) per ECMA §28.1.13.
+    pub fn reflect_set_via(&mut self, target: &Value, key: &Value, value: &Value) -> Result<Value, RuntimeError> {
+        let id = match target {
+            Value::Object(id) => *id,
+            _ => return Err(RuntimeError::TypeError("Reflect.set: target must be Object".into())),
+        };
+        let key_s = self.coerce_to_string(key)?;
+        self.object_set(id, key_s, value.clone());
+        Ok(Value::Boolean(true))
+    }
+
+    /// Reflect.deleteProperty(target, key) per ECMA §28.1.4 — honors
+    /// non-configurable per §10.1.10 (returns false instead of throwing).
+    pub fn reflect_delete_property_via(&mut self, target: &Value, key: &Value) -> Result<Value, RuntimeError> {
+        let id = match target {
+            Value::Object(id) => *id,
+            _ => return Err(RuntimeError::TypeError("Reflect.deleteProperty: target must be Object".into())),
+        };
+        let key_s = self.coerce_to_string(key)?;
+        let configurable = self.obj(id).properties.get(&key_s).map(|d| d.configurable).unwrap_or(true);
+        if !configurable { return Ok(Value::Boolean(false)); }
+        self.obj_mut(id).properties.shift_remove(&key_s);
+        Ok(Value::Boolean(true))
+    }
+
+    /// Reflect.ownKeys(target) per ECMA §28.1.12 — returns Array of own
+    /// keys (Symbol-typed for @@sym: form, String-typed for everything else).
+    pub fn reflect_own_keys_via(&mut self, target: &Value) -> Result<Value, RuntimeError> {
+        let id = match target {
+            Value::Object(id) => *id,
+            _ => return Err(RuntimeError::TypeError("Reflect.ownKeys: target must be Object".into())),
+        };
+        let keys: Vec<String> = self.obj(id).properties.keys().cloned().collect();
+        let arr = self.alloc_object(crate::value::Object::new_array());
+        for (i, k) in keys.iter().enumerate() {
+            let v = if k.starts_with("@@sym:") {
+                Value::Symbol(std::rc::Rc::new(k.clone()))
+            } else {
+                Value::String(std::rc::Rc::new(k.clone()))
+            };
+            self.object_set(arr, i.to_string(), v);
+        }
+        self.object_set(arr, "length".into(), Value::Number(keys.len() as f64));
+        Ok(Value::Object(arr))
+    }
+
     /// Math.* unary op dispatcher per ECMA §21.3.2 — applies the named
     /// math operation to ToNumber(x). Used by Math.{abs, floor, ceil,
     /// round, trunc, sign, sqrt, cbrt}. The op name is passed as a

@@ -460,3 +460,34 @@ Tier 2.5:
 9. **Live spec source** — replace embedded fixtures with tc39/ecma262 checkout via build.rs.
 
 Pin-Art tag count: 16 commits as of IR-EXT 12.
+
+
+## IR-EXT 13 + 14 + 15 — 2026-05-19 night-very-late (Math + Reflect coverage)
+
+**IR-EXT 13** (8d sections — already anchored at commit `8433ff80`).
+**IR-EXT 14** (8d5d2ddb): 18 more Math sections (exp/log/trig/hyperbolic) via the IR-EXT 13 shared dispatcher.
+**IR-EXT 15** (this anchor): 5 Reflect.* sections.
+
+### Substrate at IR-EXT 15 close
+
+**Sections IR-encoded**: 64 (41 from IR-EXT 13 + 18 Math family + 5 Reflect.*). Wired: 59. IR-only-not-wired: 5 (findLast, findLastIndex, indexOf, includes, reduce — all awaiting alphabet extensions per IR-EXT 4 open scope).
+
+**Linter**: 64/64 clean.
+
+**Coverage gap surfaced this stretch**: cruftless was missing Math.asin / Math.acos entirely. The IR-vs-cruftless registration audit (one author writing the IR section discovers there's no corresponding intrinsics.rs registration to replace) caught the omission. Both installed via IR in IR-EXT 14.
+
+**Runtime helpers cumulative**: 27 (10 from Object proto-ops/integrity, 5 from Promise/Number static, 1 Math unary dispatcher, 5 Reflect, 2 global predicates, etc.).
+
+### Conjecture status
+
+Coverage-discovery claim strengthens the §I conjecture: the IR doesn't just preserve spec conformance — it *discovers cruftless's spec-coverage gaps* (asin/acos were never installed). This is a stronger claim than "no drift" — it's "exhaustive coverage discovery during translation". The §VI termination conditions implicitly require it.
+
+### Open scope at IR-EXT 15 close
+
+Tier 1.10 cont:
+1. **Reflect.{getPrototypeOf, setPrototypeOf, isExtensible, preventExtensions}** — four more, mirrors of Object.* with subtly different semantics.
+2. **Math.{pow, atan2, hypot, max, min}** — binary/variadic, needs math_binary / math_variadic dispatcher.
+3. **Number.prototype.{toString, toFixed, toExponential, toPrecision}** — already P62.E19/E20 spec-compliant; IR encoding for traceability.
+4. **String.prototype trim cluster** — already P62.E15 spec-compliant.
+
+Pin-Art tag count: 19 commits as of IR-EXT 15.

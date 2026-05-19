@@ -9,7 +9,7 @@ use rusty_js_ir::sections::{
     array_prototype_iteration as iter, array_prototype_map,
     array_prototype_reduce as reduce, global_predicates, math_unary,
     number_static, object_integrity, object_proto_ops, object_static,
-    promise_static,
+    promise_static, reflect_static,
 };
 
 fn main() {
@@ -70,6 +70,11 @@ fn main() {
         math_unary::build_asin(), math_unary::build_acos(), math_unary::build_atan(),
         math_unary::build_sinh(), math_unary::build_cosh(), math_unary::build_tanh(),
         math_unary::build_asinh(), math_unary::build_acosh(), math_unary::build_atanh(),
+        reflect_static::build_has(),
+        reflect_static::build_get(),
+        reflect_static::build_set(),
+        reflect_static::build_delete_property(),
+        reflect_static::build_own_keys(),
     ];
 
     for f in &sections {

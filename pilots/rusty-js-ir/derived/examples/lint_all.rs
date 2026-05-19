@@ -8,7 +8,7 @@ use rusty_js_ir::sections::{
     array_prototype_iteration as iter, array_prototype_map,
     array_prototype_reduce as reduce, global_predicates, math_unary,
     number_static, object_integrity, object_proto_ops, object_static,
-    promise_static,
+    promise_static, reflect_static,
 };
 
 fn main() {
@@ -72,6 +72,11 @@ fn main() {
         ("Math.asinh", math_unary::build_asinh(), math_unary::spec_steps_asinh()),
         ("Math.acosh", math_unary::build_acosh(), math_unary::spec_steps_acosh()),
         ("Math.atanh", math_unary::build_atanh(), math_unary::spec_steps_atanh()),
+        ("Reflect.has",            reflect_static::build_has(),             reflect_static::spec_steps_has()),
+        ("Reflect.get",            reflect_static::build_get(),             reflect_static::spec_steps_get()),
+        ("Reflect.set",            reflect_static::build_set(),             reflect_static::spec_steps_set()),
+        ("Reflect.deleteProperty", reflect_static::build_delete_property(), reflect_static::spec_steps_delete_property()),
+        ("Reflect.ownKeys",        reflect_static::build_own_keys(),        reflect_static::spec_steps_own_keys()),
     ];
 
     let mut total_unexpected = 0;

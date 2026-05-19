@@ -4227,78 +4227,22 @@ impl Runtime {
     /// many packages doing duck-type checks.
     fn install_reflect(&mut self) {
         let r = self.alloc_object(Object::new_ordinary());
+        // Ω.5.P63.E12: Reflect.has/get/set/deleteProperty routed through IR.
         register_intrinsic_method(self, r, "has", 2, |rt, args| {
-            let obj = args.first().cloned().unwrap_or(Value::Undefined);
-            let key = args.get(1).cloned().unwrap_or(Value::Undefined);
-            let key_s = abstract_ops::to_string(&key).as_str().to_string();
-            let id = match obj {
-                Value::Object(id) => id,
-                _ => return Err(RuntimeError::TypeError("Reflect.has: target must be object".into())),
-            };
-            let mut cur = Some(id);
-            let mut found = false;
-            while let Some(c) = cur {
-                if rt.obj(c).properties.contains_key(&key_s) { found = true; break; }
-                cur = rt.obj(c).proto;
-            }
-            Ok(Value::Boolean(found))
+            crate::generated::reflect_has(rt, Value::Undefined, args)
         });
         register_intrinsic_method(self, r, "get", 2, |rt, args| {
-            let obj = args.first().cloned().unwrap_or(Value::Undefined);
-            let key = args.get(1).cloned().unwrap_or(Value::Undefined);
-            let key_s = abstract_ops::to_string(&key).as_str().to_string();
-            match obj {
-                Value::Object(id) => Ok(rt.object_get(id, &key_s)),
-                _ => Err(RuntimeError::TypeError("Reflect.get: target must be object".into())),
-            }
+            crate::generated::reflect_get(rt, Value::Undefined, args)
         });
         register_intrinsic_method(self, r, "set", 3, |rt, args| {
-            let obj = args.first().cloned().unwrap_or(Value::Undefined);
-            let key = args.get(1).cloned().unwrap_or(Value::Undefined);
-            let val = args.get(2).cloned().unwrap_or(Value::Undefined);
-            let key_s = abstract_ops::to_string(&key).as_str().to_string();
-            match obj {
-                Value::Object(id) => { rt.object_set(id, key_s, val); Ok(Value::Boolean(true)) }
-                _ => Err(RuntimeError::TypeError("Reflect.set: target must be object".into())),
-            }
+            crate::generated::reflect_set(rt, Value::Undefined, args)
         });
         register_intrinsic_method(self, r, "deleteProperty", 2, |rt, args| {
-            let obj = args.first().cloned().unwrap_or(Value::Undefined);
-            let key = args.get(1).cloned().unwrap_or(Value::Undefined);
-            let key_s = abstract_ops::to_string(&key).as_str().to_string();
-            match obj {
-                Value::Object(id) => {
-                    rt.obj_mut(id).properties.shift_remove(&key_s);
-                    Ok(Value::Boolean(true))
-                }
-                _ => Err(RuntimeError::TypeError("Reflect.deleteProperty: target must be object".into())),
-            }
+            crate::generated::reflect_delete_property(rt, Value::Undefined, args)
         });
+        // Ω.5.P63.E12: Reflect.ownKeys routed through IR.
         register_intrinsic_method(self, r, "ownKeys", 1, |rt, args| {
-            let obj = args.first().cloned().unwrap_or(Value::Undefined);
-            match obj {
-                Value::Object(id) => {
-                    let keys: Vec<String> = rt.obj(id).properties.keys().cloned().collect();
-                    let arr = rt.alloc_object(Object::new_array());
-                    // Ω.5.P19.E1: surface Symbol-keyed slots as Value::Symbol
-                    // so `typeof Reflect.ownKeys(o)[i] === 'symbol'` holds
-                    // for user-created symbol entries. Well-known slots
-                    // (`@@iterator` etc.) stay as strings; they are storage
-                    // representations of well-knowns and consumers expect
-                    // either form.
-                    for (i, k) in keys.iter().enumerate() {
-                        let v = if k.starts_with("@@sym:") {
-                            Value::Symbol(Rc::new(k.clone()))
-                        } else {
-                            Value::String(Rc::new(k.clone()))
-                        };
-                        rt.object_set(arr, i.to_string(), v);
-                    }
-                    rt.object_set(arr, "length".into(), Value::Number(keys.len() as f64));
-                    Ok(Value::Object(arr))
-                }
-                _ => Err(RuntimeError::TypeError("Reflect.ownKeys: target must be object".into())),
-            }
+            crate::generated::reflect_own_keys(rt, Value::Undefined, args)
         });
         register_intrinsic_method(self, r, "getPrototypeOf", 1, |rt, args| {
             let obj = args.first().cloned().unwrap_or(Value::Undefined);

@@ -15,4 +15,5 @@ pub mod object_proto_ops;             // getPrototypeOf, setPrototypeOf, isExten
 pub mod object_integrity;             // freeze, seal, preventExtensions, hasOwn, is
 pub mod number_static;                // Number.{isFinite, isInteger, isNaN, isSafeInteger}
 pub mod global_predicates;            // global isFinite, isNaN (coerce; differ from Number.* versions)
-pub mod math_unary;                   // Math.{abs,floor,ceil,round,trunc,sqrt,cbrt,sign}
+pub mod math_unary;                   // Math.{abs,floor,ceil,round,trunc,sqrt,cbrt,sign,exp,log,sin,...}
+pub mod reflect_static;               // Reflect.{has, get, set, deleteProperty, ownKeys}
