@@ -208,15 +208,8 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     // Object.prototype.toString which returned "[object Array]",
     // breaking String([1])/ToPrimitive(arr) → joined-string and the
     // ToPropertyKey-on-Array test262 tests.
-    register_intrinsic_method(rt, host, "toString", 0, |rt, _args| {
-        let this = rt.current_this();
-        if let Value::Object(id) = this {
-            let join = rt.object_get(id, "join");
-            if matches!(join, Value::Object(_)) {
-                return rt.call_function(join, Value::Object(id), Vec::new());
-            }
-        }
-        Ok(Value::String(Rc::new("[object Array]".into())))
+    register_intrinsic_method(rt, host, "toString", 0, |rt, args| {
+        crate::generated::array_prototype_to_string(rt, rt.current_this(), args)
     });
     // E31: mutators routed through IR.
     register_intrinsic_method(rt, host, "push", 1, |rt, args| {
@@ -433,121 +426,20 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         crate::generated::array_prototype_copy_within(rt, rt.current_this(), args)
     });
 
-    register_intrinsic_method(rt, host, "toReversed", 0, |rt, _args| {
-        let id = to_array_this(rt)?;
-        let len = rt.array_length(id);
-        let out = rt.alloc_object(Object::new_array());
-        for i in 0..len {
-            let v = rt.object_get(id, &(len - 1 - i).to_string());
-            rt.object_set(out, i.to_string(), v);
-        }
-        rt.object_set(out, "length".into(), Value::Number(len as f64));
-        Ok(Value::Object(out))
+    register_intrinsic_method(rt, host, "toReversed", 0, |rt, args| {
+        crate::generated::array_prototype_to_reversed(rt, rt.current_this(), args)
     });
-
     register_intrinsic_method(rt, host, "toSorted", 1, |rt, args| {
-        let id = to_array_this(rt)?;
-        let len = rt.array_length(id);
-        let out = rt.alloc_object(Object::new_array());
-        for i in 0..len {
-            rt.object_set(out, i.to_string(), rt.object_get(id, &i.to_string()));
-        }
-        rt.object_set(out, "length".into(), Value::Number(len as f64));
-        // Reuse sort by setting this and invoking via call_function path —
-        // simpler to inline the body here.
-        let comparator = args.first().cloned().filter(|v| !matches!(v, Value::Undefined));
-        let mut items: Vec<Value> = (0..len).map(|i| rt.object_get(out, &i.to_string())).collect();
-        let mut err: Option<RuntimeError> = None;
-        match comparator {
-            Some(cmp) => {
-                items.sort_by(|a, b| {
-                    if err.is_some() { return std::cmp::Ordering::Equal; }
-                    match rt.call_function(cmp.clone(), Value::Undefined, vec![a.clone(), b.clone()]) {
-                        Ok(Value::Number(n)) => {
-                            if n < 0.0 { std::cmp::Ordering::Less }
-                            else if n > 0.0 { std::cmp::Ordering::Greater }
-                            else { std::cmp::Ordering::Equal }
-                        }
-                        Ok(_) => std::cmp::Ordering::Equal,
-                        Err(e) => { err = Some(e); std::cmp::Ordering::Equal }
-                    }
-                });
-            }
-            None => {
-                items.sort_by(|a, b| {
-                    let sa = abstract_ops::to_string(a);
-                    let sb = abstract_ops::to_string(b);
-                    sa.as_str().cmp(sb.as_str())
-                });
-            }
-        }
-        if let Some(e) = err { return Err(e); }
-        for (i, v) in items.into_iter().enumerate() {
-            rt.object_set(out, i.to_string(), v);
-        }
-        Ok(Value::Object(out))
+        crate::generated::array_prototype_to_sorted(rt, rt.current_this(), args)
     });
-
     register_intrinsic_method(rt, host, "toSpliced", 2, |rt, args| {
-        let id = to_array_this(rt)?;
-        let len = rt.array_length(id) as i64;
-        let start = clamp_index(args.first().map(abstract_ops::to_number).unwrap_or(0.0) as i64, len);
-        let del = match args.get(1) {
-            Some(v) => {
-                let n = abstract_ops::to_number(v) as i64;
-                n.max(0).min(len - start)
-            }
-            None => len - start,
-        };
-        let inserts: Vec<Value> = args.iter().skip(2).cloned().collect();
-        let new_len = len - del + inserts.len() as i64;
-        let out = rt.alloc_object(Object::new_array());
-        let mut k = 0i64;
-        for i in 0..start {
-            rt.object_set(out, k.to_string(), rt.object_get(id, &i.to_string()));
-            k += 1;
-        }
-        for v in inserts {
-            rt.object_set(out, k.to_string(), v);
-            k += 1;
-        }
-        for i in (start + del)..len {
-            rt.object_set(out, k.to_string(), rt.object_get(id, &i.to_string()));
-            k += 1;
-        }
-        rt.object_set(out, "length".into(), Value::Number(new_len as f64));
-        Ok(Value::Object(out))
+        crate::generated::array_prototype_to_spliced(rt, rt.current_this(), args)
     });
-
     register_intrinsic_method(rt, host, "with", 2, |rt, args| {
-        let id = to_array_this(rt)?;
-        let len = rt.array_length(id) as i64;
-        let idx = args.first().map(abstract_ops::to_number).unwrap_or(0.0) as i64;
-        let actual = if idx < 0 { len + idx } else { idx };
-        if actual < 0 || actual >= len {
-            return Err(RuntimeError::RangeError(format!("with: index {} out of bounds", idx)));
-        }
-        let val = args.get(1).cloned().unwrap_or(Value::Undefined);
-        let out = rt.alloc_object(Object::new_array());
-        for i in 0..len {
-            let v = if i == actual { val.clone() } else { rt.object_get(id, &i.to_string()) };
-            rt.object_set(out, i.to_string(), v);
-        }
-        rt.object_set(out, "length".into(), Value::Number(len as f64));
-        Ok(Value::Object(out))
+        crate::generated::array_prototype_with(rt, rt.current_this(), args)
     });
-
-    register_intrinsic_method(rt, host, "toLocaleString", 0, |rt, _args| {
-        // v1: toLocaleString as locale-insensitive toString — comma-join.
-        let id = to_array_this(rt)?;
-        let len = rt.array_length(id);
-        let mut out = String::new();
-        for i in 0..len {
-            if i > 0 { out.push(','); }
-            let v = rt.object_get(id, &i.to_string());
-            out.push_str(abstract_ops::to_string(&v).as_str());
-        }
-        Ok(Value::String(Rc::new(out)))
+    register_intrinsic_method(rt, host, "toLocaleString", 0, |rt, args| {
+        crate::generated::array_prototype_to_locale_string(rt, rt.current_this(), args)
     });
 }
 

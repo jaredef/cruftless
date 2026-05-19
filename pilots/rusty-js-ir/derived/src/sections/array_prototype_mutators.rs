@@ -24,6 +24,20 @@ fn nullary_section(spec: &str, rust_name: &str, title: &str, via: &'static str) 
     }
 }
 
+pub fn build_to_reversed()      -> IRFunction { nullary_section ("23.1.3.33", "array_prototype_to_reversed",       "Array.prototype.toReversed ( )",                                "array_proto_to_reversed_via") }
+pub fn build_to_sorted()        -> IRFunction { variadic_section("23.1.3.34", "array_prototype_to_sorted",         "Array.prototype.toSorted ( comparefn )",                         "array_proto_to_sorted_via") }
+pub fn build_to_spliced()       -> IRFunction { variadic_section("23.1.3.35", "array_prototype_to_spliced",        "Array.prototype.toSpliced ( start, deleteCount, ...items )",      "array_proto_to_spliced_via") }
+pub fn build_with()             -> IRFunction { variadic_section("23.1.3.39", "array_prototype_with",              "Array.prototype.with ( index, value )",                           "array_proto_with_via") }
+pub fn build_to_locale_string() -> IRFunction { nullary_section ("23.1.3.30", "array_prototype_to_locale_string",  "Array.prototype.toLocaleString ( )",                              "array_proto_to_locale_string_via") }
+pub fn build_to_string()        -> IRFunction { nullary_section ("23.1.3.36", "array_prototype_to_string",         "Array.prototype.toString ( )",                                    "array_proto_to_string_via") }
+
+pub fn spec_steps_to_reversed()      -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["array_proto_to_reversed_via"],      throws: None, prose: "Return a new array with the elements in reverse order; original unchanged." }] }
+pub fn spec_steps_to_sorted()        -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["array_proto_to_sorted_via"],        throws: None, prose: "Return a new sorted array; default lexicographic by ToString unless comparefn provided." }] }
+pub fn spec_steps_to_spliced()       -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["array_proto_to_spliced_via"],       throws: None, prose: "Return a new array with deleteCount elements removed at start and items inserted." }] }
+pub fn spec_steps_with()             -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["array_proto_with_via"],             throws: None, prose: "Return a new array where the element at relative index is replaced with value; throw on out-of-bounds." }] }
+pub fn spec_steps_to_locale_string() -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["array_proto_to_locale_string_via"], throws: None, prose: "Coerce each element to string and join with comma (v1 locale-insensitive)." }] }
+pub fn spec_steps_to_string()        -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["array_proto_to_string_via"],        throws: None, prose: "Delegate to this.join() if callable; else return \"[object Array]\"." }] }
+
 pub fn build_slice()        -> IRFunction { variadic_section("23.1.3.28", "array_prototype_slice",         "Array.prototype.slice ( start, end )",                              "array_proto_slice_via") }
 pub fn build_splice()       -> IRFunction { variadic_section("23.1.3.31", "array_prototype_splice",        "Array.prototype.splice ( start, deleteCount, ...items )",            "array_proto_splice_via") }
 pub fn build_concat()       -> IRFunction { variadic_section("23.1.3.2",  "array_prototype_concat",        "Array.prototype.concat ( ...items )",                                "array_proto_concat_via") }

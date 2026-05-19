@@ -484,6 +484,138 @@ impl Runtime {
         Ok(Value::String(std::rc::Rc::new(s + &suffix)))
     }
 
+    /// Array.prototype.toReversed() per ECMA §23.1.3.33.
+    pub fn array_proto_to_reversed_via(&mut self) -> Result<Value, RuntimeError> {
+        let id = crate::prototype::to_array_this(self)?;
+        let len = self.array_length(id);
+        let out = self.alloc_object(crate::value::Object::new_array());
+        for i in 0..len {
+            let v = self.object_get(id, &(len - 1 - i).to_string());
+            self.object_set(out, i.to_string(), v);
+        }
+        self.object_set(out, "length".into(), Value::Number(len as f64));
+        Ok(Value::Object(out))
+    }
+
+    /// Array.prototype.toSorted(comparefn) per ECMA §23.1.3.34.
+    pub fn array_proto_to_sorted_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let id = crate::prototype::to_array_this(self)?;
+        let len = self.array_length(id);
+        let out = self.alloc_object(crate::value::Object::new_array());
+        for i in 0..len {
+            self.object_set(out, i.to_string(), self.object_get(id, &i.to_string()));
+        }
+        self.object_set(out, "length".into(), Value::Number(len as f64));
+        let comparator = args.first().cloned().filter(|v| !matches!(v, Value::Undefined));
+        let mut items: Vec<Value> = (0..len).map(|i| self.object_get(out, &i.to_string())).collect();
+        let mut err: Option<RuntimeError> = None;
+        match comparator {
+            Some(cmp) => {
+                items.sort_by(|a, b| {
+                    if err.is_some() { return std::cmp::Ordering::Equal; }
+                    match self.call_function(cmp.clone(), Value::Undefined, vec![a.clone(), b.clone()]) {
+                        Ok(Value::Number(n)) => {
+                            if n < 0.0 { std::cmp::Ordering::Less }
+                            else if n > 0.0 { std::cmp::Ordering::Greater }
+                            else { std::cmp::Ordering::Equal }
+                        }
+                        Ok(_) => std::cmp::Ordering::Equal,
+                        Err(e) => { err = Some(e); std::cmp::Ordering::Equal }
+                    }
+                });
+            }
+            None => {
+                items.sort_by(|a, b| {
+                    let sa = crate::abstract_ops::to_string(a);
+                    let sb = crate::abstract_ops::to_string(b);
+                    sa.as_str().cmp(sb.as_str())
+                });
+            }
+        }
+        if let Some(e) = err { return Err(e); }
+        for (i, v) in items.into_iter().enumerate() {
+            self.object_set(out, i.to_string(), v);
+        }
+        Ok(Value::Object(out))
+    }
+
+    /// Array.prototype.toSpliced(start, deleteCount, ...items) per ECMA §23.1.3.35.
+    pub fn array_proto_to_spliced_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let id = crate::prototype::to_array_this(self)?;
+        let len = self.array_length(id) as i64;
+        let clamp = |i: i64, l: i64| if i < 0 { (l + i).max(0) } else { i.min(l) };
+        let start = clamp(args.first().map(crate::abstract_ops::to_number).unwrap_or(0.0) as i64, len);
+        let del = match args.get(1) {
+            Some(v) => {
+                let n = crate::abstract_ops::to_number(v) as i64;
+                n.max(0).min(len - start)
+            }
+            None => len - start,
+        };
+        let inserts: Vec<Value> = args.iter().skip(2).cloned().collect();
+        let new_len = len - del + inserts.len() as i64;
+        let out = self.alloc_object(crate::value::Object::new_array());
+        let mut k = 0i64;
+        for i in 0..start {
+            self.object_set(out, k.to_string(), self.object_get(id, &i.to_string()));
+            k += 1;
+        }
+        for v in inserts {
+            self.object_set(out, k.to_string(), v);
+            k += 1;
+        }
+        for i in (start + del)..len {
+            self.object_set(out, k.to_string(), self.object_get(id, &i.to_string()));
+            k += 1;
+        }
+        self.object_set(out, "length".into(), Value::Number(new_len as f64));
+        Ok(Value::Object(out))
+    }
+
+    /// Array.prototype.with(index, value) per ECMA §23.1.3.39.
+    pub fn array_proto_with_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let id = crate::prototype::to_array_this(self)?;
+        let len = self.array_length(id) as i64;
+        let idx = args.first().map(crate::abstract_ops::to_number).unwrap_or(0.0) as i64;
+        let actual = if idx < 0 { len + idx } else { idx };
+        if actual < 0 || actual >= len {
+            return Err(RuntimeError::RangeError(format!("with: index {} out of bounds", idx)));
+        }
+        let val = args.get(1).cloned().unwrap_or(Value::Undefined);
+        let out = self.alloc_object(crate::value::Object::new_array());
+        for i in 0..len {
+            let v = if i == actual { val.clone() } else { self.object_get(id, &i.to_string()) };
+            self.object_set(out, i.to_string(), v);
+        }
+        self.object_set(out, "length".into(), Value::Number(len as f64));
+        Ok(Value::Object(out))
+    }
+
+    /// Array.prototype.toLocaleString() per ECMA §23.1.3.30 (v1: comma-join).
+    pub fn array_proto_to_locale_string_via(&mut self) -> Result<Value, RuntimeError> {
+        let id = crate::prototype::to_array_this(self)?;
+        let len = self.array_length(id);
+        let mut out = String::new();
+        for i in 0..len {
+            if i > 0 { out.push(','); }
+            let v = self.object_get(id, &i.to_string());
+            out.push_str(crate::abstract_ops::to_string(&v).as_str());
+        }
+        Ok(Value::String(std::rc::Rc::new(out)))
+    }
+
+    /// Array.prototype.toString() per ECMA §23.1.3.36 — delegate to this.join() or fall back.
+    pub fn array_proto_to_string_via(&mut self) -> Result<Value, RuntimeError> {
+        let this = self.current_this();
+        if let Value::Object(id) = this {
+            let join = self.object_get(id, "join");
+            if matches!(join, Value::Object(_)) {
+                return self.call_function(join, Value::Object(id), Vec::new());
+            }
+        }
+        Ok(Value::String(std::rc::Rc::new("[object Array]".into())))
+    }
+
     /// Array.prototype.slice(start, end) per ECMA §23.1.3.28.
     pub fn array_proto_slice_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;
