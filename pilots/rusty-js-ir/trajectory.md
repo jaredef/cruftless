@@ -696,3 +696,70 @@ Remaining Tier-1.11+ alphabet extensions still queued:
 4. NewPromiseCapability + SpeciesConstructor (Promise.all family C-dispatch).
 
 Pin-Art tag count: 33 commits as of IR-EXT 29.
+
+
+## IR-EXT 30 → 35 — 2026-05-19 (Array.prototype + Object.prototype completion stretch)
+
+**Stretch summary**: six EXT rounds completing Array.prototype proper (everything except @@iterator, which deliberately returns a real iterator object via the existing iterator module) and the load-bearing Object.prototype methods. 32 new sections wired; **145 IR-encoded, 145 wired** at close. The IR-only-not-wired category is empty.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| `846f22c7` | IR-EXT 30 | Wired the 5 long-standing IR-only sections (findLast, findLastIndex, indexOf, includes, reduce) via path-(B) 1-step CallBuiltin lifts to runtime helpers that preserve cruftless's exact hand-written semantics (sparse-hole skipping, fromIndex normalization, backward iteration, find-first-present-index seeding, TypeError on empty-with-no-initial). Also folded back EXT 24-29 into this trajectory. **First time IR-only-not-wired category is empty since IR-EXT 3.** |
+| `6486b285` | IR-EXT 31 | Array.prototype.{push, pop, shift, unshift, reverse} — mutators cluster. New sections file `array_prototype_mutators.rs` with shared `variadic_section` / `nullary_section` builders. |
+| `68e6a68d` | IR-EXT 32 | Array.prototype.{slice, splice, concat, join, at, fill, lastIndexOf, reduceRight, copyWithin, flat, flatMap} — 11 sections. concat preserves IsConcatSpreadable @@isConcatSpreadable dispatch; copyWithin handles overlap via read-then-write buffer; flat uses recursive flat_into helper. |
+| `d902e1ba` | IR-EXT 33 | Array.prototype.{toReversed, toSorted, toSpliced, with, toLocaleString, toString} — 6 sections. ES2023 immutable variants + the toString-delegates-to-join dispatch. |
+| `461312dd` | IR-EXT 34 | Array.prototype.{sort, entries, keys, values} — 4 sections. sort with comparator handles call-into-JS via interior error-state pattern. entries/keys/values keep v1 deviation (eager-materialized array of pairs/indices/values, not real iterators). |
+| `ce33b0b8` | IR-EXT 35 | Object.prototype.{toString, hasOwnProperty, valueOf, propertyIsEnumerable, isPrototypeOf, toLocaleString} — 6 sections. New sections file `object_prototype.rs`. toString carries the @@toStringTag-overrides-internal-kind-tag logic, which is the load-bearing path for isString/isRegExp duck-tests across the corpus. The __define*__ / __lookup*__ accessor methods stay hand-written pending a property-descriptor builder alphabet extension. |
+
+### Substrate at IR-EXT 35 close
+
+**IR alphabet**: still 54 nodes (52 stable + AllArgs + ArgsRest). The entire Array.prototype + Object.prototype completion stretch required zero new IR primitives. The brand-checked + CallBuiltin pattern's reach now covers two complete prototype chapters end-to-end.
+
+**Sections IR-encoded**: 145. Wired: 145. The IR-only category is empty.
+
+**Per-chapter coverage**:
+- Array.prototype: 28 (was 12 at IR-EXT 29) — push, pop, shift, unshift, reverse, slice, splice, concat, join, at, fill, lastIndexOf, reduceRight, copyWithin, flat, flatMap, toReversed, toSorted, toSpliced, with, toLocaleString, toString, sort, entries, keys, values + the 12 from prior rounds (map, forEach, filter, every, some, find, findIndex, findLast, findLastIndex, indexOf, includes, reduce). Only @@iterator remains hand-written (returns crate::iterator::make_array_iterator output).
+- Object.prototype: 6 (toString, hasOwnProperty, valueOf, propertyIsEnumerable, isPrototypeOf, toLocaleString). __defineGetter__ / __defineSetter__ / __lookupGetter__ / __lookupSetter__ stay hand-written.
+- String.prototype: 30 (unchanged).
+- Object static: 17 (unchanged).
+- Math: 31 (unchanged).
+- Reflect: 9 (unchanged).
+- Promise static: 2 (unchanged).
+- Number static: 4 (unchanged).
+- Number.prototype: 4 (unchanged).
+- Boolean.prototype: 2 (unchanged).
+- Global predicates: 2 (unchanged).
+- **Total: 145.**
+
+**Runtime helpers cumulative**: ~95 (~25 new this stretch — array_proto_* family of 22 helpers plus object_proto_* family of 6).
+
+**Linter**: 145/145 clean. Per-round lint output is now too dense to inspect manually; the "All N translated sections lint clean" summary is the single signal.
+
+### Conjecture status
+
+§I conjecture continues to hold across two full prototype-chapter completions in one stretch (Array.prototype and Object.prototype). The pattern of "lift hand-written closure body to Runtime method + 1-step CallBuiltin IR section + replace closure with crate::generated::* call" is now mechanical to the point that the bottleneck is editing time, not design effort. The §I.1 alphabet-completeness condition has held across all 32 new sections.
+
+§I-strengthened (coverage-discovery): no new corroborations this stretch. The cruftless impls being lifted were already P62-era spec-compliant. The IR translation continues to serve as audit-by-construction with zero divergences detected.
+
+### Open scope at IR-EXT 35 close
+
+Remaining clusters likely viable without alphabet extension:
+1. **Number.prototype.{toString, toLocaleString}** — brand-checked proto-method pattern (already established at IR-EXT 21-22).
+2. **Math.{imul, fround, clz32}** — three more Math one-liners via math_unary or new shared helper.
+3. **Array static**: Array.isArray, Array.of, Array.from (the last takes an iterable; would exercise iterator-protocol path indirectly).
+4. **Error.prototype.toString** — small.
+5. **JSON.{parse, stringify}** — JSON.stringify uses the toJSON-method-on-value protocol; large but tractable.
+6. **String constructor static**: String.fromCharCode, String.fromCodePoint, String.raw.
+
+Still queued behind alphabet extensions:
+7. **Object.{defineProperty, defineProperties, getOwnPropertyDescriptor, getOwnPropertyDescriptors, create}** — needs property-descriptor builders.
+8. **Promise.{all, allSettled, any, race}** — needs iterator-protocol + NewPromiseCapability.
+9. **Set/Map ctor iterables** — needs iterator-protocol.
+10. **Array.prototype.@@iterator + entries/keys/values returning real iterators** — needs iterator-protocol primitives.
+11. **__defineGetter__ family** — needs descriptor-builder primitives.
+
+The non-blocked remainder (1-6) is ~15 more sections. Reaching ~160 IR-encoded would close all the easy-mode coverage; the rest is alphabet-bounded.
+
+Pin-Art tag count: 39 commits as of IR-EXT 35.

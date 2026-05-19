@@ -5,6 +5,7 @@
 use rusty_js_ir::lint::lint;
 use rusty_js_ir::sections::array_prototype_mutators as mutators;
 use rusty_js_ir::sections::object_prototype as objproto;
+use rusty_js_ir::sections::misc_static as misc;
 use rusty_js_ir::sections::{
     array_prototype_find as find, array_prototype_index_search as index_search,
     array_prototype_iteration as iter, array_prototype_map,
@@ -60,6 +61,11 @@ fn main() {
         ("Object.prototype.propertyIsEnumerable",  objproto::build_property_is_enumerable(), objproto::spec_steps_property_is_enumerable()),
         ("Object.prototype.isPrototypeOf",         objproto::build_is_prototype_of(),        objproto::spec_steps_is_prototype_of()),
         ("Object.prototype.toLocaleString",        objproto::build_to_locale_string(),       objproto::spec_steps_to_locale_string()),
+        ("Math.imul",     misc::build_math_imul(),   misc::spec_steps_math_imul()),
+        ("Math.fround",   misc::build_math_fround(), misc::spec_steps_math_fround()),
+        ("Math.clz32",    misc::build_math_clz32(),  misc::spec_steps_math_clz32()),
+        ("Array.isArray", misc::build_is_array(),    misc::spec_steps_is_array()),
+        ("Array.of",      misc::build_array_of(),    misc::spec_steps_array_of()),
         ("Object.keys", object_static::build_keys(), object_static::spec_steps_keys()),
         ("Object.values", object_static::build_values(), object_static::spec_steps_values()),
         ("Object.entries", object_static::build_entries(), object_static::spec_steps_entries()),

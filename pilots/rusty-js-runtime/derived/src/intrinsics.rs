@@ -1066,18 +1066,15 @@ impl Runtime {
         // secp256k1 generator-point validation fails with 'Invalid curve'
         // (4-package cluster: ethereumjs-tx / ethereumjs-util /
         // ethereumjs-wallet / secp256k1).
-        register_intrinsic_method(self, math, "imul", 2, |_rt, args| {
-            let a = args.first().map(abstract_ops::to_number).unwrap_or(0.0) as i64 as i32;
-            let b = args.get(1).map(abstract_ops::to_number).unwrap_or(0.0) as i64 as i32;
-            Ok(Value::Number((a.wrapping_mul(b)) as f64))
+        // E36: Math.{imul, fround, clz32} routed through IR.
+        register_intrinsic_method(self, math, "imul", 2, |rt, args| {
+            crate::generated::math_imul(rt, rt.current_this(), args)
         });
-        register_intrinsic_method(self, math, "fround", 1, |_rt, args| {
-            let n = args.first().map(abstract_ops::to_number).unwrap_or(f64::NAN);
-            Ok(Value::Number(n as f32 as f64))
+        register_intrinsic_method(self, math, "fround", 1, |rt, args| {
+            crate::generated::math_fround(rt, rt.current_this(), args)
         });
-        register_intrinsic_method(self, math, "clz32", 1, |_rt, args| {
-            let n = args.first().map(abstract_ops::to_number).unwrap_or(0.0) as i64 as u32;
-            Ok(Value::Number(n.leading_zeros() as f64))
+        register_intrinsic_method(self, math, "clz32", 1, |rt, args| {
+            crate::generated::math_clz32(rt, rt.current_this(), args)
         });
         register_intrinsic_method(self, math, "sign", 1, |_rt, args| {
             let n = args.first().map(abstract_ops::to_number).unwrap_or(f64::NAN);
@@ -1717,16 +1714,10 @@ impl Runtime {
         });
         let arr_ctor = self.alloc_object(arr_ctor_native);
         register_intrinsic_method(self, arr_ctor, "isArray", 1, |rt, args| {
-            Ok(Value::Boolean(matches!(args.first(),
-                Some(Value::Object(id)) if matches!(rt.obj(*id).internal_kind, InternalKind::Array))))
+            crate::generated::array_is_array(rt, rt.current_this(), args)
         });
         register_intrinsic_method(self, arr_ctor, "of", 0, |rt, args| {
-            let out = rt.alloc_object(Object::new_array());
-            for (i, v) in args.iter().enumerate() {
-                rt.object_set(out, i.to_string(), v.clone());
-            }
-            rt.object_set(out, "length".into(), Value::Number(args.len() as f64));
-            Ok(Value::Object(out))
+            crate::generated::array_of(rt, rt.current_this(), args)
         });
         register_intrinsic_method(self, arr_ctor, "from", 1, |rt, args| {
             let src = args.first().cloned().unwrap_or(Value::Undefined);

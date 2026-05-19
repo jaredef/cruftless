@@ -484,6 +484,41 @@ impl Runtime {
         Ok(Value::String(std::rc::Rc::new(s + &suffix)))
     }
 
+    /// Math.imul(a, b) per ECMA §21.3.2.19.
+    pub fn math_imul_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let a = args.first().map(crate::abstract_ops::to_number).unwrap_or(0.0) as i64 as i32;
+        let b = args.get(1).map(crate::abstract_ops::to_number).unwrap_or(0.0) as i64 as i32;
+        Ok(Value::Number(a.wrapping_mul(b) as f64))
+    }
+
+    /// Math.fround(x) per ECMA §21.3.2.16.
+    pub fn math_fround_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let n = args.first().map(crate::abstract_ops::to_number).unwrap_or(f64::NAN);
+        Ok(Value::Number(n as f32 as f64))
+    }
+
+    /// Math.clz32(x) per ECMA §21.3.2.11.
+    pub fn math_clz32_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let n = args.first().map(crate::abstract_ops::to_number).unwrap_or(0.0) as i64 as u32;
+        Ok(Value::Number(n.leading_zeros() as f64))
+    }
+
+    /// Array.isArray(arg) per ECMA §23.1.2.2.
+    pub fn array_is_array_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        Ok(Value::Boolean(matches!(args.first(),
+            Some(Value::Object(id)) if matches!(self.obj(*id).internal_kind, crate::value::InternalKind::Array))))
+    }
+
+    /// Array.of(...items) per ECMA §23.1.2.3.
+    pub fn array_of_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let out = self.alloc_object(crate::value::Object::new_array());
+        for (i, v) in args.iter().enumerate() {
+            self.object_set(out, i.to_string(), v.clone());
+        }
+        self.object_set(out, "length".into(), Value::Number(args.len() as f64));
+        Ok(Value::Object(out))
+    }
+
     /// Object.prototype.toString() per ECMA §20.1.3.6 (with @@toStringTag).
     pub fn object_proto_to_string_via(&mut self) -> Result<Value, RuntimeError> {
         let this = self.current_this();

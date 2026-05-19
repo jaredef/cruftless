@@ -22,3 +22,4 @@ pub mod math_binary_variadic;         // Math.{pow,atan2} (binary) + Math.{max,m
 pub mod reflect_static;               // Reflect.{has, get, set, deleteProperty, ownKeys}
 pub mod array_prototype_mutators;     // push, pop, shift, unshift, reverse
 pub mod object_prototype;             // Object.prototype.{toString, hasOwnProperty, valueOf, propertyIsEnumerable, isPrototypeOf, toLocaleString}
+pub mod misc_static;                  // Math.{imul, fround, clz32}, Array.{isArray, of}
