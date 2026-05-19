@@ -3469,7 +3469,8 @@ pub(crate) fn make_set_values_iterator(rt: &mut Runtime, set_id: crate::value::O
         Value::Object(storage) => {
             rt.obj(storage).properties.values().map(|d| d.value.clone()).collect()
         }
-        _ => Vec::new(),
+        _ => return Err(RuntimeError::TypeError(
+            "Set.prototype method: this is not a Set object".into())),
     };
     // Build an iterator object: { __idx: 0, __vals: [v0,v1,...], next() }
     let iter = rt.alloc_object(Object::new_ordinary());

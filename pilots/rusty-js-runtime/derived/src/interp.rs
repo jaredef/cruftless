@@ -884,10 +884,7 @@ impl Runtime {
 
     /// Set.prototype.clear().
     pub fn set_proto_clear_via(&mut self) -> Result<Value, RuntimeError> {
-        let this = match self.current_this() {
-            Value::Object(id) => id,
-            _ => return Err(RuntimeError::TypeError("Set.prototype.clear: this is not a Set object".into())),
-        };
+        let (this, _storage) = self.set_this_and_storage("clear")?;
         let fresh = self.alloc_object(crate::value::Object::new_ordinary());
         self.object_set(this, "__set_data".into(), Value::Object(fresh));
         self.object_set(this, "size".into(), Value::Number(0.0));
