@@ -635,19 +635,20 @@ fn install_function_proto(rt: &mut Runtime, host: ObjectRef) {
 // that argument list here.
 
 fn install_promise_proto(rt: &mut Runtime, host: ObjectRef) {
+    // Ω.5.P63.E52: Promise.prototype.{then, catch} routed through IR.
+    // Helper convention: args[0]=source (the promise instance, taken from
+    // current_this), args[1..]=user-supplied handlers. Prepend then forward.
     register_intrinsic_method(rt, host, "then", 1, |rt, args| {
-        let source = match rt.current_this() {
-            Value::Object(id) => id,
-            _ => return Err(RuntimeError::TypeError("Promise.prototype.then: this is not a Promise".into())),
-        };
-        promise_then_impl(rt, source, args.first().cloned(), args.get(1).cloned())
+        let mut a: Vec<Value> = Vec::with_capacity(args.len() + 1);
+        a.push(rt.current_this());
+        a.extend(args.iter().cloned());
+        crate::generated::promise_prototype_then(rt, rt.current_this(), &a)
     });
     register_intrinsic_method(rt, host, "catch", 1, |rt, args| {
-        let source = match rt.current_this() {
-            Value::Object(id) => id,
-            _ => return Err(RuntimeError::TypeError("Promise.prototype.catch: this is not a Promise".into())),
-        };
-        promise_then_impl(rt, source, None, args.first().cloned())
+        let mut a: Vec<Value> = Vec::with_capacity(args.len() + 1);
+        a.push(rt.current_this());
+        a.extend(args.iter().cloned());
+        crate::generated::promise_prototype_catch(rt, rt.current_this(), &a)
     });
 }
 

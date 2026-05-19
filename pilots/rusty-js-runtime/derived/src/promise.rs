@@ -121,6 +121,16 @@ impl Runtime {
         });
         if let Some(proto) = self.promise_prototype {
             self.obj_mut(promise_obj).set_own_frozen("prototype".into(), Value::Object(proto));
+            // Ω.5.P63.E52: Promise.prototype[@@toStringTag] = "Promise" per §27.2.5.5.
+            // {writable:false, enumerable:false, configurable:true} — set_own_frozen
+            // gives configurable:false (frozen), but the spec is c:true. Use a
+            // hand-set descriptor.
+            self.obj_mut(proto).properties.insert("@@toStringTag".into(),
+                crate::value::PropertyDescriptor {
+                    value: Value::String(Rc::new("Promise".into())),
+                    writable: false, enumerable: false, configurable: true,
+                    getter: None, setter: None,
+                });
             // Ω.5.P58.E7: Promise.prototype.constructor = Promise per ECMA §27.2.5.
             self.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(promise_obj));
             // Ω.5.P61.E11: Promise.prototype.finally per ECMA §27.2.5.3.

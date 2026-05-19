@@ -966,40 +966,36 @@ impl Runtime {
         Ok(Value::Object(chain))
     }
 
-    /// Promise.prototype.catch(onRejected) per ECMA §27.2.5.1.
+    /// Promise.prototype.catch(onRejected) per ECMA §27.2.5.1 —
+    /// `Return Invoke(this, "then", «undefined, onRejected»)`. Delegating
+    /// to this.then preserves the spec-required dispatch through a user-
+    /// overridden then (load-bearing for the test262 catch/invokes-then
+    /// suite and matches Bun).
     pub fn promise_catch_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
-        let source = match args.first() {
-            Some(Value::Object(id)) => *id,
-            _ => return Err(RuntimeError::TypeError(
-                "Promise.catch: first arg must be a Promise".into())),
-        };
-        let on_rejected = args.get(1).cloned();
-        let chain = crate::promise::new_promise(self);
-        let (status, value) = {
-            let s = self.obj(source);
-            if let crate::value::InternalKind::Promise(ps) = &s.internal_kind {
-                (ps.status, ps.value.clone())
-            } else {
-                return Err(RuntimeError::TypeError("not a Promise".into()));
-            }
-        };
-        match status {
-            crate::value::PromiseStatus::Pending => {
-                let src = self.obj_mut(source);
-                if let crate::value::InternalKind::Promise(ps) = &mut src.internal_kind {
-                    ps.fulfill_reactions.push(crate::value::PromiseReaction { handler: None, chain });
-                    ps.reject_reactions.push(crate::value::PromiseReaction { handler: on_rejected.clone(), chain });
+        let source = args.first().cloned().unwrap_or(Value::Undefined);
+        let on_rejected = args.get(1).cloned().unwrap_or(Value::Undefined);
+        // Resolve `this.then` (walks prototype chain). The parser routes the
+        // user-facing identifier `then` directly; no name mangling needed.
+        let then_fn = match &source {
+            Value::Object(id) => {
+                let mut cur = Some(*id);
+                let mut found = Value::Undefined;
+                while let Some(c) = cur {
+                    if let Some(d) = self.obj(c).properties.get("then") {
+                        found = d.value.clone();
+                        if let Some(g) = d.getter.clone() {
+                            found = self.call_function(g, source.clone(), Vec::new())?;
+                        }
+                        break;
+                    }
+                    cur = self.obj(c).proto;
                 }
+                found
             }
-            crate::value::PromiseStatus::Fulfilled => {
-                crate::promise::enqueue_reaction(self, None, value, chain, false);
-            }
-            crate::value::PromiseStatus::Rejected => {
-                self.pending_unhandled.remove(&source);
-                crate::promise::enqueue_reaction(self, on_rejected, value, chain, true);
-            }
-        }
-        Ok(Value::Object(chain))
+            _ => return Err(RuntimeError::TypeError(
+                "Promise.prototype.catch: this is not an Object".into())),
+        };
+        self.call_function(then_fn, source, vec![Value::Undefined, on_rejected])
     }
 
     /// Promise.prototype.finally(onFinally) per ECMA §27.2.5.3.
