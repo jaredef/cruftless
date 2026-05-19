@@ -663,6 +663,72 @@ impl Runtime {
         Ok(Value::Number(new_ms))
     }
 
+    /// String.raw(template, ...subs) per ECMA §22.1.2.4.
+    pub fn string_raw_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let template = match args.first() {
+            Some(Value::Object(id)) => *id,
+            _ => return Err(RuntimeError::TypeError("String.raw: first argument must be an object".into())),
+        };
+        let raw = match self.object_get(template, "raw") {
+            Value::Undefined => Value::Object(template),
+            v => v,
+        };
+        let raw_id = match raw {
+            Value::Object(id) => id,
+            _ => return Err(RuntimeError::TypeError("String.raw: raw must be an object".into())),
+        };
+        let length = match self.object_get(raw_id, "length") {
+            Value::Number(n) => n as i64,
+            _ => {
+                let mut n: i64 = 0;
+                while !matches!(self.object_get(raw_id, &n.to_string()), Value::Undefined) {
+                    n += 1;
+                }
+                n
+            }
+        };
+        let mut out = String::new();
+        for i in 0..length {
+            let seg = self.object_get(raw_id, &i.to_string());
+            out.push_str(&crate::abstract_ops::to_string(&seg));
+            if i + 1 < length {
+                if let Some(sub) = args.get((i as usize) + 1) {
+                    out.push_str(&crate::abstract_ops::to_string(sub));
+                }
+            }
+        }
+        Ok(Value::String(std::rc::Rc::new(out)))
+    }
+
+    /// Array.from(arrayLike, mapfn?, thisArg?) per ECMA §23.1.2.1.
+    pub fn array_from_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let src = args.first().cloned().unwrap_or(Value::Undefined);
+        let map_fn = args.get(1).cloned();
+        let out = self.alloc_object(crate::value::Object::new_array());
+        let items: Vec<Value> = match &src {
+            Value::Object(id) => {
+                let has_iter = !matches!(self.object_get(*id, "@@iterator"), Value::Undefined);
+                if has_iter {
+                    crate::intrinsics::collect_iterable(self, src.clone())?
+                } else {
+                    let len = self.array_length(*id);
+                    (0..len).map(|i| self.object_get(*id, &i.to_string())).collect()
+                }
+            }
+            Value::String(s) => s.chars().map(|c| Value::String(std::rc::Rc::new(c.to_string()))).collect(),
+            _ => Vec::new(),
+        };
+        for (i, v) in items.into_iter().enumerate() {
+            let mapped = if let Some(f) = &map_fn {
+                self.call_function(f.clone(), Value::Undefined, vec![v, Value::Number(i as f64)])?
+            } else { v };
+            self.object_set(out, i.to_string(), mapped);
+        }
+        let len = self.array_length(out);
+        self.object_set(out, "length".into(), Value::Number(len as f64));
+        Ok(Value::Object(out))
+    }
+
     /// Date.prototype.toString() (v1: ISO-like YYYY-MM-DDT00:00:00Z).
     pub fn date_proto_to_string_via(&mut self) -> Result<Value, RuntimeError> {
         let this_id = match self.current_this() { Value::Object(id) => id, _ => return Ok(Value::String(std::rc::Rc::new("Invalid Date".into()))) };

@@ -107,6 +107,8 @@ fn main() {
         misc::build_date_set_date(),
         misc::build_date_set_month(),
         misc::build_date_set_full_year(),
+        misc::build_string_raw(),
+        misc::build_array_from(),
         object_static::build_keys(),
         object_static::build_values(),
         object_static::build_entries(),

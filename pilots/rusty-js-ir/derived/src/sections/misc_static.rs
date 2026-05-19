@@ -21,6 +21,12 @@ fn nullary_section(spec: &str, rust_name: &str, title: &str, via: &'static str) 
     }
 }
 
+pub fn build_string_raw() -> IRFunction { variadic_section("22.1.2.4", "string_raw", "String.raw ( template, ...subs )", "string_raw_via") }
+pub fn build_array_from() -> IRFunction { variadic_section("23.1.2.1", "array_from", "Array.from ( arrayLike, mapfn, thisArg )", "array_from_via") }
+
+pub fn spec_steps_string_raw() -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["string_raw_via"], throws: None, prose: "Concatenate template.raw segments with stringified subs between them (TypeError if first arg or raw is not an object)." }] }
+pub fn spec_steps_array_from() -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["array_from_via"], throws: None, prose: "Convert string or array-like source to a new array, optionally mapping each (i, v) through mapfn with thisArg. v1: iterable protocol deferred." }] }
+
 pub fn build_date_set_time()         -> IRFunction { variadic_section("21.4.4.27", "date_prototype_set_time",         "Date.prototype.setTime ( v )",                  "date_proto_set_time_via") }
 pub fn build_date_set_hours()        -> IRFunction { variadic_section("21.4.4.34", "date_prototype_set_hours",        "Date.prototype.setHours ( h, mi, se, mss )",     "date_proto_set_hours_via") }
 pub fn build_date_set_minutes()      -> IRFunction { variadic_section("21.4.4.24", "date_prototype_set_minutes",      "Date.prototype.setMinutes ( mi, se, mss )",      "date_proto_set_minutes_via") }

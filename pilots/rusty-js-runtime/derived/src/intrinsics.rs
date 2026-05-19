@@ -1720,33 +1720,7 @@ impl Runtime {
             crate::generated::array_of(rt, rt.current_this(), args)
         });
         register_intrinsic_method(self, arr_ctor, "from", 1, |rt, args| {
-            let src = args.first().cloned().unwrap_or(Value::Undefined);
-            let map_fn = args.get(1).cloned();
-            let out = rt.alloc_object(Object::new_array());
-            // Two shapes: iterable (has @@iterator) or array-like (has length).
-            let items: Vec<Value> = match &src {
-                Value::Object(id) => {
-                    // Try iterator first.
-                    let has_iter = !matches!(rt.object_get(*id, "@@iterator"), Value::Undefined);
-                    if has_iter {
-                        collect_iterable(rt, src.clone())?
-                    } else {
-                        let len = rt.array_length(*id);
-                        (0..len).map(|i| rt.object_get(*id, &i.to_string())).collect()
-                    }
-                }
-                Value::String(s) => s.chars().map(|c| Value::String(Rc::new(c.to_string()))).collect(),
-                _ => Vec::new(),
-            };
-            for (i, v) in items.into_iter().enumerate() {
-                let mapped = if let Some(f) = &map_fn {
-                    rt.call_function(f.clone(), Value::Undefined, vec![v, Value::Number(i as f64)])?
-                } else { v };
-                rt.object_set(out, i.to_string(), mapped);
-            }
-            let len = rt.array_length(out);
-            rt.object_set(out, "length".into(), Value::Number(len as f64));
-            Ok(Value::Object(out))
+            crate::generated::array_from(rt, rt.current_this(), args)
         });
         if let Some(proto) = self.array_prototype {
             self.obj_mut(arr_ctor).set_own_frozen("prototype".into(), Value::Object(proto));
@@ -1904,39 +1878,7 @@ impl Runtime {
         // for the camelcase / consola / styled-components patterns where
         // .raw vs cooked agree (no escape sequences requiring raw).
         register_intrinsic_method(self, str_id, "raw", 1, |rt, args| {
-            let template = match args.first() {
-                Some(Value::Object(id)) => *id,
-                _ => return Err(RuntimeError::TypeError("String.raw: first argument must be an object".into())),
-            };
-            let raw = match rt.object_get(template, &"raw".to_string()) {
-                Value::Undefined => Value::Object(template),
-                v => v,
-            };
-            let raw_id = match raw {
-                Value::Object(id) => id,
-                _ => return Err(RuntimeError::TypeError("String.raw: raw must be an object".into())),
-            };
-            let length = match rt.object_get(raw_id, &"length".to_string()) {
-                Value::Number(n) => n as i64,
-                _ => {
-                    let mut n: i64 = 0;
-                    while !matches!(rt.object_get(raw_id, &n.to_string()), Value::Undefined) {
-                        n += 1;
-                    }
-                    n
-                }
-            };
-            let mut out = String::new();
-            for i in 0..length {
-                let seg = rt.object_get(raw_id, &i.to_string());
-                out.push_str(&abstract_ops::to_string(&seg));
-                if i + 1 < length {
-                    if let Some(sub) = args.get((i as usize) + 1) {
-                        out.push_str(&abstract_ops::to_string(sub));
-                    }
-                }
-            }
-            Ok(Value::String(Rc::new(out)))
+            crate::generated::string_raw(rt, rt.current_this(), args)
         });
         if let Some(proto) = self.string_prototype {
             self.obj_mut(str_id).set_own_frozen("prototype".into(), Value::Object(proto));

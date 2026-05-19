@@ -98,6 +98,8 @@ fn main() {
         ("Date.prototype.setDate",            misc::build_date_set_date(),         misc::spec_steps_date_set_date()),
         ("Date.prototype.setMonth",           misc::build_date_set_month(),        misc::spec_steps_date_set_month()),
         ("Date.prototype.setFullYear",        misc::build_date_set_full_year(),    misc::spec_steps_date_set_full_year()),
+        ("String.raw",  misc::build_string_raw(),  misc::spec_steps_string_raw()),
+        ("Array.from",  misc::build_array_from(),  misc::spec_steps_array_from()),
         ("Object.keys", object_static::build_keys(), object_static::spec_steps_keys()),
         ("Object.values", object_static::build_values(), object_static::spec_steps_values()),
         ("Object.entries", object_static::build_entries(), object_static::spec_steps_entries()),
