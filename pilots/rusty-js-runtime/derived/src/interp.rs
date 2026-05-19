@@ -430,6 +430,55 @@ impl Runtime {
         Ok(())
     }
 
+    /// Object.freeze(O) per ECMA §20.1.2.7 — sets extensible:false and
+    /// every own property to non-writable + non-configurable. Returns O.
+    pub fn object_freeze_via(&mut self, v: &Value) -> Result<Value, RuntimeError> {
+        if let Value::Object(id) = v {
+            let o = self.obj_mut(*id);
+            o.extensible = false;
+            for d in o.properties.values_mut() {
+                d.writable = false;
+                d.configurable = false;
+            }
+        }
+        Ok(v.clone())
+    }
+
+    /// Object.seal(O) per ECMA §20.1.2.20.
+    pub fn object_seal_via(&mut self, v: &Value) -> Result<Value, RuntimeError> {
+        if let Value::Object(id) = v {
+            let o = self.obj_mut(*id);
+            o.extensible = false;
+            for d in o.properties.values_mut() {
+                d.configurable = false;
+            }
+        }
+        Ok(v.clone())
+    }
+
+    /// Object.preventExtensions(O) per ECMA §20.1.2.18.
+    pub fn object_prevent_extensions_via(&mut self, v: &Value) -> Result<Value, RuntimeError> {
+        if let Value::Object(id) = v {
+            self.obj_mut(*id).extensible = false;
+        }
+        Ok(v.clone())
+    }
+
+    /// Object.hasOwn(O, P) per ECMA §20.1.2.13.
+    pub fn object_has_own_via(&mut self, v: &Value, key: &Value) -> Result<Value, RuntimeError> {
+        let key_s = self.coerce_to_string(key)?;
+        let id = match v {
+            Value::Object(id) => *id,
+            _ => return Ok(Value::Boolean(false)),
+        };
+        Ok(Value::Boolean(self.obj(id).properties.contains_key(&key_s)))
+    }
+
+    /// Object.is(a, b) per ECMA §20.1.2.14 — SameValue.
+    pub fn object_is_via(&self, a: &Value, b: &Value) -> Result<Value, RuntimeError> {
+        Ok(Value::Boolean(crate::abstract_ops::same_value(a, b)))
+    }
+
     /// Object.getPrototypeOf(O) per ECMA §20.1.2.12.
     pub fn get_prototype_of_via(&self, v: &Value) -> Result<Value, RuntimeError> {
         match v {

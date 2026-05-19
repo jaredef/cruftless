@@ -1256,16 +1256,9 @@ impl Runtime {
             }
             Ok(Value::Object(target))
         });
+        // Ω.5.P63.E7: freeze routed through IR.
         register_intrinsic_method(self, obj_ctor, "freeze", 1, |rt, args| {
-            let v = args.first().cloned().unwrap_or(Value::Undefined);
-            if let Value::Object(id) = &v {
-                let o = rt.obj_mut(*id);
-                o.extensible = false;
-                for d in o.properties.values_mut() {
-                    d.writable = false; d.configurable = false;
-                }
-            }
-            Ok(v)
+            crate::generated::object_freeze(rt, Value::Undefined, args)
         });
         // Ω.5.P63.E6: isFrozen routed through IR.
         register_intrinsic_method(self, obj_ctor, "isFrozen", 1, |rt, args| {
@@ -1275,27 +1268,17 @@ impl Runtime {
         // isExtensible per ECMA §20.1.2. seal makes properties non-
         // configurable but leaves writable. preventExtensions blocks new
         // properties without touching existing.
+        // Ω.5.P63.E7: seal routed through IR.
         register_intrinsic_method(self, obj_ctor, "seal", 1, |rt, args| {
-            let v = args.first().cloned().unwrap_or(Value::Undefined);
-            if let Value::Object(id) = &v {
-                let o = rt.obj_mut(*id);
-                o.extensible = false;
-                for d in o.properties.values_mut() {
-                    d.configurable = false;
-                }
-            }
-            Ok(v)
+            crate::generated::object_seal(rt, Value::Undefined, args)
         });
         // Ω.5.P63.E6: isSealed routed through IR.
         register_intrinsic_method(self, obj_ctor, "isSealed", 1, |rt, args| {
             crate::generated::object_is_sealed(rt, Value::Undefined, args)
         });
+        // Ω.5.P63.E7: preventExtensions routed through IR.
         register_intrinsic_method(self, obj_ctor, "preventExtensions", 1, |rt, args| {
-            let v = args.first().cloned().unwrap_or(Value::Undefined);
-            if let Value::Object(id) = &v {
-                rt.obj_mut(*id).extensible = false;
-            }
-            Ok(v)
+            crate::generated::object_prevent_extensions(rt, Value::Undefined, args)
         });
         // Ω.5.P63.E6: isExtensible routed through IR.
         register_intrinsic_method(self, obj_ctor, "isExtensible", 1, |rt, args| {
@@ -1674,13 +1657,9 @@ impl Runtime {
         });
         // Object.hasOwn per ECMA 2022 §20.1.2.13 — static convenience for
         // Object.prototype.hasOwnProperty.call. Many modern packages prefer it.
+        // Ω.5.P63.E7: hasOwn routed through IR.
         register_intrinsic_method(self, obj_ctor, "hasOwn", 2, |rt, args| {
-            let id = match args.first() {
-                Some(Value::Object(id)) => *id,
-                _ => return Ok(Value::Boolean(false)),
-            };
-            let key = rt.coerce_to_string(&args.get(1).cloned().unwrap_or(Value::Undefined))?;
-            Ok(Value::Boolean(rt.obj(id).properties.contains_key(&key)))
+            crate::generated::object_has_own(rt, Value::Undefined, args)
         });
         // Tier-Ω.5.v: Object.create(proto, propertiesObject?). Per
         // ECMA-262 §20.1.2.2: proto must be Object or null; otherwise
@@ -1802,10 +1781,9 @@ impl Runtime {
             }
             Ok(Value::Object(id))
         });
-        register_intrinsic_method(self, obj_ctor, "is", 2, |_rt, args| {
-            let a = args.first().cloned().unwrap_or(Value::Undefined);
-            let b = args.get(1).cloned().unwrap_or(Value::Undefined);
-            Ok(Value::Boolean(crate::value::Value::same_value(&a, &b)))
+        // Ω.5.P63.E7: Object.is routed through IR.
+        register_intrinsic_method(self, obj_ctor, "is", 2, |rt, args| {
+            crate::generated::object_is(rt, Value::Undefined, args)
         });
         // Tier-Ω.5.t: wire `Object.prototype` to the intrinsic %Object.prototype%
         // so consumers can read `Object.prototype.hasOwnProperty` etc.

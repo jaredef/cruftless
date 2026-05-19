@@ -12,3 +12,4 @@ pub mod array_prototype_reduce;       // reduce (reduceRight queued, awaits sign
 pub mod object_static;                // Object.keys, Object.values, Object.entries
 pub mod promise_static;               // Promise.resolve, Promise.reject
 pub mod object_proto_ops;             // getPrototypeOf, setPrototypeOf, isExtensible, isFrozen, isSealed
+pub mod object_integrity;             // freeze, seal, preventExtensions, hasOwn, is
