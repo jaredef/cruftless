@@ -3162,15 +3162,21 @@ impl Runtime {
             ("AggregateError", "AggregateError"),
         ] {
             let proto_id = self.alloc_object(Object::new_ordinary());
-            self.object_set(proto_id, "name".into(), Value::String(Rc::new((*default_name).to_string())));
-            self.object_set(proto_id, "message".into(), Value::String(Rc::new("".to_string())));
+            // §20.5.6.{1,2}: Error.prototype.{name, message} are non-enumerable.
+            self.obj_mut(proto_id).set_own_internal("name".into(),
+                Value::String(Rc::new((*default_name).to_string())));
+            self.obj_mut(proto_id).set_own_internal("message".into(),
+                Value::String(Rc::new("".to_string())));
             register_intrinsic_method(self, proto_id, "toString", 0, |rt, args| {
                 crate::generated::error_prototype_to_string(rt, rt.current_this(), args)
             });
 
             let default_name = (*default_name).to_string();
             let proto_for_ctor = proto_id;
-            let ctor_obj = make_native(name, move |rt, args| {
+            // §20.5.7.1: Error.length === 1 (single 'message' parameter).
+            // AggregateError takes (errors, message) but spec is .length === 2.
+            let ctor_arity: u32 = if *name == "AggregateError" { 2 } else { 1 };
+            let ctor_obj = make_native_with_length(name, ctor_arity, move |rt, args| {
                 // Tier-Ω.5.ffff: when invoked via super(...) from a
                 // derived class, the receiver is the already-allocated
                 // derived-instance. Mutate it in place rather than
@@ -3710,7 +3716,11 @@ where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
 
 fn register_global_fn<F>(rt: &mut Runtime, name: &str, f: F)
 where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
-    let fn_obj = make_native(name, f);
+    // §19.2.{1..6} parseInt, parseFloat, isNaN, isFinite, decodeURI,
+    // decodeURIComponent, encodeURI, encodeURIComponent — all are functions,
+    // not constructors. Use make_native_non_ctor so `new parseInt(...)`
+    // throws TypeError per spec.
+    let fn_obj = make_native_non_ctor(name, 1, f);
     let fn_id = rt.alloc_object(fn_obj);
     rt.globals.insert(name.into(), Value::Object(fn_id));
 }
