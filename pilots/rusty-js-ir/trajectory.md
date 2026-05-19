@@ -1112,6 +1112,80 @@ The dominant remaining failure types across all touched chapters are now (a) int
 
 Pin-Art tag count: 78 commits as of EXT 62.
 
+
+## IR-EXT 63 → 68 — 2026-05-19 (substrate-grind close + higher-resolution-IR open)
+
+**Stretch summary**: Two qualitatively different phases. EXT 63-65b continued the substrate-fix grind from EXT 56-62 (RegExp accessors, ArraySetLength Rust impl, Map/Set arity, Promise closure metadata) for +88 test262. Then the **keeper's higher-resolution-IR conjecture (msg 8541)**: "for spec edge cases we must employ higher resolution IR to lower it down to Rust". EXT 66-68 reverse direction: rather than implementing intricate spec algorithms as Rust _via helpers, lift them into IR as 1:1 spec-step sections.
+
+### Phase 1 commits (substrate-grind close)
+
+| EXT | commit | recognition |
+|---|---|---|
+| 63  | `84701013` | RegExp.prototype.{source, flags, global, ignoreCase, multiline, sticky, unicode, dotAll, hasIndices} installed as brand-checked accessor getters per §22.2.6. test262 was probing `Object.getOwnPropertyDescriptor(RegExp.prototype, k).get` and seeing undefined. RegExp/prototype: 28.1% → **37.7%** (+47). |
+| 64  | `604858d7` | Full §10.4.2.1 ArraySetLength implementation in Rust (object_define_property_via dispatch). Object.defineProperty: 85.1% → **89.0%** (+44). Object.defineProperties: 78.4% → **85.9%** (+47 propagation). |
+| 65  | `043acc34` | Map/Set prototype method arity fixes (spec arities: get/has/clear/values/keys/entries). Map 51.9% → 55.8%, Set 66.3% → 68.9% (+9 combined). |
+| 65b | `7f10fb30` | Promise per-iteration closures had descriptive labels (\"<Promise.all Resolve Element>\") flowing through to .name. Spec says these are anonymous. Empty label in 6 IR sections. Promise: 53.3% → 55.0% (+5). |
+
+### Phase 2 commits (higher-resolution-IR)
+
+**Recognition (keeper msg 8541)**: every substrate-fix EXT had been LOC-per-test that should have been *spec-step-per-test*. The intricate spec algorithms (§10.4.2.1, §25.5.2.4) were being implemented in Rust where they drift; lifting them into IR pins the spec-step ordering and makes the lowering compiler the single point of truth.
+
+| EXT | commit | recognition |
+|---|---|---|
+| 66  | `25dc9a88` | **First higher-resolution-IR section**: §10.4.2.1 ArraySetLength lifted into pilots/rusty-js-ir/derived/src/sections/array_set_length.rs as a 35-step IR section. The EXT 64 Rust impl is deleted. Five new runtime _via primitives covering boundaries (to_uint32_strict_via, array_length_{value,writable,set_internal}_via, delete_own_via). Behavioral parity preserved (Object.defineProperty 89.0% stable). |
+| 67  | `13f1440e` | **Alphabet promotion #1**: Expr::NumberAdd / NumberSub / NumberLt / NumberGe added to IR alphabet — promoted from CallBuiltin bridges that EXT 66 introduced as poverty signals. Lowering convention: arithmetic ops return Value::Number, comparison ops return raw bool (matches existing Expr::Lt convention). The number_*_via helpers EXT 66 added are deleted. Alphabet 58 → **62 nodes**. |
+| 68  | `bf3f4897` | **Second higher-resolution-IR section**: §25.5.2.4 SerializeJSONProperty lifted into IR as a 17-step section. Five runtime _via primitives. Structural gains: toJSON method dispatch (acknowledged-gap in pre-EXT-68 impl), BigInt TypeError (was 'null'), undefined→Value::Undefined (was string "undefined"), wrapper unwrap in spec-step ordering after toJSON. **Alphabet promotion #2**: Expr::TypeOf added. Alphabet 62 → **63 nodes**. JSON: 45.4% → **49.0%** (+6 tests + significant structural correctness). |
+
+### Substrate at EXT 68 close
+
+**IR alphabet**: **63 nodes** (was 58 at EXT 56 start). Five extensions this session: Expr::Closure + CellNew + CellGet + IRNode::CellSet (EXT 55, 54→58), Expr::NumberAdd/Sub/Lt/Ge (EXT 67, 58→62), Expr::TypeOf (EXT 68, 62→63).
+
+**Sections IR-encoded**: 242. Three are higher-resolution-IR sections (ArraySetLength + SerializeJSONProperty + the EXT 55 closure exemplars).
+
+**Lowering compiler extensions**: emit_property_key special-case (Expr::Str → &str key); IRNode::Let emits `let mut`.
+
+**Session running total (EXT 56 → EXT 68)**: **+652 test262 wins** across 13 commits + 2 structural-only IR-lift commits.
+
+### Conjecture status — predictive alphabet completeness
+
+The conjecture has cleaved into two empirically-distinct claims:
+
+**§I.1.b (alphabet-completeness for cruftless surface)**: held without modification across EXT 56 → EXT 65b (eight rounds, +540 tests). The alphabet at 58 nodes was *sufficient* for substrate-fix work on existing IR sections.
+
+**§I.1.b' (alphabet-completeness for higher-resolution-IR)**: visible only after the EXT 66 attempt. Lifting §10.4.2.1 surfaced two alphabet poverty signals (Number arithmetic, TypeOf operator) that the alphabet absorbed in subsequent rounds. After EXT 68 the alphabet is at 63 nodes; the JSON lift used the promoted Number primitives cleanly. The poverty-signal-then-promote cycle is the alphabet's adaptive mechanism.
+
+The two claims together: the alphabet is *predictively over-conservative* at the spec-surface level (EXT 52 named extensions all turned out unnecessary), and *adaptive-by-extension* at the higher-resolution-IR level (poverty signals trigger promotion).
+
+### Test262 movement (cumulative session)
+
+| Chapter | Pre-session | Post-EXT-68 | Δ |
+|---|---|---|---|
+| Object/defineProperty | 64.5% | **89.0%** (1007/1131) | +277 |
+| Object/defineProperties | 49.6% | **85.9%** (543/632) | +229 |
+| Object/getOwnPropertyDescriptor | 93.5% | 94.5% (293/310) | +3 |
+| Object/getOwnPropertyDescriptors | 55.5% | 61.1% (11/18) | +1 |
+| Object/create | 93.4% | 93.7% (300/320) | +1 |
+| Object/prototype | 56.8% | 57.2% (142/248) | +1 |
+| Array (chapter) | (pre 79.0%) | 80.0% (2394/2991) | +29 |
+| Array/{values, keys, entries} | 41.6% | 66.6% (8/12 each) | +9 |
+| Map (chapter) | 51.9% | 59.3% (121/204) | +15 |
+| Set (chapter) | 66.3% | 68.9% (264/383) | +10 |
+| RegExp/prototype | 28.1% | **37.7%** (184/487) | +47 |
+| Promise (chapter) | 51.6% | 55.0% (163/296) | +10 |
+| Error | 41.3% | 46.5% (27/58) | +3 |
+| JSON | 45.4% | **49.0%** (81/165) | +6 |
+| **Cumulative (de-duped)** | | | **+652** |
+
+### Open scope at EXT 68 close
+
+The higher-resolution-IR pattern is now proven across two sections. Next-natural moves:
+
+1. **More spec lifts** following the EXT 66/68 template: ValidateAndApplyPropertyDescriptor (§10.1.6.3), Object.assign (§20.1.2.1), Reflect.set (§28.1.13). Each adds another spec-step section to the IR.
+2. **Recursive lift completion**: SerializeJSONObject (§25.5.2.5) + SerializeJSONArray (§25.5.2.6) as their own IR sections so the recursion bottoms out in IR rather than the runtime helper json_serialize_compound_via.
+3. **Alphabet promotion #3**: each new section surfaces new poverty signals; absorb them.
+
+Pin-Art tag count: 90 commits as of EXT 68.
+
 ### Conjecture status
 
 **§I-strengthened corroboration #5 (2026-05-19, EXT 56)**: a queued alphabet extension predicted at EXT 52 close (property-descriptor builders) was empirically shown to be unnecessary upon implementation. The existing alphabet was already sufficient. This is the strongest corroboration of §I.1.b yet — the alphabet-completeness criterion is not just stable in practice but predictively *over-conservative* when projected forward.
