@@ -2067,8 +2067,11 @@ impl Runtime {
             // Number-exotic object with [[NumberData]]. We model
             // [[NumberData]] via the non-enumerable __primitive__ slot,
             // which Number.prototype.{valueOf,toString} unwrap.
+            // Ω.5.P62.E19: route through coerce_to_number so Object → @@toPrimitive/valueOf/
+            // toString dispatch + Symbol → TypeError + Object-with-Object-returning-coercers
+            // throws TypeError per §7.1.4.
             let v = args.first().cloned().unwrap_or(Value::Undefined);
-            let n = if args.is_empty() { 0.0 } else { abstract_ops::to_number(&v) };
+            let n = if args.is_empty() { 0.0 } else { rt.coerce_to_number(&v)? };
             if rt.current_new_target.is_some() {
                 let mut obj = crate::value::Object::new_ordinary();
                 obj.set_own_internal("__primitive__".into(), Value::Number(n));

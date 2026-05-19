@@ -1791,10 +1791,28 @@ fn install_number_proto(rt: &mut Runtime, host: ObjectRef) {
         }
     });
     register_intrinsic_method(rt, host, "toString", 0, |rt, args| {
+        // Ω.5.P62.E19: ThisNumberValue per §21.1.3 — receiver must be a
+        // Number primitive or Number-wrapper exotic ([[NumberData]]).
         let this = rt.current_this();
-        let n = abstract_ops::to_number(&rt.unwrap_primitive(&this));
-        let radix = args.first().map(abstract_ops::to_number).unwrap_or(10.0) as i32;
-        if radix == 10 || radix == 0 {
+        let unwrapped = rt.unwrap_primitive(&this);
+        let n = match unwrapped {
+            Value::Number(n) => n,
+            _ => return Err(RuntimeError::TypeError(
+                "Number.prototype.toString: this is not a Number".into())),
+        };
+        // Radix: undefined → 10; else ToInteger and validate 2..=36 or throw RangeError.
+        let radix = match args.first().cloned() {
+            None | Some(Value::Undefined) => 10,
+            Some(v) => {
+                let n = rt.coerce_to_number(&v)? as i32;
+                if n < 2 || n > 36 {
+                    return Err(RuntimeError::RangeError(
+                        "toString() radix must be between 2 and 36".into()));
+                }
+                n
+            }
+        };
+        if radix == 10 {
             Ok(Value::String(Rc::new(abstract_ops::number_to_string(n))))
         } else if (2..=36).contains(&radix) && n.is_finite() && n.fract() == 0.0 {
             // Integer-radix only — fractional radix conversion is rare.
@@ -1817,8 +1835,26 @@ fn install_number_proto(rt: &mut Runtime, host: ObjectRef) {
         }
     });
     register_intrinsic_method(rt, host, "toFixed", 1, |rt, args| {
-        let n = abstract_ops::to_number(&rt.current_this());
-        let digits = args.first().map(abstract_ops::to_number).unwrap_or(0.0) as usize;
+        // ThisNumberValue brand + RangeError on out-of-range digits.
+        let this = rt.current_this();
+        let n = match rt.unwrap_primitive(&this) {
+            Value::Number(n) => n,
+            _ => return Err(RuntimeError::TypeError(
+                "Number.prototype.toFixed: this is not a Number".into())),
+        };
+        let digits_n = match args.first().cloned() {
+            None | Some(Value::Undefined) => 0.0,
+            Some(v) => rt.coerce_to_number(&v)?,
+        };
+        if digits_n.is_nan() || digits_n < 0.0 || digits_n > 100.0 {
+            return Err(RuntimeError::RangeError(
+                "toFixed() digits argument must be between 0 and 100".into()));
+        }
+        let digits = digits_n as usize;
+        if n.is_nan() { return Ok(Value::String(Rc::new("NaN".into()))); }
+        if !n.is_finite() {
+            return Ok(Value::String(Rc::new(if n > 0.0 { "Infinity".into() } else { "-Infinity".into() })));
+        }
         Ok(Value::String(Rc::new(format!("{:.*}", digits, n))))
     });
     // Ω.5.P61.E10: toExponential, toPrecision, toLocaleString per
@@ -1859,10 +1895,17 @@ fn install_number_proto(rt: &mut Runtime, host: ObjectRef) {
         }
     });
     register_intrinsic_method(rt, host, "toLocaleString", 0, |rt, _args| {
-        let n = abstract_ops::to_number(&rt.current_this());
+        // ThisNumberValue brand.
+        let this = rt.current_this();
+        let n = match rt.unwrap_primitive(&this) {
+            Value::Number(n) => n,
+            _ => return Err(RuntimeError::TypeError(
+                "Number.prototype.toLocaleString: this is not a Number".into())),
+        };
         Ok(Value::String(Rc::new(crate::abstract_ops::number_to_string(n))))
     });
-    register_intrinsic_method(rt, host, "valueOf", 0, |rt, _args| Ok(rt.current_this()));
+    // Ω.5.P62.E19: removed duplicate valueOf install (line 1785's
+    // brand-checked + __primitive__-unwrapping version is the canonical).
 }
 
 // ──────────────── helpers ────────────────
