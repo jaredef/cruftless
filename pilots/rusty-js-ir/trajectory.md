@@ -78,3 +78,57 @@ cargo run --example lint_drift_demo -p rusty-js-ir   # prove linter catches drif
 Add a section by creating `pilots/rusty-js-ir/derived/src/sections/<name>.rs` with `pub fn build() -> IRFunction` + `pub fn spec_steps() -> Vec<SpecStepRecord>`, registering it in `sections/mod.rs`, lowering via a new example or by appending to `generated.rs`, and replacing the hand-written registration in `pilots/rusty-js-runtime/derived/src/prototype.rs`.
 
 Pin-Art tag count for the IR workstream: 4 commits as of IR-EXT 1.
+
+
+## IR-EXT 2 — 2026-05-19 (iteration cluster + runtime length-bump)
+
+**Headline**: pipeline scaled to 5 spec sections in one round. Four more Array.prototype iteration methods (forEach, filter, every, some) translated, lowered, wired in, regression-checked. Net +15 tests across the cluster vs pre-IR baseline.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| `9ec80b4c` | IR-EXT 2: seed + trajectory + iteration cluster | Workstream seed.md + trajectory.md per Pin-Art shape; sections/array_prototype_iteration.rs translates §23.1.3.{15,7,6,29} sharing §23.1.3.20's preamble; ToBoolean lowering returns Rust bool; create_data_property_or_throw on Array auto-bumps length per §10.4.2.4. |
+
+### Substrate at IR-EXT 2 close
+
+**IR alphabet**: unchanged from IR-EXT 1 (the iteration cluster used only existing nodes). The pattern: when consecutive translations target methods that share structural shape, no alphabet extension is needed — the IR is already complete enough.
+
+**Runtime helper coverage**: unchanged surface; internal refinement of `array_species_create` (no explicit length=0) and `create_data_property_or_throw` (auto-bump array length).
+
+**Sections translated**: 5 (Array.prototype.{map, forEach, filter, every, some}).
+
+**Linter findings**: still 2 expected per section (param.* binding markers), 0 unexpected. The drift-demo example continues to pass.
+
+### test262 numbers at IR-EXT 2 close
+
+| section | pre-IR baseline | IR-EXT 1 | IR-EXT 2 | Δ pre→post |
+|---|---|---|---|---|
+| Array.prototype.map     | 81.4% | 82.8% | 82.4% | +1.0 |
+| Array.prototype.forEach | 88.9% | (unchanged) | 90.5% | +1.6 |
+| Array.prototype.filter  | 85.5% | (unchanged) | 86.3% | +0.8 |
+| Array.prototype.every   | 89.4% | (unchanged) | 92.2% | +2.8 |
+| Array.prototype.some    | 89.4% | (unchanged) | 90.8% | +1.4 |
+
+Cluster total: **+15 tests** across the five slices. All five rates exceed pre-IR baseline.
+
+### Conjecture status
+
+Strongly corroborated this round. The pipeline scaled from 1 → 5 sections without alphabet extension, lowering bugs, or per-section runtime helper additions (only general improvements to array_species_create and create_data_property_or_throw that benefit all callers). seed.md §I conjecture ("spec conformance gets monotonically easier post-IR") holds across the increment.
+
+### Doc 729 §V cross-check
+
+Re-corroborated. The IR-EXT 2 round produced 5 generated Rust functions from 5 IR sections via one `cargo run --example build_generated_rs` invocation — stage-deterministic emission empirically observed at scale.
+
+### Open scope at IR-EXT 2 close
+
+Immediate (Tier 1.7 candidates):
+1. **Array.prototype.{find, findIndex, findLast, findLastIndex}** — same iteration shape, returns kValue or index instead of array. Trivial extensions.
+2. **Array.prototype.{reduce, reduceRight}** — iteration with accumulator. Adds one IR shape (accumulator-folded iteration) but reuses preamble.
+3. **Array.prototype.{indexOf, lastIndexOf, includes}** — iteration without callback (uses SameValueZero). Different shape; one new pattern.
+4. **Object.{keys, values, entries}** — different chapter; different shape (OwnPropertyKeys iteration). Larger surface introduction.
+
+Mid-term (Tier 2):
+5. **Spec-XML parser** — closer now (5 sections of hand-authored SpecStepRecord lists vs the seed §V.M5 threshold of ~10).
+
+Pin-Art tag count for the IR workstream: 5 commits as of IR-EXT 2.
