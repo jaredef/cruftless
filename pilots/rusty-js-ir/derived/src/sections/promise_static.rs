@@ -75,7 +75,7 @@ pub fn build_all_resolve_element_factory() -> IRFunction {
         Step { spec_step: "param.remaining".into(),   node: IRNode::Let { name: "remaining".into(),   value: Expr::Arg(3) }},
         Step { spec_step: "param.cap_resolve".into(), node: IRNode::Let { name: "cap_resolve".into(), value: Expr::Arg(4) }},
         Step { spec_step: "1".into(), node: IRNode::Return(Expr::Closure {
-            label: "<Promise.all Resolve Element>",
+            label: "",
             params: vec!["x".into()],
             captures: vec!["index".into(), "values".into(), "already".into(), "remaining".into(), "cap_resolve".into()],
             body: vec![
@@ -139,7 +139,7 @@ pub fn build_all_settled_resolve_element_factory() -> IRFunction {
         Step { spec_step: "param.remaining".into(),   node: IRNode::Let { name: "remaining".into(),   value: Expr::Arg(3) }},
         Step { spec_step: "param.cap_resolve".into(), node: IRNode::Let { name: "cap_resolve".into(), value: Expr::Arg(4) }},
         Step { spec_step: "1".into(), node: IRNode::Return(Expr::Closure {
-            label: "<Promise.allSettled Resolve Element>",
+            label: "",
             params: vec!["x".into()],
             captures: vec!["index".into(), "values".into(), "already".into(), "remaining".into(), "cap_resolve".into()],
             body: vec![
@@ -199,7 +199,7 @@ pub fn build_all_settled_reject_element_factory() -> IRFunction {
         Step { spec_step: "param.remaining".into(),   node: IRNode::Let { name: "remaining".into(),   value: Expr::Arg(3) }},
         Step { spec_step: "param.cap_resolve".into(), node: IRNode::Let { name: "cap_resolve".into(), value: Expr::Arg(4) }},
         Step { spec_step: "1".into(), node: IRNode::Return(Expr::Closure {
-            label: "<Promise.allSettled Reject Element>",
+            label: "",
             params: vec!["x".into()],
             captures: vec!["index".into(), "values".into(), "already".into(), "remaining".into(), "cap_resolve".into()],
             body: vec![
@@ -264,7 +264,7 @@ pub fn build_any_reject_element_factory() -> IRFunction {
         Step { spec_step: "param.remaining".into(),  node: IRNode::Let { name: "remaining".into(),  value: Expr::Arg(3) }},
         Step { spec_step: "param.cap_reject".into(), node: IRNode::Let { name: "cap_reject".into(), value: Expr::Arg(4) }},
         Step { spec_step: "1".into(), node: IRNode::Return(Expr::Closure {
-            label: "<Promise.any Reject Element>",
+            label: "",
             params: vec!["x".into()],
             captures: vec!["index".into(), "errors".into(), "already".into(), "remaining".into(), "cap_reject".into()],
             body: vec![
@@ -322,7 +322,7 @@ pub fn build_with_resolvers() -> IRFunction {
         Step { spec_step: "2".into(), node: IRNode::Let {
             name: "resolve_fn".into(),
             value: Expr::Closure {
-                label: "<Promise.withResolvers resolve>",
+                label: "",
                 params: vec!["v".into()],
                 captures: vec!["p".into()],
                 body: vec![
@@ -337,7 +337,7 @@ pub fn build_with_resolvers() -> IRFunction {
         Step { spec_step: "3".into(), node: IRNode::Let {
             name: "reject_fn".into(),
             value: Expr::Closure {
-                label: "<Promise.withResolvers reject>",
+                label: "",
                 params: vec!["v".into()],
                 captures: vec!["p".into()],
                 body: vec![

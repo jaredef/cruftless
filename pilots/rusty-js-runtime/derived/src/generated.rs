@@ -1697,7 +1697,7 @@ pub fn promise_with_resolvers(rt: &mut Runtime, this: Value, args: &[Value])
     // step 2 (§2 step 2)
     let resolve_fn = {
             let p = p.clone();
-            let __native = crate::intrinsics::make_native_with_length("<Promise.withResolvers resolve>", 1,
+            let __native = crate::intrinsics::make_native_with_length("", 1,
                 move |rt, args| {
                     let v = args.get(0).cloned().unwrap_or(Value::Undefined);
                     let _ = &p;
@@ -1711,7 +1711,7 @@ pub fn promise_with_resolvers(rt: &mut Runtime, this: Value, args: &[Value])
     // step 3 (§3 step 3)
     let reject_fn = {
             let p = p.clone();
-            let __native = crate::intrinsics::make_native_with_length("<Promise.withResolvers reject>", 1,
+            let __native = crate::intrinsics::make_native_with_length("", 1,
                 move |rt, args| {
                     let v = args.get(0).cloned().unwrap_or(Value::Undefined);
                     let _ = &p;
@@ -1750,7 +1750,7 @@ pub fn promise_all_resolve_element_factory(rt: &mut Runtime, this: Value, args: 
             let already = already.clone();
             let remaining = remaining.clone();
             let cap_resolve = cap_resolve.clone();
-            let __native = crate::intrinsics::make_native_with_length("<Promise.all Resolve Element>", 1,
+            let __native = crate::intrinsics::make_native_with_length("", 1,
                 move |rt, args| {
                     let x = args.get(0).cloned().unwrap_or(Value::Undefined);
                     let _ = &index;
@@ -1798,7 +1798,7 @@ pub fn promise_all_settled_resolve_element_factory(rt: &mut Runtime, this: Value
             let already = already.clone();
             let remaining = remaining.clone();
             let cap_resolve = cap_resolve.clone();
-            let __native = crate::intrinsics::make_native_with_length("<Promise.allSettled Resolve Element>", 1,
+            let __native = crate::intrinsics::make_native_with_length("", 1,
                 move |rt, args| {
                     let x = args.get(0).cloned().unwrap_or(Value::Undefined);
                     let _ = &index;
@@ -1848,7 +1848,7 @@ pub fn promise_all_settled_reject_element_factory(rt: &mut Runtime, this: Value,
             let already = already.clone();
             let remaining = remaining.clone();
             let cap_resolve = cap_resolve.clone();
-            let __native = crate::intrinsics::make_native_with_length("<Promise.allSettled Reject Element>", 1,
+            let __native = crate::intrinsics::make_native_with_length("", 1,
                 move |rt, args| {
                     let x = args.get(0).cloned().unwrap_or(Value::Undefined);
                     let _ = &index;
@@ -1898,7 +1898,7 @@ pub fn promise_any_reject_element_factory(rt: &mut Runtime, this: Value, args: &
             let already = already.clone();
             let remaining = remaining.clone();
             let cap_reject = cap_reject.clone();
-            let __native = crate::intrinsics::make_native_with_length("<Promise.any Reject Element>", 1,
+            let __native = crate::intrinsics::make_native_with_length("", 1,
                 move |rt, args| {
                     let x = args.get(0).cloned().unwrap_or(Value::Undefined);
                     let _ = &index;
