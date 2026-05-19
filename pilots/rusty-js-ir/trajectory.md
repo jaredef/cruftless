@@ -222,3 +222,43 @@ Tier 2 (mid-term):
 5. **Spec-XML parser** — 12 SpecStepRecord lists hand-authored, surpassing the seed §V.M5 threshold of ~10. The parser pays for itself starting at Tier 1.9.
 
 Pin-Art tag count for the IR workstream: 8 commits as of IR-EXT 4.
+
+
+## IR-EXT 5 — 2026-05-19 late (Tier 1.9: Object cluster via CallBuiltin)
+
+**Headline**: CallBuiltin pattern demonstrated at scale. Object.{keys, values, entries} translated as thin 2-step wrappers; their hand-written impls extracted into Runtime helpers (rt.enumerable_own_{keys,values,entries}). 15 sections IR-encoded, 10 wired.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| `5c07e1ae` | IR-EXT 5: Object.{keys, values, entries} | Three runtime helpers extracted from intrinsics.rs (~140 LOC consolidated into Runtime methods). Three 2-step IR sections. CallBuiltin lowering refined to `&` prefix matching IR-target convention. Side-fix: String exotic's length property is now non-enumerable per §22.1.4 (surfaced via Object.keys("abc") smoke). |
+
+### Substrate at IR-EXT 5 close
+
+**IR alphabet**: unchanged (CallBuiltin from IR-EXT 4 was already in place; used here for the first time).
+
+**Runtime helper coverage**: added rt.enumerable_own_keys / _values / _entries per §7.3.23.
+
+**Sections translated**: 15 (12 from IR-EXT 4 + Object.keys + Object.values + Object.entries). Wired: 10 (Array.prototype.{map, forEach, filter, every, some, find, findIndex} + Object.{keys, values, entries}). IR-only-not-wired: 5 (Array.prototype.{findLast, findLastIndex, indexOf, includes, reduce} — awaiting alphabet extensions: signed-Int for backward iteration / fromIndex normalization, find-first-present-index inner-loop for reduce).
+
+**Linter**: 15/15 clean.
+
+### Conjecture status
+
+The hand-written-to-IR-wrapper transition shape crystallized: when the spec abstract op is a Runtime-tier helper (not a JS-side method dispatch), CallBuiltin makes the IR a thin syntactic stub while the helper does the work. The IR carries spec-step traceability + linter validation; the runtime carries performance + edge-case handling.
+
+This is the §A8.30 brand-check discipline's dual: §A8.30 says receivers without the right slot must throw; here, abstract ops that don't fit Get-then-Call get their own dispatch primitive. The two together exhaust the "operator-to-runtime" coupling shapes.
+
+### Open scope at IR-EXT 5 close
+
+Tier 2 (immediate next step):
+1. **Spec-XML parser** — 15 SpecStepRecord lists hand-authored, well past the seed §V.M5 threshold of ~10. The parser pays for itself starting here.
+
+Tier 1.10 (parallel work):
+2. **Signed-Index primitives** — unblock backward iteration (findLast/findLastIndex/reduceRight/lastIndexOf) + fromIndex normalization (indexOf/lastIndexOf/includes).
+3. **find-first-present-index inner-loop** — unblocks reduce wiring.
+4. **Promise.{resolve, reject}** — 2-step CallBuiltin like Object.*; trivial.
+5. **More Array.prototype methods** — flat, flatMap, slice (currently hand-written with complex semantics).
+
+Pin-Art tag count for the IR workstream: 9 commits as of IR-EXT 5.
