@@ -416,14 +416,18 @@ fn current_regexp_this(rt: &Runtime, label: &str) -> Result<ObjectRef, RuntimeEr
 fn install_string_regex_methods(rt: &mut Runtime) {
     let host = match rt.string_prototype {
         Some(id) => id,
-        None => return, // install_prototypes hasn't run — defensive.
+        None => return,
     };
 
+    // IR-EXT 71: Receiver coercion uses rt.to_string_strict instead of the
+    // static abstract_ops::to_string. Static to_string yields '[object Object]'
+    // for any Object receiver, including String wrappers — visible bug when
+    // these methods are called on `new String("...")`. to_string_strict
+    // properly dispatches @@toPrimitive / toString / valueOf.
+
     register_method(rt, host, "match", |rt, args| {
-        let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
+        let s = rt.to_string_strict(&rt.current_this())?;
         let re_id = coerce_regexp(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
-        // If the regex is global, return an array of all match strings;
-        // otherwise behave like exec.
         let is_global = match &rt.obj(re_id).internal_kind {
             InternalKind::RegExp(r) => r.flags.contains('g'),
             _ => false,
@@ -451,7 +455,7 @@ fn install_string_regex_methods(rt: &mut Runtime) {
     });
 
     register_method(rt, host, "search", |rt, args| {
-        let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
+        let s = rt.to_string_strict(&rt.current_this())?;
         let re_id = coerce_regexp(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
         let rx = match &rt.obj(re_id).internal_kind {
             InternalKind::RegExp(r) => r.compiled.clone(),
@@ -469,16 +473,15 @@ fn install_string_regex_methods(rt: &mut Runtime) {
     });
 
     register_method(rt, host, "replace", |rt, args| {
-        let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
+        let s = rt.to_string_strict(&rt.current_this())?;
         let pat_arg = args.first().cloned().unwrap_or(Value::Undefined);
         let repl = args.get(1).cloned().unwrap_or(Value::Undefined);
         string_replace_impl(rt, &s, pat_arg, repl, false)
     });
 
     register_method(rt, host, "replaceAll", |rt, args| {
-        let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
+        let s = rt.to_string_strict(&rt.current_this())?;
         let pat_arg = args.first().cloned().unwrap_or(Value::Undefined);
-        // Spec: if pat is a RegExp without 'g', throw.
         if let Value::Object(id) = &pat_arg {
             if let InternalKind::RegExp(r) = &rt.obj(*id).internal_kind {
                 if !r.flags.contains('g') {
@@ -492,7 +495,7 @@ fn install_string_regex_methods(rt: &mut Runtime) {
     });
 
     register_method(rt, host, "split", |rt, args| {
-        let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
+        let s = rt.to_string_strict(&rt.current_this())?;
         let limit = args.get(1).map(|v| {
             let n = abstract_ops::to_number(v);
             if n.is_finite() && n >= 0.0 { Some(n as usize) } else { None }
@@ -512,7 +515,7 @@ fn install_string_regex_methods(rt: &mut Runtime) {
                 rx.split_str(&s)
             }
             Some(sep_v) => {
-                let sep = abstract_ops::to_string(sep_v).as_str().to_string();
+                let sep = rt.to_string_strict(sep_v)?;
                 if sep.is_empty() {
                     s.chars().map(|c| c.to_string()).collect()
                 } else {
