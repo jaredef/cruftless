@@ -430,6 +430,20 @@ impl Runtime {
         Ok(())
     }
 
+    /// String.prototype.toLowerCase() per ECMA §22.1.3.28.
+    pub fn string_proto_to_lower_case_via(&mut self, this: &Value) -> Result<Value, RuntimeError> {
+        self.require_object_coercible(this)?;
+        let s = self.to_string_strict(this)?;
+        Ok(Value::String(std::rc::Rc::new(s.to_lowercase())))
+    }
+
+    /// String.prototype.toUpperCase() per ECMA §22.1.3.30.
+    pub fn string_proto_to_upper_case_via(&mut self, this: &Value) -> Result<Value, RuntimeError> {
+        self.require_object_coercible(this)?;
+        let s = self.to_string_strict(this)?;
+        Ok(Value::String(std::rc::Rc::new(s.to_uppercase())))
+    }
+
     /// String.prototype.charAt(pos) per ECMA §22.1.3.1.
     pub fn string_proto_char_at_via(&mut self, this: &Value, pos: &Value) -> Result<Value, RuntimeError> {
         self.require_object_coercible(this)?;

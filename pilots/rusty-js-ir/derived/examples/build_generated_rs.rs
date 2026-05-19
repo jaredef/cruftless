@@ -98,6 +98,10 @@ fn main() {
         string_prototype::build_char_at(),
         string_prototype::build_char_code_at(),
         string_prototype::build_concat(),
+        string_prototype::build_to_lower_case(),
+        string_prototype::build_to_upper_case(),
+        string_prototype::build_to_locale_lower_case(),
+        string_prototype::build_to_locale_upper_case(),
     ];
 
     for f in &sections {

@@ -1025,23 +1025,22 @@ fn is_regexp_like(rt: &mut Runtime, v: &Value) -> Result<bool, RuntimeError> {
 }
 
 fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
-    // Ω.5.P62.E15: case + trim families per ECMA §22.1.3.{27,28,29,30,31,32}.
-    // All require RequireObjectCoercible + strict ToString(this).
+    // Ω.5.P63.E21: case family routed through IR.
     register_intrinsic_method(rt, host, "toUpperCase", 0, |rt, _args| {
-        let this = rt.current_this(); rt.require_object_coercible(&this)?;
-        Ok(Value::String(Rc::new(rt.to_string_strict(&this)?.to_uppercase())))
+        let this = rt.current_this();
+        crate::generated::string_prototype_to_upper_case(rt, this, &[])
     });
     register_intrinsic_method(rt, host, "toLowerCase", 0, |rt, _args| {
-        let this = rt.current_this(); rt.require_object_coercible(&this)?;
-        Ok(Value::String(Rc::new(rt.to_string_strict(&this)?.to_lowercase())))
+        let this = rt.current_this();
+        crate::generated::string_prototype_to_lower_case(rt, this, &[])
     });
     register_intrinsic_method(rt, host, "toLocaleLowerCase", 0, |rt, _args| {
-        let this = rt.current_this(); rt.require_object_coercible(&this)?;
-        Ok(Value::String(Rc::new(rt.to_string_strict(&this)?.to_lowercase())))
+        let this = rt.current_this();
+        crate::generated::string_prototype_to_locale_lower_case(rt, this, &[])
     });
     register_intrinsic_method(rt, host, "toLocaleUpperCase", 0, |rt, _args| {
-        let this = rt.current_this(); rt.require_object_coercible(&this)?;
-        Ok(Value::String(Rc::new(rt.to_string_strict(&this)?.to_uppercase())))
+        let this = rt.current_this();
+        crate::generated::string_prototype_to_locale_upper_case(rt, this, &[])
     });
     register_intrinsic_method(rt, host, "trim", 0, |rt, _args| {
         let this = rt.current_this(); rt.require_object_coercible(&this)?;

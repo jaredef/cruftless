@@ -100,6 +100,10 @@ fn main() {
         ("String.prototype.charAt",     string_prototype::build_char_at(),      string_prototype::spec_steps_char_at()),
         ("String.prototype.charCodeAt", string_prototype::build_char_code_at(), string_prototype::spec_steps_char_code_at()),
         ("String.prototype.concat",     string_prototype::build_concat(),       string_prototype::spec_steps_concat()),
+        ("String.prototype.toLowerCase", string_prototype::build_to_lower_case(), string_prototype::spec_steps_to_lower_case()),
+        ("String.prototype.toUpperCase", string_prototype::build_to_upper_case(), string_prototype::spec_steps_to_upper_case()),
+        ("String.prototype.toLocaleLowerCase", string_prototype::build_to_locale_lower_case(), string_prototype::spec_steps_to_locale_lower_case()),
+        ("String.prototype.toLocaleUpperCase", string_prototype::build_to_locale_upper_case(), string_prototype::spec_steps_to_locale_upper_case()),
     ];
 
     let mut total_unexpected = 0;

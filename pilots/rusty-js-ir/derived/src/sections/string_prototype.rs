@@ -66,3 +66,77 @@ pub fn spec_steps_concat() -> Vec<SpecStepRecord> {
     vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["string_proto_concat_via"], throws: None,
         prose: "Let O be ? RequireObjectCoercible(this). Let S be ? ToString(O). For each arg, append ? ToString(arg). Return the joined String." }]
 }
+
+// ──────────────── §22.1.3.28 / §22.1.3.30 toLowerCase / toUpperCase ────────────────
+
+pub fn build_to_lower_case() -> IRFunction {
+    let body = vec![
+        Step { spec_step: "1".into(),
+            node: IRNode::Return(Expr::CallBuiltin {
+                name: "string_proto_to_lower_case_via",
+                args: vec![Expr::This],
+            }) },
+    ];
+    IRFunction { spec_section: "22.1.3.28".into(),
+        rust_name: "string_prototype_to_lower_case".into(),
+        title: "String.prototype.toLowerCase ( )".into(), body }
+}
+
+pub fn build_to_upper_case() -> IRFunction {
+    let body = vec![
+        Step { spec_step: "1".into(),
+            node: IRNode::Return(Expr::CallBuiltin {
+                name: "string_proto_to_upper_case_via",
+                args: vec![Expr::This],
+            }) },
+    ];
+    IRFunction { spec_section: "22.1.3.30".into(),
+        rust_name: "string_prototype_to_upper_case".into(),
+        title: "String.prototype.toUpperCase ( )".into(), body }
+}
+
+// toLocale{Lower,Upper}Case share the same Tier-1.10 simplification
+// (locale-insensitive; matches cruftless's pre-IR behavior).
+
+pub fn build_to_locale_lower_case() -> IRFunction {
+    let body = vec![
+        Step { spec_step: "1".into(),
+            node: IRNode::Return(Expr::CallBuiltin {
+                name: "string_proto_to_lower_case_via",
+                args: vec![Expr::This],
+            }) },
+    ];
+    IRFunction { spec_section: "22.1.3.26".into(),
+        rust_name: "string_prototype_to_locale_lower_case".into(),
+        title: "String.prototype.toLocaleLowerCase ( [ reserved1 [ , reserved2 ] ] )".into(), body }
+}
+
+pub fn build_to_locale_upper_case() -> IRFunction {
+    let body = vec![
+        Step { spec_step: "1".into(),
+            node: IRNode::Return(Expr::CallBuiltin {
+                name: "string_proto_to_upper_case_via",
+                args: vec![Expr::This],
+            }) },
+    ];
+    IRFunction { spec_section: "22.1.3.27".into(),
+        rust_name: "string_prototype_to_locale_upper_case".into(),
+        title: "String.prototype.toLocaleUpperCase ( [ reserved1 [ , reserved2 ] ] )".into(), body }
+}
+
+pub fn spec_steps_to_lower_case() -> Vec<SpecStepRecord> {
+    vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["string_proto_to_lower_case_via"], throws: None,
+        prose: "Let O be ? RequireObjectCoercible(this). Let S be ? ToString(O). Return the Unicode-lowercased value of S." }]
+}
+pub fn spec_steps_to_upper_case() -> Vec<SpecStepRecord> {
+    vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["string_proto_to_upper_case_via"], throws: None,
+        prose: "Let O be ? RequireObjectCoercible(this). Let S be ? ToString(O). Return the Unicode-uppercased value of S." }]
+}
+pub fn spec_steps_to_locale_lower_case() -> Vec<SpecStepRecord> {
+    vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["string_proto_to_lower_case_via"], throws: None,
+        prose: "Tier-1.10 simplification: defers to toLowerCase (locale-insensitive)." }]
+}
+pub fn spec_steps_to_locale_upper_case() -> Vec<SpecStepRecord> {
+    vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["string_proto_to_upper_case_via"], throws: None,
+        prose: "Tier-1.10 simplification: defers to toUpperCase (locale-insensitive)." }]
+}
