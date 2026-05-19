@@ -26,3 +26,4 @@ pub mod misc_static;                  // Math.{imul, fround, clz32}, Array.{isAr
 pub mod object_descriptors;           // Object.{defineProperty, defineProperties, getOwnPropertyDescriptor(s), create} + Object.prototype.{__defineGetter__, __defineSetter__, __lookupGetter__, __lookupSetter__}
 pub mod array_set_length;             // §10.4.2.1 — IR-EXT 66 first higher-resolution-IR spec-step section
 pub mod json_serialize;               // §25.5.2.4 SerializeJSONProperty — IR-EXT 68
+pub mod object_assign;                // §20.1.2.1 Object.assign per-source step — IR-EXT 69

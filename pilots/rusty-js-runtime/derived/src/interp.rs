@@ -2197,6 +2197,66 @@ impl Runtime {
         Ok(Value::String(std::rc::Rc::new(crate::intrinsics::json_quote_string_pub(&s))))
     }
 
+    /// IR-EXT 69: ECMA §7.1.18 ToObject — with TypeError on null/undefined.
+    /// Wraps Runtime::to_object as a CallBuiltin target for IR sections.
+    pub fn to_object_strict_via(&mut self, v: &Value) -> Result<Value, RuntimeError> {
+        match v {
+            Value::Undefined | Value::Null => Err(RuntimeError::TypeError(
+                "Cannot convert undefined or null to Object".into())),
+            _ => self.to_object(v),
+        }
+    }
+
+    /// IR-EXT 69: return an Array of the source's enumerable own
+    /// string-keyed property names (excluding internal __primitive__ and
+    /// well-known-symbol @@-prefixed keys). Used by Object.assign's
+    /// per-source walk.
+    pub fn own_enumerable_string_keys_via(&mut self, source: &Value) -> Result<Value, RuntimeError> {
+        let id = match source {
+            Value::Object(id) => *id,
+            _ => return Ok(Value::Object(self.alloc_object(crate::value::Object::new_array()))),
+        };
+        let keys: Vec<String> = {
+            let obj = self.obj(id);
+            obj.properties.iter()
+                .filter(|(k, d)| d.enumerable
+                                 && k.as_str() != "__primitive__"
+                                 && !k.as_str().starts_with("@@"))
+                .map(|(k, _)| k.as_str().to_string())
+                .collect()
+        };
+        let arr = self.alloc_object(crate::value::Object::new_array());
+        for (i, k) in keys.iter().enumerate() {
+            self.object_set(arr, i.to_string(), Value::String(std::rc::Rc::new(k.clone())));
+        }
+        self.object_set(arr, "length".into(), Value::Number(keys.len() as f64));
+        Ok(Value::Object(arr))
+    }
+
+    /// IR-EXT 69: Get(source, key) — invokes accessor getters if present.
+    /// Thin wrapper exposing read_property as a CallBuiltin target.
+    pub fn get_via(&mut self, source: &Value, key: &Value) -> Result<Value, RuntimeError> {
+        let id = match source {
+            Value::Object(id) => *id,
+            _ => return Ok(Value::Undefined),
+        };
+        let k = self.coerce_to_string(key)?;
+        self.read_property(id, &k)
+    }
+
+    /// IR-EXT 69: Set(target, key, value) — non-throwing assign that goes
+    /// through object_set's writable-check + accessor-setter dispatch.
+    pub fn set_via(&mut self, target: &Value, key: &Value, value: &Value) -> Result<Value, RuntimeError> {
+        let id = match target {
+            Value::Object(id) => *id,
+            _ => return Err(RuntimeError::TypeError(
+                "set_via: target is not an Object".into())),
+        };
+        let k = self.coerce_to_string(key)?;
+        self.object_set(id, k, value.clone());
+        Ok(Value::Undefined)
+    }
+
     /// IR-EXT 68: §25.5.2.4 step 9 — finite Number → ToString(n); else "null".
     pub fn json_format_number_via(&mut self, value: &Value) -> Result<Value, RuntimeError> {
         let n = match value { Value::Number(n) => *n, _ => return Err(RuntimeError::TypeError(
@@ -3973,35 +4033,17 @@ impl Runtime {
     /// enumerable own props from each source to target, dispatching
     /// accessor getters. Target must be coercible (throws otherwise).
     pub fn object_assign_via(&mut self, target: &Value, sources: &[Value]) -> Result<Value, RuntimeError> {
-        let target_id = match target {
-            Value::Object(id) => *id,
-            Value::Undefined | Value::Null => return Err(RuntimeError::TypeError(
-                "Object.assign: target cannot be undefined or null".into())),
-            _ => {
-                let boxed = self.to_object(target)?;
-                if let Value::Object(id) = boxed { id }
-                else { return Err(RuntimeError::TypeError(
-                    "Object.assign: target must be coercible to Object".into())); }
-            }
-        };
+        // §20.1.2.1 step 1: to = ? ToObject(target). Routes through the
+        // strict variant which throws on null/undefined.
+        let to = self.to_object_strict_via(target)?;
+        // §20.1.2.1 step 4: for each source in sources, dispatch the
+        // per-source IR section (§20.1.2.1 step 4) which handles
+        // null/undefined skip, ToObject, key enumeration, Get/Set copy.
         for src in sources {
-            if let Value::Object(sid) = src {
-                let entries: Vec<(String, Option<Value>, bool)> = self.obj(*sid).properties.iter()
-                    .filter(|(_, d)| d.enumerable)
-                    .map(|(k, d)| (k.to_string_content(), d.getter.clone(), d.getter.is_none()))
-                    .collect();
-                for (k, getter_opt, is_data) in entries {
-                    let v = if let Some(getter) = getter_opt {
-                        self.call_function(getter, Value::Object(*sid), Vec::new())?
-                    } else if is_data {
-                        self.object_get(*sid, &k)
-                    } else { continue };
-                    self.object_set(target_id, k, v);
-                }
-            }
-            // null/undefined sources are silently ignored per spec step 4.b.
+            crate::generated::object_assign_source_into(self, Value::Undefined,
+                &[to.clone(), src.clone()])?;
         }
-        Ok(Value::Object(target_id))
+        Ok(to)
     }
 
     /// Object.getOwnPropertyNames(O) per ECMA §20.1.2.10 — returns Array

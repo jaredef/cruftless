@@ -10,6 +10,7 @@ use rusty_js_ir::sections::misc_static as misc;
 use rusty_js_ir::sections::object_descriptors as desc;
 use rusty_js_ir::sections::array_set_length;
 use rusty_js_ir::sections::json_serialize;
+use rusty_js_ir::sections::object_assign as obj_assign;
 use rusty_js_ir::sections::{
     array_prototype_find as find, array_prototype_index_search as index_search,
     array_prototype_iteration as iter, array_prototype_map,
@@ -162,6 +163,7 @@ fn main() {
         desc::build_proto_lookup_setter(),
         array_set_length::build_array_set_length(),
         json_serialize::build_json_serialize_property(),
+        obj_assign::build_object_assign_source_into(),
         object_proto_ops::build_get_prototype_of(),
         object_proto_ops::build_set_prototype_of(),
         object_proto_ops::build_is_extensible(),
