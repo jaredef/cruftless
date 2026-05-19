@@ -560,6 +560,109 @@ impl Runtime {
         Ok(Value::String(std::rc::Rc::new(s)))
     }
 
+    fn date_this_and_ms(&mut self) -> Option<(crate::value::ObjectRef, f64)> {
+        let id = match self.current_this() { Value::Object(id) => id, _ => return None };
+        match self.object_get(id, "__date_ms") { Value::Number(n) => Some((id, n)), _ => None }
+    }
+
+    /// Date.prototype.setTime(v).
+    pub fn date_proto_set_time_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let id = match self.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
+        let v = args.first().map(crate::abstract_ops::to_number).unwrap_or(f64::NAN);
+        self.object_set(id, "__date_ms".into(), Value::Number(v));
+        Ok(Value::Number(v))
+    }
+
+    /// Date.prototype.setHours(h, mi?, se?, mss?).
+    pub fn date_proto_set_hours_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let (id, ms) = match self.date_this_and_ms() { Some(p) => p, None => return Ok(Value::Number(f64::NAN)) };
+        let (y, mo, d) = crate::intrinsics::date_components(ms);
+        let cur_mi = (ms / 60_000.0).floor() as i64 % 60;
+        let cur_se = (ms / 1000.0).floor() as i64 % 60;
+        let cur_mss = ms as i64 % 1000;
+        let h = args.first().map(crate::abstract_ops::to_number).unwrap_or(0.0) as i64;
+        let mi = args.get(1).map(crate::abstract_ops::to_number).unwrap_or(cur_mi as f64) as i64;
+        let se = args.get(2).map(crate::abstract_ops::to_number).unwrap_or(cur_se as f64) as i64;
+        let mss = args.get(3).map(crate::abstract_ops::to_number).unwrap_or(cur_mss as f64) as i64;
+        let new_ms = (crate::intrinsics::ymd_to_ms(y, mo, d) + h * 3_600_000 + mi * 60_000 + se * 1000 + mss) as f64;
+        self.object_set(id, "__date_ms".into(), Value::Number(new_ms));
+        Ok(Value::Number(new_ms))
+    }
+
+    /// Date.prototype.setMinutes(mi, se?, mss?).
+    pub fn date_proto_set_minutes_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let (id, ms) = match self.date_this_and_ms() { Some(p) => p, None => return Ok(Value::Number(f64::NAN)) };
+        let (y, mo, d) = crate::intrinsics::date_components(ms);
+        let cur_h = (ms / 3_600_000.0).floor() as i64 % 24;
+        let cur_se = (ms / 1000.0).floor() as i64 % 60;
+        let cur_mss = ms as i64 % 1000;
+        let mi = args.first().map(crate::abstract_ops::to_number).unwrap_or(0.0) as i64;
+        let se = args.get(1).map(crate::abstract_ops::to_number).unwrap_or(cur_se as f64) as i64;
+        let mss = args.get(2).map(crate::abstract_ops::to_number).unwrap_or(cur_mss as f64) as i64;
+        let new_ms = (crate::intrinsics::ymd_to_ms(y, mo, d) + cur_h * 3_600_000 + mi * 60_000 + se * 1000 + mss) as f64;
+        self.object_set(id, "__date_ms".into(), Value::Number(new_ms));
+        Ok(Value::Number(new_ms))
+    }
+
+    /// Date.prototype.setSeconds(se, mss?).
+    pub fn date_proto_set_seconds_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let (id, ms) = match self.date_this_and_ms() { Some(p) => p, None => return Ok(Value::Number(f64::NAN)) };
+        let (y, mo, d) = crate::intrinsics::date_components(ms);
+        let cur_h = (ms / 3_600_000.0).floor() as i64 % 24;
+        let cur_mi = (ms / 60_000.0).floor() as i64 % 60;
+        let cur_mss = ms as i64 % 1000;
+        let se = args.first().map(crate::abstract_ops::to_number).unwrap_or(0.0) as i64;
+        let mss = args.get(1).map(crate::abstract_ops::to_number).unwrap_or(cur_mss as f64) as i64;
+        let new_ms = (crate::intrinsics::ymd_to_ms(y, mo, d) + cur_h * 3_600_000 + cur_mi * 60_000 + se * 1000 + mss) as f64;
+        self.object_set(id, "__date_ms".into(), Value::Number(new_ms));
+        Ok(Value::Number(new_ms))
+    }
+
+    /// Date.prototype.setMilliseconds(mss).
+    pub fn date_proto_set_milliseconds_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let (id, ms) = match self.date_this_and_ms() { Some(p) => p, None => return Ok(Value::Number(f64::NAN)) };
+        let mss = args.first().map(crate::abstract_ops::to_number).unwrap_or(0.0) as i64;
+        let base = (ms as i64 / 1000) * 1000;
+        let new_ms = (base + mss) as f64;
+        self.object_set(id, "__date_ms".into(), Value::Number(new_ms));
+        Ok(Value::Number(new_ms))
+    }
+
+    /// Date.prototype.setDate(d).
+    pub fn date_proto_set_date_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let (id, ms) = match self.date_this_and_ms() { Some(p) => p, None => return Ok(Value::Number(f64::NAN)) };
+        let (y, mo, _d) = crate::intrinsics::date_components(ms);
+        let d = args.first().map(crate::abstract_ops::to_number).unwrap_or(1.0) as i64;
+        let tod = ms as i64 - (ms as i64 / 86_400_000) * 86_400_000;
+        let new_ms = (crate::intrinsics::ymd_to_ms(y, mo, d) + tod) as f64;
+        self.object_set(id, "__date_ms".into(), Value::Number(new_ms));
+        Ok(Value::Number(new_ms))
+    }
+
+    /// Date.prototype.setMonth(mo, d?).
+    pub fn date_proto_set_month_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let (id, ms) = match self.date_this_and_ms() { Some(p) => p, None => return Ok(Value::Number(f64::NAN)) };
+        let (y, _mo, d) = crate::intrinsics::date_components(ms);
+        let mo = args.first().map(crate::abstract_ops::to_number).unwrap_or(0.0) as i64;
+        let tod = ms as i64 - (ms as i64 / 86_400_000) * 86_400_000;
+        let new_ms = (crate::intrinsics::ymd_to_ms(y, mo, d) + tod) as f64;
+        self.object_set(id, "__date_ms".into(), Value::Number(new_ms));
+        Ok(Value::Number(new_ms))
+    }
+
+    /// Date.prototype.setFullYear(y, mo?, d?).
+    pub fn date_proto_set_full_year_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let (id, ms) = match self.date_this_and_ms() { Some(p) => p, None => return Ok(Value::Number(f64::NAN)) };
+        let (_y, mo, d) = crate::intrinsics::date_components(ms);
+        let y = args.first().map(crate::abstract_ops::to_number).unwrap_or(1970.0) as i64;
+        let mo2 = args.get(1).map(crate::abstract_ops::to_number).unwrap_or(mo as f64) as i64;
+        let d2 = args.get(2).map(crate::abstract_ops::to_number).unwrap_or(d as f64) as i64;
+        let tod = ms as i64 - (ms as i64 / 86_400_000) * 86_400_000;
+        let new_ms = (crate::intrinsics::ymd_to_ms(y, mo2, d2) + tod) as f64;
+        self.object_set(id, "__date_ms".into(), Value::Number(new_ms));
+        Ok(Value::Number(new_ms))
+    }
+
     /// Date.prototype.toString() (v1: ISO-like YYYY-MM-DDT00:00:00Z).
     pub fn date_proto_to_string_via(&mut self) -> Result<Value, RuntimeError> {
         let this_id = match self.current_this() { Value::Object(id) => id, _ => return Ok(Value::String(std::rc::Rc::new("Invalid Date".into()))) };

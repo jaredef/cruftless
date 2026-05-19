@@ -3207,114 +3207,22 @@ impl Runtime {
         register_intrinsic_method(self, proto, "getUTCMilliseconds", 1, |rt, args| crate::generated::date_prototype_get_milliseconds(rt, rt.current_this(), args));
         // setUTC* family. Each replaces the named component(s) in the
         // current ms and returns the new ms per ECMA §21.4.4.x.
-        register_intrinsic_method(self, proto, "setUTCHours", 1, |rt, args| {
-            let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
-            let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::Number(f64::NAN)) };
-            let (y, mo, d) = date_components(ms);
-            let cur_mi = (ms / 60_000.0).floor() as i64 % 60;
-            let cur_se = (ms / 1000.0).floor() as i64 % 60;
-            let cur_mss = ms as i64 % 1000;
-            let h = args.first().map(crate::abstract_ops::to_number).unwrap_or(0.0) as i64;
-            let mi = args.get(1).map(crate::abstract_ops::to_number).unwrap_or(cur_mi as f64) as i64;
-            let se = args.get(2).map(crate::abstract_ops::to_number).unwrap_or(cur_se as f64) as i64;
-            let mss = args.get(3).map(crate::abstract_ops::to_number).unwrap_or(cur_mss as f64) as i64;
-            let new_ms = (ymd_to_ms(y, mo, d) + h * 3_600_000 + mi * 60_000 + se * 1000 + mss) as f64;
-            rt.object_set(this_id, "__date_ms".into(), Value::Number(new_ms));
-            Ok(Value::Number(new_ms))
-        });
-        register_intrinsic_method(self, proto, "setUTCMinutes", 1, |rt, args| {
-            let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
-            let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::Number(f64::NAN)) };
-            let (y, mo, d) = date_components(ms);
-            let cur_h = (ms / 3_600_000.0).floor() as i64 % 24;
-            let cur_se = (ms / 1000.0).floor() as i64 % 60;
-            let cur_mss = ms as i64 % 1000;
-            let mi = args.first().map(crate::abstract_ops::to_number).unwrap_or(0.0) as i64;
-            let se = args.get(1).map(crate::abstract_ops::to_number).unwrap_or(cur_se as f64) as i64;
-            let mss = args.get(2).map(crate::abstract_ops::to_number).unwrap_or(cur_mss as f64) as i64;
-            let new_ms = (ymd_to_ms(y, mo, d) + cur_h * 3_600_000 + mi * 60_000 + se * 1000 + mss) as f64;
-            rt.object_set(this_id, "__date_ms".into(), Value::Number(new_ms));
-            Ok(Value::Number(new_ms))
-        });
-        register_intrinsic_method(self, proto, "setUTCSeconds", 1, |rt, args| {
-            let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
-            let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::Number(f64::NAN)) };
-            let (y, mo, d) = date_components(ms);
-            let cur_h = (ms / 3_600_000.0).floor() as i64 % 24;
-            let cur_mi = (ms / 60_000.0).floor() as i64 % 60;
-            let cur_mss = ms as i64 % 1000;
-            let se = args.first().map(crate::abstract_ops::to_number).unwrap_or(0.0) as i64;
-            let mss = args.get(1).map(crate::abstract_ops::to_number).unwrap_or(cur_mss as f64) as i64;
-            let new_ms = (ymd_to_ms(y, mo, d) + cur_h * 3_600_000 + cur_mi * 60_000 + se * 1000 + mss) as f64;
-            rt.object_set(this_id, "__date_ms".into(), Value::Number(new_ms));
-            Ok(Value::Number(new_ms))
-        });
-        register_intrinsic_method(self, proto, "setUTCMilliseconds", 1, |rt, args| {
-            let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
-            let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::Number(f64::NAN)) };
-            let mss = args.first().map(crate::abstract_ops::to_number).unwrap_or(0.0) as i64;
-            let base = (ms as i64 / 1000) * 1000;
-            let new_ms = (base + mss) as f64;
-            rt.object_set(this_id, "__date_ms".into(), Value::Number(new_ms));
-            Ok(Value::Number(new_ms))
-        });
-        register_intrinsic_method(self, proto, "setUTCDate", 1, |rt, args| {
-            let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
-            let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::Number(f64::NAN)) };
-            let (y, mo, _d) = date_components(ms);
-            let d = args.first().map(crate::abstract_ops::to_number).unwrap_or(1.0) as i64;
-            let tod = ms as i64 - (ms as i64 / 86_400_000) * 86_400_000;
-            let new_ms = (ymd_to_ms(y, mo, d) + tod) as f64;
-            rt.object_set(this_id, "__date_ms".into(), Value::Number(new_ms));
-            Ok(Value::Number(new_ms))
-        });
-        register_intrinsic_method(self, proto, "setUTCMonth", 1, |rt, args| {
-            let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
-            let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::Number(f64::NAN)) };
-            let (y, _mo, d) = date_components(ms);
-            let mo = args.first().map(crate::abstract_ops::to_number).unwrap_or(0.0) as i64;
-            let tod = ms as i64 - (ms as i64 / 86_400_000) * 86_400_000;
-            let new_ms = (ymd_to_ms(y, mo, d) + tod) as f64;
-            rt.object_set(this_id, "__date_ms".into(), Value::Number(new_ms));
-            Ok(Value::Number(new_ms))
-        });
-        register_intrinsic_method(self, proto, "setUTCFullYear", 1, |rt, args| {
-            let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
-            let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::Number(f64::NAN)) };
-            let (_y, mo, d) = date_components(ms);
-            let y = args.first().map(crate::abstract_ops::to_number).unwrap_or(1970.0) as i64;
-            let mo2 = args.get(1).map(crate::abstract_ops::to_number).unwrap_or(mo as f64) as i64;
-            let d2 = args.get(2).map(crate::abstract_ops::to_number).unwrap_or(d as f64) as i64;
-            let tod = ms as i64 - (ms as i64 / 86_400_000) * 86_400_000;
-            let new_ms = (ymd_to_ms(y, mo2, d2) + tod) as f64;
-            rt.object_set(this_id, "__date_ms".into(), Value::Number(new_ms));
-            Ok(Value::Number(new_ms))
-        });
-        register_intrinsic_method(self, proto, "setTime", 1, |rt, args| {
-            let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
-            let v = args.first().map(crate::abstract_ops::to_number).unwrap_or(f64::NAN);
-            rt.object_set(this_id, "__date_ms".into(), Value::Number(v));
-            Ok(Value::Number(v))
-        });
-        // Local-time set* aliases (local == UTC since getTimezoneOffset == 0).
-        for (name, alias) in [
-            ("setHours", "setUTCHours"),
-            ("setMinutes", "setUTCMinutes"),
-            ("setSeconds", "setUTCSeconds"),
-            ("setMilliseconds", "setUTCMilliseconds"),
-            ("setDate", "setUTCDate"),
-            ("setMonth", "setUTCMonth"),
-            ("setFullYear", "setUTCFullYear"),
-        ] {
-            let target_key = alias.to_string();
-            let n = name.to_string();
-            register_method(self, proto, &n, move |rt, args| {
-                let this = rt.current_this();
-                let this_id = match this { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
-                let f = rt.object_get(this_id, &target_key);
-                rt.call_function(f, Value::Object(this_id), args.to_vec())
-            });
-        }
+        // E43: setUTC* + set* family routed through IR (cruftless treats __date_ms as UTC).
+        register_intrinsic_method(self, proto, "setTime",            1, |rt, args| crate::generated::date_prototype_set_time(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "setUTCHours",        1, |rt, args| crate::generated::date_prototype_set_hours(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "setUTCMinutes",      1, |rt, args| crate::generated::date_prototype_set_minutes(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "setUTCSeconds",      1, |rt, args| crate::generated::date_prototype_set_seconds(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "setUTCMilliseconds", 1, |rt, args| crate::generated::date_prototype_set_milliseconds(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "setUTCDate",         1, |rt, args| crate::generated::date_prototype_set_date(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "setUTCMonth",        1, |rt, args| crate::generated::date_prototype_set_month(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "setUTCFullYear",     1, |rt, args| crate::generated::date_prototype_set_full_year(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "setHours",        1, |rt, args| crate::generated::date_prototype_set_hours(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "setMinutes",      1, |rt, args| crate::generated::date_prototype_set_minutes(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "setSeconds",      1, |rt, args| crate::generated::date_prototype_set_seconds(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "setMilliseconds", 1, |rt, args| crate::generated::date_prototype_set_milliseconds(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "setDate",         1, |rt, args| crate::generated::date_prototype_set_date(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "setMonth",        1, |rt, args| crate::generated::date_prototype_set_month(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "setFullYear",     1, |rt, args| crate::generated::date_prototype_set_full_year(rt, rt.current_this(), args));
         register_intrinsic_method(self, proto, "toISOString", 1, |rt, args| {
             crate::generated::date_prototype_to_iso_string(rt, rt.current_this(), args)
         });
@@ -4939,7 +4847,7 @@ pub(crate) fn date_components(ms: f64) -> (i64, i64, i64) {
 }
 
 /// Build epoch-ms from (year, month-0-based, day-1-based).
-fn ymd_to_ms(year: i64, month: i64, day: i64) -> i64 {
+pub(crate) fn ymd_to_ms(year: i64, month: i64, day: i64) -> i64 {
     let y = if month < 2 { year - 1 } else { year };
     let m = if month < 2 { (month + 9) as i64 } else { (month - 2) as i64 };
     let era = if y >= 0 { y } else { y - 399 } / 400;

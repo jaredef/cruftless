@@ -21,6 +21,24 @@ fn nullary_section(spec: &str, rust_name: &str, title: &str, via: &'static str) 
     }
 }
 
+pub fn build_date_set_time()         -> IRFunction { variadic_section("21.4.4.27", "date_prototype_set_time",         "Date.prototype.setTime ( v )",                  "date_proto_set_time_via") }
+pub fn build_date_set_hours()        -> IRFunction { variadic_section("21.4.4.34", "date_prototype_set_hours",        "Date.prototype.setHours ( h, mi, se, mss )",     "date_proto_set_hours_via") }
+pub fn build_date_set_minutes()      -> IRFunction { variadic_section("21.4.4.24", "date_prototype_set_minutes",      "Date.prototype.setMinutes ( mi, se, mss )",      "date_proto_set_minutes_via") }
+pub fn build_date_set_seconds()      -> IRFunction { variadic_section("21.4.4.26", "date_prototype_set_seconds",      "Date.prototype.setSeconds ( se, mss )",          "date_proto_set_seconds_via") }
+pub fn build_date_set_milliseconds() -> IRFunction { variadic_section("21.4.4.23", "date_prototype_set_milliseconds", "Date.prototype.setMilliseconds ( mss )",         "date_proto_set_milliseconds_via") }
+pub fn build_date_set_date()         -> IRFunction { variadic_section("21.4.4.20", "date_prototype_set_date",         "Date.prototype.setDate ( d )",                   "date_proto_set_date_via") }
+pub fn build_date_set_month()        -> IRFunction { variadic_section("21.4.4.25", "date_prototype_set_month",        "Date.prototype.setMonth ( mo, d )",              "date_proto_set_month_via") }
+pub fn build_date_set_full_year()    -> IRFunction { variadic_section("21.4.4.21", "date_prototype_set_full_year",    "Date.prototype.setFullYear ( y, mo, d )",        "date_proto_set_full_year_via") }
+
+pub fn spec_steps_date_set_time()         -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["date_proto_set_time_via"],         throws: None, prose: "Replace [[DateValue]] with the coerced argument and return it." }] }
+pub fn spec_steps_date_set_hours()        -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["date_proto_set_hours_via"],        throws: None, prose: "Recompute [[DateValue]] from current year/month/day plus the given hour/min/sec/ms (omitted components retained)." }] }
+pub fn spec_steps_date_set_minutes()      -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["date_proto_set_minutes_via"],      throws: None, prose: "Recompute [[DateValue]] keeping current hour/day, replacing min/sec/ms." }] }
+pub fn spec_steps_date_set_seconds()      -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["date_proto_set_seconds_via"],      throws: None, prose: "Recompute [[DateValue]] keeping current hour/min, replacing sec/ms." }] }
+pub fn spec_steps_date_set_milliseconds() -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["date_proto_set_milliseconds_via"], throws: None, prose: "Replace only the ms component of [[DateValue]]." }] }
+pub fn spec_steps_date_set_date()         -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["date_proto_set_date_via"],         throws: None, prose: "Recompute [[DateValue]] keeping current year/month/time-of-day, replacing day." }] }
+pub fn spec_steps_date_set_month()        -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["date_proto_set_month_via"],        throws: None, prose: "Recompute [[DateValue]] keeping current year/day/time-of-day, replacing month." }] }
+pub fn spec_steps_date_set_full_year()    -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["date_proto_set_full_year_via"],    throws: None, prose: "Recompute [[DateValue]] replacing year (and optionally month/day)." }] }
+
 pub fn build_date_to_string()        -> IRFunction { nullary_section("21.4.4.41a", "date_prototype_to_string",        "Date.prototype.toString ( )",        "date_proto_to_string_via") }
 pub fn build_date_to_json()          -> IRFunction { nullary_section("21.4.4.37",  "date_prototype_to_json",          "Date.prototype.toJSON ( )",          "date_proto_to_json_via") }
 pub fn build_date_get_full_year()    -> IRFunction { nullary_section("21.4.4.4",   "date_prototype_get_full_year",    "Date.prototype.getFullYear ( )",     "date_proto_get_full_year_via") }
