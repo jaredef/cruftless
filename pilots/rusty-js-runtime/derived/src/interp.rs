@@ -1872,10 +1872,7 @@ impl Runtime {
 
     /// Map.prototype.clear().
     pub fn map_proto_clear_via(&mut self) -> Result<Value, RuntimeError> {
-        let this = match self.current_this() {
-            Value::Object(id) => id,
-            _ => return Err(RuntimeError::TypeError("Map.prototype.clear: this is not a Map object".into())),
-        };
+        let (this, _storage) = self.map_this_and_storage("clear")?;
         let fresh = self.alloc_object(crate::value::Object::new_ordinary());
         self.object_set(this, "__map_data".into(), Value::Object(fresh));
         self.object_set(this, "size".into(), Value::Number(0.0));
@@ -1897,14 +1894,7 @@ impl Runtime {
 
     /// Map.prototype.values() — v1 eager-collect.
     pub fn map_proto_values_via(&mut self) -> Result<Value, RuntimeError> {
-        let this = match self.current_this() {
-            Value::Object(id) => id,
-            _ => return Err(RuntimeError::TypeError("Map.prototype.values: this is not a Map object".into())),
-        };
-        let storage = match self.object_get(this, "__map_data") {
-            Value::Object(id) => id,
-            _ => return Ok(Value::Object(self.alloc_object(crate::value::Object::new_array()))),
-        };
+        let (_this, storage) = self.map_this_and_storage("values")?;
         let vs: Vec<Value> = self.obj(storage).properties.iter().map(|(_k, d)| d.value.clone()).collect();
         let arr = self.alloc_object(crate::value::Object::new_array());
         for (i, v) in vs.into_iter().enumerate() {
@@ -1917,14 +1907,7 @@ impl Runtime {
 
     /// Map.prototype.keys() — v1 eager-collect.
     pub fn map_proto_keys_via(&mut self) -> Result<Value, RuntimeError> {
-        let this = match self.current_this() {
-            Value::Object(id) => id,
-            _ => return Err(RuntimeError::TypeError("Map.prototype.keys: this is not a Map object".into())),
-        };
-        let storage = match self.object_get(this, "__map_data") {
-            Value::Object(id) => id,
-            _ => return Ok(Value::Object(self.alloc_object(crate::value::Object::new_array()))),
-        };
+        let (_this, storage) = self.map_this_and_storage("keys")?;
         let ks: Vec<String> = self.obj(storage).string_key_clones().collect();
         let arr = self.alloc_object(crate::value::Object::new_array());
         for (i, k) in ks.into_iter().enumerate() {
@@ -1937,14 +1920,7 @@ impl Runtime {
 
     /// Map.prototype.entries() — v1 eager-collect array-of-pairs.
     pub fn map_proto_entries_via(&mut self) -> Result<Value, RuntimeError> {
-        let this = match self.current_this() {
-            Value::Object(id) => id,
-            _ => return Err(RuntimeError::TypeError("Map.prototype.entries: this is not a Map object".into())),
-        };
-        let storage = match self.object_get(this, "__map_data") {
-            Value::Object(id) => id,
-            _ => return Ok(Value::Object(self.alloc_object(crate::value::Object::new_array()))),
-        };
+        let (_this, storage) = self.map_this_and_storage("entries")?;
         let pairs: Vec<(String, Value)> = self.obj(storage).properties.iter()
             .map(|(k, d)| (k.to_string_content(), d.value.clone())).collect();
         let arr = self.alloc_object(crate::value::Object::new_array());
