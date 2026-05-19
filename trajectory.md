@@ -2117,3 +2117,114 @@ The remaining Array + Object residuals decompose into many small clusters (per-m
 The conjecture's downstream prediction (closing test262 → closing npm parity) remains testable via the next canonical sweep. Predicted lift over 78.7% baseline: small-to-moderate (the P61 stretch's structural fixes are spec-correctness gains that don't directly affect the typical npm-package module-init shape probe, but indirectly affect packages that depend on descriptor enforcement or proper TypeError instanceof).
 
 Pin-Art tag count: ~233 (EXT 16) + 3 (P61.E7→E9) = ~236 substrate moves committed.
+
+
+## RESUME VECTOR EXTENSION 18 — 2026-05-18 late night / 2026-05-19 (P61.E17→E21 + P62.E1→E14; descriptor-shape + abstract-ops substrate stretch; three test262 chapters lifted)
+
+### Headline
+
+Nineteen-commit substrate stretch across three nights, two new seed-tier fold-backs (§A8.28 descriptor-shape discipline, §A8.29 abstract-ops duality). Slice-level test262 lifts of 15–50 pp across Object.\*, Array.prototype.\*, and String.prototype.\*. Zero corpus regression on the 43-package exemplar basket.
+
+### Commit table
+
+| commit | tag | recognition | yield |
+|---|---|---|---|
+| `ac94b21d` | Ω.5.P61.E17.number-to-string-large | NumberToString for integers ≥ 2^53 + exponential branch at ≥1e21 per §6.1.6.1.20. | Object.gOPD +3 |
+| `0902a28c` | Ω.5.P61.E18.small-exp-topropertykey | Exponential <1e-6 + ToPropertyKey via coerce_to_string in Object.gOPD/hasOwn. | Object.gOPD +8 |
+| `04f912f6` | Ω.5.P61.E19.constructor-backlinks-nonenum | ctor.prototype.constructor non-enumerable per §10.2.4 (37 sites). | Object.gOPD +15 |
+| `a7ced7eb` | Ω.5.P61.E20.ctor-prototype-frozen | Built-in ctor.prototype { w:false, e:false, c:false } per §10.2.4 + §20.x (47 sites via new set_own_frozen helper). | Object.gOPD +14 |
+| `47bdddbc` | Ω.5.P61.E21.array-tostring-string-coerce | Array.prototype.toString delegates to join; String() ctor routes Object args through coerce_to_string. | Object.gOPD +2 |
+| `52c244a3` | Ω.5.P62.E1.primitive-wrappers | new Number/String/Boolean produce exotic wrappers with __primitive__ slot (modeling [[NumberData]]/[[StringData]]/[[BooleanData]]); proto methods unwrap via rt.unwrap_primitive. | Object.gOPD +6 |
+| `31d99ca1` | Ω.5.P62.E2.register-method-nonenum | register_method default flipped to non-enumerable + non-constructor (retrofits ~420 host install sites). | Object.gOPD +15 |
+| `528b2fe1` | Ω.5.P62.E3.constants-frozen | Math.* + Number.* namespace constants frozen per §21.1.2 + §21.3.1; added missing Math.SQRT1_2. | Object.gOPD +13 |
+| `303ebf6d` | Ω.5.P62.E4.thisarg-tostringtag | Array.prototype.* thisArg propagation (10 sites); Math/JSON Symbol.toStringTag + Object.prototype.toString reads it. | Array.map +25 |
+| `391ed7fa` | Ω.5.P62.E5+E6.iscallable-tolength | IsCallable guards on Array.prototype callbacks (12 sites); ToLength in array_length per §7.1.20. | Array.map +11 |
+| `fcb672df` | Ω.5.P62.E7.user-fn-prototype-writable | User-function .prototype writable per §10.2.4 (latent regression from P61.E20 collateral; Con.prototype = X silently no-op'd). | Array.map +8 |
+| `069e7c86` | Ω.5.P62.E8.array-length-getter | array_length reads through read_property so accessor `length` getters dispatch. | Array.map +5 |
+| `43dd10aa` | Ω.5.P62.E9.coerce-to-number | rt.coerce_to_number(&v) — Object → valueOf/toString dispatch per §7.1.4 + §7.1.1.1 OrdinaryToPrimitive. | Array.map +4 |
+| `026f2fd6` | Ω.5.P62.E10.delete-honors-configurable | Op::DeleteProp / DeleteIndex respect configurable:false per §10.1.10. | Object.freeze +22 |
+| `ea3fa539` | Ω.5.P62.E11.create-topropertydescriptor | Object.create ToPropertyDescriptor validation (§6.2.5.5) + read_property dispatch on descriptor reads. | Object.create +81 |
+| `d96b9046` | Ω.5.P62.E12.defineproperty-getset-callable | Object.defineProperty get/set must be callable or undefined per §6.2.5.5 steps 5/7. | Object.defineProperty +18 |
+| `53f48072` | Ω.5.P62.E13.string-methods-strict | String.prototype.{includes,startsWith,endsWith} spec-compliance: require_object_coercible + to_string_strict + is_regexp_like. | String.includes/startsWith/endsWith +27 |
+| `2a193014` | Ω.5.P62.E14.string-methods-strict-2 | Same pattern applied to slice/substring/substr/indexOf/lastIndexOf. | String.slice/substring/indexOf/lastIndexOf +50 |
+
+### Substrate helpers introduced
+
+Six new runtime-tier helpers, each amortizing across many consumer sites per §A8.25:
+
+| helper | site | consumers |
+|---|---|---|
+| `Object::set_own_frozen` | value.rs:227 (P61.E20) | 47 built-in ctor.prototype installs + 8 namespace constant sites |
+| `rt.unwrap_primitive(&v)` | interp.rs (P62.E1) | Number/String/Boolean.prototype.{toString,valueOf,@@iterator} |
+| `rt.is_callable(&v)` | interp.rs:223 (P62.E5) | 12 Array.prototype callback guards + 4 Object.create/defineProperty get/set guards |
+| `rt.coerce_to_number(&v)` | interp.rs:300 (P62.E9) | array_length + 8 String.prototype position-arg coercion sites |
+| `rt.to_string_strict(&v)` | interp.rs:283 (P62.E13) | 8 String.prototype methods (this + searchString coercion) |
+| `rt.require_object_coercible(&v)` | interp.rs (P62.E13) | 8 String.prototype methods (RequireObjectCoercible guard) |
+
+The §A8.25 pattern (one substrate-introduction round + N closure rounds) recurred six times in this stretch.
+
+### Test262 slice numbers post-stretch
+
+| slice | baseline | post-stretch | yield |
+|---|---|---|---|
+| Object.getOwnPropertyDescriptor | 69.0% (214/310) | 92.9% (288/310) | +74 (+23.9 pp) |
+| Object.create | 68.1% (218/320) | 93.4% (299/320) | +81 (+25.3 pp) |
+| Object.freeze | 47.1% (25/53) | 88.6% (47/53) | +22 (+41.5 pp) |
+| Object.defineProperty | 63.1% (713/1131) | 64.6% (731/1131) | +18 (+1.5 pp; long tail) |
+| Array.prototype.map | 56.9% (123/216) | 81.4% (176/216) | +53 (+24.5 pp) |
+| Array.prototype.forEach | (untouched) | 88.9% (169/190) | sibling amortization |
+| Array.prototype.filter | (untouched) | 85.5% (207/242) | sibling amortization |
+| Array.prototype.some | (untouched) | 89.4% (196/219) | sibling amortization |
+| String.prototype.includes | 44.4% | 77.8% | +9 (+33 pp) |
+| String.prototype.startsWith | 38.0% | 81.0% | +9 (+43 pp) |
+| String.prototype.endsWith | 44.4% | 77.8% | +9 (+33 pp) |
+| String.prototype.slice | 55.2% | 92.1% | +14 (+37 pp) |
+| String.prototype.substring | 41.3% | 93.4% | +24 (+52 pp) |
+| String.prototype.indexOf | 42.5% | 68.0% | +12 (+26 pp) |
+| String.prototype.lastIndexOf | ~50% | 92.0% | +12 |
+
+### Corpus parity
+
+43-package exemplar basket (parity-fast): zero status flips against the committed baseline. The descriptor-shape tightening is spec-correct but doesn't affect the typical npm module-init shape probe. As predicted at EXT 17, the conformance lift is most visible at the test262 tier — the package tier shifts only when a package is structurally relying on a previously-broken invariant.
+
+### Seed fold-back: §A8.28 + §A8.29
+
+Two new apparatus-tier disciplines lifted from the empirical pattern:
+
+- **§A8.28 — Descriptor-shape discipline at every property-install site.** Three install patterns (frozen, non-enumerable internal, user-default) by descriptor target; the language-default fallthrough (`object_set` for built-ins) is a bug surface. The §A8.28 rule names which helper to reach for per spec-target. Composes with §A8.26 (three-stratum bilateral boundary) by naming the descriptor stratum within the per-object boundary.
+
+- **§A8.29 — ToString / ToNumber substrate duality at the runtime boundary.** ECMA abstract ops have two valid implementation surfaces (pure-primitive in abstract_ops.rs vs dispatching on `&mut Runtime`). Four new dispatching helpers introduced. The discipline names which form to reach for at any built-in method site. Composes with §A8.28 across temporal axes (install vs runtime).
+
+Both disciplines are now operational and the pattern of using helper-introduction-then-closure-amortization rounds is the canonical move shape for the remaining test262 chapters.
+
+### Conjecture status
+
+P62.E11 (Object.create +81 tests in one move) corroborates the structural-vs-gate distinction from EXT 17 strongly. Object.create's ToPropertyDescriptor validation was a *structural* fix; it shifted the entire descriptor-validation surface for one method and unblocked dozens of cascading tests. The §A8.25/§A8.28/§A8.29 substrate-amortization pattern, applied via the helpers introduced, makes the structural class easier to reach: instead of writing one per-method validator, the engine grows the substrate-helper, and many consumer methods become spec-compliant in follow-on PRs.
+
+### Open scope at the P62.E14 boundary
+
+1. **String.prototype completion** — apply the to_string_strict + require_object_coercible + coerce_to_number triple to the remaining ~15 String.prototype methods (toLowerCase, toUpperCase, trim variants, padStart/padEnd, repeat, replace, search, split, match, matchAll, charAt, charCodeAt, codePointAt, concat, normalize). Predicted single-pass: bumps String chapter from ~50% to ~85%.
+2. **Object.defineProperty long tail** — 400 remaining fails are mostly ValidateAndApplyPropertyDescriptor edge cases + array-length-setter semantics + non-extensibility throws. Per-method semantic work; expected ~10-15 pp / 100 tests per substrate move.
+3. **Class method install regression** — independent of P62 but surfaced during smoke testing: `class C { foo() {} }`'s prototype carries only "constructor", not "foo". Bytecode-emit path bug. Filed as P63 candidate.
+4. **Canonical parity-top500 sweep** — to ground-truth the conjecture's downstream prediction past P62.E14. Predicted lift over 78.7% baseline: small (the descriptor + abstract-op tightening doesn't directly affect typical npm-package surface, but indirectly affects packages that depend on Symbol-search TypeErrors, configurable:false delete semantics, or proper descriptor shapes from defineProperty). Awaiting keeper directive.
+
+### Cumulative session totals
+
+- Commits this session: 19 (P61.E17→E21 + P62.E1→E14)
+- Substrate moves logged: ~256 (was ~237 at EXT 17 close + 19 this stretch)
+- Test262 slices touched: 14 across three chapters
+- Slice-level lifts: 15–50 pp on Object.\*, Array.prototype.\*, String.prototype.\*
+- Corpus parity: stable (zero flips on 43-package basket)
+- Seed §A8 grew: §A8.28 + §A8.29
+
+### Resume protocol
+
+Read seed §A8.28 + §A8.29 (the two new fold-backs). Read Doc 729 + EXT 17 + this anchor. Test262 fixture lives at `host/tests/test262/`; upstream clone at `/home/jaredef/test262`. Drive: `T262_ROOT=/home/jaredef/test262 ./host/tests/test262/run.sh <chapter>`. Substrate helpers to default to:
+- `rt.coerce_to_number(&v)` for ToInteger/ToLength sites
+- `rt.to_string_strict(&v)` for built-in ToString (Symbol-rejecting)
+- `rt.require_object_coercible(&v)` for §7.2.1 guards
+- `rt.is_callable(&v)` for IsCallable checks
+- `Object::set_own_frozen` for spec-frozen properties
+- `Object::set_own_internal` for non-enumerable engine-internal properties
+
+Pin-Art tag count: ~236 (EXT 17) + 19 (P61.E17→E21 + P62.E1→E14) = ~255 substrate moves committed.
