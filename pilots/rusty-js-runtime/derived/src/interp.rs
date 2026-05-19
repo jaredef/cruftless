@@ -3549,13 +3549,15 @@ impl Runtime {
     }
 
     /// Reflect.has(target, key) per ECMA §28.1.9 — proto-chain HasProperty.
+    /// Ω.5.P63.E54: PropertyKey-aware so Reflect.has(obj, Symbol()) walks the
+    /// Symbol bucket on the proto chain.
     pub fn reflect_has_via(&mut self, target: &Value, key: &Value) -> Result<Value, RuntimeError> {
         let id = match target {
             Value::Object(id) => *id,
             _ => return Err(RuntimeError::TypeError("Reflect.has: target must be Object".into())),
         };
-        let key_s = self.coerce_to_string(key)?;
-        Ok(Value::Boolean(self.has_property(id, &key_s)))
+        let key_pk = property_key(key);
+        Ok(Value::Boolean(self.has_property_pk(id, &key_pk)))
     }
 
     /// Reflect.get(target, key) per ECMA §28.1.8 — dispatches accessor getters.
@@ -3564,8 +3566,11 @@ impl Runtime {
             Value::Object(id) => *id,
             _ => return Err(RuntimeError::TypeError("Reflect.get: target must be Object".into())),
         };
-        let key_s = self.coerce_to_string(key)?;
-        self.read_property(id, &key_s)
+        let key_pk = property_key(key);
+        if let Some(getter) = self.find_getter_pk(id, &key_pk) {
+            return self.call_function(getter, Value::Object(id), Vec::new());
+        }
+        Ok(self.object_get_pk(id, &key_pk))
     }
 
     /// Reflect.set(target, key, value) per ECMA §28.1.13.
@@ -4272,6 +4277,23 @@ impl Runtime {
         }
         None
     }
+    /// PropertyKey-aware getter lookup along the proto chain.
+    pub fn find_getter_pk(&self, id: ObjectRef, key: &crate::value::PropertyKey) -> Option<Value> {
+        let mut cur = Some(id);
+        while let Some(c) = cur {
+            let o = self.obj(c);
+            if let Some(d) = o.properties.get(key) {
+                if d.getter.is_some() { return d.getter.clone(); }
+            }
+            if let crate::value::PropertyKey::Symbol(rc) = key {
+                if let Some(d) = o.get_own(rc.as_str()) {
+                    if d.getter.is_some() { return d.getter.clone(); }
+                }
+            }
+            cur = o.proto;
+        }
+        None
+    }
     /// Tier-Ω.5.nnn: walk the prototype chain looking for an accessor
     /// setter at `key`. Returns the setter function if found.
     pub fn find_setter(&self, id: ObjectRef, key: &str) -> Option<Value> {
@@ -4279,6 +4301,18 @@ impl Runtime {
         while let Some(c) = cur {
             let o = self.obj(c);
             if let Some(d) = o.get_own(key) {
+                return d.setter.clone();
+            }
+            cur = o.proto;
+        }
+        None
+    }
+    /// PropertyKey-aware setter lookup along the proto chain.
+    pub fn find_setter_pk(&self, id: ObjectRef, key: &crate::value::PropertyKey) -> Option<Value> {
+        let mut cur = Some(id);
+        while let Some(c) = cur {
+            let o = self.obj(c);
+            if let Some(d) = o.properties.get(key) {
                 return d.setter.clone();
             }
             cur = o.proto;
@@ -4312,6 +4346,62 @@ impl Runtime {
             cur = o.proto;
         }
         false
+    }
+
+    /// Ω.5.P63.E54: PropertyKey-aware has-property — walks proto chain
+    /// and respects Symbol-typed keys (identity, by-Rc). Transitional shim:
+    /// for Symbol keys whose inner identifier matches a String-bucket entry,
+    /// fall back to that entry so legacy well-known-Symbol method installs
+    /// (register_intrinsic_method with name="@@iterator") keep dispatching
+    /// when looked up via Symbol.iterator.
+    pub fn has_property_pk(&self, id: ObjectRef, key: &crate::value::PropertyKey) -> bool {
+        let mut cur = Some(id);
+        while let Some(c) = cur {
+            let o = self.obj(c);
+            if o.properties.contains_key(key) { return true; }
+            if let crate::value::PropertyKey::Symbol(rc) = key {
+                if o.has_own_str(rc.as_str()) { return true; }
+            }
+            cur = o.proto;
+        }
+        false
+    }
+
+    /// PropertyKey-aware proto-walking get. Includes the Symbol→String
+    /// transitional fallback for well-known Symbol method lookups.
+    pub fn object_get_pk(&self, id: ObjectRef, key: &crate::value::PropertyKey) -> Value {
+        // String-keyed lookups preserve the existing array-"length" fast path.
+        if let crate::value::PropertyKey::String(s) = key {
+            return self.object_get(id, s.as_str());
+        }
+        let mut cur = Some(id);
+        while let Some(c) = cur {
+            let o = self.obj(c);
+            if let Some(d) = o.properties.get(key) {
+                return d.value.clone();
+            }
+            // Transitional: well-known Symbol storage was String-keyed pre-E54.
+            if let crate::value::PropertyKey::Symbol(rc) = key {
+                if let Some(d) = o.get_own(rc.as_str()) {
+                    return d.value.clone();
+                }
+            }
+            cur = o.proto;
+        }
+        Value::Undefined
+    }
+
+    /// PropertyKey-aware own-key set. Honors non-writable descriptors.
+    pub fn object_set_pk(&mut self, id: ObjectRef, key: crate::value::PropertyKey, value: Value) {
+        if let Some(d) = self.obj(id).properties.get(&key) {
+            if !d.writable && d.getter.is_none() && d.setter.is_none() {
+                return;
+            }
+        }
+        self.obj_mut(id).properties.insert(key, crate::value::PropertyDescriptor {
+            value, writable: true, enumerable: true, configurable: true,
+            getter: None, setter: None,
+        });
     }
 
     pub fn object_get(&self, id: ObjectRef, key: &str) -> Value {
@@ -5198,7 +5288,11 @@ impl Runtime {
                 Op::GetIndex => {
                     let key_v = frame.pop()?;
                     let obj_v = frame.pop()?;
-                    let key = property_key(&key_v);
+                    // Ω.5.P63.E54: PropertyKey carries Symbol vs String typing.
+                    // Symbol values land in the Symbol bucket (identity-keyed);
+                    // others stringify into the String bucket.
+                    let key_pk = property_key(&key_v);
+                    let key = key_pk.as_str().to_string();
                     let v = match obj_v {
                         // Tier-Ω.5.uuuu: dispatch accessor getters from
                         // computed-key reads. Op::GetProp already did this
@@ -5229,10 +5323,10 @@ impl Runtime {
                                 } else {
                                     self.object_get(target, &key)
                                 }
-                            } else if let Some(getter) = self.find_getter(id, &key) {
+                            } else if let Some(getter) = self.find_getter_pk(id, &key_pk) {
                                 self.call_function(getter, Value::Object(id), Vec::new())?
                             } else {
-                                self.object_get(id, &key)
+                                self.object_get_pk(id, &key_pk)
                             }
                         },
                         Value::String(s) => {
@@ -5390,7 +5484,11 @@ impl Runtime {
                 Op::DeleteIndex => {
                     let key_v = frame.pop()?;
                     let obj_v = frame.pop()?;
-                    let key = crate::abstract_ops::to_string(&key_v).as_str().to_string();
+                    // Ω.5.P63.E54: PropertyKey-aware so `delete obj[sym]` hits
+                    // the Symbol bucket. Stringification keeps proxy-trap calls
+                    // backwards compatible.
+                    let key_pk = property_key(&key_v);
+                    let key = key_pk.as_str().to_string();
                     let removed = match obj_v {
                         Value::Object(id) => {
                             // Ω.5.P60.E2: same Proxy dispatch as DeleteProp.
@@ -5408,13 +5506,13 @@ impl Runtime {
                                     ])?;
                                     crate::abstract_ops::to_boolean(&r)
                                 } else {
-                                    self.obj_mut(target).remove_str(&key).is_some()
+                                    self.obj_mut(target).properties.shift_remove(&key_pk).is_some()
                                 }
                             } else {
                                 // Ω.5.P62.E10: §10.1.10 non-configurable guard.
-                                if let Some(d) = self.obj(id).get_own(&key) {
+                                if let Some(d) = self.obj(id).properties.get(&key_pk) {
                                     if !d.configurable { false }
-                                    else { self.obj_mut(id).remove_str(&key).is_some() }
+                                    else { self.obj_mut(id).properties.shift_remove(&key_pk).is_some() }
                                 } else { true }
                             }
                         }
@@ -5444,7 +5542,8 @@ impl Runtime {
                                 format!("Cannot use 'in' operator on non-object: {} in {:?}{}", key_s, obj_v, hint)));
                         }
                     };
-                    let key = property_key(&key_v);
+                    let key_pk = property_key(&key_v);
+                    let key = key_pk.as_str().to_string();
                     // Ω.5.P60.E2: Proxy has-trap dispatch.
                     let proxy_dispatch = if let crate::value::InternalKind::Proxy(p) =
                         &self.obj(obj_id).internal_kind
@@ -5463,14 +5562,14 @@ impl Runtime {
                         } else {
                             let mut cur = Some(target);
                             while let Some(c) = cur {
-                                if self.obj(c).has_own_str(&key) { found = true; break; }
+                                if self.obj(c).properties.contains_key(&key_pk) { found = true; break; }
                                 cur = self.obj(c).proto;
                             }
                         }
                     } else {
                     let mut cur = Some(obj_id);
                     while let Some(c) = cur {
-                        if self.obj(c).has_own_str(&key) { found = true; break; }
+                        if self.obj(c).properties.contains_key(&key_pk) { found = true; break; }
                         cur = self.obj(c).proto;
                     }
                     }
@@ -5534,7 +5633,10 @@ impl Runtime {
                     let value = frame.pop()?;
                     let key_v = frame.pop()?;
                     let obj_v = frame.pop()?;
-                    let key = property_key(&key_v);
+                    // Ω.5.P63.E54: PropertyKey routes Symbol writes to the
+                    // Symbol bucket; String values stringify into the String bucket.
+                    let key_pk = property_key(&key_v);
+                    let key = key_pk.as_str().to_string();
                     if let Value::Object(id) = &obj_v {
                         // Ω.5.P60.E2: Proxy set-trap dispatch at computed-key writes.
                         let proxy_dispatch = if let crate::value::InternalKind::Proxy(p) =
@@ -5559,10 +5661,10 @@ impl Runtime {
                         // Ω.5.uuuu for GetIndex. Without this, writes through
                         // computed keys to lazy-defined properties silently
                         // overwrite the descriptor's getter with a data slot.
-                        if let Some(setter) = self.find_setter(*id, &key) {
+                        if let Some(setter) = self.find_setter_pk(*id, &key_pk) {
                             self.call_function(setter, Value::Object(*id), vec![value.clone()])?;
                         } else {
-                            self.object_set(*id, key, value.clone());
+                            self.object_set_pk(*id, key_pk.clone(), value.clone());
                         }
                     } else {
                         // Tier-Ω.5.HHHHHHHH: route-(b) enrichment. mobx-state-tree
@@ -6243,11 +6345,15 @@ impl Runtime {
 
 /// ToPropertyKey per ECMA-262 §7.1.19. v1 simplified: numbers stringify
 /// to their canonical decimal form; other primitives ToString-coerce.
-fn property_key(v: &Value) -> String {
+/// Coerce a JS Value to a property key per ECMA §7.1.19 ToPropertyKey.
+/// Symbol values produce PropertyKey::Symbol (identity-keyed, by-Rc); all
+/// other values stringify into PropertyKey::String.
+pub fn property_key(v: &Value) -> crate::value::PropertyKey {
     match v {
-        Value::String(s) => s.as_str().to_string(),
-        Value::Number(n) => crate::abstract_ops::number_to_string(*n),
-        _ => crate::abstract_ops::to_string(v).as_str().to_string(),
+        Value::Symbol(rc) => crate::value::PropertyKey::Symbol(rc.clone()),
+        Value::String(s) => crate::value::PropertyKey::String(s.as_str().to_string()),
+        Value::Number(n) => crate::value::PropertyKey::String(crate::abstract_ops::number_to_string(*n)),
+        _ => crate::value::PropertyKey::String(crate::abstract_ops::to_string(v).as_str().to_string()),
     }
 }
 
