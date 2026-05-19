@@ -109,6 +109,12 @@ pub enum Expr {
     /// Argument access — args[i], defaulting to Undefined.
     Arg(usize),
 
+    /// AllArgs — lowers to `args` (the raw Rust slice). Used by
+    /// variadic spec ops (Math.max, Math.min, Math.hypot, etc.) whose
+    /// Runtime helpers consume the full arg list. Distinct from
+    /// `Arg(i)` which extracts one positional arg.
+    AllArgs,
+
     /// HasArg(i) — true iff args.len() > i. Distinguishes "arg passed
     /// as undefined" from "arg not passed at all". Used by methods whose
     /// spec distinguishes these cases (e.g., Array.prototype.reduce's

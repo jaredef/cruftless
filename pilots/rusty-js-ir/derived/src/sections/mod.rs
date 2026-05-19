@@ -16,4 +16,5 @@ pub mod object_integrity;             // freeze, seal, preventExtensions, hasOwn
 pub mod number_static;                // Number.{isFinite, isInteger, isNaN, isSafeInteger}
 pub mod global_predicates;            // global isFinite, isNaN (coerce; differ from Number.* versions)
 pub mod math_unary;                   // Math.{abs,floor,ceil,round,trunc,sqrt,cbrt,sign,exp,log,sin,...}
+pub mod math_binary_variadic;         // Math.{pow,atan2} (binary) + Math.{max,min,hypot} (variadic)
 pub mod reflect_static;               // Reflect.{has, get, set, deleteProperty, ownKeys}

@@ -362,7 +362,7 @@ fn collect_abstract_ops_in_expr(
         }
         Expr::Var(_) | Expr::Undefined | Expr::Null | Expr::Bool(_) |
         Expr::Number(_) | Expr::Str(_) | Expr::Arg(_) | Expr::This |
-        Expr::HasArg(_) | Expr::IntConst(_) => {}
+        Expr::HasArg(_) | Expr::AllArgs | Expr::IntConst(_) => {}
         Expr::CallBuiltin { name, args } => {
             set.insert(name);
             for a in args { collect_abstract_ops_in_expr(a, set); }

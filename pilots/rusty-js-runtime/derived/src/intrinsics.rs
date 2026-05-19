@@ -1014,27 +1014,10 @@ impl Runtime {
         register_intrinsic_method(self, math, "trunc", 1, |rt, args| crate::generated::math_trunc(rt, Value::Undefined, args));
         register_intrinsic_method(self, math, "sqrt", 1, |rt, args| crate::generated::math_sqrt(rt, Value::Undefined, args));
         register_intrinsic_method(self, math, "cbrt", 1, |rt, args| crate::generated::math_cbrt(rt, Value::Undefined, args));
-        register_intrinsic_method(self, math, "pow", 2, |_rt, args|{
-            Ok(Value::Number(num_arg(args, 0).powf(num_arg(args, 1))))
-        });
-        register_intrinsic_method(self, math, "max", 2, |_rt, args|{
-            let mut m = f64::NEG_INFINITY;
-            for a in args {
-                let n = abstract_ops::to_number(a);
-                if n.is_nan() { return Ok(Value::Number(f64::NAN)); }
-                if n > m { m = n; }
-            }
-            Ok(Value::Number(m))
-        });
-        register_intrinsic_method(self, math, "min", 2, |_rt, args|{
-            let mut m = f64::INFINITY;
-            for a in args {
-                let n = abstract_ops::to_number(a);
-                if n.is_nan() { return Ok(Value::Number(f64::NAN)); }
-                if n < m { m = n; }
-            }
-            Ok(Value::Number(m))
-        });
+        // Ω.5.P63.E14: pow / max / min routed through IR.
+        register_intrinsic_method(self, math, "pow", 2, |rt, args| crate::generated::math_pow(rt, Value::Undefined, args));
+        register_intrinsic_method(self, math, "max", 2, |rt, args| crate::generated::math_max(rt, Value::Undefined, args));
+        register_intrinsic_method(self, math, "min", 2, |rt, args| crate::generated::math_min(rt, Value::Undefined, args));
         // Ω.5.P63.E10: Math.sign routed through IR. (Duplicate
         // installation at line ~1094 below is harmless: register order
         // overwrites and both paths produce identical results.)
@@ -1051,7 +1034,8 @@ impl Runtime {
         // Ω.5.P63.E11: asin / acos newly installed via IR (were missing from cruftless).
         register_intrinsic_method(self, math, "asin", 1, |rt, args| crate::generated::math_asin(rt, Value::Undefined, args));
         register_intrinsic_method(self, math, "acos", 1, |rt, args| crate::generated::math_acos(rt, Value::Undefined, args));
-        register_intrinsic_method(self, math, "atan2", 2, |_rt, args|Ok(Value::Number(num_arg(args, 0).atan2(num_arg(args, 1))))) ;
+        // Ω.5.P63.E14: atan2 routed through IR.
+        register_intrinsic_method(self, math, "atan2", 2, |rt, args| crate::generated::math_atan2(rt, Value::Undefined, args));
         register_intrinsic_method(self, math, "random", 0, |_rt, _|{
             // v1: simple LCG-style PRNG seeded from time. Not crypto-grade.
             use std::time::{SystemTime, UNIX_EPOCH};
@@ -1111,12 +1095,8 @@ impl Runtime {
             let n = args.first().map(abstract_ops::to_number).unwrap_or(f64::NAN);
             Ok(Value::Number(n.cbrt()))
         });
-        register_intrinsic_method(self, math, "hypot", 2, |_rt, args| {
-            let s: f64 = args.iter()
-                .map(|v| { let n = abstract_ops::to_number(v); n * n })
-                .sum();
-            Ok(Value::Number(s.sqrt()))
-        });
+        // Ω.5.P63.E14: hypot routed through IR (variadic via Expr::AllArgs).
+        register_intrinsic_method(self, math, "hypot", 2, |rt, args| crate::generated::math_hypot(rt, Value::Undefined, args));
         // Ω.5.P63.E11: hyperbolic family routed through IR.
         register_intrinsic_method(self, math, "sinh", 1, |rt, args| crate::generated::math_sinh(rt, Value::Undefined, args));
         register_intrinsic_method(self, math, "cosh", 1, |rt, args| crate::generated::math_cosh(rt, Value::Undefined, args));

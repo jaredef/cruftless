@@ -7,9 +7,9 @@ use rusty_js_ir::lower_to_rust;
 use rusty_js_ir::sections::{
     array_prototype_find as find, array_prototype_index_search as index_search,
     array_prototype_iteration as iter, array_prototype_map,
-    array_prototype_reduce as reduce, global_predicates, math_unary,
-    number_static, object_integrity, object_proto_ops, object_static,
-    promise_static, reflect_static,
+    array_prototype_reduce as reduce, global_predicates, math_binary_variadic,
+    math_unary, number_static, object_integrity, object_proto_ops,
+    object_static, promise_static, reflect_static,
 };
 
 fn main() {
@@ -79,6 +79,11 @@ fn main() {
         reflect_static::build_set_prototype_of(),
         reflect_static::build_is_extensible(),
         reflect_static::build_prevent_extensions(),
+        math_binary_variadic::build_pow(),
+        math_binary_variadic::build_atan2(),
+        math_binary_variadic::build_max(),
+        math_binary_variadic::build_min(),
+        math_binary_variadic::build_hypot(),
     ];
 
     for f in &sections {

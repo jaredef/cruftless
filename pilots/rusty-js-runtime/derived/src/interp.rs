@@ -430,6 +430,55 @@ impl Runtime {
         Ok(())
     }
 
+    /// Math.* binary op dispatcher per ECMA §21.3.2.{27, 8} — pow, atan2.
+    pub fn math_binary_op_via(&self, op: &Value, x: &Value, y: &Value) -> Result<Value, RuntimeError> {
+        let op_name = match op {
+            Value::String(s) => s.as_str().to_string(),
+            _ => return Err(RuntimeError::TypeError("math_binary_op_via: op must be a string".into())),
+        };
+        let nx = crate::abstract_ops::to_number(x);
+        let ny = crate::abstract_ops::to_number(y);
+        let r = match op_name.as_str() {
+            "pow" => nx.powf(ny),
+            "atan2" => nx.atan2(ny),
+            _ => return Err(RuntimeError::TypeError(format!(
+                "math_binary_op_via: unknown op '{}'", op_name))),
+        };
+        Ok(Value::Number(r))
+    }
+
+    /// Math.max — variadic; NaN if any arg is NaN.
+    pub fn math_max_via(&self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let mut m = f64::NEG_INFINITY;
+        for v in args {
+            let n = crate::abstract_ops::to_number(v);
+            if n.is_nan() { return Ok(Value::Number(f64::NAN)); }
+            if n > m { m = n; }
+        }
+        Ok(Value::Number(m))
+    }
+
+    /// Math.min — variadic; NaN if any arg is NaN.
+    pub fn math_min_via(&self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let mut m = f64::INFINITY;
+        for v in args {
+            let n = crate::abstract_ops::to_number(v);
+            if n.is_nan() { return Ok(Value::Number(f64::NAN)); }
+            if n < m { m = n; }
+        }
+        Ok(Value::Number(m))
+    }
+
+    /// Math.hypot — variadic; sqrt(sum-of-squares).
+    pub fn math_hypot_via(&self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let mut s = 0.0_f64;
+        for v in args {
+            let n = crate::abstract_ops::to_number(v);
+            s += n * n;
+        }
+        Ok(Value::Number(s.sqrt()))
+    }
+
     /// Reflect.getPrototypeOf(target) per ECMA §28.1.7 — like
     /// Object.getPrototypeOf but throws TypeError on non-Object target
     /// (Object.getPrototypeOf returns null).

@@ -6,9 +6,9 @@ use rusty_js_ir::lint::lint;
 use rusty_js_ir::sections::{
     array_prototype_find as find, array_prototype_index_search as index_search,
     array_prototype_iteration as iter, array_prototype_map,
-    array_prototype_reduce as reduce, global_predicates, math_unary,
-    number_static, object_integrity, object_proto_ops, object_static,
-    promise_static, reflect_static,
+    array_prototype_reduce as reduce, global_predicates, math_binary_variadic,
+    math_unary, number_static, object_integrity, object_proto_ops,
+    object_static, promise_static, reflect_static,
 };
 
 fn main() {
@@ -81,6 +81,11 @@ fn main() {
         ("Reflect.setPrototypeOf", reflect_static::build_set_prototype_of(), reflect_static::spec_steps_set_prototype_of()),
         ("Reflect.isExtensible",   reflect_static::build_is_extensible(),   reflect_static::spec_steps_is_extensible()),
         ("Reflect.preventExtensions", reflect_static::build_prevent_extensions(), reflect_static::spec_steps_prevent_extensions()),
+        ("Math.pow",   math_binary_variadic::build_pow(),   math_binary_variadic::spec_steps_pow()),
+        ("Math.atan2", math_binary_variadic::build_atan2(), math_binary_variadic::spec_steps_atan2()),
+        ("Math.max",   math_binary_variadic::build_max(),   math_binary_variadic::spec_steps_max()),
+        ("Math.min",   math_binary_variadic::build_min(),   math_binary_variadic::spec_steps_min()),
+        ("Math.hypot", math_binary_variadic::build_hypot(), math_binary_variadic::spec_steps_hypot()),
     ];
 
     let mut total_unexpected = 0;
