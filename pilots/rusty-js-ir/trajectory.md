@@ -386,3 +386,31 @@ Tier 1.10 (continuing):
 4. **Promise.all / allSettled / any / race** — adds iterator-protocol IR primitives (deferred to Tier 1.11).
 
 Pin-Art tag count for the IR workstream: 13 commits as of IR-EXT 9.
+
+
+## IR-EXT 10 — 2026-05-19 night-late (Number static-method cluster)
+
+**Headline**: 4 more sections (Number.{isFinite, isInteger, isNaN, isSafeInteger}). 31 IR-encoded, 26 wired. Pattern refinement: `one_step_builtin` builder.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| `c6d098ac` | IR-EXT 10: Number static methods | Four runtime helpers (rt.number_is_*) extracted. Four 1-step IR sections via the new `one_step_builtin` helper, which collapses the canonical "1-step CallBuiltin section" shape to a single line of section-level Rust. ~12 LOC per section, down from ~25-45 for the multi-step Object sections. |
+
+### Substrate at IR-EXT 10 close
+
+**Sections IR-encoded**: 31 (27 from IR-EXT 9 + 4 Number static). Wired: 26.
+
+**Linter**: 31/31 clean.
+
+**LOC trend**: per-section authoring cost has declined to ~12 LOC for canonical 1-step CallBuiltin sections. The builder pattern (one_step_builtin / one_step_spec) replicates across number_static.rs and could be lifted to a shared helper in a future round.
+
+### Open scope at IR-EXT 10 close
+
+Continuing translation cadence. Next-easy clusters:
+1. **Global functions**: parseInt, parseFloat, isFinite, isNaN, encodeURI, decodeURI, encodeURIComponent, decodeURIComponent (8 sections).
+2. **Math.* one-liners**: abs, floor, ceil, round, trunc, sign, sqrt, cbrt, pow (9 sections; performance trade-off needs evaluation).
+3. **String.prototype.{includes, startsWith, endsWith}**: already P62.E13 spec-compliant; IR encoding for traceability.
+
+Pin-Art tag count: 14 commits as of IR-EXT 10.
