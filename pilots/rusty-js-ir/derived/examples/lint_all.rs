@@ -30,7 +30,19 @@ fn main() {
 
     let mut total_unexpected = 0;
     for (name, f, spec) in &sections {
-        let report = lint(f, spec);
+        // Filter the spec_steps list to drop synthetic-inline records
+        // (matching the linter's collect_steps convention from
+        // lint.rs). The hand-authored records still carry these for
+        // documentation; the diff doesn't track them.
+        let filtered_spec: Vec<_> = spec.iter()
+            .filter(|r| !r.step_id.ends_with(".throw")
+                && !r.step_id.ends_with(".guard")
+                && !r.step_id.ends_with(".return")
+                && !r.step_id.ends_with(".adj")
+                && !r.step_id.ends_with(".seed"))
+            .cloned()
+            .collect();
+        let report = lint(f, &filtered_spec);
         // Filter out known param.* binding-convention findings — those
         // are not in any spec section's algorithm step list.
         let unexpected: Vec<_> = report.findings.iter()

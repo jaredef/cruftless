@@ -101,11 +101,19 @@ pub fn build() -> IRFunction {
                             value: Expr::IndexAsKey(b(v("k"))),
                         },
                     },
-                    // step 6.b/6.c: If HasProperty(O, Pk) is true, then …
+                    // step 6.b: Let kPresent be ? HasProperty(O, Pk).
                     Step {
                         spec_step: "6.b".into(),
+                        node: IRNode::Let {
+                            name: "k_present".into(),
+                            value: Expr::HasProperty(b(v("o")), b(v("pk"))),
+                        },
+                    },
+                    // step 6.c: If kPresent is true, then …
+                    Step {
+                        spec_step: "6.c".into(),
                         node: IRNode::If {
-                            cond: Expr::HasProperty(b(v("o")), b(v("pk"))),
+                            cond: v("k_present"),
                             then_body: vec![
                                 // step 6.c.i: Let kValue be ? Get(O, Pk).
                                 Step {
@@ -226,7 +234,13 @@ pub fn spec_steps() -> Vec<SpecStepRecord> {
             step_id: "6.b".into(),
             abstract_ops: vec!["HasProperty"],
             throws: None,
-            prose: "Let kPresent be ? HasProperty(O, Pk). If kPresent is true, then …",
+            prose: "Let kPresent be ? HasProperty(O, Pk).",
+        },
+        SpecStepRecord {
+            step_id: "6.c".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "If kPresent is true, then …",
         },
         SpecStepRecord {
             step_id: "6.c.i".into(),

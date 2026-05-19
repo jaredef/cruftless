@@ -34,7 +34,9 @@ pub fn array_prototype_map(rt: &mut Runtime, this: Value, args: &[Value])
         // step 6.a (§6.a step 6.a)
         let pk = k.clone().to_string();
         // step 6.b (§6.b step 6.b)
-        if rt.has_property_via(&o.clone(), &pk.clone()) {
+        let k_present = rt.has_property_via(&o.clone(), &pk.clone());
+        // step 6.c (§6.c step 6.c)
+        if k_present.clone() {
             // step 6.c.i (§6.c.i step 6.c.i)
             let k_value = rt.read_property_via(&o.clone(), &pk.clone())?;
             // step 6.c.ii (§6.c.ii step 6.c.ii)

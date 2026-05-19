@@ -138,7 +138,21 @@ fn collect_steps<'a>(
     out: &mut std::collections::HashMap<&'a str, &'a Step>,
 ) {
     for s in body {
-        out.insert(s.spec_step.as_str(), s);
+        // Convention: sub-step IDs of the form "<parent>.throw" or
+        // "<parent>.guard" are *inline-throw consequents* — the spec
+        // doesn't distinguish them as separate steps, so the linter
+        // doesn't either. They're already collected by walk_step_collecting
+        // for the abstract-op set of the parent step. Skip them here so
+        // they don't appear as "ExtraStep" findings.
+        let is_synthetic_inline =
+            s.spec_step.ends_with(".throw") ||
+            s.spec_step.ends_with(".guard") ||
+            s.spec_step.ends_with(".return") ||
+            s.spec_step.ends_with(".adj") ||
+            s.spec_step.ends_with(".seed");
+        if !is_synthetic_inline {
+            out.insert(s.spec_step.as_str(), s);
+        }
         // Recurse into If/While bodies — the inner steps may have their
         // own spec-step IDs like "6.a", "6.c.i".
         match &s.node {
@@ -154,23 +168,49 @@ fn collect_steps<'a>(
 
 fn collect_abstract_ops_in_step(step: &Step) -> std::collections::HashSet<&'static str> {
     let mut set = std::collections::HashSet::new();
-    match &step.node {
+    walk_step_collecting(&step.node, &mut set);
+    set
+}
+
+/// Recursively visit an IRNode's body. The spec writes "If X is false,
+/// throw a TypeError exception" as one step; the IR may represent it as
+/// an If with a Throw consequent. The linter recognizes the inline throw
+/// as part of the parent step's abstract-op set, so the spec-vs-IR diff
+/// can match the spec's step granularity.
+fn walk_step_collecting(node: &IRNode, set: &mut std::collections::HashSet<&'static str>) {
+    match node {
         IRNode::Let { value, .. }
         | IRNode::LetIndex { value, .. }
         | IRNode::AssignIndex { value, .. }
         | IRNode::Assign { value, .. }
         | IRNode::Expr(value) => {
-            collect_abstract_ops_in_expr(value, &mut set);
+            collect_abstract_ops_in_expr(value, set);
         }
-        IRNode::Return(e) => collect_abstract_ops_in_expr(e, &mut set),
+        IRNode::Return(e) => collect_abstract_ops_in_expr(e, set),
         IRNode::Throw { .. } => {
             set.insert("Throw");
         }
-        IRNode::If { cond, .. } | IRNode::While { cond, .. } => {
-            collect_abstract_ops_in_expr(cond, &mut set);
+        IRNode::If { cond, then_body, else_body } => {
+            collect_abstract_ops_in_expr(cond, set);
+            // Inline-throw recognition: if the then_body is a single Throw
+            // step (or contains only a Throw at top level), surface it as
+            // part of this step's op set. This matches the spec's
+            // single-step "If X, throw Y" convention.
+            for s in then_body {
+                if matches!(s.node, IRNode::Throw { .. }) {
+                    walk_step_collecting(&s.node, set);
+                }
+            }
+            for s in else_body {
+                if matches!(s.node, IRNode::Throw { .. }) {
+                    walk_step_collecting(&s.node, set);
+                }
+            }
+        }
+        IRNode::While { cond, .. } => {
+            collect_abstract_ops_in_expr(cond, set);
         }
     }
-    set
 }
 
 fn collect_abstract_ops_in_expr(

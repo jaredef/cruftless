@@ -26,3 +26,7 @@ path = "examples/build_generated_rs.rs"
 [[example]]
 name = "lint_all"
 path = "examples/lint_all.rs"
+
+[[example]]
+name = "lint_from_spec"
+path = "examples/lint_from_spec.rs"
