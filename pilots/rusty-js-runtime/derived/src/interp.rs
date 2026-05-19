@@ -272,40 +272,17 @@ impl Runtime {
     /// hint) per §7.1.1.1 OrdinaryToPrimitive. Returns the first
     /// primitive produced; throws TypeError if all dispatches return
     /// Objects. For non-Object input, returns v unchanged.
+    /// §7.1.1 ToPrimitive(input, preferredType). IR-EXT 72 — lifted into
+    /// rusty-js-ir as a resolver-instance section per keeper conjecture
+    /// (msg 8556 — the resolution-pipeline dynamic). The dispatch
+    /// sequence (@@toPrimitive then OrdinaryToPrimitive's toString-or-
+    /// valueOf order based on hint) now lives in IR. Behavioral parity
+    /// with the pre-EXT-72 Rust impl is preserved; future divergences at
+    /// adjacent coercion steps become traceable through the spec-step
+    /// trace rather than buried in Rust control flow.
     pub fn to_primitive(&mut self, v: &Value, hint: &str) -> Result<Value, RuntimeError> {
-        if let Value::Object(id) = v {
-            let id = *id;
-            // (1) @@toPrimitive (string or number hint).
-            let tp = self.object_get(id, "@@toPrimitive");
-            if matches!(tp, Value::Object(_)) {
-                let r = self.call_function(tp, v.clone(), vec![
-                    Value::String(Rc::new(hint.into())),
-                ])?;
-                if !matches!(r, Value::Object(_)) {
-                    return Ok(r);
-                }
-                return Err(RuntimeError::TypeError(
-                    "Cannot convert object to primitive value".into()));
-            }
-            // (2) OrdinaryToPrimitive — order depends on hint.
-            let methods: [&str; 2] = if hint == "string" {
-                ["toString", "valueOf"]
-            } else {
-                ["valueOf", "toString"]
-            };
-            for m in methods {
-                let f = self.object_get(id, m);
-                if matches!(f, Value::Object(_)) {
-                    let r = self.call_function(f, v.clone(), Vec::new())?;
-                    if !matches!(r, Value::Object(_)) {
-                        return Ok(r);
-                    }
-                }
-            }
-            return Err(RuntimeError::TypeError(
-                "Cannot convert object to primitive value".into()));
-        }
-        Ok(v.clone())
+        crate::generated::to_primitive(self, Value::Undefined,
+            &[v.clone(), Value::String(Rc::new(hint.into()))])
     }
 
     /// Ω.5.P62.E21: op_add with Object→primitive dispatch per ECMA

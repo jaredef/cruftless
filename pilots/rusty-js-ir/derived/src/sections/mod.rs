@@ -27,3 +27,4 @@ pub mod object_descriptors;           // Object.{defineProperty, definePropertie
 pub mod array_set_length;             // §10.4.2.1 — IR-EXT 66 first higher-resolution-IR spec-step section
 pub mod json_serialize;               // §25.5.2.4 SerializeJSONProperty — IR-EXT 68
 pub mod object_assign;                // §20.1.2.1 Object.assign per-source step — IR-EXT 69
+pub mod to_primitive;                 // §7.1.1 ToPrimitive resolver-instance — IR-EXT 72
