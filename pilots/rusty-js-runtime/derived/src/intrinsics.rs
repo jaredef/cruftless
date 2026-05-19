@@ -1499,17 +1499,28 @@ impl Runtime {
             // Tier-Ω.5.nnn: accessor-descriptor support. If the descriptor
             // has a `get` or `set` function, store as accessor; else
             // treat as data descriptor (existing semantics).
-            let getter = rt.object_get(desc_id, "get");
-            let setter = rt.object_get(desc_id, "set");
+            // Ω.5.P62.E12: ToPropertyDescriptor validation per §6.2.5.5.
+            // Steps 5/7: if has "get"/"set" and it's not undefined+not
+            // callable, throw TypeError. (Number/Boolean/String/etc. as
+            // set/get triggers this.)
+            let has_get_key = rt.has_property(desc_id, "get");
+            let has_set_key = rt.has_property(desc_id, "set");
+            let getter = if has_get_key { rt.read_property(desc_id, "get")? } else { Value::Undefined };
+            let setter = if has_set_key { rt.read_property(desc_id, "set")? } else { Value::Undefined };
+            if has_get_key && !matches!(getter, Value::Undefined) && !rt.is_callable(&getter) {
+                return Err(RuntimeError::TypeError(
+                    "Invalid property descriptor: getter must be callable".into()));
+            }
+            if has_set_key && !matches!(setter, Value::Undefined) && !rt.is_callable(&setter) {
+                return Err(RuntimeError::TypeError(
+                    "Invalid property descriptor: setter must be callable".into()));
+            }
             let has_getter = matches!(&getter, Value::Object(_));
             let has_setter = matches!(&setter, Value::Object(_));
-            // Ω.5.P61.E16: §6.2.5.5 ToPropertyDescriptor step 10 — a
-            // descriptor that mixes accessor (get/set) and data
-            // (value/writable) attributes throws TypeError.
+            // §6.2.5.5 step 10 — cannot mix accessor + data attrs.
             let has_value_key = rt.obj(desc_id).properties.contains_key("value")
                 || rt.obj(desc_id).properties.contains_key("writable");
-            let has_accessor_key = rt.obj(desc_id).properties.contains_key("get")
-                || rt.obj(desc_id).properties.contains_key("set");
+            let has_accessor_key = has_get_key || has_set_key;
             if has_value_key && has_accessor_key {
                 return Err(RuntimeError::TypeError(
                     "Invalid property descriptor: cannot both specify accessors and a value or writable attribute".into()));
