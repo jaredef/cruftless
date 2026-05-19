@@ -1372,9 +1372,15 @@ impl Runtime {
     /// {value,writable,enumerable,configurable} for data or
     /// {get,set,enumerable,configurable} for accessor; undefined if absent.
     pub fn object_get_own_property_descriptor_via(&mut self, obj_v: &Value, key_v: &Value) -> Result<Value, RuntimeError> {
+        // §20.1.2.9 step 1: O = ? ToObject(O).
         let id = match obj_v {
             Value::Object(id) => *id,
-            _ => return Ok(Value::Undefined),
+            Value::Undefined | Value::Null => return Err(RuntimeError::TypeError(
+                "Object.getOwnPropertyDescriptor: argument is not coercible to Object".into())),
+            _ => match self.to_object(obj_v)? {
+                Value::Object(id) => id,
+                _ => return Ok(Value::Undefined),
+            },
         };
         let key = self.coerce_to_string(key_v)?;
         // §10.4.2 Array exotic: length is always an own property with
@@ -1407,14 +1413,30 @@ impl Runtime {
     }
 
     /// IR-EXT 56 — Object.getOwnPropertyDescriptors per §20.1.2.10.
+    /// Per §20.1.2.11 step 1: O = ? ToObject(O) — coerce primitives and
+    /// throw TypeError on undefined/null.
     pub fn object_get_own_property_descriptors_via(&mut self, obj_v: &Value) -> Result<Value, RuntimeError> {
         let id = match obj_v {
             Value::Object(id) => *id,
-            _ => return Ok(Value::Object(self.alloc_object(crate::value::Object::new_ordinary()))),
+            Value::Undefined | Value::Null => return Err(RuntimeError::TypeError(
+                "Object.getOwnPropertyDescriptors: argument is not coercible to Object".into())),
+            _ => match self.to_object(obj_v)? {
+                Value::Object(id) => id,
+                // Symbol/BigInt: to_object returns the primitive itself in
+                // cruftless v1 (no Symbol/BigInt wrapper objects). Spec says
+                // return an empty descriptor object — no own properties to
+                // enumerate on the primitive.
+                _ => return Ok(Value::Object(self.alloc_object(crate::value::Object::new_ordinary()))),
+            },
         };
+        // §20.1.2.11 walks O.[[OwnPropertyKeys]] which excludes engine-
+        // internal slots. cruftless represents [[BooleanData]] / [[NumberData]]
+        // / [[StringData]] / [[SymbolData]] as the non-enumerable __primitive__
+        // property; filter it from the returned descriptors.
         let entries: Vec<(String, Value, bool, bool, bool, Option<Value>, Option<Value>)> = {
             let o = self.obj(id);
             o.properties.iter()
+                .filter(|(k, _)| k.to_string_content() != "__primitive__")
                 .map(|(k, d)| (k.to_string_content(), d.value.clone(), d.writable, d.enumerable, d.configurable, d.getter.clone(), d.setter.clone()))
                 .collect()
         };
