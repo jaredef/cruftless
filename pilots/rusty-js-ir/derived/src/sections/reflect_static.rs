@@ -89,6 +89,64 @@ pub fn build_own_keys() -> IRFunction {
         title: "Reflect.ownKeys ( target )".into(), body }
 }
 
+pub fn build_get_prototype_of() -> IRFunction {
+    let body = vec![
+        Step { spec_step: "param.target".into(),
+            node: IRNode::Let { name: "target".into(), value: Expr::Arg(0) }},
+        Step { spec_step: "1".into(),
+            node: IRNode::Return(Expr::CallBuiltin {
+                name: "reflect_get_prototype_of_via", args: vec![v("target")],
+            })},
+    ];
+    IRFunction { spec_section: "28.1.7".into(),
+        rust_name: "reflect_get_prototype_of".into(),
+        title: "Reflect.getPrototypeOf ( target )".into(), body }
+}
+
+pub fn build_set_prototype_of() -> IRFunction {
+    let body = vec![
+        Step { spec_step: "param.target".into(),
+            node: IRNode::Let { name: "target".into(), value: Expr::Arg(0) }},
+        Step { spec_step: "param.proto".into(),
+            node: IRNode::Let { name: "proto".into(), value: Expr::Arg(1) }},
+        Step { spec_step: "1".into(),
+            node: IRNode::Return(Expr::CallBuiltin {
+                name: "reflect_set_prototype_of_via", args: vec![v("target"), v("proto")],
+            })},
+    ];
+    IRFunction { spec_section: "28.1.14".into(),
+        rust_name: "reflect_set_prototype_of".into(),
+        title: "Reflect.setPrototypeOf ( target, proto )".into(), body }
+}
+
+pub fn build_is_extensible() -> IRFunction {
+    let body = vec![
+        Step { spec_step: "param.target".into(),
+            node: IRNode::Let { name: "target".into(), value: Expr::Arg(0) }},
+        Step { spec_step: "1".into(),
+            node: IRNode::Return(Expr::CallBuiltin {
+                name: "reflect_is_extensible_via", args: vec![v("target")],
+            })},
+    ];
+    IRFunction { spec_section: "28.1.10".into(),
+        rust_name: "reflect_is_extensible".into(),
+        title: "Reflect.isExtensible ( target )".into(), body }
+}
+
+pub fn build_prevent_extensions() -> IRFunction {
+    let body = vec![
+        Step { spec_step: "param.target".into(),
+            node: IRNode::Let { name: "target".into(), value: Expr::Arg(0) }},
+        Step { spec_step: "1".into(),
+            node: IRNode::Return(Expr::CallBuiltin {
+                name: "reflect_prevent_extensions_via", args: vec![v("target")],
+            })},
+    ];
+    IRFunction { spec_section: "28.1.11".into(),
+        rust_name: "reflect_prevent_extensions".into(),
+        title: "Reflect.preventExtensions ( target )".into(), body }
+}
+
 // ──────────────── linter records ────────────────
 
 pub fn spec_steps_has() -> Vec<SpecStepRecord> {
@@ -110,4 +168,20 @@ pub fn spec_steps_delete_property() -> Vec<SpecStepRecord> {
 pub fn spec_steps_own_keys() -> Vec<SpecStepRecord> {
     vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["reflect_own_keys_via"], throws: None,
         prose: "Let keys be ? target.[[OwnPropertyKeys]](). Return CreateArrayFromList(keys)." }]
+}
+pub fn spec_steps_get_prototype_of() -> Vec<SpecStepRecord> {
+    vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["reflect_get_prototype_of_via"], throws: None,
+        prose: "Return ? target.[[GetPrototypeOf]]()." }]
+}
+pub fn spec_steps_set_prototype_of() -> Vec<SpecStepRecord> {
+    vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["reflect_set_prototype_of_via"], throws: None,
+        prose: "Return ? target.[[SetPrototypeOf]](proto)." }]
+}
+pub fn spec_steps_is_extensible() -> Vec<SpecStepRecord> {
+    vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["reflect_is_extensible_via"], throws: None,
+        prose: "Return ? target.[[IsExtensible]]()." }]
+}
+pub fn spec_steps_prevent_extensions() -> Vec<SpecStepRecord> {
+    vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["reflect_prevent_extensions_via"], throws: None,
+        prose: "Return ? target.[[PreventExtensions]]()." }]
 }

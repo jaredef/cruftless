@@ -75,6 +75,10 @@ fn main() {
         reflect_static::build_set(),
         reflect_static::build_delete_property(),
         reflect_static::build_own_keys(),
+        reflect_static::build_get_prototype_of(),
+        reflect_static::build_set_prototype_of(),
+        reflect_static::build_is_extensible(),
+        reflect_static::build_prevent_extensions(),
     ];
 
     for f in &sections {

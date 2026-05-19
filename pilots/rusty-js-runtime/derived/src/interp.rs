@@ -430,6 +430,53 @@ impl Runtime {
         Ok(())
     }
 
+    /// Reflect.getPrototypeOf(target) per ECMA §28.1.7 — like
+    /// Object.getPrototypeOf but throws TypeError on non-Object target
+    /// (Object.getPrototypeOf returns null).
+    pub fn reflect_get_prototype_of_via(&self, target: &Value) -> Result<Value, RuntimeError> {
+        match target {
+            Value::Object(id) => match self.obj(*id).proto {
+                Some(p) => Ok(Value::Object(p)),
+                None => Ok(Value::Null),
+            },
+            _ => Err(RuntimeError::TypeError("Reflect.getPrototypeOf: target must be Object".into())),
+        }
+    }
+
+    /// Reflect.setPrototypeOf(target, proto) per ECMA §28.1.14 — returns
+    /// boolean (true on success) instead of the target.
+    pub fn reflect_set_prototype_of_via(&mut self, target: &Value, proto: &Value) -> Result<Value, RuntimeError> {
+        let id = match target {
+            Value::Object(id) => *id,
+            _ => return Err(RuntimeError::TypeError("Reflect.setPrototypeOf: target must be Object".into())),
+        };
+        let new_proto = match proto {
+            Value::Object(p) => Some(*p),
+            Value::Null => None,
+            _ => return Err(RuntimeError::TypeError("Reflect.setPrototypeOf: prototype must be Object or null".into())),
+        };
+        self.obj_mut(id).proto = new_proto;
+        Ok(Value::Boolean(true))
+    }
+
+    /// Reflect.isExtensible(target) per ECMA §28.1.10 — throws TypeError
+    /// on non-Object (Object.isExtensible returns false).
+    pub fn reflect_is_extensible_via(&self, target: &Value) -> Result<Value, RuntimeError> {
+        match target {
+            Value::Object(id) => Ok(Value::Boolean(self.obj(*id).extensible)),
+            _ => Err(RuntimeError::TypeError("Reflect.isExtensible: target must be Object".into())),
+        }
+    }
+
+    /// Reflect.preventExtensions(target) per ECMA §28.1.11 — returns
+    /// boolean instead of the target.
+    pub fn reflect_prevent_extensions_via(&mut self, target: &Value) -> Result<Value, RuntimeError> {
+        match target {
+            Value::Object(id) => { self.obj_mut(*id).extensible = false; Ok(Value::Boolean(true)) }
+            _ => Err(RuntimeError::TypeError("Reflect.preventExtensions: target must be Object".into())),
+        }
+    }
+
     /// Reflect.has(target, key) per ECMA §28.1.9 — proto-chain HasProperty.
     pub fn reflect_has_via(&mut self, target: &Value, key: &Value) -> Result<Value, RuntimeError> {
         let id = match target {

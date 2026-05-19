@@ -4244,15 +4244,9 @@ impl Runtime {
         register_intrinsic_method(self, r, "ownKeys", 1, |rt, args| {
             crate::generated::reflect_own_keys(rt, Value::Undefined, args)
         });
+        // Ω.5.P63.E13: Reflect.getPrototypeOf routed through IR.
         register_intrinsic_method(self, r, "getPrototypeOf", 1, |rt, args| {
-            let obj = args.first().cloned().unwrap_or(Value::Undefined);
-            match obj {
-                Value::Object(id) => match rt.obj(id).proto {
-                    Some(p) => Ok(Value::Object(p)),
-                    None => Ok(Value::Null),
-                },
-                _ => Ok(Value::Null),
-            }
+            crate::generated::reflect_get_prototype_of(rt, Value::Undefined, args)
         });
         // defineProperty / construct / apply — alias existing logic.
         if let Some(v) = self.globals.get("Object").cloned() {
@@ -4267,20 +4261,9 @@ impl Runtime {
         // ansi-colors uses Reflect.setPrototypeOf at module-init time;
         // without it, the import of `ansi-colors` (which calls
         // create() at the bottom) failed before module.exports was set.
+        // Ω.5.P63.E13: Reflect.setPrototypeOf routed through IR.
         register_intrinsic_method(self, r, "setPrototypeOf", 2, |rt, args| {
-            let obj = args.first().cloned().unwrap_or(Value::Undefined);
-            let proto = args.get(1).cloned().unwrap_or(Value::Null);
-            let id = match obj {
-                Value::Object(id) => id,
-                _ => return Ok(Value::Boolean(false)),
-            };
-            let new_proto = match proto {
-                Value::Object(p) => Some(p),
-                Value::Null => None,
-                _ => return Ok(Value::Boolean(false)),
-            };
-            rt.obj_mut(id).proto = new_proto;
-            Ok(Value::Boolean(true))
+            crate::generated::reflect_set_prototype_of(rt, Value::Undefined, args)
         });
         register_intrinsic_method(self, r, "apply", 3, |rt, args| {
             let target = args.first().cloned().unwrap_or(Value::Undefined);
@@ -4341,18 +4324,12 @@ impl Runtime {
             let ret = rt.call_function(target, this_obj.clone(), arg_list)?;
             Ok(match ret { Value::Object(_) => ret, _ => this_obj })
         });
+        // Ω.5.P63.E13: Reflect.isExtensible / preventExtensions routed through IR.
         register_intrinsic_method(self, r, "isExtensible", 1, |rt, args| {
-            match args.first() {
-                Some(Value::Object(id)) => Ok(Value::Boolean(rt.obj(*id).extensible)),
-                _ => Ok(Value::Boolean(false)),
-            }
+            crate::generated::reflect_is_extensible(rt, Value::Undefined, args)
         });
         register_intrinsic_method(self, r, "preventExtensions", 1, |rt, args| {
-            if let Some(Value::Object(id)) = args.first() {
-                rt.obj_mut(*id).extensible = false;
-                return Ok(Value::Boolean(true));
-            }
-            Ok(Value::Boolean(false))
+            crate::generated::reflect_prevent_extensions(rt, Value::Undefined, args)
         });
         self.globals.insert("Reflect".into(), Value::Object(r));
     }

@@ -77,6 +77,10 @@ fn main() {
         ("Reflect.set",            reflect_static::build_set(),             reflect_static::spec_steps_set()),
         ("Reflect.deleteProperty", reflect_static::build_delete_property(), reflect_static::spec_steps_delete_property()),
         ("Reflect.ownKeys",        reflect_static::build_own_keys(),        reflect_static::spec_steps_own_keys()),
+        ("Reflect.getPrototypeOf", reflect_static::build_get_prototype_of(), reflect_static::spec_steps_get_prototype_of()),
+        ("Reflect.setPrototypeOf", reflect_static::build_set_prototype_of(), reflect_static::spec_steps_set_prototype_of()),
+        ("Reflect.isExtensible",   reflect_static::build_is_extensible(),   reflect_static::spec_steps_is_extensible()),
+        ("Reflect.preventExtensions", reflect_static::build_prevent_extensions(), reflect_static::spec_steps_prevent_extensions()),
     ];
 
     let mut total_unexpected = 0;
