@@ -484,6 +484,77 @@ impl Runtime {
         Ok(Value::String(std::rc::Rc::new(s + &suffix)))
     }
 
+    /// Array.prototype.push(...items) per ECMA §23.1.3.20.
+    pub fn array_proto_push_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let id = crate::prototype::to_array_this(self)?;
+        let mut len = self.array_length(id);
+        for a in args {
+            self.object_set(id, len.to_string(), a.clone());
+            len += 1;
+        }
+        self.object_set(id, "length".into(), Value::Number(len as f64));
+        Ok(Value::Number(len as f64))
+    }
+
+    /// Array.prototype.pop() per ECMA §23.1.3.19.
+    pub fn array_proto_pop_via(&mut self) -> Result<Value, RuntimeError> {
+        let id = crate::prototype::to_array_this(self)?;
+        let len = self.array_length(id);
+        if len == 0 { return Ok(Value::Undefined); }
+        let last_key = (len - 1).to_string();
+        let v = self.object_get(id, &last_key);
+        self.obj_mut(id).properties.shift_remove(&last_key);
+        self.object_set(id, "length".into(), Value::Number((len - 1) as f64));
+        Ok(v)
+    }
+
+    /// Array.prototype.shift() per ECMA §23.1.3.26.
+    pub fn array_proto_shift_via(&mut self) -> Result<Value, RuntimeError> {
+        let id = crate::prototype::to_array_this(self)?;
+        let len = self.array_length(id);
+        if len == 0 { return Ok(Value::Undefined); }
+        let first = self.object_get(id, "0");
+        for i in 1..len {
+            let v = self.object_get(id, &i.to_string());
+            self.object_set(id, (i - 1).to_string(), v);
+        }
+        self.obj_mut(id).properties.shift_remove(&(len - 1).to_string());
+        self.object_set(id, "length".into(), Value::Number((len - 1) as f64));
+        Ok(first)
+    }
+
+    /// Array.prototype.unshift(...items) per ECMA §23.1.3.32.
+    pub fn array_proto_unshift_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let id = crate::prototype::to_array_this(self)?;
+        let n = args.len();
+        let len = self.array_length(id);
+        for i in (0..len).rev() {
+            let v = self.object_get(id, &i.to_string());
+            self.object_set(id, (i + n).to_string(), v);
+        }
+        for (i, a) in args.iter().enumerate() {
+            self.object_set(id, i.to_string(), a.clone());
+        }
+        let new_len = len + n;
+        self.object_set(id, "length".into(), Value::Number(new_len as f64));
+        Ok(Value::Number(new_len as f64))
+    }
+
+    /// Array.prototype.reverse() per ECMA §23.1.3.21.
+    pub fn array_proto_reverse_via(&mut self) -> Result<Value, RuntimeError> {
+        let id = crate::prototype::to_array_this(self)?;
+        let len = self.array_length(id) as i64;
+        let mid = len / 2;
+        for i in 0..mid {
+            let j = len - 1 - i;
+            let a = self.object_get(id, &i.to_string());
+            let b = self.object_get(id, &j.to_string());
+            self.object_set(id, i.to_string(), b);
+            self.object_set(id, j.to_string(), a);
+        }
+        Ok(Value::Object(id))
+    }
+
     /// Array.prototype.indexOf(searchElement, fromIndex) per ECMA §23.1.3.16.
     pub fn array_proto_index_of_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;

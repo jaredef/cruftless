@@ -4,6 +4,7 @@
 //! Run with: `cargo run --example build_generated_rs -p rusty-js-ir > /tmp/generated.rs`
 
 use rusty_js_ir::lower_to_rust;
+use rusty_js_ir::sections::array_prototype_mutators as mutators;
 use rusty_js_ir::sections::{
     array_prototype_find as find, array_prototype_index_search as index_search,
     array_prototype_iteration as iter, array_prototype_map,
@@ -35,6 +36,11 @@ fn main() {
         index_search::build_index_of(),
         index_search::build_includes(),
         reduce::build_reduce(),
+        mutators::build_push(),
+        mutators::build_pop(),
+        mutators::build_shift(),
+        mutators::build_unshift(),
+        mutators::build_reverse(),
         object_static::build_keys(),
         object_static::build_values(),
         object_static::build_entries(),

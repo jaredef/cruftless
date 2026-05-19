@@ -218,55 +218,18 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         }
         Ok(Value::String(Rc::new("[object Array]".into())))
     });
+    // E31: mutators routed through IR.
     register_intrinsic_method(rt, host, "push", 1, |rt, args| {
-        let id = to_array_this(rt)?;
-        let mut len = rt.array_length(id);
-        for a in args {
-            rt.object_set(id, len.to_string(), a.clone());
-            len += 1;
-        }
-        // Keep a synthetic length to outpace property-derivation in edge cases.
-        rt.object_set(id, "length".into(), Value::Number(len as f64));
-        Ok(Value::Number(len as f64))
+        crate::generated::array_prototype_push(rt, rt.current_this(), args)
     });
-    register_intrinsic_method(rt, host, "pop", 0, |rt, _args| {
-        let id = to_array_this(rt)?;
-        let len = rt.array_length(id);
-        if len == 0 { return Ok(Value::Undefined); }
-        let last_key = (len - 1).to_string();
-        let v = rt.object_get(id, &last_key);
-        rt.obj_mut(id).properties.shift_remove(&last_key);
-        rt.object_set(id, "length".into(), Value::Number((len - 1) as f64));
-        Ok(v)
+    register_intrinsic_method(rt, host, "pop", 0, |rt, args| {
+        crate::generated::array_prototype_pop(rt, rt.current_this(), args)
     });
-    register_intrinsic_method(rt, host, "shift", 0, |rt, _args| {
-        let id = to_array_this(rt)?;
-        let len = rt.array_length(id);
-        if len == 0 { return Ok(Value::Undefined); }
-        let first = rt.object_get(id, "0");
-        for i in 1..len {
-            let v = rt.object_get(id, &i.to_string());
-            rt.object_set(id, (i - 1).to_string(), v);
-        }
-        rt.obj_mut(id).properties.shift_remove(&(len - 1).to_string());
-        rt.object_set(id, "length".into(), Value::Number((len - 1) as f64));
-        Ok(first)
+    register_intrinsic_method(rt, host, "shift", 0, |rt, args| {
+        crate::generated::array_prototype_shift(rt, rt.current_this(), args)
     });
     register_intrinsic_method(rt, host, "unshift", 1, |rt, args| {
-        let id = to_array_this(rt)?;
-        let n = args.len();
-        let len = rt.array_length(id);
-        // Shift existing right by n.
-        for i in (0..len).rev() {
-            let v = rt.object_get(id, &i.to_string());
-            rt.object_set(id, (i + n).to_string(), v);
-        }
-        for (i, a) in args.iter().enumerate() {
-            rt.object_set(id, i.to_string(), a.clone());
-        }
-        let new_len = len + n;
-        rt.object_set(id, "length".into(), Value::Number(new_len as f64));
-        Ok(Value::Number(new_len as f64))
+        crate::generated::array_prototype_unshift(rt, rt.current_this(), args)
     });
     // E30: routed through IR.
     register_intrinsic_method(rt, host, "indexOf", 1, |rt, args| {
@@ -278,18 +241,8 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     // Tier-Ω.5.cccccc: Array.prototype.reverse per ECMA-262 §23.1.3.21.
     // micromark slices events then reverses; without this, .reverse() was
     // undefined and every state-machine token finalization failed.
-    register_intrinsic_method(rt, host, "reverse", 0, |rt, _args| {
-        let id = to_array_this(rt)?;
-        let len = rt.array_length(id) as i64;
-        let mid = len / 2;
-        for i in 0..mid {
-            let j = len - 1 - i;
-            let a = rt.object_get(id, &i.to_string());
-            let b = rt.object_get(id, &j.to_string());
-            rt.object_set(id, i.to_string(), b);
-            rt.object_set(id, j.to_string(), a);
-        }
-        Ok(Value::Object(id))
+    register_intrinsic_method(rt, host, "reverse", 0, |rt, args| {
+        crate::generated::array_prototype_reverse(rt, rt.current_this(), args)
     });
     register_intrinsic_method(rt, host, "slice", 2, |rt, args| {
         let id = to_array_this(rt)?;

@@ -20,3 +20,4 @@ pub mod global_predicates;            // global isFinite, isNaN (coerce; differ 
 pub mod math_unary;                   // Math.{abs,floor,ceil,round,trunc,sqrt,cbrt,sign,exp,log,sin,...}
 pub mod math_binary_variadic;         // Math.{pow,atan2} (binary) + Math.{max,min,hypot} (variadic)
 pub mod reflect_static;               // Reflect.{has, get, set, deleteProperty, ownKeys}
+pub mod array_prototype_mutators;     // push, pop, shift, unshift, reverse
