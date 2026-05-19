@@ -442,7 +442,7 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
     // Tier-Ω.5.iiiiii: String.prototype.matchAll per ECMA §22.1.3.13.
     // Returns an iterator over all matches of a regex with the /g flag.
     register_intrinsic_method(rt, host, "matchAll", 1, |rt, args| {
-        let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
+        let s = rt.to_string_strict(&rt.current_this())?;
         let regex_v = args.first().cloned().unwrap_or(Value::Undefined);
         let regex_id = match &regex_v {
             Value::Object(id) => *id,
