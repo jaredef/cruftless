@@ -335,8 +335,14 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     register_intrinsic_method(rt, host, "slice", 2, |rt, args| {
         let id = to_array_this(rt)?;
         let len = rt.array_length(id) as i64;
-        let start_arg = args.first().map(abstract_ops::to_number).unwrap_or(0.0) as i64;
-        let end_arg = args.get(1).map(abstract_ops::to_number).unwrap_or(len as f64) as i64;
+        let start_arg = match args.first().cloned() {
+            Some(Value::Undefined) | None => 0,
+            Some(v) => rt.coerce_to_number(&v)? as i64,
+        };
+        let end_arg = match args.get(1).cloned() {
+            Some(Value::Undefined) | None => len,
+            Some(v) => rt.coerce_to_number(&v)? as i64,
+        };
         let start = clamp_index(start_arg, len);
         let end = clamp_index(end_arg, len);
         let out = rt.alloc_object(Object::new_array());
@@ -358,11 +364,14 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     register_intrinsic_method(rt, host, "splice", 2, |rt, args| {
         let id = to_array_this(rt)?;
         let len = rt.array_length(id) as i64;
-        let start_arg = args.first().map(abstract_ops::to_number).unwrap_or(0.0) as i64;
+        let start_arg = match args.first().cloned() {
+            Some(Value::Undefined) | None => 0,
+            Some(v) => rt.coerce_to_number(&v)? as i64,
+        };
         let start = clamp_index(start_arg, len);
-        let delete_count = match args.get(1) {
-            Some(v) => (abstract_ops::to_number(v) as i64).max(0).min(len - start),
-            None => len - start,
+        let delete_count = match args.get(1).cloned() {
+            Some(Value::Undefined) | None => len - start,
+            Some(v) => (rt.coerce_to_number(&v)? as i64).max(0).min(len - start),
         };
         let items: Vec<Value> = args.iter().skip(2).cloned().collect();
         // Collect removed slice into a new array.
@@ -478,20 +487,22 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     // is this; fills positions [start, end) with the value. lru-cache's
     // ZeroArray ctor does `super(size); this.fill(0)` to zero-initialize.
     register_intrinsic_method(rt, host, "fill", 1, |rt, args| {
+        // Ω.5.P62.E17: coerce_to_number on start/end so Symbol→TypeError
+        // and abrupt valueOf/toString propagates per §23.1.3.7 steps 5/9.
         let id = to_array_this(rt)?;
         let value = args.first().cloned().unwrap_or(Value::Undefined);
         let len = rt.array_length(id);
-        let start = match args.get(1) {
+        let start = match args.get(1).cloned() {
+            Some(Value::Undefined) | None => 0,
             Some(v) => {
-                let n = abstract_ops::to_number(v) as i64;
+                let n = rt.coerce_to_number(&v)? as i64;
                 if n < 0 { (len as i64 + n).max(0) as usize } else { (n as usize).min(len) }
             }
-            None => 0,
         };
-        let end = match args.get(2) {
+        let end = match args.get(2).cloned() {
             Some(Value::Undefined) | None => len,
             Some(v) => {
-                let n = abstract_ops::to_number(v) as i64;
+                let n = rt.coerce_to_number(&v)? as i64;
                 if n < 0 { (len as i64 + n).max(0) as usize } else { (n as usize).min(len) }
             }
         };

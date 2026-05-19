@@ -298,6 +298,11 @@ impl Runtime {
     /// ToNumber the primitive result. Used by array_length to allow
     /// `length: {valueOf(){return 2}}` etc.
     pub fn coerce_to_number(&mut self, v: &Value) -> Result<f64, RuntimeError> {
+        // Ω.5.P62.E17: ToNumber on Symbol throws TypeError per §7.1.4.
+        if matches!(v, Value::Symbol(_)) {
+            return Err(RuntimeError::TypeError(
+                "Cannot convert a Symbol value to a number".into()));
+        }
         if let Value::Object(id) = v {
             let id = *id;
             // (1) @@toPrimitive.
