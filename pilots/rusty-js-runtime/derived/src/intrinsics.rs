@@ -3174,13 +3174,11 @@ impl Runtime {
     /// per-spec getter methods.
     fn install_date_global(&mut self) {
         let proto = self.alloc_object(Object::new_ordinary());
-        register_intrinsic_method(self, proto, "getTime", 1, |rt, _args| {
-            let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(0.0)) };
-            Ok(rt.object_get(this, "__date_ms"))
+        register_intrinsic_method(self, proto, "getTime", 1, |rt, args| {
+            crate::generated::date_prototype_get_time(rt, rt.current_this(), args)
         });
-        register_intrinsic_method(self, proto, "valueOf", 0, |rt, _args| {
-            let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(0.0)) };
-            Ok(rt.object_get(this, "__date_ms"))
+        register_intrinsic_method(self, proto, "valueOf", 0, |rt, args| {
+            crate::generated::date_prototype_value_of(rt, rt.current_this(), args)
         });
         register_intrinsic_method(self, proto, "getFullYear", 1, |rt, _args| {
             let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
@@ -3380,16 +3378,8 @@ impl Runtime {
                 rt.call_function(f, Value::Object(this_id), args.to_vec())
             });
         }
-        register_intrinsic_method(self, proto, "toISOString", 1, |rt, _args| {
-            let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::String(Rc::new("".into()))) };
-            let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::String(Rc::new("".into()))) };
-            let (y, mo, d) = date_components(ms);
-            let h = (ms / 3_600_000.0).floor() as i64 % 24;
-            let mi = (ms / 60_000.0).floor() as i64 % 60;
-            let se = (ms / 1000.0).floor() as i64 % 60;
-            let mss = ms as i64 % 1000;
-            Ok(Value::String(Rc::new(format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}Z",
-                y, mo + 1, d, h, mi, se, mss))))
+        register_intrinsic_method(self, proto, "toISOString", 1, |rt, args| {
+            crate::generated::date_prototype_to_iso_string(rt, rt.current_this(), args)
         });
         register_intrinsic_method(self, proto, "toJSON", 1, |rt, _args| {
             let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::String(Rc::new("".into()))) };
@@ -3430,11 +3420,12 @@ impl Runtime {
             let se = (ms / 1000.0).floor() as i64 % 60;
             Ok(Value::String(Rc::new(format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02} GMT", y, mo + 1, d, h, mi, se))))
         };
-        register_intrinsic_method(self, proto, "toDateString", 0, date_fmt_date);
-        register_intrinsic_method(self, proto, "toLocaleDateString", 0, date_fmt_date);
-        register_intrinsic_method(self, proto, "toTimeString", 0, date_fmt_time);
-        register_intrinsic_method(self, proto, "toLocaleTimeString", 0, date_fmt_time);
-        register_intrinsic_method(self, proto, "toUTCString", 0, date_fmt_utc);
+        let _ = (date_fmt_date, date_fmt_time, date_fmt_utc);
+        register_intrinsic_method(self, proto, "toDateString",       0, |rt, args| crate::generated::date_prototype_to_date_string(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "toLocaleDateString", 0, |rt, args| crate::generated::date_prototype_to_date_string(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "toTimeString",       0, |rt, args| crate::generated::date_prototype_to_time_string(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "toLocaleTimeString", 0, |rt, args| crate::generated::date_prototype_to_time_string(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "toUTCString",        0, |rt, args| crate::generated::date_prototype_to_utc_string(rt, rt.current_this(), args));
         // getYear / setYear per Annex B.2.4 (legacy). getYear returns
         // year - 1900; setYear sets full year, with two-digit values
         // mapped to 1900s for 0-99.
@@ -5001,7 +4992,7 @@ fn base64_decode(s: &str) -> Result<Vec<u8>, &'static str> {
 // basic API exercise; not full IANA-timezone-aware.
 
 /// Compute (year, month-0-based, day-1-based) from epoch-ms.
-fn date_components(ms: f64) -> (i64, i64, i64) {
+pub(crate) fn date_components(ms: f64) -> (i64, i64, i64) {
     let days = (ms / 86_400_000.0).floor() as i64;
     // Days since 1970-01-01.
     // Convert to year, month, day via Gregorian algorithm.

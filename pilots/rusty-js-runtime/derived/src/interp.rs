@@ -560,6 +560,60 @@ impl Runtime {
         Ok(Value::String(std::rc::Rc::new(s)))
     }
 
+    /// Date.prototype.getTime() per ECMA §21.4.4.10.
+    pub fn date_proto_get_time_via(&mut self) -> Result<Value, RuntimeError> {
+        let this = match self.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(0.0)) };
+        Ok(self.object_get(this, "__date_ms"))
+    }
+
+    /// Date.prototype.valueOf() per ECMA §21.4.4.44.
+    pub fn date_proto_value_of_via(&mut self) -> Result<Value, RuntimeError> {
+        let this = match self.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(0.0)) };
+        Ok(self.object_get(this, "__date_ms"))
+    }
+
+    /// Date.prototype.toISOString() per ECMA §21.4.4.36.
+    pub fn date_proto_to_iso_string_via(&mut self) -> Result<Value, RuntimeError> {
+        let this_id = match self.current_this() { Value::Object(id) => id, _ => return Ok(Value::String(std::rc::Rc::new("".into()))) };
+        let ms = match self.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::String(std::rc::Rc::new("".into()))) };
+        let (y, mo, d) = crate::intrinsics::date_components(ms);
+        let h = (ms / 3_600_000.0).floor() as i64 % 24;
+        let mi = (ms / 60_000.0).floor() as i64 % 60;
+        let se = (ms / 1000.0).floor() as i64 % 60;
+        let mss = ms as i64 % 1000;
+        Ok(Value::String(std::rc::Rc::new(format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}Z",
+            y, mo + 1, d, h, mi, se, mss))))
+    }
+
+    /// Date.prototype.toDateString() (v1: ISO-like YYYY-MM-DD).
+    pub fn date_proto_to_date_string_via(&mut self) -> Result<Value, RuntimeError> {
+        let this_id = match self.current_this() { Value::Object(id) => id, _ => return Ok(Value::String(std::rc::Rc::new(String::new()))) };
+        let ms = match self.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::String(std::rc::Rc::new("Invalid Date".into()))) };
+        let (y, mo, d) = crate::intrinsics::date_components(ms);
+        Ok(Value::String(std::rc::Rc::new(format!("{:04}-{:02}-{:02}", y, mo + 1, d))))
+    }
+
+    /// Date.prototype.toTimeString() (v1: HH:MM:SS).
+    pub fn date_proto_to_time_string_via(&mut self) -> Result<Value, RuntimeError> {
+        let this_id = match self.current_this() { Value::Object(id) => id, _ => return Ok(Value::String(std::rc::Rc::new(String::new()))) };
+        let ms = match self.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::String(std::rc::Rc::new("Invalid Date".into()))) };
+        let h = (ms / 3_600_000.0).floor() as i64 % 24;
+        let mi = (ms / 60_000.0).floor() as i64 % 60;
+        let se = (ms / 1000.0).floor() as i64 % 60;
+        Ok(Value::String(std::rc::Rc::new(format!("{:02}:{:02}:{:02}", h, mi, se))))
+    }
+
+    /// Date.prototype.toUTCString() (v1: YYYY-MM-DD HH:MM:SS GMT).
+    pub fn date_proto_to_utc_string_via(&mut self) -> Result<Value, RuntimeError> {
+        let this_id = match self.current_this() { Value::Object(id) => id, _ => return Ok(Value::String(std::rc::Rc::new(String::new()))) };
+        let ms = match self.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::String(std::rc::Rc::new("Invalid Date".into()))) };
+        let (y, mo, d) = crate::intrinsics::date_components(ms);
+        let h = (ms / 3_600_000.0).floor() as i64 % 24;
+        let mi = (ms / 60_000.0).floor() as i64 % 60;
+        let se = (ms / 1000.0).floor() as i64 % 60;
+        Ok(Value::String(std::rc::Rc::new(format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02} GMT", y, mo + 1, d, h, mi, se))))
+    }
+
     /// Symbol.prototype.toString() per ECMA §20.4.3.3.
     pub fn symbol_proto_to_string_via(&mut self) -> Result<Value, RuntimeError> {
         match self.current_this() {

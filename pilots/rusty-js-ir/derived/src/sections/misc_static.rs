@@ -21,6 +21,20 @@ fn nullary_section(spec: &str, rust_name: &str, title: &str, via: &'static str) 
     }
 }
 
+pub fn build_date_get_time()      -> IRFunction { nullary_section("21.4.4.10", "date_prototype_get_time",       "Date.prototype.getTime ( )",       "date_proto_get_time_via") }
+pub fn build_date_value_of()      -> IRFunction { nullary_section("21.4.4.44", "date_prototype_value_of",       "Date.prototype.valueOf ( )",       "date_proto_value_of_via") }
+pub fn build_date_to_iso_string() -> IRFunction { nullary_section("21.4.4.36", "date_prototype_to_iso_string",  "Date.prototype.toISOString ( )",   "date_proto_to_iso_string_via") }
+pub fn build_date_to_date_string()-> IRFunction { nullary_section("21.4.4.35", "date_prototype_to_date_string", "Date.prototype.toDateString ( )",  "date_proto_to_date_string_via") }
+pub fn build_date_to_time_string()-> IRFunction { nullary_section("21.4.4.41", "date_prototype_to_time_string", "Date.prototype.toTimeString ( )",  "date_proto_to_time_string_via") }
+pub fn build_date_to_utc_string() -> IRFunction { nullary_section("21.4.4.42", "date_prototype_to_utc_string",  "Date.prototype.toUTCString ( )",   "date_proto_to_utc_string_via") }
+
+pub fn spec_steps_date_get_time()       -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["date_proto_get_time_via"],       throws: None, prose: "Return the [[DateValue]] internal slot (stored as __date_ms)." }] }
+pub fn spec_steps_date_value_of()       -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["date_proto_value_of_via"],       throws: None, prose: "Return the [[DateValue]] internal slot." }] }
+pub fn spec_steps_date_to_iso_string()  -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["date_proto_to_iso_string_via"],  throws: None, prose: "Format [[DateValue]] as YYYY-MM-DDTHH:MM:SS.sssZ." }] }
+pub fn spec_steps_date_to_date_string() -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["date_proto_to_date_string_via"], throws: None, prose: "Format [[DateValue]] as YYYY-MM-DD (v1 locale-insensitive)." }] }
+pub fn spec_steps_date_to_time_string() -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["date_proto_to_time_string_via"], throws: None, prose: "Format [[DateValue]] as HH:MM:SS (v1 locale-insensitive)." }] }
+pub fn spec_steps_date_to_utc_string()  -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["date_proto_to_utc_string_via"],  throws: None, prose: "Format [[DateValue]] as YYYY-MM-DD HH:MM:SS GMT (v1 locale-insensitive)." }] }
+
 pub fn build_symbol_proto_to_string()   -> IRFunction { nullary_section ("20.4.3.3", "symbol_prototype_to_string",   "Symbol.prototype.toString ( )",   "symbol_proto_to_string_via") }
 pub fn build_bigint_proto_to_string()   -> IRFunction { variadic_section("21.2.3.4", "bigint_prototype_to_string",   "BigInt.prototype.toString ( [ radix ] )", "bigint_proto_to_string_via") }
 pub fn build_function_proto_to_string() -> IRFunction { nullary_section ("20.2.3.5", "function_prototype_to_string", "Function.prototype.toString ( )", "function_proto_to_string_via") }
