@@ -3755,6 +3755,20 @@ impl Runtime {
                 writable: false, enumerable: false, configurable: true,
                 getter: Some(Value::Object(desc_id)), setter: None,
             });
+        // Symbol.prototype[@@toPrimitive] per §20.4.3.5 — ignore hint, return
+        // [[SymbolData]] (unwrap primitive). Installed under the well-known
+        // string key "@@toPrimitive"; brand-check rejects non-Symbol receivers.
+        register_intrinsic_method(self, sym_proto, "@@toPrimitive", 0, |rt, _args| {
+            let t = rt.unwrap_primitive(&rt.current_this());
+            match t {
+                Value::Symbol(s) => Ok(Value::Symbol(s)),
+                _ => Err(RuntimeError::TypeError(
+                    "Symbol.prototype[@@toPrimitive]: this is not a Symbol".into())),
+            }
+        });
+        // Symbol.prototype[@@toStringTag] = "Symbol" per §20.4.3.6.
+        self.obj_mut(sym_proto).set_own_frozen("@@toStringTag".into(),
+            Value::String(Rc::new("Symbol".into())));
         self.obj_mut(sym).set_own_frozen("prototype".into(), Value::Object(sym_proto));
         // Symbol.prototype.constructor = Symbol.
         self.obj_mut(sym_proto).set_own_internal("constructor".into(), Value::Object(sym));
