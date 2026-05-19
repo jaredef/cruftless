@@ -539,3 +539,49 @@ Tier 1.10 cont:
 4. **Number.prototype.{toString, toFixed, toExponential, toPrecision}** — already P62 spec-compliant.
 
 Pin-Art tag count: 20 commits as of IR-EXT 16.
+
+
+## IR-EXT 17 + 18 — 2026-05-19 night-very-late (Math binary/variadic + Object property-key inspection)
+
+**IR-EXT 17** (ba28f961): 5 Math binary/variadic sections (pow, atan2, max, min, hypot). First alphabet extension since IR-EXT 4 — Expr::AllArgs for variadic-spread.
+
+**IR-EXT 18** (3428474a): 2 Object property-key sections (getOwnPropertyNames, getOwnPropertySymbols). Coverage-discovery instance #4: Array.getOwnPropertyNames was missing the unconditional "length" entry.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| `ba28f961` | IR-EXT 17: Math binary + variadic | Expr::AllArgs IR primitive added (53rd node). CallBuiltin lowering recognizes AllArgs as a no-`&`-prefix special case so helpers receive `&[Value]` directly. Five Math.{pow, atan2, max, min, hypot} sections. |
+| `3428474a` | IR-EXT 18: getOwnPropertyNames/Symbols | Two own-property-key helpers extracted; fix-via-IR: getOwnPropertyNames now unconditionally includes "length" for Array receivers per §10.4.2.4. |
+
+### Substrate at IR-EXT 18 close
+
+**IR alphabet**: 53 nodes (52 stable across IR-EXT 5→16 + AllArgs from IR-EXT 17).
+
+**Sections IR-encoded**: 75. Wired: 70. IR-only-not-wired: 5 (Array.prototype.{findLast, findLastIndex, indexOf, includes, reduce}).
+
+**Runtime helpers cumulative**: 37.
+
+**Linter**: 75/75 clean.
+
+### Coverage-discovery instance #4
+
+`getOwnPropertyNames([10,20,30])` returned `["0","1","2"]` pre-IR; spec requires `["0","1","2","length"]` per §10.4.2.4 (Array length is always an own property). The IR's spec-faithful authoring caught this; fix via unconditional `out.push("length".into())` in own_property_names_via.
+
+### Conjecture status
+
+Four corroborations of the strengthened §I conjecture in five rounds (IR-EXT 14, 15, 16, 18). Average rate: ~1 latent semantic-bug per cluster. The IR is acting as **coverage-audit-by-construction** — every translation forces a side-by-side reading of (ECMA prose, cruftless impl, IR semantics), catching divergences.
+
+### Open scope at IR-EXT 18 close
+
+Tier 1.10 cont:
+1. **Object.{assign, fromEntries}** — non-trivial (Object.assign copies enumerable own props variadically; Object.fromEntries iterates).
+2. **Number.prototype.{toString, toFixed, toExponential, toPrecision}** — already P62 spec-compliant.
+3. **Math.{imul, fround, clz32}** — three more Math one-liners.
+
+Tier 1.11+ alphabet extensions (queued):
+4. Signed-Int + IndexSub primitives (unblocks Array.prototype.{findLast, lastIndexOf, reduceRight}).
+5. Iterator-protocol primitives (unblocks Promise.all family + Set/Map ctor iterables).
+6. Property-descriptor builders (unblocks Object.{defineProperty, getOwnPropertyDescriptor}).
+
+Pin-Art tag count: 22 commits as of IR-EXT 18.
