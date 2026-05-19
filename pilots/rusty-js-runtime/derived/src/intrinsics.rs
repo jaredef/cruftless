@@ -2148,6 +2148,11 @@ impl Runtime {
             self.obj_mut(num).set_own_frozen("prototype".into(), Value::Object(proto));
             // Ω.5.P58.E4: Number.prototype.constructor = Number per ECMA §10.2.12.
             self.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(num));
+            // Ω.5.P62.E19: Number.prototype is a Number exotic with
+            // [[NumberData]] = +0 per §21.1.4. Brand-checked methods
+            // (toString/toFixed/valueOf) must accept Number.prototype
+            // directly (Number.prototype.toString() returns "0").
+            self.obj_mut(proto).set_own_internal("__primitive__".into(), Value::Number(0.0));
         }
         self.globals.insert("Number".into(), Value::Object(num));
         self.install_string_global();
@@ -2266,6 +2271,10 @@ impl Runtime {
             // "Object"), so `"x".constructor === String` returned false and
             // the ast-types lookup fell through to the `missing name` throw.
             self.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(str_id));
+            // Ω.5.P62.E19: String.prototype is a String exotic with
+            // [[StringData]] = "" per §22.1.4.
+            self.obj_mut(proto).set_own_internal("__primitive__".into(),
+                Value::String(Rc::new(String::new())));
         }
         self.globals.insert("String".into(), Value::Object(str_id));
     }
@@ -2802,6 +2811,9 @@ impl Runtime {
         self.obj_mut(bool_id).set_own_frozen("prototype".into(), Value::Object(bool_proto));
         // Ω.5.P58.E4: Boolean.prototype.constructor = Boolean per ECMA §10.2.12.
         self.obj_mut(bool_proto).set_own_internal("constructor".into(), Value::Object(bool_id));
+        // Ω.5.P62.E19: Boolean.prototype is a Boolean exotic with
+        // [[BooleanData]] = false per §20.3.4.
+        self.obj_mut(bool_proto).set_own_internal("__primitive__".into(), Value::Boolean(false));
         self.globals.insert("Boolean".into(), Value::Object(bool_id));
         // Tier-Ω.5.tttttt: EventTarget + Event + CustomEvent global stubs
         // (chai / web-platform-ish libs). v1: ordinary objects with the
