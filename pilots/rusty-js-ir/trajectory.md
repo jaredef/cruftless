@@ -951,6 +951,53 @@ The lift is structural (same code, different shape) so post-lift rates must matc
 
 This is the **5th coverage-discovery corroboration** of the workstream (after Math.asin/acos absence at EXT 14, Reflect.deleteProperty configurable at EXT 15, three Reflect.* throw-vs-fallback at EXT 16, Array getOwnPropertyNames length at EXT 18). All five share the same shape: IR construction *forces* algorithmic equivalence between code paths that the hand-written substrate had silently drifted apart.
 
+
+## IR-EXT 57 → 58 — 2026-05-19 (substrate fixes through the post-IR lens)
+
+**Stretch summary**: keeper directive "expand toward full test262 coverage via IR construction". After closing the EXT-52 queued alphabet extensions (both unnecessary), the work pivots to substrate fixes that the post-IR lens makes visible. Three commits, two distinct mechanisms (iterator-returning + ToPropertyDescriptor spec-strict), **+180 test262 wins**.
+
+### Commits
+
+| EXT | commit | recognition |
+|---|---|---|
+| 57 | `c29b0d36` | Array/Map .values/.keys/.entries _via helpers were materializing the result Array and returning it directly — for-of and any test that calls .next() saw an Array, not an iterator. Wrap in `crate::iterator::make_array_iterator` before returning. Iteration chapter movement: Array/values 41.6%→66.6%, Array/keys 41.6%→66.6%, Array/entries 41.6%→66.6%, Map/keys 40%→50%, Map/values 40%→60%, Map/entries 40%→60%. **Net: +14 tests**. |
+| 57b | `bb35e323` | Install §23.1.5.2 [@@toStringTag] = "Array Iterator" and §23.1.5.2.2 [Symbol.iterator]() = self on every Array Iterator object. Spec-required but didn't move EXT-57 chapters (those tests don't probe the surface); land it as substrate correctness anyway. |
+| 58 | `a291d560` | `object_define_property_via`: §6.2.5.5 ToPropertyDescriptor must dispatch through HasProperty + Get (walks the prototype chain). Was using `has_own_str` + `object_get` (own-slot only) and inline `Some(n != 0.0)` (NaN→true) for Boolean coercion. Fixed both: use `has_property` + `read_property` + `abstract_ops::to_boolean`. Object.defineProperty: **64.5% → 79.2%** (+166 tests). Since Object.defineProperties also routes through object_define_property_via (post-EXT 56), the fix propagates. |
+
+### Substrate at EXT 58 close
+
+**IR alphabet**: still 58 nodes — unchanged across the EXT-56/57/58 substrate-fix stretch.
+
+**Sections IR-encoded**: 240 (unchanged from EXT 56).
+
+**Runtime helpers**: ~164 (unchanged in count; 4 helpers modified in-place).
+
+**Session running total (EXT 56+57+58)**: **+333 test262 wins** across Object descriptor + iteration surfaces. (Full descriptor chapter re-baseline post-EXT 58: defineProperties picks up an additional +60 because it routes through object_define_property_via — the fix propagated. defineProperty 64.5%→79.2%, defineProperties 49.6%→**73.4%**, gOPD 93.5%→93.8%, create 93.4%→93.7%, prototype 56.8%→57.2%.)
+
+### Conjecture status — the predictive shape sharpens
+
+EXT 56-58 sequence is now a clean three-step instance of the §I conjecture predicting its own follow-on yield:
+
+1. **EXT 56**: lift descriptor surface from inline → IR + lifted helper (structural). Side effect: +91 tests from accidentally collapsing two divergent ToPropertyDescriptor implementations. *(coverage-discovery #5)*
+
+2. **EXT 57**: sample test262 against an already-IR'd surface. Failures point at a single substrate gap (raw-Array return vs iterator). Three-line-per-helper fix. +14 tests. *(coverage-discovery #6)*
+
+3. **EXT 58**: sample test262 against a different already-IR'd surface, this time the one EXT 56 just consolidated. Failures point at two substrate gaps in the single lifted helper. Two named fixes in one helper. +166 tests. *(coverage-discovery #7)*
+
+The pattern: once IR construction pins a single lifted helper as the authoritative implementation, test262 failure inspection becomes a *focused* exercise. Without the lift, the same fix would need to be replicated across drifted impls (or — worse — discovered three separate times). The §I conjecture's claim that "spec conformance gets monotonically easier post-IR" is now operationally measurable as a leverage ratio between substrate-fix LOC and test262 yield: EXT 58 was ~30 LOC for 166 tests = 5.5 tests/LOC.
+
+### Open scope at EXT 58 close
+
+Next high-yield targets visible from the broad chapter baseline:
+
+- **Object/defineProperty residual** (235 remaining failures at 79.2%): largest remaining single-helper pool. Failure clusters: ~50 still about strict attribute enforcement on existing properties, ~30 about TypeError on non-configurable redef, ~20 about property-order under define-then-redefine.
+- **Object/defineProperties** (228 remaining at 63.9%): largely shared with defineProperty since it routes through; remaining gaps are around the snapshotting + descriptor-object Get protocol.
+- **JSON** (90 failures at 45.4%): biggest substrate gap is `json_stringify` ignoring replacer + space args entirely, and not unwrapping Boolean/Number/String Object wrappers. Substantial rewrite (~150 LOC).
+- **Map / Set** (98 + 129 remaining): mostly around constructor iterable consumption + iteration-protocol edge cases.
+- **defineProperty** still has the ValidateAndApply-on-existing-property gap separately from ToPropertyDescriptor.
+
+Pin-Art tag count: 70 commits as of EXT 58.
+
 ### Conjecture status
 
 **§I-strengthened corroboration #5 (2026-05-19, EXT 56)**: a queued alphabet extension predicted at EXT 52 close (property-descriptor builders) was empirically shown to be unnecessary upon implementation. The existing alphabet was already sufficient. This is the strongest corroboration of §I.1.b yet — the alphabet-completeness criterion is not just stable in practice but predictively *over-conservative* when projected forward.
