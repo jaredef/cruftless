@@ -113,6 +113,7 @@ fn main() {
         ("Symbol.keyFor",             misc::build_symbol_key_for(), misc::spec_steps_symbol_key_for()),
         ("Date.prototype.getYear",    misc::build_date_get_year(),  misc::spec_steps_date_get_year()),
         ("Date.prototype.setYear",    misc::build_date_set_year(),  misc::spec_steps_date_set_year()),
+        ("Object.groupBy",            misc::build_object_group_by(), misc::spec_steps_object_group_by()),
         ("Object.keys", object_static::build_keys(), object_static::spec_steps_keys()),
         ("Object.values", object_static::build_values(), object_static::spec_steps_values()),
         ("Object.entries", object_static::build_entries(), object_static::spec_steps_entries()),

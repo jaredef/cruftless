@@ -21,6 +21,9 @@ fn nullary_section(spec: &str, rust_name: &str, title: &str, via: &'static str) 
     }
 }
 
+pub fn build_object_group_by() -> IRFunction { variadic_section("20.1.2.10", "object_group_by", "Object.groupBy ( items, callbackFn )", "object_group_by_via") }
+pub fn spec_steps_object_group_by() -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["object_group_by_via"], throws: None, prose: "Iterate items; bucket each by ToString(callbackFn(item, i)) into an Object-of-arrays." }] }
+
 pub fn build_json_stringify()      -> IRFunction { variadic_section("24.5.2", "json_stringify",                "JSON.stringify ( value, replacer, space )", "json_stringify_via") }
 pub fn build_json_parse()          -> IRFunction { variadic_section("24.5.1", "json_parse",                    "JSON.parse ( text, reviver )",              "json_parse_via") }
 pub fn build_symbol_for()          -> IRFunction { variadic_section("20.4.2.6", "symbol_for",                  "Symbol.for ( key )",                         "symbol_for_via") }

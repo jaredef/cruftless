@@ -122,6 +122,7 @@ fn main() {
         misc::build_symbol_key_for(),
         misc::build_date_get_year(),
         misc::build_date_set_year(),
+        misc::build_object_group_by(),
         object_static::build_keys(),
         object_static::build_values(),
         object_static::build_entries(),

@@ -663,6 +663,33 @@ impl Runtime {
         Ok(Value::Number(new_ms))
     }
 
+    /// Object.groupBy(items, callbackFn) per ECMA §20.1.2.10.
+    pub fn object_group_by_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let items = args.first().cloned().unwrap_or(Value::Undefined);
+        let cb = args.get(1).cloned().ok_or_else(||
+            RuntimeError::TypeError("Object.groupBy: callbackFn required".into()))?;
+        let entries = crate::intrinsics::collect_iterable(self, items)?;
+        let out = self.alloc_object(crate::value::Object::new_ordinary());
+        for (i, v) in entries.into_iter().enumerate() {
+            let key_v = self.call_function(cb.clone(), Value::Undefined,
+                vec![v.clone(), Value::Number(i as f64)])?;
+            let key = crate::abstract_ops::to_string(&key_v).as_str().to_string();
+            let arr_id = match self.object_get(out, &key) {
+                Value::Object(id) => id,
+                _ => {
+                    let a = self.alloc_object(crate::value::Object::new_array());
+                    self.object_set(out, key.clone(), Value::Object(a));
+                    self.object_set(a, "length".into(), Value::Number(0.0));
+                    a
+                }
+            };
+            let n = self.array_length(arr_id);
+            self.object_set(arr_id, n.to_string(), v);
+            self.object_set(arr_id, "length".into(), Value::Number((n + 1) as f64));
+        }
+        Ok(Value::Object(out))
+    }
+
     /// JSON.stringify(value, replacer, space) per ECMA §24.5.2.
     /// v1: replacer + space ignored; thin wrapper around the existing free fn.
     pub fn json_stringify_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
