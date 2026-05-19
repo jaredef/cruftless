@@ -1213,57 +1213,84 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(Value::Undefined)
     });
     register_intrinsic_method(rt, host, "slice", 2, |rt, args| {
-        let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
+        // Ω.5.P62.E14: RequireObjectCoercible + strict ToString(this);
+        // ToInteger args propagates abrupt completions.
+        let this = rt.current_this();
+        rt.require_object_coercible(&this)?;
+        let s = rt.to_string_strict(&this)?;
         let chars: Vec<char> = s.chars().collect();
         let len = chars.len() as i64;
-        let start = clamp_index(args.first().map(abstract_ops::to_number).unwrap_or(0.0) as i64, len);
-        let end = clamp_index(args.get(1).map(abstract_ops::to_number).unwrap_or(len as f64) as i64, len);
+        let start_n = match args.first().cloned() {
+            Some(v) => rt.coerce_to_number(&v)?,
+            None => 0.0,
+        };
+        let end_n = match args.get(1).cloned() {
+            Some(Value::Undefined) | None => len as f64,
+            Some(v) => rt.coerce_to_number(&v)?,
+        };
+        let start = clamp_index(start_n as i64, len);
+        let end = clamp_index(end_n as i64, len);
         if end <= start { return Ok(Value::String(Rc::new(String::new()))); }
         let out: String = chars[start as usize..end as usize].iter().collect();
         Ok(Value::String(Rc::new(out)))
     });
-    // Tier-Ω.5.aaaaaa: String.prototype.substr (legacy but still ubiquitous —
-    // moment.js uses it for token-parsing). Per ECMA Annex B.2.2.1:
-    // substr(start, length). Negative start counts from end.
+    // Tier-Ω.5.aaaaaa: String.prototype.substr (legacy Annex B.2.2.1).
     register_intrinsic_method(rt, host, "substr", 2, |rt, args| {
-        let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
+        let this = rt.current_this();
+        rt.require_object_coercible(&this)?;
+        let s = rt.to_string_strict(&this)?;
         let chars: Vec<char> = s.chars().collect();
         let len = chars.len() as i64;
-        let mut start = args.first().map(abstract_ops::to_number).unwrap_or(0.0) as i64;
+        let mut start = match args.first().cloned() {
+            Some(v) => rt.coerce_to_number(&v)? as i64, None => 0,
+        };
         if start < 0 { start = (len + start).max(0); }
         let start = start.min(len) as usize;
-        let count = args.get(1).map(abstract_ops::to_number).unwrap_or((len - start as i64) as f64) as i64;
-        let count = count.max(0) as usize;
+        let count_n = match args.get(1).cloned() {
+            Some(Value::Undefined) | None => (len - start as i64) as f64,
+            Some(v) => rt.coerce_to_number(&v)?,
+        };
+        let count = (count_n as i64).max(0) as usize;
         let end = (start + count).min(chars.len());
         let out: String = chars[start..end].iter().collect();
         Ok(Value::String(Rc::new(out)))
     });
     register_intrinsic_method(rt, host, "substring", 2, |rt, args| {
-        let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
+        let this = rt.current_this();
+        rt.require_object_coercible(&this)?;
+        let s = rt.to_string_strict(&this)?;
         let chars: Vec<char> = s.chars().collect();
         let len = chars.len() as i64;
-        let mut a = args.first().map(abstract_ops::to_number).unwrap_or(0.0) as i64;
-        let mut b = args.get(1).map(abstract_ops::to_number).unwrap_or(len as f64) as i64;
-        a = a.clamp(0, len);
-        b = b.clamp(0, len);
+        let a_n = match args.first().cloned() {
+            Some(v) => rt.coerce_to_number(&v)?, None => 0.0,
+        };
+        let b_n = match args.get(1).cloned() {
+            Some(Value::Undefined) | None => len as f64,
+            Some(v) => rt.coerce_to_number(&v)?,
+        };
+        let mut a = (a_n as i64).clamp(0, len);
+        let mut b = (b_n as i64).clamp(0, len);
         if a > b { std::mem::swap(&mut a, &mut b); }
         let out: String = chars[a as usize..b as usize].iter().collect();
         Ok(Value::String(Rc::new(out)))
     });
     register_intrinsic_method(rt, host, "indexOf", 1, |rt, args| {
-        let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
-        let needle = abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined))
-            .as_str().to_string();
+        let this = rt.current_this();
+        rt.require_object_coercible(&this)?;
+        let s = rt.to_string_strict(&this)?;
+        let needle = rt.to_string_strict(&args.first().cloned().unwrap_or(Value::Undefined))?;
+        if let Some(pv) = args.get(1).cloned() { let _ = rt.coerce_to_number(&pv)?; }
         match s.find(&needle) {
-            // .find returns byte offset; convert to char index by counting.
             Some(byte_off) => Ok(Value::Number(s[..byte_off].chars().count() as f64)),
             None => Ok(Value::Number(-1.0)),
         }
     });
     register_intrinsic_method(rt, host, "lastIndexOf", 1, |rt, args| {
-        let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
-        let needle = abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined))
-            .as_str().to_string();
+        let this = rt.current_this();
+        rt.require_object_coercible(&this)?;
+        let s = rt.to_string_strict(&this)?;
+        let needle = rt.to_string_strict(&args.first().cloned().unwrap_or(Value::Undefined))?;
+        if let Some(pv) = args.get(1).cloned() { let _ = rt.coerce_to_number(&pv)?; }
         match s.rfind(&needle) {
             Some(byte_off) => Ok(Value::Number(s[..byte_off].chars().count() as f64)),
             None => Ok(Value::Number(-1.0)),
