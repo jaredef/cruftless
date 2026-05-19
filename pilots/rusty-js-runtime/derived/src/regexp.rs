@@ -227,6 +227,89 @@ fn install_regexp_proto(rt: &mut Runtime, host: ObjectRef) {
         };
         Ok(Value::String(Rc::new(s)))
     });
+
+    // Ω.5.P62.E25: RegExp.prototype @@match / @@search / @@replace / @@split
+    // per ECMA §22.2.5. String.prototype.{match,search,replace,split}
+    // dispatch to these when the searchValue is a RegExp (via the
+    // IsRegExp/@@match probe). Pre-E25 cruftless didn't install these
+    // Symbol-named methods, so `"abc".match(/a/)` resolved through the
+    // String.prototype impl directly — which worked for simple cases
+    // but broke any consumer that used `regex[Symbol.match](str)` form.
+    register_method(rt, host, "@@match", |rt, args| {
+        let this_id = current_regexp_this(rt, "RegExp.prototype[@@match]")?;
+        let s = rt.to_string_strict(&args.first().cloned().unwrap_or(Value::Undefined))?;
+        let is_global = matches!(&rt.obj(this_id).internal_kind,
+            InternalKind::RegExp(r) if r.flags.contains('g'));
+        if !is_global {
+            return regexp_exec(rt, this_id, &s);
+        }
+        let rx = match &rt.obj(this_id).internal_kind {
+            InternalKind::RegExp(r) => r.compiled.clone(),
+            _ => None,
+        };
+        let rx = match rx {
+            Some(r) => r,
+            None => return Ok(Value::Null),
+        };
+        let ms: Vec<String> = rx.find_iter_owned(&s).into_iter().map(|(_,_,s)| s).collect();
+        if ms.is_empty() { return Ok(Value::Null); }
+        let arr = rt.alloc_object(Object::new_array());
+        for (i, m) in ms.iter().enumerate() {
+            rt.object_set(arr, i.to_string(), Value::String(Rc::new(m.clone())));
+        }
+        rt.object_set(arr, "length".into(), Value::Number(ms.len() as f64));
+        Ok(Value::Object(arr))
+    });
+    register_method(rt, host, "@@search", |rt, args| {
+        let this_id = current_regexp_this(rt, "RegExp.prototype[@@search]")?;
+        let s = rt.to_string_strict(&args.first().cloned().unwrap_or(Value::Undefined))?;
+        let rx = match &rt.obj(this_id).internal_kind {
+            InternalKind::RegExp(r) => r.compiled.clone(),
+            _ => None,
+        };
+        let rx = match rx { Some(r) => r, None => return Ok(Value::Number(-1.0)) };
+        match rx.find_first(&s) {
+            Some((start, _)) => Ok(Value::Number(byte_to_char_index(&s, start) as f64)),
+            None => Ok(Value::Number(-1.0)),
+        }
+    });
+    register_method(rt, host, "@@replace", |rt, args| {
+        let _ = current_regexp_this(rt, "RegExp.prototype[@@replace]")?;
+        let s = rt.to_string_strict(&args.first().cloned().unwrap_or(Value::Undefined))?;
+        let repl = args.get(1).cloned().unwrap_or(Value::Undefined);
+        // Reuse the existing string_replace_impl; pass `this` (the regex)
+        // as the pattern arg.
+        string_replace_impl(rt, &s, rt.current_this(), repl, false)
+    });
+    register_method(rt, host, "@@split", |rt, args| {
+        let this_id = current_regexp_this(rt, "RegExp.prototype[@@split]")?;
+        let s = rt.to_string_strict(&args.first().cloned().unwrap_or(Value::Undefined))?;
+        let limit = args.get(1).cloned().and_then(|v| {
+            if matches!(v, Value::Undefined) { None }
+            else { rt.coerce_to_number(&v).ok().filter(|n| n.is_finite() && *n >= 0.0).map(|n| n as usize) }
+        });
+        let rx = match &rt.obj(this_id).internal_kind {
+            InternalKind::RegExp(r) => r.compiled.clone(),
+            _ => None,
+        };
+        let rx = match rx {
+            Some(r) => r,
+            None => {
+                let arr = rt.alloc_object(Object::new_array());
+                rt.object_set(arr, "0".into(), Value::String(Rc::new(s.clone())));
+                rt.object_set(arr, "length".into(), Value::Number(1.0));
+                return Ok(Value::Object(arr));
+            }
+        };
+        let parts: Vec<String> = rx.split_str(&s);
+        let arr = rt.alloc_object(Object::new_array());
+        let take = limit.unwrap_or(parts.len()).min(parts.len());
+        for (i, p) in parts.iter().take(take).enumerate() {
+            rt.object_set(arr, i.to_string(), Value::String(Rc::new(p.clone())));
+        }
+        rt.object_set(arr, "length".into(), Value::Number(take as f64));
+        Ok(Value::Object(arr))
+    });
 }
 
 /// Per §22.2.5.2 RegExpBuiltinExec. v1 surface: returns null on no match,
