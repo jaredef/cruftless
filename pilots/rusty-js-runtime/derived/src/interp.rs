@@ -430,6 +430,24 @@ impl Runtime {
         Ok(())
     }
 
+    /// Promise.resolve(v) per ECMA §27.2.4.7 — IR-target for the
+    /// "promise-wrap if not a thenable; otherwise return as-is"
+    /// abstract op. Tier 1.10 simplification: always allocates a new
+    /// promise and resolves it with v; spec-fast-path for "v is already
+    /// a Promise of the same constructor" is deferred.
+    pub fn promise_resolve_via(&mut self, v: &Value) -> Result<Value, RuntimeError> {
+        let p = crate::promise::new_promise(self);
+        crate::promise::resolve_promise(self, p, v.clone());
+        Ok(Value::Object(p))
+    }
+
+    /// Promise.reject(r) per ECMA §27.2.4.5 — IR-target.
+    pub fn promise_reject_via(&mut self, v: &Value) -> Result<Value, RuntimeError> {
+        let p = crate::promise::new_promise(self);
+        crate::promise::reject_promise(self, p, v.clone());
+        Ok(Value::Object(p))
+    }
+
     /// EnumerableOwnPropertyNames(O, "key") per ECMA §7.3.23 — returns
     /// the Array of own string keys of O, filtering @@-prefixed (Symbol)
     /// keys and Array's implicit `length`. Integer-index keys come first

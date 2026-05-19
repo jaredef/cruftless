@@ -57,17 +57,17 @@ impl Runtime {
             Ok(Value::Object(p))
         });
         let promise_obj = self.alloc_object(promise_ctor);
+        // Ω.5.P63.E5: Promise.resolve / Promise.reject routed through
+        // IR-lowered generated::promise_resolve / promise_reject.
+        // Underlying helpers (rt.promise_resolve_via / rt.promise_reject_via)
+        // still call new_promise + resolve_promise / reject_promise; the
+        // IR is a 2-step wrapper that exposes the spec's PromiseResolve
+        // / PromiseReject step granularity to the linter.
         crate::intrinsics::register_intrinsic_method(self, promise_obj, "resolve", 1, |rt, args| {
-            let v = args.first().cloned().unwrap_or(Value::Undefined);
-            let p = new_promise(rt);
-            resolve_promise(rt, p, v);
-            Ok(Value::Object(p))
+            crate::generated::promise_resolve(rt, Value::Undefined, args)
         });
         crate::intrinsics::register_intrinsic_method(self, promise_obj, "reject", 1, |rt, args| {
-            let v = args.first().cloned().unwrap_or(Value::Undefined);
-            let p = new_promise(rt);
-            reject_promise(rt, p, v);
-            Ok(Value::Object(p))
+            crate::generated::promise_reject(rt, Value::Undefined, args)
         });
         crate::intrinsics::register_intrinsic_method(self, promise_obj, "then", 3, |rt, args| {
             let source = match args.first() {
