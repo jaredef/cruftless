@@ -971,16 +971,20 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     });
 
     register_intrinsic_method(rt, host, "copyWithin", 2, |rt, args| {
-        // ECMA §23.1.3.4: arr.copyWithin(target, start, end). Returns this
-        // (or the boxed primitive when called on a non-Object this).
+        // ECMA §23.1.3.4: arr.copyWithin(target, start, end).
+        // Ω.5.P62.E18: coerce_to_number on all three positional args
+        // so Symbol→TypeError and Object→valueOf dispatch per spec.
         let id = to_array_this(rt)?;
         let len = rt.array_length(id) as i64;
-        let arg_n = |i: usize| -> i64 {
-            args.get(i).map(abstract_ops::to_number).unwrap_or(0.0) as i64
+        let arg_n = |rt: &mut Runtime, i: usize, default: i64| -> Result<i64, RuntimeError> {
+            match args.get(i).cloned() {
+                Some(Value::Undefined) | None => Ok(default),
+                Some(v) => Ok(rt.coerce_to_number(&v)? as i64),
+            }
         };
-        let to = clamp_index(arg_n(0), len);
-        let from = clamp_index(arg_n(1), len);
-        let end = if args.len() >= 3 { clamp_index(arg_n(2), len) } else { len };
+        let to = clamp_index(arg_n(rt, 0, 0)?, len);
+        let from = clamp_index(arg_n(rt, 1, 0)?, len);
+        let end = clamp_index(arg_n(rt, 2, len)?, len);
         let count = (end - from).min(len - to).max(0);
         // Read-then-write to handle overlap correctly.
         let buf: Vec<Value> = (0..count).map(|i|
