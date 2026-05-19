@@ -330,6 +330,18 @@ impl Runtime {
             // Both Objects: SameValue (reference equality).
             return Ok(crate::abstract_ops::is_strictly_equal(a, b));
         }
+        // Ω.5.P63.E50: ECMA §7.2.13 — Object == null/undefined is false without
+        // ToPrimitive coercion (per the explicit null-comparison cases in the
+        // spec). The prior implementation invoked ToPrimitive on the Object
+        // side regardless, which on RegExp.prototype invokes the brand-
+        // checked `RegExp.prototype.toString` against a non-RegExp receiver
+        // and throws. 32-package get-intrinsic cluster (sinon, is-regex,
+        // deep-equal, is-symbol, ...) gates on `value != null` where value
+        // is RegExp.prototype reached via dynamic property walk.
+        if matches!(a, Value::Undefined | Value::Null) || matches!(b, Value::Undefined | Value::Null) {
+            // Object on one side, null/undefined on the other → not equal.
+            return Ok(false);
+        }
         // One Object, one primitive: ToPrimitive on the Object side.
         if matches!(a, Value::Object(_)) {
             let ap = self.to_primitive(a, "default")?;
