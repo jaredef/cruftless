@@ -11,6 +11,20 @@ Replace the human-transcription stage in cruftless's resolver chain (TC39 → EC
 
 The conjecture (cruftless seed §A8.33 + IR-DESIGN.md §9): **spec conformance gets monotonically easier post-IR**. Each new built-in method translation goes through the linter once, never drifts again. The 30+ P62 substrate fixes per session shape should not recur for IR-covered sections.
 
+### I.1 Refined telos (post-IR-EXT 11)
+
+Two empirical refinements after the first 33 sections:
+
+**(a) Telos is bounded coverage, not perfect coverage.** "Full representation" means *every section in cruftless's `register_intrinsic_method` registration table is either IR-encoded or explicitly carved out*. Carve-outs are legitimate when:
+   - The section's hand-written impl is a perf-critical one-liner (Math.abs, Math.floor) and the IR overhead would dominate.
+   - The section is a Bun-specific or Node-compat surface not in ECMA-262 (Bun.serve, fs.readFile).
+   - The section's spec is unstable (TC39 stage-2/3 proposals).
+   Each carve-out is recorded in trajectory.md with a one-line reason.
+
+**(b) Telos is also alphabet completeness.** A section is *not blocked* on the alphabet if and only if its spec can be expressed in the existing IR nodes plus existing runtime helpers. Sections that need novel patterns drive alphabet extensions (HasArg, CallBuiltin, signed-Int, iterator-protocol, descriptor-builders). The alphabet is "complete" when no ECMA-262 algorithm shape from the cruftless coverage set requires a new IR primitive.
+
+The conjunction of (a) + (b) gives a falsifiable termination condition: telos reached when *(i)* every non-carved-out cruftless section is in `sections/`, *(ii)* `cargo run --example lint_all` is ✓ across all entries, *(iii)* no section's translation triggered an alphabet extension in the last N rounds.
+
 ## II. Apparatus
 
 The IR is **resolver-instance #0** per IR-DESIGN.md §0, decomposed into three sub-stages above Doc 729 §IV's resolver-instance #1 (Cargo):
@@ -28,16 +42,22 @@ Operational state at IR-EXT 1 close:
 
 ## III. Alphabet (the IR node set)
 
-~50 nodes in 9 categories per IR-DESIGN.md §3. Cumulative at IR-EXT 1 close:
+~52 nodes in 9 categories per IR-DESIGN.md §3. Cumulative at IR-EXT 11 close:
 
 - **Coercion / type-check**: RequireObjectCoercible, ToObject, ToPrimitive, ToString, ToNumber, ToInteger, ToLength, ToUint32, ToBoolean, ToPropertyKey, IsCallable, IsConstructor, IsArray, IsRegExp, SameValue, SameValueZero.
 - **Slot / property**: HasSlot, GetSlot, Get, HasProperty, HasOwnProperty, OrdinaryObjectCreate, ArraySpeciesCreate, CreateDataPropertyOrThrow, LengthOfArrayLike.
-- **Calls**: Call, Construct, Invoke.
+- **Calls**: Call, Construct, Invoke, **CallBuiltin** (added IR-EXT 4 — invoke a Runtime helper that isn't a JS-side method dispatch).
 - **Control flow**: Throw (typed by ErrorClass), Return, If, While, Let, Assign, LetIndex, AssignIndex, Expr.
-- **Constants**: Undefined, Null, Bool, Number, Str, IntConst, This, Arg.
+- **Constants**: Undefined, Null, Bool, Number, Str, IntConst, This, Arg, **HasArg** (added IR-EXT 4 — distinguishes "arg passed undefined" from "arg not passed").
 - **Operators**: OpAdd, OpSub, OpMul, LooseEq, StrictEq, Lt, Le, Not, IndexAdd, IndexAsValue, IndexAsKey, AsIndex.
 
-The alphabet is **closed for Tier 1.5**. Tier 1.6 (iteration cluster) may add `IteratorOpen`/`IteratorNext`/`IteratorClose`. Tier 2 (spec parser) adds nothing; it consumes the alphabet from XML.
+The alphabet has been **stable across IR-EXT 5 → IR-EXT 11** (5 chapters × 10 clusters × 33 sections without alphabet extensions). The two IR-EXT 4 additions (HasArg + CallBuiltin) covered the patterns that emerged through IR-EXT 11.
+
+**Alphabet-extension triggers identified for future tiers**:
+- Signed-Int + IndexSubtract + IndexLt: backward iteration (findLast spec-strict, reduceRight, lastIndexOf, ToInteger fromIndex normalization).
+- IteratorOpen / IteratorNext / IteratorClose: Promise.all/allSettled/any/race + Set/Map ctor iterables.
+- DescriptorBuild / DescriptorMerge: Object.defineProperty/defineProperties/getOwnPropertyDescriptor.
+- NewPromiseCapability / SpeciesConstructor: Promise.all-style C-dispatch on `this`.
 
 ## IV. Disciplines lifted to the IR boundary
 
@@ -66,15 +86,32 @@ Each cruftless seed §A8 discipline encodes a runtime-side invariant. The IR mak
 
 **M5. Spec-XML parser (Tier 2 trigger).** When the count of hand-translated SpecStepRecord lists exceeds ~10 sections, the parser-cost-vs-translation-cost cross-over justifies building it. Until then, hand-authoring the records is the cheaper move.
 
+*(IR-EXT 6 status: parser landed at 12 sections. Currently operates on embedded fixtures; a tc39/ecma262 checkout + build.rs glue would close the live-source loop.)*
+
+**M6. CallBuiltin preferred for non-JS-method abstract ops.** When a spec section's algorithm calls an abstract op that *isn't* a JS-side method dispatch (e.g., EnumerableOwnPropertyNames, SameValue, IsExtensible, ArraySpeciesCreate), prefer the CallBuiltin pattern: extract a Runtime helper `rt.<name>_via(...)`, then have the IR section call it through `Expr::CallBuiltin { name, args }`. This keeps the IR section thin and spec-traceable while leaving the implementation surface in idiomatic Rust.
+
+Counter-rule: when the abstract op *is* a JS-side method dispatch (Call, Get, HasProperty), use the canonical IR primitive (Expr::Call, Expr::Get, Expr::HasProperty) — not CallBuiltin. These dispatch through the bytecode VM and respect JS semantics (accessor getters, proxy traps, etc.).
+
+**M7. one_step_builtin builder for the 1-step canonical shape.** When a spec section reduces to "Return ? builtin(...)" — particularly common for Number static methods, global predicates, and Object integrity ops — use the `one_step_builtin` builder pattern (see `sections/number_static.rs`). Each section's IR builder collapses to ~3 lines of construction. The builder pattern is replicable across clusters; lift to a shared helper in `sections/mod.rs` when ≥3 clusters use it.
+
 ## VI. Termination conditions for the workstream
 
-The IR reaches "full representation" when:
+The IR reaches "full representation" when all four conditions hold:
 
-1. **All cruftless-implemented built-in surface is IR-encoded.** Concretely: every `register_intrinsic_method` site in `pilots/rusty-js-runtime/derived/src/{intrinsics, prototype, promise, regexp, ...}.rs` is replaced by an IR-derived `generated.rs` entry.
-2. **The linter passes against every IR function.** Hand-authored or XML-parsed records, the diff is zero.
-3. **The test262 slice for each translated section holds at-or-above its pre-IR rate.** No conformance regression from the swap.
+1. **Every non-carved-out cruftless section is IR-encoded.** Concretely: every `register_intrinsic_method` site in `pilots/rusty-js-runtime/derived/src/{intrinsics, prototype, promise, regexp, ...}.rs` is either (a) replaced by a `generated.rs` invocation, or (b) recorded as a carve-out in trajectory.md with a one-line reason (see §I.1.a — perf-critical one-liners, Bun-specific, TC39 stage-2/3, etc.).
+2. **`cargo run --example lint_all -p rusty-js-ir` exits ✓ across every entry.** Hand-authored or XML-parsed records, the diff is zero per spec section.
+3. **`cargo run --example lint_from_spec -p rusty-js-ir` produces matching SpecStepRecord lists for every section that has a corresponding emu-alg block in the parser fixture set.** Resolver-instance #0b is fully closed.
+4. **The test262 slice for each translated section holds at-or-above its pre-IR rate** (when the keeper authorizes a test262 run). No conformance regression from the swap.
 
-At that point the IR is the canonical authoring surface; intrinsics.rs / prototype.rs become thin registration shims that point to `generated.rs`.
+At that point the IR is the canonical authoring surface; the hand-written registration files become thin shims that point to `generated.rs`.
+
+### VI.1 Progress at IR-EXT 11 close
+
+- 33 sections IR-encoded (28 wired through generated.rs, 5 IR-only).
+- Linter ✓ 33/33.
+- lint_from_spec ✓ on §23.1.3.20 (1 fixture; mass-fixture pending).
+- test262: not measured since keeper directive (no sweeps without authorization). Smoke parity with Bun confirmed for each wired cluster.
+- Estimated remaining coverage: ~50–80 more sections to reach full representation, distributed across String.prototype.*, Array.prototype mutators, RegExp.prototype.*, Date, Math, Reflect, the property-descriptor cluster, and Promise.all-family.
 
 ## VII. Out-of-scope (honestly delimited)
 
