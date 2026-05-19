@@ -51,6 +51,29 @@ fn package_is_type_module(url: &str) -> bool {
     false
 }
 
+/// Ω.5.P63.E48: walk parents for a package.json that declares an `exports`
+/// map. The presence of `exports` means the package author has opted into
+/// the canonical conditional-resolution API; Bun treats files reached via
+/// `exports.import` as canonical ESM and does NOT lift function intrinsics.
+/// Packages without `exports` (only `module` / `main`) use the legacy
+/// dual-package shape; Bun lifts there.
+fn package_has_exports_field(url: &str) -> bool {
+    let path_str = match url.strip_prefix("file://") { Some(p) => p, None => return false };
+    let path = std::path::Path::new(path_str);
+    let mut cur = path.parent();
+    while let Some(d) = cur {
+        let candidate = d.join("package.json");
+        if candidate.is_file() {
+            if let Ok(text) = std::fs::read_to_string(&candidate) {
+                let compact = text.replace(char::is_whitespace, "");
+                return compact.contains("\"exports\":");
+            }
+        }
+        cur = d.parent();
+    }
+    false
+}
+
 fn is_js_under_non_type_module_package(url: &str) -> bool {
     let path_str = match url.strip_prefix("file://") { Some(p) => p, None => return false };
     let path = std::path::Path::new(path_str);
@@ -183,7 +206,17 @@ pub fn install(rt: &mut Runtime) {
             "ESM-finalize pass-through (has_default={} named_count={} pkg_type_module={})",
             has_default, named_count, pkg_is_type_module,
         );
-        if has_default && named_count == 0 && !pkg_is_type_module {
+        // Ω.5.P63.E48: distinguish .mjs reached via canonical exports-map
+        // (Bun does NOT fn-lift — the file is canonical ESM) from .mjs
+        // reached via legacy `module` field with no `exports` map (Bun
+        // DOES lift — the file is the dual-package ESM mirror of CJS).
+        // mitt / merge-options / markdown-it ship `exports.import = *.mjs`
+        // and were incorrectly lifting; mri / sleep-promise ship only
+        // `module = *.mjs` and correctly continue to lift.
+        let url_is_mjs = url.ends_with(".mjs");
+        let has_exports_field = package_has_exports_field(url);
+        let suppress_lift_for_canonical_esm = url_is_mjs && has_exports_field;
+        if has_default && named_count == 0 && !pkg_is_type_module && !suppress_lift_for_canonical_esm {
             if let Value::Object(fn_id) = default_value {
                 use rusty_js_runtime::value::InternalKind;
                 let is_fn = matches!(
