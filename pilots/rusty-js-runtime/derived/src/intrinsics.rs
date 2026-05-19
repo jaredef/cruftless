@@ -3195,44 +3195,16 @@ impl Runtime {
         // the corresponding component. Surfaced by Ω.5.P24.E1 probe
         // walking temporal-polyfill (whose `setUTCHours` call landed on
         // a fake-Date-shaped object with no Date.prototype in its chain).
-        for (name, key) in [
-            ("getUTCFullYear", "getFullYear"),
-            ("getUTCMonth", "getMonth"),
-            ("getUTCDate", "getDate"),
-            ("getUTCDay", "getDay"),
-            ("getUTCHours", "getHours"),
-            ("getUTCMinutes", "getMinutes"),
-            ("getUTCSeconds", "getSeconds"),
-            ("getUTCMilliseconds", "getMilliseconds"),
-        ] {
-            let _ = key; // alias only — both compute the same value
-            let n = name.to_string();
-            let n_for_closure = n.clone();
-            register_method(self, proto, &n, move |rt, _args| {
-                let n = &n_for_closure;
-                let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Number(f64::NAN)) };
-                let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::Number(f64::NAN)) };
-                let (y, mo, d) = date_components(ms);
-                let h = (ms / 3_600_000.0).floor() as i64 % 24;
-                let mi = (ms / 60_000.0).floor() as i64 % 60;
-                let se = (ms / 1000.0).floor() as i64 % 60;
-                let mss = ms as i64 % 1000;
-                let days = (ms / 86_400_000.0).floor() as i64;
-                let dow = ((days % 7) + 7 + 4) % 7;
-                let v = match n.as_str() {
-                    "getUTCFullYear" => y as f64,
-                    "getUTCMonth" => mo as f64,
-                    "getUTCDate" => d as f64,
-                    "getUTCDay" => dow as f64,
-                    "getUTCHours" => h as f64,
-                    "getUTCMinutes" => mi as f64,
-                    "getUTCSeconds" => se as f64,
-                    "getUTCMilliseconds" => mss as f64,
-                    _ => f64::NAN,
-                };
-                Ok(Value::Number(v))
-            });
-        }
+        // E42: UTC getters route to the same IR helpers as the non-UTC variants
+        // (cruftless treats __date_ms as UTC throughout, so the values are identical).
+        register_intrinsic_method(self, proto, "getUTCFullYear",     1, |rt, args| crate::generated::date_prototype_get_full_year(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "getUTCMonth",        1, |rt, args| crate::generated::date_prototype_get_month(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "getUTCDate",         1, |rt, args| crate::generated::date_prototype_get_date(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "getUTCDay",          1, |rt, args| crate::generated::date_prototype_get_day(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "getUTCHours",        1, |rt, args| crate::generated::date_prototype_get_hours(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "getUTCMinutes",      1, |rt, args| crate::generated::date_prototype_get_minutes(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "getUTCSeconds",      1, |rt, args| crate::generated::date_prototype_get_seconds(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "getUTCMilliseconds", 1, |rt, args| crate::generated::date_prototype_get_milliseconds(rt, rt.current_this(), args));
         // setUTC* family. Each replaces the named component(s) in the
         // current ms and returns the new ms per ECMA §21.4.4.x.
         register_intrinsic_method(self, proto, "setUTCHours", 1, |rt, args| {
