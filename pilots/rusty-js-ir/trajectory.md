@@ -414,3 +414,49 @@ Continuing translation cadence. Next-easy clusters:
 3. **String.prototype.{includes, startsWith, endsWith}**: already P62.E13 spec-compliant; IR encoding for traceability.
 
 Pin-Art tag count: 14 commits as of IR-EXT 10.
+
+
+## IR-EXT 11 + 12 — 2026-05-19 night-late (global predicates + seed refinement)
+
+**IR-EXT 11** — global isFinite / isNaN (ToNumber-coercing pair).
+**IR-EXT 12** — seed.md refinement post-empirical-feedback.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| `87dc4c93` | IR-EXT 11: global isNaN / isFinite | Two more sections via CallBuiltin. Distinct from Number.isNaN/Number.isFinite — these coerce via ToNumber. Two runtime helpers (rt.global_is_nan_via / rt.global_is_finite_via). |
+| `17eba276` | IR-EXT 12: seed refinement | Three sections lifted from empirical state: §I.1 refined telos (bounded coverage + alphabet completeness + carve-out rule); §III alphabet status (stable across IR-EXT 5→11); §V.M5/M6/M7 discipline catalog (CallBuiltin preferred for non-JS-method abstract ops; one_step_builtin builder for canonical 1-step shape); §VI four-condition termination criteria with progress snapshot. |
+
+### Substrate at IR-EXT 12 close
+
+**Sections IR-encoded**: 33 (31 from IR-EXT 10 + global predicates).
+**Wired**: 28.
+**Linter**: 33/33 clean.
+
+**Alphabet status**: 52 nodes, stable across 5 chapters × 10 clusters × 33 sections without alphabet extensions. Four alphabet-extension triggers identified for future tiers (signed-Int, iterator-protocol, descriptor-builders, NewPromiseCapability).
+
+**Discipline catalog**: M1-M7 (refined this round). M6 (CallBuiltin preferred for non-JS-method abstract ops) and M7 (one_step_builtin builder) are the two new disciplines lifted from the IR-EXT 8-11 pattern crystallization.
+
+### Conjecture status
+
+After 33 sections across 5 chapters with zero alphabet extensions and zero unresolved linter findings, the §I conjecture ("spec conformance gets monotonically easier post-IR") holds strongly. The remaining work toward full representation is mechanical: each new section is roughly one IR file + runtime helpers + one-line wiring; the per-section cost has stabilized; the alphabet is sufficient for the remaining coverage modulo the four queued extensions.
+
+### Open scope at IR-EXT 12 close
+
+Tier 1.10 cont (translation rounds):
+1. **Math.* one-liners** via shared math_unary_op_via helper (~8 sections).
+2. **Reflect.* cluster** (~9 sections, mirrors Object.* shape).
+3. **Array.prototype mutators** (push, pop, shift, unshift, reverse, sort caveat).
+4. **String.prototype.{toLowerCase, toUpperCase, trim*}** (5 sections, already spec-compliant from P62.E15).
+
+Tier 1.11+ (alphabet extension):
+5. **Signed-Int + IndexSub primitives** — unblocks lastIndexOf/reduceRight/findLast spec-strict.
+6. **Iterator-protocol primitives** — unblocks Promise.all-family.
+7. **Property-descriptor builders** — unblocks Object.defineProperty/getOwnPropertyDescriptor.
+
+Tier 2.5:
+8. **Mass-fixture parse** — feed all 33 hand-translated sections' emu-alg blocks through spec_parser; cross-check against hand-authored SpecStepRecord lists.
+9. **Live spec source** — replace embedded fixtures with tc39/ecma262 checkout via build.rs.
+
+Pin-Art tag count: 16 commits as of IR-EXT 12.
