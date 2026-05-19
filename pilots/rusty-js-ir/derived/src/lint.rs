@@ -210,6 +210,10 @@ fn walk_step_collecting(node: &IRNode, set: &mut std::collections::HashSet<&'sta
         IRNode::While { cond, .. } => {
             collect_abstract_ops_in_expr(cond, set);
         }
+        IRNode::CellSet { cell, value } => {
+            collect_abstract_ops_in_expr(cell, set);
+            collect_abstract_ops_in_expr(value, set);
+        }
     }
 }
 
@@ -379,6 +383,16 @@ fn collect_abstract_ops_in_expr(
         Expr::IndexAdd(a, b) => {
             collect_abstract_ops_in_expr(a, set);
             collect_abstract_ops_in_expr(b, set);
+        }
+        // Ω.5.P63.E55 Alphabet closures.
+        Expr::CellNew(init) => collect_abstract_ops_in_expr(init, set),
+        Expr::CellGet(cell) => collect_abstract_ops_in_expr(cell, set),
+        Expr::Closure { body, .. } => {
+            // The closure's body is its own scope; walk it for nested
+            // abstract ops so the parent step's lint covers nested Calls etc.
+            for s in body {
+                walk_step_collecting(&s.node, set);
+            }
         }
     }
 }

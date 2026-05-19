@@ -108,6 +108,10 @@ fn emit_node(out: &mut String, node: &IRNode, depth: usize) {
             indent(out, depth);
             out.push_str(&format!("{};\n", emit_expr(e)));
         }
+        IRNode::CellSet { cell, value } => {
+            indent(out, depth);
+            out.push_str(&format!("*{}.borrow_mut() = {};\n", emit_expr(cell), emit_expr(value)));
+        }
     }
 }
 
@@ -155,6 +159,40 @@ fn emit_expr(e: &Expr) -> String {
         Expr::IndexAsValue(v) => format!("Value::Number({} as f64)", emit_expr(v)),
         Expr::IndexAsKey(v) => format!("{}.to_string()", emit_expr(v)),
         Expr::IndexAdd(l, r) => format!("({} + {})", emit_expr(l), emit_expr(r)),
+
+        // ── Ω.5.P63.E55 Alphabet closures ──
+        Expr::CellNew(init) => format!(
+            "std::rc::Rc::new(std::cell::RefCell::new({}))", emit_expr(init)),
+        Expr::CellGet(cell) => format!("(*{}.borrow()).clone()", emit_expr(cell)),
+        Expr::Closure { label, params, captures, body } => {
+            let mut s = String::from("{\n");
+            // Clone each captured local so the move-closure owns its copy.
+            for c in captures {
+                s.push_str(&format!("            let {} = {}.clone();\n", c, c));
+            }
+            s.push_str(&format!(
+                "            let __native = crate::intrinsics::make_native(\"{}\",\n",
+                label));
+            s.push_str("                move |rt, args| {\n");
+            // Param bindings — each closure param reads from args[i].
+            for (i, p) in params.iter().enumerate() {
+                s.push_str(&format!(
+                    "                    let {} = args.get({}).cloned().unwrap_or(Value::Undefined);\n",
+                    p, i));
+            }
+            // Suppress unused-variable lint when a closure body doesn't
+            // touch every captured / every param.
+            for c in captures { s.push_str(&format!("                    let _ = &{};\n", c)); }
+            for p in params { s.push_str(&format!("                    let _ = &{};\n", p)); }
+            // Body.
+            for step in body { emit_step(&mut s, step, 5); }
+            // Default return.
+            s.push_str("                    Ok(Value::Undefined)\n");
+            s.push_str("                });\n");
+            s.push_str("            Value::Object(rt.alloc_object(__native))\n");
+            s.push_str("        }");
+            s
+        }
 
         // ── Coercion / type-check (§A8.29) ──
         Expr::RequireObjectCoercible(v) => {

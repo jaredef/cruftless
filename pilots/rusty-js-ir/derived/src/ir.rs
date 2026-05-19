@@ -165,6 +165,64 @@ pub enum Expr {
     /// Convert a typed `usize` to its decimal string representation
     /// for ECMA's `! ToString(𝔽(k))` operation.
     IndexAsKey(Box<Expr>),
+
+    // ── Ω.5.P63.E55 Alphabet closures ──────────────────────────────────
+    //
+    // ECMA-262 specifies many algorithms that allocate fresh built-in
+    // functions with captured slot state (Promise.all Resolve Element
+    // Functions §27.2.4.1.2, Promise.allSettled / .any analogues,
+    // NewPromiseCapability executor, AsyncFromSyncIteratorContinuation
+    // step-7 callback, etc.). Pre-E55 the IR couldn't model these
+    // first-class — the via-helper layer constructed them as Rust
+    // closures with Rc<RefCell<_>> captures. E55 lifts the pattern to
+    // the alphabet so the IR can spec-faithfully describe each closure's
+    // capture set + body, and the lowering emits the corresponding
+    // `make_native(move |rt, args| { ... })`.
+    //
+    // The closure model is three-piece:
+    //   - `Capture::*` — how each captured name is bound to the enclosing
+    //     scope at closure-construction time. Cell vs Value distinguishes
+    //     "mutable shared state via Rc<RefCell<_>>" from "moved snapshot".
+    //   - `Expr::Closure` — construct the closure value. Lowers to a
+    //     `make_native` whose `move` closure pre-binds the captures.
+    //   - `Expr::CellNew / CellGet` and `IRNode::CellSet` — explicit
+    //     handles for the Rc<RefCell<_>> idiom so the linter sees the
+    //     spec's "Internal slot of F" assignments structurally.
+
+    /// Allocate a fresh shared mutable cell holding the given Value-typed
+    /// initial. Lowers to `std::rc::Rc::new(std::cell::RefCell::new(<init>))`.
+    /// Cells are the substrate for spec slots assigned by closures (the
+    /// Promise.all Resolve Element Function's [[AlreadyCalled]] / [[Values]] /
+    /// [[RemainingElementsCount]] slots).
+    CellNew(Box<Expr>),
+
+    /// Read the current Value held in a shared mutable cell. Lowers to
+    /// `(*<cell>.borrow()).clone()`.
+    CellGet(Box<Expr>),
+
+    /// Construct a closure value capturing the named locals from the
+    /// enclosing IR section's scope. The `label` is a debug name used
+    /// in the function's NativeFn "name" slot; `params` declares the
+    /// positional-argument bindings the closure body sees; `captures`
+    /// names the locals from the enclosing scope to move/clone into the
+    /// closure's environment.
+    ///
+    /// Lowers to:
+    ///   {
+    ///     let <captured_1> = <captured_1>.clone();
+    ///     let <captured_2> = <captured_2>.clone();
+    ///     let f = crate::intrinsics::make_native("<label>", move |rt, args| {
+    ///         let <param_1> = args.get(0).cloned().unwrap_or(Value::Undefined);
+    ///         <body lowered to Rust>
+    ///     });
+    ///     Value::Object(rt.alloc_object(f))
+    ///   }
+    Closure {
+        label: &'static str,
+        params: Vec<String>,
+        captures: Vec<String>,
+        body: Vec<Step>,
+    },
 }
 
 /// IR step — corresponds to one ECMA-262 algorithm step (e.g. "step 1",
@@ -215,6 +273,11 @@ pub enum IRNode {
 
     /// Side-effecting call whose return value is discarded.
     Expr(Expr),
+
+    /// Ω.5.P63.E55: Write a Value into a shared cell. Lowers to
+    /// `*<cell>.borrow_mut() = <value>;`. Used inside closure bodies
+    /// modeling spec-step assignments like "Set F.[[AlreadyCalled]] to true".
+    CellSet { cell: Expr, value: Expr },
 }
 
 /// IR function — one ECMA-262 algorithm section, hand-translated.
