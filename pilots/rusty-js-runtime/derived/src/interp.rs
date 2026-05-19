@@ -339,6 +339,103 @@ impl Runtime {
         Ok(crate::abstract_ops::is_loosely_equal(a, &bp))
     }
 
+    // ──────────────── IR lowering targets (rusty-js-ir Tier 1.5) ────────────────
+    // These helpers exist specifically to be the Rust callsites that
+    // lowered IR functions invoke. They wrap existing low-level
+    // operations into &Value-taking, Result-returning forms suitable
+    // for spec-faithful translation. See IR-DESIGN.md §3 and seed §A8.33.
+
+    /// ToObject per ECMA §7.1.18 — coerces primitives to wrapper objects,
+    /// throws TypeError on undefined/null.
+    pub fn to_object(&mut self, v: &Value) -> Result<Value, RuntimeError> {
+        match v {
+            Value::Undefined | Value::Null => Err(RuntimeError::TypeError(
+                "Cannot convert undefined or null to object".into())),
+            Value::Object(_) => Ok(v.clone()),
+            Value::Boolean(b) => {
+                let mut o = crate::value::Object::new_ordinary();
+                o.set_own_internal("__primitive__".into(), Value::Boolean(*b));
+                if let Some(Value::Object(bid)) = self.globals.get("Boolean").cloned() {
+                    if let Value::Object(p) = self.object_get(bid, "prototype") {
+                        o.proto = Some(p);
+                    }
+                }
+                Ok(Value::Object(self.alloc_object(o)))
+            }
+            Value::Number(n) => {
+                let mut o = crate::value::Object::new_ordinary();
+                o.set_own_internal("__primitive__".into(), Value::Number(*n));
+                if let Some(p) = self.number_prototype { o.proto = Some(p); }
+                Ok(Value::Object(self.alloc_object(o)))
+            }
+            Value::String(s) => {
+                let mut o = crate::value::Object::new_ordinary();
+                o.set_own_internal("__primitive__".into(), Value::String(s.clone()));
+                let n = s.chars().count();
+                for (i, c) in s.chars().enumerate() {
+                    o.set_own(i.to_string(), Value::String(std::rc::Rc::new(c.to_string())));
+                }
+                o.set_own("length".into(), Value::Number(n as f64));
+                if let Some(p) = self.string_prototype { o.proto = Some(p); }
+                Ok(Value::Object(self.alloc_object(o)))
+            }
+            Value::BigInt(_) | Value::Symbol(_) => Ok(v.clone()),
+        }
+    }
+
+    /// LengthOfArrayLike per ECMA §7.3.20 — Get(O, "length") + ToLength.
+    /// Returns usize; throws if the receiver is not an Object.
+    pub fn length_of_array_like(&mut self, v: &Value) -> Result<usize, RuntimeError> {
+        let id = match v {
+            Value::Object(id) => *id,
+            _ => return Err(RuntimeError::TypeError(
+                "LengthOfArrayLike: receiver must be an Object".into())),
+        };
+        Ok(self.array_length(id))
+    }
+
+    /// HasProperty per ECMA §7.3.10 — walks the proto chain.
+    pub fn has_property_via(&self, v: &Value, key: &str) -> bool {
+        match v {
+            Value::Object(id) => self.has_property(*id, key),
+            _ => false,
+        }
+    }
+
+    /// Get per ECMA §7.3.2 — dispatches accessor getters.
+    pub fn read_property_via(&mut self, v: &Value, key: &str) -> Result<Value, RuntimeError> {
+        match v {
+            Value::Object(id) => self.read_property(*id, key),
+            _ => Ok(Value::Undefined),
+        }
+    }
+
+    /// CreateDataPropertyOrThrow per ECMA §7.3.6.
+    pub fn create_data_property_or_throw(
+        &mut self,
+        v: &Value,
+        key: &str,
+        val: Value,
+    ) -> Result<(), RuntimeError> {
+        let id = match v {
+            Value::Object(id) => *id,
+            _ => return Err(RuntimeError::TypeError(
+                "CreateDataPropertyOrThrow: receiver must be an Object".into())),
+        };
+        self.object_set(id, key.to_string(), val);
+        Ok(())
+    }
+
+    /// ArraySpeciesCreate per ECMA §23.1.3.27 — Tier 1.5 simplification:
+    /// always returns a fresh ordinary Array with [[Prototype]] set to
+    /// %Array.prototype% and length pre-populated. Full @@species
+    /// dispatch is queued for Tier 2.
+    pub fn array_species_create(&mut self, _o: &Value, len: usize) -> Result<Value, RuntimeError> {
+        let id = self.alloc_object(crate::value::Object::new_array());
+        self.object_set(id, "length".into(), Value::Number(len as f64));
+        Ok(Value::Object(id))
+    }
+
     /// Ω.5.P62.E5: IsCallable per ECMA §7.2.4 — true iff `v` is an Object
     /// whose internal kind is one of the callable forms (Function,
     /// Closure, BoundFunction, Proxy with callable target). Used by

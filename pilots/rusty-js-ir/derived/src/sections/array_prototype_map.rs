@@ -2,6 +2,11 @@
 //!
 //! Hand-translated per IR-DESIGN.md §4. Each spec step has exactly one IR
 //! statement; spec-step IDs are preserved verbatim for the linter.
+//!
+//! Tier 1.5 (the loop counter `k` is modeled as a typed `usize` index via
+//! IRNode::LetIndex / AssignIndex; conversion to Value happens explicitly at
+//! the callback-args boundary via Expr::IndexAsValue, and at the property-
+//! key boundary via Expr::IndexAsKey).
 
 use crate::ir::{ErrorClass, Expr, IRFunction, IRNode, Step};
 use crate::lint::SpecStepRecord;
@@ -17,7 +22,7 @@ fn v(name: &str) -> Expr {
 /// Construct the IR function for §23.1.3.20.
 pub fn build() -> IRFunction {
     let body = vec![
-        // Parameter binding (spec convention).
+        // Parameter binding (Rust-side convention, not a spec step).
         Step {
             spec_step: "param.callbackfn".into(),
             node: IRNode::Let {
@@ -28,7 +33,7 @@ pub fn build() -> IRFunction {
         Step {
             spec_step: "param.thisArg".into(),
             node: IRNode::Let {
-                name: "thisArg".into(),
+                name: "this_arg".into(),
                 value: Expr::Arg(1),
             },
         },
@@ -37,13 +42,13 @@ pub fn build() -> IRFunction {
             spec_step: "1".into(),
             node: IRNode::Let {
                 name: "o".into(),
-                value: Expr::ToObject(b(v("this"))),
+                value: Expr::ToObject(b(Expr::This)),
             },
         },
         // step 2: Let len be ? LengthOfArrayLike(O).
         Step {
             spec_step: "2".into(),
-            node: IRNode::Let {
+            node: IRNode::LetIndex {
                 name: "len".into(),
                 value: Expr::LengthOfArrayLike(b(v("o"))),
             },
@@ -77,9 +82,9 @@ pub fn build() -> IRFunction {
         // step 5: Let k be 0.
         Step {
             spec_step: "5".into(),
-            node: IRNode::Let {
-                name: "mut k".into(),
-                value: Expr::Number(0.0),
+            node: IRNode::LetIndex {
+                name: "k".into(),
+                value: Expr::IntConst(0),
             },
         },
         // step 6: Repeat, while k < len, …
@@ -93,7 +98,7 @@ pub fn build() -> IRFunction {
                         spec_step: "6.a".into(),
                         node: IRNode::Let {
                             name: "pk".into(),
-                            value: Expr::ToString(b(v("k"))),
+                            value: Expr::IndexAsKey(b(v("k"))),
                         },
                     },
                     // step 6.b/6.c: If HasProperty(O, Pk) is true, then …
@@ -117,10 +122,10 @@ pub fn build() -> IRFunction {
                                         name: "mapped".into(),
                                         value: Expr::Call {
                                             function: b(v("callbackfn")),
-                                            this: b(v("thisArg")),
+                                            this: b(v("this_arg")),
                                             args: vec![
                                                 v("k_value"),
-                                                v("k"),
+                                                Expr::IndexAsValue(b(v("k"))),
                                                 v("o"),
                                             ],
                                         },
@@ -142,9 +147,9 @@ pub fn build() -> IRFunction {
                     // step 6.d: Set k to k + 1.
                     Step {
                         spec_step: "6.d".into(),
-                        node: IRNode::Assign {
+                        node: IRNode::AssignIndex {
                             name: "k".into(),
-                            value: Expr::OpAdd(b(v("k")), b(Expr::Number(1.0))),
+                            value: Expr::IndexAdd(b(v("k")), b(Expr::IntConst(1))),
                         },
                     },
                 ],

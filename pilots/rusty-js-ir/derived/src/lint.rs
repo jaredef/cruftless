@@ -155,7 +155,11 @@ fn collect_steps<'a>(
 fn collect_abstract_ops_in_step(step: &Step) -> std::collections::HashSet<&'static str> {
     let mut set = std::collections::HashSet::new();
     match &step.node {
-        IRNode::Let { value, .. } | IRNode::Assign { value, .. } | IRNode::Expr(value) => {
+        IRNode::Let { value, .. }
+        | IRNode::LetIndex { value, .. }
+        | IRNode::AssignIndex { value, .. }
+        | IRNode::Assign { value, .. }
+        | IRNode::Expr(value) => {
             collect_abstract_ops_in_expr(value, &mut set);
         }
         IRNode::Return(e) => collect_abstract_ops_in_expr(e, &mut set),
@@ -303,7 +307,15 @@ fn collect_abstract_ops_in_expr(
             collect_abstract_ops_in_expr(v, set);
         }
         Expr::Var(_) | Expr::Undefined | Expr::Null | Expr::Bool(_) |
-        Expr::Number(_) | Expr::Str(_) | Expr::Arg(_) => {}
+        Expr::Number(_) | Expr::Str(_) | Expr::Arg(_) | Expr::This |
+        Expr::IntConst(_) => {}
+        Expr::AsIndex(v) | Expr::IndexAsValue(v) | Expr::IndexAsKey(v) => {
+            collect_abstract_ops_in_expr(v, set);
+        }
+        Expr::IndexAdd(a, b) => {
+            collect_abstract_ops_in_expr(a, set);
+            collect_abstract_ops_in_expr(b, set);
+        }
     }
 }
 

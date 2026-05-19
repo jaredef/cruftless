@@ -51,6 +51,14 @@ fn emit_node(out: &mut String, node: &IRNode, depth: usize) {
             indent(out, depth);
             out.push_str(&format!("let {} = {};\n", name, emit_expr(value)));
         }
+        IRNode::LetIndex { name, value } => {
+            indent(out, depth);
+            out.push_str(&format!("let mut {}: usize = {};\n", name, emit_expr(value)));
+        }
+        IRNode::AssignIndex { name, value } => {
+            indent(out, depth);
+            out.push_str(&format!("{} = {};\n", name, emit_expr(value)));
+        }
         IRNode::Assign { name, value } => {
             indent(out, depth);
             out.push_str(&format!("{} = {};\n", name, emit_expr(value)));
@@ -106,7 +114,10 @@ fn emit_node(out: &mut String, node: &IRNode, depth: usize) {
 fn emit_expr(e: &Expr) -> String {
     match e {
         // ── Constants / refs ──
-        Expr::Var(name) => name.clone(),
+        // Vars are cloned on read; for usize-typed locals (LoopIndex)
+        // .clone() is a Copy-no-op, and for Value locals it produces
+        // the per-use clone the surrounding callsite needs.
+        Expr::Var(name) => format!("{}.clone()", name),
         Expr::Undefined => "Value::Undefined".into(),
         Expr::Null => "Value::Null".into(),
         Expr::Bool(b) => format!("Value::Boolean({})", b),
@@ -116,6 +127,12 @@ fn emit_expr(e: &Expr) -> String {
             "args.get({}).cloned().unwrap_or(Value::Undefined)",
             i
         ),
+        Expr::This => "this.clone()".into(),
+        Expr::IntConst(n) => format!("{}_usize", n),
+        Expr::AsIndex(v) => format!("rt.value_to_index(&{})?", emit_expr(v)),
+        Expr::IndexAsValue(v) => format!("Value::Number({} as f64)", emit_expr(v)),
+        Expr::IndexAsKey(v) => format!("{}.to_string()", emit_expr(v)),
+        Expr::IndexAdd(l, r) => format!("({} + {})", emit_expr(l), emit_expr(r)),
 
         // ── Coercion / type-check (§A8.29) ──
         Expr::RequireObjectCoercible(v) => {

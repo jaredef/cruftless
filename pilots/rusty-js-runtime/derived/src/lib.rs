@@ -36,3 +36,4 @@ pub fn run_module(src: &str) -> Result<Value, RuntimeError> {
     rt.install_intrinsics();
     rt.run_module(&module)
 }
+pub mod generated;

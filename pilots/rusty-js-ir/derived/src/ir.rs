@@ -109,11 +109,33 @@ pub enum Expr {
     /// Argument access — args[i], defaulting to Undefined.
     Arg(usize),
 
-    /// LengthOfArrayLike per §7.3.20 — ToLength(Get(O, "length")).
+    /// Receiver — `this` value.
+    This,
+
+    /// LengthOfArrayLike per §7.3.20 — returns a `usize`-typed index.
     LengthOfArrayLike(Box<Expr>),
 
-    /// CreateDataPropertyOrThrow per §7.3.6.
+    /// CreateDataPropertyOrThrow per §7.3.6 — side-effecting; returns unit.
     CreateDataPropertyOrThrow(Box<Expr>, Box<Expr>, Box<Expr>),
+
+    /// Typed integer literal — lowers to `usize`. Used for loop counters.
+    IntConst(i64),
+
+    /// Typed `usize` addition (no ToPrimitive dispatch; pure arithmetic).
+    /// Used in loop-counter increments where the spec's `k + 1` is over
+    /// math-Numbers but the engine models them as usize indices.
+    IndexAdd(Box<Expr>, Box<Expr>),
+
+    /// Convert a value-typed Number to a typed `usize` (saturating on
+    /// negatives / non-finite).
+    AsIndex(Box<Expr>),
+
+    /// Convert a typed `usize` to a Value::Number for callback args.
+    IndexAsValue(Box<Expr>),
+
+    /// Convert a typed `usize` to its decimal string representation
+    /// for ECMA's `! ToString(𝔽(k))` operation.
+    IndexAsKey(Box<Expr>),
 }
 
 /// IR step — corresponds to one ECMA-262 algorithm step (e.g. "step 1",
@@ -128,8 +150,14 @@ pub struct Step {
 /// IR statement — non-value-producing operations.
 #[derive(Debug, Clone)]
 pub enum IRNode {
-    /// Bind a value to a local name.
+    /// Bind a Value-typed local.
     Let { name: String, value: Expr },
+
+    /// Bind a `usize`-typed mutable index local (loop counter).
+    LetIndex { name: String, value: Expr },
+
+    /// Assign to a `usize`-typed index local.
+    AssignIndex { name: String, value: Expr },
 
     /// Throw a canonical error class with a message.
     Throw {

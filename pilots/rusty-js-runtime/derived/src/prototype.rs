@@ -569,29 +569,13 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         rt.object_set(out, "length".into(), Value::Number(out_idx as f64));
         Ok(Value::Object(out))
     });
+    // Ω.5.P63.E1 (rusty-js-ir Tier 1.5): Array.prototype.map per ECMA
+    // §23.1.3.20 is now routed through the IR-lowered implementation in
+    // src/generated.rs. The hand-written version is preserved in git
+    // history; if a regression surfaces, the IR can be patched (and
+    // re-lowered) rather than this site edited directly.
     register_intrinsic_method(rt, host, "map", 1, |rt, args| {
-        // Ω.5.P61.E14: sparse-preserving per ECMA §23.1.3.20 — skips
-        // holes, output has same indices populated. read_property
-        // dispatches accessor getters.
-        let id = to_array_this(rt)?;
-        let cb = args.first().cloned().ok_or_else(||
-            RuntimeError::TypeError("Array.prototype.map: callback required".into()))?;
-        if !rt.is_callable(&cb) {
-            return Err(RuntimeError::TypeError("Array.prototype.map: callback is not callable".into()));
-        }
-        let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
-        let len = rt.array_length(id);
-        let out = rt.alloc_object(Object::new_array());
-        for i in 0..len {
-            let key = i.to_string();
-            if !rt.has_property(id, &key) { continue; }
-            let v = rt.read_property(id, &key)?;
-            let mapped = rt.call_function(cb.clone(), this_arg.clone(),
-                vec![v, Value::Number(i as f64), Value::Object(id)])?;
-            rt.object_set(out, i.to_string(), mapped);
-        }
-        rt.object_set(out, "length".into(), Value::Number(len as f64));
-        Ok(Value::Object(out))
+        crate::generated::array_prototype_map(rt, rt.current_this(), args)
     });
     register_intrinsic_method(rt, host, "forEach", 1, |rt, args| {
         // Ω.5.P61.E13: skip sparse holes per ECMA §23.1.3.15 (HasProperty
