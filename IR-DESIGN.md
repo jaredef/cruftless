@@ -1,6 +1,80 @@
 # IR-between-ECMA-and-runtime — draft design
 
-Author: 2026-05-19 session (post-P62.E25). Composes with seed §A8.28–§A8.32.
+Author: 2026-05-19 session (post-P62.E25). Composes with seed §A8.27–§A8.33 and Doc 729 §V.
+
+## 0. The structural recognition (load-bearing)
+
+This IR design is **not just a tooling proposal**. It is another instantiation of Doc 729 §V's vertically-recursive directive consumption with stage-deterministic emission, at a stratum *above* all the resolver-instances Doc 729 enumerates inside one engagement.
+
+Doc 729 §IV names five resolver-instances inside one engagement:
+
+| # | resolver-instance | input | output | stratum |
+|---|---|---|---|---|
+| 1 | Cargo | source + manifests | linked binary | build-time |
+| 2 | SERVER bootstrap | config | runtime | engine init |
+| 3 | module-load | URL / specifier | module record | engine load |
+| 4 | PRESTO (bytecode execution) | bytecode + values | values | engine run |
+| 5 | job-queue drain | pending reactions | settled state | engine run |
+
+seed §A8.27 already corroborated that the pattern recurs *within* one engagement's stack (Function ctor + indirect eval re-entering the parse+compile pipeline from PRESTO — resolver-instance #4 re-driving resolver-instance #3).
+
+The IR pipeline adds resolver-instance **#0** (decomposed into three sub-stages), at a stratum *above* Cargo:
+
+| # | resolver-instance | input | output | stratum |
+|---|---|---|---|---|
+| 0a | editorial → emu-alg XML | TC39 working-group normative intent | ECMA-262 emu-alg XML | TC39 publication |
+| 0b | spec parser + IR linter | ECMA-262 XML | validated IR functions | cruftless build-prebuild |
+| 0c | lowering compiler | IR functions | Rust source | cruftless build-prebuild |
+
+The **linter is the stage-deterministic emission check** at resolver-instance #0b: it enforces that the IR's output is a function of the spec's input only, with no transcription drift between resolver stages. This is exactly the discipline Doc 729 §V predicts must hold at every resolver-instance.
+
+### 0.1 The full open-ended chain
+
+```
+TC39 working group (intent)
+  ↓ (#0a: editorial → emu-alg XML)
+ECMA-262 published spec
+  ↓ (#0b: spec parser + IR linter)         — Tier 2 of §7
+cruftless IR functions
+  ↓ (#0c: lowering compiler)               — Tier 1 of §7
+cruftless Rust source
+  ↓ (#1: Cargo)                            — Doc 729 §IV resolver #1
+cruftless binary
+  ↓ (#2: SERVER bootstrap)                 — Doc 729 §IV resolver #2
+runtime
+  ↓ (#3: module-load)                      — Doc 729 §IV resolver #3
+loaded modules
+  ↓ (#4: PRESTO bytecode execution)        — Doc 729 §IV resolver #4
+values
+  ↓ (#5: job-queue drain)                  — Doc 729 §IV resolver #5
+settled state
+  ↓ (#4 re-entry per seed §A8.27 self-referential resolver)
+…
+```
+
+The chain is **open-ended in both directions**. Doc 729's five instances are not the floor or the ceiling.
+
+- §A8.27 named one upward extension *within* one engagement (engine self-recurrence inside resolver-instance #4).
+- This IR design names one downward extension *across* the engagement boundary (cruftless as a resolver-stage in a TC39-rooted chain).
+
+### 0.2 What this recognition implies operationally
+
+Three things follow:
+
+1. **The IR is not optional infrastructure.** It is the missing resolver-instance #0b/#0c in cruftless's resolver chain. Pre-IR, the chain from ECMA-262 to Rust source runs *through human transcription* — which is exactly the resolver-instance that has been emitting drift (the 30+ P62 substrate fixes). The IR replaces a human transcription stage with a stage-deterministic compilation stage. Doc 729 §V predicts that *every* such stage in the chain must be stage-deterministic for vertical-recursion to hold; the IR closes the only stage in cruftless's chain that wasn't.
+
+2. **The §A8 disciplines (§A8.28–§A8.32) are themselves resolver-stage emission rules, viewed from this stratum.** Each names what a particular resolver-stage must emit faithfully:
+   - §A8.28 (descriptor-shape) — the property-install resolver emits {w, e, c} faithfully per spec.
+   - §A8.29 (abstract-ops duality) — the coercion resolver emits Object→primitive dispatch faithfully.
+   - §A8.30 (brand-check) — the receiver-acceptance resolver emits TypeError-on-missing-slot faithfully.
+   - §A8.31 (SyntaxError canonical) — the error-class resolver emits the spec-named class faithfully.
+   - §A8.32 (ToPrimitive at operator) — the operator resolver emits ToPrimitive faithfully.
+
+   The IR is the operational mechanism that makes those rules *structurally enforceable* at the resolver boundary, not merely conventional.
+
+3. **Doc 729 §V's vertical-recursion claim is corroborated at a new stratum.** I've been corroborating it all session at the engine-internal stratum (P58/P59/P60/P61/P62 — each fix is a resolver-stage drift correction within resolver-instance #4 or its sub-stages). The IR design corroborates it at a *higher* stratum, between authoring and substrate. This is empirical evidence that Doc 729 §IX Pred-729.5 (the induced property is a structural identity rather than an engineering goal) holds at strata beyond the ones the doc itself names.
+
+Sections 1–11 below describe the IR concretely. Read them with §0 as the framing: the IR is the missing resolver-instance, not a new tool.
 
 ## 1. Motivation
 

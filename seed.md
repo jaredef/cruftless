@@ -397,6 +397,32 @@ Live tracking lives in the trajectory header; the seed names the discipline.
 
     **Phase classification.** §A8.32's institution is a Phase-2-extension micro-round per §A8.12 with a substrate component (three new helpers + three bytecode op edits). N_persist resets to 0; basin is wider by one named operator-tier coercion discipline. References: cruftless commit `3780dacb` (P62.E21); helpers at `pilots/rusty-js-runtime/derived/src/interp.rs` (to_primitive, op_add_rt, is_loosely_equal_rt).
 
+33. **The resolver pattern is open-ended in both directions; cruftless is a stage in a TC39-rooted chain.** Doc 729 §IV enumerates five resolver-instances inside one engagement: Cargo (build), SERVER bootstrap, module-load, PRESTO execution, job-queue drain. §A8.27 corroborated that the pattern recurs *within* one engagement's stack (Function ctor + indirect eval re-entering the parse+compile pipeline — resolver-instance #4 re-driving resolver-instance #3). The 2026-05-19 IR design (IR-DESIGN.md §0) names a *downward* extension of the same pattern across the engagement boundary: cruftless is itself a downstream stage in a longer resolver chain whose upstream is TC39.
+
+    The chain extended above Doc 729's resolver-instance #1:
+
+    | # | resolver-instance | input | output | stratum |
+    |---|---|---|---|---|
+    | 0a | editorial → emu-alg XML | TC39 normative intent | ECMA-262 XML | TC39 publication |
+    | 0b | spec parser + IR linter | ECMA-262 XML | validated IR | cruftless prebuild |
+    | 0c | lowering compiler | IR functions | Rust source | cruftless prebuild |
+    | 1 | Cargo | Rust source + manifests | binary | (Doc 729 §IV) |
+    | 2–5 | (Doc 729 §IV resolver-instances 2–5) | … | … | engine |
+
+    **Operational rule.** Doc 729 §V's vertical-recursion-with-stage-deterministic-emission claim applies *uniformly* across the open-ended chain, not only within the five instances Doc 729 enumerates. Two consequences:
+
+    (a) **Drift-correction discipline extends both ways.** When a drift-correction round closes a transcription gap *within* the engine (every P62 substrate fix this session), it corrects resolver-instance #4's emission. The same discipline applies when the gap is *upstream*: a transcription gap between ECMA-262 and Rust is a drift in resolver-instance #0b/#0c. The IR design names the apparatus for catching #0b/#0c drift the same way the bytecode VM is the apparatus for catching #4 drift.
+
+    (b) **The §A8.28–§A8.32 disciplines are resolver-stage emission rules, viewed from this stratum.** Each of them names *what a particular resolver-stage must emit faithfully*: §A8.28 (descriptor-shape) for the property-install stage; §A8.29 (abstract-ops duality) for the coercion stage; §A8.30 (brand-check) for the receiver-acceptance stage; §A8.31 (SyntaxError canonical) for the error-class stage; §A8.32 (ToPrimitive at operator) for the operator stage. The IR is the operational mechanism that makes those rules *structurally enforceable* at the resolver boundary rather than merely conventional.
+
+    **Composition with §A8.27.** §A8.27 named one upward extension of the resolver pattern (engine self-recurrence inside one stack). §A8.33 names one downward extension (cruftless as a resolver-stage in a TC39-rooted chain). Together they corroborate that the resolver pattern is not a property of the five instances Doc 729 enumerates — it is the *vertical-recursion property itself*, which can extend in either direction wherever there is an upstream substrate or a downstream consumer with stage-deterministic emission semantics.
+
+    **Doc 729 cross-check.** §A8.33 corroborates Doc 729 §IX Pred-729.5 (the induced property is a structural identity rather than an engineering goal) at a *new stratum* — between authoring and substrate, not within one engagement. The structural shape is empirically present at strata beyond the five Doc 729 enumerates; the prediction is corroborated wherever the pattern has been looked for. This is the third corroboration of Pred-729.5 in the cruftless engagement (corpus-tier per Doc 729, engine-substrate-tier per §A8.27, authoring-to-substrate-tier per this entry).
+
+    **Composition with §A8.28–§A8.32.** These five entries name the *disciplines* the IR enforces. §A8.33 names the *resolver-stage structure* in which the disciplines live. The five together constitute the spec-conformance surface; §A8.33 makes that surface structurally enforceable by replacing the human-transcription stage with a stage-deterministic compilation stage.
+
+    **Phase classification.** §A8.33's institution is a Phase-2-extension micro-round per §A8.12 — apparatus-tier rule about the structural framing of resolver-instances. No new substrate alphabet element; the rule names what was already operating implicitly through the IR design and now becomes explicit. N_persist resets to 0; basin is wider by one named cross-stratum discipline. References: `IR-DESIGN.md` §0 (the structural recognition); Doc 729 §IV resolver enumeration; seed §A8.27 (upward extension); seed §A8.28–§A8.32 (the disciplines this stratum makes enforceable).
+
 8. **Composition discipline (SIPE-T tier):** canonical-docs tests + M7 fold-back compose. Canonical tests use idioms that exercise language-level affordances (iteration protocols, async iteration, polymorphic argument shapes, prototype-chain checks) which per-method tests do not exercise. When a canonical test breaks, the failure mode is often indistinguishable at first glance from a higher-level bug (e.g., the CJS-loader round mistook URLSearchParams' missing `[Symbol.iterator]` for a module-resolution bug). M7 reflection on such breaks recovers the actual primitive gap — a *language-affordance gap* in the JS-side wrapper — and folds it back. Neither discipline alone catches these: per-method tests miss them because no individual method is broken; M7 alone would not surface them because nothing visible misbehaves until idiomatic composition is attempted. The two together name the gap. Treat this as a structural relationship between the two rules, not a third rule — the apparatus has reached the tier where the productive surface is **rule-composition**, not new-rule-discovery.
 
 ## IV. Future-move discipline
