@@ -183,3 +183,28 @@ pub fn spec_steps_assign() -> Vec<SpecStepRecord> {
             prose: "Let to be ? ToObject(target). For each source S, for each own enumerable key K of S, set to[K] = ? Get(S, K). Return to." },
     ]
 }
+
+// ──────────────── §20.1.2.7 Object.fromEntries ────────────────
+
+pub fn build_from_entries() -> IRFunction {
+    let body = vec![
+        Step { spec_step: "param.iter".into(),
+            node: IRNode::Let { name: "iter".into(), value: Expr::Arg(0) }},
+        Step { spec_step: "1".into(),
+            node: IRNode::Return(Expr::CallBuiltin {
+                name: "object_from_entries_via",
+                args: vec![v("iter")],
+            }) },
+    ];
+    IRFunction {
+        spec_section: "20.1.2.7".into(),
+        rust_name: "object_from_entries".into(),
+        title: "Object.fromEntries ( iterable )".into(),
+        body,
+    }
+}
+
+pub fn spec_steps_from_entries() -> Vec<SpecStepRecord> {
+    vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["object_from_entries_via"], throws: None,
+        prose: "RequireObjectCoercible(iterable). Iterate via @@iterator; for each [k, v] pair, set obj[ToPropertyKey(k)] = v. Return obj." }]
+}

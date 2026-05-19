@@ -430,6 +430,24 @@ impl Runtime {
         Ok(())
     }
 
+    /// Object.fromEntries(iter) per ECMA §20.1.2.7 — iterates the
+    /// iterable and constructs an object from [key, value] pairs.
+    /// Tier 1.10 simplification: uses cruftless's existing collect_iterable
+    /// (which handles array-shape and @@iterator-shape iterables).
+    pub fn object_from_entries_via(&mut self, iter: &Value) -> Result<Value, RuntimeError> {
+        let out = self.alloc_object(crate::value::Object::new_ordinary());
+        let entries = crate::intrinsics::collect_iterable(self, iter.clone())?;
+        for e in entries {
+            if let Value::Object(pair) = e {
+                let k = self.object_get(pair, "0");
+                let v = self.object_get(pair, "1");
+                let key = crate::abstract_ops::to_string(&k).as_str().to_string();
+                self.object_set(out, key, v);
+            }
+        }
+        Ok(Value::Object(out))
+    }
+
     /// Object.assign(target, ...sources) per ECMA §20.1.2.1 — copies
     /// enumerable own props from each source to target, dispatching
     /// accessor getters. Target must be coercible (throws otherwise).

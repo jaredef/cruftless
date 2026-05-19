@@ -87,6 +87,7 @@ fn main() {
         object_static::build_get_own_property_names(),
         object_static::build_get_own_property_symbols(),
         object_static::build_assign(),
+        object_static::build_from_entries(),
     ];
 
     for f in &sections {

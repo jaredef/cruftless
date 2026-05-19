@@ -89,6 +89,7 @@ fn main() {
         ("Object.getOwnPropertyNames", object_static::build_get_own_property_names(), object_static::spec_steps_get_own_property_names()),
         ("Object.getOwnPropertySymbols", object_static::build_get_own_property_symbols(), object_static::spec_steps_get_own_property_symbols()),
         ("Object.assign", object_static::build_assign(), object_static::spec_steps_assign()),
+        ("Object.fromEntries", object_static::build_from_entries(), object_static::spec_steps_from_entries()),
     ];
 
     let mut total_unexpected = 0;

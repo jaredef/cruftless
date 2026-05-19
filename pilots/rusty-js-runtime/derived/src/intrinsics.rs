@@ -1238,20 +1238,9 @@ impl Runtime {
             }
             Ok(Value::Object(out))
         });
+        // Ω.5.P63.E17: Object.fromEntries routed through IR.
         register_intrinsic_method(self, obj_ctor, "fromEntries", 1, |rt, args| {
-            let out = rt.alloc_object(Object::new_ordinary());
-            let src = match args.first() { Some(v) => v.clone(), None => return Ok(Value::Object(out)) };
-            // Iterate via @@iterator protocol.
-            let entries = collect_iterable(rt, src)?;
-            for e in entries {
-                if let Value::Object(pair) = e {
-                    let k = rt.object_get(pair, "0");
-                    let v = rt.object_get(pair, "1");
-                    let key = crate::abstract_ops::to_string(&k).as_str().to_string();
-                    rt.object_set(out, key, v);
-                }
-            }
-            Ok(Value::Object(out))
+            crate::generated::object_from_entries(rt, Value::Undefined, args)
         });
         // Tier-Ω.5.j.proto: Object.defineProperty / defineProperties /
         // getOwnPropertyDescriptor / getOwnPropertyNames.
