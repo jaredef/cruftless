@@ -2985,27 +2985,25 @@ impl Runtime {
         for collection in &["Map", "WeakMap"] {
             let proto = self.alloc_object(Object::new_ordinary());
             register_intrinsic_method(self, proto, "get", 2, |rt, args| {
-                let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
+                let this = match rt.current_this() { Value::Object(id) => id, _ => return Err(RuntimeError::TypeError("Map.prototype method: this is not a Map object".into())) };
                 let key = args.first().cloned().unwrap_or(Value::Undefined);
                 let key_s = abstract_ops::to_string(&key).as_str().to_string();
                 let storage = match rt.object_get(this, "__map_data") {
                     Value::Object(id) => id,
-                    _ => return Ok(Value::Undefined),
+                    _ => return Err(RuntimeError::TypeError("Map.prototype method: this is not a Map object".into())),
                 };
                 Ok(rt.object_get(storage, &key_s))
             });
             register_intrinsic_method(self, proto, "set", 3, |rt, args| {
-                let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
+                let this = match rt.current_this() { Value::Object(id) => id, _ => return Err(RuntimeError::TypeError("Map.prototype method: this is not a Map object".into())) };
                 let key = args.first().cloned().unwrap_or(Value::Undefined);
                 let val = args.get(1).cloned().unwrap_or(Value::Undefined);
                 let key_s = abstract_ops::to_string(&key).as_str().to_string();
+                // Ω.5.P62.E23: [[MapData]] brand — no auto-create.
                 let storage = match rt.object_get(this, "__map_data") {
                     Value::Object(id) => id,
-                    _ => {
-                        let s = rt.alloc_object(Object::new_ordinary());
-                        rt.object_set(this, "__map_data".into(), Value::Object(s));
-                        s
-                    }
+                    _ => return Err(RuntimeError::TypeError(
+                        "Map.prototype.set: this is not a Map object".into())),
                 };
                 let existed = !matches!(rt.object_get(storage, &key_s), Value::Undefined);
                 rt.object_set(storage, key_s, val);
@@ -3019,22 +3017,22 @@ impl Runtime {
                 Ok(Value::Object(this))
             });
             register_intrinsic_method(self, proto, "has", 2, |rt, args| {
-                let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Boolean(false)) };
+                let this = match rt.current_this() { Value::Object(id) => id, _ => return Err(RuntimeError::TypeError("Map.prototype method: this is not a Map object".into())) };
                 let key = args.first().cloned().unwrap_or(Value::Undefined);
                 let key_s = abstract_ops::to_string(&key).as_str().to_string();
                 let storage = match rt.object_get(this, "__map_data") {
                     Value::Object(id) => id,
-                    _ => return Ok(Value::Boolean(false)),
+                    _ => return Err(RuntimeError::TypeError("Map.prototype method: this is not a Map object".into())),
                 };
                 Ok(Value::Boolean(rt.obj(storage).properties.contains_key(&key_s)))
             });
             register_intrinsic_method(self, proto, "delete", 1, |rt, args| {
-                let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Boolean(false)) };
+                let this = match rt.current_this() { Value::Object(id) => id, _ => return Err(RuntimeError::TypeError("Map.prototype method: this is not a Map object".into())) };
                 let key = args.first().cloned().unwrap_or(Value::Undefined);
                 let key_s = abstract_ops::to_string(&key).as_str().to_string();
                 let storage = match rt.object_get(this, "__map_data") {
                     Value::Object(id) => id,
-                    _ => return Ok(Value::Boolean(false)),
+                    _ => return Err(RuntimeError::TypeError("Map.prototype method: this is not a Map object".into())),
                 };
                 let existed = rt.obj_mut(storage).properties.shift_remove(&key_s).is_some();
                 if existed {
@@ -3047,18 +3045,18 @@ impl Runtime {
                 Ok(Value::Boolean(existed))
             });
             register_intrinsic_method(self, proto, "clear", 1, |rt, _args| {
-                let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
+                let this = match rt.current_this() { Value::Object(id) => id, _ => return Err(RuntimeError::TypeError("Map.prototype method: this is not a Map object".into())) };
                 let fresh = rt.alloc_object(Object::new_ordinary());
                 rt.object_set(this, "__map_data".into(), Value::Object(fresh));
                 rt.object_set(this, "size".into(), Value::Number(0.0));
                 Ok(Value::Undefined)
             });
             register_intrinsic_method(self, proto, "forEach", 1, |rt, args| {
-                let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
+                let this = match rt.current_this() { Value::Object(id) => id, _ => return Err(RuntimeError::TypeError("Map.prototype method: this is not a Map object".into())) };
                 let cb = args.first().cloned().unwrap_or(Value::Undefined);
                 let storage = match rt.object_get(this, "__map_data") {
                     Value::Object(id) => id,
-                    _ => return Ok(Value::Undefined),
+                    _ => return Err(RuntimeError::TypeError("Map.prototype method: this is not a Map object".into())),
                 };
                 let pairs: Vec<(String, Value)> = rt.obj(storage).properties.iter()
                     .map(|(k, d)| (k.clone(), d.value.clone()))
@@ -3077,7 +3075,7 @@ impl Runtime {
             // the returned object; an Array satisfies both the iterator
             // (via @@iterator on Array.prototype) and the spread protocol.
             register_intrinsic_method(self, proto, "values", 1, |rt, _args| {
-                let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
+                let this = match rt.current_this() { Value::Object(id) => id, _ => return Err(RuntimeError::TypeError("Map.prototype method: this is not a Map object".into())) };
                 let storage = match rt.object_get(this, "__map_data") {
                     Value::Object(id) => id,
                     _ => return Ok(Value::Object(rt.alloc_object(Object::new_array()))),
@@ -3093,7 +3091,7 @@ impl Runtime {
                 Ok(Value::Object(arr))
             });
             register_intrinsic_method(self, proto, "keys", 1, |rt, _args| {
-                let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
+                let this = match rt.current_this() { Value::Object(id) => id, _ => return Err(RuntimeError::TypeError("Map.prototype method: this is not a Map object".into())) };
                 let storage = match rt.object_get(this, "__map_data") {
                     Value::Object(id) => id,
                     _ => return Ok(Value::Object(rt.alloc_object(Object::new_array()))),
@@ -3108,7 +3106,7 @@ impl Runtime {
                 Ok(Value::Object(arr))
             });
             register_intrinsic_method(self, proto, "entries", 1, |rt, _args| {
-                let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
+                let this = match rt.current_this() { Value::Object(id) => id, _ => return Err(RuntimeError::TypeError("Map.prototype method: this is not a Map object".into())) };
                 let storage = match rt.object_get(this, "__map_data") {
                     Value::Object(id) => id,
                     _ => return Ok(Value::Object(rt.alloc_object(Object::new_array()))),
@@ -3135,7 +3133,7 @@ impl Runtime {
             // as the iterated receiver. for-of and spread reach for
             // [Symbol.iterator], which on Map is Map.prototype.entries.
             register_intrinsic_method(self, proto, "@@iterator", 1, |rt, _args| {
-                let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
+                let this = match rt.current_this() { Value::Object(id) => id, _ => return Err(RuntimeError::TypeError("Map.prototype method: this is not a Map object".into())) };
                 let storage = match rt.object_get(this, "__map_data") {
                     Value::Object(id) => id,
                     _ => return Ok(Value::Object(rt.alloc_object(Object::new_array()))),
@@ -3262,18 +3260,27 @@ impl Runtime {
                 Ok(Value::Boolean(existed))
             });
             register_intrinsic_method(self, proto, "clear", 1, |rt, _args| {
-                let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
+                let this = match rt.current_this() { Value::Object(id) => id, _ => return Err(RuntimeError::TypeError("Set.prototype method: this is not a Set object".into())) };
                 let fresh = rt.alloc_object(Object::new_ordinary());
                 rt.object_set(this, "__set_data".into(), Value::Object(fresh));
                 rt.object_set(this, "size".into(), Value::Number(0.0));
                 Ok(Value::Undefined)
             });
             register_intrinsic_method(self, proto, "forEach", 1, |rt, args| {
-                let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
+                let this = match rt.current_this() {
+                    Value::Object(id) => id,
+                    _ => return Err(RuntimeError::TypeError(
+                        "Set.prototype.forEach: this is not a Set object".into())),
+                };
                 let cb = args.first().cloned().unwrap_or(Value::Undefined);
+                if !rt.is_callable(&cb) {
+                    return Err(RuntimeError::TypeError(
+                        "Set.prototype.forEach: callback is not callable".into()));
+                }
                 let storage = match rt.object_get(this, "__set_data") {
                     Value::Object(id) => id,
-                    _ => return Ok(Value::Undefined),
+                    _ => return Err(RuntimeError::TypeError(
+                        "Set.prototype.forEach: this is not a Set object".into())),
                 };
                 let vals: Vec<Value> = rt.obj(storage).properties.values()
                     .map(|d| d.value.clone())
@@ -3287,23 +3294,23 @@ impl Runtime {
             // spec Set.prototype[Symbol.iterator] === Set.prototype.values.
             // Required for `[...new Set(arr)]` to spread.
             register_intrinsic_method(self, proto, "@@iterator", 1, |rt, _args| {
-                let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
+                let this = match rt.current_this() { Value::Object(id) => id, _ => return Err(RuntimeError::TypeError("Set.prototype method: this is not a Set object".into())) };
                 make_set_values_iterator(rt, this)
             });
             register_intrinsic_method(self, proto, "values", 1, |rt, _args| {
-                let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
+                let this = match rt.current_this() { Value::Object(id) => id, _ => return Err(RuntimeError::TypeError("Set.prototype method: this is not a Set object".into())) };
                 make_set_values_iterator(rt, this)
             });
             // Ω.5.P61.E11: Set.prototype.keys is alias for values per ECMA §24.2.4.
             register_intrinsic_method(self, proto, "keys", 0, |rt, _args| {
-                let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
+                let this = match rt.current_this() { Value::Object(id) => id, _ => return Err(RuntimeError::TypeError("Set.prototype method: this is not a Set object".into())) };
                 make_set_values_iterator(rt, this)
             });
             // Set.prototype.entries returns iterator of [v, v] pairs.
             register_intrinsic_method(self, proto, "entries", 0, |rt, _args| {
-                let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
+                let this = match rt.current_this() { Value::Object(id) => id, _ => return Err(RuntimeError::TypeError("Set.prototype method: this is not a Set object".into())) };
                 let storage = match rt.object_get(this, "__set_data") {
-                    Value::Object(id) => id, _ => return Ok(Value::Undefined),
+                    Value::Object(id) => id, _ => return Err(RuntimeError::TypeError("Set.prototype method: this is not a Set object".into())),
                 };
                 let vals: Vec<Value> = rt.obj(storage).properties.values()
                     .map(|d| d.value.clone()).collect();
@@ -3431,7 +3438,7 @@ impl Runtime {
                 Ok(Value::Object(new_set))
             });
             register_intrinsic_method(self, proto, "isSubsetOf", 1, |rt, args| {
-                let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Boolean(false)) };
+                let this = match rt.current_this() { Value::Object(id) => id, _ => return Err(RuntimeError::TypeError("Set.prototype method: this is not a Set object".into())) };
                 let other = args.first().cloned().unwrap_or(Value::Undefined);
                 let other_vals = collect_iterable(rt, other)?;
                 let other_keys: std::collections::HashSet<String> = other_vals.iter()
@@ -3444,7 +3451,7 @@ impl Runtime {
                 Ok(Value::Boolean(true))
             });
             register_intrinsic_method(self, proto, "isSupersetOf", 1, |rt, args| {
-                let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Boolean(false)) };
+                let this = match rt.current_this() { Value::Object(id) => id, _ => return Err(RuntimeError::TypeError("Set.prototype method: this is not a Set object".into())) };
                 let other = args.first().cloned().unwrap_or(Value::Undefined);
                 let other_vals = collect_iterable(rt, other)?;
                 let this_storage = match rt.object_get(this, "__set_data") { Value::Object(id) => Some(id), _ => None };
