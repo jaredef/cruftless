@@ -262,3 +262,54 @@ Tier 1.10 (parallel work):
 5. **More Array.prototype methods** — flat, flatMap, slice (currently hand-written with complex semantics).
 
 Pin-Art tag count for the IR workstream: 9 commits as of IR-EXT 5.
+
+
+## IR-EXT 6 — 2026-05-19 night (Tier 2: spec-XML parser; resolver-instance #0b closed)
+
+**Headline**: spec-XML parser operational. The IR pipeline now accepts ECMA-262 emu-alg source directly and produces SpecStepRecord lists structurally equivalent to the hand-authored ones. lint_from_spec example demonstrates end-to-end: parse → record list → lint against IR → ✓.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| `b0f76cde` | IR-EXT 6: spec_parser + lint_from_spec | New module spec_parser.rs (~250 LOC) parses emu-alg source into SpecStepRecord lists. Linter refinements: inline-throw recognition + synthetic-inline filtering. IR convention refinement: map step 6.b/6.c split to match spec granularity. New example lint_from_spec.rs demonstrates the parser → lint pipeline end-to-end. |
+
+### Substrate at IR-EXT 6 close
+
+**Parser surface** (spec_parser.rs):
+- parse_emu_alg(body) → Vec<SpecStepRecord>
+- Numbered-step extraction via Bikeshed `1.` convention + indentation
+- Step-ID synthesis (depth-1 numeric, depth-2 alphabetic, depth-3 lowercase Roman)
+- Abstract-op recognition (35 known op-names curated)
+- Throw-class recognition (all four canonical error classes)
+
+**Linter operational extensions**:
+- walk_step_collecting recurses into nested If/While bodies, collecting inline-throw ops into the parent step's op set.
+- collect_steps filters synthetic-inline sub-step IDs (.throw / .guard / .return / .adj / .seed) so they don't appear as "ExtraStep" findings.
+
+**Sections IR-encoded**: 15 (same as IR-EXT 5).
+
+**Linter findings**: 15/15 clean. The parser-derived records for §23.1.3.20 produce zero findings against the hand-translated IR — the parser and the hand-authored records agree.
+
+### Conjecture status
+
+Doc 729 §V's vertical-recursion-with-stage-deterministic-emission claim is now corroborated at the parser stratum:
+- Same input (emu-alg source) → same output (SpecStepRecord list).
+- Same SpecStepRecord list compared to same IR → same lint findings.
+- Both stages are pure functions of their input; no environmental state.
+
+The two-step pipeline (parse + lint) replaces the previously implicit human-transcription stage (read spec → write SpecStepRecord by hand). The shape of the resolver-instance #0b stage is now operational: spec source → validated IR. Any future hand-authored record list can be cross-checked against the parser; any future drift between hand-author and spec gets caught at this stage.
+
+### Open scope at IR-EXT 6 close
+
+Tier 2.5 (immediate):
+1. **Mass parsing**: feed multiple sections through parse_emu_alg + lint. The current lint_from_spec demos one section; extending to all 15 hand-translated sections proves the parser's coverage at scale.
+2. **Live spec source**: replace embedded fixture with a runtime read from a tc39/ecma262 checkout. The shape of parse_emu_alg is unchanged; only the source plumbing.
+3. **More known_ops**: as more sections land, the parser's known_ops list may need extension. Each addition is one entry.
+
+Tier 1.10 (parallel work, unchanged from IR-EXT 5):
+4. Signed-Index primitives (unblocks lastIndexOf/reduceRight/findLast/etc.).
+5. Promise.{resolve, reject} via CallBuiltin.
+6. More built-in sections.
+
+Pin-Art tag count for the IR workstream: 10 commits as of IR-EXT 6.
