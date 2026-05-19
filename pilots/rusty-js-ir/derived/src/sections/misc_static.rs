@@ -21,6 +21,12 @@ fn nullary_section(spec: &str, rust_name: &str, title: &str, via: &'static str) 
     }
 }
 
+pub fn build_math_random()              -> IRFunction { nullary_section("21.3.2.27", "math_random",                        "Math.random ( )",                       "math_random_via") }
+pub fn build_date_get_timezone_offset() -> IRFunction { nullary_section("21.4.4.12", "date_prototype_get_timezone_offset", "Date.prototype.getTimezoneOffset ( )",  "date_proto_get_timezone_offset_via") }
+
+pub fn spec_steps_math_random()              -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["math_random_via"],              throws: None, prose: "Return a pseudo-random number in [0,1) (v1: LCG seeded from system clock; not cryptographic)." }] }
+pub fn spec_steps_date_get_timezone_offset() -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["date_proto_get_timezone_offset_via"], throws: None, prose: "Return the local-vs-UTC offset in minutes (v1: 0 since cruftless treats __date_ms as UTC)." }] }
+
 pub fn build_date_now()   -> IRFunction { nullary_section ("21.4.3.1", "date_now",   "Date.now ( )",                   "date_now_via") }
 pub fn build_date_parse() -> IRFunction { variadic_section("21.4.3.2", "date_parse", "Date.parse ( string )",          "date_parse_via") }
 pub fn build_date_utc()   -> IRFunction { variadic_section("21.4.3.4", "date_utc",   "Date.UTC ( y, mo, d, h, mi, s )","date_utc_via") }

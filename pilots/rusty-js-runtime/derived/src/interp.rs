@@ -663,6 +663,19 @@ impl Runtime {
         Ok(Value::Number(new_ms))
     }
 
+    /// Math.random() per ECMA §21.3.2.27 (v1: LCG seeded from clock).
+    pub fn math_random_via(&mut self) -> Result<Value, RuntimeError> {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.subsec_nanos()).unwrap_or(0);
+        let pseudo = ((nanos as u64).wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407)) as f64;
+        Ok(Value::Number((pseudo / u64::MAX as f64).abs().fract()))
+    }
+
+    /// Date.prototype.getTimezoneOffset() per ECMA §21.4.4.12 (v1: always 0/UTC).
+    pub fn date_proto_get_timezone_offset_via(&mut self) -> Result<Value, RuntimeError> {
+        Ok(Value::Number(0.0))
+    }
+
     /// Date.now() per ECMA §21.4.3.1 — current epoch ms.
     pub fn date_now_via(&mut self) -> Result<Value, RuntimeError> {
         use std::time::{SystemTime, UNIX_EPOCH};

@@ -1036,13 +1036,7 @@ impl Runtime {
         register_intrinsic_method(self, math, "acos", 1, |rt, args| crate::generated::math_acos(rt, Value::Undefined, args));
         // Ω.5.P63.E14: atan2 routed through IR.
         register_intrinsic_method(self, math, "atan2", 2, |rt, args| crate::generated::math_atan2(rt, Value::Undefined, args));
-        register_intrinsic_method(self, math, "random", 0, |_rt, _|{
-            // v1: simple LCG-style PRNG seeded from time. Not crypto-grade.
-            use std::time::{SystemTime, UNIX_EPOCH};
-            let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.subsec_nanos()).unwrap_or(0);
-            let pseudo = ((nanos as u64).wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407)) as f64;
-            Ok(Value::Number((pseudo / u64::MAX as f64).abs().fract()))
-        });
+        register_intrinsic_method(self, math, "random", 0, |rt, args| crate::generated::math_random(rt, rt.current_this(), args));
         // Ω.5.P62.E3: Math constants per ECMA §21.3.1 — all
         // { writable:false, enumerable:false, configurable:false }.
         self.obj_mut(math).set_own_frozen("PI".into(), Value::Number(std::f64::consts::PI));
@@ -3130,7 +3124,7 @@ impl Runtime {
         register_intrinsic_method(self, proto, "getMinutes",      1, |rt, args| crate::generated::date_prototype_get_minutes(rt, rt.current_this(), args));
         register_intrinsic_method(self, proto, "getSeconds",      1, |rt, args| crate::generated::date_prototype_get_seconds(rt, rt.current_this(), args));
         register_intrinsic_method(self, proto, "getMilliseconds", 1, |rt, args| crate::generated::date_prototype_get_milliseconds(rt, rt.current_this(), args));
-        register_intrinsic_method(self, proto, "getTimezoneOffset", 1, |_rt, _args| Ok(Value::Number(0.0)));
+        register_intrinsic_method(self, proto, "getTimezoneOffset", 1, |rt, args| crate::generated::date_prototype_get_timezone_offset(rt, rt.current_this(), args));
         // Tier-Ω.5.P31.E1.date-utc-getters-setters: getUTC* mirror the
         // non-UTC getters (we treat __date_ms as UTC throughout — no
         // local-time conversion). setUTC* mutate the date by replacing

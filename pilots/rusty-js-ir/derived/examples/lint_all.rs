@@ -103,6 +103,8 @@ fn main() {
         ("Date.now",    misc::build_date_now(),    misc::spec_steps_date_now()),
         ("Date.parse",  misc::build_date_parse(),  misc::spec_steps_date_parse()),
         ("Date.UTC",    misc::build_date_utc(),    misc::spec_steps_date_utc()),
+        ("Math.random",                       misc::build_math_random(),              misc::spec_steps_math_random()),
+        ("Date.prototype.getTimezoneOffset",  misc::build_date_get_timezone_offset(), misc::spec_steps_date_get_timezone_offset()),
         ("Object.keys", object_static::build_keys(), object_static::spec_steps_keys()),
         ("Object.values", object_static::build_values(), object_static::spec_steps_values()),
         ("Object.entries", object_static::build_entries(), object_static::spec_steps_entries()),
