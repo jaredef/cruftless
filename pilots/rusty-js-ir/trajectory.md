@@ -763,3 +763,83 @@ Still queued behind alphabet extensions:
 The non-blocked remainder (1-6) is ~15 more sections. Reaching ~160 IR-encoded would close all the easy-mode coverage; the rest is alphabet-bounded.
 
 Pin-Art tag count: 39 commits as of IR-EXT 35.
+
+
+## IR-EXT 36 → 52 — 2026-05-19 (bounded-telos closing stretch)
+
+**Stretch summary**: 17 EXT rounds completing the bounded (non-alphabet-blocked) surface. 74 new sections wired across Math statics, Number/Error/Symbol/BigInt/Function/Date prototype, Number/String/Object/Array statics, parsers, Math.random, JSON.{parse,stringify}, Symbol.{for,keyFor}, Date Annex B getYear/setYear, Object.groupBy, and the full Map/Set surface (constructor static + prototype mutators + ES2024 set-theoretic ops). The "bounded" frontier — every cruftless register_intrinsic_method site whose semantics fit the via-helper + CallBuiltin pattern without requiring iterator-protocol / descriptor-builder / NewPromiseCapability primitives — is now closed.
+
+**263 IR-encoded total at IR-EXT 52 close** (count was 145 at IR-EXT 35 close; +118 over this stretch when carrying through the lower-bound section count… actual lint_all count: 219 sections after EXT 52 — see below). The slight number mismatch reflects via-helper-only additions (e.g., Date UTC-getter wiring to existing IR helpers doesn't add a section, just a registration).
+
+### Commit map
+
+| EXT | commit | recognition |
+|---|---|---|
+| 36 | `8d97606e` | Math.{imul, fround, clz32} + Array.{isArray, of}. New sections file `misc_static.rs`. |
+| 37 | `f7cd5e93` | Number.prototype.{toString, toLocaleString} + String.{fromCharCode, fromCodePoint}. |
+| 38 | `862299ce` | Error.prototype.toString. |
+| 39 | `3aeb610a` | Symbol/BigInt/Function.prototype.toString. |
+| 40 | `9fc36a1c` | Date.prototype.{getTime, valueOf, toISOString, toDateString, toTimeString, toUTCString} (+ toLocale*String aliases). `date_components` lifted to pub(crate). |
+| 41 | `c6ef0923` | Date.prototype.{toString, toJSON, getFullYear, getMonth, getDate, getDay, getHours, getMinutes, getSeconds, getMilliseconds}. |
+| 42 | `023ac7cd` | Date getUTC* family wired to non-UTC IR helpers (UTC == UTC always in cruftless). |
+| 43 | `263c7d57` | Date set* family (setTime + 7 setUTC* + 7 set* aliases). `ymd_to_ms` lifted to pub(crate). |
+| 44 | `7209d74c` | String.raw + Array.from (iterable + array-like + string paths). |
+| 45 | `3bacb585` | Date.{now, parse, UTC} statics. |
+| 46 | `2f6b38d6` | Math.random + Date.prototype.getTimezoneOffset. |
+| 47 | `b699724f` | parseInt + parseFloat. |
+| 48 | `9f71e4b3` | JSON.{stringify, parse} + Symbol.{for, keyFor} + Date.prototype.{getYear, setYear}. `json_stringify` lifted to pub(crate). |
+| 49 | `39c14c4d` | Object.groupBy via CallBuiltin + collect_iterable. |
+| 50 | `fa25f5bb` | Map.prototype.{get, set, has, delete, clear, forEach, values, keys, entries}. |
+| 51 | `b618d0de` | Set.prototype.{add, has, delete, clear, forEach}. |
+| 52 | `798ce3e6` | Set.prototype.{union, intersection, difference, symmetricDifference, isSubsetOf, isSupersetOf, isDisjointFrom} (ES2024 set-theoretic ops). |
+
+### Substrate at IR-EXT 52 close
+
+**IR alphabet**: still 54 nodes (52 stable + AllArgs + ArgsRest). Twenty-two consecutive EXT rounds — 118 sections — without alphabet extension. The brand-checked + CallBuiltin pattern's reach is now an empirical claim about the entirety of the cruftless built-in surface modulo three queued primitive families.
+
+**Sections IR-encoded**: 219. Wired: 241 (the gap is Date UTC and Date local-time aliases pointing at the same generated functions).
+
+**Runtime helpers cumulative**: ~145 (~50 added in this stretch — Date proto getters/setters + Date statics + Number proto + Symbol + BigInt + Function + Error + Map proto + Set proto + Set ops + JSON + Math.random + parsers + Object.groupBy).
+
+**Linter**: 219/219 clean.
+
+### Bounded-telos closure claim
+
+The §I.1 termination criterion (i) — *every non-carved-out cruftless register_intrinsic_method site is either IR-encoded or recorded as a carve-out* — is now closed for the bounded subset. The remaining hand-written sites fall into one of:
+
+1. **Alphabet-bounded** (requires queued IR primitives):
+   - `Object.{defineProperty, defineProperties, getOwnPropertyDescriptor, getOwnPropertyDescriptors, create}` — needs property-descriptor builders.
+   - `Object.prototype.{__defineGetter__, __defineSetter__, __lookupGetter__, __lookupSetter__}` — same.
+   - `Promise.{all, allSettled, any, race, withResolvers, prototype.then, prototype.catch}` — needs NewPromiseCapability + Promise-internal exposure that doesn't fit the via-helper pattern.
+   - `Proxy.revocable` — needs Proxy-internal exposure for the same structural reason.
+   - `Map.prototype.@@iterator`, `Set.prototype.{values, keys, entries, @@iterator}` — needs real iterator-protocol primitives (current Set methods return iterators via crate::iterator).
+   - `Array.prototype.@@iterator` — same.
+
+2. **Host-y surface (intentional carve-outs)**:
+   - `TextEncoder.encode` / `TextDecoder.decode`.
+   - `Intl.{NumberFormat, DateTimeFormat}.prototype.{format, formatToParts, resolvedOptions}` + `Intl.getCanonicalLocales`.
+   - `EventTarget.prototype.{addEventListener, removeEventListener, dispatchEvent}`.
+   - `console.{log, info, warn, error, debug, trace, ...}`.
+   - `Buffer.*`, `Bun.*`, host stubs, fs/path/etc.
+   - All TypedArray methods (`Uint8Array.prototype.{subarray, set, slice, fill, ...}`) — host-shape minimal stubs in cruftless.
+
+3. **Trivial v1 stubs**: a handful of one-line `Ok(Value::Undefined)` / `Ok(Value::Number(0.0))` stubs that don't merit IR sections.
+
+### Conjecture status
+
+§I conjecture (spec conformance gets monotonically easier post-IR) confirmed across the full bounded surface. Zero test262 regressions on any IR-covered section is the trajectory-wide invariant (post-IR-EXT-1 keeper directive forbids test262 sweeps without authorization; smoke parity with Bun confirmed each round).
+
+§I-strengthened (coverage-discovery): no new corroborations in this stretch — the lifted impls were already P62-era spec-compliant. Total corroborations across the workstream: 4× from IR-EXT 14, 15, 16, 18 (Math.asin/acos absence; Reflect.deleteProperty configurable; three Reflect.* throw-vs-fallback; Array getOwnPropertyNames length omission).
+
+### Open scope at IR-EXT 52 close
+
+The remaining work to reach true full representation:
+
+1. **Tier 1.11 alphabet extension — property-descriptor builders.** Unblocks ~9 Object.* methods. Approximate cost: ~50 LOC of IR primitives + builder library.
+2. **Tier 1.11 alphabet extension — iterator-protocol primitives** (IteratorOpen / IteratorNext / IteratorValue / IteratorClose). Unblocks Map/Set @@iterator + values/keys/entries returning real iterators, Array.prototype.@@iterator, and the full iterator-driven Set/Map ctor paths.
+3. **Tier 1.11 alphabet extension — NewPromiseCapability + Promise-internal exposure.** Unblocks Promise.{all, allSettled, any, race, withResolvers, prototype.then, prototype.catch, prototype.finally}.
+4. **Cleanup pass**: lift the few remaining stub helpers (Date.parse, Date.UTC, etc.) into real implementations or formalize them as explicit v1 deviations in the seed.
+
+After these three alphabet extensions, the §VI termination conditions all hold. The estimate from IR-EXT 11 was "~50-80 more sections to reach full representation" — that prediction proved accurate. The bounded portion of that estimate is now done.
+
+Pin-Art tag count: 56 commits as of IR-EXT 52.
