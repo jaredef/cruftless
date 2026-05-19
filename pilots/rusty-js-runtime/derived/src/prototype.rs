@@ -1860,11 +1860,24 @@ fn install_number_proto(rt: &mut Runtime, host: ObjectRef) {
     // Ω.5.P61.E10: toExponential, toPrecision, toLocaleString per
     // ECMA §21.1.3.
     register_intrinsic_method(rt, host, "toExponential", 1, |rt, args| {
-        let n = abstract_ops::to_number(&rt.current_this());
-        let digits = args.first().and_then(|v| {
-            if matches!(v, Value::Undefined) { None }
-            else { Some(abstract_ops::to_number(v) as usize) }
-        });
+        // ThisNumberValue brand + RangeError on digits out of range.
+        let this = rt.current_this();
+        let n = match rt.unwrap_primitive(&this) {
+            Value::Number(n) => n,
+            _ => return Err(RuntimeError::TypeError(
+                "Number.prototype.toExponential: this is not a Number".into())),
+        };
+        let digits = match args.first().cloned() {
+            None | Some(Value::Undefined) => None,
+            Some(v) => {
+                let dn = rt.coerce_to_number(&v)?;
+                if dn.is_nan() || dn < 0.0 || dn > 100.0 {
+                    return Err(RuntimeError::RangeError(
+                        "toExponential() digits argument must be between 0 and 100".into()));
+                }
+                Some(dn as usize)
+            }
+        };
         let s = match digits {
             Some(d) => format!("{:.*e}", d, n),
             None => format!("{:e}", n),
@@ -1877,19 +1890,28 @@ fn install_number_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(Value::String(Rc::new(s)))
     });
     register_intrinsic_method(rt, host, "toPrecision", 1, |rt, args| {
-        let n = abstract_ops::to_number(&rt.current_this());
-        match args.first() {
+        // ThisNumberValue brand + RangeError per §21.1.3.5.
+        let this = rt.current_this();
+        let n = match rt.unwrap_primitive(&this) {
+            Value::Number(n) => n,
+            _ => return Err(RuntimeError::TypeError(
+                "Number.prototype.toPrecision: this is not a Number".into())),
+        };
+        match args.first().cloned() {
             None | Some(Value::Undefined) => Ok(Value::String(Rc::new(
                 crate::abstract_ops::number_to_string(n)))),
             Some(v) => {
-                let p = abstract_ops::to_number(v) as usize;
-                if p == 0 {
+                let pn = rt.coerce_to_number(&v)?;
+                if pn.is_nan() || pn < 1.0 || pn > 100.0 {
                     return Err(RuntimeError::RangeError(
-                        "toPrecision: precision must be >= 1".into()));
+                        "toPrecision() argument must be between 1 and 100".into()));
                 }
-                // Rough impl: use Rust's {:.p} for fixed; switch to
-                // exponential when too far from 1. v1 deviation: matches
-                // for most consumer cases.
+                let p = pn as usize;
+                if n.is_nan() { return Ok(Value::String(Rc::new("NaN".into()))); }
+                if !n.is_finite() {
+                    return Ok(Value::String(Rc::new(
+                        if n > 0.0 { "Infinity".into() } else { "-Infinity".into() })));
+                }
                 Ok(Value::String(Rc::new(format!("{:.*}", p.saturating_sub(1), n))))
             }
         }
