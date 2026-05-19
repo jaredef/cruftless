@@ -303,55 +303,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     // - With comparator: call comparator(a,b); sign of return → Ordering.
     // v1 ignores spec's sparse-array semantics; sorts dense own indices 0..length-1.
     register_intrinsic_method(rt, host, "sort", 1, |rt, args| {
-        // Ω.5.P62.E16: §23.1.3.27 — comparefn must be callable or
-        // undefined; non-callable non-undefined throws TypeError up-front.
-        let id = to_array_this(rt)?;
-        let cmp_arg = args.first().cloned();
-        let comparator = match cmp_arg {
-            None | Some(Value::Undefined) => None,
-            Some(v) => {
-                if !rt.is_callable(&v) {
-                    return Err(RuntimeError::TypeError(
-                        "Array.prototype.sort: comparefn must be callable".into()));
-                }
-                Some(v)
-            }
-        };
-        let len = rt.array_length(id);
-        let mut items: Vec<Value> = (0..len).map(|i| rt.object_get(id, &i.to_string())).collect();
-        // Stable sort. With comparator, use call_function; on error propagate.
-        // sort_by needs a non-fallible cmp, so collect errors via interior state.
-        let mut err: Option<RuntimeError> = None;
-        match comparator {
-            None => {
-                items.sort_by(|a, b| {
-                    let sa = abstract_ops::to_string(a);
-                    let sb = abstract_ops::to_string(b);
-                    sa.as_str().cmp(sb.as_str())
-                });
-            }
-            Some(cb) => {
-                items.sort_by(|a, b| {
-                    if err.is_some() { return std::cmp::Ordering::Equal; }
-                    match rt.call_function(cb.clone(), Value::Undefined, vec![a.clone(), b.clone()]) {
-                        Ok(v) => {
-                            let n = abstract_ops::to_number(&v);
-                            if n.is_nan() { std::cmp::Ordering::Equal }
-                            else if n < 0.0 { std::cmp::Ordering::Less }
-                            else if n > 0.0 { std::cmp::Ordering::Greater }
-                            else { std::cmp::Ordering::Equal }
-                        }
-                        Err(e) => { err = Some(e); std::cmp::Ordering::Equal }
-                    }
-                });
-            }
-        }
-        if let Some(e) = err { return Err(e); }
-        for (i, v) in items.into_iter().enumerate() {
-            rt.object_set(id, i.to_string(), v);
-        }
-        rt.object_set(id, "length".into(), Value::Number(len as f64));
-        Ok(Value::Object(id))
+        crate::generated::array_prototype_sort(rt, rt.current_this(), args)
     });
     // Ω.5.P63.E2: every routed through IR-lowered generated::array_prototype_every.
     register_intrinsic_method(rt, host, "every", 1, |rt, args| {
@@ -362,41 +314,14 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     // of [i, v] / i / v entries, matching the for-of-array-compatible shape
     // used by Map.prototype.entries above. Surfaces from the Ω.5.P24.E1
     // proto-chain probe: arktype's constraintKinds.entries() lands here.
-    register_intrinsic_method(rt, host, "entries", 0, |rt, _args| {
-        let id = to_array_this(rt)?;
-        let len = rt.array_length(id);
-        let out = rt.alloc_object(Object::new_array());
-        for i in 0..len {
-            let v = rt.object_get(id, &i.to_string());
-            let pair = rt.alloc_object(Object::new_array());
-            rt.object_set(pair, "0".into(), Value::Number(i as f64));
-            rt.object_set(pair, "1".into(), v);
-            rt.object_set(pair, "length".into(), Value::Number(2.0));
-            rt.object_set(out, i.to_string(), Value::Object(pair));
-        }
-        rt.object_set(out, "length".into(), Value::Number(len as f64));
-        Ok(Value::Object(out))
+    register_intrinsic_method(rt, host, "entries", 0, |rt, args| {
+        crate::generated::array_prototype_entries(rt, rt.current_this(), args)
     });
-    register_intrinsic_method(rt, host, "keys", 0, |rt, _args| {
-        let id = to_array_this(rt)?;
-        let len = rt.array_length(id);
-        let out = rt.alloc_object(Object::new_array());
-        for i in 0..len {
-            rt.object_set(out, i.to_string(), Value::Number(i as f64));
-        }
-        rt.object_set(out, "length".into(), Value::Number(len as f64));
-        Ok(Value::Object(out))
+    register_intrinsic_method(rt, host, "keys", 0, |rt, args| {
+        crate::generated::array_prototype_keys(rt, rt.current_this(), args)
     });
-    register_intrinsic_method(rt, host, "values", 0, |rt, _args| {
-        let id = to_array_this(rt)?;
-        let len = rt.array_length(id);
-        let out = rt.alloc_object(Object::new_array());
-        for i in 0..len {
-            let v = rt.object_get(id, &i.to_string());
-            rt.object_set(out, i.to_string(), v);
-        }
-        rt.object_set(out, "length".into(), Value::Number(len as f64));
-        Ok(Value::Object(out))
+    register_intrinsic_method(rt, host, "values", 0, |rt, args| {
+        crate::generated::array_prototype_values(rt, rt.current_this(), args)
     });
 
     // Ω.5.P61.E6: complete the Array.prototype surface per ECMA §23.1.3.

@@ -484,6 +484,97 @@ impl Runtime {
         Ok(Value::String(std::rc::Rc::new(s + &suffix)))
     }
 
+    /// Array.prototype.sort(comparefn) per ECMA §23.1.3.29.
+    pub fn array_proto_sort_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let id = crate::prototype::to_array_this(self)?;
+        let cmp_arg = args.first().cloned();
+        let comparator = match cmp_arg {
+            None | Some(Value::Undefined) => None,
+            Some(v) => {
+                if !self.is_callable(&v) {
+                    return Err(RuntimeError::TypeError(
+                        "Array.prototype.sort: comparefn must be callable".into()));
+                }
+                Some(v)
+            }
+        };
+        let len = self.array_length(id);
+        let mut items: Vec<Value> = (0..len).map(|i| self.object_get(id, &i.to_string())).collect();
+        let mut err: Option<RuntimeError> = None;
+        match comparator {
+            None => {
+                items.sort_by(|a, b| {
+                    let sa = crate::abstract_ops::to_string(a);
+                    let sb = crate::abstract_ops::to_string(b);
+                    sa.as_str().cmp(sb.as_str())
+                });
+            }
+            Some(cb) => {
+                items.sort_by(|a, b| {
+                    if err.is_some() { return std::cmp::Ordering::Equal; }
+                    match self.call_function(cb.clone(), Value::Undefined, vec![a.clone(), b.clone()]) {
+                        Ok(v) => {
+                            let n = crate::abstract_ops::to_number(&v);
+                            if n.is_nan() { std::cmp::Ordering::Equal }
+                            else if n < 0.0 { std::cmp::Ordering::Less }
+                            else if n > 0.0 { std::cmp::Ordering::Greater }
+                            else { std::cmp::Ordering::Equal }
+                        }
+                        Err(e) => { err = Some(e); std::cmp::Ordering::Equal }
+                    }
+                });
+            }
+        }
+        if let Some(e) = err { return Err(e); }
+        for (i, v) in items.into_iter().enumerate() {
+            self.object_set(id, i.to_string(), v);
+        }
+        self.object_set(id, "length".into(), Value::Number(len as f64));
+        Ok(Value::Object(id))
+    }
+
+    /// Array.prototype.entries() per ECMA §23.1.3.4.
+    pub fn array_proto_entries_via(&mut self) -> Result<Value, RuntimeError> {
+        let id = crate::prototype::to_array_this(self)?;
+        let len = self.array_length(id);
+        let out = self.alloc_object(crate::value::Object::new_array());
+        for i in 0..len {
+            let v = self.object_get(id, &i.to_string());
+            let pair = self.alloc_object(crate::value::Object::new_array());
+            self.object_set(pair, "0".into(), Value::Number(i as f64));
+            self.object_set(pair, "1".into(), v);
+            self.object_set(pair, "length".into(), Value::Number(2.0));
+            self.object_set(out, i.to_string(), Value::Object(pair));
+        }
+        self.object_set(out, "length".into(), Value::Number(len as f64));
+        Ok(Value::Object(out))
+    }
+
+    /// Array.prototype.keys() per ECMA §23.1.3.17.
+    pub fn array_proto_keys_via(&mut self) -> Result<Value, RuntimeError> {
+        let id = crate::prototype::to_array_this(self)?;
+        let len = self.array_length(id);
+        let out = self.alloc_object(crate::value::Object::new_array());
+        for i in 0..len {
+            self.object_set(out, i.to_string(), Value::Number(i as f64));
+        }
+        self.object_set(out, "length".into(), Value::Number(len as f64));
+        Ok(Value::Object(out))
+    }
+
+    /// Array.prototype.values() per ECMA §23.1.3.38.
+    pub fn array_proto_values_via(&mut self) -> Result<Value, RuntimeError> {
+        let id = crate::prototype::to_array_this(self)?;
+        let len = self.array_length(id);
+        let out = self.alloc_object(crate::value::Object::new_array());
+        for i in 0..len {
+            let v = self.object_get(id, &i.to_string());
+            self.object_set(out, i.to_string(), v);
+        }
+        self.object_set(out, "length".into(), Value::Number(len as f64));
+        Ok(Value::Object(out))
+    }
+
     /// Array.prototype.toReversed() per ECMA §23.1.3.33.
     pub fn array_proto_to_reversed_via(&mut self) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;

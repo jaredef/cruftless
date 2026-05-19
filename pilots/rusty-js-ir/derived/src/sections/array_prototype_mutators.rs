@@ -24,6 +24,16 @@ fn nullary_section(spec: &str, rust_name: &str, title: &str, via: &'static str) 
     }
 }
 
+pub fn build_sort()    -> IRFunction { variadic_section("23.1.3.29", "array_prototype_sort",    "Array.prototype.sort ( comparefn )", "array_proto_sort_via") }
+pub fn build_entries() -> IRFunction { nullary_section ("23.1.3.4",  "array_prototype_entries", "Array.prototype.entries ( )",        "array_proto_entries_via") }
+pub fn build_keys()    -> IRFunction { nullary_section ("23.1.3.17", "array_prototype_keys",    "Array.prototype.keys ( )",           "array_proto_keys_via") }
+pub fn build_values()  -> IRFunction { nullary_section ("23.1.3.38", "array_prototype_values",  "Array.prototype.values ( )",         "array_proto_values_via") }
+
+pub fn spec_steps_sort()    -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["array_proto_sort_via"],    throws: None, prose: "Sort this in place; default lexicographic by ToString unless comparefn provided. Comparefn must be callable or undefined." }] }
+pub fn spec_steps_entries() -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["array_proto_entries_via"], throws: None, prose: "Return a list of [index, value] pairs (v1: eagerly materialized array-of-pairs)." }] }
+pub fn spec_steps_keys()    -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["array_proto_keys_via"],    throws: None, prose: "Return a list of indices (v1: eagerly materialized array)." }] }
+pub fn spec_steps_values()  -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["array_proto_values_via"],  throws: None, prose: "Return a list of values (v1: eagerly materialized array, like Array.from)." }] }
+
 pub fn build_to_reversed()      -> IRFunction { nullary_section ("23.1.3.33", "array_prototype_to_reversed",       "Array.prototype.toReversed ( )",                                "array_proto_to_reversed_via") }
 pub fn build_to_sorted()        -> IRFunction { variadic_section("23.1.3.34", "array_prototype_to_sorted",         "Array.prototype.toSorted ( comparefn )",                         "array_proto_to_sorted_via") }
 pub fn build_to_spliced()       -> IRFunction { variadic_section("23.1.3.35", "array_prototype_to_spliced",        "Array.prototype.toSpliced ( start, deleteCount, ...items )",      "array_proto_to_spliced_via") }
