@@ -70,6 +70,7 @@ fn main() {
         ("Number.prototype.toLocaleString",  misc::build_number_proto_to_locale_string(), misc::spec_steps_number_proto_to_locale_string()),
         ("String.fromCharCode",              misc::build_string_from_char_code(),         misc::spec_steps_string_from_char_code()),
         ("String.fromCodePoint",             misc::build_string_from_code_point(),        misc::spec_steps_string_from_code_point()),
+        ("Error.prototype.toString",         misc::build_error_proto_to_string(),         misc::spec_steps_error_proto_to_string()),
         ("Object.keys", object_static::build_keys(), object_static::spec_steps_keys()),
         ("Object.values", object_static::build_values(), object_static::spec_steps_values()),
         ("Object.entries", object_static::build_entries(), object_static::spec_steps_entries()),

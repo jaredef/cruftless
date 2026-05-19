@@ -560,6 +560,22 @@ impl Runtime {
         Ok(Value::String(std::rc::Rc::new(s)))
     }
 
+    /// Error.prototype.toString() per ECMA §20.5.3.4.
+    pub fn error_proto_to_string_via(&mut self) -> Result<Value, RuntimeError> {
+        let this = self.current_this();
+        let (name, message) = match &this {
+            Value::Object(id) => {
+                let n = self.object_get(*id, "name");
+                let m = self.object_get(*id, "message");
+                (crate::abstract_ops::to_string(&n).as_str().to_string(),
+                 crate::abstract_ops::to_string(&m).as_str().to_string())
+            }
+            _ => ("Error".into(), "".into()),
+        };
+        let out = if message.is_empty() { name } else { format!("{}: {}", name, message) };
+        Ok(Value::String(std::rc::Rc::new(out)))
+    }
+
     /// Math.imul(a, b) per ECMA §21.3.2.19.
     pub fn math_imul_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let a = args.first().map(crate::abstract_ops::to_number).unwrap_or(0.0) as i64 as i32;

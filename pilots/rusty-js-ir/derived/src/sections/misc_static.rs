@@ -21,6 +21,9 @@ fn nullary_section(spec: &str, rust_name: &str, title: &str, via: &'static str) 
     }
 }
 
+pub fn build_error_proto_to_string() -> IRFunction { nullary_section("20.5.3.4", "error_prototype_to_string", "Error.prototype.toString ( )", "error_proto_to_string_via") }
+pub fn spec_steps_error_proto_to_string() -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["error_proto_to_string_via"], throws: None, prose: "Return name (default \"Error\") and message (default \"\") concatenated as \"name: message\" when message is non-empty, else just name." }] }
+
 pub fn build_number_proto_to_string()        -> IRFunction { variadic_section("21.1.3.6", "number_prototype_to_string",        "Number.prototype.toString ( [ radix ] )", "number_proto_to_string_via") }
 pub fn build_number_proto_to_locale_string() -> IRFunction { nullary_section ("21.1.3.4", "number_prototype_to_locale_string", "Number.prototype.toLocaleString ( )",     "number_proto_to_locale_string_via") }
 pub fn build_string_from_char_code()         -> IRFunction { variadic_section("22.1.2.1", "string_from_char_code",             "String.fromCharCode ( ...codeUnits )",    "string_from_char_code_via") }

@@ -4222,19 +4222,8 @@ impl Runtime {
             let proto_id = self.alloc_object(Object::new_ordinary());
             self.object_set(proto_id, "name".into(), Value::String(Rc::new((*default_name).to_string())));
             self.object_set(proto_id, "message".into(), Value::String(Rc::new("".to_string())));
-            register_intrinsic_method(self, proto_id, "toString", 0, |rt, _args| {
-                let this = rt.current_this();
-                let (name, message) = match &this {
-                    Value::Object(id) => {
-                        let n = rt.object_get(*id, "name");
-                        let m = rt.object_get(*id, "message");
-                        (abstract_ops::to_string(&n).as_str().to_string(),
-                         abstract_ops::to_string(&m).as_str().to_string())
-                    }
-                    _ => ("Error".into(), "".into()),
-                };
-                let out = if message.is_empty() { name } else { format!("{}: {}", name, message) };
-                Ok(Value::String(Rc::new(out)))
+            register_intrinsic_method(self, proto_id, "toString", 0, |rt, args| {
+                crate::generated::error_prototype_to_string(rt, rt.current_this(), args)
             });
 
             let default_name = (*default_name).to_string();

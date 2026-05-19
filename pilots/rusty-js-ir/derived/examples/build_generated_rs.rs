@@ -79,6 +79,7 @@ fn main() {
         misc::build_number_proto_to_locale_string(),
         misc::build_string_from_char_code(),
         misc::build_string_from_code_point(),
+        misc::build_error_proto_to_string(),
         object_static::build_keys(),
         object_static::build_values(),
         object_static::build_entries(),
