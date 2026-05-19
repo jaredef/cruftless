@@ -2450,7 +2450,16 @@ impl Runtime {
     /// Array.from(arrayLike, mapfn?, thisArg?) per ECMA §23.1.2.1.
     pub fn array_from_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let src = args.first().cloned().unwrap_or(Value::Undefined);
-        let map_fn = args.get(1).cloned();
+        let map_fn_v = args.get(1).cloned().unwrap_or(Value::Undefined);
+        let this_arg = args.get(2).cloned().unwrap_or(Value::Undefined);
+        // §23.1.2.1 step 2-3: if mapfn is undefined, mapping = false.
+        // Otherwise if !IsCallable(mapfn), throw TypeError.
+        let mapping = match &map_fn_v {
+            Value::Undefined => None,
+            v if self.is_callable(v) => Some(v.clone()),
+            _ => return Err(RuntimeError::TypeError(
+                "Array.from: mapfn must be callable".into())),
+        };
         let out = self.alloc_object(crate::value::Object::new_array());
         let items: Vec<Value> = match &src {
             Value::Object(id) => {
@@ -2458,20 +2467,24 @@ impl Runtime {
                 if has_iter {
                     crate::intrinsics::collect_iterable(self, src.clone())?
                 } else {
-                    let len = self.array_length(*id);
+                    let len = self.try_array_length(*id)?;
                     (0..len).map(|i| self.object_get(*id, &i.to_string())).collect()
                 }
             }
             Value::String(s) => s.chars().map(|c| Value::String(std::rc::Rc::new(c.to_string()))).collect(),
+            Value::Undefined | Value::Null => return Err(RuntimeError::TypeError(
+                "Array.from: items must not be null or undefined".into())),
             _ => Vec::new(),
         };
         for (i, v) in items.into_iter().enumerate() {
-            let mapped = if let Some(f) = &map_fn {
-                self.call_function(f.clone(), Value::Undefined, vec![v, Value::Number(i as f64)])?
+            let mapped = if let Some(f) = &mapping {
+                // §23.1.2.1 step 6.f.iv: Call(mapfn, thisArg, [kValue, k]).
+                self.call_function(f.clone(), this_arg.clone(),
+                    vec![v, Value::Number(i as f64)])?
             } else { v };
             self.object_set(out, i.to_string(), mapped);
         }
-        let len = self.array_length(out);
+        let len = self.try_array_length(out)?;
         self.object_set(out, "length".into(), Value::Number(len as f64));
         Ok(Value::Object(out))
     }
