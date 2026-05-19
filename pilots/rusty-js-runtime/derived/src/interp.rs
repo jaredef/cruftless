@@ -1821,7 +1821,7 @@ impl Runtime {
         }
         let len = self.array_length(arr);
         self.object_set(arr, "length".into(), Value::Number(len as f64));
-        Ok(Value::Object(arr))
+        Ok(Value::Object(crate::iterator::make_array_iterator(self, arr)))
     }
 
     /// Map.prototype.keys() — v1 eager-collect.
@@ -1841,7 +1841,7 @@ impl Runtime {
         }
         let len = self.array_length(arr);
         self.object_set(arr, "length".into(), Value::Number(len as f64));
-        Ok(Value::Object(arr))
+        Ok(Value::Object(crate::iterator::make_array_iterator(self, arr)))
     }
 
     /// Map.prototype.entries() — v1 eager-collect array-of-pairs.
@@ -1866,7 +1866,7 @@ impl Runtime {
         }
         let len = self.array_length(arr);
         self.object_set(arr, "length".into(), Value::Number(len as f64));
-        Ok(Value::Object(arr))
+        Ok(Value::Object(crate::iterator::make_array_iterator(self, arr)))
     }
 
     /// Object.groupBy(items, callbackFn) per ECMA §20.1.2.10.
@@ -2461,46 +2461,51 @@ impl Runtime {
         Ok(Value::Object(id))
     }
 
-    /// Array.prototype.entries() per ECMA §23.1.3.4.
+    /// Array.prototype.entries() per ECMA §23.1.3.4 — returns an Array
+    /// Iterator object yielding [index, value] pairs. IR-EXT 57: previously
+    /// returned the materialized pairs Array, which made .next() undefined
+    /// for every test262 case that consumes the iterator protocol.
     pub fn array_proto_entries_via(&mut self) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;
         let len = self.array_length(id);
-        let out = self.alloc_object(crate::value::Object::new_array());
+        let pairs = self.alloc_object(crate::value::Object::new_array());
         for i in 0..len {
             let v = self.object_get(id, &i.to_string());
             let pair = self.alloc_object(crate::value::Object::new_array());
             self.object_set(pair, "0".into(), Value::Number(i as f64));
             self.object_set(pair, "1".into(), v);
             self.object_set(pair, "length".into(), Value::Number(2.0));
-            self.object_set(out, i.to_string(), Value::Object(pair));
+            self.object_set(pairs, i.to_string(), Value::Object(pair));
         }
-        self.object_set(out, "length".into(), Value::Number(len as f64));
-        Ok(Value::Object(out))
+        self.object_set(pairs, "length".into(), Value::Number(len as f64));
+        Ok(Value::Object(crate::iterator::make_array_iterator(self, pairs)))
     }
 
-    /// Array.prototype.keys() per ECMA §23.1.3.17.
+    /// Array.prototype.keys() per ECMA §23.1.3.17 — returns an Array
+    /// Iterator yielding indices.
     pub fn array_proto_keys_via(&mut self) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;
         let len = self.array_length(id);
-        let out = self.alloc_object(crate::value::Object::new_array());
+        let keys = self.alloc_object(crate::value::Object::new_array());
         for i in 0..len {
-            self.object_set(out, i.to_string(), Value::Number(i as f64));
+            self.object_set(keys, i.to_string(), Value::Number(i as f64));
         }
-        self.object_set(out, "length".into(), Value::Number(len as f64));
-        Ok(Value::Object(out))
+        self.object_set(keys, "length".into(), Value::Number(len as f64));
+        Ok(Value::Object(crate::iterator::make_array_iterator(self, keys)))
     }
 
-    /// Array.prototype.values() per ECMA §23.1.3.38.
+    /// Array.prototype.values() per ECMA §23.1.3.38 — returns an Array
+    /// Iterator yielding values.
     pub fn array_proto_values_via(&mut self) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;
         let len = self.array_length(id);
-        let out = self.alloc_object(crate::value::Object::new_array());
+        let vals = self.alloc_object(crate::value::Object::new_array());
         for i in 0..len {
             let v = self.object_get(id, &i.to_string());
-            self.object_set(out, i.to_string(), v);
+            self.object_set(vals, i.to_string(), v);
         }
-        self.object_set(out, "length".into(), Value::Number(len as f64));
-        Ok(Value::Object(out))
+        self.object_set(vals, "length".into(), Value::Number(len as f64));
+        Ok(Value::Object(crate::iterator::make_array_iterator(self, vals)))
     }
 
     /// Array.prototype.toReversed() per ECMA §23.1.3.33.
