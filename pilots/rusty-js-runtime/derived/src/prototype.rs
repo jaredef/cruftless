@@ -631,22 +631,9 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         }
         Ok(acc)
     });
+    // Ω.5.P63.E3: find routed through IR-lowered generated::array_prototype_find.
     register_intrinsic_method(rt, host, "find", 1, |rt, args| {
-        let id = to_array_this(rt)?;
-        let cb = args.first().cloned().ok_or_else(||
-            RuntimeError::TypeError("find: callback required".into()))?;
-        if !rt.is_callable(&cb) {
-            return Err(RuntimeError::TypeError("Array.prototype.find: callback is not callable".into()));
-        }
-        let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
-        let len = rt.array_length(id);
-        for i in 0..len {
-            let v = rt.object_get(id, &i.to_string());
-            let r = rt.call_function(cb.clone(), this_arg.clone(),
-                vec![v.clone(), Value::Number(i as f64), Value::Object(id)])?;
-            if abstract_ops::to_boolean(&r) { return Ok(v); }
-        }
-        Ok(Value::Undefined)
+        crate::generated::array_prototype_find(rt, rt.current_this(), args)
     });
     // Ω.5.P63.E2: some routed through IR-lowered generated::array_prototype_some.
     register_intrinsic_method(rt, host, "some", 1, |rt, args| {
@@ -763,22 +750,9 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     // copyWithin / toReversed / toSorted / toSpliced / with / toLocaleString.
     // Each spec-arity per §23.1.3 + ECMA 2023 additions.
 
+    // Ω.5.P63.E3: findIndex routed through IR-lowered generated::array_prototype_find_index.
     register_intrinsic_method(rt, host, "findIndex", 1, |rt, args| {
-        let id = to_array_this(rt)?;
-        let cb = args.first().cloned().ok_or_else(||
-            RuntimeError::TypeError("findIndex: callback required".into()))?;
-        if !rt.is_callable(&cb) {
-            return Err(RuntimeError::TypeError("Array.prototype.findIndex: callback is not callable".into()));
-        }
-        let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
-        let len = rt.array_length(id);
-        for i in 0..len {
-            let v = rt.object_get(id, &i.to_string());
-            let r = rt.call_function(cb.clone(), this_arg.clone(),
-                vec![v, Value::Number(i as f64), Value::Object(id)])?;
-            if abstract_ops::to_boolean(&r) { return Ok(Value::Number(i as f64)); }
-        }
-        Ok(Value::Number(-1.0))
+        crate::generated::array_prototype_find_index(rt, rt.current_this(), args)
     });
 
     register_intrinsic_method(rt, host, "findLast", 1, |rt, args| {

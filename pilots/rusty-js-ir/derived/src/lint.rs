@@ -294,10 +294,24 @@ fn collect_abstract_ops_in_expr(
             set.insert("LengthOfArrayLike");
             collect_abstract_ops_in_expr(o, set);
         }
+        Expr::SameValue(a, b) => {
+            set.insert("SameValue");
+            collect_abstract_ops_in_expr(a, set);
+            collect_abstract_ops_in_expr(b, set);
+        }
+        Expr::SameValueZero(a, b) => {
+            set.insert("SameValueZero");
+            collect_abstract_ops_in_expr(a, set);
+            collect_abstract_ops_in_expr(b, set);
+        }
+        Expr::StrictEq(a, b) => {
+            set.insert("IsStrictlyEqual");
+            collect_abstract_ops_in_expr(a, set);
+            collect_abstract_ops_in_expr(b, set);
+        }
         Expr::OpAdd(a, b) | Expr::OpSub(a, b) | Expr::OpMul(a, b) |
-        Expr::LooseEq(a, b) | Expr::StrictEq(a, b) |
-        Expr::Lt(a, b) | Expr::Le(a, b) |
-        Expr::SameValue(a, b) | Expr::SameValueZero(a, b) => {
+        Expr::LooseEq(a, b) |
+        Expr::Lt(a, b) | Expr::Le(a, b) => {
             collect_abstract_ops_in_expr(a, set);
             collect_abstract_ops_in_expr(b, set);
         }
@@ -309,7 +323,13 @@ fn collect_abstract_ops_in_expr(
         Expr::Var(_) | Expr::Undefined | Expr::Null | Expr::Bool(_) |
         Expr::Number(_) | Expr::Str(_) | Expr::Arg(_) | Expr::This |
         Expr::IntConst(_) => {}
-        Expr::AsIndex(v) | Expr::IndexAsValue(v) | Expr::IndexAsKey(v) => {
+        Expr::AsIndex(v) => collect_abstract_ops_in_expr(v, set),
+        Expr::IndexAsValue(v) => collect_abstract_ops_in_expr(v, set),
+        Expr::IndexAsKey(v) => {
+            // IndexAsKey(k) is the typed shortcut for ! ToString(𝔽(k)) —
+            // the spec writes this as a ToString call, so the linter
+            // counts it as one.
+            set.insert("ToString");
             collect_abstract_ops_in_expr(v, set);
         }
         Expr::IndexAdd(a, b) => {

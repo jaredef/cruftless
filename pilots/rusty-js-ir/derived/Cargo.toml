@@ -22,3 +22,7 @@ path = "examples/lint_drift_demo.rs"
 [[example]]
 name = "build_generated_rs"
 path = "examples/build_generated_rs.rs"
+
+[[example]]
+name = "lint_all"
+path = "examples/lint_all.rs"

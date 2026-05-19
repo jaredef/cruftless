@@ -122,6 +122,34 @@ pub fn number_to_string(n: f64) -> String {
     format!("{}", n)
 }
 
+/// SameValue per ECMA §7.2.10 — like strict equality but NaN equals NaN
+/// and +0 does NOT equal −0. Used by Object.is.
+pub fn same_value(a: &Value, b: &Value) -> bool {
+    match (a, b) {
+        (Value::Number(x), Value::Number(y)) => {
+            if x.is_nan() && y.is_nan() { return true; }
+            // +0 / -0 distinguish via sign bit.
+            if *x == 0.0 && *y == 0.0 {
+                return x.is_sign_positive() == y.is_sign_positive();
+            }
+            x == y
+        }
+        _ => is_strictly_equal(a, b),
+    }
+}
+
+/// SameValueZero per ECMA §7.2.11 — NaN equals NaN, +0 equals −0.
+/// Used by Array.prototype.includes and Set/Map key equality.
+pub fn same_value_zero(a: &Value, b: &Value) -> bool {
+    match (a, b) {
+        (Value::Number(x), Value::Number(y)) => {
+            if x.is_nan() && y.is_nan() { return true; }
+            x == y
+        }
+        _ => is_strictly_equal(a, b),
+    }
+}
+
 /// Strict equality per §7.2.15.
 pub fn is_strictly_equal(a: &Value, b: &Value) -> bool {
     match (a, b) {

@@ -248,8 +248,10 @@ fn emit_expr(e: &Expr) -> String {
             format!("Value::Boolean(rt.is_loosely_equal_rt(&{}, &{})?)", emit_expr(a), emit_expr(b))
         }
         Expr::StrictEq(a, b) => {
+            // Returns Rust `bool` (matches §7.2.15 return type). Wrap with
+            // Value::Boolean(...) at the IR level when a Value is needed.
             format!(
-                "Value::Boolean(crate::abstract_ops::is_strictly_equal(&{}, &{}))",
+                "crate::abstract_ops::is_strictly_equal(&{}, &{})",
                 emit_expr(a),
                 emit_expr(b)
             )
