@@ -1100,76 +1100,78 @@ fn is_regexp_like(rt: &mut Runtime, v: &Value) -> Result<bool, RuntimeError> {
 }
 
 fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
+    // Ω.5.P62.E15: case + trim families per ECMA §22.1.3.{27,28,29,30,31,32}.
+    // All require RequireObjectCoercible + strict ToString(this).
     register_intrinsic_method(rt, host, "toUpperCase", 0, |rt, _args| {
-        let s = abstract_ops::to_string(&rt.current_this()).as_str().to_uppercase();
-        Ok(Value::String(Rc::new(s)))
+        let this = rt.current_this(); rt.require_object_coercible(&this)?;
+        Ok(Value::String(Rc::new(rt.to_string_strict(&this)?.to_uppercase())))
     });
     register_intrinsic_method(rt, host, "toLowerCase", 0, |rt, _args| {
-        let s = abstract_ops::to_string(&rt.current_this()).as_str().to_lowercase();
-        Ok(Value::String(Rc::new(s)))
+        let this = rt.current_this(); rt.require_object_coercible(&this)?;
+        Ok(Value::String(Rc::new(rt.to_string_strict(&this)?.to_lowercase())))
     });
-    // Tier-Ω.5.ooo: toLocale variants. v1 deviation: locale-insensitive
-    // (uses Rust's default lowercasing). change-case + many libs assume
-    // these exist even when they default-call without locale.
     register_intrinsic_method(rt, host, "toLocaleLowerCase", 0, |rt, _args| {
-        let s = abstract_ops::to_string(&rt.current_this()).as_str().to_lowercase();
-        Ok(Value::String(Rc::new(s)))
+        let this = rt.current_this(); rt.require_object_coercible(&this)?;
+        Ok(Value::String(Rc::new(rt.to_string_strict(&this)?.to_lowercase())))
     });
     register_intrinsic_method(rt, host, "toLocaleUpperCase", 0, |rt, _args| {
-        let s = abstract_ops::to_string(&rt.current_this()).as_str().to_uppercase();
-        Ok(Value::String(Rc::new(s)))
+        let this = rt.current_this(); rt.require_object_coercible(&this)?;
+        Ok(Value::String(Rc::new(rt.to_string_strict(&this)?.to_uppercase())))
     });
     register_intrinsic_method(rt, host, "trim", 0, |rt, _args| {
-        let s = abstract_ops::to_string(&rt.current_this()).as_str().trim().to_string();
-        Ok(Value::String(Rc::new(s)))
+        let this = rt.current_this(); rt.require_object_coercible(&this)?;
+        Ok(Value::String(Rc::new(rt.to_string_strict(&this)?.trim().to_string())))
     });
-    // Ω.5.P61.E10: trimStart/trimEnd per ECMA §22.1.3.32 + §22.1.3.31.
-    // trimLeft/trimRight are legacy aliases (Annex B).
     register_intrinsic_method(rt, host, "trimStart", 0, |rt, _args| {
-        let s = abstract_ops::to_string(&rt.current_this()).as_str().trim_start().to_string();
-        Ok(Value::String(Rc::new(s)))
+        let this = rt.current_this(); rt.require_object_coercible(&this)?;
+        Ok(Value::String(Rc::new(rt.to_string_strict(&this)?.trim_start().to_string())))
     });
     register_intrinsic_method(rt, host, "trimEnd", 0, |rt, _args| {
-        let s = abstract_ops::to_string(&rt.current_this()).as_str().trim_end().to_string();
-        Ok(Value::String(Rc::new(s)))
+        let this = rt.current_this(); rt.require_object_coercible(&this)?;
+        Ok(Value::String(Rc::new(rt.to_string_strict(&this)?.trim_end().to_string())))
     });
     register_intrinsic_method(rt, host, "trimLeft", 0, |rt, _args| {
-        let s = abstract_ops::to_string(&rt.current_this()).as_str().trim_start().to_string();
-        Ok(Value::String(Rc::new(s)))
+        let this = rt.current_this(); rt.require_object_coercible(&this)?;
+        Ok(Value::String(Rc::new(rt.to_string_strict(&this)?.trim_start().to_string())))
     });
     register_intrinsic_method(rt, host, "trimRight", 0, |rt, _args| {
-        let s = abstract_ops::to_string(&rt.current_this()).as_str().trim_end().to_string();
-        Ok(Value::String(Rc::new(s)))
+        let this = rt.current_this(); rt.require_object_coercible(&this)?;
+        Ok(Value::String(Rc::new(rt.to_string_strict(&this)?.trim_end().to_string())))
     });
     // normalize(form?) — Unicode normalization. v1 deviation: pass-through
     // (return source unchanged). Most consumer code only invokes when input
     // is already ASCII; the cluster's load-bearing test is presence, not
     // correctness of NFC/NFD/NFKC/NFKD conversion.
     register_intrinsic_method(rt, host, "normalize", 0, |rt, _args| {
-        let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
-        Ok(Value::String(Rc::new(s)))
+        let this = rt.current_this(); rt.require_object_coercible(&this)?;
+        Ok(Value::String(Rc::new(rt.to_string_strict(&this)?)))
     });
     register_intrinsic_method(rt, host, "charAt", 1, |rt, args| {
-        let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
-        let i = args.first().map(abstract_ops::to_number).unwrap_or(0.0) as usize;
+        let this = rt.current_this(); rt.require_object_coercible(&this)?;
+        let s = rt.to_string_strict(&this)?;
+        let i_n = match args.first().cloned() { Some(v) => rt.coerce_to_number(&v)?, None => 0.0 };
+        // §22.1.3.1: out-of-range returns "" (matches existing behavior).
+        if !i_n.is_finite() || i_n < 0.0 { return Ok(Value::String(Rc::new(String::new()))); }
+        let i = i_n as usize;
         let c = s.chars().nth(i).map(|c| c.to_string()).unwrap_or_default();
         Ok(Value::String(Rc::new(c)))
     });
     register_intrinsic_method(rt, host, "charCodeAt", 1, |rt, args| {
-        let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
-        let i = args.first().map(abstract_ops::to_number).unwrap_or(0.0) as usize;
-        match s.chars().nth(i) {
+        let this = rt.current_this(); rt.require_object_coercible(&this)?;
+        let s = rt.to_string_strict(&this)?;
+        let i_n = match args.first().cloned() { Some(v) => rt.coerce_to_number(&v)?, None => 0.0 };
+        if !i_n.is_finite() || i_n < 0.0 { return Ok(Value::Number(f64::NAN)); }
+        match s.chars().nth(i_n as usize) {
             Some(c) => Ok(Value::Number(c as u32 as f64)),
             None => Ok(Value::Number(f64::NAN)),
         }
     });
-    // Tier-Ω.5.TTTTTTT: String.prototype.concat per ECMA-262 §22.1.3.3.
-    // Returns the receiver concatenated with all string-coerced args.
-    // mathjs / io-ts-types use it in variadic shape; receiver is a string.
+    // §22.1.3.3: concat receiver + ToString(args) variadic.
     register_intrinsic_method(rt, host, "concat", 1, |rt, args| {
-        let mut s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
+        let this = rt.current_this(); rt.require_object_coercible(&this)?;
+        let mut s = rt.to_string_strict(&this)?;
         for a in args {
-            s.push_str(&abstract_ops::to_string(a).as_str().to_string());
+            s.push_str(&rt.to_string_strict(a)?);
         }
         Ok(Value::String(Rc::new(s)))
     });
@@ -1178,8 +1180,9 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
     // family, conventional-changelog, meow). v1 deviation: locale-insensitive
     // lexicographic compare (real impl needs full Intl Collator chain).
     register_intrinsic_method(rt, host, "localeCompare", 1, |rt, args| {
-        let a = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
-        let b = abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined)).as_str().to_string();
+        let this = rt.current_this(); rt.require_object_coercible(&this)?;
+        let a = rt.to_string_strict(&this)?;
+        let b = rt.to_string_strict(&args.first().cloned().unwrap_or(Value::Undefined))?;
         Ok(Value::Number(match a.cmp(&b) {
             std::cmp::Ordering::Less => -1.0,
             std::cmp::Ordering::Equal => 0.0,
@@ -1192,9 +1195,11 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
     // cli-truncate/execa/multiformats/strip-final-newline/tar all read
     // codePointAt at module-init for ANSI / encoding detection.
     register_intrinsic_method(rt, host, "codePointAt", 1, |rt, args| {
-        let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
-        let i = args.first().map(abstract_ops::to_number).unwrap_or(0.0) as i64;
-        if i < 0 { return Ok(Value::Undefined); }
+        let this = rt.current_this(); rt.require_object_coercible(&this)?;
+        let s = rt.to_string_strict(&this)?;
+        let i_n = match args.first().cloned() { Some(v) => rt.coerce_to_number(&v)?, None => 0.0 };
+        if !i_n.is_finite() || i_n < 0.0 { return Ok(Value::Undefined); }
+        let i = i_n as i64;
         // The spec is UTF-16 indexed; our Rust strings are UTF-8 / chars().
         // Iterate chars accumulating UTF-16 code-units; when the cumulative
         // count crosses i, return the current char's code point.
@@ -1344,19 +1349,55 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(Value::Boolean(s.ends_with(&needle)))
     });
     register_intrinsic_method(rt, host, "split", 2, |rt, args| {
-        let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
+        // §22.1.3.23: RequireObjectCoercible(this), then dispatch to
+        // separator[@@split] if present (RegExp case), else ToString
+        // both sides, then split with optional limit (ToUint32).
+        let this = rt.current_this(); rt.require_object_coercible(&this)?;
+        let sep_v = args.first().cloned().unwrap_or(Value::Undefined);
+        // RegExp @@split dispatch.
+        if let Value::Object(rx_id) = &sep_v {
+            let split_method = rt.read_property(*rx_id, "@@split")?;
+            if matches!(split_method, Value::Object(_)) {
+                let limit = args.get(1).cloned().unwrap_or(Value::Undefined);
+                let s = rt.to_string_strict(&this)?;
+                return rt.call_function(split_method, sep_v.clone(),
+                    vec![Value::String(Rc::new(s)), limit]);
+            }
+        }
+        let s = rt.to_string_strict(&this)?;
+        let limit_n = match args.get(1).cloned() {
+            Some(Value::Undefined) | None => u32::MAX,
+            Some(v) => {
+                let n = rt.coerce_to_number(&v)?;
+                if n.is_nan() || n <= 0.0 { 0 } else { n as u32 }
+            }
+        };
         let out = rt.alloc_object(Object::new_array());
-        let parts: Vec<String> = match args.first() {
-            None | Some(Value::Undefined) => vec![s.clone()],
-            Some(sep_v) => {
-                let sep = abstract_ops::to_string(sep_v).as_str().to_string();
+        if limit_n == 0 {
+            rt.object_set(out, "length".into(), Value::Number(0.0));
+            return Ok(Value::Object(out));
+        }
+        let mut parts: Vec<String> = match &sep_v {
+            Value::Undefined => vec![s.clone()],
+            _ => {
+                let sep = rt.to_string_strict(&sep_v)?;
                 if sep.is_empty() {
+                    // §22.1.3.23 step 12: if S is empty, return [].
+                    if s.is_empty() {
+                        rt.object_set(out, "length".into(), Value::Number(0.0));
+                        return Ok(Value::Object(out));
+                    }
                     s.chars().map(|c| c.to_string()).collect()
+                } else if s.is_empty() {
+                    vec![s.clone()]
                 } else {
                     s.split(&sep).map(|s| s.to_string()).collect()
                 }
             }
         };
+        if (parts.len() as u32) > limit_n {
+            parts.truncate(limit_n as usize);
+        }
         for (i, p) in parts.iter().enumerate() {
             rt.object_set(out, i.to_string(), Value::String(Rc::new(p.clone())));
         }
@@ -1364,8 +1405,15 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(Value::Object(out))
     });
     register_intrinsic_method(rt, host, "repeat", 1, |rt, args| {
-        let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
-        let n = args.first().map(abstract_ops::to_number).unwrap_or(0.0) as usize;
+        // §22.1.3.21: negative or Infinity count throws RangeError.
+        let this = rt.current_this(); rt.require_object_coercible(&this)?;
+        let s = rt.to_string_strict(&this)?;
+        let n_n = match args.first().cloned() { Some(v) => rt.coerce_to_number(&v)?, None => 0.0 };
+        if n_n.is_nan() || n_n < 0.0 || n_n == f64::INFINITY {
+            return Err(RuntimeError::RangeError(
+                "Invalid count value".into()));
+        }
+        let n = n_n as usize;
         Ok(Value::String(Rc::new(s.repeat(n))))
     });
     // Tier-Ω.5.iiiiii: String.prototype.matchAll per ECMA §22.1.3.13.
@@ -1403,11 +1451,13 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
     // Tier-Ω.5.ppppp: padStart / padEnd per ECMA-262 §22.1.3.16 / §22.1.3.17.
     // date-fns / left-pad / many formatting libs reach for these.
     register_intrinsic_method(rt, host, "padStart", 1, |rt, args| {
-        let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
-        let target = args.first().map(abstract_ops::to_number).unwrap_or(0.0) as usize;
-        let pad = match args.get(1) {
+        let this = rt.current_this(); rt.require_object_coercible(&this)?;
+        let s = rt.to_string_strict(&this)?;
+        let target_n = match args.first().cloned() { Some(v) => rt.coerce_to_number(&v)?, None => 0.0 };
+        let target = if target_n.is_nan() || target_n <= 0.0 { 0 } else { target_n as usize };
+        let pad = match args.get(1).cloned() {
             Some(Value::Undefined) | None => " ".to_string(),
-            Some(v) => abstract_ops::to_string(v).as_str().to_string(),
+            Some(v) => rt.to_string_strict(&v)?,
         };
         if s.chars().count() >= target || pad.is_empty() {
             return Ok(Value::String(Rc::new(s)));
@@ -1419,11 +1469,13 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(Value::String(Rc::new(prefix + &s)))
     });
     register_intrinsic_method(rt, host, "padEnd", 1, |rt, args| {
-        let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
-        let target = args.first().map(abstract_ops::to_number).unwrap_or(0.0) as usize;
-        let pad = match args.get(1) {
+        let this = rt.current_this(); rt.require_object_coercible(&this)?;
+        let s = rt.to_string_strict(&this)?;
+        let target_n = match args.first().cloned() { Some(v) => rt.coerce_to_number(&v)?, None => 0.0 };
+        let target = if target_n.is_nan() || target_n <= 0.0 { 0 } else { target_n as usize };
+        let pad = match args.get(1).cloned() {
             Some(Value::Undefined) | None => " ".to_string(),
-            Some(v) => abstract_ops::to_string(v).as_str().to_string(),
+            Some(v) => rt.to_string_strict(&v)?,
         };
         if s.chars().count() >= target || pad.is_empty() {
             return Ok(Value::String(Rc::new(s)));
@@ -1435,18 +1487,52 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
         Ok(Value::String(Rc::new(s + &suffix)))
     });
     register_intrinsic_method(rt, host, "replace", 2, |rt, args| {
-        let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
-        let needle = abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined))
-            .as_str().to_string();
-        let repl = abstract_ops::to_string(&args.get(1).cloned().unwrap_or(Value::Undefined))
-            .as_str().to_string();
+        // §22.1.3.15 (string-replacer subset; regex-replacer goes through
+        // RegExp.prototype[@@replace] which has its own dispatch).
+        let this = rt.current_this(); rt.require_object_coercible(&this)?;
+        let s = rt.to_string_strict(&this)?;
+        let needle_v = args.first().cloned().unwrap_or(Value::Undefined);
+        // If searchValue is a RegExp, delegate to its @@replace method.
+        if let Value::Object(rx_id) = &needle_v {
+            let replace_method = rt.read_property(*rx_id, "@@replace")?;
+            if matches!(replace_method, Value::Object(_)) {
+                let replacer = args.get(1).cloned().unwrap_or(Value::Undefined);
+                return rt.call_function(replace_method, needle_v.clone(),
+                    vec![Value::String(Rc::new(s)), replacer]);
+            }
+        }
+        let needle = rt.to_string_strict(&needle_v)?;
+        let repl_v = args.get(1).cloned().unwrap_or(Value::Undefined);
+        // If replacer is callable, invoke it with (match, position, source).
+        if rt.is_callable(&repl_v) {
+            match s.find(&needle) {
+                Some(byte_off) => {
+                    let pos = s[..byte_off].chars().count() as f64;
+                    let r = rt.call_function(repl_v, Value::Undefined, vec![
+                        Value::String(Rc::new(needle.clone())),
+                        Value::Number(pos),
+                        Value::String(Rc::new(s.clone())),
+                    ])?;
+                    let repl_str = rt.to_string_strict(&r)?;
+                    let mut out = String::with_capacity(s.len());
+                    out.push_str(&s[..byte_off]);
+                    out.push_str(&repl_str);
+                    out.push_str(&s[byte_off + needle.len()..]);
+                    return Ok(Value::String(Rc::new(out)));
+                }
+                None => return Ok(Value::String(Rc::new(s))),
+            }
+        }
+        let repl = rt.to_string_strict(&repl_v)?;
         Ok(Value::String(Rc::new(s.replacen(&needle, &repl, 1))))
     });
     register_intrinsic_method(rt, host, "at", 1, |rt, args| {
-        let s = abstract_ops::to_string(&rt.current_this()).as_str().to_string();
+        let this = rt.current_this(); rt.require_object_coercible(&this)?;
+        let s = rt.to_string_strict(&this)?;
         let chars: Vec<char> = s.chars().collect();
         let len = chars.len() as i64;
-        let i = args.first().map(abstract_ops::to_number).unwrap_or(0.0) as i64;
+        let i_n = match args.first().cloned() { Some(v) => rt.coerce_to_number(&v)?, None => 0.0 };
+        let i = i_n as i64;
         let idx = if i < 0 { len + i } else { i };
         if idx < 0 || idx >= len { return Ok(Value::Undefined); }
         Ok(Value::String(Rc::new(chars[idx as usize].to_string())))
