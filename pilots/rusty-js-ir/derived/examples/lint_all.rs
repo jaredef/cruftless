@@ -11,8 +11,8 @@ use rusty_js_ir::sections::{
     array_prototype_iteration as iter, array_prototype_map,
     array_prototype_reduce as reduce, global_predicates, math_binary_variadic,
     math_unary, number_prototype, number_static, object_integrity,
-    object_descriptors, object_proto_ops, object_static, promise_static, reflect_static,
-    string_prototype,
+    array_set_length, object_descriptors, object_proto_ops, object_static,
+    promise_static, reflect_static, string_prototype,
 };
 
 fn main() {
@@ -161,6 +161,7 @@ fn main() {
         ("Object.prototype.__defineSetter__", object_descriptors::build_proto_define_setter(), object_descriptors::spec_steps_proto_define_setter()),
         ("Object.prototype.__lookupGetter__", object_descriptors::build_proto_lookup_getter(), object_descriptors::spec_steps_proto_lookup_getter()),
         ("Object.prototype.__lookupSetter__", object_descriptors::build_proto_lookup_setter(), object_descriptors::spec_steps_proto_lookup_setter()),
+        ("ArraySetLength (§10.4.2.1)", array_set_length::build_array_set_length(), array_set_length::spec_steps_array_set_length()),
         ("Object.getPrototypeOf", object_proto_ops::build_get_prototype_of(), object_proto_ops::spec_steps_get_prototype_of()),
         ("Object.setPrototypeOf", object_proto_ops::build_set_prototype_of(), object_proto_ops::spec_steps_set_prototype_of()),
         ("Object.isExtensible", object_proto_ops::build_is_extensible(), object_proto_ops::spec_steps_is_extensible()),

@@ -13,11 +13,11 @@ pub fn array_prototype_map(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.callbackfn (§param.callbackfn step param.callbackfn)
-    let callbackfn = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut callbackfn = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.thisArg (§param.thisArg step param.thisArg)
-    let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
-    let o = rt.to_object(&this.clone())?;
+    let mut o = rt.to_object(&this.clone())?;
     // step 2 (§2 step 2)
     let mut len: usize = rt.length_of_array_like(&o.clone())?;
     // step 3 (§3 step 3)
@@ -26,21 +26,21 @@ pub fn array_prototype_map(rt: &mut Runtime, this: Value, args: &[Value])
         return Err(RuntimeError::TypeError("Array.prototype.map: callback is not callable".into()));
     }
     // step 4 (§4 step 4)
-    let a = rt.array_species_create(&o.clone(), len.clone())?;
+    let mut a = rt.array_species_create(&o.clone(), len.clone())?;
     // step 5 (§5 step 5)
     let mut k: usize = 0_usize;
     // step 6 (§6 step 6)
     while (k.clone() < len.clone()) {
         // step 6.a (§6.a step 6.a)
-        let pk = k.clone().to_string();
+        let mut pk = k.clone().to_string();
         // step 6.b (§6.b step 6.b)
-        let k_present = rt.has_property_via(&o.clone(), &pk.clone());
+        let mut k_present = rt.has_property_via(&o.clone(), &pk.clone());
         // step 6.c (§6.c step 6.c)
         if k_present.clone() {
             // step 6.c.i (§6.c.i step 6.c.i)
-            let k_value = rt.read_property_via(&o.clone(), &pk.clone())?;
+            let mut k_value = rt.read_property_via(&o.clone(), &pk.clone())?;
             // step 6.c.ii (§6.c.ii step 6.c.ii)
-            let mapped = rt.call_function(callbackfn.clone().clone(), this_arg.clone().clone(), vec![k_value.clone(), Value::Number(k.clone() as f64), o.clone()])?;
+            let mut mapped = rt.call_function(callbackfn.clone().clone(), this_arg.clone().clone(), vec![k_value.clone(), Value::Number(k.clone() as f64), o.clone()])?;
             // step 6.c.iii (§6.c.iii step 6.c.iii)
             { rt.create_data_property_or_throw(&a.clone(), &pk.clone(), mapped.clone())?; Value::Undefined };
         }
@@ -59,11 +59,11 @@ pub fn array_prototype_for_each(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.callbackfn (§param.callbackfn step param.callbackfn)
-    let callbackfn = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut callbackfn = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.thisArg (§param.thisArg step param.thisArg)
-    let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
-    let o = rt.to_object(&this.clone())?;
+    let mut o = rt.to_object(&this.clone())?;
     // step 2 (§2 step 2)
     let mut len: usize = rt.length_of_array_like(&o.clone())?;
     // step 3 (§3 step 3)
@@ -76,11 +76,11 @@ pub fn array_prototype_for_each(rt: &mut Runtime, this: Value, args: &[Value])
     // step 5 (§5 step 5)
     while (k.clone() < len.clone()) {
         // step 5.a (§5.a step 5.a)
-        let pk = k.clone().to_string();
+        let mut pk = k.clone().to_string();
         // step 5.b (§5.b step 5.b)
         if rt.has_property_via(&o.clone(), &pk.clone()) {
             // step 5.c.i (§5.c.i step 5.c.i)
-            let k_value = rt.read_property_via(&o.clone(), &pk.clone())?;
+            let mut k_value = rt.read_property_via(&o.clone(), &pk.clone())?;
             // step 5.c.ii (§5.c.ii step 5.c.ii)
             rt.call_function(callbackfn.clone().clone(), this_arg.clone().clone(), vec![k_value.clone(), Value::Number(k.clone() as f64), o.clone()])?;
         }
@@ -99,11 +99,11 @@ pub fn array_prototype_filter(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.callbackfn (§param.callbackfn step param.callbackfn)
-    let callbackfn = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut callbackfn = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.thisArg (§param.thisArg step param.thisArg)
-    let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
-    let o = rt.to_object(&this.clone())?;
+    let mut o = rt.to_object(&this.clone())?;
     // step 2 (§2 step 2)
     let mut len: usize = rt.length_of_array_like(&o.clone())?;
     // step 3 (§3 step 3)
@@ -112,7 +112,7 @@ pub fn array_prototype_filter(rt: &mut Runtime, this: Value, args: &[Value])
         return Err(RuntimeError::TypeError("Array.prototype.filter: callback is not callable".into()));
     }
     // step 4 (§4 step 4)
-    let a = rt.array_species_create(&o.clone(), 0_usize)?;
+    let mut a = rt.array_species_create(&o.clone(), 0_usize)?;
     // step 5 (§5 step 5)
     let mut k: usize = 0_usize;
     // step 6 (§6 step 6)
@@ -120,13 +120,13 @@ pub fn array_prototype_filter(rt: &mut Runtime, this: Value, args: &[Value])
     // step 7 (§7 step 7)
     while (k.clone() < len.clone()) {
         // step 7.a (§7.a step 7.a)
-        let pk = k.clone().to_string();
+        let mut pk = k.clone().to_string();
         // step 7.b (§7.b step 7.b)
         if rt.has_property_via(&o.clone(), &pk.clone()) {
             // step 7.c.i (§7.c.i step 7.c.i)
-            let k_value = rt.read_property_via(&o.clone(), &pk.clone())?;
+            let mut k_value = rt.read_property_via(&o.clone(), &pk.clone())?;
             // step 7.c.ii (§7.c.ii step 7.c.ii)
-            let selected = crate::abstract_ops::to_boolean(&rt.call_function(callbackfn.clone().clone(), this_arg.clone().clone(), vec![k_value.clone(), Value::Number(k.clone() as f64), o.clone()])?);
+            let mut selected = crate::abstract_ops::to_boolean(&rt.call_function(callbackfn.clone().clone(), this_arg.clone().clone(), vec![k_value.clone(), Value::Number(k.clone() as f64), o.clone()])?);
             // step 7.c.iii (§7.c.iii step 7.c.iii)
             if selected.clone() {
                 // step 7.c.iii.1 (§7.c.iii.1 step 7.c.iii.1)
@@ -150,11 +150,11 @@ pub fn array_prototype_every(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.callbackfn (§param.callbackfn step param.callbackfn)
-    let callbackfn = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut callbackfn = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.thisArg (§param.thisArg step param.thisArg)
-    let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
-    let o = rt.to_object(&this.clone())?;
+    let mut o = rt.to_object(&this.clone())?;
     // step 2 (§2 step 2)
     let mut len: usize = rt.length_of_array_like(&o.clone())?;
     // step 3 (§3 step 3)
@@ -167,13 +167,13 @@ pub fn array_prototype_every(rt: &mut Runtime, this: Value, args: &[Value])
     // step 5 (§5 step 5)
     while (k.clone() < len.clone()) {
         // step 5.a (§5.a step 5.a)
-        let pk = k.clone().to_string();
+        let mut pk = k.clone().to_string();
         // step 5.b (§5.b step 5.b)
         if rt.has_property_via(&o.clone(), &pk.clone()) {
             // step 5.c.i (§5.c.i step 5.c.i)
-            let k_value = rt.read_property_via(&o.clone(), &pk.clone())?;
+            let mut k_value = rt.read_property_via(&o.clone(), &pk.clone())?;
             // step 5.c.ii (§5.c.ii step 5.c.ii)
-            let test_result = crate::abstract_ops::to_boolean(&rt.call_function(callbackfn.clone().clone(), this_arg.clone().clone(), vec![k_value.clone(), Value::Number(k.clone() as f64), o.clone()])?);
+            let mut test_result = crate::abstract_ops::to_boolean(&rt.call_function(callbackfn.clone().clone(), this_arg.clone().clone(), vec![k_value.clone(), Value::Number(k.clone() as f64), o.clone()])?);
             // step 5.c.iii (§5.c.iii step 5.c.iii)
             if !test_result.clone() {
                 // step 5.c.iii.1 (§5.c.iii.1 step 5.c.iii.1)
@@ -195,11 +195,11 @@ pub fn array_prototype_some(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.callbackfn (§param.callbackfn step param.callbackfn)
-    let callbackfn = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut callbackfn = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.thisArg (§param.thisArg step param.thisArg)
-    let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
-    let o = rt.to_object(&this.clone())?;
+    let mut o = rt.to_object(&this.clone())?;
     // step 2 (§2 step 2)
     let mut len: usize = rt.length_of_array_like(&o.clone())?;
     // step 3 (§3 step 3)
@@ -212,13 +212,13 @@ pub fn array_prototype_some(rt: &mut Runtime, this: Value, args: &[Value])
     // step 5 (§5 step 5)
     while (k.clone() < len.clone()) {
         // step 5.a (§5.a step 5.a)
-        let pk = k.clone().to_string();
+        let mut pk = k.clone().to_string();
         // step 5.b (§5.b step 5.b)
         if rt.has_property_via(&o.clone(), &pk.clone()) {
             // step 5.c.i (§5.c.i step 5.c.i)
-            let k_value = rt.read_property_via(&o.clone(), &pk.clone())?;
+            let mut k_value = rt.read_property_via(&o.clone(), &pk.clone())?;
             // step 5.c.ii (§5.c.ii step 5.c.ii)
-            let test_result = crate::abstract_ops::to_boolean(&rt.call_function(callbackfn.clone().clone(), this_arg.clone().clone(), vec![k_value.clone(), Value::Number(k.clone() as f64), o.clone()])?);
+            let mut test_result = crate::abstract_ops::to_boolean(&rt.call_function(callbackfn.clone().clone(), this_arg.clone().clone(), vec![k_value.clone(), Value::Number(k.clone() as f64), o.clone()])?);
             // step 5.c.iii (§5.c.iii step 5.c.iii)
             if test_result.clone() {
                 // step 5.c.iii.1 (§5.c.iii.1 step 5.c.iii.1)
@@ -240,11 +240,11 @@ pub fn array_prototype_find(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.predicate (§param.predicate step param.predicate)
-    let predicate = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut predicate = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.thisArg (§param.thisArg step param.thisArg)
-    let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
-    let o = rt.to_object(&this.clone())?;
+    let mut o = rt.to_object(&this.clone())?;
     // step 2 (§2 step 2)
     let mut len: usize = rt.length_of_array_like(&o.clone())?;
     // step 3 (§3 step 3)
@@ -257,11 +257,11 @@ pub fn array_prototype_find(rt: &mut Runtime, this: Value, args: &[Value])
     // step 5 (§5 step 5)
     while (k.clone() < len.clone()) {
         // step 5.a (§5.a step 5.a)
-        let pk = k.clone().to_string();
+        let mut pk = k.clone().to_string();
         // step 5.b (§5.b step 5.b)
-        let k_value = rt.read_property_via(&o.clone(), &pk.clone())?;
+        let mut k_value = rt.read_property_via(&o.clone(), &pk.clone())?;
         // step 5.c (§5.c step 5.c)
-        let test_result = crate::abstract_ops::to_boolean(&rt.call_function(predicate.clone().clone(), this_arg.clone().clone(), vec![k_value.clone(), Value::Number(k.clone() as f64), o.clone()])?);
+        let mut test_result = crate::abstract_ops::to_boolean(&rt.call_function(predicate.clone().clone(), this_arg.clone().clone(), vec![k_value.clone(), Value::Number(k.clone() as f64), o.clone()])?);
         // step 5.d (§5.d step 5.d)
         if test_result.clone() {
             // step 5.d.i (§5.d.i step 5.d.i)
@@ -282,11 +282,11 @@ pub fn array_prototype_find_index(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.predicate (§param.predicate step param.predicate)
-    let predicate = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut predicate = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.thisArg (§param.thisArg step param.thisArg)
-    let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
-    let o = rt.to_object(&this.clone())?;
+    let mut o = rt.to_object(&this.clone())?;
     // step 2 (§2 step 2)
     let mut len: usize = rt.length_of_array_like(&o.clone())?;
     // step 3 (§3 step 3)
@@ -299,11 +299,11 @@ pub fn array_prototype_find_index(rt: &mut Runtime, this: Value, args: &[Value])
     // step 5 (§5 step 5)
     while (k.clone() < len.clone()) {
         // step 5.a (§5.a step 5.a)
-        let pk = k.clone().to_string();
+        let mut pk = k.clone().to_string();
         // step 5.b (§5.b step 5.b)
-        let k_value = rt.read_property_via(&o.clone(), &pk.clone())?;
+        let mut k_value = rt.read_property_via(&o.clone(), &pk.clone())?;
         // step 5.c (§5.c step 5.c)
-        let test_result = crate::abstract_ops::to_boolean(&rt.call_function(predicate.clone().clone(), this_arg.clone().clone(), vec![k_value.clone(), Value::Number(k.clone() as f64), o.clone()])?);
+        let mut test_result = crate::abstract_ops::to_boolean(&rt.call_function(predicate.clone().clone(), this_arg.clone().clone(), vec![k_value.clone(), Value::Number(k.clone() as f64), o.clone()])?);
         // step 5.d (§5.d step 5.d)
         if test_result.clone() {
             // step 5.d.i (§5.d.i step 5.d.i)
@@ -1545,9 +1545,9 @@ pub fn object_keys(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.target (§param.target step param.target)
-    let target = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut target = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
-    let obj = rt.to_object(&target.clone())?;
+    let mut obj = rt.to_object(&target.clone())?;
     // step 2 (§2 step 2)
     return Ok(rt.enumerable_own_keys(&obj.clone())?);
 }
@@ -1560,9 +1560,9 @@ pub fn object_values(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.target (§param.target step param.target)
-    let target = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut target = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
-    let obj = rt.to_object(&target.clone())?;
+    let mut obj = rt.to_object(&target.clone())?;
     // step 2 (§2 step 2)
     return Ok(rt.enumerable_own_values(&obj.clone())?);
 }
@@ -1575,9 +1575,9 @@ pub fn object_entries(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.target (§param.target step param.target)
-    let target = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut target = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
-    let obj = rt.to_object(&target.clone())?;
+    let mut obj = rt.to_object(&target.clone())?;
     // step 2 (§2 step 2)
     return Ok(rt.enumerable_own_entries(&obj.clone())?);
 }
@@ -1590,7 +1590,7 @@ pub fn promise_resolve(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.x (§param.x step param.x)
-    let x = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut x = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.promise_resolve_via(&x.clone())?);
 }
@@ -1603,7 +1603,7 @@ pub fn promise_reject(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.r (§param.r step param.r)
-    let reason = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut reason = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.promise_reject_via(&reason.clone())?);
 }
@@ -1693,9 +1693,9 @@ pub fn promise_with_resolvers(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step 1 (§1 step 1)
-    let p = rt.new_promise_value_via()?;
+    let mut p = rt.new_promise_value_via()?;
     // step 2 (§2 step 2)
-    let resolve_fn = {
+    let mut resolve_fn = {
             let p = p.clone();
             let __native = crate::intrinsics::make_native_with_length("", 1,
                 move |rt, args| {
@@ -1709,7 +1709,7 @@ pub fn promise_with_resolvers(rt: &mut Runtime, this: Value, args: &[Value])
             Value::Object(rt.alloc_object(__native))
         };
     // step 3 (§3 step 3)
-    let reject_fn = {
+    let mut reject_fn = {
             let p = p.clone();
             let __native = crate::intrinsics::make_native_with_length("", 1,
                 move |rt, args| {
@@ -1734,15 +1734,15 @@ pub fn promise_all_resolve_element_factory(rt: &mut Runtime, this: Value, args: 
     -> Result<Value, RuntimeError>
 {
     // step param.index (§param.index step param.index)
-    let index = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut index = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.values (§param.values step param.values)
-    let values = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut values = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step param.already (§param.already step param.already)
-    let already = args.get(2).cloned().unwrap_or(Value::Undefined);
+    let mut already = args.get(2).cloned().unwrap_or(Value::Undefined);
     // step param.remaining (§param.remaining step param.remaining)
-    let remaining = args.get(3).cloned().unwrap_or(Value::Undefined);
+    let mut remaining = args.get(3).cloned().unwrap_or(Value::Undefined);
     // step param.cap_resolve (§param.cap_resolve step param.cap_resolve)
-    let cap_resolve = args.get(4).cloned().unwrap_or(Value::Undefined);
+    let mut cap_resolve = args.get(4).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok({
             let index = index.clone();
@@ -1782,15 +1782,15 @@ pub fn promise_all_settled_resolve_element_factory(rt: &mut Runtime, this: Value
     -> Result<Value, RuntimeError>
 {
     // step param.index (§param.index step param.index)
-    let index = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut index = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.values (§param.values step param.values)
-    let values = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut values = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step param.already (§param.already step param.already)
-    let already = args.get(2).cloned().unwrap_or(Value::Undefined);
+    let mut already = args.get(2).cloned().unwrap_or(Value::Undefined);
     // step param.remaining (§param.remaining step param.remaining)
-    let remaining = args.get(3).cloned().unwrap_or(Value::Undefined);
+    let mut remaining = args.get(3).cloned().unwrap_or(Value::Undefined);
     // step param.cap_resolve (§param.cap_resolve step param.cap_resolve)
-    let cap_resolve = args.get(4).cloned().unwrap_or(Value::Undefined);
+    let mut cap_resolve = args.get(4).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok({
             let index = index.clone();
@@ -1813,7 +1813,7 @@ pub fn promise_all_settled_resolve_element_factory(rt: &mut Runtime, this: Value
                         return Ok(Value::Undefined);
                     }
                     // step 8.entry (§8.entry step 8.entry)
-                    let entry = rt.make_settled_fulfilled_entry_via(&x.clone())?;
+                    let mut entry = rt.make_settled_fulfilled_entry_via(&x.clone())?;
                     // step 9.store (§9.store step 9.store)
                     rt.cell_array_set_via(&values.clone(), &index.clone(), &entry.clone())?;
                     // step 12 (§12 step 12)
@@ -1832,15 +1832,15 @@ pub fn promise_all_settled_reject_element_factory(rt: &mut Runtime, this: Value,
     -> Result<Value, RuntimeError>
 {
     // step param.index (§param.index step param.index)
-    let index = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut index = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.values (§param.values step param.values)
-    let values = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut values = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step param.already (§param.already step param.already)
-    let already = args.get(2).cloned().unwrap_or(Value::Undefined);
+    let mut already = args.get(2).cloned().unwrap_or(Value::Undefined);
     // step param.remaining (§param.remaining step param.remaining)
-    let remaining = args.get(3).cloned().unwrap_or(Value::Undefined);
+    let mut remaining = args.get(3).cloned().unwrap_or(Value::Undefined);
     // step param.cap_resolve (§param.cap_resolve step param.cap_resolve)
-    let cap_resolve = args.get(4).cloned().unwrap_or(Value::Undefined);
+    let mut cap_resolve = args.get(4).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok({
             let index = index.clone();
@@ -1863,7 +1863,7 @@ pub fn promise_all_settled_reject_element_factory(rt: &mut Runtime, this: Value,
                         return Ok(Value::Undefined);
                     }
                     // step 8.entry (§8.entry step 8.entry)
-                    let entry = rt.make_settled_rejected_entry_via(&x.clone())?;
+                    let mut entry = rt.make_settled_rejected_entry_via(&x.clone())?;
                     // step 9.store (§9.store step 9.store)
                     rt.cell_array_set_via(&values.clone(), &index.clone(), &entry.clone())?;
                     // step 12 (§12 step 12)
@@ -1882,15 +1882,15 @@ pub fn promise_any_reject_element_factory(rt: &mut Runtime, this: Value, args: &
     -> Result<Value, RuntimeError>
 {
     // step param.index (§param.index step param.index)
-    let index = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut index = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.errors (§param.errors step param.errors)
-    let errors = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut errors = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step param.already (§param.already step param.already)
-    let already = args.get(2).cloned().unwrap_or(Value::Undefined);
+    let mut already = args.get(2).cloned().unwrap_or(Value::Undefined);
     // step param.remaining (§param.remaining step param.remaining)
-    let remaining = args.get(3).cloned().unwrap_or(Value::Undefined);
+    let mut remaining = args.get(3).cloned().unwrap_or(Value::Undefined);
     // step param.cap_reject (§param.cap_reject step param.cap_reject)
-    let cap_reject = args.get(4).cloned().unwrap_or(Value::Undefined);
+    let mut cap_reject = args.get(4).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok({
             let index = index.clone();
@@ -1930,11 +1930,11 @@ pub fn object_define_property(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.target (§param.target step param.target)
-    let target = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut target = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.key (§param.key step param.key)
-    let key = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut key = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step param.desc (§param.desc step param.desc)
-    let desc = args.get(2).cloned().unwrap_or(Value::Undefined);
+    let mut desc = args.get(2).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.object_define_property_via(&target.clone(), &key.clone(), &desc.clone())?);
 }
@@ -1947,9 +1947,9 @@ pub fn object_define_properties(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.target (§param.target step param.target)
-    let target = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut target = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.props (§param.props step param.props)
-    let props = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut props = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.object_define_properties_via(&target.clone(), &props.clone())?);
 }
@@ -1962,9 +1962,9 @@ pub fn object_get_own_property_descriptor(rt: &mut Runtime, this: Value, args: &
     -> Result<Value, RuntimeError>
 {
     // step param.obj (§param.obj step param.obj)
-    let obj = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut obj = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.key (§param.key step param.key)
-    let key = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut key = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.object_get_own_property_descriptor_via(&obj.clone(), &key.clone())?);
 }
@@ -1977,7 +1977,7 @@ pub fn object_get_own_property_descriptors(rt: &mut Runtime, this: Value, args: 
     -> Result<Value, RuntimeError>
 {
     // step param.obj (§param.obj step param.obj)
-    let obj = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut obj = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.object_get_own_property_descriptors_via(&obj.clone())?);
 }
@@ -1990,9 +1990,9 @@ pub fn object_create(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.proto (§param.proto step param.proto)
-    let proto = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut proto = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.props (§param.props step param.props)
-    let props = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut props = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.object_create_via(&proto.clone(), &props.clone())?);
 }
@@ -2005,11 +2005,11 @@ pub fn object_proto_define_getter(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.this (§param.this step param.this)
-    let this_ = this.clone();
+    let mut this_ = this.clone();
     // step param.key (§param.key step param.key)
-    let key = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut key = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.fn (§param.fn step param.fn)
-    let fn_ = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut fn_ = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.object_proto_define_getter_via(&this_.clone(), &key.clone(), &fn_.clone())?);
 }
@@ -2022,11 +2022,11 @@ pub fn object_proto_define_setter(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.this (§param.this step param.this)
-    let this_ = this.clone();
+    let mut this_ = this.clone();
     // step param.key (§param.key step param.key)
-    let key = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut key = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.fn (§param.fn step param.fn)
-    let fn_ = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut fn_ = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.object_proto_define_setter_via(&this_.clone(), &key.clone(), &fn_.clone())?);
 }
@@ -2039,9 +2039,9 @@ pub fn object_proto_lookup_getter(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.this (§param.this step param.this)
-    let this_ = this.clone();
+    let mut this_ = this.clone();
     // step param.key (§param.key step param.key)
-    let key = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut key = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.object_proto_lookup_getter_via(&this_.clone(), &key.clone())?);
 }
@@ -2054,11 +2054,120 @@ pub fn object_proto_lookup_setter(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.this (§param.this step param.this)
-    let this_ = this.clone();
+    let mut this_ = this.clone();
     // step param.key (§param.key step param.key)
-    let key = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut key = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.object_proto_lookup_setter_via(&this_.clone(), &key.clone())?);
+}
+
+/// ECMA-262 §10.4.2.1 — ArraySetLength ( A, Desc )
+///
+/// Generated by rusty-js-ir lowering (resolver-instance #0c).
+/// Do not edit by hand; modify the IR in pilots/rusty-js-ir/derived/src/sections/.
+pub fn array_set_length(rt: &mut Runtime, this: Value, args: &[Value])
+    -> Result<Value, RuntimeError>
+{
+    // step param.target (§param.target step param.target)
+    let mut target = args.get(0).cloned().unwrap_or(Value::Undefined);
+    // step param.desc (§param.desc step param.desc)
+    let mut desc = args.get(1).cloned().unwrap_or(Value::Undefined);
+    // step 1.config (§1.config step 1.config)
+    if rt.has_property_via(&desc.clone(), "configurable") {
+        // step 1.config.check (§1.config.check step 1.config.check)
+        if crate::abstract_ops::to_boolean(&rt.read_property_via(&desc.clone(), "configurable")?) {
+            // step 1.config.throw (§1.config.throw step 1.config.throw)
+            return Err(RuntimeError::TypeError("Array length: configurable is false".into()));
+        }
+    }
+    // step 2.enum (§2.enum step 2.enum)
+    if rt.has_property_via(&desc.clone(), "enumerable") {
+        // step 2.enum.check (§2.enum.check step 2.enum.check)
+        if crate::abstract_ops::to_boolean(&rt.read_property_via(&desc.clone(), "enumerable")?) {
+            // step 2.enum.throw (§2.enum.throw step 2.enum.throw)
+            return Err(RuntimeError::TypeError("Array length: enumerable is false".into()));
+        }
+    }
+    // step 2.get_throw (§2.get_throw step 2.get_throw)
+    if rt.has_property_via(&desc.clone(), "get") {
+        // step 2.get.throw (§2.get.throw step 2.get.throw)
+        return Err(RuntimeError::TypeError("Array length cannot be accessor (get)".into()));
+    }
+    // step 2.set_throw (§2.set_throw step 2.set_throw)
+    if rt.has_property_via(&desc.clone(), "set") {
+        // step 2.set.throw (§2.set.throw step 2.set.throw)
+        return Err(RuntimeError::TypeError("Array length cannot be accessor (set)".into()));
+    }
+    // step 3.cur_writable (§3.cur_writable step 3.cur_writable)
+    let mut cur_writable = rt.array_length_writable_via(&target.clone())?;
+    // step 3.old_len (§3.old_len step 3.old_len)
+    let mut old_len = rt.array_length_value_via(&target.clone())?;
+    // step 4.no_value (§4.no_value step 4.no_value)
+    if !rt.has_property_via(&desc.clone(), "value") {
+        // step 4.a.writable_provided (§4.a.writable_provided step 4.a.writable_provided)
+        if rt.has_property_via(&desc.clone(), "writable") {
+            // step 4.a.read (§4.a.read step 4.a.read)
+            let mut new_w = rt.read_property_via(&desc.clone(), "writable")?;
+            // step 4.a.promote_check (§4.a.promote_check step 4.a.promote_check)
+            if !crate::abstract_ops::to_boolean(&cur_writable.clone()) {
+                // step 4.a.promote_inner (§4.a.promote_inner step 4.a.promote_inner)
+                if crate::abstract_ops::to_boolean(&new_w.clone()) {
+                    // step 4.a.promote.throw (§4.a.promote.throw step 4.a.promote.throw)
+                    return Err(RuntimeError::TypeError("Cannot promote Array length to writable".into()));
+                }
+            }
+            // step 4.a.apply (§4.a.apply step 4.a.apply)
+            rt.array_length_set_internal_via(&target.clone(), &old_len.clone(), &new_w.clone())?;
+        }
+        // step 4.return (§4.return step 4.return)
+        return Ok(target.clone());
+    }
+    // step 5.raw_value (§5.raw_value step 5.raw_value)
+    let mut raw_value = rt.read_property_via(&desc.clone(), "value")?;
+    // step 6.new_len (§6.new_len step 6.new_len)
+    let mut new_len = rt.to_uint32_strict_via(&raw_value.clone())?;
+    // step 10.writable_check (§10.writable_check step 10.writable_check)
+    if !crate::abstract_ops::to_boolean(&cur_writable.clone()) {
+        // step 10.diff_check (§10.diff_check step 10.diff_check)
+        if !crate::abstract_ops::is_strictly_equal(&new_len.clone(), &old_len.clone()) {
+            // step 10.throw (§10.throw step 10.throw)
+            return Err(RuntimeError::TypeError("Cannot change non-writable Array length".into()));
+        }
+    }
+    // step 11.init_writable (§11.init_writable step 11.init_writable)
+    let mut new_writable = cur_writable.clone();
+    // step 11.override (§11.override step 11.override)
+    if rt.has_property_via(&desc.clone(), "writable") {
+        // step 11.real (§11.real step 11.real)
+        new_writable = rt.read_property_via(&desc.clone(), "writable")?;
+    }
+    // step 12.maybe_shrink (§12.maybe_shrink step 12.maybe_shrink)
+    if crate::abstract_ops::to_boolean(&rt.number_lt_via(&new_len.clone(), &old_len.clone())?) {
+        // step 12.idx.init (§12.idx.init step 12.idx.init)
+        let mut idx = rt.number_sub_via(&old_len.clone(), &Value::Number(1_f64))?;
+        // step 12.loop (§12.loop step 12.loop)
+        while crate::abstract_ops::to_boolean(&rt.number_ge_via(&idx.clone(), &new_len.clone())?) {
+            // step 13.idx_key (§13.idx_key step 13.idx_key)
+            let mut idx_key = rt.number_to_string_key_via(&idx.clone())?;
+            // step 13.try_delete (§13.try_delete step 13.try_delete)
+            let mut deleted = rt.delete_own_via(&target.clone(), &idx_key.clone())?;
+            // step 13.delete_check (§13.delete_check step 13.delete_check)
+            if !crate::abstract_ops::to_boolean(&deleted.clone()) {
+                // step 13.stuck.idx_plus (§13.stuck.idx_plus step 13.stuck.idx_plus)
+                let mut stuck_len = rt.number_add_via(&idx.clone(), &Value::Number(1_f64))?;
+                // step 13.stuck.length (§13.stuck.length step 13.stuck.length)
+                rt.array_length_set_internal_via(&target.clone(), &stuck_len.clone(), &new_writable.clone())?;
+                // step 13.stuck.throw (§13.stuck.throw step 13.stuck.throw)
+                return Err(RuntimeError::TypeError("Cannot truncate Array: non-configurable element".into()));
+            }
+            // step 14.decrement (§14.decrement step 14.decrement)
+            idx = rt.number_sub_via(&idx.clone(), &Value::Number(1_f64))?;
+        }
+    }
+    // step 15.install (§15.install step 15.install)
+    rt.array_length_set_internal_via(&target.clone(), &new_len.clone(), &new_writable.clone())?;
+    // step 16.return (§16.return step 16.return)
+    return Ok(target.clone());
 }
 
 /// ECMA-262 §20.1.2.12 — Object.getPrototypeOf ( O )
@@ -2069,9 +2178,9 @@ pub fn object_get_prototype_of(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.target (§param.target step param.target)
-    let target = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut target = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
-    let obj = rt.to_object(&target.clone())?;
+    let mut obj = rt.to_object(&target.clone())?;
     // step 2 (§2 step 2)
     return Ok(rt.get_prototype_of_via(&obj.clone())?);
 }
@@ -2084,11 +2193,11 @@ pub fn object_set_prototype_of(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.target (§param.target step param.target)
-    let target = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut target = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.proto (§param.proto step param.proto)
-    let proto = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut proto = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
-    let o = rt.to_object(&target.clone())?;
+    let mut o = rt.to_object(&target.clone())?;
     // step 2 (§2 step 2)
     return Ok(rt.set_prototype_of_via(&o.clone(), &proto.clone())?);
 }
@@ -2101,7 +2210,7 @@ pub fn object_is_extensible(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.target (§param.target step param.target)
-    let target = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut target = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.is_extensible_via(&target.clone())?);
 }
@@ -2114,7 +2223,7 @@ pub fn object_is_frozen(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.target (§param.target step param.target)
-    let target = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut target = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.is_frozen_via(&target.clone())?);
 }
@@ -2127,7 +2236,7 @@ pub fn object_is_sealed(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.target (§param.target step param.target)
-    let target = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut target = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.is_sealed_via(&target.clone())?);
 }
@@ -2140,7 +2249,7 @@ pub fn object_freeze(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.target (§param.target step param.target)
-    let target = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut target = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.object_freeze_via(&target.clone())?);
 }
@@ -2153,7 +2262,7 @@ pub fn object_seal(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.target (§param.target step param.target)
-    let target = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut target = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.object_seal_via(&target.clone())?);
 }
@@ -2166,7 +2275,7 @@ pub fn object_prevent_extensions(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.target (§param.target step param.target)
-    let target = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut target = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.object_prevent_extensions_via(&target.clone())?);
 }
@@ -2179,9 +2288,9 @@ pub fn object_has_own(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.target (§param.target step param.target)
-    let target = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut target = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.key (§param.key step param.key)
-    let key = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut key = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.object_has_own_via(&target.clone(), &key.clone())?);
 }
@@ -2194,9 +2303,9 @@ pub fn object_is(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.value1 (§param.value1 step param.value1)
-    let value1 = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut value1 = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.value2 (§param.value2 step param.value2)
-    let value2 = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut value2 = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.object_is_via(&value1.clone(), &value2.clone())?);
 }
@@ -2209,7 +2318,7 @@ pub fn number_is_finite(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.number (§param.number step param.number)
-    let number = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut number = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.number_is_finite_via(&number.clone())?);
 }
@@ -2222,7 +2331,7 @@ pub fn number_is_integer(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.number (§param.number step param.number)
-    let number = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut number = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.number_is_integer_via(&number.clone())?);
 }
@@ -2235,7 +2344,7 @@ pub fn number_is_nan(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.number (§param.number step param.number)
-    let number = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut number = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.number_is_nan_via(&number.clone())?);
 }
@@ -2248,7 +2357,7 @@ pub fn number_is_safe_integer(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.number (§param.number step param.number)
-    let number = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut number = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.number_is_safe_integer_via(&number.clone())?);
 }
@@ -2261,7 +2370,7 @@ pub fn global_is_nan(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.number (§param.number step param.number)
-    let number = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut number = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.global_is_nan_via(&number.clone())?);
 }
@@ -2274,7 +2383,7 @@ pub fn global_is_finite(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.number (§param.number step param.number)
-    let number = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut number = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.global_is_finite_via(&number.clone())?);
 }
@@ -2287,7 +2396,7 @@ pub fn math_abs(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.x (§param.x step param.x)
-    let x = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut x = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.math_unary_op_via(&Value::String(std::rc::Rc::new("abs".to_string())), &x.clone())?);
 }
@@ -2300,7 +2409,7 @@ pub fn math_floor(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.x (§param.x step param.x)
-    let x = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut x = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.math_unary_op_via(&Value::String(std::rc::Rc::new("floor".to_string())), &x.clone())?);
 }
@@ -2313,7 +2422,7 @@ pub fn math_ceil(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.x (§param.x step param.x)
-    let x = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut x = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.math_unary_op_via(&Value::String(std::rc::Rc::new("ceil".to_string())), &x.clone())?);
 }
@@ -2326,7 +2435,7 @@ pub fn math_round(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.x (§param.x step param.x)
-    let x = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut x = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.math_unary_op_via(&Value::String(std::rc::Rc::new("round".to_string())), &x.clone())?);
 }
@@ -2339,7 +2448,7 @@ pub fn math_trunc(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.x (§param.x step param.x)
-    let x = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut x = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.math_unary_op_via(&Value::String(std::rc::Rc::new("trunc".to_string())), &x.clone())?);
 }
@@ -2352,7 +2461,7 @@ pub fn math_sqrt(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.x (§param.x step param.x)
-    let x = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut x = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.math_unary_op_via(&Value::String(std::rc::Rc::new("sqrt".to_string())), &x.clone())?);
 }
@@ -2365,7 +2474,7 @@ pub fn math_cbrt(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.x (§param.x step param.x)
-    let x = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut x = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.math_unary_op_via(&Value::String(std::rc::Rc::new("cbrt".to_string())), &x.clone())?);
 }
@@ -2378,7 +2487,7 @@ pub fn math_sign(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.x (§param.x step param.x)
-    let x = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut x = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.math_unary_op_via(&Value::String(std::rc::Rc::new("sign".to_string())), &x.clone())?);
 }
@@ -2391,7 +2500,7 @@ pub fn math_exp(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.x (§param.x step param.x)
-    let x = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut x = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.math_unary_op_via(&Value::String(std::rc::Rc::new("exp".to_string())), &x.clone())?);
 }
@@ -2404,7 +2513,7 @@ pub fn math_expm1(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.x (§param.x step param.x)
-    let x = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut x = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.math_unary_op_via(&Value::String(std::rc::Rc::new("expm1".to_string())), &x.clone())?);
 }
@@ -2417,7 +2526,7 @@ pub fn math_log(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.x (§param.x step param.x)
-    let x = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut x = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.math_unary_op_via(&Value::String(std::rc::Rc::new("log".to_string())), &x.clone())?);
 }
@@ -2430,7 +2539,7 @@ pub fn math_log1p(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.x (§param.x step param.x)
-    let x = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut x = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.math_unary_op_via(&Value::String(std::rc::Rc::new("log1p".to_string())), &x.clone())?);
 }
@@ -2443,7 +2552,7 @@ pub fn math_log2(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.x (§param.x step param.x)
-    let x = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut x = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.math_unary_op_via(&Value::String(std::rc::Rc::new("log2".to_string())), &x.clone())?);
 }
@@ -2456,7 +2565,7 @@ pub fn math_log10(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.x (§param.x step param.x)
-    let x = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut x = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.math_unary_op_via(&Value::String(std::rc::Rc::new("log10".to_string())), &x.clone())?);
 }
@@ -2469,7 +2578,7 @@ pub fn math_sin(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.x (§param.x step param.x)
-    let x = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut x = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.math_unary_op_via(&Value::String(std::rc::Rc::new("sin".to_string())), &x.clone())?);
 }
@@ -2482,7 +2591,7 @@ pub fn math_cos(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.x (§param.x step param.x)
-    let x = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut x = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.math_unary_op_via(&Value::String(std::rc::Rc::new("cos".to_string())), &x.clone())?);
 }
@@ -2495,7 +2604,7 @@ pub fn math_tan(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.x (§param.x step param.x)
-    let x = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut x = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.math_unary_op_via(&Value::String(std::rc::Rc::new("tan".to_string())), &x.clone())?);
 }
@@ -2508,7 +2617,7 @@ pub fn math_asin(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.x (§param.x step param.x)
-    let x = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut x = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.math_unary_op_via(&Value::String(std::rc::Rc::new("asin".to_string())), &x.clone())?);
 }
@@ -2521,7 +2630,7 @@ pub fn math_acos(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.x (§param.x step param.x)
-    let x = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut x = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.math_unary_op_via(&Value::String(std::rc::Rc::new("acos".to_string())), &x.clone())?);
 }
@@ -2534,7 +2643,7 @@ pub fn math_atan(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.x (§param.x step param.x)
-    let x = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut x = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.math_unary_op_via(&Value::String(std::rc::Rc::new("atan".to_string())), &x.clone())?);
 }
@@ -2547,7 +2656,7 @@ pub fn math_sinh(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.x (§param.x step param.x)
-    let x = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut x = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.math_unary_op_via(&Value::String(std::rc::Rc::new("sinh".to_string())), &x.clone())?);
 }
@@ -2560,7 +2669,7 @@ pub fn math_cosh(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.x (§param.x step param.x)
-    let x = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut x = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.math_unary_op_via(&Value::String(std::rc::Rc::new("cosh".to_string())), &x.clone())?);
 }
@@ -2573,7 +2682,7 @@ pub fn math_tanh(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.x (§param.x step param.x)
-    let x = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut x = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.math_unary_op_via(&Value::String(std::rc::Rc::new("tanh".to_string())), &x.clone())?);
 }
@@ -2586,7 +2695,7 @@ pub fn math_asinh(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.x (§param.x step param.x)
-    let x = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut x = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.math_unary_op_via(&Value::String(std::rc::Rc::new("asinh".to_string())), &x.clone())?);
 }
@@ -2599,7 +2708,7 @@ pub fn math_acosh(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.x (§param.x step param.x)
-    let x = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut x = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.math_unary_op_via(&Value::String(std::rc::Rc::new("acosh".to_string())), &x.clone())?);
 }
@@ -2612,7 +2721,7 @@ pub fn math_atanh(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.x (§param.x step param.x)
-    let x = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut x = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.math_unary_op_via(&Value::String(std::rc::Rc::new("atanh".to_string())), &x.clone())?);
 }
@@ -2625,9 +2734,9 @@ pub fn reflect_has(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.target (§param.target step param.target)
-    let target = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut target = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.key (§param.key step param.key)
-    let key = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut key = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.reflect_has_via(&target.clone(), &key.clone())?);
 }
@@ -2640,9 +2749,9 @@ pub fn reflect_get(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.target (§param.target step param.target)
-    let target = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut target = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.key (§param.key step param.key)
-    let key = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut key = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.reflect_get_via(&target.clone(), &key.clone())?);
 }
@@ -2655,11 +2764,11 @@ pub fn reflect_set(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.target (§param.target step param.target)
-    let target = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut target = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.key (§param.key step param.key)
-    let key = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut key = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step param.value (§param.value step param.value)
-    let value = args.get(2).cloned().unwrap_or(Value::Undefined);
+    let mut value = args.get(2).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.reflect_set_via(&target.clone(), &key.clone(), &value.clone())?);
 }
@@ -2672,9 +2781,9 @@ pub fn reflect_delete_property(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.target (§param.target step param.target)
-    let target = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut target = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.key (§param.key step param.key)
-    let key = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut key = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.reflect_delete_property_via(&target.clone(), &key.clone())?);
 }
@@ -2687,7 +2796,7 @@ pub fn reflect_own_keys(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.target (§param.target step param.target)
-    let target = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut target = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.reflect_own_keys_via(&target.clone())?);
 }
@@ -2700,7 +2809,7 @@ pub fn reflect_get_prototype_of(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.target (§param.target step param.target)
-    let target = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut target = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.reflect_get_prototype_of_via(&target.clone())?);
 }
@@ -2713,9 +2822,9 @@ pub fn reflect_set_prototype_of(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.target (§param.target step param.target)
-    let target = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut target = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.proto (§param.proto step param.proto)
-    let proto = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut proto = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.reflect_set_prototype_of_via(&target.clone(), &proto.clone())?);
 }
@@ -2728,7 +2837,7 @@ pub fn reflect_is_extensible(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.target (§param.target step param.target)
-    let target = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut target = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.reflect_is_extensible_via(&target.clone())?);
 }
@@ -2741,7 +2850,7 @@ pub fn reflect_prevent_extensions(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.target (§param.target step param.target)
-    let target = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut target = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.reflect_prevent_extensions_via(&target.clone())?);
 }
@@ -2754,9 +2863,9 @@ pub fn math_pow(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.x (§param.x step param.x)
-    let x = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut x = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.y (§param.y step param.y)
-    let y = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut y = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.math_binary_op_via(&Value::String(std::rc::Rc::new("pow".to_string())), &x.clone(), &y.clone())?);
 }
@@ -2769,9 +2878,9 @@ pub fn math_atan2(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.x (§param.x step param.x)
-    let x = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut x = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.y (§param.y step param.y)
-    let y = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut y = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.math_binary_op_via(&Value::String(std::rc::Rc::new("atan2".to_string())), &x.clone(), &y.clone())?);
 }
@@ -2817,9 +2926,9 @@ pub fn object_get_own_property_names(rt: &mut Runtime, this: Value, args: &[Valu
     -> Result<Value, RuntimeError>
 {
     // step param.target (§param.target step param.target)
-    let target = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut target = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
-    let obj = rt.to_object(&target.clone())?;
+    let mut obj = rt.to_object(&target.clone())?;
     // step 2 (§2 step 2)
     return Ok(rt.own_property_names_via(&obj.clone())?);
 }
@@ -2832,9 +2941,9 @@ pub fn object_get_own_property_symbols(rt: &mut Runtime, this: Value, args: &[Va
     -> Result<Value, RuntimeError>
 {
     // step param.target (§param.target step param.target)
-    let target = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut target = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
-    let obj = rt.to_object(&target.clone())?;
+    let mut obj = rt.to_object(&target.clone())?;
     // step 2 (§2 step 2)
     return Ok(rt.own_property_symbols_via(&obj.clone())?);
 }
@@ -2847,7 +2956,7 @@ pub fn object_assign(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.target (§param.target step param.target)
-    let target = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut target = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.object_assign_via(&target.clone(), if args.len() > 1 { &args[1..] } else { &[] })?);
 }
@@ -2860,7 +2969,7 @@ pub fn object_from_entries(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.iter (§param.iter step param.iter)
-    let iter = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut iter = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.object_from_entries_via(&iter.clone())?);
 }
@@ -2873,7 +2982,7 @@ pub fn number_prototype_to_fixed(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.digits (§param.digits step param.digits)
-    let digits = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut digits = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.number_proto_to_fixed_via(&this.clone(), &digits.clone())?);
 }
@@ -2897,7 +3006,7 @@ pub fn number_prototype_to_exponential(rt: &mut Runtime, this: Value, args: &[Va
     -> Result<Value, RuntimeError>
 {
     // step param.digits (§param.digits step param.digits)
-    let digits = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut digits = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.number_proto_to_exponential_via(&this.clone(), &digits.clone())?);
 }
@@ -2910,7 +3019,7 @@ pub fn number_prototype_to_precision(rt: &mut Runtime, this: Value, args: &[Valu
     -> Result<Value, RuntimeError>
 {
     // step param.precision (§param.precision step param.precision)
-    let precision = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut precision = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.number_proto_to_precision_via(&this.clone(), &precision.clone())?);
 }
@@ -2945,7 +3054,7 @@ pub fn string_prototype_char_at(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.pos (§param.pos step param.pos)
-    let pos = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut pos = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.string_proto_char_at_via(&this.clone(), &pos.clone())?);
 }
@@ -2958,7 +3067,7 @@ pub fn string_prototype_char_code_at(rt: &mut Runtime, this: Value, args: &[Valu
     -> Result<Value, RuntimeError>
 {
     // step param.pos (§param.pos step param.pos)
-    let pos = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut pos = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.string_proto_char_code_at_via(&this.clone(), &pos.clone())?);
 }
@@ -3081,7 +3190,7 @@ pub fn string_prototype_repeat(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.count (§param.count step param.count)
-    let count = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut count = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.string_proto_repeat_via(&this.clone(), &count.clone())?);
 }
@@ -3094,9 +3203,9 @@ pub fn string_prototype_pad_start(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.target (§param.target step param.target)
-    let target = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut target = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.pad (§param.pad step param.pad)
-    let pad = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut pad = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.string_proto_pad_start_via(&this.clone(), &target.clone(), &pad.clone())?);
 }
@@ -3109,9 +3218,9 @@ pub fn string_prototype_pad_end(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.target (§param.target step param.target)
-    let target = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut target = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.pad (§param.pad step param.pad)
-    let pad = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut pad = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.string_proto_pad_end_via(&this.clone(), &target.clone(), &pad.clone())?);
 }
@@ -3124,9 +3233,9 @@ pub fn string_prototype_slice(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.start (§param.start step param.start)
-    let start = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut start = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.end (§param.end step param.end)
-    let end = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut end = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.string_proto_slice_via(&this.clone(), &start.clone(), &end.clone())?);
 }
@@ -3139,9 +3248,9 @@ pub fn string_prototype_substring(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.start (§param.start step param.start)
-    let start = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut start = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.end (§param.end step param.end)
-    let end = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut end = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.string_proto_substring_via(&this.clone(), &start.clone(), &end.clone())?);
 }
@@ -3154,9 +3263,9 @@ pub fn string_prototype_substr(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.start (§param.start step param.start)
-    let start = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut start = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.length (§param.length step param.length)
-    let length = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut length = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.string_proto_substr_via(&this.clone(), &start.clone(), &length.clone())?);
 }
@@ -3169,9 +3278,9 @@ pub fn string_prototype_index_of(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.search (§param.search step param.search)
-    let search = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut search = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.position (§param.position step param.position)
-    let position = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut position = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.string_proto_index_of_via(&this.clone(), &search.clone(), &position.clone())?);
 }
@@ -3184,9 +3293,9 @@ pub fn string_prototype_last_index_of(rt: &mut Runtime, this: Value, args: &[Val
     -> Result<Value, RuntimeError>
 {
     // step param.search (§param.search step param.search)
-    let search = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut search = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.position (§param.position step param.position)
-    let position = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut position = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.string_proto_last_index_of_via(&this.clone(), &search.clone(), &position.clone())?);
 }
@@ -3199,9 +3308,9 @@ pub fn string_prototype_includes(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.search (§param.search step param.search)
-    let search = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut search = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.position (§param.position step param.position)
-    let position = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut position = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.string_proto_includes_via(&this.clone(), &search.clone(), &position.clone())?);
 }
@@ -3214,9 +3323,9 @@ pub fn string_prototype_starts_with(rt: &mut Runtime, this: Value, args: &[Value
     -> Result<Value, RuntimeError>
 {
     // step param.search (§param.search step param.search)
-    let search = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut search = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.position (§param.position step param.position)
-    let position = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut position = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.string_proto_starts_with_via(&this.clone(), &search.clone(), &position.clone())?);
 }
@@ -3229,9 +3338,9 @@ pub fn string_prototype_ends_with(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.search (§param.search step param.search)
-    let search = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut search = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.position (§param.position step param.position)
-    let position = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut position = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.string_proto_ends_with_via(&this.clone(), &search.clone(), &position.clone())?);
 }
@@ -3244,7 +3353,7 @@ pub fn string_prototype_code_point_at(rt: &mut Runtime, this: Value, args: &[Val
     -> Result<Value, RuntimeError>
 {
     // step param.pos (§param.pos step param.pos)
-    let pos = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut pos = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.string_proto_code_point_at_via(&this.clone(), &pos.clone())?);
 }
@@ -3257,7 +3366,7 @@ pub fn string_prototype_at(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.index (§param.index step param.index)
-    let index = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut index = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.string_proto_at_via(&this.clone(), &index.clone())?);
 }
@@ -3281,7 +3390,7 @@ pub fn string_prototype_locale_compare(rt: &mut Runtime, this: Value, args: &[Va
     -> Result<Value, RuntimeError>
 {
     // step param.that (§param.that step param.that)
-    let that = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut that = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.string_proto_locale_compare_via(&this.clone(), &that.clone())?);
 }
@@ -3294,9 +3403,9 @@ pub fn string_prototype_split(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.separator (§param.separator step param.separator)
-    let separator = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut separator = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.limit (§param.limit step param.limit)
-    let limit = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut limit = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.string_proto_split_via(&this.clone(), &separator.clone(), &limit.clone())?);
 }
@@ -3309,9 +3418,9 @@ pub fn string_prototype_replace(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
     // step param.search (§param.search step param.search)
-    let search = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut search = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.replacement (§param.replacement step param.replacement)
-    let replacement = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut replacement = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.string_proto_replace_via(&this.clone(), &search.clone(), &replacement.clone())?);
 }
@@ -3324,9 +3433,9 @@ pub fn string_prototype_replace_all(rt: &mut Runtime, this: Value, args: &[Value
     -> Result<Value, RuntimeError>
 {
     // step param.search (§param.search step param.search)
-    let search = args.get(0).cloned().unwrap_or(Value::Undefined);
+    let mut search = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.replacement (§param.replacement step param.replacement)
-    let replacement = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let mut replacement = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
     return Ok(rt.string_proto_replace_all_via(&this.clone(), &search.clone(), &replacement.clone())?);
 }

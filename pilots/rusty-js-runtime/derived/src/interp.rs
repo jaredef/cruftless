@@ -1151,8 +1151,14 @@ impl Runtime {
                 "Cannot add property '{}': object is not extensible", key)));
         }
         // §10.4.2.1 ArraySetLength for Array exotic length redefinition.
+        // IR-EXT 66: lifted into an IR section per keeper's higher-resolution-IR
+        // conjecture. The intricate spec algorithm (RangeError + TypeError
+        // throws, ToUint32 round-trip, descriptor flag preservation,
+        // truncation loop) now lives in rusty-js-ir as 1:1 spec-step IR rather
+        // than as a hand-written Rust helper.
         if key == "length" && matches!(self.obj(target).internal_kind, crate::value::InternalKind::Array) {
-            return self.array_set_length_via(target, desc_id);
+            return crate::generated::array_set_length(self, Value::Undefined,
+                &[Value::Object(target), Value::Object(desc_id)]);
         }
         // §6.2.5.5 ToPropertyDescriptor: HasProperty + Get dispatch through
         // the prototype chain (test262 15.2.3.6-3-129 et al. inherit descriptor
@@ -1315,122 +1321,126 @@ impl Runtime {
         Ok(Value::Object(target))
     }
 
-    /// §10.4.2.1 ArraySetLength — the Array exotic [[DefineOwnProperty]]
-    /// dispatch for the "length" property. Handles ToUint32 validation,
-    /// non-writable length, configurable/enumerable rejection, and
-    /// truncation of trailing indexed elements when length is reduced.
-    pub fn array_set_length_via(&mut self, target: crate::value::ObjectRef, desc_id: crate::value::ObjectRef) -> Result<Value, RuntimeError> {
-        // Reject configurable: true (Array length is non-configurable).
-        if self.has_property(desc_id, "configurable") {
-            let v = self.read_property(desc_id, "configurable")?;
-            if crate::abstract_ops::to_boolean(&v) {
-                return Err(RuntimeError::TypeError(
-                    "Cannot redefine Array length: configurable is false".into()));
-            }
-        }
-        // Reject enumerable: true (Array length is non-enumerable).
-        if self.has_property(desc_id, "enumerable") {
-            let v = self.read_property(desc_id, "enumerable")?;
-            if crate::abstract_ops::to_boolean(&v) {
-                return Err(RuntimeError::TypeError(
-                    "Cannot redefine Array length: enumerable is false".into()));
-            }
-        }
-        // Reject get/set on length (must remain data property).
-        if self.has_property(desc_id, "get") || self.has_property(desc_id, "set") {
-            return Err(RuntimeError::TypeError(
-                "Cannot redefine Array length as accessor".into()));
-        }
-        let has_value = self.has_property(desc_id, "value");
-        let has_writable = self.has_property(desc_id, "writable");
-        // Current state of length on target.
-        let old_len = self.try_array_length(target)? as f64;
-        let cur_writable = match self.obj(target).get_own("length") {
-            Some(d) => d.writable,
-            None => true,  // Default for synthesized length.
+    /// IR-EXT 66 runtime primitives for Value::Number arithmetic.
+    /// These exist because the IR alphabet's OpSub/Lt operators were
+    /// designed for usize/i64 counter math; Value::Number arithmetic
+    /// requires going through these for now. Future alphabet extension:
+    /// lift to Expr::NumberSub / Expr::NumberLt / Expr::NumberAdd.
+    pub fn number_sub_via(&mut self, a: &Value, b: &Value) -> Result<Value, RuntimeError> {
+        let an = self.coerce_to_number(a)?;
+        let bn = self.coerce_to_number(b)?;
+        Ok(Value::Number(an - bn))
+    }
+    pub fn number_add_via(&mut self, a: &Value, b: &Value) -> Result<Value, RuntimeError> {
+        let an = self.coerce_to_number(a)?;
+        let bn = self.coerce_to_number(b)?;
+        Ok(Value::Number(an + bn))
+    }
+    pub fn number_lt_via(&mut self, a: &Value, b: &Value) -> Result<Value, RuntimeError> {
+        let an = self.coerce_to_number(a)?;
+        let bn = self.coerce_to_number(b)?;
+        Ok(Value::Boolean(an < bn))
+    }
+    pub fn number_ge_via(&mut self, a: &Value, b: &Value) -> Result<Value, RuntimeError> {
+        let an = self.coerce_to_number(a)?;
+        let bn = self.coerce_to_number(b)?;
+        Ok(Value::Boolean(an >= bn))
+    }
+    pub fn number_to_string_key_via(&mut self, n: &Value) -> Result<Value, RuntimeError> {
+        let num = self.coerce_to_number(n)?;
+        Ok(Value::String(std::rc::Rc::new((num as u32).to_string())))
+    }
+
+    /// IR-EXT 66 runtime primitive: ToUint32(v) with the spec's
+    /// "must round-trip" invariant — throws RangeError if
+    /// ToUint32(v) != ToNumber(v). Used by §10.4.2.1 step 3.
+    pub fn to_uint32_strict_via(&mut self, v: &Value) -> Result<Value, RuntimeError> {
+        let num = self.coerce_to_number(v)?;
+        // ToUint32 per §7.1.7.
+        let u32_val = if num.is_nan() || num == 0.0 || num.is_infinite() {
+            0_u32
+        } else {
+            // sign(n) * floor(|n|) modulo 2^32.
+            let abs = num.abs().floor();
+            let signed = if num < 0.0 { -abs } else { abs };
+            let modulo = signed.rem_euclid(4294967296.0);
+            modulo as u32
         };
-        // §10.4.2.1 step 1: if Desc lacks [[Value]], degenerate path.
-        if !has_value {
-            // Only writable can change. If writable provided, apply it.
-            if has_writable {
-                let v = self.read_property(desc_id, "writable")?;
-                let new_w = crate::abstract_ops::to_boolean(&v);
-                // Non-writable → writable promotion is disallowed if
-                // length is non-configurable (which it always is).
-                if !cur_writable && new_w {
-                    return Err(RuntimeError::TypeError(
-                        "Cannot promote Array length to writable".into()));
-                }
-                self.obj_mut(target).properties.insert(
-                    crate::value::PropertyKey::String("length".into()),
-                    crate::value::PropertyDescriptor {
-                        value: Value::Number(old_len),
-                        writable: new_w,
-                        enumerable: false, configurable: false,
-                        getter: None, setter: None,
-                    });
-            }
-            return Ok(Value::Object(target));
-        }
-        // §10.4.2.1 steps 3-5: validate new length via ToUint32 vs ToNumber.
-        let raw_v = self.read_property(desc_id, "value")?;
-        let num_len = self.coerce_to_number(&raw_v)?;
-        let new_len_u32 = if num_len.is_nan() { 0_u32 }
-                          else if num_len < 0.0 || num_len > u32::MAX as f64 {
-                              return Err(RuntimeError::RangeError(
-                                  "Invalid Array length".into()));
-                          }
-                          else { num_len as u32 };
-        if (new_len_u32 as f64) != num_len {
+        if (u32_val as f64) != num {
             return Err(RuntimeError::RangeError(
-                "Invalid Array length".into()));
+                "Invalid array length: ToUint32 does not round-trip".into()));
         }
-        let new_len = new_len_u32 as f64;
-        // §10.4.2.1 step 10: if old length is non-writable, reject.
-        if !cur_writable && new_len != old_len {
-            return Err(RuntimeError::TypeError(
-                "Cannot change non-writable Array length".into()));
-        }
-        // §10.4.2.1 step 11: compute new writable to apply.
-        let new_writable = if has_writable {
-            crate::abstract_ops::to_boolean(&self.read_property(desc_id, "writable")?)
-        } else { cur_writable };
-        // §10.4.2.1 step 12-14: shrink elements above new_len.
-        if new_len < old_len {
-            for idx in (new_len_u32..(old_len as u32)).rev() {
-                let k = idx.to_string();
-                // Only delete if the property is configurable (or absent).
-                let configurable = self.obj(target).get_own(&k)
-                    .map(|d| d.configurable).unwrap_or(true);
-                if configurable {
-                    self.obj_mut(target).remove_str(&k);
-                } else {
-                    // Per spec step 13.b.iii: set length to idx+1 and throw.
-                    let stuck_len = (idx + 1) as f64;
-                    self.obj_mut(target).properties.insert(
-                        crate::value::PropertyKey::String("length".into()),
-                        crate::value::PropertyDescriptor {
-                            value: Value::Number(stuck_len),
-                            writable: new_writable,
-                            enumerable: false, configurable: false,
-                            getter: None, setter: None,
-                        });
-                    return Err(RuntimeError::TypeError(format!(
-                        "Cannot truncate Array: index {} is non-configurable", idx)));
-                }
-            }
-        }
-        // §10.4.2.1 step 15: install final length.
-        self.obj_mut(target).properties.insert(
+        Ok(Value::Number(u32_val as f64))
+    }
+
+    /// IR-EXT 66 runtime primitive: read the Array's current length value
+    /// as a Number, with no proto-chain walk and no descriptor synthesis
+    /// quirks. Reads from own data if present (which is the case after the
+    /// first defineProperty), or falls back to try_array_length's
+    /// derive-from-indices path. Used by the IR-lifted §10.4.2.1.
+    pub fn array_length_value_via(&mut self, target_v: &Value) -> Result<Value, RuntimeError> {
+        let id = match target_v {
+            Value::Object(id) => *id,
+            _ => return Err(RuntimeError::TypeError(
+                "array_length_value_via: target is not an Array".into())),
+        };
+        let n = self.try_array_length(id)?;
+        Ok(Value::Number(n as f64))
+    }
+
+    /// IR-EXT 66 runtime primitive: return the Array length [[Writable]]
+    /// attribute as a Boolean. Defaults to true when not explicitly set.
+    pub fn array_length_writable_via(&mut self, target_v: &Value) -> Result<Value, RuntimeError> {
+        let id = match target_v {
+            Value::Object(id) => *id,
+            _ => return Err(RuntimeError::TypeError(
+                "array_length_writable_via: target is not an Array".into())),
+        };
+        Ok(Value::Boolean(self.obj(id).get_own("length").map(|d| d.writable).unwrap_or(true)))
+    }
+
+    /// IR-EXT 66 runtime primitive: write the Array length descriptor in
+    /// one shot (value + writable), preserving spec-required
+    /// non-configurable + non-enumerable. Bypasses the dispatching
+    /// DefineOwnProperty so the IR-lifted §10.4.2.1 doesn't re-enter
+    /// itself.
+    pub fn array_length_set_internal_via(&mut self, target_v: &Value, new_len_v: &Value, writable_v: &Value) -> Result<Value, RuntimeError> {
+        let id = match target_v {
+            Value::Object(id) => *id,
+            _ => return Err(RuntimeError::TypeError(
+                "array_length_set_internal_via: target is not an Array".into())),
+        };
+        let len = match new_len_v { Value::Number(n) => *n, _ => 0.0 };
+        let writable = matches!(writable_v, Value::Boolean(true));
+        self.obj_mut(id).properties.insert(
             crate::value::PropertyKey::String("length".into()),
             crate::value::PropertyDescriptor {
-                value: Value::Number(new_len),
-                writable: new_writable,
-                enumerable: false, configurable: false,
+                value: Value::Number(len),
+                writable, enumerable: false, configurable: false,
                 getter: None, setter: None,
             });
-        Ok(Value::Object(target))
+        Ok(Value::Undefined)
     }
+
+    /// IR-EXT 66 runtime primitive: delete the own property at the given
+    /// stringified key on the target. Returns Boolean(true) if deleted
+    /// (or absent), Boolean(false) if present-and-non-configurable.
+    pub fn delete_own_via(&mut self, target_v: &Value, key_v: &Value) -> Result<Value, RuntimeError> {
+        let id = match target_v {
+            Value::Object(id) => *id,
+            _ => return Err(RuntimeError::TypeError(
+                "delete_own_via: target is not an Object".into())),
+        };
+        let key = self.coerce_to_string(key_v)?;
+        let configurable = self.obj(id).get_own(&key)
+            .map(|d| d.configurable).unwrap_or(true);
+        if !configurable {
+            return Ok(Value::Boolean(false));
+        }
+        self.obj_mut(id).remove_str(&key);
+        Ok(Value::Boolean(true))
+    }
+
 
     /// IR-EXT 56 — Object.defineProperties: snapshot enumerable keys of props,
     /// then dispatch to object_define_property_via for each.

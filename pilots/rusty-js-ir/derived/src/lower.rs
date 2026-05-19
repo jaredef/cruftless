@@ -49,7 +49,11 @@ fn emit_node(out: &mut String, node: &IRNode, depth: usize) {
     match node {
         IRNode::Let { name, value } => {
             indent(out, depth);
-            out.push_str(&format!("let {} = {};\n", name, emit_expr(value)));
+            // Use `let mut` so subsequent Assign nodes targeting this name
+            // typecheck. Rust's unused_mut lint will fire for never-reassigned
+            // Lets, which is acceptable in IR-generated code where the lint
+            // is broadly suppressed.
+            out.push_str(&format!("let mut {} = {};\n", name, emit_expr(value)));
         }
         IRNode::LetIndex { name, value } => {
             indent(out, depth);
@@ -112,6 +116,22 @@ fn emit_node(out: &mut String, node: &IRNode, depth: usize) {
             indent(out, depth);
             out.push_str(&format!("*{}.borrow_mut() = {};\n", emit_expr(cell), emit_expr(value)));
         }
+    }
+}
+
+/// Emit a property-key access as a borrowed string slice. Literal
+/// Expr::Str values lower to `"literal"`; dynamic keys lower through
+/// `&abstract_ops::to_string(&<value>).as_str().to_string()`.
+fn emit_property_key(e: &Expr) -> String {
+    match e {
+        Expr::Str(s) => format!("{:?}", s),
+        // For Var bindings already typed as &str (e.g. IndexAsKey), the
+        // caller passes the &str directly. Fall back to to_string coerce.
+        Expr::Var(_) | Expr::IndexAsKey(_) => format!("&{}", emit_expr(e)),
+        // Dynamic Value-typed expressions: coerce to String, then borrow.
+        _ => format!(
+            "&crate::abstract_ops::to_string(&{}).as_str().to_string()",
+            emit_expr(e)),
     }
 }
 
@@ -241,12 +261,21 @@ fn emit_expr(e: &Expr) -> String {
             Slot::Named(name) => format!("rt.get_named_slot(&{}, {:?})?", emit_expr(o), name),
             Slot::Sentinel(s) => format!("rt.get_sentinel(&{}, {:?})?", emit_expr(o), s),
         },
-        Expr::Get(o, p) => format!("rt.read_property_via(&{}, &{})?", emit_expr(o), emit_expr(p)),
+        // Property-access helpers take a &str key. When the IR key is a
+        // literal Expr::Str, emit the borrowed string slice directly; for
+        // dynamic keys we route through abstract_ops::to_string at call
+        // site.
+        Expr::Get(o, p) => {
+            let key = emit_property_key(p);
+            format!("rt.read_property_via(&{}, {})?", emit_expr(o), key)
+        }
         Expr::HasProperty(o, p) => {
-            format!("rt.has_property_via(&{}, &{})", emit_expr(o), emit_expr(p))
+            let key = emit_property_key(p);
+            format!("rt.has_property_via(&{}, {})", emit_expr(o), key)
         }
         Expr::HasOwnProperty(o, p) => {
-            format!("rt.has_own_property_via(&{}, &{})", emit_expr(o), emit_expr(p))
+            let key = emit_property_key(p);
+            format!("rt.has_own_property_via(&{}, {})", emit_expr(o), key)
         }
         Expr::OrdinaryObjectCreate { proto, slots } => {
             let slot_inits: Vec<String> = slots
