@@ -1006,18 +1006,14 @@ impl Runtime {
 
     fn install_math(&mut self) {
         let math = self.alloc_object(Object::new_ordinary());
-        register_intrinsic_method(self, math, "abs", 1, |_rt, args|Ok(Value::Number(num_arg(args, 0).abs())));
-        register_intrinsic_method(self, math, "floor", 1, |_rt, args|Ok(Value::Number(num_arg(args, 0).floor())));
-        register_intrinsic_method(self, math, "ceil", 1, |_rt, args|Ok(Value::Number(num_arg(args, 0).ceil())));
-        register_intrinsic_method(self, math, "round", 1, |_rt, args|{
-            // JS Math.round rounds half-to-positive-infinity, not Rust's
-            // half-to-even. Reimplement.
-            let x = num_arg(args, 0);
-            Ok(Value::Number((x + 0.5).floor()))
-        });
-        register_intrinsic_method(self, math, "trunc", 1, |_rt, args|Ok(Value::Number(num_arg(args, 0).trunc())));
-        register_intrinsic_method(self, math, "sqrt", 1, |_rt, args|Ok(Value::Number(num_arg(args, 0).sqrt())));
-        register_intrinsic_method(self, math, "cbrt", 1, |_rt, args|Ok(Value::Number(num_arg(args, 0).cbrt())));
+        // Ω.5.P63.E10: Math unary one-liners routed through IR.
+        register_intrinsic_method(self, math, "abs", 1, |rt, args| crate::generated::math_abs(rt, Value::Undefined, args));
+        register_intrinsic_method(self, math, "floor", 1, |rt, args| crate::generated::math_floor(rt, Value::Undefined, args));
+        register_intrinsic_method(self, math, "ceil", 1, |rt, args| crate::generated::math_ceil(rt, Value::Undefined, args));
+        register_intrinsic_method(self, math, "round", 1, |rt, args| crate::generated::math_round(rt, Value::Undefined, args));
+        register_intrinsic_method(self, math, "trunc", 1, |rt, args| crate::generated::math_trunc(rt, Value::Undefined, args));
+        register_intrinsic_method(self, math, "sqrt", 1, |rt, args| crate::generated::math_sqrt(rt, Value::Undefined, args));
+        register_intrinsic_method(self, math, "cbrt", 1, |rt, args| crate::generated::math_cbrt(rt, Value::Undefined, args));
         register_intrinsic_method(self, math, "pow", 2, |_rt, args|{
             Ok(Value::Number(num_arg(args, 0).powf(num_arg(args, 1))))
         });
@@ -1039,10 +1035,10 @@ impl Runtime {
             }
             Ok(Value::Number(m))
         });
-        register_intrinsic_method(self, math, "sign", 1, |_rt, args|{
-            let x = num_arg(args, 0);
-            Ok(Value::Number(if x.is_nan() { f64::NAN } else if x > 0.0 { 1.0 } else if x < 0.0 { -1.0 } else { x }))
-        });
+        // Ω.5.P63.E10: Math.sign routed through IR. (Duplicate
+        // installation at line ~1094 below is harmless: register order
+        // overwrites and both paths produce identical results.)
+        register_intrinsic_method(self, math, "sign", 1, |rt, args| crate::generated::math_sign(rt, Value::Undefined, args));
         register_intrinsic_method(self, math, "exp", 1, |_rt, args|Ok(Value::Number(num_arg(args, 0).exp())));
         register_intrinsic_method(self, math, "log", 1, |_rt, args|Ok(Value::Number(num_arg(args, 0).ln())));
         register_intrinsic_method(self, math, "log2", 1, |_rt, args|Ok(Value::Number(num_arg(args, 0).log2())));

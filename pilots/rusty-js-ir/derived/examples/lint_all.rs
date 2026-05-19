@@ -6,8 +6,9 @@ use rusty_js_ir::lint::lint;
 use rusty_js_ir::sections::{
     array_prototype_find as find, array_prototype_index_search as index_search,
     array_prototype_iteration as iter, array_prototype_map,
-    array_prototype_reduce as reduce, global_predicates, number_static,
-    object_integrity, object_proto_ops, object_static, promise_static,
+    array_prototype_reduce as reduce, global_predicates, math_unary,
+    number_static, object_integrity, object_proto_ops, object_static,
+    promise_static,
 };
 
 fn main() {
@@ -45,6 +46,14 @@ fn main() {
         ("Number.isSafeInteger", number_static::build_is_safe_integer(), number_static::spec_steps_is_safe_integer()),
         ("isNaN", global_predicates::build_is_nan(), global_predicates::spec_steps_is_nan()),
         ("isFinite", global_predicates::build_is_finite(), global_predicates::spec_steps_is_finite()),
+        ("Math.abs",   math_unary::build_abs(),   math_unary::spec_steps_abs()),
+        ("Math.floor", math_unary::build_floor(), math_unary::spec_steps_floor()),
+        ("Math.ceil",  math_unary::build_ceil(),  math_unary::spec_steps_ceil()),
+        ("Math.round", math_unary::build_round(), math_unary::spec_steps_round()),
+        ("Math.trunc", math_unary::build_trunc(), math_unary::spec_steps_trunc()),
+        ("Math.sqrt",  math_unary::build_sqrt(),  math_unary::spec_steps_sqrt()),
+        ("Math.cbrt",  math_unary::build_cbrt(),  math_unary::spec_steps_cbrt()),
+        ("Math.sign",  math_unary::build_sign(),  math_unary::spec_steps_sign()),
     ];
 
     let mut total_unexpected = 0;

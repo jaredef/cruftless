@@ -430,6 +430,38 @@ impl Runtime {
         Ok(())
     }
 
+    /// Math.* unary op dispatcher per ECMA §21.3.2 — applies the named
+    /// math operation to ToNumber(x). Used by Math.{abs, floor, ceil,
+    /// round, trunc, sign, sqrt, cbrt}. The op name is passed as a
+    /// Value::String (matching CallBuiltin's argument convention).
+    pub fn math_unary_op_via(&self, op: &Value, x: &Value) -> Result<Value, RuntimeError> {
+        let op_name = match op {
+            Value::String(s) => s.as_str().to_string(),
+            _ => return Err(RuntimeError::TypeError(
+                "math_unary_op_via: op must be a string".into())),
+        };
+        let n = crate::abstract_ops::to_number(x);
+        let r = match op_name.as_str() {
+            "abs" => n.abs(),
+            "floor" => n.floor(),
+            "ceil" => n.ceil(),
+            // JS Math.round rounds half-toward-positive-infinity.
+            "round" => (n + 0.5).floor(),
+            "trunc" => n.trunc(),
+            "sqrt" => n.sqrt(),
+            "cbrt" => n.cbrt(),
+            "sign" => {
+                if n.is_nan() { f64::NAN }
+                else if n > 0.0 { 1.0 }
+                else if n < 0.0 { -1.0 }
+                else { n }   // preserves +0 / -0
+            }
+            _ => return Err(RuntimeError::TypeError(format!(
+                "math_unary_op_via: unknown op '{}'", op_name))),
+        };
+        Ok(Value::Number(r))
+    }
+
     /// Global isNaN(v) per ECMA §19.2.3 — coerces via ToNumber unlike
     /// Number.isNaN which returns false on non-Number args.
     pub fn global_is_nan_via(&mut self, v: &Value) -> Result<Value, RuntimeError> {

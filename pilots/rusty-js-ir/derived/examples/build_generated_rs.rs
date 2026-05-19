@@ -7,8 +7,9 @@ use rusty_js_ir::lower_to_rust;
 use rusty_js_ir::sections::{
     array_prototype_find as find, array_prototype_index_search as index_search,
     array_prototype_iteration as iter, array_prototype_map,
-    array_prototype_reduce as reduce, global_predicates, number_static,
-    object_integrity, object_proto_ops, object_static, promise_static,
+    array_prototype_reduce as reduce, global_predicates, math_unary,
+    number_static, object_integrity, object_proto_ops, object_static,
+    promise_static,
 };
 
 fn main() {
@@ -54,6 +55,14 @@ fn main() {
         number_static::build_is_safe_integer(),
         global_predicates::build_is_nan(),
         global_predicates::build_is_finite(),
+        math_unary::build_abs(),
+        math_unary::build_floor(),
+        math_unary::build_ceil(),
+        math_unary::build_round(),
+        math_unary::build_trunc(),
+        math_unary::build_sqrt(),
+        math_unary::build_cbrt(),
+        math_unary::build_sign(),
     ];
 
     for f in &sections {
