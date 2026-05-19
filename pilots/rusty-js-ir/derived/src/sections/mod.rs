@@ -11,3 +11,4 @@ pub mod array_prototype_index_search; // indexOf, includes (lastIndexOf queued)
 pub mod array_prototype_reduce;       // reduce (reduceRight queued, awaits signed-Int)
 pub mod object_static;                // Object.keys, Object.values, Object.entries
 pub mod promise_static;               // Promise.resolve, Promise.reject
+pub mod object_proto_ops;             // getPrototypeOf, setPrototypeOf, isExtensible, isFrozen, isSealed

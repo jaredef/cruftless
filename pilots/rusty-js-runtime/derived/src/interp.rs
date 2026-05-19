@@ -430,6 +430,66 @@ impl Runtime {
         Ok(())
     }
 
+    /// Object.getPrototypeOf(O) per ECMA §20.1.2.12.
+    pub fn get_prototype_of_via(&self, v: &Value) -> Result<Value, RuntimeError> {
+        match v {
+            Value::Object(id) => match self.obj(*id).proto {
+                Some(p) => Ok(Value::Object(p)),
+                None => Ok(Value::Null),
+            },
+            _ => Ok(Value::Null),
+        }
+    }
+
+    /// Object.setPrototypeOf(O, proto) per ECMA §20.1.2.21.
+    pub fn set_prototype_of_via(&mut self, v: &Value, proto: &Value) -> Result<Value, RuntimeError> {
+        let target = match v {
+            Value::Object(id) => *id,
+            _ => return Ok(v.clone()),
+        };
+        let new_proto = match proto {
+            Value::Object(id) => Some(*id),
+            Value::Null => None,
+            _ => return Err(RuntimeError::TypeError(
+                "Object.setPrototypeOf: prototype must be Object or null".into())),
+        };
+        self.obj_mut(target).proto = new_proto;
+        Ok(Value::Object(target))
+    }
+
+    /// Object.isFrozen(O) per ECMA §20.1.2.16.
+    pub fn is_frozen_via(&self, v: &Value) -> Result<Value, RuntimeError> {
+        let id = match v {
+            Value::Object(id) => *id,
+            _ => return Ok(Value::Boolean(true)),
+        };
+        let o = self.obj(id);
+        let frozen = !o.extensible
+            && o.properties.values().all(|d| !d.writable && !d.configurable);
+        Ok(Value::Boolean(frozen))
+    }
+
+    /// Object.isSealed(O) per ECMA §20.1.2.17.
+    pub fn is_sealed_via(&self, v: &Value) -> Result<Value, RuntimeError> {
+        let id = match v {
+            Value::Object(id) => *id,
+            _ => return Ok(Value::Boolean(true)),
+        };
+        let o = self.obj(id);
+        let sealed = !o.extensible
+            && o.properties.values().all(|d| !d.configurable);
+        Ok(Value::Boolean(sealed))
+    }
+
+    /// Object.isExtensible(O) per ECMA §20.1.2.14.
+    pub fn is_extensible_via(&self, v: &Value) -> Result<Value, RuntimeError> {
+        let id = match v {
+            Value::Object(id) => *id,
+            _ => return Ok(Value::Boolean(false)),
+        };
+        Ok(Value::Boolean(self.obj(id).extensible))
+    }
+
     /// Promise.resolve(v) per ECMA §27.2.4.7 — IR-target for the
     /// "promise-wrap if not a thenable; otherwise return as-is"
     /// abstract op. Tier 1.10 simplification: always allocates a new

@@ -1267,11 +1267,9 @@ impl Runtime {
             }
             Ok(v)
         });
+        // Ω.5.P63.E6: isFrozen routed through IR.
         register_intrinsic_method(self, obj_ctor, "isFrozen", 1, |rt, args| {
-            let id = match args.first() { Some(Value::Object(id)) => *id, _ => return Ok(Value::Boolean(true)) };
-            let o = rt.obj(id);
-            let frozen = !o.extensible && o.properties.values().all(|d| !d.writable && !d.configurable);
-            Ok(Value::Boolean(frozen))
+            crate::generated::object_is_frozen(rt, Value::Undefined, args)
         });
         // Ω.5.P61.E10: Object.seal / isSealed / preventExtensions /
         // isExtensible per ECMA §20.1.2. seal makes properties non-
@@ -1288,11 +1286,9 @@ impl Runtime {
             }
             Ok(v)
         });
+        // Ω.5.P63.E6: isSealed routed through IR.
         register_intrinsic_method(self, obj_ctor, "isSealed", 1, |rt, args| {
-            let id = match args.first() { Some(Value::Object(id)) => *id, _ => return Ok(Value::Boolean(true)) };
-            let o = rt.obj(id);
-            let sealed = !o.extensible && o.properties.values().all(|d| !d.configurable);
-            Ok(Value::Boolean(sealed))
+            crate::generated::object_is_sealed(rt, Value::Undefined, args)
         });
         register_intrinsic_method(self, obj_ctor, "preventExtensions", 1, |rt, args| {
             let v = args.first().cloned().unwrap_or(Value::Undefined);
@@ -1301,11 +1297,9 @@ impl Runtime {
             }
             Ok(v)
         });
+        // Ω.5.P63.E6: isExtensible routed through IR.
         register_intrinsic_method(self, obj_ctor, "isExtensible", 1, |rt, args| {
-            match args.first() {
-                Some(Value::Object(id)) => Ok(Value::Boolean(rt.obj(*id).extensible)),
-                _ => Ok(Value::Boolean(false)),
-            }
+            crate::generated::object_is_extensible(rt, Value::Undefined, args)
         });
         register_intrinsic_method(self, obj_ctor, "groupBy", 2, |rt, args| {
             // Object.groupBy(items, callbackFn) per ECMA §20.1.2.10.
@@ -1726,29 +1720,12 @@ impl Runtime {
         // at module top level. Without these statics, getPrototypeOf is
         // undefined and `getPrototypeOf(Uint8Array)` errors. The Reflect
         // variant existed (Ω.5.cc) but consumer code uses Object.X.
+        // Ω.5.P63.E6: getPrototypeOf / setPrototypeOf routed through IR.
         register_intrinsic_method(self, obj_ctor, "getPrototypeOf", 1, |rt, args| {
-            let v = args.first().cloned().unwrap_or(Value::Undefined);
-            match v {
-                Value::Object(id) => match rt.obj(id).proto {
-                    Some(p) => Ok(Value::Object(p)),
-                    None => Ok(Value::Null),
-                },
-                _ => Ok(Value::Null),
-            }
+            crate::generated::object_get_prototype_of(rt, Value::Undefined, args)
         });
         register_intrinsic_method(self, obj_ctor, "setPrototypeOf", 2, |rt, args| {
-            let target = match args.first() {
-                Some(Value::Object(id)) => *id,
-                _ => return Ok(args.first().cloned().unwrap_or(Value::Undefined)),
-            };
-            let proto = args.get(1).cloned().unwrap_or(Value::Null);
-            let new_proto = match proto {
-                Value::Object(id) => Some(id),
-                Value::Null => None,
-                _ => None,
-            };
-            rt.obj_mut(target).proto = new_proto;
-            Ok(Value::Object(target))
+            crate::generated::object_set_prototype_of(rt, Value::Undefined, args)
         });
         register_intrinsic_method(self, obj_ctor, "create", 2, |rt, args| {
             // Ω.5.P61.E15: apply full descriptor semantics per ECMA
