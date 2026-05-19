@@ -3806,6 +3806,8 @@ pub(crate) fn json_stringify(rt: &Runtime, v: &Value) -> String {
     }
 }
 
+pub(crate) fn json_quote_string_pub(s: &str) -> String { json_quote_string(s) }
+
 fn json_quote_string(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');

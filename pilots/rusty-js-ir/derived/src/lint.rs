@@ -401,7 +401,7 @@ fn collect_abstract_ops_in_expr(
             collect_abstract_ops_in_expr(a, set);
             collect_abstract_ops_in_expr(b, set);
         }
-        Expr::Not(v) => collect_abstract_ops_in_expr(v, set),
+        Expr::Not(v) | Expr::TypeOf(v) => collect_abstract_ops_in_expr(v, set),
         Expr::HasSlot(v, _) | Expr::GetSlot(v, _) => {
             set.insert("HasSlot");
             collect_abstract_ops_in_expr(v, set);

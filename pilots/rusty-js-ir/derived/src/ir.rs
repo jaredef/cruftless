@@ -117,6 +117,11 @@ pub enum Expr {
     NumberLt(Box<Expr>, Box<Expr>),
     NumberGe(Box<Expr>, Box<Expr>),
 
+    // IR-EXT 68 alphabet promotion: §13.5.3 typeof operator. Returns a
+    // Value::String matching one of "undefined", "boolean", "number",
+    // "string", "bigint", "symbol", "function", "object".
+    TypeOf(Box<Expr>),
+
     /// Argument access — args[i], defaulting to Undefined.
     Arg(usize),
 

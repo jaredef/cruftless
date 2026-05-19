@@ -372,6 +372,12 @@ fn emit_expr(e: &Expr) -> String {
         Expr::NumberGe(a, b) => format!(
             "(rt.coerce_to_number(&{})? >= rt.coerce_to_number(&{})?)",
             emit_expr(a), emit_expr(b)),
+
+        // IR-EXT 68 alphabet promotion: §13.5.3 typeof. Returns
+        // Value::String. Routes through Runtime::type_of_value.
+        Expr::TypeOf(e) => format!(
+            "Value::String(std::rc::Rc::new(rt.type_of_value(&{}).to_string()))",
+            emit_expr(e)),
         Expr::LengthOfArrayLike(o) => format!("rt.length_of_array_like(&{})?", emit_expr(o)),
         Expr::CreateDataPropertyOrThrow(o, p, v) => format!(
             "{{ rt.create_data_property_or_throw(&{}, &{}, {})?; Value::Undefined }}",

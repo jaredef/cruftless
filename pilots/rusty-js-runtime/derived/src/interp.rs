@@ -2096,12 +2096,116 @@ impl Runtime {
         Ok(Value::Object(out))
     }
 
-    /// JSON.stringify(value, replacer, space) per ECMA §24.5.2.
-    /// v1: replacer + space ignored; thin wrapper around the existing free fn.
+    /// JSON.stringify(value, replacer, space) per ECMA §25.5.2.
+    /// IR-EXT 68: dispatch through the IR-lifted SerializeJSONProperty.
+    /// Returns Value::String on success, Value::Undefined when value
+    /// serializes to nothing (top-level undefined/function/symbol per spec).
     pub fn json_stringify_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let v = args.first().cloned().unwrap_or(Value::Undefined);
-        let s = crate::intrinsics::json_stringify(self, &v);
-        Ok(Value::String(std::rc::Rc::new(s)))
+        crate::generated::json_serialize_property(self, Value::Undefined,
+            &[v, Value::String(std::rc::Rc::new(String::new()))])
+    }
+
+    /// IR-EXT 68: §25.5.2.4 step 2 — invoke value.toJSON(key) when value
+    /// is an Object|BigInt and has a callable toJSON. Returns the result,
+    /// or the original value unchanged.
+    pub fn json_apply_to_json_via(&mut self, value: &Value, key: &Value) -> Result<Value, RuntimeError> {
+        let id = match value {
+            Value::Object(id) => *id,
+            _ => return Ok(value.clone()),
+        };
+        let to_json = self.read_property(id, "toJSON")?;
+        if !self.is_callable(&to_json) {
+            return Ok(value.clone());
+        }
+        self.call_function(to_json, value.clone(), vec![key.clone()])
+    }
+
+    /// IR-EXT 68: §25.5.2.4 step 4 — unwrap a primitive wrapper Object
+    /// (Boolean/Number/String/BigInt) to its underlying primitive.
+    pub fn json_unwrap_wrapper_via(&mut self, value: &Value) -> Result<Value, RuntimeError> {
+        let id = match value {
+            Value::Object(id) => *id,
+            _ => return Ok(value.clone()),
+        };
+        if let Some(d) = self.obj(id).get_own("__primitive__") {
+            match &d.value {
+                Value::Number(_) | Value::String(_) | Value::Boolean(_) | Value::BigInt(_) => {
+                    return Ok(d.value.clone());
+                }
+                _ => {}
+            }
+        }
+        Ok(value.clone())
+    }
+
+    /// IR-EXT 68: §25.5.2.{5,6} SerializeJSONObject/SerializeJSONArray.
+    /// Recursive structural serialization, calling back into the IR-lifted
+    /// json_serialize_property for each child.
+    pub fn json_serialize_compound_via(&mut self, value: &Value) -> Result<Value, RuntimeError> {
+        let id = match value {
+            Value::Object(id) => *id,
+            _ => return Err(RuntimeError::TypeError(
+                "json_serialize_compound: value must be an Object".into())),
+        };
+        let is_array = matches!(self.obj(id).internal_kind, crate::value::InternalKind::Array);
+        if is_array {
+            let len = self.try_array_length(id)?;
+            let mut parts: Vec<String> = Vec::with_capacity(len);
+            for i in 0..len {
+                let child = self.object_get(id, &i.to_string());
+                let key_v = Value::String(std::rc::Rc::new(i.to_string()));
+                let serialized = crate::generated::json_serialize_property(self, Value::Undefined, &[child, key_v])?;
+                let part = match serialized {
+                    Value::String(s) => (*s).clone(),
+                    _ => "null".to_string(),
+                };
+                parts.push(part);
+            }
+            Ok(Value::String(std::rc::Rc::new(format!("[{}]", parts.join(",")))))
+        } else {
+            let keys: Vec<String> = {
+                let obj = self.obj(id);
+                obj.properties.iter()
+                    .filter(|(k, d)| d.enumerable
+                                     && k.as_str() != "__primitive__"
+                                     && !k.as_str().starts_with("@@"))
+                    .map(|(k, _)| k.as_str().to_string())
+                    .collect()
+            };
+            let mut parts: Vec<String> = Vec::new();
+            for k in keys {
+                let child = self.object_get(id, &k);
+                let key_v = Value::String(std::rc::Rc::new(k.clone()));
+                let serialized = crate::generated::json_serialize_property(self, Value::Undefined, &[child, key_v])?;
+                if let Value::String(s) = serialized {
+                    parts.push(format!("{}:{}",
+                        crate::intrinsics::json_quote_string_pub(&k),
+                        *s));
+                }
+            }
+            Ok(Value::String(std::rc::Rc::new(format!("{{{}}}", parts.join(",")))))
+        }
+    }
+
+    /// IR-EXT 68: §25.5.2.2 QuoteJSONString.
+    pub fn json_quote_string_via(&mut self, value: &Value) -> Result<Value, RuntimeError> {
+        let s: String = match value {
+            Value::String(s) => (**s).clone(),
+            _ => self.coerce_to_string(value)?,
+        };
+        Ok(Value::String(std::rc::Rc::new(crate::intrinsics::json_quote_string_pub(&s))))
+    }
+
+    /// IR-EXT 68: §25.5.2.4 step 9 — finite Number → ToString(n); else "null".
+    pub fn json_format_number_via(&mut self, value: &Value) -> Result<Value, RuntimeError> {
+        let n = match value { Value::Number(n) => *n, _ => return Err(RuntimeError::TypeError(
+            "json_format_number: expected Number".into())) };
+        if n.is_finite() {
+            Ok(Value::String(std::rc::Rc::new(crate::abstract_ops::number_to_string(n))))
+        } else {
+            Ok(Value::String(std::rc::Rc::new("null".into())))
+        }
     }
 
     /// JSON.parse(text, reviver) per ECMA §24.5.1.
