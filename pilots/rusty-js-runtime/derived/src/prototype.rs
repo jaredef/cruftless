@@ -578,51 +578,12 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         crate::generated::array_prototype_map(rt, rt.current_this(), args)
     });
     register_intrinsic_method(rt, host, "forEach", 1, |rt, args| {
-        // Ω.5.P61.E13: skip sparse holes per ECMA §23.1.3.15 (HasProperty
-        // check before invoking callback); dispatch via read_property
-        // so accessor-defined indices contribute their getter values.
-        let id = to_array_this(rt)?;
-        let cb = args.first().cloned().ok_or_else(||
-            RuntimeError::TypeError("Array.prototype.forEach: callback required".into()))?;
-        if !rt.is_callable(&cb) {
-            return Err(RuntimeError::TypeError("Array.prototype.forEach: callback is not callable".into()));
-        }
-        let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
-        let len = rt.array_length(id);
-        for i in 0..len {
-            let key = i.to_string();
-            if !rt.has_property(id, &key) { continue; }
-            let v = rt.read_property(id, &key)?;
-            rt.call_function(cb.clone(), this_arg.clone(),
-                vec![v, Value::Number(i as f64), Value::Object(id)])?;
-        }
-        Ok(Value::Undefined)
+        // Ω.5.P63.E2: routed through IR-lowered generated::array_prototype_for_each.
+        crate::generated::array_prototype_for_each(rt, rt.current_this(), args)
     });
+    // Ω.5.P63.E2: filter routed through IR-lowered generated::array_prototype_filter.
     register_intrinsic_method(rt, host, "filter", 1, |rt, args| {
-        // Ω.5.P61.E14: sparse-skip + getter-dispatch per ECMA §23.1.3.7.
-        let id = to_array_this(rt)?;
-        let cb = args.first().cloned().ok_or_else(||
-            RuntimeError::TypeError("Array.prototype.filter: callback required".into()))?;
-        if !rt.is_callable(&cb) {
-            return Err(RuntimeError::TypeError("Array.prototype.filter: callback is not callable".into()));
-        }
-        let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
-        let len = rt.array_length(id);
-        let out = rt.alloc_object(Object::new_array());
-        let mut j = 0usize;
-        for i in 0..len {
-            let key = i.to_string();
-            if !rt.has_property(id, &key) { continue; }
-            let v = rt.read_property(id, &key)?;
-            let r = rt.call_function(cb.clone(), this_arg.clone(),
-                vec![v.clone(), Value::Number(i as f64), Value::Object(id)])?;
-            if abstract_ops::to_boolean(&r) {
-                rt.object_set(out, j.to_string(), v);
-                j += 1;
-            }
-        }
-        rt.object_set(out, "length".into(), Value::Number(j as f64));
-        Ok(Value::Object(out))
+        crate::generated::array_prototype_filter(rt, rt.current_this(), args)
     });
     register_intrinsic_method(rt, host, "reduce", 1, |rt, args| {
         // Ω.5.P61.E13: per ECMA §23.1.3.24 skip sparse holes (HasProperty
@@ -687,25 +648,9 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         }
         Ok(Value::Undefined)
     });
+    // Ω.5.P63.E2: some routed through IR-lowered generated::array_prototype_some.
     register_intrinsic_method(rt, host, "some", 1, |rt, args| {
-        // Ω.5.P61.E14: sparse-skip per ECMA §23.1.3.27.
-        let id = to_array_this(rt)?;
-        let cb = args.first().cloned().ok_or_else(||
-            RuntimeError::TypeError("some: callback required".into()))?;
-        if !rt.is_callable(&cb) {
-            return Err(RuntimeError::TypeError("Array.prototype.some: callback is not callable".into()));
-        }
-        let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
-        let len = rt.array_length(id);
-        for i in 0..len {
-            let key = i.to_string();
-            if !rt.has_property(id, &key) { continue; }
-            let v = rt.read_property(id, &key)?;
-            let r = rt.call_function(cb.clone(), this_arg.clone(),
-                vec![v, Value::Number(i as f64), Value::Object(id)])?;
-            if abstract_ops::to_boolean(&r) { return Ok(Value::Boolean(true)); }
-        }
-        Ok(Value::Boolean(false))
+        crate::generated::array_prototype_some(rt, rt.current_this(), args)
     });
     register_intrinsic_method(rt, host, "@@iterator", 0, |rt, _args| {
         let id = to_array_this(rt)?;
@@ -767,25 +712,9 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         rt.object_set(id, "length".into(), Value::Number(len as f64));
         Ok(Value::Object(id))
     });
+    // Ω.5.P63.E2: every routed through IR-lowered generated::array_prototype_every.
     register_intrinsic_method(rt, host, "every", 1, |rt, args| {
-        // Ω.5.P61.E14: sparse-skip per ECMA §23.1.3.6.
-        let id = to_array_this(rt)?;
-        let cb = args.first().cloned().ok_or_else(||
-            RuntimeError::TypeError("every: callback required".into()))?;
-        if !rt.is_callable(&cb) {
-            return Err(RuntimeError::TypeError("Array.prototype.every: callback is not callable".into()));
-        }
-        let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
-        let len = rt.array_length(id);
-        for i in 0..len {
-            let key = i.to_string();
-            if !rt.has_property(id, &key) { continue; }
-            let v = rt.read_property(id, &key)?;
-            let r = rt.call_function(cb.clone(), this_arg.clone(),
-                vec![v, Value::Number(i as f64), Value::Object(id)])?;
-            if !abstract_ops::to_boolean(&r) { return Ok(Value::Boolean(false)); }
-        }
-        Ok(Value::Boolean(true))
+        crate::generated::array_prototype_every(rt, rt.current_this(), args)
     });
     // Tier-Ω.5.P24.E2.array-proto-iter: Array.prototype.entries/keys/values
     // per ECMA §23.1.3.4/§23.1.3.16/§23.1.3.32. Eager-materialize an array

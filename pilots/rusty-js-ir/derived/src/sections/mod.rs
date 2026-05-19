@@ -5,3 +5,4 @@
 //! to derive these from ECMA-262 directly.
 
 pub mod array_prototype_map;
+pub mod array_prototype_iteration; // forEach, filter, every, some

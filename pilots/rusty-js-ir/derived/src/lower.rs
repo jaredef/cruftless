@@ -151,7 +151,11 @@ fn emit_expr(e: &Expr) -> String {
         Expr::ToLength(v) => format!("rt.to_length(&{})?", emit_expr(v)),
         Expr::ToUint32(v) => format!("rt.to_uint32(&{})?", emit_expr(v)),
         Expr::ToBoolean(v) => {
-            format!("Value::Boolean(crate::abstract_ops::to_boolean(&{}))", emit_expr(v))
+            // Returns Rust `bool` (not Value::Boolean) — matches ECMA spec
+            // abstract-op return type. The IR should not wrap an already-
+            // bool expression in another ToBoolean; lowering would produce
+            // bool-of-bool which is invalid in Rust.
+            format!("crate::abstract_ops::to_boolean(&{})", emit_expr(v))
         }
         Expr::ToPropertyKey(v) => format!("rt.to_property_key(&{})?", emit_expr(v)),
         Expr::IsCallable(v) => format!("rt.is_callable(&{})", emit_expr(v)),

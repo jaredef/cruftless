@@ -18,3 +18,7 @@ path = "examples/lint_array_map.rs"
 [[example]]
 name = "lint_drift_demo"
 path = "examples/lint_drift_demo.rs"
+
+[[example]]
+name = "build_generated_rs"
+path = "examples/build_generated_rs.rs"

@@ -423,6 +423,9 @@ impl Runtime {
                 "CreateDataPropertyOrThrow: receiver must be an Object".into())),
         };
         self.object_set(id, key.to_string(), val);
+        // On Array receivers, ensure length covers the new index per
+        // §10.4.2.4 ArraySetLength.
+        self.bump_array_length_if_needed(id, key);
         Ok(())
     }
 
@@ -432,8 +435,33 @@ impl Runtime {
     /// dispatch is queued for Tier 2.
     pub fn array_species_create(&mut self, _o: &Value, len: usize) -> Result<Value, RuntimeError> {
         let id = self.alloc_object(crate::value::Object::new_array());
-        self.object_set(id, "length".into(), Value::Number(len as f64));
+        // Only set explicit length when len > 0; for len=0 (filter, etc.)
+        // let the array length derive from max-index, so subsequent
+        // CreateDataPropertyOrThrow calls grow the length naturally.
+        if len > 0 {
+            self.object_set(id, "length".into(), Value::Number(len as f64));
+        }
         Ok(Value::Object(id))
+    }
+
+    /// CreateDataPropertyOrThrow on an Array receiver: ensure the receiver's
+    /// length reflects the new max-index. Internal helper called from
+    /// create_data_property_or_throw when applicable.
+    fn bump_array_length_if_needed(&mut self, id: rusty_js_gc::ObjectId, key: &str) {
+        let is_array = matches!(
+            self.obj(id).internal_kind,
+            crate::value::InternalKind::Array
+        );
+        if !is_array { return; }
+        let Ok(i) = key.parse::<u32>() else { return; };
+        let cur_len = self.array_length(id);
+        if (i as usize) >= cur_len {
+            self.object_set(
+                id,
+                "length".into(),
+                Value::Number((i as usize + 1) as f64),
+            );
+        }
     }
 
     /// Ω.5.P62.E5: IsCallable per ECMA §7.2.4 — true iff `v` is an Object
