@@ -23,10 +23,17 @@ impl Runtime {
         // pending Promise, invokes the executor with resolve/reject
         // callbacks, and returns the promise.
         let promise_ctor = crate::intrinsics::make_native("Promise", |rt, args| {
-            let executor = match args.first() {
-                Some(v @ Value::Object(_)) => v.clone(),
-                _ => return Err(RuntimeError::TypeError("Promise constructor: executor must be a function".into())),
-            };
+            // Ω.5.P62.E24: §27.2.3.1 — Promise must be called with `new`;
+            // executor must be callable.
+            if rt.current_new_target.is_none() {
+                return Err(RuntimeError::TypeError(
+                    "Promise constructor must be called with new".into()));
+            }
+            let executor = args.first().cloned().unwrap_or(Value::Undefined);
+            if !rt.is_callable(&executor) {
+                return Err(RuntimeError::TypeError(
+                    "Promise constructor: executor must be callable".into()));
+            }
             let p = new_promise(rt);
             let p_for_resolve = p;
             let p_for_reject = p;
@@ -50,19 +57,19 @@ impl Runtime {
             Ok(Value::Object(p))
         });
         let promise_obj = self.alloc_object(promise_ctor);
-        register_method(self, promise_obj, "resolve", |rt, args| {
+        crate::intrinsics::register_intrinsic_method(self, promise_obj, "resolve", 1, |rt, args| {
             let v = args.first().cloned().unwrap_or(Value::Undefined);
             let p = new_promise(rt);
             resolve_promise(rt, p, v);
             Ok(Value::Object(p))
         });
-        register_method(self, promise_obj, "reject", |rt, args| {
+        crate::intrinsics::register_intrinsic_method(self, promise_obj, "reject", 1, |rt, args| {
             let v = args.first().cloned().unwrap_or(Value::Undefined);
             let p = new_promise(rt);
             reject_promise(rt, p, v);
             Ok(Value::Object(p))
         });
-        register_method(self, promise_obj, "then", |rt, args| {
+        crate::intrinsics::register_intrinsic_method(self, promise_obj, "then", 3, |rt, args| {
             let source = match args.first() {
                 Some(Value::Object(id)) => *id,
                 _ => return Err(RuntimeError::TypeError("Promise.then: first arg must be a Promise".into())),
@@ -102,7 +109,7 @@ impl Runtime {
             }
             Ok(Value::Object(chain))
         });
-        register_method(self, promise_obj, "catch_", |rt, args| {
+        crate::intrinsics::register_intrinsic_method(self, promise_obj, "catch_", 1, |rt, args| {
             let source = match args.first() {
                 Some(Value::Object(id)) => *id,
                 _ => return Err(RuntimeError::TypeError("Promise.catch_: first arg must be a Promise".into())),
@@ -140,7 +147,7 @@ impl Runtime {
         // reject wrappers), the synchronous-iteration approximation closes
         // a large fraction of test262 cases without requiring full async
         // event-loop choreography.
-        register_method(self, promise_obj, "all", |rt, args| {
+        crate::intrinsics::register_intrinsic_method(self, promise_obj, "all", 1, |rt, args| {
             let iter = args.first().cloned().unwrap_or(Value::Undefined);
             let entries = crate::intrinsics::collect_iterable(rt, iter)?;
             let result = rt.alloc_object(Object::new_array());
@@ -173,7 +180,7 @@ impl Runtime {
             resolve_promise(rt, chain, Value::Object(result));
             Ok(Value::Object(chain))
         });
-        register_method(self, promise_obj, "allSettled", |rt, args| {
+        crate::intrinsics::register_intrinsic_method(self, promise_obj, "allSettled", 1, |rt, args| {
             let iter = args.first().cloned().unwrap_or(Value::Undefined);
             let entries = crate::intrinsics::collect_iterable(rt, iter)?;
             let result = rt.alloc_object(Object::new_array());
@@ -201,7 +208,7 @@ impl Runtime {
             resolve_promise(rt, chain, Value::Object(result));
             Ok(Value::Object(chain))
         });
-        register_method(self, promise_obj, "any", |rt, args| {
+        crate::intrinsics::register_intrinsic_method(self, promise_obj, "any", 1, |rt, args| {
             let iter = args.first().cloned().unwrap_or(Value::Undefined);
             let entries = crate::intrinsics::collect_iterable(rt, iter)?;
             let chain = new_promise(rt);
@@ -224,7 +231,7 @@ impl Runtime {
             reject_promise(rt, chain, Value::Object(aid));
             Ok(Value::Object(chain))
         });
-        register_method(self, promise_obj, "race", |rt, args| {
+        crate::intrinsics::register_intrinsic_method(self, promise_obj, "race", 1, |rt, args| {
             let iter = args.first().cloned().unwrap_or(Value::Undefined);
             let entries = crate::intrinsics::collect_iterable(rt, iter)?;
             let chain = new_promise(rt);
@@ -253,7 +260,7 @@ impl Runtime {
             }
             Ok(Value::Object(chain))
         });
-        register_method(self, promise_obj, "withResolvers", |rt, _args| {
+        crate::intrinsics::register_intrinsic_method(self, promise_obj, "withResolvers", 0, |rt, _args| {
             // ECMA §27.2.4.4: returns {promise, resolve, reject}.
             let p = new_promise(rt);
             let p_for_resolve = p;
