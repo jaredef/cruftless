@@ -114,6 +114,8 @@ fn main() {
         misc::build_date_utc(),
         misc::build_math_random(),
         misc::build_date_get_timezone_offset(),
+        misc::build_parse_int(),
+        misc::build_parse_float(),
         object_static::build_keys(),
         object_static::build_values(),
         object_static::build_entries(),

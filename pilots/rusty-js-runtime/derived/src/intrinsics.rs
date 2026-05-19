@@ -812,52 +812,8 @@ impl Runtime {
             let bytes: Vec<u8> = s.chars().map(|c| c as u8).collect();
             Ok(Value::String(Rc::new(base64_encode(&bytes))))
         });
-        register_global_fn(self, "parseInt", |_rt, args|{
-            let s = if args.is_empty() { return Ok(Value::Number(f64::NAN)); } else { abstract_ops::to_string(&args[0]) };
-            let radix = args.get(1).map(|v| abstract_ops::to_number(v) as i32).unwrap_or(10);
-            let radix = if radix == 0 { 10 } else { radix };
-            let trimmed = s.trim_start();
-            let (sign, body) = if let Some(rest) = trimmed.strip_prefix('-') { (-1.0, rest) }
-                else if let Some(rest) = trimmed.strip_prefix('+') { (1.0, rest) }
-                else { (1.0, trimmed) };
-            let mut acc: u64 = 0;
-            let mut any = false;
-            for c in body.chars() {
-                let d = match c {
-                    '0'..='9' => c as u32 - '0' as u32,
-                    'a'..='z' => c as u32 - 'a' as u32 + 10,
-                    'A'..='Z' => c as u32 - 'A' as u32 + 10,
-                    _ => break,
-                };
-                if (d as i32) >= radix { break; }
-                acc = acc.saturating_mul(radix as u64).saturating_add(d as u64);
-                any = true;
-            }
-            if !any { return Ok(Value::Number(f64::NAN)); }
-            Ok(Value::Number(sign * acc as f64))
-        });
-        register_global_fn(self, "parseFloat", |_rt, args|{
-            if args.is_empty() { return Ok(Value::Number(f64::NAN)); }
-            let s = abstract_ops::to_string(&args[0]);
-            let trimmed = s.trim_start();
-            // Find longest numeric prefix
-            let mut end = 0;
-            let mut saw_digit = false;
-            let mut saw_dot = false;
-            let mut saw_e = false;
-            for (i, c) in trimmed.char_indices() {
-                if i == 0 && (c == '+' || c == '-') { end = i + 1; continue; }
-                match c {
-                    '0'..='9' => { saw_digit = true; end = i + 1; }
-                    '.' if !saw_dot && !saw_e => { saw_dot = true; end = i + 1; }
-                    'e' | 'E' if saw_digit && !saw_e => { saw_e = true; end = i + 1; }
-                    '+' | '-' if saw_e && trimmed[..i].chars().last() == Some('e' as char) => { end = i + 1; }
-                    _ => break,
-                }
-            }
-            if end == 0 { return Ok(Value::Number(f64::NAN)); }
-            Ok(Value::Number(trimmed[..end].parse().unwrap_or(f64::NAN)))
-        });
+        register_global_fn(self, "parseInt",   |rt, args| crate::generated::parse_int(rt, rt.current_this(), args));
+        register_global_fn(self, "parseFloat", |rt, args| crate::generated::parse_float(rt, rt.current_this(), args));
         // Ω.5.P63.E9: global isNaN / isFinite routed through IR-lowered
         // generated::global_is_*. Differ from Number.isNaN / Number.isFinite
         // by coercing the arg via ToNumber.

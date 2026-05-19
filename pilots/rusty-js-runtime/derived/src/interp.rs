@@ -663,6 +663,56 @@ impl Runtime {
         Ok(Value::Number(new_ms))
     }
 
+    /// parseInt(string, radix) per ECMA §19.2.5.
+    pub fn parse_int_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        if args.is_empty() { return Ok(Value::Number(f64::NAN)); }
+        let s = crate::abstract_ops::to_string(&args[0]);
+        let radix = args.get(1).map(|v| crate::abstract_ops::to_number(v) as i32).unwrap_or(10);
+        let radix = if radix == 0 { 10 } else { radix };
+        let trimmed = s.trim_start();
+        let (sign, body) = if let Some(rest) = trimmed.strip_prefix('-') { (-1.0, rest) }
+            else if let Some(rest) = trimmed.strip_prefix('+') { (1.0, rest) }
+            else { (1.0, trimmed) };
+        let mut acc: u64 = 0;
+        let mut any = false;
+        for c in body.chars() {
+            let d = match c {
+                '0'..='9' => c as u32 - '0' as u32,
+                'a'..='z' => c as u32 - 'a' as u32 + 10,
+                'A'..='Z' => c as u32 - 'A' as u32 + 10,
+                _ => break,
+            };
+            if (d as i32) >= radix { break; }
+            acc = acc.saturating_mul(radix as u64).saturating_add(d as u64);
+            any = true;
+        }
+        if !any { return Ok(Value::Number(f64::NAN)); }
+        Ok(Value::Number(sign * acc as f64))
+    }
+
+    /// parseFloat(string) per ECMA §19.2.4.
+    pub fn parse_float_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        if args.is_empty() { return Ok(Value::Number(f64::NAN)); }
+        let s = crate::abstract_ops::to_string(&args[0]);
+        let trimmed = s.trim_start();
+        let mut end = 0;
+        let mut saw_digit = false;
+        let mut saw_dot = false;
+        let mut saw_e = false;
+        for (i, c) in trimmed.char_indices() {
+            if i == 0 && (c == '+' || c == '-') { end = i + 1; continue; }
+            match c {
+                '0'..='9' => { saw_digit = true; end = i + 1; }
+                '.' if !saw_dot && !saw_e => { saw_dot = true; end = i + 1; }
+                'e' | 'E' if saw_digit && !saw_e => { saw_e = true; end = i + 1; }
+                '+' | '-' if saw_e && trimmed[..i].chars().last() == Some('e' as char) => { end = i + 1; }
+                _ => break,
+            }
+        }
+        if end == 0 { return Ok(Value::Number(f64::NAN)); }
+        Ok(Value::Number(trimmed[..end].parse().unwrap_or(f64::NAN)))
+    }
+
     /// Math.random() per ECMA §21.3.2.27 (v1: LCG seeded from clock).
     pub fn math_random_via(&mut self) -> Result<Value, RuntimeError> {
         use std::time::{SystemTime, UNIX_EPOCH};

@@ -21,6 +21,12 @@ fn nullary_section(spec: &str, rust_name: &str, title: &str, via: &'static str) 
     }
 }
 
+pub fn build_parse_int()   -> IRFunction { variadic_section("19.2.5", "parse_int",   "parseInt ( string, radix )",   "parse_int_via") }
+pub fn build_parse_float() -> IRFunction { variadic_section("19.2.4", "parse_float", "parseFloat ( string )",        "parse_float_via") }
+
+pub fn spec_steps_parse_int()   -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["parse_int_via"],   throws: None, prose: "Coerce string; honor optional sign; parse digits in radix (default 10); return NaN on no-digits." }] }
+pub fn spec_steps_parse_float() -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["parse_float_via"], throws: None, prose: "Coerce string; find longest valid numeric prefix (sign, digits, dot, exponent); parse as f64." }] }
+
 pub fn build_math_random()              -> IRFunction { nullary_section("21.3.2.27", "math_random",                        "Math.random ( )",                       "math_random_via") }
 pub fn build_date_get_timezone_offset() -> IRFunction { nullary_section("21.4.4.12", "date_prototype_get_timezone_offset", "Date.prototype.getTimezoneOffset ( )",  "date_proto_get_timezone_offset_via") }
 
