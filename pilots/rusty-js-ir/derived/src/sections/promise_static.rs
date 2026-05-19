@@ -67,6 +67,38 @@ pub fn build_reject() -> IRFunction {
     }
 }
 
+// ──────────────── Ω.5.P63.E52: Promise prototype + variadic statics ────────────────
+//
+// then / catch / finally / all / allSettled / any / race all reduce to a
+// 1-step CallBuiltin over Expr::AllArgs. The runtime helpers carry the
+// full PromiseStatus dispatch + reaction-queue plumbing; the IR is the
+// spec-traceable shim.
+
+fn variadic_section(spec: &str, rust_name: &str, title: &str, via: &'static str) -> IRFunction {
+    IRFunction {
+        spec_section: spec.into(), rust_name: rust_name.into(), title: title.into(),
+        body: vec![Step { spec_step: "1".into(), node: IRNode::Return(Expr::CallBuiltin {
+            name: via, args: vec![Expr::AllArgs],
+        })}],
+    }
+}
+
+pub fn build_then()         -> IRFunction { variadic_section("27.2.5.4", "promise_prototype_then",     "Promise.prototype.then ( onFulfilled, onRejected )", "promise_then_via") }
+pub fn build_catch()        -> IRFunction { variadic_section("27.2.5.1", "promise_prototype_catch",    "Promise.prototype.catch ( onRejected )",              "promise_catch_via") }
+pub fn build_finally()      -> IRFunction { variadic_section("27.2.5.3", "promise_prototype_finally",  "Promise.prototype.finally ( onFinally )",             "promise_finally_via") }
+pub fn build_all()          -> IRFunction { variadic_section("27.2.4.1", "promise_all",                "Promise.all ( iterable )",                            "promise_all_via") }
+pub fn build_all_settled()  -> IRFunction { variadic_section("27.2.4.2", "promise_all_settled",        "Promise.allSettled ( iterable )",                     "promise_all_settled_via") }
+pub fn build_any()          -> IRFunction { variadic_section("27.2.4.3", "promise_any",                "Promise.any ( iterable )",                            "promise_any_via") }
+pub fn build_race()         -> IRFunction { variadic_section("27.2.4.5", "promise_race",               "Promise.race ( iterable )",                           "promise_race_via") }
+
+pub fn spec_steps_then()        -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["promise_then_via"],        throws: None, prose: "Chain on a source Promise; queue or enqueue reactions based on settlement state." }] }
+pub fn spec_steps_catch()       -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["promise_catch_via"],       throws: None, prose: "Chain rejected-only handler; equivalent to then(undefined, onRejected)." }] }
+pub fn spec_steps_finally()     -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["promise_finally_via"],     throws: None, prose: "Run onFinally side-effect callback, then propagate source settlement to the chain." }] }
+pub fn spec_steps_all()         -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["promise_all_via"],         throws: None, prose: "Aggregate iterable to a single Promise resolved with the array of values, or rejected with the first rejection (v1 sync-only)." }] }
+pub fn spec_steps_all_settled() -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["promise_all_settled_via"], throws: None, prose: "Return a Promise resolved with {status, value/reason} entries per iteration item." }] }
+pub fn spec_steps_any()         -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["promise_any_via"],         throws: None, prose: "Resolve with the first fulfilled entry; reject with AggregateError if all rejected." }] }
+pub fn spec_steps_race()        -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["promise_race_via"],        throws: None, prose: "Settle with the first-settled entry of the iterable." }] }
+
 pub fn spec_steps_resolve() -> Vec<SpecStepRecord> {
     vec![
         SpecStepRecord {

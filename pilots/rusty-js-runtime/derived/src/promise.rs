@@ -69,76 +69,12 @@ impl Runtime {
         crate::intrinsics::register_intrinsic_method(self, promise_obj, "reject", 1, |rt, args| {
             crate::generated::promise_reject(rt, Value::Undefined, args)
         });
+        // Ω.5.P63.E52: Promise.then / catch_ routed through IR.
         crate::intrinsics::register_intrinsic_method(self, promise_obj, "then", 3, |rt, args| {
-            let source = match args.first() {
-                Some(Value::Object(id)) => *id,
-                _ => return Err(RuntimeError::TypeError("Promise.then: first arg must be a Promise".into())),
-            };
-            let on_fulfilled = args.get(1).cloned();
-            let on_rejected = args.get(2).cloned();
-            let chain = new_promise(rt);
-            let (status, value) = {
-                let s = rt.obj(source);
-                if let InternalKind::Promise(ps) = &s.internal_kind {
-                    (ps.status, ps.value.clone())
-                } else {
-                    return Err(RuntimeError::TypeError("Promise.then: first arg not a Promise object".into()));
-                }
-            };
-            match status {
-                PromiseStatus::Pending => {
-                    let src = rt.obj_mut(source);
-                    if let InternalKind::Promise(ps) = &mut src.internal_kind {
-                        ps.fulfill_reactions.push(PromiseReaction {
-                            handler: on_fulfilled.clone(),
-                            chain,
-                        });
-                        ps.reject_reactions.push(PromiseReaction {
-                            handler: on_rejected.clone(),
-                            chain,
-                        });
-                    }
-                }
-                PromiseStatus::Fulfilled => {
-                    enqueue_reaction(rt, on_fulfilled, value, chain, false);
-                }
-                PromiseStatus::Rejected => {
-                    rt.pending_unhandled.remove(&source);
-                    enqueue_reaction(rt, on_rejected, value, chain, true);
-                }
-            }
-            Ok(Value::Object(chain))
+            crate::generated::promise_prototype_then(rt, rt.current_this(), args)
         });
         crate::intrinsics::register_intrinsic_method(self, promise_obj, "catch_", 1, |rt, args| {
-            let source = match args.first() {
-                Some(Value::Object(id)) => *id,
-                _ => return Err(RuntimeError::TypeError("Promise.catch_: first arg must be a Promise".into())),
-            };
-            let on_rejected = args.get(1).cloned();
-            let chain = new_promise(rt);
-            let (status, value) = {
-                let s = rt.obj(source);
-                if let InternalKind::Promise(ps) = &s.internal_kind {
-                    (ps.status, ps.value.clone())
-                } else { return Err(RuntimeError::TypeError("not a Promise".into())); }
-            };
-            match status {
-                PromiseStatus::Pending => {
-                    let src = rt.obj_mut(source);
-                    if let InternalKind::Promise(ps) = &mut src.internal_kind {
-                        ps.fulfill_reactions.push(PromiseReaction { handler: None, chain });
-                        ps.reject_reactions.push(PromiseReaction { handler: on_rejected.clone(), chain });
-                    }
-                }
-                PromiseStatus::Fulfilled => {
-                    enqueue_reaction(rt, None, value, chain, false);
-                }
-                PromiseStatus::Rejected => {
-                    rt.pending_unhandled.remove(&source);
-                    enqueue_reaction(rt, on_rejected, value, chain, true);
-                }
-            }
-            Ok(Value::Object(chain))
+            crate::generated::promise_prototype_catch(rt, rt.current_this(), args)
         });
         // Ω.5.P61.E11: Promise.all / allSettled / any / race / withResolvers
         // per ECMA §27.2.4. v1 implementations leverage cruftless's
@@ -147,118 +83,18 @@ impl Runtime {
         // reject wrappers), the synchronous-iteration approximation closes
         // a large fraction of test262 cases without requiring full async
         // event-loop choreography.
+        // Ω.5.P63.E52: Promise.all / allSettled / any / race routed through IR.
         crate::intrinsics::register_intrinsic_method(self, promise_obj, "all", 1, |rt, args| {
-            let iter = args.first().cloned().unwrap_or(Value::Undefined);
-            let entries = crate::intrinsics::collect_iterable(rt, iter)?;
-            let result = rt.alloc_object(Object::new_array());
-            rt.object_set(result, "length".into(), Value::Number(entries.len() as f64));
-            let chain = new_promise(rt);
-            // Walk each entry; if any is rejected, reject chain; else
-            // collect resolved values.
-            let mut values: Vec<Value> = Vec::with_capacity(entries.len());
-            for v in entries {
-                let pv = match &v {
-                    Value::Object(id) => {
-                        if let InternalKind::Promise(ps) = &rt.obj(*id).internal_kind {
-                            match ps.status {
-                                PromiseStatus::Fulfilled => ps.value.clone(),
-                                PromiseStatus::Rejected => {
-                                    reject_promise(rt, chain, ps.value.clone());
-                                    return Ok(Value::Object(chain));
-                                }
-                                PromiseStatus::Pending => v.clone(), // approximation
-                            }
-                        } else { v.clone() }
-                    }
-                    _ => v.clone(),
-                };
-                values.push(pv);
-            }
-            for (i, val) in values.into_iter().enumerate() {
-                rt.object_set(result, i.to_string(), val);
-            }
-            resolve_promise(rt, chain, Value::Object(result));
-            Ok(Value::Object(chain))
+            crate::generated::promise_all(rt, rt.current_this(), args)
         });
         crate::intrinsics::register_intrinsic_method(self, promise_obj, "allSettled", 1, |rt, args| {
-            let iter = args.first().cloned().unwrap_or(Value::Undefined);
-            let entries = crate::intrinsics::collect_iterable(rt, iter)?;
-            let result = rt.alloc_object(Object::new_array());
-            for (i, v) in entries.iter().enumerate() {
-                let mut entry = Object::new_ordinary();
-                let (status, val_key, val) = match v {
-                    Value::Object(id) => {
-                        if let InternalKind::Promise(ps) = &rt.obj(*id).internal_kind {
-                            match ps.status {
-                                PromiseStatus::Fulfilled => ("fulfilled", "value", ps.value.clone()),
-                                PromiseStatus::Rejected => ("rejected", "reason", ps.value.clone()),
-                                PromiseStatus::Pending => ("fulfilled", "value", v.clone()),
-                            }
-                        } else { ("fulfilled", "value", v.clone()) }
-                    }
-                    _ => ("fulfilled", "value", v.clone()),
-                };
-                entry.set_own("status".into(), Value::String(Rc::new(status.into())));
-                entry.set_own(val_key.into(), val);
-                let eid = rt.alloc_object(entry);
-                rt.object_set(result, i.to_string(), Value::Object(eid));
-            }
-            rt.object_set(result, "length".into(), Value::Number(entries.len() as f64));
-            let chain = new_promise(rt);
-            resolve_promise(rt, chain, Value::Object(result));
-            Ok(Value::Object(chain))
+            crate::generated::promise_all_settled(rt, rt.current_this(), args)
         });
         crate::intrinsics::register_intrinsic_method(self, promise_obj, "any", 1, |rt, args| {
-            let iter = args.first().cloned().unwrap_or(Value::Undefined);
-            let entries = crate::intrinsics::collect_iterable(rt, iter)?;
-            let chain = new_promise(rt);
-            for v in &entries {
-                if let Value::Object(id) = v {
-                    if let InternalKind::Promise(ps) = &rt.obj(*id).internal_kind {
-                        if matches!(ps.status, PromiseStatus::Fulfilled) {
-                            resolve_promise(rt, chain, ps.value.clone());
-                            return Ok(Value::Object(chain));
-                        }
-                    }
-                }
-            }
-            // Either no fulfillment, or empty iterable. Reject with
-            // AggregateError-like placeholder.
-            let mut agg = Object::new_ordinary();
-            agg.set_own("name".into(), Value::String(Rc::new("AggregateError".into())));
-            agg.set_own("message".into(), Value::String(Rc::new("All promises were rejected".into())));
-            let aid = rt.alloc_object(agg);
-            reject_promise(rt, chain, Value::Object(aid));
-            Ok(Value::Object(chain))
+            crate::generated::promise_any(rt, rt.current_this(), args)
         });
         crate::intrinsics::register_intrinsic_method(self, promise_obj, "race", 1, |rt, args| {
-            let iter = args.first().cloned().unwrap_or(Value::Undefined);
-            let entries = crate::intrinsics::collect_iterable(rt, iter)?;
-            let chain = new_promise(rt);
-            for v in entries {
-                if let Value::Object(id) = &v {
-                    if let InternalKind::Promise(ps) = &rt.obj(*id).internal_kind {
-                        match ps.status {
-                            PromiseStatus::Fulfilled => {
-                                resolve_promise(rt, chain, ps.value.clone());
-                                return Ok(Value::Object(chain));
-                            }
-                            PromiseStatus::Rejected => {
-                                reject_promise(rt, chain, ps.value.clone());
-                                return Ok(Value::Object(chain));
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        resolve_promise(rt, chain, v.clone());
-                        return Ok(Value::Object(chain));
-                    }
-                } else {
-                    resolve_promise(rt, chain, v);
-                    return Ok(Value::Object(chain));
-                }
-            }
-            Ok(Value::Object(chain))
+            crate::generated::promise_race(rt, rt.current_this(), args)
         });
         crate::intrinsics::register_intrinsic_method(self, promise_obj, "withResolvers", 0, |rt, _args| {
             // ECMA §27.2.4.4: returns {promise, resolve, reject}.
@@ -288,42 +124,14 @@ impl Runtime {
             // Ω.5.P58.E7: Promise.prototype.constructor = Promise per ECMA §27.2.5.
             self.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(promise_obj));
             // Ω.5.P61.E11: Promise.prototype.finally per ECMA §27.2.5.3.
+            // Ω.5.P63.E52: Promise.prototype.finally routed through IR.
+            // The via-helper expects args[0]=source (current_this), args[1..]=user args;
+            // wire by prepending current_this then forwarding the user args.
             crate::intrinsics::register_intrinsic_method(self, proto, "finally", 1, |rt, args| {
-                let source = match rt.current_this() {
-                    Value::Object(id) => id,
-                    _ => return Err(RuntimeError::TypeError("Promise.prototype.finally: this is not a Promise".into())),
-                };
-                let cb = args.first().cloned();
-                let chain = new_promise(rt);
-                let (status, value) = {
-                    let s = rt.obj(source);
-                    if let InternalKind::Promise(ps) = &s.internal_kind {
-                        (ps.status, ps.value.clone())
-                    } else {
-                        return Err(RuntimeError::TypeError(
-                            "Promise.prototype.finally: this not a Promise".into()));
-                    }
-                };
-                // Run the finally callback (if callable), then propagate
-                // the source's settlement to the chain (cb's return value
-                // does NOT replace it per spec, unless cb throws).
-                if let Some(c) = &cb {
-                    if matches!(c, Value::Object(_)) {
-                        if let Err(e) = rt.call_function(c.clone(), Value::Undefined, Vec::new()) {
-                            if let RuntimeError::Thrown(v) = e {
-                                reject_promise(rt, chain, v);
-                                return Ok(Value::Object(chain));
-                            }
-                            return Err(e);
-                        }
-                    }
-                }
-                match status {
-                    PromiseStatus::Fulfilled => resolve_promise(rt, chain, value),
-                    PromiseStatus::Rejected => reject_promise(rt, chain, value),
-                    PromiseStatus::Pending => {}
-                }
-                Ok(Value::Object(chain))
+                let mut a: Vec<Value> = Vec::with_capacity(args.len() + 1);
+                a.push(rt.current_this());
+                a.extend(args.iter().cloned());
+                crate::generated::promise_prototype_finally(rt, rt.current_this(), &a)
             });
         }
         self.globals.insert("Promise".into(), Value::Object(promise_obj));
@@ -396,7 +204,7 @@ pub fn reject_promise(rt: &mut Runtime, promise: ObjectRef, reason: Value) {
     }
 }
 
-fn enqueue_reaction(
+pub(crate) fn enqueue_reaction(
     rt: &mut Runtime,
     handler: Option<Value>,
     value: Value,

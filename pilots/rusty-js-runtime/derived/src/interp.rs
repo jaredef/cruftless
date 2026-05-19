@@ -921,6 +921,246 @@ impl Runtime {
         Ok((this, storage))
     }
 
+    /// Promise.prototype.then(onFulfilled, onRejected) per ECMA §27.2.5.4.
+    /// First arg is the source Promise (passed by call site via Expr::This).
+    pub fn promise_then_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let source = match args.first() {
+            Some(Value::Object(id)) => *id,
+            _ => return Err(RuntimeError::TypeError(
+                "Promise.then: first arg must be a Promise".into())),
+        };
+        let on_fulfilled = args.get(1).cloned();
+        let on_rejected = args.get(2).cloned();
+        let chain = crate::promise::new_promise(self);
+        let (status, value) = {
+            let s = self.obj(source);
+            if let crate::value::InternalKind::Promise(ps) = &s.internal_kind {
+                (ps.status, ps.value.clone())
+            } else {
+                return Err(RuntimeError::TypeError(
+                    "Promise.then: first arg not a Promise object".into()));
+            }
+        };
+        match status {
+            crate::value::PromiseStatus::Pending => {
+                let src = self.obj_mut(source);
+                if let crate::value::InternalKind::Promise(ps) = &mut src.internal_kind {
+                    ps.fulfill_reactions.push(crate::value::PromiseReaction {
+                        handler: on_fulfilled.clone(),
+                        chain,
+                    });
+                    ps.reject_reactions.push(crate::value::PromiseReaction {
+                        handler: on_rejected.clone(),
+                        chain,
+                    });
+                }
+            }
+            crate::value::PromiseStatus::Fulfilled => {
+                crate::promise::enqueue_reaction(self, on_fulfilled, value, chain, false);
+            }
+            crate::value::PromiseStatus::Rejected => {
+                self.pending_unhandled.remove(&source);
+                crate::promise::enqueue_reaction(self, on_rejected, value, chain, true);
+            }
+        }
+        Ok(Value::Object(chain))
+    }
+
+    /// Promise.prototype.catch(onRejected) per ECMA §27.2.5.1.
+    pub fn promise_catch_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let source = match args.first() {
+            Some(Value::Object(id)) => *id,
+            _ => return Err(RuntimeError::TypeError(
+                "Promise.catch: first arg must be a Promise".into())),
+        };
+        let on_rejected = args.get(1).cloned();
+        let chain = crate::promise::new_promise(self);
+        let (status, value) = {
+            let s = self.obj(source);
+            if let crate::value::InternalKind::Promise(ps) = &s.internal_kind {
+                (ps.status, ps.value.clone())
+            } else {
+                return Err(RuntimeError::TypeError("not a Promise".into()));
+            }
+        };
+        match status {
+            crate::value::PromiseStatus::Pending => {
+                let src = self.obj_mut(source);
+                if let crate::value::InternalKind::Promise(ps) = &mut src.internal_kind {
+                    ps.fulfill_reactions.push(crate::value::PromiseReaction { handler: None, chain });
+                    ps.reject_reactions.push(crate::value::PromiseReaction { handler: on_rejected.clone(), chain });
+                }
+            }
+            crate::value::PromiseStatus::Fulfilled => {
+                crate::promise::enqueue_reaction(self, None, value, chain, false);
+            }
+            crate::value::PromiseStatus::Rejected => {
+                self.pending_unhandled.remove(&source);
+                crate::promise::enqueue_reaction(self, on_rejected, value, chain, true);
+            }
+        }
+        Ok(Value::Object(chain))
+    }
+
+    /// Promise.prototype.finally(onFinally) per ECMA §27.2.5.3.
+    /// args[0] = source Promise (current_this).
+    pub fn promise_finally_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let source = match args.first() {
+            Some(Value::Object(id)) => *id,
+            _ => return Err(RuntimeError::TypeError(
+                "Promise.prototype.finally: this is not a Promise".into())),
+        };
+        let cb = args.get(1).cloned();
+        let chain = crate::promise::new_promise(self);
+        let (status, value) = {
+            let s = self.obj(source);
+            if let crate::value::InternalKind::Promise(ps) = &s.internal_kind {
+                (ps.status, ps.value.clone())
+            } else {
+                return Err(RuntimeError::TypeError(
+                    "Promise.prototype.finally: this not a Promise".into()));
+            }
+        };
+        if let Some(c) = &cb {
+            if matches!(c, Value::Object(_)) {
+                if let Err(e) = self.call_function(c.clone(), Value::Undefined, Vec::new()) {
+                    if let RuntimeError::Thrown(v) = e {
+                        crate::promise::reject_promise(self, chain, v);
+                        return Ok(Value::Object(chain));
+                    }
+                    return Err(e);
+                }
+            }
+        }
+        match status {
+            crate::value::PromiseStatus::Fulfilled => crate::promise::resolve_promise(self, chain, value),
+            crate::value::PromiseStatus::Rejected => crate::promise::reject_promise(self, chain, value),
+            crate::value::PromiseStatus::Pending => {}
+        }
+        Ok(Value::Object(chain))
+    }
+
+    /// Promise.all(iterable) per ECMA §27.2.4.1 (v1: synchronously-settled approximation).
+    pub fn promise_all_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let iter = args.first().cloned().unwrap_or(Value::Undefined);
+        let entries = crate::intrinsics::collect_iterable(self, iter)?;
+        let result = self.alloc_object(crate::value::Object::new_array());
+        self.object_set(result, "length".into(), Value::Number(entries.len() as f64));
+        let chain = crate::promise::new_promise(self);
+        let mut values: Vec<Value> = Vec::with_capacity(entries.len());
+        for v in entries {
+            let pv = match &v {
+                Value::Object(id) => {
+                    if let crate::value::InternalKind::Promise(ps) = &self.obj(*id).internal_kind {
+                        match ps.status {
+                            crate::value::PromiseStatus::Fulfilled => ps.value.clone(),
+                            crate::value::PromiseStatus::Rejected => {
+                                let reason = ps.value.clone();
+                                crate::promise::reject_promise(self, chain, reason);
+                                return Ok(Value::Object(chain));
+                            }
+                            crate::value::PromiseStatus::Pending => v.clone(),
+                        }
+                    } else { v.clone() }
+                }
+                _ => v.clone(),
+            };
+            values.push(pv);
+        }
+        for (i, val) in values.into_iter().enumerate() {
+            self.object_set(result, i.to_string(), val);
+        }
+        crate::promise::resolve_promise(self, chain, Value::Object(result));
+        Ok(Value::Object(chain))
+    }
+
+    /// Promise.allSettled(iterable) per ECMA §27.2.4.2.
+    pub fn promise_all_settled_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let iter = args.first().cloned().unwrap_or(Value::Undefined);
+        let entries = crate::intrinsics::collect_iterable(self, iter)?;
+        let result = self.alloc_object(crate::value::Object::new_array());
+        for (i, v) in entries.iter().enumerate() {
+            let mut entry = crate::value::Object::new_ordinary();
+            let (status, val_key, val) = match v {
+                Value::Object(id) => {
+                    if let crate::value::InternalKind::Promise(ps) = &self.obj(*id).internal_kind {
+                        match ps.status {
+                            crate::value::PromiseStatus::Fulfilled => ("fulfilled", "value", ps.value.clone()),
+                            crate::value::PromiseStatus::Rejected => ("rejected", "reason", ps.value.clone()),
+                            crate::value::PromiseStatus::Pending => ("fulfilled", "value", v.clone()),
+                        }
+                    } else { ("fulfilled", "value", v.clone()) }
+                }
+                _ => ("fulfilled", "value", v.clone()),
+            };
+            entry.set_own("status".into(), Value::String(std::rc::Rc::new(status.into())));
+            entry.set_own(val_key.into(), val);
+            let eid = self.alloc_object(entry);
+            self.object_set(result, i.to_string(), Value::Object(eid));
+        }
+        self.object_set(result, "length".into(), Value::Number(entries.len() as f64));
+        let chain = crate::promise::new_promise(self);
+        crate::promise::resolve_promise(self, chain, Value::Object(result));
+        Ok(Value::Object(chain))
+    }
+
+    /// Promise.any(iterable) per ECMA §27.2.4.3.
+    pub fn promise_any_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let iter = args.first().cloned().unwrap_or(Value::Undefined);
+        let entries = crate::intrinsics::collect_iterable(self, iter)?;
+        let chain = crate::promise::new_promise(self);
+        for v in &entries {
+            if let Value::Object(id) = v {
+                if let crate::value::InternalKind::Promise(ps) = &self.obj(*id).internal_kind {
+                    if matches!(ps.status, crate::value::PromiseStatus::Fulfilled) {
+                        let pv = ps.value.clone();
+                        crate::promise::resolve_promise(self, chain, pv);
+                        return Ok(Value::Object(chain));
+                    }
+                }
+            }
+        }
+        let mut agg = crate::value::Object::new_ordinary();
+        agg.set_own("name".into(), Value::String(std::rc::Rc::new("AggregateError".into())));
+        agg.set_own("message".into(), Value::String(std::rc::Rc::new("All promises were rejected".into())));
+        let aid = self.alloc_object(agg);
+        crate::promise::reject_promise(self, chain, Value::Object(aid));
+        Ok(Value::Object(chain))
+    }
+
+    /// Promise.race(iterable) per ECMA §27.2.4.5.
+    pub fn promise_race_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let iter = args.first().cloned().unwrap_or(Value::Undefined);
+        let entries = crate::intrinsics::collect_iterable(self, iter)?;
+        let chain = crate::promise::new_promise(self);
+        for v in entries {
+            if let Value::Object(id) = &v {
+                if let crate::value::InternalKind::Promise(ps) = &self.obj(*id).internal_kind {
+                    match ps.status {
+                        crate::value::PromiseStatus::Fulfilled => {
+                            let pv = ps.value.clone();
+                            crate::promise::resolve_promise(self, chain, pv);
+                            return Ok(Value::Object(chain));
+                        }
+                        crate::value::PromiseStatus::Rejected => {
+                            let reason = ps.value.clone();
+                            crate::promise::reject_promise(self, chain, reason);
+                            return Ok(Value::Object(chain));
+                        }
+                        _ => {}
+                    }
+                } else {
+                    crate::promise::resolve_promise(self, chain, v.clone());
+                    return Ok(Value::Object(chain));
+                }
+            } else {
+                crate::promise::resolve_promise(self, chain, v);
+                return Ok(Value::Object(chain));
+            }
+        }
+        Ok(Value::Object(chain))
+    }
+
     /// Map.prototype.get(key).
     pub fn map_proto_get_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let (_this, storage) = self.map_this_and_storage("get")?;
