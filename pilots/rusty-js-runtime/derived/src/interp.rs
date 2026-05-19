@@ -1526,10 +1526,21 @@ impl Runtime {
                                     self.obj_mut(target).properties.shift_remove(&key).is_some()
                                 }
                             } else {
-                            // Per §10.1.10 [[Delete]] returns false for
-                            // non-configurable own properties. v1: always
-                            // remove and return true.
-                            self.obj_mut(id).properties.shift_remove(&key).is_some()
+                                // Ω.5.P62.E10: ECMA §10.1.10 OrdinaryDelete —
+                                // own data property with configurable:false is
+                                // not deletable. Return false (sloppy mode);
+                                // strict mode throws but cruftless's strict
+                                // tracking is incomplete (parity with sloppy
+                                // delete semantics in P61.E3).
+                                if let Some(d) = self.obj(id).properties.get(&key) {
+                                    if !d.configurable {
+                                        false
+                                    } else {
+                                        self.obj_mut(id).properties.shift_remove(&key).is_some()
+                                    }
+                                } else {
+                                    true
+                                }
                             }
                         }
                         _ => false,
@@ -1560,7 +1571,11 @@ impl Runtime {
                                     self.obj_mut(target).properties.shift_remove(&key).is_some()
                                 }
                             } else {
-                            self.obj_mut(id).properties.shift_remove(&key).is_some()
+                                // Ω.5.P62.E10: §10.1.10 non-configurable guard.
+                                if let Some(d) = self.obj(id).properties.get(&key) {
+                                    if !d.configurable { false }
+                                    else { self.obj_mut(id).properties.shift_remove(&key).is_some() }
+                                } else { true }
                             }
                         }
                         _ => false,
