@@ -1150,32 +1150,9 @@ impl Runtime {
             return Err(RuntimeError::TypeError(format!(
                 "Cannot add property '{}': object is not extensible", key)));
         }
-        // §10.4.2.1 Array exotic [[DefineOwnProperty]] for length: length
-        // is non-configurable, non-enumerable. Reject attempts to change
-        // those attrs. The lazy-storage of Array length means the
-        // exists-with-current-flags check below would miss this.
+        // §10.4.2.1 ArraySetLength for Array exotic length redefinition.
         if key == "length" && matches!(self.obj(target).internal_kind, crate::value::InternalKind::Array) {
-            // Reject configurable: true (length is non-configurable).
-            if self.has_property(desc_id, "configurable") {
-                let v = self.read_property(desc_id, "configurable")?;
-                if crate::abstract_ops::to_boolean(&v) {
-                    return Err(RuntimeError::TypeError(
-                        "Cannot redefine Array length: configurable is false".into()));
-                }
-            }
-            // Reject enumerable: true (length is non-enumerable).
-            if self.has_property(desc_id, "enumerable") {
-                let v = self.read_property(desc_id, "enumerable")?;
-                if crate::abstract_ops::to_boolean(&v) {
-                    return Err(RuntimeError::TypeError(
-                        "Cannot redefine Array length: enumerable is false".into()));
-                }
-            }
-            // Reject get/set on length (must remain data property).
-            if self.has_property(desc_id, "get") || self.has_property(desc_id, "set") {
-                return Err(RuntimeError::TypeError(
-                    "Cannot redefine Array length as accessor".into()));
-            }
+            return self.array_set_length_via(target, desc_id);
         }
         // §6.2.5.5 ToPropertyDescriptor: HasProperty + Get dispatch through
         // the prototype chain (test262 15.2.3.6-3-129 et al. inherit descriptor
@@ -1335,6 +1312,123 @@ impl Runtime {
                 getter: None, setter: None,
             });
         }
+        Ok(Value::Object(target))
+    }
+
+    /// §10.4.2.1 ArraySetLength — the Array exotic [[DefineOwnProperty]]
+    /// dispatch for the "length" property. Handles ToUint32 validation,
+    /// non-writable length, configurable/enumerable rejection, and
+    /// truncation of trailing indexed elements when length is reduced.
+    pub fn array_set_length_via(&mut self, target: crate::value::ObjectRef, desc_id: crate::value::ObjectRef) -> Result<Value, RuntimeError> {
+        // Reject configurable: true (Array length is non-configurable).
+        if self.has_property(desc_id, "configurable") {
+            let v = self.read_property(desc_id, "configurable")?;
+            if crate::abstract_ops::to_boolean(&v) {
+                return Err(RuntimeError::TypeError(
+                    "Cannot redefine Array length: configurable is false".into()));
+            }
+        }
+        // Reject enumerable: true (Array length is non-enumerable).
+        if self.has_property(desc_id, "enumerable") {
+            let v = self.read_property(desc_id, "enumerable")?;
+            if crate::abstract_ops::to_boolean(&v) {
+                return Err(RuntimeError::TypeError(
+                    "Cannot redefine Array length: enumerable is false".into()));
+            }
+        }
+        // Reject get/set on length (must remain data property).
+        if self.has_property(desc_id, "get") || self.has_property(desc_id, "set") {
+            return Err(RuntimeError::TypeError(
+                "Cannot redefine Array length as accessor".into()));
+        }
+        let has_value = self.has_property(desc_id, "value");
+        let has_writable = self.has_property(desc_id, "writable");
+        // Current state of length on target.
+        let old_len = self.try_array_length(target)? as f64;
+        let cur_writable = match self.obj(target).get_own("length") {
+            Some(d) => d.writable,
+            None => true,  // Default for synthesized length.
+        };
+        // §10.4.2.1 step 1: if Desc lacks [[Value]], degenerate path.
+        if !has_value {
+            // Only writable can change. If writable provided, apply it.
+            if has_writable {
+                let v = self.read_property(desc_id, "writable")?;
+                let new_w = crate::abstract_ops::to_boolean(&v);
+                // Non-writable → writable promotion is disallowed if
+                // length is non-configurable (which it always is).
+                if !cur_writable && new_w {
+                    return Err(RuntimeError::TypeError(
+                        "Cannot promote Array length to writable".into()));
+                }
+                self.obj_mut(target).properties.insert(
+                    crate::value::PropertyKey::String("length".into()),
+                    crate::value::PropertyDescriptor {
+                        value: Value::Number(old_len),
+                        writable: new_w,
+                        enumerable: false, configurable: false,
+                        getter: None, setter: None,
+                    });
+            }
+            return Ok(Value::Object(target));
+        }
+        // §10.4.2.1 steps 3-5: validate new length via ToUint32 vs ToNumber.
+        let raw_v = self.read_property(desc_id, "value")?;
+        let num_len = self.coerce_to_number(&raw_v)?;
+        let new_len_u32 = if num_len.is_nan() { 0_u32 }
+                          else if num_len < 0.0 || num_len > u32::MAX as f64 {
+                              return Err(RuntimeError::RangeError(
+                                  "Invalid Array length".into()));
+                          }
+                          else { num_len as u32 };
+        if (new_len_u32 as f64) != num_len {
+            return Err(RuntimeError::RangeError(
+                "Invalid Array length".into()));
+        }
+        let new_len = new_len_u32 as f64;
+        // §10.4.2.1 step 10: if old length is non-writable, reject.
+        if !cur_writable && new_len != old_len {
+            return Err(RuntimeError::TypeError(
+                "Cannot change non-writable Array length".into()));
+        }
+        // §10.4.2.1 step 11: compute new writable to apply.
+        let new_writable = if has_writable {
+            crate::abstract_ops::to_boolean(&self.read_property(desc_id, "writable")?)
+        } else { cur_writable };
+        // §10.4.2.1 step 12-14: shrink elements above new_len.
+        if new_len < old_len {
+            for idx in (new_len_u32..(old_len as u32)).rev() {
+                let k = idx.to_string();
+                // Only delete if the property is configurable (or absent).
+                let configurable = self.obj(target).get_own(&k)
+                    .map(|d| d.configurable).unwrap_or(true);
+                if configurable {
+                    self.obj_mut(target).remove_str(&k);
+                } else {
+                    // Per spec step 13.b.iii: set length to idx+1 and throw.
+                    let stuck_len = (idx + 1) as f64;
+                    self.obj_mut(target).properties.insert(
+                        crate::value::PropertyKey::String("length".into()),
+                        crate::value::PropertyDescriptor {
+                            value: Value::Number(stuck_len),
+                            writable: new_writable,
+                            enumerable: false, configurable: false,
+                            getter: None, setter: None,
+                        });
+                    return Err(RuntimeError::TypeError(format!(
+                        "Cannot truncate Array: index {} is non-configurable", idx)));
+                }
+            }
+        }
+        // §10.4.2.1 step 15: install final length.
+        self.obj_mut(target).properties.insert(
+            crate::value::PropertyKey::String("length".into()),
+            crate::value::PropertyDescriptor {
+                value: Value::Number(new_len),
+                writable: new_writable,
+                enumerable: false, configurable: false,
+                getter: None, setter: None,
+            });
         Ok(Value::Object(target))
     }
 
