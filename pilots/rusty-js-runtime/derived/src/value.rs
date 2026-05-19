@@ -236,6 +236,12 @@ impl Object {
     }
 
     pub fn new_array() -> Self {
+        // §10.4.2 Array exotic: length is non-configurable, non-enumerable.
+        // cruftless v1 lazily synthesizes the descriptor in object_get +
+        // object_get_own_property_descriptor_via (where the Array.length
+        // value is derived from max numeric index when not explicitly set).
+        // Pre-installing length here would defeat the derive-from-indices
+        // path used by object_get when length is absent from properties.
         Self {
             proto: None,
             extensible: true,
@@ -300,7 +306,17 @@ impl Object {
     /// OrdinaryDefineOwnProperty per §10.1.6.1 (simplified — full
     /// invariants check lands with intrinsics).
     pub fn set_own(&mut self, key: String, value: Value) {
-        self.properties.insert(PropertyKey::String(key), PropertyDescriptor {
+        // §10.1.9 OrdinarySet: when the property already exists, only
+        // update [[Value]] — preserve writable/enumerable/configurable/
+        // getter/setter. This matters for Array.length (non-configurable),
+        // function .name/.length (non-writable, non-enumerable), and
+        // any other property whose descriptor was set deliberately.
+        let pk = PropertyKey::String(key);
+        if let Some(d) = self.properties.get_mut(&pk) {
+            d.value = value;
+            return;
+        }
+        self.properties.insert(pk, PropertyDescriptor {
             value,
             writable: true,
             enumerable: true,

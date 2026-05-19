@@ -170,9 +170,12 @@ fn emit_expr(e: &Expr) -> String {
             for c in captures {
                 s.push_str(&format!("            let {} = {}.clone();\n", c, c));
             }
+            // §10.2.10 — function .length matches the declared parameter
+            // count. Use make_native_with_length so the IR-derived closure
+            // exposes the correct .length to test262 probes.
             s.push_str(&format!(
-                "            let __native = crate::intrinsics::make_native(\"{}\",\n",
-                label));
+                "            let __native = crate::intrinsics::make_native_with_length(\"{}\", {},\n",
+                label, params.len()));
             s.push_str("                move |rt, args| {\n");
             // Param bindings — each closure param reads from args[i].
             for (i, p) in params.iter().enumerate() {

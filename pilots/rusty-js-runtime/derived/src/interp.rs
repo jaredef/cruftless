@@ -1150,6 +1150,33 @@ impl Runtime {
             return Err(RuntimeError::TypeError(format!(
                 "Cannot add property '{}': object is not extensible", key)));
         }
+        // §10.4.2.1 Array exotic [[DefineOwnProperty]] for length: length
+        // is non-configurable, non-enumerable. Reject attempts to change
+        // those attrs. The lazy-storage of Array length means the
+        // exists-with-current-flags check below would miss this.
+        if key == "length" && matches!(self.obj(target).internal_kind, crate::value::InternalKind::Array) {
+            // Reject configurable: true (length is non-configurable).
+            if self.has_property(desc_id, "configurable") {
+                let v = self.read_property(desc_id, "configurable")?;
+                if crate::abstract_ops::to_boolean(&v) {
+                    return Err(RuntimeError::TypeError(
+                        "Cannot redefine Array length: configurable is false".into()));
+                }
+            }
+            // Reject enumerable: true (length is non-enumerable).
+            if self.has_property(desc_id, "enumerable") {
+                let v = self.read_property(desc_id, "enumerable")?;
+                if crate::abstract_ops::to_boolean(&v) {
+                    return Err(RuntimeError::TypeError(
+                        "Cannot redefine Array length: enumerable is false".into()));
+                }
+            }
+            // Reject get/set on length (must remain data property).
+            if self.has_property(desc_id, "get") || self.has_property(desc_id, "set") {
+                return Err(RuntimeError::TypeError(
+                    "Cannot redefine Array length as accessor".into()));
+            }
+        }
         // §6.2.5.5 ToPropertyDescriptor: HasProperty + Get dispatch through
         // the prototype chain (test262 15.2.3.6-3-129 et al. inherit descriptor
         // attrs through proto). Previously used has_own_str + object_get.
@@ -1350,7 +1377,15 @@ impl Runtime {
             _ => return Ok(Value::Undefined),
         };
         let key = self.coerce_to_string(key_v)?;
-        let (has, value, writable, enumerable, configurable, getter, setter) = {
+        // §10.4.2 Array exotic: length is always an own property with
+        // writable:true, enumerable:false, configurable:false. cruftless
+        // stores it lazily, but the descriptor shape is fixed.
+        let is_array_length = key == "length"
+            && matches!(self.obj(id).internal_kind, crate::value::InternalKind::Array);
+        let (has, value, writable, enumerable, configurable, getter, setter) = if is_array_length {
+            let len_v = self.object_get(id, "length");
+            (true, len_v, true, false, false, None, None)
+        } else {
             let o = self.obj(id);
             match o.get_own(&key) {
                 Some(d) => (true, d.value.clone(), d.writable, d.enumerable, d.configurable, d.getter.clone(), d.setter.clone()),
