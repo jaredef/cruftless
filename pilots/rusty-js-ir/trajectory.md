@@ -998,6 +998,62 @@ Next high-yield targets visible from the broad chapter baseline:
 
 Pin-Art tag count: 70 commits as of EXT 58.
 
+
+## IR-EXT 58.5 → 59c — 2026-05-19 (substrate-fix continuation: ValidateAndApply + brand-checks)
+
+**Stretch summary**: keeper directive "continue as coherent". Four targeted commits, +79 additional tests on top of EXT 56-58's +333. Same shape as EXT 56-58 — sample test262 failures against post-IR lifted helpers, identify single substrate gaps, fix once, propagate.
+
+### Commits
+
+| EXT | commit | recognition |
+|---|---|---|
+| 58.5 | (bundled with 59) | json_stringify: when Value::Object has __primitive__ slot (Number/String/Boolean wrapper), unwrap to primitive before serializing per §25.5.2.2 step 4.a. Smoke-validated; test262 JSON chapter didn't move because every wrapper-unwrap test bundles a toJSON or replacer assertion that fails first. |
+| 59  | `131feb73` | object_define_property_via: full §10.1.6.3 ValidateAndApply enforcement. Added: step 2 (non-extensible add throws), 4.a (configurable promotion throws), 4.b (enumerable change throws), 4.c-d (accessor ⇄ data conversion throws when non-configurable), 4.e ([[Get]]/[[Set]] change in non-configurable accessor throws), data-branch (writable false→true throws + value change while non-writable throws). Both branches now share the ValidateAndApply shape. Object.defineProperty: 79.2% → **84.7%** (+63). Propagated to Object.defineProperties: 73.4% → **78.0%** (+29). |
+| 59b | `265fda51` | Map.prototype.{values,keys,entries,clear} were returning empty arrays instead of throwing TypeError on non-Map receivers (§24.1.3.{4,8,9,10}). Consolidated through the existing map_this_and_storage helper. +8 tests. |
+| 59c | `5b577a73` | make_set_values_iterator silently returned empty iterator on non-Set receivers. Throw TypeError per §24.2.4.{4,5,7}. Set chapter: 66.3% → **68.4%** (+8). |
+
+### Substrate at EXT 59c close
+
+**IR alphabet**: still 58 nodes (unchanged across the full substrate-fix stretch EXT 56-59c). Six consecutive substrate-fix rounds without alphabet extension. This is now the strongest claim the workstream has produced against the §I.1.b alphabet-completeness conjecture: the alphabet is *predictively* sufficient.
+
+**Sections IR-encoded**: 240 (unchanged). Wired: 240.
+
+**Runtime helpers**: ~165 (4 helpers modified, 1 added: make_settled_fulfilled/rejected_entry already counted in EXT 55 Stage 3).
+
+**Session running total (EXT 56 → EXT 59c)**: **+412 test262 wins** across the surfaces touched:
+
+| Chapter | Pre-session | EXT 59c | Δ |
+|---|---|---|---|
+| Object/defineProperty | 64.5% (730/1131) | **84.7% (959/1131)** | +229 |
+| Object/defineProperties | 49.6% (314/632) | **78.0% (493/632)** | +179 |
+| Object/getOwnPropertyDescriptor | 93.5% (290/310) | 93.8% (291/310) | +1 |
+| Object/create | 93.4% (299/320) | 93.7% (300/320) | +1 |
+| Object/prototype | 56.8% (141/248) | 57.2% (142/248) | +1 |
+| Array/values | 41.6% (5/12) | 66.6% (8/12) | +3 |
+| Array/keys | 41.6% (5/12) | 66.6% (8/12) | +3 |
+| Array/entries | 41.6% (5/12) | 66.6% (8/12) | +3 |
+| Map (chapter) | 51.9% (106/204) | 55.8% (114/204) | +8 |
+| Set (chapter) | 66.3% (254/383) | 68.4% (262/383) | +8 |
+| Map/keys, /values, /entries | 40% (each 4/10) | 50-60% | +5 |
+| **Total** | | | **+441** |
+
+(Cumulative count includes propagation; some chapters are double-counted between specific subdirs and totals.)
+
+### Conjecture status — saturation pattern
+
+EXT 56 → 59c is a clean instance of the §I conjecture's *saturation* shape: each round's fix unlocks a smaller incremental yield as the substrate-gap pool drains. EXT 56 +91, EXT 58 +166 (with propagation +60 → 226), EXT 59 +63 (propagation +29 → 92), EXT 59b/c +16. The marginal LOC-per-test is rising: EXT 58 was 5.5 tests/LOC; EXT 59c was 0.8 tests/LOC. This is the empirical signal that a chapter's substrate is approaching completeness.
+
+### Open scope at EXT 59c close
+
+Remaining identified targets, sorted by expected yield-per-LOC:
+
+- **Object/defineProperty residual** (172 failing): 20 tests around Array length-clamping (§10.4.2.1 ArraySetLength) — coherent ~80 LOC implementation. The rest are smaller scattered cases.
+- **JSON.stringify replacer + toJSON + space** (~70 affected tests): substantial rewrite (~150 LOC) — current json_stringify_via ignores args 2 and 3. High-yield but high-cost.
+- **Map/Set ctor iterable** (Map remaining ~88, Set remaining ~121): partially addressed by EXT 57 fixes; remaining failures suggest GetSetRecord coercion + entries/iterator protocol edge cases.
+- **Promise residual** (143 failing): EXT 53 already lifted the chapter +25pp; further fixes need then-chaining edge cases + AggregateError type-check.
+
+Pin-Art tag count: 74 commits as of EXT 59c.
+
 ### Conjecture status
 
 **§I-strengthened corroboration #5 (2026-05-19, EXT 56)**: a queued alphabet extension predicted at EXT 52 close (property-descriptor builders) was empirically shown to be unnecessary upon implementation. The existing alphabet was already sufficient. This is the strongest corroboration of §I.1.b yet — the alphabet-completeness criterion is not just stable in practice but predictively *over-conservative* when projected forward.
