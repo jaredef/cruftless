@@ -24,6 +24,30 @@ fn nullary_section(spec: &str, rust_name: &str, title: &str, via: &'static str) 
     }
 }
 
+pub fn build_slice()        -> IRFunction { variadic_section("23.1.3.28", "array_prototype_slice",         "Array.prototype.slice ( start, end )",                              "array_proto_slice_via") }
+pub fn build_splice()       -> IRFunction { variadic_section("23.1.3.31", "array_prototype_splice",        "Array.prototype.splice ( start, deleteCount, ...items )",            "array_proto_splice_via") }
+pub fn build_concat()       -> IRFunction { variadic_section("23.1.3.2",  "array_prototype_concat",        "Array.prototype.concat ( ...items )",                                "array_proto_concat_via") }
+pub fn build_join()         -> IRFunction { variadic_section("23.1.3.15", "array_prototype_join",          "Array.prototype.join ( separator )",                                 "array_proto_join_via") }
+pub fn build_at()           -> IRFunction { variadic_section("23.1.3.1",  "array_prototype_at",            "Array.prototype.at ( index )",                                       "array_proto_at_via") }
+pub fn build_fill()         -> IRFunction { variadic_section("23.1.3.7",  "array_prototype_fill",          "Array.prototype.fill ( value, start, end )",                         "array_proto_fill_via") }
+pub fn build_last_index_of()-> IRFunction { variadic_section("23.1.3.18", "array_prototype_last_index_of", "Array.prototype.lastIndexOf ( searchElement, fromIndex )",           "array_proto_last_index_of_via") }
+pub fn build_reduce_right() -> IRFunction { variadic_section("23.1.3.25", "array_prototype_reduce_right",  "Array.prototype.reduceRight ( callbackfn, initialValue )",           "array_proto_reduce_right_via") }
+pub fn build_copy_within()  -> IRFunction { variadic_section("23.1.3.4",  "array_prototype_copy_within",   "Array.prototype.copyWithin ( target, start, end )",                  "array_proto_copy_within_via") }
+pub fn build_flat()         -> IRFunction { variadic_section("23.1.3.10", "array_prototype_flat",          "Array.prototype.flat ( depth )",                                     "array_proto_flat_via") }
+pub fn build_flat_map()     -> IRFunction { variadic_section("23.1.3.11", "array_prototype_flat_map",      "Array.prototype.flatMap ( callback, thisArg )",                      "array_proto_flat_map_via") }
+
+pub fn spec_steps_slice()         -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["array_proto_slice_via"],         throws: None, prose: "Return a new array containing the elements from clamped start to clamped end." }] }
+pub fn spec_steps_splice()        -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["array_proto_splice_via"],        throws: None, prose: "Remove deleteCount elements starting at start; insert items; return removed elements." }] }
+pub fn spec_steps_concat()        -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["array_proto_concat_via"],        throws: None, prose: "Return a new array with this + each arg, spreading per IsConcatSpreadable." }] }
+pub fn spec_steps_join()          -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["array_proto_join_via"],          throws: None, prose: "Coerce each element to string (treating null/undefined as empty) and join with separator." }] }
+pub fn spec_steps_at()            -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["array_proto_at_via"],            throws: None, prose: "Return the element at the relative index (negative counts from end), or undefined." }] }
+pub fn spec_steps_fill()          -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["array_proto_fill_via"],          throws: None, prose: "Fill indices [start, end) with value; clamp negative indices; return this." }] }
+pub fn spec_steps_last_index_of() -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["array_proto_last_index_of_via"], throws: None, prose: "Search backward from fromIndex; return the last index whose element strictly-equals searchElement, or -1." }] }
+pub fn spec_steps_reduce_right()  -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["array_proto_reduce_right_via"], throws: None, prose: "Fold callback right-to-left over the array-like; seed from initialValue or last present element." }] }
+pub fn spec_steps_copy_within()   -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["array_proto_copy_within_via"],  throws: None, prose: "Copy a slice within the array-like, handling overlap via read-then-write buffer." }] }
+pub fn spec_steps_flat()          -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["array_proto_flat_via"],          throws: None, prose: "Return a new array with nested arrays flattened up to depth (default 1)." }] }
+pub fn spec_steps_flat_map()      -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["array_proto_flat_map_via"],      throws: None, prose: "Map then flatten by one level; non-array results are appended as-is." }] }
+
 pub fn build_push()    -> IRFunction { variadic_section("23.1.3.20", "array_prototype_push",    "Array.prototype.push ( ...items )",    "array_proto_push_via") }
 pub fn build_pop()     -> IRFunction { nullary_section ("23.1.3.19", "array_prototype_pop",     "Array.prototype.pop ( )",              "array_proto_pop_via") }
 pub fn build_shift()   -> IRFunction { nullary_section ("23.1.3.26", "array_prototype_shift",   "Array.prototype.shift ( )",            "array_proto_shift_via") }

@@ -244,242 +244,34 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     register_intrinsic_method(rt, host, "reverse", 0, |rt, args| {
         crate::generated::array_prototype_reverse(rt, rt.current_this(), args)
     });
+    // E32: slice/splice/concat/join/at/fill/lastIndexOf/reduceRight/copyWithin/flat/flatMap routed through IR.
     register_intrinsic_method(rt, host, "slice", 2, |rt, args| {
-        let id = to_array_this(rt)?;
-        let len = rt.array_length(id) as i64;
-        let start_arg = match args.first().cloned() {
-            Some(Value::Undefined) | None => 0,
-            Some(v) => rt.coerce_to_number(&v)? as i64,
-        };
-        let end_arg = match args.get(1).cloned() {
-            Some(Value::Undefined) | None => len,
-            Some(v) => rt.coerce_to_number(&v)? as i64,
-        };
-        let start = clamp_index(start_arg, len);
-        let end = clamp_index(end_arg, len);
-        let out = rt.alloc_object(Object::new_array());
-        let mut j: i64 = 0;
-        let mut i = start;
-        while i < end {
-            let v = rt.object_get(id, &i.to_string());
-            rt.object_set(out, j.to_string(), v);
-            j += 1;
-            i += 1;
-        }
-        rt.object_set(out, "length".into(), Value::Number(j as f64));
-        Ok(Value::Object(out))
+        crate::generated::array_prototype_slice(rt, rt.current_this(), args)
     });
     // Tier-Ω.5.xxx: Array.prototype.splice per ECMA-262 §23.1.3.31.
     // Removes deleteCount elements starting at start, optionally
     // inserting items in their place. Returns the removed elements.
     // object-hash uses splice on its internal stream buffer.
     register_intrinsic_method(rt, host, "splice", 2, |rt, args| {
-        let id = to_array_this(rt)?;
-        let len = rt.array_length(id) as i64;
-        let start_arg = match args.first().cloned() {
-            Some(Value::Undefined) | None => 0,
-            Some(v) => rt.coerce_to_number(&v)? as i64,
-        };
-        let start = clamp_index(start_arg, len);
-        let delete_count = match args.get(1).cloned() {
-            Some(Value::Undefined) | None => len - start,
-            Some(v) => (rt.coerce_to_number(&v)? as i64).max(0).min(len - start),
-        };
-        let items: Vec<Value> = args.iter().skip(2).cloned().collect();
-        // Collect removed slice into a new array.
-        let removed = rt.alloc_object(Object::new_array());
-        for j in 0..delete_count {
-            let v = rt.object_get(id, &(start + j).to_string());
-            rt.object_set(removed, j.to_string(), v);
-        }
-        rt.object_set(removed, "length".into(), Value::Number(delete_count as f64));
-        // Shift tail by (items.len() - delete_count).
-        let new_len = len - delete_count + items.len() as i64;
-        let shift = items.len() as i64 - delete_count;
-        if shift > 0 {
-            // Move tail right (iterate from end).
-            let mut i = len - 1;
-            while i >= start + delete_count {
-                let v = rt.object_get(id, &i.to_string());
-                rt.object_set(id, (i + shift).to_string(), v);
-                i -= 1;
-            }
-        } else if shift < 0 {
-            // Move tail left.
-            let mut i = start + delete_count;
-            while i < len {
-                let v = rt.object_get(id, &i.to_string());
-                rt.object_set(id, (i + shift).to_string(), v);
-                i += 1;
-            }
-            // Remove trailing slots.
-            for i in new_len..len {
-                rt.obj_mut(id).properties.shift_remove(&i.to_string());
-            }
-        }
-        // Insert items.
-        for (k, v) in items.into_iter().enumerate() {
-            rt.object_set(id, (start + k as i64).to_string(), v);
-        }
-        rt.object_set(id, "length".into(), Value::Number(new_len as f64));
-        Ok(Value::Object(removed))
+        crate::generated::array_prototype_splice(rt, rt.current_this(), args)
     });
     register_intrinsic_method(rt, host, "concat", 1, |rt, args| {
-        // Ω.5.P62.E16: concat per ECMA §23.1.3.2 — intentionally generic.
-        // IsConcatSpreadable per §23.1.3.2.1: check @@isConcatSpreadable;
-        // if undefined, fall back to IsArray(E). Otherwise it's a single
-        // element (including plain Object receivers).
-        let this = rt.current_this();
-        rt.require_object_coercible(&this)?;
-        let out = rt.alloc_object(Object::new_array());
-        let mut j = 0usize;
-        // Collect this + args.
-        let mut items: Vec<Value> = Vec::with_capacity(args.len() + 1);
-        items.push(this);
-        items.extend(args.iter().cloned());
-        for e in items {
-            let spreadable = match &e {
-                Value::Object(eid) => {
-                    let flag = rt.read_property(*eid, "@@isConcatSpreadable")?;
-                    match flag {
-                        Value::Undefined => matches!(
-                            rt.obj(*eid).internal_kind, InternalKind::Array),
-                        v => crate::abstract_ops::to_boolean(&v),
-                    }
-                }
-                _ => false,
-            };
-            if spreadable {
-                if let Value::Object(eid) = e {
-                    let el = rt.array_length(eid);
-                    for i in 0..el {
-                        let key = i.to_string();
-                        if rt.has_property(eid, &key) {
-                            let v = rt.read_property(eid, &key)?;
-                            rt.object_set(out, j.to_string(), v);
-                        }
-                        j += 1;
-                    }
-                }
-            } else {
-                rt.object_set(out, j.to_string(), e);
-                j += 1;
-            }
-        }
-        rt.object_set(out, "length".into(), Value::Number(j as f64));
-        Ok(Value::Object(out))
+        crate::generated::array_prototype_concat(rt, rt.current_this(), args)
     });
     register_intrinsic_method(rt, host, "join", 1, |rt, args| {
-        let id = to_array_this(rt)?;
-        let sep = match args.first() {
-            Some(Value::Undefined) | None => ",".to_string(),
-            Some(v) => abstract_ops::to_string(v).as_str().to_string(),
-        };
-        let len = rt.array_length(id);
-        let mut parts = Vec::with_capacity(len);
-        for i in 0..len {
-            let v = rt.object_get(id, &i.to_string());
-            let s = match v {
-                Value::Undefined | Value::Null => String::new(),
-                other => abstract_ops::to_string(&other).as_str().to_string(),
-            };
-            parts.push(s);
-        }
-        Ok(Value::String(Rc::new(parts.join(&sep))))
+        crate::generated::array_prototype_join(rt, rt.current_this(), args)
     });
     register_intrinsic_method(rt, host, "at", 1, |rt, args| {
-        let id = to_array_this(rt)?;
-        let len = rt.array_length(id) as i64;
-        let i = args.first().map(abstract_ops::to_number).unwrap_or(0.0) as i64;
-        let idx = if i < 0 { len + i } else { i };
-        if idx < 0 || idx >= len { return Ok(Value::Undefined); }
-        Ok(rt.object_get(id, &idx.to_string()))
+        crate::generated::array_prototype_at(rt, rt.current_this(), args)
     });
-    // Tier-Ω.5.DDDDDDD: Array.prototype.fill per ECMA §23.1.3.7. Receiver
-    // is this; fills positions [start, end) with the value. lru-cache's
-    // ZeroArray ctor does `super(size); this.fill(0)` to zero-initialize.
     register_intrinsic_method(rt, host, "fill", 1, |rt, args| {
-        // Ω.5.P62.E17: coerce_to_number on start/end so Symbol→TypeError
-        // and abrupt valueOf/toString propagates per §23.1.3.7 steps 5/9.
-        let id = to_array_this(rt)?;
-        let value = args.first().cloned().unwrap_or(Value::Undefined);
-        let len = rt.array_length(id);
-        let start = match args.get(1).cloned() {
-            Some(Value::Undefined) | None => 0,
-            Some(v) => {
-                let n = rt.coerce_to_number(&v)? as i64;
-                if n < 0 { (len as i64 + n).max(0) as usize } else { (n as usize).min(len) }
-            }
-        };
-        let end = match args.get(2).cloned() {
-            Some(Value::Undefined) | None => len,
-            Some(v) => {
-                let n = rt.coerce_to_number(&v)? as i64;
-                if n < 0 { (len as i64 + n).max(0) as usize } else { (n as usize).min(len) }
-            }
-        };
-        for i in start..end {
-            rt.object_set(id, i.to_string(), value.clone());
-        }
-        Ok(Value::Object(id))
+        crate::generated::array_prototype_fill(rt, rt.current_this(), args)
     });
-    // Tier-Ω.5.iiiiii: Array.prototype.flat per ECMA §23.1.3.10.
     register_intrinsic_method(rt, host, "flat", 0, |rt, args| {
-        let id = to_array_this(rt)?;
-        let depth = args.first().map(abstract_ops::to_number).unwrap_or(1.0) as i64;
-        let out = rt.alloc_object(Object::new_array());
-        fn flat_into(rt: &mut Runtime, src: ObjectRef, out: ObjectRef, mut out_idx: usize, depth: i64) -> usize {
-            let len = rt.array_length(src);
-            for i in 0..len {
-                let v = rt.object_get(src, &i.to_string());
-                if depth > 0 {
-                    if let Value::Object(nid) = &v {
-                        if matches!(rt.obj(*nid).internal_kind, InternalKind::Array) {
-                            out_idx = flat_into(rt, *nid, out, out_idx, depth - 1);
-                            continue;
-                        }
-                    }
-                }
-                rt.object_set(out, out_idx.to_string(), v);
-                out_idx += 1;
-            }
-            out_idx
-        }
-        let final_len = flat_into(rt, id, out, 0, depth);
-        rt.object_set(out, "length".into(), Value::Number(final_len as f64));
-        Ok(Value::Object(out))
+        crate::generated::array_prototype_flat(rt, rt.current_this(), args)
     });
     register_intrinsic_method(rt, host, "flatMap", 1, |rt, args| {
-        let id = to_array_this(rt)?;
-        let cb = args.first().cloned().ok_or_else(||
-            RuntimeError::TypeError("Array.prototype.flatMap: callback required".into()))?;
-        if !rt.is_callable(&cb) {
-            return Err(RuntimeError::TypeError("Array.prototype.flatMap: callback is not callable".into()));
-        }
-        let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
-        let len = rt.array_length(id);
-        let out = rt.alloc_object(Object::new_array());
-        let mut out_idx = 0usize;
-        for i in 0..len {
-            let v = rt.object_get(id, &i.to_string());
-            let mapped = rt.call_function(cb.clone(), this_arg.clone(),
-                vec![v, Value::Number(i as f64), Value::Object(id)])?;
-            if let Value::Object(nid) = &mapped {
-                if matches!(rt.obj(*nid).internal_kind, InternalKind::Array) {
-                    let n = rt.array_length(*nid);
-                    for j in 0..n {
-                        let nv = rt.object_get(*nid, &j.to_string());
-                        rt.object_set(out, out_idx.to_string(), nv);
-                        out_idx += 1;
-                    }
-                    continue;
-                }
-            }
-            rt.object_set(out, out_idx.to_string(), mapped);
-            out_idx += 1;
-        }
-        rt.object_set(out, "length".into(), Value::Number(out_idx as f64));
-        Ok(Value::Object(out))
+        crate::generated::array_prototype_flat_map(rt, rt.current_this(), args)
     });
     // Ω.5.P63.E1 (rusty-js-ir Tier 1.5): Array.prototype.map per ECMA
     // §23.1.3.20 is now routed through the IR-lowered implementation in
@@ -632,94 +424,13 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     });
 
     register_intrinsic_method(rt, host, "reduceRight", 1, |rt, args| {
-        // Ω.5.P61.E13: sparse-skip + getter dispatch per ECMA §23.1.3.25.
-        let id = to_array_this(rt)?;
-        let cb = args.first().cloned().ok_or_else(||
-            RuntimeError::TypeError("reduceRight: callback required".into()))?;
-        if !rt.is_callable(&cb) {
-            return Err(RuntimeError::TypeError("Array.prototype.reduceRight: callback is not callable".into()));
-        }
-        let len = rt.array_length(id);
-        let has_init = args.len() >= 2;
-        let mut i: i64 = (len as i64) - 1;
-        let mut acc = if has_init { args[1].clone() } else {
-            // Find last present index.
-            let mut seed: Option<(i64, Value)> = None;
-            while i >= 0 {
-                let key = i.to_string();
-                if rt.has_property(id, &key) {
-                    let v = rt.read_property(id, &key)?;
-                    seed = Some((i, v)); break;
-                }
-                i -= 1;
-            }
-            match seed {
-                Some((start, v)) => { i = start - 1; v }
-                None => return Err(RuntimeError::TypeError(
-                    "reduce of empty array with no initial value".into())),
-            }
-        };
-        while i >= 0 {
-            let key = i.to_string();
-            if rt.has_property(id, &key) {
-                let v = rt.read_property(id, &key)?;
-                acc = rt.call_function(cb.clone(), Value::Undefined,
-                    vec![acc, v, Value::Number(i as f64), Value::Object(id)])?;
-            }
-            i -= 1;
-        }
-        Ok(acc)
+        crate::generated::array_prototype_reduce_right(rt, rt.current_this(), args)
     });
-
     register_intrinsic_method(rt, host, "lastIndexOf", 1, |rt, args| {
-        // Ω.5.P61.E14: sparse-skip per ECMA §23.1.3.18.
-        let id = to_array_this(rt)?;
-        let needle = args.first().cloned().unwrap_or(Value::Undefined);
-        let len = rt.array_length(id) as i64;
-        let from = match args.get(1) {
-            Some(v) if !matches!(v, Value::Undefined) => {
-                let n = abstract_ops::to_number(v) as i64;
-                if n < 0 { (len + n).max(-1) } else { (n.min(len - 1)).max(-1) }
-            }
-            _ => (len - 1).max(-1),
-        };
-        let mut i = from;
-        while i >= 0 {
-            let key = i.to_string();
-            if rt.has_property(id, &key) {
-                let v = rt.read_property(id, &key)?;
-                if abstract_ops::is_strictly_equal(&v, &needle) {
-                    return Ok(Value::Number(i as f64));
-                }
-            }
-            i -= 1;
-        }
-        Ok(Value::Number(-1.0))
+        crate::generated::array_prototype_last_index_of(rt, rt.current_this(), args)
     });
-
     register_intrinsic_method(rt, host, "copyWithin", 2, |rt, args| {
-        // ECMA §23.1.3.4: arr.copyWithin(target, start, end).
-        // Ω.5.P62.E18: coerce_to_number on all three positional args
-        // so Symbol→TypeError and Object→valueOf dispatch per spec.
-        let id = to_array_this(rt)?;
-        let len = rt.array_length(id) as i64;
-        let arg_n = |rt: &mut Runtime, i: usize, default: i64| -> Result<i64, RuntimeError> {
-            match args.get(i).cloned() {
-                Some(Value::Undefined) | None => Ok(default),
-                Some(v) => Ok(rt.coerce_to_number(&v)? as i64),
-            }
-        };
-        let to = clamp_index(arg_n(rt, 0, 0)?, len);
-        let from = clamp_index(arg_n(rt, 1, 0)?, len);
-        let end = clamp_index(arg_n(rt, 2, len)?, len);
-        let count = (end - from).min(len - to).max(0);
-        // Read-then-write to handle overlap correctly.
-        let buf: Vec<Value> = (0..count).map(|i|
-            rt.object_get(id, &(from + i).to_string())).collect();
-        for (i, v) in buf.into_iter().enumerate() {
-            rt.object_set(id, (to + i as i64).to_string(), v);
-        }
-        Ok(Value::Object(id))
+        crate::generated::array_prototype_copy_within(rt, rt.current_this(), args)
     });
 
     register_intrinsic_method(rt, host, "toReversed", 0, |rt, _args| {
