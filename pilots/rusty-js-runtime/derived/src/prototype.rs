@@ -63,56 +63,16 @@ impl Runtime {
 // ──────────────── %Object.prototype% ────────────────
 
 fn install_object_proto(rt: &mut Runtime, host: ObjectRef) {
-    register_intrinsic_method(rt, host, "toString", 0, |rt, _args| {
-        // Tier-Ω.5.lllll: Object.prototype.toString per ECMA-262 §20.1.3.6.
-        // Internal-slot tags drive the output; spec-named tags are
-        // PascalCase. Prior impl returned "[object string]" / "[object
-        // number]" for primitives (lowercase via type_of) and "[object
-        // Object]" for RegExp instances, which broke isString/isRegExp
-        // duck-tests in linkify-it / yup / many libs.
-        let this = rt.current_this();
-        let s = match this {
-            Value::Undefined => "[object Undefined]".to_string(),
-            Value::Null => "[object Null]".to_string(),
-            Value::Boolean(_) => "[object Boolean]".to_string(),
-            Value::Number(_) => "[object Number]".to_string(),
-            Value::String(_) => "[object String]".to_string(),
-            Value::BigInt(_) => "[object BigInt]".to_string(),
-            Value::Symbol(_) => "[object Symbol]".to_string(),
-            Value::Object(id) => {
-                // Ω.5.P62.E4: ECMA §20.1.3.6 step 15 — read @@toStringTag
-                // up the proto chain; a String value overrides the
-                // internal-kind tag. Math/JSON set this to "Math"/"JSON";
-                // user objects can set their own custom tag.
-                let tag_val = rt.object_get(id, "@@toStringTag");
-                let tag = if let Value::String(s) = &tag_val {
-                    s.as_str().to_string()
-                } else {
-                    match &rt.obj(id).internal_kind {
-                        InternalKind::Array => "Array",
-                        InternalKind::Function(_)
-                        | InternalKind::Closure(_)
-                        | InternalKind::BoundFunction(_) => "Function",
-                        InternalKind::Promise(_) => "Promise",
-                        InternalKind::Error => "Error",
-                        InternalKind::RegExp(_) => "RegExp",
-                        _ => "Object",
-                    }.to_string()
-                };
-                format!("[object {}]", tag)
-            }
-        };
-        Ok(Value::String(Rc::new(s)))
+    // E35: Object.prototype.{toString, hasOwnProperty, valueOf} routed through IR.
+    register_intrinsic_method(rt, host, "toString", 0, |rt, args| {
+        crate::generated::object_prototype_to_string(rt, rt.current_this(), args)
     });
     register_intrinsic_method(rt, host, "hasOwnProperty", 1, |rt, args| {
-        let key = arg_string(args, 0);
-        let owns = match rt.current_this() {
-            Value::Object(id) => rt.obj(id).properties.contains_key(&key),
-            _ => false,
-        };
-        Ok(Value::Boolean(owns))
+        crate::generated::object_prototype_has_own_property(rt, rt.current_this(), args)
     });
-    register_intrinsic_method(rt, host, "valueOf", 0, |rt, _args| Ok(rt.current_this()));
+    register_intrinsic_method(rt, host, "valueOf", 0, |rt, args| {
+        crate::generated::object_prototype_value_of(rt, rt.current_this(), args)
+    });
     // Tier-Ω.5.DDDDDDDD: Object.prototype.__defineGetter__/__defineSetter__
     // per ECMA Annex B.2.2.2/2.2.3 (legacy but ubiquitous — pg, slonik,
     // sockjs, mongoose use them at module-init for shape augmentation).
@@ -160,42 +120,13 @@ fn install_object_proto(rt: &mut Runtime, host: ObjectRef) {
     // property at the given key. v1 returns true for any own property
     // (we don't track enumerable bit precisely).
     register_intrinsic_method(rt, host, "propertyIsEnumerable", 1, |rt, args| {
-        let key = abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined))
-            .as_str().to_string();
-        let owns = match rt.current_this() {
-            Value::Object(id) => rt.obj(id).properties.contains_key(&key),
-            _ => false,
-        };
-        Ok(Value::Boolean(owns))
+        crate::generated::object_prototype_property_is_enumerable(rt, rt.current_this(), args)
     });
     register_intrinsic_method(rt, host, "isPrototypeOf", 1, |rt, args| {
-        let target = match args.first() {
-            Some(Value::Object(id)) => *id,
-            _ => return Ok(Value::Boolean(false)),
-        };
-        let this_id = match rt.current_this() {
-            Value::Object(id) => id,
-            _ => return Ok(Value::Boolean(false)),
-        };
-        let mut cur = rt.obj(target).proto;
-        while let Some(c) = cur {
-            if c == this_id { return Ok(Value::Boolean(true)); }
-            cur = rt.obj(c).proto;
-        }
-        Ok(Value::Boolean(false))
+        crate::generated::object_prototype_is_prototype_of(rt, rt.current_this(), args)
     });
-    // Ω.5.P61.E10: Object.prototype.toLocaleString per ECMA §20.1.3.5.
-    // Default is to invoke this.toString() — locale-aware variants live
-    // on subclass prototypes (Number/Date/Array each override).
-    register_intrinsic_method(rt, host, "toLocaleString", 0, |rt, _args| {
-        let this = rt.current_this();
-        if let Value::Object(id) = &this {
-            let to_str = rt.object_get(*id, "toString");
-            if matches!(to_str, Value::Object(_)) {
-                return rt.call_function(to_str, this.clone(), Vec::new());
-            }
-        }
-        Ok(Value::String(Rc::new(crate::abstract_ops::to_string(&this).as_str().to_string())))
+    register_intrinsic_method(rt, host, "toLocaleString", 0, |rt, args| {
+        crate::generated::object_prototype_to_locale_string(rt, rt.current_this(), args)
     });
 }
 

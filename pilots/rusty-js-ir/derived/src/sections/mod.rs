@@ -21,3 +21,4 @@ pub mod math_unary;                   // Math.{abs,floor,ceil,round,trunc,sqrt,c
 pub mod math_binary_variadic;         // Math.{pow,atan2} (binary) + Math.{max,min,hypot} (variadic)
 pub mod reflect_static;               // Reflect.{has, get, set, deleteProperty, ownKeys}
 pub mod array_prototype_mutators;     // push, pop, shift, unshift, reverse
+pub mod object_prototype;             // Object.prototype.{toString, hasOwnProperty, valueOf, propertyIsEnumerable, isPrototypeOf, toLocaleString}

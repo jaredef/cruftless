@@ -4,6 +4,7 @@
 
 use rusty_js_ir::lint::lint;
 use rusty_js_ir::sections::array_prototype_mutators as mutators;
+use rusty_js_ir::sections::object_prototype as objproto;
 use rusty_js_ir::sections::{
     array_prototype_find as find, array_prototype_index_search as index_search,
     array_prototype_iteration as iter, array_prototype_map,
@@ -53,6 +54,12 @@ fn main() {
         ("Array.prototype.entries",        mutators::build_entries(),          mutators::spec_steps_entries()),
         ("Array.prototype.keys",           mutators::build_keys(),             mutators::spec_steps_keys()),
         ("Array.prototype.values",         mutators::build_values(),           mutators::spec_steps_values()),
+        ("Object.prototype.toString",              objproto::build_to_string(),              objproto::spec_steps_to_string()),
+        ("Object.prototype.hasOwnProperty",        objproto::build_has_own_property(),       objproto::spec_steps_has_own_property()),
+        ("Object.prototype.valueOf",               objproto::build_value_of(),               objproto::spec_steps_value_of()),
+        ("Object.prototype.propertyIsEnumerable",  objproto::build_property_is_enumerable(), objproto::spec_steps_property_is_enumerable()),
+        ("Object.prototype.isPrototypeOf",         objproto::build_is_prototype_of(),        objproto::spec_steps_is_prototype_of()),
+        ("Object.prototype.toLocaleString",        objproto::build_to_locale_string(),       objproto::spec_steps_to_locale_string()),
         ("Object.keys", object_static::build_keys(), object_static::spec_steps_keys()),
         ("Object.values", object_static::build_values(), object_static::spec_steps_values()),
         ("Object.entries", object_static::build_entries(), object_static::spec_steps_entries()),

@@ -484,6 +484,95 @@ impl Runtime {
         Ok(Value::String(std::rc::Rc::new(s + &suffix)))
     }
 
+    /// Object.prototype.toString() per ECMA §20.1.3.6 (with @@toStringTag).
+    pub fn object_proto_to_string_via(&mut self) -> Result<Value, RuntimeError> {
+        let this = self.current_this();
+        let s = match this {
+            Value::Undefined => "[object Undefined]".to_string(),
+            Value::Null => "[object Null]".to_string(),
+            Value::Boolean(_) => "[object Boolean]".to_string(),
+            Value::Number(_) => "[object Number]".to_string(),
+            Value::String(_) => "[object String]".to_string(),
+            Value::BigInt(_) => "[object BigInt]".to_string(),
+            Value::Symbol(_) => "[object Symbol]".to_string(),
+            Value::Object(id) => {
+                let tag_val = self.object_get(id, "@@toStringTag");
+                let tag = if let Value::String(s) = &tag_val {
+                    s.as_str().to_string()
+                } else {
+                    match &self.obj(id).internal_kind {
+                        crate::value::InternalKind::Array => "Array",
+                        crate::value::InternalKind::Function(_)
+                        | crate::value::InternalKind::Closure(_)
+                        | crate::value::InternalKind::BoundFunction(_) => "Function",
+                        crate::value::InternalKind::Promise(_) => "Promise",
+                        crate::value::InternalKind::Error => "Error",
+                        crate::value::InternalKind::RegExp(_) => "RegExp",
+                        _ => "Object",
+                    }.to_string()
+                };
+                format!("[object {}]", tag)
+            }
+        };
+        Ok(Value::String(std::rc::Rc::new(s)))
+    }
+
+    /// Object.prototype.hasOwnProperty(key) per ECMA §20.1.3.2.
+    pub fn object_proto_has_own_property_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let key = crate::abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined)).as_str().to_string();
+        let owns = match self.current_this() {
+            Value::Object(id) => self.obj(id).properties.contains_key(&key),
+            _ => false,
+        };
+        Ok(Value::Boolean(owns))
+    }
+
+    /// Object.prototype.valueOf() per ECMA §20.1.3.7.
+    pub fn object_proto_value_of_via(&mut self) -> Result<Value, RuntimeError> {
+        Ok(self.current_this())
+    }
+
+    /// Object.prototype.propertyIsEnumerable(key) per ECMA §20.1.3.4.
+    pub fn object_proto_property_is_enumerable_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let key = crate::abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined))
+            .as_str().to_string();
+        let owns = match self.current_this() {
+            Value::Object(id) => self.obj(id).properties.contains_key(&key),
+            _ => false,
+        };
+        Ok(Value::Boolean(owns))
+    }
+
+    /// Object.prototype.isPrototypeOf(target) per ECMA §20.1.3.3.
+    pub fn object_proto_is_prototype_of_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let target = match args.first() {
+            Some(Value::Object(id)) => *id,
+            _ => return Ok(Value::Boolean(false)),
+        };
+        let this_id = match self.current_this() {
+            Value::Object(id) => id,
+            _ => return Ok(Value::Boolean(false)),
+        };
+        let mut cur = self.obj(target).proto;
+        while let Some(c) = cur {
+            if c == this_id { return Ok(Value::Boolean(true)); }
+            cur = self.obj(c).proto;
+        }
+        Ok(Value::Boolean(false))
+    }
+
+    /// Object.prototype.toLocaleString() per ECMA §20.1.3.5 — invoke this.toString().
+    pub fn object_proto_to_locale_string_via(&mut self) -> Result<Value, RuntimeError> {
+        let this = self.current_this();
+        if let Value::Object(id) = &this {
+            let to_str = self.object_get(*id, "toString");
+            if matches!(to_str, Value::Object(_)) {
+                return self.call_function(to_str, this.clone(), Vec::new());
+            }
+        }
+        Ok(Value::String(std::rc::Rc::new(crate::abstract_ops::to_string(&this).as_str().to_string())))
+    }
+
     /// Array.prototype.sort(comparefn) per ECMA §23.1.3.29.
     pub fn array_proto_sort_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;

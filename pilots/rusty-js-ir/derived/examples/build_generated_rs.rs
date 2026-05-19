@@ -5,6 +5,7 @@
 
 use rusty_js_ir::lower_to_rust;
 use rusty_js_ir::sections::array_prototype_mutators as mutators;
+use rusty_js_ir::sections::object_prototype as objproto;
 use rusty_js_ir::sections::{
     array_prototype_find as find, array_prototype_index_search as index_search,
     array_prototype_iteration as iter, array_prototype_map,
@@ -62,6 +63,12 @@ fn main() {
         mutators::build_entries(),
         mutators::build_keys(),
         mutators::build_values(),
+        objproto::build_to_string(),
+        objproto::build_has_own_property(),
+        objproto::build_value_of(),
+        objproto::build_property_is_enumerable(),
+        objproto::build_is_prototype_of(),
+        objproto::build_to_locale_string(),
         object_static::build_keys(),
         object_static::build_values(),
         object_static::build_entries(),
