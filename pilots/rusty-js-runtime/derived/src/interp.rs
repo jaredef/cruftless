@@ -375,7 +375,8 @@ impl Runtime {
                 for (i, c) in s.chars().enumerate() {
                     o.set_own(i.to_string(), Value::String(std::rc::Rc::new(c.to_string())));
                 }
-                o.set_own("length".into(), Value::Number(n as f64));
+                // Length on String exotic objects is non-enumerable per §22.1.4.
+                o.set_own_internal("length".into(), Value::Number(n as f64));
                 if let Some(p) = self.string_prototype { o.proto = Some(p); }
                 Ok(Value::Object(self.alloc_object(o)))
             }
@@ -427,6 +428,130 @@ impl Runtime {
         // §10.4.2.4 ArraySetLength.
         self.bump_array_length_if_needed(id, key);
         Ok(())
+    }
+
+    /// EnumerableOwnPropertyNames(O, "key") per ECMA §7.3.23 — returns
+    /// the Array of own string keys of O, filtering @@-prefixed (Symbol)
+    /// keys and Array's implicit `length`. Integer-index keys come first
+    /// in ascending numeric order, then string keys in insertion order.
+    /// IR-target for Object.keys per §20.1.2.18.
+    pub fn enumerable_own_keys(&mut self, v: &Value) -> Result<Value, RuntimeError> {
+        let id = match v {
+            Value::Object(id) => *id,
+            _ => return Ok(Value::Object(self.alloc_object(crate::value::Object::new_array()))),
+        };
+        let arr = self.alloc_object(crate::value::Object::new_array());
+        let keys: Vec<String> = {
+            let o = self.obj(id);
+            let is_array = matches!(o.internal_kind, crate::value::InternalKind::Array);
+            if is_array {
+                let mut ks: Vec<(u64, String)> = o.properties.iter()
+                    .filter_map(|(k, d)| if d.enumerable && k != "length" && !k.starts_with("@@") {
+                        k.parse::<u64>().ok().map(|n| (n, k.clone()))
+                    } else { None })
+                    .collect();
+                ks.sort_by_key(|(n, _)| *n);
+                ks.into_iter().map(|(_, k)| k).collect()
+            } else {
+                let all: Vec<(String, bool)> = o.properties.iter()
+                    .filter(|(k, d)| d.enumerable && !k.starts_with("@@"))
+                    .map(|(k, _)| (k.clone(), crate::intrinsics::is_integer_index(k)))
+                    .collect();
+                let mut numeric: Vec<(u64, String)> = all.iter()
+                    .filter(|(_, idx)| *idx)
+                    .filter_map(|(k, _)| k.parse::<u64>().ok().map(|n| (n, k.clone())))
+                    .collect();
+                numeric.sort_by_key(|(n, _)| *n);
+                let strings: Vec<String> = all.into_iter()
+                    .filter(|(_, idx)| !*idx)
+                    .map(|(k, _)| k)
+                    .collect();
+                let mut out: Vec<String> = numeric.into_iter().map(|(_, k)| k).collect();
+                out.extend(strings);
+                out
+            }
+        };
+        for (i, k) in keys.iter().enumerate() {
+            self.object_set(arr, i.to_string(), Value::String(std::rc::Rc::new(k.clone())));
+        }
+        self.object_set(arr, "length".into(), Value::Number(keys.len() as f64));
+        Ok(Value::Object(arr))
+    }
+
+    /// EnumerableOwnPropertyNames(O, "value") per ECMA §7.3.23. IR-target
+    /// for Object.values per §20.1.2.23. Dispatches accessor getters.
+    pub fn enumerable_own_values(&mut self, v: &Value) -> Result<Value, RuntimeError> {
+        let id = match v {
+            Value::Object(id) => *id,
+            _ => return Ok(Value::Object(self.alloc_object(crate::value::Object::new_array()))),
+        };
+        let arr = self.alloc_object(crate::value::Object::new_array());
+        let entries: Vec<(String, Option<Value>)> = {
+            let o = self.obj(id);
+            let is_array = matches!(o.internal_kind, crate::value::InternalKind::Array);
+            let mut es: Vec<(String, Option<Value>)> = o.properties.iter()
+                .filter(|(k, d)| d.enumerable && !(is_array && *k == "length") && !k.starts_with("@@"))
+                .map(|(k, d)| (k.clone(), d.getter.clone()))
+                .collect();
+            if is_array {
+                es.sort_by_key(|(k, _)| k.parse::<u64>().unwrap_or(u64::MAX));
+            }
+            es
+        };
+        let mut kvs: Vec<Value> = Vec::with_capacity(entries.len());
+        for (k, getter_opt) in entries {
+            let val = if let Some(getter) = getter_opt {
+                self.call_function(getter, Value::Object(id), Vec::new())?
+            } else {
+                self.object_get(id, &k)
+            };
+            kvs.push(val);
+        }
+        for (i, val) in kvs.iter().enumerate() {
+            self.object_set(arr, i.to_string(), val.clone());
+        }
+        self.object_set(arr, "length".into(), Value::Number(kvs.len() as f64));
+        Ok(Value::Object(arr))
+    }
+
+    /// EnumerableOwnPropertyNames(O, "key+value") per ECMA §7.3.23. IR-target
+    /// for Object.entries per §20.1.2.5.
+    pub fn enumerable_own_entries(&mut self, v: &Value) -> Result<Value, RuntimeError> {
+        let id = match v {
+            Value::Object(id) => *id,
+            _ => return Ok(Value::Object(self.alloc_object(crate::value::Object::new_array()))),
+        };
+        let arr = self.alloc_object(crate::value::Object::new_array());
+        let entries: Vec<(String, Option<Value>)> = {
+            let o = self.obj(id);
+            let is_array = matches!(o.internal_kind, crate::value::InternalKind::Array);
+            let mut es: Vec<(String, Option<Value>)> = o.properties.iter()
+                .filter(|(k, d)| d.enumerable && !(is_array && *k == "length") && !k.starts_with("@@"))
+                .map(|(k, d)| (k.clone(), d.getter.clone()))
+                .collect();
+            if is_array {
+                es.sort_by_key(|(k, _)| k.parse::<u64>().unwrap_or(u64::MAX));
+            }
+            es
+        };
+        let mut kvs: Vec<(String, Value)> = Vec::with_capacity(entries.len());
+        for (k, getter_opt) in entries {
+            let val = if let Some(getter) = getter_opt {
+                self.call_function(getter, Value::Object(id), Vec::new())?
+            } else {
+                self.object_get(id, &k)
+            };
+            kvs.push((k, val));
+        }
+        for (i, (k, val)) in kvs.iter().enumerate() {
+            let pair = self.alloc_object(crate::value::Object::new_array());
+            self.object_set(pair, "0".into(), Value::String(std::rc::Rc::new(k.clone())));
+            self.object_set(pair, "1".into(), val.clone());
+            self.object_set(pair, "length".into(), Value::Number(2.0));
+            self.object_set(arr, i.to_string(), Value::Object(pair));
+        }
+        self.object_set(arr, "length".into(), Value::Number(kvs.len() as f64));
+        Ok(Value::Object(arr))
     }
 
     /// ArraySpeciesCreate per ECMA §23.1.3.27 — Tier 1.5 simplification:

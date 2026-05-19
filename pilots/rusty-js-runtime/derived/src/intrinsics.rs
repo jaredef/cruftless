@@ -1203,137 +1203,22 @@ impl Runtime {
             }
         });
         let obj_ctor = self.alloc_object(obj_ctor_native);
+        // Ω.5.P63.E4: Object.keys routed through IR-lowered generated::object_keys.
+        // The previous hand-written impl (with integer-index-first sort
+        // + enumerable filter + @@-prefix filter) lives now in
+        // rt.enumerable_own_keys, which generated::object_keys invokes
+        // via CallBuiltin.
         register_intrinsic_method(self, obj_ctor, "keys", 1, |rt, args| {
-            let id = match args.first() {
-                Some(Value::Object(id)) => *id,
-                _ => return Ok(Value::Object(rt.alloc_object(Object::new_array()))),
-            };
-            let arr = rt.alloc_object(Object::new_array());
-            let keys: Vec<String> = {
-                let o = rt.obj(id);
-                if matches!(o.internal_kind, InternalKind::Array) {
-                    // Numeric keys in ascending order, length excluded.
-                    let mut ks: Vec<(u64, String)> = o.properties.iter()
-                        .filter_map(|(k, d)| if d.enumerable && k != "length" && !k.starts_with("@@") {
-                            k.parse::<u64>().ok().map(|n| (n, k.clone()))
-                        } else { None })
-                        .collect();
-                    ks.sort_by_key(|(n, _)| *n);
-                    ks.into_iter().map(|(_, k)| k).collect()
-                } else {
-                    // Tier-Ω.5.P15.E1: filter by enumerable only; the
-                    // earlier blanket `k != "length"` filter elided ms's
-                    // surfaced function-arity (and any other enumerable
-                    // own "length" property a CJS namespace mirrors from
-                    // a default-fn export).
-                    // Ω.5.P19.E1: filter `@@`-prefixed keys (Symbol-typed
-                    // and well-known-symbol keys) per ECMA §7.3.21
-                    // EnumerableOwnProperties string-only path.
-                    // Ω.5.P44.E1: ECMA §10.1.11 OrdinaryOwnPropertyKeys
-                    // requires integer-index keys first in ascending
-                    // numeric order, then string keys in insertion
-                    // order. big-integer exports keys '0'..'2000' as
-                    // numeric strings; pre-fix we returned them in
-                    // insertion-mixed-with-non-integer order. The
-                    // partition + sort below matches Bun and the spec.
-                    let all: Vec<(String, bool)> = o.properties.iter()
-                        .filter(|(k, d)| d.enumerable && !k.starts_with("@@"))
-                        .map(|(k, _)| {
-                            let is_int_idx = is_integer_index(k);
-                            (k.clone(), is_int_idx)
-                        })
-                        .collect();
-                    let mut numeric: Vec<(u64, String)> = all.iter()
-                        .filter(|(_, idx)| *idx)
-                        .filter_map(|(k, _)| k.parse::<u64>().ok().map(|n| (n, k.clone())))
-                        .collect();
-                    numeric.sort_by_key(|(n, _)| *n);
-                    let strings: Vec<String> = all.into_iter()
-                        .filter(|(_, idx)| !*idx)
-                        .map(|(k, _)| k)
-                        .collect();
-                    let mut out: Vec<String> = numeric.into_iter().map(|(_, k)| k).collect();
-                    out.extend(strings);
-                    out
-                }
-            };
-            for (i, k) in keys.iter().enumerate() {
-                rt.object_set(arr, i.to_string(), Value::String(Rc::new(k.clone())));
-            }
-            rt.object_set(arr, "length".into(), Value::Number(keys.len() as f64));
-            Ok(Value::Object(arr))
+            crate::generated::object_keys(rt, Value::Undefined, args)
         });
+        // Ω.5.P63.E4: Object.values/entries routed through IR-lowered
+        // generated::object_{values,entries}. Existing impl extracted to
+        // rt.enumerable_own_{values,entries}.
         register_intrinsic_method(self, obj_ctor, "values", 1, |rt, args| {
-            let id = match args.first() {
-                Some(Value::Object(id)) => *id,
-                _ => return Ok(Value::Object(rt.alloc_object(Object::new_array()))),
-            };
-            let arr = rt.alloc_object(Object::new_array());
-            // Tier-Ω.5.bbbbb: dispatch accessor getters for Object.values.
-            let keys: Vec<(String, Option<Value>)> = {
-                let o = rt.obj(id);
-                let is_array = matches!(o.internal_kind, InternalKind::Array);
-                let mut entries: Vec<(String, Option<Value>)> = o.properties.iter()
-                    .filter(|(k, d)| d.enumerable && !(is_array && *k == "length") && !k.starts_with("@@"))
-                    .map(|(k, d)| (k.clone(), d.getter.clone()))
-                    .collect();
-                if is_array {
-                    entries.sort_by_key(|(k, _)| k.parse::<u64>().unwrap_or(u64::MAX));
-                }
-                entries
-            };
-            let mut kvs: Vec<(String, Value)> = Vec::with_capacity(keys.len());
-            for (k, getter_opt) in keys {
-                let v = if let Some(getter) = getter_opt {
-                    rt.call_function(getter, Value::Object(id), Vec::new())?
-                } else {
-                    rt.object_get(id, &k)
-                };
-                kvs.push((k, v));
-            }
-            for (i, (_, v)) in kvs.iter().enumerate() {
-                rt.object_set(arr, i.to_string(), v.clone());
-            }
-            rt.object_set(arr, "length".into(), Value::Number(kvs.len() as f64));
-            Ok(Value::Object(arr))
+            crate::generated::object_values(rt, Value::Undefined, args)
         });
         register_intrinsic_method(self, obj_ctor, "entries", 1, |rt, args| {
-            let id = match args.first() {
-                Some(Value::Object(id)) => *id,
-                _ => return Ok(Value::Object(rt.alloc_object(Object::new_array()))),
-            };
-            let arr = rt.alloc_object(Object::new_array());
-            // Tier-Ω.5.bbbbb: dispatch accessor getters for Object.entries.
-            let keys: Vec<(String, Option<Value>)> = {
-                let o = rt.obj(id);
-                let is_array = matches!(o.internal_kind, InternalKind::Array);
-                let mut entries: Vec<(String, Option<Value>)> = o.properties.iter()
-                    .filter(|(k, d)| d.enumerable && !(is_array && *k == "length") && !k.starts_with("@@"))
-                    .map(|(k, d)| (k.clone(), d.getter.clone()))
-                    .collect();
-                if is_array {
-                    entries.sort_by_key(|(k, _)| k.parse::<u64>().unwrap_or(u64::MAX));
-                }
-                entries
-            };
-            let mut kvs: Vec<(String, Value)> = Vec::with_capacity(keys.len());
-            for (k, getter_opt) in keys {
-                let v = if let Some(getter) = getter_opt {
-                    rt.call_function(getter, Value::Object(id), Vec::new())?
-                } else {
-                    rt.object_get(id, &k)
-                };
-                kvs.push((k, v));
-            }
-            for (i, (k, v)) in kvs.iter().enumerate() {
-                let pair = rt.alloc_object(Object::new_array());
-                rt.object_set(pair, "0".into(), Value::String(Rc::new(k.clone())));
-                rt.object_set(pair, "1".into(), v.clone());
-                rt.object_set(pair, "length".into(), Value::Number(2.0));
-                rt.object_set(arr, i.to_string(), Value::Object(pair));
-            }
-            rt.object_set(arr, "length".into(), Value::Number(kvs.len() as f64));
-            Ok(Value::Object(arr))
+            crate::generated::object_entries(rt, Value::Undefined, args)
         });
         register_intrinsic_method(self, obj_ctor, "assign", 2, |rt, args| {
             let target = match args.first() {
@@ -5358,7 +5243,7 @@ const B64_ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwx
 /// an integer index iff its ToString form is identical to ToString of
 /// its ToUint32. Practically: a non-empty all-digit string with no
 /// leading zeros (except "0" itself) and value ≤ 2^32-2.
-fn is_integer_index(s: &str) -> bool {
+pub(crate) fn is_integer_index(s: &str) -> bool {
     if s.is_empty() { return false; }
     if s == "0" { return true; }
     if s.starts_with('0') { return false; }

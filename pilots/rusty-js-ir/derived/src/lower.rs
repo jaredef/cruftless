@@ -130,7 +130,13 @@ fn emit_expr(e: &Expr) -> String {
         Expr::This => "this.clone()".into(),
         Expr::HasArg(i) => format!("(args.len() > {})", i),
         Expr::CallBuiltin { name, args } => {
-            let args_str = args.iter().map(emit_expr).collect::<Vec<_>>().join(", ");
+            // CallBuiltin args are passed by reference (matches the
+            // convention of the existing IR-target helpers
+            // rt.to_object / rt.coerce_to_string / etc.). The `.clone()`
+            // expansion of Var produces a temporary that the `&` borrows.
+            let args_str = args.iter()
+                .map(|a| format!("&{}", emit_expr(a)))
+                .collect::<Vec<_>>().join(", ");
             format!("rt.{}({})?", name, args_str)
         }
         Expr::IntConst(n) => format!("{}_usize", n),
