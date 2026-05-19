@@ -430,6 +430,46 @@ impl Runtime {
         Ok(())
     }
 
+    /// String.prototype.charAt(pos) per ECMA §22.1.3.1.
+    pub fn string_proto_char_at_via(&mut self, this: &Value, pos: &Value) -> Result<Value, RuntimeError> {
+        self.require_object_coercible(this)?;
+        let s = self.to_string_strict(this)?;
+        let i_n = match pos {
+            Value::Undefined => 0.0,
+            v => self.coerce_to_number(v)?,
+        };
+        if !i_n.is_finite() || i_n < 0.0 {
+            return Ok(Value::String(std::rc::Rc::new(String::new())));
+        }
+        let c = s.chars().nth(i_n as usize).map(|c| c.to_string()).unwrap_or_default();
+        Ok(Value::String(std::rc::Rc::new(c)))
+    }
+
+    /// String.prototype.charCodeAt(pos) per ECMA §22.1.3.2.
+    pub fn string_proto_char_code_at_via(&mut self, this: &Value, pos: &Value) -> Result<Value, RuntimeError> {
+        self.require_object_coercible(this)?;
+        let s = self.to_string_strict(this)?;
+        let i_n = match pos {
+            Value::Undefined => 0.0,
+            v => self.coerce_to_number(v)?,
+        };
+        if !i_n.is_finite() || i_n < 0.0 { return Ok(Value::Number(f64::NAN)); }
+        match s.chars().nth(i_n as usize) {
+            Some(c) => Ok(Value::Number(c as u32 as f64)),
+            None => Ok(Value::Number(f64::NAN)),
+        }
+    }
+
+    /// String.prototype.concat(...args) per ECMA §22.1.3.3.
+    pub fn string_proto_concat_via(&mut self, this: &Value, args: &[Value]) -> Result<Value, RuntimeError> {
+        self.require_object_coercible(this)?;
+        let mut s = self.to_string_strict(this)?;
+        for a in args {
+            s.push_str(&self.to_string_strict(a)?);
+        }
+        Ok(Value::String(std::rc::Rc::new(s)))
+    }
+
     /// Number.prototype.valueOf() per ECMA §21.1.3.7 — ThisNumberValue.
     pub fn number_proto_value_of_via(&self, this: &Value) -> Result<Value, RuntimeError> {
         match self.unwrap_primitive(this) {

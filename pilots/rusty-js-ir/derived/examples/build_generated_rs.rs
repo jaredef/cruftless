@@ -10,6 +10,7 @@ use rusty_js_ir::sections::{
     array_prototype_reduce as reduce, global_predicates, math_binary_variadic,
     math_unary, number_prototype, number_static, object_integrity,
     object_proto_ops, object_static, promise_static, reflect_static,
+    string_prototype,
 };
 
 fn main() {
@@ -94,6 +95,9 @@ fn main() {
         number_prototype::build_to_precision(),
         number_prototype::build_boolean_value_of(),
         number_prototype::build_boolean_to_string(),
+        string_prototype::build_char_at(),
+        string_prototype::build_char_code_at(),
+        string_prototype::build_concat(),
     ];
 
     for f in &sections {

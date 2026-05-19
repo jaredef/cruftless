@@ -1071,34 +1071,20 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
         let this = rt.current_this(); rt.require_object_coercible(&this)?;
         Ok(Value::String(Rc::new(rt.to_string_strict(&this)?)))
     });
+    // Ω.5.P63.E20: String.prototype.{charAt, charCodeAt, concat} routed through IR.
     register_intrinsic_method(rt, host, "charAt", 1, |rt, args| {
-        let this = rt.current_this(); rt.require_object_coercible(&this)?;
-        let s = rt.to_string_strict(&this)?;
-        let i_n = match args.first().cloned() { Some(v) => rt.coerce_to_number(&v)?, None => 0.0 };
-        // §22.1.3.1: out-of-range returns "" (matches existing behavior).
-        if !i_n.is_finite() || i_n < 0.0 { return Ok(Value::String(Rc::new(String::new()))); }
-        let i = i_n as usize;
-        let c = s.chars().nth(i).map(|c| c.to_string()).unwrap_or_default();
-        Ok(Value::String(Rc::new(c)))
+        let this = rt.current_this();
+        let pos = args.first().cloned().unwrap_or(Value::Undefined);
+        crate::generated::string_prototype_char_at(rt, this, std::slice::from_ref(&pos))
     });
     register_intrinsic_method(rt, host, "charCodeAt", 1, |rt, args| {
-        let this = rt.current_this(); rt.require_object_coercible(&this)?;
-        let s = rt.to_string_strict(&this)?;
-        let i_n = match args.first().cloned() { Some(v) => rt.coerce_to_number(&v)?, None => 0.0 };
-        if !i_n.is_finite() || i_n < 0.0 { return Ok(Value::Number(f64::NAN)); }
-        match s.chars().nth(i_n as usize) {
-            Some(c) => Ok(Value::Number(c as u32 as f64)),
-            None => Ok(Value::Number(f64::NAN)),
-        }
+        let this = rt.current_this();
+        let pos = args.first().cloned().unwrap_or(Value::Undefined);
+        crate::generated::string_prototype_char_code_at(rt, this, std::slice::from_ref(&pos))
     });
-    // §22.1.3.3: concat receiver + ToString(args) variadic.
     register_intrinsic_method(rt, host, "concat", 1, |rt, args| {
-        let this = rt.current_this(); rt.require_object_coercible(&this)?;
-        let mut s = rt.to_string_strict(&this)?;
-        for a in args {
-            s.push_str(&rt.to_string_strict(a)?);
-        }
-        Ok(Value::String(Rc::new(s)))
+        let this = rt.current_this();
+        crate::generated::string_prototype_concat(rt, this, args)
     });
     // Tier-Ω.5.EEEEEEEE: String.prototype.localeCompare per ECMA-262 §22.1.3.10.
     // Used by sort comparators throughout the corpus (read-pkg/spdx-correct

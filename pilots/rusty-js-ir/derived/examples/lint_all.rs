@@ -9,6 +9,7 @@ use rusty_js_ir::sections::{
     array_prototype_reduce as reduce, global_predicates, math_binary_variadic,
     math_unary, number_prototype, number_static, object_integrity,
     object_proto_ops, object_static, promise_static, reflect_static,
+    string_prototype,
 };
 
 fn main() {
@@ -96,6 +97,9 @@ fn main() {
         ("Number.prototype.toPrecision", number_prototype::build_to_precision(), number_prototype::spec_steps_to_precision()),
         ("Boolean.prototype.valueOf", number_prototype::build_boolean_value_of(), number_prototype::spec_steps_boolean_value_of()),
         ("Boolean.prototype.toString", number_prototype::build_boolean_to_string(), number_prototype::spec_steps_boolean_to_string()),
+        ("String.prototype.charAt",     string_prototype::build_char_at(),      string_prototype::spec_steps_char_at()),
+        ("String.prototype.charCodeAt", string_prototype::build_char_code_at(), string_prototype::spec_steps_char_code_at()),
+        ("String.prototype.concat",     string_prototype::build_concat(),       string_prototype::spec_steps_concat()),
     ];
 
     let mut total_unexpected = 0;
