@@ -268,53 +268,12 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         rt.object_set(id, "length".into(), Value::Number(new_len as f64));
         Ok(Value::Number(new_len as f64))
     });
+    // E30: routed through IR.
     register_intrinsic_method(rt, host, "indexOf", 1, |rt, args| {
-        // Ω.5.P61.E14: sparse-skip per ECMA §23.1.3.16; honor fromIndex
-        // (second arg, default 0; negative = len + arg).
-        let id = to_array_this(rt)?;
-        let needle = args.first().cloned().unwrap_or(Value::Undefined);
-        let len = rt.array_length(id) as i64;
-        let from = match args.get(1) {
-            Some(v) if !matches!(v, Value::Undefined) => {
-                let n = abstract_ops::to_number(v) as i64;
-                if n < 0 { (len + n).max(0) } else { n.min(len) }
-            }
-            _ => 0,
-        };
-        let mut i = from;
-        while i < len {
-            let key = i.to_string();
-            if rt.has_property(id, &key) {
-                let v = rt.read_property(id, &key)?;
-                if abstract_ops::is_strictly_equal(&v, &needle) {
-                    return Ok(Value::Number(i as f64));
-                }
-            }
-            i += 1;
-        }
-        Ok(Value::Number(-1.0))
+        crate::generated::array_prototype_index_of(rt, rt.current_this(), args)
     });
     register_intrinsic_method(rt, host, "includes", 1, |rt, args| {
-        // Ω.5.P61.E14: includes does NOT skip sparse per ECMA §23.1.3.14
-        // (treats holes as undefined and applies SameValueZero).
-        let id = to_array_this(rt)?;
-        let needle = args.first().cloned().unwrap_or(Value::Undefined);
-        let len = rt.array_length(id);
-        for i in 0..len {
-            let key = i.to_string();
-            let v = if rt.has_property(id, &key) {
-                rt.read_property(id, &key)?
-            } else {
-                Value::Undefined
-            };
-            // SameValueZero: like strict equal except NaN === NaN.
-            let eq = match (&v, &needle) {
-                (Value::Number(a), Value::Number(b)) if a.is_nan() && b.is_nan() => true,
-                _ => abstract_ops::is_strictly_equal(&v, &needle),
-            };
-            if eq { return Ok(Value::Boolean(true)); }
-        }
-        Ok(Value::Boolean(false))
+        crate::generated::array_prototype_includes(rt, rt.current_this(), args)
     });
     // Tier-Ω.5.cccccc: Array.prototype.reverse per ECMA-262 §23.1.3.21.
     // micromark slices events then reverses; without this, .reverse() was
@@ -586,50 +545,7 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
         crate::generated::array_prototype_filter(rt, rt.current_this(), args)
     });
     register_intrinsic_method(rt, host, "reduce", 1, |rt, args| {
-        // Ω.5.P61.E13: per ECMA §23.1.3.24 skip sparse holes (HasProperty
-        // check before invoking callback) and dispatch accessor reads
-        // through read_property. Empty-with-no-initial throws even if
-        // there are no enumerable elements (the spec's "no initial value
-        // and no present elements" condition).
-        let id = to_array_this(rt)?;
-        let cb = args.first().cloned().ok_or_else(||
-            RuntimeError::TypeError("Array.prototype.reduce: callback required".into()))?;
-        if !rt.is_callable(&cb) {
-            return Err(RuntimeError::TypeError("Array.prototype.reduce: callback is not callable".into()));
-        }
-        let len = rt.array_length(id);
-        let has_init = args.len() >= 2;
-        let mut i = 0usize;
-        let mut acc = if has_init {
-            args[1].clone()
-        } else {
-            // Find first present index to seed the accumulator.
-            let mut seed: Option<(usize, Value)> = None;
-            while i < len {
-                let key = i.to_string();
-                if rt.has_property(id, &key) {
-                    let v = rt.read_property(id, &key)?;
-                    seed = Some((i, v));
-                    break;
-                }
-                i += 1;
-            }
-            match seed {
-                Some((start, v)) => { i = start + 1; v }
-                None => return Err(RuntimeError::TypeError(
-                    "reduce of empty array with no initial value".into())),
-            }
-        };
-        while i < len {
-            let key = i.to_string();
-            if rt.has_property(id, &key) {
-                let v = rt.read_property(id, &key)?;
-                acc = rt.call_function(cb.clone(), Value::Undefined,
-                    vec![acc, v, Value::Number(i as f64), Value::Object(id)])?;
-            }
-            i += 1;
-        }
-        Ok(acc)
+        crate::generated::array_prototype_reduce(rt, rt.current_this(), args)
     });
     // Ω.5.P63.E3: find routed through IR-lowered generated::array_prototype_find.
     register_intrinsic_method(rt, host, "find", 1, |rt, args| {
@@ -756,39 +672,10 @@ fn install_array_proto(rt: &mut Runtime, host: ObjectRef) {
     });
 
     register_intrinsic_method(rt, host, "findLast", 1, |rt, args| {
-        let id = to_array_this(rt)?;
-        let cb = args.first().cloned().ok_or_else(||
-            RuntimeError::TypeError("findLast: callback required".into()))?;
-        if !rt.is_callable(&cb) {
-            return Err(RuntimeError::TypeError("Array.prototype.findLast: callback is not callable".into()));
-        }
-        let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
-        let len = rt.array_length(id);
-        for i in (0..len).rev() {
-            let v = rt.object_get(id, &i.to_string());
-            let r = rt.call_function(cb.clone(), this_arg.clone(),
-                vec![v.clone(), Value::Number(i as f64), Value::Object(id)])?;
-            if abstract_ops::to_boolean(&r) { return Ok(v); }
-        }
-        Ok(Value::Undefined)
+        crate::generated::array_prototype_find_last(rt, rt.current_this(), args)
     });
-
     register_intrinsic_method(rt, host, "findLastIndex", 1, |rt, args| {
-        let id = to_array_this(rt)?;
-        let cb = args.first().cloned().ok_or_else(||
-            RuntimeError::TypeError("findLastIndex: callback required".into()))?;
-        if !rt.is_callable(&cb) {
-            return Err(RuntimeError::TypeError("Array.prototype.findLastIndex: callback is not callable".into()));
-        }
-        let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
-        let len = rt.array_length(id);
-        for i in (0..len).rev() {
-            let v = rt.object_get(id, &i.to_string());
-            let r = rt.call_function(cb.clone(), this_arg.clone(),
-                vec![v, Value::Number(i as f64), Value::Object(id)])?;
-            if abstract_ops::to_boolean(&r) { return Ok(Value::Number(i as f64)); }
-        }
-        Ok(Value::Number(-1.0))
+        crate::generated::array_prototype_find_last_index(rt, rt.current_this(), args)
     });
 
     register_intrinsic_method(rt, host, "reduceRight", 1, |rt, args| {

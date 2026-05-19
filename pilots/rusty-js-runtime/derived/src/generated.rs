@@ -323,41 +323,8 @@ pub fn array_prototype_find_index(rt: &mut Runtime, this: Value, args: &[Value])
 pub fn array_prototype_find_last(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
-    // step param.predicate (§param.predicate step param.predicate)
-    let predicate = args.get(0).cloned().unwrap_or(Value::Undefined);
-    // step param.thisArg (§param.thisArg step param.thisArg)
-    let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
-    let o = rt.to_object(&this.clone())?;
-    // step 2 (§2 step 2)
-    let mut len: usize = rt.length_of_array_like(&o.clone())?;
-    // step 3 (§3 step 3)
-    if !rt.is_callable(&predicate.clone()) {
-        // step 3.throw (§3.throw step 3.throw)
-        return Err(RuntimeError::TypeError("Array.prototype.findLast: predicate is not callable".into()));
-    }
-    // step 4 (§4 step 4)
-    let mut k: usize = 0_usize;
-    // step param.last (§param.last step param.last)
-    let mut last = Value::Undefined;
-    // step 5 (§5 step 5)
-    while (k.clone() < len.clone()) {
-        // step 5.a (§5.a step 5.a)
-        let pk = k.clone().to_string();
-        // step 5.b (§5.b step 5.b)
-        let k_value = rt.read_property_via(&o.clone(), &pk.clone())?;
-        // step 5.c (§5.c step 5.c)
-        let test_result = crate::abstract_ops::to_boolean(&rt.call_function(predicate.clone().clone(), this_arg.clone().clone(), vec![k_value.clone(), Value::Number(k.clone() as f64), o.clone()])?);
-        // step 5.d (§5.d step 5.d)
-        if test_result.clone() {
-            // step 5.d.i (§5.d.i step 5.d.i)
-            last = k_value.clone();
-        }
-        // step 5.e (§5.e step 5.e)
-        k = (k.clone() + 1_usize);
-    }
-    // step 6 (§6 step 6)
-    return Ok(last.clone());
+    return Ok(rt.array_proto_find_last_via(args)?);
 }
 
 /// ECMA-262 §23.1.3.11 — Array.prototype.findLastIndex ( predicate [ , thisArg ] )
@@ -367,41 +334,8 @@ pub fn array_prototype_find_last(rt: &mut Runtime, this: Value, args: &[Value])
 pub fn array_prototype_find_last_index(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
-    // step param.predicate (§param.predicate step param.predicate)
-    let predicate = args.get(0).cloned().unwrap_or(Value::Undefined);
-    // step param.thisArg (§param.thisArg step param.thisArg)
-    let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
-    let o = rt.to_object(&this.clone())?;
-    // step 2 (§2 step 2)
-    let mut len: usize = rt.length_of_array_like(&o.clone())?;
-    // step 3 (§3 step 3)
-    if !rt.is_callable(&predicate.clone()) {
-        // step 3.throw (§3.throw step 3.throw)
-        return Err(RuntimeError::TypeError("Array.prototype.findLastIndex: predicate is not callable".into()));
-    }
-    // step 4 (§4 step 4)
-    let mut k: usize = 0_usize;
-    // step param.last (§param.last step param.last)
-    let mut last = Value::Number(-1_f64);
-    // step 5 (§5 step 5)
-    while (k.clone() < len.clone()) {
-        // step 5.a (§5.a step 5.a)
-        let pk = k.clone().to_string();
-        // step 5.b (§5.b step 5.b)
-        let k_value = rt.read_property_via(&o.clone(), &pk.clone())?;
-        // step 5.c (§5.c step 5.c)
-        let test_result = crate::abstract_ops::to_boolean(&rt.call_function(predicate.clone().clone(), this_arg.clone().clone(), vec![k_value.clone(), Value::Number(k.clone() as f64), o.clone()])?);
-        // step 5.d (§5.d step 5.d)
-        if test_result.clone() {
-            // step 5.d.i (§5.d.i step 5.d.i)
-            last = Value::Number(k.clone() as f64);
-        }
-        // step 5.e (§5.e step 5.e)
-        k = (k.clone() + 1_usize);
-    }
-    // step 6 (§6 step 6)
-    return Ok(last.clone());
+    return Ok(rt.array_proto_find_last_index_via(args)?);
 }
 
 /// ECMA-262 §23.1.3.16 — Array.prototype.indexOf ( searchElement [ , fromIndex ] )
@@ -411,78 +345,19 @@ pub fn array_prototype_find_last_index(rt: &mut Runtime, this: Value, args: &[Va
 pub fn array_prototype_index_of(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
-    // step param.searchElement (§param.searchElement step param.searchElement)
-    let search_element = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
-    let o = rt.to_object(&this.clone())?;
-    // step 2 (§2 step 2)
-    let mut len: usize = rt.length_of_array_like(&o.clone())?;
-    // step 3 (§3 step 3)
-    if !(0_usize < len.clone()) {
-        // step 3.return (§3.return step 3.return)
-        return Ok(Value::Number(-1_f64));
-    }
-    // step 8 (§8 step 8)
-    let mut k: usize = 0_usize;
-    // step 9 (§9 step 9)
-    while (k.clone() < len.clone()) {
-        // step 9.a (§9.a step 9.a)
-        let pk = k.clone().to_string();
-        // step 9.b (§9.b step 9.b)
-        let k_present = rt.has_property_via(&o.clone(), &pk.clone());
-        // step 9.c (§9.c step 9.c)
-        if k_present.clone() {
-            // step 9.c.i (§9.c.i step 9.c.i)
-            let elem = rt.read_property_via(&o.clone(), &pk.clone())?;
-            // step 9.c.ii (§9.c.ii step 9.c.ii)
-            if crate::abstract_ops::is_strictly_equal(&search_element.clone(), &elem.clone()) {
-                // step 9.c.ii.1 (§9.c.ii.1 step 9.c.ii.1)
-                return Ok(Value::Number(k.clone() as f64));
-            }
-        }
-        // step 9.d (§9.d step 9.d)
-        k = (k.clone() + 1_usize);
-    }
-    // step 10 (§10 step 10)
-    return Ok(Value::Number(-1_f64));
+    return Ok(rt.array_proto_index_of_via(args)?);
 }
 
-/// ECMA-262 §23.1.3.13 — Array.prototype.includes ( searchElement [ , fromIndex ] )
+/// ECMA-262 §23.1.3.14 — Array.prototype.includes ( searchElement [ , fromIndex ] )
 ///
 /// Generated by rusty-js-ir lowering (resolver-instance #0c).
 /// Do not edit by hand; modify the IR in pilots/rusty-js-ir/derived/src/sections/.
 pub fn array_prototype_includes(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
-    // step param.searchElement (§param.searchElement step param.searchElement)
-    let search_element = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
-    let o = rt.to_object(&this.clone())?;
-    // step 2 (§2 step 2)
-    let mut len: usize = rt.length_of_array_like(&o.clone())?;
-    // step 3 (§3 step 3)
-    if !(0_usize < len.clone()) {
-        // step 3.return (§3.return step 3.return)
-        return Ok(Value::Boolean(false));
-    }
-    // step 8 (§8 step 8)
-    let mut k: usize = 0_usize;
-    // step 9 (§9 step 9)
-    while (k.clone() < len.clone()) {
-        // step 9.a (§9.a step 9.a)
-        let pk = k.clone().to_string();
-        // step 9.b (§9.b step 9.b)
-        let elem = rt.read_property_via(&o.clone(), &pk.clone())?;
-        // step 9.c (§9.c step 9.c)
-        if crate::abstract_ops::same_value_zero(&search_element.clone(), &elem.clone()) {
-            // step 9.c.i (§9.c.i step 9.c.i)
-            return Ok(Value::Boolean(true));
-        }
-        // step 9.d (§9.d step 9.d)
-        k = (k.clone() + 1_usize);
-    }
-    // step 10 (§10 step 10)
-    return Ok(Value::Boolean(false));
+    return Ok(rt.array_proto_includes_via(args)?);
 }
 
 /// ECMA-262 §23.1.3.24 — Array.prototype.reduce ( callbackfn [ , initialValue ] )
@@ -492,58 +367,8 @@ pub fn array_prototype_includes(rt: &mut Runtime, this: Value, args: &[Value])
 pub fn array_prototype_reduce(rt: &mut Runtime, this: Value, args: &[Value])
     -> Result<Value, RuntimeError>
 {
-    // step param.callbackfn (§param.callbackfn step param.callbackfn)
-    let callbackfn = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step 1 (§1 step 1)
-    let o = rt.to_object(&this.clone())?;
-    // step 2 (§2 step 2)
-    let mut len: usize = rt.length_of_array_like(&o.clone())?;
-    // step 3 (§3 step 3)
-    if !rt.is_callable(&callbackfn.clone()) {
-        // step 3.throw (§3.throw step 3.throw)
-        return Err(RuntimeError::TypeError("Array.prototype.reduce: callback is not callable".into()));
-    }
-    // step 4 (§4 step 4)
-    if !(0_usize < len.clone()) {
-        // step 4.guard (§4.guard step 4.guard)
-        if !(args.len() > 1) {
-            // step 4.throw (§4.throw step 4.throw)
-            return Err(RuntimeError::TypeError("Reduce of empty array with no initial value".into()));
-        }
-    }
-    // step 5 (§5 step 5)
-    let mut k: usize = 0_usize;
-    // step 6 (§6 step 6)
-    let mut accumulator = Value::Undefined;
-    // step 7 (§7 step 7)
-    if (args.len() > 1) {
-        // step 7.a (§7.a step 7.a)
-        accumulator = args.get(1).cloned().unwrap_or(Value::Undefined);
-    } else {
-        // step 7.b (§7.b step 7.b)
-        if (k.clone() < len.clone()) {
-            // step 7.b.iv (§7.b.iv step 7.b.iv)
-            accumulator = rt.read_property_via(&o.clone(), &k.clone().to_string())?;
-            // step 7.b.v (§7.b.v step 7.b.v)
-            k = (k.clone() + 1_usize);
-        }
-    }
-    // step 8 (§8 step 8)
-    while (k.clone() < len.clone()) {
-        // step 8.a (§8.a step 8.a)
-        let pk = k.clone().to_string();
-        // step 8.b (§8.b step 8.b)
-        if rt.has_property_via(&o.clone(), &pk.clone()) {
-            // step 8.c.i (§8.c.i step 8.c.i)
-            let k_value = rt.read_property_via(&o.clone(), &pk.clone())?;
-            // step 8.c.ii (§8.c.ii step 8.c.ii)
-            accumulator = rt.call_function(callbackfn.clone().clone(), Value::Undefined.clone(), vec![accumulator.clone(), k_value.clone(), Value::Number(k.clone() as f64), o.clone()])?;
-        }
-        // step 8.d (§8.d step 8.d)
-        k = (k.clone() + 1_usize);
-    }
-    // step 9 (§9 step 9)
-    return Ok(accumulator.clone());
+    return Ok(rt.array_proto_reduce_via(args)?);
 }
 
 /// ECMA-262 §20.1.2.18 — Object.keys ( O )

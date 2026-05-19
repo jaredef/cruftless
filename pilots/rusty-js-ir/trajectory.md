@@ -644,3 +644,55 @@ Tier 1.11+ alphabet extensions (still queued):
 8. Property-descriptor builders (unblocks Object.{defineProperty, getOwnPropertyDescriptor}).
 
 Pin-Art tag count: 27 commits as of IR-EXT 23.
+
+
+## IR-EXT 24 → 29 — 2026-05-19 night-very-late through 2026-05-19 (String.prototype completion stretch)
+
+**Stretch summary**: six EXT rounds completing the String.prototype chapter via the brand-checked proto-method + CallBuiltin pattern established in IR-EXT 23. 27 new sections wired across the case / trim / repeat / pad / search / slice / substring / locale / regex-dispatch families. No alphabet extensions required — pattern is purely mechanical at this point.
+
+113 IR-encoded total, 108 wired.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| `27d0bc18` | IR-EXT 24: case family | String.prototype.{toLowerCase, toUpperCase, toLocaleLowerCase, toLocaleUpperCase} via four 1-step brand-checked CallBuiltin sections. |
+| `556e8dfc` | IR-EXT 25: trim family | String.prototype.{trim, trimStart, trimEnd, trimLeft, trimRight} via shared trim_section helper. Annex B aliases share their main-chapter helpers (trimLeft→trim_start_via, trimRight→trim_end_via). |
+| `09576a64` | IR-EXT 26: repeat + pad family | String.prototype.{repeat, padStart, padEnd}. RangeError on repeat with negative or infinite count surfaces via runtime helper. |
+| `0d98f3b2` | IR-EXT 27: substring + index-search + boundary-check family | String.prototype.{slice, substring, substr, indexOf, lastIndexOf, includes, startsWith, endsWith}. IsRegExp brand-check lifted into a Runtime helper (is_regexp_like_via) so includes/startsWith/endsWith throw correctly when searchValue is a RegExp. two_arg_section builder lifted in section module. |
+| `d5ef2276` | IR-EXT 28: code-point + locale family | String.prototype.{codePointAt, at, normalize, localeCompare}. zero_arg_section + one_arg_section builders lifted alongside two_arg_section. v1 deviations: normalize is a no-op string coercion, localeCompare is locale-insensitive lex compare. |
+| `203ea89f` | IR-EXT 29: regex-dispatch family | String.prototype.{split, replace, replaceAll} via Runtime helpers that perform @@split / @@replace dispatch internally before the primitive-string fallback. replaceAll callable-replacer path now spec-faithful (iterates and re-invokes per match). |
+
+### Substrate at IR-EXT 29 close
+
+**IR alphabet**: still 54 nodes (52 stable + AllArgs + ArgsRest, both pre-existing). The String chapter required zero new IR primitives — every new section reduced to a 1-step CallBuiltin via the brand-checked proto-method pattern.
+
+**Sections IR-encoded**: 113 across 10 chapters. String.prototype now stands at 30 sections (3 from IR-EXT 23 + 4 case + 5 trim + 3 repeat/pad + 8 substring/search + 4 code-point/locale + 3 regex-dispatch). Object: 17. Math: 31. Reflect: 9. Array.prototype: 12 (no change). Promise: 2. Number static: 4. Number.prototype: 4. Boolean.prototype: 2. Global predicates: 2.
+
+**Wired**: 108. Still IR-only-not-wired: 5 (Array.prototype.{findLast, findLastIndex, indexOf, includes, reduce}), unchanged since IR-EXT 5. These remain pending alphabet extensions (signed-Int / IndexSub for backward iteration and fromIndex normalization; find-first-present-index inner-loop for reduce wiring).
+
+**Runtime helpers cumulative**: ~70 (~24 String.prototype helpers added across this stretch — char_at, char_code_at, concat, four case-family, five trim-family, repeat, pad_start, pad_end, slice, substring, substr, index_of, last_index_of, includes, starts_with, ends_with, code_point_at, at, normalize, locale_compare, split, replace, replace_all, is_regexp_like).
+
+**Linter**: 113/113 clean.
+
+### Conjecture status
+
+§I conjecture continues to hold with no regressions. The String.prototype chapter completed via pure mechanical application of the established brand-check + CallBuiltin pattern; no novel structural problems surfaced. The §I.1 alphabet-completeness condition holds across an entire ECMA chapter completion, which is stronger evidence than per-cluster completion.
+
+§I-strengthened (coverage-discovery) did not produce new corroborations this stretch — the cruftless String.prototype impls were already P62-era spec-compliant for the simple paths. The IR translation served as audit-by-construction, finding zero divergences.
+
+### Open scope at IR-EXT 29 close
+
+The five long-standing IR-only-not-wired sections become the next priority. Two paths:
+- **(A) wire as-is.** The existing IR sections lint clean and lower to compilable Rust. findLast/findLastIndex use a Tier-1.7 forward-iterate-track-last approximation that is semantically equivalent for side-effect-free predicates. indexOf/includes omit fromIndex handling. Wiring these would deviate from the hand-written impls on edge cases (sparse arrays with side-effecting predicates, explicit fromIndex args).
+- **(B) refactor to 1-step CallBuiltin.** Replace the detailed IR with a single CallBuiltin pointing to a runtime helper that preserves the hand-written impl's edge-case handling. Loses spec-step-level linter granularity but matches the EXT 8-29 established pattern.
+
+(B) is the recommended path for parity preservation.
+
+Remaining Tier-1.11+ alphabet extensions still queued:
+1. Signed-Int + IndexSub primitives (would let path A become spec-strict).
+2. Iterator-protocol primitives (Promise.all family + Set/Map ctor iterables).
+3. Property-descriptor builders (Object.defineProperty + getOwnPropertyDescriptor).
+4. NewPromiseCapability + SpeciesConstructor (Promise.all family C-dispatch).
+
+Pin-Art tag count: 33 commits as of IR-EXT 29.

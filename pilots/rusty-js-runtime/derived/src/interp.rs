@@ -484,6 +484,133 @@ impl Runtime {
         Ok(Value::String(std::rc::Rc::new(s + &suffix)))
     }
 
+    /// Array.prototype.indexOf(searchElement, fromIndex) per ECMA §23.1.3.16.
+    pub fn array_proto_index_of_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let id = crate::prototype::to_array_this(self)?;
+        let needle = args.first().cloned().unwrap_or(Value::Undefined);
+        let len = self.array_length(id) as i64;
+        let from = match args.get(1) {
+            Some(v) if !matches!(v, Value::Undefined) => {
+                let n = crate::abstract_ops::to_number(v) as i64;
+                if n < 0 { (len + n).max(0) } else { n.min(len) }
+            }
+            _ => 0,
+        };
+        let mut i = from;
+        while i < len {
+            let key = i.to_string();
+            if self.has_property(id, &key) {
+                let v = self.read_property(id, &key)?;
+                if crate::abstract_ops::is_strictly_equal(&v, &needle) {
+                    return Ok(Value::Number(i as f64));
+                }
+            }
+            i += 1;
+        }
+        Ok(Value::Number(-1.0))
+    }
+
+    /// Array.prototype.includes(searchElement, fromIndex) per ECMA §23.1.3.14.
+    pub fn array_proto_includes_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let id = crate::prototype::to_array_this(self)?;
+        let needle = args.first().cloned().unwrap_or(Value::Undefined);
+        let len = self.array_length(id);
+        for i in 0..len {
+            let key = i.to_string();
+            let v = if self.has_property(id, &key) {
+                self.read_property(id, &key)?
+            } else {
+                Value::Undefined
+            };
+            let eq = match (&v, &needle) {
+                (Value::Number(a), Value::Number(b)) if a.is_nan() && b.is_nan() => true,
+                _ => crate::abstract_ops::is_strictly_equal(&v, &needle),
+            };
+            if eq { return Ok(Value::Boolean(true)); }
+        }
+        Ok(Value::Boolean(false))
+    }
+
+    /// Array.prototype.findLast(predicate, thisArg) per ECMA §23.1.3.10.
+    pub fn array_proto_find_last_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let id = crate::prototype::to_array_this(self)?;
+        let cb = args.first().cloned().ok_or_else(||
+            RuntimeError::TypeError("findLast: callback required".into()))?;
+        if !self.is_callable(&cb) {
+            return Err(RuntimeError::TypeError("Array.prototype.findLast: callback is not callable".into()));
+        }
+        let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
+        let len = self.array_length(id);
+        for i in (0..len).rev() {
+            let v = self.object_get(id, &i.to_string());
+            let r = self.call_function(cb.clone(), this_arg.clone(),
+                vec![v.clone(), Value::Number(i as f64), Value::Object(id)])?;
+            if crate::abstract_ops::to_boolean(&r) { return Ok(v); }
+        }
+        Ok(Value::Undefined)
+    }
+
+    /// Array.prototype.findLastIndex(predicate, thisArg) per ECMA §23.1.3.11.
+    pub fn array_proto_find_last_index_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let id = crate::prototype::to_array_this(self)?;
+        let cb = args.first().cloned().ok_or_else(||
+            RuntimeError::TypeError("findLastIndex: callback required".into()))?;
+        if !self.is_callable(&cb) {
+            return Err(RuntimeError::TypeError("Array.prototype.findLastIndex: callback is not callable".into()));
+        }
+        let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
+        let len = self.array_length(id);
+        for i in (0..len).rev() {
+            let v = self.object_get(id, &i.to_string());
+            let r = self.call_function(cb.clone(), this_arg.clone(),
+                vec![v, Value::Number(i as f64), Value::Object(id)])?;
+            if crate::abstract_ops::to_boolean(&r) { return Ok(Value::Number(i as f64)); }
+        }
+        Ok(Value::Number(-1.0))
+    }
+
+    /// Array.prototype.reduce(callbackfn, initialValue) per ECMA §23.1.3.24.
+    pub fn array_proto_reduce_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let id = crate::prototype::to_array_this(self)?;
+        let cb = args.first().cloned().ok_or_else(||
+            RuntimeError::TypeError("Array.prototype.reduce: callback required".into()))?;
+        if !self.is_callable(&cb) {
+            return Err(RuntimeError::TypeError("Array.prototype.reduce: callback is not callable".into()));
+        }
+        let len = self.array_length(id);
+        let has_init = args.len() >= 2;
+        let mut i = 0usize;
+        let mut acc = if has_init {
+            args[1].clone()
+        } else {
+            let mut seed: Option<(usize, Value)> = None;
+            while i < len {
+                let key = i.to_string();
+                if self.has_property(id, &key) {
+                    let v = self.read_property(id, &key)?;
+                    seed = Some((i, v));
+                    break;
+                }
+                i += 1;
+            }
+            match seed {
+                Some((start, v)) => { i = start + 1; v }
+                None => return Err(RuntimeError::TypeError(
+                    "reduce of empty array with no initial value".into())),
+            }
+        };
+        while i < len {
+            let key = i.to_string();
+            if self.has_property(id, &key) {
+                let v = self.read_property(id, &key)?;
+                acc = self.call_function(cb.clone(), Value::Undefined,
+                    vec![acc, v, Value::Number(i as f64), Value::Object(id)])?;
+            }
+            i += 1;
+        }
+        Ok(acc)
+    }
+
     /// String.prototype.split(separator, limit) per ECMA §22.1.3.23.
     pub fn string_proto_split_via(&mut self, this: &Value, separator: &Value, limit: &Value) -> Result<Value, RuntimeError> {
         self.require_object_coercible(this)?;

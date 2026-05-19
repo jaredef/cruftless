@@ -1,15 +1,10 @@
 //! ECMA-262 §23.1.3.{8, 9, 10, 11} — Array.prototype.{find, findIndex, findLast, findLastIndex}.
 //!
-//! Iteration with predicate; returns kValue or k, or undefined/-1 when
-//! no element satisfies. find/findIndex iterate forward; findLast and
-//! findLastIndex iterate backward.
-//!
-//! Tier-1.7 simplification: findLast/findLastIndex are implemented via
-//! forward-iterate-and-track-last-match. The spec specifies backward
-//! iteration, but for predicates without side-effects on iteration order
-//! the result is identical. Side-effect-sensitive predicates would
-//! observe different invocation order; a future round can switch to
-//! signed-counter backward iteration once the IR has signed-Index types.
+//! find/findIndex retain their detailed spec-step IR shape (preamble + forward loop).
+//! findLast/findLastIndex compile down to 1-step CallBuiltin to runtime helpers that
+//! perform backward iteration directly (the Tier-1.7 forward-iterate-track-last
+//! simplification was wired through E29 but diverged from cruftless's hand-written
+//! impl on side-effecting predicates; lifting to a runtime helper restores parity).
 
 use crate::ir::{ErrorClass, Expr, IRFunction, IRNode, Step};
 use crate::lint::SpecStepRecord;
@@ -109,45 +104,14 @@ pub fn build_find_index() -> IRFunction {
     }
 }
 
-// ──────────────── §23.1.3.10 findLast (forward-track-last) ────────────────
+// ──────────────── §23.1.3.10 findLast (CallBuiltin to backward-iterating helper) ────────────────
 
 pub fn build_find_last() -> IRFunction {
-    let mut body = preamble("findLast");
-    body.push(Step { spec_step: "4".into(),
-        node: IRNode::LetIndex { name: "k".into(), value: Expr::IntConst(0) }});
-    body.push(Step { spec_step: "param.last".into(),
-        node: IRNode::Let { name: "mut last".into(), value: Expr::Undefined }});
-    body.push(Step { spec_step: "5".into(),
-        node: IRNode::While {
-            cond: Expr::Lt(b(v("k")), b(v("len"))),
-            body: vec![
-                Step { spec_step: "5.a".into(),
-                    node: IRNode::Let { name: "pk".into(),
-                        value: Expr::IndexAsKey(b(v("k"))) }},
-                Step { spec_step: "5.b".into(),
-                    node: IRNode::Let { name: "k_value".into(),
-                        value: Expr::Get(b(v("o")), b(v("pk"))) }},
-                Step { spec_step: "5.c".into(),
-                    node: IRNode::Let { name: "test_result".into(),
-                        value: Expr::ToBoolean(b(Expr::Call {
-                            function: b(v("predicate")),
-                            this: b(v("this_arg")),
-                            args: vec![v("k_value"), Expr::IndexAsValue(b(v("k"))), v("o")],
-                        })) }},
-                Step { spec_step: "5.d".into(),
-                    node: IRNode::If {
-                        cond: v("test_result"),
-                        then_body: vec![Step { spec_step: "5.d.i".into(),
-                            node: IRNode::Assign { name: "last".into(), value: v("k_value") } }],
-                        else_body: vec![],
-                    }},
-                Step { spec_step: "5.e".into(),
-                    node: IRNode::AssignIndex { name: "k".into(),
-                        value: Expr::IndexAdd(b(v("k")), b(Expr::IntConst(1))) }},
-            ],
-        }});
-    body.push(Step { spec_step: "6".into(),
-        node: IRNode::Return(v("last")) });
+    let body = vec![
+        Step { spec_step: "1".into(), node: IRNode::Return(Expr::CallBuiltin {
+            name: "array_proto_find_last_via", args: vec![Expr::AllArgs],
+        })},
+    ];
     IRFunction {
         spec_section: "23.1.3.10".into(),
         rust_name: "array_prototype_find_last".into(),
@@ -156,46 +120,14 @@ pub fn build_find_last() -> IRFunction {
     }
 }
 
-// ──────────────── §23.1.3.11 findLastIndex (forward-track-last) ────────────────
+// ──────────────── §23.1.3.11 findLastIndex (CallBuiltin to backward-iterating helper) ────────────────
 
 pub fn build_find_last_index() -> IRFunction {
-    let mut body = preamble("findLastIndex");
-    body.push(Step { spec_step: "4".into(),
-        node: IRNode::LetIndex { name: "k".into(), value: Expr::IntConst(0) }});
-    body.push(Step { spec_step: "param.last".into(),
-        node: IRNode::Let { name: "mut last".into(), value: Expr::Number(-1.0) }});
-    body.push(Step { spec_step: "5".into(),
-        node: IRNode::While {
-            cond: Expr::Lt(b(v("k")), b(v("len"))),
-            body: vec![
-                Step { spec_step: "5.a".into(),
-                    node: IRNode::Let { name: "pk".into(),
-                        value: Expr::IndexAsKey(b(v("k"))) }},
-                Step { spec_step: "5.b".into(),
-                    node: IRNode::Let { name: "k_value".into(),
-                        value: Expr::Get(b(v("o")), b(v("pk"))) }},
-                Step { spec_step: "5.c".into(),
-                    node: IRNode::Let { name: "test_result".into(),
-                        value: Expr::ToBoolean(b(Expr::Call {
-                            function: b(v("predicate")),
-                            this: b(v("this_arg")),
-                            args: vec![v("k_value"), Expr::IndexAsValue(b(v("k"))), v("o")],
-                        })) }},
-                Step { spec_step: "5.d".into(),
-                    node: IRNode::If {
-                        cond: v("test_result"),
-                        then_body: vec![Step { spec_step: "5.d.i".into(),
-                            node: IRNode::Assign { name: "last".into(),
-                                value: Expr::IndexAsValue(b(v("k"))) } }],
-                        else_body: vec![],
-                    }},
-                Step { spec_step: "5.e".into(),
-                    node: IRNode::AssignIndex { name: "k".into(),
-                        value: Expr::IndexAdd(b(v("k")), b(Expr::IntConst(1))) }},
-            ],
-        }});
-    body.push(Step { spec_step: "6".into(),
-        node: IRNode::Return(v("last")) });
+    let body = vec![
+        Step { spec_step: "1".into(), node: IRNode::Return(Expr::CallBuiltin {
+            name: "array_proto_find_last_index_via", args: vec![Expr::AllArgs],
+        })},
+    ];
     IRFunction {
         spec_section: "23.1.3.11".into(),
         rust_name: "array_prototype_find_last_index".into(),
@@ -222,4 +154,20 @@ pub fn spec_steps_find() -> Vec<SpecStepRecord> {
         SpecStepRecord { step_id: "5.e".into(),   abstract_ops: vec![],                    throws: None, prose: "Set k to k + 1." },
         SpecStepRecord { step_id: "6".into(),     abstract_ops: vec![],                    throws: None, prose: "Return undefined." },
     ]
+}
+
+pub fn spec_steps_find_index() -> Vec<SpecStepRecord> {
+    let mut r = spec_steps_find();
+    r.last_mut().unwrap().prose = "Return -1.";
+    r
+}
+
+pub fn spec_steps_find_last() -> Vec<SpecStepRecord> {
+    vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["array_proto_find_last_via"], throws: None,
+        prose: "Iterate the array-like backward; return the first kValue for which the predicate returns truthy, or undefined." }]
+}
+
+pub fn spec_steps_find_last_index() -> Vec<SpecStepRecord> {
+    vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["array_proto_find_last_index_via"], throws: None,
+        prose: "Iterate the array-like backward; return the index k for which the predicate returns truthy, or -1." }]
 }
