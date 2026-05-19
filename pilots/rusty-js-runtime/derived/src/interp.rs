@@ -261,6 +261,81 @@ impl Runtime {
     /// (2) else call obj.toString() if callable and primitive return;
     /// (3) else call obj.valueOf() if callable and primitive return;
     /// (4) all three returned Objects → TypeError per §7.1.1.1 step 6.
+    /// Ω.5.P62.E21: ToPrimitive per ECMA §7.1.1 — when `v` is an Object,
+    /// dispatch through @@toPrimitive(hint) → then either valueOf-then-
+    /// toString (default/number hint) or toString-then-valueOf (string
+    /// hint) per §7.1.1.1 OrdinaryToPrimitive. Returns the first
+    /// primitive produced; throws TypeError if all dispatches return
+    /// Objects. For non-Object input, returns v unchanged.
+    pub fn to_primitive(&mut self, v: &Value, hint: &str) -> Result<Value, RuntimeError> {
+        if let Value::Object(id) = v {
+            let id = *id;
+            // (1) @@toPrimitive (string or number hint).
+            let tp = self.object_get(id, "@@toPrimitive");
+            if matches!(tp, Value::Object(_)) {
+                let r = self.call_function(tp, v.clone(), vec![
+                    Value::String(Rc::new(hint.into())),
+                ])?;
+                if !matches!(r, Value::Object(_)) {
+                    return Ok(r);
+                }
+                return Err(RuntimeError::TypeError(
+                    "Cannot convert object to primitive value".into()));
+            }
+            // (2) OrdinaryToPrimitive — order depends on hint.
+            let methods: [&str; 2] = if hint == "string" {
+                ["toString", "valueOf"]
+            } else {
+                ["valueOf", "toString"]
+            };
+            for m in methods {
+                let f = self.object_get(id, m);
+                if matches!(f, Value::Object(_)) {
+                    let r = self.call_function(f, v.clone(), Vec::new())?;
+                    if !matches!(r, Value::Object(_)) {
+                        return Ok(r);
+                    }
+                }
+            }
+            return Err(RuntimeError::TypeError(
+                "Cannot convert object to primitive value".into()));
+        }
+        Ok(v.clone())
+    }
+
+    /// Ω.5.P62.E21: op_add with Object→primitive dispatch per ECMA
+    /// §13.15.4. If either operand is Object, ToPrimitive(default) on
+    /// both; then if either resulting primitive is String, concatenate;
+    /// else numeric add. Pure-primitive case delegates to
+    /// abstract_ops::op_add for the common fast path.
+    pub fn op_add_rt(&mut self, l: &Value, r: &Value) -> Result<Value, RuntimeError> {
+        let lp = self.to_primitive(l, "default")?;
+        let rp = self.to_primitive(r, "default")?;
+        Ok(crate::abstract_ops::op_add(&lp, &rp))
+    }
+
+    /// Ω.5.P62.E21: loose-equality with Object→primitive dispatch per
+    /// ECMA §7.2.13 step 12/13. When one side is Object and the other
+    /// is a primitive, ToPrimitive(Object, default) and re-compare;
+    /// throws TypeError up the chain if dispatch fails.
+    pub fn is_loosely_equal_rt(&mut self, a: &Value, b: &Value) -> Result<bool, RuntimeError> {
+        // Same-type or both-non-Object fast path.
+        if !matches!(a, Value::Object(_)) && !matches!(b, Value::Object(_)) {
+            return Ok(crate::abstract_ops::is_loosely_equal(a, b));
+        }
+        if matches!(a, Value::Object(_)) && matches!(b, Value::Object(_)) {
+            // Both Objects: SameValue (reference equality).
+            return Ok(crate::abstract_ops::is_strictly_equal(a, b));
+        }
+        // One Object, one primitive: ToPrimitive on the Object side.
+        if matches!(a, Value::Object(_)) {
+            let ap = self.to_primitive(a, "default")?;
+            return Ok(crate::abstract_ops::is_loosely_equal(&ap, b));
+        }
+        let bp = self.to_primitive(b, "default")?;
+        Ok(crate::abstract_ops::is_loosely_equal(a, &bp))
+    }
+
     /// Ω.5.P62.E5: IsCallable per ECMA §7.2.4 — true iff `v` is an Object
     /// whose internal kind is one of the callable forms (Function,
     /// Closure, BoundFunction, Proxy with callable target). Used by
@@ -898,8 +973,11 @@ impl Runtime {
 
                 // ─── Arithmetic ───
                 Op::Add => {
+                    // Ω.5.P62.E21: route through op_add_rt so Object
+                    // operands dispatch ToPrimitive per §13.15.4.
                     let r = frame.pop()?; let l = frame.pop()?;
-                    frame.push(op_add(&l, &r));
+                    let v = self.op_add_rt(&l, &r)?;
+                    frame.push(v);
                 }
                 Op::Sub => {
                     let rv = frame.pop()?; let lv = frame.pop()?;
@@ -1004,12 +1082,17 @@ impl Runtime {
 
                 // ─── Comparison / equality ───
                 Op::Eq => {
+                    // Ω.5.P62.E21: route through is_loosely_equal_rt so
+                    // Object/primitive comparison dispatches ToPrimitive
+                    // per §7.2.13 step 12/13.
                     let r = frame.pop()?; let l = frame.pop()?;
-                    frame.push(Value::Boolean(is_loosely_equal(&l, &r)));
+                    let v = self.is_loosely_equal_rt(&l, &r)?;
+                    frame.push(Value::Boolean(v));
                 }
                 Op::Ne => {
                     let r = frame.pop()?; let l = frame.pop()?;
-                    frame.push(Value::Boolean(!is_loosely_equal(&l, &r)));
+                    let v = self.is_loosely_equal_rt(&l, &r)?;
+                    frame.push(Value::Boolean(!v));
                 }
                 Op::StrictEq => {
                     let r = frame.pop()?; let l = frame.pop()?;
