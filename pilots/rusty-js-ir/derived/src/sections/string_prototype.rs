@@ -265,6 +265,14 @@ fn zero_arg_section(spec: &str, rust_name: &str, title: &str, via: &'static str)
     IRFunction { spec_section: spec.into(), rust_name: rust_name.into(), title: title.into(), body }
 }
 
+pub fn build_split()         -> IRFunction { two_arg_section("22.1.3.23", "string_prototype_split",         "String.prototype.split ( separator, limit )",                "string_proto_split_via",         "separator", "limit") }
+pub fn build_replace()       -> IRFunction { two_arg_section("22.1.3.15", "string_prototype_replace",       "String.prototype.replace ( searchValue, replaceValue )",      "string_proto_replace_via",       "search", "replacement") }
+pub fn build_replace_all()   -> IRFunction { two_arg_section("22.1.3.16", "string_prototype_replace_all",   "String.prototype.replaceAll ( searchValue, replaceValue )",   "string_proto_replace_all_via",   "search", "replacement") }
+
+pub fn spec_steps_split()       -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["string_proto_split_via"],       throws: None, prose: "Dispatch to separator[@@split] if present; else split S by separator with optional limit." }] }
+pub fn spec_steps_replace()     -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["string_proto_replace_via"],     throws: None, prose: "Dispatch to searchValue[@@replace] if present; else replace first occurrence in S." }] }
+pub fn spec_steps_replace_all() -> Vec<SpecStepRecord> { vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["string_proto_replace_all_via"], throws: None, prose: "Dispatch to searchValue[@@replace] if present; else replace all occurrences in S." }] }
+
 pub fn build_code_point_at()  -> IRFunction { one_arg_section("22.1.3.4",  "string_prototype_code_point_at",  "String.prototype.codePointAt ( pos )",       "string_proto_code_point_at_via",  "pos") }
 pub fn build_at()             -> IRFunction { one_arg_section("22.1.3.2",  "string_prototype_at",             "String.prototype.at ( index )",              "string_proto_at_via",             "index") }
 pub fn build_normalize()      -> IRFunction { zero_arg_section("22.1.3.13", "string_prototype_normalize",     "String.prototype.normalize ( [ form ] )",    "string_proto_normalize_via") }

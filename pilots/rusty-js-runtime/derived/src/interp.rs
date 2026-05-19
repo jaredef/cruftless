@@ -484,6 +484,128 @@ impl Runtime {
         Ok(Value::String(std::rc::Rc::new(s + &suffix)))
     }
 
+    /// String.prototype.split(separator, limit) per ECMA §22.1.3.23.
+    pub fn string_proto_split_via(&mut self, this: &Value, separator: &Value, limit: &Value) -> Result<Value, RuntimeError> {
+        self.require_object_coercible(this)?;
+        if let Value::Object(rx_id) = separator {
+            let split_method = self.read_property(*rx_id, "@@split")?;
+            if matches!(split_method, Value::Object(_)) {
+                let s = self.to_string_strict(this)?;
+                return self.call_function(split_method, separator.clone(),
+                    vec![Value::String(std::rc::Rc::new(s)), limit.clone()]);
+            }
+        }
+        let s = self.to_string_strict(this)?;
+        let limit_n = match limit {
+            Value::Undefined => u32::MAX,
+            v => { let n = self.coerce_to_number(v)?; if n.is_nan() || n <= 0.0 { 0 } else { n as u32 } }
+        };
+        let out = self.alloc_object(crate::value::Object::new_array());
+        if limit_n == 0 {
+            self.object_set(out, "length".into(), Value::Number(0.0));
+            return Ok(Value::Object(out));
+        }
+        let mut parts: Vec<String> = match separator {
+            Value::Undefined => vec![s.clone()],
+            _ => {
+                let sep = self.to_string_strict(separator)?;
+                if sep.is_empty() {
+                    if s.is_empty() {
+                        self.object_set(out, "length".into(), Value::Number(0.0));
+                        return Ok(Value::Object(out));
+                    }
+                    s.chars().map(|c| c.to_string()).collect()
+                } else if s.is_empty() {
+                    vec![s.clone()]
+                } else {
+                    s.split(&sep).map(|s| s.to_string()).collect()
+                }
+            }
+        };
+        if (parts.len() as u32) > limit_n { parts.truncate(limit_n as usize); }
+        for (i, p) in parts.iter().enumerate() {
+            self.object_set(out, i.to_string(), Value::String(std::rc::Rc::new(p.clone())));
+        }
+        self.object_set(out, "length".into(), Value::Number(parts.len() as f64));
+        Ok(Value::Object(out))
+    }
+
+    /// String.prototype.replace(searchValue, replaceValue) per ECMA §22.1.3.15.
+    pub fn string_proto_replace_via(&mut self, this: &Value, search: &Value, replacement: &Value) -> Result<Value, RuntimeError> {
+        self.require_object_coercible(this)?;
+        let s = self.to_string_strict(this)?;
+        if let Value::Object(rx_id) = search {
+            let replace_method = self.read_property(*rx_id, "@@replace")?;
+            if matches!(replace_method, Value::Object(_)) {
+                return self.call_function(replace_method, search.clone(),
+                    vec![Value::String(std::rc::Rc::new(s)), replacement.clone()]);
+            }
+        }
+        let needle = self.to_string_strict(search)?;
+        if self.is_callable(replacement) {
+            return match s.find(&needle) {
+                Some(byte_off) => {
+                    let pos = s[..byte_off].chars().count() as f64;
+                    let r = self.call_function(replacement.clone(), Value::Undefined, vec![
+                        Value::String(std::rc::Rc::new(needle.clone())),
+                        Value::Number(pos),
+                        Value::String(std::rc::Rc::new(s.clone())),
+                    ])?;
+                    let repl_str = self.to_string_strict(&r)?;
+                    let mut out = String::with_capacity(s.len());
+                    out.push_str(&s[..byte_off]);
+                    out.push_str(&repl_str);
+                    out.push_str(&s[byte_off + needle.len()..]);
+                    Ok(Value::String(std::rc::Rc::new(out)))
+                }
+                None => Ok(Value::String(std::rc::Rc::new(s))),
+            };
+        }
+        let repl = self.to_string_strict(replacement)?;
+        Ok(Value::String(std::rc::Rc::new(s.replacen(&needle, &repl, 1))))
+    }
+
+    /// String.prototype.replaceAll(searchValue, replaceValue) per ECMA §22.1.3.16.
+    pub fn string_proto_replace_all_via(&mut self, this: &Value, search: &Value, replacement: &Value) -> Result<Value, RuntimeError> {
+        self.require_object_coercible(this)?;
+        let s = self.to_string_strict(this)?;
+        if let Value::Object(rx_id) = search {
+            let replace_method = self.read_property(*rx_id, "@@replace")?;
+            if matches!(replace_method, Value::Object(_)) {
+                return self.call_function(replace_method, search.clone(),
+                    vec![Value::String(std::rc::Rc::new(s)), replacement.clone()]);
+            }
+        }
+        let needle = self.to_string_strict(search)?;
+        if self.is_callable(replacement) {
+            let mut out = String::with_capacity(s.len());
+            let mut cur = 0usize;
+            if needle.is_empty() {
+                return Ok(Value::String(std::rc::Rc::new(s)));
+            }
+            while let Some(rel) = s[cur..].find(&needle) {
+                let byte_off = cur + rel;
+                out.push_str(&s[cur..byte_off]);
+                let pos = s[..byte_off].chars().count() as f64;
+                let r = self.call_function(replacement.clone(), Value::Undefined, vec![
+                    Value::String(std::rc::Rc::new(needle.clone())),
+                    Value::Number(pos),
+                    Value::String(std::rc::Rc::new(s.clone())),
+                ])?;
+                let repl_str = self.to_string_strict(&r)?;
+                out.push_str(&repl_str);
+                cur = byte_off + needle.len();
+            }
+            out.push_str(&s[cur..]);
+            return Ok(Value::String(std::rc::Rc::new(out)));
+        }
+        let repl = self.to_string_strict(replacement)?;
+        if needle.is_empty() {
+            return Ok(Value::String(std::rc::Rc::new(s)));
+        }
+        Ok(Value::String(std::rc::Rc::new(s.replace(&needle, &repl))))
+    }
+
     /// String.prototype.codePointAt(pos) per ECMA §22.1.3.4.
     pub fn string_proto_code_point_at_via(&mut self, this: &Value, pos: &Value) -> Result<Value, RuntimeError> {
         self.require_object_coercible(this)?;

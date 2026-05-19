@@ -1155,60 +1155,10 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
         crate::generated::string_prototype_ends_with(rt, this, &[a, b])
     });
     register_intrinsic_method(rt, host, "split", 2, |rt, args| {
-        // §22.1.3.23: RequireObjectCoercible(this), then dispatch to
-        // separator[@@split] if present (RegExp case), else ToString
-        // both sides, then split with optional limit (ToUint32).
-        let this = rt.current_this(); rt.require_object_coercible(&this)?;
-        let sep_v = args.first().cloned().unwrap_or(Value::Undefined);
-        // RegExp @@split dispatch.
-        if let Value::Object(rx_id) = &sep_v {
-            let split_method = rt.read_property(*rx_id, "@@split")?;
-            if matches!(split_method, Value::Object(_)) {
-                let limit = args.get(1).cloned().unwrap_or(Value::Undefined);
-                let s = rt.to_string_strict(&this)?;
-                return rt.call_function(split_method, sep_v.clone(),
-                    vec![Value::String(Rc::new(s)), limit]);
-            }
-        }
-        let s = rt.to_string_strict(&this)?;
-        let limit_n = match args.get(1).cloned() {
-            Some(Value::Undefined) | None => u32::MAX,
-            Some(v) => {
-                let n = rt.coerce_to_number(&v)?;
-                if n.is_nan() || n <= 0.0 { 0 } else { n as u32 }
-            }
-        };
-        let out = rt.alloc_object(Object::new_array());
-        if limit_n == 0 {
-            rt.object_set(out, "length".into(), Value::Number(0.0));
-            return Ok(Value::Object(out));
-        }
-        let mut parts: Vec<String> = match &sep_v {
-            Value::Undefined => vec![s.clone()],
-            _ => {
-                let sep = rt.to_string_strict(&sep_v)?;
-                if sep.is_empty() {
-                    // §22.1.3.23 step 12: if S is empty, return [].
-                    if s.is_empty() {
-                        rt.object_set(out, "length".into(), Value::Number(0.0));
-                        return Ok(Value::Object(out));
-                    }
-                    s.chars().map(|c| c.to_string()).collect()
-                } else if s.is_empty() {
-                    vec![s.clone()]
-                } else {
-                    s.split(&sep).map(|s| s.to_string()).collect()
-                }
-            }
-        };
-        if (parts.len() as u32) > limit_n {
-            parts.truncate(limit_n as usize);
-        }
-        for (i, p) in parts.iter().enumerate() {
-            rt.object_set(out, i.to_string(), Value::String(Rc::new(p.clone())));
-        }
-        rt.object_set(out, "length".into(), Value::Number(parts.len() as f64));
-        Ok(Value::Object(out))
+        let this = rt.current_this();
+        let sep = args.first().cloned().unwrap_or(Value::Undefined);
+        let limit = args.get(1).cloned().unwrap_or(Value::Undefined);
+        crate::generated::string_prototype_split(rt, this, &[sep, limit])
     });
     // Ω.5.P63.E23: repeat routed through IR.
     register_intrinsic_method(rt, host, "repeat", 1, |rt, args| {
@@ -1264,44 +1214,16 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
         crate::generated::string_prototype_pad_end(rt, this, &[target, pad])
     });
     register_intrinsic_method(rt, host, "replace", 2, |rt, args| {
-        // §22.1.3.15 (string-replacer subset; regex-replacer goes through
-        // RegExp.prototype[@@replace] which has its own dispatch).
-        let this = rt.current_this(); rt.require_object_coercible(&this)?;
-        let s = rt.to_string_strict(&this)?;
-        let needle_v = args.first().cloned().unwrap_or(Value::Undefined);
-        // If searchValue is a RegExp, delegate to its @@replace method.
-        if let Value::Object(rx_id) = &needle_v {
-            let replace_method = rt.read_property(*rx_id, "@@replace")?;
-            if matches!(replace_method, Value::Object(_)) {
-                let replacer = args.get(1).cloned().unwrap_or(Value::Undefined);
-                return rt.call_function(replace_method, needle_v.clone(),
-                    vec![Value::String(Rc::new(s)), replacer]);
-            }
-        }
-        let needle = rt.to_string_strict(&needle_v)?;
-        let repl_v = args.get(1).cloned().unwrap_or(Value::Undefined);
-        // If replacer is callable, invoke it with (match, position, source).
-        if rt.is_callable(&repl_v) {
-            match s.find(&needle) {
-                Some(byte_off) => {
-                    let pos = s[..byte_off].chars().count() as f64;
-                    let r = rt.call_function(repl_v, Value::Undefined, vec![
-                        Value::String(Rc::new(needle.clone())),
-                        Value::Number(pos),
-                        Value::String(Rc::new(s.clone())),
-                    ])?;
-                    let repl_str = rt.to_string_strict(&r)?;
-                    let mut out = String::with_capacity(s.len());
-                    out.push_str(&s[..byte_off]);
-                    out.push_str(&repl_str);
-                    out.push_str(&s[byte_off + needle.len()..]);
-                    return Ok(Value::String(Rc::new(out)));
-                }
-                None => return Ok(Value::String(Rc::new(s))),
-            }
-        }
-        let repl = rt.to_string_strict(&repl_v)?;
-        Ok(Value::String(Rc::new(s.replacen(&needle, &repl, 1))))
+        let this = rt.current_this();
+        let search = args.first().cloned().unwrap_or(Value::Undefined);
+        let repl = args.get(1).cloned().unwrap_or(Value::Undefined);
+        crate::generated::string_prototype_replace(rt, this, &[search, repl])
+    });
+    register_intrinsic_method(rt, host, "replaceAll", 2, |rt, args| {
+        let this = rt.current_this();
+        let search = args.first().cloned().unwrap_or(Value::Undefined);
+        let repl = args.get(1).cloned().unwrap_or(Value::Undefined);
+        crate::generated::string_prototype_replace_all(rt, this, &[search, repl])
     });
     register_intrinsic_method(rt, host, "at", 1, |rt, args| {
         let this = rt.current_this();

@@ -122,6 +122,9 @@ fn main() {
         string_prototype::build_at(),
         string_prototype::build_normalize(),
         string_prototype::build_locale_compare(),
+        string_prototype::build_split(),
+        string_prototype::build_replace(),
+        string_prototype::build_replace_all(),
     ];
 
     for f in &sections {

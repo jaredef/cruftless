@@ -124,6 +124,9 @@ fn main() {
         ("String.prototype.at",            string_prototype::build_at(),             string_prototype::spec_steps_at()),
         ("String.prototype.normalize",     string_prototype::build_normalize(),      string_prototype::spec_steps_normalize()),
         ("String.prototype.localeCompare", string_prototype::build_locale_compare(), string_prototype::spec_steps_locale_compare()),
+        ("String.prototype.split",         string_prototype::build_split(),         string_prototype::spec_steps_split()),
+        ("String.prototype.replace",       string_prototype::build_replace(),       string_prototype::spec_steps_replace()),
+        ("String.prototype.replaceAll",    string_prototype::build_replace_all(),   string_prototype::spec_steps_replace_all()),
     ];
 
     let mut total_unexpected = 0;
