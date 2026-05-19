@@ -3638,14 +3638,32 @@ impl Runtime {
         // with the same description produce distinct strings (sufficient
         // for the spec's identity-distinct expectation under v1's
         // string-shaped Symbol representation).
-        let sym_obj = make_native("Symbol", |_rt, args| {
+        // Ω.5.P63.E51: Symbol ctor — invoked-with-new TypeError per §20.4.1.1
+        // step 1; description coercion via OrdinaryToPrimitive (string hint)
+        // so Symbol(symbol_val) throws and Symbol(obj_with_throwing_toString)
+        // propagates correctly. undefined description → undefined (not empty
+        // string) so that .description observation returns undefined.
+        let sym_obj = make_native("Symbol", |rt, args| {
+            if rt.current_new_target.is_some() {
+                return Err(RuntimeError::TypeError(
+                    "Symbol is not a constructor".into()));
+            }
             use std::sync::atomic::{AtomicUsize, Ordering};
             static COUNTER: AtomicUsize = AtomicUsize::new(0);
             let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-            let desc = args.first()
-                .map(|v| crate::abstract_ops::to_string(v).as_str().to_string())
-                .unwrap_or_default();
-            Ok(Value::Symbol(Rc::new(format!("@@sym:{}:{}", n, desc))))
+            let (desc_part, has_desc) = match args.first() {
+                None | Some(Value::Undefined) => (String::new(), false),
+                Some(v) => (rt.to_string_strict(v)?, true),
+            };
+            // Encode description presence into the symbol identifier: with-desc
+            // uses `@@sym:<n>:<desc>`, without-desc uses `@@sym:<n>` so the
+            // .description getter and to_string_via can distinguish.
+            let s = if has_desc {
+                format!("@@sym:{}:{}", n, desc_part)
+            } else {
+                format!("@@sym:{}", n)
+            };
+            Ok(Value::Symbol(Rc::new(s)))
         });
         let sym = self.alloc_object(sym_obj);
         // Ω.5.P59.E1: well-known symbols are real Value::Symbol values now
@@ -3682,8 +3700,11 @@ impl Runtime {
             ("dispose", "@@dispose"),
             ("asyncDispose", "@@asyncDispose"),
         ];
+        // Ω.5.P63.E51: well-known symbols are frozen ({w:false, e:false,
+        // c:false}) per §20.4.2 — closes 15-test prop-desc cluster.
         for &(name, sym_str) in well_known {
-            self.object_set(sym, name.into(), Value::Symbol(Rc::new(sym_str.to_string())));
+            self.obj_mut(sym).set_own_frozen(name.into(),
+                Value::Symbol(Rc::new(sym_str.to_string())));
         }
         register_intrinsic_method(self, sym, "for",    1, |rt, args| crate::generated::symbol_for(rt, rt.current_this(), args));
         register_intrinsic_method(self, sym, "keyFor", 1, |rt, args| crate::generated::symbol_key_for(rt, rt.current_this(), args));
@@ -3693,8 +3714,52 @@ impl Runtime {
         register_intrinsic_method(self, sym_proto, "toString", 0, |rt, args| {
             crate::generated::symbol_prototype_to_string(rt, rt.current_this(), args)
         });
+        // Symbol.prototype.valueOf per §20.4.3.4 — returns the symbol primitive.
+        register_intrinsic_method(self, sym_proto, "valueOf", 0, |rt, _args| {
+            let this = rt.current_this();
+            let t = rt.unwrap_primitive(&this);
+            match t {
+                Value::Symbol(s) => Ok(Value::Symbol(s)),
+                _ => Err(RuntimeError::TypeError(
+                    "Symbol.prototype.valueOf: this is not a Symbol".into())),
+            }
+        });
+        // Symbol.prototype.description getter (data property in v1 — most
+        // consumers read it as a plain prop).
+        let desc_fn = make_native("get description", |rt, _args| {
+            let t = rt.unwrap_primitive(&rt.current_this());
+            let s = match t {
+                Value::Symbol(s) => s,
+                _ => return Err(RuntimeError::TypeError(
+                    "Symbol.prototype.description: this is not a Symbol".into())),
+            };
+            // Encoded forms:
+            //   "@@sym:<n>"          → no description (returns undefined)
+            //   "@@sym:<n>:<desc>"   → description = <desc>
+            //   "@@sym:<key>"        → registry symbol (Symbol.for); description = <key>
+            let body = s.strip_prefix("@@sym:").unwrap_or(&s);
+            let starts_with_digit = body.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false);
+            if starts_with_digit {
+                match body.split_once(':') {
+                    Some((_, d)) => Ok(Value::String(Rc::new(d.to_string()))),
+                    None => Ok(Value::Undefined),
+                }
+            } else {
+                Ok(Value::String(Rc::new(body.to_string())))
+            }
+        });
+        let desc_id = self.alloc_object(desc_fn);
+        self.obj_mut(sym_proto).properties.insert("description".into(),
+            crate::value::PropertyDescriptor {
+                value: Value::Undefined,
+                writable: false, enumerable: false, configurable: true,
+                getter: Some(Value::Object(desc_id)), setter: None,
+            });
         self.obj_mut(sym).set_own_frozen("prototype".into(), Value::Object(sym_proto));
+        // Symbol.prototype.constructor = Symbol.
+        self.obj_mut(sym_proto).set_own_internal("constructor".into(), Value::Object(sym));
         self.globals.insert("Symbol".into(), Value::Object(sym));
+        self.symbol_prototype = Some(sym_proto);
     }
 
     fn install_console(&mut self) {

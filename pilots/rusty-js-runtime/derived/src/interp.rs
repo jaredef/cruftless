@@ -149,6 +149,7 @@ pub struct Runtime {
     pub string_prototype: Option<rusty_js_gc::ObjectId>,
     pub number_prototype: Option<rusty_js_gc::ObjectId>,
     pub bigint_prototype: Option<rusty_js_gc::ObjectId>,
+    pub symbol_prototype: Option<rusty_js_gc::ObjectId>,
     /// Tier-Ω.5.i: %RegExp.prototype% — installed alongside other
     /// intrinsic prototypes; alloc_object auto-wires RegExp objects.
     pub regexp_prototype: Option<rusty_js_gc::ObjectId>,
@@ -241,6 +242,7 @@ impl Runtime {
             string_prototype: None,
             number_prototype: None,
             bigint_prototype: None,
+            symbol_prototype: None,
             regexp_prototype: None,
             gen_yields_stack: Vec::new(),
             pending_live_bindings: HashMap::new(),
@@ -1099,22 +1101,32 @@ impl Runtime {
     }
 
     /// Symbol.for(key) per ECMA §20.4.2.6 — interns a registry symbol.
+    /// Coerces the argument via strict ToString so toString-throwing args
+    /// propagate (per §20.4.2.6 step 1: Let stringKey be ? ToString(key)).
     pub fn symbol_for_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
-        let s = args.first().map(|v| crate::abstract_ops::to_string(v).as_str().to_string()).unwrap_or_default();
+        let arg = args.first().cloned().unwrap_or(Value::Undefined);
+        let s = self.to_string_strict(&arg)?;
         Ok(Value::Symbol(std::rc::Rc::new(format!("@@sym:{}", s))))
     }
 
-    /// Symbol.keyFor(sym) per ECMA §20.4.2.7 — recovers the key, or undefined.
+    /// Symbol.keyFor(sym) per ECMA §20.4.2.7 — recovers the registry key, or
+    /// undefined when the symbol isn't registry-interned. Throws TypeError
+    /// when called with a non-Symbol value per step 1.
     pub fn symbol_key_for_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
-        let s = args.first().and_then(|v| if let Value::Symbol(s) = v { Some(s.clone()) } else { None });
-        match s {
-            Some(s) if s.starts_with("@@sym:") && !s.contains(':') => Ok(Value::Undefined),
-            Some(s) => {
-                let body = s.strip_prefix("@@sym:").unwrap_or(&s);
-                Ok(Value::String(std::rc::Rc::new(body.split_once(':').map(|(_, d)| d.to_string()).unwrap_or_else(|| body.to_string()))))
-            }
-            _ => Ok(Value::Undefined),
-        }
+        let arg = args.first().cloned().unwrap_or(Value::Undefined);
+        let s = match arg {
+            Value::Symbol(s) => s,
+            _ => return Err(RuntimeError::TypeError(
+                "Symbol.keyFor: argument is not a Symbol".into())),
+        };
+        // Registry symbols use the prefix "@@sym:<key>" form (no counter
+        // numeral); non-registry use "@@sym:<n>:<desc>" or "@@sym:<n>".
+        let body = match s.strip_prefix("@@sym:") { Some(b) => b, None => return Ok(Value::Undefined) };
+        // Distinguish registry (no leading digit run) from non-registry
+        // (leading digit run followed by ':' or end-of-string).
+        let leading_is_numeric = body.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false);
+        if leading_is_numeric { return Ok(Value::Undefined); }
+        Ok(Value::String(std::rc::Rc::new(body.to_string())))
     }
 
     /// Date.prototype.getYear() per Annex B.2.4.1 — year minus 1900.
@@ -1392,13 +1404,25 @@ impl Runtime {
 
     /// Symbol.prototype.toString() per ECMA §20.4.3.3.
     pub fn symbol_proto_to_string_via(&mut self) -> Result<Value, RuntimeError> {
-        match self.current_this() {
+        let this_v = self.current_this();
+        let this = self.unwrap_primitive(&this_v);
+        match this {
             Value::Symbol(s) => {
+                // Decoding parallels Symbol.prototype.description (see install_symbol_static).
                 let body = s.strip_prefix("@@sym:").unwrap_or(&s);
-                let desc = body.split_once(':').map(|(_, d)| d).unwrap_or(body);
+                let starts_with_digit = body.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false);
+                let desc = if starts_with_digit {
+                    match body.split_once(':') {
+                        Some((_, d)) => d.to_string(),
+                        None => String::new(),
+                    }
+                } else {
+                    body.to_string()
+                };
                 Ok(Value::String(std::rc::Rc::new(format!("Symbol({})", desc))))
             }
-            v => Ok(Value::String(std::rc::Rc::new(crate::abstract_ops::to_string(&v).as_str().to_string()))),
+            _ => Err(RuntimeError::TypeError(
+                "Symbol.prototype.toString: this is not a Symbol".into())),
         }
     }
 
