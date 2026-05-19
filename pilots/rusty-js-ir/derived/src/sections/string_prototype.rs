@@ -183,3 +183,67 @@ pub fn spec_steps_trim_right() -> Vec<SpecStepRecord> {
     vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["string_proto_trim_end_via"], throws: None,
         prose: "Annex B alias for trimEnd." }]
 }
+
+// ──────────────── §22.1.3.{16, 17, 21} padEnd / padStart / repeat ────────────────
+
+pub fn build_repeat() -> IRFunction {
+    let body = vec![
+        Step { spec_step: "param.count".into(),
+            node: IRNode::Let { name: "count".into(), value: Expr::Arg(0) }},
+        Step { spec_step: "1".into(),
+            node: IRNode::Return(Expr::CallBuiltin {
+                name: "string_proto_repeat_via",
+                args: vec![Expr::This, v("count")],
+            }) },
+    ];
+    IRFunction { spec_section: "22.1.3.21".into(),
+        rust_name: "string_prototype_repeat".into(),
+        title: "String.prototype.repeat ( count )".into(), body }
+}
+
+pub fn build_pad_start() -> IRFunction {
+    let body = vec![
+        Step { spec_step: "param.target".into(),
+            node: IRNode::Let { name: "target".into(), value: Expr::Arg(0) }},
+        Step { spec_step: "param.pad".into(),
+            node: IRNode::Let { name: "pad".into(), value: Expr::Arg(1) }},
+        Step { spec_step: "1".into(),
+            node: IRNode::Return(Expr::CallBuiltin {
+                name: "string_proto_pad_start_via",
+                args: vec![Expr::This, v("target"), v("pad")],
+            }) },
+    ];
+    IRFunction { spec_section: "22.1.3.17".into(),
+        rust_name: "string_prototype_pad_start".into(),
+        title: "String.prototype.padStart ( maxLength [ , fillString ] )".into(), body }
+}
+
+pub fn build_pad_end() -> IRFunction {
+    let body = vec![
+        Step { spec_step: "param.target".into(),
+            node: IRNode::Let { name: "target".into(), value: Expr::Arg(0) }},
+        Step { spec_step: "param.pad".into(),
+            node: IRNode::Let { name: "pad".into(), value: Expr::Arg(1) }},
+        Step { spec_step: "1".into(),
+            node: IRNode::Return(Expr::CallBuiltin {
+                name: "string_proto_pad_end_via",
+                args: vec![Expr::This, v("target"), v("pad")],
+            }) },
+    ];
+    IRFunction { spec_section: "22.1.3.16".into(),
+        rust_name: "string_prototype_pad_end".into(),
+        title: "String.prototype.padEnd ( maxLength [ , fillString ] )".into(), body }
+}
+
+pub fn spec_steps_repeat() -> Vec<SpecStepRecord> {
+    vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["string_proto_repeat_via"], throws: None,
+        prose: "Let O be ? RequireObjectCoercible(this). Let S be ? ToString(O). Let n be ? ToIntegerOrInfinity(count). If n < 0 or n is +∞, throw RangeError. Return S repeated n times." }]
+}
+pub fn spec_steps_pad_start() -> Vec<SpecStepRecord> {
+    vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["string_proto_pad_start_via"], throws: None,
+        prose: "Return the spec-prescribed StringPad(O, maxLength, fillString, start)." }]
+}
+pub fn spec_steps_pad_end() -> Vec<SpecStepRecord> {
+    vec![SpecStepRecord { step_id: "1".into(), abstract_ops: vec!["string_proto_pad_end_via"], throws: None,
+        prose: "Return the spec-prescribed StringPad(O, maxLength, fillString, end)." }]
+}

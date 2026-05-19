@@ -109,6 +109,9 @@ fn main() {
         ("String.prototype.trimEnd",    string_prototype::build_trim_end(),   string_prototype::spec_steps_trim_end()),
         ("String.prototype.trimLeft",   string_prototype::build_trim_left(),  string_prototype::spec_steps_trim_left()),
         ("String.prototype.trimRight",  string_prototype::build_trim_right(), string_prototype::spec_steps_trim_right()),
+        ("String.prototype.repeat",     string_prototype::build_repeat(),     string_prototype::spec_steps_repeat()),
+        ("String.prototype.padStart",   string_prototype::build_pad_start(),  string_prototype::spec_steps_pad_start()),
+        ("String.prototype.padEnd",     string_prototype::build_pad_end(),    string_prototype::spec_steps_pad_end()),
     ];
 
     let mut total_unexpected = 0;

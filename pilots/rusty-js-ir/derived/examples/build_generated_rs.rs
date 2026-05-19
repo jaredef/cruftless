@@ -107,6 +107,9 @@ fn main() {
         string_prototype::build_trim_end(),
         string_prototype::build_trim_left(),
         string_prototype::build_trim_right(),
+        string_prototype::build_repeat(),
+        string_prototype::build_pad_start(),
+        string_prototype::build_pad_end(),
     ];
 
     for f in &sections {

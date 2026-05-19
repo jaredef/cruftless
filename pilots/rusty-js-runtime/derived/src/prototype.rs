@@ -1315,17 +1315,11 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
         rt.object_set(out, "length".into(), Value::Number(parts.len() as f64));
         Ok(Value::Object(out))
     });
+    // Ω.5.P63.E23: repeat routed through IR.
     register_intrinsic_method(rt, host, "repeat", 1, |rt, args| {
-        // §22.1.3.21: negative or Infinity count throws RangeError.
-        let this = rt.current_this(); rt.require_object_coercible(&this)?;
-        let s = rt.to_string_strict(&this)?;
-        let n_n = match args.first().cloned() { Some(v) => rt.coerce_to_number(&v)?, None => 0.0 };
-        if n_n.is_nan() || n_n < 0.0 || n_n == f64::INFINITY {
-            return Err(RuntimeError::RangeError(
-                "Invalid count value".into()));
-        }
-        let n = n_n as usize;
-        Ok(Value::String(Rc::new(s.repeat(n))))
+        let this = rt.current_this();
+        let count = args.first().cloned().unwrap_or(Value::Undefined);
+        crate::generated::string_prototype_repeat(rt, this, std::slice::from_ref(&count))
     });
     // Tier-Ω.5.iiiiii: String.prototype.matchAll per ECMA §22.1.3.13.
     // Returns an iterator over all matches of a regex with the /g flag.
@@ -1361,41 +1355,18 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
     });
     // Tier-Ω.5.ppppp: padStart / padEnd per ECMA-262 §22.1.3.16 / §22.1.3.17.
     // date-fns / left-pad / many formatting libs reach for these.
+    // Ω.5.P63.E23: padStart / padEnd routed through IR.
     register_intrinsic_method(rt, host, "padStart", 1, |rt, args| {
-        let this = rt.current_this(); rt.require_object_coercible(&this)?;
-        let s = rt.to_string_strict(&this)?;
-        let target_n = match args.first().cloned() { Some(v) => rt.coerce_to_number(&v)?, None => 0.0 };
-        let target = if target_n.is_nan() || target_n <= 0.0 { 0 } else { target_n as usize };
-        let pad = match args.get(1).cloned() {
-            Some(Value::Undefined) | None => " ".to_string(),
-            Some(v) => rt.to_string_strict(&v)?,
-        };
-        if s.chars().count() >= target || pad.is_empty() {
-            return Ok(Value::String(Rc::new(s)));
-        }
-        let need = target - s.chars().count();
-        let mut prefix = String::new();
-        while prefix.chars().count() < need { prefix.push_str(&pad); }
-        let prefix: String = prefix.chars().take(need).collect();
-        Ok(Value::String(Rc::new(prefix + &s)))
+        let this = rt.current_this();
+        let target = args.first().cloned().unwrap_or(Value::Undefined);
+        let pad = args.get(1).cloned().unwrap_or(Value::Undefined);
+        crate::generated::string_prototype_pad_start(rt, this, &[target, pad])
     });
     register_intrinsic_method(rt, host, "padEnd", 1, |rt, args| {
-        let this = rt.current_this(); rt.require_object_coercible(&this)?;
-        let s = rt.to_string_strict(&this)?;
-        let target_n = match args.first().cloned() { Some(v) => rt.coerce_to_number(&v)?, None => 0.0 };
-        let target = if target_n.is_nan() || target_n <= 0.0 { 0 } else { target_n as usize };
-        let pad = match args.get(1).cloned() {
-            Some(Value::Undefined) | None => " ".to_string(),
-            Some(v) => rt.to_string_strict(&v)?,
-        };
-        if s.chars().count() >= target || pad.is_empty() {
-            return Ok(Value::String(Rc::new(s)));
-        }
-        let need = target - s.chars().count();
-        let mut suffix = String::new();
-        while suffix.chars().count() < need { suffix.push_str(&pad); }
-        let suffix: String = suffix.chars().take(need).collect();
-        Ok(Value::String(Rc::new(s + &suffix)))
+        let this = rt.current_this();
+        let target = args.first().cloned().unwrap_or(Value::Undefined);
+        let pad = args.get(1).cloned().unwrap_or(Value::Undefined);
+        crate::generated::string_prototype_pad_end(rt, this, &[target, pad])
     });
     register_intrinsic_method(rt, host, "replace", 2, |rt, args| {
         // §22.1.3.15 (string-replacer subset; regex-replacer goes through

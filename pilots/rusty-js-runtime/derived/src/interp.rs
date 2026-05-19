@@ -430,6 +430,60 @@ impl Runtime {
         Ok(())
     }
 
+    /// String.prototype.repeat(count) per ECMA §22.1.3.21.
+    pub fn string_proto_repeat_via(&mut self, this: &Value, count: &Value) -> Result<Value, RuntimeError> {
+        self.require_object_coercible(this)?;
+        let s = self.to_string_strict(this)?;
+        let n_n = match count {
+            Value::Undefined => 0.0,
+            v => self.coerce_to_number(v)?,
+        };
+        if n_n.is_nan() || n_n < 0.0 || n_n == f64::INFINITY {
+            return Err(RuntimeError::RangeError("Invalid count value".into()));
+        }
+        Ok(Value::String(std::rc::Rc::new(s.repeat(n_n as usize))))
+    }
+
+    /// String.prototype.padStart(targetLength, padString) per ECMA §22.1.3.17.
+    pub fn string_proto_pad_start_via(&mut self, this: &Value, target: &Value, pad: &Value) -> Result<Value, RuntimeError> {
+        self.require_object_coercible(this)?;
+        let s = self.to_string_strict(this)?;
+        let target_n = match target { Value::Undefined => 0.0, v => self.coerce_to_number(v)? };
+        let target_len = if target_n.is_nan() || target_n <= 0.0 { 0 } else { target_n as usize };
+        let pad_s = match pad {
+            Value::Undefined => " ".to_string(),
+            v => self.to_string_strict(v)?,
+        };
+        if s.chars().count() >= target_len || pad_s.is_empty() {
+            return Ok(Value::String(std::rc::Rc::new(s)));
+        }
+        let need = target_len - s.chars().count();
+        let mut prefix = String::new();
+        while prefix.chars().count() < need { prefix.push_str(&pad_s); }
+        let prefix: String = prefix.chars().take(need).collect();
+        Ok(Value::String(std::rc::Rc::new(prefix + &s)))
+    }
+
+    /// String.prototype.padEnd(targetLength, padString) per ECMA §22.1.3.16.
+    pub fn string_proto_pad_end_via(&mut self, this: &Value, target: &Value, pad: &Value) -> Result<Value, RuntimeError> {
+        self.require_object_coercible(this)?;
+        let s = self.to_string_strict(this)?;
+        let target_n = match target { Value::Undefined => 0.0, v => self.coerce_to_number(v)? };
+        let target_len = if target_n.is_nan() || target_n <= 0.0 { 0 } else { target_n as usize };
+        let pad_s = match pad {
+            Value::Undefined => " ".to_string(),
+            v => self.to_string_strict(v)?,
+        };
+        if s.chars().count() >= target_len || pad_s.is_empty() {
+            return Ok(Value::String(std::rc::Rc::new(s)));
+        }
+        let need = target_len - s.chars().count();
+        let mut suffix = String::new();
+        while suffix.chars().count() < need { suffix.push_str(&pad_s); }
+        let suffix: String = suffix.chars().take(need).collect();
+        Ok(Value::String(std::rc::Rc::new(s + &suffix)))
+    }
+
     /// String.prototype.trim() per ECMA §22.1.3.32.
     pub fn string_proto_trim_via(&mut self, this: &Value) -> Result<Value, RuntimeError> {
         self.require_object_coercible(this)?;
