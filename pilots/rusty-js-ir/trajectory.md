@@ -843,3 +843,59 @@ The remaining work to reach true full representation:
 After these three alphabet extensions, the §VI termination conditions all hold. The estimate from IR-EXT 11 was "~50-80 more sections to reach full representation" — that prediction proved accurate. The bounded portion of that estimate is now done.
 
 Pin-Art tag count: 56 commits as of IR-EXT 52.
+
+
+## IR-EXT 53 → 55 — 2026-05-19 (alphabet-extension stretch: NewPromiseCapability + PropertyKey + Closure)
+
+**Stretch summary**: three EXT rounds landing the alphabet extensions named as queued at IR-EXT 52 close — one per round, each adding a primitive family and exercising it on a load-bearing chapter. EXT 53 closed the Promise structural blocker (NewPromiseCapability + SpeciesConstructor) and lifted the Promise chapter 33.7% → 51.6% test262. EXT 54 introduced the PropertyKey polymorphic enum (String vs Symbol storage discrimination per §6.1.7), straightening the resolution pipeline so Symbol writes land in the Symbol bucket without transitional shims. EXT 55 added closure-as-primitive (Expr::Closure + CellNew/Get + IRNode::CellSet) to the IR alphabet itself — the structural recognition articulated in corpus Doc 730 (§X) as the vertical recurrence of the lowering compiler across substrate tiers. EXT 55 ships in three stages: alphabet land, Promise.withResolvers exemplar, Promise.all Resolve Element factory.
+
+**228 IR-encoded total at IR-EXT 55 close** (219 at EXT 52 close; +9: 8 Promise* sections registered through EXT 53 plus Promise.withResolvers at EXT 55 Stage 2 plus the Promise.all Resolve Element factory at EXT 55 Stage 3, net of consolidations).
+
+### Commit map
+
+| EXT | commit | recognition |
+|---|---|---|
+| 53 (pre)  | `2537e9aa`, `fd32af4a`, `3b422a63` | Ω.5.P63.E51 Symbol substrate fold-back (27.5% → 64.2% Symbol chapter): well-known-Symbol frozen install, Symbol ctor TypeError-on-new, description coercion via to_string_strict, .description getter, Symbol-primitive proto-chain access in Op::GetProp, Symbol.prototype[@@toPrimitive] + @@toStringTag. Substrate prep for EXT 53. |
+| 53 (route) | `292c26df`, `c7089c23` | Ω.5.P63.E52: Promise.{then, catch, finally, all, allSettled, any, race} routed through IR (static + prototype form). Sets up the lift target. |
+| 53 (lift) | `e1548958` | Ω.5.P63.E53: Promise.{all, allSettled, any, race} **structural lift** via NewPromiseCapability + per-element resolve/reject with [[AlreadyCalled]]. Promise.resolve short-circuit when v is already a Promise (§27.2.4.7 step 4). Promise.prototype[@@toStringTag] = "Promise". Lifts Promise chapter 33.7% → 51.6% (+53 tests). NewPromiseCapability + SpeciesConstructor land as runtime primitives. |
+| 53 (eq fix) | `e04f9f68` | Ω.5.P63.E50: is_loosely_equal_rt Object != null short-circuit before ToPrimitive (§A8.32 corollary). Unblocks RegExp.prototype brand-check across 32-package get-intrinsic cluster. |
+| 54 (key 1) | `9c0f59cc` | Ω.5.P63.E54 stage 1: PropertyKey polymorphic-key foundation. Object.properties retyped IndexMap<PropertyKey, PropertyDescriptor>. PropertyKey enum (String/Symbol) with identity Hash+Eq via Rc::ptr_eq for Symbol. Helper methods: has_own_str, remove_str, get_own*, string_keys. Build clean, zero regressions. |
+| 54 (key 2) | `038e68b5` | Ω.5.P63.E54 stage 2: route Value::Symbol through PropertyKey::Symbol at access sites. property_key returns PK::Symbol for Value::Symbol; Op::{GetIndex, SetIndex, HasOp, DeleteIndex} thread key_pk. Runtime methods has_property_pk / object_get_pk / object_set_pk / find_getter_pk / find_setter_pk with transitional well-known-Symbol fallback. Reflect.has/get PK-aware. |
+| 55 (α-1) | `4fbe203b` | IR-EXT 55 Stage 1: alphabet closures land. IR alphabet gains Expr::Closure {label, params, captures, body}, Expr::CellNew, Expr::CellGet, IRNode::CellSet. Lowering: Closure emits `make_native(label, move \|rt, args\| { ... })` with cloned-capture binding; CellSet emits `*cell.borrow_mut() = value`. Linter walks Closure bodies via collect_steps_from_node/Expr. **Alphabet count: 54 → 58 nodes.** |
+| 55 (α-2) | `9fbf3c33` | IR-EXT 55 Stage 2: Promise.withResolvers exemplar. New IR section `build_with_resolvers` constructs the {promise, resolve, reject} object using two Expr::Closure values (resolve_fn, reject_fn) each capturing the fresh Promise. End-to-end validation that the alphabet extension lowers + lints + runs. |
+| 55 (α-3) | `96c7cf1a` | IR-EXT 55 Stage 3: Promise.all Resolve Element via IR-Expr::Closure. New IR section `build_all_resolve_element_factory` constructs the per-iteration §27.2.4.1.2 function via Expr::Closure capturing (index, values, already, remaining, cap_resolve); body implements [[AlreadyCalled]] + values[index] := x + remaining-- + maybe-resolve. Runtime helpers: cell_array_new_via, cell_check_and_set_via, cell_array_set_via, promise_all_maybe_complete_via. promise_all_via in interp.rs refactored: inline make_native gone, replaced by `crate::generated::promise_all_resolve_element_factory(...)` call per iteration. Promise chapter holds at 51.6% — zero regression, IR-driven factory behaviorally identical. |
+
+### Substrate at IR-EXT 55 close
+
+**IR alphabet**: **58 nodes** (52 stable + AllArgs + ArgsRest + Expr::Closure + Expr::CellNew + Expr::CellGet + IRNode::CellSet). First alphabet extension since IR-EXT 4's HasArg + CallBuiltin — 24 consecutive EXT rounds without alphabet extension before the EXT-55 land, an empirical anchor for §I.1.b's stability claim and a clean instance of "alphabet extends only when a new structural shape genuinely demands it" (the resolve-element closure with multiple shared mutable captures was the shape that wouldn't reduce to CallBuiltin-plus-data).
+
+**Sections IR-encoded**: 228. Wired: 228 (Promise.withResolvers, Promise.all factory both routed through generated.rs).
+
+**Runtime helpers cumulative**: ~155 (~10 new: new_promise_capability, species_constructor, promise_settle_fulfilled_via, promise_settle_rejected_via, promise_with_resolvers_assemble_via, new_promise_value_via, cell_array_new_via, cell_check_and_set_via, cell_array_set_via, promise_all_maybe_complete_via).
+
+**Linter**: 228/228 clean.
+
+**Value-layer extension**: PropertyKey enum is the first non-trivial type-level shape change to value.rs since the initial Object representation landed. The identity Hash+Eq for Symbol via Rc::ptr_eq is the load-bearing detail — Symbol equality is identity, not content. The migration touched ~280 call sites via helper-method-plus-bulk-sed strategy.
+
+### Conjecture status
+
+§I conjecture (spec conformance gets monotonically easier post-IR) continues to hold. The Promise structural lift (EXT 53) is the strongest single test262 movement of the workstream (+53 tests in a single commit), and it landed without touching any IR section that was already passing — pure substrate addition. §I.1.b (alphabet completeness as termination criterion) is now operationally measurable: the alphabet grew from 54 to 58 in one stretch, and the closures-as-primitive extension is the deepest structural addition to date.
+
+§I-strengthened (coverage-discovery): no new corroborations in this stretch. The lifts have been substrate-only, not algorithm-rewriting.
+
+**New corpus articulation**: Doc 730 "The Vertical Recurrence of the Lowering Compiler — Closure-as-Primitive Across Substrate Tiers" (~3500 words; corpus-master + resolve mirror + jaredfoy.com seed) formalizes the structural pattern that EXT 55 instantiates: that the lowering-compiler relationship between rusty-js-ir and rusty-js-runtime recapitulates the LLVM-IR-to-machine-code relationship, with closure as a typed primitive at the higher tier lowering to a closure-shaped construct at the lower tier. §X applies the pattern to cruftless concretely. This is the first time a corpus document has been authored *from* a rusty-bun engagement recognition rather than the engagement applying corpus-side framing.
+
+### Open scope at IR-EXT 55 close
+
+Immediate continuation (this session):
+1. **Apply alphabet closures to Promise.allSettled** — paired resolve-element + reject-element factory IR sections, replacing the inline make_native pair in promise_all_settled_via.
+2. **Apply alphabet closures to Promise.any** — reject-element factory IR section (resolve is direct cap_resolve dispatch), replacing the inline reject-element in promise_any_via.
+3. Promise.race needs no factory (the per-iteration handlers are cap_resolve/cap_reject directly), so it does not consume a closure section.
+
+Remaining queued alphabet extensions from EXT 52:
+4. **Property-descriptor builders** — still queued; unblocks Object.{defineProperty, defineProperties, getOwnPropertyDescriptor, getOwnPropertyDescriptors, create} + __define*__ family.
+5. **Iterator-protocol primitives** — still queued; unblocks Map/Set/Array @@iterator and values/keys/entries returning real iterators.
+
+Item 3 (NewPromiseCapability) was queued at EXT 52 and is now closed by EXT 53. Items 1-2 above are zero-novelty applications of the EXT 55 alphabet extension.
+
+Pin-Art tag count: 65 commits as of IR-EXT 55.
