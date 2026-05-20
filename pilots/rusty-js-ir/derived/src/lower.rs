@@ -266,8 +266,18 @@ fn emit_expr(e: &Expr) -> String {
         // dynamic keys we route through abstract_ops::to_string at call
         // site.
         Expr::Get(o, p) => {
+            // EXT 82c / Tier-1.5: every IR-emitted Expr::Get is a spec
+            // [[Get]] site (Array iteration k_value reads, Object
+            // descriptor reads, Object.assign source walks); lower
+            // through rt.spec_get so Proxy.get traps fire uniformly.
+            // Internal-slot reads have their own dedicated primitive
+            // (Expr::GetSlot) — IR sections that need to bypass [[Get]]
+            // use that. The EXT 82 SpecGet variant was a transitional
+            // discriminator while we audited Get usage; collapsed back
+            // to a single Get arm now that the alphabet promotion is
+            // verified.
             let key = emit_property_key(p);
-            format!("rt.read_property_via(&{}, {})?", emit_expr(o), key)
+            format!("rt.spec_get(&{}, {})?", emit_expr(o), key)
         }
         Expr::SpecGet(o, p) => {
             let key = emit_property_key(p);

@@ -38,7 +38,7 @@ pub fn array_prototype_map(rt: &mut Runtime, this: Value, args: &[Value])
         // step 6.c (§6.c step 6.c)
         if k_present.clone() {
             // step 6.c.i (§6.c.i step 6.c.i)
-            let mut k_value = rt.read_property_via(&o.clone(), &pk.clone())?;
+            let mut k_value = rt.spec_get(&o.clone(), &pk.clone())?;
             // step 6.c.ii (§6.c.ii step 6.c.ii)
             let mut mapped = rt.call_function(callbackfn.clone().clone(), this_arg.clone().clone(), vec![k_value.clone(), Value::Number(k.clone() as f64), o.clone()])?;
             // step 6.c.iii (§6.c.iii step 6.c.iii)
@@ -80,7 +80,7 @@ pub fn array_prototype_for_each(rt: &mut Runtime, this: Value, args: &[Value])
         // step 5.b (§5.b step 5.b)
         if rt.has_property_via(&o.clone(), &pk.clone()) {
             // step 5.c.i (§5.c.i step 5.c.i)
-            let mut k_value = rt.read_property_via(&o.clone(), &pk.clone())?;
+            let mut k_value = rt.spec_get(&o.clone(), &pk.clone())?;
             // step 5.c.ii (§5.c.ii step 5.c.ii)
             rt.call_function(callbackfn.clone().clone(), this_arg.clone().clone(), vec![k_value.clone(), Value::Number(k.clone() as f64), o.clone()])?;
         }
@@ -124,7 +124,7 @@ pub fn array_prototype_filter(rt: &mut Runtime, this: Value, args: &[Value])
         // step 7.b (§7.b step 7.b)
         if rt.has_property_via(&o.clone(), &pk.clone()) {
             // step 7.c.i (§7.c.i step 7.c.i)
-            let mut k_value = rt.read_property_via(&o.clone(), &pk.clone())?;
+            let mut k_value = rt.spec_get(&o.clone(), &pk.clone())?;
             // step 7.c.ii (§7.c.ii step 7.c.ii)
             let mut selected = crate::abstract_ops::to_boolean(&rt.call_function(callbackfn.clone().clone(), this_arg.clone().clone(), vec![k_value.clone(), Value::Number(k.clone() as f64), o.clone()])?);
             // step 7.c.iii (§7.c.iii step 7.c.iii)
@@ -171,7 +171,7 @@ pub fn array_prototype_every(rt: &mut Runtime, this: Value, args: &[Value])
         // step 5.b (§5.b step 5.b)
         if rt.has_property_via(&o.clone(), &pk.clone()) {
             // step 5.c.i (§5.c.i step 5.c.i)
-            let mut k_value = rt.read_property_via(&o.clone(), &pk.clone())?;
+            let mut k_value = rt.spec_get(&o.clone(), &pk.clone())?;
             // step 5.c.ii (§5.c.ii step 5.c.ii)
             let mut test_result = crate::abstract_ops::to_boolean(&rt.call_function(callbackfn.clone().clone(), this_arg.clone().clone(), vec![k_value.clone(), Value::Number(k.clone() as f64), o.clone()])?);
             // step 5.c.iii (§5.c.iii step 5.c.iii)
@@ -216,7 +216,7 @@ pub fn array_prototype_some(rt: &mut Runtime, this: Value, args: &[Value])
         // step 5.b (§5.b step 5.b)
         if rt.has_property_via(&o.clone(), &pk.clone()) {
             // step 5.c.i (§5.c.i step 5.c.i)
-            let mut k_value = rt.read_property_via(&o.clone(), &pk.clone())?;
+            let mut k_value = rt.spec_get(&o.clone(), &pk.clone())?;
             // step 5.c.ii (§5.c.ii step 5.c.ii)
             let mut test_result = crate::abstract_ops::to_boolean(&rt.call_function(callbackfn.clone().clone(), this_arg.clone().clone(), vec![k_value.clone(), Value::Number(k.clone() as f64), o.clone()])?);
             // step 5.c.iii (§5.c.iii step 5.c.iii)
@@ -259,7 +259,7 @@ pub fn array_prototype_find(rt: &mut Runtime, this: Value, args: &[Value])
         // step 5.a (§5.a step 5.a)
         let mut pk = k.clone().to_string();
         // step 5.b (§5.b step 5.b)
-        let mut k_value = rt.read_property_via(&o.clone(), &pk.clone())?;
+        let mut k_value = rt.spec_get(&o.clone(), &pk.clone())?;
         // step 5.c (§5.c step 5.c)
         let mut test_result = crate::abstract_ops::to_boolean(&rt.call_function(predicate.clone().clone(), this_arg.clone().clone(), vec![k_value.clone(), Value::Number(k.clone() as f64), o.clone()])?);
         // step 5.d (§5.d step 5.d)
@@ -301,7 +301,7 @@ pub fn array_prototype_find_index(rt: &mut Runtime, this: Value, args: &[Value])
         // step 5.a (§5.a step 5.a)
         let mut pk = k.clone().to_string();
         // step 5.b (§5.b step 5.b)
-        let mut k_value = rt.read_property_via(&o.clone(), &pk.clone())?;
+        let mut k_value = rt.spec_get(&o.clone(), &pk.clone())?;
         // step 5.c (§5.c step 5.c)
         let mut test_result = crate::abstract_ops::to_boolean(&rt.call_function(predicate.clone().clone(), this_arg.clone().clone(), vec![k_value.clone(), Value::Number(k.clone() as f64), o.clone()])?);
         // step 5.d (§5.d step 5.d)
@@ -2075,7 +2075,7 @@ pub fn array_set_length(rt: &mut Runtime, this: Value, args: &[Value])
     // step 1.config (§1.config step 1.config)
     if rt.has_property_via(&desc.clone(), "configurable") {
         // step 1.config.check (§1.config.check step 1.config.check)
-        if crate::abstract_ops::to_boolean(&rt.read_property_via(&desc.clone(), "configurable")?) {
+        if crate::abstract_ops::to_boolean(&rt.spec_get(&desc.clone(), "configurable")?) {
             // step 1.config.throw (§1.config.throw step 1.config.throw)
             return Err(RuntimeError::TypeError("Array length: configurable is false".into()));
         }
@@ -2083,7 +2083,7 @@ pub fn array_set_length(rt: &mut Runtime, this: Value, args: &[Value])
     // step 2.enum (§2.enum step 2.enum)
     if rt.has_property_via(&desc.clone(), "enumerable") {
         // step 2.enum.check (§2.enum.check step 2.enum.check)
-        if crate::abstract_ops::to_boolean(&rt.read_property_via(&desc.clone(), "enumerable")?) {
+        if crate::abstract_ops::to_boolean(&rt.spec_get(&desc.clone(), "enumerable")?) {
             // step 2.enum.throw (§2.enum.throw step 2.enum.throw)
             return Err(RuntimeError::TypeError("Array length: enumerable is false".into()));
         }
@@ -2107,7 +2107,7 @@ pub fn array_set_length(rt: &mut Runtime, this: Value, args: &[Value])
         // step 4.a.writable_provided (§4.a.writable_provided step 4.a.writable_provided)
         if rt.has_property_via(&desc.clone(), "writable") {
             // step 4.a.read (§4.a.read step 4.a.read)
-            let mut new_w = rt.read_property_via(&desc.clone(), "writable")?;
+            let mut new_w = rt.spec_get(&desc.clone(), "writable")?;
             // step 4.a.promote_check (§4.a.promote_check step 4.a.promote_check)
             if !crate::abstract_ops::to_boolean(&cur_writable.clone()) {
                 // step 4.a.promote_inner (§4.a.promote_inner step 4.a.promote_inner)
@@ -2123,7 +2123,7 @@ pub fn array_set_length(rt: &mut Runtime, this: Value, args: &[Value])
         return Ok(target.clone());
     }
     // step 5.raw_value (§5.raw_value step 5.raw_value)
-    let mut raw_value = rt.read_property_via(&desc.clone(), "value")?;
+    let mut raw_value = rt.spec_get(&desc.clone(), "value")?;
     // step 6.new_len (§6.new_len step 6.new_len)
     let mut new_len = rt.to_uint32_strict_via(&raw_value.clone())?;
     // step 10.writable_check (§10.writable_check step 10.writable_check)
@@ -2139,7 +2139,7 @@ pub fn array_set_length(rt: &mut Runtime, this: Value, args: &[Value])
     // step 11.override (§11.override step 11.override)
     if rt.has_property_via(&desc.clone(), "writable") {
         // step 11.real (§11.real step 11.real)
-        new_writable = rt.read_property_via(&desc.clone(), "writable")?;
+        new_writable = rt.spec_get(&desc.clone(), "writable")?;
     }
     // step 12.maybe_shrink (§12.maybe_shrink step 12.maybe_shrink)
     if (rt.coerce_to_number(&new_len.clone())? < rt.coerce_to_number(&old_len.clone())?) {
@@ -2256,7 +2256,7 @@ pub fn object_assign_source_into(rt: &mut Runtime, this: Value, args: &[Value])
     // step 4.d.loop (§4.d.loop step 4.d.loop)
     while (k.clone() < len.clone()) {
         // step 4.d.i.key (§4.d.i.key step 4.d.i.key)
-        let mut key = rt.read_property_via(&keys.clone(), &k.clone().to_string())?;
+        let mut key = rt.spec_get(&keys.clone(), &k.clone().to_string())?;
         // step 4.d.ii.value (§4.d.ii.value step 4.d.ii.value)
         let mut propValue = rt.get_via(&from.clone(), &key.clone())?;
         // step 4.d.ii.set (§4.d.ii.set step 4.d.ii.set)
