@@ -3086,12 +3086,27 @@ impl Runtime {
         register_intrinsic_method(self, r, "apply", 3, |rt, args| {
             let target = args.first().cloned().unwrap_or(Value::Undefined);
             let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
+            // EXT 79c: ECMA §7.3.18 CreateListFromArrayLike. Read length
+            // via the property-access path (invokes inherited getters,
+            // dispatches Proxy.get traps, propagates throws), and read
+            // each element index the same way. The prior path used
+            // array_length / object_get which bypassed user accessors,
+            // so a length-getter throw never surfaced.
+            // EXT 79c: ECMA §7.3.18 CreateListFromArrayLike. Non-Object
+            // argumentsList (including undefined / null) throws TypeError.
             let arg_list: Vec<Value> = match args.get(2) {
                 Some(Value::Object(arr)) => {
-                    let len = rt.array_length(*arr);
-                    (0..len).map(|i| rt.object_get(*arr, &i.to_string())).collect()
+                    let arr_v = Value::Object(*arr);
+                    let len_v = rt.read_property_via(&arr_v, "length")?;
+                    let len = crate::abstract_ops::to_number(&len_v) as usize;
+                    let mut v = Vec::with_capacity(len);
+                    for i in 0..len {
+                        v.push(rt.read_property_via(&arr_v, &i.to_string())?);
+                    }
+                    v
                 }
-                _ => Vec::new(),
+                _ => return Err(RuntimeError::TypeError(
+                    "Reflect.apply: argumentsList must be an Object".into())),
             };
             rt.call_function(target, this_arg, arg_list)
         });
@@ -3119,12 +3134,22 @@ impl Runtime {
                         "Reflect.construct: target/newTarget must be a constructor".into()));
                 }
             }
+            // EXT 79c: Reflect.construct's argumentsList uses the same
+            // CreateListFromArrayLike path as Reflect.apply above; non-
+            // Object argumentsList throws TypeError per §7.3.18.
             let arg_list: Vec<Value> = match args.get(1) {
                 Some(Value::Object(arr)) => {
-                    let len = rt.array_length(*arr);
-                    (0..len).map(|i| rt.object_get(*arr, &i.to_string())).collect()
+                    let arr_v = Value::Object(*arr);
+                    let len_v = rt.read_property_via(&arr_v, "length")?;
+                    let len = crate::abstract_ops::to_number(&len_v) as usize;
+                    let mut v = Vec::with_capacity(len);
+                    for i in 0..len {
+                        v.push(rt.read_property_via(&arr_v, &i.to_string())?);
+                    }
+                    v
                 }
-                _ => Vec::new(),
+                _ => return Err(RuntimeError::TypeError(
+                    "Reflect.construct: argumentsList must be an Object".into())),
             };
             // Use Op::New-equivalent via call_function with a fresh this.
             let proto_id = match &target {
