@@ -1278,3 +1278,51 @@ Pin-Art tag count: 97 commits as of EXT 72b.
 **§I-strengthened corroboration #6 (2026-05-19, EXT 72b)**: a divergence at the central coercion dispatcher (§7.1.1 ToPrimitive) was traceable to a single boolean clause precisely because the dispatch sequence had been lifted into IR. The local smoke (`fn.toString()` works) and remote symptom (`"" + fn` produces `"[object Object]"`) were ~five compositional steps apart; without IR pinning, the right diagnostic vantage would have been any of: `+` operator, `op_add_rt`, `to_primitive`, `OrdinaryToPrimitive`, `abstract_ops::to_string`. IR pinning collapsed those five candidate sites into one inspectable spec section.
 
 **Resolution-pipeline-dynamic corroboration #1 (Doc 730 §XII)**: the EXT 73 revert is itself a §XII data point — the pipeline correctly surfaced that strict-mode coverage was a load-bearing axis, which would have been masked if I had measured only the apply/call sub-tree. The strength of the post-IR substrate is not that fixes always land cleanly, but that *the cost of a bad fix is measurable in one sweep* rather than discovered downstream by a consumer.
+
+## IR-EXT 73 → 76b — 2026-05-20 (strict flag → indirect-eval Script `this` → Proxy unwrap → regex surrogate translation)
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| `d6ab27c9` | IR-EXT 73: strict-aware OrdinaryCallBindThis | First-class `strict: bool` on `FunctionProto` (`rusty-js-bytecode`) plus a matching `strict` field on the `Compiler` that propagates parent strictness through each sub-compiler scope. `directive_has_use_strict` scans the body prologue per §11.2.1. `compile_module` auto-enables strict iff the module body has import/export syntax or starts with a `"use strict"` directive — not on every parsed file, so cruftless's "everything routes through compile_module" assumption stays sloppy for plain scripts. Runtime gate at `call_function`: non-strict non-arrow non-constructor closures coerce null/undefined → globalThis and primitive thisArg → ToObject-boxed. Strict bodies pass thisArg unchanged. Smoke verified both legs (`sloppy.apply()` → globalThis; `strict.call(42)` → 42 untouched). |
+| `9d37b0de` | IR-EXT 74: indirect-eval Script `this` | `evaluate_module` was hardcoding `frame.this_value = Value::Undefined`, which is correct for Module top level but wrong for indirect-eval'd Scripts (§19.2.1.1 PerformEval binds `this` to globalThis). The eval intrinsic now saves `current_this`, sets it to globalThis, calls `evaluate_module`, and restores; `evaluate_module` carries `self.current_this` into `frame.this_value`. Ordinary module loads enter with the engine default `Undefined`, so the behavior is unchanged for them. Function.prototype: 46.8% → 58.2% (+34). The +34 corresponds exactly to the "Cannot index undefined/null" cluster that S15.3.4.3_A3_T1.js et al. tripped on after EXT 73 (apply itself worked, but the subsequent `this["field"]` read undefined). |
+| `8db4fdae` | IR-EXT 75: Function.prototype.toString unwraps Proxy chain | `function_proto_to_string_via` walked straight to the `InternalKind::Proxy` arm and threw "not a function". Added a 32-hop bounded chain walk to the first non-Proxy callable. Spec-correct per §20.2.3.5. Net chapter yield was zero — the 10 unblocked tests immediately hit the *same* downstream Unicode-property-regex gap as the 46 other NativeFunction-matcher failures, surfacing the next bottleneck cleanly. |
+| `2e32d392` | IR-EXT 76: regex preprocessor elides surrogate-pair alternatives | Test262's `nativeFunctionMatcher.js` uses huge alternations like `[A-Z...]|\uD800[\uDC00-\uDC0B...]|[\uD80C\uD81C-\uD820][\uDC00-\uDFFF]|...` that emulate `\p{ID_Start}` for environments without `/u`-flag property classes. The Rust regex crate rejects bare surrogates (Rust `char` is a Unicode scalar; surrogates aren't), so the whole pattern failed to compile. `elide_surrogate_pair_alternatives` recursively walks the pattern, splits top-level alternatives at depth-0 `|` (with class-bracket tracking + recursion into `(?:...)` groups), and drops any alternative whose top level (outside nested groups) contains a high-surrogate escape, in or out of a `[...]` class. Function.prototype: 58.2% → 73.4% (+45). The NativeFunction-matcher cluster collapsed from 56 → 11. String ripple: 75.3% → 75.5% (+3). |
+| `966bc131` | IR-EXT 76b: full surrogate-pair translation to scalars | Promoted EXT 76's elision to translation. `translate_surrogate_alt` recognizes the `\uHHHH[...]` and `[...][...]` pair shapes, validates that the first component is exclusively high surrogates and the second exclusively low, computes the disjoint supplementary-plane scalar ranges per `0x10000 + ((H − 0xD800) << 10) + (L − 0xDC00)`, sorts and merges adjacent ranges, and emits `[\u{X}-\u{Y}…]` which the Rust crate accepts directly. Alternatives that can't be parsed as a clean pair (unpaired high, surrounded by extra atoms) still fall back to EXT 76's drop. Function.prototype chapter test count unchanged (chapter inputs are all-BMP), but supplementary inputs across the rest of the engine now match correctly. Smoke confirmed: `/\uD800[\uDC00-\uDC0B]/` accepts U+10000, rejects U+1000C; `/[\uD80C\uD81C-\uD820][\uDC00-\uDFFF]/` accepts U+13000 (the U+13000 base = 0x10000 + (0xC << 10)). |
+
+### Substrate at IR-EXT 76b close
+
+**IR alphabet**: 63 nodes (no growth this round; all five EXTs were runtime/bytecode/regexp-engine work below the IR-pinning tier).
+
+**Runtime additions**:
+- `FunctionProto.strict: bool` + `Compiler.strict: bool` + `directive_has_use_strict` (rusty-js-bytecode).
+- OrdinaryCallBindThis branch in `call_function` (rusty-js-runtime).
+- `evaluate_module` threads `self.current_this` → `frame.this_value`.
+- `function_proto_to_string_via` walks the Proxy chain.
+- `elide_surrogate_pair_alternatives` + `translate_surrogate_alt` + `parse_unicode_esc` + `parse_uesc_class` + `emit_scalar_class` in `regexp.rs`.
+
+### Failed move (recorded, §I traceability)
+
+**EXT 73 first attempt — universal coercion without strict tracking**: prior turn applied OrdinaryCallBindThis to every non-arrow closure regardless of strictness. Full Function.prototype sweep regressed from ~75% to 43.0% because strict-mode `-s.js` tests verify the *opposite* (strict thisArg is NOT coerced). The structural fix was to plumb a `strict: bool` from compiler → FunctionProto and gate the coercion on it. The pipeline correctly surfaced this in one sweep — Doc 730 §XII resolution-pipeline-dynamic in action.
+
+### Cumulative numbers
+
+| Chapter | Pre-72b | Post-76b | Δ (session) |
+|---|---|---|---|
+| Function.prototype | ~46% | 73.4% (218/297) | +79 |
+| Function.prototype/toString (47-cluster + Proxy + matcher) | various blockers | mostly cleared | +56 (cumulative across the cluster's lifetime through this session) |
+| String | 75.3% (921/1223) | 75.5% (924/1223) | +3 (ripple) |
+| Object (full) | n/a measured | 85.3% (2912/3411) | snapshot |
+
+**Session-cumulative wins (this turn): +82 chapter wins** (Function.prototype +79 + String ripple +3). Earlier in the session EXT 72b added structural correctness (commit `cbb9f44a`) without measured chapter yield.
+
+Pin-Art tag count: 102 commits as of EXT 76b.
+
+### Conjecture status
+
+**Doc 730 §XII corroboration #2 (2026-05-20, EXT 73 attempt → revert → 73 land)**: a structurally-wrong fix (universal coercion) regressed by ~50 strict-mode tests in *one sweep*, then a structurally-correct fix (strict-flag plumbing) cleared the cluster cleanly the next iteration. The cost of the bad fix was bounded by the cycle time of one Function.prototype sweep (~4 min); without a tight per-chapter measurement loop, the strict-mode regression would have been masked under "EXT 73 broke things, revert" with no signal pointing at the underlying axis. The pipeline did not just surface the problem — it surfaced the *load-bearing axis* (sloppy vs strict) that the fix needed to model.
+
+**Doc 730 §XII corroboration #3 (2026-05-20, EXT 75 → 76)**: EXT 75 (Proxy unwrap) was net-zero in chapter yield but immediately exposed the next downstream gap (Unicode-property regex emulation), which became EXT 76. The §XII dynamic — "spec-correct moves at the resolver tier surface the next blocker cleanly rather than masking it" — held: the 10 tests EXT 75 freed all converged on the same downstream pattern, making the EXT 76 target self-naming.
+
+**§I corroboration #7 (2026-05-20, EXT 76 → 76b)**: alphabet completeness held under the regex-engine work. The preprocessor + translator were both expressible in the existing helper surface (`parse_unicode_esc`, `parse_uesc_class`, etc., all in `regexp.rs`); no new IR nodes, no new Runtime helpers above the rusty-js-runtime tier, no compiler-AST changes. The substrate stretched to absorb a fundamentally different problem (UTF-16-vs-scalar impedance mismatch) without requiring growth at the upper tiers.
