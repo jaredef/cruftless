@@ -919,6 +919,32 @@ impl Runtime {
         // resolve via globalThis at runtime. Module-init usually doesn't
         // invoke the deprecation wrapper, so the package loads — the
         // wrapper would only throw at the deprecation site itself.
+        // EXT 90 / Doc 730 §XIV: __cruftless_tolerate(name) opts into
+        // the named deviation at the deviation-tier alphabet. Strict-by-
+        // default is preserved; consumer code (or a host wrapper script)
+        // calls this once to relax a specific spec-correct rejection
+        // that the consumer's dependency tree depends on Bun absorbing.
+        // Known deviations:
+        //   "function-not-constructor-relax" — Op::New on non-constructor
+        //     Function intrinsics falls through to plain call (Bun shape).
+        // The CRUFTLESS_TOLERATE env var (parsed at engine init in a
+        // future EXT) will allow the same opt-in without source-level
+        // calls; this intrinsic is the JS-side handle.
+        register_global_fn(self, "__cruftless_tolerate", |rt, args| {
+            let name = match args.first() {
+                Some(Value::String(s)) => s.as_str().to_string(),
+                _ => return Err(RuntimeError::TypeError(
+                    "__cruftless_tolerate: expected string deviation name".into())),
+            };
+            // Match against known deviations and insert by &'static str.
+            let known: &str = match name.as_str() {
+                "function-not-constructor-relax" => "function-not-constructor-relax",
+                _ => return Err(RuntimeError::RangeError(format!(
+                    "__cruftless_tolerate: unknown deviation '{}'", name))),
+            };
+            rt.tolerated_deviations.insert(known);
+            Ok(Value::Undefined)
+        });
         register_global_fn(self, "eval", |rt, args| {
             let source = match args.first() {
                 Some(Value::String(s)) => s.as_str().to_string(),

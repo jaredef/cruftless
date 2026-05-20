@@ -122,6 +122,15 @@ pub struct Runtime {
     /// Array.prototype.map's callback dispatch, and the like see a real
     /// receiver. Saved/restored across nested calls.
     pub current_this: Value,
+    /// EXT 90 / Doc 730 §XIV: opt-in deviation set per the dual-pipeline
+    /// formalization. Each name is a typed primitive at the deviation-tier
+    /// alphabet — recognizing one ecosystem-bug-tolerated pattern that
+    /// the spec forbids but production engines (Bun, V8, Node) silently
+    /// absorb. Helpers at the strict-spec sites consult this set; when
+    /// the matching name is present, they downgrade the TypeError to a
+    /// tolerant lowering (with a diagnostic surface). Strict-by-default
+    /// is preserved; consumer code opts in via __cruftless_tolerate(name).
+    pub tolerated_deviations: HashSet<&'static str>,
     /// Tier-Ω.5.s: `new.target` slot pending injection into the next
     /// closure frame to be entered via `call_function`. Set by Op::New
     /// before dispatching, consumed (take()) at frame construction.
@@ -233,6 +242,7 @@ impl Runtime {
             job_queue: crate::job_queue::JobQueue::new(),
             pending_unhandled: HashSet::new(),
             current_this: Value::Undefined,
+            tolerated_deviations: HashSet::new(),
             pending_new_target: None,
             current_new_target: None,
             object_prototype: None,
@@ -7178,9 +7188,26 @@ impl Runtime {
                             &self.obj(*cid).internal_kind
                         {
                             if !fi.is_constructor {
-                                return Err(RuntimeError::TypeError(format!(
-                                    "{} is not a constructor", fi.name
-                                )));
+                                // EXT 90 / Doc 730 §XIV: deviation
+                                // "function-not-constructor-relax" — Bun
+                                // and several other runtimes accept
+                                // `new fn()` for fn that lacks [[Construct]]
+                                // by silently calling fn() and using its
+                                // return value (or a fresh ordinary
+                                // object if the return is primitive).
+                                // Opt-in via __cruftless_tolerate(
+                                // 'function-not-constructor-relax').
+                                if !self.tolerated_deviations.contains(
+                                    "function-not-constructor-relax")
+                                {
+                                    return Err(RuntimeError::TypeError(format!(
+                                        "{} is not a constructor", fi.name
+                                    )));
+                                }
+                                // Tolerant lowering: fall through to
+                                // call-as-function path (the spec's
+                                // "if not a constructor, treat as plain
+                                // call" deviation).
                             }
                         }
                     }
