@@ -413,3 +413,164 @@ The InternalMethods table promotion (§XIII alphabet) lets these be added
 as one row's worth of invariant code in one place, rather than 12 spots
 per trap × 2 sites (intrinsic + bytecode VM) = 24 sites that would need
 updating in the current shape.
+
+---
+
+## Pass D — Realm-passing inventory
+
+Surveys how engine262 threads Realm context through its abstract ops.
+Output: the substrate-architecture change list for the 37 carve-out
+cross-realm tests (and the broader §XIII alphabet promotion this implies).
+
+### D.1 engine262's Realm-access patterns
+
+engine262 reaches the current Realm through `surroundingAgent` (a process-
+global singleton wrapping the engine's Agent record). Three distinct
+patterns surface:
+
+**Pattern A — Intrinsic lookup**: `surroundingAgent.intrinsic('%Array.prototype%')`.
+Used wherever a spec algorithm names a well-known intrinsic by `%X%`. The
+intrinsics are *per-Realm*; this lookup resolves against the current
+running execution context's Realm.
+
+```
+arguments-operations.mts:    OrdinaryObjectCreate(surroundingAgent.intrinsic('%Object.prototype%'), ...)
+arguments-operations.mts:    Value: surroundingAgent.intrinsic('%Array.prototype.values%'),
+arguments-operations.mts:    Get: surroundingAgent.intrinsic('%ThrowTypeError%'),
+array-objects.mts:           proto = surroundingAgent.intrinsic('%Array.prototype%');
+arraybuffer-objects.mts:     Q(yield* AllocateArrayBuffer(surroundingAgent.intrinsic('%ArrayBuffer%'), ...))
+```
+
+**Pattern B — Current Realm record**: `surroundingAgent.currentRealmRecord`.
+Used when an algorithm needs the Realm *value* (not a specific intrinsic
+within it). Most commonly inside Get/Set/exotic-object dispatch when the
+spec says "the current Realm".
+
+```
+array-objects.mts:           const thisRealm = surroundingAgent.currentRealmRecord;
+function-operations.mts:     return surroundingAgent.currentRealmRecord;  (GetFunctionRealm fallback)
+```
+
+**Pattern C — Function-bound Realm**: `obj.Realm` on a FunctionObject.
+Every function value carries the Realm in which it was created. Cross-realm
+invocation (function from Realm A called in Realm B's stack) keeps its
+home-Realm for intrinsic lookups.
+
+```
+function-operations.mts:     export function GetFunctionRealm(obj: FunctionObject): PlainCompletion<Realm> {
+                               if ('Realm' in (obj as object)) { return obj.Realm; }
+                               return Q(GetFunctionRealm(target));      // Bound function delegates
+                               return Q(GetFunctionRealm(proxyTarget)); // Proxy delegates
+                               return surroundingAgent.currentRealmRecord;
+                             }
+```
+
+### D.2 What cruftless elides
+
+cruftless's Runtime is a singleton:
+- `Runtime.globals` is the one-and-only globals map.
+- Prototypes (object_prototype, array_prototype, function_prototype, ...)
+  are single-instance fields on Runtime.
+- Every `make_native(name, closure)` registers into the same intrinsics table.
+- No FunctionObject carries a Realm reference — `ClosureInternals` has
+  `proto`, `upvalues`, `is_arrow`, `bound_this`; no `Realm`.
+
+The collapse: cruftless treats "the current Realm" and "every Realm" as
+the same thing. That works as long as every cross-Realm operation is
+elided (test262 cross-realm tests are the carve-out). It breaks the
+moment a consumer needs:
+
+- **Multiple distinct Array constructors** (`Array.isArray` must
+  recognize arrays from another Realm; arr instanceof Array from another
+  Realm is false; etc.).
+- **Cross-Realm Symbol identity** (Symbol.iterator from Realm A must NOT
+  equal Symbol.iterator from Realm B; this is what %Symbol.iterator% per
+  Realm gives).
+- **Per-Realm intrinsic mutation** (one Realm freezing Array.prototype
+  shouldn't freeze it in another Realm).
+
+### D.3 Substrate-architecture change list
+
+Multi-Realm-capable cruftless requires:
+
+1. **Realm record type** carrying:
+   - `globals: HashMap<String, Value>` — per-Realm globals.
+   - `intrinsics: HashMap<&'static str, ObjectRef>` — per-Realm intrinsic
+     table (replaces the singleton Runtime fields).
+   - `global_this: ObjectRef` — per-Realm globalThis.
+   - `host_defined: Box<dyn Any>` — host integration slot.
+
+2. **Realm-passing on every intrinsic creation**. Currently
+   `install_array_global(&mut self)` writes to `self.array_prototype`;
+   would become `install_array_into(&mut realm)` writing to
+   `realm.intrinsics["%Array.prototype%"]`.
+
+3. **`ClosureInternals.realm: Rc<Realm>`** — every function carries its
+   home Realm. call_function pushes/pops a `current_realm` analog of
+   the existing `current_this` save-restore pattern.
+
+4. **`Heap` becomes Realm-aware** — Object allocation tags each object
+   with the Realm it was created in (or the engine asserts every Object
+   is reachable from exactly one Realm). Cross-Realm Value passing is
+   transparent (Values cross Realm boundaries freely; the Realm of an
+   Object is for intrinsic-lookup purposes only).
+
+5. **Runtime becomes Agent**: the existing Runtime singleton wraps
+   `agent: { realms: Vec<Rc<Realm>>, current_realm_idx: usize, ... }`.
+   The "Runtime" name aliases to the realm at the top of the execution
+   context stack.
+
+### D.4 §XIII alphabet promotion implied
+
+`Realm` becomes a typed IR primitive. Every IR section that touches
+intrinsics gets a Realm parameter (or a `current_realm()` query). The
+spec's `surroundingAgent.intrinsic('%X%')` lookups map to one IR node
+`Expr::IntrinsicLookup(realm, name)`.
+
+Sites in current cruftless that would change:
+
+- ~80 `make_native(...)` calls in `intrinsics.rs` → all take `realm` arg.
+- ~20 `self.X_prototype = Some(...)` writes → become `realm.intrinsics.insert(...)`.
+- ~30 `self.globals.insert(...)` writes → become `realm.globals.insert(...)`.
+- `current_this`, `pending_new_target` lifted to per-execution-context
+  state, not Runtime singleton.
+
+This is the engine-architecture move per the carve-out analysis. With
+it, the 37 createRealm tests become reachable. Without it, single-Realm
+fidelity is the v1 ceiling.
+
+### D.5 Decision threshold
+
+Cost: substantial (estimated 2–3 EXTs worth of refactoring,
+~40–60 file edits, mostly mechanical). Yield: 37 cross-realm test262 tests
++ unlocks ShadowRealm + cross-Realm Proxy + cross-Realm Promise host
+integration.
+
+Below-threshold for v1's "spec conformance asymptote" goal: the 37 tests
+are a fixed pool that doesn't grow under §XII or §XIII heuristics.
+Above-threshold for a v2 goal of "host-integration parity with Node /
+Bun" (those engines treat Realms as the multi-tenant primitive for
+worker_threads, vm.Script, etc.). Recorded as substrate-architecture
+candidate, not v1 work.
+
+---
+
+## Summary across Passes A–D
+
+| Pass | Output | §XIII promotions surfaced |
+|---|---|---|
+| A   | Abstract-op coverage matrix (37% explicit) | ~85 spec-named ops missing as typed primitives |
+| B   | ToPrimitive trace diff | GetMethod, GetV, OrdinaryToPrimitive, exotic-[[Get]] dispatch |
+| C   | Proxy per-trap invariant inventory | InternalMethods<Kind> table |
+| D   | Realm-passing inventory | Realm typed primitive + per-Realm intrinsics |
+
+**The cumulative §XIII alphabet promotion list is the formal articulation
+of "what high-fidelity ECMA IR commits to"** — turns the §XIII formalization
+from a sketch into a complete alphabet whose verifier-time checks would
+catch each collapse class structurally rather than via test262 failure.
+
+The Pin-Art probes terminate here for v1; each promotion is recorded as
+a future-EXT candidate. The §XIII targeting heuristic operates against
+this list — the next §XIII alphabet promotion is whichever collapsed
+discrimination is currently producing the most test262 trace-invisible
+failures (the EXT 78 / 79c / 84 pattern).
