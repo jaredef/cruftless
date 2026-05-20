@@ -588,6 +588,51 @@ impl Runtime {
             rt.obj_mut(target).set_own_internal(key, fn_v);
             Ok(Value::Undefined)
         });
+        // Ω.5.P03.E2.super-get-this: __super_get(this_val, super_base, key)
+        // implements ECMA-262 §13.3.7.3 MakeSuperPropertyReference +
+        // §10.4.4 GetSuperBase + §10.1.7.2 OrdinaryGet — super.X reads
+        // walk the [[HomeObject]]'s [[Prototype]] chain to find the
+        // property, but if the property is an accessor, the getter is
+        // invoked with `this = the calling method's this binding`, NOT
+        // the super-base. Pre-substrate, cruftless compiled super.X
+        // reads as `LoadIdent <super.proto>; GetProp X` — and Op::GetProp
+        // uses the popped object value as the receiver for accessor
+        // invocation. So a `get foo() { return super.foo; }` pattern
+        // produced this = the super-base prototype inside the inherited
+        // getter, instead of this = the original instance. arktype's
+        // BaseRoot has `get rawIn() { return super.rawIn; }` (root.js:21),
+        // and the BaseNode getter does cacheGetter("rawIn", ...) which
+        // wrote the result onto the super-base prototype itself. The
+        // cached value then leaked through every subsequent
+        // branch.rawIn access on instances — wall 4 of the arktype
+        // deep-trace localized this exact path.
+        register_engine_helper(self, "__super_get", |rt, args| {
+            let this_val = args.first().cloned().unwrap_or(Value::Undefined);
+            let super_base = args.get(1).cloned().unwrap_or(Value::Undefined);
+            let key: String = match args.get(2) {
+                Some(Value::String(s)) => (**s).clone(),
+                Some(Value::Number(n)) => if n.fract() == 0.0 { format!("{}", *n as i64) } else { format!("{}", n) },
+                _ => return Ok(Value::Undefined),
+            };
+            let base_id = match super_base { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
+            // Walk super_base.[[Prototype]] chain (i.e. start at super_base
+            // itself, since super.X looks up X on super_base which is the
+            // parent prototype). Find the property descriptor.
+            let mut cur: Option<rusty_js_gc::ObjectId> = Some(base_id);
+            while let Some(c) = cur {
+                let o = rt.obj(c);
+                if let Some(desc) = o.get_own(&key) {
+                    if let Some(getter) = desc.getter.clone() {
+                        // Accessor with getter — invoke with this = original this_val.
+                        return rt.call_function(getter, this_val, vec![]);
+                    }
+                    // Data property — return value directly.
+                    return Ok(desc.value.clone());
+                }
+                cur = o.proto;
+            }
+            Ok(Value::Undefined)
+        });
         register_engine_helper(self, "__yield_push__", |rt, args| {
             if let Some(&arr) = rt.gen_yields_stack.last() {
                 let v = args.first().cloned().unwrap_or(Value::Undefined);

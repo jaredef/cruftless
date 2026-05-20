@@ -4800,21 +4800,42 @@ impl Compiler {
             frame.super_proto_name.clone()
         }.ok_or_else(|| self.err(span,
             "super reference in a class with no `extends` clause"))?;
+        // Ω.5.P03.E2.super-get-this: super.X reads dispatch through
+        // __super_get(this, super_base, key) so any accessor on the
+        // super-base's chain runs with `this = original method's this`
+        // per ECMA §13.3.7.3 + §10.1.7.2. Pre-substrate, super.X compiled
+        // to `LoadIdent <super.proto>; GetProp X` and Op::GetProp uses
+        // the popped object as the accessor receiver — a `get x() {
+        // return super.x; }` pattern produced this = super-base inside
+        // the inherited getter instead of this = the instance.
+        let helper = self.constants.intern(
+            Constant::String("__super_get".into()));
+        encode_op(&mut self.bytecode, Op::LoadGlobal);
+        encode_u16(&mut self.bytecode, helper);
+        encode_op(&mut self.bytecode, Op::PushThis);
         self.emit_load_ident(&target_name);
         match property {
             MemberProperty::Identifier { name, .. } => {
                 let idx = self.constants.intern(Constant::String(name.clone()));
-                encode_op(&mut self.bytecode, Op::GetProp);
+                encode_op(&mut self.bytecode, Op::PushConst);
                 encode_u16(&mut self.bytecode, idx);
+                encode_op(&mut self.bytecode, Op::Call);
+                encode_u8(&mut self.bytecode, 3);
+                return Ok(());
             }
             MemberProperty::Computed { expr, .. } => {
                 self.compile_expr(expr)?;
-                encode_op(&mut self.bytecode, Op::GetIndex);
+                encode_op(&mut self.bytecode, Op::Call);
+                encode_u8(&mut self.bytecode, 3);
+                return Ok(());
             }
             MemberProperty::Private { name, .. } => {
                 let idx = self.constants.intern(Constant::String(format!("#{}", name)));
-                encode_op(&mut self.bytecode, Op::GetProp);
+                encode_op(&mut self.bytecode, Op::PushConst);
                 encode_u16(&mut self.bytecode, idx);
+                encode_op(&mut self.bytecode, Op::Call);
+                encode_u8(&mut self.bytecode, 3);
+                return Ok(());
             }
         }
         Ok(())
