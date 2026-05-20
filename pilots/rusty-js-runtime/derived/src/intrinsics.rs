@@ -550,13 +550,42 @@ impl Runtime {
             let kind: String = match args.get(2) { Some(Value::String(s)) => (**s).clone(), _ => return Ok(Value::Undefined) };
             let fn_v = args.get(3).cloned().unwrap_or(Value::Undefined);
             let o = rt.obj_mut(target);
+            // Ω.5.P03.E2.class-method-non-enumerable: class accessors
+            // (`get x() {...} / set x(v) {...}`) install as {writable: false,
+            // enumerable: false, configurable: true} per ECMA-262 §15.7
+            // MethodDefinitionEvaluation. Pre-substrate this was enumerable
+            // true — Object.keys(Class.prototype) returned the getter names
+            // in addition to the method names. Eight BaseNode getters in
+            // arktype were leaking through every Object.keys / for-in walk
+            // over a class prototype.
             let desc = o.properties.entry(crate::value::PropertyKey::String(key)).or_insert_with(|| crate::value::PropertyDescriptor {
                 value: Value::Undefined,
-                writable: true, enumerable: true, configurable: true,
+                writable: false, enumerable: false, configurable: true,
                 getter: None, setter: None,
             });
             if kind == "get" { desc.getter = Some(fn_v); }
             else if kind == "set" { desc.setter = Some(fn_v); }
+            Ok(Value::Undefined)
+        });
+        // Ω.5.P03.E2.class-method-non-enumerable: __install_method__(
+        //   target, key, fn). Installs fn at target[key] with the
+        //   spec-mandated method descriptor: {writable: true,
+        //   enumerable: false, configurable: true} per ECMA-262 §15.7
+        //   ClassDefinitionEvaluation + §15.7.10. Pre-substrate, class
+        //   methods were SetProp'd which produces enumerable: true; the
+        //   resulting Object.keys(Class.prototype) returned method names
+        //   instead of [], and any code iterating prototypes via Object.
+        //   values / Object.entries / for-in picked up methods that the
+        //   spec says it should not.
+        register_engine_helper(self, "__install_method__", |rt, args| {
+            let target = match args.first() { Some(Value::Object(id)) => *id, _ => return Ok(Value::Undefined) };
+            let key: String = match args.get(1) {
+                Some(Value::String(s)) => (**s).clone(),
+                Some(Value::Number(n)) => if n.fract() == 0.0 { format!("{}", *n as i64) } else { format!("{}", n) },
+                _ => return Ok(Value::Undefined),
+            };
+            let fn_v = args.get(2).cloned().unwrap_or(Value::Undefined);
+            rt.obj_mut(target).set_own_internal(key, fn_v);
             Ok(Value::Undefined)
         });
         register_engine_helper(self, "__yield_push__", |rt, args| {

@@ -4425,13 +4425,22 @@ impl Compiler {
         encode_op(&mut self.bytecode, Op::Pop);
 
         // <proto>.constructor = ctor
+        // Ω.5.P03.E2.class-method-non-enumerable: constructor is also
+        // non-enumerable on a class prototype per ECMA §15.7. Use the
+        // __install_method__ helper.
         let key_constructor = self.constants.intern(Constant::String("constructor".into()));
+        let install_helper = self.constants.intern(
+            Constant::String("__install_method__".into()));
+        encode_op(&mut self.bytecode, Op::LoadGlobal);
+        encode_u16(&mut self.bytecode, install_helper);
         encode_op(&mut self.bytecode, Op::LoadLocal);
         encode_u16(&mut self.bytecode, proto_slot);
+        encode_op(&mut self.bytecode, Op::PushConst);
+        encode_u16(&mut self.bytecode, key_constructor);
         encode_op(&mut self.bytecode, Op::LoadLocal);
         encode_u16(&mut self.bytecode, ctor_slot);
-        encode_op(&mut self.bytecode, Op::SetProp);
-        encode_u16(&mut self.bytecode, key_constructor);
+        encode_op(&mut self.bytecode, Op::Call);
+        encode_u8(&mut self.bytecode, 3);
         encode_op(&mut self.bytecode, Op::Pop);
 
         // ctor.[[Prototype]] = <super.ctor> for static-method inheritance.
@@ -4550,32 +4559,42 @@ impl Compiler {
                             continue;
                         }
                     }
+                    // Ω.5.P03.E2.class-method-non-enumerable: install via
+                    // __install_method__(target, key, fn) so the resulting
+                    // property descriptor is {w:true, e:false, c:true} per
+                    // ECMA-262 §15.7. Pre-substrate, SetProp / SetIndex
+                    // installed with enumerable=true, so Object.keys on a
+                    // class prototype returned all method names instead of
+                    // [], and any code iterating a class prototype's
+                    // enumerables picked up methods the spec excludes —
+                    // the proximate cause of arktype's wall-4 prototype-as-
+                    // this state (Object.values over a registry whose
+                    // values were classes would leak the prototype's own
+                    // method functions as iteration items).
+                    let install_helper = self.constants.intern(
+                        Constant::String("__install_method__".into()));
+                    encode_op(&mut self.bytecode, Op::LoadGlobal);
+                    encode_u16(&mut self.bytecode, install_helper);
                     encode_op(&mut self.bytecode, Op::LoadLocal);
                     encode_u16(&mut self.bytecode, target_slot);
                     match method_key {
                         Some(key) => {
-                            encode_op(&mut self.bytecode, Op::MakeClosure);
-                            encode_u16(&mut self.bytecode, m_idx);
-                            emit_captures(&mut self.bytecode, &captures);
                             let key_idx = self.constants.intern(Constant::String(key));
-                            encode_op(&mut self.bytecode, Op::SetProp);
+                            encode_op(&mut self.bytecode, Op::PushConst);
                             encode_u16(&mut self.bytecode, key_idx);
-                            encode_op(&mut self.bytecode, Op::Pop);
                         }
                         None => {
-                            // Tier-Ω.5.y: computed class method name —
-                            // `class C { [k]() {} }`. SetIndex stack
-                            // convention: [target, key, value] → [value].
                             if let ClassMemberName::Computed { expr, .. } = m_name {
                                 self.compile_expr(expr)?;
                             } else { unreachable!(); }
-                            encode_op(&mut self.bytecode, Op::MakeClosure);
-                            encode_u16(&mut self.bytecode, m_idx);
-                            emit_captures(&mut self.bytecode, &captures);
-                            encode_op(&mut self.bytecode, Op::SetIndex);
-                            encode_op(&mut self.bytecode, Op::Pop);
                         }
                     }
+                    encode_op(&mut self.bytecode, Op::MakeClosure);
+                    encode_u16(&mut self.bytecode, m_idx);
+                    emit_captures(&mut self.bytecode, &captures);
+                    encode_op(&mut self.bytecode, Op::Call);
+                    encode_u8(&mut self.bytecode, 3);
+                    encode_op(&mut self.bytecode, Op::Pop);
                 }
                 ClassMember::Field { name: f_name, is_static, init, span: _ } => {
                     // Ω.5.P58.E10 pass B start (see end of pass A's loop
