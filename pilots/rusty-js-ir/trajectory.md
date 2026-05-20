@@ -1544,3 +1544,58 @@ Pin-Art tag count: 132 commits as of EXT 92.
 **Doc 730 §XIV corroboration #1 (2026-05-20, EXT 90)**: a single typed deviation primitive at the deviation-tier alphabet recovered 8 of 11 EXT 84-89 parity regressions without compromising strict-spec correctness on the other ~1015 packages. The per-deviation-opt-in design (§XIV.c) demonstrated as the right shape for §XIII-coherent ecosystem tolerance.
 
 **Doc 730 §XV corroboration #1 (2026-05-20, EXT 91 → 91b → 92)**: the constraint-comprehension contract enabled principled attribution of an observable byte-parity divergence between two candidate causes (fresh-Object leak vs @@-prefix leak). The Waived-invariants list narrowed the candidate set; the divergence was correctly identified as a separate §XIII-tier bug rather than a deviation effect. EXT 92's fix landed cleanly at the spec-fidelity tier, preserving the deviation's Waivers as accurate. The two-axis pipeline (spec fidelity ↑ ∥ ecosystem tolerance ↓) operated under the co-evolution contract as Doc 730 §XV designed.
+
+## IR-EXT 93 → 94b — 2026-05-20 (§XIV second deviation + §XV violation corroboration in code)
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| `b83df2d3` | IR-EXT 93: second §XIV deviation `to-object-coerce-nullish` | rt.to_object(null|undefined) returns a fresh ordinary Object instead of throwing TypeError under the deviation; symmetric guard at require_object_coercible. Registered with two Waived invariants per §XV.c. 14-package recheck: 13 BYTE-PARITY, 1 ERR (yeoman-environment, unrelated SyntaxError). Cumulative §XIV recovery now +21 packages across EXT 90+93. |
+| `3da8d635` | host-v2 IR-EXT 94: readFileSync result has UTF-8-decoding toString | The yeoman-environment SyntaxError was traced to fs.readFileSync(p).toString() returning comma-joined byte-decimals (Array.prototype.toString on a byte-Number Array) instead of Node's UTF-8 Buffer-decode. Installed a UTF-8 toString own property on the returned Array. Broad fix — every Node-compat consumer doing readFileSync(p).toString() benefits. Demonstrates the §XIV→§XIII feedback §XV.b predicted: investigating a deviation candidate surfaced a §XIII-tier (host-compat) fix that benefits broadly. |
+| `cd886c3e` | IR-EXT 94b: scope `to-object-coerce-nullish` out of Object.getPrototypeOf — §XV violation corroboration #2 | EXT 93's broad relaxation introduced an infinite prototype-walk loop under any `while (p) p = Object.getPrototypeOf(p)` on a null-rooted chain — the deviation made getPrototypeOf(null) coerce null to a fresh Object whose [[Prototype]] is Object.prototype, never null. Object.getPrototypeOf's intrinsic wrapper now special-cases nullish under the deviation to return Null directly, preserving "prototype-walk termination" as a protected invariant. |
+
+### §XV corroboration #2 — the deviation's broad scope had unforeseen downstream effects
+
+Doc 730 §XV.a predicted the failure mode: "naming a deviation requires articulating what the strict rejection protects... enabling the deviation across an entire package's dependency tree silently absorbs every such write site, producing a class of 'the program loaded fine but its state is wrong' bugs."
+
+EXT 94b is the second empirical corroboration of §XV in code (first was EXT 91+92's BYTE-PARITY-recovery sequence). Specifically:
+
+1. The EXT 93 deviation was registered with two Waived invariants:
+   - W:EXT-93:to-object-typeerror-as-runtime-nullcheck
+   - W:EXT-93:set-prototype-of-nullish-target-silent-noop
+2. The set-Proto waiver covered Object.setPrototypeOf. It did NOT cover Object.getPrototypeOf — the latter was a *narrower scoping defect*, not a Waived deviation effect.
+3. The §XV.c contract narrowed the candidate causes: "is the divergence one of the Waivers or a separate scoping defect?" The §XV.c framing made the question askable; the empirical probe (prototype-walk loop trace) made it answerable.
+4. EXT 94b is the §XIII-tier correction — per-method scoping of the deviation. The EXT 93 Waivers remain accurate about what the deviation absorbs at the sites the deviation IS-scoped-to.
+
+The §XV recognition is now load-bearing in the engagement: each new deviation primitive should ideally enumerate the consumer call sites it is intended to affect (or explicitly accept that it affects every ToObject-using site), with per-site negation gates where the deviation must NOT apply. EXT 94b is the first per-site negation gate landed.
+
+### Substrate at IR-EXT 94b close
+
+**IR alphabet**: 65 nodes (no growth across EXT 93-94b).
+
+**Runtime additions (this batch)**:
+- `to-object-coerce-nullish` deviation registered in `__cruftless_tolerate` registry with two Waived invariants.
+- `rt.to_object` + `rt.require_object_coercible` gate on the deviation set.
+- `bytes_to_value` (host-v2/fs.rs) installs a UTF-8-decoding toString own property on the byte-Array result of readFileSync.
+- Object.getPrototypeOf intrinsic wrapper: nullish input under the deviation returns Null directly (per-site negation gate).
+
+### Cumulative numbers
+
+| Metric | Pre-EXT-93 | Post-EXT-94b | Δ this batch |
+|---|---|---|---|
+| Top500 parity (strict default) | 78.3% (803/1026) | 78.3% (deviations are opt-in) | 0 |
+| §XIV-recovered packages (both deviations opted in) | 8 (EXT 90) | 21 (EXT 90+93) + Buffer.toString broad-applicability | +13 explicit + broad |
+| §XV violations corroborated | 1 (EXT 91 byte-parity / EXT 92 fix) | 2 (+ EXT 93 scoping / EXT 94b fix) | +1 |
+
+**Session-cumulative wins: +247 test262 chapter wins + 21 §XIV-recovered packages at full byte-parity + 1 §XIII-tier host-compat fix (Buffer.toString) with broad applicability + 1 additional §XV violation corroborated and fixed.**
+
+Pin-Art tag count: 137 commits as of EXT 94b.
+
+### Conjecture status
+
+**Doc 730 §XIV.d targeting heuristic #2 (2026-05-20, EXT 93)**: the second deviation primitive (`to-object-coerce-nullish`) was selected by the §XIV.d heuristic (highest parity-recovery per primitive) and produced 13 recoveries from one promotion. The targeting heuristic operates as a usable engagement pattern — pick the largest cluster in the bun-only-OK breakdown that shares a single spec-rejection class, lift to a typed deviation, sweep.
+
+**Doc 730 §XV.a corroboration #2 (2026-05-20, EXT 93 → 94b)**: the deviation's broad scope at rt.to_object produced a downstream invariant violation (prototype-walk loop) that the EXT 93 Waivers did NOT predict. §XV.c's "did the divergence map to a Waived invariant or a scoping defect?" framing was the principled way to attribute the cause; the §XIII-tier correction (per-method scoping at Object.getPrototypeOf) preserved the deviation's positive effects on the other 13 recoveries. The two-axis pipeline operated under the co-evolution contract as Doc 730 §XV designed.
+
+**Doc 730 §XIV.b co-evolution feedback (2026-05-20, EXT 93 → 94 → 94b)**: investigating one §XIV deviation candidate (yeoman-environment's recovery) produced two §XIII-tier fixes — EXT 94 (Buffer.toString, broadly applicable host-compat) and EXT 94b (per-site scoping correction). Each §XIV iteration generates §XIII work items; each §XIII fix unblocks further §XIV recoveries downstream. The pipeline self-extends along both axes from a single empirical probe.
