@@ -124,6 +124,14 @@ pub struct CompiledModule {
     pub constants: ConstantsPool,
     pub locals: Vec<LocalDescriptor>,
     pub source_map: Vec<(usize, Span)>,
+    /// Ω.5.P04.E2.strict-write-enforcement: module-level strict flag.
+    /// Set by compile_module from the directive-prologue scan plus the
+    /// .mjs / has_module_syntax checks. Module frames built via
+    /// Frame::new_module read this into Frame::strict so SetProp /
+    /// SetIndex / StoreGlobal can enforce strict-mode rejection of
+    /// write-to-non-writable and write-to-undeclared per ECMA §10.1.9.4
+    /// step 4 and §13.15.4 step 1.f.
+    pub strict: bool,
     /// Tier-Ω.5.b: ESM static imports. Each entry binds a local slot to a
     /// value drawn from another module's namespace. The runtime resolves
     /// `module_request` and populates `slot` BEFORE running the module body.
@@ -783,6 +791,7 @@ impl Compiler {
             side_effect_imports: std::mem::take(&mut self.side_effect_imports),
             construct_tags: std::mem::take(&mut self.construct_tags),
             line_starts: std::mem::take(&mut self.source_line_starts),
+            strict: self.strict,
         })
     }
 

@@ -5943,6 +5943,21 @@ impl Runtime {
                     frame.pc += 2;
                     let name = self.constant_name(frame, idx)?;
                     let v = frame.pop()?;
+                    // Ω.5.P04.E2.strict-write-to-undeclared: in strict mode,
+                    // assigning to an unresolvable reference (undeclared
+                    // identifier) throws ReferenceError per ECMA §13.15.4
+                    // SimpleAssignmentExpression step 1.f.i + §9.1.1.4.4
+                    // SetMutableBinding step 6. Pre-substrate, cruftless
+                    // silently created the global in sloppy mode AND
+                    // silently absorbed the write in strict mode (the
+                    // §XV audit on `later` localized this). var/let/const
+                    // declarations compile to StoreLocal, not StoreGlobal,
+                    // so this check fires only on undeclared bare
+                    // assignments.
+                    if frame.strict && !self.globals.contains_key(&name) {
+                        return Err(RuntimeError::ReferenceError(
+                            format!("{} is not defined", name)));
+                    }
                     self.globals.insert(name, v);
                 }
                 Op::LoadUpvalue => {
@@ -6535,6 +6550,22 @@ impl Runtime {
                         if let Some(setter) = self.find_setter(*id, &key) {
                             self.call_function(setter, Value::Object(*id), vec![value.clone()])?;
                         } else {
+                            // Ω.5.P04.E2.strict-write-to-non-writable: in
+                            // strict mode, writing to a non-writable own
+                            // data property throws TypeError per ECMA
+                            // §10.1.9.4 OrdinarySetWithOwnDescriptor step
+                            // 4 + §13.15.4 SimpleAssignmentExpression
+                            // step 1.f.iv. object_set's pre-substrate
+                            // sloppy fallback (silent no-op) is preserved
+                            // for non-strict frames; strict frames raise.
+                            if frame.strict {
+                                if let Some(d) = self.obj(*id).get_own(&key) {
+                                    if !d.writable && d.getter.is_none() && d.setter.is_none() {
+                                        return Err(RuntimeError::TypeError(
+                                            format!("Attempted to assign to readonly property '{}'", key)));
+                                    }
+                                }
+                            }
                             self.object_set(*id, key, value.clone());
                         }
                     } else {
@@ -6934,6 +6965,17 @@ impl Runtime {
                         if let Some(setter) = self.find_setter_pk(*id, &key_pk) {
                             self.call_function(setter, Value::Object(*id), vec![value.clone()])?;
                         } else {
+                            // Ω.5.P04.E2.strict-write-to-non-writable: see
+                            // matching guard in Op::SetProp for the rationale.
+                            // Same shape, computed-key variant.
+                            if frame.strict {
+                                if let Some(d) = self.obj(*id).get_own(&key) {
+                                    if !d.writable && d.getter.is_none() && d.setter.is_none() {
+                                        return Err(RuntimeError::TypeError(
+                                            format!("Attempted to assign to readonly property '{}'", key)));
+                                    }
+                                }
+                            }
                             self.object_set_pk(*id, key_pk.clone(), value.clone());
                         }
                     } else {
@@ -7578,6 +7620,7 @@ impl Runtime {
             pending_method_name: None,
             import_meta: None,
             new_target: nt_for_this_call.clone(),
+            strict: proto.strict,
         };
         let body_result = self.run_frame(&mut inner);
         if is_generator {
@@ -7767,6 +7810,13 @@ pub struct Frame<'a> {
     /// callers, function-call frames) leave this None; Op::PushImportMeta
     /// pushes Undefined in that case.
     pub import_meta: Option<crate::value::ObjectRef>,
+    /// Ω.5.P04.E2.strict-write-enforcement: strict-mode flag for this
+    /// frame. Module frames inherit from CompiledModule.strict; function
+    /// frames inherit from FunctionProto.strict. Read by Op::SetProp,
+    /// Op::SetIndex, and Op::StoreGlobal to enforce strict-mode rejection
+    /// of write-to-non-writable (TypeError) and write-to-undeclared
+    /// (ReferenceError).
+    pub strict: bool,
     /// Tier-Ω.5.s: `new.target` slot. Populated by Op::New before
     /// dispatching the constructor call (set to the callee value). Plain
     /// Call frames leave this None; Op::PushNewTarget pushes Undefined
@@ -7804,6 +7854,7 @@ impl<'a> Frame<'a> {
             pending_method_name: None,
             import_meta: None,
             new_target: None,
+            strict: m.strict,
         }
     }
 
