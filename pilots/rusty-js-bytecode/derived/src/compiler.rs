@@ -511,7 +511,20 @@ impl Compiler {
         let leading_stmts: Vec<Stmt> = m.body.iter().filter_map(|i|
             if let ModuleItem::Statement(s) = i { Some(s.clone()) } else { None }
         ).collect();
-        self.strict = has_module_syntax || directive_has_use_strict(&leading_stmts);
+        // Ω.5.P05.L0.module-mjs-strict: .mjs files are ECMAScript modules
+        // by file-extension convention (Node + browsers + Bun all enforce
+        // this); ES modules are strict by default per ECMA-262 §15.5
+        // ModuleDeclarationLinking step 9 (Module Environment Records
+        // run code in strict mode). Pre-substrate, cruftless only enabled
+        // strict mode when the body either carried a "use strict"
+        // directive or contained import/export syntax — a .mjs file
+        // without imports (e.g. a pure-script .mjs probe) ran as sloppy
+        // mode, producing `this = globalThis` for unbound method calls
+        // where the spec mandates `this = undefined`.
+        let is_mjs_url = self.source_url.ends_with(".mjs");
+        self.strict = is_mjs_url
+            || has_module_syntax
+            || directive_has_use_strict(&leading_stmts);
         // Tier-Ω.5.b phase A: pre-allocate locals for every import binding
         // so references to imported names in the body resolve to LoadLocal
         // (not LoadGlobal). The runtime populates these slots before
