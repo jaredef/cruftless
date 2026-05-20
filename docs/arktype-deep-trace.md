@@ -153,11 +153,43 @@ This is what "the pipeline is its own diagnostic" looks like in practice. Each f
 | `3ceab019` | `Ω.5.P03.E2.class-field-after-super` | Wall 1: derived-class field-init timing |
 | `72f2bf47` | `Ω.5.P03.E2.super-new-target` | Wall 2: new.target through super(...) |
 | `d1ab22cb` | `Ω.5.P04.E1.is-spec-object` | Wall 3: ToPrimitive Type-vs-typeof collapse |
-| (pending) | `Ω.5.P04.E1.class-method-enumerability` | Wall 4: methods non-enumerable on prototype |
-| (pending) | `Ω.5.P03.??.module-strict-mode` | Wall 4: ESM is strict by default |
-| (pending) | (TBD) | Wall 4: prototype-as-this root in arktype |
+| `0605f6de` | `Ω.5.P03.E2.class-method-non-enumerable` | (α) Method + accessor descriptor shape; did NOT recover arktype |
+| `1c834fd9` | `Ω.5.P05.L0.module-mjs-strict` | (β) .mjs strict-by-default; did NOT recover arktype |
+| (pending) | (TBD) | Wall 4: prototype-as-this root in arktype — proximate cause unidentified |
 
 Frontier: continue identifying the root for the prototype-as-this state. Each layer is its own engagement-tier substrate move under the discipline established at EXT 20.
+
+## (γ) sequential program — α + β both landed, neither recovered arktype
+
+The (γ) plan from the wall-4 inspection committed α (class-method enumerability) then β (.mjs strict-by-default) sequentially. Both substrate moves are independently spec-correct and verified by direct repro tests. Neither moved arktype's failure surface; the third wall persists at the same `proto.equals(proto)` site.
+
+Diagnostics performed at the wall-4 failure site after each substrate:
+
+```
+post-α (commit 0605f6de):
+  Object.keys(this)                         []        ← was 36; method enumerability fixed
+  Object.getOwnPropertyNames(this).length   36        ← methods present but non-enumerable
+  this === r                                true      ← unchanged
+  this === this.constructor.prototype       true      ← unchanged
+
+post-β (commit 1c834fd9):
+  fn() === globalThis (mjs probe)           false     ← was true; .mjs is now strict
+  arktype same failure trace                unchanged
+```
+
+The proto-as-this state is robust across both substrate moves. The arktype-internal proximate cause is somewhere else.
+
+**Diagnostic narrowed but not closed:**
+- The failure occurs DURING arktype's $ark module initialization (globalThis.$ark.intrinsic is not yet populated at the failure point — verified by instrumented inspection).
+- Some arktype bootstrap step is calling `Class.prototype.equals(Class.prototype)` directly on a class prototype object.
+- The method dispatch itself in cruftless is verified correct (`a.bar()` resolves to inherited methods with `this = a`, not `this = A.prototype` — checked via independent repro).
+
+**Hypothesis to test next:**
+- Static class field initializer evaluation order. arktype defines class-level static state and the order in which static initializers run may differ between cruftless and Bun, producing a prototype-bound reference where Bun has an instance-bound one.
+- Reflect.construct or some metaprogramming primitive whose receiver-binding differs from Bun.
+- A bind() chain whose [[BoundThis]] is the prototype.
+
+The trace is reaching the point where progress requires reading arktype's source path-by-path with a focused hypothesis. The doc's purpose is to make it possible to pick this up cold later.
 
 ---
 
