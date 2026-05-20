@@ -6809,7 +6809,27 @@ impl Runtime {
             Some(yields_arr)
         } else { None };
         let args = effective_args;
-        let this = effective_this;
+        // EXT 73: ECMA-262 §10.2.1.2 OrdinaryCallBindThis. For non-arrow,
+        // non-strict function code, a null/undefined thisArg is replaced
+        // with globalThis and a primitive thisArg is boxed via ToObject.
+        // Arrow bodies already took bound_this; strict bodies (proto.strict)
+        // receive thisArg unchanged. Constructor invocation (signalled by
+        // nt_for_this_call.is_some()) always supplies a fresh Object so it
+        // never falls into the null/undefined/primitive branches.
+        let this = if proto.strict || nt_for_this_call.is_some() {
+            effective_this
+        } else {
+            match &effective_this {
+                Value::Null | Value::Undefined => {
+                    self.globals.get("globalThis").cloned().unwrap_or(Value::Undefined)
+                }
+                Value::Boolean(_) | Value::Number(_) | Value::String(_)
+                | Value::BigInt(_) | Value::Symbol(_) => {
+                    self.to_object(&effective_this).unwrap_or(effective_this.clone())
+                }
+                _ => effective_this,
+            }
+        };
         // Tier-Ω.5.e: binding-shared upvalues. Share the closure's
         // Rc<RefCell<Value>> handles with the inner frame; writes through
         // either side land in the same cell. The outer frame that created

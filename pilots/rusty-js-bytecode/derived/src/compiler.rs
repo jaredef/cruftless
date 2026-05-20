@@ -106,6 +106,15 @@ pub struct FunctionProto {
     /// to leak. Async functions with explicit `.prototype = X` assignment
     /// remain supported via the normal property-set path.
     pub is_async: bool,
+    /// EXT 73: ECMA-262 §10.2.1.2 OrdinaryCallBindThis discriminator.
+    /// True when the function body begins with a `"use strict"` directive
+    /// prologue, when the function is a class method (always strict per
+    /// §15.7), or when the enclosing context is already strict (modules,
+    /// or a strict outer function). Read at call time in call_function:
+    /// strict functions receive thisArg unchanged; non-strict (sloppy)
+    /// functions coerce null/undefined → globalThis and primitives via
+    /// ToObject.
+    pub strict: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -287,6 +296,11 @@ pub struct Compiler {
     /// reused the outer slot index from pre_allocated_slots, writing the
     /// inner value into the outer's slot and breaking shadow semantics.
     block_depth: u32,
+    /// EXT 73: strict-mode context for this compiler scope. Modules are
+    /// always strict; a function body inherits the enclosing strictness
+    /// and may upgrade itself to strict via a `"use strict"` directive
+    /// prologue. Set before compiling the body; read at proto build time.
+    strict: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -371,6 +385,24 @@ struct LabelFrame {
     break_patches: Vec<usize>,
 }
 
+/// EXT 73: ECMA-262 §11.2.1 directive-prologue scan. A directive prologue
+/// is the longest sequence of leading ExpressionStatements whose expression
+/// is a StringLiteral. The "use strict" directive enables strict mode for
+/// the function it heads. Returns true iff any directive in the prologue
+/// has the canonical value `"use strict"` (case-sensitive, no escapes per
+/// §11.2.1 — but for v1 we accept either spelling cheap-and-cheerfully).
+fn directive_has_use_strict(body: &[Stmt]) -> bool {
+    for stmt in body {
+        match stmt {
+            Stmt::Expression { expr: Expr::StringLiteral { value, .. }, .. } => {
+                if value == "use strict" { return true; }
+            }
+            _ => return false,
+        }
+    }
+    false
+}
+
 impl Compiler {
     pub fn new() -> Self {
         Self {
@@ -392,6 +424,7 @@ impl Compiler {
             source_url: String::new(),
             block_depth: 0,
             construct_tags: Vec::new(),
+            strict: false,
         }
     }
 
@@ -426,6 +459,18 @@ impl Compiler {
     }
 
     pub fn compile_module(&mut self, m: &Module) -> Result<CompiledModule, CompileError> {
+        // EXT 73: ECMA-262 §11.2.1 directive-prologue scan at the top level.
+        // A real module is always strict (§11.2.2), and a script becomes
+        // strict iff it opens with a `"use strict"` directive. cruftless
+        // routes both through this same entry, so we only auto-enable
+        // strict when the top of the body actually carries the directive
+        // OR when imports/exports are present (a syntactic module).
+        let has_module_syntax = m.body.iter().any(|i| matches!(i,
+            ModuleItem::Import(_) | ModuleItem::Export(_)));
+        let leading_stmts: Vec<Stmt> = m.body.iter().filter_map(|i|
+            if let ModuleItem::Statement(s) = i { Some(s.clone()) } else { None }
+        ).collect();
+        self.strict = has_module_syntax || directive_has_use_strict(&leading_stmts);
         // Tier-Ω.5.b phase A: pre-allocate locals for every import binding
         // so references to imported names in the body resolve to LoadLocal
         // (not LoadGlobal). The runtime populates these slots before
@@ -2831,6 +2876,9 @@ impl Compiler {
             block_depth: 0,
             // Ω.5.P53.E2: each function has its own tag list.
             construct_tags: Vec::new(),
+            // EXT 73: inherit enclosing strictness; upgrade below if the
+            // body opens with a `"use strict"` directive prologue.
+            strict: self.strict || directive_has_use_strict(body),
         };
         let param_count = params.len() as u16;
         // Tier-Ω.5.l: track the rest-parameter slot. Per spec only the
@@ -3157,6 +3205,7 @@ impl Compiler {
             construct_tags: sub.construct_tags,
             source_url: sub.source_url,
             is_async,
+            strict: sub.strict,
         })
     }
 
