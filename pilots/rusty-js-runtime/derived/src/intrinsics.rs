@@ -641,6 +641,32 @@ impl Runtime {
             }
             Ok(Value::Undefined)
         });
+        // Ω.5.P04.E1.for-in-nullish-skip: __for_in_keys(obj) returns
+        // Object.keys(obj) for object/function receivers, but [] for
+        // undefined and null receivers per ECMA-262 §14.7.5.6
+        // ForIn/OfHeadEvaluation step 6 (if exprValue is undefined or
+        // null, return Completion(undefined) — which causes the for-in
+        // loop body to be skipped). Pre-substrate, cruftless compiled
+        // for-in to Object.keys(right) directly; Object.keys on
+        // undefined/null throws "Cannot convert undefined or null to
+        // object", masking the spec-mandated short-circuit.
+        // Manifested across the joi cluster (14 packages on the
+        // post-substrate top500 sweep) as the cluster's leading error
+        // signature: pattern `for (const k in this.$_super)` where
+        // this.$_super is undefined on some object configurations.
+        register_engine_helper(self, "__for_in_keys", |rt, args| {
+            let v = args.first().cloned().unwrap_or(Value::Undefined);
+            if matches!(v, Value::Undefined | Value::Null) {
+                let arr = rt.alloc_object(crate::value::Object::new_array());
+                return Ok(Value::Object(arr));
+            }
+            // Delegate to the IR-lowered Object.keys path (generated::
+            // object_keys) so the enumeration order matches the engine's
+            // canonical own-keys semantics (§7.3.22). Avoids duplicating
+            // the enumeration logic and keeps Object.keys + for-in in
+            // lock-step.
+            crate::generated::object_keys(rt, Value::Undefined, &[v])
+        });
         register_engine_helper(self, "__yield_push__", |rt, args| {
             if let Some(&arr) = rt.gen_yields_stack.last() {
                 let v = args.first().cloned().unwrap_or(Value::Undefined);

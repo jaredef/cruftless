@@ -1643,16 +1643,19 @@ impl Compiler {
                     }
                 };
 
-                // keys = Object.keys(<right>)
-                let obj_name = self.constants.intern(Constant::String("Object".into()));
+                // Ω.5.P04.E1.for-in-nullish-skip: route through
+                // __for_in_keys helper instead of Object.keys directly.
+                // The helper returns [] for undefined/null receivers per
+                // ECMA §14.7.5.6 step 6; Object.keys would throw on those
+                // and mask the spec-mandated short-circuit. The cluster of
+                // packages depending on `for (const k in maybeUndef)` (joi,
+                // 14 packages on the post-substrate top500 sweep) hit this.
+                let helper = self.constants.intern(
+                    Constant::String("__for_in_keys".into()));
                 encode_op(&mut self.bytecode, Op::LoadGlobal);
-                encode_u16(&mut self.bytecode, obj_name);
-                encode_op(&mut self.bytecode, Op::Dup);
-                let keys_key = self.constants.intern(Constant::String("keys".into()));
-                encode_op(&mut self.bytecode, Op::GetProp);
-                encode_u16(&mut self.bytecode, keys_key);
+                encode_u16(&mut self.bytecode, helper);
                 self.compile_expr(right)?;
-                encode_op(&mut self.bytecode, Op::CallMethod);
+                encode_op(&mut self.bytecode, Op::Call);
                 encode_u8(&mut self.bytecode, 1);
                 encode_op(&mut self.bytecode, Op::StoreLocal);
                 encode_u16(&mut self.bytecode, keys_slot);
