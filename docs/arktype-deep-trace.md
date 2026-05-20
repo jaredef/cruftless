@@ -71,6 +71,30 @@ compiledMeta = compileMeta(this.metaJson);
 
 **Recovers:** any code that does ToPrimitive(null) or ToPrimitive(an-object-whose-method-returns-null). Including template literals like `${null}`.
 
+## Continuation of the Wall 4 trace (2026-05-20 evening)
+
+After landing the doc above, continued the instrumentation to narrow wall 4. Findings:
+
+**Step 1 — the receiver is the class prototype.** `this === this.constructor.prototype` is TRUE at the failure. Confirmed via `Object.getPrototypeOf(this)` chain walk: depth-2 (the parent class's prototype, with only `constructor` as a key) and depth-3 (`Object`). The keys on `this` are the BaseNode (or subclass) methods listed as own-enumerables. `this.toString()` returns `Type<undefined>` because `this.expression` is undefined on the prototype itself.
+
+**Step 2 — `r === this`.** Both sides of the failing equals reference the same prototype object. Some code is calling `Class.prototype.equals(Class.prototype)` — passing the same prototype reference to itself.
+
+**Step 3 — never constructed.** Instrumented BaseNode's constructor body to tag each constructed instance with a `__id`. The failing `this` has `__id: undefined`. So this object NEVER went through BaseNode's constructor. It IS the prototype object itself, not a freshly-`new`'d instance.
+
+**Step 4 — happens at equals call #46.** Calls 43-45 are normal (`this.kind='unit'`, `'$' in this` true, `this !== r`). Call 46 abruptly transitions to the prototype-as-this state. Something between call 45's return and call 46's invocation produces a prototype-pointer instead of an instance-pointer.
+
+**What this means.** Arktype is calling `BaseNode.prototype.equals(BaseNode.prototype)` directly during its discriminate/parse flow. The trace path `(in-method='equals')(in-call='$')(in-call='$')(in-method='discriminate')` shows the scope function `$` is called twice in succession, then equals fires. So the call is happening inside one of arktype's `$()` (scope-call) paths during discriminate, against an item that resolved to a class prototype.
+
+**Cannot identify the exact arktype callsite without deeper arktype-internal audit.** Multiple candidates exist (intrinsic boolean lookup; branchGroups iteration with a prototype that leaked in; metaprogramming over the kind registry where prototypes are values). None of the obvious instrumentations (line wrapping, callsite tagging) located the source — likely because the regex-based callsite wrapping I tried broke the parser on a subset of arktype files.
+
+**What's confirmed about cruftless's role:** Two cruftless spec divergences directly enable this state:
+
+- **Class methods are enumerable in cruftless (must be non-enumerable per ECMA §15.7).** If arktype does `Object.values(prototypeContainer).find(p => p.equals(intrinsic.boolean))`, cruftless's enumerable methods could leak the prototype's `equals` itself into the iteration. Bun's non-enumerable methods would skip them.
+
+- **ESM is not strict in cruftless (this defaults to globalThis instead of undefined).** Various method-as-callback patterns produce different `this` shapes between Bun and cruftless.
+
+Either or both could be the proximate cause; structural fix of both is warranted regardless of whether one alone unblocks arktype.
+
 ## Wall 4 — class-method-enumerability + prototype-as-this (OPEN)
 
 **Surface:** `Cannot read property 'parseDefinition' of undefined (receiver='$') @ @ark/schema/out/node.js:216:39 (in-method='equals') (in-call='$') (in-call='$') (in-method='discriminate')`.
