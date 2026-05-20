@@ -137,24 +137,33 @@ pub fn new_regexp(rt: &mut Runtime, pattern: &str, flags: &str) -> Result<Object
 /// Translate `pattern` + JS `flags` into a Rust `regex::Regex`. Returns
 /// Err if the pattern uses features the Rust `regex` crate doesn't
 /// support (lookbehind, backreferences) or if a flag is unsupported.
-/// EXT 76: elide JS UTF-16 surrogate-pair alternatives from a pattern.
+/// EXT 76 / 76b: translate JS UTF-16 surrogate-pair alternatives into
+/// Rust-acceptable scalar ranges, or elide when translation isn't safe.
 ///
 /// JS regex literals targeting environments without `\p{...}` property
 /// classes emulate them with huge alternations like:
-///   /[A-Z...]|\uD800[\uDC00-\uDC0B\uDC0D-\uDC26...]|\uD801[\uDC00-\uDC9D]|.../
-/// where each `\uD8XX..\uDBXX` is a high surrogate and the bracketed run
-/// is the matching low-surrogate ranges. The pair represents a single
+///   /[A-Z...]|\uD800[\uDC00-\uDC0B\uDC0D-\uDC26...]|[\uD80C\uD81C-\uD820][\uDC00-\uDFFF]|.../
+/// Each `\uD8XX..\uDBXX` is a high surrogate and the bracketed run is the
+/// matching low-surrogate ranges. The pair represents a single
 /// supplementary-plane code point. The Rust regex crate rejects bare
-/// surrogates (Rust `char` is a Unicode scalar, surrogates aren't scalars),
-/// so the whole pattern fails to compile.
+/// surrogates (Rust `char` is a Unicode scalar; surrogates aren't), so
+/// the whole pattern fails to compile.
 ///
-/// Test262's harness fixtures that hit these patterns (notably
-/// nativeFunctionMatcher.js validating "function anonymous() { [native
-/// code] }") only ever feed BMP-range inputs to the matcher, so eliding
-/// the supplementary alternatives preserves correctness on the inputs
-/// that matter. Cases that actually depend on matching supplementary
-/// characters via emulated property classes would need full \u{NNNNN}
-/// translation; deferred to a future EXT.
+/// 76b translates each (high)(low) alternative into the equivalent
+/// disjoint supplementary-plane scalar ranges using `\u{NNNNN}` notation,
+/// which the Rust crate accepts directly. For each high surrogate H
+/// (singleton or each value in a range) and each low range [La..Lb], the
+/// resulting scalar range is:
+///   [0x10000 + ((H - 0xD800) << 10) + (La - 0xDC00) ..
+///    0x10000 + ((H - 0xD800) << 10) + (Lb - 0xDC00)]
+/// Adjacent ranges are merged before emission.
+///
+/// Alternatives that can't be parsed as a clean `(high)(low)` pair —
+/// for example an unpaired high surrogate, or a surrogate-bearing
+/// alternative wrapped around a non-class — are dropped (replaced with
+/// nothing in the alternation, preserving the structural shape). If
+/// every alternative is dropped, the segment becomes `(?!)` (empty
+/// negative lookahead) so the structural shape survives.
 ///
 /// Returns Some(cleaned) when the pattern contained surrogate alternatives
 /// and was rewritten; None when no change was needed.
@@ -226,6 +235,9 @@ fn elide_surrogate_pair_alternatives(pattern: &str) -> Option<String> {
             }
             if has_surrogate {
                 *changed = true;
+                if let Some(translated) = translate_surrogate_alt(bytes, s, e) {
+                    kept.push(translated);
+                }
                 continue;
             }
             // Recurse into `(?...)` groups inside this alternative so
@@ -304,6 +316,121 @@ fn elide_surrogate_pair_alternatives(pattern: &str) -> Option<String> {
     let mut changed = false;
     let cleaned = clean_segment(bytes, 0, bytes.len(), &is_high_surrogate_at, &mut changed);
     if changed { Some(cleaned) } else { None }
+}
+
+/// EXT 76b: parse a `\uHHHH` escape at position p. Returns (codepoint, end_pos).
+fn parse_unicode_esc(bytes: &[u8], p: usize) -> Option<(u32, usize)> {
+    if p + 6 > bytes.len() || &bytes[p..p+2] != b"\\u" { return None; }
+    let hex = std::str::from_utf8(&bytes[p+2..p+6]).ok()?;
+    let v = u32::from_str_radix(hex, 16).ok()?;
+    Some((v, p + 6))
+}
+
+/// EXT 76b: parse a character class `[...]` whose body is exclusively
+/// `\uHHHH` chars and `\uHHHH-\uHHHH` ranges. Returns the inclusive
+/// ranges as (lo, hi) pairs, or None if the class contains anything else
+/// (ASCII chars, named classes, escapes other than \u, ...). Caller must
+/// ensure bytes[start] == b'['.
+fn parse_uesc_class(bytes: &[u8], start: usize) -> Option<(Vec<(u32, u32)>, usize)> {
+    if start >= bytes.len() || bytes[start] != b'[' { return None; }
+    let mut p = start + 1;
+    if p < bytes.len() && bytes[p] == b'^' { return None; }
+    let mut ranges = Vec::new();
+    while p < bytes.len() && bytes[p] != b']' {
+        let (lo, q) = parse_unicode_esc(bytes, p)?;
+        p = q;
+        let hi = if p < bytes.len() && bytes[p] == b'-'
+            && p + 1 < bytes.len() && bytes[p+1] != b']'
+        {
+            let (h, q2) = parse_unicode_esc(bytes, p + 1)?;
+            p = q2;
+            h
+        } else { lo };
+        ranges.push((lo, hi));
+    }
+    if p >= bytes.len() { return None; }
+    Some((ranges, p + 1))
+}
+
+/// EXT 76b: emit a character class containing the given scalar ranges,
+/// each as `\u{HEX}` or `\u{HEX}-\u{HEX}`. Adjacent ranges are merged
+/// before emission so the output is canonical.
+fn emit_scalar_class(mut ranges: Vec<(u32, u32)>) -> String {
+    if ranges.is_empty() { return "(?!)".to_string(); }
+    ranges.sort();
+    let mut merged: Vec<(u32, u32)> = Vec::new();
+    for r in ranges {
+        if let Some(last) = merged.last_mut() {
+            if r.0 <= last.1.saturating_add(1) {
+                last.1 = last.1.max(r.1);
+                continue;
+            }
+        }
+        merged.push(r);
+    }
+    let mut s = String::from("[");
+    for (a, b) in merged {
+        if a == b {
+            s.push_str(&format!("\\u{{{:X}}}", a));
+        } else {
+            s.push_str(&format!("\\u{{{:X}}}-\\u{{{:X}}}", a, b));
+        }
+    }
+    s.push(']');
+    s
+}
+
+/// EXT 76b: translate one (high)(low) alternative into scalar ranges.
+/// Recognized shapes:
+///   `\uHHHH[\uLLLL...]`      bare high surrogate + low-surrogate class
+///   `[\uHHHH...][\uLLLL...]` high-surrogate class + low-surrogate class
+/// Returns None when the alternative is not a clean pair (e.g. an
+/// unpaired high surrogate, or a pair surrounded by extra atoms the
+/// translator doesn't model). Caller drops the alternative in that case.
+fn translate_surrogate_alt(bytes: &[u8], start: usize, end: usize) -> Option<String> {
+    let mut p = start;
+    // Parse the high component: either a single \uHHHH or a class.
+    let high_ranges: Vec<(u32, u32)>;
+    if p + 6 <= end && &bytes[p..p+2] == b"\\u" {
+        let (v, q) = parse_unicode_esc(bytes, p)?;
+        high_ranges = vec![(v, v)];
+        p = q;
+    } else if p < end && bytes[p] == b'[' {
+        let (rs, q) = parse_uesc_class(bytes, p)?;
+        if q > end { return None; }
+        high_ranges = rs;
+        p = q;
+    } else {
+        return None;
+    }
+    // Validate the high component is exclusively high surrogates.
+    for &(a, b) in &high_ranges {
+        if !(0xD800..=0xDBFF).contains(&a) || !(0xD800..=0xDBFF).contains(&b) {
+            return None;
+        }
+    }
+    // Parse the low component: must be a class of low surrogates.
+    if p >= end || bytes[p] != b'[' { return None; }
+    let (low_ranges, q) = parse_uesc_class(bytes, p)?;
+    if q != end { return None; } // anything trailing → not a clean shape.
+    for &(a, b) in &low_ranges {
+        if !(0xDC00..=0xDFFF).contains(&a) || !(0xDC00..=0xDFFF).contains(&b) {
+            return None;
+        }
+    }
+    // Compute scalar ranges. For each high surrogate H in [Ha..Hb] and
+    // each low range [La..Lb], emit [base+La-0xDC00 .. base+Lb-0xDC00]
+    // where base = 0x10000 + ((H - 0xD800) << 10).
+    let mut scalars: Vec<(u32, u32)> = Vec::new();
+    for &(ha, hb) in &high_ranges {
+        for h in ha..=hb {
+            let base = 0x10000u32 + ((h - 0xD800) << 10);
+            for &(la, lb) in &low_ranges {
+                scalars.push((base + (la - 0xDC00), base + (lb - 0xDC00)));
+            }
+        }
+    }
+    Some(emit_scalar_class(scalars))
 }
 
 fn translate(pattern: &str, flags: &str) -> Result<regex::Regex, String> {
