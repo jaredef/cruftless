@@ -4311,10 +4311,68 @@ impl Compiler {
             synth.extend(field_init_stmts.clone());
             ctor_body = synth;
         } else if !field_init_stmts.is_empty() {
-            // Prepend field inits to existing (or empty) body.
-            let mut new_body: Vec<Stmt> = field_init_stmts.clone();
-            new_body.extend(ctor_body.into_iter());
-            ctor_body = new_body;
+            // Ω.5.P03.E2.class-field-after-super: derived-class field
+            // initializers must run AFTER super(), not before. Per
+            // ECMA-262 §15.7.13 step 11 (and SuperCall step 7), `this`
+            // is uninitialized in a derived constructor until super()
+            // returns; field initializers reference `this` and the
+            // spec inserts them at the InitializeInstanceElements step
+            // which runs as part of SuperCall after the parent
+            // constructor returns. Pre-substrate cruftless prepended
+            // fields to the entire body — for a derived class with an
+            // explicit constructor, that placed `this.field = value`
+            // expressions BEFORE super(), so writes landed on the
+            // pre-allocated `this` which super() then replaced when
+            // its parent returned an object (per §15.4.5.4 step 9 /
+            // the Callable-pattern in @ark/util). The writes vanished.
+            //
+            // Fix: if the class has `extends`, find the first top-level
+            // statement in the explicit ctor body that contains the
+            // super(...) call and insert field inits IMMEDIATELY AFTER
+            // it. If no super-call statement is found (a derived ctor
+            // that never calls super is a runtime ReferenceError on
+            // first `this` access; the bytecode is still well-formed),
+            // fall back to prepending so the field inits at least throw
+            // on access in the spec-mandated way.
+            //
+            // For non-derived classes (super_class is None), the
+            // legacy prepend is correct: there's no super() to wait
+            // for; fields run at the start of construction.
+            if super_class.is_some() {
+                fn stmt_contains_super_call(s: &Stmt) -> bool {
+                    fn expr_contains_super_call(e: &Expr) -> bool {
+                        matches!(e, Expr::Call { callee, .. }
+                            if matches!(callee.as_ref(), Expr::Super { .. }))
+                    }
+                    match s {
+                        Stmt::Expression { expr, .. } => expr_contains_super_call(expr),
+                        _ => false,
+                    }
+                }
+                let mut inserted = false;
+                let mut new_body: Vec<Stmt> = Vec::with_capacity(
+                    ctor_body.len() + field_init_stmts.len());
+                for s in ctor_body.into_iter() {
+                    let is_super = !inserted && stmt_contains_super_call(&s);
+                    new_body.push(s);
+                    if is_super {
+                        new_body.extend(field_init_stmts.iter().cloned());
+                        inserted = true;
+                    }
+                }
+                if !inserted {
+                    // No top-level super(); prepend so any later `this`
+                    // access throws as the spec requires.
+                    let mut prepended: Vec<Stmt> = field_init_stmts.clone();
+                    prepended.extend(new_body.into_iter());
+                    new_body = prepended;
+                }
+                ctor_body = new_body;
+            } else {
+                let mut new_body: Vec<Stmt> = field_init_stmts.clone();
+                new_body.extend(ctor_body.into_iter());
+                ctor_body = new_body;
+            }
         }
 
         // Push class context for the constructor body.
