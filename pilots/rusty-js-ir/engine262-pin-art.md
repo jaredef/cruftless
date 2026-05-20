@@ -191,3 +191,124 @@ Inventory which engine262 abstract ops take Realm explicitly vs derive
 it from the receiver. Output: the substrate-architecture change list
 for multi-Realm (the 37 carve-out tests would become reachable if Realm
 threading were instantiated).
+
+---
+
+## Pass B — ToPrimitive trace diff (engine262 vs cruftless)
+
+**Input case**: `'' + p` where `p = new Proxy({}, {get(t,k){trace.push(k); return undefined}})`.
+The EXT 72b motivator. Selected because cruftless already shipped two
+IR-section corrections here (EXT 72 lift, EXT 72b typeof-function fix) and
+EXT 82's SpecGet first carrier converted one of its sites. The call graph
+diff names what the remaining gap is.
+
+### B.1 engine262 call graph
+
+```
+BinaryExpression(+) evaluator
+  → ApplyStringOrNumericBinaryOperator('+', '', p)
+    → ToPrimitive(p)              [type-conversion.mts §7.1.1]
+      → GetMethod(p, @@toPrimitive)  [object-operations.mts §7.3.10]
+        → GetV(p, @@toPrimitive)     [object-operations.mts §7.3.2]
+          → ToObject(p)              [type-conversion.mts §7.1.18]
+          → p.[[Get]](@@toPrimitive, p)  [Proxy internal method §10.5.8]
+            → trap = OrdinaryGet(handler, 'get', handler)
+            → if IsCallable(trap): Call(trap, handler, [target, '@@toPrimitive', receiver])
+            → else: target.[[Get]](@@toPrimitive, receiver)
+        → return null/undefined → undefined; else → check IsCallable, throw if not
+      → exoticToPrim is undefined → fall through
+      → OrdinaryToPrimitive(p, 'number')  [type-conversion.mts §7.1.1.1]
+        → for name in [valueOf, toString]:
+          → method = Get(p, name)              [object-operations.mts §7.3.2]
+            → p.[[Get]](name, p)  [Proxy internal method]
+              → trap = OrdinaryGet(handler, 'get', handler)
+              → if IsCallable(trap): Call(trap, handler, [target, name, receiver])
+              → else: target.[[Get]](name, receiver)
+          → if IsCallable(method): Call(method, p) → result
+            → if Type(result) ≠ Object: return result
+        → throw TypeError
+```
+
+Depth: 6 spec-named functions in the longest chain (ToPrimitive → GetMethod
+→ GetV → ToObject + p.[[Get]] → OrdinaryGet on handler → Call).
+
+### B.2 cruftless call graph (post-EXT 82c)
+
+```
+Op::Add bytecode handler
+  → op_add_rt(l, r)                                          [interp.rs:293]
+    → to_primitive(self, l, "default")                       [interp.rs:283]
+      → crate::generated::to_primitive(rt, v, args)          [generated.rs §7.1.1]
+        → IR step 1.fast: TypeOf → check object/function     (EXT 72b inline)
+        → IR step 2.a.lookup: Expr::SpecGet(value, "@@toPrimitive")
+          → rt.spec_get(&value, "@@toPrimitive")             [interp.rs:407]
+            → proxy_target_handler_checked(id)?
+            → if Proxy: object_get(handler, "get") → call_function(trap, handler, [target, key, receiver])
+            → else: read_property(id, key)                   [interp.rs:5095]
+        → IR step 2.b.has_exotic: IsCallable check
+          → (no callable-but-non-undefined → TypeError path; spec's GetMethod does)
+        → IR step 3.order / 3.swap: method1/method2 = "valueOf" / "toString"
+        → IR step 4.m1.lookup: Expr::CallBuiltin{name:"get_via", args:[value, method1]}
+          → rt.get_via(&value, &method1)                     [interp.rs:2260]
+            → coerce_to_string(method1)
+            → spec_get(value, &key_str)                      (EXT 82b promotion)
+        → IR step 4.m1.callable: IsCallable
+        → IR step 4.m1.call: Expr::Call → call_function
+        → IR step 4.m1.check / 4.m1.fn_check: typeof not in {object, function} → return
+        → IR step 5.m2: same shape for toString
+        → IR step 6.throw: TypeError
+```
+
+Depth: same number of dispatch levels, but the composition shape differs.
+
+### B.3 Diff
+
+| spec function | engine262 | cruftless | gap |
+|---|---|---|---|
+| ToPrimitive (§7.1.1) | top-level abstract op | IR section | aligned |
+| GetMethod (§7.3.10) | wraps GetV + IsCallable check + TypeError | inline IsCallable in IR; no TypeError on non-null-non-callable | **missing** |
+| GetV (§7.3.2) | wraps ToObject + [[Get]] | implicit (rt.spec_get accepts Value, returns Undefined for primitives instead of ToObject + dispatch) | **missing** |
+| ToObject (§7.1.18) | first step of GetV | rt.to_object — exists but not threaded into spec_get's primitive-receiver path | **partial** |
+| O.[[Get]] (§10.1.8 / §10.5.8) | dispatched per exotic kind | rt.spec_get dispatches Proxy + accessor | **partial** (Proxy + accessor covered; Array exotic [[Get]] / String exotic [[Get]] not separately addressed) |
+| OrdinaryToPrimitive (§7.1.1.1) | distinct abstract op | inlined inside ToPrimitive IR section | **flattened** |
+| Get (§7.3.2 alias of GetV) | shared with GetV | reused get_via runtime helper | **aligned** post-EXT 82b |
+
+### B.4 §XIII alphabet promotions surfaced
+
+Pass B names four concrete Tier-1.5 promotions that would close cruftless's
+ToPrimitive trace to engine262's:
+
+1. **GetMethod as a first-class IR primitive**, not inlined. Spec calls
+   GetMethod precisely because it has a load-bearing post-condition
+   ("callable or undefined or throw"). Inlining loses the verifier-time
+   guarantee that we always throw when a defined-but-non-callable
+   @@toPrimitive / valueOf / toString is encountered.
+
+2. **GetV as the primitive-receiver-aware [[Get]]**. The spec carries
+   ToObject(V) inside GetV explicitly. cruftless's spec_get returns
+   Undefined for non-Object receivers; engine262 boxes via ToObject then
+   dispatches the wrapper's [[Get]]. The behavioral gap surfaces when
+   user code calls `(42)[@@toPrimitive]` — spec returns undefined via
+   the Number-wrapper chain; cruftless returns undefined via short-circuit.
+   Same outcome but different chain — and the chain difference matters
+   if `Number.prototype` is monkey-patched (rare but spec-required).
+
+3. **OrdinaryToPrimitive as a separate IR section**. The §7.1.1.1 spec
+   text is a distinct algorithm with its own pre/post-conditions. Folding
+   it into ToPrimitive's IR section is correct-by-construction today
+   (both EXT 72 and EXT 72b stayed inside the section), but it forecloses
+   the spec's modularity — a hypothetical override of OrdinaryToPrimitive
+   (e.g., for Date objects per Annex B) can't be expressed cleanly.
+
+4. **Exotic-[[Get]] dispatch table**. The spec splits O.[[Get]] into one
+   essential internal method per exotic-object kind (Ordinary, Module
+   Namespace, Proxy, Integer-Indexed Exotic, String Exotic, Array Exotic,
+   Bound Function). cruftless's spec_get currently dispatches Proxy
+   explicitly and OrdinaryGet implicitly via read_property; the other
+   exotics inherit from Object.prototype.[[Get]] which doesn't model the
+   spec-specific overrides (e.g., String exotic's exotic-own-property
+   length read). Promoting to an `InternalMethods<Kind>` table per spec
+   method (the Pass A structural recognition) collapses the gap.
+
+The four promotions above are the §XIII work list for one spec section.
+Pass C will produce the analogous list for the 12 Proxy internal methods.
