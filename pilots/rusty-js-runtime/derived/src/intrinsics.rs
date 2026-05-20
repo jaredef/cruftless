@@ -3058,29 +3058,89 @@ impl Runtime {
         register_intrinsic_method(self, r, "deleteProperty", 2, |rt, args| {
             crate::generated::reflect_delete_property(rt, Value::Undefined, args)
         });
-        // Ω.5.P63.E12: Reflect.ownKeys routed through IR.
+        // EXT 79d: Reflect.{ownKeys, getPrototypeOf, setPrototypeOf,
+        // defineProperty, getOwnPropertyDescriptor, isExtensible,
+        // preventExtensions} all route through their Proxy handler trap
+        // when the target is a Proxy with a callable [trap] method.
+        // Missing trap → fall through to the IR-routed direct-target
+        // implementation. Trap signatures match spec (§28.1.*).
         register_intrinsic_method(self, r, "ownKeys", 1, |rt, args| {
+            if let Some(Value::Object(id)) = args.first() {
+                if let Some((tgt, handler)) = rt.proxy_target_handler(*id) {
+                    let trap = rt.object_get(handler, "ownKeys");
+                    if matches!(trap, Value::Object(_)) {
+                        return rt.call_function(trap, Value::Object(handler), vec![Value::Object(tgt)]);
+                    }
+                    return crate::generated::reflect_own_keys(rt, Value::Undefined, &[Value::Object(tgt)]);
+                }
+            }
             crate::generated::reflect_own_keys(rt, Value::Undefined, args)
         });
-        // Ω.5.P63.E13: Reflect.getPrototypeOf routed through IR.
         register_intrinsic_method(self, r, "getPrototypeOf", 1, |rt, args| {
+            if let Some(Value::Object(id)) = args.first() {
+                if let Some((tgt, handler)) = rt.proxy_target_handler(*id) {
+                    let trap = rt.object_get(handler, "getPrototypeOf");
+                    if matches!(trap, Value::Object(_)) {
+                        return rt.call_function(trap, Value::Object(handler), vec![Value::Object(tgt)]);
+                    }
+                    return crate::generated::reflect_get_prototype_of(rt, Value::Undefined, &[Value::Object(tgt)]);
+                }
+            }
             crate::generated::reflect_get_prototype_of(rt, Value::Undefined, args)
         });
-        // defineProperty / construct / apply — alias existing logic.
-        if let Some(v) = self.globals.get("Object").cloned() {
-            if let Value::Object(oid) = v {
-                let dp = self.object_get(oid, "defineProperty");
-                if !matches!(dp, Value::Undefined) { self.object_set(r, "defineProperty".into(), dp); }
-                let gopd = self.object_get(oid, "getOwnPropertyDescriptor");
-                if !matches!(gopd, Value::Undefined) { self.object_set(r, "getOwnPropertyDescriptor".into(), gopd); }
+        register_intrinsic_method(self, r, "defineProperty", 3, |rt, args| {
+            if let Some(Value::Object(id)) = args.first() {
+                if let Some((tgt, handler)) = rt.proxy_target_handler(*id) {
+                    let trap = rt.object_get(handler, "defineProperty");
+                    if matches!(trap, Value::Object(_)) {
+                        let key = args.get(1).cloned().unwrap_or(Value::Undefined);
+                        let desc = args.get(2).cloned().unwrap_or(Value::Undefined);
+                        let r2 = rt.call_function(trap, Value::Object(handler), vec![
+                            Value::Object(tgt), key, desc,
+                        ])?;
+                        return Ok(Value::Boolean(crate::abstract_ops::to_boolean(&r2)));
+                    }
+                    let mut new_args = args.to_vec();
+                    new_args[0] = Value::Object(tgt);
+                    return crate::generated::object_define_property(rt, Value::Undefined, &new_args);
+                }
             }
-        }
+            crate::generated::object_define_property(rt, Value::Undefined, args)
+        });
+        register_intrinsic_method(self, r, "getOwnPropertyDescriptor", 2, |rt, args| {
+            if let Some(Value::Object(id)) = args.first() {
+                if let Some((tgt, handler)) = rt.proxy_target_handler(*id) {
+                    let trap = rt.object_get(handler, "getOwnPropertyDescriptor");
+                    if matches!(trap, Value::Object(_)) {
+                        let key = args.get(1).cloned().unwrap_or(Value::Undefined);
+                        return rt.call_function(trap, Value::Object(handler), vec![
+                            Value::Object(tgt), key,
+                        ]);
+                    }
+                    let mut new_args = args.to_vec();
+                    new_args[0] = Value::Object(tgt);
+                    return crate::generated::object_get_own_property_descriptor(rt, Value::Undefined, &new_args);
+                }
+            }
+            crate::generated::object_get_own_property_descriptor(rt, Value::Undefined, args)
+        });
         // Tier-Ω.5.rrrrr: Reflect.setPrototypeOf / apply / construct.
-        // ansi-colors uses Reflect.setPrototypeOf at module-init time;
-        // without it, the import of `ansi-colors` (which calls
-        // create() at the bottom) failed before module.exports was set.
-        // Ω.5.P63.E13: Reflect.setPrototypeOf routed through IR.
         register_intrinsic_method(self, r, "setPrototypeOf", 2, |rt, args| {
+            if let Some(Value::Object(id)) = args.first() {
+                if let Some((tgt, handler)) = rt.proxy_target_handler(*id) {
+                    let trap = rt.object_get(handler, "setPrototypeOf");
+                    if matches!(trap, Value::Object(_)) {
+                        let proto = args.get(1).cloned().unwrap_or(Value::Undefined);
+                        let r2 = rt.call_function(trap, Value::Object(handler), vec![
+                            Value::Object(tgt), proto,
+                        ])?;
+                        return Ok(Value::Boolean(crate::abstract_ops::to_boolean(&r2)));
+                    }
+                    let mut new_args = args.to_vec();
+                    new_args[0] = Value::Object(tgt);
+                    return crate::generated::reflect_set_prototype_of(rt, Value::Undefined, &new_args);
+                }
+            }
             crate::generated::reflect_set_prototype_of(rt, Value::Undefined, args)
         });
         register_intrinsic_method(self, r, "apply", 3, |rt, args| {
@@ -3167,11 +3227,31 @@ impl Runtime {
             let ret = rt.call_function(target, this_obj.clone(), arg_list)?;
             Ok(match ret { Value::Object(_) => ret, _ => this_obj })
         });
-        // Ω.5.P63.E13: Reflect.isExtensible / preventExtensions routed through IR.
+        // EXT 79d (cont.): isExtensible / preventExtensions Proxy traps.
         register_intrinsic_method(self, r, "isExtensible", 1, |rt, args| {
+            if let Some(Value::Object(id)) = args.first() {
+                if let Some((tgt, handler)) = rt.proxy_target_handler(*id) {
+                    let trap = rt.object_get(handler, "isExtensible");
+                    if matches!(trap, Value::Object(_)) {
+                        let r2 = rt.call_function(trap, Value::Object(handler), vec![Value::Object(tgt)])?;
+                        return Ok(Value::Boolean(crate::abstract_ops::to_boolean(&r2)));
+                    }
+                    return crate::generated::reflect_is_extensible(rt, Value::Undefined, &[Value::Object(tgt)]);
+                }
+            }
             crate::generated::reflect_is_extensible(rt, Value::Undefined, args)
         });
         register_intrinsic_method(self, r, "preventExtensions", 1, |rt, args| {
+            if let Some(Value::Object(id)) = args.first() {
+                if let Some((tgt, handler)) = rt.proxy_target_handler(*id) {
+                    let trap = rt.object_get(handler, "preventExtensions");
+                    if matches!(trap, Value::Object(_)) {
+                        let r2 = rt.call_function(trap, Value::Object(handler), vec![Value::Object(tgt)])?;
+                        return Ok(Value::Boolean(crate::abstract_ops::to_boolean(&r2)));
+                    }
+                    return crate::generated::reflect_prevent_extensions(rt, Value::Undefined, &[Value::Object(tgt)]);
+                }
+            }
             crate::generated::reflect_prevent_extensions(rt, Value::Undefined, args)
         });
         self.globals.insert("Reflect".into(), Value::Object(r));

@@ -4332,7 +4332,7 @@ impl Runtime {
     /// EXT 79: helper — when `id` is a Proxy, return its (target, handler)
     /// pair; otherwise None. Used by every Reflect.* via to gate trap
     /// dispatch before falling back to direct target operations.
-    fn proxy_target_handler(&self, id: ObjectRef) -> Option<(ObjectRef, ObjectRef)> {
+    pub fn proxy_target_handler(&self, id: ObjectRef) -> Option<(ObjectRef, ObjectRef)> {
         if let crate::value::InternalKind::Proxy(p) = &self.obj(id).internal_kind {
             Some((p.target, p.handler))
         } else { None }
