@@ -135,11 +135,12 @@ echo "Wrote $n_done rows to $OUT"
 echo ""
 echo "Aggregate (rb/bun ratio, T3 warm-mean):"
 awk -F, 'NR>1 && $9+0 > 0 {
-  n++; sum += $9;
+  n++; sum += $9; log_sum += log($9);
   if (n == 1 || $9 < min) min = $9;
   if (n == 1 || $9 > max) max = $9;
   ratios[n] = $9;
 } END {
+  if (n == 0) { print "  (no valid rows)"; exit }
   # mawk-portable sort (no asort): simple in-place insertion sort.
   for (i = 2; i <= n; i++) {
     key = ratios[i]; j = i - 1;
@@ -148,5 +149,8 @@ awk -F, 'NR>1 && $9+0 > 0 {
   }
   med_idx = int((n+1)/2); if (med_idx < 1) med_idx = 1;
   p95_idx = int(n*0.95); if (p95_idx < 1) p95_idx = 1;
-  printf "  n=%d  arith-mean=%.2fx  median=%.2fx  p95=%.2fx  min=%.2fx  max=%.2fx\n", n, sum/n, ratios[med_idx], ratios[p95_idx], min, max;
+  # Geomean is the right aggregate for ratio data — arith-mean is
+  # pulled by outliers (one 4x package skews the whole sweep).
+  geomean = exp(log_sum / n);
+  printf "  n=%d  geomean=%.2fx  median=%.2fx  arith-mean=%.2fx  p95=%.2fx  min=%.2fx  max=%.2fx\n", n, geomean, ratios[med_idx], sum/n, ratios[p95_idx], min, max;
 }' "$OUT"
