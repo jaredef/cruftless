@@ -2157,11 +2157,19 @@ impl Runtime {
     fn install_map_set_globals(&mut self) {
         for collection in &["Map", "WeakMap"] {
             let proto = self.alloc_object(Object::new_ordinary());
+            let is_weak_proto = *collection == "WeakMap";
             // §24.1.3 / §24.3.3 spec arities (.length values).
             register_intrinsic_method(self, proto, "get",     1, |rt, args| crate::generated::map_prototype_get(rt, rt.current_this(), args));
             register_intrinsic_method(self, proto, "set",     2, |rt, args| crate::generated::map_prototype_set(rt, rt.current_this(), args));
             register_intrinsic_method(self, proto, "has",     1, |rt, args| crate::generated::map_prototype_has(rt, rt.current_this(), args));
             register_intrinsic_method(self, proto, "delete",  1, |rt, args| crate::generated::map_prototype_delete(rt, rt.current_this(), args));
+            // EXT 81: per ECMA §24.3.3, WeakMap.prototype has only
+            // {get, set, has, delete} — not clear / forEach / entries /
+            // keys / values / @@iterator. The Map-only methods below are
+            // skipped on the WeakMap proto so tests that call
+            // Map.prototype.clear.call(wm) hit the __is_weakmap brand
+            // check in map_this_and_storage and throw TypeError.
+            if !is_weak_proto {
             register_intrinsic_method(self, proto, "clear",   0, |rt, args| crate::generated::map_prototype_clear(rt, rt.current_this(), args));
             register_intrinsic_method(self, proto, "forEach", 1, |rt, args| crate::generated::map_prototype_for_each(rt, rt.current_this(), args));
             // Tier-Ω.5.KKKKKKK: Map.prototype.values / keys / entries per ECMA
@@ -2201,8 +2209,15 @@ impl Runtime {
                 rt.object_set(arr, "length".into(), Value::Number(len as f64));
                 Ok(Value::Object(crate::iterator::make_array_iterator(rt, arr)))
             });
+            } // end !is_weak_proto guard for Map-only methods
             let proto_for_ctor = proto;
             let name = (*collection).to_string();
+            // EXT 81: mark WeakMap instances with __is_weakmap=true so
+            // Map.prototype.* brand checks (map_this_and_storage) can
+            // reject them with TypeError per §24.1.3 [[MapData]] check.
+            // Real Map/WeakMap discrimination would need separate proto
+            // chains; v1 ships shared methods + a marker.
+            let is_weak = name == "WeakMap";
             let ctor_obj = make_native(&name, move |rt, args| {
                 let mut o = Object::new_ordinary();
                 o.proto = Some(proto_for_ctor);
@@ -2210,6 +2225,9 @@ impl Runtime {
                 let storage = rt.alloc_object(Object::new_ordinary());
                 rt.object_set(id, "__map_data".into(), Value::Object(storage));
                 rt.object_set(id, "size".into(), Value::Number(0.0));
+                if is_weak {
+                    rt.object_set(id, "__is_weakmap".into(), Value::Boolean(true));
+                }
                 // Tier-Ω.5.LLLLLLL: iterable-arg processing per ECMA §24.1.1.1.
                 // `new Map(iterable)` iterates each entry (array-like with [k,v])
                 // and inserts. Common patterns: new Map([['a',1]]), new Map(other),

@@ -888,6 +888,20 @@ impl Runtime {
             Value::Object(id) => id,
             _ => return Err(RuntimeError::TypeError(format!("Map.prototype.{}: this is not a Map object", who))),
         };
+        // EXT 81: Map-only methods (per ECMA §24.1.3) reject WeakMap-
+        // tagged instances. The four operations that exist on both Map
+        // and WeakMap (get/set/has/delete) accept either kind; the
+        // remaining methods (clear/forEach/values/keys/entries/iterator)
+        // are Map-only — when invoked via Map.prototype.X.call(weakmap)
+        // they must throw TypeError because a WeakMap has [[WeakMapData]],
+        // not [[MapData]]. (Those methods aren't registered on the
+        // WeakMap proto, so the rejection only fires when callers
+        // explicitly cross-proto.)
+        let map_only = matches!(who, "clear" | "forEach" | "values" | "keys" | "entries" | "@@iterator");
+        if map_only && matches!(self.object_get(this, "__is_weakmap"), Value::Boolean(true)) {
+            return Err(RuntimeError::TypeError(format!(
+                "Map.prototype.{}: this is a WeakMap, not a Map", who)));
+        }
         let storage = match self.object_get(this, "__map_data") {
             Value::Object(id) => id,
             _ => return Err(RuntimeError::TypeError(format!("Map.prototype.{}: this is not a Map object", who))),
