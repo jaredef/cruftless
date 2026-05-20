@@ -68,6 +68,17 @@ pub enum Expr {
     HasSlot(Box<Expr>, Slot),
     GetSlot(Box<Expr>, Slot),
     Get(Box<Expr>, Box<Expr>),
+    /// EXT 82 / Tier-1.5: ECMA-262 §7.3.2 Get(O, P) — the spec's `[[Get]]`
+    /// internal method. Distinct from `Get` (which is the runtime
+    /// internal-slot read used when the spec explicitly says "the [[X]]
+    /// internal slot"). SpecGet invokes Proxy traps, inherited accessors,
+    /// and propagates user-thrown errors; use it wherever the spec step
+    /// reads `? Get(...)` or invokes `[[Get]]`. The verifier-time
+    /// discrimination this carries was named in Doc 730 §XIII as the
+    /// first Tier-1.5 alphabet promotion: the spec uses different fonts
+    /// for `Get` and `[[X]]` internal-slot reads; the IR now mirrors
+    /// that typographic distinction as two distinct primitives.
+    SpecGet(Box<Expr>, Box<Expr>),
     HasProperty(Box<Expr>, Box<Expr>),
     HasOwnProperty(Box<Expr>, Box<Expr>),
     OrdinaryObjectCreate {

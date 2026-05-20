@@ -44,7 +44,11 @@ pub fn build_to_primitive() -> IRFunction {
         // §7.1.1 step 2.a: exoticToPrim = ? GetMethod(input, @@toPrimitive).
         Step { spec_step: "2.a.lookup".into(), node: IRNode::Let {
             name: "exotic".into(),
-            value: Expr::Get(b(v("value")), b(Expr::Str("@@toPrimitive".into()))),
+            // EXT 82 / Tier-1.5: spec step 2.a is `GetMethod(V, @@toPrimitive)`
+            // which reduces to `? Get(V, @@toPrimitive)` per §7.3.10; use
+            // SpecGet so a Proxy receiver dispatches its `get` trap on the
+            // @@toPrimitive lookup (currently bypassed by read_property_via).
+            value: Expr::SpecGet(b(v("value")), b(Expr::Str("@@toPrimitive".into()))),
         }},
         // §7.1.1 step 2.b: if exoticToPrim is not undefined.
         Step { spec_step: "2.b.has_exotic".into(), node: IRNode::If {

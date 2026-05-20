@@ -402,6 +402,37 @@ impl Runtime {
         }
     }
 
+    /// EXT 82 / Tier-1.5: ECMA-262 §7.3.2 Get(O, P) — the spec's `[[Get]]`
+    /// internal method, distinct from the runtime "read the internal
+    /// property map" operation. Invokes:
+    ///   1. Proxy.get trap when the receiver is a Proxy (handler.get
+    ///      called with (target, key, receiver)).
+    ///   2. Inherited accessor getters along the prototype chain.
+    ///   3. Direct data-property read as the fallback.
+    /// All three legs propagate user-thrown errors. Used by IR sections
+    /// whose spec step says `? Get(...)` or invokes `[[Get]]`; distinct
+    /// from `read_property_via` (which is accessor-aware but Proxy-
+    /// unaware) and from `object_get` (which is the raw internal-slot
+    /// read used when the spec explicitly references an internal slot).
+    pub fn spec_get(&mut self, v: &Value, key: &str) -> Result<Value, RuntimeError> {
+        let id = match v {
+            Value::Object(id) => *id,
+            _ => return Ok(Value::Undefined),
+        };
+        if let Some((tgt, handler)) = self.proxy_target_handler(id) {
+            let trap = self.object_get(handler, "get");
+            if matches!(trap, Value::Object(_)) {
+                return self.call_function(trap, Value::Object(handler), vec![
+                    Value::Object(tgt),
+                    Value::String(std::rc::Rc::new(key.to_string())),
+                    Value::Object(id),
+                ]);
+            }
+            return self.read_property(tgt, key);
+        }
+        self.read_property(id, key)
+    }
+
     /// CreateDataPropertyOrThrow per ECMA §7.3.6.
     pub fn create_data_property_or_throw(
         &mut self,

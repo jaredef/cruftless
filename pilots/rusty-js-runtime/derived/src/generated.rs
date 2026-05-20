@@ -2290,7 +2290,7 @@ pub fn to_primitive(rt: &mut Runtime, this: Value, args: &[Value])
         }
     }
     // step 2.a.lookup (§2.a.lookup step 2.a.lookup)
-    let mut exotic = rt.read_property_via(&value.clone(), "@@toPrimitive")?;
+    let mut exotic = rt.spec_get(&value.clone(), "@@toPrimitive")?;
     // step 2.b.has_exotic (§2.b.has_exotic step 2.b.has_exotic)
     if rt.is_callable(&exotic.clone()) {
         // step 2.b.i.call (§2.b.i.call step 2.b.i.call)
