@@ -579,8 +579,16 @@ impl Runtime {
         //   spec says it should not.
         register_engine_helper(self, "__install_method__", |rt, args| {
             let target = match args.first() { Some(Value::Object(id)) => *id, _ => return Ok(Value::Undefined) };
+            // Ω.5.P03.E2.class-method-non-enumerable post-fix: accept
+            // Symbol-keyed method names too. Computed class members
+            // can use Symbol values as keys (`class C { [Symbol.X]() {} }`);
+            // cruftless stringifies Symbols to their internal "@@sym:N:NAME"
+            // form. Pre-fix, the helper dropped Symbol-keyed methods on the
+            // floor, surfacing as a top500 regression on sharp-cli
+            // (yargs-uses-Symbol-keyed-helper pattern).
             let key: String = match args.get(1) {
                 Some(Value::String(s)) => (**s).clone(),
+                Some(Value::Symbol(s)) => (**s).clone(),
                 Some(Value::Number(n)) => if n.fract() == 0.0 { format!("{}", *n as i64) } else { format!("{}", n) },
                 _ => return Ok(Value::Undefined),
             };
