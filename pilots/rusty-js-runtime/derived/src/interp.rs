@@ -419,6 +419,99 @@ impl Runtime {
         }
     }
 
+    /// EXT 88b / Pin-Art Pass C: §10.5.{7,8,9,10} trap-vs-target invariants
+    /// as shared helpers, so both Reflect.* and the bytecode VM dispatch
+    /// sites get the same spec-compliant post-condition checks without
+    /// duplicating the descriptor lookup at each call.
+
+    /// §10.5.7 step 9 — Proxy.has returned false: forbid hiding a
+    /// non-configurable or non-extensible-target own property.
+    pub fn apply_proxy_has_invariant(&self, target_id: crate::value::ObjectRef,
+        key: &str, trap_has: bool) -> Result<(), RuntimeError>
+    {
+        if trap_has { return Ok(()); }
+        if let Some(d) = self.obj(target_id).get_own(key) {
+            if !d.configurable {
+                return Err(RuntimeError::TypeError(
+                    "Proxy 'has' trap returned false for a non-configurable own property of target".into()));
+            }
+            if !self.obj(target_id).extensible {
+                return Err(RuntimeError::TypeError(
+                    "Proxy 'has' trap returned false for an own property of a non-extensible target".into()));
+            }
+        }
+        Ok(())
+    }
+
+    /// §10.5.8 step 10 — Proxy.get trap-vs-target consistency:
+    /// non-configurable non-writable data property requires SameValue,
+    /// non-configurable accessor with no getter requires undefined.
+    pub fn apply_proxy_get_invariant(&self, target_id: crate::value::ObjectRef,
+        key: &str, trap_result: &Value) -> Result<(), RuntimeError>
+    {
+        if let Some(d) = self.obj(target_id).get_own(key) {
+            if !d.configurable {
+                if d.getter.is_none() && d.setter.is_none() && !d.writable {
+                    if !crate::abstract_ops::is_strictly_equal(trap_result, &d.value) {
+                        return Err(RuntimeError::TypeError(
+                            "Proxy 'get' trap returned a value inconsistent with the non-configurable non-writable own data property of target".into()));
+                    }
+                }
+                if (d.getter.is_some() || d.setter.is_some()) && d.getter.is_none() {
+                    if !matches!(trap_result, Value::Undefined) {
+                        return Err(RuntimeError::TypeError(
+                            "Proxy 'get' trap returned a non-undefined value for a non-configurable accessor property with undefined getter on target".into()));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// §10.5.9 step 10 — Proxy.set returned true: non-configurable target
+    /// data property requires V=target's value; non-configurable accessor
+    /// with undefined setter throws.
+    pub fn apply_proxy_set_invariant(&self, target_id: crate::value::ObjectRef,
+        key: &str, value: &Value, trap_ok: bool) -> Result<(), RuntimeError>
+    {
+        if !trap_ok { return Ok(()); }
+        if let Some(d) = self.obj(target_id).get_own(key) {
+            if !d.configurable {
+                if d.getter.is_none() && d.setter.is_none() && !d.writable {
+                    if !crate::abstract_ops::is_strictly_equal(value, &d.value) {
+                        return Err(RuntimeError::TypeError(
+                            "Proxy 'set' trap returned true for a non-configurable non-writable own data property whose value differs".into()));
+                    }
+                }
+                if (d.getter.is_some() || d.setter.is_some()) && d.setter.is_none() {
+                    return Err(RuntimeError::TypeError(
+                        "Proxy 'set' trap returned true for a non-configurable accessor own property with undefined setter".into()));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// §10.5.10 step 8 — Proxy.deleteProperty returned true: target's
+    /// non-configurable own property at the key forbids it; target must
+    /// remain extensible.
+    pub fn apply_proxy_delete_invariant(&self, target_id: crate::value::ObjectRef,
+        key: &str, trap_deleted: bool) -> Result<(), RuntimeError>
+    {
+        if !trap_deleted { return Ok(()); }
+        if let Some(d) = self.obj(target_id).get_own(key) {
+            if !d.configurable {
+                return Err(RuntimeError::TypeError(
+                    "Proxy 'deleteProperty' trap returned true for a non-configurable own property of target".into()));
+            }
+            if !self.obj(target_id).extensible {
+                return Err(RuntimeError::TypeError(
+                    "Proxy 'deleteProperty' trap returned true for an own property of a non-extensible target".into()));
+            }
+        }
+        Ok(())
+    }
+
     /// EXT 86 / Pin-Art Pass C: ECMA-262 §10.5.11 [[OwnPropertyKeys]]
     /// invariants — the trap-vs-target consistency checks that must run
     /// after the Proxy.ownKeys trap returns. Inputs: the trap's raw
@@ -4433,7 +4526,26 @@ impl Runtime {
                 let r = self.call_function(trap, Value::Object(handler), vec![
                     Value::Object(tgt), Value::String(std::rc::Rc::new(key_str.clone())),
                 ])?;
-                return Ok(Value::Boolean(crate::abstract_ops::to_boolean(&r)));
+                let trap_has = crate::abstract_ops::to_boolean(&r);
+                // EXT 88 / Pass C: §10.5.7 step 9 — if trap returned
+                // false, target's [[GetOwnProperty]] must not contain
+                // a non-configurable own property at the key, and if it
+                // does, target must remain extensible (otherwise the
+                // Proxy could hide an existing non-configurable / non-
+                // extensible property).
+                if !trap_has {
+                    if let Some(d) = self.obj(tgt).get_own(&key_str) {
+                        if !d.configurable {
+                            return Err(RuntimeError::TypeError(
+                                "Proxy 'has' trap returned false for a non-configurable own property of target".into()));
+                        }
+                        if !self.obj(tgt).extensible {
+                            return Err(RuntimeError::TypeError(
+                                "Proxy 'has' trap returned false for an own property of a non-extensible target".into()));
+                        }
+                    }
+                }
+                return Ok(Value::Boolean(trap_has));
             }
             return Ok(Value::Boolean(self.has_property_pk(tgt, &key_pk)));
         }
@@ -4456,9 +4568,32 @@ impl Runtime {
         if let Some((tgt, handler)) = self.proxy_target_handler_checked(id)? {
             let trap = self.object_get(handler, "get");
             if matches!(trap, Value::Object(_)) {
-                return self.call_function(trap, Value::Object(handler), vec![
-                    Value::Object(tgt), Value::String(std::rc::Rc::new(key_str)), Value::Object(id),
-                ]);
+                let trap_result = self.call_function(trap, Value::Object(handler), vec![
+                    Value::Object(tgt), Value::String(std::rc::Rc::new(key_str.clone())), Value::Object(id),
+                ])?;
+                // EXT 88 / Pass C: §10.5.8 step 10 — trap-vs-target
+                // consistency on non-configurable own properties:
+                //   data + non-writable: trap result must SameValue
+                //     target's stored value.
+                //   accessor with undefined get: trap result must be
+                //     undefined.
+                if let Some(d) = self.obj(tgt).get_own(&key_str) {
+                    if !d.configurable {
+                        if d.getter.is_none() && d.setter.is_none() && !d.writable {
+                            if !crate::abstract_ops::is_strictly_equal(&trap_result, &d.value) {
+                                return Err(RuntimeError::TypeError(
+                                    "Proxy 'get' trap returned a value inconsistent with the non-configurable non-writable own data property of target".into()));
+                            }
+                        }
+                        if (d.getter.is_some() || d.setter.is_some()) && d.getter.is_none() {
+                            if !matches!(trap_result, Value::Undefined) {
+                                return Err(RuntimeError::TypeError(
+                                    "Proxy 'get' trap returned a non-undefined value for a non-configurable accessor property with undefined getter on target".into()));
+                            }
+                        }
+                    }
+                }
+                return Ok(trap_result);
             }
             if let Some(getter) = self.find_getter_pk(tgt, &key_pk) {
                 return self.call_function(getter, Value::Object(tgt), Vec::new());
@@ -4483,10 +4618,32 @@ impl Runtime {
             let trap = self.object_get(handler, "set");
             if matches!(trap, Value::Object(_)) {
                 let r = self.call_function(trap, Value::Object(handler), vec![
-                    Value::Object(tgt), Value::String(std::rc::Rc::new(key_s)),
+                    Value::Object(tgt), Value::String(std::rc::Rc::new(key_s.clone())),
                     value.clone(), Value::Object(id),
                 ])?;
-                return Ok(Value::Boolean(crate::abstract_ops::to_boolean(&r)));
+                let trap_ok = crate::abstract_ops::to_boolean(&r);
+                // EXT 88 / Pass C: §10.5.9 step 10 — if trap returned
+                // true, non-configurable target own properties impose
+                // the same consistency the get trap does:
+                //   data + non-writable: V must SameValue target's stored.
+                //   accessor with undefined set: throw TypeError.
+                if trap_ok {
+                    if let Some(d) = self.obj(tgt).get_own(&key_s) {
+                        if !d.configurable {
+                            if d.getter.is_none() && d.setter.is_none() && !d.writable {
+                                if !crate::abstract_ops::is_strictly_equal(&value, &d.value) {
+                                    return Err(RuntimeError::TypeError(
+                                        "Proxy 'set' trap returned true for a non-configurable non-writable own data property whose value differs".into()));
+                                }
+                            }
+                            if (d.getter.is_some() || d.setter.is_some()) && d.setter.is_none() {
+                                return Err(RuntimeError::TypeError(
+                                    "Proxy 'set' trap returned true for a non-configurable accessor own property with undefined setter".into()));
+                            }
+                        }
+                    }
+                }
+                return Ok(Value::Boolean(trap_ok));
             }
             self.object_set(tgt, key_s, value.clone());
             return Ok(Value::Boolean(true));
@@ -4517,9 +4674,26 @@ impl Runtime {
             let trap = self.object_get(handler, "deleteProperty");
             if matches!(trap, Value::Object(_)) {
                 let r = self.call_function(trap, Value::Object(handler), vec![
-                    Value::Object(tgt), Value::String(std::rc::Rc::new(key_s)),
+                    Value::Object(tgt), Value::String(std::rc::Rc::new(key_s.clone())),
                 ])?;
-                return Ok(Value::Boolean(crate::abstract_ops::to_boolean(&r)));
+                let trap_deleted = crate::abstract_ops::to_boolean(&r);
+                // EXT 88 / Pass C: §10.5.10 step 8 — if trap returned
+                // true, target's non-configurable own property at the
+                // key can't have been "deleted" (TypeError); and the
+                // target must remain extensible.
+                if trap_deleted {
+                    if let Some(d) = self.obj(tgt).get_own(&key_s) {
+                        if !d.configurable {
+                            return Err(RuntimeError::TypeError(
+                                "Proxy 'deleteProperty' trap returned true for a non-configurable own property of target".into()));
+                        }
+                        if !self.obj(tgt).extensible {
+                            return Err(RuntimeError::TypeError(
+                                "Proxy 'deleteProperty' trap returned true for an own property of a non-extensible target".into()));
+                        }
+                    }
+                }
+                return Ok(Value::Boolean(trap_deleted));
             }
             let configurable = self.obj(tgt).get_own(&key_s).map(|d| d.configurable).unwrap_or(true);
             if !configurable { return Ok(Value::Boolean(false)); }
@@ -6095,11 +6269,14 @@ impl Runtime {
                                 let trap = self.object_get(handler, "get");
                                 if matches!(trap, Value::Object(_)) {
                                     let receiver = obj_v.clone();
-                                    self.call_function(trap, Value::Object(handler), vec![
+                                    let trap_result = self.call_function(trap, Value::Object(handler), vec![
                                         Value::Object(target),
                                         Value::String(Rc::new(key.clone())),
                                         receiver,
-                                    ])?
+                                    ])?;
+                                    // EXT 88b: §10.5.8 invariant.
+                                    self.apply_proxy_get_invariant(target, &key, &trap_result)?;
+                                    trap_result
                                 } else {
                                     self.object_get(target, &key)
                                 }
@@ -6209,12 +6386,15 @@ impl Runtime {
                         if let Some((target, handler)) = proxy_dispatch {
                             let trap = self.object_get(handler, "set");
                             if matches!(trap, Value::Object(_)) {
-                                self.call_function(trap, Value::Object(handler), vec![
+                                let r = self.call_function(trap, Value::Object(handler), vec![
                                     Value::Object(target),
                                     Value::String(Rc::new(key.clone())),
                                     value.clone(),
                                     Value::Object(*id),
                                 ])?;
+                                // EXT 88b: §10.5.9 invariant.
+                                self.apply_proxy_set_invariant(target, &key, &value,
+                                    crate::abstract_ops::to_boolean(&r))?;
                             } else {
                                 self.object_set(target, key, value.clone());
                             }
@@ -6278,11 +6458,14 @@ impl Runtime {
                             if let Some((target, handler)) = proxy_dispatch {
                                 let trap = self.object_get(handler, "get");
                                 if matches!(trap, Value::Object(_)) {
-                                    self.call_function(trap, Value::Object(handler), vec![
+                                    let trap_result = self.call_function(trap, Value::Object(handler), vec![
                                         Value::Object(target),
                                         Value::String(Rc::new(key.clone())),
                                         Value::Object(id),
-                                    ])?
+                                    ])?;
+                                    // EXT 88b: §10.5.8 invariant on computed-key Get.
+                                    self.apply_proxy_get_invariant(target, &key, &trap_result)?;
+                                    trap_result
                                 } else {
                                     self.object_get(target, &key)
                                 }
@@ -6414,7 +6597,10 @@ impl Runtime {
                                         Value::Object(target),
                                         Value::String(Rc::new(key.clone())),
                                     ])?;
-                                    crate::abstract_ops::to_boolean(&r)
+                                    let trap_deleted = crate::abstract_ops::to_boolean(&r);
+                                    // EXT 88b: §10.5.10 invariant.
+                                    self.apply_proxy_delete_invariant(target, &key, trap_deleted)?;
+                                    trap_deleted
                                 } else {
                                     self.obj_mut(target).remove_str(&key).is_some()
                                 }
@@ -6459,7 +6645,10 @@ impl Runtime {
                                         Value::Object(target),
                                         Value::String(Rc::new(key.clone())),
                                     ])?;
-                                    crate::abstract_ops::to_boolean(&r)
+                                    let trap_deleted = crate::abstract_ops::to_boolean(&r);
+                                    // EXT 88b: §10.5.10 invariant (DeleteIndex path).
+                                    self.apply_proxy_delete_invariant(target, &key, trap_deleted)?;
+                                    trap_deleted
                                 } else {
                                     self.obj_mut(target).properties.shift_remove(&key_pk).is_some()
                                 }
@@ -6594,12 +6783,15 @@ impl Runtime {
                         if let Some((target, handler)) = proxy_dispatch {
                             let trap = self.object_get(handler, "set");
                             if matches!(trap, Value::Object(_)) {
-                                self.call_function(trap, Value::Object(handler), vec![
+                                let r = self.call_function(trap, Value::Object(handler), vec![
                                     Value::Object(target),
                                     Value::String(Rc::new(key.clone())),
                                     value.clone(),
                                     Value::Object(*id),
                                 ])?;
+                                // EXT 88b: §10.5.9 invariant.
+                                self.apply_proxy_set_invariant(target, &key, &value,
+                                    crate::abstract_ops::to_boolean(&r))?;
                             } else {
                                 self.object_set(target, key, value.clone());
                             }
