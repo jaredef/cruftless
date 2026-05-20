@@ -1166,11 +1166,48 @@ impl Runtime {
             crate::generated::object_is_sealed(rt, Value::Undefined, args)
         });
         // Ω.5.P63.E7: preventExtensions routed through IR.
+        // EXT 84e: Object.preventExtensions / isExtensible dispatch Proxy
+        // traps with trap-callable + boolean-coerce per §10.5.{3,4}.
         register_intrinsic_method(self, obj_ctor, "preventExtensions", 1, |rt, args| {
+            if let Some(Value::Object(id)) = args.first() {
+                if let Some((tgt, handler)) = rt.proxy_target_handler_checked(*id)? {
+                    let trap = rt.object_get(handler, "preventExtensions");
+                    if !matches!(trap, Value::Undefined) {
+                        if !rt.is_callable(&trap) {
+                            return Err(RuntimeError::TypeError(
+                                "Proxy 'preventExtensions' trap is not callable".into()));
+                        }
+                        let r2 = rt.call_function(trap, Value::Object(handler), vec![Value::Object(tgt)])?;
+                        if !crate::abstract_ops::to_boolean(&r2) {
+                            return Err(RuntimeError::TypeError(
+                                "Proxy 'preventExtensions' trap returned falsy".into()));
+                        }
+                        return Ok(Value::Object(*id));
+                    }
+                    let mut new_args = args.to_vec();
+                    new_args[0] = Value::Object(tgt);
+                    return crate::generated::object_prevent_extensions(rt, Value::Undefined, &new_args);
+                }
+            }
             crate::generated::object_prevent_extensions(rt, Value::Undefined, args)
         });
-        // Ω.5.P63.E6: isExtensible routed through IR.
         register_intrinsic_method(self, obj_ctor, "isExtensible", 1, |rt, args| {
+            if let Some(Value::Object(id)) = args.first() {
+                if let Some((tgt, handler)) = rt.proxy_target_handler_checked(*id)? {
+                    let trap = rt.object_get(handler, "isExtensible");
+                    if !matches!(trap, Value::Undefined) {
+                        if !rt.is_callable(&trap) {
+                            return Err(RuntimeError::TypeError(
+                                "Proxy 'isExtensible' trap is not callable".into()));
+                        }
+                        let r2 = rt.call_function(trap, Value::Object(handler), vec![Value::Object(tgt)])?;
+                        return Ok(Value::Boolean(crate::abstract_ops::to_boolean(&r2)));
+                    }
+                    let mut new_args = args.to_vec();
+                    new_args[0] = Value::Object(tgt);
+                    return crate::generated::object_is_extensible(rt, Value::Undefined, &new_args);
+                }
+            }
             crate::generated::object_is_extensible(rt, Value::Undefined, args)
         });
         register_intrinsic_method(self, obj_ctor, "groupBy", 2, |rt, args| crate::generated::object_group_by(rt, rt.current_this(), args));
@@ -1347,10 +1384,50 @@ impl Runtime {
         // undefined and `getPrototypeOf(Uint8Array)` errors. The Reflect
         // variant existed (Ω.5.cc) but consumer code uses Object.X.
         // Ω.5.P63.E6: getPrototypeOf / setPrototypeOf routed through IR.
+        // EXT 84e: Object.getPrototypeOf / setPrototypeOf dispatch Proxy
+        // traps per §10.5.{1,2}.
         register_intrinsic_method(self, obj_ctor, "getPrototypeOf", 1, |rt, args| {
+            if let Some(Value::Object(id)) = args.first() {
+                if let Some((tgt, handler)) = rt.proxy_target_handler_checked(*id)? {
+                    let trap = rt.object_get(handler, "getPrototypeOf");
+                    if !matches!(trap, Value::Undefined) {
+                        if !rt.is_callable(&trap) {
+                            return Err(RuntimeError::TypeError(
+                                "Proxy 'getPrototypeOf' trap is not callable".into()));
+                        }
+                        return rt.call_function(trap, Value::Object(handler), vec![Value::Object(tgt)]);
+                    }
+                    let mut new_args = args.to_vec();
+                    new_args[0] = Value::Object(tgt);
+                    return crate::generated::object_get_prototype_of(rt, Value::Undefined, &new_args);
+                }
+            }
             crate::generated::object_get_prototype_of(rt, Value::Undefined, args)
         });
         register_intrinsic_method(self, obj_ctor, "setPrototypeOf", 2, |rt, args| {
+            if let Some(Value::Object(id)) = args.first() {
+                if let Some((tgt, handler)) = rt.proxy_target_handler_checked(*id)? {
+                    let trap = rt.object_get(handler, "setPrototypeOf");
+                    if !matches!(trap, Value::Undefined) {
+                        if !rt.is_callable(&trap) {
+                            return Err(RuntimeError::TypeError(
+                                "Proxy 'setPrototypeOf' trap is not callable".into()));
+                        }
+                        let proto = args.get(1).cloned().unwrap_or(Value::Undefined);
+                        let r2 = rt.call_function(trap, Value::Object(handler), vec![
+                            Value::Object(tgt), proto,
+                        ])?;
+                        if !crate::abstract_ops::to_boolean(&r2) {
+                            return Err(RuntimeError::TypeError(
+                                "Proxy 'setPrototypeOf' trap returned falsy".into()));
+                        }
+                        return Ok(Value::Object(*id));
+                    }
+                    let mut new_args = args.to_vec();
+                    new_args[0] = Value::Object(tgt);
+                    return crate::generated::object_set_prototype_of(rt, Value::Undefined, &new_args);
+                }
+            }
             crate::generated::object_set_prototype_of(rt, Value::Undefined, args)
         });
         register_intrinsic_method(self, obj_ctor, "create", 2, |rt, args| {
