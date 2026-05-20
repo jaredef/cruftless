@@ -283,6 +283,10 @@ fn emit_expr(e: &Expr) -> String {
             let key = emit_property_key(p);
             format!("rt.spec_get(&{}, {})?", emit_expr(o), key)
         }
+        Expr::GetMethod(o, p) => {
+            let key = emit_property_key(p);
+            format!("rt.get_method(&{}, {})?", emit_expr(o), key)
+        }
         Expr::HasProperty(o, p) => {
             let key = emit_property_key(p);
             format!("rt.has_property_via(&{}, {})", emit_expr(o), key)

@@ -419,6 +419,29 @@ impl Runtime {
         }
     }
 
+    /// EXT 85 / Tier-1.5: ECMA-262 §7.3.10 GetMethod(V, P) — the
+    /// spec wrapper around Get that enforces the spec post-condition
+    /// "callable-or-undefined-or-throw" on the result:
+    ///   1. Let func be ? GetV(V, P).
+    ///   2. If func is undefined or null, return undefined.
+    ///   3. If IsCallable(func) is false, throw TypeError.
+    ///   4. Return func.
+    /// Lowers from Expr::GetMethod. Eliminates the pattern that recurs
+    /// throughout IR sections (Get → IsCallable check → branch); the
+    /// equivalent inline Rust check from EXT 84c is now centralized
+    /// here, surfaced as a single typed primitive at the IR boundary.
+    pub fn get_method(&mut self, v: &Value, key: &str) -> Result<Value, RuntimeError> {
+        let func = self.spec_get(v, key)?;
+        if matches!(func, Value::Undefined | Value::Null) {
+            return Ok(Value::Undefined);
+        }
+        if !self.is_callable(&func) {
+            return Err(RuntimeError::TypeError(format!(
+                "{} is not a function", key)));
+        }
+        Ok(func)
+    }
+
     /// EXT 82 / Tier-1.5: ECMA-262 §7.3.2 Get(O, P) — the spec's `[[Get]]`
     /// internal method, distinct from the runtime "read the internal
     /// property map" operation. Invokes:

@@ -79,6 +79,19 @@ pub enum Expr {
     /// for `Get` and `[[X]]` internal-slot reads; the IR now mirrors
     /// that typographic distinction as two distinct primitives.
     SpecGet(Box<Expr>, Box<Expr>),
+    /// EXT 85 / Tier-1.5: ECMA-262 §7.3.10 GetMethod(V, P) — the spec
+    /// wrapper around Get that enforces the spec post-condition
+    /// "callable-or-undefined-or-throw" on the result. Lowering performs
+    /// SpecGet, then: returns Undefined if the result is undefined OR
+    /// null (the §7.3.10 step 2.a normalisation); throws TypeError if
+    /// the result is defined but not callable (step 3); returns the
+    /// value otherwise. Promotes a pattern that recurs throughout IR
+    /// sections (the EXT 84c trap-is-not-callable check inlined this in
+    /// Rust for one site per Proxy trap; 10+ IR sections do an
+    /// equivalent inline check on method lookups). The §XIII Pass B
+    /// trace named this as the first cleanly-promotable derivative of
+    /// SpecGet — same lowering site, different post-condition.
+    GetMethod(Box<Expr>, Box<Expr>),
     HasProperty(Box<Expr>, Box<Expr>),
     HasOwnProperty(Box<Expr>, Box<Expr>),
     OrdinaryObjectCreate {

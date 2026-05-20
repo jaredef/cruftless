@@ -328,6 +328,11 @@ fn collect_abstract_ops_in_expr(
             collect_abstract_ops_in_expr(o, set);
             collect_abstract_ops_in_expr(p, set);
         }
+        Expr::GetMethod(o, p) => {
+            set.insert("GetMethod");
+            collect_abstract_ops_in_expr(o, set);
+            collect_abstract_ops_in_expr(p, set);
+        }
         Expr::HasProperty(o, p) => {
             set.insert("HasProperty");
             collect_abstract_ops_in_expr(o, set);
