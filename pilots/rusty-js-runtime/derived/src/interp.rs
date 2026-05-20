@@ -4215,7 +4215,15 @@ impl Runtime {
             Value::Object(id) => *id,
             _ => return Err(RuntimeError::TypeError("Reflect.has: target must be Object".into())),
         };
-        let key_pk = property_key(key);
+        // EXT 77: ECMA §28.1.9 step 2 — ToPropertyKey(propertyKey).
+        // Non-Symbol Object keys must dispatch their @@toPrimitive /
+        // toString / valueOf chain so user-thrown errors from those
+        // accessors propagate out of Reflect.has. Symbol keys bypass
+        // coercion (they ARE a property key already).
+        let key_pk = match key {
+            Value::Symbol(_) => property_key(key),
+            _ => property_key(&Value::String(std::rc::Rc::new(self.coerce_to_string(key)?))),
+        };
         Ok(Value::Boolean(self.has_property_pk(id, &key_pk)))
     }
 
@@ -4225,7 +4233,12 @@ impl Runtime {
             Value::Object(id) => *id,
             _ => return Err(RuntimeError::TypeError("Reflect.get: target must be Object".into())),
         };
-        let key_pk = property_key(key);
+        // EXT 77: ECMA §28.1.8 step 2 — ToPropertyKey(propertyKey). See
+        // reflect_has_via above; same Symbol-bypass + ToString coercion.
+        let key_pk = match key {
+            Value::Symbol(_) => property_key(key),
+            _ => property_key(&Value::String(std::rc::Rc::new(self.coerce_to_string(key)?))),
+        };
         if let Some(getter) = self.find_getter_pk(id, &key_pk) {
             return self.call_function(getter, Value::Object(id), Vec::new());
         }
