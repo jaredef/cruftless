@@ -11,6 +11,10 @@ rusty-js-ast = { path = "../../rusty-js-ast" }
 rusty-js-parser = { path = "../../rusty-js-parser/derived" }
 rusty-js-bytecode = { path = "../../rusty-js-bytecode/derived" }
 rusty-js-gc = { path = "../../rusty-js-gc/derived" }
+# Doc 731 §VII / JIT-EXT 8: optional JIT path. When a function is hot,
+# has integer-Number args, and is in the typed-i64 subset, dispatch
+# to the JIT-compiled version instead of the bytecode interpreter.
+rusty-js-jit = { path = "../../rusty-js-jit/derived" }
 regex = "1"
 serde_json = { version = "1", features = ["preserve_order"] }
 indexmap = "2"

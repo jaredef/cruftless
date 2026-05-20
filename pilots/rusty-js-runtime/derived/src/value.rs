@@ -602,6 +602,13 @@ pub struct ClosureInternals {
     /// ECMA-262 §10.2.1.4; call_function ignores the receiver argument
     /// for arrows and substitutes this value.
     pub bound_this: Option<Value>,
+    /// Ω.5.P04.E2.jit-runtime-dispatch: per-closure invocation counter.
+    /// Incremented at every call_function entry; the runtime consults the
+    /// JIT after the counter crosses a threshold (see Runtime::jit_threshold).
+    /// Cell-typed for interior mutability — the call counter mutates while
+    /// the surrounding `obj()` borrow is shared with the rest of the
+    /// dispatch path.
+    pub call_count: std::cell::Cell<u32>,
 }
 
 /// Native function (intrinsic) backed by a Rust callback.

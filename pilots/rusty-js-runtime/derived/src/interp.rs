@@ -25,6 +25,17 @@ pub enum RuntimeError {
 }
 
 pub struct Runtime {
+    /// Ω.5.P04.E2.jit-runtime-dispatch: per-FunctionProto JIT cache.
+    /// Key is the FunctionProto's Rc pointer cast to usize; value is
+    /// Some(jit_fn) if a JIT compile succeeded, None if it failed and
+    /// we should not retry. Populated lazily at the call_function entry
+    /// for hot closures (call_count > jit_threshold).
+    pub jit_cache: HashMap<usize, Option<rusty_js_jit::CompiledFn>>,
+    /// Doc 731 §VII R6: compilation budget is a counter threshold. After
+    /// this many invocations of a Closure that hasn't yet been JIT-compiled,
+    /// the runtime attempts compile. Default 100; can be overridden for
+    /// bench/test purposes.
+    pub jit_threshold: u32,
     pub globals: HashMap<String, Value>,
     /// Ω.5.P55.E1 (Doc 729 §VII.B — engine-internal bilateral boundary).
     /// Compiler-emitted lowerings (`__await`, `__dynamic_import`, `__apply`,
@@ -235,6 +246,14 @@ pub struct Runtime {
 impl Runtime {
     pub fn new() -> Self {
         Self {
+            jit_cache: HashMap::new(),
+            // Threshold defaults to 100 calls but is overridable via
+            // CRUFTLESS_JIT_THRESHOLD env var for bench/test purposes.
+            // Set to 1 to make every Closure JIT on first invocation.
+            jit_threshold: std::env::var("CRUFTLESS_JIT_THRESHOLD")
+                .ok()
+                .and_then(|s| s.parse::<u32>().ok())
+                .unwrap_or(100),
             globals: HashMap::new(),
             engine_helpers: HashMap::new(),
             last_value: Value::Undefined,
@@ -7032,6 +7051,7 @@ impl Runtime {
                             upvalues: Vec::new(),
                             is_arrow,
                             bound_this,
+                            call_count: std::cell::Cell::new(0),
                         }),
                     };
                     let id = self.alloc_object(closure);
@@ -7494,14 +7514,65 @@ impl Runtime {
             let o = self.obj(id);
             match &o.internal_kind {
                 crate::value::InternalKind::Closure(c) => {
-                    // Tier-Ω.5.sss: arrow functions use their captured
-                    // bound_this (set at MakeArrow time) regardless of
-                    // the receiver argument. Regular closures use the
-                    // passed receiver.
+                    // Ω.5.P04.E2.jit-runtime-dispatch: bump the call
+                    // counter; if hot AND args are integer-Numbers AND
+                    // params in {1,2}, dispatch to JIT if cached or
+                    // available. The threshold + integer check are
+                    // cheap; the JIT dispatch itself unboxes f64→i64,
+                    // invokes the native function pointer, and reboxes
+                    // the i64 result as Number(f64). On any mismatch
+                    // (type, arity, JIT compile failure), fall through
+                    // to the bytecode interpreter path below.
+                    let count = c.call_count.get() + 1;
+                    c.call_count.set(count);
+                    let proto_key = std::rc::Rc::as_ptr(&c.proto) as usize;
                     let actual_this = if c.is_arrow {
                         c.bound_this.clone().unwrap_or(Value::Undefined)
-                    } else { this };
-                    (Some(c.proto.clone()), None, actual_this, args)
+                    } else { this.clone() };
+                    let params = c.proto.params;
+                    if count >= self.jit_threshold
+                        && (params == 1 || params == 2)
+                        && args.len() == params as usize
+                        && args.iter().all(jit_compatible_int_arg)
+                    {
+                        // Take the proto out so we don't hold a borrow
+                        // across the JIT-compile mutation below.
+                        let proto_rc = c.proto.clone();
+                        drop(o);
+                        // Compile-if-absent.
+                        if !self.jit_cache.contains_key(&proto_key) {
+                            let compiled = rusty_js_jit::compile_function(&*proto_rc).ok();
+                            self.jit_cache.insert(proto_key, compiled);
+                        }
+                        if let Some(Some(jit_fn)) = self.jit_cache.get(&proto_key) {
+                            let r = match params {
+                                1 => {
+                                    let a = unbox_int_arg(&args[0]);
+                                    jit_fn.func.call1(a)
+                                }
+                                2 => {
+                                    let a = unbox_int_arg(&args[0]);
+                                    let b = unbox_int_arg(&args[1]);
+                                    jit_fn.func.call2(a, b)
+                                }
+                                _ => unreachable!(),
+                            };
+                            return Ok(Value::Number(r as f64));
+                        }
+                        // JIT compile failed (cached None). Fall through
+                        // to the bytecode interpreter by re-entering the
+                        // dispatch via the standard path. Re-acquire the
+                        // borrow.
+                        let o2 = self.obj(id);
+                        match &o2.internal_kind {
+                            crate::value::InternalKind::Closure(c2) => {
+                                (Some(c2.proto.clone()), None, actual_this, args)
+                            }
+                            _ => unreachable!("closure flipped kind mid-dispatch"),
+                        }
+                    } else {
+                        (Some(c.proto.clone()), None, actual_this, args)
+                    }
                 }
                 crate::value::InternalKind::Function(f) => (None, Some(f.native.clone()), this, args),
                 crate::value::InternalKind::Proxy(p) => {
@@ -7813,6 +7884,28 @@ impl Runtime {
 /// Coerce a JS Value to a property key per ECMA §7.1.19 ToPropertyKey.
 /// Symbol values produce PropertyKey::Symbol (identity-keyed, by-Rc); all
 /// other values stringify into PropertyKey::String.
+/// Ω.5.P04.E2.jit-runtime-dispatch: cheap predicate for the JIT
+/// argument-type guard. Accept Number with finite integer-valued
+/// representation; reject everything else. Fast-path inlined in
+/// call_function's Closure arm.
+pub fn jit_compatible_int_arg(v: &Value) -> bool {
+    match v {
+        Value::Number(f) => f.is_finite() && f.fract() == 0.0
+            && *f >= i64::MIN as f64 && *f <= i64::MAX as f64,
+        _ => false,
+    }
+}
+
+/// Companion to jit_compatible_int_arg: unbox a guard-passed Number.
+/// Caller is responsible for having checked compatibility first;
+/// otherwise the cast is meaningless.
+pub fn unbox_int_arg(v: &Value) -> i64 {
+    match v {
+        Value::Number(f) => *f as i64,
+        _ => 0,
+    }
+}
+
 /// Doc 731 §XIV.d typed-i64 unbox: accept a Value::Number with
 /// integer-valued f64 representation; reject everything else with
 /// TypeError. v1 strict shape: future deviation may relax to
