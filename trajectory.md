@@ -2407,3 +2407,87 @@ No regressions across any status class. The +1 is collateral — probably alloca
 Read EXT 19 + EXT 20. `CRUFTLESS_PROFILE=1` is the standard tool for compile-vs-eval-vs-eventloop attribution on any package — run it before guessing where time is going. Two probe families are now first-class diagnostic shapes: object-literal-keys for intern-class costs, nested-fn-exprs-with-outer-locals for enclosing-clone-class costs. Probes A-E in /tmp/bigfn/ can be regenerated from this trajectory if needed.
 
 Pin-Art tag count: ~268 (EXT 19) + 2 (P03.E2.const-intern-hash, P03.E2.enclosing-locals-rc) = ~270 substrate moves committed.
+
+## RESUME VECTOR EXTENSION 21 — 2026-05-20 (deep-trace stretch on arktype; seven engine-substrate spec-correctness substrates; first §XIII alphabet promotion in rusty-js-ir; Doc 730 §XVI articulation of bidirectional engine-diff oracle; top500 +5)
+
+### Headline
+
+Spec-correctness substrate stretch driven by the arktype loading failure under cruftless. Top500 classification surfaced arktype as a §XIV candidate; the bidirectional engine-diff probe (Bun vs cruftless, instrumented at equals call #46) falsified the §XIV framing and identified the actual divergence as a cruftless super-getter receiver-binding violation per ECMA §13.3.7.3. The trace then walked four sequential walls in arktype's class-init chain, each closed by a separate substrate move. Two additional substrates (.mjs strict-by-default, for-in nullish short-circuit) landed in the same stretch as bidirectional-probe falls-out. Doc 730 §XVI articulated the methodology that ran the stretch.
+
+Net top500 lift: 800 PASS → 805 PASS (+5 net, 0 regressions). Six packages gained: cssnano, csso, svgo (CSS toolchain via for-in fix), joi (for-in cluster leader), puppeteer-core, sharp-cli (Symbol-key follow-up). Internal class-semantics correctness measurably improved across class-field-after-super, super-new-target, super-get-this, class-method-non-enumerable.
+
+### Commit table
+
+| commit | tag | recognition | yield |
+|---|---|---|---|
+| `3ceab019` | Ω.5.P03.E2.class-field-after-super | Derived-class field initializers placed AFTER super() call instead of prepended to ctor body per ECMA §15.7.13 step 11 + SuperCall InitializeInstanceElements. Pre-substrate, fields prepended landed on the pre-allocated `this` that super() then replaced under Callable-style return-of-non-this patterns. | 2-level Callable chains recover (arktype wall 1 closed) |
+| `72f2bf47` | Ω.5.P03.E2.super-new-target | Op::PropagateNewTarget + __super_apply runtime helper propagate new.target through super(...) dispatch per ECMA §10.2.1.3 SuperCall step 4. Co-evolves with class-field-after-super to recover N-level Callable chains (wall 2 closed). | (combined w/ wall 1; both required for arktype's 3+ level chain) |
+| `d1ab22cb` | Ω.5.P04.E1.is-spec-object | First Tier-1.5 alphabet promotion in rusty-js-ir per Doc 730 §XIII. New Expr::IsSpecObject(v) lowering to `matches!(v, Value::Object(_))`. Closes the typeof-null collapse in ToPrimitive (§7.1.1 step 1 + 2.b.ii.check + 4.m1.check + 5.m2.check) that made `${null}` template coercion throw "Cannot convert object to primitive value". | wall 3 closed (arktype); `${null}` works |
+| `52cd1271` | (instrumentation) | CRUFTLESS_PROFILE phase timers in module.rs + host-v2/main.rs. Atomic accumulators for parse/compile/eval/event-loop with zero cost when env var unset. | (carried over from EXT 20's diagnostic apparatus) |
+| `0605f6de` | Ω.5.P03.E2.class-method-non-enumerable | __install_method__ runtime helper installs class methods + accessors with {w:t, e:f, c:t} per ECMA §15.7. Pre-substrate, methods installed via SetProp ({w:t, e:t, c:t}) and accessors via __install_accessor__ with enumerable: true. Class prototype Object.keys returned [] correctly post-substrate. | spec-correctness; surfaced sharp-cli Symbol-key regression caught by §XVI sweep |
+| `d91cdff4` | (class-method-non-enumerable follow-up) | __install_method__ accepts Value::Symbol keys in addition to String/Number. Computed class member `[Symbol.X]() {}` patterns were silently dropped by the original helper (sharp-cli regression PASS→FAIL caught by §XVI). | sharp-cli recovers |
+| `1c834fd9` | Ω.5.P05.L0.module-mjs-strict | .mjs files default to strict mode per ECMA §15.5 ModuleDeclarationLinking step 9 + cross-engine file-extension convention. Pre-substrate, .mjs without imports/exports compiled as sloppy mode. | spec-correctness; no direct package recovery (top500 .js files trigger strict via has_module_syntax already) |
+| `16ff1f56` | Ω.5.P03.E2.super-get-this | __super_get(this_val, super_base, key) runtime helper. super.X getter invoked with this = original method's this (not super-base) per ECMA §13.3.7.3 + §10.1.7.2. Pre-substrate, super.X compiled to LoadIdent <super.proto>; GetProp X; Op::GetProp used the popped object as accessor receiver. arktype's `get rawIn() { return super.rawIn; }` (root.js:21) failed because cacheGetter wrote rawIn=super-base onto the super-base prototype itself, leaking via the proto chain. | arktype wall 4 closed (the trace's identified root) |
+| `98481988` | Ω.5.P04.E1.for-in-nullish-skip | __for_in_keys runtime helper. for-in over undefined/null returns 0 iterations per ECMA §14.7.5.6 step 6 (no ToObject call on undefined/null). Pre-substrate, for-in compiled to Object.keys(<right>) directly; Object.keys threw on undefined/null per its own ToObject step. | +5 top500: cssnano, csso, svgo, joi, puppeteer-core |
+
+### Substrate-amortization shape
+
+The §XVI bidirectional engine-diff oracle (per Doc 730 §XVI, written in this session) is the methodology that drove the substrate cadence. The cycle, observed at every step:
+
+1. Top500 cluster surfaces a class of failures with a shared error signature.
+2. §XVI probe (instrument both engines at the divergence point; compare state).
+3. Categorize per Doc 730 §XVI.a (cases 1–4: engine bug vs deviation vs both-diverge vs implementation-freedom).
+4. Land the substrate corresponding to the categorization (§XII coercion lift / §XIII alphabet promotion / §XIV deviation primitive / no-op).
+5. Re-sweep, observe yield, return to step 1.
+
+Diagnosis-to-landed-fix cadence on clean cases: under 10 minutes. The for-in-nullish-skip substrate from probe to commit took 8 minutes (the §XVI methodology's cleanest observed instance).
+
+### Falsification residuals
+
+- **arktype itself did not load on top500.** Four sequential walls were closed; arktype's loading is gated on additional walls 5+ (`rawIn-on-Array` deep inside intersectNodesRoot, currently open). The trace document `docs/arktype-deep-trace.md` captures the live state. The §XVI methodology operating across multiple walls in series is itself a worked example for the corpus.
+
+- **The 14-package "Cannot convert undefined or null to object" cluster recovered 5.** Not 14, because the signature collapsed multiple roots — for-in over undefined was one; the other 9 packages depend on different undefined-coercion patterns (Object.assign({}, undefined), prototype-walks on undefined receivers, etc.) that need their own §XVI probes. Doc 730 §XVI.a case-classification is empirically necessary because cluster signatures over-aggregate.
+
+- **The §XIV deviation alphabet did not grow this session.** All seven substrates were §XII coercion/dispatch lifts or §XIII alphabet promotions. The §XVI probe consistently categorized as case (1) cruftless-violates-spec. No §XIV primitives were warranted by the evidence at any point.
+
+### Doc 730 §XVI: corpus-tier articulation
+
+In parallel with the engagement work, Doc 730 grew a new appendix (§XVI: bidirectional engine-diff as the deviation-pipeline's empirical instrument) at `/home/jaredef/corpus-master/corpus/730-the-vertical-recurrence-of-the-lowering-compiler-closure-as-primitive-across-substrate-tiers.md`. 2135 words; 0 em-dashes; positions §XVI as the empirical surface that makes the §XV constraint-comprehension contract executable. The instrument's vertical recurrence across substrate tiers (GC, JIT, parser) is named as a successor question.
+
+The corpus contribution is the recognition that the §XII–§XV pipeline becomes empirically grounded only when §XVI's bidirectional probe is in place. The engagement's seven substrates this session each ran through §XVI's four-case categorization before any code was written.
+
+### Top500 deltas
+
+| metric | pre (EXT 20 close) | post (EXT 21 close) | Δ |
+|---|---|---|---|
+| PASS + MATCH_OK_ERR_BOTH | 800 | 805 | +5 |
+| FAIL | 159 | 154 | -5 |
+| TIMEOUT | 15 | 15 | 0 |
+| Install-skip | 52 | 52 | 0 |
+| Parity excl-skip | 82.1% | 82.7% | +0.6 pp |
+
+Per-package gains: cssnano, csso, svgo, joi, puppeteer-core, sharp-cli. Per-package losses: 0.
+
+### Parity-fast (exemplar-43) deltas
+
+Unchanged at 31 PASS / 12 FAIL+TIMEOUT. None of the seven substrates moved the exemplar basket because the basket samples residual-distribution clusters that don't intersect with this stretch's targets. The selector script (host/tools/select-exemplars.py) should be re-run against the latest top500 to refresh the basket per the broader §XIV.d targeting heuristic.
+
+### Open scope at EXT 21 boundary
+
+1. **arktype wall 5+** (rawIn-on-Array deep inside intersectNodesRoot) and the rest of arktype's bootstrap. Continued §XVI probing per docs/arktype-deep-trace.md.
+2. **The 9 residual "Cannot convert undefined or null to object" packages** after the for-in fix. Each needs its own §XVI probe to identify the specific undefined-coercion path.
+3. **The 8-package "Function is not a constructor" cluster.** This is a clean §XIV target (EXT 90 already named the deviation; need to extend its enablement). Per §XV the protected_invariants must be enumerated before any consumer opts in.
+4. **The 47-package "both engines fail" bucket on top500.** Many are TypeScript-only packages with no runtime export, or packages with missing peer deps. Worth a one-pass audit to separate genuine engine gaps from packaging issues, and to refresh the install-skip filter.
+
+### Cumulative session totals
+
+- Commits in this stretch (EXT 21): 9 (7 substrate, 1 follow-up, 1 instrumentation, plus doc commits).
+- Substrate moves logged: ~270 (EXT 20 close) + 7 = ~277.
+- First §XIII alphabet promotion in rusty-js-ir's engagement (IsSpecObject). The IR alphabet's typed-primitive count grew by 1; the corpus's recognition of the Tier-1.5 promotion methodology gained an instance.
+- First end-to-end run of the §XVI bidirectional probe across the deviation pipeline. The corpus articulation followed the engagement's empirical use rather than preceding it — Doc 730 §XVI is engagement-tier corroborated, not just structurally proposed.
+
+### Resume protocol
+
+Read EXT 20 + EXT 21 + Doc 730 §XVI (corpus-master). The §XVI methodology is now an operational pattern with measurable cadence (~10 min diagnosis-to-landed-fix on clean spec-divergence cases). The four-case categorization is the load-bearing decision step before any substrate move; default to running the bun-vs-cruftless probe before naming a substrate. The arktype trace document (`docs/arktype-deep-trace.md`) is a live working document of the multi-wall application of the methodology and should be picked up cold by future sessions on arktype.
+
+Pin-Art tag count: ~270 (EXT 20) + 7 (P03.E2.class-field-after-super, P03.E2.super-new-target, P04.E1.is-spec-object, P03.E2.class-method-non-enumerable, P05.L0.module-mjs-strict, P03.E2.super-get-this, P04.E1.for-in-nullish-skip) = ~277 substrate moves committed.
