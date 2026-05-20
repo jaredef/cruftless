@@ -1916,33 +1916,23 @@ impl Runtime {
 
         // Tier-Ω.5.ll: BigInt as callable global. zod uses `BigInt(x)`.
         // Tier-Ω.5.CCCCCCCC: backed by real JsBigInt arithmetic substrate.
-        let bi_obj = make_native("BigInt", |_rt, args| {
-            use crate::bigint::JsBigInt;
+        let bi_obj = make_native("BigInt", |rt, args| {
             let v = args.first().cloned().unwrap_or(Value::Undefined);
-            match v {
-                Value::BigInt(b) => Ok(Value::BigInt(b)),
-                Value::Number(n) => {
-                    if !n.is_finite() || n.fract() != 0.0 {
-                        return Err(RuntimeError::TypeError(format!(
-                            "Cannot convert non-integer Number {} to BigInt", n)));
-                    }
-                    Ok(Value::BigInt(std::rc::Rc::new(JsBigInt::from_i64(n as i64))))
-                }
-                Value::String(s) => {
-                    match JsBigInt::from_decimal(s.trim()) {
-                        Some(b) => Ok(Value::BigInt(std::rc::Rc::new(b))),
-                        None => Err(RuntimeError::TypeError(format!(
-                            "Cannot convert {:?} to BigInt", s.as_str()))),
-                    }
-                }
-                Value::Boolean(b) => Ok(Value::BigInt(std::rc::Rc::new(
-                    if b { JsBigInt::one() } else { JsBigInt::zero() }))),
-                _ => Err(RuntimeError::TypeError("Cannot convert to BigInt".into())),
-            }
+            crate::abstract_ops::to_bigint(rt, &v)
         });
         let bi_id = self.alloc_object(bi_obj);
-        register_intrinsic_method(self, bi_id, "asIntN", 2, |_rt, args| Ok(args.get(1).cloned().unwrap_or(Value::Undefined)));
-        register_intrinsic_method(self, bi_id, "asUintN", 2, |_rt, args| Ok(args.get(1).cloned().unwrap_or(Value::Undefined)));
+        // EXT 78: BigInt.asIntN / asUintN dispatch ToBigInt on their second
+        // argument per §21.2.2.1 / §21.2.2.2 step 2. v1's clamp/mask
+        // shape is a passthrough (deferred), but the coercion + error
+        // propagation now match spec.
+        register_intrinsic_method(self, bi_id, "asIntN", 2, |rt, args| {
+            let v = args.get(1).cloned().unwrap_or(Value::Undefined);
+            crate::abstract_ops::to_bigint(rt, &v)
+        });
+        register_intrinsic_method(self, bi_id, "asUintN", 2, |rt, args| {
+            let v = args.get(1).cloned().unwrap_or(Value::Undefined);
+            crate::abstract_ops::to_bigint(rt, &v)
+        });
         // Tier-Ω.5.oooooo: BigInt.prototype with valueOf + toString. unbox-
         // primitive / is-bigint reach for `BigInt.prototype.valueOf`.
         let bi_proto = self.alloc_object(Object::new_ordinary());

@@ -246,6 +246,48 @@ pub fn abstract_relational_compare(x: &Value, y: &Value) -> RelOrder {
     else { RelOrder::Equal }
 }
 
+/// EXT 78: ECMA-262 §21.2.1.1 BigInt() constructor body.
+/// Combines ToPrimitive(value, "number") with the spec's primitive
+/// dispatch table — Number arguments route through NumberToBigInt
+/// (RangeError when not integral), other primitives through ToBigInt
+/// (§7.1.13). Object inputs unbox via ToPrimitive so BigInt wrappers
+/// and user @@toPrimitive run.
+pub fn to_bigint(rt: &mut crate::interp::Runtime, v: &Value) -> Result<Value, crate::interp::RuntimeError> {
+    use crate::bigint::JsBigInt;
+    use crate::interp::RuntimeError;
+    let prim = match v {
+        Value::Object(_) => rt.to_primitive(v, "number")?,
+        _ => v.clone(),
+    };
+    match prim {
+        Value::BigInt(b) => Ok(Value::BigInt(b)),
+        Value::Boolean(b) => Ok(Value::BigInt(Rc::new(
+            if b { JsBigInt::one() } else { JsBigInt::zero() }))),
+        Value::String(s) => match JsBigInt::from_decimal(s.trim()) {
+            Some(b) => Ok(Value::BigInt(Rc::new(b))),
+            None => Err(RuntimeError::SyntaxError(format!(
+                "Cannot convert {:?} to a BigInt", s.as_str()))),
+        },
+        // NumberToBigInt per §21.2.1.1.1: RangeError for non-integral
+        // Numbers (NaN, ±Infinity, fractional). Integral Numbers convert.
+        Value::Number(n) => {
+            if !n.is_finite() || n.fract() != 0.0 {
+                return Err(RuntimeError::RangeError(format!(
+                    "The number {} cannot be converted to a BigInt because it is not an integer", n)));
+            }
+            Ok(Value::BigInt(Rc::new(JsBigInt::from_i64(n as i64))))
+        }
+        Value::Undefined => Err(RuntimeError::TypeError(
+            "Cannot convert undefined to a BigInt".into())),
+        Value::Null => Err(RuntimeError::TypeError(
+            "Cannot convert null to a BigInt".into())),
+        Value::Symbol(_) => Err(RuntimeError::TypeError(
+            "Cannot convert a Symbol value to a BigInt".into())),
+        Value::Object(_) => Err(RuntimeError::TypeError(
+            "Cannot convert object to a BigInt".into())),
+    }
+}
+
 /// Apply `+` semantics per §13.15. ToPrimitive-coerces operands; if either
 /// is a String, concatenate; else arithmetic add.
 pub fn op_add(x: &Value, y: &Value) -> Value {
