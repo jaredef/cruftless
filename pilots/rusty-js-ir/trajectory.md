@@ -1432,3 +1432,64 @@ Pin-Art tag count: 114 commits as of EXT 83.
 **Bun and Node** ship single-Realm and skip these tests by construction. cruftless follows the same shape: Runtime is a singleton (one intrinsics table, one globals map, one heap). Multi-Realm would require either (a) multiple Runtime instances with cross-Realm Value movement, or (b) a Realm record threaded through every intrinsic + isolated prototype chains — an engine-architecture investment outside v1 substrate scope. The 37 tests probe genuine cross-realm semantics (`Array.isArray(arr_from_other_realm)`, `arr instanceof Array_from_other_realm`, %Symbol.iterator% identity across realms); single-Realm engines can't pass these by construction.
 
 **Effective pre-carve-out Proxy chapter**: 49.6% (154/310). **Carve-out adjusted**: 56.4% (154/273 after removing the 37 createRealm tests from the denominator).
+
+## IR-EXT 84 → 89 — 2026-05-20 (Proxy substrate completion + Pin-Art Pass C carrier landings)
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| `89be7155` | IR-EXT 84: Proxy revocation + construct trap non-Object check | ProxyInternals gains `revoked: bool`; revoke closure flips it; proxy_target_handler_checked wraps the §10.5.{4..14} null-handler→TypeError check; spec_get + Reflect.* via methods + call_function's Proxy arm all swap to the checked variant. §10.5.13 step 9: construct trap return must be Object. Proxy 34.1%→36.7% (+8). |
+| `bdda902d` | IR-EXT 84b: bytecode VM Proxy dispatch revoked check | All 7 bytecode Op::* sites that dispatch Proxy traps (GetProp, SetProp, HasProp, DeleteProp, OwnKeys, GetPropMethod, HasPrivate) use proxy_target_handler_checked. Proxy 36.7%→38.0% (+4). |
+| `693126cf` | IR-EXT 84c: Object.defineProperty + getOwnPropertyDescriptor Proxy trap + trap-callable + falsy-throws | Same shape as Reflect.defineProperty in EXT 79d; surfaces here because tests probe via Object.* not Reflect.*. Proxy 38.0%→41.9% (+12). |
+| `6d713801` | IR-EXT 84d: Object.getOwnPropertyNames/Symbols Proxy.ownKeys dispatch | Same shape as EXT 84c; filters trap result to string/symbol-keyed entries respectively. Proxy 41.9%→43.8% (+6). |
+| `e29cf7ba` | IR-EXT 84e: Object.{get,set}PrototypeOf + isExtensible + preventExtensions Proxy trap dispatch | Same shape across 4 ops + boolean-coerce + falsy-throws per §10.5.{1,2,3,4}. Proxy 43.8%→49.6% (+18). |
+| `45104c63` | trajectory carve-out: $262.createRealm (37 tests) | Test262 host harness API, not ECMA-262 spec. Bun/Node ship single-Realm and skip these by construction; cruftless follows the same pragmatic shape per seed.md §I.1.a. Effective Proxy denominator becomes 273. |
+| `fc9b60d4` | IR-EXT 82: Tier-1.5 SpecGet primitive (Doc 730 §XIII first carrier) | Expr::SpecGet IR primitive + rt.spec_get runtime helper. Spec-correct §7.3.2 [[Get]] dispatcher (Proxy.get trap → accessors → slot, throws-propagating). First Tier-1.5 alphabet promotion landed in code. Stable across Reflect/Symbol/F.proto. |
+| `84e8075b` | IR-EXT 82b: get_via + CreateListFromArrayLike spec_get | Second §XIII carrier. Promoted runtime helpers covering computed-method-name lookups + Reflect.apply/construct CreateListFromArrayLike. Structurally correct, zero-yield-here. |
+| `d92b06e8` | IR-EXT 82c: collapse all Expr::Get lowering through spec_get | §I.1.b alphabet-promotion completion. Every IR-emitted Expr::Get → rt.spec_get in one move. Internal-slot reads stay on Expr::GetSlot. Stable across 4 chapters. |
+| `b7c1e91a` | IR-EXT 83: primitive wrapper internal kinds | Number/String/Boolean/BigInt wrapper internal kinds + Object.prototype.toString brand strings + Object(prim) routes through to_object + BigInt.prototype.valueOf wrapper-aware. Number +1, BigInt +1, String +18, Boolean 84.3% baseline. +20. |
+| `6233981b` | IR-EXT 85: Tier-1.5 GetMethod primitive | Expr::GetMethod + rt.get_method as §7.3.10 typed primitive (callable-or-undefined-or-throw post-condition). ToPrimitive §7.1.1 step 2.a now reads 1:1 against spec text. +4 (Symbol +3, F.proto +1). |
+| `46a45e43` | IR-EXT 86: ProxyOwnPropertyKeys invariants + Object.keys dispatch | apply_proxy_own_keys_invariants shared helper. §10.5.11 — no duplicates, must-contain-non-configurable-target-keys, non-extensible-target-keys-must-match-exactly. Wired into Reflect.ownKeys + Object.getOwnPropertyNames/Symbols + Object.keys. Proxy 49.6%→54.8% (+16). |
+| `53a85581` | IR-EXT 87: GetPrototypeOf/SetPrototypeOf/IsExtensible/PreventExtensions invariants | Four §10.5.{1,2,3,4} invariants inlined at the EXT 84e Object.* dispatch sites. Proxy 54.8%→57.4% (+8). |
+| `cafc829c` | IR-EXT 88 + 88b: Has/Get/Set/Delete invariants (Reflect + bytecode VM) | Four shared apply_proxy_{has,get,set,delete}_invariant helpers; wired into both Reflect.* via methods AND all five bytecode-VM Proxy dispatch sites (Op::GetProp / Op::GetIndex / Op::SetProp / Op::DeleteProp / Op::DeleteIndex). §10.5.{7,8,9,10}. Proxy 57.4%→59.3% (+6). |
+| `70ac4696` | IR-EXT 89: DefineOwnProperty + GetOwnProperty invariants — Pin-Art Pass C completion | §10.5.5 + §10.5.6 invariants as shared helpers, wired into Object.defineProperty + Object.getOwnPropertyDescriptor. Proxy 59.3%→61.2% (+6). |
+
+### Substrate at IR-EXT 89 close
+
+**IR alphabet**: 65 nodes (Expr::SpecGet from EXT 82 + Expr::GetMethod from EXT 85). Two §XIII Tier-1.5 promotions landed; alphabet held at +2 nodes total despite the §XIII formalization opening a new tier.
+
+**Runtime additions**:
+- `Runtime::spec_get(v, key)` — §7.3.2 [[Get]] dispatcher.
+- `Runtime::get_method(v, key)` — §7.3.10 GetMethod (callable-or-undefined-or-throw).
+- `ProxyInternals.revoked: bool` + `Runtime::proxy_target_handler_checked` + `Runtime::proxy_is_revoked`.
+- Five apply_proxy_X_invariant helpers covering §10.5.{5,6,7,8,9,10,11} post-conditions.
+- `InternalKind::{NumberWrapper, StringWrapper, BooleanWrapper, BigIntWrapper}` — primitive wrapper brand carriers.
+
+### Cumulative numbers
+
+| Chapter | Pre-EXT-79d | Post-EXT-89 | Δ this batch |
+|---|---|---|---|
+| Proxy   | 34.1% (106/310) | 61.2% (190/310) | +84 |
+| Number  | 89.4% (304/340) | 91.1% (310/340) | +6 |
+| String  | 75.3% (921/1223) | 77.0% (942/1223) | +21 |
+| Reflect | 68.6% (105/153) | 81.0% (124/153) | +19 |
+| Symbol  | (baseline)      | 67.3% (66/98)   | (+3 since first measurement) |
+| BigInt  | 49.3% (38/77)   | 59.7% (46/77)   | +8 |
+| Map     | 59.3% (121/204) | 61.7% (126/204) | +5 |
+| Boolean | (baseline)      | 84.3% (43/51)   | (baseline) |
+| Function.prototype | (~46%) | 70.8% (219/309) | +79 cumulative |
+
+**Session-cumulative wins: +242 chapter wins** since the start of the push.
+
+### Pin-Art probe series (cross-reference)
+
+The engine262 Pin-Art Pass A–D outputs live in `pilots/rusty-js-ir/engine262-pin-art.md` (commits `44fd6e10` Pass A, `a9255872` Pass B, `552020f6` Pass C, `ca0cbc4d` Pass D). The Pass C inventory directly drove EXT 86-89's per-trap invariant work; the Pass B trace drove EXT 85 (GetMethod). The four-pass probe series → five-EXT implementation closed loop confirms Doc 730 §XIII's targeting heuristic operates as a usable engagement pattern, not just a recognition.
+
+Pin-Art tag count: 125 commits as of EXT 89.
+
+### Conjecture status
+
+**Doc 730 §XIII targeting heuristic #2 (2026-05-20, EXT 86 → 89)**: the Pass C work list ran cleanly through four sequential EXTs landing one column of the InternalMethods<Kind> table at a time, each using a uniform shared-helper shape (apply_proxy_X_invariant). The §XIII pattern — name the collapsed discrimination at the alphabet boundary, then drain consumers through the now-typed primitive — held across both the alphabet level (EXT 82/85) and the helper level (EXT 86-89). The pattern is now load-bearing across the engine.
+
+**§I.1.b corroboration #10 (2026-05-20, EXT 86 → 89)**: five substantive substrate fixes (ProxyOwnPropertyKeys + 11 other §10.5 invariants spread across get/set/has/delete/define/getOwn/getPrototypeOf/setPrototypeOf/isExtensible/preventExtensions) all expressible in the existing alphabet plus the runtime-helper tier. No IR-alphabet additions required. The Tier-1.5 §XIII promotions (Expr::SpecGet, Expr::GetMethod) absorbed cleanly while the IR-tier alphabet remained stable. Doc 730 §XIII does not require alphabet growth at every promotion site — the alphabet can extend horizontally (new typed primitive) AND vertically (new tier) without either disrupting the other.
