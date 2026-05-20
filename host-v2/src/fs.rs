@@ -311,11 +311,32 @@ fn bytes_to_value(rt: &mut Runtime, bytes: &[u8], encoding: Option<&str>) -> Val
         _ => {
             // Substrate gap: no Uint8Array constructor exposed → fall
             // back to JS Array of Number. Tracked in trajectory.
+            //
+            // EXT 94: Real Node returns a Buffer whose .toString()
+            // defaults to UTF-8 decode. cruftless's Array fallback was
+            // inheriting Array.prototype.toString (comma-join of byte
+            // values), which produced "123,34,110,97,..." for callers
+            // that did `readFileSync(p).toString()` — yeoman-environment's
+            // package.json parsing failed exactly here, and the same
+            // pattern lurks across many Node-compat consumers. Override
+            // the result Array's `toString` own property with a closure
+            // that UTF-8-decodes its own indexed bytes. This is the
+            // minimum Buffer-shape patch; a real Buffer prototype is
+            // queued as a separate substrate move.
             let arr = rt.alloc_object(Object::new_array());
             for (i, b) in bytes.iter().enumerate() {
                 rt.object_set(arr, i.to_string(), Value::Number(*b as f64));
             }
             rt.object_set(arr, "length".into(), Value::Number(bytes.len() as f64));
+            // Materialize the bytes as a captured String once and use
+            // crate::register::register_method to install a toString
+            // closure that returns it. crate::register matches host-v2's
+            // standard intrinsic-install pattern.
+            let utf8 = String::from_utf8_lossy(bytes).into_owned();
+            let utf8_rc = Rc::new(utf8);
+            crate::register::register_method(rt, arr, "toString", move |_rt, _args| {
+                Ok(Value::String(utf8_rc.clone()))
+            });
             Value::Object(arr)
         }
     }
