@@ -1326,3 +1326,40 @@ Pin-Art tag count: 102 commits as of EXT 76b.
 **Doc 730 §XII corroboration #3 (2026-05-20, EXT 75 → 76)**: EXT 75 (Proxy unwrap) was net-zero in chapter yield but immediately exposed the next downstream gap (Unicode-property regex emulation), which became EXT 76. The §XII dynamic — "spec-correct moves at the resolver tier surface the next blocker cleanly rather than masking it" — held: the 10 tests EXT 75 freed all converged on the same downstream pattern, making the EXT 76 target self-naming.
 
 **§I corroboration #7 (2026-05-20, EXT 76 → 76b)**: alphabet completeness held under the regex-engine work. The preprocessor + translator were both expressible in the existing helper surface (`parse_unicode_esc`, `parse_uesc_class`, etc., all in `regexp.rs`); no new IR nodes, no new Runtime helpers above the rusty-js-runtime tier, no compiler-AST changes. The substrate stretched to absorb a fundamentally different problem (UTF-16-vs-scalar impedance mismatch) without requiring growth at the upper tiers.
+
+## IR-EXT 77 → 79c — 2026-05-20 (Reflect substrate + BigInt central path)
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| `2cf41d40` | IR-EXT 77: Reflect.get/has invoke ToPropertyKey | `Reflect.get` and `Reflect.has` skipped the §28.1.{8,9} step-2 ToPropertyKey coercion — non-Symbol Object keys never dispatched their `@@toPrimitive` / `toString` / `valueOf` chain, so a `{toString(){throw}}` key silently returned undefined / false. Coerce-through-`coerce_to_string` for non-Symbol keys (Symbol keys are already a property key). Reflect 68.6% → 69.9% (+2). |
+| `c0f25453` | IR-EXT 78: ToBigInt central path + NumberToBigInt RangeError + asIntN/asUintN coerce | Introduced `abstract_ops::to_bigint` as the canonical ToBigInt entry, mirroring the BigInt() constructor body (§21.2.1.1): ToPrimitive("number") with `rt` so Object inputs unbox via user `@@toPrimitive` / `valueOf`, then the spec dispatch table (Boolean → 0n/1n, BigInt unchanged, String parsed or SyntaxError, undefined/null/Symbol/non-coercible Object TypeError). NumberToBigInt now throws RangeError (was TypeError) for non-integral Numbers (NaN, ±Infinity, fractional) — three fixtures explicitly verify this. `BigInt.asIntN` / `asUintN` route through the same helper (were passthrough; v1 still skips the actual bit-width clamp/mask, deferred). BigInt 49.3% → 58.4% (+7). |
+| `fb724716` | IR-EXT 79 + 79b: Reflect.{has,get,set,deleteProperty} Proxy trap + setter dispatch | Each of the four Reflect operations now consults Proxy `[[ProxyHandler]].[trap]` when the target is a Proxy; missing trap falls through to direct target. New `proxy_target_handler(id)` helper centralizes the Proxy-detect + (target, handler) unpack. EXT 79b adds setter-accessor dispatch in `reflect_set_via`: `find_setter_pk` walk before the data-write fallback so an Object with a throwing inherited setter propagates. Reflect 69.9% → 73.2% (+5 across 79+79b). |
+| `8aa851c7` | IR-EXT 79c: Reflect.apply/construct CreateListFromArrayLike | §7.3.18 CreateListFromArrayLike — non-Object argumentsList (including undefined/null) throws TypeError; otherwise read `length` and each index via `read_property_via` so inherited getters fire, Proxy.get traps dispatch, throws propagate. Reflect 73.2% → 74.5% (+2). |
+
+### Substrate at IR-EXT 79c close
+
+**Runtime additions**:
+- `abstract_ops::to_bigint(rt, &v)` — canonical ToBigInt + NumberToBigInt entry, exercised by BigInt() / asIntN / asUintN.
+- `Runtime::proxy_target_handler(id) -> Option<(target, handler)>` — Proxy-internal-kind detect helper.
+- ToPropertyKey + Proxy trap branches inside `reflect_has_via` / `reflect_get_via` / `reflect_set_via` / `reflect_delete_property_via`.
+- Setter-accessor walk in `reflect_set_via` (covers non-Proxy setter-bearing Objects).
+- `read_property_via` + `to_number` based CreateListFromArrayLike path inside `Reflect.apply` and `Reflect.construct` intrinsic closures.
+
+### Cumulative numbers
+
+| Chapter | Pre-EXT-77 | Post-EXT-79c | Δ (this batch) |
+|---|---|---|---|
+| Reflect | 68.6% (105/153) | 74.5% (114/153) | +9 |
+| BigInt  | 49.3% (38/77)   | 58.4% (45/77)   | +7 |
+
+**Session-cumulative wins (since the start of this push): +98 chapter wins** (Function.prototype +79, String +3 ripple, Reflect +9, BigInt +7).
+
+Pin-Art tag count: 107 commits as of EXT 79c.
+
+### Conjecture status
+
+**§I corroboration #8 (2026-05-20, EXT 79)**: introducing one structural helper (`proxy_target_handler`) sufficed for four spec operations (has/get/set/deleteProperty). The alphabet didn't need a new "Proxy-trap-dispatch" node — the existing helper surface (`object_get`, `call_function`, `to_boolean`) composed to express the trap-or-fallthrough shape uniformly. §I.1.b alphabet-completeness held under the new substrate axis.
+
+**Doc 730 §XII corroboration #4 (2026-05-20, EXT 79c first vs amendment)**: the initial EXT 79c patch (route argumentsList through `read_property_via`) was structurally correct but yielded zero new passes — diff against the prior failure set was empty. The pipeline immediately surfaced the actual blocker: the apply test's *first* assertion needed undefined-argumentsList → TypeError, which my CreateListFromArrayLike-style path returned Vec::new() for. Adding the TypeError throw closed both legs (the undefined-argumentsList leg AND the throwing-getter leg) in one sweep, lifting +2. The cost of "spec-correct but yield-zero" was bounded by one cycle, exactly the §XII dynamic.
