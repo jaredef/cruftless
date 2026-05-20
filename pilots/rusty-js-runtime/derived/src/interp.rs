@@ -2611,18 +2611,30 @@ impl Runtime {
     /// Function.prototype.toString() per ECMA §20.2.3.5 (v1: native shape for all functions).
     pub fn function_proto_to_string_via(&mut self) -> Result<Value, RuntimeError> {
         let this = self.current_this();
-        let s = match &this {
-            Value::Object(id) => {
-                let name = match &self.obj(*id).internal_kind {
-                    crate::value::InternalKind::Function(f) => f.name.clone(),
-                    crate::value::InternalKind::Closure(_) => "anonymous".to_string(),
-                    crate::value::InternalKind::BoundFunction(_) => "bound".to_string(),
-                    _ => return Err(RuntimeError::TypeError("Function.prototype.toString: not a function".into())),
-                };
-                format!("function {}() {{ [native code] }}", name)
-            }
+        // EXT 75: ECMA-262 §20.2.3.5 — when invoked on a Proxy whose target
+        // is a callable, the spec routes through ProxyToString → unwrap to
+        // target. Walk the proxy chain to the first non-Proxy callable and
+        // stringify against that. A revoked proxy or non-callable target
+        // falls through to the TypeError branch below.
+        let mut id = match &this {
+            Value::Object(id) => *id,
             _ => return Err(RuntimeError::TypeError("Function.prototype.toString: not a function".into())),
         };
+        let mut hops = 0;
+        while let crate::value::InternalKind::Proxy(p) = &self.obj(id).internal_kind {
+            id = p.target;
+            hops += 1;
+            if hops > 32 {
+                return Err(RuntimeError::TypeError("Function.prototype.toString: proxy chain too deep".into()));
+            }
+        }
+        let name = match &self.obj(id).internal_kind {
+            crate::value::InternalKind::Function(f) => f.name.clone(),
+            crate::value::InternalKind::Closure(_) => "anonymous".to_string(),
+            crate::value::InternalKind::BoundFunction(_) => "bound".to_string(),
+            _ => return Err(RuntimeError::TypeError("Function.prototype.toString: not a function".into())),
+        };
+        let s = format!("function {}() {{ [native code] }}", name);
         Ok(Value::String(std::rc::Rc::new(s)))
     }
 
