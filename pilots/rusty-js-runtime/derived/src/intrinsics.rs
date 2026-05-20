@@ -1248,7 +1248,43 @@ impl Runtime {
             crate::generated::object_get_own_property_descriptors(rt, Value::Undefined, args)
         });
         // Ω.5.P63.E15: getOwnPropertyNames routed through IR.
+        // EXT 84d: Object.getOwnPropertyNames dispatches Proxy.ownKeys
+        // trap when the target is a Proxy, filtering the result to
+        // string-keyed entries per §20.1.2.10. Same trap-callable check
+        // as the other Proxy-aware Object.* methods.
         register_intrinsic_method(self, obj_ctor, "getOwnPropertyNames", 1, |rt, args| {
+            if let Some(Value::Object(id)) = args.first() {
+                if let Some((tgt, handler)) = rt.proxy_target_handler_checked(*id)? {
+                    let trap = rt.object_get(handler, "ownKeys");
+                    if !matches!(trap, Value::Undefined) {
+                        if !rt.is_callable(&trap) {
+                            return Err(RuntimeError::TypeError(
+                                "Proxy 'ownKeys' trap is not callable".into()));
+                        }
+                        let result = rt.call_function(trap, Value::Object(handler), vec![Value::Object(tgt)])?;
+                        let arr_id = match &result {
+                            Value::Object(a) => *a,
+                            _ => return Err(RuntimeError::TypeError(
+                                "Proxy 'ownKeys' trap returned non-Object".into())),
+                        };
+                        let len = rt.array_length(arr_id);
+                        let out = rt.alloc_object(Object::new_array());
+                        let mut j = 0;
+                        for i in 0..len {
+                            let k = rt.object_get(arr_id, &i.to_string());
+                            if let Value::String(_) = &k {
+                                rt.object_set(out, j.to_string(), k);
+                                j += 1;
+                            }
+                        }
+                        rt.object_set(out, "length".into(), Value::Number(j as f64));
+                        return Ok(Value::Object(out));
+                    }
+                    let mut new_args = args.to_vec();
+                    new_args[0] = Value::Object(tgt);
+                    return crate::generated::object_get_own_property_names(rt, Value::Undefined, &new_args);
+                }
+            }
             crate::generated::object_get_own_property_names(rt, Value::Undefined, args)
         });
         // Tier-Ω.5.LLLLLLLL: Object.getOwnPropertySymbols per ECMA-262 §20.1.2.11.
@@ -1258,7 +1294,41 @@ impl Runtime {
         // (es-define-property / set-function-length / onetime) which probe
         // for Symbol.toStringTag / iterator placement.
         // Ω.5.P63.E15: getOwnPropertySymbols routed through IR.
+        // EXT 84d: Object.getOwnPropertySymbols similarly dispatches the
+        // Proxy.ownKeys trap, filtering to Symbol-keyed entries.
         register_intrinsic_method(self, obj_ctor, "getOwnPropertySymbols", 1, |rt, args| {
+            if let Some(Value::Object(id)) = args.first() {
+                if let Some((tgt, handler)) = rt.proxy_target_handler_checked(*id)? {
+                    let trap = rt.object_get(handler, "ownKeys");
+                    if !matches!(trap, Value::Undefined) {
+                        if !rt.is_callable(&trap) {
+                            return Err(RuntimeError::TypeError(
+                                "Proxy 'ownKeys' trap is not callable".into()));
+                        }
+                        let result = rt.call_function(trap, Value::Object(handler), vec![Value::Object(tgt)])?;
+                        let arr_id = match &result {
+                            Value::Object(a) => *a,
+                            _ => return Err(RuntimeError::TypeError(
+                                "Proxy 'ownKeys' trap returned non-Object".into())),
+                        };
+                        let len = rt.array_length(arr_id);
+                        let out = rt.alloc_object(Object::new_array());
+                        let mut j = 0;
+                        for i in 0..len {
+                            let k = rt.object_get(arr_id, &i.to_string());
+                            if let Value::Symbol(_) = &k {
+                                rt.object_set(out, j.to_string(), k);
+                                j += 1;
+                            }
+                        }
+                        rt.object_set(out, "length".into(), Value::Number(j as f64));
+                        return Ok(Value::Object(out));
+                    }
+                    let mut new_args = args.to_vec();
+                    new_args[0] = Value::Object(tgt);
+                    return crate::generated::object_get_own_property_symbols(rt, Value::Undefined, &new_args);
+                }
+            }
             crate::generated::object_get_own_property_symbols(rt, Value::Undefined, args)
         });
         // Object.hasOwn per ECMA 2022 §20.1.2.13 — static convenience for
