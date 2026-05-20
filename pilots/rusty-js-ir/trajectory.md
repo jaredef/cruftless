@@ -1493,3 +1493,54 @@ Pin-Art tag count: 125 commits as of EXT 89.
 **Doc 730 §XIII targeting heuristic #2 (2026-05-20, EXT 86 → 89)**: the Pass C work list ran cleanly through four sequential EXTs landing one column of the InternalMethods<Kind> table at a time, each using a uniform shared-helper shape (apply_proxy_X_invariant). The §XIII pattern — name the collapsed discrimination at the alphabet boundary, then drain consumers through the now-typed primitive — held across both the alphabet level (EXT 82/85) and the helper level (EXT 86-89). The pattern is now load-bearing across the engine.
 
 **§I.1.b corroboration #10 (2026-05-20, EXT 86 → 89)**: five substantive substrate fixes (ProxyOwnPropertyKeys + 11 other §10.5 invariants spread across get/set/has/delete/define/getOwn/getPrototypeOf/setPrototypeOf/isExtensible/preventExtensions) all expressible in the existing alphabet plus the runtime-helper tier. No IR-alphabet additions required. The Tier-1.5 §XIII promotions (Expr::SpecGet, Expr::GetMethod) absorbed cleanly while the IR-tier alphabet remained stable. Doc 730 §XIII does not require alphabet growth at every promotion site — the alphabet can extend horizontally (new typed primitive) AND vertically (new tier) without either disrupting the other.
+
+## IR-EXT 90 → 92 — 2026-05-20 (§XIV deviation alphabet + §XV constraint-comprehension contract — full byte-parity recovery)
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| `9520f504` | IR-EXT 90: first deviation-tier primitive (Doc 730 §XIV) | `Runtime.tolerated_deviations: HashSet<&'static str>` + `__cruftless_tolerate(name)` global intrinsic + first deviation `function-not-constructor-relax` (Op::New's [[Construct]] enforcement falls through to plain call when opted in). Strict-by-default preserved. 8 of 10 EXT 84-89 parity-regressed packages recover under the opt-in. First in-code instance of the §XIV downward-additive alphabet. |
+| `2e6e6413` | IR-EXT 91: protected_invariants on deviation primitives (Doc 730 §XV) | Each registered deviation now carries the §XV.c constraint-comprehension contract — list of (Comprehended `C:<spec_primitive>`, Waived `W:<audit_ref>`, Unknown `U:...`) markers. `__cruftless_tolerate` refuses opt-in on any Unknown marker (the contract's enforcement point). EXT 90's first deviation registered with two Waived invariants referencing the trajectory + Doc 730 §XV.c worked-example paragraph. |
+| `5c79afbc` | IR-EXT 91b + 92: full byte-parity for §XIV-tolerated cluster | EXT 91b: Op::New under the deviation returns call result verbatim (no fresh-Object fallback when return is primitive). EXT 92: Object.keys filters `@@`-prefixed Symbol-as-string keys per §20.1.2.{17,18}. The combined fix: all 8 §XIV-recovered packages now BYTE-PARITY with Bun. |
+
+### The §XV contract held empirically
+
+EXT 91's byte-parity check on the 8 deviation-recovered packages found 4 BYTE-PARITY + 4 +1-keyCount DIVERGE. The DIVERGE pattern was initially read as the §XV protected-invariant violation manifesting (the discarded fresh-Object from Op::New leaking as the extra key). Closer probe (the dayjs-plugin-utc shape inspection) revealed the +1 key was `@@toStringTag` — a pre-existing cruftless bug (Symbol-stored-as-string-with-`@@`-prefix leaking into Object.keys) unrelated to the deviation's Waived invariants.
+
+This is the §XV pipeline operating as designed:
+- The contract surfaced an observable divergence between Bun behavior and cruftless-with-deviation behavior.
+- The engagement audited the divergence against the Waivers.
+- The audit identified the divergence as orthogonal to the Waivers (a separate spec-fidelity gap, not a deviation effect).
+- The fix landed at the §XIII tier (EXT 92), preserving the deviation's Waived invariants as accurate descriptions of what `function-not-constructor-relax` itself absorbs.
+
+The contract did not prevent the bug; it gave the engagement the surface for distinguishing "this divergence is the deviation's fault" from "this divergence is a different gap that happens to surface only when the deviation enables loading the affected package." Without §XV's Waived-invariants list, the engagement would have had no principled way to attribute the +1 leak — both candidate causes (fresh-Object leak vs @@-prefix leak) would have looked equally plausible until manual inspection. The Waivers narrowed the candidate set.
+
+### Substrate at IR-EXT 92 close
+
+**IR alphabet**: 65 nodes (no growth across EXT 90-92; all three EXTs live at the runtime tier).
+
+**Runtime additions**:
+- `Runtime.tolerated_deviations: HashSet<&'static str>` — opt-in deviation set.
+- Global intrinsic `__cruftless_tolerate(name)` — registers a deviation; validates §XV.c contract (Unknown refused).
+- Deviation registry in `intrinsics.rs` — each entry carries (canonical_name, &[protected_invariants]).
+- Op::New `relaxed_non_constructor` flag — gates the fresh-Object fallback under the deviation.
+- `enumerable_own_keys` @@-prefix filter — closes the keyCount-leak class of bugs.
+
+### Cumulative numbers
+
+| Metric | Pre-EXT-90 | Post-EXT-92 | Δ |
+|---|---|---|---|
+| Top500 parity (strict) | 78.3% (803/1026) | 78.3% unchanged | 0 (deviations are opt-in; default unchanged) |
+| Top500 parity (with `function-not-constructor-relax` opted in) | n/a | est. 79.1% (+8 packages recover) | +8 |
+| Byte-parity of recovered packages | n/a | 8/8 BYTE-PARITY | full |
+
+**Session-cumulative wins: +247 chapter test262 wins + 8 §XIV-recovered packages at full byte-parity.**
+
+Pin-Art tag count: 132 commits as of EXT 92.
+
+### Conjecture status
+
+**Doc 730 §XIV corroboration #1 (2026-05-20, EXT 90)**: a single typed deviation primitive at the deviation-tier alphabet recovered 8 of 11 EXT 84-89 parity regressions without compromising strict-spec correctness on the other ~1015 packages. The per-deviation-opt-in design (§XIV.c) demonstrated as the right shape for §XIII-coherent ecosystem tolerance.
+
+**Doc 730 §XV corroboration #1 (2026-05-20, EXT 91 → 91b → 92)**: the constraint-comprehension contract enabled principled attribution of an observable byte-parity divergence between two candidate causes (fresh-Object leak vs @@-prefix leak). The Waived-invariants list narrowed the candidate set; the divergence was correctly identified as a separate §XIII-tier bug rather than a deviation effect. EXT 92's fix landed cleanly at the spec-fidelity tier, preserving the deviation's Waivers as accurate. The two-axis pipeline (spec fidelity ↑ ∥ ecosystem tolerance ↓) operated under the co-evolution contract as Doc 730 §XV designed.
