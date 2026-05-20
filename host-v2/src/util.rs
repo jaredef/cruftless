@@ -14,6 +14,22 @@ pub fn install(rt: &mut Runtime) {
     let util = new_object(rt);
 
     // Tier-Ω.5.nnnnnn: util.debuglog(section) → no-op callable logger.
+    // Ω.5.P06.L3.util-style-text: Node 22+'s util.styleText(format, text)
+    // applies ANSI color codes. Cruftless's v1 stub ignores the format
+    // and returns text verbatim — no ANSI codes, but the function is
+    // callable. Packages that pattern-match on `util.styleText` typeof
+    // === 'function' as a runtime-capability probe (the @inquirer/core
+    // theme.js:5 pattern) load cleanly. Bun renders the codes; cruftless
+    // renders plain text. Output divergence is acceptable for the load-
+    // and-shape probe; a real ANSI implementation is queued for when
+    // terminal-output fidelity becomes load-bearing.
+    register_method(rt, util, "styleText", |_rt, args| {
+        let text = args.get(1).cloned().unwrap_or(Value::Undefined);
+        match text {
+            Value::String(_) => Ok(text),
+            other => Ok(Value::String(Rc::new(format!("{:?}", other)))),
+        }
+    });
     register_method(rt, util, "debuglog", |rt, _args| {
         // Return a callable native function that ignores its args.
         // Reuse the global Function ctor pattern via make-stub-fn.
