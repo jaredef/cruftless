@@ -18,7 +18,12 @@ set -uo pipefail
 TOOLS="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$TOOLS/../.." && pwd)"
 RB="${RB_BIN:-$ROOT/target/release/cruftless}"
-SANDBOX_ROOT="${SANDBOX_ROOT:-/media/jaredef/T7/rusty-bun/parity-sandbox}"
+# Sandbox layout matches parity-measure.sh exactly. The PARITY_SANDBOX
+# env var is the same one parity-measure honors; setting it once in
+# the shell (e.g. export PARITY_SANDBOX=/media/jaredef/T7/rusty-bun/parity-sandbox)
+# points both scripts at the same install tree on the T7 mount so
+# package installs are shared and don't double-cost.
+SANDBOX_ROOT="${PARITY_SANDBOX:-/media/jaredef/T7/rusty-bun/parity-sandbox}"
 LIST="${1:-$TOOLS/parity-exemplars.txt}"
 OUT="${2:-$TOOLS/speed-results.csv}"
 WARM_RUNS=3
