@@ -20,3 +20,6 @@ cranelift-module = "0.118"
 cranelift-native = "0.118"
 
 rusty-js-bytecode = { path = "../../rusty-js-bytecode/derived" }
+
+[dev-dependencies]
+rusty-js-ast = { path = "../../rusty-js-ast" }

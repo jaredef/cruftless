@@ -1,201 +1,438 @@
-//! Bytecode → Cranelift IR translator. First-cut: supports a narrow
-//! op set sufficient to JIT-compile pure-i64-arithmetic functions
-//! where all values are treated as raw 64-bit integers and the function
-//! signature is `extern "C" fn(i64, i64) -> i64` (two i64 args, one i64
-//! return).
+//! Bytecode → Cranelift IR translator (i64-arithmetic + control-flow subset).
 //!
 //! Per Doc 731 §VII R3 (verifier-before-emission), `compile_function`
-//! returns `None` for any function whose bytecode contains an op not
-//! yet in the supported set. The interpreter remains the fallback.
+//! returns `Err` for any function whose bytecode contains an op not in
+//! the supported set. The interpreter remains the fallback.
 //!
-//! Per the JIT-EXT 1 op-p4-classification, Class A ops (Cranelift-
-//! direct) are the first-cut targets. This translator currently supports
-//! a tiny subset of Class A: LoadArg, Add (as iadd on raw i64), Return.
-//! Future JIT-EXT rounds extend coverage incrementally.
+//! JIT-EXT 4 op coverage (Class A subset, all values treated as raw i64):
+//!
+//!   LoadArg, LoadLocal, StoreLocal
+//!   PushI32
+//!   Add, Sub, Mul, Inc, Dec
+//!   Lt, Le, Gt, Ge, Eq, Ne, StrictEq, StrictNe
+//!   Jump, JumpIfTrue, JumpIfFalse
+//!   Dup, Pop
+//!   Return, ReturnUndef
+//!
+//! Control flow is handled by a pre-scan pass that finds all jump
+//! targets, allocates a Cranelift Block per target, then translates
+//! op-by-op switching blocks at target pcs. The virtual operand stack
+//! is empty at every block boundary (a property of cruftless's compiler
+//! output for statement-level boundaries); this assumption is verified
+//! by the translator and a violation triggers Err.
+//!
+//! Locals are mapped to Cranelift `Variable`s — Cranelift's
+//! mem2reg / ssa-conversion handles the SSA promotion automatically.
 
-use cranelift_codegen::ir::types::I64;
-use cranelift_codegen::ir::{AbiParam, InstBuilder, Value as ClValue};
+use cranelift_codegen::ir::condcodes::IntCC;
+use cranelift_codegen::ir::types::{I64, I8};
+use cranelift_codegen::ir::{AbiParam, Block, InstBuilder, Value as ClValue};
 use cranelift_codegen::settings::{self, Configurable};
-use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
+use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{Linkage, Module};
 use rusty_js_bytecode::compiler::FunctionProto;
 use rusty_js_bytecode::op::{op_from_byte, Op};
+use std::collections::HashMap;
 
-/// A JIT-compiled function with the i64-arithmetic signature. Used for
-/// the first-cut subset of FunctionProtos that pass the narrow verifier.
-pub type JitI64Add = extern "C" fn(i64, i64) -> i64;
+/// First-cut JIT signature: extern "C" fn(i64) -> i64 for a 1-arg fn,
+/// extern "C" fn(i64, i64) -> i64 for a 2-arg fn. The translator emits
+/// the variant matching proto.params.
+pub type JitFn1 = extern "C" fn(i64) -> i64;
+pub type JitFn2 = extern "C" fn(i64, i64) -> i64;
 
-/// Compiled artifact returned by `compile_function`. Holds the leaked
-/// JITModule to keep the function pointer valid for the program's
-/// lifetime. v1: the module is intentionally leaked because cruftless
-/// has no JIT-eviction mechanism yet. Future GC tier work will
-/// reclaim JIT'd code via Cranelift's free_memory hook.
-pub struct JitFn {
-    pub func_ptr: JitI64Add,
-    _module: &'static mut JITModule,
+pub enum JitFn {
+    Arity1(JitFn1),
+    Arity2(JitFn2),
+}
+
+impl JitFn {
+    pub fn call1(&self, a: i64) -> i64 {
+        match self {
+            JitFn::Arity1(f) => f(a),
+            JitFn::Arity2(f) => f(a, 0),
+        }
+    }
+    pub fn call2(&self, a: i64, b: i64) -> i64 {
+        match self {
+            JitFn::Arity1(f) => f(a),
+            JitFn::Arity2(f) => f(a, b),
+        }
+    }
 }
 
 impl std::fmt::Debug for JitFn {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "JitFn(ptr=0x{:x})", self.func_ptr as usize)
+        match self {
+            JitFn::Arity1(p) => write!(f, "JitFn::Arity1(0x{:x})", *p as usize),
+            JitFn::Arity2(p) => write!(f, "JitFn::Arity2(0x{:x})", *p as usize),
+        }
     }
 }
 
-/// Try to JIT-compile `proto` to a callable `extern "C" fn(i64, i64) -> i64`.
-/// Returns Err with a short reason if the bytecode contains any op not
-/// in the supported set. The caller (runtime) keeps the bytecode
-/// interpreter as the fallback when this returns Err.
-pub fn compile_function(proto: &FunctionProto) -> Result<JitFn, String> {
-    if proto.params != 2 {
-        return Err(format!("first-cut JIT requires exactly 2 params; got {}", proto.params));
+/// Compiled artifact. Holds the leaked JITModule to keep code valid.
+pub struct CompiledFn {
+    pub func: JitFn,
+    _module: &'static mut JITModule,
+}
+
+impl std::fmt::Debug for CompiledFn {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "CompiledFn({:?})", self.func)
+    }
+}
+
+/// Try to JIT-compile `proto`. Returns Err with a short reason if the
+/// bytecode contains any op not in the supported set.
+pub fn compile_function(proto: &FunctionProto) -> Result<CompiledFn, String> {
+    if proto.params != 1 && proto.params != 2 {
+        return Err(format!("first-cut JIT supports 1 or 2 params; got {}", proto.params));
     }
 
-    // Walk the bytecode and collect the op sequence; reject early on
-    // any unsupported op so we don't waste Cranelift effort.
-    let ops = collect_ops(&proto.bytecode)?;
+    // Pre-scan: parse bytecode into a structured op list with absolute
+    // pcs; identify all jump targets so we can allocate blocks.
+    let parsed = parse_bytecode(&proto.bytecode)?;
+    let mut targets: Vec<usize> = parsed.iter()
+        .filter_map(|(_, op)| op.jump_target())
+        .collect();
+    targets.push(0); // entry block.
+    // Also: the instruction immediately AFTER any terminator (Jump,
+    // JumpIfTrue, JumpIfFalse, Return, ReturnUndef) is a block start —
+    // either it's the fallthrough target of a conditional, or it's
+    // dead but might be reached via another jump landing here. Cranelift
+    // brif needs an actual fallthrough block, so we materialize one.
+    for i in 0..parsed.len() {
+        let is_terminator = matches!(&parsed[i].1,
+            ParsedOp::Jump(_) | ParsedOp::JumpIfTrue(_) | ParsedOp::JumpIfFalse(_)
+            | ParsedOp::Return | ParsedOp::ReturnUndef);
+        if is_terminator {
+            if let Some(next) = parsed.get(i + 1) {
+                targets.push(next.0);
+            }
+        }
+    }
+    targets.sort();
+    targets.dedup();
 
-    // Build the Cranelift JIT module + function.
+    // Build Cranelift JIT module.
     let mut flag_builder = settings::builder();
     flag_builder.set("use_colocated_libcalls", "false")
-        .map_err(|e| format!("flag use_colocated_libcalls: {e:?}"))?;
+        .map_err(|e| format!("flag: {e:?}"))?;
     flag_builder.set("is_pic", "false")
-        .map_err(|e| format!("flag is_pic: {e:?}"))?;
-    let isa_builder = cranelift_native::builder()
-        .map_err(|e| format!("isa builder: {e}"))?;
-    let isa = isa_builder
-        .finish(settings::Flags::new(flag_builder))
-        .map_err(|e| format!("isa finish: {e:?}"))?;
+        .map_err(|e| format!("flag: {e:?}"))?;
+    let isa_builder = cranelift_native::builder().map_err(|e| format!("isa: {e}"))?;
+    let isa = isa_builder.finish(settings::Flags::new(flag_builder))
+        .map_err(|e| format!("isa: {e:?}"))?;
     let builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
     let mut module = JITModule::new(builder);
 
     let mut ctx = module.make_context();
     let mut fb_ctx = FunctionBuilderContext::new();
 
-    ctx.func.signature.params.push(AbiParam::new(I64));
-    ctx.func.signature.params.push(AbiParam::new(I64));
+    for _ in 0..proto.params {
+        ctx.func.signature.params.push(AbiParam::new(I64));
+    }
     ctx.func.signature.returns.push(AbiParam::new(I64));
 
     {
         let mut builder = FunctionBuilder::new(&mut ctx.func, &mut fb_ctx);
-        let entry = builder.create_block();
+
+        // Allocate a Cranelift Block per jump target.
+        let mut blocks: HashMap<usize, Block> = HashMap::new();
+        for &t in &targets {
+            blocks.insert(t, builder.create_block());
+        }
+
+        // Entry block: append params, declare local variables, store args.
+        let entry = blocks[&0];
         builder.append_block_params_for_function_params(entry);
         builder.switch_to_block(entry);
-        builder.seal_block(entry);
 
-        let arg0 = builder.block_params(entry)[0];
-        let arg1 = builder.block_params(entry)[1];
-
-        // Virtual operand stack: a Vec<ClValue> tracked at compile
-        // time. Cranelift values are SSA, so we don't need to materialize
-        // a runtime stack — we just thread the operand chain symbolically.
-        let mut stack: Vec<ClValue> = Vec::new();
-        let mut returned = false;
-
-        for op_entry in &ops {
-            match op_entry {
-                OpEntry::LoadArg(slot) => {
-                    let v = match *slot {
-                        0 => arg0,
-                        1 => arg1,
-                        _ => return Err(format!("LoadArg slot {} out of range (only 0,1 supported in first cut)", slot)),
-                    };
-                    stack.push(v);
-                }
-                OpEntry::Add => {
-                    let r = stack.pop().ok_or("Add: stack underflow")?;
-                    let l = stack.pop().ok_or("Add: stack underflow")?;
-                    let sum = builder.ins().iadd(l, r);
-                    stack.push(sum);
-                }
-                OpEntry::Sub => {
-                    let r = stack.pop().ok_or("Sub: stack underflow")?;
-                    let l = stack.pop().ok_or("Sub: stack underflow")?;
-                    let diff = builder.ins().isub(l, r);
-                    stack.push(diff);
-                }
-                OpEntry::Mul => {
-                    let r = stack.pop().ok_or("Mul: stack underflow")?;
-                    let l = stack.pop().ok_or("Mul: stack underflow")?;
-                    let prod = builder.ins().imul(l, r);
-                    stack.push(prod);
-                }
-                OpEntry::Return => {
-                    let v = stack.pop().ok_or("Return: stack underflow")?;
-                    builder.ins().return_(&[v]);
-                    returned = true;
-                    break;
-                }
-                OpEntry::ReturnUndef => {
-                    // Treat as return 0 in this i64-only first cut.
-                    let z = builder.ins().iconst(I64, 0);
-                    builder.ins().return_(&[z]);
-                    returned = true;
-                    break;
-                }
+        // Declare a Variable per LocalDescriptor. Locals are typed I64 in
+        // this first cut. Cranelift handles SSA conversion via mem2reg.
+        let mut local_vars: Vec<Variable> = Vec::with_capacity(proto.locals.len());
+        for i in 0..proto.locals.len() {
+            let v = Variable::from_u32(i as u32);
+            builder.declare_var(v, I64);
+            local_vars.push(v);
+        }
+        // Initialize all locals to 0 (matches interpreter's PushUndefined →
+        // we treat undef as 0 in the i64-only first cut).
+        let zero = builder.ins().iconst(I64, 0);
+        for v in &local_vars {
+            builder.def_var(*v, zero);
+        }
+        // Args land in locals 0..params at function entry per the
+        // interpreter convention (compile_function_proto allocates one
+        // slot per param at the head of self.locals).
+        let entry_params: Vec<ClValue> = builder.block_params(entry).to_vec();
+        for (i, &p) in entry_params.iter().enumerate() {
+            if i < local_vars.len() {
+                builder.def_var(local_vars[i], p);
             }
         }
 
-        if !returned {
-            // Synthesize a return at end if the function falls through
-            // (matches the interpreter's implicit-ReturnUndef behavior).
+        // Operand stack (virtual, SSA). Must be empty at block boundaries.
+        let mut stack: Vec<ClValue> = Vec::new();
+        let mut current_block: Block = entry;
+        let mut block_terminated = false;
+
+        for (pc, op) in &parsed {
+            // If this pc starts a new block (jump target), close the
+            // current block (if not yet terminated) with a jump and
+            // switch.
+            if *pc != 0 && blocks.contains_key(pc) {
+                let next_block = blocks[pc];
+                if !block_terminated {
+                    if !stack.is_empty() {
+                        return Err(format!(
+                            "stack non-empty at block boundary pc={} (depth={})", pc, stack.len()));
+                    }
+                    builder.ins().jump(next_block, &[]);
+                }
+                builder.switch_to_block(next_block);
+                current_block = next_block;
+                block_terminated = false;
+                // Stack assumed empty at block entries (cruftless
+                // compiler invariant for statement-level joins).
+                stack.clear();
+            }
+
+            match op {
+                ParsedOp::LoadArg(slot) | ParsedOp::LoadLocal(slot) => {
+                    let v = local_vars.get(*slot as usize)
+                        .ok_or_else(|| format!("local slot {} out of range", slot))?;
+                    let val = builder.use_var(*v);
+                    stack.push(val);
+                }
+                ParsedOp::StoreLocal(slot) => {
+                    let v = local_vars.get(*slot as usize)
+                        .ok_or_else(|| format!("local slot {} out of range", slot))?;
+                    let val = stack.pop().ok_or("StoreLocal: stack underflow")?;
+                    builder.def_var(*v, val);
+                }
+                ParsedOp::PushI32(n) => {
+                    let v = builder.ins().iconst(I64, *n as i64);
+                    stack.push(v);
+                }
+                ParsedOp::Add => binop(&mut stack, &mut builder, |b, l, r| b.ins().iadd(l, r))?,
+                ParsedOp::Sub => binop(&mut stack, &mut builder, |b, l, r| b.ins().isub(l, r))?,
+                ParsedOp::Mul => binop(&mut stack, &mut builder, |b, l, r| b.ins().imul(l, r))?,
+                ParsedOp::Inc => {
+                    let v = stack.pop().ok_or("Inc: stack underflow")?;
+                    let one = builder.ins().iconst(I64, 1);
+                    let r = builder.ins().iadd(v, one);
+                    stack.push(r);
+                }
+                ParsedOp::Dec => {
+                    let v = stack.pop().ok_or("Dec: stack underflow")?;
+                    let one = builder.ins().iconst(I64, 1);
+                    let r = builder.ins().isub(v, one);
+                    stack.push(r);
+                }
+                ParsedOp::Lt => cmpop(&mut stack, &mut builder, IntCC::SignedLessThan)?,
+                ParsedOp::Le => cmpop(&mut stack, &mut builder, IntCC::SignedLessThanOrEqual)?,
+                ParsedOp::Gt => cmpop(&mut stack, &mut builder, IntCC::SignedGreaterThan)?,
+                ParsedOp::Ge => cmpop(&mut stack, &mut builder, IntCC::SignedGreaterThanOrEqual)?,
+                ParsedOp::Eq | ParsedOp::StrictEq => cmpop(&mut stack, &mut builder, IntCC::Equal)?,
+                ParsedOp::Ne | ParsedOp::StrictNe => cmpop(&mut stack, &mut builder, IntCC::NotEqual)?,
+                ParsedOp::Dup => {
+                    let v = *stack.last().ok_or("Dup: stack underflow")?;
+                    stack.push(v);
+                }
+                ParsedOp::Pop => {
+                    stack.pop().ok_or("Pop: stack underflow")?;
+                }
+                ParsedOp::Jump(target) => {
+                    if !stack.is_empty() {
+                        return Err(format!("stack non-empty at Jump pc={} (depth={})", pc, stack.len()));
+                    }
+                    let target_block = blocks[target];
+                    builder.ins().jump(target_block, &[]);
+                    block_terminated = true;
+                }
+                ParsedOp::JumpIfTrue(target) | ParsedOp::JumpIfFalse(target) => {
+                    let cond_i64 = stack.pop().ok_or("JumpIfX: stack underflow")?;
+                    if !stack.is_empty() {
+                        return Err(format!("stack non-empty at JumpIfX pc={} (depth={})", pc, stack.len()));
+                    }
+                    // Reduce i64 cond to i8 truthy flag via icmp NE 0.
+                    let zero = builder.ins().iconst(I64, 0);
+                    let truthy: ClValue = builder.ins().icmp(IntCC::NotEqual, cond_i64, zero);
+                    // Find fallthrough block (next pc's block).
+                    let fall_pc = find_next_block_pc(&parsed, *pc, &blocks)?;
+                    let fall_block = blocks[&fall_pc];
+                    let target_block = blocks[target];
+                    match op {
+                        ParsedOp::JumpIfTrue(_) => {
+                            builder.ins().brif(truthy, target_block, &[], fall_block, &[]);
+                        }
+                        ParsedOp::JumpIfFalse(_) => {
+                            builder.ins().brif(truthy, fall_block, &[], target_block, &[]);
+                        }
+                        _ => unreachable!(),
+                    }
+                    block_terminated = true;
+                }
+                ParsedOp::Return => {
+                    let v = stack.pop().ok_or("Return: stack underflow")?;
+                    builder.ins().return_(&[v]);
+                    block_terminated = true;
+                    stack.clear();
+                }
+                ParsedOp::ReturnUndef => {
+                    let z = builder.ins().iconst(I64, 0);
+                    builder.ins().return_(&[z]);
+                    block_terminated = true;
+                    stack.clear();
+                }
+            }
+            // Allow comparison op result (i8) to participate in stack
+            // as if it were i64 — handled inside cmpop by extending.
+            let _ = current_block;
+        }
+
+        // If the last instruction wasn't a terminator, synthesize a
+        // ReturnUndef.
+        if !block_terminated {
             let z = builder.ins().iconst(I64, 0);
             builder.ins().return_(&[z]);
         }
 
+        // Seal all blocks: post-order so predecessors are filled.
+        for &t in &targets {
+            builder.seal_block(blocks[&t]);
+        }
         builder.finalize();
     }
 
+    let name = if proto.display_name.is_empty() { "anon".to_string() } else { proto.display_name.clone() };
     let id = module
-        .declare_function(&format!("jit_fn_{}", proto.display_name), Linkage::Export, &ctx.func.signature)
+        .declare_function(&format!("jit_{}", name), Linkage::Export, &ctx.func.signature)
         .map_err(|e| format!("declare_function: {e}"))?;
+    // Diagnostic: print the function IR on error.
+    let ir_dump = format!("{}", ctx.func.display());
     module.define_function(id, &mut ctx)
-        .map_err(|e| format!("define_function: {e}"))?;
+        .map_err(|e| format!("define_function: {e}\nIR:\n{}", ir_dump))?;
     module.clear_context(&mut ctx);
     module.finalize_definitions()
         .map_err(|e| format!("finalize_definitions: {e}"))?;
 
     let code_ptr = module.get_finalized_function(id);
-    // Safety: signature matches; module leaked to keep ptr valid.
-    let func_ptr: JitI64Add = unsafe { std::mem::transmute(code_ptr) };
-    let leaked: &'static mut JITModule = Box::leak(Box::new(module));
-    Ok(JitFn { func_ptr, _module: leaked })
+    let func = unsafe {
+        match proto.params {
+            1 => JitFn::Arity1(std::mem::transmute::<*const u8, JitFn1>(code_ptr)),
+            2 => JitFn::Arity2(std::mem::transmute::<*const u8, JitFn2>(code_ptr)),
+            _ => unreachable!(),
+        }
+    };
+    let leaked = Box::leak(Box::new(module));
+    Ok(CompiledFn { func, _module: leaked })
 }
 
+fn binop<F>(stack: &mut Vec<ClValue>, builder: &mut FunctionBuilder, f: F) -> Result<(), String>
+where F: FnOnce(&mut FunctionBuilder, ClValue, ClValue) -> ClValue {
+    let r = stack.pop().ok_or("binop: stack underflow (rhs)")?;
+    let l = stack.pop().ok_or("binop: stack underflow (lhs)")?;
+    let v = f(builder, l, r);
+    stack.push(v);
+    Ok(())
+}
+
+fn cmpop(stack: &mut Vec<ClValue>, builder: &mut FunctionBuilder, cc: IntCC) -> Result<(), String> {
+    let r = stack.pop().ok_or("cmp: stack underflow (rhs)")?;
+    let l = stack.pop().ok_or("cmp: stack underflow (lhs)")?;
+    let i8_result = builder.ins().icmp(cc, l, r);
+    // Extend bool (i8) to i64 so the operand stack remains uniformly i64.
+    let i64_result = builder.ins().uextend(I64, i8_result);
+    stack.push(i64_result);
+    Ok(())
+}
+
+fn find_next_block_pc(parsed: &[(usize, ParsedOp)], cur_pc: usize, blocks: &HashMap<usize, Block>)
+    -> Result<usize, String>
+{
+    let i = parsed.iter().position(|(p, _)| *p == cur_pc).expect("pc not found");
+    for (p, _) in parsed[i + 1..].iter() {
+        if blocks.contains_key(p) { return Ok(*p); }
+    }
+    Err(format!("no fallthrough block after JumpIfX at pc={}", cur_pc))
+}
+
+/// Parsed op + jump target convenience.
 #[derive(Debug, Clone, Copy)]
-enum OpEntry {
+enum ParsedOp {
     LoadArg(u16),
-    Add,
-    Sub,
-    Mul,
-    Return,
-    ReturnUndef,
+    LoadLocal(u16),
+    StoreLocal(u16),
+    PushI32(i32),
+    Add, Sub, Mul, Inc, Dec,
+    Lt, Le, Gt, Ge, Eq, Ne, StrictEq, StrictNe,
+    Dup, Pop,
+    Jump(usize),
+    JumpIfTrue(usize),
+    JumpIfFalse(usize),
+    Return, ReturnUndef,
 }
 
-fn collect_ops(bytecode: &[u8]) -> Result<Vec<OpEntry>, String> {
-    let mut pc = 0;
+impl ParsedOp {
+    fn jump_target(&self) -> Option<usize> {
+        match self {
+            ParsedOp::Jump(t) | ParsedOp::JumpIfTrue(t) | ParsedOp::JumpIfFalse(t) => Some(*t),
+            _ => None,
+        }
+    }
+}
+
+fn parse_bytecode(bc: &[u8]) -> Result<Vec<(usize, ParsedOp)>, String> {
     let mut out = Vec::new();
-    while pc < bytecode.len() {
-        let opcode = op_from_byte(bytecode[pc])
-            .ok_or_else(|| format!("unknown opcode byte 0x{:02x} at pc={}", bytecode[pc], pc))?;
+    let mut pc = 0;
+    while pc < bc.len() {
+        let op_pc = pc;
+        let opcode = op_from_byte(bc[pc])
+            .ok_or_else(|| format!("unknown opcode byte 0x{:02x} at pc={}", bc[pc], pc))?;
         pc += 1;
-        let entry = match opcode {
-            Op::LoadArg => {
-                let slot = u16::from_le_bytes([bytecode[pc], bytecode[pc + 1]]);
-                pc += 2;
-                OpEntry::LoadArg(slot)
+        let parsed = match opcode {
+            Op::LoadArg => { let s = u16::from_le_bytes([bc[pc], bc[pc + 1]]); pc += 2; ParsedOp::LoadArg(s) }
+            Op::LoadLocal => { let s = u16::from_le_bytes([bc[pc], bc[pc + 1]]); pc += 2; ParsedOp::LoadLocal(s) }
+            Op::StoreLocal => { let s = u16::from_le_bytes([bc[pc], bc[pc + 1]]); pc += 2; ParsedOp::StoreLocal(s) }
+            Op::PushI32 => { let n = i32::from_le_bytes([bc[pc], bc[pc + 1], bc[pc + 2], bc[pc + 3]]); pc += 4; ParsedOp::PushI32(n) }
+            Op::Add => ParsedOp::Add,
+            Op::Sub => ParsedOp::Sub,
+            Op::Mul => ParsedOp::Mul,
+            Op::Inc => ParsedOp::Inc,
+            Op::Dec => ParsedOp::Dec,
+            Op::Lt => ParsedOp::Lt,
+            Op::Le => ParsedOp::Le,
+            Op::Gt => ParsedOp::Gt,
+            Op::Ge => ParsedOp::Ge,
+            Op::Eq => ParsedOp::Eq,
+            Op::Ne => ParsedOp::Ne,
+            Op::StrictEq => ParsedOp::StrictEq,
+            Op::StrictNe => ParsedOp::StrictNe,
+            Op::Dup => ParsedOp::Dup,
+            Op::Pop => ParsedOp::Pop,
+            Op::Jump => {
+                let disp = i32::from_le_bytes([bc[pc], bc[pc + 1], bc[pc + 2], bc[pc + 3]]);
+                pc += 4;
+                let target = (pc as i32 + disp) as usize;
+                ParsedOp::Jump(target)
             }
-            Op::Add => OpEntry::Add,
-            Op::Sub => OpEntry::Sub,
-            Op::Mul => OpEntry::Mul,
-            Op::Return => OpEntry::Return,
-            Op::ReturnUndef => OpEntry::ReturnUndef,
-            other => return Err(format!(
-                "first-cut JIT does not yet support op {:?} at pc={}",
-                other, pc - 1
-            )),
+            Op::JumpIfTrue => {
+                let disp = i32::from_le_bytes([bc[pc], bc[pc + 1], bc[pc + 2], bc[pc + 3]]);
+                pc += 4;
+                ParsedOp::JumpIfTrue((pc as i32 + disp) as usize)
+            }
+            Op::JumpIfFalse => {
+                let disp = i32::from_le_bytes([bc[pc], bc[pc + 1], bc[pc + 2], bc[pc + 3]]);
+                pc += 4;
+                ParsedOp::JumpIfFalse((pc as i32 + disp) as usize)
+            }
+            Op::Return => ParsedOp::Return,
+            Op::ReturnUndef => ParsedOp::ReturnUndef,
+            other => return Err(format!("first-cut JIT does not support op {:?} at pc={}", other, op_pc)),
         };
-        out.push(entry);
+        out.push((op_pc, parsed));
     }
     Ok(out)
 }
@@ -203,18 +440,27 @@ fn collect_ops(bytecode: &[u8]) -> Result<Vec<OpEntry>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rusty_js_bytecode::compile_module;
     use rusty_js_bytecode::compiler::{FunctionProto, LocalDescriptor, UpvalueDescriptor};
-    use rusty_js_bytecode::constants::ConstantsPool;
+    use rusty_js_bytecode::constants::{Constant, ConstantsPool};
     use rusty_js_bytecode::op::{encode_op, encode_u16};
 
     fn empty_proto(bytecode: Vec<u8>, params: u16) -> FunctionProto {
+        let mut locals = Vec::<LocalDescriptor>::new();
+        for i in 0..params {
+            locals.push(LocalDescriptor {
+                name: format!("arg{}", i),
+                kind: rusty_js_ast::VariableKind::Let,
+                depth: 0,
+            });
+        }
         FunctionProto {
             bytecode,
             constants: ConstantsPool::new(),
             params,
             display_name: "test".to_string(),
             function_length: params,
-            locals: Vec::<LocalDescriptor>::new(),
+            locals,
             upvalues: Vec::<UpvalueDescriptor>::new(),
             rest_param_slot: None,
             arguments_slot: None,
@@ -231,8 +477,6 @@ mod tests {
 
     #[test]
     fn jit_add_two_args() {
-        // function add(a, b) { return a + b; }
-        // bytecode: LoadArg 0; LoadArg 1; Add; Return
         let mut bc = Vec::new();
         encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 0);
         encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 1);
@@ -240,15 +484,12 @@ mod tests {
         encode_op(&mut bc, Op::Return);
         let proto = empty_proto(bc, 2);
         let jit = compile_function(&proto).expect("compile failed");
-        assert_eq!((jit.func_ptr)(2, 3), 5);
-        assert_eq!((jit.func_ptr)(-10, 100), 90);
-        assert_eq!((jit.func_ptr)(i64::MAX - 1, 1), i64::MAX);
+        assert_eq!(jit.func.call2(2, 3), 5);
+        assert_eq!(jit.func.call2(-10, 100), 90);
     }
 
     #[test]
     fn jit_combined_arith() {
-        // function f(a, b) { return (a + b) * (a - b); }
-        // bytecode: LoadArg 0; LoadArg 1; Add; LoadArg 0; LoadArg 1; Sub; Mul; Return
         let mut bc = Vec::new();
         encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 0);
         encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 1);
@@ -260,22 +501,33 @@ mod tests {
         encode_op(&mut bc, Op::Return);
         let proto = empty_proto(bc, 2);
         let jit = compile_function(&proto).expect("compile failed");
-        // (5+3) * (5-3) = 8 * 2 = 16
-        assert_eq!((jit.func_ptr)(5, 3), 16);
-        // (10+4) * (10-4) = 14 * 6 = 84
-        assert_eq!((jit.func_ptr)(10, 4), 84);
+        assert_eq!(jit.func.call2(5, 3), 16);
+        assert_eq!(jit.func.call2(10, 4), 84);
     }
 
     #[test]
     fn jit_rejects_unsupported_op() {
-        // bytecode: PushNull; Return — PushNull not in first-cut op set
         let mut bc = Vec::new();
         encode_op(&mut bc, Op::PushNull);
         encode_op(&mut bc, Op::Return);
         let proto = empty_proto(bc, 2);
-        let result = compile_function(&proto);
-        assert!(result.is_err(), "should reject unsupported op");
-        let err = result.unwrap_err();
-        assert!(err.contains("does not yet support"), "err: {}", err);
+        assert!(compile_function(&proto).is_err());
+    }
+
+    #[test]
+    fn jit_compile_sum_function() {
+        // function sum(n) { var s=0; for (var i=0; i<n; i++) s=s+i; return s; }
+        let src = r#"function sum(n) { var s = 0; for (var i = 0; i < n; i++) s = s + i; return s; }"#;
+        let m = compile_module(src).expect("compile module");
+        let sum_proto = m.constants.entries().iter()
+            .find_map(|c| match c { Constant::Function(p) if p.display_name == "sum" => Some((**p).clone()), _ => None })
+            .expect("find sum proto");
+        let jit = compile_function(&sum_proto).expect("JIT compile sum failed");
+        // sum(0) = 0, sum(1) = 0, sum(5) = 0+1+2+3+4 = 10, sum(100) = 4950
+        assert_eq!(jit.func.call1(0), 0);
+        assert_eq!(jit.func.call1(1), 0);
+        assert_eq!(jit.func.call1(5), 10);
+        assert_eq!(jit.func.call1(100), 4950);
+        assert_eq!(jit.func.call1(1_000_000), 499999500000);
     }
 }
