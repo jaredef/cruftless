@@ -2258,12 +2258,19 @@ impl Runtime {
     /// IR-EXT 69: Get(source, key) — invokes accessor getters if present.
     /// Thin wrapper exposing read_property as a CallBuiltin target.
     pub fn get_via(&mut self, source: &Value, key: &Value) -> Result<Value, RuntimeError> {
-        let id = match source {
-            Value::Object(id) => *id,
-            _ => return Ok(Value::Undefined),
-        };
+        // EXT 82b / Tier-1.5: promote the IR-emitted `get_via` (used by
+        // CallBuiltin{name:"get_via"} for computed-method-name lookups in
+        // ToPrimitive m1/m2 and elsewhere) to the spec-correct §7.3.2
+        // [[Get]] path. This dispatches Proxy.get traps so a Proxy
+        // receiver's user `get` handler fires on valueOf / toString /
+        // computed-key lookups inside ToPrimitive, matching what EXT 82
+        // already did for the literal @@toPrimitive lookup via
+        // Expr::SpecGet. Doc 730 §XIII: each IR-emitted Get-shape
+        // primitive lowers to the Proxy-aware path; bypass remains
+        // available via object_get / read_property when the spec
+        // explicitly names an internal slot.
         let k = self.coerce_to_string(key)?;
-        self.read_property(id, &k)
+        self.spec_get(source, &k)
     }
 
     /// IR-EXT 69: Set(target, key, value) — non-throwing assign that goes

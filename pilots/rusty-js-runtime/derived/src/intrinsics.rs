@@ -3175,11 +3175,11 @@ impl Runtime {
             let arg_list: Vec<Value> = match args.get(2) {
                 Some(Value::Object(arr)) => {
                     let arr_v = Value::Object(*arr);
-                    let len_v = rt.read_property_via(&arr_v, "length")?;
+                    let len_v = rt.spec_get(&arr_v, "length")?;
                     let len = crate::abstract_ops::to_number(&len_v) as usize;
                     let mut v = Vec::with_capacity(len);
                     for i in 0..len {
-                        v.push(rt.read_property_via(&arr_v, &i.to_string())?);
+                        v.push(rt.spec_get(&arr_v, &i.to_string())?);
                     }
                     v
                 }
@@ -3218,11 +3218,11 @@ impl Runtime {
             let arg_list: Vec<Value> = match args.get(1) {
                 Some(Value::Object(arr)) => {
                     let arr_v = Value::Object(*arr);
-                    let len_v = rt.read_property_via(&arr_v, "length")?;
+                    let len_v = rt.spec_get(&arr_v, "length")?;
                     let len = crate::abstract_ops::to_number(&len_v) as usize;
                     let mut v = Vec::with_capacity(len);
                     for i in 0..len {
-                        v.push(rt.read_property_via(&arr_v, &i.to_string())?);
+                        v.push(rt.spec_get(&arr_v, &i.to_string())?);
                     }
                     v
                 }
