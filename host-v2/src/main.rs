@@ -71,9 +71,26 @@ fn main() -> ExitCode {
         }
     }
 
+    let t_loop = if std::env::var("CRUFTLESS_PROFILE").is_ok() {
+        Some(std::time::Instant::now())
+    } else { None };
     if let Err(e) = rt.run_to_completion() {
         eprintln!("cruftless: event-loop error: {:?}", e);
         return ExitCode::from(70);
+    }
+    if let Some(t) = t_loop {
+        use rusty_js_runtime::module::phase_profile as pp;
+        let loop_ns = t.elapsed().as_nanos() as u64;
+        let parse = pp::read(&pp::PARSE_NS);
+        let compile = pp::read(&pp::COMPILE_NS);
+        let eval = pp::read(&pp::EVAL_NS);
+        let modules = pp::read(&pp::MODULE_COUNT);
+        let ms = |n: u64| (n as f64) / 1.0e6;
+        eprintln!(
+            "cruftless-profile: modules={} parse={:.1}ms compile={:.1}ms eval={:.1}ms event_loop={:.1}ms total_phases={:.1}ms",
+            modules, ms(parse), ms(compile), ms(eval), ms(loop_ns),
+            ms(parse + compile + eval + loop_ns),
+        );
     }
 
     let unhandled = rt.drain_unhandled_rejections();

@@ -34,6 +34,28 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+// Env-gated phase timing. Active only when CRUFTLESS_PROFILE is set.
+// Atomic accumulators sum across nested evaluations (e.g. each
+// require() re-enters this module), giving total time spent in each
+// phase for the whole run. Zero cost when disabled (one atomic load
+// + branch).
+pub mod phase_profile {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::OnceLock;
+    pub static PARSE_NS: AtomicU64 = AtomicU64::new(0);
+    pub static COMPILE_NS: AtomicU64 = AtomicU64::new(0);
+    pub static EVAL_NS: AtomicU64 = AtomicU64::new(0);
+    pub static MODULE_COUNT: AtomicU64 = AtomicU64::new(0);
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    pub fn enabled() -> bool {
+        *ENABLED.get_or_init(|| std::env::var("CRUFTLESS_PROFILE").is_ok())
+    }
+    pub fn add(c: &'static AtomicU64, ns: u64) {
+        c.fetch_add(ns, Ordering::Relaxed);
+    }
+    pub fn read(c: &'static AtomicU64) -> u64 { c.load(Ordering::Relaxed) }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModuleStatus { Unlinked, Linking, Linked, Evaluating, Evaluated, Failed }
 
@@ -764,12 +786,18 @@ impl Runtime {
     /// build namespace + invoke HostFinalizeModuleNamespace. Returns
     /// the namespace ObjectRef per spec §16.2.1.10.
     pub fn evaluate_module(&mut self, source: &str, url: &str) -> Result<ObjectRef, RuntimeError> {
+        let _prof = phase_profile::enabled();
         // Parse + compile.
+        let t0 = if _prof { Some(std::time::Instant::now()) } else { None };
         let ast = rusty_js_parser::parse_module(source)
             .map_err(|e| RuntimeError::CompileError(format!("parse: {} @byte{} @url={}", e.message, e.span.start, url)))?;
+        if let Some(t) = t0 { phase_profile::add(&phase_profile::PARSE_NS, t.elapsed().as_nanos() as u64); }
         let ast_rc = Rc::new(ast);
+        let t1 = if _prof { Some(std::time::Instant::now()) } else { None };
         let bytecode = rusty_js_bytecode::compile_module_with_url(source, url)
             .map_err(|e| RuntimeError::CompileError(format!("compile: {}", e.message)))?;
+        if let Some(t) = t1 { phase_profile::add(&phase_profile::COMPILE_NS, t.elapsed().as_nanos() as u64); }
+        if _prof { phase_profile::MODULE_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed); }
         let bytecode_rc = Rc::new(bytecode);
 
         // Pre-allocate this module's namespace + insert a Linking entry
@@ -959,7 +987,9 @@ impl Runtime {
         // Ω.5.P45.E1: push current module URL so __dynamic_import can
         // resolve relative specifiers against the real caller.
         self.current_module_url.push(url.to_string());
+        let t_eval = if phase_profile::enabled() { Some(std::time::Instant::now()) } else { None };
         let run_result = self.run_frame_module(&mut frame);
+        if let Some(t) = t_eval { phase_profile::add(&phase_profile::EVAL_NS, t.elapsed().as_nanos() as u64); }
         self.current_module_url.pop();
         // Ω.5.P54.E8 (Axis-E probe extension): record throws too.
         // Without this, post_eval_trace was empty for any module that
@@ -1150,11 +1180,17 @@ impl Runtime {
         );
 
         // Parse + compile the wrapper. Reuse the existing ESM pipeline.
+        let _prof = phase_profile::enabled();
+        let t0 = if _prof { Some(std::time::Instant::now()) } else { None };
         let ast = rusty_js_parser::parse_module(&wrapped)
             .map_err(|e| RuntimeError::CompileError(format!("parse (cjs wrapper): {} @byte{} @url={}", e.message, e.span.start, url)))?;
+        if let Some(t) = t0 { phase_profile::add(&phase_profile::PARSE_NS, t.elapsed().as_nanos() as u64); }
         let _ast_rc = Rc::new(ast);
+        let t1 = if _prof { Some(std::time::Instant::now()) } else { None };
         let bytecode = rusty_js_bytecode::compile_module_with_url(&wrapped, url)
             .map_err(|e| RuntimeError::CompileError(format!("compile (cjs wrapper): {}", e.message)))?;
+        if let Some(t) = t1 { phase_profile::add(&phase_profile::COMPILE_NS, t.elapsed().as_nanos() as u64); }
+        if _prof { phase_profile::MODULE_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed); }
         let bytecode_rc = Rc::new(bytecode);
 
         // Run the wrapper's outer module body. No imports/re-exports
@@ -1166,7 +1202,9 @@ impl Runtime {
         let mut frame = Frame::new_module(&bytecode_rc);
         frame.source_url = url;
         self.current_module_url.push(url.to_string());
+        let t_eval = if phase_profile::enabled() { Some(std::time::Instant::now()) } else { None };
         let run_result = self.run_frame_module(&mut frame);
+        if let Some(t) = t_eval { phase_profile::add(&phase_profile::EVAL_NS, t.elapsed().as_nanos() as u64); }
         self.current_module_url.pop();
         if let Err(e) = &run_result {
             self.module_post_eval_trace.insert(
