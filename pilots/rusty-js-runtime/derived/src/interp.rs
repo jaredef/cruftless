@@ -346,6 +346,8 @@ impl Runtime {
             Value::Boolean(b) => {
                 let mut o = crate::value::Object::new_ordinary();
                 o.set_own_internal("__primitive__".into(), Value::Boolean(*b));
+                // EXT 83: [[BooleanData]] internal slot brand.
+                o.internal_kind = crate::value::InternalKind::BooleanWrapper(Value::Boolean(*b));
                 if let Some(Value::Object(bid)) = self.globals.get("Boolean").cloned() {
                     if let Value::Object(p) = self.object_get(bid, "prototype") {
                         o.proto = Some(p);
@@ -356,12 +358,16 @@ impl Runtime {
             Value::Number(n) => {
                 let mut o = crate::value::Object::new_ordinary();
                 o.set_own_internal("__primitive__".into(), Value::Number(*n));
+                // EXT 83: [[NumberData]] internal slot brand.
+                o.internal_kind = crate::value::InternalKind::NumberWrapper(Value::Number(*n));
                 if let Some(p) = self.number_prototype { o.proto = Some(p); }
                 Ok(Value::Object(self.alloc_object(o)))
             }
             Value::String(s) => {
                 let mut o = crate::value::Object::new_ordinary();
                 o.set_own_internal("__primitive__".into(), Value::String(s.clone()));
+                // EXT 83: [[StringData]] internal slot brand.
+                o.internal_kind = crate::value::InternalKind::StringWrapper(Value::String(s.clone()));
                 let n = s.chars().count();
                 for (i, c) in s.chars().enumerate() {
                     o.set_own(i.to_string(), Value::String(std::rc::Rc::new(c.to_string())));
@@ -371,7 +377,18 @@ impl Runtime {
                 if let Some(p) = self.string_prototype { o.proto = Some(p); }
                 Ok(Value::Object(self.alloc_object(o)))
             }
-            Value::BigInt(_) | Value::Symbol(_) => Ok(v.clone()),
+            Value::BigInt(b) => {
+                // EXT 83: ECMA §7.1.18 ToObject for BigInt — produces a
+                // BigInt-wrapper object with [[BigIntData]]. Previously
+                // returned the BigInt unchanged, defeating Object(bigint)
+                // and the ToPrimitive unbox path.
+                let mut o = crate::value::Object::new_ordinary();
+                o.set_own_internal("__primitive__".into(), Value::BigInt(b.clone()));
+                o.internal_kind = crate::value::InternalKind::BigIntWrapper(Value::BigInt(b.clone()));
+                if let Some(p) = self.bigint_prototype { o.proto = Some(p); }
+                Ok(Value::Object(self.alloc_object(o)))
+            }
+            Value::Symbol(_) => Ok(v.clone()),
         }
     }
 
@@ -2765,6 +2782,14 @@ impl Runtime {
                         crate::value::InternalKind::Promise(_) => "Promise",
                         crate::value::InternalKind::Error => "Error",
                         crate::value::InternalKind::RegExp(_) => "RegExp",
+                        // EXT 83: primitive-wrapper brand strings per
+                        // §20.1.3.6 step 14. Without these, Object(0n)
+                        // and new Number/String/Boolean(...) all report
+                        // "[object Object]" instead of the spec brand.
+                        crate::value::InternalKind::NumberWrapper(_) => "Number",
+                        crate::value::InternalKind::StringWrapper(_) => "String",
+                        crate::value::InternalKind::BooleanWrapper(_) => "Boolean",
+                        crate::value::InternalKind::BigIntWrapper(_) => "BigInt",
                         _ => "Object",
                     }.to_string()
                 };

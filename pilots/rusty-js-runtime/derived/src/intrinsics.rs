@@ -1106,12 +1106,21 @@ impl Runtime {
         // object.getownpropertydescriptors / power-assert / single-line-log
         // all invoke `Object(x)` or `new Object()` at module-init.
         let obj_ctor_native = make_native("Object", |rt, args| {
+            // EXT 83: ECMA §20.1.1.1 Object(value).
+            // - undefined / null / no arg → fresh ordinary Object.
+            // - Object → pass through.
+            // - primitive (Number / String / Boolean / BigInt / Symbol)
+            //   → box via ToObject so the result carries the spec
+            //   [[NumberData]] / [[StringData]] / [[BooleanData]] /
+            //   [[BigIntData]] internal slot and Object.prototype.toString
+            //   reports "[object Number]" et al. Previously every primitive
+            //   path returned a fresh ordinary Object, defeating the brand.
             match args.first() {
                 None | Some(Value::Undefined) | Some(Value::Null) => {
                     Ok(Value::Object(rt.alloc_object(Object::new_ordinary())))
                 }
                 Some(v @ Value::Object(_)) => Ok(v.clone()),
-                Some(_) => Ok(Value::Object(rt.alloc_object(Object::new_ordinary()))),
+                Some(v) => rt.to_object(v),
             }
         });
         let obj_ctor = self.alloc_object(obj_ctor_native);
@@ -1329,6 +1338,9 @@ impl Runtime {
             if rt.current_new_target.is_some() {
                 let mut obj = crate::value::Object::new_ordinary();
                 obj.set_own_internal("__primitive__".into(), Value::Number(n));
+                // EXT 83: tag [[NumberData]] internal slot so
+                // Object.prototype.toString reports "[object Number]".
+                obj.internal_kind = crate::value::InternalKind::NumberWrapper(Value::Number(n));
                 let proto = match rt.globals.get("Number").cloned() {
                     Some(Value::Object(id)) => match rt.object_get(id, "prototype") {
                         Value::Object(p) => Some(p), _ => None,
@@ -1424,6 +1436,8 @@ impl Runtime {
             if rt.current_new_target.is_some() {
                 let mut obj = crate::value::Object::new_ordinary();
                 obj.set_own_internal("__primitive__".into(), Value::String(s_rc.clone()));
+                // EXT 83: tag [[StringData]] for Object.prototype.toString brand.
+                obj.internal_kind = crate::value::InternalKind::StringWrapper(Value::String(s_rc.clone()));
                 // Index-access compatibility: install per-char own props +
                 // length so `new String("ab")[0]` reads "a" and "length"
                 // is the codepoint count. Spec models these as exotic
@@ -1937,8 +1951,17 @@ impl Runtime {
         // primitive / is-bigint reach for `BigInt.prototype.valueOf`.
         let bi_proto = self.alloc_object(Object::new_ordinary());
         register_intrinsic_method(self, bi_proto, "valueOf", 0, |rt, _args| {
+            // EXT 83: ThisBigIntValue per §21.2.3 — unwraps a BigInt
+            // wrapper object via its [[BigIntData]] internal slot in
+            // addition to the bare BigInt case.
             match rt.current_this() {
                 Value::BigInt(b) => Ok(Value::BigInt(b)),
+                Value::Object(id) => {
+                    if let crate::value::InternalKind::BigIntWrapper(v) = &rt.obj(id).internal_kind {
+                        return Ok(v.clone());
+                    }
+                    Err(RuntimeError::TypeError("BigInt.prototype.valueOf: this is not a BigInt".into()))
+                }
                 _ => Err(RuntimeError::TypeError("BigInt.prototype.valueOf: this is not a BigInt".into())),
             }
         });
@@ -1958,6 +1981,8 @@ impl Runtime {
             if rt.current_new_target.is_some() {
                 let mut obj = crate::value::Object::new_ordinary();
                 obj.set_own_internal("__primitive__".into(), Value::Boolean(b));
+                // EXT 83: tag [[BooleanData]] for Object.prototype.toString brand.
+                obj.internal_kind = crate::value::InternalKind::BooleanWrapper(Value::Boolean(b));
                 let proto = match rt.globals.get("Boolean").cloned() {
                     Some(Value::Object(id)) => match rt.object_get(id, "prototype") {
                         Value::Object(p) => Some(p), _ => None,

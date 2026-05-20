@@ -394,6 +394,17 @@ pub enum InternalKind {
     /// through the handler's traps when present; missing-trap path
     /// delegates to the target.
     Proxy(ProxyInternals),
+    /// EXT 83: primitive-wrapper internal slots per ECMA-262 §20.{3,4,5}.
+    /// new Number(0) carries [[NumberData]]; new String("x") carries
+    /// [[StringData]]; new Boolean(true) carries [[BooleanData]]. The
+    /// stored Value is the boxed primitive, returned by the matching
+    /// prototype's valueOf and used by Object.prototype.toString to
+    /// produce the brand string ("[object Number]" / "[object String]" /
+    /// "[object Boolean]") per §20.1.3.6 step 14.
+    NumberWrapper(Value),
+    StringWrapper(Value),
+    BooleanWrapper(Value),
+    BigIntWrapper(Value),
 }
 
 #[derive(Debug)]
@@ -564,6 +575,10 @@ impl InternalKind {
             InternalKind::ModuleNamespace => "module-namespace",
             InternalKind::RegExp(_) => "regexp",
             InternalKind::Proxy(_) => "proxy",
+            InternalKind::NumberWrapper(_) => "number-wrapper",
+            InternalKind::StringWrapper(_) => "string-wrapper",
+            InternalKind::BooleanWrapper(_) => "boolean-wrapper",
+            InternalKind::BigIntWrapper(_) => "bigint-wrapper",
         }
     }
 }
