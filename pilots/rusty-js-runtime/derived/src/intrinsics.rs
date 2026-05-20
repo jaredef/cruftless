@@ -919,30 +919,76 @@ impl Runtime {
         // resolve via globalThis at runtime. Module-init usually doesn't
         // invoke the deprecation wrapper, so the package loads — the
         // wrapper would only throw at the deprecation site itself.
-        // EXT 90 / Doc 730 §XIV: __cruftless_tolerate(name) opts into
-        // the named deviation at the deviation-tier alphabet. Strict-by-
-        // default is preserved; consumer code (or a host wrapper script)
-        // calls this once to relax a specific spec-correct rejection
-        // that the consumer's dependency tree depends on Bun absorbing.
-        // Known deviations:
-        //   "function-not-constructor-relax" — Op::New on non-constructor
-        //     Function intrinsics falls through to plain call (Bun shape).
-        // The CRUFTLESS_TOLERATE env var (parsed at engine init in a
-        // future EXT) will allow the same opt-in without source-level
-        // calls; this intrinsic is the JS-side handle.
+        // EXT 90 / Doc 730 §XIV + EXT 91 / Doc 730 §XV:
+        // __cruftless_tolerate(name) opts into the named deviation at the
+        // deviation-tier alphabet — strict-by-default is preserved;
+        // consumer code (or a host wrapper script) calls this once to
+        // relax a specific spec-correct rejection that the consumer's
+        // dependency tree depends on Bun absorbing.
+        //
+        // Per §XV's constraint-comprehension contract, each deviation
+        // primitive carries a 5-field shape:
+        //   (name, pattern, strict_rejection, tolerant_lowering, diagnostic)
+        // plus a protected_invariants list — each invariant either
+        // Comprehended (the strict_rejection's spec purpose has been
+        // typed as a §XIII primitive) or Waived (the engagement has
+        // explicitly accepted enabling the deviation without typing
+        // the invariant, with a reference to the trajectory entry that
+        // records the consumer-impact analysis).
+        //
+        // The known-deviations registry below carries the contract
+        // inline. Adding a new deviation requires either lifting its
+        // protected invariants to §XIII primitives or recording the
+        // Waived entry against a trajectory commit.
         register_global_fn(self, "__cruftless_tolerate", |rt, args| {
             let name = match args.first() {
                 Some(Value::String(s)) => s.as_str().to_string(),
                 _ => return Err(RuntimeError::TypeError(
                     "__cruftless_tolerate: expected string deviation name".into())),
             };
-            // Match against known deviations and insert by &'static str.
-            let known: &str = match name.as_str() {
-                "function-not-constructor-relax" => "function-not-constructor-relax",
-                _ => return Err(RuntimeError::RangeError(format!(
+            // Deviation registry. Each entry: (name, [protected_invariants]).
+            // Each protected_invariant is "C:<spec_primitive>" (Comprehended)
+            // or "W:<waiver_ref>" (Waived per §XV.c).
+            let known: Option<(&'static str, &[&'static str])> = match name.as_str() {
+                "function-not-constructor-relax" => Some((
+                    "function-not-constructor-relax",
+                    &[
+                        // Waiver #1: the spec rule (§10.3.3 + EvaluateNew step 7)
+                        // is placed to protect callers whose non-constructor
+                        // function bodies make this-write assumptions that
+                        // assume `this` is the caller-supplied receiver, not a
+                        // freshly allocated ordinary Object. Under the deviation
+                        // those writes silently land in the discarded fresh
+                        // Object. Waived for v1: engagement decision to accept
+                        // the tradeoff for the 8-of-11 EXT-90 parity recovery;
+                        // recorded against trajectory entry EXT 90 (commit
+                        // 9520f504) + Doc 730 §XV.c paragraph naming this
+                        // specific waiver as the worked example.
+                        "W:EXT-90:non-constructor-this-write-assumption",
+                        // Waiver #2: callers using `new fn()` as a runtime
+                        // type-check (expecting TypeError on non-constructor)
+                        // lose that signal under the deviation. Same trajectory
+                        // reference; same engagement-decision rationale.
+                        "W:EXT-90:typeerror-as-runtime-type-check",
+                    ],
+                )),
+                _ => None,
+            };
+            let (canon, protected): (&'static str, &[&'static str]) = match known {
+                Some(p) => p,
+                None => return Err(RuntimeError::RangeError(format!(
                     "__cruftless_tolerate: unknown deviation '{}'", name))),
             };
-            rt.tolerated_deviations.insert(known);
+            // §XV.c: refuse to opt in if any protected invariant carries
+            // an Unknown marker ("U:..."). Comprehended (C:) and Waived
+            // (W:) entries pass.
+            for inv in protected {
+                if inv.starts_with("U:") {
+                    return Err(RuntimeError::TypeError(format!(
+                        "__cruftless_tolerate('{}'): refused — protected_invariant '{}' is Unknown (§XV.c contract violation; lift to §XIII typed primitive or convert to Waived entry first)", canon, inv)));
+                }
+            }
+            rt.tolerated_deviations.insert(canon);
             Ok(Value::Undefined)
         });
         register_global_fn(self, "eval", |rt, args| {

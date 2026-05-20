@@ -130,6 +130,15 @@ pub struct Runtime {
     /// the matching name is present, they downgrade the TypeError to a
     /// tolerant lowering (with a diagnostic surface). Strict-by-default
     /// is preserved; consumer code opts in via __cruftless_tolerate(name).
+    ///
+    /// EXT 91 / Doc 730 §XV: each entry's value is the deviation's
+    /// constraint-comprehension contract — the list of protected
+    /// invariants the strict_rejection enforces, each either
+    /// Comprehended(name of a typed §XIII primitive) or
+    /// Waived(audit-reference text). __cruftless_tolerate refuses to
+    /// opt into a deviation whose protected_invariants contain any
+    /// Unknown entries; Waived entries are accepted on the audit
+    /// reference.
     pub tolerated_deviations: HashSet<&'static str>,
     /// Tier-Ω.5.s: `new.target` slot pending injection into the next
     /// closure frame to be entered via `call_function`. Set by Op::New
