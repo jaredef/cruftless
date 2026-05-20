@@ -530,9 +530,50 @@ impl Compiler {
         // mode, producing `this = globalThis` for unbound method calls
         // where the spec mandates `this = undefined`.
         let is_mjs_url = self.source_url.ends_with(".mjs");
-        self.strict = is_mjs_url
-            || has_module_syntax
-            || directive_has_use_strict(&leading_stmts);
+        // Ω.5.P05.L0.cjs-wrapper-sloppy-default: cruftless wraps each
+        // CJS module body in `export default (function (exports, module,
+        // require, __filename, __dirname) { <source> })` for bytecode-
+        // delivery purposes (see evaluate_cjs_module). That outer wrapper
+        // is an ES module syntactically (it has `export default`), which
+        // pre-substrate triggered the has_module_syntax → strict
+        // promotion. Per spec, CJS bodies in Node default to SLOPPY
+        // mode unless the body itself opens with a "use strict"
+        // directive prologue. The inner function's compile then picks
+        // strict up from its own body if the prologue is present.
+        // Detect the CJS wrapper by exact-signature match on the
+        // generated wrapping form, and override strict=false for the
+        // outer module. The inner function's own directive-prologue
+        // scan (compile_function_proto_with_name_hint:strict) continues
+        // to flip strict on if the body opts in via "use strict".
+        //
+        // Without this, packages whose CJS bodies depend on sloppy-mode
+        // global creation (icalendar's bare `PROP_NAME = 0` at module
+        // top; ethereumjs-* family; many older npm packages) crashed on
+        // ReferenceError after Ω.5.P04.E2.strict-write-enforcement.
+        let is_cjs_wrapper = m.body.len() == 1 && match m.body.first() {
+            Some(ModuleItem::Export(rusty_js_ast::ExportDeclaration::Default {
+                body: rusty_js_ast::DefaultExportBody::Expression { expr },
+                ..
+            })) => {
+                // Peel one Parenthesized layer — the wrap is
+                // `export default (function ...)` and the parser
+                // preserves the parens around the function expression.
+                let inner = match expr {
+                    rusty_js_ast::Expr::Parenthesized { expr: e, .. } => e.as_ref(),
+                    other => other,
+                };
+                matches!(inner, rusty_js_ast::Expr::Function { params, .. }
+                    if params.len() == 5
+                    && params.iter().zip(["exports","module","require","__filename","__dirname"].iter())
+                        .all(|(p, expected)| matches!(&p.target,
+                            rusty_js_ast::BindingPattern::Identifier(id) if id.name == **expected)))
+            }
+            _ => false,
+        };
+        self.strict = (!is_cjs_wrapper)
+            && (is_mjs_url
+                || has_module_syntax
+                || directive_has_use_strict(&leading_stmts));
         // Tier-Ω.5.b phase A: pre-allocate locals for every import binding
         // so references to imported names in the body resolve to LoadLocal
         // (not LoadGlobal). The runtime populates these slots before
@@ -3114,9 +3155,38 @@ impl Compiler {
                     Stmt::While { body, .. } | Stmt::DoWhile { body, .. } => {
                         collect_var_hoists(std::slice::from_ref(body.as_ref()), out);
                     }
-                    Stmt::For { body, .. }
-                    | Stmt::ForIn { body, .. }
-                    | Stmt::ForOf { body, .. } => {
+                    Stmt::For { init, body, .. } => {
+                        // Ω.5.P03.E2.var-hoist-for-init: var declarations in
+                        // the for-loop init position (`for (var i = 0; ...)`)
+                        // are var-scoped per ECMA-262 §10.2.11
+                        // FunctionDeclarationInstantiation step 25-26 and
+                        // must be hoisted to the function top. Pre-substrate
+                        // the collector recursed only into body, missing the
+                        // init. The miss surfaced after Ω.5.P04.E2.strict-
+                        // write-enforcement: bn.js's `_parseHex` declares
+                        // `var i` in one branch's for-init and reuses `i`
+                        // bare in another branch; pre-strict-write the bare
+                        // write silently created a global; post-strict-write
+                        // it threw ReferenceError because the hoist had
+                        // missed the var declaration. Same shape for ForIn
+                        // and ForOf left bindings.
+                        if let Some(ForInit::Variable(v)) = init {
+                            if matches!(v.kind, VariableKind::Var) {
+                                for d in &v.declarators {
+                                    for id in d.target.collect_names() {
+                                        out.push((id.name.clone(), VariableKind::Var));
+                                    }
+                                }
+                            }
+                        }
+                        collect_var_hoists(std::slice::from_ref(body.as_ref()), out);
+                    }
+                    Stmt::ForIn { left, body, .. } | Stmt::ForOf { left, body, .. } => {
+                        if let ForBinding::Decl { kind: VariableKind::Var, target, .. } = left {
+                            for id in target.collect_names() {
+                                out.push((id.name.clone(), VariableKind::Var));
+                            }
+                        }
                         collect_var_hoists(std::slice::from_ref(body.as_ref()), out);
                     }
                     Stmt::Switch { cases, .. } => {
@@ -3179,9 +3249,28 @@ impl Compiler {
                     Stmt::While { body, .. } | Stmt::DoWhile { body, .. } => {
                         collect_var_hoists(std::slice::from_ref(body.as_ref()), &mut out);
                     }
-                    Stmt::For { body, .. }
-                    | Stmt::ForIn { body, .. }
-                    | Stmt::ForOf { body, .. } => {
+                    Stmt::For { init, body, .. } => {
+                        // Ω.5.P03.E2.var-hoist-for-init: outer-collector
+                        // mirror of the same fix in collect_var_hoists —
+                        // var declarations in for-loop init are hoisted to
+                        // the function top per ECMA §10.2.11 step 25-26.
+                        if let Some(ForInit::Variable(v)) = init {
+                            if matches!(v.kind, VariableKind::Var) {
+                                for d in &v.declarators {
+                                    for id in d.target.collect_names() {
+                                        out.push((id.name.clone(), VariableKind::Var));
+                                    }
+                                }
+                            }
+                        }
+                        collect_var_hoists(std::slice::from_ref(body.as_ref()), &mut out);
+                    }
+                    Stmt::ForIn { left, body, .. } | Stmt::ForOf { left, body, .. } => {
+                        if let ForBinding::Decl { kind: VariableKind::Var, target, .. } = left {
+                            for id in target.collect_names() {
+                                out.push((id.name.clone(), VariableKind::Var));
+                            }
+                        }
                         collect_var_hoists(std::slice::from_ref(body.as_ref()), &mut out);
                     }
                     Stmt::Switch { cases, .. } => {
