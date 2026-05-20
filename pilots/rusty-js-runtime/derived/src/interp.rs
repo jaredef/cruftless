@@ -419,6 +419,98 @@ impl Runtime {
         }
     }
 
+    /// EXT 86 / Pin-Art Pass C: ECMA-262 §10.5.11 [[OwnPropertyKeys]]
+    /// invariants — the trap-vs-target consistency checks that must run
+    /// after the Proxy.ownKeys trap returns. Inputs: the trap's raw
+    /// return value (must coerce to a list of property keys) + the
+    /// target object id. Returns the validated list, or TypeError if
+    /// any invariant violates:
+    ///   - trap result must be a List of property keys (Strings/Symbols).
+    ///   - no duplicate keys.
+    ///   - must contain every non-configurable target own key.
+    ///   - if target is non-extensible: must equal target's own key set
+    ///     exactly (no extras, no missing).
+    pub fn apply_proxy_own_keys_invariants(
+        &mut self,
+        trap_result: &Value,
+        target_id: crate::value::ObjectRef,
+    ) -> Result<Vec<Value>, RuntimeError> {
+        // 1. CreateListFromArrayLike on trap_result (string|symbol only).
+        let arr_id = match trap_result {
+            Value::Object(a) => *a,
+            _ => return Err(RuntimeError::TypeError(
+                "Proxy 'ownKeys' trap returned non-Object".into())),
+        };
+        let len = {
+            let v = self.read_property_via(trap_result, "length")?;
+            crate::abstract_ops::to_number(&v) as usize
+        };
+        let mut trap_keys: Vec<Value> = Vec::with_capacity(len);
+        let mut seen = std::collections::HashSet::new();
+        for i in 0..len {
+            let k = self.object_get(arr_id, &i.to_string());
+            match &k {
+                Value::String(s) => {
+                    if !seen.insert(format!("S:{}", s.as_str())) {
+                        return Err(RuntimeError::TypeError(
+                            "Proxy 'ownKeys' trap returned duplicate keys".into()));
+                    }
+                }
+                Value::Symbol(s) => {
+                    if !seen.insert(format!("Y:{}", s.as_str())) {
+                        return Err(RuntimeError::TypeError(
+                            "Proxy 'ownKeys' trap returned duplicate keys".into()));
+                    }
+                }
+                _ => return Err(RuntimeError::TypeError(
+                    "Proxy 'ownKeys' trap result must contain only property keys".into())),
+            }
+            trap_keys.push(k);
+        }
+        // 2. Collect target's own keys + extensibility.
+        let extensible = self.obj(target_id).extensible;
+        let target_keys: Vec<(String, bool)> = self.obj(target_id).properties.iter()
+            .map(|(k, d)| (k.to_string_content(), d.configurable))
+            .collect();
+        let target_nonconf: std::collections::HashSet<String> = target_keys.iter()
+            .filter(|(_, c)| !c)
+            .map(|(k, _)| k.clone())
+            .collect();
+        // 3. Trap must contain every non-configurable target key.
+        let trap_key_strs: std::collections::HashSet<String> = trap_keys.iter()
+            .filter_map(|v| match v {
+                Value::String(s) => Some(s.as_str().to_string()),
+                Value::Symbol(s) => Some(s.as_str().to_string()),
+                _ => None,
+            })
+            .collect();
+        for k in &target_nonconf {
+            if !trap_key_strs.contains(k) {
+                return Err(RuntimeError::TypeError(format!(
+                    "Proxy 'ownKeys' trap result must include non-configurable target key '{}'", k)));
+            }
+        }
+        // 4. If target is non-extensible: keys must match exactly.
+        if !extensible {
+            let target_all: std::collections::HashSet<String> = target_keys.iter()
+                .map(|(k, _)| k.clone())
+                .collect();
+            for k in &target_all {
+                if !trap_key_strs.contains(k) {
+                    return Err(RuntimeError::TypeError(format!(
+                        "Proxy 'ownKeys' trap result missing target key '{}' (non-extensible target)", k)));
+                }
+            }
+            for k in &trap_key_strs {
+                if !target_all.contains(k) {
+                    return Err(RuntimeError::TypeError(format!(
+                        "Proxy 'ownKeys' trap result added key '{}' to non-extensible target", k)));
+                }
+            }
+        }
+        Ok(trap_keys)
+    }
+
     /// EXT 85 / Tier-1.5: ECMA-262 §7.3.10 GetMethod(V, P) — the
     /// spec wrapper around Get that enforces the spec post-condition
     /// "callable-or-undefined-or-throw" on the result:

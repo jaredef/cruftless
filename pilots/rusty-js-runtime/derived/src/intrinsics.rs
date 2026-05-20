@@ -1129,7 +1129,39 @@ impl Runtime {
         // + enumerable filter + @@-prefix filter) lives now in
         // rt.enumerable_own_keys, which generated::object_keys invokes
         // via CallBuiltin.
+        // EXT 86: Object.keys/values/entries dispatch Proxy.ownKeys
+        // when target is a Proxy. Object.keys uses EnumerableOwnProperties
+        // ("key" kind) — calls trap, validates invariants, filters to
+        // enumerable string-keyed properties via target's [[GetOwnProperty]].
+        // Pragmatic v1 shape: filter to string keys + collect via spec_get
+        // on each. Symbol keys are excluded per Object.keys spec.
         register_intrinsic_method(self, obj_ctor, "keys", 1, |rt, args| {
+            if let Some(Value::Object(id)) = args.first() {
+                if let Some((tgt, handler)) = rt.proxy_target_handler_checked(*id)? {
+                    let trap = rt.object_get(handler, "ownKeys");
+                    if !matches!(trap, Value::Undefined) {
+                        if !rt.is_callable(&trap) {
+                            return Err(RuntimeError::TypeError(
+                                "Proxy 'ownKeys' trap is not callable".into()));
+                        }
+                        let result = rt.call_function(trap, Value::Object(handler), vec![Value::Object(tgt)])?;
+                        let trap_keys = rt.apply_proxy_own_keys_invariants(&result, tgt)?;
+                        let out = rt.alloc_object(Object::new_array());
+                        let mut j = 0;
+                        for k in trap_keys {
+                            if let Value::String(_) = &k {
+                                rt.object_set(out, j.to_string(), k);
+                                j += 1;
+                            }
+                        }
+                        rt.object_set(out, "length".into(), Value::Number(j as f64));
+                        return Ok(Value::Object(out));
+                    }
+                    let mut new_args = args.to_vec();
+                    new_args[0] = Value::Object(tgt);
+                    return crate::generated::object_keys(rt, Value::Undefined, &new_args);
+                }
+            }
             crate::generated::object_keys(rt, Value::Undefined, args)
         });
         // Ω.5.P63.E4: Object.values/entries routed through IR-lowered
@@ -1285,10 +1317,10 @@ impl Runtime {
             crate::generated::object_get_own_property_descriptors(rt, Value::Undefined, args)
         });
         // Ω.5.P63.E15: getOwnPropertyNames routed through IR.
-        // EXT 84d: Object.getOwnPropertyNames dispatches Proxy.ownKeys
-        // trap when the target is a Proxy, filtering the result to
-        // string-keyed entries per §20.1.2.10. Same trap-callable check
-        // as the other Proxy-aware Object.* methods.
+        // EXT 84d / EXT 86: Object.getOwnPropertyNames dispatches
+        // Proxy.ownKeys trap and applies §10.5.11 invariants
+        // (apply_proxy_own_keys_invariants) before filtering the result
+        // to string-keyed entries per §20.1.2.10.
         register_intrinsic_method(self, obj_ctor, "getOwnPropertyNames", 1, |rt, args| {
             if let Some(Value::Object(id)) = args.first() {
                 if let Some((tgt, handler)) = rt.proxy_target_handler_checked(*id)? {
@@ -1299,16 +1331,10 @@ impl Runtime {
                                 "Proxy 'ownKeys' trap is not callable".into()));
                         }
                         let result = rt.call_function(trap, Value::Object(handler), vec![Value::Object(tgt)])?;
-                        let arr_id = match &result {
-                            Value::Object(a) => *a,
-                            _ => return Err(RuntimeError::TypeError(
-                                "Proxy 'ownKeys' trap returned non-Object".into())),
-                        };
-                        let len = rt.array_length(arr_id);
+                        let trap_keys = rt.apply_proxy_own_keys_invariants(&result, tgt)?;
                         let out = rt.alloc_object(Object::new_array());
                         let mut j = 0;
-                        for i in 0..len {
-                            let k = rt.object_get(arr_id, &i.to_string());
+                        for k in trap_keys {
                             if let Value::String(_) = &k {
                                 rt.object_set(out, j.to_string(), k);
                                 j += 1;
@@ -1331,8 +1357,8 @@ impl Runtime {
         // (es-define-property / set-function-length / onetime) which probe
         // for Symbol.toStringTag / iterator placement.
         // Ω.5.P63.E15: getOwnPropertySymbols routed through IR.
-        // EXT 84d: Object.getOwnPropertySymbols similarly dispatches the
-        // Proxy.ownKeys trap, filtering to Symbol-keyed entries.
+        // EXT 84d / EXT 86: Object.getOwnPropertySymbols same shape,
+        // filtering to Symbol-keyed entries after invariant validation.
         register_intrinsic_method(self, obj_ctor, "getOwnPropertySymbols", 1, |rt, args| {
             if let Some(Value::Object(id)) = args.first() {
                 if let Some((tgt, handler)) = rt.proxy_target_handler_checked(*id)? {
@@ -1343,16 +1369,10 @@ impl Runtime {
                                 "Proxy 'ownKeys' trap is not callable".into()));
                         }
                         let result = rt.call_function(trap, Value::Object(handler), vec![Value::Object(tgt)])?;
-                        let arr_id = match &result {
-                            Value::Object(a) => *a,
-                            _ => return Err(RuntimeError::TypeError(
-                                "Proxy 'ownKeys' trap returned non-Object".into())),
-                        };
-                        let len = rt.array_length(arr_id);
+                        let trap_keys = rt.apply_proxy_own_keys_invariants(&result, tgt)?;
                         let out = rt.alloc_object(Object::new_array());
                         let mut j = 0;
-                        for i in 0..len {
-                            let k = rt.object_get(arr_id, &i.to_string());
+                        for k in trap_keys {
                             if let Value::Symbol(_) = &k {
                                 rt.object_set(out, j.to_string(), k);
                                 j += 1;
@@ -3317,7 +3337,18 @@ impl Runtime {
                 if let Some((tgt, handler)) = rt.proxy_target_handler_checked(*id)? {
                     let trap = rt.object_get(handler, "ownKeys");
                     if matches!(trap, Value::Object(_)) {
-                        return rt.call_function(trap, Value::Object(handler), vec![Value::Object(tgt)]);
+                        // EXT 86: validate trap result against §10.5.11
+                        // invariants, then re-pack the validated key list
+                        // into a fresh Array (preserves trap order, drops
+                        // any non-key entries the invariants caught).
+                        let result = rt.call_function(trap, Value::Object(handler), vec![Value::Object(tgt)])?;
+                        let trap_keys = rt.apply_proxy_own_keys_invariants(&result, tgt)?;
+                        let out = rt.alloc_object(Object::new_array());
+                        for (i, k) in trap_keys.iter().enumerate() {
+                            rt.object_set(out, i.to_string(), k.clone());
+                        }
+                        rt.object_set(out, "length".into(), Value::Number(trap_keys.len() as f64));
+                        return Ok(Value::Object(out));
                     }
                     return crate::generated::reflect_own_keys(rt, Value::Undefined, &[Value::Object(tgt)]);
                 }
