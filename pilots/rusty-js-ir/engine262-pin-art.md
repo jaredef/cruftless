@@ -312,3 +312,104 @@ ToPrimitive trace to engine262's:
 
 The four promotions above are the §XIII work list for one spec section.
 Pass C will produce the analogous list for the 12 Proxy internal methods.
+
+---
+
+## Pass C — Proxy per-trap invariant inventory (§10.5)
+
+Walks the 12 Proxy internal methods in engine262's `src/abstract-ops/proxy-objects.mts` and inventories the post-conditions each one enforces *after*
+calling the handler trap. cruftless's EXT 84 family landed the dispatch
+shape (trap callable, fall-through to target, boolean coerce, falsy throws)
+but stopped short of the trap-vs-target consistency checks the spec mandates.
+Output: the per-trap work list for the 47 remaining TypeError tests.
+
+| # | Internal method | engine262 lines | Post-conditions cruftless skips |
+|---|---|---|---|
+| 10.5.1 | `[[GetPrototypeOf]]()` | 37–63 | If target is non-extensible, trap-returned proto must SameValue(target.[[GetPrototypeOf]]()); else TypeError. |
+| 10.5.2 | `[[SetPrototypeOf]](V)` | 65–92 | If target is non-extensible, trap-returned-true requires V === target.[[GetPrototypeOf]](); else TypeError. |
+| 10.5.3 | `[[IsExtensible]]()` | 94–113 | Trap result must SameValue(target.[[IsExtensible]]()); else TypeError. |
+| 10.5.4 | `[[PreventExtensions]]()` | 115–136 | If trap returned true, target must already be non-extensible; else TypeError. |
+| 10.5.5 | `[[GetOwnProperty]](P)` | 138–217 | (12 distinct sub-checks) — trap-returned-desc must be coerced via ToPropertyDescriptor; compared via IsCompatiblePropertyDescriptor against targetDesc; if targetDesc non-configurable, trap-returned-desc must match. Non-extensible target + trap-undefined: must match targetDesc-undefined. |
+| 10.5.6 | `[[DefineOwnProperty]](P, Desc)` | 218–291 | Trap-returned-true must be IsCompatiblePropertyDescriptor against target; settingConfigFalse must match targetDesc's configurable; non-writable data property invariant. |
+| 10.5.7 | `[[HasProperty]](P)` | 293–322 | If trap returned false but target has P as non-configurable own (or non-extensible), throw TypeError. |
+| 10.5.8 | `[[Get]](P, Receiver)` | 323–353 | Non-configurable non-writable own data property: trap must SameValue(targetDesc.[[Value]]). Non-configurable accessor with undefined getter: trap must return undefined. |
+| 10.5.9 | `[[Set]](P, V, Receiver)` | 354–387 | Non-configurable non-writable own data property: V must SameValue(targetDesc.[[Value]]). Non-configurable accessor with undefined setter: throw TypeError. |
+| 10.5.10 | `[[Delete]](P)` | 388–435 | Trap-returned-true: target.[[GetOwnProperty]](P) must not exist as non-configurable. |
+| 10.5.11 | `[[OwnPropertyKeys]]()` | 436–499 | Trap result coerced via CreateListFromArrayLike; must be List of property keys; must contain all target's non-configurable own keys; if target non-extensible, must equal target's own keys exactly (and target must not have extra keys not in trap result). |
+| 10.5.12 | `[[Call]](thisArg, args)` | 500–516 | (cruftless covers in EXT 84 apply path; trap signature only.) |
+| 10.5.13 | `[[Construct]](args, newTarget)` | 517–end | (cruftless covers in EXT 84 — non-Object return throws TypeError.) |
+
+### C.1 The invariant pattern
+
+Each Proxy internal method follows the same shape:
+
+```
+1. Read trap from handler[trap_name].
+2. If trap absent: delegate to target.[[InternalMethod]](...).
+3. Else: call trap, get raw result.
+4. Coerce / convert trap result to spec type (ToBoolean, ToPropertyDescriptor, CreateListFromArrayLike, ...).
+5. Compute "the target's version" of the result via target.[[InternalMethod]]/[[GetOwnProperty]]/[[IsExtensible]]/[[GetPrototypeOf]].
+6. Apply spec invariants: trap result vs target version must satisfy the specific constraints in §10.5.N steps 9+.
+7. If invariants violated: throw TypeError with a specific message.
+8. Else return the trap result.
+```
+
+cruftless EXT 84 implements steps 1–4 + 8. Step 5 (target peek) and step 6 (invariant check) and step 7 (specific error message) are the residue.
+
+### C.2 What the engine262 surface tells us about IR shape
+
+The 12 internal methods are *methods on the ProxyExoticObject value*; they
+are not separate top-level abstract ops. engine262 packages them inside
+`ProxyExoticObjectValue.prototype` — each Proxy carries its full dispatch
+table as part of the object's identity. The trap-vs-target invariants
+referenced inside are calls to `target.[[InternalMethod]]` (the target's
+own dispatch table).
+
+This recovers a structural commitment of the spec: **internal methods
+are per-Object-kind virtual functions, not per-operation switches**.
+cruftless's EXT 84 site-by-site rewriting (intrinsic closure handles
+Proxy → call generated::* for Ordinary) is the same data flow but
+expressed as N copies of the dispatch table rather than 1.
+
+§XIII alphabet promotion implied:
+- `InternalMethods<Kind>` table per spec method.
+  - One row per `InternalKind` variant (Ordinary, Array, Function,
+    Proxy, NumberWrapper, StringWrapper, ...).
+  - One column per spec internal method ([[Get]], [[Set]],
+    [[GetOwnProperty]], [[DefineOwnProperty]], [[Delete]],
+    [[HasProperty]], [[OwnPropertyKeys]], [[GetPrototypeOf]],
+    [[SetPrototypeOf]], [[IsExtensible]], [[PreventExtensions]],
+    [[Call]], [[Construct]]).
+  - Each cell is a function pointer (or trait method) whose signature
+    matches the spec's parameter list.
+
+Every Op::GetProp / Reflect.get / Object.X call site collapses to
+`internal_methods[kind].get(...)` — one dispatch per site, the
+right implementation per object kind, no site-by-site re-implementation.
+The EXT 84 family's 5 EXTs (84/84b/84c/84d/84e) would have been
+1 EXT under this shape: add the Proxy row to the table.
+
+### C.3 Per-trap work list (deferred, 47 test262 tests)
+
+Each cell below is one Proxy invariant the engine262 trace surfaces:
+
+```
+GetPrototypeOf    : non-extensible target + trap-proto-mismatch  (~3 tests)
+SetPrototypeOf    : non-extensible target + trap-true-but-V≠target.proto  (~2 tests)
+IsExtensible      : trap-vs-target-mismatch  (~3 tests)
+PreventExtensions : trap-true-but-target-still-extensible  (~4 tests)
+GetOwnProperty    : multiple sub-invariants (~7 tests)
+DefineOwnProperty : multiple sub-invariants (~6 tests)
+HasProperty       : non-configurable own / non-extensible (~2 tests)
+Get               : non-configurable non-writable data mismatch (~2 tests)
+Set               : non-configurable non-writable data mismatch (~2 tests)
+Delete            : non-configurable own can't be reported deleted (~2 tests)
+OwnKeys           : trap missing target non-configurable keys / extra keys (~14 tests)
+```
+
+Total: ~47, matching the EXT 84e post-sweep residue.
+
+The InternalMethods table promotion (§XIII alphabet) lets these be added
+as one row's worth of invariant code in one place, rather than 12 spots
+per trap × 2 sites (intrinsic + bytecode VM) = 24 sites that would need
+updating in the current shape.
