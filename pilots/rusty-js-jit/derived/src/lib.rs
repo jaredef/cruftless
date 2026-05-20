@@ -27,7 +27,9 @@
 //! Cranelift's JIT module path.
 
 pub mod translator;
+pub mod promote;
 pub use translator::{compile_function, CompiledFn, JitFn};
+pub use promote::promote_to_typed_i64;
 
 use cranelift_codegen::ir::types::I64;
 use cranelift_codegen::ir::{AbiParam, InstBuilder};

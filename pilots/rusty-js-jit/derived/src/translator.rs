@@ -84,7 +84,25 @@ impl std::fmt::Debug for CompiledFn {
 
 /// Try to JIT-compile `proto`. Returns Err with a short reason if the
 /// bytecode contains any op not in the supported set.
+///
+/// JIT-EXT 7: auto-runs the typed-i64 promotion pass first. If the
+/// function is eligible for typed-i64 promotion (no non-arithmetic
+/// ops), the JIT compiles the promoted version (honest typed-i64
+/// translation, Doc 731 §XIV.d β-path). Otherwise it falls back to
+/// the plain-ops cheat path (still i64-assumed, JIT-EXT 4). Callers
+/// see no behavioral difference; both paths produce structurally
+/// identical Cranelift IR.
 pub fn compile_function(proto: &FunctionProto) -> Result<CompiledFn, String> {
+    // Auto-promote first; on success, compile the promoted variant.
+    let owned;
+    let working: &FunctionProto = match crate::promote::promote_to_typed_i64(proto) {
+        Some(p) => { owned = p; &owned }
+        None => proto,
+    };
+    compile_function_inner(working)
+}
+
+fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
     if proto.params != 1 && proto.params != 2 {
         return Err(format!("first-cut JIT supports 1 or 2 params; got {}", proto.params));
     }
