@@ -1184,13 +1184,63 @@ impl Runtime {
         // configurable are tracked as defaults via existing object_set.
         // Accessor descriptors (get/set) are not yet honored.
         // IR-EXT 56: descriptor surface lifted into rusty-js-ir.
+        // EXT 84c: Object.defineProperty / getOwnPropertyDescriptor dispatch
+        // through Proxy traps when the target is a Proxy. Trap-is-not-
+        // callable / trap-is-null tests gate on this — the spec routes
+        // every property-descriptor mutation through [[DefineOwnProperty]]
+        // / [[GetOwnProperty]], which on a Proxy is the trap. v1 went
+        // straight to the IR-routed direct-target impl, silently
+        // delegating to a property the Proxy doesn't own. The trap-
+        // callable check follows the Reflect.defineProperty pattern.
         register_intrinsic_method(self, obj_ctor, "defineProperty", 3, |rt, args| {
+            if let Some(Value::Object(id)) = args.first() {
+                if let Some((tgt, handler)) = rt.proxy_target_handler_checked(*id)? {
+                    let trap = rt.object_get(handler, "defineProperty");
+                    if !matches!(trap, Value::Undefined) {
+                        if !rt.is_callable(&trap) {
+                            return Err(RuntimeError::TypeError(
+                                "Proxy 'defineProperty' trap is not callable".into()));
+                        }
+                        let key = args.get(1).cloned().unwrap_or(Value::Undefined);
+                        let desc = args.get(2).cloned().unwrap_or(Value::Undefined);
+                        let r2 = rt.call_function(trap, Value::Object(handler), vec![
+                            Value::Object(tgt), key, desc,
+                        ])?;
+                        if !crate::abstract_ops::to_boolean(&r2) {
+                            return Err(RuntimeError::TypeError(
+                                "Proxy 'defineProperty' trap returned falsy".into()));
+                        }
+                        return Ok(Value::Object(*id));
+                    }
+                    let mut new_args = args.to_vec();
+                    new_args[0] = Value::Object(tgt);
+                    return crate::generated::object_define_property(rt, Value::Undefined, &new_args);
+                }
+            }
             crate::generated::object_define_property(rt, Value::Undefined, args)
         });
         register_intrinsic_method(self, obj_ctor, "defineProperties", 2, |rt, args| {
             crate::generated::object_define_properties(rt, Value::Undefined, args)
         });
         register_intrinsic_method(self, obj_ctor, "getOwnPropertyDescriptor", 2, |rt, args| {
+            if let Some(Value::Object(id)) = args.first() {
+                if let Some((tgt, handler)) = rt.proxy_target_handler_checked(*id)? {
+                    let trap = rt.object_get(handler, "getOwnPropertyDescriptor");
+                    if !matches!(trap, Value::Undefined) {
+                        if !rt.is_callable(&trap) {
+                            return Err(RuntimeError::TypeError(
+                                "Proxy 'getOwnPropertyDescriptor' trap is not callable".into()));
+                        }
+                        let key = args.get(1).cloned().unwrap_or(Value::Undefined);
+                        return rt.call_function(trap, Value::Object(handler), vec![
+                            Value::Object(tgt), key,
+                        ]);
+                    }
+                    let mut new_args = args.to_vec();
+                    new_args[0] = Value::Object(tgt);
+                    return crate::generated::object_get_own_property_descriptor(rt, Value::Undefined, &new_args);
+                }
+            }
             crate::generated::object_get_own_property_descriptor(rt, Value::Undefined, args)
         });
         // Tier-Ω.5.rrrrrr: Object.getOwnPropertyDescriptors per §20.1.2.10.
