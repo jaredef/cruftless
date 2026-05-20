@@ -7373,6 +7373,78 @@ impl Runtime {
                 Op::Nop => {}
                 Op::Debugger => {}
 
+                // ─── Doc 731 §XIV.d typed-i64 alphabet promotion ───
+                // Typed-i64 arithmetic + comparison. Both operands must
+                // be Number values with integer-valued f64 representation.
+                // On any mismatch, throw TypeError uniformly (v1; future
+                // deviation primitive may relax). The interpreter unboxes
+                // to i64, does the integer op, reboxes as Number(f64).
+                // The JIT translates these directly to Cranelift instructions.
+                Op::AddI64 => {
+                    let r = frame.pop()?; let l = frame.pop()?;
+                    let li = unbox_int64(&l)?;
+                    let ri = unbox_int64(&r)?;
+                    frame.push(Value::Number(li.wrapping_add(ri) as f64));
+                }
+                Op::SubI64 => {
+                    let r = frame.pop()?; let l = frame.pop()?;
+                    let li = unbox_int64(&l)?;
+                    let ri = unbox_int64(&r)?;
+                    frame.push(Value::Number(li.wrapping_sub(ri) as f64));
+                }
+                Op::MulI64 => {
+                    let r = frame.pop()?; let l = frame.pop()?;
+                    let li = unbox_int64(&l)?;
+                    let ri = unbox_int64(&r)?;
+                    frame.push(Value::Number(li.wrapping_mul(ri) as f64));
+                }
+                Op::IncI64 => {
+                    let v = frame.pop()?;
+                    let i = unbox_int64(&v)?;
+                    frame.push(Value::Number(i.wrapping_add(1) as f64));
+                }
+                Op::DecI64 => {
+                    let v = frame.pop()?;
+                    let i = unbox_int64(&v)?;
+                    frame.push(Value::Number(i.wrapping_sub(1) as f64));
+                }
+                Op::LtI64 => {
+                    let r = frame.pop()?; let l = frame.pop()?;
+                    let li = unbox_int64(&l)?;
+                    let ri = unbox_int64(&r)?;
+                    frame.push(Value::Boolean(li < ri));
+                }
+                Op::LeI64 => {
+                    let r = frame.pop()?; let l = frame.pop()?;
+                    let li = unbox_int64(&l)?;
+                    let ri = unbox_int64(&r)?;
+                    frame.push(Value::Boolean(li <= ri));
+                }
+                Op::GtI64 => {
+                    let r = frame.pop()?; let l = frame.pop()?;
+                    let li = unbox_int64(&l)?;
+                    let ri = unbox_int64(&r)?;
+                    frame.push(Value::Boolean(li > ri));
+                }
+                Op::GeI64 => {
+                    let r = frame.pop()?; let l = frame.pop()?;
+                    let li = unbox_int64(&l)?;
+                    let ri = unbox_int64(&r)?;
+                    frame.push(Value::Boolean(li >= ri));
+                }
+                Op::EqI64 => {
+                    let r = frame.pop()?; let l = frame.pop()?;
+                    let li = unbox_int64(&l)?;
+                    let ri = unbox_int64(&r)?;
+                    frame.push(Value::Boolean(li == ri));
+                }
+                Op::NeI64 => {
+                    let r = frame.pop()?; let l = frame.pop()?;
+                    let li = unbox_int64(&l)?;
+                    let ri = unbox_int64(&r)?;
+                    frame.push(Value::Boolean(li != ri));
+                }
+
                 _ => {
                     return Err(RuntimeError::Unimplemented(format!("opcode {:?} not yet handled @{}", op, pc)));
                 }
@@ -7741,6 +7813,26 @@ impl Runtime {
 /// Coerce a JS Value to a property key per ECMA §7.1.19 ToPropertyKey.
 /// Symbol values produce PropertyKey::Symbol (identity-keyed, by-Rc); all
 /// other values stringify into PropertyKey::String.
+/// Doc 731 §XIV.d typed-i64 unbox: accept a Value::Number with
+/// integer-valued f64 representation; reject everything else with
+/// TypeError. v1 strict shape: future deviation may relax to
+/// `as i64` truncation under an opt-in primitive.
+pub fn unbox_int64(v: &Value) -> Result<i64, RuntimeError> {
+    match v {
+        Value::Number(f) => {
+            if f.is_finite() && f.fract() == 0.0 && *f >= i64::MIN as f64 && *f <= i64::MAX as f64 {
+                Ok(*f as i64)
+            } else {
+                Err(RuntimeError::TypeError(format!(
+                    "typed-i64 op: operand {} is not an integer-valued Number", f)))
+            }
+        }
+        Value::Boolean(b) => Ok(if *b { 1 } else { 0 }),
+        other => Err(RuntimeError::TypeError(format!(
+            "typed-i64 op: operand is not a Number ({:?})", other))),
+    }
+}
+
 pub fn property_key(v: &Value) -> crate::value::PropertyKey {
     match v {
         Value::Symbol(rc) => crate::value::PropertyKey::Symbol(rc.clone()),

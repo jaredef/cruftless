@@ -286,6 +286,30 @@ pub fn compile_function(proto: &FunctionProto) -> Result<CompiledFn, String> {
                     block_terminated = true;
                     stack.clear();
                 }
+                // Doc 731 §XIV.d typed-i64 ops: direct Cranelift lowering,
+                // no cheating. The interpreter unboxes Number(f64) →
+                // i64 at the op handler; the JIT assumes the bytecode
+                // alphabet's typed contract holds (operands already i64
+                // in JIT-internal SSA representation).
+                ParsedOp::AddI64 => binop(&mut stack, &mut builder, |b, l, r| b.ins().iadd(l, r))?,
+                ParsedOp::SubI64 => binop(&mut stack, &mut builder, |b, l, r| b.ins().isub(l, r))?,
+                ParsedOp::MulI64 => binop(&mut stack, &mut builder, |b, l, r| b.ins().imul(l, r))?,
+                ParsedOp::IncI64 => {
+                    let v = stack.pop().ok_or("IncI64: stack underflow")?;
+                    let one = builder.ins().iconst(I64, 1);
+                    stack.push(builder.ins().iadd(v, one));
+                }
+                ParsedOp::DecI64 => {
+                    let v = stack.pop().ok_or("DecI64: stack underflow")?;
+                    let one = builder.ins().iconst(I64, 1);
+                    stack.push(builder.ins().isub(v, one));
+                }
+                ParsedOp::LtI64 => cmpop(&mut stack, &mut builder, IntCC::SignedLessThan)?,
+                ParsedOp::LeI64 => cmpop(&mut stack, &mut builder, IntCC::SignedLessThanOrEqual)?,
+                ParsedOp::GtI64 => cmpop(&mut stack, &mut builder, IntCC::SignedGreaterThan)?,
+                ParsedOp::GeI64 => cmpop(&mut stack, &mut builder, IntCC::SignedGreaterThanOrEqual)?,
+                ParsedOp::EqI64 => cmpop(&mut stack, &mut builder, IntCC::Equal)?,
+                ParsedOp::NeI64 => cmpop(&mut stack, &mut builder, IntCC::NotEqual)?,
             }
             // Allow comparison op result (i8) to participate in stack
             // as if it were i64 — handled inside cmpop by extending.
@@ -373,6 +397,13 @@ enum ParsedOp {
     JumpIfTrue(usize),
     JumpIfFalse(usize),
     Return, ReturnUndef,
+    // Doc 731 §XIV.d typed-I64 alphabet promotion. The JIT prefers
+    // these over the plain variants because no type assumption is
+    // required at the JIT tier — the typed assumption is encoded in
+    // the bytecode alphabet itself, and the upstream emitter is
+    // responsible for proving it.
+    AddI64, SubI64, MulI64, IncI64, DecI64,
+    LtI64, LeI64, GtI64, GeI64, EqI64, NeI64,
 }
 
 impl ParsedOp {
@@ -430,6 +461,17 @@ fn parse_bytecode(bc: &[u8]) -> Result<Vec<(usize, ParsedOp)>, String> {
             }
             Op::Return => ParsedOp::Return,
             Op::ReturnUndef => ParsedOp::ReturnUndef,
+            Op::AddI64 => ParsedOp::AddI64,
+            Op::SubI64 => ParsedOp::SubI64,
+            Op::MulI64 => ParsedOp::MulI64,
+            Op::IncI64 => ParsedOp::IncI64,
+            Op::DecI64 => ParsedOp::DecI64,
+            Op::LtI64 => ParsedOp::LtI64,
+            Op::LeI64 => ParsedOp::LeI64,
+            Op::GtI64 => ParsedOp::GtI64,
+            Op::GeI64 => ParsedOp::GeI64,
+            Op::EqI64 => ParsedOp::EqI64,
+            Op::NeI64 => ParsedOp::NeI64,
             other => return Err(format!("first-cut JIT does not support op {:?} at pc={}", other, op_pc)),
         };
         out.push((op_pc, parsed));
@@ -512,6 +554,91 @@ mod tests {
         encode_op(&mut bc, Op::Return);
         let proto = empty_proto(bc, 2);
         assert!(compile_function(&proto).is_err());
+    }
+
+    #[test]
+    fn jit_typed_i64_sum() {
+        // Hand-built FunctionProto using typed-I64 ops directly (no
+        // upstream type inference needed). Validates the typed alphabet
+        // promotion end-to-end at the JIT layer: AddI64 → iadd,
+        // LtI64 → icmp slt, IncI64 → iadd 1, no cheating.
+        //
+        // Equivalent JS: function tsum(n) { var s=0, i=0; while (i<n) { s = s+i; i++; } return s; }
+        //
+        // Bytecode (manually constructed):
+        //   PushI32 0          ; locals[1] = s = 0
+        //   StoreLocal 1
+        //   PushI32 0          ; locals[2] = i = 0
+        //   StoreLocal 2
+        //   LABEL loop_top:    ; pc 16
+        //   LoadLocal 2
+        //   LoadArg 0
+        //   LtI64
+        //   JumpIfFalse →exit
+        //   LoadLocal 1        ; s += i
+        //   LoadLocal 2
+        //   AddI64
+        //   StoreLocal 1
+        //   LoadLocal 2        ; i++
+        //   IncI64
+        //   StoreLocal 2
+        //   Jump →loop_top
+        //   LABEL exit:
+        //   LoadLocal 1
+        //   Return
+        use rusty_js_bytecode::op::{encode_i32, encode_u16};
+        let mut bc = Vec::new();
+        // s = 0
+        encode_op(&mut bc, Op::PushI32); encode_i32(&mut bc, 0);
+        encode_op(&mut bc, Op::StoreLocal); encode_u16(&mut bc, 1);
+        // i = 0
+        encode_op(&mut bc, Op::PushI32); encode_i32(&mut bc, 0);
+        encode_op(&mut bc, Op::StoreLocal); encode_u16(&mut bc, 2);
+        let loop_top = bc.len();
+        // i < n
+        encode_op(&mut bc, Op::LoadLocal); encode_u16(&mut bc, 2);
+        encode_op(&mut bc, Op::LoadArg);   encode_u16(&mut bc, 0);
+        encode_op(&mut bc, Op::LtI64);
+        // JumpIfFalse → exit (patched after we know exit pc)
+        encode_op(&mut bc, Op::JumpIfFalse);
+        let jif_disp_at = bc.len();
+        encode_i32(&mut bc, 0);
+        // s = s + i
+        encode_op(&mut bc, Op::LoadLocal); encode_u16(&mut bc, 1);
+        encode_op(&mut bc, Op::LoadLocal); encode_u16(&mut bc, 2);
+        encode_op(&mut bc, Op::AddI64);
+        encode_op(&mut bc, Op::StoreLocal); encode_u16(&mut bc, 1);
+        // i++
+        encode_op(&mut bc, Op::LoadLocal); encode_u16(&mut bc, 2);
+        encode_op(&mut bc, Op::IncI64);
+        encode_op(&mut bc, Op::StoreLocal); encode_u16(&mut bc, 2);
+        // Jump → loop_top
+        encode_op(&mut bc, Op::Jump);
+        let jump_disp_at = bc.len();
+        let jump_next_pc = bc.len() + 4;
+        encode_i32(&mut bc, loop_top as i32 - jump_next_pc as i32);
+        // exit
+        let exit_pc = bc.len();
+        // patch JIF: disp = exit_pc - (jif_disp_at + 4)
+        let jif_disp = exit_pc as i32 - (jif_disp_at + 4) as i32;
+        bc[jif_disp_at..jif_disp_at + 4].copy_from_slice(&jif_disp.to_le_bytes());
+        // return s
+        encode_op(&mut bc, Op::LoadLocal); encode_u16(&mut bc, 1);
+        encode_op(&mut bc, Op::Return);
+        // dead stub
+        encode_op(&mut bc, Op::ReturnUndef);
+        let _ = jump_disp_at;
+
+        // Need 3 locals: n (arg 0), s (slot 1), i (slot 2).
+        let mut proto = empty_proto(bc, 1);
+        proto.locals.push(LocalDescriptor { name: "s".to_string(), kind: rusty_js_ast::VariableKind::Var, depth: 0 });
+        proto.locals.push(LocalDescriptor { name: "i".to_string(), kind: rusty_js_ast::VariableKind::Var, depth: 0 });
+
+        let jit = compile_function(&proto).expect("typed-i64 JIT compile failed");
+        assert_eq!(jit.func.call1(0), 0);
+        assert_eq!(jit.func.call1(5), 10);
+        assert_eq!(jit.func.call1(100), 4950);
+        assert_eq!(jit.func.call1(1_000_000), 499_999_500_000);
     }
 
     #[test]

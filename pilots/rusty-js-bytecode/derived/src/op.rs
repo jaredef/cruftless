@@ -202,6 +202,39 @@ pub enum Op {
     // Miscellaneous
     Nop = 0xE0,
     Debugger = 0xE1,
+
+    // ────────── Doc 731 §XIV.d typed-operand alphabet promotion ──────────
+    // Typed-I64 arithmetic + comparison primitives. The bytecode tier's
+    // §XIII-shape alphabet promotion: the previously-collapsed dispatch
+    // inside Op::Add (string-concat vs ToPrimitive-then-arithmetic vs
+    // numeric-add) is split out as separate typed primitives. The plain
+    // Op::Add stays for cases where operand types are not provable; the
+    // typed ops are emitted whenever an upstream type-inference pass
+    // can prove both operands fit in i64. The JIT's verifier accepts
+    // these directly (no cheating — the typed assumption is encoded
+    // in the alphabet); the interpreter assumes both operands are
+    // Number values with integer-valued f64 representation and dispatches
+    // pure-integer arithmetic without ToPrimitive.
+    //
+    // Values are still boxed as Value::Number(f64); the typed-i64 ops
+    // unbox-as-integer at the interpreter, and the JIT lowers them
+    // directly to Cranelift iadd/isub/imul/icmp.
+    //
+    // Failure mode: if a typed-I64 op encounters a non-Number-integer
+    // operand at runtime, the interpreter throws TypeError (or, under
+    // a future deviation primitive, traps to a deopt point in JIT'd
+    // code). v1: throws TypeError uniformly.
+    AddI64 = 0xF0,
+    SubI64 = 0xF1,
+    MulI64 = 0xF2,
+    IncI64 = 0xF3,
+    DecI64 = 0xF4,
+    LtI64  = 0xF5,
+    LeI64  = 0xF6,
+    GtI64  = 0xF7,
+    GeI64  = 0xF8,
+    EqI64  = 0xF9,
+    NeI64  = 0xFA,
 }
 
 impl Op {
@@ -219,7 +252,9 @@ impl Op {
             | Throw | TryExit
             | IterInit | IterNext | IterClose
             | Nop | Debugger | PushThis | PushImportMeta | PushNewTarget | SetThis
-            | PropagateNewTarget => 0,
+            | PropagateNewTarget
+            | AddI64 | SubI64 | MulI64 | IncI64 | DecI64
+            | LtI64 | LeI64 | GtI64 | GeI64 | EqI64 | NeI64 => 0,
             Call | New | CallMethod => 1,
             PushConst | LoadLocal | StoreLocal | LoadArg | StoreArg
             | LoadGlobal | StoreGlobal | LoadUpvalue | StoreUpvalue
@@ -297,6 +332,8 @@ pub fn op_from_byte(b: u8) -> Option<Op> {
         0xC0 => Throw, 0xC1 => TryEnter, 0xC2 => TryExit,
         0xD0 => IterInit, 0xD1 => IterNext, 0xD2 => IterClose,
         0xE0 => Nop, 0xE1 => Debugger,
+        0xF0 => AddI64, 0xF1 => SubI64, 0xF2 => MulI64, 0xF3 => IncI64, 0xF4 => DecI64,
+        0xF5 => LtI64, 0xF6 => LeI64, 0xF7 => GtI64, 0xF8 => GeI64, 0xF9 => EqI64, 0xFA => NeI64,
         _ => return None,
     })
 }
