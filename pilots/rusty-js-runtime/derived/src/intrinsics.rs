@@ -1289,12 +1289,15 @@ impl Runtime {
                         let key = args.get(1).cloned().unwrap_or(Value::Undefined);
                         let desc = args.get(2).cloned().unwrap_or(Value::Undefined);
                         let r2 = rt.call_function(trap, Value::Object(handler), vec![
-                            Value::Object(tgt), key, desc,
+                            Value::Object(tgt), key.clone(), desc.clone(),
                         ])?;
                         if !crate::abstract_ops::to_boolean(&r2) {
                             return Err(RuntimeError::TypeError(
                                 "Proxy 'defineProperty' trap returned falsy".into()));
                         }
+                        // EXT 89 / Pass C: §10.5.6 invariants.
+                        let key_str = crate::abstract_ops::to_string(&key).as_str().to_string();
+                        rt.apply_proxy_define_property_invariant(tgt, &key_str, &desc)?;
                         return Ok(Value::Object(*id));
                     }
                     let mut new_args = args.to_vec();
@@ -1317,9 +1320,13 @@ impl Runtime {
                                 "Proxy 'getOwnPropertyDescriptor' trap is not callable".into()));
                         }
                         let key = args.get(1).cloned().unwrap_or(Value::Undefined);
-                        return rt.call_function(trap, Value::Object(handler), vec![
-                            Value::Object(tgt), key,
-                        ]);
+                        let trap_result = rt.call_function(trap, Value::Object(handler), vec![
+                            Value::Object(tgt), key.clone(),
+                        ])?;
+                        // EXT 89 / Pass C: §10.5.5 invariants (undefined-leg + non-Object check).
+                        let key_str = crate::abstract_ops::to_string(&key).as_str().to_string();
+                        rt.apply_proxy_get_own_property_descriptor_invariant(tgt, &key_str, &trap_result)?;
+                        return Ok(trap_result);
                     }
                     let mut new_args = args.to_vec();
                     new_args[0] = Value::Object(tgt);
@@ -3440,9 +3447,13 @@ impl Runtime {
                     let trap = rt.object_get(handler, "getOwnPropertyDescriptor");
                     if matches!(trap, Value::Object(_)) {
                         let key = args.get(1).cloned().unwrap_or(Value::Undefined);
-                        return rt.call_function(trap, Value::Object(handler), vec![
-                            Value::Object(tgt), key,
-                        ]);
+                        let trap_result = rt.call_function(trap, Value::Object(handler), vec![
+                            Value::Object(tgt), key.clone(),
+                        ])?;
+                        // EXT 89 / Pass C: §10.5.5 invariants (undefined-leg + non-Object check).
+                        let key_str = crate::abstract_ops::to_string(&key).as_str().to_string();
+                        rt.apply_proxy_get_own_property_descriptor_invariant(tgt, &key_str, &trap_result)?;
+                        return Ok(trap_result);
                     }
                     let mut new_args = args.to_vec();
                     new_args[0] = Value::Object(tgt);

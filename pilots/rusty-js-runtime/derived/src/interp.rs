@@ -512,6 +512,89 @@ impl Runtime {
         Ok(())
     }
 
+    /// EXT 89 / Pin-Art Pass C: §10.5.6 [[DefineOwnProperty]] invariants
+    /// after the trap returned true. `desc` is the descriptor passed
+    /// (an Object with the spec's descriptor fields); we read configurable
+    /// and writable via spec_get so accessors / Proxy / inherited
+    /// descriptors all see the user-side coercion.
+    pub fn apply_proxy_define_property_invariant(&mut self,
+        target_id: crate::value::ObjectRef, key: &str, desc: &Value)
+        -> Result<(), RuntimeError>
+    {
+        let desc_obj = match desc {
+            Value::Object(_) => desc.clone(),
+            _ => return Ok(()), // non-Object descriptor → spec elsewhere throws.
+        };
+        // Read Desc.configurable / Desc.writable presence + value.
+        let desc_has_configurable = self.has_property_via(&desc_obj, "configurable");
+        let desc_configurable = if desc_has_configurable {
+            crate::abstract_ops::to_boolean(&self.spec_get(&desc_obj, "configurable")?)
+        } else { true };
+        let desc_has_writable = self.has_property_via(&desc_obj, "writable");
+        let desc_writable = if desc_has_writable {
+            crate::abstract_ops::to_boolean(&self.spec_get(&desc_obj, "writable")?)
+        } else { true };
+        let setting_config_false = desc_has_configurable && !desc_configurable;
+        let target_d = self.obj(target_id).get_own(key).cloned();
+        let extensible = self.obj(target_id).extensible;
+        match target_d {
+            None => {
+                if !extensible {
+                    return Err(RuntimeError::TypeError(format!(
+                        "Proxy 'defineProperty' trap returned true for adding property '{}' to non-extensible target", key)));
+                }
+                if setting_config_false {
+                    return Err(RuntimeError::TypeError(format!(
+                        "Proxy 'defineProperty' trap returned true for defining non-configurable property '{}' on target without one", key)));
+                }
+            }
+            Some(td) => {
+                if setting_config_false && td.configurable {
+                    return Err(RuntimeError::TypeError(format!(
+                        "Proxy 'defineProperty' trap returned true for defining non-configurable property '{}' which is configurable in target", key)));
+                }
+                let is_data = td.getter.is_none() && td.setter.is_none();
+                if is_data && !td.configurable && td.writable
+                    && desc_has_writable && !desc_writable
+                {
+                    return Err(RuntimeError::TypeError(format!(
+                        "Proxy 'defineProperty' trap returned true for defining property '{}' as non-writable while target's is non-configurable data + writable", key)));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// EXT 89 / Pin-Art Pass C: §10.5.5 [[GetOwnProperty]] invariants
+    /// for the common case where the trap returned undefined: target's
+    /// non-configurable own property (if any) at the key forbids the
+    /// undefined return, and a non-extensible target similarly forbids
+    /// "this key doesn't exist" once it does. The non-undefined trap
+    /// path (descriptor compatibility) is deferred to a future EXT —
+    /// requires full ToPropertyDescriptor + IsCompatiblePropertyDescriptor.
+    pub fn apply_proxy_get_own_property_descriptor_invariant(&self,
+        target_id: crate::value::ObjectRef, key: &str, trap_result: &Value)
+        -> Result<(), RuntimeError>
+    {
+        if !matches!(trap_result, Value::Object(_) | Value::Undefined) {
+            return Err(RuntimeError::TypeError(
+                "Proxy 'getOwnPropertyDescriptor' trap returned non-Object non-Undefined".into()));
+        }
+        if matches!(trap_result, Value::Undefined) {
+            if let Some(td) = self.obj(target_id).get_own(key) {
+                if !td.configurable {
+                    return Err(RuntimeError::TypeError(format!(
+                        "Proxy 'getOwnPropertyDescriptor' trap returned undefined for non-configurable own property '{}' of target", key)));
+                }
+                if !self.obj(target_id).extensible {
+                    return Err(RuntimeError::TypeError(format!(
+                        "Proxy 'getOwnPropertyDescriptor' trap returned undefined for own property '{}' of non-extensible target", key)));
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// EXT 86 / Pin-Art Pass C: ECMA-262 §10.5.11 [[OwnPropertyKeys]]
     /// invariants — the trap-vs-target consistency checks that must run
     /// after the Proxy.ownKeys trap returns. Inputs: the trap's raw
