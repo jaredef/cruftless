@@ -4216,14 +4216,24 @@ impl Runtime {
             _ => return Err(RuntimeError::TypeError("Reflect.has: target must be Object".into())),
         };
         // EXT 77: ECMA §28.1.9 step 2 — ToPropertyKey(propertyKey).
-        // Non-Symbol Object keys must dispatch their @@toPrimitive /
-        // toString / valueOf chain so user-thrown errors from those
-        // accessors propagate out of Reflect.has. Symbol keys bypass
-        // coercion (they ARE a property key already).
         let key_pk = match key {
             Value::Symbol(_) => property_key(key),
             _ => property_key(&Value::String(std::rc::Rc::new(self.coerce_to_string(key)?))),
         };
+        // EXT 79: ECMA §28.1.9 routes [[HasProperty]] to the Proxy `has`
+        // trap when the target is a Proxy with a callable handler.has.
+        // Missing trap falls through to the target's [[HasProperty]].
+        let key_str = key_pk.as_str().to_string();
+        if let Some((tgt, handler)) = self.proxy_target_handler(id) {
+            let trap = self.object_get(handler, "has");
+            if matches!(trap, Value::Object(_)) {
+                let r = self.call_function(trap, Value::Object(handler), vec![
+                    Value::Object(tgt), Value::String(std::rc::Rc::new(key_str.clone())),
+                ])?;
+                return Ok(Value::Boolean(crate::abstract_ops::to_boolean(&r)));
+            }
+            return Ok(Value::Boolean(self.has_property_pk(tgt, &key_pk)));
+        }
         Ok(Value::Boolean(self.has_property_pk(id, &key_pk)))
     }
 
@@ -4233,12 +4243,25 @@ impl Runtime {
             Value::Object(id) => *id,
             _ => return Err(RuntimeError::TypeError("Reflect.get: target must be Object".into())),
         };
-        // EXT 77: ECMA §28.1.8 step 2 — ToPropertyKey(propertyKey). See
-        // reflect_has_via above; same Symbol-bypass + ToString coercion.
+        // EXT 77: ToPropertyKey on Object keys.
         let key_pk = match key {
             Value::Symbol(_) => property_key(key),
             _ => property_key(&Value::String(std::rc::Rc::new(self.coerce_to_string(key)?))),
         };
+        // EXT 79: ECMA §28.1.8 routes [[Get]] to the Proxy `get` trap.
+        let key_str = key_pk.as_str().to_string();
+        if let Some((tgt, handler)) = self.proxy_target_handler(id) {
+            let trap = self.object_get(handler, "get");
+            if matches!(trap, Value::Object(_)) {
+                return self.call_function(trap, Value::Object(handler), vec![
+                    Value::Object(tgt), Value::String(std::rc::Rc::new(key_str)), Value::Object(id),
+                ]);
+            }
+            if let Some(getter) = self.find_getter_pk(tgt, &key_pk) {
+                return self.call_function(getter, Value::Object(tgt), Vec::new());
+            }
+            return Ok(self.object_get_pk(tgt, &key_pk));
+        }
         if let Some(getter) = self.find_getter_pk(id, &key_pk) {
             return self.call_function(getter, Value::Object(id), Vec::new());
         }
@@ -4252,6 +4275,28 @@ impl Runtime {
             _ => return Err(RuntimeError::TypeError("Reflect.set: target must be Object".into())),
         };
         let key_s = self.coerce_to_string(key)?;
+        // EXT 79: ECMA §28.1.13 routes [[Set]] to the Proxy `set` trap.
+        if let Some((tgt, handler)) = self.proxy_target_handler(id) {
+            let trap = self.object_get(handler, "set");
+            if matches!(trap, Value::Object(_)) {
+                let r = self.call_function(trap, Value::Object(handler), vec![
+                    Value::Object(tgt), Value::String(std::rc::Rc::new(key_s)),
+                    value.clone(), Value::Object(id),
+                ])?;
+                return Ok(Value::Boolean(crate::abstract_ops::to_boolean(&r)));
+            }
+            self.object_set(tgt, key_s, value.clone());
+            return Ok(Value::Boolean(true));
+        }
+        // EXT 79b: invoke an inherited setter accessor when present
+        // (own or up the prototype chain). The setter's throw propagates
+        // out of Reflect.set; without this, an Object with a throwing
+        // setter silently succeeded.
+        let key_pk = crate::value::PropertyKey::String(key_s.clone());
+        if let Some(setter) = self.find_setter_pk(id, &key_pk) {
+            self.call_function(setter, Value::Object(id), vec![value.clone()])?;
+            return Ok(Value::Boolean(true));
+        }
         self.object_set(id, key_s, value.clone());
         Ok(Value::Boolean(true))
     }
@@ -4264,10 +4309,33 @@ impl Runtime {
             _ => return Err(RuntimeError::TypeError("Reflect.deleteProperty: target must be Object".into())),
         };
         let key_s = self.coerce_to_string(key)?;
+        // EXT 79: ECMA §28.1.4 routes [[Delete]] to the Proxy `deleteProperty` trap.
+        if let Some((tgt, handler)) = self.proxy_target_handler(id) {
+            let trap = self.object_get(handler, "deleteProperty");
+            if matches!(trap, Value::Object(_)) {
+                let r = self.call_function(trap, Value::Object(handler), vec![
+                    Value::Object(tgt), Value::String(std::rc::Rc::new(key_s)),
+                ])?;
+                return Ok(Value::Boolean(crate::abstract_ops::to_boolean(&r)));
+            }
+            let configurable = self.obj(tgt).get_own(&key_s).map(|d| d.configurable).unwrap_or(true);
+            if !configurable { return Ok(Value::Boolean(false)); }
+            self.obj_mut(tgt).remove_str(&key_s);
+            return Ok(Value::Boolean(true));
+        }
         let configurable = self.obj(id).get_own(&key_s).map(|d| d.configurable).unwrap_or(true);
         if !configurable { return Ok(Value::Boolean(false)); }
         self.obj_mut(id).remove_str(&key_s);
         Ok(Value::Boolean(true))
+    }
+
+    /// EXT 79: helper — when `id` is a Proxy, return its (target, handler)
+    /// pair; otherwise None. Used by every Reflect.* via to gate trap
+    /// dispatch before falling back to direct target operations.
+    fn proxy_target_handler(&self, id: ObjectRef) -> Option<(ObjectRef, ObjectRef)> {
+        if let crate::value::InternalKind::Proxy(p) = &self.obj(id).internal_kind {
+            Some((p.target, p.handler))
+        } else { None }
     }
 
     /// Reflect.ownKeys(target) per ECMA §28.1.12 — returns Array of own
