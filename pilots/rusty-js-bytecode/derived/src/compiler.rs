@@ -8,6 +8,7 @@
 use crate::constants::{Constant, ConstantsPool};
 use crate::op::*;
 use rusty_js_ast::*;
+use std::rc::Rc;
 
 #[derive(Debug, Clone)]
 pub struct CompileError {
@@ -239,6 +240,11 @@ pub struct Compiler {
     /// upvalues, walked when resolving identifiers inside nested functions.
     /// Innermost outer is at the back. Empty at the top-level module.
     enclosing: Vec<EnclosingFrame>,
+    /// Ω.5.P03.E2.enclosing-locals-rc: cached Rc snapshot of `self.locals`
+    /// reused across nested function compiles. Invalidated (set to None)
+    /// at every mutation of `self.locals` (alloc_local + scope-end name
+    /// rewrites). Rebuilt lazily on next `locals_snapshot()` call.
+    locals_snapshot: Option<Rc<Vec<LocalDescriptor>>>,
     /// This proto's own upvalue descriptors (only meaningful when this
     /// Compiler is compiling a nested function, i.e. enclosing.is_empty()
     /// is false).
@@ -319,9 +325,17 @@ struct ClassFrame {
     is_static: bool,
 }
 
+// Ω.5.P03.E2.enclosing-locals-rc: `locals` is held by `Rc` so a single
+// snapshot of the parent's locals can be shared across every nested
+// function compile inside a given parent. Pre-substrate this field was
+// `Vec<LocalDescriptor>` and every call to `compile_function_proto_*`
+// did `self.locals.clone()` — O(L) per child, O(L*N) for N siblings.
+// The snapshot is read-only inside the sub-compiler (resolve_upvalue
+// only iterates names). Parent mutations to `self.locals` invalidate
+// the cached snapshot (see `Compiler::locals_snapshot`).
 #[derive(Debug, Clone)]
 struct EnclosingFrame {
-    locals: Vec<LocalDescriptor>,
+    locals: Rc<Vec<LocalDescriptor>>,
     /// Upvalues that this enclosing frame itself captured. Needed when an
     /// inner function references a name owned by an even-outer level — the
     /// intermediate frames each get a transitive upvalue.
@@ -425,7 +439,34 @@ impl Compiler {
             block_depth: 0,
             construct_tags: Vec::new(),
             strict: false,
+            locals_snapshot: None,
         }
+    }
+
+    /// Ω.5.P03.E2.enclosing-locals-rc: get-or-build the shared snapshot of
+    /// `self.locals` for handing to a nested function compile. The Rc is
+    /// reused across all sibling sub-compiles until `self.locals` is next
+    /// mutated (alloc_local or scope-end name rewrite). Converts the
+    /// per-child O(L) clone into an O(L) build amortized across all
+    /// children that don't intervene with a parent-locals mutation —
+    /// the dominant pattern in bundled CJS output, where N sibling
+    /// `function (){…}` expressions are emitted between parent
+    /// alloc_locals (often zero between them).
+    fn locals_snapshot(&mut self) -> Rc<Vec<LocalDescriptor>> {
+        if let Some(snap) = &self.locals_snapshot {
+            if snap.len() == self.locals.len() {
+                return Rc::clone(snap);
+            }
+        }
+        let snap = Rc::new(self.locals.clone());
+        self.locals_snapshot = Some(Rc::clone(&snap));
+        snap
+    }
+
+    /// Invalidate the cached locals snapshot. Call after any mutation to
+    /// `self.locals` (push, in-place name rewrite, or replace).
+    fn invalidate_locals_snapshot(&mut self) {
+        self.locals_snapshot = None;
     }
 
     /// Ω.5.P53.E2: mark the current bytecode offset with an AST-construct
@@ -909,7 +950,7 @@ impl Compiler {
                     // hoisted from outer); they're meant to outlive.
                     let nm = &self.locals[i].name;
                     if !nm.starts_with('<') {
-                        self.locals[i].name = format!("<scoped@{}>{}", i, nm);
+                        self.locals[i].name = format!("<scoped@{}>{}", i, nm); self.locals_snapshot = None;
                     }
                 }
             }
@@ -1129,7 +1170,7 @@ impl Compiler {
                 for i in scope_snapshot..self.locals.len() {
                     let nm = &self.locals[i].name;
                     if !nm.starts_with('<') {
-                        self.locals[i].name = format!("<scoped@{}>{}", i, nm);
+                        self.locals[i].name = format!("<scoped@{}>{}", i, nm); self.locals_snapshot = None;
                     }
                 }
             }
@@ -1287,7 +1328,7 @@ impl Compiler {
                 for i in scope_snapshot..self.locals.len() {
                     let nm = &self.locals[i].name;
                     if !nm.starts_with('<') {
-                        self.locals[i].name = format!("<scoped@{}>{}", i, nm);
+                        self.locals[i].name = format!("<scoped@{}>{}", i, nm); self.locals_snapshot = None;
                     }
                 }
             }
@@ -1390,7 +1431,7 @@ impl Compiler {
                     for i in scope_snapshot..self.locals.len() {
                         let nm = &self.locals[i].name;
                         if !nm.starts_with('<') {
-                            self.locals[i].name = format!("<scoped@{}>{}", i, nm);
+                            self.locals[i].name = format!("<scoped@{}>{}", i, nm); self.locals_snapshot = None;
                         }
                     }
                 }
@@ -1671,7 +1712,7 @@ impl Compiler {
                 for i in scope_snapshot..self.locals.len() {
                     let nm = &self.locals[i].name;
                     if !nm.starts_with('<') {
-                        self.locals[i].name = format!("<scoped@{}>{}", i, nm);
+                        self.locals[i].name = format!("<scoped@{}>{}", i, nm); self.locals_snapshot = None;
                     }
                 }
             }
@@ -1909,6 +1950,8 @@ impl Compiler {
         let idx = self.locals.len();
         assert!(idx < u16::MAX as usize, "too many locals");
         self.locals.push(desc);
+        // Ω.5.P03.E2.enclosing-locals-rc: locals changed → drop cache.
+        self.locals_snapshot = None;
         idx as u16
     }
 
@@ -2846,8 +2889,11 @@ impl Compiler {
         // back-fill upvalues into intermediate frames (handled by writing
         // back to self after the sub finishes).
         let mut sub_enclosing: Vec<EnclosingFrame> = self.enclosing.iter().cloned().collect();
+        // Ω.5.P03.E2.enclosing-locals-rc: reuse the cached Rc snapshot
+        // instead of cloning `self.locals` per child.
+        let locals_snap = self.locals_snapshot();
         sub_enclosing.push(EnclosingFrame {
-            locals: self.locals.clone(),
+            locals: locals_snap,
             upvalues: self.upvalues.clone(),
         });
         let mut sub = Compiler {
@@ -2879,6 +2925,7 @@ impl Compiler {
             // EXT 73: inherit enclosing strictness; upgrade below if the
             // body opens with a `"use strict"` directive prologue.
             strict: self.strict || directive_has_use_strict(body),
+            locals_snapshot: None,
         };
         let param_count = params.len() as u16;
         // Tier-Ω.5.l: track the rest-parameter slot. Per spec only the
