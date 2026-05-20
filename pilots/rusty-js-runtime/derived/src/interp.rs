@@ -5975,11 +5975,7 @@ impl Runtime {
                             // handler.get(target, key, receiver) and use
                             // its return value. Missing trap falls through
                             // to target.
-                            let proxy_dispatch = if let crate::value::InternalKind::Proxy(p) =
-                                &self.obj(*id).internal_kind
-                            {
-                                Some((p.target, p.handler))
-                            } else { None };
+                            let proxy_dispatch = self.proxy_target_handler_checked(*id)?;
                             if let Some((target, handler)) = proxy_dispatch {
                                 let trap = self.object_get(handler, "get");
                                 if matches!(trap, Value::Object(_)) {
@@ -6094,11 +6090,7 @@ impl Runtime {
                     let obj_v = frame.pop()?;
                     if let Value::Object(id) = &obj_v {
                         // Ω.5.P60.E2: Proxy set-trap dispatch.
-                        let proxy_dispatch = if let crate::value::InternalKind::Proxy(p) =
-                            &self.obj(*id).internal_kind
-                        {
-                            Some((p.target, p.handler))
-                        } else { None };
+                        let proxy_dispatch = self.proxy_target_handler_checked(*id)?;
                         if let Some((target, handler)) = proxy_dispatch {
                             let trap = self.object_get(handler, "set");
                             if matches!(trap, Value::Object(_)) {
@@ -6167,11 +6159,7 @@ impl Runtime {
                         Value::Object(id) => {
                             // Ω.5.P60.E1: Proxy get-trap dispatch at
                             // computed-key reads. Mirrors Op::GetProp.
-                            let proxy_dispatch = if let crate::value::InternalKind::Proxy(p) =
-                                &self.obj(id).internal_kind
-                            {
-                                Some((p.target, p.handler))
-                            } else { None };
+                            let proxy_dispatch = self.proxy_target_handler_checked(id)?;
                             if let Some((target, handler)) = proxy_dispatch {
                                 let trap = self.object_get(handler, "get");
                                 if matches!(trap, Value::Object(_)) {
@@ -6303,11 +6291,7 @@ impl Runtime {
                     let removed = match obj_v {
                         Value::Object(id) => {
                             // Ω.5.P60.E2: Proxy deleteProperty-trap dispatch.
-                            let proxy_dispatch = if let crate::value::InternalKind::Proxy(p) =
-                                &self.obj(id).internal_kind
-                            {
-                                Some((p.target, p.handler))
-                            } else { None };
+                            let proxy_dispatch = self.proxy_target_handler_checked(id)?;
                             if let Some((target, handler)) = proxy_dispatch {
                                 let trap = self.object_get(handler, "deleteProperty");
                                 if matches!(trap, Value::Object(_)) {
@@ -6352,11 +6336,7 @@ impl Runtime {
                     let removed = match obj_v {
                         Value::Object(id) => {
                             // Ω.5.P60.E2: same Proxy dispatch as DeleteProp.
-                            let proxy_dispatch = if let crate::value::InternalKind::Proxy(p) =
-                                &self.obj(id).internal_kind
-                            {
-                                Some((p.target, p.handler))
-                            } else { None };
+                            let proxy_dispatch = self.proxy_target_handler_checked(id)?;
                             if let Some((target, handler)) = proxy_dispatch {
                                 let trap = self.object_get(handler, "deleteProperty");
                                 if matches!(trap, Value::Object(_)) {
@@ -6405,11 +6385,7 @@ impl Runtime {
                     let key_pk = property_key(&key_v);
                     let key = key_pk.as_str().to_string();
                     // Ω.5.P60.E2: Proxy has-trap dispatch.
-                    let proxy_dispatch = if let crate::value::InternalKind::Proxy(p) =
-                        &self.obj(obj_id).internal_kind
-                    {
-                        Some((p.target, p.handler))
-                    } else { None };
+                    let proxy_dispatch = self.proxy_target_handler_checked(obj_id)?;
                     let mut found = false;
                     if let Some((target, handler)) = proxy_dispatch {
                         let trap = self.object_get(handler, "has");
@@ -6499,11 +6475,7 @@ impl Runtime {
                     let key = key_pk.as_str().to_string();
                     if let Value::Object(id) = &obj_v {
                         // Ω.5.P60.E2: Proxy set-trap dispatch at computed-key writes.
-                        let proxy_dispatch = if let crate::value::InternalKind::Proxy(p) =
-                            &self.obj(*id).internal_kind
-                        {
-                            Some((p.target, p.handler))
-                        } else { None };
+                        let proxy_dispatch = self.proxy_target_handler_checked(*id)?;
                         if let Some((target, handler)) = proxy_dispatch {
                             let trap = self.object_get(handler, "set");
                             if matches!(trap, Value::Object(_)) {
