@@ -4698,14 +4698,21 @@ impl Compiler {
             return Err(self.err(span, "too many super-call arguments (>255)"));
         }
         if Self::args_has_spread(arguments) {
-            // Tier-Ω.5.k: spread super(...) → __apply(super_ctor, this, args).
+            // Ω.5.P03.E2.super-new-target: spread super(...) →
+            // __super_apply(super_ctor, this, args). __super_apply is
+            // __apply that forwards the calling frame's new.target so
+            // the parent ctor invocation gets construct semantics. The
+            // PropagateNewTarget op below seeds __super_apply's own
+            // current_new_target at frame entry; __super_apply re-emits
+            // it into pending_new_target before its inner dispatch.
             let apply_name = self.constants.intern(
-                Constant::String("__apply".to_string()));
+                Constant::String("__super_apply".to_string()));
             encode_op(&mut self.bytecode, Op::LoadGlobal);
             encode_u16(&mut self.bytecode, apply_name);
             self.emit_load_ident(&super_ctor_name);
             encode_op(&mut self.bytecode, Op::PushThis);
             self.emit_args_array(arguments)?;
+            encode_op(&mut self.bytecode, Op::PropagateNewTarget);
             encode_op(&mut self.bytecode, Op::Call);
             encode_u8(&mut self.bytecode, 3);
         } else {
@@ -4719,6 +4726,17 @@ impl Compiler {
                     Argument::Spread { .. } => unreachable!(),
                 }
             }
+            // Ω.5.P03.E2.super-new-target: forward current frame's
+            // new.target so the parent ctor invocation gets construct
+            // semantics. Without this, super(...) routed via CallMethod
+            // with nt_for_this_call=None, the parent saw new.target as
+            // undefined, AND the implicit-return-this rule (interp.rs
+            // line 7639) didn't fire — so a parent whose body ended in
+            // ReturnUndef returned Undefined to the super-call sequence,
+            // SetThis ignored the Undefined, and any rebinding done in
+            // the parent (Callable-style return-of-non-this) was lost
+            // for the derived's this_value chain.
+            encode_op(&mut self.bytecode, Op::PropagateNewTarget);
             encode_op(&mut self.bytecode, Op::CallMethod);
             encode_u8(&mut self.bytecode, n as u8);
         }

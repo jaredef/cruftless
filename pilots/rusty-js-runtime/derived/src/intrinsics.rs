@@ -682,6 +682,31 @@ impl Runtime {
             };
             rt.call_function(callee, this_arg, collected)
         });
+        // Ω.5.P03.E2.super-new-target: __super_apply(callee, thisArg,
+        // argsArray) is __apply that ALSO forwards the active new.target
+        // into the inner call so the parent constructor invocation has
+        // construct semantics. Used by compile_super_call's spread
+        // branch (super(...args) inside a derived ctor). The active
+        // new.target is current_new_target at __super_apply's entry,
+        // which is the derived ctor's new.target propagated by the
+        // PropagateNewTarget op emitted just before this helper's call.
+        register_engine_helper(self, "__super_apply", |rt, args| {
+            let callee = args.first().cloned().unwrap_or(Value::Undefined);
+            let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
+            let arr = args.get(2).cloned().unwrap_or(Value::Undefined);
+            let collected = match arr {
+                Value::Object(id) => {
+                    let n = rt.array_length(id);
+                    (0..n).map(|i| rt.object_get(id, &i.to_string())).collect()
+                }
+                _ => Vec::new(),
+            };
+            // Forward our current new.target into the inner dispatch.
+            if let Some(nt) = rt.current_new_target.clone() {
+                rt.pending_new_target = Some(nt);
+            }
+            rt.call_function(callee, this_arg, collected)
+        });
         // __construct(callee, argsArray) → new callee(...argsArray).
         // Mirrors the Op::New handler: consults callee.prototype for the
         // new instance's [[Prototype]] and discards non-object returns.

@@ -7207,6 +7207,25 @@ impl Runtime {
                         frame.this_value = v;
                     }
                 }
+                Op::PropagateNewTarget => {
+                    // Ω.5.P03.E2.super-new-target: forward the current
+                    // frame's new.target into the runtime's pending slot
+                    // so the next CallMethod (the super(...) dispatch)
+                    // treats the parent ctor invocation as a [[Construct]]
+                    // with the same new.target the derived ctor saw.
+                    // Two consequences: (1) the parent ctor's
+                    // `new.target` is the original-newed class, not
+                    // undefined, matching ECMA-262 §10.2.1.3 SuperCall
+                    // step 4; (2) the call_function's implicit-return-
+                    // this branch (line 7639) fires for the parent's
+                    // ReturnUndef, so the parent's frame.this_value
+                    // (possibly rebound by Callable-style patterns)
+                    // propagates back to the derived's super-call
+                    // sequence, where SetThis can rebind in turn.
+                    if let Some(nt) = &frame.new_target {
+                        self.pending_new_target = Some(nt.clone());
+                    }
+                }
                 Op::New => {
                     let n = frame.bytecode[frame.pc] as usize;
                     frame.pc += 1;

@@ -129,6 +129,18 @@ pub enum Op {
     /// constructor returns an object, that object replaces `this` for
     /// the derived ctor body).
     SetThis = 0x78,
+    /// PROPAGATE_NEW_TARGET — Ω.5.P03.E2.super-new-target. Reads the
+    /// current frame's `new.target` and writes it into the runtime's
+    /// pending_new_target slot, so the next dispatch (CallMethod for a
+    /// super(...) call) propagates new.target through to the base
+    /// constructor's frame per ECMA-262 §10.2.1.3 step 4 (SuperCall:
+    /// new.target is the active newTarget of the calling derived
+    /// constructor). Without this, super(...) routes via CallMethod
+    /// with no construct semantics, and the base ctor sees
+    /// new.target=undefined plus loses the implicit-return-this rule
+    /// at the calling derived's super-call sequence. Emit immediately
+    /// before the CallMethod (or __apply path) in compile_super_call.
+    PropagateNewTarget = 0x79,
 
     // Member access
     /// GET_PROP <u16>
@@ -206,7 +218,8 @@ impl Op {
             | Typeof | Void | Delete | DeleteIndex
             | Throw | TryExit
             | IterInit | IterNext | IterClose
-            | Nop | Debugger | PushThis | PushImportMeta | PushNewTarget | SetThis => 0,
+            | Nop | Debugger | PushThis | PushImportMeta | PushNewTarget | SetThis
+            | PropagateNewTarget => 0,
             Call | New | CallMethod => 1,
             PushConst | LoadLocal | StoreLocal | LoadArg | StoreArg
             | LoadGlobal | StoreGlobal | LoadUpvalue | StoreUpvalue
@@ -274,6 +287,7 @@ pub fn op_from_byte(b: u8) -> Option<Op> {
         0x63 => JumpIfTrueKeep, 0x64 => JumpIfFalseKeep, 0x65 => JumpIfNullish,
         0x70 => Call, 0x71 => New, 0x72 => Return, 0x73 => ReturnUndef,
         0x74 => CallMethod, 0x75 => PushThis, 0x76 => PushImportMeta, 0x77 => PushNewTarget, 0x78 => SetThis,
+        0x79 => PropagateNewTarget,
         0x80 => GetProp, 0x81 => SetProp, 0x82 => GetIndex, 0x83 => SetIndex,
         0x84 => SetPrototype,
         0x90 => NewObject, 0x91 => NewArray, 0x92 => InitProp, 0x93 => InitIndex,
