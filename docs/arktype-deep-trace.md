@@ -155,9 +155,66 @@ This is what "the pipeline is its own diagnostic" looks like in practice. Each f
 | `d1ab22cb` | `Ω.5.P04.E1.is-spec-object` | Wall 3: ToPrimitive Type-vs-typeof collapse |
 | `0605f6de` | `Ω.5.P03.E2.class-method-non-enumerable` | (α) Method + accessor descriptor shape; did NOT recover arktype |
 | `1c834fd9` | `Ω.5.P05.L0.module-mjs-strict` | (β) .mjs strict-by-default; did NOT recover arktype |
-| (pending) | (TBD) | Wall 4: prototype-as-this root in arktype — proximate cause unidentified |
+| `16ff1f56` | `Ω.5.P03.E2.super-get-this` | **Wall 4 ROOT CLOSED**: super.X getter receiver = original this per ECMA §13.3.7.3 + §10.1.7.2 |
+| (pending) | (TBD) | Wall 5: rawIn-on-Array deep inside arktype's intersectNodesRoot |
 
 Frontier: continue identifying the root for the prototype-as-this state. Each layer is its own engagement-tier substrate move under the discipline established at EXT 20.
+
+## Wall 4 ROOT CLOSED — super-getter receiver binding (commit `16ff1f56`)
+
+After (γ) failed to recover arktype, ran the explicit Bun-vs-cruftless comparison: instrument every equals call in both engines, compare the trace at the divergence point.
+
+**Findings:**
+- Both engines execute identically for equals calls 1–45.
+- Bun reaches **2154** total equals calls (arktype loads).
+- Cruftless reaches **46** total equals calls (errors at #46).
+- Equals call #46 fires from **shared/intersections.js:34** (`if (isPureIntersection && l.equals(r))`). In Bun, `l` is a domain-node instance; in cruftless, `l === r === Class.prototype`.
+
+**Upstream root identified:**
+
+`branch.rawIn` returns the prototype in cruftless, the instance in Bun. arktype's `@ark/schema/out/roots/root.js:21` has:
+
+```js
+get rawIn() {
+    return super.rawIn;
+}
+```
+
+Minimal repro produced a spec-violation in cruftless's super-getter dispatch:
+
+```js
+class A { get foo() { return this; } }
+class B extends A { get foo() { return super.foo; } }
+class C extends B {}
+const c = new C(); c.kind = 'x';
+c.foo === c                  bun: true       cruftless: false
+inside A.get foo: this.kind  bun: 'x'        cruftless: undefined (this===A.prototype)
+```
+
+**Spec divergence:** per ECMA-262 §13.3.7.3 MakeSuperPropertyReference + §10.4.4 GetSuperBase + §10.1.7.2 OrdinaryGet, a super.X reference walks the [[HomeObject]]'s [[Prototype]] chain to find the property, but when the property is an accessor, the getter is invoked with `this = the calling method's this binding`, NOT the super-base. Pre-substrate, cruftless compiled `super.X` as `LoadIdent <super.proto>; GetProp X` — Op::GetProp uses the popped object as the accessor receiver. Result: `get foo() { return super.foo; }` invoked the inherited getter with `this = super-base prototype`.
+
+The BaseNode `get rawIn()` then ran `cacheGetter("rawIn", this.getIo("in"))` with this=super-base. cacheGetter does `Object.defineProperty(this, "rawIn", {value})` — wrote the cached rawIn ONTO the super-base prototype itself. Every subsequent `branch.rawIn` access on instances then resolved the proto chain and found the cached prototype as the value. The proto-as-this leaked from `branch.rawIn` into `intersectNodesRoot(l.rawIn, ...)`, eventually firing `l.equals(r)` at intersections.js:34 with l===r===prototype.
+
+**Substrate `Ω.5.P03.E2.super-get-this`:** new runtime helper `__super_get(this_val, super_base, key)` walks super_base's chain manually and invokes any found getter with `this = this_val`. `compile_super_member_load` now emits this helper call instead of the LoadIdent+GetProp pair.
+
+Verified by direct repro (passes under both engines). Parity-fast clean: 31 PASS, 0 regressions.
+
+## Wall 5 — rawIn-on-Array deep inside intersectNodesRoot (OPEN)
+
+After Wall 4 closed, arktype advances to a new failure trace:
+
+```
+union.js:661 "callee is not callable: undefined [argc=1] 
+              (method='rawIn') (receiver=Array(len=1) [...])"
+```
+
+Initial instrumentation findings:
+- Both engines reach the same intersectNodesRoot entry point with identical args (bi.kind='unit', bj.kind='unit', dollarVal=scope-object).
+- Inside `_intersectNodes`, cruftless completes **36** implementation calls before failing; Bun reaches **66+** before completing arktype's bootstrap.
+- The per-kind intersection implementations return Arrays of nodes (isArr=true) in BOTH engines.
+- The failure trace surface mentions a chain ending in `(method='rawIn') (receiver=Array)`, with an inner `(callee='inner')` indicating arktype's per-impl `inner` field is being dispatched somewhere.
+
+Hypothesis: arktype's `_intersectNodes` returns an Array result; downstream code somewhere treats the Array as a node and calls a method on it. This is a separable cruftless engine bug downstream of intersection logic, distinct from the super-getter root.
 
 ## (γ) sequential program — α + β both landed, neither recovered arktype
 
