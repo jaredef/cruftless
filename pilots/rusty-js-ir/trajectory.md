@@ -1242,3 +1242,39 @@ Pin-Art tag count: 96 commits as of EXT 71b.
 ### Conjecture status
 
 **§I-strengthened corroboration #5 (2026-05-19, EXT 56)**: a queued alphabet extension predicted at EXT 52 close (property-descriptor builders) was empirically shown to be unnecessary upon implementation. The existing alphabet was already sufficient. This is the strongest corroboration of §I.1.b yet — the alphabet-completeness criterion is not just stable in practice but predictively *over-conservative* when projected forward.
+
+## IR-EXT 72 → 72b — 2026-05-19 (ToPrimitive resolver-instance lift + typeof-Function correction)
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| `1e77c63c` | IR-EXT 72: §7.1.1 ToPrimitive lifted | Resolver-instance lift of the receiver-coercion dispatcher: @@toPrimitive → OrdinaryToPrimitive (valueOf/toString in hint-driven order). Removed Rust-side `to_primitive` body; routed through IR section. Per the keeper conjecture (msg 8556 → Doc 730 §XII): central coercion dispatch becomes legible at the IR-pinning tier, making adjacent divergence traceable rather than buried. |
+| `cbb9f44a` | IR-EXT 72b: ToPrimitive function-typeof correction | §7.1.1 step 1 fast-return and §7.1.1.1 steps 4.m1.check / 5.m2.check only excluded `typeof === "object"`, missing the fact that ECMAScript functions report `typeof === "function"` while still being spec-Objects. Result: ToPrimitive short-circuited on function inputs, returning the function itself as the "primitive"; the binary `+` operator then fell back to `abstract_ops::to_string` which yields `"[object Object]"` for any Object. The bug was masked locally (calling `fn.toString()` directly resolved Function.prototype.toString correctly) and surfaced only via test262's `"" + fn` matcher path. Patched three gate sites with nested if-checks. Resolution-pipeline-dynamic (Doc 730 §XII) corroboration: the divergence was buried in `to_primitive`'s gate condition, equidistant from `+` and from the broken stringification surface; lifting to IR exposed it cleanly. |
+
+### Substrate at IR-EXT 72b close
+
+**IR alphabet**: 63 nodes (no growth; the typeof-correction used nested `If` rather than introducing `And`). The absence of `Expr::And` is now a noted alphabet-poverty signal queued for EXT 73 if a second three-clause boolean pattern arises.
+
+### Failed move (recorded for §I traceability)
+
+**EXT 73 attempt — OrdinaryCallBindThis (§10.2.1.2)**: lifted into `call_function` for non-arrow closures. Coerced null/undefined → globalThis and primitive → ToObject-boxed, gated only on `pending_new_target.is_none()` (skipping constructor invocation). Smoke confirmed the intended sloppy-mode behavior (`f.apply()` writes to globalThis; `g.call(42)` boxes Number to Object). Full Function.prototype sweep regressed from ~75% to 43.0%: strict-mode tests (`apply/15.3.4.3-{1,2,3}-s.js`, ...) verify the *opposite* — that strict thisArg is NOT coerced. Since strictness is not currently carried on `ClosureInternals` or `FunctionProto`, the universal coercion broke 50+ strict-mode tests for the ~30 sloppy ones it would have fixed. Reverted in the same session.
+
+**Implication**: closing the remaining `Function.prototype.{apply,call}` cluster requires a structural change — propagate a `strict: bool` from the parser/compiler down to FunctionProto and read it in OrdinaryCallBindThis. Queued for a future EXT.
+
+### Cumulative numbers
+
+| Chapter | Pre-72b | Post-72b | Δ |
+|---|---|---|---|
+| Function.prototype/toString (47-cluster) | 0/47 | 47/47 (all native-shape matchers) | +47 |
+| (Promise chapter sampled; pool diffuse, deferred) | 55.0% | 55.0% | 0 |
+
+**Session-cumulative wins: +734 → +781** (chapter-by-chapter; full-tree sweep pending).
+
+Pin-Art tag count: 97 commits as of EXT 72b.
+
+### Conjecture status
+
+**§I-strengthened corroboration #6 (2026-05-19, EXT 72b)**: a divergence at the central coercion dispatcher (§7.1.1 ToPrimitive) was traceable to a single boolean clause precisely because the dispatch sequence had been lifted into IR. The local smoke (`fn.toString()` works) and remote symptom (`"" + fn` produces `"[object Object]"`) were ~five compositional steps apart; without IR pinning, the right diagnostic vantage would have been any of: `+` operator, `op_add_rt`, `to_primitive`, `OrdinaryToPrimitive`, `abstract_ops::to_string`. IR pinning collapsed those five candidate sites into one inspectable spec section.
+
+**Resolution-pipeline-dynamic corroboration #1 (Doc 730 §XII)**: the EXT 73 revert is itself a §XII data point — the pipeline correctly surfaced that strict-mode coverage was a load-bearing axis, which would have been masked if I had measured only the apply/call sub-tree. The strength of the post-IR substrate is not that fixes always land cleanly, but that *the cost of a bad fix is measurable in one sweep* rather than discovered downstream by a consumer.
