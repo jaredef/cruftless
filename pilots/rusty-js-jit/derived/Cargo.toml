@@ -1,0 +1,22 @@
+[package]
+name = "rusty-js-jit"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# Doc 731 §VII R2: Cranelift as the backend. The JIT does not own
+# instruction selection, register allocation, scheduling, peephole
+# optimization, or machine-code emission — Cranelift handles all of
+# them. The JIT owns only the bytecode-to-Cranelift-IR translation
+# table (per the op-p4-classification doc) and the function-table
+# linkage into the runtime.
+cranelift-codegen = "0.118"
+cranelift-frontend = "0.118"
+cranelift-jit = "0.118"
+cranelift-module = "0.118"
+cranelift-native = "0.118"
+
+rusty-js-bytecode = { path = "../../rusty-js-bytecode/derived" }

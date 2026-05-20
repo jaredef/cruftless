@@ -35,6 +35,9 @@ members = [
     "pilots/rusty-js-runtime/derived",
     # IR-DESIGN.md Tier 1: spec-as-source-of-truth IR for ECMA-262 sections.
     "pilots/rusty-js-ir/derived",
+    # Doc 731 / JIT-EXT 0+: baseline JIT compiler at the bytecode-to-
+    # machine-code substrate boundary. Cranelift backend per R2.
+    "pilots/rusty-js-jit/derived",
     "pilots/streams/derived",
     "pilots/structured-clone/derived",
     "pilots/textencoder/derived",
