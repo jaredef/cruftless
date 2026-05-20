@@ -359,8 +359,23 @@ impl Runtime {
     /// throws TypeError on undefined/null.
     pub fn to_object(&mut self, v: &Value) -> Result<Value, RuntimeError> {
         match v {
-            Value::Undefined | Value::Null => Err(RuntimeError::TypeError(
-                "Cannot convert undefined or null to object".into())),
+            Value::Undefined | Value::Null => {
+                // EXT 93 / Doc 730 §XIV: deviation 'to-object-coerce-nullish'
+                // — when ToObject is called on undefined or null, return a
+                // fresh ordinary Object instead of throwing TypeError.
+                // Bun/V8 absorb this in many spec-op call sites
+                // (Object.keys(nullish), Object.setPrototypeOf(x, nullish),
+                // spread-of-nullish, etc.). 14 packages in the EXT 84-89
+                // top500 regression set depend on this tolerance.
+                // Strict-by-default preserved; opt-in via
+                // __cruftless_tolerate('to-object-coerce-nullish').
+                if self.tolerated_deviations.contains("to-object-coerce-nullish") {
+                    return Ok(Value::Object(self.alloc_object(
+                        crate::value::Object::new_ordinary())));
+                }
+                Err(RuntimeError::TypeError(
+                    "Cannot convert undefined or null to object".into()))
+            }
             Value::Object(_) => Ok(v.clone()),
             Value::Boolean(b) => {
                 let mut o = crate::value::Object::new_ordinary();
@@ -5366,6 +5381,10 @@ impl Runtime {
     /// TypeError if value is null or undefined.
     pub fn require_object_coercible(&self, v: &Value) -> Result<(), RuntimeError> {
         if matches!(v, Value::Undefined | Value::Null) {
+            // EXT 93: same deviation gate as to_object.
+            if self.tolerated_deviations.contains("to-object-coerce-nullish") {
+                return Ok(());
+            }
             return Err(RuntimeError::TypeError(
                 "Cannot convert undefined or null to object".into()));
         }

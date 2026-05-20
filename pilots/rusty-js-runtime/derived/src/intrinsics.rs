@@ -950,6 +950,37 @@ impl Runtime {
             // Each protected_invariant is "C:<spec_primitive>" (Comprehended)
             // or "W:<waiver_ref>" (Waived per §XV.c).
             let known: Option<(&'static str, &[&'static str])> = match name.as_str() {
+                "to-object-coerce-nullish" => Some((
+                    "to-object-coerce-nullish",
+                    &[
+                        // Waiver #1: ECMA §7.1.18 ToObject's TypeError on
+                        // null/undefined is a defensive precondition for
+                        // every spec-op that requires-object-coercible
+                        // (Object.keys, Object.assign, Object.setPrototypeOf,
+                        // Object.entries, Object.values, spread targets,
+                        // etc.). Skipping it means each downstream op now
+                        // sees a fresh empty Object where it would have
+                        // received a TypeError-throwing nullish. The
+                        // downstream ops are themselves defensive against
+                        // empty Objects, so the substitution preserves
+                        // most observable behaviors — but library code
+                        // depending on the TypeError as a runtime check
+                        // for "did I pass undefined?" loses that signal.
+                        // Waived for v1: 14-package recovery in the
+                        // EXT 84-89 top500 set; trajectory record EXT 93.
+                        "W:EXT-93:to-object-typeerror-as-runtime-nullcheck",
+                        // Waiver #2: the @sec-ant/readable-stream module
+                        // (transitive dep of got/get-stream/clipboardy/
+                        // execa/got-fetch) uses Object.setPrototypeOf
+                        // patterns whose target arg is computed from a
+                        // chain that may be undefined under cruftless's
+                        // current intrinsic install order. The deviation
+                        // hides this gap rather than fixing it — could
+                        // surface as observable divergence in any package
+                        // whose init reads back the unset prototype.
+                        "W:EXT-93:set-prototype-of-nullish-target-silent-noop",
+                    ],
+                )),
                 "function-not-constructor-relax" => Some((
                     "function-not-constructor-relax",
                     &[
