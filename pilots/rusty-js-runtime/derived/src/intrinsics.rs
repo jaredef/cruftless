@@ -2137,7 +2137,7 @@ impl Runtime {
                 _ => return Err(RuntimeError::TypeError("Proxy: handler must be an object".into())),
             };
             let mut o = Object::new_ordinary();
-            o.internal_kind = InternalKind::Proxy(crate::value::ProxyInternals {
+            o.internal_kind = InternalKind::Proxy(crate::value::ProxyInternals { revoked: false,
                 target, handler,
             });
             // Proxy's [[Prototype]] is the target's prototype so that
@@ -2157,14 +2157,22 @@ impl Runtime {
                 _ => return Err(RuntimeError::TypeError("Proxy.revocable: handler must be an object".into())),
             };
             let mut o = Object::new_ordinary();
-            o.internal_kind = InternalKind::Proxy(crate::value::ProxyInternals {
+            o.internal_kind = InternalKind::Proxy(crate::value::ProxyInternals { revoked: false,
                 target, handler,
             });
             o.proto = rt.obj(target).proto;
             let proxy_id = rt.alloc_object(o);
             let mut result = Object::new_ordinary();
             result.set_own("proxy".into(), Value::Object(proxy_id));
-            let revoke = make_native("revoke", move |_rt, _args| Ok(Value::Undefined));
+            // EXT 84: revoke closure captures proxy_id and flips the
+            // ProxyInternals.revoked flag on first call. Subsequent
+            // operations on the proxy throw TypeError per spec.
+            let revoke = make_native("revoke", move |rt, _args| {
+                if let crate::value::InternalKind::Proxy(p) = &mut rt.obj_mut(proxy_id).internal_kind {
+                    p.revoked = true;
+                }
+                Ok(Value::Undefined)
+            });
             let revoke_id = rt.alloc_object(revoke);
             result.set_own("revoke".into(), Value::Object(revoke_id));
             Ok(Value::Object(rt.alloc_object(result)))
@@ -3109,7 +3117,7 @@ impl Runtime {
         // implementation. Trap signatures match spec (§28.1.*).
         register_intrinsic_method(self, r, "ownKeys", 1, |rt, args| {
             if let Some(Value::Object(id)) = args.first() {
-                if let Some((tgt, handler)) = rt.proxy_target_handler(*id) {
+                if let Some((tgt, handler)) = rt.proxy_target_handler_checked(*id)? {
                     let trap = rt.object_get(handler, "ownKeys");
                     if matches!(trap, Value::Object(_)) {
                         return rt.call_function(trap, Value::Object(handler), vec![Value::Object(tgt)]);
@@ -3121,7 +3129,7 @@ impl Runtime {
         });
         register_intrinsic_method(self, r, "getPrototypeOf", 1, |rt, args| {
             if let Some(Value::Object(id)) = args.first() {
-                if let Some((tgt, handler)) = rt.proxy_target_handler(*id) {
+                if let Some((tgt, handler)) = rt.proxy_target_handler_checked(*id)? {
                     let trap = rt.object_get(handler, "getPrototypeOf");
                     if matches!(trap, Value::Object(_)) {
                         return rt.call_function(trap, Value::Object(handler), vec![Value::Object(tgt)]);
@@ -3133,7 +3141,7 @@ impl Runtime {
         });
         register_intrinsic_method(self, r, "defineProperty", 3, |rt, args| {
             if let Some(Value::Object(id)) = args.first() {
-                if let Some((tgt, handler)) = rt.proxy_target_handler(*id) {
+                if let Some((tgt, handler)) = rt.proxy_target_handler_checked(*id)? {
                     let trap = rt.object_get(handler, "defineProperty");
                     if matches!(trap, Value::Object(_)) {
                         let key = args.get(1).cloned().unwrap_or(Value::Undefined);
@@ -3152,7 +3160,7 @@ impl Runtime {
         });
         register_intrinsic_method(self, r, "getOwnPropertyDescriptor", 2, |rt, args| {
             if let Some(Value::Object(id)) = args.first() {
-                if let Some((tgt, handler)) = rt.proxy_target_handler(*id) {
+                if let Some((tgt, handler)) = rt.proxy_target_handler_checked(*id)? {
                     let trap = rt.object_get(handler, "getOwnPropertyDescriptor");
                     if matches!(trap, Value::Object(_)) {
                         let key = args.get(1).cloned().unwrap_or(Value::Undefined);
@@ -3170,7 +3178,7 @@ impl Runtime {
         // Tier-Ω.5.rrrrr: Reflect.setPrototypeOf / apply / construct.
         register_intrinsic_method(self, r, "setPrototypeOf", 2, |rt, args| {
             if let Some(Value::Object(id)) = args.first() {
-                if let Some((tgt, handler)) = rt.proxy_target_handler(*id) {
+                if let Some((tgt, handler)) = rt.proxy_target_handler_checked(*id)? {
                     let trap = rt.object_get(handler, "setPrototypeOf");
                     if matches!(trap, Value::Object(_)) {
                         let proto = args.get(1).cloned().unwrap_or(Value::Undefined);
@@ -3273,7 +3281,7 @@ impl Runtime {
         // EXT 79d (cont.): isExtensible / preventExtensions Proxy traps.
         register_intrinsic_method(self, r, "isExtensible", 1, |rt, args| {
             if let Some(Value::Object(id)) = args.first() {
-                if let Some((tgt, handler)) = rt.proxy_target_handler(*id) {
+                if let Some((tgt, handler)) = rt.proxy_target_handler_checked(*id)? {
                     let trap = rt.object_get(handler, "isExtensible");
                     if matches!(trap, Value::Object(_)) {
                         let r2 = rt.call_function(trap, Value::Object(handler), vec![Value::Object(tgt)])?;
@@ -3286,7 +3294,7 @@ impl Runtime {
         });
         register_intrinsic_method(self, r, "preventExtensions", 1, |rt, args| {
             if let Some(Value::Object(id)) = args.first() {
-                if let Some((tgt, handler)) = rt.proxy_target_handler(*id) {
+                if let Some((tgt, handler)) = rt.proxy_target_handler_checked(*id)? {
                     let trap = rt.object_get(handler, "preventExtensions");
                     if matches!(trap, Value::Object(_)) {
                         let r2 = rt.call_function(trap, Value::Object(handler), vec![Value::Object(tgt)])?;

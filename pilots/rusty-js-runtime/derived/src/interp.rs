@@ -436,7 +436,7 @@ impl Runtime {
             Value::Object(id) => *id,
             _ => return Ok(Value::Undefined),
         };
-        if let Some((tgt, handler)) = self.proxy_target_handler(id) {
+        if let Some((tgt, handler)) = self.proxy_target_handler_checked(id)? {
             let trap = self.object_get(handler, "get");
             if matches!(trap, Value::Object(_)) {
                 return self.call_function(trap, Value::Object(handler), vec![
@@ -4312,7 +4312,7 @@ impl Runtime {
         // trap when the target is a Proxy with a callable handler.has.
         // Missing trap falls through to the target's [[HasProperty]].
         let key_str = key_pk.as_str().to_string();
-        if let Some((tgt, handler)) = self.proxy_target_handler(id) {
+        if let Some((tgt, handler)) = self.proxy_target_handler_checked(id)? {
             let trap = self.object_get(handler, "has");
             if matches!(trap, Value::Object(_)) {
                 let r = self.call_function(trap, Value::Object(handler), vec![
@@ -4338,7 +4338,7 @@ impl Runtime {
         };
         // EXT 79: ECMA §28.1.8 routes [[Get]] to the Proxy `get` trap.
         let key_str = key_pk.as_str().to_string();
-        if let Some((tgt, handler)) = self.proxy_target_handler(id) {
+        if let Some((tgt, handler)) = self.proxy_target_handler_checked(id)? {
             let trap = self.object_get(handler, "get");
             if matches!(trap, Value::Object(_)) {
                 return self.call_function(trap, Value::Object(handler), vec![
@@ -4364,7 +4364,7 @@ impl Runtime {
         };
         let key_s = self.coerce_to_string(key)?;
         // EXT 79: ECMA §28.1.13 routes [[Set]] to the Proxy `set` trap.
-        if let Some((tgt, handler)) = self.proxy_target_handler(id) {
+        if let Some((tgt, handler)) = self.proxy_target_handler_checked(id)? {
             let trap = self.object_get(handler, "set");
             if matches!(trap, Value::Object(_)) {
                 let r = self.call_function(trap, Value::Object(handler), vec![
@@ -4398,7 +4398,7 @@ impl Runtime {
         };
         let key_s = self.coerce_to_string(key)?;
         // EXT 79: ECMA §28.1.4 routes [[Delete]] to the Proxy `deleteProperty` trap.
-        if let Some((tgt, handler)) = self.proxy_target_handler(id) {
+        if let Some((tgt, handler)) = self.proxy_target_handler_checked(id)? {
             let trap = self.object_get(handler, "deleteProperty");
             if matches!(trap, Value::Object(_)) {
                 let r = self.call_function(trap, Value::Object(handler), vec![
@@ -4424,6 +4424,31 @@ impl Runtime {
         if let crate::value::InternalKind::Proxy(p) = &self.obj(id).internal_kind {
             Some((p.target, p.handler))
         } else { None }
+    }
+
+    /// EXT 84: true when `id` is a Proxy and has been revoked. Callers
+    /// that dispatch traps must throw TypeError on revoked proxies per
+    /// §10.5.{4..14} ("If O's [[ProxyHandler]] is null, throw a TypeError").
+    pub fn proxy_is_revoked(&self, id: ObjectRef) -> bool {
+        matches!(&self.obj(id).internal_kind,
+            crate::value::InternalKind::Proxy(p) if p.revoked)
+    }
+
+    /// EXT 84: revoked-throwing wrapper around proxy_target_handler.
+    /// Returns Err(TypeError) if id is a revoked Proxy; Ok(Some(t,h)) if
+    /// a live Proxy; Ok(None) if not a Proxy at all. Use this in any
+    /// trap-dispatch site that needs the spec's null-handler check.
+    pub fn proxy_target_handler_checked(&self, id: ObjectRef)
+        -> Result<Option<(ObjectRef, ObjectRef)>, RuntimeError>
+    {
+        if let crate::value::InternalKind::Proxy(p) = &self.obj(id).internal_kind {
+            if p.revoked {
+                return Err(RuntimeError::TypeError(
+                    "Cannot perform operation on a revoked Proxy".into()));
+            }
+            return Ok(Some((p.target, p.handler)));
+        }
+        Ok(None)
     }
 
     /// Reflect.ownKeys(target) per ECMA §28.1.12 — returns Array of own
@@ -6911,6 +6936,11 @@ impl Runtime {
                 }
                 crate::value::InternalKind::Function(f) => (None, Some(f.native.clone()), this, args),
                 crate::value::InternalKind::Proxy(p) => {
+                    // EXT 84: revoked-proxy guard per §10.5.{12,13}.
+                    if p.revoked {
+                        return Err(RuntimeError::TypeError(
+                            "Cannot perform 'apply'/'construct' on a proxy that has been revoked".into()));
+                    }
                     // Ω.5.P60.E3: apply / construct trap dispatch. When the
                     // proxy is invoked as a callable (Op::Call) or as a ctor
                     // (Op::New), consult handler.apply / handler.construct
@@ -6931,9 +6961,19 @@ impl Runtime {
                         if is_construct {
                             // handler.construct(target, argsArray, newTarget).
                             let nt = nt_for_this_call.clone().unwrap_or(Value::Object(target));
-                            return self.call_function(trap, Value::Object(handler), vec![
+                            // EXT 84: ECMA §10.5.13 [[Construct]] step 9 —
+                            // if the trap's return is not an Object, throw
+                            // TypeError. Without this, `new Proxy(F, {
+                            // construct(){return true}})()` returned the
+                            // non-Object instead of throwing per spec.
+                            let ret = self.call_function(trap, Value::Object(handler), vec![
                                 Value::Object(target), Value::Object(arr), nt,
-                            ]);
+                            ])?;
+                            return match ret {
+                                Value::Object(_) => Ok(ret),
+                                _ => Err(RuntimeError::TypeError(
+                                    "Proxy construct trap returned a non-Object".into())),
+                            };
                         } else {
                             // handler.apply(target, thisArg, argsArray).
                             return self.call_function(trap, Value::Object(handler), vec![

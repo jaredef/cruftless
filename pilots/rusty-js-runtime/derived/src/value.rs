@@ -411,6 +411,11 @@ pub enum InternalKind {
 pub struct ProxyInternals {
     pub target: ObjectRef,
     pub handler: ObjectRef,
+    /// EXT 84: revocation flag per §10.5.{4..14}. Each spec internal
+    /// method begins "If O's [[ProxyHandler]] is null, throw TypeError".
+    /// In v1 we model the null-handler state via this boolean (set by
+    /// Proxy.revocable's revoke closure), checked at every trap dispatch.
+    pub revoked: bool,
 }
 
 /// RegExp instance internals. `source` and `flags` retain the original JS
