@@ -1363,3 +1363,55 @@ Pin-Art tag count: 107 commits as of EXT 79c.
 **§I corroboration #8 (2026-05-20, EXT 79)**: introducing one structural helper (`proxy_target_handler`) sufficed for four spec operations (has/get/set/deleteProperty). The alphabet didn't need a new "Proxy-trap-dispatch" node — the existing helper surface (`object_get`, `call_function`, `to_boolean`) composed to express the trap-or-fallthrough shape uniformly. §I.1.b alphabet-completeness held under the new substrate axis.
 
 **Doc 730 §XII corroboration #4 (2026-05-20, EXT 79c first vs amendment)**: the initial EXT 79c patch (route argumentsList through `read_property_via`) was structurally correct but yielded zero new passes — diff against the prior failure set was empty. The pipeline immediately surfaced the actual blocker: the apply test's *first* assertion needed undefined-argumentsList → TypeError, which my CreateListFromArrayLike-style path returned Vec::new() for. Adding the TypeError throw closed both legs (the undefined-argumentsList leg AND the throwing-getter leg) in one sweep, lifting +2. The cost of "spec-correct but yield-zero" was bounded by one cycle, exactly the §XII dynamic.
+
+## IR-EXT 79d → 83 — 2026-05-20 (Reflect Proxy-trap closure + Number/Map/wrapper substrate; Tier-1.5 spec-IR first carrier)
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| `404f5ccf` | IR-EXT 79d: seven more Reflect Proxy traps | Same shape as EXT 79's has/get/set/deleteProperty dispatch, repeated for `ownKeys`, `getPrototypeOf`, `setPrototypeOf`, `defineProperty`, `getOwnPropertyDescriptor`, `isExtensible`, `preventExtensions`. Each closure: detect Proxy → look up handler trap → call trap with §28.1.* signature → fall through to the IR-routed direct-target impl on missing trap. `proxy_target_handler` promoted to pub. Reflect 74.5% → 81.0% (+10). TestNError cluster (the `return-abrupt-from-result` fixtures) fully cleared. |
+| `6fae4536` | IR-EXT 80: Number.prototype.{toFixed, toExponential, toPrecision} ToIntegerOrInfinity | §21.1.3.{2,3,5} step 1 — ToIntegerOrInfinity, not ToNumber. NaN → 0 then trunc, range-check on the resulting integer. Three shared-root sites patched at once; the previous coerce_to_number + is_nan-fail-fast pattern wrongly threw RangeError on `toFixed(NaN)`, `toFixed(-0.1)`, `toFixed('some string')`. Number 89.4% → 90.8% (+5). |
+| `44ca39a4` | IR-EXT 81: WeakMap brand discrimination from Map | §24.1.3 / §24.3.3 — Map-only methods (clear/forEach/values/keys/entries/@@iterator) reject WeakMap-tagged `this` via a new `__is_weakmap` marker checked in `map_this_and_storage`. WeakMap prototype no longer registers the Map-only methods; only the §24.3.3 spec set (get/set/has/delete) remains on it. Map 59.3% → 61.7% (+5), WeakMap 65.9% unchanged (no regression from removing the non-spec methods). |
+| `fc9b60d4` | IR-EXT 82: Tier-1.5 SpecGet primitive (Doc 730 §XIII first carrier) | First in-code instance of the §XIII Tier-1.5 spec-IR formalization. New `Expr::SpecGet(target, key)` variant sibling of `Expr::Get`, with its own lowering arm emitting `rt.spec_get(...)`. Runtime `spec_get` is the spec-correct §7.3.2 [[Get]] dispatcher — Proxy.get trap → inherited accessors → internal-slot read, with user-thrown errors propagated at every leg. First IR-section conversion: `to_primitive` §7.1.1 step 2.a (GetMethod for @@toPrimitive) now uses SpecGet. Smoke: `'' + new Proxy({}, {get(t,k){trace.push(k)}})` traces `['@@toPrimitive']` (was empty). Reflect 81.0% unchanged (no regression from the runtime addition). |
+| `84e8075b` | IR-EXT 82b: get_via + CreateListFromArrayLike spec_get promotion | Second Tier-1.5 carrier landing. `get_via` (the IR runtime helper called by `CallBuiltin{name:'get_via'}` for computed-method-name lookups in ToPrimitive m1/m2 et al) now routes through `spec_get` — Proxy.get fires on the full ToPrimitive sequence (@@toPrimitive → valueOf → toString). Reflect.apply/construct CreateListFromArrayLike length+index reads switched from `read_property_via` to `spec_get`. Four-chapter regression sweep (Proxy, Reflect, Function.prototype, Symbol) clean. Zero-yield-here, sets up future wins as consumer code reaches these paths. |
+| `d92b06e8` | IR-EXT 82c: collapse all Expr::Get lowering through spec_get | The §XIII alphabet promotion completion. Every IR-emitted `Expr::Get` site (13 in `generated.rs`: Array iteration k_value reads, Object descriptor reads, Object.assign source walks, etc.) now lowers to `rt.spec_get` in one move. Internal-slot reads stay on `Expr::GetSlot`. `Expr::SpecGet` retained as explicit-intent variant. Four-chapter broad sweep (Object, Array, Proxy, JSON) — all stable, no regressions. |
+| `b7c1e91a` | IR-EXT 83: primitive wrapper internal kinds | New `InternalKind::{NumberWrapper, StringWrapper, BooleanWrapper, BigIntWrapper}` carrying the boxed primitive Value. Constructors `new Number/String/Boolean/BigInt(...)` + `to_object` for primitives + `Object(v)` for primitives all tag the matching kind. `Object.prototype.toString` brands them ("[object Number]", etc.) per §20.1.3.6 step 14. `BigInt.prototype.valueOf` unwraps via `[[BigIntData]]` (was bare-BigInt only). Sweeps: Number 90.8% → 91.1% (+1), BigInt 58.4% → 59.7% (+1), String 75.5% → 77.0% (+18 — biggest yield), Boolean 84.3% baseline. Total +20. |
+
+### Substrate at IR-EXT 83 close
+
+**IR alphabet**: 64 nodes. One node added (`Expr::SpecGet`) per §XIII Tier-1.5 promotion; remains discriminator alongside `Expr::Get` even though both lower to `spec_get` post EXT 82c (SpecGet is explicit-intent; Get is collapsed-default).
+
+**Runtime additions**:
+- `Runtime::spec_get(v, key)` — ECMA §7.3.2 [[Get]] dispatcher (Proxy → accessors → slot, throws-propagating).
+- `InternalKind::{NumberWrapper, StringWrapper, BooleanWrapper, BigIntWrapper}(Value)`.
+- WeakMap brand check in `map_this_and_storage` gated on Map-only method `who`.
+- ToIntegerOrInfinity inline at three Number.prototype call sites.
+- `BigInt.prototype.valueOf` wrapper-aware.
+- Object intrinsic + `to_object` for primitives now produces wrapper kinds.
+
+### Cumulative numbers
+
+| Chapter | Pre-EXT-77 | Post-EXT-83 | Δ (this batch) |
+|---|---|---|---|
+| Reflect            | 68.6% (105/153)  | 81.0% (124/153)  | +19 |
+| BigInt             | 49.3% (38/77)    | 59.7% (46/77)    | +8  |
+| Number             | 89.4% (304/340)  | 91.1% (310/340)  | +6  |
+| Map                | 59.3% (121/204)  | 61.7% (126/204)  | +5  |
+| String             | 75.5% (924/1223) | 77.0% (942/1223) | +18 |
+| Boolean            | n/a              | 84.3% (43/51)    | (baseline) |
+| WeakMap            | 65.9% (93/141)   | 65.9% (93/141)   | 0   |
+| Proxy              | n/a              | 34.1% (106/310)  | (baseline) |
+| Symbol             | n/a              | 64.2% (63/98)    | (baseline) |
+
+**Session-cumulative wins: +56 across this batch (+154 since session start)**, accumulating with the EXT 72b→76b push: Function.prototype +79, String +3+18=+21, Reflect +19, BigInt +8, Number +6, Map +5.
+
+Pin-Art tag count: 114 commits as of EXT 83.
+
+### Conjecture status
+
+**Doc 730 §XIII corroboration #1 (2026-05-20, EXT 82)**: the §XIII formalization (alphabet collapses produce trace-invisible bugs; remedy is a Tier-1.5 resolver-instance whose alphabet preserves spec discriminations the prose-mirror tier collapses) landed as the first concrete carrier. `Expr::SpecGet` as IR primitive + `rt.spec_get` as runtime dispatcher = one §XIII discrimination ([[Get]] vs internal-slot-read) materialized at the lowering boundary. The promotion absorbed cleanly with no growth above the IR tier — §I.1.b alphabet-completeness held under the §XIII addition.
+
+**§XIII targeting heuristic #1 (2026-05-20, EXT 82 → 82b → 82c)**: the heuristic ("promote the most-frequently-collapsed spec discrimination") was applied incrementally: EXT 82 audited one site (to_primitive @@toPrimitive lookup); EXT 82b promoted the IR runtime helper (get_via) covering computed-method-name sites; EXT 82c collapsed every IR-emitted Get through the spec-correct path. Each step verified by sweep (no regression). The §XIII migration pattern matches the §XII targeting pattern: lift one tier of the resolution path, audit the consumers, sweep — but operating on the alphabet itself rather than on individual coercion paths.
+
+**§I.1.b corroboration #9 (2026-05-20, EXT 79d → 81 → 83)**: three substrate substrate-fix EXTs in sequence (Proxy-trap loop closure, WeakMap brand discrimination, primitive-wrapper internal kinds) each made structural distinctions the IR alphabet didn't model. None of them required IR-alphabet growth — Proxy-trap dispatch lives at the intrinsic-closure tier (Rust), WeakMap brand lives at the runtime-property-check tier (Rust), primitive-wrapper kinds live at the value-tagging tier (Rust). The alphabet is over-conservative against substrate growth even when several distinct §XIII-class promotions land in the runtime tier.
