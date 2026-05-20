@@ -934,14 +934,30 @@ impl Runtime {
             // to raw-statements form (no return value).
             let stash_key = format!("__eval_out_{}", n);
             let expr_source = format!("{} = ({});", stash_key, source);
-            if rt.evaluate_module(&expr_source, &url).is_ok() {
+            // EXT 74: ECMA-262 §19.2.1.1 PerformEval. Indirect eval runs the
+            // source as a Script in the global Lexical Environment with
+            // `this` bound to globalThis (not the caller's `this`, which
+            // is the spec direct-eval shape). This matches Script semantics
+            // — `this` at the top level of a Script *is* globalThis —
+            // which a number of test262 fixtures (S15.3.4.3_A3_T1.js et al.)
+            // depend on when they read `this[\"field\"]` after an apply()
+            // assigned to globalThis inside a sloppy function.
+            let saved_this = std::mem::replace(
+                &mut rt.current_this,
+                rt.globals.get("globalThis").cloned().unwrap_or(Value::Undefined),
+            );
+            let expr_ok = rt.evaluate_module(&expr_source, &url).is_ok();
+            if expr_ok {
+                rt.current_this = saved_this;
                 let result = rt.globals.get(&stash_key).cloned().unwrap_or(Value::Undefined);
                 rt.globals.remove(&stash_key);
                 return Ok(result);
             }
             // Statement form: run as-is, no captured result.
             let stmt_url = format!("file://<eval:{}:stmt>", n);
-            match rt.evaluate_module(&source, &stmt_url) {
+            let r = rt.evaluate_module(&source, &stmt_url);
+            rt.current_this = saved_this;
+            match r {
                 Ok(_) => Ok(Value::Undefined),
                 Err(e) => Err(e),
             }

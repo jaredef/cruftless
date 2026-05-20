@@ -922,6 +922,15 @@ impl Runtime {
 
         // Build a module frame, pre-populate import slots, run body.
         let mut frame = Frame::new_module(&bytecode_rc);
+        // EXT 74: ECMA-262 §19.2.1.1 PerformEval. Indirect eval runs the
+        // source as a Script with `this` bound to globalThis. The eval
+        // intrinsic sets self.current_this to globalThis before calling
+        // evaluate_module; carry it into the new frame so PushThis at the
+        // top level of the eval'd source reads globalThis, not undefined.
+        // For ordinary module loads (current_this is the engine default
+        // Value::Undefined) this is a no-op — top-level Module `this` is
+        // undefined per §16.2.
+        frame.this_value = self.current_this.clone();
         // Ω.5.P51.E1: thread the URL through so the enrichment helper
         // can emit `@url:line:col` instead of bare `@line:col`. Each
         // module's frame carries its own URL.
