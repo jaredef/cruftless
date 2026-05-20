@@ -14,6 +14,17 @@ pub fn install(rt: &mut Runtime, argv: Vec<String>) {
     }
     set_constant(rt, process, "argv", Value::Object(argv_array));
 
+    // Ω.5.P06.L3.process-execargv: process.execArgv is documented as an
+    // Array of strings (Node's CLI flags passed before the script name).
+    // Bun reports []; cruftless previously returned undefined, which
+    // packages that probe `process.execArgv.length` (resolve-package-path's
+    // should-preserve-symlinks at lib/should-preserve-symlinks.js:4 is the
+    // canonical case) crash on. Empty-array default matches Bun's shape
+    // and the spec'd Node behavior when no flags were forwarded.
+    let exec_argv = rt.alloc_object(rusty_js_runtime::value::Object::new_array());
+    rt.object_set(exec_argv, "length".into(), Value::Number(0.0));
+    set_constant(rt, process, "execArgv", Value::Object(exec_argv));
+
     // env: snapshot of std::env::vars() at startup.
     let env_obj = new_object(rt);
     let vars: Vec<(String, String)> = std::env::vars().collect();
