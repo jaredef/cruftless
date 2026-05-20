@@ -2340,3 +2340,70 @@ Read seed §A8.28 / §A8.29 / §A8.30 / §A8.31 / §A8.32 (the five new fold-bac
 - `RuntimeError::SyntaxError(String)` — for spec-mandated SyntaxError sites.
 
 Pin-Art tag count: ~255 (EXT 18) + 13 (P62.E15→E25) = ~268 substrate moves committed.
+
+## RESUME VECTOR EXTENSION 20 — 2026-05-20 (P03 compile-phase stretch; two O(N²)→O(N) substrates on the bytecode compiler; sentry total cold-import 3.9×)
+
+### Headline
+
+Compile-phase performance work. Phase profiling instrumented in the runtime (`CRUFTLESS_PROFILE`), localized the two outliers from the first speed sweep (sentry 79.4× Bun, semver 38.5×), and produced two substrate moves on the bytecode compiler that restored compile-phase linearity on the targeted shapes. The exemplar basket gained one passing package (`@jridgewell/resolve-uri` FAIL→PASS) and lost none. Geomean of rb/bun T3 ratio on the 43-package basket improved 0.63× → 0.58×; p95 (38.45× → 21.76×) and max (79.43× → 36.19×) compressed materially. The semver tail did not move — it is interpreter-throughput-bound, not compile-bound; matches the phase reading.
+
+### Commit table
+
+| commit | tag | recognition | yield |
+|---|---|---|---|
+| `52cd1271` | (host-side) | `CRUFTLESS_PROFILE` env-gated phase timers in module.rs (PARSE_NS / COMPILE_NS / EVAL_NS / MODULE_COUNT atomics summed across nested `evaluate_module` + CJS-wrapper paths) + host-v2/main.rs wraps `run_to_completion` and emits a one-line stderr summary. Zero cost when unset (one OnceLock load per phase boundary). Localized sentry's 26.9s cold import to compile=11.4s + eval=15.3s; semver's 1.7s to pure eval; chalk linear and tiny. | (instrumentation) |
+| `d16a0889` | Ω.5.P03.E2.const-intern-hash | `ConstantsPool::intern` previously linear-scanned `entries` on every call (constants.rs:25). Added `dedup_index: HashMap<DedupKey, u16>` alongside the Vec; DedupKey mirrors `same_constant` for the four dedup-eligible variants (Number/BigInt/String/Regex). Function constants stay non-deduped per the pre-substrate contract. Number key preserves NaN bit-patterns via `to_bits`. | synthetic obj-lit (32k keys): 2243ms → 38ms (59×); sentry compile unchanged (refutes intern-loop as its dominant cost — a separate substrate move needed) |
+| `e7d17992` | Ω.5.P03.E2.enclosing-locals-rc | `compile_function_proto_with_name_hint` did `self.locals.clone()` per child function expression (compiler.rs:2891). For N siblings each adding a local to the parent, snapshot work summed to O(L·N) = O(N²). Changed `EnclosingFrame.locals` from `Vec<LocalDescriptor>` to `Rc<Vec<LocalDescriptor>>`; added `Compiler.locals_snapshot` cache invalidated on every `self.locals` mutation (alloc_local push + scope-end name rewrites). The sub-compiler only reads enclosing locals (`resolve_upvalue` iterates names); upvalues stay mutable Vec for transitive-capture back-fill. | probe B (3200 sib fns): 607ms → 24ms (25.6×); sentry total 26.9s → 7.0s (3.9× overall, 8.1× compile, 2.9× collateral eval); faker 9.05× → 4.13×; lodash 4.12× → 3.11× |
+
+### Substrate-amortization shape (§A8.25)
+
+Both substrates are textbook amortization moves: a single data-structure change at one site reduces work at *every consumer* of the same operation. `intern` is called from every `compile_expr` branch that produces a constant; `compile_function_proto_*` is called from every function expression / declaration / arrow / class method / try-block helper. The corpus-tier amortization shows up cleanly in the speed sweep — the substrates target the *long tail* (object-literal-dominated and bundled-callback-dominated packages), not the modal package. Median moved a hair (0.36× → 0.34×); the p95 and max moved sharply.
+
+### Falsification residual
+
+The first substrate (`const-intern-hash`) on its own moved synthetic 32k-key object-literal compile 59× but left sentry's compile *unchanged at 11.4s*. That refuted the intern-loop as the dominant cost on sentry and pointed the engagement at a separate super-linear path. Probes A–E discriminated: A (N local vars) and C (N switch cases) scale linearly; B (N nested fn exprs assigned to outer vars) and D (N capturing closures) scale as O(N^1.84); E (N stmt-level fn exprs with no parent locals) scales linearly. The trigger is parent-locals-cloning per child sub-compile, exactly the diagnostic the second substrate addressed.
+
+This is the discipline operating as designed: the first move had an isolable hypothesis (intern's per-call linear scan); the post-move measurement refuted it on the package that motivated the work; the residual deviation localized the next move. Two substrates ≠ one rewrite that fixed two things at once. Each is independently named, falsifiable, and amortized.
+
+### Speed-sweep deltas (43-package exemplar basket, T3 warm-mean rb/bun ratio)
+
+| metric | pre | post | Δ |
+|---|---|---|---|
+| n (valid rows) | 39 | 39 | 0 |
+| geomean | 0.63× | 0.58× | -0.05 |
+| median | 0.36× | 0.34× | -0.02 |
+| p95 | 38.45× | 21.76× | -16.69 |
+| max | 79.43× | 36.19× | -43.24 |
+| sentry | 79.43× | 21.76× | -57.67 |
+| @faker-js/faker | 9.05× | 4.13× | -4.92 |
+| semver | 38.45× | 36.19× | -2.26 (eval-bound; expected unmoved) |
+| lodash | 4.12× | 3.11× | -1.01 |
+
+### Parity-fast result (exemplar basket, 43 packages)
+
+| status | pre | post | Δ |
+|---|---|---|---|
+| PASS / MATCH_OK_ERR_BOTH | 30 | 31 | +1 |
+| FAIL | 11 | 10 | -1 |
+| TIMEOUT | 2 | 2 | 0 |
+| (single per-pkg diff: `@jridgewell/resolve-uri` FAIL → PASS) | | | |
+
+No regressions across any status class. The +1 is collateral — probably allocation/timing pattern change landing a previously flaky package in the right state; not engineered as a parity move.
+
+### Open scope at EXT 20 boundary
+
+1. **sentry's residual** is now 7.0s vs Bun's 163ms (~43×) and is dominated by eval (5.3s of 7.0s). That's interpreter-throughput tax on a 3.8MB bundle — same archetype as semver's eval-bound cost; not fixable without a JIT/baseline tier. Worth recording as a deliberate ceiling, not a TODO.
+2. **eval-side super-linearity on object literals** measured during the first probe (32k keys: 2295ms eval pre-substrate) was not addressed by either compile-side substrate. Probably a separate `InitProp`-time linear scan inside the interpreter's Object property store. Targetable substrate, deferred.
+3. **Speed-results baseline tracking**: `host/tools/speed-results.csv` overwritten with post-substrate numbers. Pre-substrate baseline recoverable from commit `b12cf2b1`. Consider whether to keep both checked in for drift comparison.
+
+### Cumulative session totals
+
+- Commits in this stretch (EXT 20): 3 substrate (instrumentation + two perf substrates). No new seed §A8 fold-back — both substrates are amortization moves of the existing §A8.25 pattern at the engine-internal-method (E2) tier.
+- Substrate moves logged: ~270 (was ~268 at EXT 19 close + 2 this stretch; instrumentation isn't tagged).
+- Pipeline coverage extended: first P03.E2-tier moves in the recorded trajectory; prior P03 work sat at L4-L5.
+
+### Resume protocol
+
+Read EXT 19 + EXT 20. `CRUFTLESS_PROFILE=1` is the standard tool for compile-vs-eval-vs-eventloop attribution on any package — run it before guessing where time is going. Two probe families are now first-class diagnostic shapes: object-literal-keys for intern-class costs, nested-fn-exprs-with-outer-locals for enclosing-clone-class costs. Probes A-E in /tmp/bigfn/ can be regenerated from this trajectory if needed.
+
+Pin-Art tag count: ~268 (EXT 19) + 2 (P03.E2.const-intern-hash, P03.E2.enclosing-locals-rc) = ~270 substrate moves committed.
