@@ -5125,8 +5125,18 @@ impl Runtime {
                 ks.sort_by_key(|(n, _)| *n);
                 ks.into_iter().map(|(_, k)| k).collect()
             } else {
+                // EXT 92: filter out @@-prefixed Symbol-shaped keys —
+                // cruftless stores Symbol property keys with an `@@`
+                // prefix as strings for storage compatibility, but
+                // Object.keys per ECMA §20.1.2.{17,18} returns only
+                // String-keyed enumerable own properties (Symbols are
+                // excluded). Leaking `@@toStringTag` into Object.keys
+                // produced the +1 keyCount divergence the EXT 91b
+                // byte-parity check on dayjs-plugin-utc / luxon-business-
+                // days / graceful-fs / fs-jetpack exposed (the symbol
+                // is set on ESM module namespaces' default export).
                 let all: Vec<(String, bool)> = o.properties.iter()
-                    .filter(|(k, d)| d.enumerable && k.is_string())
+                    .filter(|(k, d)| d.enumerable && k.is_string() && !k.as_str().starts_with("@@"))
                     .map(|(k, _)| (k.as_str().to_string(), crate::intrinsics::is_integer_index(k.as_str())))
                     .collect();
                 let mut numeric: Vec<(u64, String)> = all.iter()
@@ -7192,20 +7202,20 @@ impl Runtime {
                     // functions marked is_constructor=false (Math.abs,
                     // Object.keys, String.prototype.includes, etc.) throw
                     // TypeError on `new fn()`.
+                    // EXT 91b: track whether the relaxed-non-constructor
+                    // path is taken so the post-call result selection can
+                    // skip the fresh-this fallback (the +1 keyCount leak
+                    // that EXT 91's byte-parity check on graceful-fs /
+                    // fs-jetpack / dayjs-plugin-utc / luxon-business-days
+                    // surfaced — under the deviation, the result must be
+                    // the function's return value verbatim, never the
+                    // fresh ordinary Object).
+                    let mut relaxed_non_constructor = false;
                     if let Value::Object(cid) = &callee {
                         if let crate::value::InternalKind::Function(fi) =
                             &self.obj(*cid).internal_kind
                         {
                             if !fi.is_constructor {
-                                // EXT 90 / Doc 730 §XIV: deviation
-                                // "function-not-constructor-relax" — Bun
-                                // and several other runtimes accept
-                                // `new fn()` for fn that lacks [[Construct]]
-                                // by silently calling fn() and using its
-                                // return value (or a fresh ordinary
-                                // object if the return is primitive).
-                                // Opt-in via __cruftless_tolerate(
-                                // 'function-not-constructor-relax').
                                 if !self.tolerated_deviations.contains(
                                     "function-not-constructor-relax")
                                 {
@@ -7213,10 +7223,7 @@ impl Runtime {
                                         "{} is not a constructor", fi.name
                                     )));
                                 }
-                                // Tolerant lowering: fall through to
-                                // call-as-function path (the spec's
-                                // "if not a constructor, treat as plain
-                                // call" deviation).
+                                relaxed_non_constructor = true;
                             }
                         }
                     }
@@ -7263,9 +7270,21 @@ impl Runtime {
                         }
                         other => other,
                     })?;
-                    let result = match ret {
-                        Value::Object(_) => ret,
-                        _ => this_obj,
+                    let result = if relaxed_non_constructor {
+                        // EXT 91b: under the deviation, return value is
+                        // the call's return verbatim — primitive returns
+                        // pass through, no fresh-Object fallback. This
+                        // matches Bun's "treat as plain call" shape and
+                        // eliminates the +1 keyCount leak that the
+                        // tolerant lowering introduced for the
+                        // graceful-fs / fs-jetpack / dayjs-plugin-utc /
+                        // luxon-business-days cluster.
+                        ret
+                    } else {
+                        match ret {
+                            Value::Object(_) => ret,
+                            _ => this_obj,
+                        }
                     };
                     frame.push(result);
                 }
