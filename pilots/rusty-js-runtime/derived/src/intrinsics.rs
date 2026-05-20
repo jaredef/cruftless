@@ -1533,6 +1533,22 @@ impl Runtime {
         // EXT 84e: Object.getPrototypeOf / setPrototypeOf dispatch Proxy
         // traps per §10.5.{1,2}.
         register_intrinsic_method(self, obj_ctor, "getPrototypeOf", 1, |rt, args| {
+            // EXT 94b / Doc 730 §XV: the 'to-object-coerce-nullish'
+            // deviation (EXT 93) generated a fresh Object on null/undefined
+            // input. For Object.getPrototypeOf that introduces an infinite
+            // prototype-walk loop — the fresh Object's [[Prototype]] is
+            // Object.prototype rather than null, so `while (p) p =
+            // getPrototypeOf(p)` never terminates. Scope the deviation
+            // here: nullish input under the deviation returns Null
+            // directly, matching V8/Bun's behavior and preserving
+            // prototype-walk termination as a protected invariant.
+            // (Strict-default still throws TypeError per spec via the
+            // to_object call in generated::object_get_prototype_of.)
+            if matches!(args.first(), Some(Value::Undefined) | Some(Value::Null))
+                && rt.tolerated_deviations.contains("to-object-coerce-nullish")
+            {
+                return Ok(Value::Null);
+            }
             if let Some(Value::Object(id)) = args.first() {
                 if let Some((tgt, handler)) = rt.proxy_target_handler_checked(*id)? {
                     let trap = rt.object_get(handler, "getPrototypeOf");
