@@ -1214,6 +1214,15 @@ impl Runtime {
                             return Err(RuntimeError::TypeError(
                                 "Proxy 'preventExtensions' trap returned falsy".into()));
                         }
+                        // EXT 87 / Pass C: §10.5.4 step 7 — if trap
+                        // returned true but target is still extensible,
+                        // throw TypeError. Otherwise the Proxy could
+                        // report itself non-extensible while the
+                        // underlying target remained mutable.
+                        if rt.obj(tgt).extensible {
+                            return Err(RuntimeError::TypeError(
+                                "Proxy 'preventExtensions' trap returned true but target is still extensible".into()));
+                        }
                         return Ok(Value::Object(*id));
                     }
                     let mut new_args = args.to_vec();
@@ -1233,7 +1242,14 @@ impl Runtime {
                                 "Proxy 'isExtensible' trap is not callable".into()));
                         }
                         let r2 = rt.call_function(trap, Value::Object(handler), vec![Value::Object(tgt)])?;
-                        return Ok(Value::Boolean(crate::abstract_ops::to_boolean(&r2)));
+                        let trap_ext = crate::abstract_ops::to_boolean(&r2);
+                        // EXT 87 / Pass C: §10.5.3 step 8 — trap result
+                        // must SameValue(target.[[IsExtensible]]).
+                        if trap_ext != rt.obj(tgt).extensible {
+                            return Err(RuntimeError::TypeError(
+                                "Proxy 'isExtensible' trap result does not match target's extensibility".into()));
+                        }
+                        return Ok(Value::Boolean(trap_ext));
                     }
                     let mut new_args = args.to_vec();
                     new_args[0] = Value::Object(tgt);
@@ -1415,7 +1431,26 @@ impl Runtime {
                             return Err(RuntimeError::TypeError(
                                 "Proxy 'getPrototypeOf' trap is not callable".into()));
                         }
-                        return rt.call_function(trap, Value::Object(handler), vec![Value::Object(tgt)]);
+                        let handler_proto = rt.call_function(trap, Value::Object(handler), vec![Value::Object(tgt)])?;
+                        // EXT 87 / Pass C: §10.5.1 step 8 — trap return
+                        // must be Object or Null. step 9 — if target is
+                        // non-extensible, trap return must SameValue
+                        // target.[[GetPrototypeOf]]().
+                        if !matches!(handler_proto, Value::Object(_) | Value::Null) {
+                            return Err(RuntimeError::TypeError(
+                                "Proxy 'getPrototypeOf' trap returned non-Object non-Null".into()));
+                        }
+                        if !rt.obj(tgt).extensible {
+                            let target_proto = match rt.obj(tgt).proto {
+                                Some(p) => Value::Object(p),
+                                None => Value::Null,
+                            };
+                            if !crate::abstract_ops::is_strictly_equal(&handler_proto, &target_proto) {
+                                return Err(RuntimeError::TypeError(
+                                    "Proxy 'getPrototypeOf' trap returned proto inconsistent with non-extensible target".into()));
+                            }
+                        }
+                        return Ok(handler_proto);
                     }
                     let mut new_args = args.to_vec();
                     new_args[0] = Value::Object(tgt);
@@ -1435,11 +1470,24 @@ impl Runtime {
                         }
                         let proto = args.get(1).cloned().unwrap_or(Value::Undefined);
                         let r2 = rt.call_function(trap, Value::Object(handler), vec![
-                            Value::Object(tgt), proto,
+                            Value::Object(tgt), proto.clone(),
                         ])?;
                         if !crate::abstract_ops::to_boolean(&r2) {
                             return Err(RuntimeError::TypeError(
                                 "Proxy 'setPrototypeOf' trap returned falsy".into()));
+                        }
+                        // EXT 87 / Pass C: §10.5.2 step 9-10 — if target
+                        // is non-extensible and trap returned true, V must
+                        // SameValue target.[[GetPrototypeOf]]().
+                        if !rt.obj(tgt).extensible {
+                            let target_proto = match rt.obj(tgt).proto {
+                                Some(p) => Value::Object(p),
+                                None => Value::Null,
+                            };
+                            if !crate::abstract_ops::is_strictly_equal(&proto, &target_proto) {
+                                return Err(RuntimeError::TypeError(
+                                    "Proxy 'setPrototypeOf' trap returned true but V is inconsistent with non-extensible target's prototype".into()));
+                            }
                         }
                         return Ok(Value::Object(*id));
                     }
