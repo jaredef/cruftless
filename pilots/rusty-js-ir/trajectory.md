@@ -1415,3 +1415,20 @@ Pin-Art tag count: 114 commits as of EXT 83.
 **§XIII targeting heuristic #1 (2026-05-20, EXT 82 → 82b → 82c)**: the heuristic ("promote the most-frequently-collapsed spec discrimination") was applied incrementally: EXT 82 audited one site (to_primitive @@toPrimitive lookup); EXT 82b promoted the IR runtime helper (get_via) covering computed-method-name sites; EXT 82c collapsed every IR-emitted Get through the spec-correct path. Each step verified by sweep (no regression). The §XIII migration pattern matches the §XII targeting pattern: lift one tier of the resolution path, audit the consumers, sweep — but operating on the alphabet itself rather than on individual coercion paths.
 
 **§I.1.b corroboration #9 (2026-05-20, EXT 79d → 81 → 83)**: three substrate substrate-fix EXTs in sequence (Proxy-trap loop closure, WeakMap brand discrimination, primitive-wrapper internal kinds) each made structural distinctions the IR alphabet didn't model. None of them required IR-alphabet growth — Proxy-trap dispatch lives at the intrinsic-closure tier (Rust), WeakMap brand lives at the runtime-property-check tier (Rust), primitive-wrapper kinds live at the value-tagging tier (Rust). The alphabet is over-conservative against substrate growth even when several distinct §XIII-class promotions land in the runtime tier.
+
+## Carve-out — test262 $262.createRealm (2026-05-20, EXT 84e close)
+
+**Removed from "remaining clusters" headline count**: 37 Proxy-chapter tests probing cross-Realm semantics via `$262.createRealm()`.
+
+**Reason** (per seed.md §I.1.a — "Bun-specific or Node-compat surface not in ECMA-262"):
+
+`$262.createRealm` is a test262 *host harness* API (defined in test262's INTERPRETING.md), not an ECMA-262 spec surface. Each engine adapts $262 to its own multi-Realm primitive:
+
+- **V8 (d8)**: `Realm.create()` + `Realm.eval(idx, src)` — many Realms per Isolate.
+- **JavaScriptCore (jsc)**: `createGlobalObject()` — fresh JSGlobalObject per realm in one isolate.
+- **SpiderMonkey (js shell)**: `newGlobal()` — fresh global + intrinsics + cross-compartment wrappers.
+- **QuickJS**: `JS_NewContext()` — new context per realm.
+
+**Bun and Node** ship single-Realm and skip these tests by construction. cruftless follows the same shape: Runtime is a singleton (one intrinsics table, one globals map, one heap). Multi-Realm would require either (a) multiple Runtime instances with cross-Realm Value movement, or (b) a Realm record threaded through every intrinsic + isolated prototype chains — an engine-architecture investment outside v1 substrate scope. The 37 tests probe genuine cross-realm semantics (`Array.isArray(arr_from_other_realm)`, `arr instanceof Array_from_other_realm`, %Symbol.iterator% identity across realms); single-Realm engines can't pass these by construction.
+
+**Effective pre-carve-out Proxy chapter**: 49.6% (154/310). **Carve-out adjusted**: 56.4% (154/273 after removing the 37 createRealm tests from the denominator).
