@@ -26,6 +26,9 @@
 //! a hand-built `fn add(a: i64, b: i64) -> i64` round-trips through
 //! Cranelift's JIT module path.
 
+pub mod translator;
+pub use translator::{compile_function, JitFn, JitI64Add};
+
 use cranelift_codegen::ir::types::I64;
 use cranelift_codegen::ir::{AbiParam, InstBuilder};
 use cranelift_codegen::settings::{self, Configurable};
