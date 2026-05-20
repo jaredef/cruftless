@@ -21,10 +21,22 @@ pub fn build_to_primitive() -> IRFunction {
         Step { spec_step: "param.hint".into(),  node: IRNode::Let { name: "hint".into(),  value: Expr::Arg(1) } },
 
         // §7.1.1 step 1: if Type(input) is not Object, return input.
+        // Functions are Objects per spec; typeof reports "function" for them,
+        // so the "not Object" check must exclude both "object" and "function".
+        Step { spec_step: "1.fast".into(), node: IRNode::Let {
+            name: "t".into(),
+            value: Expr::TypeOf(b(v("value"))),
+        }},
         Step { spec_step: "1.fast".into(), node: IRNode::If {
-            cond: Expr::Not(b(Expr::StrictEq(b(Expr::TypeOf(b(v("value")))), b(Expr::Str("object".into()))))),
+            cond: Expr::Not(b(Expr::StrictEq(b(v("t")), b(Expr::Str("object".into()))))),
             then_body: vec![
-                Step { spec_step: "1.return".into(), node: IRNode::Return(v("value")) },
+                Step { spec_step: "1.fn_check".into(), node: IRNode::If {
+                    cond: Expr::Not(b(Expr::StrictEq(b(v("t")), b(Expr::Str("function".into()))))),
+                    then_body: vec![
+                        Step { spec_step: "1.return".into(), node: IRNode::Return(v("value")) },
+                    ],
+                    else_body: vec![],
+                }},
             ],
             else_body: vec![],
         }},
@@ -108,10 +120,20 @@ pub fn build_to_primitive() -> IRFunction {
                         args: vec![],
                     },
                 }},
+                Step { spec_step: "4.m1.check".into(), node: IRNode::Let {
+                    name: "t1".into(),
+                    value: Expr::TypeOf(b(v("r1"))),
+                }},
                 Step { spec_step: "4.m1.check".into(), node: IRNode::If {
-                    cond: Expr::Not(b(Expr::StrictEq(b(Expr::TypeOf(b(v("r1")))), b(Expr::Str("object".into()))))),
+                    cond: Expr::Not(b(Expr::StrictEq(b(v("t1")), b(Expr::Str("object".into()))))),
                     then_body: vec![
-                        Step { spec_step: "4.m1.return".into(), node: IRNode::Return(v("r1")) },
+                        Step { spec_step: "4.m1.fn_check".into(), node: IRNode::If {
+                            cond: Expr::Not(b(Expr::StrictEq(b(v("t1")), b(Expr::Str("function".into()))))),
+                            then_body: vec![
+                                Step { spec_step: "4.m1.return".into(), node: IRNode::Return(v("r1")) },
+                            ],
+                            else_body: vec![],
+                        }},
                     ],
                     else_body: vec![],
                 }},
@@ -138,10 +160,20 @@ pub fn build_to_primitive() -> IRFunction {
                         args: vec![],
                     },
                 }},
+                Step { spec_step: "5.m2.check".into(), node: IRNode::Let {
+                    name: "t2".into(),
+                    value: Expr::TypeOf(b(v("r2"))),
+                }},
                 Step { spec_step: "5.m2.check".into(), node: IRNode::If {
-                    cond: Expr::Not(b(Expr::StrictEq(b(Expr::TypeOf(b(v("r2")))), b(Expr::Str("object".into()))))),
+                    cond: Expr::Not(b(Expr::StrictEq(b(v("t2")), b(Expr::Str("object".into()))))),
                     then_body: vec![
-                        Step { spec_step: "5.m2.return".into(), node: IRNode::Return(v("r2")) },
+                        Step { spec_step: "5.m2.fn_check".into(), node: IRNode::If {
+                            cond: Expr::Not(b(Expr::StrictEq(b(v("t2")), b(Expr::Str("function".into()))))),
+                            then_body: vec![
+                                Step { spec_step: "5.m2.return".into(), node: IRNode::Return(v("r2")) },
+                            ],
+                            else_body: vec![],
+                        }},
                     ],
                     else_body: vec![],
                 }},
