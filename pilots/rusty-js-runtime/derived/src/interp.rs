@@ -3908,11 +3908,13 @@ impl Runtime {
             _ => return Err(RuntimeError::TypeError(
                 "Number.prototype.toExponential: this is not a Number".into())),
         };
+        // EXT 80: same ToIntegerOrInfinity treatment as toFixed (§21.1.3.2).
         let digits = match digits_arg {
             Value::Undefined => None,
             v => {
-                let dn = self.coerce_to_number(v)?;
-                if dn.is_nan() || dn < 0.0 || dn > 100.0 {
+                let raw = self.coerce_to_number(v)?;
+                let dn = if raw.is_nan() { 0.0 } else { raw.trunc() };
+                if !dn.is_finite() || dn < 0.0 || dn > 100.0 {
                     return Err(RuntimeError::RangeError(
                         "toExponential() digits argument must be between 0 and 100".into()));
                 }
@@ -3953,8 +3955,10 @@ impl Runtime {
             Value::Undefined => Ok(Value::String(std::rc::Rc::new(
                 crate::abstract_ops::number_to_string(n)))),
             v => {
-                let pn = self.coerce_to_number(v)?;
-                if pn.is_nan() || pn < 1.0 || pn > 100.0 {
+                // EXT 80: same ToIntegerOrInfinity treatment (§21.1.3.5).
+                let raw = self.coerce_to_number(v)?;
+                let pn = if raw.is_nan() { 0.0 } else { raw.trunc() };
+                if !pn.is_finite() || pn < 1.0 || pn > 100.0 {
                     return Err(RuntimeError::RangeError(
                         "toPrecision() argument must be between 1 and 100".into()));
                 }
@@ -3996,11 +4000,18 @@ impl Runtime {
             _ => return Err(RuntimeError::TypeError(
                 "Number.prototype.toFixed: this is not a Number".into())),
         };
-        let digits_n = match digits_arg {
+        // EXT 80: ECMA §21.1.3.3 step 1 — ToIntegerOrInfinity(fractionDigits),
+        // not ToNumber. ToIntegerOrInfinity(NaN) = 0; ToIntegerOrInfinity(x)
+        // truncates toward zero. The RangeError only fires when the
+        // resulting integer is < 0 or > 100, or when it is non-finite
+        // (NumberToBigInt-style). Without this, toFixed(NaN), toFixed(-0.1),
+        // and toFixed("some string") all wrongly threw RangeError.
+        let raw = match digits_arg {
             Value::Undefined => 0.0,
             v => self.coerce_to_number(v)?,
         };
-        if digits_n.is_nan() || digits_n < 0.0 || digits_n > 100.0 {
+        let digits_n = if raw.is_nan() { 0.0 } else { raw.trunc() };
+        if !digits_n.is_finite() || digits_n < 0.0 || digits_n > 100.0 {
             return Err(RuntimeError::RangeError(
                 "toFixed() digits argument must be between 0 and 100".into()));
         }
