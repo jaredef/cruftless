@@ -245,6 +245,15 @@ fn emit_expr(e: &Expr) -> String {
         Expr::IsConstructor(v) => format!("rt.is_constructor(&{})", emit_expr(v)),
         Expr::IsArray(v) => format!("rt.is_array(&{})", emit_expr(v)),
         Expr::IsRegExp(v) => format!("rt.is_regexp_strict(&{})?", emit_expr(v)),
+        // IR-EXT 95: spec-Type(V) === Object. Lowers to a Rust bool via
+        // pattern match — cruftless's Value enum represents spec-Object
+        // (ordinary + function) via Value::Object, and primitives + Null +
+        // Undefined as distinct variants, so the discrimination is direct.
+        // Mirrors IsCallable's bool-yielding convention; usable in If conds
+        // and under Expr::Not(...) without rewrapping.
+        Expr::IsSpecObject(v) => format!(
+            "matches!({}, Value::Object(_))",
+            emit_expr(v)),
         Expr::SameValue(a, b) => {
             format!("crate::abstract_ops::same_value(&{}, &{})", emit_expr(a), emit_expr(b))
         }

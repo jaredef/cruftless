@@ -2280,14 +2280,9 @@ pub fn to_primitive(rt: &mut Runtime, this: Value, args: &[Value])
     // step param.hint (§param.hint step param.hint)
     let mut hint = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 1.fast (§1.fast step 1.fast)
-    let mut t = Value::String(std::rc::Rc::new(rt.type_of_value(&value.clone()).to_string()));
-    // step 1.fast (§1.fast step 1.fast)
-    if !crate::abstract_ops::is_strictly_equal(&t.clone(), &Value::String(std::rc::Rc::new("object".to_string()))) {
-        // step 1.fn_check (§1.fn_check step 1.fn_check)
-        if !crate::abstract_ops::is_strictly_equal(&t.clone(), &Value::String(std::rc::Rc::new("function".to_string()))) {
-            // step 1.return (§1.return step 1.return)
-            return Ok(value.clone());
-        }
+    if !matches!(value.clone(), Value::Object(_)) {
+        // step 1.return (§1.return step 1.return)
+        return Ok(value.clone());
     }
     // step 2.a.lookup (§2.a.lookup step 2.a.lookup)
     let mut exotic = rt.get_method(&value.clone(), "@@toPrimitive")?;
@@ -2296,7 +2291,7 @@ pub fn to_primitive(rt: &mut Runtime, this: Value, args: &[Value])
         // step 2.b.i.call (§2.b.i.call step 2.b.i.call)
         let mut result = rt.call_function(exotic.clone().clone(), value.clone().clone(), vec![hint.clone()])?;
         // step 2.b.ii.check (§2.b.ii.check step 2.b.ii.check)
-        if !crate::abstract_ops::is_strictly_equal(&Value::String(std::rc::Rc::new(rt.type_of_value(&result.clone()).to_string())), &Value::String(std::rc::Rc::new("object".to_string()))) {
+        if !matches!(result.clone(), Value::Object(_)) {
             // step 2.b.ii.return (§2.b.ii.return step 2.b.ii.return)
             return Ok(result.clone());
         }
@@ -2321,14 +2316,9 @@ pub fn to_primitive(rt: &mut Runtime, this: Value, args: &[Value])
         // step 4.m1.call (§4.m1.call step 4.m1.call)
         let mut r1 = rt.call_function(m1.clone().clone(), value.clone().clone(), vec![])?;
         // step 4.m1.check (§4.m1.check step 4.m1.check)
-        let mut t1 = Value::String(std::rc::Rc::new(rt.type_of_value(&r1.clone()).to_string()));
-        // step 4.m1.check (§4.m1.check step 4.m1.check)
-        if !crate::abstract_ops::is_strictly_equal(&t1.clone(), &Value::String(std::rc::Rc::new("object".to_string()))) {
-            // step 4.m1.fn_check (§4.m1.fn_check step 4.m1.fn_check)
-            if !crate::abstract_ops::is_strictly_equal(&t1.clone(), &Value::String(std::rc::Rc::new("function".to_string()))) {
-                // step 4.m1.return (§4.m1.return step 4.m1.return)
-                return Ok(r1.clone());
-            }
+        if !matches!(r1.clone(), Value::Object(_)) {
+            // step 4.m1.return (§4.m1.return step 4.m1.return)
+            return Ok(r1.clone());
         }
     }
     // step 5.m2.lookup (§5.m2.lookup step 5.m2.lookup)
@@ -2338,14 +2328,9 @@ pub fn to_primitive(rt: &mut Runtime, this: Value, args: &[Value])
         // step 5.m2.call (§5.m2.call step 5.m2.call)
         let mut r2 = rt.call_function(m2.clone().clone(), value.clone().clone(), vec![])?;
         // step 5.m2.check (§5.m2.check step 5.m2.check)
-        let mut t2 = Value::String(std::rc::Rc::new(rt.type_of_value(&r2.clone()).to_string()));
-        // step 5.m2.check (§5.m2.check step 5.m2.check)
-        if !crate::abstract_ops::is_strictly_equal(&t2.clone(), &Value::String(std::rc::Rc::new("object".to_string()))) {
-            // step 5.m2.fn_check (§5.m2.fn_check step 5.m2.fn_check)
-            if !crate::abstract_ops::is_strictly_equal(&t2.clone(), &Value::String(std::rc::Rc::new("function".to_string()))) {
-                // step 5.m2.return (§5.m2.return step 5.m2.return)
-                return Ok(r2.clone());
-            }
+        if !matches!(r2.clone(), Value::Object(_)) {
+            // step 5.m2.return (§5.m2.return step 5.m2.return)
+            return Ok(r2.clone());
         }
     }
     // step 6.throw (§6.throw step 6.throw)

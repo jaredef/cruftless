@@ -21,22 +21,22 @@ pub fn build_to_primitive() -> IRFunction {
         Step { spec_step: "param.hint".into(),  node: IRNode::Let { name: "hint".into(),  value: Expr::Arg(1) } },
 
         // §7.1.1 step 1: if Type(input) is not Object, return input.
-        // Functions are Objects per spec; typeof reports "function" for them,
-        // so the "not Object" check must exclude both "object" and "function".
-        Step { spec_step: "1.fast".into(), node: IRNode::Let {
-            name: "t".into(),
-            value: Expr::TypeOf(b(v("value"))),
-        }},
+        // IR-EXT 95 (Doc 730 §XIII alphabet promotion): the prior
+        // implementation discriminated via Expr::TypeOf(value) compared
+        // against "object" and "function" string literals. That pair
+        // collapsed spec-Null (typeof "object", spec Type Null) into the
+        // spec-Object branch, so ToPrimitive(null) failed to short-circuit
+        // here and walked the @@toPrimitive / toString / valueOf chain
+        // (none defined on null), reaching step 6's throw on `${null}`
+        // template coercion. IsSpecObject is the Tier-1.5 typed primitive
+        // that names spec Type(V) === Object directly, excluding Null /
+        // Undefined / all primitives by construction. The collapse is
+        // resolved at the alphabet boundary instead of by ad-hoc
+        // additional string comparisons.
         Step { spec_step: "1.fast".into(), node: IRNode::If {
-            cond: Expr::Not(b(Expr::StrictEq(b(v("t")), b(Expr::Str("object".into()))))),
+            cond: Expr::Not(b(Expr::IsSpecObject(b(v("value"))))),
             then_body: vec![
-                Step { spec_step: "1.fn_check".into(), node: IRNode::If {
-                    cond: Expr::Not(b(Expr::StrictEq(b(v("t")), b(Expr::Str("function".into()))))),
-                    then_body: vec![
-                        Step { spec_step: "1.return".into(), node: IRNode::Return(v("value")) },
-                    ],
-                    else_body: vec![],
-                }},
+                Step { spec_step: "1.return".into(), node: IRNode::Return(v("value")) },
             ],
             else_body: vec![],
         }},
@@ -67,8 +67,13 @@ pub fn build_to_primitive() -> IRFunction {
                     },
                 }},
                 // §7.1.1 step 2.b.ii: if Type(result) is not Object, return result.
+                // IR-EXT 95: spec Type discrimination via IsSpecObject —
+                // typeof(null) === "object" was previously misclassifying a
+                // @@toPrimitive return of null as "result is an object",
+                // triggering the spec step 2.b.iii TypeError on a spec-valid
+                // primitive return.
                 Step { spec_step: "2.b.ii.check".into(), node: IRNode::If {
-                    cond: Expr::Not(b(Expr::StrictEq(b(Expr::TypeOf(b(v("result")))), b(Expr::Str("object".into()))))),
+                    cond: Expr::Not(b(Expr::IsSpecObject(b(v("result"))))),
                     then_body: vec![
                         Step { spec_step: "2.b.ii.return".into(), node: IRNode::Return(v("result")) },
                     ],
@@ -127,20 +132,13 @@ pub fn build_to_primitive() -> IRFunction {
                         args: vec![],
                     },
                 }},
-                Step { spec_step: "4.m1.check".into(), node: IRNode::Let {
-                    name: "t1".into(),
-                    value: Expr::TypeOf(b(v("r1"))),
-                }},
+                // IR-EXT 95: §7.1.1.1 OrdinaryToPrimitive step "if
+                // Type(r1) is not Object, return r1". IsSpecObject
+                // closes the typeof-null collapse identically here.
                 Step { spec_step: "4.m1.check".into(), node: IRNode::If {
-                    cond: Expr::Not(b(Expr::StrictEq(b(v("t1")), b(Expr::Str("object".into()))))),
+                    cond: Expr::Not(b(Expr::IsSpecObject(b(v("r1"))))),
                     then_body: vec![
-                        Step { spec_step: "4.m1.fn_check".into(), node: IRNode::If {
-                            cond: Expr::Not(b(Expr::StrictEq(b(v("t1")), b(Expr::Str("function".into()))))),
-                            then_body: vec![
-                                Step { spec_step: "4.m1.return".into(), node: IRNode::Return(v("r1")) },
-                            ],
-                            else_body: vec![],
-                        }},
+                        Step { spec_step: "4.m1.return".into(), node: IRNode::Return(v("r1")) },
                     ],
                     else_body: vec![],
                 }},
@@ -167,20 +165,12 @@ pub fn build_to_primitive() -> IRFunction {
                         args: vec![],
                     },
                 }},
-                Step { spec_step: "5.m2.check".into(), node: IRNode::Let {
-                    name: "t2".into(),
-                    value: Expr::TypeOf(b(v("r2"))),
-                }},
+                // IR-EXT 95: same Type(r2) === Object discrimination via
+                // IsSpecObject — closes the null case at the second method.
                 Step { spec_step: "5.m2.check".into(), node: IRNode::If {
-                    cond: Expr::Not(b(Expr::StrictEq(b(v("t2")), b(Expr::Str("object".into()))))),
+                    cond: Expr::Not(b(Expr::IsSpecObject(b(v("r2"))))),
                     then_body: vec![
-                        Step { spec_step: "5.m2.fn_check".into(), node: IRNode::If {
-                            cond: Expr::Not(b(Expr::StrictEq(b(v("t2")), b(Expr::Str("function".into()))))),
-                            then_body: vec![
-                                Step { spec_step: "5.m2.return".into(), node: IRNode::Return(v("r2")) },
-                            ],
-                            else_body: vec![],
-                        }},
+                        Step { spec_step: "5.m2.return".into(), node: IRNode::Return(v("r2")) },
                     ],
                     else_body: vec![],
                 }},

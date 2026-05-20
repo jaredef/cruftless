@@ -318,6 +318,11 @@ fn collect_abstract_ops_in_expr(
             set.insert("IsRegExp");
             collect_abstract_ops_in_expr(v, set);
         }
+        Expr::IsSpecObject(v) => {
+            // IR-EXT 95: discriminator for §6.1 Type(V) === Object.
+            set.insert("IsSpecObject");
+            collect_abstract_ops_in_expr(v, set);
+        }
         Expr::Get(o, p) => {
             set.insert("Get");
             collect_abstract_ops_in_expr(o, set);

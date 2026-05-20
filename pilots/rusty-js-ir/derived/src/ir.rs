@@ -61,6 +61,22 @@ pub enum Expr {
     IsConstructor(Box<Expr>),
     IsArray(Box<Expr>),
     IsRegExp(Box<Expr>),
+    /// IR-EXT 95 / Tier-1.5: ECMA-262 §6.1 Type(V) === Object discrimination.
+    /// Doc 730 §XIII alphabet promotion: pre-substrate, sections discriminated
+    /// "Type(V) is Object" via `Expr::TypeOf(V) === "object"` (with a paired
+    /// `=== "function"` to capture functions). That pair collapses spec-Null
+    /// (typeof "object", spec Type Null) into the spec-Object branch — the
+    /// dual of EXT 72b's spec-Object-with-typeof-"function" case. ToPrimitive's
+    /// §7.1.1 step 1 "If Type(input) is not Object, return input" failed to
+    /// short-circuit for null inputs, falling through to the @@toPrimitive /
+    /// toString / valueOf walk (none defined on null), reaching step 6's
+    /// "Cannot convert object to primitive value" throw — observable as the
+    /// arktype @ark/schema/roots/unit.js:52 failure on `\${null}` template
+    /// coercion. IsSpecObject lowers to `matches!(v, Value::Object(_))`,
+    /// which in this engine's Value enum already covers spec-Object
+    /// (ordinary + function objects) and excludes spec-Null, spec-Undefined,
+    /// and primitives.
+    IsSpecObject(Box<Expr>),
     SameValue(Box<Expr>, Box<Expr>),
     SameValueZero(Box<Expr>, Box<Expr>),
 
