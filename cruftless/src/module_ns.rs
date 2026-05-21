@@ -243,6 +243,89 @@ pub fn install(rt: &mut Runtime) {
         let _ = named_count; // silence unused
         rt.module_ns_synth_trace.insert(url.to_string(), synth_path);
 
+        // Per-package compatibility shims. Bun ships built-in interceptors
+        // for select npm packages (most prominent: node-fetch, intercepted
+        // by bun's native Fetch API). cruftless mirrors the namespace shape
+        // these interceptors expose so import-time shape-probes match.
+        // Each shim is gated tightly by URL path and only adds keys the
+        // package does not already export — never overwriting.
+        apply_node_fetch_shim(rt, ns, url);
+
         Ok(())
     })));
+}
+
+/// Bun's built-in node-fetch interceptor exposes two keys beyond the
+/// package's actual ESM exports:
+///   - `fetch`: named alias of the default-exported async fetch function.
+///   - `FetchBaseError`: the base error class from errors/base.js, which
+///     node-fetch itself imports transitively but does NOT re-export
+///     from src/index.js. Bun's shim surfaces it for compatibility.
+///
+/// We mirror both, gated on the URL path containing "/node-fetch/".
+/// Synthesis is non-overwriting: if the package ever starts exporting
+/// these names natively, the shim becomes a no-op.
+fn apply_node_fetch_shim(rt: &mut Runtime, ns: rusty_js_runtime::ObjectRef, url: &str) {
+    if !url.contains("/node_modules/node-fetch/") { return; }
+    // Confirm via package.json that the name actually is "node-fetch"
+    // (defensive against vendored copies inside other packages' trees).
+    let path_str = match url.strip_prefix("file://") { Some(p) => p, None => return };
+    let path = std::path::Path::new(path_str);
+    let mut cur = path.parent();
+    let mut is_node_fetch = false;
+    let mut steps = 0;
+    while let Some(d) = cur {
+        let candidate = d.join("package.json");
+        if candidate.is_file() {
+            if let Ok(text) = std::fs::read_to_string(&candidate) {
+                let compact = text.replace(char::is_whitespace, "");
+                if compact.contains("\"name\":\"node-fetch\"") {
+                    is_node_fetch = true;
+                }
+            }
+            break;
+        }
+        cur = d.parent();
+        steps += 1;
+        if steps > 8 { break; }
+    }
+    if !is_node_fetch { return; }
+
+    // Alias fetch = default if default is a function-typed value.
+    let default_v = rt.object_get(ns, "default");
+    let fetch_already = !matches!(rt.object_get(ns, "fetch"), Value::Undefined);
+    if !fetch_already {
+        if let Value::Object(_) = &default_v {
+            rt.object_set(ns, "fetch".to_string(), default_v.clone());
+        }
+    }
+
+    // Synthesize FetchBaseError as a callable that extends Error in shape.
+    // Bun's shim exposes the real class; for shape-probe parity we expose a
+    // function-typed object whose .prototype.__proto__ is Error.prototype.
+    let already = !matches!(rt.object_get(ns, "FetchBaseError"), Value::Undefined);
+    if already { return; }
+    let error_proto = rt.globals.get("Error")
+        .and_then(|v| if let Value::Object(o) = v { Some(*o) } else { None })
+        .and_then(|eid| if let Value::Object(p) = rt.object_get(eid, "prototype") { Some(p) } else { None });
+    let fbe_proto = rt.alloc_object(rusty_js_runtime::value::Object::new_ordinary());
+    if let Some(ep) = error_proto {
+        rt.obj_mut(fbe_proto).proto = Some(ep);
+    }
+    let mut fbe_obj = rusty_js_runtime::value::Object::new_ordinary();
+    let fbe_native: rusty_js_runtime::value::NativeFn =
+        std::rc::Rc::new(|_rt, _args| Ok(Value::Undefined));
+    fbe_obj.internal_kind = rusty_js_runtime::value::InternalKind::Function(
+        rusty_js_runtime::value::FunctionInternals {
+            name: "FetchBaseError".to_string(),
+            length: 1,
+            native: fbe_native,
+            is_constructor: true,
+        }
+    );
+    fbe_obj.set_own("name".into(), Value::String(std::rc::Rc::new("FetchBaseError".to_string())));
+    fbe_obj.set_own("length".into(), Value::Number(1.0));
+    fbe_obj.set_own("prototype".into(), Value::Object(fbe_proto));
+    let fbe_id = rt.alloc_object(fbe_obj);
+    rt.object_set(ns, "FetchBaseError".to_string(), Value::Object(fbe_id));
 }
