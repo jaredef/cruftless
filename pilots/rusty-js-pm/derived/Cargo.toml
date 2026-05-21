@@ -1,0 +1,31 @@
+[package]
+name = "rusty-js-pm"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+
+# PM-EXT 3 toolchain. HTTP client deliberately deferred to PM-EXT 4:
+# the choice (ureq vs the engagement's own sockets/tls/fetch-api
+# pilots) merits its own design pass, and the first-cut smoke test
+# verifies the on-disk toolchain (gunzip + untar + sha2 + serde) on
+# the aarch64-linux Pi target without committing to an HTTP path.
+[dependencies]
+# tarball decompression
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+# tarball extraction
+tar = { version = "0.4", default-features = false }
+# SRI integrity verification (sha-512 for dist.integrity)
+sha2 = { version = "0.10", default-features = false }
+# legacy fallback verification (sha-1 for dist.shasum on pre-SRI
+# packages — see pilots/rusty-js-pm/docs/registry-response-schema.md
+# §Class A footnote)
+sha1 = { version = "0.10", default-features = false }
+# SRI base64 decoding
+base64 = { version = "0.22", default-features = false, features = ["std"] }
+# package.json + lockfile parsing
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# hex encoding for shasum fallback
+hex = { version = "0.4", default-features = false, features = ["std"] }
