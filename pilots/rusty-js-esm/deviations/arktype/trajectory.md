@@ -70,7 +70,43 @@ ECMA-262 §22.1.2.1 (Array) and §10.1.13 ([[Construct]] semantics for Array exo
 
 ---
 
-## §XVI — Yield (queued)
+## §XVI — Yield (LANDED, commit 764d7f88)
+
+**Substrate move**: in `Op::New` (interp.rs), detect Array-subclass by walking `callee.prototype`'s proto chain for the canonical Array.prototype id (capped at 32 hops). When the chain reaches Array.prototype, pre-allocate the `this` object via `Object::new_array()` instead of `Object::new_ordinary()`, then install `callee.prototype` as the resulting object's proto.
+
+**Effect**: when Array's intrinsic constructor runs in `super(...args)`, it sees the receiver is already an Array-kind object and mutates it in place (rather than allocating a sibling Array that would discard the derived-class proto wiring).
+
+**Edit surface**: ~30 LOC, single function (Op::New handler). The change is local and well-gated.
+
+**Bracket flip**:
+```
+before:  ctor=Array, instanceof MySub=false, typeof hello=undefined
+after:   ctor=?,     instanceof MySub=true,  typeof hello=function
+```
+
+`ctor.name` is empty (not `"MySub"`) — a separate substrate gap: derived-class constructors not picking up their identifier as `.name`. Recorded as L4 trace finding; not blocking arktype.
+
+**Sweep**: 95.7% (114/119) preserved, **no regressions**. arktype not yet PASS — the original rawIn-on-Array crash signature is GONE; arktype now fails at a downstream substrate gap (§XVII).
+
+---
+
+## §XVII — Iterate (NEW deviation surfaced)
+
+**New crash**: `Cannot read property 'filter' of undefined (receiver='references')` at `scope.js:405` (the bootstrapAliasReferences function), reached via `discriminate → overlaps → intersect → finalize → node`.
+
+**L7 instrumentation** (probe inside bootstrapAliasReferences):
+```
+bun:       resolution_type=function, kind=intersection/union, referencesById_keys=[5 ids]
+cruftless: resolution_type=object,   keys=["0"],              referencesById=undefined
+```
+
+**Reading**: `resolution` should be a Node-as-function (`class BaseNode extends Callable`; `class Callable { constructor(fn, ...) { return Object.setPrototypeOf(fn.bind(...), this.constructor.prototype); } }` — explicit-return-from-constructor pattern). In bun, `typeof resolution === "function"`. In cruftless, `typeof resolution === "object"` with one own key `"0"` — this is an Array(len=1) shape. Likely a Disjoint instance escaping where a Node-function was expected, or a separate explicit-return-from-derived-constructor substrate gap.
+
+**Deferred**: this is the next deviation. Pipeline re-entered. Closing it requires either:
+1. A new bracket probe for `class X extends Callable; constructor() { return Object.setPrototypeOf(fn.bind(...), this.constructor.prototype); }` — to isolate whether cruftless honors explicit-return-from-derived-constructor + setPrototypeOf chains correctly.
+2. Or: trace further up the maybeResolve / bindReference chain to find where the wrong-shape value enters.
+
+This is its own §XII–§XV cycle queued as a future focused-session rung. The pipeline's value is exactly this: each iteration produces a smaller, sharper substrate gap, and the artifacts compose.
 
 The substrate move lands the spec-aligned `new <Subclass-of-Array>(args)` semantics. Edit surface (anticipated, not yet confirmed): cruftless's `new` operator / class constructor logic in `rusty-js-bytecode` and/or `rusty-js-runtime`. Likely 50–200 LOC.
 

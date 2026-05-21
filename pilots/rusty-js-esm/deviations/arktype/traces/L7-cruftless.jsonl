@@ -1,0 +1,2 @@
+{"probe":"L7-bootstrap-entry","resolution_type":"object","resolution_keys":["0"],"references_type":"undefined","referencesById_type":"undefined","referencesById_keys":null}
+cruftless: evaluation error: TypeError("Cannot read property 'filter' of undefined (receiver='references') @file:///tmp/ak-probe/node_modules/@ark/schema/out/scope.js:414:21 (in-call='node') (in-method='finalize') (in-method='intersect') (in-method='overlaps') (in-call='<scoped@27>k') (in-method='discriminate') (in-call='$') (in-call='ctx') (in-method='node') (in-call='__args')")
