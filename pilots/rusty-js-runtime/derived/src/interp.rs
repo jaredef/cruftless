@@ -7534,7 +7534,36 @@ impl Runtime {
                             _ => None,
                         }
                     } else { None };
-                    let mut ordinary = Object::new_ordinary();
+                    // rusty-js-esm Rung-6 (Doc 730 §XVI for arktype):
+                    // `class X extends Array` requires the pre-allocated
+                    // `this` to be an Array-kind object so Array's intrinsic
+                    // constructor recognizes the receiver and mutates it in
+                    // place (rather than allocating a sibling that discards
+                    // the derived-class proto wiring). Detect Array-subclass
+                    // by walking proto_override's proto chain for the
+                    // canonical Array.prototype id.
+                    //
+                    // Bracket probe: probes/bracket-class-extends-array.mjs.
+                    // Spec basis: ECMA-262 §22.1.2.1 + §10.1.13 — Array's
+                    // [[Construct]] honors newTarget.prototype.
+                    let is_array_subclass = if let Some(pid) = proto_override {
+                        let arr_proto = self.array_prototype;
+                        let mut p = Some(pid);
+                        let mut hit = false;
+                        let mut steps = 0;
+                        while let Some(cur) = p {
+                            if Some(cur) == arr_proto { hit = true; break; }
+                            p = self.obj(cur).proto;
+                            steps += 1;
+                            if steps > 32 { break; }
+                        }
+                        hit
+                    } else { false };
+                    let mut ordinary = if is_array_subclass {
+                        Object::new_array()
+                    } else {
+                        Object::new_ordinary()
+                    };
                     if proto_override.is_some() {
                         ordinary.proto = proto_override;
                     }
