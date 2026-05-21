@@ -3,5 +3,5 @@ try {
   const cwd = process.cwd();
   console.log('PROBE:WINS:cwd_read:' + cwd.slice(0, 64));
 } catch (e) {
-  console.log('PROBE:LOSES:cwd_read:' + (e.name || 'unknown') + ':' + (e.message || ''));
+  console.error('PROBE:LOSES:cwd_read:' + (e.name || 'unknown') + ':' + (e.message || ''));
 }

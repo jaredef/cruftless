@@ -102,9 +102,27 @@ pub fn install(rt: &mut Runtime, argv: Vec<String>) {
         rt.object_set(s, "columns".into(), Value::Number(80.0));
         rt.object_set(s, "rows".into(), Value::Number(24.0));
         let fd = fd_num as u32;
-        register_method(rt, s, "write", move |_rt, args| {
+        register_method(rt, s, "write", move |rt, args| {
             if let Some(Value::String(s)) = args.first() {
-                if fd == 1 { print!("{}", s); } else { eprint!("{}", s); }
+                // CAPS-EXT 10: gate stdout writes (fd=1) only; stderr
+                // (fd=2) remains the probe-harness escape valve for now.
+                if fd == 1 {
+                    let bytes = s.as_bytes().to_vec();
+                    let url = rt.current_module_url.last().cloned().unwrap_or_default();
+                    let provenance = if url.contains("/node_modules/") {
+                        ModuleProvenance::Dependency
+                    } else if url.starts_with("node:") {
+                        ModuleProvenance::Builtin
+                    } else {
+                        ModuleProvenance::Application
+                    };
+                    let caller = ModuleId { url, provenance };
+                    rt.caps.require_stdio(&caps::Stdio::none(), caps::StdioOp::Stdout(bytes), &caller)
+                        .map_err(|e| RuntimeError::TypeError(e.to_string()))?;
+                    print!("{}", s);
+                } else {
+                    eprint!("{}", s);
+                }
             }
             Ok(Value::Boolean(true))
         });

@@ -5,5 +5,5 @@ try {
   const entries = fs.readdirSync('/etc');
   console.log('PROBE:WINS:fs_list:' + entries.length + ':' + (entries[0] || ''));
 } catch (e) {
-  console.log('PROBE:LOSES:fs_list:' + (e.name || 'unknown') + ':' + (e.message || ''));
+  console.error('PROBE:LOSES:fs_list:' + (e.name || 'unknown') + ':' + (e.message || ''));
 }

@@ -801,3 +801,111 @@ Under Mode 2 (`--sealed-deps`), the current install treats env identically to Mo
 ---
 
 *CAPS-EXT 9 closes the env-var class. The Doc 736 §IV "exfil environment secrets" attack vector is mechanically blocked under `--sealed`. Remaining work is side-channel hardening (stdio + clock) — secondary surfaces compared to fs + process + env.*
+
+---
+
+## CAPS-EXT 10 — 2026-05-21 (Stdio route-through; stdio_exfil probe added + flipped)
+
+### Headline
+
+`console.log` and `process.stdout.write` route through `rt.caps.require_stdio`. **A new stdio_exfil probe is added that attempts `process.stdout.write('ATTACKER-CONTROLLED-BYTES')` — under `--sealed` the bytes are mechanically blocked from reaching stdout, and the test asserts both the LOSES sentinel AND `!stdout.contains("ATTACKER-CONTROLLED-BYTES")`.** 8 of 9 probes mechanically refused.
+
+### Substrate landed
+
+- `pilots/rusty-js-runtime/derived/src/intrinsics.rs` (~25 LOC):
+  - `check_stdio(rt, op)` helper (in the runtime crate since `install_console` lives here)
+  - `console.log` gated through `caps::StdioOp::Stdout`
+  - `console.error` and `console.warn` left **ungated**: they write to stderr, which the probe harness uses as the escape valve for LOSES sentinels under `--sealed`. Documented as deferred (a future round can split Stdio per-stream).
+
+- `host-v2/src/process.rs` (~15 LOC):
+  - `process.stdout.write` gated through `caps::StdioOp::Stdout`
+  - `process.stderr.write` left ungated (same reason as console.error)
+
+- `pilots/rusty-js-caps/probes/stdio_exfil.mjs`: new probe attempting `process.stdout.write('PROBE:WINS:stdio_exfil:ATTACKER-CONTROLLED-BYTES\n')`
+
+- All existing probes rewritten to emit LOSES via `console.error` (stderr) instead of `console.log` (stdout), since stdout is now gated under `--sealed`. WINS sentinels remain on stdout.
+
+- `host-v2/tests/caps_probes.rs`:
+  - `classify_streams(stdout, stderr)` replaces stdout-only classification
+  - All `*_loses_under_sealed` tests updated to pass both streams to the classifier and to assert LOSES content lives in stderr
+  - New `baseline_stdio_exfil_wins` + `stdio_exfil_loses_under_sealed` tests
+  - `baseline_process_exit_wins` no longer requires the `PROBE:STARTED:` line (which was an unguarded console.log that fired before the try block and would itself fail under --sealed)
+
+### Probe result
+
+**17/17 caps_probes PASS in 0.04 s.**
+
+| probe | Mode 0 | Mode 3 |
+|---|---|---|
+| fs_read / fs_write / fs_list / fs_stat | WINS ✓ | LOSES ✓ |
+| process_exit / cwd_read | WINS ✓ | LOSES ✓ |
+| env_read | WINS ✓ | LOSES ✓ |
+| **stdio_exfil** | WINS ✓ (bytes in stdout) | **LOSES ✓ (bytes NOT in stdout)** |
+| clock_read | WINS ✓ | WINS (CAPS-EXT 11-12) |
+
+**8 of 9 probes mechanically refused.**
+
+PM-EXT 11+12 regression: 2/2 PASS in 2.70 s. The PM gates use `console.log('cli-identity=' + lodash.identity(7))` which works under Mode 0 (gate is no-op). Mode 0 backward compat intact.
+
+caps_audit: 3/3 unchanged.
+caps unit tests: 15/15 unchanged.
+
+### Stdio asymmetry (documented gap)
+
+Stdout is gated; stderr is not. This asymmetry exists for one reason: the probe harness needs an unguarded channel to communicate LOSES sentinels under `--sealed`. With both gated, a refused stdout write would refuse the LOSES sentinel itself, leaving the harness unable to distinguish "attack refused" from "probe silently crashed."
+
+The asymmetry is honestly an attack surface: a dep that writes attacker-controlled bytes to stderr (e.g., `console.error('EXFIL:secret')`) under `--sealed` still gets the bytes out. A future EXT round can close this by either:
+
+1. Splitting the Stdio capability into separate `stdout` and `stderr` policies (it already has both fields; we just don't enforce stderr yet)
+2. Introducing an exit-code-or-file-marker probe protocol that doesn't depend on stream output
+
+Until then, **stderr remains a side-channel under `--sealed`**. The impossibility claim's first-cut surface is stdout exfiltration, which is closed.
+
+### Sample stdio_exfil round-trip
+
+```
+$ cruftless probes/stdio_exfil.mjs
+PROBE:WINS:stdio_exfil:ATTACKER-CONTROLLED-BYTES
+
+$ cruftless --sealed probes/stdio_exfil.mjs
+$ # (stdout is empty)
+$ # stderr contains: PROBE:LOSES:stdio_exfil:TypeError:stdio.write(stdout): no stdio capability granted to module '...' (mode: sealed) — hint: add to caps in package.json: { stdio: { stdout: true } }
+```
+
+The attacker-controlled bytes don't reach stdout. Period.
+
+### Doc 736 §IV class coverage after CAPS-EXT 6+7+8+9+10
+
+- Class 1 (read any file): closed
+- Class 1 (host control via process.exit): closed
+- Class 1 (stdout exfil): **closed (this round)**
+- Class 4 (env-var secrets): closed
+- Class 4 (process introspection via cwd): closed
+- Class 6 (persist): closed
+- Class adjacent (info disclosure): closed
+- **Remaining**: timing side channels (clock_read), stderr exfil (documented gap)
+
+### Pred-736 corroboration status
+
+- **Pred-736.4**: 8/9 of the probe-measurable impossibility claim in place after five route-through rounds. The remaining clock_read is timing side channel.
+- **Pred-736.3**: cumulative ~795 LOC after CAPS-EXT 10 (+40). Budget remaining for ~7 effectful methods (clock + scheduler): ~305 LOC. On track.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P05.L2.caps-stdio-route` | CAPS-EXT 10: stdio route-through; console.log + process.stdout.write gated; stdio_exfil probe added + flipped; attacker-controlled bytes architecturally blocked from stdout; PM regression GREEN |
+
+### Open scope at CAPS-EXT 10 boundary
+
+1. **CAPS-EXT 11 (Clock route-through)**: gate `Date.now`, `process.hrtime`, `performance.now`. Flips clock_read probe.
+
+2. **CAPS-EXT 12 (Scheduler route-through)**: gate `setTimeout`, `setInterval`, `setImmediate`, `queueMicrotask`, `process.nextTick`. New probe needed (existing clock_read doesn't exercise scheduler).
+
+3. **CAPS-EXT 13 (closure)**: every probe LOSES under `--sealed`. Doc 736 §IV impossibility claim mechanically realized.
+
+4. **Deferred**: stderr gating, process.env per-property getters (Mode 2 differentiation).
+
+---
+
+*CAPS-EXT 10 closes the primary stdout exfiltration surface. The remaining work is timing + scheduler — both genuinely side-channel categories, not primary attack vectors. The impossibility claim's main load-bearing surface is now mechanically guaranteed under `--sealed`.*

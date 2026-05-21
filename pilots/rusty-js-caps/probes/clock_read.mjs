@@ -6,5 +6,5 @@ try {
   const t2 = Date.now();
   console.log('PROBE:WINS:clock_read:dt=' + (t2 - t1) + 'ms:i=' + i);
 } catch (e) {
-  console.log('PROBE:LOSES:clock_read:' + (e.name || 'unknown') + ':' + (e.message || ''));
+  console.error('PROBE:LOSES:clock_read:' + (e.name || 'unknown') + ':' + (e.message || ''));
 }

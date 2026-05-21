@@ -6,5 +6,5 @@ try {
   fs.writeFileSync(path, 'WIN-' + Date.now() + '\n');
   console.log('PROBE:WINS:fs_write:' + path);
 } catch (e) {
-  console.log('PROBE:LOSES:fs_write:' + (e.name || 'unknown') + ':' + (e.message || ''));
+  console.error('PROBE:LOSES:fs_write:' + (e.name || 'unknown') + ':' + (e.message || ''));
 }

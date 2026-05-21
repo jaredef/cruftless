@@ -6,16 +6,16 @@
 try {
   const env = process.env;
   if (!env || typeof env !== 'object') {
-    console.log('PROBE:LOSES:env_read:no-env-object');
+    console.error('PROBE:LOSES:env_read:no-env-object');
   } else {
     const home = typeof env.HOME === 'string' ? env.HOME : '';
     const path = typeof env.PATH === 'string' ? env.PATH : '';
     if (home === '' && path === '') {
-      console.log('PROBE:LOSES:env_read:env-empty');
+      console.error('PROBE:LOSES:env_read:env-empty');
     } else {
       console.log('PROBE:WINS:env_read:home=' + home.slice(0, 16) + ':path_len=' + path.length);
     }
   }
 } catch (e) {
-  console.log('PROBE:LOSES:env_read:' + (e.name || 'unknown') + ':' + (e.message || ''));
+  console.error('PROBE:LOSES:env_read:' + (e.name || 'unknown') + ':' + (e.message || ''));
 }

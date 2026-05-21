@@ -16,6 +16,24 @@ use crate::value::{FunctionInternals, InternalKind, NativeFn, Object, ObjectRef,
 use std::collections::HashMap;
 use std::rc::Rc;
 
+/// CAPS-EXT 10: gate a stdio operation through the capability dispatcher.
+/// Same shape as host-v2's check_fs / check_process / check_env helpers.
+/// Lives in the runtime crate because the console intrinsic is installed
+/// here (rather than in host-v2).
+fn check_stdio(rt: &Runtime, op: crate::caps::StdioOp) -> Result<(), RuntimeError> {
+    let url = rt.current_module_url.last().cloned().unwrap_or_default();
+    let provenance = if url.contains("/node_modules/") {
+        crate::caps::ModuleProvenance::Dependency
+    } else if url.starts_with("node:") {
+        crate::caps::ModuleProvenance::Builtin
+    } else {
+        crate::caps::ModuleProvenance::Application
+    };
+    let caller = crate::caps::ModuleId { url, provenance };
+    rt.caps.require_stdio(&crate::caps::Stdio::none(), op, &caller)
+        .map_err(|e| RuntimeError::TypeError(e.to_string()))
+}
+
 impl Runtime {
     pub fn install_intrinsics(&mut self) {
         // Prototype intrinsics must install first so subsequent alloc_object
@@ -4136,15 +4154,24 @@ impl Runtime {
 
     fn install_console(&mut self) {
         let console = self.alloc_object(Object::new_ordinary());
-        register_method(self, console, "log", |_rt, args|{
+        register_method(self, console, "log", |rt, args|{
             let mut out = String::new();
             for (i, a) in args.iter().enumerate() {
                 if i > 0 { out.push(' '); }
                 out.push_str(&abstract_ops::to_string(a));
             }
+            // CAPS-EXT 10: gate stdout writes through the dispatcher.
+            check_stdio(rt, crate::caps::StdioOp::Stdout(out.as_bytes().to_vec()))?;
             println!("{}", out);
             Ok(Value::Undefined)
         });
+        // CAPS-EXT 10: console.error and console.warn write to stderr,
+        // which remains ungated this round. stderr is the probe-harness
+        // escape valve for LOSES sentinels under --sealed; gating it
+        // here would block the harness from observing capability errors.
+        // A future EXT can split the Stdio capability into per-stream
+        // policy or gate stderr separately once a richer probe protocol
+        // (exit code, file markers) is in place.
         register_method(self, console,"error", |_rt, args|{
             let mut out = String::new();
             for (i, a) in args.iter().enumerate() {

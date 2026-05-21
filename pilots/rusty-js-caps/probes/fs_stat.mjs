@@ -4,5 +4,5 @@ try {
   const s = fs.statSync('/etc/hostname');
   console.log('PROBE:WINS:fs_stat:size=' + (s.size ?? 0) + ':mode=' + (s.mode ?? 0));
 } catch (e) {
-  console.log('PROBE:LOSES:fs_stat:' + (e.name || 'unknown') + ':' + (e.message || ''));
+  console.error('PROBE:LOSES:fs_stat:' + (e.name || 'unknown') + ':' + (e.message || ''));
 }
