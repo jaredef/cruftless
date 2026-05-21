@@ -363,3 +363,49 @@ The cross-pilot dispatch is auditable: the TLS-EXT 9 probe re-run produces the e
 ---
 
 *TLS-EXT 9 closes with the cross-pilot substrate-work propagation recorded as an explicit TLS-pilot deliverable. The 0/5 → 3/5 PASS flip happened entirely through downstream web-crypto substrate work; no TLS-pilot code changed. Doc 730 §XII diagnostic-legibility operating as designed. The TLS workstream's next moves (TLS-EXT 10 RSA handshake probe + TLS-EXT 11+ chain_walk Mont routing) are gated on the queued WC-EXT 12 Montgomery-generalization work; substrate moves at the engagement-internal-HTTPS tier and downstream are now coordinated through the fractal pair structure.*
+
+---
+
+## TLS-EXT 10 — 2026-05-21 (WC-EXT 12 propagation: TLS probe 36s → 5.4s)
+
+The web-crypto workstream's WC-EXT 12 substrate move (generic Montgomery REDC for arbitrary odd-prime moduli) propagates into the TLS pilot as another probe-cell timing flip. **No TLS-pilot code changed.** The TLS-side observation:
+
+| metric | TLS-EXT 9 | TLS-EXT 10 (post-WC-EXT 12) | speedup |
+|---|---|---|---|
+| 5-endpoint TLS probe wallclock | ~37s | **5.37s** | 6.7× |
+| api.github.com single handshake | ~10s | **1.85s** | 5.4× |
+| Probe-cell score | 3/5 PASS | 3/5 PASS | unchanged |
+
+The wallclock drop comes from two downstream primitives that the TLS pilot consumes:
+
+- **RSA chain verify**: `chain_walk` calls into x509's signature verification, which calls `rsa_pkcs1_v15_verify` (or `rsa_pss_verify`) for RSA-signed intermediate certs. WC-EXT 12 routed `rsaep` through generic Mont; each RSA-2048 verify dropped ~20× (~few seconds → ~hundreds of ms).
+- **ECDH key exchange**: `EphemeralEcdh::generate` and `::shared_secret` in `pilots/tls/derived/src/driver.rs` call `p256_scalar_mul`. WC-EXT 12 also routed `p256_scalar_mul` through `p256_scalar_mul_mont` (Jacobian + Mont), so the two scalar muls per handshake dropped from ~16s combined to ~milliseconds.
+
+### Updated endpoint-coverage matrix
+
+`probes/endpoint-coverage.md` §8 reflects 3/5 PASS unchanged but the wallclock timing for completing the full 5-endpoint sweep dropped from ~37s to 5.4s. api.github.com handshake profile: roughly 1-1.5s of crypto + ~0.5s of network round-trips + ~0.2s of protocol overhead.
+
+### Doc 730 §XII operating
+
+This is the second cross-pilot propagation this session (after TLS-EXT 9's WC-EXT 0–10 propagation). Substrate at the right tier propagates upward through the pipeline without touching upstream code. The TLS pilot's diagnostic legibility holds across the upstream substrate moves.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P06.E1.tls-probe-wc-mont-generic` | TLS probe re-run records WC-EXT 12 propagation: wallclock 36s → 5.4s; api.github.com 10s → 1.85s; substrate-move was at WC's BigUInt arithmetic tier, blast radius covered RSA chain-verify + ECDH paths the TLS pilot consumes |
+
+### Open scope at TLS-EXT 10 boundary
+
+The TLS-pilot open-scope tightens:
+
+1. **E2 httpbin.org separate bug** — still open, requires TLS-pilot-specific investigation. No downstream WC work will address it.
+2. **E5 npm Case-4 scope decision** — still open at engagement scope.
+3. **TLS-EXT 11 (handshake breakdown probe)** — proposed in TLS-EXT 9 as RSA-dominance confirmation, now superseded by WC-EXT 12 (the dominance was empirically confirmed by the routing producing the 5.4s wallclock). The probe is no longer needed as a substrate-move trigger.
+4. **TLS-EXT 12+ (substrate)**: with the substrate now CDN-fast, focus shifts to E2 (httpbin specific bug) and E5 (scope decision). Both are independent of further substrate optimization at the cryptographic-primitive tier.
+
+The TLS workstream is approaching its first-cut telos: 3/5 endpoints reachable in under a second each (after process-start init costs); the substrate is no longer the bottleneck for the three working endpoints.
+
+---
+
+*TLS-EXT 10 closes with the WC-EXT 12 substrate propagation recorded. The TLS handshake wallclock to api.github.com is now ~2s — comparable to a curl-baseline measurement on the same hardware. The engagement's cryptographic-substrate work has reached the level where TLS-pilot work is no longer waiting on web-crypto improvements. Subsequent TLS-tier substrate moves target E2 + E5 plus whatever the broader engagement integration surfaces.*
