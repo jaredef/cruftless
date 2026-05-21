@@ -1110,3 +1110,87 @@ The stub helper is Case-4 (implementation freedom): cruftless's first cut proves
 ---
 
 *JIT-EXT 20 closes the Cranelift-side lowering for GetPropOnObject. The call chain is proven against a stub; JIT-EXT 21 makes the helper real.*
+
+---
+
+## JIT-EXT 21 — 2026-05-21 (dispatcher consume-recovered-state via `resume_from_deopt_state`)
+
+### Headline
+
+`Runtime::resume_from_deopt_state(proto, this, args, &state)` lands as a public method. Given a `DeoptRecoveredState`, it constructs a Frame with `locals` populated from `state.local_values`, `operand_stack` populated from `state.stack_values`, `pc = state.resume_pc`, then runs the interpreter dispatch loop from there. **The deferred work from JIT-EXT 14 is now reachable; ICs at non-zero pcs can land at JIT-EXT 22+.**
+
+The dispatcher itself does not yet call this method on every deopt — for arith trips at pc=0 (the current shape), re-execute-from-pc-0 remains observably equivalent. Adding the dispatcher-side branching is left for the round that introduces a deopt site at a non-zero pc (real ICs).
+
+### Substrate landed
+
+- `pilots/rusty-js-runtime/derived/src/interp.rs` (+~70 LOC):
+  - `Runtime::resume_from_deopt_state(proto, this_value, args, state) -> Result<Value, RuntimeError>`
+  - Frame allocation mirrors `call_function`'s per-frame init (bytecode, constants, source_map, line_starts, source_url, construct_tags, locals_names, upvalue_names, locals from args, local_cells, operand_stack, pc, try_stack, this_value, upvalues, last_property_lookup, pending_method_name, import_meta, new_target, strict)
+  - Recovered state overlays: `state.local_values` overrides arg-derived locals; `state.stack_values` becomes the operand stack contents
+  - i64 → Value::Number(f64) widening at the overlay step (Number-only regime; broader Value coverage at JIT-EXT 23+)
+  - Locals not mentioned in `state.local_values` keep arg-derived defaults
+
+- `host-v2/Cargo.toml`: `[dev-dependencies]` adds `rusty-js-jit` for test access to `DeoptRecoveredState` + `DeoptReason`
+
+- `host-v2/tests/jit_resume_from_deopt.rs` (~100 LOC, 2 tests):
+  - `resume_from_deopt_state_runs_remaining_bytecode`: hand-built `add(a, b) { return a + b }` proto; synthetic state with `resume_pc = 6` (the Add op) and `stack_values = [(0, 10), (1, 32)]`; resume returns `Number(42)` — proves the interp resumed at the right pc with the stack pre-populated and ran the remaining bytecode (Add, Return).
+  - `resume_from_deopt_state_widens_i64_to_f64`: synthetic Return-only path; recovered `stack_values = [(0, 12345)]`; resume returns `Number(12345.0)` — proves i64 → f64 widening at the overlay.
+
+### Probe result
+
+**2/2 new resume-from-deopt tests PASS in 0.00 s.**
+
+Regression sweep:
+- 26/26 JIT lib tests PASS
+- PM-EXT 11+12: 2/2 PASS in 2.89 s
+- caps_probes: 18/18 PASS
+- All prior arith-guard + shape-trip tests still PASS
+
+### Why the dispatcher branch is deferred
+
+The dispatcher's current fall-through (re-execute from pc=0 with original args) handles every current deopt correctly:
+- Arith trips at pc=Add: re-executing from pc=0 produces the same locals at pc=Add, then runs Add in the interp with f64 widening. Observably equivalent to resume-at-Add-with-recovered-state.
+- Shape-trip at pc=0: re-execute is literally the recovered state.
+
+So while `resume_from_deopt_state` exists and works, no current code path needs the dispatcher to call it. The dispatcher's branching logic (check `state.resume_pc != 0`; route to `resume_from_deopt_state` vs the re-execute path) lands cleanly when the first real IC at a non-zero pc surfaces. At that point the dispatcher gains:
+
+```rust
+if let Some(state) = take_last_deopt() {
+    if state.resume_pc != 0 {
+        return self.resume_from_deopt_state(&proto, actual_this, args, &state);
+    }
+    // else: fall through to re-execute path
+}
+```
+
+The branching is small; the work was making `resume_from_deopt_state` exist with the right Frame-construction shape. That's this round.
+
+### Pred-731 corroboration
+
+- **R5 (deopt sites finite-enumerable per emitted module)**: corroborated for the resume tier. The recovered state's site identity is preserved through the resume; the dispatcher (when it routes) gets back a frame at the right pc.
+- **R6 (single tier)**: corroborated. `resume_from_deopt_state` runs the same interpreter dispatch loop that `run_module` uses. No specialized resume-path interpreter.
+- **R7 (stack maps)**: corroborated end-to-end. The hand-rolled `DeoptSite` layout (`live_locals` + `stack_slots`) is consumed by `reconstruct_state` (JIT-side) and now by `resume_from_deopt_state` (runtime-side). The full stack-map → recovered state → resumed frame chain works.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P04.E2.jit-resume-from-deopt-state` | JIT-EXT 21: Runtime::resume_from_deopt_state lands; constructs a Frame from recovered state + runs interpreter from arbitrary pc; 2/2 new tests PASS; dispatcher branching deferred to first non-zero-pc deopt site (JIT-EXT 22+) |
+
+### Open scope at JIT-EXT 21 boundary
+
+1. **JIT-EXT 22 (real GetPropOnObject helper)**: replace the stub with a helper that threads `CURRENT_RUNTIME` + `CURRENT_FUNCTION_PROTO` through TLS, performs `object_get` on the receiver, and either returns the i64-encoded Number or trips a deopt for non-Number. Dispatcher now needs to route deopts at non-zero pcs through `resume_from_deopt_state` (the JIT-EXT 21 method).
+
+2. **JIT-EXT 23 (single-shape IC)**: cache `(shape, offset)` at each GetProp site; fast path reads slot directly; slow path calls helper.
+
+3. **JIT-EXT 24 (multi-shape IC + cache-full deopt)**: extend to 4 cached shapes; deopt on the 5th distinct shape.
+
+4. **JIT-EXT 25 (mixed-regime dispatcher)**: accept Object args at the boundary alongside Number args.
+
+### Doc 730 §XVI status
+
+The `resume_from_deopt_state` implementation is Case-3 (compositional success): cruftless's narrow alphabet (i64 → Value::Number widening at the boundary) lets the resume entry compose cleanly with the existing dispatch loop. Mainstream JITs' deoptimizers need elaborate frame-state translation (V8's Deoptimizer class is several thousand lines) because their state lives in many representations; cruftless's single representation makes the equivalent a 70-LOC method.
+
+---
+
+*JIT-EXT 21 closes the runtime-side wiring for deopt resume. The IC chapter now has both halves of its prerequisite: JIT can emit a runtime call (EXT 20), and the runtime can resume from a deopt state at an arbitrary pc (EXT 21). JIT-EXT 22 makes the helper real.*

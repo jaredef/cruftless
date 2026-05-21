@@ -5829,6 +5829,79 @@ impl Runtime {
         self.run_frame(&mut frame)
     }
 
+    /// JIT-EXT 21: resume function execution from a deopt-recovered
+    /// state. Used by the dispatcher (and by future ICs) when a JIT
+    /// trip fires mid-function and the recorded `resume_pc` is non-
+    /// zero — re-executing from pc=0 would either lose mid-function
+    /// work or repeat side effects.
+    ///
+    /// The recovered state's `local_values` and `stack_values` are
+    /// widened back into `Value::Number(f64)` (the JIT's i64-only
+    /// regime); broader Value coverage (Object, String) lands when
+    /// the JIT's regime widens at JIT-EXT 23+.
+    ///
+    /// Locals not mentioned in `state.local_values` keep whatever the
+    /// frame's standard initialization gave them (args populated from
+    /// `args[..proto.params]`, rest = Undefined). This matches the
+    /// current arith-deopt invariant where the recovered state names
+    /// only the live locals at the trip site.
+    pub fn resume_from_deopt_state(
+        &mut self,
+        proto: &rusty_js_bytecode::compiler::FunctionProto,
+        this_value: Value,
+        args: Vec<Value>,
+        state: &rusty_js_jit::DeoptRecoveredState,
+    ) -> Result<Value, RuntimeError> {
+        // Standard frame setup matching call_function's per-frame init.
+        let mut locals: Vec<Value> = Vec::with_capacity(proto.locals.len());
+        for i in 0..proto.locals.len() {
+            if i < proto.params as usize && i < args.len() {
+                locals.push(args[i].clone());
+            } else {
+                locals.push(Value::Undefined);
+            }
+        }
+        // JIT-EXT 21 overlay: recovered local values take precedence
+        // over the arg-derived defaults. Widening: i64 -> Number(f64).
+        for &(slot, raw_i64) in &state.local_values {
+            let slot = slot as usize;
+            if slot < locals.len() {
+                locals[slot] = Value::Number(raw_i64 as f64);
+            }
+        }
+
+        // Operand stack from recovered state's stack_values; same
+        // i64 -> Number widening.
+        let mut operand_stack: Vec<Value> = Vec::with_capacity(state.stack_values.len() + 8);
+        for &(_slot, raw_i64) in &state.stack_values {
+            operand_stack.push(Value::Number(raw_i64 as f64));
+        }
+
+        let mut frame = Frame {
+            bytecode: &proto.bytecode,
+            constants: &proto.constants,
+            source_map: &proto.source_map,
+            line_starts: &proto.line_starts,
+            source_url: &proto.source_url,
+            construct_tags: &proto.construct_tags,
+            locals_names: &proto.locals,
+            upvalue_names: &proto.upvalues,
+            locals,
+            local_cells: Vec::new(),
+            operand_stack,
+            pc: state.resume_pc as usize,
+            try_stack: Vec::new(),
+            this_value,
+            upvalues: Vec::new(),
+            last_property_lookup: None,
+            pending_method_name: None,
+            import_meta: None,
+            new_target: None,
+            strict: proto.strict,
+        };
+        self.run_frame(&mut frame)
+    }
+
     fn run_frame(&mut self, frame: &mut Frame) -> Result<Value, RuntimeError> {
         // Outer driver: each iteration runs the inner dispatch; if a JS
         // throw bubbles up, walk the try_stack and either resume at a

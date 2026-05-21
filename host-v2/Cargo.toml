@@ -22,3 +22,8 @@ indexmap = "2"
 # The PM is install-time only, but living in the same binary keeps the
 # CLI surface single.
 rusty-js-pm = { path = "../pilots/rusty-js-pm/derived" }
+
+[dev-dependencies]
+# JIT-EXT 21 test exercises Runtime::resume_from_deopt_state with a
+# hand-built DeoptRecoveredState.
+rusty-js-jit = { path = "../pilots/rusty-js-jit/derived" }
