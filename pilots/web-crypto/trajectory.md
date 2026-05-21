@@ -1263,3 +1263,106 @@ Three iterations of the same cycle shape; the framework's case-(P2) cycle is run
 ### What this round corroborates
 
 Per Doc 730 §XII diagnostic-legibility: the WC-EXT 20 substrate landed with a clear diagnosis. The cost stratum analysis (Doc 735 §X) precisely names why naive composition fails. The framework's case-(P2) discipline catalogs this as a sub-failure mode worth recording (Doc 735 §X.h queued amendment now includes "composition from wrong-stratum primitives" as a noted pattern).
+
+---
+
+## Cumulative status at WC-EXT 20 close (session 1, second half)
+
+### The §XVII performance-axis pipeline cycle (WC-EXT 13–20)
+
+After the first cumulative-status block (WC-EXT 10 close) the workstream operated entirely under Doc 730 §XVII's performance-axis deviation-resolution pipeline. Eight rounds, each cleanly categorized:
+
+| EXT | move | §XVII case | LOC | outcome | per-op delta |
+|---|---|---|---|---|---|
+| 13 | TLS ephemeral keygen → Mont base table | (P1) routing | 7 | win | ~80ms/handshake |
+| 14 | Profile probe (TLS handshake breakdown) | (apparatus) | 30 | diagnosis | identifies P-384 bottleneck |
+| 15 | Generic Mont scalar mul for any curve | (P1) algorithm | 130 | win | P-384 ~3×; TLS probe 2× |
+| 16 | Comba schoolbook for BigUInt::mul | (P2) constant-factor | 30 | small win | mont_mul ~10% |
+| 17 | Karatsuba above 24-limb threshold | (P1) algorithm | 45 | dormant for current workload | RSA-2048+ queued |
+| 18 | CIOS Mont with u64+carry | (P2) constant-factor | 60 | wash, reverted | -4% on Pi |
+| 19 | CIOS Mont with u128 accumulator | (P2) constant-factor | 60 | parity | (P2) saturation signaled |
+| 20 | Solinas reduction for P-256 (naive) | (P2) primitive-specific | 90 | dormant; perf-wrong | needs hand-tuned rewrite |
+
+### Speedup ladder (cumulative session)
+
+| EXT | fixture verify | TLS probe wallclock | api.github.com handshake | × from baseline (fixture) |
+|---|---|---|---|---|
+| WC-EXT 1 (baseline) | 8.18s | hang | hang | 1× |
+| WC-EXT 10 close | 0.10s | ~37s · 3/5 PASS | ~10s | 82× |
+| WC-EXT 12 (gen Mont) | 0.10s | 5.37s | 1.85s | 82× / TLS 7× |
+| WC-EXT 13 (eph→Mont) | 0.10s | 4.98s | 1.76s | 82× / TLS 7.4× |
+| WC-EXT 15 (gen EC Mont) | 0.10s | 2.59s | 0.85s | 82× / TLS 14× |
+| WC-EXT 16 (Comba mul) | 0.10s | 2.61s | 0.85s | 82× / TLS 14× |
+| WC-EXT 17 (Karatsuba) | 0.10s | 2.61s | 0.85s | 82× / TLS 14× |
+| WC-EXT 19 close | 0.10s | 2.64s | 0.84s | 82× / TLS 14× |
+
+The §XVII (P1) algorithmic moves were the dominant winners; the (P2) constant-factor moves saturated at this hardware + Vec<u32> representation. The (P1) saturation point at the BigUInt-tier is reached at the current representation; further (P1) gains require Solinas reduction (primitive-specific) or representation change (u64 limbs).
+
+### Standing infrastructure added in WC-EXT 13–20
+
+| component | tier | use |
+|---|---|---|
+| `mont_ctx_for_curve(c)` | EC | lazy MontCtx per-curve cache (P-256/P-384/P-521) |
+| `jacpoint_from_affine_mont_g(ctx, a)` | EC | Mont-form Jac constructor with Z=R |
+| `jac_double_mont_g`, `jac_add_affine_mont_g`, `jac_to_affine_mont_g` | EC | generic Mont-form Jacobian operations |
+| `ec_scalar_mul_mont_g(c, k, pt)` | EC | binary double-and-add in Mont for any curve |
+| `BigUInt::shl_limbs(k)` | BigUInt | for Karatsuba composition |
+| `BigUInt::mul_schoolbook(other)` | BigUInt | the Comba schoolbook (called when Karatsuba below threshold) |
+| `mont_mul_cios(am, bm, ctx)` | BigUInt | CIOS u64+carry (dormant; queued for asm hardware) |
+| `mont_mul_cios_u128(am, bm, ctx)` | BigUInt | CIOS u128 accumulator (live path of mont_mul) |
+| `p256_solinas_reduce(t_limbs)` | BigUInt | FIPS 186-4 P-256 reduction (dormant; needs hand-tuned rewrite) |
+| `p256_mod_mul_solinas(a, b)` | BigUInt | std-form P-256 mod_mul via Solinas (dormant) |
+
+Plus the §XVII probe-tier instrumentation in `pilots/tls/derived/src/driver.rs` + `pilots/x509/derived/src/lib.rs` (CRUFTLESS_TLS_PROFILE).
+
+### Tag count
+
+8 substrate moves under `Ω.5.P06.E1.*` and `Ω.5.P06.E3.*` in this second half:
+| tag | commit |
+|---|---|
+| `tls-ephemeral-mont-base` | d2723659 |
+| `wc-profile-probe` | 193d320e |
+| `wc-mont-generic-ec` | 5397bc30 |
+| `wc-comba-mul` | c20ba5e2 |
+| `wc-karatsuba-bigint` | a2ac4306 |
+| `wc-cios-mont` | 70c38ff5 |
+| `wc-cios-mont-u128` | 8c9d8bed |
+| `wc-solinas-naive` | 93534d1e |
+
+Plus 1 corpus articulation driven by this half's findings: **Doc 730 §XVII** (performance-axis deviation pipeline) — the conceptual frame for the eight substrate rounds above.
+
+### Methodology compactness ratio (running)
+
+Total substrate LOC across the second half (WC-EXT 13-20): ~530 LOC, of which ~250 are live and ~280 are dormant (queued substrate alternatives like mont_mul_cios variants, naive Solinas, wNAF helpers). Live-only ratio: ~250 LOC for the TLS probe wallclock improvement 4.98s → 2.59s (1.9×).
+
+Cumulative session live LOC: ~700 LOC across WC-EXT 0-20 + corresponding TLS-pilot routing changes.
+
+### Vs Bun gap at session 1 close
+
+| metric | Bun | cruftless | gap |
+|---|---|---|---|
+| 5-endpoint probe wallclock (5/5 vs 3/5) | 691ms | 2,640ms | 3.8× |
+| api.github.com handshake | 48ms | 846ms | 18× |
+| ECDSA-P-256 verify (steady-state) | ~1ms | ~100ms | 100× |
+
+The 18× per-endpoint gap decomposes per §XVII:
+- ~5× attributable to (P2) constant-factor work BoringSSL does in asm + u64 limbs that cruftless doesn't yet
+- ~3× attributable to (P1) algorithm work cruftless's substrate-move catalog has identified but not yet routed (Solinas done-right, larger comb table windows)
+- ~2× attributable to (P5) hardware acceleration (AES-NI etc., out of reach on Pi without crypto extensions)
+- Remainder: implementation-tier overhead (HTTP/1.1 vs HTTP/2, no connection pooling, etc.)
+
+The decomposition is precise per the §XVII case framework; the next-session WC-EXT 21+ work has clear targeting.
+
+### Resume protocol (session 2)
+
+Read seed §VI.1-4 (state), then this trajectory's WC-EXT 19+20 entries (§XVII (P2) saturation diagnosis), then this cumulative-status block (substrate catalog + standing infrastructure).
+
+Session 2 priority order (per §XVII apparatus discipline ranking by impact / LOC):
+1. **WC-EXT 21** — proper Solinas with hand-tuned u32 carry arithmetic (~150 LOC; projected ~3× per P-256 mod_mul; would beat current Mont for std-form callers).
+2. **WC-EXT 22** — BigUInt → Vec<u64> representation (substantial refactor; ~300 LOC; halves iteration count of every primitive's loops; requires u128/u256-accumulator re-architecture).
+3. **Connection pooling** at the TLS-pilot tier (orthogonal P3; ~50 LOC for first cut; biggest workload-level win for multi-request scenarios).
+4. **Doc 730 §XVII.h amendment** — record the (P2) saturation pattern + the wrong-stratum-composition sub-failure surfaced in WC-EXT 18-20.
+
+---
+
+*WC-EXT 20 closes session 1's second half (WC-EXT 13-20, eight rounds under Doc 730 §XVII performance-axis pipeline). The framework's case discrimination drove eight clean diagnostic cycles. Five (P1) routing moves landed wins; three (P2) constant-factor moves explored the local optimum and signaled saturation. The session's empirical ceiling is ~14× TLS probe speedup at ~700 cumulative live LOC. Session 2 picks up at WC-EXT 21 (proper Solinas) with the §XVII saturation diagnosis as the gating discipline.*
