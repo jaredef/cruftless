@@ -1485,3 +1485,69 @@ This corroborates and extends Doc 735 §X.h (queued amendment): the wrong-stratu
 ---
 
 *WC-EXT 22 closes with the routing attempt + revert; the Doc 730 §XVII apparatus discipline surfaced an integration-time bug the WC-EXT 21 bench had not caught. The empirical correction is itself the round's value per the framework's positive-finding-from-negative-result mechanism. WC-EXT 23 bisects the bug; the 2.22× per-op Solinas advantage remains on the table when the EC routing lands cleanly.*
+
+---
+
+## WC-EXT 23 — 2026-05-21 (bisect: Solinas reduce diverges on ~50% of random fixtures; WC-EXT 21 claim retracted)
+
+### Headline
+
+Per WC-EXT 22's open: bisect the Solinas EC bug. Wrote a fuzz test (`examples/solinas_unit.rs`) that runs 2000 random fixtures + 4 edge cases comparing `p256_mod_mul_solinas_v2` to canonical `a.mul(b).modulo(&p)`. **Result: 1000/2000 random fixtures diverge; Gx*Gx and (p-1)*(p-1) diverge.** The WC-EXT 22 "signature mismatch" bug is in `p256_solinas_reduce_v2`, NOT in the jac_*_solinas EC formulas.
+
+### Bisect output
+
+```
+--- edge cases ---
+  1*1: OK
+  2*2: OK
+  Gx*Gx: DIVERGE
+    canonical = 98f6b84d29bef2b281819a5e0e3690d833b699495d694dd1002ae56c426b3f8c
+    solinas   = 98f6b84d29bef2b181819a5e0e3690d833b699495d694dd1002ae56c426b3f8c
+                              ^^ differs by 1 at byte 7 (= bit 192, limb index 6)
+  (p-1)*(p-1): DIVERGE
+    canonical = 0000000000000000000000000000000000000000000000000000000000000001
+    solinas   = 0000000000000001000000000000000000000000000000000000000000000001
+                              ^^ extra 1 at byte 7
+
+fuzz: 1000 divergent out of 2000 random fixtures
+```
+
+### Diagnosis
+
+The divergence is consistently at **bit 192 = limb index 6**. Small products work (1*1, 2*2) but products near or above p have an off-by-1 in limb 6 ~50% of the time. The pattern strongly suggests the bug is in the col[8] signed-carry handling or the final modular adjustment — when col[8] is non-zero, the addition/subtraction of `c = 2^256 mod p` (which has bit 192 set as part of its FF...FE pattern) leaves limb 6 off by 1.
+
+Not yet fully isolated. The bug surface is small (one function, ~80 LOC) and the divergence is consistent (off by exactly 1 at bit 192), so the fix is bounded — likely a single carry-propagation logic error in `p256_solinas_reduce_v2` lines ~1170-1230.
+
+### WC-EXT 21 claim withdrawal
+
+**WC-EXT 21 reported "2.22× faster than Mont per mod_mul" but the benchmark's equivalence check only ran ONE input (api.github.com qx*qy) and happened to be in the non-divergent half.** The substrate is buggy on ~50% of inputs; the speed claim is correct ONLY when the substrate produces the correct output, which it doesn't reliably do.
+
+**Retracted**: WC-EXT 21's "2.22× speedup" headline. The correct claim is: "When p256_solinas_reduce_v2's bug is fixed, projected ~2× over Mont." Until WC-EXT 24 fixes the bug, the substrate is dormant + bench-misleading.
+
+### Framework-tier finding (corroborates Doc 735 §X.h queued amendment)
+
+**Per Doc 730 §XVII.c step 1**: localize the divergence point — a benchmark's "equivalence check" that runs ONE fixture is insufficient to claim per-op correctness. The bench's apparent passing didn't catch the 50% divergence rate that fuzz testing surfaced.
+
+This extends the WC-EXT 22 finding: **substrate-tier correctness needs fuzz coverage of the consumer's input distribution**. Symbolic test fixtures (the bench's qx*qy) AND consumer-routing tests (WC-EXT 22's EC integration) AND fuzz over the full input space are all needed to verify a substrate move at the BigUInt arithmetic tier. WC-EXT 21's bench passed; WC-EXT 22 routing surfaced wrongness; WC-EXT 23 fuzz quantified it (50% divergence).
+
+Doc 735 §X.h amendment should record: **per-bench correctness, per-consumer correctness, and per-fuzz correctness are three distinct probe levels; substrate moves at the BigUInt tier need all three before claiming correctness-gold**.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P06.E3.wc-solinas-bisect-50pct-div` | bisect localized: p256_solinas_reduce_v2 diverges on ~50% random fixtures; bug at bit 192 / limb 6; WC-EXT 21 "2.22× speedup" claim retracted as bench-fixture-fortunate; substrate remains dormant; fuzz test now standing infrastructure |
+
+### Probe result
+
+5/5: 3/5 PASS unchanged (live path on Mont).
+
+### Open scope at WC-EXT 23 boundary
+
+1. **WC-EXT 24 (fix Solinas reduce)** — identify the off-by-1 bug in col[8] signed-carry handling or final adjustment in `p256_solinas_reduce_v2`. The fuzz test from WC-EXT 23 is the regression gate; substrate-tier correctness requires 0/2000 divergent fixtures.
+2. After fix: re-route through EC (WC-EXT 22's substrate is correct given correct Solinas reduce — the integration test was the probe that surfaced the BigUInt-tier bug).
+3. **Doc 735 §X.h amendment** — record three-probe-levels finding (per-bench, per-consumer, per-fuzz).
+
+---
+
+*WC-EXT 23 closes with the bisect localized + the WC-EXT 21 claim properly retracted. The session's positive outcome includes the empirical correction itself + the framework-tier finding that substrate-tier correctness needs three probe levels (bench + consumer-route + fuzz). Per Doc 734 §V.b negative-finding-amendment growth mechanism: a substrate claim that didn't survive fuzz coverage produces a corpus-tier framework refinement.*
