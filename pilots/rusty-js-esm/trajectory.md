@@ -43,30 +43,39 @@ See [`seed.md`](./seed.md) for telos, anti-telos, apparatus, and ceiling.
 
 ---
 
-## Rung-2 — Family A move: default-function named-alias (planned)
+## Rung-2 — Family A move: default-function named-alias (REJECTED)
 
-**Move design** (not yet implemented):
+**Status**: closed; move abandoned, no commit.
 
-When an ESM module's default export is a named function declaration (`export default function NAME() { ... }` or `export default async function NAME() { ... }`), expose `NAME` as an additional named export on the namespace bag, **only if** `NAME` is not already a key.
+**Move attempted**: a gated synthesis pass between the ESM export-binding loop and the host-finalize-namespace hook in `module.rs` (around line 1075). Conditions: default value is a function with non-empty `.name`, name ≠ "default"/"anonymous", name not already a namespace key. Implementation built clean; sweep not run.
 
-**Conditional gate** (anti-telos §I.2 compliance):
-- The default export's RHS must be a `FunctionDeclaration` / `AsyncFunctionDeclaration` with a non-empty identifier (not an anonymous arrow or expression).
-- The identifier must not collide with an existing namespace key.
-- The package's `package.json` must not have an `exports` field (paranoia gate — modern packages with explicit `exports` are unlikely to need this).
+**Rejection cause — counter-probe**:
 
-**Edit surface**: `module.rs:1448–1552` (`populate_cjs_namespace_view` is the wrong site; the right site is the ESM export-binding emitter in `compiler.rs` or the namespace-finalization step in `evaluate_module`). Reading pass required to identify the precise insertion point.
+A minimal raw-ESM probe (`export default function myFunc() {}` plus one other named export) returned **the same 2-key namespace under both bun and cruftless**. Cross-checked against Node (`node main.mjs`) returning the same 14-key namespace as cruftless for node-fetch — bun's extra 2 keys are not present.
 
-**Probe flip target**: node-fetch (–2 → –1). The `FetchBaseError` case stays open.
+This means:
+- The named-alias-of-default behavior is **not** a general bun ESM feature.
+- node-fetch's extra `fetch` and `FetchBaseError` keys are bun-specific to that package, almost certainly served by bun's built-in **node-fetch compatibility shim**. Bun ships its own native `fetch` implementation and intercepts `import "node-fetch"` to expose a superset of the package's surface (defensible since bun's `fetch` is faster and more compatible than the npm package).
 
-**Estimated parity delta**: 0 packages flipped at sweep tier (node-fetch needs both names; landing one leaves it FAIL). Move is still worth doing if (a) the substrate is correct, (b) Rung-3 lands the `FetchBaseError` source-of-truth and flips node-fetch.
+**Implication for the locale**: node-fetch is **out-of-locale**. The gap is not in cruftless's ESM namespace-synthesis substrate; it is in cruftless's compatibility-shim layer. That layer belongs in the host (`cruftless/src/node_stubs.rs` or a sibling shim module), not in `module.rs`. Re-categorize node-fetch as a `fetch-api` / `node-http` locale concern.
 
-**Sweep posture**: full 119-package sweep mandatory before commit. The default-function-named-alias path could over-apply in the same shape Round 3 did. The conditional gate is the defense; the sweep is the verification.
+**Anti-telos win**: this is exactly what the locale's discipline §I.2 is for. The Round 3 incident taught us not to ship blanket synthesis without cross-probing; the same discipline caught a different over-application **before** the commit. The synthesis branch never landed; baseline remains 94.9%.
+
+**Carries forward**:
+- Family A re-scoped: the 3 known failures inside this locale are now **enquirer (+21 over-synthesis)** and **superstruct (–1 re-export)**, plus any others a focused sweep reveals. node-fetch is reassigned.
+- The cross-engine counter-probe pattern (bun + Node + cruftless + minimal raw-ESM repro) becomes the locale's standard reading rung. Add to discipline.
 
 ---
 
-## Rung-3+ — Family B (over-synthesis) and Family C (re-export) (queued)
+## Rung-3 — Family B reading: enquirer over-synthesis (next)
 
-Deferred until Rung-1 reading complete and Rung-2 closure decided. The Family B (enquirer +21) move is the inverse of Round 3: remove the over-synthesis branch that triggers for enquirer's package shape. The Family C (superstruct –1) move requires resolver-level reading of `export { x } from` chains.
+cruftless reports keyCount=64, bun reports keyCount=43. +21 spurious keys. The mirror image of Round 3's blanket default-synthesis. Suspected root cause: `populate_cjs_namespace_view` (module.rs:1388–1552) mirroring CJS exports onto a namespace for a package bun treats as pure ESM, OR an over-eager `export *` expansion picking up internal names.
+
+Apply the locale's standard reading rung first: bun + Node + cruftless on the enquirer entry, plus a `Object.keys(M).sort()` diff to identify which 21 names are spurious. If the names share a structural origin (e.g., all from a particular re-exported file), the move is targeted; otherwise read the bytecode-exports list to see what cruftless's compiler emitted.
+
+## Rung-4 — Family C reading: superstruct re-export (queued)
+
+The Family C (superstruct –1) move requires resolver-level reading of `export { x } from` chains.
 
 Each Family will earn its own rung-N reading (no-commit) followed by a rung-(N+1) move (commit-with-sweep).
 
