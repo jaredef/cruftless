@@ -208,6 +208,144 @@ pub enum JitCallOutcome {
 /// table is always empty.
 pub type DeoptSiteTable = Vec<DeoptSite>;
 
+// -----------------------------------------------------------------------
+// JIT-EXT 12: extern-callable thunk.
+//
+// The thunk is `extern "C"` so Cranelift-emitted code can invoke it.
+// The trip records its recovered state into a thread-local and returns
+// a sentinel i64 (0) to the JIT'd code, which propagates the sentinel
+// back to the caller (the dispatcher in `rusty-js-runtime/interp.rs`).
+// The dispatcher checks the thread-local after every JIT call.
+//
+// The call shape is fixed-arity for Cranelift signature simplicity:
+//   site_id + 4 register slots (extendable to 8 by widening the
+//   signature; the current first cut uses 4 since no current site has
+//   more than 4 live values).
+//
+// The thunk needs the deopt-site table to translate site_id into a
+// concrete DeoptSite. The dispatcher sets the table pointer in the
+// per-thread `CURRENT_DEOPT_SITES` slot before invoking the JIT'd
+// function; the thunk consults that slot. This avoids passing the
+// pointer as a Cranelift argument (which would require declaring
+// the JITed function with an extra param the translator would have
+// to thread through every code path).
+// -----------------------------------------------------------------------
+
+thread_local! {
+    /// Set by the dispatcher before invoking a JIT'd function; read by
+    /// `deopt_trip` if the JIT'd code trips. The pointer is the
+    /// CompiledFn's `deopt_sites` table. Lifetime: only valid for the
+    /// duration of the JIT call; dispatcher clears after.
+    pub static CURRENT_DEOPT_SITES: std::cell::Cell<*const DeoptSiteTable> = const { std::cell::Cell::new(std::ptr::null()) };
+
+    /// Populated by `deopt_trip` when a site fires. The dispatcher
+    /// consumes (takes) this after every JIT call to detect deopts.
+    /// `None` after consumption.
+    pub static LAST_DEOPT_FRAME: std::cell::RefCell<Option<DeoptRecoveredState>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Extern thunk callable from Cranelift-emitted code. Returns a
+/// sentinel i64 (0) to the JIT'd caller; the dispatcher detects the
+/// trip via `LAST_DEOPT_FRAME`.
+///
+/// The fixed-arity signature lets Cranelift describe it as a regular
+/// AbiParam list. The translator passes up to 4 live i64 register
+/// values; sites with more live values are not yet emittable.
+#[no_mangle]
+pub extern "C" fn deopt_trip(site_id: i64, r0: i64, r1: i64, r2: i64, r3: i64) -> i64 {
+    let frame = DeoptCallFrame {
+        site_id: site_id as u32,
+        regs: [r0, r1, r2, r3, 0, 0, 0, 0],
+        frame_base: 0,
+    };
+    let sites_ptr = CURRENT_DEOPT_SITES.with(|c| c.get());
+    if sites_ptr.is_null() {
+        // No active table — defensive fallback. This should never
+        // happen if the dispatcher is wired correctly.
+        return 0;
+    }
+    // SAFETY: dispatcher guarantees the pointer is valid for the
+    // duration of the JIT call.
+    let sites: &DeoptSiteTable = unsafe { &*sites_ptr };
+    if let Some(state) = reconstruct_state(sites, &frame) {
+        LAST_DEOPT_FRAME.with(|c| *c.borrow_mut() = Some(state));
+    }
+    0
+}
+
+/// Set the active deopt-site table for the current thread. Caller is
+/// responsible for clearing this via `clear_current_deopt_sites()`
+/// after the JIT call returns.
+///
+/// SAFETY: `sites` must remain valid for the duration of the JIT
+/// call. Typical usage: hold a reference to the CompiledFn for the
+/// whole dispatch path.
+pub fn set_current_deopt_sites(sites: &DeoptSiteTable) {
+    CURRENT_DEOPT_SITES.with(|c| c.set(sites as *const _));
+}
+
+pub fn clear_current_deopt_sites() {
+    CURRENT_DEOPT_SITES.with(|c| c.set(std::ptr::null()));
+}
+
+/// Take and return whatever deopt the last JIT call recorded.
+/// `None` if no deopt was recorded.
+pub fn take_last_deopt() -> Option<DeoptRecoveredState> {
+    LAST_DEOPT_FRAME.with(|c| c.borrow_mut().take())
+}
+
+#[cfg(test)]
+mod thunk_tests {
+    use super::*;
+
+    #[test]
+    fn deopt_trip_populates_last_frame() {
+        let sites = vec![DeoptSite {
+            reason: DeoptReason::IntegerOverflow { op_pc: 8 },
+            resume_pc: 10,
+            live_locals: vec![DeoptLiveLocal {
+                interp_slot: 0,
+                jit_location: JitLocation::Register(0),
+            }],
+            stack_depth: 0,
+            stack_slots: vec![],
+        }];
+        set_current_deopt_sites(&sites);
+        let result = deopt_trip(0, 42, 0, 0, 0);
+        assert_eq!(result, 0, "thunk returns sentinel 0");
+        let recovered = take_last_deopt().expect("trip recorded");
+        assert_eq!(recovered.resume_pc, 10);
+        assert_eq!(recovered.local_values, vec![(0, 42)]);
+        clear_current_deopt_sites();
+    }
+
+    #[test]
+    fn deopt_trip_without_table_no_panic() {
+        clear_current_deopt_sites();
+        // Should not panic, just return 0.
+        let result = deopt_trip(0, 0, 0, 0, 0);
+        assert_eq!(result, 0);
+        // No frame populated.
+        assert!(take_last_deopt().is_none());
+    }
+
+    #[test]
+    fn last_deopt_clears_after_take() {
+        let sites = vec![DeoptSite {
+            reason: DeoptReason::BoundaryArgMismatch,
+            resume_pc: 0,
+            live_locals: vec![],
+            stack_depth: 0,
+            stack_slots: vec![],
+        }];
+        set_current_deopt_sites(&sites);
+        deopt_trip(0, 0, 0, 0, 0);
+        assert!(take_last_deopt().is_some());
+        assert!(take_last_deopt().is_none(), "second take returns None");
+        clear_current_deopt_sites();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

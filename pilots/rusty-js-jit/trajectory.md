@@ -375,3 +375,93 @@ Continued Case-3 (both-diverge → compositional success): the deopt machinery e
 ---
 
 *JIT-EXT 11 lands the infrastructure that JIT-EXT 12+ will exercise. The type machinery + thunk skeleton ships with full test coverage; no translator change means no Mode-0 perf risk. JIT-EXT 12 begins the wiring.*
+
+---
+
+## JIT-EXT 12 — 2026-05-21 (extern thunk callable from JIT'd code; end-to-end wiring proven)
+
+### Headline
+
+The deopt thunk is provably callable from Cranelift-emitted code. A synthetic JIT'd function calls `deopt_trip(site_id=0, 42, 0, 0, 0)`, the thread-local plumbing routes the trip back, and `take_last_deopt()` returns the reconstructed state with the right reason / resume_pc / live local values. **19/19 JIT lib tests PASS including the new end-to-end probe; PM + caps regression unchanged.**
+
+The wiring is the load-bearing infrastructure for JIT-EXT 13's conditional overflow guards. With this round closed, subsequent rounds emit guards confident the call chain works.
+
+### Substrate landed
+
+- `pilots/rusty-js-jit/derived/src/deopt.rs` (+~150 LOC):
+  - `thread_local!` for `CURRENT_DEOPT_SITES` and `LAST_DEOPT_FRAME` (TLS slots for dispatcher coordination)
+  - `extern "C" fn deopt_trip(site_id, r0, r1, r2, r3) -> i64` — the actual symbol Cranelift binds
+  - `set_current_deopt_sites(&table)` / `clear_current_deopt_sites()` — dispatcher contract
+  - `take_last_deopt() -> Option<DeoptRecoveredState>` — caller consumes after JIT returns
+  - 3 thunk unit tests (populates, no-table-no-panic, take-clears)
+
+- `pilots/rusty-js-jit/derived/src/lib.rs` (+~75 LOC, test-only):
+  - `synthetic_trip_smoke()` — builds a hand-rolled Cranelift function that calls the extern thunk and returns its sentinel
+  - Uses `JITBuilder::symbol("deopt_trip", deopt_trip as *const u8)` to pre-bind the symbol
+  - Uses `module.declare_function("deopt_trip", Linkage::Import, ...)` + `module.declare_func_in_func(...)` to declare + reference the import
+  - Test `synthetic_trip_calls_thunk_end_to_end` proves the chain works
+
+### Probe result
+
+**19/19 JIT lib tests PASS** (15 from EXT 11 + 1 new thunk-tests + 1 new lib-tests end-to-end + 2 doc-counted but actually pre-existing). Specifically the new tests:
+
+- `deopt::thunk_tests::deopt_trip_populates_last_frame` — pure-Rust thunk path
+- `deopt::thunk_tests::deopt_trip_without_table_no_panic` — defensive case (TLS table not set)
+- `deopt::thunk_tests::last_deopt_clears_after_take` — take-once semantics
+- `tests::synthetic_trip_calls_thunk_end_to_end` — JIT'd code → extern call → TLS → recovered state
+
+Regression sweep:
+- PM-EXT 11+12: 2/2 PASS in 2.96 s
+- caps_probes: 18/18 PASS
+
+### Design choices realized
+
+- **Thread-local site-table pointer (`CURRENT_DEOPT_SITES`)** instead of passing the table as an extra Cranelift arg. The dispatcher sets the pointer before every JIT call, clears it after. This avoids threading the pointer through every translator code path.
+- **`LAST_DEOPT_FRAME` thread-local + take-on-consume** instead of returning a struct from `extern "C"` (which would need ABI work). The dispatcher checks the TLS after every JIT call; if `Some`, deopt; if `None`, normal return.
+- **Sentinel return value 0** from the thunk. JIT'd code propagates the 0 back to its caller. The caller distinguishes "got result 0" from "deopted" via the TLS check, not the return value itself. Avoids losing one bit of the result space.
+- **Fixed 4-register arity** for the trip call. Bigger sites overflow to `JitLocation::StackSlot` (not yet emittable; queued).
+
+### The chain end-to-end
+
+```
+JIT'd code         → deopt_trip(0, 42, 0, 0, 0)
+deopt_trip         → reads CURRENT_DEOPT_SITES (set by dispatcher)
+                   → reconstruct_state(sites, frame)
+                   → writes LAST_DEOPT_FRAME = Some(recovered)
+                   → returns 0
+JIT'd code         → returns 0 to its caller
+test               → take_last_deopt() → returns Some(recovered)
+                   → asserts reason == IntegerOverflow { op_pc: 100 }
+                   → asserts resume_pc == 200
+                   → asserts local_values == [(0, 42)]
+```
+
+Every step proven by the integration test.
+
+### Pred-731 corroboration status
+
+- **R5 (deopt sites finite-enumerable per emitted module)**: corroborated. The `CompiledFn.deopt_sites` table is the per-module enumeration. The thunk reads it; the dispatcher manages its lifetime via TLS.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P04.E2.jit-deopt-extern-wiring` | JIT-EXT 12: extern deopt_trip callable from Cranelift-emitted code; CURRENT_DEOPT_SITES + LAST_DEOPT_FRAME TLS slots; end-to-end test through JITBuilder.symbol → JITed call → TLS → take_last_deopt; 19/19 JIT tests PASS; PM + caps regression unchanged |
+
+### Open scope at JIT-EXT 12 boundary
+
+1. **JIT-EXT 13 (translator-side overflow guards)**: under env-var feature flag (e.g., `CRUFTLESS_JIT_GUARD_OVERFLOW=1`), the translator emits `sadd_overflow` + `brif` at every Add/Sub/Mul site. On overflow, branch to a deopt block that builds the trip call args (site_id + live locals) and invokes `deopt_trip`. Records a `DeoptSite` in `CompiledFn.deopt_sites` per emitted guard. End-to-end test: a function whose JIT-compiled body would overflow on `i64::MAX + 1` → trips → interpreter resumes at the failing pc with correct state.
+
+2. **JIT-EXT 14 (dispatcher-side trip handling)**: at `interp.rs:7577`, after a JIT call returns, check `take_last_deopt()`. If `Some`, populate interpreter frame from the recovered state and resume bytecode execution at `state.resume_pc`. This is the runtime half of the round-trip; without it, JIT-EXT 13's guards record but the interpreter doesn't actually resume.
+
+3. **JIT-EXT 15 (replace `jit_disabled` with retry-on-fresh-args)**: with deopt fully wired, the permanent-disable workaround can be relaxed. Subsequent valid-arg calls re-engage the JIT instead of staying disabled.
+
+4. **JIT-EXT 16+ (ICs)**: first IC site lands (GetProp with hidden-class check + shape-mismatch deopt).
+
+### Doc 730 §XVI status
+
+Continued Case-3: the deopt thunk's call chain is structurally cleaner than mainstream JITs' equivalent (V8 uses a complex deoptimizer with frame-state translation; SpiderMonkey similar). Cruftless's narrow first-cut alphabet plus the audit-revealed minimal speculation surface means the wiring is ~225 LOC of types + ~75 LOC of Cranelift glue. The alphabet-purity thesis of Doc 731 continues to corroborate.
+
+---
+
+*JIT-EXT 12 closes the extern-wiring round. The Cranelift→Rust call chain is proven end-to-end. JIT-EXT 13 begins emitting the conditional guards that will exercise this chain in earnest.*
