@@ -1269,6 +1269,91 @@ pub fn p256_mod_mul_solinas(a: &BigUInt, b: &BigUInt) -> BigUInt {
     p256_solinas_reduce(product.limbs())
 }
 
+/// WC-EXT 21: proper Solinas with inline per-limb u32 arithmetic.
+/// Per WC-EXT 20 diagnosis: composition via mod_add/mod_sub inherited
+/// the binary-divmod stratum. This variant does the column sums
+/// inline with explicit i64 accumulators (sufficient headroom for
+/// ~9 additions of u32 values plus sign), propagates carries with
+/// arithmetic shift, normalizes to [0, p) via cheap add/subtract
+/// loops. Per Doc 730 §XVII (P2) primitive-specific case: skips
+/// the divmod entirely.
+fn p256_solinas_reduce_v2(t_in: &[u32]) -> BigUInt {
+    let mut t = [0u32; 16];
+    for (i, &l) in t_in.iter().take(16).enumerate() { t[i] = l; }
+    let g = |i: usize| t[i] as i64;
+
+    // Per-column signed accumulators. Derived from FIPS 186-4 §B.2.1
+    // P-256 reduction: result = s1 + 2·s2 + 2·s3 + s4 + s5 − s6 − s7 − s8 − s9.
+    let mut col = [
+        g(0) + g(8) + g(9) - g(11) - g(12) - g(13) - g(14),
+        g(1) + g(9) + g(10) - g(12) - g(13) - g(14) - g(15),
+        g(2) + g(10) + g(11) - g(13) - g(14) - g(15),
+        g(3) + 2*g(11) + 2*g(12) + g(13) - g(8) - g(9) - g(15),
+        g(4) + 2*g(12) + 2*g(13) + g(14) - g(9) - g(10),
+        g(5) + 2*g(13) + 2*g(14) + g(15) - g(10) - g(11),
+        g(6) + 2*g(14) + 2*g(15) + g(14) + g(13) - g(8) - g(9),
+        g(7) + 2*g(15) + g(15) + g(8) - g(10) - g(11) - g(12) - g(13),
+        0i64,
+    ];
+
+    // Propagate carries with arithmetic shift (sign-extending for i64).
+    for i in 0..8 {
+        let lo = (col[i] as i64).rem_euclid(1i64 << 32);
+        let hi = (col[i] - lo) >> 32;  // exact division (lo is the residue)
+        col[i] = lo;
+        col[i + 1] += hi;
+    }
+    // col[0..7] are now in [0, 2^32); col[8] is the signed-residue carry.
+
+    let p = p256_p();
+    let mut limbs8 = [0u32; 8];
+    for i in 0..8 { limbs8[i] = col[i] as u32; }
+    let mut result = BigUInt::from_limbs(limbs8.to_vec());
+
+    use std::cmp::Ordering;
+    // Apply the col[8] signed multiplier of 2^256 mod p.
+    // Note: 2^256 mod p256_p = 2^256 - (2^256 - 2^224 + 2^192 + 2^96 - 1) + p
+    //                       = 2^224 - 2^192 - 2^96 + 1
+    // (call this c = 2^256 mod p). For col[8] >= 0: result += col[8] * c.
+    // For col[8] < 0: result -= |col[8]| * c, possibly underflowing into "borrow p"
+    // handling. Since the algorithm's invariants bound col[8] in a small
+    // range (~[-4, +5] based on FIPS analysis), we can normalize via
+    // repeated cheap add/subtract of p.
+    let extra = col[8];
+    if extra > 0 {
+        // 2^256 ≡ 2^224 − 2^192 − 2^96 + 1  (mod p). Add `extra` times.
+        let c_2_256_mod_p = BigUInt::from_be_bytes(&[
+            0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff,
+            0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+            0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+        ]);
+        for _ in 0..extra { result = result.add(&c_2_256_mod_p); }
+    } else if extra < 0 {
+        // Add |extra| copies of p to flip the missing 2^256 terms positive.
+        for _ in 0..(-extra) { result = result.add(&p); }
+        let c_2_256_mod_p = BigUInt::from_be_bytes(&[
+            0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff,
+            0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+            0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+        ]);
+        for _ in 0..(-extra) { result = result.sub(&c_2_256_mod_p); }
+    }
+
+    // Final reduction: at most a few iterations of subtract-p.
+    while result.cmp(&p) != Ordering::Less {
+        result = result.sub(&p);
+    }
+    result
+}
+
+/// P-256 std-form `mod_mul(a, b)` via proper Solinas reduction (v2).
+pub fn p256_mod_mul_solinas_v2(a: &BigUInt, b: &BigUInt) -> BigUInt {
+    let product = a.mul(b);
+    p256_solinas_reduce_v2(product.limbs())
+}
+
 // ──────────────── WC-EXT 12: generic Montgomery for arbitrary odd
 // modulus (RSA, P-384, P-521) ────
 //

@@ -83,6 +83,27 @@ fn main() {
     println!("Solinas vs binary-divmod mod_mul: {:.2}x", sol_vs_modmul);
     println!("Solinas vs Montgomery mont_mul:   {:.2}x", sol_vs_mont);
 
+    // WC-EXT 21: bench proper Solinas (inline u32 carry arithmetic).
+    use rusty_web_crypto::p256_mod_mul_solinas_v2;
+    let _ = p256_mod_mul_solinas_v2(&a, &b);
+    let t0 = Instant::now();
+    let mut acc = BigUInt::one();
+    for _ in 0..N {
+        acc = p256_mod_mul_solinas_v2(&a, &b);
+    }
+    let solinas2_t = t0.elapsed();
+    let _ = acc;
+    println!("solinas v2    (P-256 inline u32 carry, N={}): {:?}, per-op {:?}",
+        N, solinas2_t, solinas2_t / N as u32);
+    let s2_vs_mont = mont_t.as_nanos() as f64 / solinas2_t.as_nanos() as f64;
+    println!("Solinas v2 vs Montgomery mont_mul: {:.2}x", s2_vs_mont);
+
+    let canonical2 = a.mul(&b).modulo(&p);
+    let via_sol2 = p256_mod_mul_solinas_v2(&a, &b);
+    assert_eq!(canonical2.to_be_bytes(32), via_sol2.to_be_bytes(32),
+        "Solinas v2 reduction diverges from canonical mod_mul");
+    println!("(sanity: Solinas v2 equivalence holds)");
+
     // Verify Solinas equivalence.
     let canonical = a.mul(&b).modulo(&p);
     let via_sol = p256_mod_mul_solinas(&a, &b);

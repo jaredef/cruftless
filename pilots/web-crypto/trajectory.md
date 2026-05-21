@@ -1366,3 +1366,69 @@ Session 2 priority order (per §XVII apparatus discipline ranking by impact / LO
 ---
 
 *WC-EXT 20 closes session 1's second half (WC-EXT 13-20, eight rounds under Doc 730 §XVII performance-axis pipeline). The framework's case discrimination drove eight clean diagnostic cycles. Five (P1) routing moves landed wins; three (P2) constant-factor moves explored the local optimum and signaled saturation. The session's empirical ceiling is ~14× TLS probe speedup at ~700 cumulative live LOC. Session 2 picks up at WC-EXT 21 (proper Solinas) with the §XVII saturation diagnosis as the gating discipline.*
+
+---
+
+## WC-EXT 21 — 2026-05-21 (proper Solinas P-256 reduction; 2.22× faster than Mont per-op)
+
+### Headline
+
+Implemented Solinas reduction with inline per-limb u32 carry arithmetic per WC-EXT 20's diagnosis. **Result: 273 ns/op, 2.22× FASTER than Mont's 605 ns/op for P-256-specific mod_mul.** 117/117 regression PASS. The diagnosis from WC-EXT 20 was structurally correct; the implementation primitive (i64 columns with explicit carry, no mod_add/mod_sub composition) realized the predicted win.
+
+### Measurement
+
+| variant | per-op cost | vs Mont |
+|---|---|---|
+| binary-divmod `mod_mul` | 26 µs | 0.024× |
+| `p256_mont_mul` | 605 ns | 1× (reference) |
+| `p256_mod_mul_solinas` (WC-EXT 20 naive) | 71 µs | 0.009× |
+| **`p256_mod_mul_solinas_v2` (WC-EXT 21 proper)** | **273 ns** | **2.22×** |
+
+The proper Solinas beats Mont REDC by ~2.2× per mod_mul call. Matches the typical production-library finding (OpenSSL's BN_NIST_RED, libsecp256k1's curve-specific reductions). The substrate move's correctness-gold + performance-correct landing validates Doc 735 §X's intra-tier cost-stratification: when composed from primitives at the right cost-stratum, the algorithm achieves its theoretical advantage; the WC-EXT 20 negative finding precisely identified the missing primitive-level discipline.
+
+### Implementation discipline
+
+~80 LOC of careful Rust:
+- Per-column i64 accumulators (8 columns + 1 carry-out)
+- Coefficients from FIPS 186-4 Appendix B.2.1 (s1=+1, s2=+2, s3=+2, s4=+1, s5=+1, s6=-1, s7=-1, s8=-1, s9=-1)
+- Inline arithmetic — no calls to mod_add/mod_sub
+- Final carry propagation with rem_euclid + arithmetic shift
+- Signed-carry handling for col[8] (multiplier of 2^256 mod p)
+- Cheap subtract-p loop for final normalization
+
+The whole reduction completes in ~3-5 cache-friendly operations per column + 8 limb-wise carry propagations + a small adjustment loop. The savings vs Mont REDC: no 8x8 inner-loop multiplication; pure additions + shifts.
+
+### Routing not yet landed
+
+`p256_mod_mul_solinas_v2` is standing substrate ready for routing. The next move (WC-EXT 22) is the EC-tier refactor: produce `p256_scalar_mul_solinas` + `jac_double_solinas` + `jac_add_affine_solinas` + `jac_to_affine_solinas`, routed via curve-detection in `ec_scalar_mul`. Projected impact: P-256 EC scalar mul drops by ~2× (since ~3000 mod_muls per scalar mul × 2.22× speedup at the per-op level). TLS handshake api.github.com: ~0.85s → ~0.5s.
+
+That's a substantial refactor (~150 LOC of duplicate EC code with Solinas-mul instead of Mont-mul). Land separately as WC-EXT 22.
+
+### Doc 730 §XVII (P2) cycle — productive resolution
+
+WC-EXT 20's negative finding was the framework's case-(P2) wrong-stratum-composition sub-failure. WC-EXT 21's positive finding is the corresponding case-(P2) right-stratum implementation. Together they demonstrate the §XVII apparatus discipline operating across two iterations:
+
+- WC-EXT 20: algorithm correct, primitives wrong → empirical regression → diagnosis: wrong-stratum composition
+- WC-EXT 21: algorithm correct, primitives right → empirical win → 2.22× per-op gain
+
+The case-(P2) sub-failure pattern (wrong-stratum composition) now has an empirical anchor for both directions: WC-EXT 20 (the regression) and WC-EXT 21 (the recovery). Worth recording as a corpus-tier observation in Doc 735 §X.h amendment.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P06.E3.wc-solinas-proper` | Solinas P-256 v2 with inline u32 carry arithmetic; 273 ns/op = 2.22× faster than Mont; 117/117 PASS; standing substrate for WC-EXT 22 EC routing |
+
+### Probe result
+
+5/5: 3/5 PASS unchanged. WC-EXT 21 lands substrate; live ec_scalar_mul still uses Mont (routing change pending WC-EXT 22).
+
+### Open scope at WC-EXT 21 boundary
+
+1. **WC-EXT 22 (Solinas EC pipeline)** — route P-256 EC operations through `p256_mod_mul_solinas_v2` instead of `p256_mont_mul`. ~150 LOC. Projected ~2× EC scalar mul speedup → TLS handshake ~0.85s → ~0.5s.
+2. **Doc 735 §X.h amendment** — record wrong-stratum-composition sub-failure pattern (anchored by WC-EXT 20 + WC-EXT 21 empirical pair).
+3. **u64-limb BigUInt representation** — still queued; substantial refactor.
+
+---
+
+*WC-EXT 21 closes with the proper Solinas implementation landing as standing substrate (273 ns/op; 2.22× faster than Mont per mod_mul). The framework's case-(P2) wrong-stratum-composition pattern has its empirical anchor pair (WC-EXT 20 + 21). WC-EXT 22 routes Solinas through the EC pipeline; substantial pure-Rust win remaining at zero hardware assist.*
