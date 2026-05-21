@@ -465,3 +465,93 @@ Continued Case-3: the deopt thunk's call chain is structurally cleaner than main
 ---
 
 *JIT-EXT 12 closes the extern-wiring round. The Cranelift→Rust call chain is proven end-to-end. JIT-EXT 13 begins emitting the conditional guards that will exercise this chain in earnest.*
+
+---
+
+## JIT-EXT 13 — 2026-05-21 (translator-side overflow guards; first wired demonstrator)
+
+### Headline
+
+Under `CRUFTLESS_JIT_GUARD_OVERFLOW=1`, the translator emits signed-overflow detection at every Add site (both plain `Add` and typed `AddI64`) and branches to a deopt block on trip. **A JIT-compiled `add(a, b)` invoked with `(i64::MAX, 1)` correctly trips, the thunk records the recovered state, and `take_last_deopt()` returns a `DeoptRecoveredState` carrying `IntegerOverflow` + the resume_pc + the live local + stack values.** 20/20 JIT tests PASS; PM + caps regression unchanged.
+
+This is the **first wired demonstrator** — the deopt mechanism end-to-end from "JIT-emitted overflow detection" through "thunk records trip" with concrete state reconstruction. The dispatcher half (interpreter resumption from the recovered state) is JIT-EXT 14.
+
+### Substrate landed
+
+- `pilots/rusty-js-jit/derived/src/translator.rs` (+~110 LOC):
+  - `guard_overflow` env-var detection at `compile_function_inner` entry
+  - `trip_id_opt`: declares the deopt-trip extern in the JIT module when guard mode is on
+  - `trip_ref`: brings the extern into the function builder's scope
+  - `emit_guarded_add(stack, builder, trip_ref, pc, local_vars, deopt_sites)`:
+    - Computes `iadd`, then signed-overflow via `(a XOR result) AND (b XOR result) < 0` idiom
+    - On overflow: branches to a fresh deopt block that calls `deopt_trip(site_id, lhs, rhs, local0, local1)` and `return`s the sentinel
+    - On no-overflow: falls through with the result on the operand stack
+    - Records a `DeoptSite` per emitted guard
+  - Translator emits `emit_guarded_add` for both `ParsedOp::Add` and `ParsedOp::AddI64` (the auto-promote pass converts the former to the latter; the round handles both forms so the demonstrator works regardless of which path runs)
+  - `CompiledFn` returned with `deopt_sites` populated
+
+- `pilots/rusty-js-jit/derived/src/translator.rs` (+~55 LOC test):
+  - `guarded_add_trips_on_overflow` end-to-end test: sets env var, compiles `add(a, b)`, sanity-checks `deopt_sites.len() == 1`, invokes with `(2, 3)` → returns 5 (no trip), invokes with `(i64::MAX, 1)` → returns sentinel 0 + `take_last_deopt()` returns `DeoptRecoveredState { reason: IntegerOverflow, local_values: [(0, i64::MAX), (1, 1)], stack_values: [(0, i64::MAX), (1, 1)] }`
+
+### Probe result
+
+**20/20 JIT lib tests PASS in 0.03 s.**
+
+The new test `guarded_add_trips_on_overflow`:
+- One DeoptSite recorded by the translator for the single Add op
+- No-overflow call returns 5; `take_last_deopt()` returns `None`
+- Overflow call returns sentinel 0; `take_last_deopt()` returns `Some(state)`
+- `state.reason` is `IntegerOverflow` at the Add op's pc
+- `state.local_values` = `[(0, i64::MAX), (1, 1)]` (the args)
+- `state.stack_values` = `[(0, i64::MAX), (1, 1)]` (the operands being added)
+
+Regression sweep:
+- PM-EXT 11+12: 2/2 PASS in 2.34 s
+- caps_probes: 18/18 PASS
+- Default-off invariant: existing JIT tests (`jit_compile_sum_function`, `jit_typed_i64_sum`, `jit_add_two_args`, etc.) all PASS without the env var, confirming the guard mode is opt-in and the default-mode codegen is unchanged.
+
+### Pred-731 corroboration
+
+- **R5 (deopt sites finite-enumerable per emitted module)**: corroborated end-to-end. A JIT-compiled function carries a `Vec<DeoptSite>` populated at translation time; the thunk reads it via TLS at trip; reconstructed state matches the translator's recorded layout. The unit of enumeration is the CompiledFn.
+- **R6 (the JIT remains a single tier)**: corroborated. The guard mode adds a deopt mechanism, not a tier. The deopt path branches back into the *interpreter*, not into a "lower tier JIT."
+
+### The end-to-end chain at JIT-EXT 13 close
+
+```
+translator         → emits XOR-idiom overflow check at every Add
+                   → records DeoptSite (resume_pc, live locals/stack)
+JIT'd code         → on overflow: call deopt_trip(site_id, lhs, rhs, l0, l1)
+deopt_trip         → reads CURRENT_DEOPT_SITES from TLS
+                   → reconstruct_state(sites, frame)
+                   → writes LAST_DEOPT_FRAME = Some(state)
+                   → returns 0
+JIT'd code         → returns 0 to caller
+caller (test)      → take_last_deopt() → Some(state)
+                   → state carries IntegerOverflow + locals + stack
+```
+
+The caller (`interp.rs`'s dispatcher) does not yet consume the recovered state — that's JIT-EXT 14. The test invokes `take_last_deopt()` directly to verify the state is well-formed.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P04.E2.jit-deopt-guarded-add` | JIT-EXT 13: translator-side overflow guards under env-var feature flag; first wired demonstrator; `guarded_add_trips_on_overflow` end-to-end PASS; 20/20 JIT tests; PM + caps regression unchanged |
+
+### Open scope at JIT-EXT 13 boundary
+
+1. **JIT-EXT 14 (dispatcher-side trip handling)**: at `interp.rs:7577`, after a JIT call returns, check `take_last_deopt()`. If `Some`, populate interpreter frame from the recovered state (set locals from `state.local_values`, push `state.stack_values` onto the operand stack) and resume bytecode execution at `state.resume_pc`. The dispatcher must also call `set_current_deopt_sites(&compiled.deopt_sites)` before invoking the JIT.
+
+2. **JIT-EXT 15 (extend guards to Sub/Mul/Inc/Dec)**: same XOR idiom for Sub, different idiom for Mul (cast to wider type, check high bits). Inc/Dec are just Add/Sub with constant 1.
+
+3. **JIT-EXT 16 (replace `jit_disabled` with retry-on-fresh-args)**: with deopt fully wired, the permanent-disable workaround can be relaxed.
+
+4. **JIT-EXT 17+ (ICs)**: first IC site lands (GetProp with hidden-class check + shape-mismatch deopt).
+
+### Doc 730 §XVI status
+
+The XOR-idiom overflow check is a Case-4 (implementation freedom) substrate choice: mainstream JITs use platform-specific overflow-flag instructions (x86 `JO` after `ADD`, ARM `BVS` after `ADDS`). The XOR idiom is portable across Cranelift's ISA targets and lowers to 4-5 instructions on most ISAs. Cruftless's narrow first-cut scope makes portability dominate over the marginal perf cost. JIT-EXT 14+ can revisit if ICs surface perf-sensitive guard sites.
+
+---
+
+*JIT-EXT 13 closes the first-wired-demonstrator round. The deopt mechanism is proven end-to-end through translator → JIT'd code → thunk → recovered state. JIT-EXT 14 wires the dispatcher half so an actual program can deopt → resume → return the correct result.*

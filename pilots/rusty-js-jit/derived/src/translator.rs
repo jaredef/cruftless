@@ -145,8 +145,36 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
     let isa_builder = cranelift_native::builder().map_err(|e| format!("isa: {e}"))?;
     let isa = isa_builder.finish(settings::Flags::new(flag_builder))
         .map_err(|e| format!("isa: {e:?}"))?;
-    let builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
-    let mut module = JITModule::new(builder);
+    // JIT-EXT 13: detect the deopt-guard feature flag.
+    //
+    // When `CRUFTLESS_JIT_GUARD_OVERFLOW=1`, the translator emits
+    // signed-overflow checks at every Add site and branches to a
+    // deopt block on trip. This is the demonstrator path; the
+    // default-off invariant means the existing perf profile is
+    // preserved for any caller that does not opt in.
+    let guard_overflow = std::env::var("CRUFTLESS_JIT_GUARD_OVERFLOW")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+
+    let mut jit_builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+    if guard_overflow {
+        // Pre-bind the deopt thunk's symbol so Cranelift can resolve
+        // the import at link time.
+        jit_builder.symbol("deopt_trip", crate::deopt::deopt_trip as *const u8);
+    }
+    let mut module = JITModule::new(jit_builder);
+
+    // Declare the deopt thunk's signature so the translator can emit
+    // calls. Only consulted when `guard_overflow` is true.
+    let mut deopt_sites: crate::deopt::DeoptSiteTable = Vec::new();
+    let trip_id_opt = if guard_overflow {
+        let mut trip_sig = module.make_signature();
+        for _ in 0..5 { trip_sig.params.push(AbiParam::new(I64)); }
+        trip_sig.returns.push(AbiParam::new(I64));
+        Some(module
+            .declare_function("deopt_trip", Linkage::Import, &trip_sig)
+            .map_err(|e| format!("declare deopt_trip: {e}"))?)
+    } else { None };
 
     let mut ctx = module.make_context();
     let mut fb_ctx = FunctionBuilderContext::new();
@@ -158,6 +186,11 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
 
     {
         let mut builder = FunctionBuilder::new(&mut ctx.func, &mut fb_ctx);
+
+        // JIT-EXT 13: bring the trip FuncRef into this function's
+        // scope if the guard-overflow feature is on. We declare it
+        // before any other block work so subsequent code can call it.
+        let trip_ref = trip_id_opt.map(|id| module.declare_func_in_func(id, &mut builder.func));
 
         // Allocate a Cranelift Block per jump target.
         let mut blocks: HashMap<usize, Block> = HashMap::new();
@@ -237,7 +270,13 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
                     let v = builder.ins().iconst(I64, *n as i64);
                     stack.push(v);
                 }
-                ParsedOp::Add => binop(&mut stack, &mut builder, |b, l, r| b.ins().iadd(l, r))?,
+                ParsedOp::Add => {
+                    if let Some(tr) = trip_ref {
+                        emit_guarded_add(&mut stack, &mut builder, tr, *pc, &local_vars, &mut deopt_sites)?;
+                    } else {
+                        binop(&mut stack, &mut builder, |b, l, r| b.ins().iadd(l, r))?;
+                    }
+                }
                 ParsedOp::Sub => binop(&mut stack, &mut builder, |b, l, r| b.ins().isub(l, r))?,
                 ParsedOp::Mul => binop(&mut stack, &mut builder, |b, l, r| b.ins().imul(l, r))?,
                 ParsedOp::Inc => {
@@ -313,7 +352,13 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
                 // i64 at the op handler; the JIT assumes the bytecode
                 // alphabet's typed contract holds (operands already i64
                 // in JIT-internal SSA representation).
-                ParsedOp::AddI64 => binop(&mut stack, &mut builder, |b, l, r| b.ins().iadd(l, r))?,
+                ParsedOp::AddI64 => {
+                    if let Some(tr) = trip_ref {
+                        emit_guarded_add(&mut stack, &mut builder, tr, *pc, &local_vars, &mut deopt_sites)?;
+                    } else {
+                        binop(&mut stack, &mut builder, |b, l, r| b.ins().iadd(l, r))?;
+                    }
+                }
                 ParsedOp::SubI64 => binop(&mut stack, &mut builder, |b, l, r| b.ins().isub(l, r))?,
                 ParsedOp::MulI64 => binop(&mut stack, &mut builder, |b, l, r| b.ins().imul(l, r))?,
                 ParsedOp::IncI64 => {
@@ -373,7 +418,7 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
         }
     };
     let leaked = Box::leak(Box::new(module));
-    Ok(CompiledFn { func, _module: leaked, deopt_sites: Vec::new() })
+    Ok(CompiledFn { func, _module: leaked, deopt_sites })
 }
 
 fn binop<F>(stack: &mut Vec<ClValue>, builder: &mut FunctionBuilder, f: F) -> Result<(), String>
@@ -382,6 +427,95 @@ where F: FnOnce(&mut FunctionBuilder, ClValue, ClValue) -> ClValue {
     let l = stack.pop().ok_or("binop: stack underflow (lhs)")?;
     let v = f(builder, l, r);
     stack.push(v);
+    Ok(())
+}
+
+/// JIT-EXT 13: guarded i64 add with signed-overflow detection +
+/// deopt-on-trip.
+///
+/// Pops lhs/rhs, computes the sum, detects signed overflow via the
+/// standard `(a XOR result) AND (b XOR result) < 0` idiom (no Cranelift
+/// dedicated overflow instruction is portable across the version
+/// surface we target; the XOR idiom lowers to a handful of instructions
+/// and is correctness-equivalent).
+///
+/// On overflow: branch to a deopt block that calls `deopt_trip(site_id,
+/// lhs, rhs, local0, local1)` and returns the thunk's sentinel. Records
+/// a `DeoptSite` with `live_locals = [(0, Register(2)), (1, Register(3))]`
+/// and `stack_slots = [(0, Register(0)), (1, Register(1))]` so the
+/// dispatcher can reconstruct the interpreter state at the failing pc.
+///
+/// On no-overflow: pushes the sum onto the stack and continues.
+///
+/// First-cut constraints documented in the deopt-audit doc:
+///   - Up to 2 locals captured (slot 0 + slot 1); others zeroed
+///   - Only Add is currently guarded; Sub/Mul/Inc/Dec are future rounds
+fn emit_guarded_add(
+    stack: &mut Vec<ClValue>,
+    builder: &mut FunctionBuilder,
+    trip_ref: cranelift_codegen::ir::FuncRef,
+    pc: usize,
+    local_vars: &[Variable],
+    deopt_sites: &mut crate::deopt::DeoptSiteTable,
+) -> Result<(), String> {
+    use crate::deopt::{DeoptSite, DeoptReason, DeoptLiveLocal, JitLocation};
+
+    let r = stack.pop().ok_or("guarded_add: stack underflow (rhs)")?;
+    let l = stack.pop().ok_or("guarded_add: stack underflow (lhs)")?;
+
+    // Compute the candidate result, then detect signed overflow.
+    let result = builder.ins().iadd(l, r);
+    // (a XOR result) AND (b XOR result) < 0 means signed overflow.
+    let xor_a = builder.ins().bxor(l, result);
+    let xor_b = builder.ins().bxor(r, result);
+    let combined = builder.ins().band(xor_a, xor_b);
+    let zero = builder.ins().iconst(I64, 0);
+    let overflowed = builder.ins().icmp(IntCC::SignedLessThan, combined, zero);
+
+    // Allocate a deopt block and a continuation block.
+    let deopt_block = builder.create_block();
+    let cont_block = builder.create_block();
+    // The continuation block carries the result as a block parameter
+    // so SSA stays clean.
+    let cont_result = builder.append_block_param(cont_block, I64);
+
+    builder.ins().brif(overflowed, deopt_block, &[], cont_block, &[result]);
+
+    // Deopt block: build the trip call args and invoke the thunk.
+    builder.switch_to_block(deopt_block);
+    builder.seal_block(deopt_block);
+    let site_id = deopt_sites.len() as i64;
+    let site_id_v = builder.ins().iconst(I64, site_id);
+    // r2 / r3: first two locals (zeros if fewer).
+    let local0 = if !local_vars.is_empty() {
+        builder.use_var(local_vars[0])
+    } else { builder.ins().iconst(I64, 0) };
+    let local1 = if local_vars.len() > 1 {
+        builder.use_var(local_vars[1])
+    } else { builder.ins().iconst(I64, 0) };
+    let call_inst = builder.ins().call(trip_ref, &[site_id_v, l, r, local0, local1]);
+    let sentinel = builder.inst_results(call_inst)[0];
+    builder.ins().return_(&[sentinel]);
+
+    // Record the site so the dispatcher can reconstruct state.
+    deopt_sites.push(DeoptSite {
+        reason: DeoptReason::IntegerOverflow { op_pc: pc as u32 },
+        resume_pc: pc as u32,
+        live_locals: vec![
+            DeoptLiveLocal { interp_slot: 0, jit_location: JitLocation::Register(2) },
+            DeoptLiveLocal { interp_slot: 1, jit_location: JitLocation::Register(3) },
+        ],
+        stack_depth: 2,
+        stack_slots: vec![
+            DeoptLiveLocal { interp_slot: 0, jit_location: JitLocation::Register(0) },
+            DeoptLiveLocal { interp_slot: 1, jit_location: JitLocation::Register(1) },
+        ],
+    });
+
+    // Continuation: push the result onto the operand stack and resume.
+    builder.switch_to_block(cont_block);
+    builder.seal_block(cont_block);
+    stack.push(cont_result);
     Ok(())
 }
 
@@ -661,6 +795,64 @@ mod tests {
         assert_eq!(jit.func.call1(5), 10);
         assert_eq!(jit.func.call1(100), 4950);
         assert_eq!(jit.func.call1(1_000_000), 499_999_500_000);
+    }
+
+    /// JIT-EXT 13: guarded-add demonstrator end-to-end.
+    ///
+    /// Compiles `add(a, b) = a + b` with `CRUFTLESS_JIT_GUARD_OVERFLOW=1`,
+    /// invokes with non-overflowing args (sum returned), then invokes
+    /// with overflowing args (i64::MAX + 1) and verifies:
+    ///   1. The JIT call returns the thunk's sentinel (0)
+    ///   2. `take_last_deopt()` returns a populated DeoptRecoveredState
+    ///   3. The recovered state's reason is IntegerOverflow at the Add pc
+    ///   4. The recovered state's local_values map back to the original args
+    ///   5. The CompiledFn carries exactly one DeoptSite (the one Add)
+    ///
+    /// Also verifies the no-overflow case does NOT trip (no recorded deopt).
+    #[test]
+    fn guarded_add_trips_on_overflow() {
+        use crate::deopt::{set_current_deopt_sites, take_last_deopt, clear_current_deopt_sites, DeoptReason};
+
+        // The env-var is read once at compile_function entry.
+        std::env::set_var("CRUFTLESS_JIT_GUARD_OVERFLOW", "1");
+
+        let mut bc = Vec::new();
+        encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 0);
+        encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 1);
+        encode_op(&mut bc, Op::Add);
+        encode_op(&mut bc, Op::Return);
+        let proto = empty_proto(bc, 2);
+        let jit = compile_function(&proto).expect("guarded compile failed");
+
+        // Cleanup the env var so subsequent tests are unaffected.
+        std::env::remove_var("CRUFTLESS_JIT_GUARD_OVERFLOW");
+
+        // Sanity: one DeoptSite for the one Add.
+        assert_eq!(jit.deopt_sites.len(), 1,
+            "expected exactly one DeoptSite; got {:?}", jit.deopt_sites);
+        assert!(matches!(jit.deopt_sites[0].reason, DeoptReason::IntegerOverflow { .. }));
+
+        // Wire the dispatcher TLS to point at the compiled fn's sites.
+        set_current_deopt_sites(&jit.deopt_sites);
+
+        // No-overflow call: must work normally, no trip recorded.
+        let r = jit.func.call2(2, 3);
+        assert_eq!(r, 5);
+        assert!(take_last_deopt().is_none(), "no-overflow call should not trip");
+
+        // Overflow call: i64::MAX + 1 wraps to i64::MIN; the guard
+        // detects this and trips. The JIT returns sentinel 0.
+        let r = jit.func.call2(i64::MAX, 1);
+        assert_eq!(r, 0, "guarded JIT should return sentinel on trip; got {r}");
+
+        let state = take_last_deopt().expect("overflow should have tripped");
+        assert!(matches!(state.reason, DeoptReason::IntegerOverflow { .. }));
+        // local_values: locals[0] = arg0 = i64::MAX, locals[1] = arg1 = 1
+        assert_eq!(state.local_values, vec![(0, i64::MAX), (1, 1)]);
+        // stack_values: the lhs (i64::MAX) and rhs (1) being added
+        assert_eq!(state.stack_values, vec![(0, i64::MAX), (1, 1)]);
+
+        clear_current_deopt_sites();
     }
 
     #[test]
