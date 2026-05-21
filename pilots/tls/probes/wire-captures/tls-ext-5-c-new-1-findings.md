@@ -53,6 +53,21 @@ Against `openssl s_server -tls1_3 -www` on localhost (self-signed cert), the sam
 
 The asymmetry holds: local works, CDN hangs.
 
+## §4.1 Bisect amendment — H7 falsified
+
+Per the C-NEW-5 plan: stashed the TLS-EXT 5 debug instrumentation, `git revert --no-commit 67b06cb5` to remove the TLS-EXT 2 close_notify changes from driver.rs and record.rs, rebuilt rusty-tls + rusty-js-pm, re-ran the 5-endpoint probe.
+
+**Result: the hang persists.** Same `Terminated` after timeout, no progress logs. The hang predates TLS-EXT 2.
+
+**H7 falsified.** The TLS-EXT 2 close_notify routing changes are NOT the cause. State restored (revert aborted, stash popped, debug instrumentation back in place).
+
+Hypothesis space contracts to:
+- **H5 — handshake state machine deadlock** (favored — the hang is in pre-existing Phase Π1.4 substrate)
+- **H6 — infinite read-decode-continue loop with no progress** (favored)
+- ~~H7 TLS-EXT 2 close_notify regression~~ (falsified by C-NEW-5)
+
+The bug was always there in the handshake-tier code; localhost openssl s_server and httpbin.org don't trigger it, but CDN servers (CloudFront, Google Front End, Fastly) do. The trigger is some record type or sequence the CDN sends during handshake that our state machine processes in a non-terminating way.
+
 ## §5. Redirected hypothesis space (TLS-EXT 6 candidates)
 
 H5/H6/H7 push the substrate work into the handshake state machine rather than the post-handshake data path. Three concrete next moves:
