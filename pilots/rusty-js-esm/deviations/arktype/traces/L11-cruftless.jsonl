@@ -1,0 +1,2 @@
+{"probe":"L11-class-identity","result_ctor_is_Disjoint":false,"result_proto_is_Disjoint_proto":false,"Disjoint_typeof":"function","result_proto_ctor":"Array","inst_check":false}
+cruftless: evaluation error: TypeError("Cannot read property 'filter' of undefined (receiver='references') @file:///tmp/ak-probe/node_modules/@ark/schema/out/scope.js:405:21 (in-call='node') (in-method='finalize') (in-method='intersect') (in-method='overlaps') (in-call='<scoped@27>k') (in-method='discriminate') (in-call='$') (in-call='ctx') (in-method='node') (in-call='__args')")

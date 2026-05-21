@@ -147,6 +147,72 @@ The pipeline's discipline holds: when an iteration's bracket comes back PASS, th
 
 The pipeline has done substantial work: one closed gap, one verified-non-gap (valuable too — it tells us this Callable pattern is safe to write into future arktype-style code in cruftless), and clear next-move shape.
 
+---
+
+## §XVII iter 2 — ArraySpeciesCreate substrate gap (CLOSED, LANDED)
+
+**Pipeline trail** (artifacts under traces/ and captures/):
+- L8 (root.js:intersect entry): bun reports `result.constructor.name === "Disjoint"` and `instanceof_Disjoint: true`. cruftless reports `"Array"` and `false`. The deviation surfaces immediately after `rawIntersect` returns; nothing between.
+- L9 (intersectOrPipeNodes cache-store): both engines report `instanceof_Disjoint: true`. The Disjoint exists AT cache-store time.
+- L10 (intersectOrPipeNodes cache-hit-direct): never fires in cruftless on the failing call. The lr-cache path is not the source.
+- L11 (root.js:intersect class identity): `result.proto === Disjoint.prototype: false`, `result.proto.constructor.name: "Array"`. Confirms result's [[Prototype]] is literally Array.prototype, not Disjoint.prototype.
+
+**§XV bracket** (`probes/bracket-array-species` in spirit — minimal repro inline):
+```js
+class Sub extends Array { static init(x) { return new Sub(x); } }
+const s = Sub.init({a:1});
+const mapped = s.map(x => x);
+console.log(Object.getPrototypeOf(mapped) === Sub.prototype);
+```
+- bun: `true` (subclass preserved through `.map`).
+- cruftless: `false` (plain Array returned).
+
+The substrate gap: `array_species_create` ignored the source's `O.constructor`, always allocating a plain Array. ECMA-262 §22.1.3.17 step 3-6 require constructing via `O.constructor[@@species]` (defaulting to `O.constructor`) when O is an Array-subclass instance whose constructor is a function.
+
+**§XVI substrate move** (commit `533443e6`):
+- Check O is Array-kind.
+- Read `O.constructor`; skip if it's the intrinsic `%Array%`.
+- Mirror Op::New's allocation: pre-allocate Array-kind body with `proto = ctor.prototype`, dispatch via `call_function` with `pending_new_target` set, honor explicit-return per §10.2.1.1.
+- Fall back to plain Array on any non-match.
+
+Risk gated by: (a) is-array check on O, (b) is-function check on ctor, (c) is-not-intrinsic-Array check on ctor, (d) explicit-return-honor mirroring §10.2.1.1 (so a Callable-style constructor's return value wins over the pre-allocated this).
+
+**Bracket flip**: cruftless now matches bun on the inline repro. `class Sub extends Array; new Sub(...).map(...).constructor === Sub`.
+
+**Sweep**: 99.1% (118/119) preserved, no regressions across the 119-package corpus.
+
+**arktype outcome**: original `rawIn-on-Array` crash signature is **gone**. The intersect → invert path now propagates Disjoint identity through `.map`. arktype now fails at a different downstream substrate gap (§XVII iter 3).
+
+---
+
+## §XVII iter 3 — generic.js paramDefs gap (READING, deferred)
+
+**New crash**: `Cannot read property 'map' of undefined (receiver='paramDefs')` at `generic.js:56:43`. Call chain: `constraints → MergeHkt → ...`. The receiver expression is `this.paramDefs`; on the relevant Generic instance it evaluates to undefined where bun has the array of param definitions.
+
+**Source context**: `class GenericRoot extends Callable` with a class-field declaration `paramDefs;` and a constructor that does `this.paramDefs = paramDefs` after `super(...)`. `Callable.constructor` returns an explicit value (a bound function with mutated prototype). The downstream `this.params` getter calls `this.paramDefs.map(...)`.
+
+**§XV bracket** (`class Sub extends Base { paramDefs; constructor(paramDefs) { super(fn); this.paramDefs = paramDefs; } show() { return this.paramDefs; } }`): **PASS in both engines**. The obvious pattern (class field + explicit-return-from-super + later assignment + later read) works identically in cruftless and bun.
+
+**Verdict for this rung**: the bracket-PASS means the substrate is not the obvious gap. Either:
+1. The arktype call site constructs a GenericRoot via a less-obvious path (e.g., via `new reference.constructor(...)` after a property table mutation that loses `paramDefs`).
+2. There's a subtler interaction between Callable's explicit-return, class-field hoisting, AND a downstream `Object.defineProperty` or `Object.assign` that drops the field.
+3. A different deviation closer to the GenericRoot construction site is the real source — needs L12+ instrumentation at `parseGeneric` and `bindReference` to pinpoint.
+
+**§XVIII recovery axis** (the structural-set-membership protocol from Doc 730 §XVIII): the next reading move is to project the divergence not against descriptor properties but against the set of intermediate constructors invoked between `parseGeneric` and the failing `params` getter. The reference set might be: the constructors used by `bindReference` (`reference.constructor`), the `withId`/`withMeta` rewrite path's allocated proxies, or the Callable-bind chain's intermediate function-typed objects.
+
+**Deferred** as its own focused-session rung. Pipeline framework + L11 + bracket-extends-array + bracket-callable-explicit-return + bracket-class-field-explicit-return are all in place; the next session resumes from these artifacts.
+
+---
+
+## Pipeline outcome (after §XVII iter 2)
+
+- **Substrate gaps closed**: 2 (Array-subclass identity in Op::New; ArraySpeciesCreate honoring O.constructor).
+- **Substrate gaps verified-non-gap by bracket**: 2 (Callable explicit-return; class-field + explicit-return + later assignment).
+- **Substrate gaps remaining**: 1 (the §XVII iter 3 gap — needs deeper upstream instrumentation; obvious bracket disproved).
+- **Parity**: 95.7% → 99.1% across the pipeline's life. arktype itself still FAIL but two substrate gaps deeper than at pipeline founding.
+
+The pipeline framework has paid for itself: each substrate move that lands is package-independent (Array-subclass identity helps ANY package extending Array; ArraySpeciesCreate helps ANY consumer of Array.prototype.map/filter/slice on a subclass), and each non-gap bracket leaves a re-runnable artifact ruling out one hypothesis.
+
 The substrate move lands the spec-aligned `new <Subclass-of-Array>(args)` semantics. Edit surface (anticipated, not yet confirmed): cruftless's `new` operator / class constructor logic in `rusty-js-bytecode` and/or `rusty-js-runtime`. Likely 50–200 LOC.
 
 **Probe flip target**: cruftless's bracket probe matches bun's trace exactly.
