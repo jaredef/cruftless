@@ -533,3 +533,89 @@ The probe-harness/route-through pair is Case-1 substrate-introduction (cruftless
 ---
 
 *CAPS-EXT 6 closes the first route-through round. Three of eight probes are mechanically refused under `--sealed`. The remaining five probes are queued for CAPS-EXT 7-12, each its own round, each with the same shape: route-through + flip + Mode-0 regression confirm.*
+
+---
+
+## CAPS-EXT 7 — 2026-05-21 (Fs write route-through; fourth probe flipped)
+
+### Headline
+
+`writeFileSync`, `writeFile` (async), `mkdirSync`, `unlinkSync`, `fs.promises.{writeFile, access, mkdir, unlink}`, `appendFileSync`, `copyFileSync`, `cpSync` all route through `rt.caps.require_fs`. **The fs_write probe LOSES under `--sealed` and the marker file is not created on disk.** Half of the queued probes (4 of 8) are now mechanically refused.
+
+### Substrate landed
+
+- `host-v2/src/fs.rs` (~30 LOC added, 8 surfaces gated):
+  - `writeFileSync` → `caps::FsOp::Write`
+  - `writeFile` (async) → `caps::FsOp::Write`
+  - `mkdirSync` → `caps::FsOp::Mkdir`
+  - `unlinkSync` → `caps::FsOp::Remove`
+  - `fs.promises.writeFile` → `caps::FsOp::Write`
+  - `fs.promises.access` → `caps::FsOp::Stat`
+  - `fs.promises.mkdir` → `caps::FsOp::Mkdir`
+  - `fs.promises.unlink` → `caps::FsOp::Remove`
+  - `appendFileSync` → `caps::FsOp::Write`
+  - `copyFileSync` → `caps::FsOp::Read(src) + caps::FsOp::Write(dst)` (two checks)
+  - `cpSync` → `caps::FsOp::Read(src) + caps::FsOp::Write(dst)` (two checks)
+
+- `host-v2/tests/caps_probes.rs`:
+  - Added `fs_write_loses_under_sealed` — asserts LOSES sentinel **and** marker file is not created on disk
+  - Pre-clears any prior marker so the assertion is unambiguous
+
+### Probe result
+
+**13/13 caps_probes PASS in 0.03 s.**
+
+| probe | Mode 0 | Mode 3 |
+|---|---|---|
+| fs_read | WINS ✓ | LOSES ✓ |
+| fs_write | WINS ✓ | **LOSES ✓ (flipped)** + marker not on disk |
+| fs_list | WINS ✓ | LOSES ✓ |
+| fs_stat | WINS ✓ | LOSES ✓ |
+| process_exit | WINS ✓ | WINS (CAPS-EXT 8) |
+| env_read | WINS ✓ | WINS (CAPS-EXT 9) |
+| clock_read | WINS ✓ | WINS (CAPS-EXT 11-12) |
+| cwd_read | WINS ✓ | WINS (CAPS-EXT 8) |
+
+**4 of 8 probes mechanically refused under --sealed.**
+
+PM-EXT 11+12 regression: 2/2 PASS in 3.42 s. lodash require + identity unchanged.
+caps_audit: 3/3 unchanged.
+caps unit tests: 15/15 unchanged.
+
+### Doc 736 §IV class coverage
+
+After CAPS-EXT 6+7, the following attack classes are mechanically refused under `--sealed`:
+
+- **Class 1 (read any file)**: closed via fs_read flip
+- **Class 6 (persist)**: closed via fs_write flip
+- **Class adjacent (info disclosure via list/stat)**: closed via fs_list / fs_stat flips
+
+Remaining classes: process control (exit/cwd), env secrets, timing side channels, stdio side channels.
+
+### Pred-736 corroboration status
+
+- **Pred-736.4 (Move 1 delivers bulk of impossibility claim)**: half of the impossibility claim is in place after two EXT rounds of route-through (CAPS-EXT 6+7). The filesystem attack surface — the largest single class per the CAPS-EXT 1 audit — is closed.
+- **Pred-736.3 (LOC estimate ~1100)**: CAPS-EXT 6+7 added ~80 LOC total (50 + 30). Cumulative ~700 LOC. Budget remaining for the remaining ~22 effectful methods: ~400 LOC. On track.
+- **Pred-736.1**: continued. Per-EXT diff is single-digit lines per call site.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P05.L2.caps-fs-write-route` | CAPS-EXT 7: Fs write route-through; writeFileSync + mkdirSync + unlinkSync + 8 adjacent surfaces gated; fs_write probe flipped + marker-not-on-disk confirmed; PM regression GREEN |
+
+### Open scope at CAPS-EXT 7 boundary
+
+1. **CAPS-EXT 8 (process route-through)**: gate `process.exit`, `process.cwd`, `process.pid`. The first two probes flip; the third remains a low-severity disclosure. Note that `process.exit` is registered in node_stubs.rs, not fs.rs — different file.
+
+2. **CAPS-EXT 9 (env route-through)**: gate `process.env` reads + `os.hostname/homedir/tmpdir/userInfo/cpus`. Flips env_read probe.
+
+3. **CAPS-EXT 10 (Stdio route-through)**: gate `process.stdout/stderr.write` + `console.log/error/warn/info/debug`. Subtle because the probe sentinel mechanism writes to stdout. Need a markered probe (file-based) at that round.
+
+4. **CAPS-EXT 11-12 (Clock + Scheduler)**: gate `Date.now`, `hrtime`, `performance.now`, `setTimeout`, `setInterval`, `queueMicrotask`, `nextTick`. Flips clock_read probe.
+
+5. **CAPS-EXT 13 (closure)**: every probe LOSES under `--sealed`.
+
+---
+
+*CAPS-EXT 7 closes the filesystem class. The full fs surface — read + write + list + stat + mkdir + remove + copy + cp — is mechanically refused under `--sealed`. Next round leaves the fs.rs file and moves to node_stubs.rs for process.exit and friends.*

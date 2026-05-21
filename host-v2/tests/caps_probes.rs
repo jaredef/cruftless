@@ -146,6 +146,20 @@ fn fs_stat_loses_under_sealed() {
         "CAPS-EXT 6: --sealed must block fs_stat; stdout: {stdout}");
 }
 
+// CAPS-EXT 7: fs write methods now route through dispatcher.
+
+#[test]
+fn fs_write_loses_under_sealed() {
+    // Remove any prior marker so the assertion is unambiguous.
+    let marker = "/tmp/cruftless-probe-fs-write.marker";
+    let _ = std::fs::remove_file(marker);
+    let (_, stdout, _) = run_probe("fs_write", Some("--sealed"));
+    assert_eq!(classify(&stdout), ProbeOutcome::Loses,
+        "CAPS-EXT 7: --sealed must block fs_write; stdout: {stdout}");
+    assert!(!std::path::Path::new(marker).exists(),
+        "marker file at {marker} should NOT exist after --sealed run; the write was supposed to be refused");
+}
+
 #[test]
 fn pre_route_through_sealed_still_wins_process_exit() {
     let (code, _, _) = run_probe("process_exit", Some("--sealed"));

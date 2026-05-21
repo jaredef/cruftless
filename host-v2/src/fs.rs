@@ -448,6 +448,7 @@ pub fn install(rt: &mut Runtime) {
 
     register_method(rt, fs, "writeFileSync", |rt, args| {
         let path = arg_string(args, 0);
+        check_fs(rt, caps::FsOp::Write(path.clone().into()))?;
         let encoding = arg_encoding(args, 2);
         let data = match args.get(1) {
             Some(v) => value_to_bytes(rt, v, encoding.as_deref()),
@@ -495,6 +496,7 @@ pub fn install(rt: &mut Runtime) {
 
     register_method(rt, fs, "mkdirSync", |rt, args| {
         let path = arg_string(args, 0);
+        check_fs(rt, caps::FsOp::Mkdir(path.clone().into()))?;
         let recursive = match args.get(1) {
             Some(Value::Object(id)) => matches!(rt.object_get(*id, "recursive"), Value::Boolean(true)),
             _ => false,
@@ -510,8 +512,9 @@ pub fn install(rt: &mut Runtime) {
         }
     });
 
-    register_method(rt, fs, "unlinkSync", |_rt, args| {
+    register_method(rt, fs, "unlinkSync", |rt, args| {
         let path = arg_string(args, 0);
+        check_fs(rt, caps::FsOp::Remove(path.clone().into()))?;
         match std::fs::remove_file(&path) {
             Ok(()) => Ok(Value::Undefined),
             Err(e) => Err(RuntimeError::TypeError(format!("unlinkSync: {}", e))),
@@ -531,6 +534,7 @@ pub fn install(rt: &mut Runtime) {
 
     register_method(rt, fs, "writeFile", |rt, args| {
         let path = arg_string(args, 0);
+        check_fs(rt, caps::FsOp::Write(path.clone().into()))?;
         let encoding = arg_encoding(args, 2);
         let data = match args.get(1) {
             Some(v) => value_to_bytes(rt, v, encoding.as_deref()),
@@ -577,6 +581,7 @@ pub fn install(rt: &mut Runtime) {
     });
     register_method(rt, promises, "writeFile", |rt, args| {
         let path = arg_string(args, 0);
+        check_fs(rt, caps::FsOp::Write(path.clone().into()))?;
         let encoding = arg_encoding(args, 2);
         let data = match args.get(1) {
             Some(v) => value_to_bytes(rt, v, encoding.as_deref()),
@@ -587,20 +592,23 @@ pub fn install(rt: &mut Runtime) {
             Err(e) => Err(RuntimeError::TypeError(format!("fs.promises.writeFile: {}", e))),
         }
     });
-    register_method(rt, promises, "access", |_rt, args| {
+    register_method(rt, promises, "access", |rt, args| {
         let path = arg_string(args, 0);
+        check_fs(rt, caps::FsOp::Stat(path.clone().into()))?;
         if std::path::Path::new(&path).exists() { Ok(Value::Undefined) }
         else { Err(RuntimeError::TypeError(format!("fs.promises.access: ENOENT: {}", path))) }
     });
-    register_method(rt, promises, "mkdir", |_rt, args| {
+    register_method(rt, promises, "mkdir", |rt, args| {
         let path = arg_string(args, 0);
+        check_fs(rt, caps::FsOp::Mkdir(path.clone().into()))?;
         match std::fs::create_dir_all(&path) {
             Ok(()) => Ok(Value::Undefined),
             Err(e) => Err(RuntimeError::TypeError(format!("fs.promises.mkdir: {}", e))),
         }
     });
-    register_method(rt, promises, "unlink", |_rt, args| {
+    register_method(rt, promises, "unlink", |rt, args| {
         let path = arg_string(args, 0);
+        check_fs(rt, caps::FsOp::Remove(path.clone().into()))?;
         match std::fs::remove_file(&path) {
             Ok(()) => Ok(Value::Undefined),
             Err(e) => Err(RuntimeError::TypeError(format!("fs.promises.unlink: {}", e))),
@@ -756,6 +764,7 @@ pub fn install(rt: &mut Runtime) {
     register_method(rt, fs, "appendFileSync", |rt, args| {
         use std::io::Write;
         let path = arg_string(args, 0);
+        check_fs(rt, caps::FsOp::Write(path.clone().into()))?;
         let encoding = arg_encoding(args, 2);
         let data = match args.get(1) {
             Some(v) => value_to_bytes(rt, v, encoding.as_deref()),
@@ -767,9 +776,11 @@ pub fn install(rt: &mut Runtime) {
         Ok(Value::Undefined)
     });
     // copyFile / copyFileSync
-    register_method(rt, fs, "copyFileSync", |_rt, args| {
+    register_method(rt, fs, "copyFileSync", |rt, args| {
         let src = arg_string(args, 0);
         let dst = arg_string(args, 1);
+        check_fs(rt, caps::FsOp::Read(src.clone().into()))?;
+        check_fs(rt, caps::FsOp::Write(dst.clone().into()))?;
         std::fs::copy(&src, &dst).map(|_| Value::Undefined)
             .map_err(|e| RuntimeError::TypeError(format!("copyFileSync: {}", e)))
     });
@@ -777,6 +788,8 @@ pub fn install(rt: &mut Runtime) {
     register_method(rt, fs, "cpSync", |rt, args| {
         let src = arg_string(args, 0);
         let dst = arg_string(args, 1);
+        check_fs(rt, caps::FsOp::Read(src.clone().into()))?;
+        check_fs(rt, caps::FsOp::Write(dst.clone().into()))?;
         let recursive = match args.get(2) {
             Some(Value::Object(id)) => matches!(rt.object_get(*id, "recursive"), Value::Boolean(true)),
             _ => false,
