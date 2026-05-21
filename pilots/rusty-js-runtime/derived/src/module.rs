@@ -1074,6 +1074,42 @@ impl Runtime {
             }
         }
 
+        // Tier-Ω Round 3 (2026-05-21): synthesize a `default` export
+        // for ESM modules that don't have one, mirroring Bun's
+        // CJS-compat behavior. The synthesized default is a fresh
+        // object whose own properties are the namespace's other
+        // exports. This matches `import * as M from "pkg"`'s expected
+        // shape under Bun: `M.default` is the bag of named exports,
+        // not the namespace itself.
+        //
+        // Concretely: superstruct exports 51 named bindings via
+        // `export { ... }` with no `export default`. Under Bun,
+        // `Object.keys(M).length === 52` (51 names + synthesized
+        // `default`); pre-fix cruftless returned 51. The 14-package
+        // parity-failure cluster's Class-A subset (superstruct,
+        // node-fetch missing `fetch`/`FetchBaseError`) was attributed
+        // to this same synthesis gap.
+        let has_default = self.obj(namespace).properties.contains_key(
+            &crate::value::PropertyKey::String("default".into()));
+        if !has_default {
+            let snapshot: Vec<(String, Value)> = {
+                let o = self.obj(namespace);
+                o.properties.iter()
+                    .filter_map(|(k, d)| match k {
+                        crate::value::PropertyKey::String(s) => Some((s.clone(), d.value.clone())),
+                        _ => None,
+                    })
+                    .collect()
+            };
+            if !snapshot.is_empty() {
+                let default_obj = self.alloc_object(crate::value::Object::new_ordinary());
+                for (k, v) in snapshot {
+                    self.object_set(default_obj, k, v);
+                }
+                self.object_set(namespace, "default".into(), Value::Object(default_obj));
+            }
+        }
+
         // Call HostFinalizeModuleNamespace if installed.
         if let Some(hook) = self.host_hooks.finalize_namespace.take() {
             hook(self, &ast_rc, namespace, url)?;
