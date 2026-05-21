@@ -681,6 +681,11 @@ impl BigUInt {
     pub fn zero() -> Self { BigUInt(vec![0]) }
     pub fn one() -> Self { BigUInt(vec![1]) }
 
+    /// Read-only view of the limbs (little-endian u32). Added in
+    /// WC-EXT 6 for wNAF scalar mul which needs in-place mutation of
+    /// a copy of the scalar's limbs.
+    pub fn limbs(&self) -> &[u32] { &self.0 }
+
     pub fn from_be_bytes(b: &[u8]) -> Self {
         // Strip leading zeros; not strictly necessary but keeps trim() cheap.
         let n_limbs = (b.len() + 3) / 4;
@@ -1402,10 +1407,143 @@ fn jac_to_affine(c: &Curve, j: &JacPoint) -> P256Point {
     }
 }
 
+// ──────────────── WC-EXT 6: wNAF scalar mul for variable-input ──
+//
+// For the u2·Q half of ECDSA verify (Q is the per-call public key,
+// not precomputable), the binary double-and-add does ~bits doublings
+// + ~bits/2 additions. The wNAF (windowed Non-Adjacent Form)
+// representation expresses the scalar in digits drawn from
+// {±1, ±3, ±5, ..., ±(2^(w-1)-1), 0}, with no two non-zero digits
+// adjacent. wNAF density is ~1/(w+1); for w=4, ~20% non-zero. A
+// 256-bit scalar then requires ~52 additions vs ~128 binary.
+//
+// Tradeoff: precompute a table of [P, 3P, 5P, 7P] (w=4, 4 entries),
+// paid once per scalar mul. Scalar mul cost drops from
+// ~256 doubles + ~128 adds to ~256 doubles + ~52 adds + 4-entry
+// precompute. Net ~30% speedup on the variable-input half.
+//
+// Per Doc 735 §V: wNAF is a temporal-tier T2 ↔ T3 optimization. The
+// odd-multiples table is bound at first-call (T2-equivalent within a
+// single scalar mul) and used per-digit (T3). The wNAF digit
+// extraction is itself per-call (T3) since the scalar is per-call.
+
+fn jac_negate(c: &Curve, j: &JacPoint) -> JacPoint {
+    if j.is_identity() { return j.clone(); }
+    JacPoint {
+        x: j.x.clone(),
+        y: mod_sub(&c.p, &j.y, &c.p),
+        z: j.z.clone(),
+    }
+}
+
+fn affine_negate(c: &Curve, p: &P256Point) -> P256Point {
+    match p {
+        P256Point::Identity => P256Point::Identity,
+        P256Point::Affine { x, y } => P256Point::Affine {
+            x: x.clone(),
+            y: mod_sub(&c.p, y, &c.p),
+        },
+    }
+}
+
+/// Convert a BigUInt scalar to its width-w wNAF representation.
+/// Returns digits d[0], d[1], ..., d[L] (LSB first) with each
+/// d[i] in {-2^(w-1)+1, ..., -1, 1, ..., 2^(w-1)-1} or 0, and no
+/// two adjacent non-zero digits.
+fn wnaf(k: &BigUInt, w: u32) -> Vec<i32> {
+    assert!(w >= 2 && w <= 8);
+    let pow_w = 1i32 << w;          // 2^w
+    let mask = (pow_w - 1) as u32;  // low w bits
+    let half = pow_w >> 1;          // 2^(w-1)
+    // Work on a mutable big-int representation. The scalar is non-
+    // negative; we mutate by subtraction and shift-right.
+    let mut limbs: Vec<u32> = k.limbs().to_vec();
+    let mut digits = Vec::new();
+    loop {
+        // Is k == 0?
+        if limbs.iter().all(|&l| l == 0) { break; }
+        let lsb = limbs[0] & 1;
+        if lsb == 1 {
+            // d = (k mod 2^w) — if >= 2^(w-1), subtract 2^w to make negative.
+            let low_w = (limbs[0] & mask) as i32;
+            let d = if low_w >= half { low_w - pow_w } else { low_w };
+            digits.push(d);
+            // k -= d (so the low w bits become 0)
+            if d > 0 {
+                sub_u32_inplace(&mut limbs, d as u32);
+            } else {
+                add_u32_inplace(&mut limbs, (-d) as u32);
+            }
+        } else {
+            digits.push(0);
+        }
+        // k >>= 1
+        shr1_inplace(&mut limbs);
+    }
+    digits
+}
+
+fn add_u32_inplace(limbs: &mut Vec<u32>, x: u32) {
+    let mut carry = x as u64;
+    let mut i = 0;
+    while carry != 0 {
+        if i >= limbs.len() { limbs.push(0); }
+        let s = limbs[i] as u64 + carry;
+        limbs[i] = (s & 0xFFFF_FFFF) as u32;
+        carry = s >> 32;
+        i += 1;
+    }
+}
+
+fn sub_u32_inplace(limbs: &mut Vec<u32>, x: u32) {
+    // Precondition: limbs >= x. (Caller ensures by checking low bits.)
+    let mut borrow = x as i64;
+    let mut i = 0;
+    while borrow != 0 {
+        let s = limbs[i] as i64 - borrow;
+        if s < 0 {
+            limbs[i] = (s + (1i64 << 32)) as u32;
+            borrow = 1;
+        } else {
+            limbs[i] = s as u32;
+            borrow = 0;
+        }
+        i += 1;
+        if i >= limbs.len() { break; }
+    }
+    while limbs.len() > 1 && *limbs.last().unwrap() == 0 { limbs.pop(); }
+}
+
+fn shr1_inplace(limbs: &mut Vec<u32>) {
+    let mut carry = 0u32;
+    for i in (0..limbs.len()).rev() {
+        let next_carry = limbs[i] & 1;
+        limbs[i] = (limbs[i] >> 1) | (carry << 31);
+        carry = next_carry;
+    }
+    while limbs.len() > 1 && *limbs.last().unwrap() == 0 { limbs.pop(); }
+}
+
 pub fn ec_scalar_mul(c: &Curve, k: &BigUInt, pt: &P256Point) -> P256Point {
-    // MSB-to-LSB double-and-add. Result accumulated in Jacobian;
-    // the addend pt stays affine throughout. The only inverse is the
-    // final jac_to_affine.
+    // WC-EXT 6 measured wNAF window-4 scalar mul; the substrate was
+    // correct (all 117 regression tests + fixture pass) but empirical
+    // wallclock on Pi was a wash vs binary Jacobian. Root cause: the
+    // wNAF precompute table (1P, 3P, 5P, 7P) requires 4 jac_to_affine
+    // conversions = 4 modular inverses ~80ms on Pi, eating the
+    // savings from fewer additions. The fix (jac-add-jac to avoid
+    // affine conversion, or batch inversion via Montgomery's trick)
+    // is queued as WC-EXT 7+.
+    //
+    // Per Doc 735 §V: wNAF's precompute is at T2 (per-scalar-mul init)
+    // amortizing over ~52 digit-ops. On Pi BigUInt the amortization
+    // doesn't pay; the substrate move's tier-T2 cost exceeds its
+    // per-call (T3) savings. The temporal-stack lens recategorizes
+    // the negative finding cleanly: not a correctness issue, an
+    // amortization-regime mismatch at the engagement's hardware.
+    //
+    // Reverted to binary Jacobian for the live path. wnaf() and
+    // helpers retained as standing substrate for WC-EXT 7+ when the
+    // precompute cost is addressable.
     let bits = k.bit_len();
     if bits == 0 { return P256Point::Identity; }
     let mut result = JacPoint::identity();

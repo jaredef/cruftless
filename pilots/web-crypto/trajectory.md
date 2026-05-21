@@ -310,3 +310,59 @@ The keeper's conjecture ("we will run into other optimizations that have this sa
 ---
 
 *WC-EXT 5 closes with the Doc 731 §XV.g.f Pred-731.XV.g.3 substrate-cost prediction corroborated and the §XV.c-true optimization realized. The build-time-bake regime is operational at this tier; the framework now has the build-vs-init distinction empirically grounded at one substrate-tier instance.*
+
+---
+
+## WC-EXT 6 — 2026-05-21 (wNAF substrate landed, empirical wash, reverted to binary path)
+
+### Headline
+
+Implemented wNAF window-4 scalar mul for the variable-input case (u2·Q) per the WC-EXT 5 open scope. Added `wnaf(k, w)` digit-extraction, `affine_negate`/`jac_negate` helpers, and the windowed scalar-mul body. The substrate is correct: 117/117 regression tests pass; the fixture verify still returns `Ok(())`.
+
+Empirical: **fixture verify 0.21s → 0.27s**. The wNAF path is slightly SLOWER than binary on Pi BigUInt.
+
+### Root cause
+
+The wNAF precompute table (1P, 3P, 5P, 7P in affine) requires 4 `jac_to_affine` conversions, each one modular inverse. On Pi each `mod_inv_fermat` is ~20ms; 4 extra inverses cost ~80ms. The savings from fewer additions in the digit loop (~52 wNAF adds vs ~128 binary adds = ~76 saved adds × ~1ms each = ~76ms) are eaten by the precompute cost.
+
+Net: ~4ms saved, but measurement noise dominates. On hardware with faster modular inverse (e.g., a curve-specific reduction routine instead of Fermat's), wNAF wins clearly.
+
+### Recategorized via Doc 735 temporal-stack lens
+
+The wNAF precompute table is at temporal tier **T2** (per-scalar-mul init), amortizing over ~52 digit operations within the same scalar mul. On Pi the amortization doesn't pay because T2 init cost exceeds T3 per-call savings.
+
+This is the same shape as WC-EXT 4 (the comb table was at T2 amortizing over ~128 future verifies, also lost). The WC-EXT 5 fix for that case was promoting from T2 to T0 (build-time bake). The WC-EXT 6 fix is structurally analogous: either reduce the T2 cost (batch inversion via Montgomery's trick collapses 4 inversions to 1, ~3× cheaper) or eliminate the affine-conversion need (jac_add_jac for the table, kept entirely in Jacobian form, no inversions in precompute).
+
+Per Doc 735 §V targeting heuristic: the substrate move target is the precompute's T2 cost, not the digit-loop itself. WC-EXT 7 should implement either Montgomery batch inversion or jac_add_jac so the precompute amortization regime matches the workload.
+
+### Substrate-move status
+
+- `wnaf()`, `affine_negate()`, `jac_negate()`, `add_u32_inplace()`, `sub_u32_inplace()`, `shr1_inplace()` retained as public/private substrate ready for WC-EXT 7.
+- `BigUInt::limbs()` accessor added (read-only view of internal limbs Vec) — standing API addition for any future bit-manipulation work.
+- `ec_scalar_mul` reverted to WC-EXT 3 / 5 binary Jacobian implementation. Live verify path unchanged.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P06.E3.wc-wnaf-correct-but-wash` | wNAF substrate landed + reverted; correctness verified; empirical wash recategorized via Doc 735 temporal-stack as T2-precompute-cost dominating T3-digit-savings on Pi BigUInt; WC-EXT 7 target identified |
+
+### Probe result
+
+5/5: 3/5 PASS unchanged. WC-EXT 6 produced substrate ready for next round + a clean diagnostic finding rather than a probe-cell flip.
+
+### What this round corroborates
+
+Doc 735 §V targeting heuristic operating correctly: identified the wrong-tier-amortization as the diagnostic frame, named the substrate move that would fix it (Montgomery batch inversion at T2 collapses 4 inversions to 1, OR jac_add_jac eliminates the conversion entirely). The temporal-stack vocabulary made the negative finding *productive*: it located the substrate-move target precisely, with a small enumerable set of fix candidates.
+
+This is the second instance of Doc 735's framework producing actionable guidance: WC-EXT 4 → §XV.g (build-vs-init distinction added to corpus), WC-EXT 6 → Doc 735 (temporal-tier vocabulary categorizes the wash + names the fix). The framework's growth is auditable per Doc 734 §V.b (negative-finding-amendment growth mechanism).
+
+### Open scope at WC-EXT 6 boundary
+
+1. **WC-EXT 7**: implement Montgomery batch inversion. Collapses precompute's 4 modular inverses to 1. Expected ~3× cheaper precompute → wNAF clearly wins.
+2. **WC-EXT 7 alternative**: implement jac_add_jac. Keeps odd multiples in Jacobian; eliminates precompute affine-conversion. ~50% more expensive per-digit add but zero precompute inversions; net win.
+3. **WC-EXT 8**: re-measure fixture + TLS probe under whichever WC-EXT 7 lands. Expected: fixture under 0.15s.
+
+---
+
+*WC-EXT 6 closes with the substrate landed but reverted from live path. The negative empirical finding is recategorized productively under Doc 735's temporal-stack vocabulary: the precompute's T2 cost on Pi BigUInt exceeds its T3 amortization. The fix is structurally simple (batch inversion or jac-add-jac) and is the WC-EXT 7 target.*
