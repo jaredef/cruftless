@@ -241,6 +241,13 @@ pub struct Runtime {
     /// (e.g. nx's `import('../src/native/...')` resolving against the
     /// caller's cwd instead of the nx package's own location).
     pub current_module_url: Vec<String>,
+    /// CAPS-EXT 3+ (Doc 736 Pilot α): the capability dispatcher. Holds
+    /// the per-process CapMode + ambient capability set + audit log.
+    /// Created in Compat (Mode 0) by default; host changes mode via
+    /// `Runtime::set_cap_mode` when the CLI passes `--audit` etc.
+    /// Effectful methods route through this; until CAPS-EXT 6+ wires
+    /// the routes, the dispatcher exists but is not consulted.
+    pub caps: std::sync::Arc<crate::caps::CapDispatcher>,
 }
 
 impl Runtime {
@@ -292,7 +299,15 @@ impl Runtime {
             napi_module_cache: HashMap::new(),
             napi_main_inbox: std::sync::Arc::new(std::sync::Mutex::new(std::collections::VecDeque::new())),
             napi_keepalive: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            caps: std::sync::Arc::new(crate::caps::CapDispatcher::compat()),
         }
+    }
+
+    /// CAPS-EXT 4: replace the capability dispatcher with one set to the
+    /// requested mode. Discards any previously-accumulated audit log;
+    /// intended to be called once at startup after CLI parsing.
+    pub fn set_cap_mode(&mut self, mode: crate::caps::CapMode) {
+        self.caps = std::sync::Arc::new(crate::caps::CapDispatcher::new(mode));
     }
 
     /// `this` for the active native call. Returns Undefined outside one.

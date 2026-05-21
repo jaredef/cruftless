@@ -276,3 +276,69 @@ The dispatcher's existence with PM gates green is a Case-3 (both-diverge → com
 ---
 
 *CAPS-EXT 3 closes the first code commit of Pilot α. Infrastructure shipped; behavior unchanged; PM-EXT regression green; ready to begin route-through at CAPS-EXT 4+ once the audit recorder surfaces the audit log.*
+
+---
+
+## CAPS-EXT 4 — 2026-05-21 (audit recorder + --audit / --sealed CLI flags)
+
+### Headline
+
+CapDispatcher attached to Runtime; `--audit`, `--sealed-deps`, `--sealed`, `--audit-log` CLI flags wired through host-v2; `CRUFTLESS_CAPS_MODE` env var override. The four modes are now invocable end-to-end. **PM-EXT 11+12 regression remains GREEN (2.79 s)**; new caps_audit tests pass for `--audit`, `--sealed`, and env-var-mode invocations against no-effectful-call programs.
+
+### Substrate landed
+
+- `pilots/rusty-js-runtime/derived/src/interp.rs`:
+  - `Runtime.caps: Arc<CapDispatcher>` field
+  - Initialized in `Runtime::new()` as `CapDispatcher::compat()` (Mode 0)
+  - `Runtime::set_cap_mode(mode)` helper that swaps in a fresh dispatcher
+- `host-v2/src/main.rs`:
+  - `parse_cap_flags(argv) -> (CapMode, Option<audit_log_path>, remaining_argv)`
+  - Recognized flags: `--audit`, `--sealed-deps`, `--sealed`, `--audit-log <path>`
+  - Env-var override: `CRUFTLESS_CAPS_MODE=compat|audit|sealed-deps|sealed`
+  - `drain_audit_log(&rt, dest)` writes records to sidecar file (if `--audit-log` set) or stderr; format `<caller>\t<capability>\t<operation>\t<unix_micros>`
+  - Drain called on both success and unhandled-rejection exit paths
+- `host-v2/tests/caps_audit.rs` (~95 LOC, 3 tests):
+  - `audit_mode_smoke_compat_behavior` — `--audit` does not change Mode-0 program behavior
+  - `mode_flag_parsed_does_not_affect_compat_run` — `--sealed` on no-effectful-call program still exits 0 (correctly, because no route-through fires yet)
+  - `env_var_mode_override` — `CRUFTLESS_CAPS_MODE=audit` is honored
+
+### Probe result
+
+- **caps_audit (3/3 PASS in 0.01 s)**: CLI flags parse correctly; mode propagates to Runtime; drain happens cleanly on exit; no spurious log output for empty-record runs.
+- **PM regression (2/2 PASS in 2.79 s)**: `pm_install_then_require_lodash` + `cli_install_then_run` unchanged.
+- **Cumulative caps unit tests (15/15 PASS)**: unchanged from CAPS-EXT 3.
+
+### State at CAPS-EXT 4 boundary
+
+All four modes are invocable. The dispatcher accepts the mode flag, exposes hint-generating CapabilityError, records to AuditLog when in Mode 1. **What is still missing**: no effectful method routes through the dispatcher. The audit log captures zero records because there is nothing to capture. Mode 3 + empty caps would not block anything because no method consults the dispatcher.
+
+This intermediate state is intentional. The infrastructure is end-to-end visible (CLI, dispatcher, drain) so the next round's route-through changes have a target to plug into. The route-through is one EXT round per surface (Fs first, then process.exit, Stdio, etc.).
+
+### Pred-736 corroboration status
+
+- **Pred-736.1 (retrofit not rewrite)**: corroborated further. CAPS-EXT 4 added ~100 LOC across Runtime field + helper + host-v2 main + tests. Two existing-file edits: `interp.rs` (one field, one helper) and `main.rs` (one usage line). Negligible footprint.
+- **Pred-736.3 (LOC estimate ~1100)**: CAPS-EXT 3+4 cumulative ~620 LOC. Budget remaining for route-through across the 40 effectful methods: ~480 LOC. On track.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P05.L2.caps-audit-flags` | CAPS-EXT 4: audit recorder + CLI flags (--audit/--sealed-deps/--sealed/--audit-log) + env-var override; dispatcher attached to Runtime; drain-on-exit; PM regression GREEN |
+
+### Open scope at CAPS-EXT 4 boundary
+
+1. **CAPS-EXT 5 (synthetic-adversary probe harness)**: `pilots/rusty-js-caps/probes/` with `.mjs` files representing the Doc 736 §IV attack classes. Under Mode 0 (current default) every probe SUCCEEDS = the pre-state baseline. The probe suite becomes the standing regression for CAPS-EXT 6+ route-through.
+
+2. **CAPS-EXT 6 (Fs read route-through)**: edit `host-v2/src/fs.rs` to route every fs-read method (readFileSync, readFile, existsSync, statSync, readdirSync, accessSync, etc.) through `rt.caps.require_fs(...)`. Under Mode 0 the dispatcher returns Ok unconditionally; PM regression remains green. Under Mode 3 + empty caps, the corresponding probes flip to PASS (CapabilityError).
+
+3. **CAPS-EXT 7 (Fs write route-through)**: same for write/mkdir/unlink. Separate round because the dispatcher op is different and the probe set is different.
+
+4. **CAPS-EXT 8+**: Stdio, Clock, Scheduler, Process, Env. Each their own round.
+
+### Doc 730 §XVI status
+
+The CLI gate continues the §XVI compositional success: every existing test passes under Mode 0; new tests pass under Mode 1/3; the structural divergence is wider (Cruftless now has CLI-controllable capability modes; Node does not), but no regression appears against the engagement's existing test surface.
+
+---
+
+*CAPS-EXT 4 closes the infrastructure wiring. The capability slider is now invocable end-to-end (CLI + env-var + drain). Next move CAPS-EXT 5: the synthetic-adversary probe harness — the §XVI oracle that gates every route-through commit from CAPS-EXT 6 forward.*

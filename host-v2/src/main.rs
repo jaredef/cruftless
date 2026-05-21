@@ -61,12 +61,70 @@ fn run_install_subcommand() -> ExitCode {
     }
 }
 
+/// CAPS-EXT 4: parse capability-mode flags from argv. Recognized:
+///   --audit         → CapMode::Audit (Mode 1)
+///   --sealed-deps   → CapMode::SealedDeps (Mode 2)
+///   --sealed        → CapMode::Sealed (Mode 3)
+/// Default: CapMode::Compat (Mode 0). Returns (mode, audit_log_path,
+/// remaining_args) where remaining_args is argv with the flag(s) consumed.
+fn parse_cap_flags(args: Vec<String>) -> (rusty_js_runtime::caps::CapMode, Option<String>, Vec<String>) {
+    use rusty_js_runtime::caps::CapMode;
+    let mut mode = CapMode::Compat;
+    let mut audit_path: Option<String> = None;
+    let mut out: Vec<String> = Vec::with_capacity(args.len());
+    let mut it = args.into_iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--audit" => mode = CapMode::Audit,
+            "--sealed-deps" => mode = CapMode::SealedDeps,
+            "--sealed" => mode = CapMode::Sealed,
+            "--audit-log" => {
+                if let Some(p) = it.next() { audit_path = Some(p); }
+            }
+            _ => out.push(a),
+        }
+    }
+    // CRUFTLESS_CAPS_MODE env var as override fallback.
+    if mode == CapMode::Compat {
+        if let Ok(s) = std::env::var("CRUFTLESS_CAPS_MODE") {
+            if let Some(m) = CapMode::from_str(&s) { mode = m; }
+        }
+    }
+    (mode, audit_path, out)
+}
+
+fn drain_audit_log(rt: &rusty_js_runtime::Runtime, dest: Option<&str>) {
+    let records = rt.caps.drain_audit();
+    if records.is_empty() { return; }
+    let mut sink: Box<dyn std::io::Write> = match dest {
+        Some(path) => match std::fs::File::create(path) {
+            Ok(f) => Box::new(std::io::BufWriter::new(f)),
+            Err(e) => {
+                eprintln!("cruftless: could not open audit log {path}: {e}; writing to stderr");
+                Box::new(std::io::stderr())
+            }
+        },
+        None => Box::new(std::io::stderr()),
+    };
+    use std::io::Write;
+    let _ = writeln!(sink, "# cruftless audit log — {} records", records.len());
+    let _ = writeln!(sink, "# format: <caller>\\t<capability>\\t<operation>\\t<unix_micros>");
+    for r in &records {
+        let _ = writeln!(sink, "{}\t{}\t{}\t{}",
+            r.caller, r.capability, r.operation, r.timestamp_micros);
+    }
+    let _ = sink.flush();
+}
+
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().collect();
+    let raw_args: Vec<String> = std::env::args().collect();
+    let (cap_mode, audit_log_path, args) = parse_cap_flags(raw_args);
     if args.len() < 2 {
         eprintln!("usage: {} <file.mjs>   |   {} install",
             args.get(0).map(|s| s.as_str()).unwrap_or("cruftless"),
             args.get(0).map(|s| s.as_str()).unwrap_or("cruftless"));
+        eprintln!("       Capability modes: --audit | --sealed-deps | --sealed");
+        eprintln!("                         [--audit-log <path>]");
         return ExitCode::from(64); // EX_USAGE
     }
     if args[1] == "install" {
@@ -82,6 +140,7 @@ fn main() -> ExitCode {
     };
 
     let mut rt = Runtime::new();
+    rt.set_cap_mode(cap_mode);
     rt.install_intrinsics();
     install_bun_host(&mut rt, args);
 
@@ -129,8 +188,10 @@ fn main() -> ExitCode {
         for (_id, reason) in &unhandled {
             eprintln!("cruftless: unhandled promise rejection: {:?}", reason);
         }
+        drain_audit_log(&rt, audit_log_path.as_deref());
         return ExitCode::from(70);
     }
 
+    drain_audit_log(&rt, audit_log_path.as_deref());
     ExitCode::SUCCESS
 }
