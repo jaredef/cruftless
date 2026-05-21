@@ -1370,6 +1370,218 @@ pub fn p256_mod_mul_solinas_v2(a: &BigUInt, b: &BigUInt) -> BigUInt {
     p256_solinas_reduce_v2(product.limbs())
 }
 
+// ──────────────── WC-EXT 26: Solinas fast reduction for P-384 ────
+//
+// Per Doc 730 §XVII (P2) primitive-specific case at the P-384 tier.
+// P-384 prime p = 2^384 − 2^128 − 2^96 + 2^32 − 1 (NIST FIPS 186-4
+// §D.1.2.4). FIPS 186-4 §B.2.2 gives a Solinas-style reduction
+// using 10 sub-vectors built from the 24-limb input T.
+//
+// Per Doc 735 §X.h.f learned discipline (WC-EXT 25 byte-typo): the
+// 2^384 mod p constant is computed programmatically at first use,
+// not hardcoded. Eliminates the data-tier-constant typo class.
+
+fn p384_p() -> BigUInt {
+    BigUInt::from_be_bytes(&hex_to_bytes(
+        "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffeffffffff0000000000000000ffffffff"))
+}
+
+static P384_C_2_384: OnceLock<BigUInt> = OnceLock::new();
+fn p384_c_2_384_mod_p() -> &'static BigUInt {
+    P384_C_2_384.get_or_init(|| {
+        // 2^384 represented as a 49-byte BE integer: 0x01 || 0x00 * 48.
+        let mut bytes = vec![0u8; 49];
+        bytes[0] = 1;
+        BigUInt::from_be_bytes(&bytes).modulo(&p384_p())
+    })
+}
+
+/// Apply FIPS 186-4 §B.2.2 P-384 fast reduction to a 24-limb (768-bit)
+/// product T. Returns a 12-limb (384-bit) result in [0, p384).
+fn p384_solinas_reduce(t_in: &[u32]) -> BigUInt {
+    let mut t = [0u32; 24];
+    for (i, &l) in t_in.iter().take(24).enumerate() { t[i] = l; }
+    let g = |i: usize| t[i] as i64;
+
+    // Per Hankerson Table 14.7 + FIPS 186-4 §B.2.2:
+    //   result = A1 + 2·A2 + A3 + A4 + A5 + A6 + A7 − A8 − A9 − A10
+    //
+    // Column contributions derived inline (LSB index 0..11):
+    let mut col: [i64; 13] = [
+        // col 0: T0 + T12 + T20 + T21 - T23
+        g(0) + g(12) + g(21) + g(20) - g(23),
+        // col 1: T1 + T13 + T22 + T23 - T12 - T20
+        g(1) + g(13) + g(22) + g(23) - g(12) - g(20),
+        // col 2: T2 + T14 + T23 - T13 - T21
+        g(2) + g(14) + g(23) - g(13) - g(21),
+        // col 3: T3 + T15 + T12 + T20 + T21 - T14 - T22 - T23
+        g(3) + g(15) + g(12) + g(20) + g(21) - g(14) - g(22) - g(23),
+        // col 4: T4 + 2·T21 + T16 + T13 + T12 + T20 + T22 - T15 - 2·T23
+        g(4) + 2*g(21) + g(16) + g(13) + g(12) + g(20) + g(22) - g(15) - 2*g(23),
+        // col 5: T5 + 2·T22 + T17 + T14 + T13 + T21 + T23 - T16
+        g(5) + 2*g(22) + g(17) + g(14) + g(13) + g(21) + g(23) - g(16),
+        // col 6: T6 + 2·T23 + T18 + T15 + T14 + T22 - T17
+        g(6) + 2*g(23) + g(18) + g(15) + g(14) + g(22) - g(17),
+        // col 7: T7 + T19 + T16 + T15 + T23 - T18
+        g(7) + g(19) + g(16) + g(15) + g(23) - g(18),
+        // col 8: T8 + T20 + T17 + T16 - T19
+        g(8) + g(20) + g(17) + g(16) - g(19),
+        // col 9: T9 + T21 + T18 + T17 - T20
+        g(9) + g(21) + g(18) + g(17) - g(20),
+        // col 10: T10 + T22 + T19 + T18 - T21
+        g(10) + g(22) + g(19) + g(18) - g(21),
+        // col 11: T11 + T23 + T20 + T19 - T22
+        g(11) + g(23) + g(20) + g(19) - g(22),
+        0i64,
+    ];
+
+    // Propagate carries (signed arithmetic via rem_euclid + arithmetic shift).
+    for i in 0..12 {
+        let lo = col[i].rem_euclid(1i64 << 32);
+        let hi = (col[i] - lo) >> 32;
+        col[i] = lo;
+        col[i + 1] += hi;
+    }
+
+    let p = p384_p();
+    let mut limbs12 = vec![0u32; 12];
+    for i in 0..12 { limbs12[i] = col[i] as u32; }
+    let mut result = BigUInt::from_limbs(limbs12);
+
+    use std::cmp::Ordering;
+    let extra = col[12];
+    let c = p384_c_2_384_mod_p();
+    if extra > 0 {
+        for _ in 0..extra { result = result.add(c); }
+    } else if extra < 0 {
+        for _ in 0..(-extra) { result = result.add(&p); }
+        for _ in 0..(-extra) { result = result.sub(c); }
+    }
+
+    while result.cmp(&p) != Ordering::Less {
+        result = result.sub(&p);
+    }
+    result
+}
+
+pub fn p384_mod_mul_solinas(a: &BigUInt, b: &BigUInt) -> BigUInt {
+    let product = a.mul(b);
+    p384_solinas_reduce(product.limbs())
+}
+
+// ─────── Mont-form-bypass EC for P-384 via Solinas mod_mul ───────
+//
+// Mirrors the P-256 Solinas EC pipeline (WC-EXT 22 + 25) at the
+// P-384 curve. All arithmetic in std form using p384_mod_mul_solinas
+// for every mod_mul; cheap mod_add/mod_sub elsewhere.
+
+#[inline(always)]
+fn sol_mul_p384(a: &BigUInt, b: &BigUInt) -> BigUInt {
+    p384_mod_mul_solinas(a, b)
+}
+
+fn jac_double_solinas_p384(j: &JacPoint) -> JacPoint {
+    let p = p384_p();
+    if j.is_identity() { return j.clone(); }
+    if j.y.is_zero() { return JacPoint::identity(); }
+    let delta = sol_mul_p384(&j.z, &j.z);
+    let gamma = sol_mul_p384(&j.y, &j.y);
+    let beta = sol_mul_p384(&j.x, &gamma);
+    let x_minus_d = mod_sub(&j.x, &delta, &p);
+    let x_plus_d  = mod_add(&j.x, &delta, &p);
+    let xm_xp = sol_mul_p384(&x_minus_d, &x_plus_d);
+    let alpha = {
+        let v2 = mod_add(&xm_xp, &xm_xp, &p);
+        mod_add(&v2, &xm_xp, &p)
+    };
+    let alpha2 = sol_mul_p384(&alpha, &alpha);
+    let beta2 = mod_add(&beta, &beta, &p);
+    let beta4 = mod_add(&beta2, &beta2, &p);
+    let beta8 = mod_add(&beta4, &beta4, &p);
+    let x3 = mod_sub(&alpha2, &beta8, &p);
+    let y_plus_z = mod_add(&j.y, &j.z, &p);
+    let z3 = mod_sub(&mod_sub(&sol_mul_p384(&y_plus_z, &y_plus_z), &gamma, &p), &delta, &p);
+    let four_beta_minus_x3 = mod_sub(&beta4, &x3, &p);
+    let gamma2 = sol_mul_p384(&gamma, &gamma);
+    let g2_2 = mod_add(&gamma2, &gamma2, &p);
+    let g2_4 = mod_add(&g2_2, &g2_2, &p);
+    let g2_8 = mod_add(&g2_4, &g2_4, &p);
+    let y3 = mod_sub(&sol_mul_p384(&alpha, &four_beta_minus_x3), &g2_8, &p);
+    JacPoint { x: x3, y: y3, z: z3 }
+}
+
+fn jac_add_affine_solinas_p384(j: &JacPoint, a: &P256Point) -> JacPoint {
+    use std::cmp::Ordering;
+    let p = p384_p();
+    let (ax, ay) = match a {
+        P256Point::Identity => return j.clone(),
+        P256Point::Affine { x, y } => (x, y),
+    };
+    if j.is_identity() {
+        return JacPoint { x: ax.clone(), y: ay.clone(), z: BigUInt::one() };
+    }
+    let z1z1 = sol_mul_p384(&j.z, &j.z);
+    let u2 = sol_mul_p384(ax, &z1z1);
+    let z1_cubed = sol_mul_p384(&j.z, &z1z1);
+    let s2 = sol_mul_p384(ay, &z1_cubed);
+    if u2.cmp(&j.x) == Ordering::Equal {
+        if s2.cmp(&j.y) == Ordering::Equal { return jac_double_solinas_p384(j); }
+        return JacPoint::identity();
+    }
+    let h = mod_sub(&u2, &j.x, &p);
+    let r = mod_sub(&s2, &j.y, &p);
+    let h2 = sol_mul_p384(&h, &h);
+    let h3 = sol_mul_p384(&h2, &h);
+    let x1_h2 = sol_mul_p384(&j.x, &h2);
+    let two_x1_h2 = mod_add(&x1_h2, &x1_h2, &p);
+    let r2 = sol_mul_p384(&r, &r);
+    let x3 = mod_sub(&mod_sub(&r2, &h3, &p), &two_x1_h2, &p);
+    let y3 = mod_sub(
+        &sol_mul_p384(&r, &mod_sub(&x1_h2, &x3, &p)),
+        &sol_mul_p384(&j.y, &h3),
+        &p,
+    );
+    let z3 = sol_mul_p384(&j.z, &h);
+    JacPoint { x: x3, y: y3, z: z3 }
+}
+
+fn jac_to_affine_solinas_p384(j: &JacPoint) -> P256Point {
+    if j.is_identity() { return P256Point::Identity; }
+    let p = p384_p();
+    let two = BigUInt::from_be_bytes(&[2]);
+    let p_minus_2 = p.sub(&two);
+    let mut result = BigUInt::one();
+    let mut base = j.z.clone();
+    let bits = p_minus_2.bit_len();
+    for i in 0..bits {
+        if p_minus_2.bit(i) {
+            result = sol_mul_p384(&result, &base);
+        }
+        base = sol_mul_p384(&base, &base);
+    }
+    let z_inv = result;
+    let z_inv2 = sol_mul_p384(&z_inv, &z_inv);
+    let z_inv3 = sol_mul_p384(&z_inv2, &z_inv);
+    P256Point::Affine {
+        x: sol_mul_p384(&j.x, &z_inv2),
+        y: sol_mul_p384(&j.y, &z_inv3),
+    }
+}
+
+pub fn p384_scalar_mul_solinas(k: &BigUInt, pt: &P256Point) -> P256Point {
+    let bits = k.bit_len();
+    if bits == 0 { return P256Point::Identity; }
+    if matches!(pt, P256Point::Identity) { return P256Point::Identity; }
+    let mut result = JacPoint::identity();
+    for i in (0..bits).rev() {
+        result = jac_double_solinas_p384(&result);
+        if k.bit(i) {
+            result = jac_add_affine_solinas_p384(&result, pt);
+        }
+    }
+    jac_to_affine_solinas_p384(&result)
+}
+
 // ──────────────── WC-EXT 22: Solinas-form EC for P-256 ─────────
 //
 // Routes the live P-256 EC scalar mul through Solinas instead of
@@ -2688,6 +2900,11 @@ fn jac_to_affine_batch(c: &Curve, jacs: &[JacPoint]) -> Vec<P256Point> {
 }
 
 pub fn ec_scalar_mul(c: &Curve, k: &BigUInt, pt: &P256Point) -> P256Point {
+    // WC-EXT 26: P-384 fast path via Solinas; falls through to generic
+    // Mont for P-521 + other curves.
+    if c.coord_bytes == 48 && c.b.to_be_bytes(48) == curve_p384().b.to_be_bytes(48) {
+        return p384_scalar_mul_solinas(k, pt);
+    }
     // WC-EXT 15: route ANY curve through the generic Mont scalar mul.
     // Per WC-EXT 14 profile: ECDSA-P-384 verify dominates remaining
     // handshake at ~740ms/cert because P-384 was on the T3-slow

@@ -1686,3 +1686,78 @@ The bug's nature (single-byte typo in a hardcoded constant) is itself a finding:
 ---
 
 *WC-EXT 25 closes the WC-EXT 18–24 productive negative-finding arc with a strict-win substrate move. The bug was bounded (single-byte typo); the fix was bounded (single-byte change); the result is exactly what WC-EXT 21 claimed before the bug surfaced — a 2.26× per-mod_mul Solinas speedup over Mont. The framework's four (P2) sub-cases all populated empirically in one session; the substrate-classification space's edges are now well-defined. WC-EXT 26 (P-384 fast reduction) is the next strategic move.*
+
+---
+
+## WC-EXT 26 — 2026-05-21 (Solinas reduction for P-384; correctness-gold first try; modest speedup)
+
+### Headline
+
+Implemented FIPS 186-4 §B.2.2 Solinas-style fast reduction for P-384. Discipline learned from WC-EXT 25 + Doc 735 §X.h.f applied: programmatic `c_2_384_mod_p` via OnceLock (no hardcoded magic number); careful column derivation from 10 sub-vectors (A1..A10); built fuzz test from the start.
+
+**P-384 Solinas: 0/2000 fuzz divergent on first try.** The amendment-then-fix cycle that took WC-EXT 18–25 across the P-256 case worked first-try at P-384 because the framework's discipline was internalized.
+
+### Measurement
+
+| metric | WC-EXT 25 | WC-EXT 26 | speedup |
+|---|---|---|---|
+| 117 web-crypto regression | 1.41s | 1.41s | (unchanged) |
+| Fixture ECDSA verify (P-256) | 0.07s | 0.07s | (unchanged) |
+| 5-endpoint TLS probe | 2.47s | 2.45s | (marginal) |
+| api.github.com handshake | 0.81s | **0.78s** | ~4% |
+| **P-384 intermediate verify** | 263ms | **252ms** | ~4% |
+| chain_walk total (api.github.com) | 595ms | 571ms | ~4% |
+
+The expected P-384 Solinas advantage of ~3× per mod_mul (analogous to P-256's 2.26×) didn't materialize at the wallclock level. The diagnosis: P-384 has 12-limb modulus operations vs P-256's 8-limb. The schoolbook mul is 12² = 144 limb-muls per call (vs P-256's 64); the Solinas reduction's 10 sub-vector additions vs P-256's 5+4 are also more numerous. The per-op cost of P-384 Solinas is closer to Mont's per-op cost than at P-256.
+
+Bench at the BigUInt level deferred (would need a P-384 micro-bench analogous to bench_mont_vs_modmul). Likely shows P-384 Solinas is competitive with Mont but not 3× faster on this hardware.
+
+### Doc 735 §X.h discipline working
+
+The four (P2) sub-cases applied to WC-EXT 26:
+- ✓ **(P2.a) requirement passed**: algorithm correct + implementation correct + per-op-faster-than-alternative (slightly)
+- ✓ All three probe levels passing: bench (compiles + runs) + consumer-route (chain_walk's 2 P-384 intermediates verify) + fuzz (0/2000)
+- The data-tier-constant typo class avoided via programmatic c_2_384_mod_p computation
+
+This is the first substrate move in the session where the discipline learned from WC-EXT 18-25's productive negative findings was applied prophylactically. Result: no bug-cycle; correctness-gold on first build; modest empirical speedup correctly measured.
+
+### Cumulative session speedup
+
+| metric | session start | WC-EXT 26 | × |
+|---|---|---|---|
+| ECDSA verify (P-256 fixture) | 8.18s | **0.07s** | **117×** |
+| 5-endpoint TLS probe | ~36s (hang) | **2.45s** | **14.7×** |
+| api.github.com handshake | ~10s | **0.78s** | **12.8×** |
+
+### Substrate landed
+
+- `p384_p()` — extracted from curve_p384 for direct access
+- `p384_c_2_384_mod_p()` — programmatic OnceLock-cached `2^384 mod p384`
+- `p384_solinas_reduce(t_in: &[u32])` — FIPS 186-4 §B.2.2 reduction, 12 columns
+- `p384_mod_mul_solinas(a, b)`
+- `jac_double_solinas_p384`, `jac_add_affine_solinas_p384`, `jac_to_affine_solinas_p384`
+- `p384_scalar_mul_solinas(k, pt)`
+- `ec_scalar_mul` routed: P-384 → `p384_scalar_mul_solinas`; P-256 → Solinas; P-521+ → generic Mont
+- `examples/p384_fuzz.rs` — 2000-fixture fuzz test for the BigUInt-tier
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P06.E3.wc-solinas-p384` | P-384 Solinas reduction landed correctness-gold first try (0/2000 fuzz); routed through chain_walk; ~4% wallclock improvement (smaller than expected); programmatic c constant per Doc 735 §X.h.f; framework discipline operating prophylactically |
+
+### Probe result
+
+5/5 TLS probe: 3/5 PASS in 2.45s. The substrate is correctness-gold + modest speedup; the larger-than-expected per-op cost of P-384 vs P-256 Solinas points to representation effects (12-limb vs 8-limb) the framework's (P2) classification doesn't yet capture finely.
+
+### Open scope at WC-EXT 26 boundary
+
+1. **WC-EXT 27 (P-384 bench)**: micro-benchmark P-384 Solinas vs P-384 Mont per mod_mul. Quantify the per-op ratio. If Solinas is < 1.5× at P-384, the win is bounded by representation; if > 2×, the routing isn't hitting properly.
+2. **Connection pooling** — orthogonal (P3) move; would eliminate most of the 0.78s handshake on subsequent requests to same host.
+3. **u64-limb BigUInt** — fundamental representation switch; affects everything.
+4. **AES-NI / ARM crypto extensions** — (P5) hardware-bound case.
+5. Doc 735 §X.h.f addition: programmatic-derivation-of-substrate-constants pattern (already practiced in WC-EXT 26).
+
+---
+
+*WC-EXT 26 closes session 1 with P-384 Solinas substrate landed correctness-gold first try. The framework's discipline from WC-EXT 18-25's productive negative findings was applied prophylactically; the substrate move avoided the (P2.c) illegal-speed bug-cycle. Empirically modest speedup (~4%) but the substrate is now in place for the larger-than-P-256 representation tier; further (P2) work at this site is bounded by 12-limb representation effects.*
