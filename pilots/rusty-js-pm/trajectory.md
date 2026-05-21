@@ -553,3 +553,109 @@ the measurement cheap.
 dep zero-transitive into N-dep arbitrary-depth (under exact-pin
 discipline). The substrate is now sufficient for any package whose
 transitive closure happens to be exact-pinned end-to-end.*
+
+---
+
+## PM-EXT 11 — 2026-05-21 (runtime smoke; workstream closure gate met)
+
+### Headline
+
+**The PM workstream's closure gate per seed §VI is met.** A tmpdir with
+`{"dependencies": {"lodash": "4.17.21"}}` in package.json yields, after
+one `pm_install` call, a working `node_modules/lodash/`. The cruftless
+binary, spawned on a `.mjs` file in that tmpdir, requires lodash and
+returns `identity(42) === 42` through the runtime. Wall time: 6.22 s
+(install + binary spawn + module load + eval).
+
+### Substrate landed
+
+- `host-v2/Cargo.toml`: rusty-js-pm added as `[dev-dependencies]` (the
+  PM is not in the runtime binary; only the integration test needs it)
+- `host-v2/tests/pm_runtime_smoke.rs` (~70 LOC): orchestrates
+  pm_install → write app.mjs → spawn `cruftless` binary → assert
+  stdout contains `identity42=42` + `keys=lots`
+
+### Probe result
+
+**Closure gate (1/1 PASS in 6.22 s):**
+
+```
+pm_install_then_require_lodash:
+  pm_install(tmpdir, DEFAULT_REGISTRY) → 1 installed
+  app.mjs: const lodash = require('lodash');
+           console.log('identity42=' + lodash.identity(42));
+           console.log('keys=' + (Object.keys(lodash).length > 100 ? 'lots' : 'few'));
+  cruftless app.mjs → exit 0
+  stdout contains: "identity42=42" + "keys=lots"
+```
+
+- Cumulative PM lib tests: still 27/27 PASS (no PM-side changes)
+- host-v2 test suite: this is the first PM-integrated test; previous
+  binary tests unaffected
+- 117 web-crypto regression: unchanged PASS
+- 5-endpoint TLS probe: unchanged 3/5
+
+### What this completes
+
+Doc 732 §VI's first-cut success definition reads (paraphrased): "a
+user with a package.json + working network path can install
+dependencies and use them from the runtime." That sentence is now
+mechanically realized by a passing test.
+
+The substrate-to-substrate composition that PM-EXT 11 demonstrates:
+
+```
+PM-R1 (resolver)            ─┐
+PM-R2 (fetcher/extractor)   ─┼─ all composing on TLS-1.3 + web-crypto
+PM-R3 (linker)              ─┘
+  ↓ produces node_modules tree
+Module loader (rusty-js-runtime::module)
+  ↓ resolve_module_full bare-specifier walk-up
+CommonJS require path (cjs_require)
+  ↓ parses + compiles + executes lodash sources
+JIT (rusty-js-jit)
+  ↓ runs identity(42)
+Result: 42, printed via cruftless's console
+```
+
+Every layer in that cascade is engagement-internal substrate produced
+under Pin-Art discipline. The total LOC is dominated by the runtime
+(rusty-js-runtime / rusty-js-bytecode / rusty-js-parser, accumulated
+over Cruftless's prior workstreams); PM itself is ~700 LOC.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P05.L1.pm-runtime-smoke` | PM-EXT 11 runtime smoke: pm_install + require('lodash').identity(42)=42 through cruftless binary; workstream closure gate met |
+
+### Open scope at PM-EXT 11 boundary
+
+The workstream's first-cut closure is met. Remaining items are
+**coverage expansion** or **CLI ergonomics**, not workstream-gating:
+
+1. **PM-EXT 12 (CLI surface)**: wire `pm_install` as a host-v2
+   subcommand so `cruftless install` works without a separate Rust
+   integration test. ~30 LOC of host glue.
+2. **PM-EXT 13 (npm-coverage reconnaissance)**: classify a sample of
+   the npm top-100 as fully-exact-reachable / first-hop-range /
+   deep-range.
+3. **Conflict detection** in the closure walker.
+4. **Lockfile-integrity-mismatch refetch** path: currently the skip
+   check is "lockfile entry exists + node_modules dir exists"; a real
+   integrity check (recompute SRI on the installed dir? compare with
+   lockfile's stored SRI?) would catch tampering or partial installs.
+
+### Doc 734 meta-pipeline status
+
+The PM workstream is now a **closed** resolver-instance in the Doc 729
+stack. Doc 734 §II cycle 4 closes with PM-EXT 11: observation (PM
+workstream founded) → articulation (Doc 732) → substrate triad (PM-EXT
+5–7) → composition (PM-EXT 8–9) → coverage expansion (PM-EXT 10) →
+**runtime closure (PM-EXT 11)**.
+
+---
+
+*PM-EXT 11 marks the workstream's functional closure. The PM is now
+the "resolver-instance #0 below module load" promised by Doc 732,
+operational and composing with the layers above and below it.*
