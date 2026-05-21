@@ -1,7 +1,9 @@
 # rusty-js-jit — Resume Vector / Seed
 
+**Status as of 2026-05-21**: **DEOPT CHAPTER CLOSED + IC INFRASTRUCTURE COMPLETE (without shapes)**. JIT-EXT 10-24 landed in one session — arithmetic deopt machinery, ICShapeMismatch demonstrator, full GetPropOnObject lowering with real runtime helper, mixed-regime dispatcher, IC chain success+failure paths proven end-to-end. ~1.2k LOC across pilots/rusty-js-jit + pilots/rusty-js-runtime + pilots/rusty-js-bytecode + host-v2. PM-EXT 11+12 regression GREEN every round. See §VIII below for the closure summary.
+
 **Workstream**: a baseline JIT compiler at the bytecode-to-machine-code substrate boundary, structured per Doc 731 §VII (R1–R8).
-**Author**: 2026-05-20 session (EXT 21 close, after the §XVI cluster recovery stretch).
+**Author**: 2026-05-20 session (EXT 0-9), extended 2026-05-21 (EXT 10-24).
 **Parent**: cruftless engagement (`/home/jaredef/rusty-bun`).
 **Composes with**:
 - [Doc 730](../../../corpus-master/corpus/730-the-vertical-recurrence-of-the-lowering-compiler-closure-as-primitive-across-substrate-tiers.md) §III–§VII (P1–P4 lowering compiler) + §XII–§XVI (deviation-resolution pipeline + bidirectional engine-diff oracle).
@@ -103,3 +105,88 @@ Cruftless engine state at this workstream's start (EXT 21 close, 2026-05-20):
 - 12 substrate moves landed in EXT 21 closing major spec-correctness gaps.
 
 Pin-Art tag prefix for this workstream: `Ω.5.P03.??.jit-*` for compiler-side work, `Ω.5.P04.??.jit-*` for runtime-side work. Per host/tools/tag-grammar.md, the handle is the substrate node the move touches.
+
+## VIII. Closure summary (deopt chapter + IC infrastructure, 2026-05-21)
+
+The 2026-05-20 session landed EXT 0-9 (translator, β-path, runtime integration, deopt-disable workaround). The 2026-05-21 session landed EXT 10-24, closing the arithmetic deopt chapter and the IC infrastructure chapter (modulo hidden classes, which remain a separate future workstream).
+
+### Substrate delivered (~1.2k LOC)
+
+**Arithmetic deopt machinery (EXT 10-17):**
+- `pilots/rusty-js-jit/derived/src/deopt.rs` (~400 LOC):
+  - DeoptReason enum (5 variants); JitLocation; DeoptLiveLocal; DeoptSite; DeoptCallFrame; DeoptRecoveredState; JitCallOutcome
+  - `reconstruct_state` + `jit_deopt_thunk` (pure-Rust lookup + extract)
+  - `extern "C" fn deopt_trip` callable from Cranelift-emitted code
+  - TLS slots: CURRENT_DEOPT_SITES, LAST_DEOPT_FRAME, JIT_FORCE_SHAPE_TRIP
+  - `set_*` / `clear_*` / `take_last_deopt` helpers
+- `pilots/rusty-js-jit/derived/src/translator.rs` (~250 LOC):
+  - `emit_guarded_add` (XOR-idiom signed-overflow detection)
+  - `emit_guarded_sub` (XOR-idiom for subtract)
+  - `emit_guarded_mul` (smulhi-based overflow check)
+  - Inc/Dec/IncI64/DecI64 reuse the helpers with synthetic rhs=1
+  - Entry shape-check emission under CRUFTLESS_JIT_FORCE_SHAPE_TRIP
+  - `CompiledFn.deopt_sites: Vec<DeoptSite>` field
+- `pilots/rusty-js-runtime/derived/src/interp.rs`:
+  - Dispatcher sets/clears CURRENT_DEOPT_SITES TLS; consumes deopt via take_last_deopt; falls through to interp on trip
+  - `jit_disabled` permanent-disable workaround relaxed to retry-on-fresh-args
+
+**IC chapter (EXT 18-24):**
+- Doc 731-aligned design choice: per-Value-kind specialization (Option B) over tagged-i64 union
+- `Op::GetPropOnObject = 0xFB` added to bytecode op enum
+- Interpreter shares dispatch with `Op::GetProp` via match-arm widening
+- Translator: ParsedOp::GetPropOnObject + lowering to extern call
+- `extern "C" fn jit_getprop_on_object` in JIT crate with function-pointer indirection
+- `extern "C" fn runtime_getprop_on_object` in runtime crate: reads TLS Runtime + Proto, performs real `object_get`, encodes Number / records ICShapeMismatch deopt for non-Number
+- `Runtime::install_jit_getprop_helper()` registers the runtime helper at install_intrinsics time
+- `Runtime::resume_from_deopt_state` constructs Frame from recovered state + runs interp from arbitrary pc
+- Dispatcher boundary widened (`jit_compatible_arg` accepts Number OR Object)
+- Two end-to-end tests prove success-path (Number result returned) and failure-path (non-Number → deopt → interp fall-through → correct result)
+
+### Round-by-round summary
+
+| EXT | tag | substrate |
+|---|---|---|
+| 10 | jit-deopt-audit | arithmetic deopt audit + design doc |
+| 11 | jit-deopt-infra | DeoptReason + DeoptSite + JitLocation + thunk skeleton |
+| 12 | jit-deopt-extern-wiring | deopt_trip callable from Cranelift; TLS plumbing |
+| 13 | jit-deopt-guarded-add | first wired demonstrator (guarded Add) |
+| 14 | jit-deopt-dispatcher | dispatcher detects deopt + falls through |
+| 15 | jit-deopt-sub-mul | overflow guards extended to Sub + Mul |
+| 16 | jit-deopt-inc-dec-retry | Inc/Dec guards + jit_disabled retry refactor |
+| 17 | jit-deopt-ic-shape-demonstrator | ICShapeMismatch reason variant flows end-to-end |
+| 18 | jit-ic-getprop-design | IC + GetProp audit + design doc |
+| 19 | jit-getprop-on-object-bytecode | Op::GetPropOnObject = 0xFB added |
+| 20 | jit-getprop-lowering-stub | JIT lowering via stub helper |
+| 21 | jit-resume-from-deopt-state | resume from recovered state at arbitrary pc |
+| 22 | jit-real-getprop-helper | real helper via TLS Runtime + FunctionProto |
+| 23 | jit-mixed-regime-getprop-e2e | dispatcher accepts Object args; full IC chain E2E |
+| 24 | jit-ic-failure-path-e2e | IC chain failure path (non-Number → deopt → interp) E2E |
+
+### Pred-731 disposition
+
+| Conjecture | Status |
+|---|---|
+| R1 (single tier) | corroborated across all rounds |
+| R3 (verifier-before-emission) | corroborated; GetPropOnObject rejected pre-lowering at EXT 19 |
+| R5 (deopt sites finite-enumerable per emitted module) | corroborated end-to-end; arith + IC variants both flow through DeoptSiteTable |
+| R6 (one tier; no lower-tier JIT) | corroborated; slow paths funnel to interpreter via deopt |
+| R7 (hand-rolled stack maps, no Cranelift GC stackmap dependency) | corroborated; reconstruct_state + resume_from_deopt_state consume the layout |
+| R8 (no internal optimization passes) | corroborated; all emissions are straight-line lowerings |
+
+### Documented gaps (not closure regressions)
+
+- **Hidden classes**: cruftless's Object representation lacks shared shape descriptors. The IC's fast-path cache (shape → slot_offset) cannot land without hidden classes. A separate workstream (`pilots/rusty-js-shapes/`?) is required. Multi-week.
+- **Upstream emitter extension**: the bytecode compiler's typed-promotion pass doesn't emit GetPropOnObject yet. Until it does, the JIT's GetProp path is unreachable from real JS code (only hand-crafted bytecode exercises it).
+- **Dispatcher branching for non-zero pc deopts**: `resume_from_deopt_state` landed at EXT 21 but the dispatcher always falls through to interp re-execution from pc=0. With ICs at non-zero pcs (after hidden classes), routing via resume_from_deopt_state becomes meaningful.
+- **Multi-arg JIT'd GetProp**: dispatcher gate is 1-or-2 args. Wider arities require translator extension.
+
+### Open scope past closure
+
+The JIT pilot's first-cut is functionally complete for the substrate cruftless has today. Subsequent work is either coverage expansion or cross-pilot:
+
+1. Hidden classes substrate (new pilot)
+2. Upstream emitter typed-promotion extension (bytecode pilot concern)
+3. Dispatcher branching for non-zero pc deopts (small)
+4. Multi-arg JIT'd functions
+5. Op::Call in translator (inter-procedural JIT)
+6. Broader Value coverage (doubles, strings) — depends on Option B per-kind specialization scaling

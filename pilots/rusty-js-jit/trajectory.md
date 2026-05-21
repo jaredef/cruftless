@@ -4,6 +4,44 @@ Chronological resume anchors for the JIT workstream. Reads seed.md first; this f
 
 Format: one section per "EXT" (extension round); each round closes with a status block, a cumulative numbers table, and an open-scope list. Same shape as `pilots/rusty-js-ir/trajectory.md` and the top-level `trajectory.md`.
 
+## Closure summary (deopt chapter + IC infrastructure, 2026-05-21)
+
+**Closed at JIT-EXT 24** with tag `Ω.5.P04.E2.jit-ic-failure-path-e2e` (commit `75c67965`). Full discussion in seed.md §VIII.
+
+| Round | Tag | Substrate | Date |
+|---|---|---|---|
+| 0 | (workstream founding) | seed + trajectory | 2026-05-20 |
+| 1 | (classification artifact) | P4 site enumeration; Class A ~30, B ~17, C ~15 | 2026-05-20 |
+| 2 | jit-cranelift-scaffold | Cranelift 0.118 + smoke test | 2026-05-20 |
+| 3 | jit-translator-arith | arith-i64 translator first cut | 2026-05-20 |
+| 4 | jit-translator-control-flow | control flow; 425× speedup on sum(1M); 0.42× of Bun | 2026-05-20 |
+| 5 | bytecode-typed-i64-alphabet | β-path typed-i64 alphabet at bytecode tier | 2026-05-20 |
+| 6 | bench-typed-i64-equivalence | β vs cheat path within 8% | 2026-05-20 |
+| 7 | (auto-promotion pass) | typed-i64 promotion at function level | 2026-05-20 |
+| 8 | (runtime integration) | end-to-end JIT dispatch in call_function | 2026-05-20 |
+| 9 | jit-deopt-disable | per-Closure jit_disabled one-shot flag | 2026-05-20 |
+| **10** | **jit-deopt-audit** | **arithmetic deopt audit + design doc** | **2026-05-21** |
+| 11 | jit-deopt-infra | DeoptReason + DeoptSite + JitLocation + thunk skeleton | 2026-05-21 |
+| 12 | jit-deopt-extern-wiring | deopt_trip callable from Cranelift; TLS plumbing | 2026-05-21 |
+| 13 | jit-deopt-guarded-add | first wired demonstrator (guarded Add) | 2026-05-21 |
+| 14 | jit-deopt-dispatcher | dispatcher detects deopt + falls through | 2026-05-21 |
+| 15 | jit-deopt-sub-mul | overflow guards extended to Sub + Mul | 2026-05-21 |
+| 16 | jit-deopt-inc-dec-retry | Inc/Dec guards + jit_disabled retry refactor | 2026-05-21 |
+| 17 | jit-deopt-ic-shape-demonstrator | ICShapeMismatch reason variant flows E2E | 2026-05-21 |
+| **18** | **jit-ic-getprop-design** | **IC + GetProp audit + design doc** | **2026-05-21** |
+| 19 | jit-getprop-on-object-bytecode | Op::GetPropOnObject = 0xFB added | 2026-05-21 |
+| 20 | jit-getprop-lowering-stub | JIT lowering via stub helper | 2026-05-21 |
+| 21 | jit-resume-from-deopt-state | resume from recovered state at arbitrary pc | 2026-05-21 |
+| 22 | jit-real-getprop-helper | real helper via TLS Runtime + FunctionProto | 2026-05-21 |
+| 23 | jit-mixed-regime-getprop-e2e | dispatcher accepts Object args; full IC chain E2E | 2026-05-21 |
+| 24 | jit-ic-failure-path-e2e | IC chain failure path E2E; deopt → interp returns correct String | 2026-05-21 |
+
+Cumulative source footprint: ~1.2k LOC across pilots/rusty-js-jit + pilots/rusty-js-runtime + pilots/rusty-js-bytecode + host-v2. PM-EXT 11+12 regression GREEN every round.
+
+Subsequent JIT work depends on cross-pilot substrate: hidden classes (new pilot), upstream emitter typed-promotion extension (bytecode pilot), dispatcher branching for non-zero pc deopts.
+
+---
+
 ## JIT-EXT 0 — 2026-05-20 (workstream founding)
 
 ### Headline
