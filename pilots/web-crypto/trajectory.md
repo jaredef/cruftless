@@ -1196,3 +1196,70 @@ Per the saturation finding:
 ---
 
 *WC-EXT 19 closes with the (P2) cycle's saturation point identified at the current Vec<u32> BigUInt representation + two-pass mul+redc shape. The framework's case-(P2) cycle ran through two complete iterations and converged; the next substrate-move target is structurally outside the tier (representation switch OR primitive-specific specialization). Per §XVII apparatus discipline, the next-move ranking puts Solinas P-256 reduction at the top.*
+
+---
+
+## WC-EXT 20 — 2026-05-21 (Solinas reduction for P-256; correctness-gold, performance-wrong, productive diagnosis)
+
+### Headline
+
+Implemented FIPS 186-4 Appendix B.2.1 fast reduction for the P-256 prime — the "Solinas reduction" that production cryptographic libraries use. Substrate is correctness-gold (the algorithm produces the right result; equivalence check passes). Empirically, the implementation is **2.7× slower than binary-divmod mod_mul and 115× slower than Mont mont_mul**.
+
+### Measurement
+
+| metric | per-op cost |
+|---|---|
+| Binary-divmod `mod_mul` | 26 µs |
+| Montgomery `mont_mul` | 606 ns |
+| **Solinas `p256_mod_mul_solinas`** | **70 µs** |
+| Solinas vs binary-divmod | 0.37× (slower) |
+| Solinas vs Montgomery | 0.01× (much slower) |
+
+### Diagnosis
+
+The Solinas algorithm avoids multiplication by replacing a generic reduction with a small linear combination of 9 sub-vectors built from the input's limbs. **The whole point is "no big modular ops."** My implementation composed it from `mod_add` and `mod_sub` calls — each of which does `.add()` or `.sub()` followed by `.modulo()`, and `.modulo()` is binary long division (the slow primitive Solinas is supposed to avoid).
+
+Each `mod_add` ≈ 3 µs (dominated by the internal divmod). Solinas as I wrote it does 10 of those = ~30 µs of slow modular reductions, plus the schoolbook mul that comes before it (~36 µs for 8-limb-by-8-limb to produce the 16-limb product). Total ~70 µs.
+
+A correct Solinas implementation would:
+- NOT call `mod_add` / `mod_sub`
+- Maintain intermediate sums as 9-limb (33-bit-equivalent) u32 vectors with explicit carry handling
+- Perform the final modular reduction once at the end via a cheap loop (while ≥ p subtract; while < 0 add)
+
+This is **~150 LOC of careful u32 carry-propagation** instead of my naive ~50 LOC composition. The substrate move is correct in algorithm but wrong in implementation primitives.
+
+### The productive part: framework-tier finding
+
+WC-EXT 20's correctness-gold-but-performance-wrong outcome demonstrates a structural property worth recording: **primitive-specific optimization is not automatic; the substrate has to be hand-tuned at every level, not composed from slow building blocks.**
+
+Per Doc 730 §XVII apparatus discipline: a (P2) substrate move that composes from primitives at the wrong cost-stratum **inherits the wrong stratum's cost** even when the structural algorithm change is at the right stratum. The framework's case (P2) constant-factor classification has a refinement: **composition from primitives at the wrong stratum is itself a (P2) sub-failure**.
+
+This deserves to be recorded as part of Doc 735 §X intra-tier-cost-stratification: composition is NOT closure of the cost-stratum dimension. A substrate move at one stratum that calls primitives at a worse stratum is bounded by the worse stratum, not the better.
+
+### Doc 730 §XVII (P2) cycle running through completion (third time)
+
+WC-EXT 18 (CIOS u64+carry): substrate correct, empirical wash → revert.
+WC-EXT 19 (CIOS u128): substrate correct, reached parity → kept.
+WC-EXT 20 (Solinas naive): substrate correct, performance regression → kept dormant; rewrite queued.
+
+Three iterations of the same cycle shape; the framework's case-(P2) cycle is running as designed and the empirical findings are calibrating the substrate-move catalog precisely.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P06.E3.wc-solinas-naive` | Solinas reduction for P-256 landed correctness-gold; naive composition from mod_add/mod_sub produces 70 µs/op (2.7× slower than binary-divmod); proper Solinas needs ~150 LOC hand-tuned u32 carry arithmetic; queued as WC-EXT 21 |
+
+### Probe result
+
+5/5 TLS probe: 3/5 PASS unchanged. WC-EXT 20 is substrate landed dormant (not routed into live path); no probe-cell flip.
+
+### Open scope at WC-EXT 20 boundary
+
+1. **WC-EXT 21 (proper Solinas with u32 carry arithmetic)** — rewrite using hand-tuned per-limb additions and subtractions with explicit carry. ~150 LOC. Projected ~3× per P-256 mod_mul; would beat Mont for std-form callers and propagate through any std-form EC code paths.
+2. **u64-limb BigUInt representation** — fundamental change. Still queued.
+3. **Connection pooling** — orthogonal (P3) move. Still queued.
+
+### What this round corroborates
+
+Per Doc 730 §XII diagnostic-legibility: the WC-EXT 20 substrate landed with a clear diagnosis. The cost stratum analysis (Doc 735 §X) precisely names why naive composition fails. The framework's case-(P2) discipline catalogs this as a sub-failure mode worth recording (Doc 735 §X.h queued amendment now includes "composition from wrong-stratum primitives" as a noted pattern).

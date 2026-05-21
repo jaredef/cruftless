@@ -65,4 +65,28 @@ fn main() {
 
     let speedup = modmul_t.as_nanos() as f64 / mont_t.as_nanos() as f64;
     println!("Montgomery speedup: {:.2}x", speedup);
+
+    // WC-EXT 20: bench Solinas reduction for P-256.
+    use rusty_web_crypto::p256_mod_mul_solinas;
+    let _ = p256_mod_mul_solinas(&a, &b);  // warm
+    let t0 = Instant::now();
+    let mut acc = BigUInt::one();
+    for _ in 0..N {
+        acc = p256_mod_mul_solinas(&a, &b);
+    }
+    let solinas_t = t0.elapsed();
+    let _ = acc;
+    println!("solinas       (P-256 std mod_mul, N={}): {:?}, per-op {:?}",
+        N, solinas_t, solinas_t / N as u32);
+    let sol_vs_modmul = modmul_t.as_nanos() as f64 / solinas_t.as_nanos() as f64;
+    let sol_vs_mont = mont_t.as_nanos() as f64 / solinas_t.as_nanos() as f64;
+    println!("Solinas vs binary-divmod mod_mul: {:.2}x", sol_vs_modmul);
+    println!("Solinas vs Montgomery mont_mul:   {:.2}x", sol_vs_mont);
+
+    // Verify Solinas equivalence.
+    let canonical = a.mul(&b).modulo(&p);
+    let via_sol = p256_mod_mul_solinas(&a, &b);
+    assert_eq!(canonical.to_be_bytes(32), via_sol.to_be_bytes(32),
+        "Solinas reduction diverges from canonical mod_mul");
+    println!("(sanity: Solinas equivalence holds)");
 }

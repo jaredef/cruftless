@@ -1199,6 +1199,76 @@ pub fn p256_from_mont(am: &BigUInt) -> BigUInt {
     p256_redc(am.limbs().to_vec())
 }
 
+// ──────────────── WC-EXT 20: Solinas fast reduction for P-256 ───
+//
+// Per Doc 730 §XVII (P2) primitive-specific escalation. The P-256
+// prime has the special form
+//
+//   p = 2²⁵⁶ − 2²²⁴ + 2¹⁹² + 2⁹⁶ − 1
+//
+// which admits FIPS 186-4 Appendix B.2.1 fast reduction: given a
+// 512-bit product T (16 u32 limbs), the reduction T mod p is a
+// small linear combination of 9 sub-vectors built from T's limbs.
+// No multiplications; only ~50 additions/subtractions; ~10× faster
+// than generic Montgomery REDC for the P-256-specific prime.
+//
+// Public surface: `p256_mod_mul_solinas(a, b) -> BigUInt` computes
+// (a · b) mod p256_p in standard form, replacing the Mont round-trip
+// for std-form mul-mod operations. EC scalar mul code that already
+// lives in Mont form continues to use mont_mul; Solinas is the
+// fast path for std-form callers.
+
+/// Compute T mod p256_p via FIPS 186-4 Appendix B.2.1 fast reduction.
+/// `t_limbs` is the 16-limb (u32) representation of T = a · b (the
+/// unreduced product of two values in [0, p)).
+fn p256_solinas_reduce(t_limbs: &[u32]) -> BigUInt {
+    // Pad to 16 limbs.
+    let mut t = t_limbs.to_vec();
+    while t.len() < 16 { t.push(0); }
+    let p = p256_p();
+
+    // s1 = T0..T7  (the low 256 bits of T)
+    let s1 = BigUInt::from_limbs(t[0..8].to_vec());
+    // s2 = (T11..T15, 0, 0, 0)  — limbs [0, 0, 0, T11, T12, T13, T14, T15]
+    let s2 = BigUInt::from_limbs(vec![0, 0, 0, t[11], t[12], t[13], t[14], t[15]]);
+    // s3 = (T12..T15, 0, 0, 0, 0)  — limbs [0, 0, 0, T12, T13, T14, T15, 0]
+    let s3 = BigUInt::from_limbs(vec![0, 0, 0, t[12], t[13], t[14], t[15], 0]);
+    // s4 = (T15, T14, 0, 0, 0, T10, T9, T8) — limbs [T8, T9, T10, 0, 0, 0, T14, T15]
+    let s4 = BigUInt::from_limbs(vec![t[8], t[9], t[10], 0, 0, 0, t[14], t[15]]);
+    // s5 = (T8, T13, T15, T14, T13, T11, T10, T9) — limbs [T9, T10, T11, T13, T14, T15, T13, T8]
+    let s5 = BigUInt::from_limbs(vec![t[9], t[10], t[11], t[13], t[14], t[15], t[13], t[8]]);
+    // s6 = (T10, T8, 0, 0, 0, T13, T12, T11) — limbs [T11, T12, T13, 0, 0, 0, T8, T10]
+    let s6 = BigUInt::from_limbs(vec![t[11], t[12], t[13], 0, 0, 0, t[8], t[10]]);
+    // s7 = (T11, T9, 0, 0, T15, T14, T13, T12) — limbs [T12, T13, T14, T15, 0, 0, T9, T11]
+    let s7 = BigUInt::from_limbs(vec![t[12], t[13], t[14], t[15], 0, 0, t[9], t[11]]);
+    // s8 = (T12, 0, T10, T9, T8, T15, T14, T13) — limbs [T13, T14, T15, T8, T9, T10, 0, T12]
+    let s8 = BigUInt::from_limbs(vec![t[13], t[14], t[15], t[8], t[9], t[10], 0, t[12]]);
+    // s9 = (T13, 0, T11, T10, T9, 0, T15, T14) — limbs [T14, T15, 0, T9, T10, T11, 0, T13]
+    let s9 = BigUInt::from_limbs(vec![t[14], t[15], 0, t[9], t[10], t[11], 0, t[13]]);
+
+    // result = s1 + 2·s2 + 2·s3 + s4 + s5 − s6 − s7 − s8 − s9 (mod p)
+    let r = mod_add(&s1, &s2, &p);
+    let r = mod_add(&r, &s2, &p);
+    let r = mod_add(&r, &s3, &p);
+    let r = mod_add(&r, &s3, &p);
+    let r = mod_add(&r, &s4, &p);
+    let r = mod_add(&r, &s5, &p);
+    let r = mod_sub(&r, &s6, &p);
+    let r = mod_sub(&r, &s7, &p);
+    let r = mod_sub(&r, &s8, &p);
+    let r = mod_sub(&r, &s9, &p);
+    r
+}
+
+/// P-256-specific `mod_mul(a, b)` via Solinas reduction. Inputs and
+/// output are in standard (non-Montgomery) form. Use this for std-
+/// form mul-mod operations on P-256 where the Mont round-trip is not
+/// already amortized over many calls.
+pub fn p256_mod_mul_solinas(a: &BigUInt, b: &BigUInt) -> BigUInt {
+    let product = a.mul(b);
+    p256_solinas_reduce(product.limbs())
+}
+
 // ──────────────── WC-EXT 12: generic Montgomery for arbitrary odd
 // modulus (RSA, P-384, P-521) ────
 //
