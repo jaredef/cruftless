@@ -342,3 +342,101 @@ The CLI gate continues the §XVI compositional success: every existing test pass
 ---
 
 *CAPS-EXT 4 closes the infrastructure wiring. The capability slider is now invocable end-to-end (CLI + env-var + drain). Next move CAPS-EXT 5: the synthetic-adversary probe harness — the §XVI oracle that gates every route-through commit from CAPS-EXT 6 forward.*
+
+---
+
+## CAPS-EXT 5 — 2026-05-21 (synthetic-adversary probe harness; §XVI oracle baseline)
+
+### Headline
+
+The §XVI oracle for Pilot α is operational. Eight probes covering currently-callable effectful surface; ten Rust harness tests; all PASS in 0.02 s. **Mode-0 baseline confirmed: every probe WINS — the attacker succeeds at every catalogued attack class.** This is the engagement's documented pre-state. CAPS-EXT 6+ flips probes one surface at a time.
+
+### Substrate landed
+
+- `pilots/rusty-js-caps/probes/` (8 `.mjs` files + README):
+  - `fs_read.mjs` — read /etc/hostname (Doc 736 §IV class 1: exfil)
+  - `fs_write.mjs` — write /tmp/cruftless-probe-fs-write.marker (§IV class 6: persist)
+  - `fs_list.mjs` — readdirSync('/etc') (info disclosure)
+  - `fs_stat.mjs` — statSync('/etc/hostname') (metadata exfil)
+  - `process_exit.mjs` — process.exit(42) (DoS / host-control)
+  - `env_read.mjs` — process.env.HOME + .PATH (§IV class 4: env secrets)
+  - `clock_read.mjs` — Date.now() before/after busy loop (timing side-channel)
+  - `cwd_read.mjs` — process.cwd() (process introspection)
+  - `README.md` — harness contract, WINS/LOSES sentinel format, expected behavior across modes
+
+- `host-v2/tests/caps_probes.rs` (~135 LOC, 10 tests):
+  - `run_probe(name, mode_flag)` helper
+  - `classify(stdout) -> ProbeOutcome::{Wins, Loses, Indeterminate}` (scans for `PROBE:WINS:` or `PROBE:LOSES:` sentinel lines)
+  - Eight `baseline_*_wins` tests (one per probe; assert WINS under Mode 0)
+  - Two `pre_route_through_sealed_still_wins_*` tests (assert --sealed does not yet block fs_read or process_exit; will be replaced with `*_loses_under_sealed` at CAPS-EXT 6+)
+
+### Probe result
+
+**10/10 PASS in 0.02 s.**
+
+| probe | Mode 0 | Mode 3 (pre-route-through) | Mode 3 (target at CAPS-EXT N) |
+|---|---|---|---|
+| fs_read | WINS | WINS (no enforcement yet) | LOSES |
+| fs_write | WINS | (not yet asserted) | LOSES |
+| fs_list | WINS | (not yet asserted) | LOSES |
+| fs_stat | WINS | (not yet asserted) | LOSES |
+| process_exit | WINS (exit code 42) | WINS (no enforcement yet) | LOSES |
+| env_read | WINS | (not yet asserted) | LOSES |
+| clock_read | WINS | (not yet asserted) | LOSES |
+| cwd_read | WINS | (not yet asserted) | LOSES |
+
+Cumulative PM-EXT 11+12 regression: unchanged green (no Rust source touched on PM path).
+Cumulative caps_audit: unchanged 3/3 PASS.
+Cumulative caps unit tests: unchanged 15/15 PASS.
+
+### Per-probe Mode-0 evidence captured
+
+Running each probe under default cruftless produces sentinel-line evidence of the attack:
+
+- `fs_read` stdout: `PROBE:WINS:fs_read:raspberrypi5` (host hostname read)
+- `fs_write` stdout: `PROBE:WINS:fs_write:/tmp/cruftless-probe-fs-write.marker` (file written + verified)
+- `fs_list` stdout: `PROBE:WINS:fs_list:<N>:<first_entry>` (/etc enumerated)
+- `fs_stat` stdout: `PROBE:WINS:fs_stat:size=<n>:mode=<m>` (metadata extracted)
+- `process_exit` exit code: 42 (host process terminated under attacker control)
+- `env_read` stdout: `PROBE:WINS:env_read:home=/home/jaredef:path_len=<n>`
+- `clock_read` stdout: `PROBE:WINS:clock_read:dt=<n>ms:i=100000` (timing measured)
+- `cwd_read` stdout: `PROBE:WINS:cwd_read:<path>` (CWD disclosed)
+
+Every line is precisely the kind of evidence a supply-chain-attack post-mortem would surface. The harness captures them at Mode-0 baseline, then asserts the flip at Mode-3 once enforcement lands.
+
+### Pred-736 corroboration status
+
+- **Pred-736.2 (synthetic-adversary harness is the right §XVI oracle)**: provisionally corroborated. The eight probes cover the currently-callable effectful surface; the WINS/LOSES sentinel format scales to additional probes; the Rust harness scales to assertions across modes. No representational gap surfaced. The final corroboration arrives at CAPS-EXT 13 when every probe LOSES under Mode 3.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P05.L2.caps-probe-harness` | CAPS-EXT 5: synthetic-adversary probe harness; 8 probes + 10 Rust assertions; Mode-0 baseline (every probe WINS) confirmed; pre-route-through Mode-3 state documented; §XVI oracle operational |
+
+### Open scope at CAPS-EXT 5 boundary
+
+The harness is the *standing regression check* for the rest of Pilot α. Every CAPS-EXT 6+ round must:
+
+1. Route a specific effectful surface through `rt.caps.require_*`.
+2. Add a `<probe>_loses_under_sealed` test that asserts the probe now LOSES with `--sealed`.
+3. Confirm the corresponding `baseline_*_wins` test still PASSES (Mode-0 backward compat).
+4. Confirm PM-EXT 11+12 regression remains GREEN.
+
+The order set at CAPS-EXT 1 holds:
+
+- **CAPS-EXT 6 (Fs read route-through)**: routes readFileSync/readFile/existsSync/statSync/readdirSync/accessSync through `require_fs`. Flips: fs_read, fs_list, fs_stat. Add 3 `*_loses_under_sealed` tests.
+- **CAPS-EXT 7 (Fs write route-through)**: routes writeFileSync/writeFile/mkdirSync/unlinkSync. Flips: fs_write.
+- **CAPS-EXT 8 (process.exit route-through)**: flips process_exit.
+- **CAPS-EXT 9 (Env route-through)**: flips env_read.
+- **CAPS-EXT 10 (Stdio route-through)**: no probe yet (the WINS sentinel writes to stdout; need a more careful probe that distinguishes "attacker writes to stdout" from "harness reads stdout"). Add stdio_exfil.mjs at that round.
+- **CAPS-EXT 11-12 (Clock + Scheduler)**: flips clock_read.
+- **CAPS-EXT 13 (closure)**: every probe LOSES under `--sealed`.
+
+### Doc 730 §XVI status
+
+The probe harness is itself the §XVI engine-diff oracle for the workstream. Where PM workstream had `bun install` as the diff oracle, Pilot α has the probe suite. The Mode-0 / Mode-3 differential becomes the engagement's standing demonstration of the impossibility claim's incremental landing.
+
+---
+
+*CAPS-EXT 5 closes the §XVI oracle setup. CAPS-EXT 6 begins the route-through cascade — Fs read first, as the largest single surface and highest exfil-risk class.*
