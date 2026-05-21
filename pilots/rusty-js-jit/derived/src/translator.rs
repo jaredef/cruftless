@@ -277,8 +277,20 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
                         binop(&mut stack, &mut builder, |b, l, r| b.ins().iadd(l, r))?;
                     }
                 }
-                ParsedOp::Sub => binop(&mut stack, &mut builder, |b, l, r| b.ins().isub(l, r))?,
-                ParsedOp::Mul => binop(&mut stack, &mut builder, |b, l, r| b.ins().imul(l, r))?,
+                ParsedOp::Sub => {
+                    if let Some(tr) = trip_ref {
+                        emit_guarded_sub(&mut stack, &mut builder, tr, *pc, &local_vars, &mut deopt_sites)?;
+                    } else {
+                        binop(&mut stack, &mut builder, |b, l, r| b.ins().isub(l, r))?;
+                    }
+                }
+                ParsedOp::Mul => {
+                    if let Some(tr) = trip_ref {
+                        emit_guarded_mul(&mut stack, &mut builder, tr, *pc, &local_vars, &mut deopt_sites)?;
+                    } else {
+                        binop(&mut stack, &mut builder, |b, l, r| b.ins().imul(l, r))?;
+                    }
+                }
                 ParsedOp::Inc => {
                     let v = stack.pop().ok_or("Inc: stack underflow")?;
                     let one = builder.ins().iconst(I64, 1);
@@ -359,8 +371,20 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
                         binop(&mut stack, &mut builder, |b, l, r| b.ins().iadd(l, r))?;
                     }
                 }
-                ParsedOp::SubI64 => binop(&mut stack, &mut builder, |b, l, r| b.ins().isub(l, r))?,
-                ParsedOp::MulI64 => binop(&mut stack, &mut builder, |b, l, r| b.ins().imul(l, r))?,
+                ParsedOp::SubI64 => {
+                    if let Some(tr) = trip_ref {
+                        emit_guarded_sub(&mut stack, &mut builder, tr, *pc, &local_vars, &mut deopt_sites)?;
+                    } else {
+                        binop(&mut stack, &mut builder, |b, l, r| b.ins().isub(l, r))?;
+                    }
+                }
+                ParsedOp::MulI64 => {
+                    if let Some(tr) = trip_ref {
+                        emit_guarded_mul(&mut stack, &mut builder, tr, *pc, &local_vars, &mut deopt_sites)?;
+                    } else {
+                        binop(&mut stack, &mut builder, |b, l, r| b.ins().imul(l, r))?;
+                    }
+                }
                 ParsedOp::IncI64 => {
                     let v = stack.pop().ok_or("IncI64: stack underflow")?;
                     let one = builder.ins().iconst(I64, 1);
@@ -526,6 +550,129 @@ fn cmpop(stack: &mut Vec<ClValue>, builder: &mut FunctionBuilder, cc: IntCC) -> 
     // Extend bool (i8) to i64 so the operand stack remains uniformly i64.
     let i64_result = builder.ins().uextend(I64, i8_result);
     stack.push(i64_result);
+    Ok(())
+}
+
+/// JIT-EXT 15: guarded i64 subtract with signed-overflow detection.
+///
+/// Sub overflows when sign(lhs) differs from sign(rhs) AND sign(result)
+/// differs from sign(lhs). The XOR-idiom expression of this:
+///   `(lhs XOR rhs) AND (lhs XOR result) < 0`
+fn emit_guarded_sub(
+    stack: &mut Vec<ClValue>,
+    builder: &mut FunctionBuilder,
+    trip_ref: cranelift_codegen::ir::FuncRef,
+    pc: usize,
+    local_vars: &[Variable],
+    deopt_sites: &mut crate::deopt::DeoptSiteTable,
+) -> Result<(), String> {
+    use crate::deopt::{DeoptSite, DeoptReason, DeoptLiveLocal, JitLocation};
+
+    let r = stack.pop().ok_or("guarded_sub: stack underflow (rhs)")?;
+    let l = stack.pop().ok_or("guarded_sub: stack underflow (lhs)")?;
+
+    let result = builder.ins().isub(l, r);
+    let xor_lr = builder.ins().bxor(l, r);
+    let xor_lres = builder.ins().bxor(l, result);
+    let combined = builder.ins().band(xor_lr, xor_lres);
+    let zero = builder.ins().iconst(I64, 0);
+    let overflowed = builder.ins().icmp(IntCC::SignedLessThan, combined, zero);
+
+    let deopt_block = builder.create_block();
+    let cont_block = builder.create_block();
+    let cont_result = builder.append_block_param(cont_block, I64);
+
+    builder.ins().brif(overflowed, deopt_block, &[], cont_block, &[result]);
+
+    builder.switch_to_block(deopt_block);
+    builder.seal_block(deopt_block);
+    let site_id = deopt_sites.len() as i64;
+    let site_id_v = builder.ins().iconst(I64, site_id);
+    let local0 = if !local_vars.is_empty() { builder.use_var(local_vars[0]) } else { builder.ins().iconst(I64, 0) };
+    let local1 = if local_vars.len() > 1 { builder.use_var(local_vars[1]) } else { builder.ins().iconst(I64, 0) };
+    let call_inst = builder.ins().call(trip_ref, &[site_id_v, l, r, local0, local1]);
+    let sentinel = builder.inst_results(call_inst)[0];
+    builder.ins().return_(&[sentinel]);
+
+    deopt_sites.push(DeoptSite {
+        reason: DeoptReason::IntegerOverflow { op_pc: pc as u32 },
+        resume_pc: pc as u32,
+        live_locals: vec![
+            DeoptLiveLocal { interp_slot: 0, jit_location: JitLocation::Register(2) },
+            DeoptLiveLocal { interp_slot: 1, jit_location: JitLocation::Register(3) },
+        ],
+        stack_depth: 2,
+        stack_slots: vec![
+            DeoptLiveLocal { interp_slot: 0, jit_location: JitLocation::Register(0) },
+            DeoptLiveLocal { interp_slot: 1, jit_location: JitLocation::Register(1) },
+        ],
+    });
+
+    builder.switch_to_block(cont_block);
+    builder.seal_block(cont_block);
+    stack.push(cont_result);
+    Ok(())
+}
+
+/// JIT-EXT 15: guarded i64 multiply with signed-overflow detection.
+///
+/// Mul overflows when the result requires more than 64 signed bits.
+/// Detection: compute the high 64 bits via Cranelift's `smulhi`
+/// (signed-multiply-high) and compare against the sign extension of
+/// the low 64 bits. If `smulhi(a, b) != ASHR(a*b, 63)`, the multiply
+/// overflowed.
+fn emit_guarded_mul(
+    stack: &mut Vec<ClValue>,
+    builder: &mut FunctionBuilder,
+    trip_ref: cranelift_codegen::ir::FuncRef,
+    pc: usize,
+    local_vars: &[Variable],
+    deopt_sites: &mut crate::deopt::DeoptSiteTable,
+) -> Result<(), String> {
+    use crate::deopt::{DeoptSite, DeoptReason, DeoptLiveLocal, JitLocation};
+
+    let r = stack.pop().ok_or("guarded_mul: stack underflow (rhs)")?;
+    let l = stack.pop().ok_or("guarded_mul: stack underflow (lhs)")?;
+
+    let result = builder.ins().imul(l, r);
+    let hi = builder.ins().smulhi(l, r);
+    // sign-extension of result's high bit: ASHR by 63 gives 0 or -1.
+    let sign_ext = builder.ins().sshr_imm(result, 63);
+    let overflowed = builder.ins().icmp(IntCC::NotEqual, hi, sign_ext);
+
+    let deopt_block = builder.create_block();
+    let cont_block = builder.create_block();
+    let cont_result = builder.append_block_param(cont_block, I64);
+
+    builder.ins().brif(overflowed, deopt_block, &[], cont_block, &[result]);
+
+    builder.switch_to_block(deopt_block);
+    builder.seal_block(deopt_block);
+    let site_id = deopt_sites.len() as i64;
+    let site_id_v = builder.ins().iconst(I64, site_id);
+    let local0 = if !local_vars.is_empty() { builder.use_var(local_vars[0]) } else { builder.ins().iconst(I64, 0) };
+    let local1 = if local_vars.len() > 1 { builder.use_var(local_vars[1]) } else { builder.ins().iconst(I64, 0) };
+    let call_inst = builder.ins().call(trip_ref, &[site_id_v, l, r, local0, local1]);
+    let sentinel = builder.inst_results(call_inst)[0];
+    builder.ins().return_(&[sentinel]);
+
+    deopt_sites.push(DeoptSite {
+        reason: DeoptReason::IntegerOverflow { op_pc: pc as u32 },
+        resume_pc: pc as u32,
+        live_locals: vec![
+            DeoptLiveLocal { interp_slot: 0, jit_location: JitLocation::Register(2) },
+            DeoptLiveLocal { interp_slot: 1, jit_location: JitLocation::Register(3) },
+        ],
+        stack_depth: 2,
+        stack_slots: vec![
+            DeoptLiveLocal { interp_slot: 0, jit_location: JitLocation::Register(0) },
+            DeoptLiveLocal { interp_slot: 1, jit_location: JitLocation::Register(1) },
+        ],
+    });
+
+    builder.switch_to_block(cont_block);
+    builder.seal_block(cont_block);
+    stack.push(cont_result);
     Ok(())
 }
 
@@ -795,6 +942,71 @@ mod tests {
         assert_eq!(jit.func.call1(5), 10);
         assert_eq!(jit.func.call1(100), 4950);
         assert_eq!(jit.func.call1(1_000_000), 499_999_500_000);
+    }
+
+    /// JIT-EXT 15: guarded-sub trips on i64::MIN - 1 → would-be i64::MAX+1.
+    /// i64::MIN - 1 wraps to i64::MAX; the guard detects the sign flip.
+    #[test]
+    fn guarded_sub_trips_on_overflow() {
+        use crate::deopt::{set_current_deopt_sites, take_last_deopt, clear_current_deopt_sites, DeoptReason};
+
+        std::env::set_var("CRUFTLESS_JIT_GUARD_OVERFLOW", "1");
+        let mut bc = Vec::new();
+        encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 0);
+        encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 1);
+        encode_op(&mut bc, Op::Sub);
+        encode_op(&mut bc, Op::Return);
+        let proto = empty_proto(bc, 2);
+        let jit = compile_function(&proto).expect("guarded compile failed");
+        std::env::remove_var("CRUFTLESS_JIT_GUARD_OVERFLOW");
+
+        assert_eq!(jit.deopt_sites.len(), 1);
+        set_current_deopt_sites(&jit.deopt_sites);
+
+        // 10 - 3 = 7, no trip.
+        assert_eq!(jit.func.call2(10, 3), 7);
+        assert!(take_last_deopt().is_none());
+
+        // i64::MIN - 1 overflows.
+        let r = jit.func.call2(i64::MIN, 1);
+        assert_eq!(r, 0, "guarded sub trips on i64::MIN - 1");
+        let state = take_last_deopt().expect("sub overflow should trip");
+        assert!(matches!(state.reason, DeoptReason::IntegerOverflow { .. }));
+        assert_eq!(state.local_values, vec![(0, i64::MIN), (1, 1)]);
+
+        clear_current_deopt_sites();
+    }
+
+    /// JIT-EXT 15: guarded-mul trips when the product exceeds i64 range.
+    #[test]
+    fn guarded_mul_trips_on_overflow() {
+        use crate::deopt::{set_current_deopt_sites, take_last_deopt, clear_current_deopt_sites, DeoptReason};
+
+        std::env::set_var("CRUFTLESS_JIT_GUARD_OVERFLOW", "1");
+        let mut bc = Vec::new();
+        encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 0);
+        encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 1);
+        encode_op(&mut bc, Op::Mul);
+        encode_op(&mut bc, Op::Return);
+        let proto = empty_proto(bc, 2);
+        let jit = compile_function(&proto).expect("guarded compile failed");
+        std::env::remove_var("CRUFTLESS_JIT_GUARD_OVERFLOW");
+
+        assert_eq!(jit.deopt_sites.len(), 1);
+        set_current_deopt_sites(&jit.deopt_sites);
+
+        // 1000 * 1000 = 1_000_000, no trip.
+        assert_eq!(jit.func.call2(1000, 1000), 1_000_000);
+        assert!(take_last_deopt().is_none());
+
+        // i64::MAX * 2 overflows.
+        let r = jit.func.call2(i64::MAX, 2);
+        assert_eq!(r, 0, "guarded mul trips on i64::MAX * 2");
+        let state = take_last_deopt().expect("mul overflow should trip");
+        assert!(matches!(state.reason, DeoptReason::IntegerOverflow { .. }));
+        assert_eq!(state.local_values, vec![(0, i64::MAX), (1, 2)]);
+
+        clear_current_deopt_sites();
     }
 
     /// JIT-EXT 13: guarded-add demonstrator end-to-end.

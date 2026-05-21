@@ -647,3 +647,78 @@ The dispatcher fall-through to interpreter re-execution is Case-3 (compositional
 ---
 
 *JIT-EXT 14 closes the runtime-side wiring. The deopt round-trip is operational. The dispatcher does not yet consume the recovered state for mid-function resume; that's queued for the IC round. The infrastructure is now ready to pay back when ICs need it.*
+
+---
+
+## JIT-EXT 15 — 2026-05-21 (overflow guards extended to Sub + Mul)
+
+### Headline
+
+The XOR-idiom overflow guard extends to `Sub` (both plain `Sub` and typed `SubI64`); `Mul` (and `MulI64`) gains an `smulhi`-based guard that compares the signed high 64 bits of the product against the sign extension of the low 64 bits. **Two new end-to-end tests confirm sub on `i64::MIN - 1` and mul on `i64::MAX × 2` both trip correctly through the dispatcher.** 22/22 JIT lib tests PASS; PM + caps regression unchanged.
+
+### Substrate landed
+
+- `pilots/rusty-js-jit/derived/src/translator.rs` (+~120 LOC):
+  - `emit_guarded_sub(stack, builder, trip_ref, pc, local_vars, sites)`:
+    - XOR idiom `(lhs XOR rhs) AND (lhs XOR result) < 0` detects signed subtraction overflow
+    - Identical block-and-thunk-call shape as `emit_guarded_add`
+  - `emit_guarded_mul(stack, builder, trip_ref, pc, local_vars, sites)`:
+    - Cranelift `smulhi` gives the signed high 64 bits of the i64×i64 product
+    - Overflow detected when `smulhi != ASHR(result, 63)` (the sign-extension of the low 64)
+    - Same block-and-thunk-call shape
+  - Translator dispatches `Sub` / `SubI64` / `Mul` / `MulI64` to these helpers under the guard env flag
+
+- Two new tests in `translator::tests`:
+  - `guarded_sub_trips_on_overflow`: `i64::MIN - 1` overflows; trip records `IntegerOverflow` with `local_values = [(0, i64::MIN), (1, 1)]`
+  - `guarded_mul_trips_on_overflow`: `i64::MAX × 2` overflows; trip records `IntegerOverflow` with `local_values = [(0, i64::MAX), (1, 2)]`
+  - Both tests also confirm non-overflow values return correctly (10 - 3 = 7, 1000 × 1000 = 1_000_000)
+
+### Probe result
+
+**22/22 JIT lib tests PASS in 0.02 s.** New tests added in this round:
+
+- `translator::tests::guarded_sub_trips_on_overflow` — sub on i64::MIN - 1
+- `translator::tests::guarded_mul_trips_on_overflow` — mul on i64::MAX × 2
+
+Regression sweep:
+- PM-EXT 11+12: 2/2 PASS in 2.68 s
+- caps_probes: 18/18 PASS
+
+The default-off invariant continues to hold: without the env flag, Sub/Mul/SubI64/MulI64 emit unconditional `isub` / `imul` as before.
+
+### Cranelift instruction choices
+
+- **Sub**: same XOR idiom as Add (different operand pairing). Lowers to a few RISC instructions.
+- **Mul**: `smulhi` (signed high-multiply) is the right primitive in Cranelift IR. The check `smulhi(a, b) != ASHR(a*b, 63)` is the canonical i64-mul-overflow test. On ARM and x86 this lowers to a single high-multiply instruction (`SMULH` on AArch64; `IMUL r/m64` returns high in RDX on x86-64) plus a compare. Cheap.
+
+The choice keeps the guarded paths portable across Cranelift's ISA targets without platform-specific paths.
+
+### Pred-731 corroboration
+
+- **R5 (deopt sites finite-enumerable per emitted module)**: corroborated for 3 arithmetic ops (Add/Sub/Mul). The site count per function is bounded by the count of guarded arithmetic ops in the function body.
+- **R6 (single tier)**: corroborated. No new tier; same deopt → interpreter fall-through path.
+
+### What this leaves for JIT-EXT 16
+
+`Inc` and `Dec` are not guarded in this round. They are Add/Sub with constant 1 and would be guarded identically. The decision to skip them: they pop one operand (vs. binop's two), so the helper signature needs adjustment. Trivial follow-on; not urgent because Inc/Dec overflow is even less reachable in real JS code than Add/Sub overflow (a value already at i64::MAX would have to come from somewhere f64 can't precisely represent).
+
+Queued for JIT-EXT 16 alongside the `jit_disabled` retry refactor.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P04.E2.jit-deopt-sub-mul` | JIT-EXT 15: overflow guards for Sub + Mul; XOR idiom for Sub; smulhi-based check for Mul; 22/22 JIT tests PASS including two new trip-on-overflow tests; PM + caps regression unchanged |
+
+### Open scope at JIT-EXT 15 boundary
+
+1. **JIT-EXT 16 (Inc/Dec guards + `jit_disabled` retry refactor)**: extend the guards to the unary arithmetic ops; relax the permanent-disable workaround.
+2. **JIT-EXT 17+ (ICs)**: first IC site lands. The deopt infrastructure begins paying back the forward investment.
+
+### Doc 730 §XVI status
+
+Continued Case-3: cruftless's deopt-guard surface (Add + Sub + Mul, plus their typed-i64 variants) closes the in-flight arithmetic-overflow speculation completely. Mainstream JITs (V8, JSC) handle the same surface with platform-specific machine code; cruftless uses portable Cranelift IR primitives at marginal cost. The alphabet-purity thesis of Doc 731 continues to corroborate.
+
+---
+
+*JIT-EXT 15 closes the arithmetic-guard extension. All three binary arithmetic ops are now overflow-guarded under the env flag; the deopt mechanism is exercised through three distinct trip conditions. JIT-EXT 16 cleans up the remaining unary ops + relaxes the boundary-disable workaround.*
