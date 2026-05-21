@@ -1,0 +1,10 @@
+# TLS-EXT 8 fixture (2026-05-21): captured from api.github.com's
+# CertificateVerify processing under cruftless's rusty-tls handshake.
+# rusty_web_crypto::ecdsa_verify hangs on this input.
+#
+# Curve: P-256 (secp256r1)
+# Hash: SHA-256
+qx=8ed3d85107094884d4c046e17d3a572273211aa6ae75447e1c4c2c627012de50
+qy=60c59fd560f710ca942b0785d246242a64c59c1b40af904664a6b6b5c727003d
+hash=37baceaa42383ee05f48e5c65dc509c0a57160cebe8aa0d4f098fc0ffcc1f5e0
+sig_raw=3ede335ca360c3be2ab750900b00c63d36587b92cbafd2e748301662ca1a84d156eadc5f8502ad8a040beb4426312b82f2a34b9e615e77d3b8bdc72ed8b24b84

@@ -177,24 +177,43 @@ fn verify_certificate_verify_signature(
                 SIG_ECDSA_SECP384R1_SHA384 => rusty_web_crypto::digest_sha384(tbs).to_vec(),
                 _ => unreachable!(),
             };
+            let dbg_der = std::env::var("CRUFTLESS_TLS_DEBUG").is_ok();
+            if dbg_der {
+                let hex = |b: &[u8]| b.iter().map(|x| format!("{:02x}", x)).collect::<String>();
+                eprintln!("[ecdsa-der] signature ({} bytes)={}", signature.len(), hex(signature));
+                eprintln!("[ecdsa-der] → parse_single...");
+            }
             // ECDSA TLS signature is DER SEQUENCE { r INTEGER, s INTEGER }.
             let sig_seq = rusty_asn1_der::parse_single(signature)
                 .map_err(|e| TlsError::SignatureFail(format!("ECDSA sig DER: {}", e)))?;
+            if dbg_der { eprintln!("[ecdsa-der]   parse_single OK; tag={}", sig_seq.tag); }
             if sig_seq.tag != rusty_asn1_der::TAG_SEQUENCE {
                 return Err(TlsError::SignatureFail("ECDSA sig not SEQUENCE".into()));
             }
             let mut reader = rusty_asn1_der::DerReader::new(sig_seq.content);
+            if dbg_der { eprintln!("[ecdsa-der] → read r..."); }
             let r_val = reader.read_tag(rusty_asn1_der::TAG_INTEGER)
                 .map_err(|e| TlsError::SignatureFail(format!("ECDSA r: {}", e)))?;
+            if dbg_der { eprintln!("[ecdsa-der] → read s..."); }
             let s_val = reader.read_tag(rusty_asn1_der::TAG_INTEGER)
                 .map_err(|e| TlsError::SignatureFail(format!("ECDSA s: {}", e)))?;
+            if dbg_der { eprintln!("[ecdsa-der] → r/s as_unsigned_integer..."); }
             let r = r_val.as_unsigned_integer()
                 .map_err(|e| TlsError::SignatureFail(format!("ECDSA r unsigned: {}", e)))?;
             let s = s_val.as_unsigned_integer()
                 .map_err(|e| TlsError::SignatureFail(format!("ECDSA s unsigned: {}", e)))?;
+            if dbg_der { eprintln!("[ecdsa-der]   r.len()={} s.len()={}", r.len(), s.len()); }
             let mut sig_raw = vec![0u8; 2 * coord];
             sig_raw[coord - r.len()..coord].copy_from_slice(r);
             sig_raw[2 * coord - s.len()..].copy_from_slice(s);
+            if std::env::var("CRUFTLESS_TLS_DEBUG").is_ok() {
+                let hex = |b: &[u8]| b.iter().map(|x| format!("{:02x}", x)).collect::<String>();
+                eprintln!("[hs-cv-fixture] qx={}", hex(qx));
+                eprintln!("[hs-cv-fixture] qy={}", hex(qy));
+                eprintln!("[hs-cv-fixture] hash={}", hex(&hash));
+                eprintln!("[hs-cv-fixture] sig_raw={}", hex(&sig_raw));
+                eprintln!("[hs-cv-fixture] → calling rusty_web_crypto::ecdsa_verify ...");
+            }
             rusty_web_crypto::ecdsa_verify(&curve, qx, qy, &hash, &sig_raw)
                 .map_err(TlsError::SignatureFail)
         }
