@@ -129,3 +129,71 @@ The audit's "absent surface" finding is a Case-3 (both-diverge) compositional su
 ---
 
 *CAPS-EXT 1 closes the audit. The Move 1 gating budget is bounded at ~40 methods / ~1100 LOC. Next move CAPS-EXT 2: capability-API design.*
+
+---
+
+## CAPS-EXT 2 — 2026-05-21 (capability-API design)
+
+### Headline
+
+Capability-API design document landed. Names the six capability types (Fs/Stdio/Clock/Scheduler/Process/Env — six, not Doc 736's five, because the audit found Clock and Scheduler operationally separable), the dispatcher protocol, the mode-aware enforcement contract per Doc 736 §IX, CapabilityError shape, JS-side handle semantics, the `require(spec, opts?)` extension, and the seven-step implementation order CAPS-EXT 3 onward.
+
+### Substrate landed
+
+- `pilots/rusty-js-caps/docs/capability-api.md` (~340 lines):
+  - §I dispatcher protocol (Rust-side `require_capability` + JS-side capability handle threading)
+  - §II-§III six capability types with policy enums + deputation operators
+  - §IV CapabilityError shape (hint field is ergonomically load-bearing: error tells dev exactly what declaration unblocks the call)
+  - §V mode-aware dispatcher (CapMode = Compat / Audit / SealedDeps / Sealed)
+  - §VI Capability trait
+  - §VII module provenance (Application vs Dependency vs External, established at load time)
+  - §VIII host's ambient_caps() construction
+  - §IX JS-side handle guarantees (cannot be constructed by JS, deputable but not broadenable, opaque under serialization, reference-equal across passes)
+  - §X require(spec, opts?) API extension with ESM `with { caps }` form
+  - §XI backward compat (Mode 0 default; PM-EXT 11/12/13 gates remain green)
+  - §XII deferred features (async capability passing, cross-realm, revocation, persistent storage)
+  - §XIII implementation order (CAPS-EXT 3-13)
+
+### Key design decisions
+
+1. **Single dispatcher, no bypass paths**. Every effectful method's Rust implementation begins with one `require_capability` call. Mode 0 makes the call a no-op (returns ambient). Mode 3 makes it the gate. Adding a new mode = adding a match arm; adding a new capability = implementing one trait. No effectful method bypasses the dispatcher.
+
+2. **Six capability types (not five)**. CAPS-EXT 1 audit showed Clock and Scheduler are operationally separable. A dep can need timer scheduling without clock-read access (it sets up the timer but never reads time). A dep can need clock-read without scheduling (cache expiry check). Splitting them costs nothing and produces sharper capability declarations.
+
+3. **PathPolicy as closed enum**. Fs read/write/list/stat/mkdir/remove each get their own PathPolicy (None/Any/Prefix/Prefixes/Exact). The enum is closed so future variants (glob, regex, content-type-aware) can be added without breaking existing constructions. Coarse-grained in first cut; refinable later.
+
+4. **CapabilityError.hint**. The error tells the developer exactly what to add to package.json caps to unblock the call. Combined with Mode 1 audit log, this means a dev hitting CapabilityError can either accept the audit log's suggestion or hand-edit the hint into their manifest. No spelunking through dep source.
+
+5. **JS-side handles use Symbol.for('cruftless.cap') as identity slot, with sealed Rust pointer behind it**. A dep that tries to forge a capability by constructing an object with that symbol fails: the host reads the underlying Rust pointer through a sealed slot, not the JS-visible field.
+
+6. **require(spec, opts?) extension records intent in Mode 0/1**. In compat/audit modes the `opts.caps` field doesn't change behavior but the dispatcher records what the application *intended* to pass. The audit log thereby captures both "what the dep called" and "what the application passed", letting CI surface the gap between intended caps and actual usage.
+
+### Implementation order (queued)
+
+- **CAPS-EXT 3 (next)**: capability infrastructure with Mode 0 wiring. Introduces `Capability` trait, `CapDispatcher`, `CapMode` enum, six capability types, host's `ambient_caps()`. Routes every check to ambient. **No observable behavior change.** PM-EXT 11/12/13 gates remain green.
+- **CAPS-EXT 4**: audit recorder + sidecar log + `--audit` flag.
+- **CAPS-EXT 5**: synthetic-adversary probe harness (Mode 0 baseline; every probe SUCCEEDS = attacker wins as pre-state measurement).
+- **CAPS-EXT 6-7**: Fs capability enforcement under Mode 3 + `--sealed` flag.
+- **CAPS-EXT 8**: Mode 2 wiring (`--sealed-deps`).
+- **CAPS-EXT 9-12**: remaining capability classes (Process.exit, Stdio, Clock, Scheduler, Env).
+- **CAPS-EXT 13**: closure — full probe suite under Mode 3 with empty caps; every probe PASSES.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P05.L2.caps-api-design` | CAPS-EXT 2: capability-API design contract; six capability types; mode-aware dispatcher; CapabilityError.hint; implementation order CAPS-EXT 3-13 |
+
+### Probe status
+
+No code yet — design only. The probe harness arrives at CAPS-EXT 5. The contract becomes falsifiable when CAPS-EXT 3 wires the dispatcher in Mode 0: PM-EXT gates must remain green.
+
+### Open scope at CAPS-EXT 2 boundary
+
+1. **CAPS-EXT 3**: capability infrastructure in Mode 0. This is the first code commit of Pilot α. Estimated ~400 LOC across rusty-js-runtime (dispatcher + traits + types) + host-v2 (ambient_caps + install). Behavior unchanged.
+
+2. The remaining open scope from CAPS-EXT 1 carries forward unchanged.
+
+---
+
+*CAPS-EXT 2 closes the design tier. CAPS-EXT 3 begins the code tier. The dispatcher exists from CAPS-EXT 3 forward; enforcement lands incrementally; the impossibility claim is reachable at CAPS-EXT 13.*
