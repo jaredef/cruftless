@@ -642,3 +642,36 @@ Every R-condition of §VII still holds for the full Mont-form ECDSA verify path:
 ---
 
 *WC-EXT 10 closes with the full P-256 ECDSA verify operating in Montgomery form. The cumulative substrate-stack speedup is 82× over the WC-EXT 1 baseline — the predicted compound effect of Doc 731 §XV.b's framework operating across the EC tier and the BigUInt tier. The remaining TLS-wallclock bottleneck (9.5s handshake despite 0.10s ECDSA verify) names the next strategic target: RSA verify path (chain_walk's intermediate certs), addressable by WC-EXT 12's Montgomery generalization.*
+
+---
+
+## Cumulative status at WC-EXT 10 close (2026-05-21, end of session 1)
+
+### Speedup ladder
+
+| EXT | tier | move | fixture verify | × from baseline |
+|---|---|---|---|---|
+| WC-EXT 1 | (baseline) | fixture replay | 8.18s | 1× |
+| WC-EXT 3 | EC | Jacobian coords | 0.29s | 28× |
+| WC-EXT 5 | optimization-implementation | Regime 1 base table | 0.21s | 39× |
+| WC-EXT 9 | EC × BigUInt | Mont u2·Q | 0.15s | 54× |
+| WC-EXT 10 | EC × optimization | Mont u1·G | **0.10s** | **82×** |
+
+### Standing infrastructure
+
+- BigUInt tier: `BigUInt::limbs()`, `from_limbs()`, `p256_redc`, `p256_to_mont`, `p256_from_mont`, `p256_mont_mul`, `p256_mont_pow`, `p256_mont_inv`, `p256_mont_mul_by_small`
+- Modular-arithmetic tier: `batch_mod_inv` (reusable for any multi-inversion site)
+- EC tier: `jac_to_affine_batch`, `jacpoint_from_affine_mont`, `wnaf`, `affine_negate`, `jac_negate`, `p256_base_table`, `p256_base_table_mont`, three specialized scalar mul entry points
+- Tests: 117 web-crypto regression + 5 Mont smoke + WC-EXT 1 fixture-replay; 2 bench/generator examples
+
+### Tag count
+
+10 substrate moves under `Ω.5.P06.E3.wc-*`. Plus 2 corpus articulations driven by this workstream (Doc 731 §XV, §XV.g). Plus 1 from the recognition cluster (Doc 735).
+
+### Bottleneck relocation
+
+api.github.com TLS handshake ~9.5s despite ECDSA verify at 0.10s. Bottleneck has relocated to **RSA verify on cert chain intermediates**. RSA-2048 verify computes m^65537 mod n via ~17 squarings of 2048-bit `mod_mul`, going through binary-long-division `BigUInt::modulo`.
+
+### Resume protocol (next session)
+
+Read seed.md §VI.1 (state) + §VI.2 (next target) + §VI.4 (open-scope catalog). First substrate move next session: **WC-EXT 11** probe TLS handshake breakdown. Then **WC-EXT 12** generalize Montgomery to arbitrary odd-prime moduli (strategic).
