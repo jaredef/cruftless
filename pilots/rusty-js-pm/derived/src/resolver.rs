@@ -27,7 +27,7 @@ use crate::http::{pm_http_get, HttpError};
 /// (TLS 1.2 only, beyond the seed §IV carve-out).
 pub const DEFAULT_REGISTRY: &str = "https://registry.npmmirror.com";
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct ResolvedDep {
     pub name: String,
     pub version: String,

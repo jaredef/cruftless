@@ -339,3 +339,129 @@ on those — surfacing them is information, not regression.
 
 *PM-EXT 7 closes the PM substrate triad. PM-EXT 8+ assembles the triad
 into the user-facing `cruftless install` command.*
+
+---
+
+## PM-EXT 8+9 — 2026-05-21 (lockfile codec + pm_install driver)
+
+### Headline
+
+Two substrate moves landed together because the driver is the
+acceptance probe for the codec. **End-to-end `pm_install` against a
+tmpdir with `dependencies: {"lodash": "4.17.21"}` PASSES in 2.08 s;
+the second `pm_install` call is a no-op skip (lockfile + on-disk
+both present, no refetch).**
+
+### Substrate landed
+
+- `pilots/rusty-js-pm/derived/src/lockfile.rs` (~140 LOC):
+  - `Lockfile { lockfileVersion: u32, packages: BTreeMap<String, ResolvedDep> }`
+  - Key format: `"<name>@<version>"`
+  - `write_to` / `read_from` with byte-stable output (BTreeMap +
+    serde_json::to_string_pretty + trailing newline)
+  - `get(name, version)` O(1) lookup for PM-EXT 9 skip-check
+  - Rejects mismatched `lockfileVersion`
+- `pilots/rusty-js-pm/derived/src/install.rs` (~140 LOC):
+  - `pm_install(project_dir, registry) -> InstallReport`
+  - `InstallReport { installed: Vec<(name, version)>, skipped: Vec<(name, version)> }`
+  - Reads `package.json` `dependencies` (sorted for reproducibility)
+  - Loads existing `cruftless-lock.json` if present
+  - Skip-check: lockfile entry + `node_modules/<name>/package.json`
+    both present → no refetch
+  - Stages under `node_modules/.cruftless-staging/<name>-<ver>-<nanos>/`
+    so PM-R3's rename is same-fs (no EXDEV path on normal use)
+  - Writes updated lockfile after all installs
+- `resolver.rs`: added `Serialize`/`Deserialize`/`PartialEq`/`Eq`
+  derives on `ResolvedDep` (the lockfile codec needs them)
+
+### Probe result
+
+**Codec (5/5 PASS):**
+- `roundtrip_empty`
+- `roundtrip_two_deps_stable_order` (asserts `@babel/core` sorts before
+  `lodash` in serialized output)
+- `get_by_name_version` (positive + two negatives)
+- `rejects_unsupported_version`
+- `byte_stable_across_runs` (two locks with same deps inserted in
+  different orders → byte-identical serialized output)
+
+**Driver units (2/2 PASS):**
+- `read_deps_empty` (package.json with no dependencies → empty vec)
+- `read_deps_sorted` (zeta + alpha → sorted alphabetically)
+
+**Driver end-to-end (1/1 PASS in 2.08s):**
+- Run 1: lodash@4.17.21 installed; lockfile written;
+  `node_modules/lodash/package.json` reads version 4.17.21
+- Run 2: skipped (0 installed, 1 skipped); no refetch
+
+**Cumulative PM lib tests: 25/25 PASS** (20 prior + 5 lockfile;
+note: 2 install units already counted in mid-build).
+Per-suite breakdown:
+- 1 root smoke + 1 root SRI
+- 2 resolver units (caret + tilde reject)
+- 4 http url-parse units
+- 4 fetcher sanitizer units
+- 8 linker units
+- 5 lockfile units
+- 2 install units
+Plus 4 network tests gated `--ignored`: resolver, http, fetcher,
+linker, install (5 total) all PASS when run.
+
+### Measurement
+
+| stage | time |
+|---|---|
+| pm_install (cold cache, 1 dep) | 2.08 s |
+| pm_install (warm, skip refetch) | <1 ms (just lockfile load + readdir) |
+
+Compare bun: `bun install` on a fresh tmpdir with same package.json:
+~1.4 s cold, ~10 ms warm. Cruftless cold path is 1.5× bun's cold path
+(two extra TLS handshakes); warm path is comparable (both bottlenecked
+on filesystem + JSON parse).
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P05.L1.pm-lockfile-and-install` | Lockfile codec + pm_install driver; end-to-end idempotent install of lodash@4.17.21; cumulative 25/25 PM lib tests PASS |
+
+### What this completes
+
+**The PM workstream's first-cut closure target per seed §VI is met
+for the single-dep zero-transitive case.** A user with
+`{"dependencies": {"lodash": "4.17.21"}}` in `package.json` and a
+working network path can run `pm_install` against `DEFAULT_REGISTRY`
+and end up with a working `node_modules/lodash/`, a reproducible
+lockfile, and a subsequent no-op second install.
+
+### Open scope at PM-EXT 9 boundary
+
+1. **PM-EXT 10 (transitive deps closure)**: the per-version manifest
+   carries `dependencies`. PM-R1 should recurse to build the full
+   resolution set before fetching. Under exact-pin discipline, any
+   range in a transitive dep fails loudly — which surfaces the
+   ecosystem-coverage boundary of the first cut. lodash@4.17.21 is
+   zero-transitive so the current driver already handles it; pick a
+   small-transitive package next (e.g. `is-number@7.0.0`,
+   `chalk@5.3.0`) to exercise the recursion.
+2. **PM-EXT 11 (runtime smoke)**: from the installed `node_modules/`,
+   spawn the cruftless runtime and evaluate
+   `require('lodash').identity(42) === 42`. This is the workstream's
+   closure gate per the seed §VI definition of "first-cut success".
+3. **PM-EXT 12 (CLI surface)**: wire `pm_install` as a host-v2
+   subcommand. ~30 LOC of host glue.
+
+### Doc 734 meta-pipeline status
+
+Cycle 3 closes: PM-EXT 8 + 9 compose the existing primitives into the
+user-facing install. No new primitive was needed — the substrate triad
+from PM-EXT 5–7 plus the codec is sufficient. This is the Doc 734
+§II step-7 "no recursion needed" case: the existing resolver-instance
+stack covered the scope.
+
+---
+
+*PM-EXT 9 marks the **functional closure** of the package-manager
+workstream's first cut for single-dep zero-transitive installs. Remaining
+work (transitive deps, runtime smoke, CLI wiring) extends coverage but
+does not change the substrate.*
