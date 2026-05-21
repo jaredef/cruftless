@@ -108,6 +108,45 @@ cruftless: resolution_type=object,   keys=["0"],              referencesById=und
 
 This is its own §XII–§XV cycle queued as a future focused-session rung. The pipeline's value is exactly this: each iteration produces a smaller, sharper substrate gap, and the artifacts compose.
 
+### §XVII.§XV — Bracket: Callable explicit-return pattern (PASS in both engines)
+
+**Artifact**: [`probes/bracket-callable-explicit-return.mjs`](./probes/bracket-callable-explicit-return.mjs)
+
+The probe exercises the @ark/util `Callable` idiom in isolation: a base class whose constructor returns `Object.setPrototypeOf(fn.bind(...), this.constructor.prototype)`. A subclass adds methods; the probe asserts `typeof === "function"`, `instanceof Sub`, `instanceof Base`, method dispatch on both classes, and direct invocation.
+
+**Result**: bun and cruftless produce **identical** output. All assertions pass on both engines.
+
+```
+typeof s: function
+callable: inner(42)
+instanceof Sub: true
+instanceof Base: true
+typeof s.ping: function
+typeof s.bark: function
+s.ping(): pong
+s.bark(): woof
+```
+
+**Verdict**: the Callable explicit-return pattern is NOT the substrate gap. cruftless handles it correctly. The L7 deviation (resolution being Array-shaped) comes from somewhere upstream — likely a Disjoint propagating where a Node is expected, driven by an earlier control-flow divergence the pipeline hasn't yet localized.
+
+### §XVII follow-up — defer
+
+Closing this iteration. The next move requires further upstream instrumentation (probing `bindReference`, `parseDefinition`, or the per-kind intersection implementations to find where Disjoint enters a Node-expecting channel). That work is genuine arktype-internal probing, not substrate work; it warrants a focused session rather than continued in-line iteration.
+
+The pipeline's discipline holds: when an iteration's bracket comes back PASS, the substrate is not the gap. Either the deviation is package-internal logic (out of cruftless's scope) or there's a much subtler substrate primitive still hidden. Either way, declaring the iteration closed and queuing the next is the right move — not chasing it without a bracket signal.
+
+---
+
+## Pipeline outcome (after §XVII iteration 1)
+
+- **Stages closed**: §XII, §XIII, §XIV, §XV, §XVI, §XVII (iteration 1).
+- **Substrate gaps closed**: 1 (Array-subclass identity).
+- **Substrate gaps localized but PASS in bracket**: 1 (Callable explicit-return — not actually a gap).
+- **Substrate gaps remaining**: 1 (the as-yet-unlocalized upstream divergence producing Disjoint where Node expected).
+- **Parity delta**: 95.7% preserved, no regressions. arktype itself still FAIL.
+
+The pipeline has done substantial work: one closed gap, one verified-non-gap (valuable too — it tells us this Callable pattern is safe to write into future arktype-style code in cruftless), and clear next-move shape.
+
 The substrate move lands the spec-aligned `new <Subclass-of-Array>(args)` semantics. Edit surface (anticipated, not yet confirmed): cruftless's `new` operator / class constructor logic in `rusty-js-bytecode` and/or `rusty-js-runtime`. Likely 50–200 LOC.
 
 **Probe flip target**: cruftless's bracket probe matches bun's trace exactly.
