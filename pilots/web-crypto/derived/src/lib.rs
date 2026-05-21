@@ -1354,6 +1354,146 @@ pub fn p256_mod_mul_solinas_v2(a: &BigUInt, b: &BigUInt) -> BigUInt {
     p256_solinas_reduce_v2(product.limbs())
 }
 
+// ──────────────── WC-EXT 22: Solinas-form EC for P-256 ─────────
+//
+// Routes the live P-256 EC scalar mul through Solinas instead of
+// Mont. Works in standard form throughout — no Mont-form conversions
+// at any boundary. Uses the same Hankerson §3.2 formulas as the Mont-
+// form versions; the only difference is mod_mul → Solinas reduction.
+
+#[inline(always)]
+fn sol_mul(a: &BigUInt, b: &BigUInt) -> BigUInt {
+    p256_mod_mul_solinas_v2(a, b)
+}
+
+fn jac_double_solinas(j: &JacPoint) -> JacPoint {
+    let p = p256_p();
+    if j.is_identity() { return j.clone(); }
+    if j.y.is_zero() { return JacPoint::identity(); }
+    let delta = sol_mul(&j.z, &j.z);
+    let gamma = sol_mul(&j.y, &j.y);
+    let beta = sol_mul(&j.x, &gamma);
+    let x_minus_d = mod_sub(&j.x, &delta, &p);
+    let x_plus_d  = mod_add(&j.x, &delta, &p);
+    let xm_xp = sol_mul(&x_minus_d, &x_plus_d);
+    // alpha = 3·xm_xp via mod_add chain (cheap; no mod_mul)
+    let alpha = {
+        let v2 = mod_add(&xm_xp, &xm_xp, &p);
+        mod_add(&v2, &xm_xp, &p)
+    };
+    let alpha2 = sol_mul(&alpha, &alpha);
+    let beta2 = mod_add(&beta, &beta, &p);
+    let beta4 = mod_add(&beta2, &beta2, &p);
+    let beta8 = mod_add(&beta4, &beta4, &p);
+    let x3 = mod_sub(&alpha2, &beta8, &p);
+    let y_plus_z = mod_add(&j.y, &j.z, &p);
+    let z3 = mod_sub(
+        &mod_sub(&sol_mul(&y_plus_z, &y_plus_z), &gamma, &p),
+        &delta, &p,
+    );
+    let four_beta_minus_x3 = mod_sub(&beta4, &x3, &p);
+    let gamma2 = sol_mul(&gamma, &gamma);
+    let g2_2 = mod_add(&gamma2, &gamma2, &p);
+    let g2_4 = mod_add(&g2_2, &g2_2, &p);
+    let g2_8 = mod_add(&g2_4, &g2_4, &p);
+    let y3 = mod_sub(&sol_mul(&alpha, &four_beta_minus_x3), &g2_8, &p);
+    JacPoint { x: x3, y: y3, z: z3 }
+}
+
+fn jac_add_affine_solinas(j: &JacPoint, a: &P256Point) -> JacPoint {
+    use std::cmp::Ordering;
+    let p = p256_p();
+    let (ax, ay) = match a {
+        P256Point::Identity => return j.clone(),
+        P256Point::Affine { x, y } => (x, y),
+    };
+    if j.is_identity() {
+        // Std-form: Z = 1 (literal one, no Mont)
+        return JacPoint { x: ax.clone(), y: ay.clone(), z: BigUInt::one() };
+    }
+    let z1z1 = sol_mul(&j.z, &j.z);
+    let u2 = sol_mul(ax, &z1z1);
+    let z1_cubed = sol_mul(&j.z, &z1z1);
+    let s2 = sol_mul(ay, &z1_cubed);
+    if u2.cmp(&j.x) == Ordering::Equal {
+        if s2.cmp(&j.y) == Ordering::Equal { return jac_double_solinas(j); }
+        return JacPoint::identity();
+    }
+    let h = mod_sub(&u2, &j.x, &p);
+    let r = mod_sub(&s2, &j.y, &p);
+    let h2 = sol_mul(&h, &h);
+    let h3 = sol_mul(&h2, &h);
+    let x1_h2 = sol_mul(&j.x, &h2);
+    let two_x1_h2 = mod_add(&x1_h2, &x1_h2, &p);
+    let r2 = sol_mul(&r, &r);
+    let x3 = mod_sub(&mod_sub(&r2, &h3, &p), &two_x1_h2, &p);
+    let y3 = mod_sub(
+        &sol_mul(&r, &mod_sub(&x1_h2, &x3, &p)),
+        &sol_mul(&j.y, &h3),
+        &p,
+    );
+    let z3 = sol_mul(&j.z, &h);
+    JacPoint { x: x3, y: y3, z: z3 }
+}
+
+fn jac_to_affine_solinas(j: &JacPoint) -> P256Point {
+    if j.is_identity() { return P256Point::Identity; }
+    // z⁻¹ via Fermat in Solinas form: z^(p-2) mod p, square-and-multiply
+    // using sol_mul throughout.
+    let p = p256_p();
+    let two = BigUInt::from_be_bytes(&[2]);
+    let p_minus_2 = p.sub(&two);
+    let mut result = BigUInt::one();
+    let mut base = j.z.clone();
+    let bits = p_minus_2.bit_len();
+    for i in 0..bits {
+        if p_minus_2.bit(i) {
+            result = sol_mul(&result, &base);
+        }
+        base = sol_mul(&base, &base);
+    }
+    let z_inv = result;
+    let z_inv2 = sol_mul(&z_inv, &z_inv);
+    let z_inv3 = sol_mul(&z_inv2, &z_inv);
+    P256Point::Affine {
+        x: sol_mul(&j.x, &z_inv2),
+        y: sol_mul(&j.y, &z_inv3),
+    }
+}
+
+/// Variable-input P-256 scalar mul in std form, using Solinas
+/// reduction throughout. Replaces the Mont round-trip with the
+/// 2.22× faster Solinas mod_mul at every operation.
+pub fn p256_scalar_mul_solinas(k: &BigUInt, pt: &P256Point) -> P256Point {
+    let bits = k.bit_len();
+    if bits == 0 { return P256Point::Identity; }
+    if matches!(pt, P256Point::Identity) { return P256Point::Identity; }
+    let mut result = JacPoint::identity();
+    for i in (0..bits).rev() {
+        result = jac_double_solinas(&result);
+        if k.bit(i) {
+            result = jac_add_affine_solinas(&result, pt);
+        }
+    }
+    jac_to_affine_solinas(&result)
+}
+
+/// Base-point P-256 scalar mul in std form via the WC-EXT 5 baked
+/// std-form base table (no Mont conversion needed). Uses Solinas
+/// reduction throughout.
+pub fn p256_scalar_mul_base_solinas(k: &BigUInt) -> P256Point {
+    let bits = k.bit_len();
+    if bits == 0 { return P256Point::Identity; }
+    let table = p256_base_table();
+    let mut result = JacPoint::identity();
+    for i in 0..bits {
+        if k.bit(i) {
+            result = jac_add_affine_solinas(&result, &table[i]);
+        }
+    }
+    jac_to_affine_solinas(&result)
+}
+
 // ──────────────── WC-EXT 12: generic Montgomery for arbitrary odd
 // modulus (RSA, P-384, P-521) ────
 //
@@ -2739,8 +2879,12 @@ pub fn ecdsa_verify(
     let u1 = mod_mul(&e, &w, &c.n);
     if dbg_ec { eprintln!("[wc-ec] → mod_mul(r, w, n) = u2"); }
     let u2 = mod_mul(&r, &w, &c.n);
-    if dbg_ec { eprintln!("[wc-ec] → scalar_mul(u1, G) = p1 (Mont baked-table fast path if P-256)"); }
+    if dbg_ec { eprintln!("[wc-ec] → scalar_mul(u1, G) = p1 (Mont baked-table fast path if P-256, else generic)"); }
     let p1 = if c.coord_bytes == 32 && c.b.cmp(&p256_b()) == std::cmp::Ordering::Equal {
+        // WC-EXT 22 routing produced signature-mismatch (Solinas EC has
+        // bug). Reverted to Mont base-table path; Solinas EC substrate
+        // remains as standing dormant infrastructure for WC-EXT 23
+        // debug + re-routing.
         p256_scalar_mul_base_mont(&u1)
     } else {
         ec_scalar_mul(c, &u1, &c.g)
@@ -2748,6 +2892,7 @@ pub fn ecdsa_verify(
     if dbg_ec { eprintln!("[wc-ec]   p1 OK"); }
     if dbg_ec { eprintln!("[wc-ec] → scalar_mul(u2, Q) = p2 (Mont fast path if P-256)"); }
     let p2 = if c.coord_bytes == 32 && c.b.cmp(&p256_b()) == std::cmp::Ordering::Equal {
+        // WC-EXT 22 reverted; Solinas EC has signature-mismatch bug.
         p256_scalar_mul_mont(&u2, &q)
     } else {
         ec_scalar_mul(c, &u2, &q)

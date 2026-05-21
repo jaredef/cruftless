@@ -1432,3 +1432,56 @@ The case-(P2) sub-failure pattern (wrong-stratum composition) now has an empiric
 ---
 
 *WC-EXT 21 closes with the proper Solinas implementation landing as standing substrate (273 ns/op; 2.22× faster than Mont per mod_mul). The framework's case-(P2) wrong-stratum-composition pattern has its empirical anchor pair (WC-EXT 20 + 21). WC-EXT 22 routes Solinas through the EC pipeline; substantial pure-Rust win remaining at zero hardware assist.*
+
+---
+
+## WC-EXT 22 — 2026-05-21 (Solinas EC routing; signature-mismatch bug surfaces incomplete WC-EXT 21 test coverage)
+
+### Headline
+
+Wired the WC-EXT 21 Solinas substrate into the P-256 EC pipeline via new `jac_double_solinas`, `jac_add_affine_solinas`, `jac_to_affine_solinas`, `p256_scalar_mul_solinas`, `p256_scalar_mul_base_solinas`. Routed `ecdsa_verify`'s P-256 u1·G and u2·Q calls through the new Solinas-form scalar muls. ~150 LOC.
+
+**Result: ECDSA signature mismatch on every endpoint.** Empirically: 117 regression PASS (doesn't exercise the rerouted path), fixture verify Err("ECDSA: signature mismatch"), TLS probe 0/5 PASS (3/5 went from OK to signature-mismatch). Routing reverted; substrate retained as standing dormant code.
+
+### Root cause diagnosis (partial)
+
+Unit-test surfaces the bug directly:
+```
+k=2 (2·G):
+  mont path:    (7cf27b18..., 07775510...)  ← correct (matches known P-256 2·G)
+  solinas path: (f2f80579..., edb54176...)  ← divergent
+```
+
+The bug is in either:
+- `p256_solinas_reduce_v2` for some input class that the WC-EXT 21 bench fixtures didn't cover (probably the col[8] signed-carry path; the bench tested values < p where col[8] = 0)
+- One of jac_double_solinas / jac_add_affine_solinas / jac_to_affine_solinas (Hankerson formula transcription error)
+
+Not yet bisected. The reduction passes the bench's 5 equivalence tests (trivial 0/1, api.github.com qx·qy, near-modulus p-1·p-2, random patterns). But EC arithmetic generates intermediate values with specific bit patterns (especially small values like 1·1, near-zero, and high-bit-set values) that the bench doesn't exercise.
+
+### Framework-tier finding
+
+**Per-bench correctness is not per-consumer correctness.** The WC-EXT 21 bench verified Solinas reduce against the canonical reference on 5 fixtures. The 5 fixtures spanned trivial (0, 1) + the captured api.github.com signature qx/qy + near-modulus + random-looking — but not the specific input distribution that EC arithmetic generates (small values, near-zero values, intermediate-from-jac-double products).
+
+Per Doc 730 §XII diagnostic-legibility: the WC-EXT 22 routing surfaced the bug *because* the EC consumer's input distribution differs from the bench's. The bench's apparent correctness was insufficient evidence; routing into the EC consumer is itself a probe that found a stricter equivalence class.
+
+This corroborates and extends Doc 735 §X.h (queued amendment): the wrong-stratum-composition pattern has a corollary — **substrate-tier correctness probes must cover the consumer's input distribution, not just symbolic test fixtures**. Otherwise the substrate appears gold but breaks at integration.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P06.E3.wc-solinas-ec-attempted-reverted` | Solinas EC pipeline wired; signature-mismatch on integration; routing reverted; bug bisect queued for WC-EXT 23; standing dormant substrate at ~150 LOC |
+
+### Probe result
+
+5/5: **3/5 PASS** (restored after revert). The WC-EXT 21 Solinas substrate continues to bench at 2.22× faster than Mont; the EC routing remains the open work.
+
+### Open scope at WC-EXT 22 boundary
+
+1. **WC-EXT 23 (bisect Solinas EC bug)** — instrument jac_double_solinas with verify-vs-mont assertions per call; identify which substrate call diverges; identify whether the bug is in p256_solinas_reduce_v2 or one of the EC functions.
+2. Once fixed: re-route Solinas EC for the projected ~2× P-256 EC speedup.
+3. **Doc 735 §X.h amendment** — record the per-bench-vs-per-consumer correctness pattern alongside the wrong-stratum-composition pattern.
+
+---
+
+*WC-EXT 22 closes with the routing attempt + revert; the Doc 730 §XVII apparatus discipline surfaced an integration-time bug the WC-EXT 21 bench had not caught. The empirical correction is itself the round's value per the framework's positive-finding-from-negative-result mechanism. WC-EXT 23 bisects the bug; the 2.22× per-op Solinas advantage remains on the table when the EC routing lands cleanly.*
