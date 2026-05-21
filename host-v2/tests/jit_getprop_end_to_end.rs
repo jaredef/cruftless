@@ -22,8 +22,13 @@ fn encode_u16(bc: &mut Vec<u8>, v: u16) { bc.extend_from_slice(&v.to_le_bytes())
 
 /// Hand-build `function getx(obj) { return obj.x; }` with GetPropOnObject.
 fn build_getx_proto(prop_name: &str) -> FunctionProto {
+    // Use LoadLocal (which both the JIT and interpreter support) rather
+    // than LoadArg (JIT-only). Args populate frame.locals[0..params] at
+    // call_function time, so LoadLocal(0) reads arg 0. This lets the
+    // bytecode work in both the JIT path (success path) and the interp
+    // fall-through (deopt path) without needing LoadArg interp support.
     let mut bc = Vec::new();
-    encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 0);
+    encode_op(&mut bc, Op::LoadLocal); encode_u16(&mut bc, 0);
     encode_op(&mut bc, Op::GetPropOnObject); encode_u16(&mut bc, 0);  // constant idx 0
     encode_op(&mut bc, Op::Return);
 
@@ -53,6 +58,69 @@ fn build_getx_proto(prop_name: &str) -> FunctionProto {
         source_map: Vec::new(),
         construct_tags: Vec::new(),
         strict: false,
+    }
+}
+
+/// JIT-EXT 24: the IC chain's failure-path proven end-to-end.
+///
+/// When `obj.x` is a non-Number, the runtime helper records an
+/// ICShapeMismatch deopt and returns sentinel 0. The dispatcher
+/// detects the deopt via `take_last_deopt` and falls through to the
+/// interpreter, which re-executes `getx(obj)` from pc=0 and correctly
+/// returns the non-Number value (in this test, a String).
+///
+/// This demonstrates: (1) the helper's deopt-on-non-Number contract;
+/// (2) the dispatcher's existing fall-through detection works for IC
+/// deopts the same way it works for arithmetic-overflow deopts; (3)
+/// the interpreter's re-execution path correctly handles the bytecode
+/// the JIT couldn't.
+#[test]
+fn jit_compiled_getprop_deopts_on_non_number_result() {
+    let mut rt = Runtime::new();
+    rt.install_intrinsics();
+    rt.jit_threshold = 1;
+
+    // .x is a String, not a Number. The JIT helper will deopt.
+    let obj_id = rt.alloc_object(Object::new_ordinary());
+    rt.object_set(obj_id, "x".into(), Value::String(std::rc::Rc::new("hello".to_string())));
+
+    let proto = build_getx_proto("x");
+    let proto_rc = std::rc::Rc::new(proto);
+
+    use rusty_js_runtime::value::{ClosureInternals, InternalKind};
+    let closure_internals = ClosureInternals {
+        proto: proto_rc.clone(),
+        upvalues: Vec::new(),
+        bound_this: None,
+        is_arrow: false,
+        call_count: std::cell::Cell::new(0),
+        jit_disabled: std::cell::Cell::new(false),
+    };
+    let closure_obj = Object {
+        proto: None,
+        extensible: true,
+        properties: indexmap::IndexMap::new(),
+        internal_kind: InternalKind::Closure(closure_internals),
+    };
+    let closure_id = rt.alloc_object(closure_obj);
+
+    // Call twice. The first call: JIT compiles + invokes; helper
+    // returns sentinel + records deopt; dispatcher falls through to
+    // interp; interp returns the String. The second call: JIT cache
+    // is populated, JIT invokes again, deopts again, dispatcher
+    // falls through again. Both calls return the same correct value.
+    for trial in 0..2 {
+        let result = rt.call_function(
+            Value::Object(closure_id),
+            Value::Undefined,
+            vec![Value::Object(obj_id)],
+        ).expect("call_function should succeed");
+
+        match &result {
+            Value::String(s) => assert_eq!(s.as_str(), "hello",
+                "trial={trial}: getx(obj) where obj.x='hello' should return 'hello'; got {s:?}"),
+            other => panic!("trial={trial}: expected String('hello'); got {other:?}"),
+        }
     }
 }
 

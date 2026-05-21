@@ -1393,3 +1393,89 @@ The end-to-end test is Case-3 (compositional success at the engineering tier). E
 ---
 
 *JIT-EXT 23 closes the IC infrastructure chapter. The full chain works end-to-end against hand-built bytecode. JIT-EXT 24+ adds the cache layer that makes GetProp fast in the common case; the upstream emitter work (separate workstream) makes real JS code exercise the chain.*
+
+---
+
+## JIT-EXT 24 — 2026-05-21 (IC chain failure path: deopt-on-non-Number → interpreter fall-through)
+
+### Headline
+
+The IC chain's failure-path is now proven end-to-end. When `obj.x` is a non-Number, the runtime helper records an `ICShapeMismatch` deopt; the dispatcher detects it; the interpreter takes over and returns the correct value (a String in this test).
+
+The design doc anticipated this round as "single-shape IC at GetProp sites." Cruftless does not yet have a hidden-class system, so a traditional shape-and-slot-offset cache doesn't fit cleanly — there's no shape identifier, and `IndexMap` doesn't expose slot offsets in a way that survives mutation. The pragmatic substitute is the **deopt-on-Value-shape-mismatch** path, which the existing IC infrastructure (EXT 22's helper + EXT 14's dispatcher detection) already supports. This round writes the test that proves it works.
+
+### Substrate landed
+
+- `host-v2/tests/jit_getprop_end_to_end.rs` (+~55 LOC):
+  - New test `jit_compiled_getprop_deopts_on_non_number_result`:
+    - Allocates Object with `.x = Value::String("hello")` (non-Number)
+    - JIT-compiles `getx(obj) = obj.x` (threshold=1)
+    - Calls twice; both calls return `Value::String("hello")`
+    - First call: JIT compiles + invokes; helper sees String, records ICShapeMismatch; dispatcher falls through; interp re-executes with original args; returns String.
+    - Second call: cached JIT runs again, deopts again, falls through again; same result.
+  - Existing `jit_compiled_getprop_returns_object_property_value` test refactored to use `LoadLocal` instead of `LoadArg`. The interpreter handles LoadLocal (args populate `frame.locals[0..params]`); LoadArg is JIT-only. The change keeps both tests working in both the JIT path and the interp fall-through path.
+
+### Probe result
+
+**2/2 jit_getprop_end_to_end tests PASS in 0.03 s.**
+
+Regression sweep:
+- 26/26 JIT lib tests PASS
+- PM-EXT 11+12: 2/2 PASS in 2.67 s
+- caps_probes: 18/18 PASS
+
+### Why not a real shape-cache
+
+Cruftless's `Object` representation:
+
+```rust
+pub struct Object {
+    pub proto: Option<ObjectRef>,
+    pub extensible: bool,
+    pub properties: IndexMap<String, PropertyDescriptor>,
+    pub internal_kind: InternalKind,
+}
+```
+
+Each Object owns its own `IndexMap`. There is no shared "shape" descriptor. V8's Maps and JSC's Structures are shared shape descriptors that get bumped on property addition; many objects share one Map; the JIT can cache `(map_pointer, slot_offset)` and read the slot in two instructions.
+
+Adding hidden classes to cruftless is a meaningful substrate workstream (call it `pilots/rusty-js-shapes/`) — touches the runtime, the bytecode compiler's PropertyAccess emission, and the interpreter. Out of scope for this JIT pilot. Until shapes land, the IC's fast-path equivalent isn't reachable.
+
+What the IC chain CAN do without shapes (and what this round proves):
+- Recognize when the JIT'd path produces a result the JIT can't widen (non-Number)
+- Trip a deopt with a typed reason (`ICShapeMismatch`)
+- Hand control back to the interpreter, which produces the correct value
+- Surface a Value the JIT could not have produced (String, in this test)
+
+This is the failure-path half of the IC chain. The success-path (Number result, JIT returns directly) was proven at EXT 23. Together they cover the IC mechanism's reach without a shape system.
+
+### Pred-731 status
+
+- **R5 (deopt sites finite-enumerable per emitted module)**: corroborated for the IC class with a real failure scenario. The runtime helper's deopt record flows through `take_last_deopt` to the dispatcher, which routes to the interpreter for re-execution.
+- **R6 (single tier)**: corroborated. The deopt path is the interpreter; there's no specialized shape-cache tier. With shapes, the cache layer would be straight-line code inside the same JIT'd function (still single tier per the design); without shapes, every GetProp goes through the helper which is also called inside the same JIT'd function (still single tier).
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P04.E2.jit-ic-failure-path-e2e` | JIT-EXT 24: IC chain's failure path proven end-to-end (non-Number obj.x deopts via runtime helper, dispatcher detects, interp re-executes, returns correct String); shape-cache deferred until cruftless adds hidden classes; LoadLocal-not-LoadArg fix in shared test helper; regression GREEN |
+
+### Open scope at JIT-EXT 24 boundary
+
+The IC chapter is functionally complete for the substrate cruftless has today. Remaining items are coverage expansion + cross-pilot work:
+
+1. **Hidden classes substrate**: a new pilot (`pilots/rusty-js-shapes/`?) that adds shared shape descriptors to cruftless's Object representation. Once shapes land, the IC's fast-path (cache `(shape, slot_offset)`) becomes reachable. Multi-week workstream of its own.
+
+2. **Upstream emitter extension**: the bytecode compiler's typed-promotion pass extends to emit `GetPropOnObject` when type analysis proves the receiver is Object. Currently the JIT's GetPropOnObject path is unreachable from real JS code; only hand-crafted bytecode exercises it. The extension is a bytecode-pilot concern; landing it makes the IC chain matter for compiled JS.
+
+3. **Dispatcher branching for non-zero pc deopts**: currently the dispatcher always falls through to interpreter re-execution from pc=0. The infrastructure for resume-at-trip-pc landed at EXT 21 (`resume_from_deopt_state`) but isn't yet used by the dispatcher. With shapes + ICs at non-zero pcs, resume-at-trip-pc becomes more valuable.
+
+4. **Multi-arg JIT'd GetProp**: currently the dispatcher's gate allows 1 or 2 args. Functions with more args (or with both arith and GetProp mixed) require translator extension.
+
+### Doc 730 §XVI status
+
+The deferral of shape-based IC caching to a future workstream is Case-4 (implementation freedom): cruftless's discipline lets the JIT pilot defer a substantial architectural concern (shapes) without blocking the IC mechanism itself. Mainstream JITs were not honestly able to defer shapes — they were designed around shapes from inception. Cruftless's deferral is principled: the IC mechanism works without shapes for the failure-path; the success-path's perf gain awaits shapes.
+
+---
+
+*JIT-EXT 24 closes the IC chapter's substrate-side work for the first cut. The fast-path-cache layer awaits hidden classes (separate workstream). The deopt-fallback path is proven end-to-end. The JIT workstream's standing claim at this point: every component of the Doc 736-style impossibility infrastructure that is reachable without hidden classes is operational.*
