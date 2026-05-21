@@ -220,3 +220,44 @@ The original TLS-EXT 1 forecast (5/5 PASS at TLS-EXT 6-8) is again unchanged in 
 ---
 
 *TLS-EXT 4 closes with the bidirectional Pin-Art apparatus in place at the workstream's substrate-debugging tier and the hypothesis space redirected via detection-direction readout. The composition direction is queued for TLS-EXT 5.*
+
+---
+
+## TLS-EXT 5 — 2026-05-21 (C-NEW-1 hang discovery + C-NEW-5 bisect)
+
+C-NEW-1 added step-by-step debug to receive_application_data + pm_http_get. Surfaced unexpected hang: tls_connect hangs CPU-bound against api.github.com / google.com / example.com / example.org. Only httpbin.org reaches CloseNotify mid-handshake. Local openssl s_server still works.
+
+C-NEW-5 bisect: stashed instrumentation, reverted TLS-EXT 2 commit, rebuilt, re-probed. Hang persists → **H7 (TLS-EXT 2 regression) falsified.** Bug is in Phase Π1.4 substrate.
+
+| commit | tag | recognition |
+|---|---|---|
+| `9976ddf3` | `Ω.5.P06.E2.tls-c-new-1-hang-discovery` | C-NEW-1 instrumentation + hang discovery |
+| `d9567fc1` | `Ω.5.P06.E2.tls-c-new-5-bisect` | C-NEW-5 bisect, H7 falsified |
+
+Probe: 0/5 PASS unchanged.
+
+---
+
+## TLS-EXT 6 — 2026-05-21 (C-NEW-4 handshake debug + CV hang localized)
+
+C-NEW-4 added per-iteration debug to complete_handshake. Trace stops cleanly at `msg_type=CertificateVerify used=78` — hang is inside the CertificateVerify match arm, by elimination inside `verify_certificate_verify_signature` → `rusty_web_crypto` ECDSA-P-256-SHA256 verify (74-byte sig shape consistent with DER ECDSA-P-256; github.com / Fastly leaves typically ECDSA-P-256).
+
+**H8 introduced**: rusty_web_crypto ECDSA-P-256-SHA256 verification enters a non-terminating path on certain valid inputs.
+
+Why local openssl s_server didn't trigger: self-signed cert was RSA (different verify path). Local-vs-CDN asymmetry resolves to cert-key-type asymmetry, not TLS protocol behavior.
+
+Substrate-move target relocates from TLS pilot to **web-crypto pilot**, which lacks its own seed/trajectory pair per Doc 733 §V open-scope.
+
+| commit | tag | recognition |
+|---|---|---|
+| `484419c0` | `Ω.5.P06.E1.tls-c-new-4-cv-hang` | hang localized; H8 |
+
+Probe: 0/5 PASS unchanged.
+
+Next:
+1. TLS-EXT 7: regenerate localhost cert with ECDSA-P-256, confirm hang reproduces locally (H8 confirmation, ~10 min).
+2. TLS-EXT 8+: fix web-crypto ECDSA verify path; lives under a new `pilots/web-crypto/seed.md + trajectory.md` pair per Doc 733 (fractal coverage 5/6 → 6/6).
+
+---
+
+*TLS-EXT 6 closes with the hang localized to a downstream pilot. The substrate-move target relocated; TLS workstream's structural debugging produced a one-tier-deeper finding rather than a probe-cell flip. Doc 733's prediction holds: pinning the right pair surfaces the next pair to found.*
