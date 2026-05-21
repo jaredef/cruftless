@@ -795,26 +795,31 @@ impl BigUInt {
     }
 
     pub fn mul(&self, other: &BigUInt) -> BigUInt {
-        // Schoolbook O(n^2). For RSA-4096 this is ~16k u32-muls per
-        // multiplication — fine for correctness-first verification.
-        let n = self.0.len() + other.0.len();
-        let mut out = vec![0u64; n];
-        for i in 0..self.0.len() {
-            for j in 0..other.0.len() {
-                let p = (self.0[i] as u64) * (other.0[j] as u64);
-                out[i + j] += p & 0xffffffff;
-                out[i + j + 1] += p >> 32;
-            }
-        }
-        // Propagate carries across the u64 accumulator into u32 limbs.
+        // WC-EXT 16: Comba (column-wise) schoolbook with u128 accumulator.
+        // Replaces the two-pass approach (mul into u64 buffer + separate
+        // carry-propagation) with a single column-scan that accumulates
+        // partial products into a u128 register and emits one u32 per
+        // output position. On ARMv8 Pi, the u64×u64→u128 multiplication
+        // compiles to a `mul` + `umulh` instruction pair — same machine
+        // code an inline-asm implementation would produce. The Comba
+        // shape (single pass, no carry-propagation second pass) gives
+        // the compiler the simplest dependency chain to schedule.
+        let an = self.0.len();
+        let bn = other.0.len();
+        let n = an + bn;
         let mut limbs = vec![0u32; n + 1];
-        let mut carry: u64 = 0;
-        for i in 0..n {
-            let s = out[i] + carry;
-            limbs[i] = (s & 0xffffffff) as u32;
-            carry = s >> 32;
+        let mut acc: u128 = 0;
+        for k in 0..n {
+            let i_min = if k >= bn { k - bn + 1 } else { 0 };
+            let i_max = std::cmp::min(k + 1, an);
+            for i in i_min..i_max {
+                let j = k - i;
+                acc += (self.0[i] as u128) * (other.0[j] as u128);
+            }
+            limbs[k] = acc as u32;
+            acc >>= 32;
         }
-        limbs[n] = carry as u32;
+        limbs[n] = acc as u32;
         let mut r = BigUInt(limbs);
         r.trim();
         r

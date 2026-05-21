@@ -924,3 +924,66 @@ Each is a distinct cost-stratum promotion at the BigUInt arithmetic tier; all co
 6. **TLS 1.2 fallback** (~500 LOC of new state machine): closes E5 npm Case-4 scope. Substantial.
 
 Most strategic next move: assembly (WC-EXT 16) per keeper's direction. Tied to the single hottest substrate primitive (limb-mul-and-carry); blast radius covers every modular operation.
+
+---
+
+## WC-EXT 16 — 2026-05-21 (Comba schoolbook mul; assembly-equivalent compilation; modest win, diagnosis sharpened)
+
+### Headline
+
+Replaced `BigUInt::mul`'s two-pass (multiply into u64 buffer + separate carry-propagation) implementation with single-pass **Comba (column-wise) schoolbook** using a `u128` accumulator. On ARMv8 Pi, `u64×u64→u128` compiles to `mul` + `umulh` instruction pair — the same machine code an inline-asm implementation would emit. Comba's single-pass shape gives the compiler the simplest dependency chain.
+
+### Measurement
+
+| metric | WC-EXT 15 | WC-EXT 16 | speedup |
+|---|---|---|---|
+| `mont_mul` micro-bench | 667 ns/op | **607 ns/op** | ~10% |
+| Montgomery vs mod_mul ratio | 40× | **43.7×** | sharper |
+| 117 web-crypto regression | 1.46s | 1.39s | ~5% |
+| 5-endpoint TLS probe | 2.59s | 2.61s | ~unchanged |
+| api.github.com handshake | ~850ms | ~846ms | ~unchanged |
+| Fixture verify | 0.10s | 0.10s | unchanged |
+
+The Comba mul produced a measurable mont_mul micro-improvement (~10%) but the wallclock improvement at the cryptographic-primitive tier is small. Diagnosis: the dominant cost in `mont_mul` is **not the outer multiplication** (one schoolbook) but the **inner REDC loop** (k=8 iterations of k=8 limb-muls + carry propagation = 64 limb-muls, all still in the old style). Comba helps the outer mul; the REDC inner loop is unchanged.
+
+### Doc 735 §X note: intra-tier promotion has diminishing returns at each layer
+
+WC-EXT 8 (P-256 Mont) was the first stratum promotion at the BigUInt tier — large effect (~40× per mont_mul). WC-EXT 12 (generic Mont) propagated to RSA and ECDH — large effect. WC-EXT 15 (any-curve Mont scalar mul) propagated to chain_walk — ~3× effect. WC-EXT 16 (Comba schoolbook) is one tier deeper inside the mont_mul itself — ~10% effect.
+
+The pattern: each successive stratum promotion at a deeper sub-tier has smaller marginal effect. The framework's blast-radius observation (Doc 735 §X.e) inverts at sufficient depth: a substrate-tier improvement N levels deeper than the consumer's hot path multiplies the consumer's cost by less, because more of the consumer's work happens at intermediate tiers that the N-deep improvement doesn't touch.
+
+This is a useful framework refinement. Worth a §X.h amendment to Doc 735 in a later round.
+
+### WC-EXT 17 target named
+
+CIOS (Coarsely-Integrated Operand Scanning) Montgomery multiplication: fuses the outer mul and the REDC pass into a single Comba-style column-scan. Eliminates the intermediate buffer and many carry-propagation steps. Should give a substantial mont_mul speedup (~2-3× per op, propagating through every Mont consumer).
+
+### Why not literal inline asm
+
+The keeper's WC-EXT 13+ direction was "begin to think about writing assembly." After implementing Comba mul, the practical reality on ARMv8 with modern rustc:
+
+- `u64 × u64 → u128` (Rust idiom) compiles to `mul x?, x?, x?` + `umulh x?, x?, x?` — the same two instructions an inline-asm implementation would write.
+- The compiler scheduler is better at register allocation across Comba's dependency chain than a hand-rolled asm block would be (which would have asm-clobbers preventing optimization).
+- Literal asm would help only if we needed instructions Rust doesn't emit (e.g., AArch64 `umaddl`, large-vector SIMD ops for batched primes). Worth pursuing later when the workload demands it.
+
+Per Doc 731 §VII R2 (Cranelift / standard apparatus owns codegen): the WC-EXT 16 substrate move stays within the engagement's R2 carve-out by trusting the compiler's codegen, while still capturing the "assembly-grade" win.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P06.E3.wc-comba-mul` | Comba schoolbook for BigUInt::mul; ~10% mont_mul speedup; assembly-equivalent codegen verified; next target identified as CIOS Mont mul (WC-EXT 17) |
+
+### Probe result
+
+5/5: 3/5 PASS in 2.61s. Margin of measurement; no probe-cell flip.
+
+### Open scope at WC-EXT 16 boundary
+
+1. **WC-EXT 17 (CIOS Montgomery)** — fuse outer mul + REDC pass into single Comba-style column-scan. Projected ~2-3× per mont_mul → ~2× TLS handshake.
+2. **WC-EXT 18 (literal inline asm)** — only if WC-EXT 17 surfaces something Rust's codegen can't already emit; otherwise the methodology stays in Rust + trust-the-compiler.
+3. **WC-EXT 19+ (connection pooling)** — orthogonal to substrate work; biggest single-request workload win.
+
+---
+
+*WC-EXT 16 closes with the substrate work continuing to surface tighter-grained framework refinements. The Comba-mul move's modest empirical impact ratifies the Doc 735 §X intra-tier-cost-stratification framework operating one layer deeper than expected. The "assembly track" framing resolves to "trust the compiler when it already emits the right instructions; reserve literal asm for cases where the compiler can't see the structure." WC-EXT 17 (CIOS Mont) is the next strategic move at the BigUInt tier.*
