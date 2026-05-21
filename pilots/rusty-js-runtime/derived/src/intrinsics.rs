@@ -3172,6 +3172,53 @@ impl Runtime {
         // Tier-Ω.5.jjjjjj: TypedArray + Array @@iterator. for-of over
         // a Uint8Array currently fails with "@@iterator undefined" — add
         // index-cursor iterator on the prototype.
+        // TypedArray.prototype iterator triplet (values/keys/entries).
+        // Spec: values === [Symbol.iterator]. @noble/hashes returns
+        // Uint8Array from sha3; cuid2 does `for (const i of buf.values())`;
+        // superagent depends on cuid2. Without these the iteration path
+        // throws "callee not callable: undefined (method='values')".
+        register_method(self, ta_proto, "values", |rt, _args| {
+            let src_id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("values: this must be TypedArray".into())),
+            };
+            let mut o = Object::new_ordinary();
+            o.set_own_internal("__it_src__".into(), Value::Object(src_id));
+            o.set_own_internal("__it_idx__".into(), Value::Number(0.0));
+            o.set_own_internal("__it_mode__".into(), Value::String(Rc::new("value".into())));
+            let it_id = rt.alloc_object(o);
+            register_intrinsic_method(rt, it_id, "next", 1, |rt, _args| ta_iter_next(rt));
+            register_intrinsic_method(rt, it_id, "@@iterator", 0, |rt, _args| Ok(rt.current_this()));
+            Ok(Value::Object(it_id))
+        });
+        register_method(self, ta_proto, "keys", |rt, _args| {
+            let src_id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("keys: this must be TypedArray".into())),
+            };
+            let mut o = Object::new_ordinary();
+            o.set_own_internal("__it_src__".into(), Value::Object(src_id));
+            o.set_own_internal("__it_idx__".into(), Value::Number(0.0));
+            o.set_own_internal("__it_mode__".into(), Value::String(Rc::new("key".into())));
+            let it_id = rt.alloc_object(o);
+            register_intrinsic_method(rt, it_id, "next", 1, |rt, _args| ta_iter_next(rt));
+            register_intrinsic_method(rt, it_id, "@@iterator", 0, |rt, _args| Ok(rt.current_this()));
+            Ok(Value::Object(it_id))
+        });
+        register_method(self, ta_proto, "entries", |rt, _args| {
+            let src_id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("entries: this must be TypedArray".into())),
+            };
+            let mut o = Object::new_ordinary();
+            o.set_own_internal("__it_src__".into(), Value::Object(src_id));
+            o.set_own_internal("__it_idx__".into(), Value::Number(0.0));
+            o.set_own_internal("__it_mode__".into(), Value::String(Rc::new("entry".into())));
+            let it_id = rt.alloc_object(o);
+            register_intrinsic_method(rt, it_id, "next", 1, |rt, _args| ta_iter_next(rt));
+            register_intrinsic_method(rt, it_id, "@@iterator", 0, |rt, _args| Ok(rt.current_this()));
+            Ok(Value::Object(it_id))
+        });
         register_method(self, ta_proto, "@@iterator", |rt, _args| {
             let src_id = match rt.current_this() {
                 Value::Object(o) => o,
@@ -4273,6 +4320,39 @@ pub(crate) fn collect_iterable(rt: &mut Runtime, src: Value) -> Result<Vec<Value
         out.push(rt.object_get(rid, "value"));
     }
     Ok(out)
+}
+
+fn ta_iter_next(rt: &mut Runtime) -> Result<Value, RuntimeError> {
+    let this_id = match rt.current_this() { Value::Object(o) => o, _ => return Ok(Value::Undefined) };
+    let src = match rt.object_get(this_id, "__it_src__") { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
+    let idx = match rt.object_get(this_id, "__it_idx__") { Value::Number(n) => n as usize, _ => 0 };
+    let mode = match rt.object_get(this_id, "__it_mode__") {
+        Value::String(s) => s.as_str().to_string(),
+        _ => "value".to_string(),
+    };
+    let len = match rt.object_get(src, "length") { Value::Number(n) => n as usize, _ => 0 };
+    let mut o = Object::new_ordinary();
+    if idx >= len {
+        o.set_own("value".into(), Value::Undefined);
+        o.set_own("done".into(), Value::Boolean(true));
+    } else {
+        let v = rt.object_get(src, &idx.to_string());
+        let yielded = match mode.as_str() {
+            "key" => Value::Number(idx as f64),
+            "entry" => {
+                let pair = rt.alloc_object(Object::new_array());
+                rt.object_set(pair, "0".into(), Value::Number(idx as f64));
+                rt.object_set(pair, "1".into(), v);
+                rt.object_set(pair, "length".into(), Value::Number(2.0));
+                Value::Object(pair)
+            }
+            _ => v,
+        };
+        rt.object_set(this_id, "__it_idx__".into(), Value::Number((idx + 1) as f64));
+        o.set_own("value".into(), yielded);
+        o.set_own("done".into(), Value::Boolean(false));
+    }
+    Ok(Value::Object(rt.alloc_object(o)))
 }
 
 fn num_arg(args: &[Value], i: usize) -> f64 {

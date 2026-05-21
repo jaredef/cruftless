@@ -314,6 +314,48 @@ fn install_buffer_methods(rt: &mut Runtime, id: rusty_js_runtime::ObjectRef) {
         }
         Ok(Value::Boolean(true))
     });
+    // Buffer extends Uint8Array → iterator triplet (values/keys/entries).
+    // cuid2's bufToBigInt does `for (const i of buf.values())` to walk
+    // bytes as BigInt accumulator input; superagent depends on cuid2.
+    // Spec returns an iterator; we return a plain Array (also iterable)
+    // since `for...of` only needs iterability and we don't yet have
+    // generic iterator objects.
+    register_method(rt, id, "values", |rt, _args| {
+        let this_id = match rt.current_this() { Value::Object(o) => o, _ => return Ok(Value::Undefined) };
+        let len = match rt.object_get(this_id, "length") { Value::Number(n) => n as usize, _ => 0 };
+        let arr = rt.alloc_object(rusty_js_runtime::value::Object::new_array());
+        for i in 0..len {
+            let v = rt.object_get(this_id, &i.to_string());
+            rt.object_set(arr, i.to_string(), v);
+        }
+        rt.object_set(arr, "length".into(), Value::Number(len as f64));
+        Ok(Value::Object(arr))
+    });
+    register_method(rt, id, "keys", |rt, _args| {
+        let this_id = match rt.current_this() { Value::Object(o) => o, _ => return Ok(Value::Undefined) };
+        let len = match rt.object_get(this_id, "length") { Value::Number(n) => n as usize, _ => 0 };
+        let arr = rt.alloc_object(rusty_js_runtime::value::Object::new_array());
+        for i in 0..len {
+            rt.object_set(arr, i.to_string(), Value::Number(i as f64));
+        }
+        rt.object_set(arr, "length".into(), Value::Number(len as f64));
+        Ok(Value::Object(arr))
+    });
+    register_method(rt, id, "entries", |rt, _args| {
+        let this_id = match rt.current_this() { Value::Object(o) => o, _ => return Ok(Value::Undefined) };
+        let len = match rt.object_get(this_id, "length") { Value::Number(n) => n as usize, _ => 0 };
+        let arr = rt.alloc_object(rusty_js_runtime::value::Object::new_array());
+        for i in 0..len {
+            let v = rt.object_get(this_id, &i.to_string());
+            let pair = rt.alloc_object(rusty_js_runtime::value::Object::new_array());
+            rt.object_set(pair, "0".into(), Value::Number(i as f64));
+            rt.object_set(pair, "1".into(), v);
+            rt.object_set(pair, "length".into(), Value::Number(2.0));
+            rt.object_set(arr, i.to_string(), Value::Object(pair));
+        }
+        rt.object_set(arr, "length".into(), Value::Number(len as f64));
+        Ok(Value::Object(arr))
+    });
 }
 
 pub fn install_buffer(rt: &mut Runtime) {
