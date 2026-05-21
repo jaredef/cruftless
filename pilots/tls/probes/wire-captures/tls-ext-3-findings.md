@@ -66,7 +66,13 @@ Each of these is one substrate move at the driver tier; the right diagnostic is 
   - D3: TLS 1.2 fallback — required for E5. Substantial substrate work. Currently carved out per seed §IV. **Decision required**: lift the carve-out (likely many EXTs of substrate work) or remove E5 from the first-cut probe set and pick a TLS 1.3-supporting registry alternative (e.g., a self-hosted mirror).
   - D4: ALPN — not required by any probe endpoint. Add at lower priority for general CDN compatibility.
 
-**Cluster E (endpoint policy).** New cluster introduced by TLS-EXT 3. Endpoint operators apply per-hostname TLS policy that is independent of cipher/curve/sigalg negotiation. The §XVI four-case categorization needs a fifth case for "endpoint-policy refuses our profile entirely, not a substrate move target."
+**Endpoint-policy classification correction (post-publication).** TLS-EXT 3 originally framed E5 npm as "Cluster E — a new §XVI case-5." This was a misreading of Doc 730 §XVI, which has exactly four cases. The corrected §XVI classification of the five probe endpoints:
+
+- **E1, E3, E4 → Case 1**: curl (engine A) is spec-correct; rusty-tls (engine B) violates the spec at the post-handshake app-data path. Substrate move: §XII coercion/dispatch lift on rusty-tls. No deviation primitive.
+- **E2 httpbin → Case 1 or Case 4**: needs further probe to distinguish; first take after TLS-EXT 2 is that the server-side mid-handshake hangup is a rusty-tls bug (cert-validation behavior?), but openssl-against-the-same-endpoint diff is needed to confirm.
+- **E5 npm registry → Case 4**: both implementations conform to their respective scope choices. The npm server's TLS-1.2-only is spec-permitted (RFC 8446 does not require servers to support TLS 1.3); rusty-tls's TLS-1.3-only is a seed §IV scope carve-out. The empty intersection is implementation freedom at the scope tier, not a substrate move at the engine tier. The Doc 730 §XVI pipeline's correct response is no-op; the engagement decision is scope-level (lift the carve-out as multi-EXT 1.2 work, or substitute the endpoint).
+
+No new §XVI case is required. The original framing's "Cluster E" should be read as "Case-4 scope-decision, not a substrate move at the TLS pilot tier."
 
 ## §4. Open questions surfaced
 

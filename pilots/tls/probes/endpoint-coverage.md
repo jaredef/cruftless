@@ -96,6 +96,11 @@ From the matrix, the substrate moves cluster:
 
 **Cluster D — GREASE.** Not required by any of the five endpoints (Cloudflare's strict-baseline doesn't enforce GREASE rejection). Lowest priority.
 
+**§XVI four-case classification of the probe set** (post-TLS-EXT 3 correction). Each endpoint maps to one Doc 730 §XVI case, not a new "case-5":
+- **Case 1** (engine B violates spec): E1, E3, E4 — substrate move is §XII coercion/dispatch lift on rusty-tls's app-data path.
+- **Case 1 or Case 4** (pending probe): E2 — needs openssl-against-httpbin diff to confirm whether server-hangup is rusty-tls's cert-validation or just server-side behavior.
+- **Case 4** (implementation freedom at scope tier): E5 — npm server's TLS-1.2-only is spec-permitted; rusty-tls's TLS-1.3-only is a seed §IV carve-out; empty intersection is no-op at the engine tier. The substrate-move pipeline returns no-op; the engagement decision is scope-level (lift the carve-out or substitute the endpoint).
+
 The likely arc: TLS-EXT 2 (close_notify) → TLS-EXT 3 (instrument) → TLS-EXT 4 (ALPN) → TLS-EXT 5 (X25519) → TLS-EXT 6 (modern ciphers) → TLS-EXT 7 (supported_versions audit if E5 still fails) → 5/5 PASS at roughly TLS-EXT 6–8.
 
 The arc is a forecast, not a commitment. The §XVI oracle (curl + openssl s_client) gates each move; if the diagnosis surfaces a different failure mode than predicted, the order changes accordingly.

@@ -150,7 +150,7 @@ Score: **0/5 PASS** (unchanged). TLS-EXT 3 is pure instrumentation; no code chan
 - `pilots/tls/probes/wire-captures/tls-ext-3-findings.md` produced with the five-endpoint diff and revised root-cause assignments.
 - Cluster B (instrumentation) closed.
 - Cluster C reframed: was "alphabet expansion (ALPN, X25519, modern ciphers)"; now "post-handshake app-data correctness debugging (key derivation, nonce sequencing, direction-swap, GCM nonce XOR)."
-- Cluster E (endpoint policy) introduced as a new §XVI case for hostnames whose edge policy refuses our profile independent of substrate moves.
+- Cluster E (endpoint policy) initially introduced as a new §XVI case; **corrected post-publication** (per the keeper's Doc 730 §XII–§XVI re-read): Doc 730 §XVI has exactly four cases. E5 is Case 4 (implementation freedom at the scope tier), not a new case. The engagement decision for E5 is scope-level, not a substrate move at the TLS pilot tier. The corrected classification is in `wire-captures/tls-ext-3-findings.md` and `probes/endpoint-coverage.md`.
 
 ### Open scope at TLS-EXT 3 boundary
 
