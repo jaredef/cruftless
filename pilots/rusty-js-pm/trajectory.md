@@ -245,3 +245,97 @@ working end-to-end. Within the next session's reach.
 *PM-EXT 6 closes the second cross-step of the package-install pipeline.
 PM-R1 + PM-R2 together cover the manifest-to-extracted-staging arc;
 PM-R3 + lockfile + CLI close it into a working installer.*
+
+---
+
+## PM-EXT 7 — 2026-05-21 (PM-R3 linker; PM-R1+R2+R3 end-to-end)
+
+### Headline
+
+PM-R3 linker lands. **Full PM-R1 → R2 → R3 pipeline against lodash
+4.17.21 PASSES in 3.54 s**: resolve → 302 redirect → CDN tarball →
+SRI verify → gunzip → extract → rename staging → node_modules/lodash/.
+`package.json` ends up at `<nm>/lodash/package.json` with the expected
+version, and the path ends with `/lodash` (scoped-package layout
+verified separately on the unit path).
+
+### Substrate landed
+
+- `pilots/rusty-js-pm/derived/src/linker.rs` (~200 LOC):
+  - `link_package(&ResolvedDep, FetchedPackage, &Path) -> LinkedPackage`
+  - `resolve_install_path`: bare `name` → `<root>/name`; `@scope/name`
+    → `<root>/@scope/name`; rejects embedded `/`, empty scope, double
+    slash in scoped, `.`/`..`/empty/NUL
+  - Same-fs path: `fs::rename` (atomic, O(1))
+  - Cross-fs fallback: detect EXDEV (raw_os_error == 18), recursive
+    copy via `copy_dir_recursive`, remove staging
+  - Overwrite-existing: `remove_dir_all` before placing (the lockfile
+    in PM-EXT 8 will gate this on integrity mismatch; for now always
+    overwrite)
+
+### Probe result
+
+- Unit tests (8/8 PASS):
+  - install_path_bare, install_path_scoped
+  - install_path_rejects_bare_with_slash
+  - install_path_rejects_scoped_without_slash
+  - install_path_rejects_empty_scope
+  - install_path_rejects_double_slash_in_scoped
+  - link_smoke_same_fs (synthetic 2-file package)
+  - link_overwrites_existing (replaces stale dir)
+- Network end-to-end (1/1 PASS in 3.54 s): full PM-R1 → R2 → R3 against
+  lodash 4.17.21; install path = `<tmp>/cruftless-pm-link-lodash-nm-*/lodash`;
+  `package.json` reads "version": "4.17.21"
+- Total PM lib tests: 20/20 PASS (12 prior + 8 new linker)
+- 117 web-crypto regression: unchanged PASS
+- 5-endpoint TLS probe: unchanged 3/5
+
+### Measurement
+
+| stage | time |
+|---|---|
+| PM-R1 resolve | ~420 ms |
+| PM-R2 redirect + tarball + verify + extract | ~1.25 s |
+| PM-R3 link (same-fs rename) | <5 ms |
+| **PM-R1 → R3 wall time, lodash** | **3.54 s** |
+
+The 3.54 s is higher than the PM-EXT 6 standalone fetch (1.67 s)
+because the linker test re-resolves the manifest from scratch (no
+caching between PM-R1 calls yet). With manifest caching, the link
+step contributes <5 ms.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P05.L1.pm-r3-linker` | PM-R3 linker: flat node_modules layout, scoped packages, same-fs rename + cross-fs copy fallback; PM-R1 → R3 end-to-end PASS |
+
+### Open scope at PM-EXT 7 boundary
+
+1. **PM-EXT 8 (lockfile codec)**: serialize `Vec<ResolvedDep>` to a
+   stable JSON. Deserialize on subsequent installs; skip refetch if
+   integrity matches. ~60 LOC.
+2. **PM-EXT 9 (`pm_install` driver)**: read package.json `dependencies`,
+   drive PM-R1 → R2 → R3 across all entries, write lockfile. ~50 LOC.
+3. **PM-EXT 10 (transitive deps)**: per-version manifest carries
+   `dependencies`; recurse through the closure before fetching. Under
+   exact-pin discipline, any range in a transitive dep fails loudly —
+   that surfaces the coverage boundary of the first cut.
+4. **PM-EXT 11 (runtime smoke)**: from a tmpdir with installed lodash,
+   spawn the cruftless runtime and evaluate
+   `require('lodash').identity(42)`. This is the workstream's closure
+   gate per the seed §VI definition of "first-cut success".
+
+### Doc 734 meta-pipeline status
+
+PM-EXT 7 closes the PM-R1+R2+R3 substrate triad. The remaining work
+(EXT 8 + 9 + 10 + 11) is composition + driving the existing primitives;
+no new primitive needed unless a transitive dep surfaces an unhandled
+case (range-required, peer-dep, lifecycle script, scoped + CDN
+combination). The Doc 732 §VI carve-outs are designed to fail loudly
+on those — surfacing them is information, not regression.
+
+---
+
+*PM-EXT 7 closes the PM substrate triad. PM-EXT 8+ assembles the triad
+into the user-facing `cruftless install` command.*

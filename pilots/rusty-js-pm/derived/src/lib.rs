@@ -36,6 +36,7 @@ pub mod integrity;
 pub mod http;
 pub mod resolver;
 pub mod fetcher;
+pub mod linker;
 
 #[cfg(test)]
 mod tests {
