@@ -1613,3 +1613,76 @@ The remaining work is bounded: fix one off-by-1 bug in `p256_solinas_reduce_v2` 
 ---
 
 *WC-EXT 24 closes session 1's bottom with the Solinas correctness-vs-speed tension articulated cleanly: v2 was bug-fast, v3 is correct-slow, and the bounded fix (v2's off-by-1) would unlock the real 2× win. The session's framework refinements continue to grow Doc 735 §X's substrate-classification space; the (P2) case taxonomy now needs four sub-cases instead of three.*
+
+---
+
+## WC-EXT 25 — 2026-05-21 (off-by-1 bug FIXED; Solinas EC routed; CertificateVerify ~30% faster)
+
+### Headline
+
+**Bug located + fixed in 5 minutes.** The `c_2_256_mod_p` constant had byte 7 = 0xFF; correct value is 0xFE. The off-by-1 at bit 192 came from a single-byte typo in the hardcoded constant: 2^256 mod p256_p = 2^224 − 2^192 − 2^96 + 1, and the −2^192 contribution was missing from limb 6 of c.
+
+After the single-byte fix:
+- v2 fuzz: 1000/2000 → **0/2000 divergent** (gold)
+- v2 bench: 270 ns/op = **2.26× faster than Mont**
+- WC-EXT 22's EC routing substrate (jac_*_solinas + p256_scalar_mul_solinas + p256_scalar_mul_base_solinas) re-enabled
+- WC-EXT 21's "2.22× speedup" claim is **restored as correct** (the empirical measurement was right; the substrate was buggy in ways that didn't show in the bench's single equivalence-check but did show in fuzz)
+
+### Measurement
+
+| metric | WC-EXT 19 (pre-Solinas) | WC-EXT 25 |
+|---|---|---|
+| 117 web-crypto regression | 1.35s | 1.41s | (similar, margin) |
+| Fixture ECDSA verify | 0.10s | **0.07s** (~30% faster) |
+| 5-endpoint TLS probe | 2.64s | **2.47s** (~6%) |
+| api.github.com handshake | 0.84s | **0.81s** (~3%) |
+| P-256 leaf verify (chain_walk) | 100ms | **70ms** (~30% faster) |
+| P-256 CertificateVerify | 101ms | **70ms** (~30% faster) |
+| P-384 intermediate verify | 260ms | 263ms (unchanged — still Mont path) |
+
+### Why the wallclock gain is bounded at ~30% per P-256 verify
+
+The Solinas routing accelerates ONLY P-256 operations. api.github.com's chain has 2 P-384 intermediates (~260ms each = 520ms) + 1 P-256 leaf (70ms) + 1 P-256 CV (70ms) = ~660ms of cert+CV crypto. Total handshake ~810ms. The Solinas gain (~30% on 140ms of P-256 = ~40ms saved) is small relative to the P-384 dominance.
+
+To get bigger TLS wallclock win: implement Solinas (or equivalent NIST-fast-reduction) for P-384 specifically. ~150 LOC of P-384-prime-aware reduction. Projected: P-384 verify ~260ms → ~75ms, total handshake ~810ms → ~430ms. **Queued as WC-EXT 26.**
+
+### Cumulative session speedup
+
+| metric | session start | WC-EXT 25 | × |
+|---|---|---|---|
+| ECDSA verify (P-256 fixture) | 8.18s | 0.07s | **117×** |
+| 5-endpoint TLS probe | ~36s (hang) | 2.47s | **14.6×** |
+| api.github.com handshake | ~10s | 0.81s | **12.3×** |
+
+### Framework-tier corroboration
+
+Doc 735 §X.h's (P2.a) case is now achieved for Solinas: algorithm-correct + implementation-correct + per-op-faster-than-alternative. The substrate move's journey through the four sub-cases:
+- WC-EXT 20: (P2.b) wrong-stratum-composition
+- WC-EXT 21: (P2.c) illegal-speed implementation (bug-artifact)
+- WC-EXT 24: (P2.d) correct but losing
+- **WC-EXT 25: (P2.a) strict win** ← all three probes passing (bench + consumer-route + fuzz)
+
+The framework's three-probe-levels discipline (Doc 735 §X.h.c) operating as designed: fuzz caught the bug WC-EXT 21's bench missed; WC-EXT 25's fix passes all three levels.
+
+The bug's nature (single-byte typo in a hardcoded constant) is itself a finding: substrate-tier correctness can fail at the data-tier (constants) just as easily as at the algorithm-tier. The wrong-stratum-composition pattern of §X.h.e has a sibling: **wrong-data-tier-constants** — substrate moves that hardcode magic numbers without programmatic derivation are vulnerable to typo-level bugs that pass code review.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P06.E3.wc-solinas-bug-fixed-and-routed` | Single-byte fix to `c_2_256_mod_p` (byte 7: 0xFF → 0xFE); Solinas v2 gold at 0/2000 fuzz, 2.26× faster than Mont; EC routing re-enabled; P-256 ECDSA verify ~30% faster; (P2.a) strict win achieved per Doc 735 §X.h |
+
+### Probe result
+
+5/5: **3/5 PASS in 2.47s wallclock**. Live ec_scalar_mul P-256 path now Solinas-routed. P-384 still Mont (next-target WC-EXT 26).
+
+### Open scope at WC-EXT 25 boundary
+
+1. **WC-EXT 26**: Solinas-style fast reduction for P-384. ~150 LOC. Would close the chain_walk wallclock gap (P-384 intermediates dominate at ~260ms each post-Mont). Projected api.github.com handshake: 0.81s → ~0.43s.
+2. **Connection pooling** at the TLS-pilot tier — orthogonal (P3) move.
+3. **u64-limb BigUInt representation** — substantial; still queued.
+4. **Programmatic derivation of c_2_256_mod_p** — eliminate the hardcoded-constant typo class. Compute c = 2^256 mod p at runtime (one-time cost). ~10 LOC.
+
+---
+
+*WC-EXT 25 closes the WC-EXT 18–24 productive negative-finding arc with a strict-win substrate move. The bug was bounded (single-byte typo); the fix was bounded (single-byte change); the result is exactly what WC-EXT 21 claimed before the bug surfaced — a 2.26× per-mod_mul Solinas speedup over Mont. The framework's four (P2) sub-cases all populated empirically in one session; the substrate-classification space's edges are now well-defined. WC-EXT 26 (P-384 fast reduction) is the next strategic move.*

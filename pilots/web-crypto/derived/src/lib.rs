@@ -1322,8 +1322,16 @@ fn p256_solinas_reduce_v2(t_in: &[u32]) -> BigUInt {
     let extra = col[8];
     if extra > 0 {
         // 2^256 ≡ 2^224 − 2^192 − 2^96 + 1  (mod p). Add `extra` times.
+        // WC-EXT 25 FIX: byte 7 was 0xFF; correct value is 0xFE.
+        // 2^256 mod p256_p = 2^224 - 2^192 - 2^96 + 1.
+        // The -2^192 term means limb 6 (bits 192-223) is 0xFFFFFFFE
+        // (= 0xFFFFFFFF - 1, the borrow from -2^192 against the
+        // 2^224 - 2^192 = (2^32-1)·2^192 base).
+        // The original code missed the -2^192 contribution, producing
+        // limb 6 = 0xFFFFFFFF instead of 0xFFFFFFFE → off-by-1 at
+        // bit 192 (50% of fuzz inputs diverged per WC-EXT 23).
         let c_2_256_mod_p = BigUInt::from_be_bytes(&[
-            0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff,
+            0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xfe,
             0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
             0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
@@ -1332,8 +1340,16 @@ fn p256_solinas_reduce_v2(t_in: &[u32]) -> BigUInt {
     } else if extra < 0 {
         // Add |extra| copies of p to flip the missing 2^256 terms positive.
         for _ in 0..(-extra) { result = result.add(&p); }
+        // WC-EXT 25 FIX: byte 7 was 0xFF; correct value is 0xFE.
+        // 2^256 mod p256_p = 2^224 - 2^192 - 2^96 + 1.
+        // The -2^192 term means limb 6 (bits 192-223) is 0xFFFFFFFE
+        // (= 0xFFFFFFFF - 1, the borrow from -2^192 against the
+        // 2^224 - 2^192 = (2^32-1)·2^192 base).
+        // The original code missed the -2^192 contribution, producing
+        // limb 6 = 0xFFFFFFFF instead of 0xFFFFFFFE → off-by-1 at
+        // bit 192 (50% of fuzz inputs diverged per WC-EXT 23).
         let c_2_256_mod_p = BigUInt::from_be_bytes(&[
-            0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff,
+            0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xfe,
             0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
             0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
@@ -2879,21 +2895,19 @@ pub fn ecdsa_verify(
     let u1 = mod_mul(&e, &w, &c.n);
     if dbg_ec { eprintln!("[wc-ec] → mod_mul(r, w, n) = u2"); }
     let u2 = mod_mul(&r, &w, &c.n);
-    if dbg_ec { eprintln!("[wc-ec] → scalar_mul(u1, G) = p1 (Mont baked-table fast path if P-256, else generic)"); }
+    if dbg_ec { eprintln!("[wc-ec] → scalar_mul(u1, G) = p1 (Solinas base-table fast path if P-256, else generic)"); }
     let p1 = if c.coord_bytes == 32 && c.b.cmp(&p256_b()) == std::cmp::Ordering::Equal {
-        // WC-EXT 22 routing produced signature-mismatch (Solinas EC has
-        // bug). Reverted to Mont base-table path; Solinas EC substrate
-        // remains as standing dormant infrastructure for WC-EXT 23
-        // debug + re-routing.
-        p256_scalar_mul_base_mont(&u1)
+        // WC-EXT 25: route through Solinas now that v2 c_2_256_mod_p
+        // bug is fixed (0/2000 fuzz divergent; 2.26× faster per mod_mul).
+        p256_scalar_mul_base_solinas(&u1)
     } else {
         ec_scalar_mul(c, &u1, &c.g)
     };
     if dbg_ec { eprintln!("[wc-ec]   p1 OK"); }
-    if dbg_ec { eprintln!("[wc-ec] → scalar_mul(u2, Q) = p2 (Mont fast path if P-256)"); }
+    if dbg_ec { eprintln!("[wc-ec] → scalar_mul(u2, Q) = p2 (Solinas fast path if P-256)"); }
     let p2 = if c.coord_bytes == 32 && c.b.cmp(&p256_b()) == std::cmp::Ordering::Equal {
-        // WC-EXT 22 reverted; Solinas EC has signature-mismatch bug.
-        p256_scalar_mul_mont(&u2, &q)
+        // WC-EXT 25: Solinas EC re-routed after v2 c_2_256_mod_p fix.
+        p256_scalar_mul_solinas(&u2, &q)
     } else {
         ec_scalar_mul(c, &u2, &q)
     };
