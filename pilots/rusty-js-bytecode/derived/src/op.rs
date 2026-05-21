@@ -235,6 +235,18 @@ pub enum Op {
     GeI64  = 0xF8,
     EqI64  = 0xF9,
     NeI64  = 0xFA,
+
+    /// GET_PROP_ON_OBJECT <u16>
+    ///
+    /// JIT-EXT 19 (Doc 731 §XIV.d β-path for property access): typed
+    /// variant of GetProp where the upstream emitter has proven the
+    /// receiver is an Object. Bytecode shape is identical to GetProp
+    /// (u16 prop-name index); semantics are identical in the interpreter
+    /// (the typed assertion is a static claim, not a runtime check).
+    /// The JIT lowering at JIT-EXT 20+ exploits the typed claim by
+    /// emitting a direct property-fetch path (with IC) instead of a
+    /// generic dispatch.
+    GetPropOnObject = 0xFB,
 }
 
 impl Op {
@@ -258,7 +270,7 @@ impl Op {
             Call | New | CallMethod => 1,
             PushConst | LoadLocal | StoreLocal | LoadArg | StoreArg
             | LoadGlobal | StoreGlobal | LoadUpvalue | StoreUpvalue
-            | DefineLocal | ResetLocalCell | GetProp | SetProp | NewArray | InitProp
+            | DefineLocal | ResetLocalCell | GetProp | GetPropOnObject | SetProp | NewArray | InitProp
             | MakeClosure | MakeArrow | CaptureLocal | CaptureUpvalue | DeleteProp => 2,
             PushI32 | Jump | JumpIfTrue | JumpIfFalse
             | JumpIfTrueKeep | JumpIfFalseKeep | JumpIfNullish
@@ -334,6 +346,7 @@ pub fn op_from_byte(b: u8) -> Option<Op> {
         0xE0 => Nop, 0xE1 => Debugger,
         0xF0 => AddI64, 0xF1 => SubI64, 0xF2 => MulI64, 0xF3 => IncI64, 0xF4 => DecI64,
         0xF5 => LtI64, 0xF6 => LeI64, 0xF7 => GtI64, 0xF8 => GeI64, 0xF9 => EqI64, 0xFA => NeI64,
+        0xFB => GetPropOnObject,
         _ => return None,
     })
 }

@@ -503,6 +503,14 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
                 ParsedOp::GeI64 => cmpop(&mut stack, &mut builder, IntCC::SignedGreaterThanOrEqual)?,
                 ParsedOp::EqI64 => cmpop(&mut stack, &mut builder, IntCC::Equal)?,
                 ParsedOp::NeI64 => cmpop(&mut stack, &mut builder, IntCC::NotEqual)?,
+                ParsedOp::GetPropOnObject(_idx) => {
+                    // JIT-EXT 19: recognized at parser-tier, lowering
+                    // arrives at JIT-EXT 20. Until then, the translator
+                    // rejects the function so the interpreter handles
+                    // it.
+                    return Err(format!(
+                        "GetPropOnObject not yet lowered by JIT (JIT-EXT 20 target) at pc={}", pc));
+                }
             }
             // Allow comparison op result (i8) to participate in stack
             // as if it were i64 — handled inside cmpop by extending.
@@ -809,6 +817,10 @@ enum ParsedOp {
     // responsible for proving it.
     AddI64, SubI64, MulI64, IncI64, DecI64,
     LtI64, LeI64, GtI64, GeI64, EqI64, NeI64,
+    /// JIT-EXT 19 (Doc 731 §XIV.d β-path for property access).
+    /// Recognized at parser-tier; JIT lowering arrives at JIT-EXT 20.
+    /// Operand is the constant-pool index of the property name.
+    GetPropOnObject(u16),
 }
 
 impl ParsedOp {
@@ -866,6 +878,14 @@ fn parse_bytecode(bc: &[u8]) -> Result<Vec<(usize, ParsedOp)>, String> {
             }
             Op::Return => ParsedOp::Return,
             Op::ReturnUndef => ParsedOp::ReturnUndef,
+            // JIT-EXT 19: GetPropOnObject is recognized in the parser
+            // but the translator dispatch (above) returns Err for it
+            // until JIT-EXT 20 lands the lowering + runtime helper.
+            Op::GetPropOnObject => {
+                let s = u16::from_le_bytes([bc[pc], bc[pc + 1]]);
+                pc += 2;
+                ParsedOp::GetPropOnObject(s)
+            }
             Op::AddI64 => ParsedOp::AddI64,
             Op::SubI64 => ParsedOp::SubI64,
             Op::MulI64 => ParsedOp::MulI64,
@@ -1109,6 +1129,25 @@ mod tests {
         assert_eq!(state.local_values, vec![(0, i64::MAX), (1, 2)]);
 
         clear_current_deopt_sites();
+    }
+
+    /// JIT-EXT 19: GetPropOnObject is recognized by parse_bytecode but
+    /// the translator returns Err when it sees the op. The function
+    /// is uncompilable by the JIT at JIT-EXT 19 close; the interpreter
+    /// continues to handle it via the shared Op::GetProp dispatch.
+    #[test]
+    fn jit_rejects_getprop_on_object_at_ext19() {
+        let mut bc = Vec::new();
+        // Construct minimal bytecode containing GetPropOnObject. The
+        // receiver doesn't actually need to be valid — translator
+        // bails out at parse-time before any interpreter-tier check.
+        encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 0);
+        encode_op(&mut bc, Op::GetPropOnObject); encode_u16(&mut bc, 0);
+        encode_op(&mut bc, Op::Return);
+        let proto = empty_proto(bc, 1);
+        let err = compile_function(&proto).expect_err("JIT should reject GetPropOnObject at EXT 19");
+        assert!(err.contains("GetPropOnObject"),
+            "error should mention the op; got: {err}");
     }
 
     /// JIT-EXT 17: ICShapeMismatch deopt demonstrator.

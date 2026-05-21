@@ -6441,7 +6441,7 @@ impl Runtime {
                 }
 
                 // ─── Property access ───
-                Op::GetProp => {
+                Op::GetProp | Op::GetPropOnObject => {
                     let idx = decode_u16(&frame.bytecode, frame.pc);
                     frame.pc += 2;
                     let key = self.constant_name(frame, idx)?;

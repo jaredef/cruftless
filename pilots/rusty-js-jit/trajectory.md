@@ -953,3 +953,76 @@ The per-kind specialization decision is a Case-4 (implementation freedom): cruft
 ---
 
 *JIT-EXT 18 closes the IC chapter's audit and design round. Implementation begins at JIT-EXT 19 with the GetPropOnObject bytecode + translator lowering. Each subsequent round is independently committable under the same Pin-Art shape that landed the arithmetic deopt chapter.*
+
+---
+
+## JIT-EXT 19 — 2026-05-21 (GetPropOnObject bytecode + parser tier; JIT lowering deferred to EXT 20)
+
+### Headline
+
+`Op::GetPropOnObject = 0xFB` joins the bytecode alphabet. The interpreter handles it identically to `Op::GetProp` (shared dispatch case via `Op::GetProp | Op::GetPropOnObject` match arm). The JIT parser recognizes it (`ParsedOp::GetPropOnObject(u16)`) but the translator dispatch returns Err — JIT lowering arrives at JIT-EXT 20.
+
+**This is the bytecode-tier first cut of the IC chapter** — the new typed alphabet variant exists; subsequent rounds wire the JIT to it.
+
+### Substrate landed
+
+- `pilots/rusty-js-bytecode/derived/src/op.rs` (+~15 LOC):
+  - `Op::GetPropOnObject = 0xFB` with documentation
+  - operand_size: 2 (joins the GetProp / SetProp / etc. group)
+  - decoder entry: `0xFB => GetPropOnObject`
+
+- `pilots/rusty-js-runtime/derived/src/interp.rs` (+1 char):
+  - Dispatch match arm widened: `Op::GetProp | Op::GetPropOnObject => { ... }`. Both ops share the same lookup logic; the typed assertion is upstream's responsibility, not a runtime check.
+
+- `pilots/rusty-js-jit/derived/src/translator.rs` (+~30 LOC):
+  - `ParsedOp::GetPropOnObject(u16)` variant
+  - `parse_bytecode` recognizes 0xFB and reads the u16 operand
+  - Dispatch arm returns Err with `"GetPropOnObject not yet lowered by JIT (JIT-EXT 20 target) at pc={}"`. Functions containing this op are rejected by `compile_function`; the interpreter continues to handle them.
+
+- One new test `jit_rejects_getprop_on_object_at_ext19`: confirms the JIT rejects the op with a recognizable error message.
+
+### Probe result
+
+**26/26 JIT lib tests PASS in 0.03 s** (25 prior + 1 new rejection test).
+
+Regression sweep:
+- PM-EXT 11+12: 2/2 PASS in 2.80 s
+- caps_probes: 18/18 PASS
+- All prior arith-guard + shape-trip tests still PASS
+
+### Why this scoping
+
+The IC chapter has multiple intertwined pieces (Value representation, IC cache layout, runtime helper, dispatcher consume-state). The design doc at JIT-EXT 18 §IV mapped them to 5 EXT rounds. JIT-EXT 19 is the smallest stepping stone: introduce the bytecode op so subsequent rounds have something to lower from, without committing to specific lowering details.
+
+This pattern mirrors how `AddI64` was added at JIT-EXT 5 (alphabet promotion at bytecode tier) before JIT-EXT 6+ exercised the new variant from the JIT.
+
+### Pred-731 corroboration
+
+- **R3 (verifier-before-emission)**: corroborated. The translator parses GetPropOnObject correctly + rejects at the verifier tier before any Cranelift IR is emitted. The interpreter continues to handle the function. The classification of supported-vs-unsupported ops is honest.
+- **R5 (deopt sites finite-enumerable per emitted module)**: unchanged. No new deopt sites this round.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P04.E2.jit-getprop-on-object-bytecode` | JIT-EXT 19: Op::GetPropOnObject = 0xFB added to bytecode alphabet; interpreter dispatches via shared Op::GetProp case; JIT parser recognizes; JIT lowering deferred to EXT 20; 26/26 JIT tests PASS; PM + caps regression unchanged |
+
+### Open scope at JIT-EXT 19 boundary
+
+Per the design doc:
+
+1. **JIT-EXT 20**: full JIT lowering for GetPropOnObject. Emit a call to `jit_getprop_on_object(receiver_idx: i64, prop_name_idx: i64) -> i64`; receiver is treated as an ObjectRef-i64; result is a Number-as-i64 (deopts on non-Number via the existing `IntegerOverflow` reason reused, or a new variant). Single-shape IC at the same time as the call site (per design §II) since the IC is the natural place to land — going through the runtime helper every time would defeat the JIT's perf gain. ~150 LOC.
+
+2. **JIT-EXT 21**: dispatcher consume-recovered-state — the resume-at-arbitrary-pc work that JIT-EXT 14 deferred.
+
+3. **JIT-EXT 22**: multi-shape IC with deopt on cache-full miss.
+
+4. **JIT-EXT 23**: mixed-regime support (Object args alongside Number args in the same function).
+
+### Doc 730 §XVI status
+
+The bytecode-side addition is a Case-1 substrate-introduction: cruftless gains a typed-object alphabet variant that upstream JS code does not produce yet (no upstream emitter generates this op). The upstream emitter changes — generating GetPropOnObject when type analysis proves the receiver is an Object — are queued for the typed-alphabet promotion pass that landed `AddI64`. For first cut, the only callers are bytecode-level tests; real upstream code paths through GetProp continue to use the plain op until the promotion pass extends.
+
+---
+
+*JIT-EXT 19 closes the bytecode-tier preparation round. JIT-EXT 20 adds the actual JIT lowering, which is where ICs first land as a working substrate.*
