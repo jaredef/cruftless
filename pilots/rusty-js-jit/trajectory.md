@@ -882,3 +882,74 @@ The synthetic-IC demonstrator pattern (toggle a static; emit a check that reads 
 ---
 
 *JIT-EXT 17 closes the synthetic-IC demonstrator round. The deopt machinery handles non-arithmetic reasons end-to-end. JIT-EXT 18+ lands real GetProp + ICs on top.*
+
+---
+
+## JIT-EXT 18 — 2026-05-21 (IC + GetProp audit + design)
+
+### Headline
+
+Design doc for landing real GetProp ICs. **The audit settles three scoping decisions**: (1) Value representation in the JIT stays narrow — per-Value-kind specialization (Option B) rather than tagged-i64 union or general boxing; (2) the IC cache lives per-CompiledFn as `Vec<ICEntry>` with up to 4 shapes per site, accessed via Cranelift-emitted memory loads; (3) dispatcher consume-recovered-state lands at JIT-EXT 21 as a new `call_function_with_resume_state` entry point. The remaining IC work is bounded at 5 EXT rounds (19-23).
+
+### Substrate landed
+
+- `pilots/rusty-js-jit/docs/ic-and-getprop-design.md` (~290 lines):
+  - §I audit: what the current JIT can NOT do; what GetProp specifically requires; three scoping options (tagged-i64 union / per-kind specialization / boxing at entry); decision = per-kind specialization (Option B)
+  - §II IC layer design: structural shape, cache representation (per-CompiledFn `Vec<ICEntry>`), lookup lowering
+  - §III dispatcher consume-recovered-state: what arbitrary-pc resume requires; i64 → Value widening; why JIT-EXT 14 deferred it
+  - §IV the 5-round EXT plan (JIT-EXT 19-23)
+  - §V what this doc does NOT propose (tagged-i64, multi-tier, SetProp in first IC round, CallMethod, prototype walk)
+
+### Key design decisions
+
+1. **Per-Value-kind specialization (Option B)**. Adds a typed-object bytecode alphabet alongside the typed-i64 alphabet. Functions can use both ops; both are i64-typed in JIT SSA, just with different interpretation. Preserves the arithmetic JIT's perf (sum(1M)=2ms unchanged).
+
+2. **Per-CompiledFn `Vec<ICEntry>`** for cache state. JIT-emitted code reads from fixed memory addresses (the ICEntry's address is known at JIT-compile time). Runtime helper updates the cache on miss.
+
+3. **Up to 4 shapes per IC site** before deopt. Mirrors V8/JSC; balances cache utility against bookkeeping cost.
+
+4. **Resume-at-trip-pc becomes correctness-critical when SetProp lands.** Until then, re-execution from pc=0 is observably equivalent (no side effects in the JIT body). The dispatcher's consume-recovered-state path (JIT-EXT 21) must land before SetProp does.
+
+### The remaining EXT plan
+
+| EXT | substrate | LOC |
+|---|---|---|
+| 19 | `Op::GetPropOnObject` bytecode + translator lowering (always-call-runtime path) | ~200 |
+| 20 | Single-shape IC at GetProp sites | ~150 |
+| 21 | Dispatcher consume-recovered-state (`call_function_with_resume_state`) | ~100 |
+| 22 | Multi-shape IC with deopt on cache-full miss | ~80 |
+| 23 | Mixed-regime support (Object args alongside Number args) | ~50 |
+| **total** | | **~580** |
+
+### Why a design doc and not code
+
+The IC chapter has multiple intertwined pieces. Without a settled scoping decision on Value representation, the translator changes for GetPropOnObject would either:
+
+- Disturb arithmetic perf (tagged-i64 union option)
+- Need recompilation as we discover the right answer
+
+Pin-Art discipline says: settle the design before introducing substrate. JIT-EXT 18 mirrors JIT-EXT 10 (audit+design for arithmetic deopt before implementation rounds 11-16). The same shape applies to ICs.
+
+### Pred-731 corroboration
+
+- **R5 (deopt sites finite-enumerable per emitted module)**: extended scope. With ICs, deopt sites include both arithmetic-overflow and IC-shape-mismatch variants; the cardinality remains bounded by the function body's op count.
+- **R6 (single tier)**: preserved by the per-kind specialization choice. Two regimes (i64-arith, object-property) live in the same JIT'd function as a single tier — they don't form a hierarchy.
+- **R8 (no internal optimization passes)**: preserved. The IC lookup is straight-line code emitted by the translator; no Cranelift optimization passes inspect or transform it.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P04.E2.jit-ic-getprop-design` | JIT-EXT 18: IC + GetProp design doc; scoping decisions settled (Option B per-kind specialization, per-CompiledFn ic_entries Vec, 4-shape cache, resume-at-trip-pc at EXT 21); 5-round plan for EXT 19-23 |
+
+### Open scope at JIT-EXT 18 boundary
+
+Five rounds to implement, in the order documented in §IV. The infrastructure built across JIT-EXT 11-17 (deopt types, thunk, dispatcher wiring, ICShapeMismatch variant flowing end-to-end) is the load-bearing foundation; each subsequent round adds substrate that uses mechanisms the foundation provides.
+
+### Doc 730 §XVI status
+
+The per-kind specialization decision is a Case-4 (implementation freedom): cruftless's narrow alphabet discipline gives it the option to specialize per Value-kind without paying tagged-union cost; mainstream JITs (V8, SpiderMonkey) chose tagged representations because their alphabets are wider. Cruftless's choice is principled given its discipline; the choice would be wrong without the discipline.
+
+---
+
+*JIT-EXT 18 closes the IC chapter's audit and design round. Implementation begins at JIT-EXT 19 with the GetPropOnObject bytecode + translator lowering. Each subsequent round is independently committable under the same Pin-Art shape that landed the arithmetic deopt chapter.*
