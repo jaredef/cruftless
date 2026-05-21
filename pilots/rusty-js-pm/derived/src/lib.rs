@@ -33,6 +33,7 @@
 
 pub mod smoke;
 pub mod integrity;
+pub mod http;
 
 #[cfg(test)]
 mod tests {

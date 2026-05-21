@@ -6,12 +6,18 @@ edition = "2021"
 [lib]
 path = "src/lib.rs"
 
-# PM-EXT 3 toolchain. HTTP client deliberately deferred to PM-EXT 4:
-# the choice (ureq vs the engagement's own sockets/tls/fetch-api
-# pilots) merits its own design pass, and the first-cut smoke test
-# verifies the on-disk toolchain (gunzip + untar + sha2 + serde) on
-# the aarch64-linux Pi target without committing to an HTTP path.
+# PM-EXT 3 toolchain. PM-EXT 4 added the HTTP path: compose on the
+# engagement's own pilots/tls (TLS 1.3 driver) + pilots/http-codec
+# (HTTP/1.1 wire codec) rather than pulling in a parallel HTTP stack
+# (ureq, reqwest). Cruftless's resolver-instance #0 composes on
+# resolver-instance #1's existing surface per Doc 729 §V compositional-
+# safety principle.
 [dependencies]
+# PM-EXT 4: HTTP GET path. tls + http-codec compose into pm_http_get
+# without dragging in a Runtime instance (the PM runs at install time,
+# before the runtime is wired).
+rusty-tls = { path = "../../tls/derived" }
+rusty-http-codec = { path = "../../http-codec/derived" }
 # tarball decompression
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 # tarball extraction
