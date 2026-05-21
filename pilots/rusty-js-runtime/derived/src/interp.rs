@@ -5371,11 +5371,76 @@ impl Runtime {
     /// always returns a fresh ordinary Array with [[Prototype]] set to
     /// %Array.prototype% and length pre-populated. Full @@species
     /// dispatch is queued for Tier 2.
-    pub fn array_species_create(&mut self, _o: &Value, len: usize) -> Result<Value, RuntimeError> {
+    pub fn array_species_create(&mut self, o: &Value, len: usize) -> Result<Value, RuntimeError> {
+        // ECMA-262 §22.1.3.17 ArraySpeciesCreate. Honor the subclass when O
+        // is an Array-subclass instance whose constructor is a function:
+        // construct via `new C(length)` so the result's proto chain matches
+        // the subclass. Falls back to a plain Array allocation otherwise.
+        //
+        // arktype's Disjoint (class Disjoint extends Array) relies on this
+        // for invert()'s `this.map(...)` path AND for any other map/filter/
+        // slice call. Without species, map returns a plain Array, breaking
+        // downstream `instanceof Disjoint` checks at non-workaround sites.
+        //
+        // Bracket probe: probes/bracket-array-species (locale rusty-js-esm).
+        let o_id = if let Value::Object(id) = o { *id } else {
+            // Non-object receiver: fall back.
+            let id = self.alloc_object(crate::value::Object::new_array());
+            if len > 0 { self.object_set(id, "length".into(), Value::Number(len as f64)); }
+            return Ok(Value::Object(id));
+        };
+        let is_arr = matches!(
+            self.obj(o_id).internal_kind,
+            crate::value::InternalKind::Array
+        );
+        if is_arr {
+            let ctor = self.object_get(o_id, "constructor");
+            if let Value::Object(cid) = &ctor {
+                let is_fn = matches!(
+                    self.obj(*cid).internal_kind,
+                    crate::value::InternalKind::Function(_)
+                    | crate::value::InternalKind::Closure(_)
+                    | crate::value::InternalKind::BoundFunction(_)
+                );
+                // Spec step 3.b.i would check that C is not the intrinsic
+                // %Array% (in which case fall back). Here we use a quick
+                // proxy: if ctor === self.array_constructor, fall back.
+                let is_plain_array_ctor = match self.globals.get("Array") {
+                    Some(Value::Object(arr_id)) => *arr_id == *cid,
+                    _ => false,
+                };
+                if is_fn && !is_plain_array_ctor {
+                    // Mirror Op::New's allocation: pre-allocate an
+                    // Array-kind object with proto = ctor.prototype, then
+                    // dispatch via call_function with pending_new_target
+                    // set so the constructor sees the right `this`.
+                    let proto_override = match self.object_get(*cid, "prototype") {
+                        Value::Object(pid) => Some(pid),
+                        _ => None,
+                    };
+                    let mut ordinary = crate::value::Object::new_array();
+                    if proto_override.is_some() {
+                        ordinary.proto = proto_override;
+                    }
+                    let this_id = self.alloc_object(ordinary);
+                    let prev_pending = self.pending_new_target.take();
+                    self.pending_new_target = Some(ctor.clone());
+                    let r = self.call_function(ctor.clone(), Value::Object(this_id), vec![Value::Number(len as f64)]);
+                    self.pending_new_target = prev_pending;
+                    let ret = r?;
+                    // Per ECMA-262 §10.2.1.1, if the constructor returns
+                    // an Object, that object IS the result; otherwise use
+                    // the pre-allocated this. Array intrinsic returns the
+                    // receiver (so this_id is preserved); user classes may
+                    // explicitly return.
+                    match ret {
+                        Value::Object(_) => return Ok(ret),
+                        _ => return Ok(Value::Object(this_id)),
+                    }
+                }
+            }
+        }
         let id = self.alloc_object(crate::value::Object::new_array());
-        // Only set explicit length when len > 0; for len=0 (filter, etc.)
-        // let the array length derive from max-index, so subsequent
-        // CreateDataPropertyOrThrow calls grow the length naturally.
         if len > 0 {
             self.object_set(id, "length".into(), Value::Number(len as f64));
         }
