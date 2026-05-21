@@ -6,6 +6,21 @@ use rusty_js_runtime::caps as caps;
 use rusty_js_runtime::caps::{ModuleId, ModuleProvenance};
 use std::rc::Rc;
 
+/// CAPS-EXT 11: gate a clock operation through the dispatcher.
+fn check_clock(rt: &Runtime, op: caps::ClockOp) -> Result<(), RuntimeError> {
+    let url = rt.current_module_url.last().cloned().unwrap_or_default();
+    let provenance = if url.contains("/node_modules/") {
+        ModuleProvenance::Dependency
+    } else if url.starts_with("node:") {
+        ModuleProvenance::Builtin
+    } else {
+        ModuleProvenance::Application
+    };
+    let caller = ModuleId { url, provenance };
+    rt.caps.require_clock(&caps::Clock::disabled(), op, &caller)
+        .map_err(|e| RuntimeError::TypeError(e.to_string()))
+}
+
 /// CAPS-EXT 8: gate a process operation through the capability
 /// dispatcher. Same shape as host-v2/src/fs.rs's check_fs.
 fn check_process(rt: &Runtime, op: caps::ProcessOp) -> Result<(), RuntimeError> {
@@ -149,6 +164,7 @@ pub fn install(rt: &mut Runtime, argv: Vec<String>) {
 
     register_method(rt, process, "hrtime", |rt, _args| {
         use std::time::{SystemTime, UNIX_EPOCH};
+        check_clock(rt, caps::ClockOp::HighResolution)?;
         let d = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
         let arr = rt.alloc_object(rusty_js_runtime::value::Object::new_array());
         rt.object_set(arr, "0".into(), Value::Number(d.as_secs() as f64));
@@ -159,8 +175,9 @@ pub fn install(rt: &mut Runtime, argv: Vec<String>) {
     // since the unix epoch. pino / pino-http call this at module-init for
     // their time-stamping closures.
     if let rusty_js_runtime::Value::Object(hrtime_id) = rt.object_get(process, "hrtime") {
-        let bigint_fn: rusty_js_runtime::value::NativeFn = std::rc::Rc::new(|_rt, _args| {
+        let bigint_fn: rusty_js_runtime::value::NativeFn = std::rc::Rc::new(|rt, _args| {
             use std::time::{SystemTime, UNIX_EPOCH};
+            check_clock(rt, caps::ClockOp::HighResolution)?;
             let ns = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos() as i64;
             Ok(Value::BigInt(std::rc::Rc::new(rusty_js_runtime::bigint::JsBigInt::from_i64(ns))))
         });

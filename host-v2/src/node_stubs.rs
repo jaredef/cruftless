@@ -8,7 +8,24 @@
 use crate::register::{make_callable, new_object, register_method};
 use rusty_js_runtime::value::Object as RtObject;
 use rusty_js_runtime::{Runtime, RuntimeError, Value};
+use rusty_js_runtime::caps as caps;
+use rusty_js_runtime::caps::{ModuleId, ModuleProvenance};
 use std::rc::Rc;
+
+/// CAPS-EXT 11+12: gate clock/scheduler ops from this file.
+fn check_clock_ns(rt: &Runtime, op: caps::ClockOp) -> Result<(), RuntimeError> {
+    let url = rt.current_module_url.last().cloned().unwrap_or_default();
+    let provenance = if url.contains("/node_modules/") {
+        ModuleProvenance::Dependency
+    } else if url.starts_with("node:") {
+        ModuleProvenance::Builtin
+    } else {
+        ModuleProvenance::Application
+    };
+    let caller = ModuleId { url, provenance };
+    rt.caps.require_clock(&caps::Clock::disabled(), op, &caller)
+        .map_err(|e| RuntimeError::TypeError(e.to_string()))
+}
 
 fn stub(module: &'static str, method: &'static str) -> impl Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> {
     move |_rt, _args| {
@@ -823,8 +840,9 @@ pub fn install_dom_exception(rt: &mut Runtime) {
 /// module-init. WHATWG Performance interface stubs.
 pub fn install_performance(rt: &mut Runtime) {
     let perf = new_object(rt);
-    register_method(rt, perf, "now", |_rt, _a| {
+    register_method(rt, perf, "now", |rt, _a| {
         use std::time::{SystemTime, UNIX_EPOCH};
+        check_clock_ns(rt, caps::ClockOp::HighResolution)?;
         let ms = SystemTime::now().duration_since(UNIX_EPOCH)
             .map(|d| d.as_secs_f64() * 1000.0).unwrap_or(0.0);
         Ok(Value::Number(ms))

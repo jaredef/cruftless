@@ -204,6 +204,17 @@ fn env_read_loses_under_sealed() {
         "CAPS-EXT 9: --sealed must yield empty process.env; stdout: {stdout}\nstderr: {stderr}");
 }
 
+// CAPS-EXT 11: clock route-through.
+
+#[test]
+fn clock_read_loses_under_sealed() {
+    let (_, stdout, stderr) = run_probe("clock_read", Some("--sealed"));
+    assert_eq!(classify_streams(&stdout, &stderr), ProbeOutcome::Loses,
+        "CAPS-EXT 11: --sealed must block Date.now; stdout: {stdout}\nstderr: {stderr}");
+    assert!(stderr.contains("clock"),
+        "loss message should reference clock capability; got stderr: {stderr}");
+}
+
 // CAPS-EXT 10: stdio route-through.
 
 #[test]

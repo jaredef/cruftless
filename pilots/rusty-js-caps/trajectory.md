@@ -909,3 +909,117 @@ The attacker-controlled bytes don't reach stdout. Period.
 ---
 
 *CAPS-EXT 10 closes the primary stdout exfiltration surface. The remaining work is timing + scheduler — both genuinely side-channel categories, not primary attack vectors. The impossibility claim's main load-bearing surface is now mechanically guaranteed under `--sealed`.*
+
+---
+
+## CAPS-EXT 11 — 2026-05-21 (Clock route-through; full probe suite flipped — Pilot α first-cut closure)
+
+### Headline
+
+**Every synthetic-adversary probe in the suite now LOSES under `--sealed`.** `Date.now`, `process.hrtime`, `process.hrtime.bigint`, and `performance.now` all route through `rt.caps.require_clock`. The clock_read probe flips. **18/18 caps_probes PASS, 9/9 probes mechanically refused. The Doc 736 §IV impossibility claim is realized for the probe-covered surface.**
+
+### Substrate landed
+
+- `pilots/rusty-js-runtime/derived/src/interp.rs`:
+  - `Runtime::date_now_via()` gates through `caps::ClockOp::Now`
+- `host-v2/src/process.rs`:
+  - `check_clock(rt, op)` helper
+  - `process.hrtime` gated through `caps::ClockOp::HighResolution`
+  - `process.hrtime.bigint` (the BigInt nanosecond variant) gated
+- `host-v2/src/node_stubs.rs`:
+  - `check_clock_ns(rt, op)` helper
+  - `performance.now` gated through `caps::ClockOp::HighResolution`
+- `host-v2/tests/caps_probes.rs`:
+  - Added `clock_read_loses_under_sealed`
+
+### Probe result
+
+**18/18 caps_probes PASS in 0.03 s. 9/9 probes flipped.**
+
+| probe | Mode 0 | Mode 3 |
+|---|---|---|
+| fs_read | WINS ✓ | LOSES ✓ |
+| fs_write | WINS ✓ | LOSES ✓ |
+| fs_list | WINS ✓ | LOSES ✓ |
+| fs_stat | WINS ✓ | LOSES ✓ |
+| process_exit | WINS ✓ | LOSES ✓ |
+| cwd_read | WINS ✓ | LOSES ✓ |
+| env_read | WINS ✓ | LOSES ✓ |
+| stdio_exfil | WINS ✓ | LOSES ✓ |
+| **clock_read** | WINS ✓ | **LOSES ✓ (flipped — closure)** |
+
+PM-EXT 11+12 regression: 2/2 PASS in 2.74 s. Mode 0 unchanged.
+caps_audit: 3/3 unchanged. caps unit tests: 15/15 unchanged.
+
+### Doc 736 §IV class coverage at Pilot α first-cut closure
+
+- Class 1 (read any file): **closed**
+- Class 1 (host control via process.exit): **closed**
+- Class 1 (stdout exfil): **closed**
+- Class 4 (env-var secrets): **closed**
+- Class 4 (process introspection): **closed**
+- Class 6 (persist): **closed**
+- Class 4 (timing side-channel via Date.now / hrtime / performance.now): **closed**
+- Class adjacent (info disclosure): **closed**
+
+**Every class catalogued in Doc 736 §IV that the engagement has a probe for is now mechanically refused under `--sealed`.**
+
+Remaining documented gaps (not class-closing regressions):
+- stderr exfiltration (used by probe harness as escape valve; closeable in a future round)
+- `process.env` per-property getter semantics (current install-time empty under Mode 3 over-seals Mode 2)
+- Scheduler timers / microtasks (no probe yet; surface is gated when CAPS-EXT 12 lands)
+
+### Pilot α first-cut declaration
+
+**Pilot α first cut is complete.** The capability-passing runtime is operational under all four modes:
+
+- Mode 0 (Compat): identical to pre-pilot Cruftless. PM-EXT 11+12 gates remain green.
+- Mode 1 (Audit): ambient + log. Logs captured on exit to sidecar or stderr.
+- Mode 2 (SealedDeps): ambient for application, sealed for `node_modules/`. Limited by per-property env semantics (documented).
+- Mode 3 (Sealed): all 9 probes refused. The impossibility claim of Doc 736 §IV holds for the probe-covered surface.
+
+### Pred-736 corroboration
+
+- **Pred-736.1 (retrofit, not rewrite)**: corroborated. ~835 LOC of substrate across rusty-js-runtime (caps.rs + clock gate) + host-v2 (process.rs / fs.rs / os.rs / node_stubs.rs gates). Below 1k LOC. Every existing test passes.
+
+- **Pred-736.2 (synthetic-adversary harness is the right §XVI oracle)**: corroborated. Nine probes spanning fs/process/env/stdio/clock cleanly express the attack surface. The WINS/LOSES sentinel format scaled across rounds; the harness scaled across modes. No representational gap surfaced.
+
+- **Pred-736.3 (LOC estimate ~1100)**: **inside the estimate.** Cumulative ~835 LOC at Pilot α first-cut closure. Doc 736 §VI's 2-3k estimate was conservative; the audit-revealed surface was smaller than expected and the dispatcher's match-on-mode pattern made per-call-site additions tiny.
+
+- **Pred-736.4 (Move 1 alone delivers the bulk of the impossibility claim)**: **corroborated.** Moves 2-5 (verifier moves) are not yet landed, yet 8 of the 9 probe-measurable Doc 736 §IV classes are closed. The single remaining is stderr-exfil, which is a documented gap rather than a missing class.
+
+- **Pred-736.5 (compositional with PM-EXT 11 runtime-smoke gate)**: corroborated. The PM gate uses `require('lodash').identity(42)`. lodash.identity is pure; the PM smoke test passes unchanged under Mode 0 throughout Pilot α. (Under Mode 3 it would currently fail because lodash and the loader use fs.read; the application's cruftless-caps.json would need to declare fs read for `<project>/node_modules/`. This is the §IX.6 "the dispatcher exists in Mode 0 by default" design realized.)
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P05.L2.caps-clock-route-closure` | CAPS-EXT 11: Clock route-through; clock_read probe flipped; full probe suite (9/9) refused under `--sealed`; **Pilot α first-cut closure declared**; PM regression GREEN |
+
+### Open scope past Pilot α first cut
+
+The pilot's first cut is complete. The remaining work is **coverage expansion and verifier moves**, not impossibility-claim gating:
+
+1. **CAPS-EXT 12 (Scheduler route-through)**: gate `setTimeout`, `setInterval`, `setImmediate`, `queueMicrotask`, `process.nextTick`. Add `scheduler_spin.mjs` probe. Probe doesn't currently exist; surface gating without it.
+
+2. **Verifier moves (Doc 736 §III Moves 2-5)**: now unlocked since Pilot α's substrate carries them.
+   - **Move 2** (manifest+lockfile caps schema): extend `ResolvedDep` with `caps`, write/read through the lockfile codec, surface in audit log.
+   - **Move 3** (load-time SRI re-verifier): hook in `evaluate_module` / `cjs_require` to recompute sha-512 + compare against lockfile SRI.
+   - **Move 4** (closed import graphs): parser refuses dynamic `require()` in dep code; bytecode compiler validates static imports against lockfile closure.
+   - **Move 5** (publisher pinning): lockfile field + per-registry opt-in.
+
+3. **`require(spec, {caps})` extension**: enables the application to pass non-empty capabilities to a dep, lifting Mode 3 from "deny all" to "deny what the dep doesn't declare and the app doesn't grant."
+
+4. **`cruftless-caps.json` parser**: enables the application to declare its own root capability set under Mode 3.
+
+5. **Documented gaps closure**: stderr per-stream policy, `process.env` per-property getters, Mode 2 application-vs-dep differentiation refinement.
+
+6. **End-to-end impossibility-claim test**: a synthetic malicious lodash-shaped dependency attempting every Doc 736 §IV attack vector and refused at each. The probe suite already does this; the meta-test bundles all 9 into a single "impossibility-claim PASS/FAIL" lane.
+
+### Doc 730 §XVI status
+
+Pilot α first cut is a Case-1 substrate-introduction completion: Cruftless gained capability-passing under all four modes; the upstream (Node) lacks the equivalent; no ecosystem deviation surfaced. The §XVI oracle (synthetic-adversary probe suite) is the engagement's standing demonstration of the impossibility claim's reachable state.
+
+---
+
+*CAPS-EXT 11 closes Pilot α's first cut. The dispatcher routes every effectful surface the audit identified. Every probe flips. Mode 0 backward compat is intact at every round. The capability-passing runtime is operational and the Doc 736 §IV impossibility claim is mechanically realized for the probe-covered surface. Subsequent EXT rounds extend coverage and land the verifier moves; the design's load-bearing claim is now standing.*

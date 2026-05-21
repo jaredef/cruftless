@@ -2801,6 +2801,18 @@ impl Runtime {
     /// Date.now() per ECMA §21.4.3.1 — current epoch ms.
     pub fn date_now_via(&mut self) -> Result<Value, RuntimeError> {
         use std::time::{SystemTime, UNIX_EPOCH};
+        // CAPS-EXT 11: gate clock-read through the dispatcher.
+        let url = self.current_module_url.last().cloned().unwrap_or_default();
+        let provenance = if url.contains("/node_modules/") {
+            crate::caps::ModuleProvenance::Dependency
+        } else if url.starts_with("node:") {
+            crate::caps::ModuleProvenance::Builtin
+        } else {
+            crate::caps::ModuleProvenance::Application
+        };
+        let caller = crate::caps::ModuleId { url, provenance };
+        self.caps.require_clock(&crate::caps::Clock::disabled(), crate::caps::ClockOp::Now, &caller)
+            .map_err(|e| RuntimeError::TypeError(e.to_string()))?;
         let ms = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as f64).unwrap_or(0.0);
         Ok(Value::Number(ms))
     }
