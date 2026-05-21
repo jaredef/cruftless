@@ -1,5 +1,7 @@
 # rusty-js-caps — Resume Vector / Seed
 
+**Status as of 2026-05-21**: **PILOT α FIRST-CUT CLOSED**. The capability-passing runtime substrate (Move 1) is operational. 9/9 synthetic-adversary probes refused under `--sealed`. Doc 736 §IV impossibility claim mechanically realized for the probe-covered surface. ~835 LOC across rusty-js-runtime + host-v2. PM-EXT 11+12 regression GREEN at every round. See §VIII below for the closure summary.
+
 **Workstream**: the capability-passing runtime substrate per Doc 736 §III Move 1, with subsidiary verifiers per Moves 2-5. The dominant pilot for the "supply-chain-attack architecturally impossible" design.
 **Author**: 2026-05-21 session, founded immediately after PM-EXT 13 close + Doc 736 publication.
 **Parent**: cruftless engagement (`/home/jaredef/rusty-bun`).
@@ -131,10 +133,69 @@ Per Doc 736 §IV, the pilot will corroborate or falsify the following:
 
 Read this seed, then `trajectory.md`'s most recent EXT entry. The next substrate move is whatever the trajectory's open-scope list at the most recent EXT close identifies.
 
-At CAPS-EXT 0 (founding), no code is committed. The next move is CAPS-EXT 1: produce the ambient-authority audit. Reading + classifying; no Cargo work needed.
+At CAPS-EXT 0 (founding), no code was committed. CAPS-EXT 1–11 brought Pilot α to first-cut closure (see §VIII). Next moves are coverage expansion (CAPS-EXT 12 Scheduler) or verifier moves (Doc 736 §III Moves 2–5).
 
 Pin-Art tag prefix: `Ω.5.P05.L2.caps-*` (the L2 marks runtime-tier work distinct from the PM's L1 install-time work).
 
+## VIII. Closure status (Pilot α first cut)
+
+**Closed 2026-05-21** with `Ω.5.P05.L2.caps-clock-route-closure` (commit `1bee90a2`). The full closure narrative is in Doc 736 §X and in `trajectory.md`. Headline summary:
+
+### Substrate delivered (~835 LOC)
+
+- `pilots/rusty-js-runtime/derived/src/caps.rs` — 6 capability types (Fs, Stdio, Clock, Scheduler, Process, Env), 4-mode dispatcher (Compat/Audit/SealedDeps/Sealed), CapabilityError with hint generation, AuditLog with thread-safe drain
+- `pilots/rusty-js-runtime/derived/src/interp.rs` — `Runtime.caps` field, `Runtime::set_cap_mode`, clock gate on `date_now_via`
+- `pilots/rusty-js-runtime/derived/src/intrinsics.rs` — console.log gated, console.error/warn deliberately ungated
+- `host-v2/src/main.rs` — `--audit` / `--sealed-deps` / `--sealed` / `--audit-log <path>` flags, `CRUFTLESS_CAPS_MODE` env override, drain-on-exit
+- `host-v2/src/fs.rs` — 17 fs methods routed through `require_fs` (read/write/list/stat/mkdir/remove + async variants + fs.promises.* + accessSync + appendFileSync + copyFileSync + cpSync)
+- `host-v2/src/process.rs` — process.exit / cwd / hrtime / hrtime.bigint / stdout.write routed; process.env install mode-aware (empty under SealedDeps / Sealed)
+- `host-v2/src/os.rs` — hostname / homedir / tmpdir / userInfo / cpus gated through `require_env`
+- `host-v2/src/node_stubs.rs` — performance.now gated through `require_clock`
+
+### Probe harness (`pilots/rusty-js-caps/probes/` + `host-v2/tests/caps_probes.rs`)
+
+Nine probes spanning the Doc 736 §IV attack classes. Each has a Mode-0 baseline (WINS) and a Mode-3 sealed assertion (LOSES). 18/18 tests PASS in 0.03s.
+
+| probe | class | Mode 0 | Mode 3 |
+|---|---|---|---|
+| fs_read | read any file | WINS | LOSES |
+| fs_write | persist | WINS | LOSES |
+| fs_list | info disclosure | WINS | LOSES |
+| fs_stat | info disclosure | WINS | LOSES |
+| process_exit | host control | WINS (code 42) | LOSES (code 0) |
+| cwd_read | process introspection | WINS | LOSES |
+| env_read | env secrets | WINS | LOSES |
+| stdio_exfil | stdout exfil | WINS | LOSES (bytes NOT in stdout) |
+| clock_read | timing side channel | WINS | LOSES |
+
+### Pred-736 disposition
+
+| Conjecture | Status |
+|---|---|
+| Pred-736.1 (retrofit, not rewrite) | corroborated; ~835 LOC; no crate rewrite |
+| Pred-736.2 (probe harness is the right §XVI oracle) | corroborated; 9 probes, 0 representational gaps |
+| Pred-736.3 (LOC estimate ~1100) | inside the estimate at ~835 LOC |
+| Pred-736.4 (Move 1 alone delivers bulk of impossibility claim) | corroborated; 8 of 9 §IV classes closed without Moves 2-5 |
+| Pred-736.5 (compositional with PM-EXT 11) | corroborated; PM gate green throughout |
+
+### Documented gaps (not closure regressions)
+
+- **stderr exfiltration** — `console.error` and `process.stderr.write` remain ungated as the probe harness's escape valve for LOSES sentinels. Closeable via Stdio split (the capability already has separate stdout/stderr fields) or by an exit-code-/file-marker probe protocol.
+- **`process.env` per-property getters** — current install is empty under Mode 3 / Mode 2. Mode 2's "ambient env for application, sealed for deps" semantics requires getter-level gating; first cut accepts the over-seal.
+- **Scheduler route-through** — `setTimeout` / `setInterval` / `setImmediate` / `queueMicrotask` / `nextTick` not yet gated. No probe currently exercises them; CAPS-EXT 12 adds both the gate and a probe.
+- **`require(spec, {caps})` extension + `cruftless-caps.json`** — the mechanism for the application to grant a non-empty capability to a specific dep. Without it, Mode 3 means "deny everything"; with it, Mode 3 becomes "deny what the dep didn't declare and the application didn't grant."
+
+### Open scope after closure
+
+1. **CAPS-EXT 12** — Scheduler route-through + scheduler_spin probe.
+2. **Move 2 (manifest + lockfile caps schema)** — extend `ResolvedDep` with `caps`, write/read through PM lockfile codec, surface in audit log.
+3. **Move 3 (load-time SRI re-verifier)** — hook before module body execution; recompute sha-512 + compare against lockfile SRI.
+4. **Move 4 (closed import graphs)** — parser refuses dynamic `require()` in dep code; bytecode compiler validates static imports against lockfile closure.
+5. **Move 5 (publisher pinning)** — lockfile field + per-registry opt-in.
+6. **`require(spec, {caps})` extension** — cross-module capability passing.
+7. **`cruftless-caps.json` parser** — application-tier root capability declaration.
+8. **Documented gaps closure** — stderr per-stream policy, process.env per-property getters.
+
 ---
 
-*The capability-passing runtime is the dominant Doc 736 pilot. Subsequent rounds add substrate moves that close synthetic-adversary probes one effectful surface at a time, until the impossibility claim of Doc 736 §IV is mechanically realized.*
+*The capability-passing runtime is the dominant Doc 736 pilot. Subsequent rounds extend coverage and land verifier moves; the impossibility claim is already standing for the probe-covered surface.*

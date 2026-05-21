@@ -4,6 +4,31 @@ Chronological resume anchors for the capability-passing-runtime workstream. Read
 
 Format: one section per "CAPS-EXT" (extension round); each round closes with a status block, a cumulative numbers table, and an open-scope list. Same shape as `pilots/rusty-js-pm/trajectory.md` and `pilots/rusty-js-jit/trajectory.md`.
 
+## Pilot α first-cut closure summary (2026-05-21)
+
+**Closed at CAPS-EXT 11** with tag `Ω.5.P05.L2.caps-clock-route-closure` (commit `1bee90a2`). Full discussion in Doc 736 §X.
+
+| Round | Tag | Substrate | Probes flipped |
+|---|---|---|---|
+| 0 | caps-founding | seed + trajectory | — |
+| 1 | caps-audit | ambient-authority audit (~625 methods classified) | — |
+| 2 | caps-api-design | capability-API design doc (340 lines) | — |
+| 3 | caps-mode0-infra | dispatcher + 6 cap types + 4 modes; 15/15 caps unit tests | — |
+| 4 | caps-audit-flags | --audit / --sealed-deps / --sealed / --audit-log CLI flags + drain | — |
+| 5 | caps-probe-harness | 8 synthetic-adversary probes + harness; Mode-0 baseline | 0/8 |
+| 6 | caps-fs-read-route | fs read methods gated | 3/9 |
+| 7 | caps-fs-write-route | fs write methods gated | 4/9 |
+| 8 | caps-process-route | process.exit + process.cwd gated | 6/9 |
+| 9 | caps-env-route | os.* gated + process.env mode-aware install | 7/9 |
+| 10 | caps-stdio-route | console.log + process.stdout.write gated; stdio_exfil probe added | 8/9 |
+| 11 | caps-clock-route-closure | Date.now / hrtime / performance.now gated | **9/9** |
+
+Cumulative source footprint: ~835 LOC. PM-EXT 11+12 regression GREEN at every round. 18/18 caps_probes PASS at closure.
+
+Subsequent rounds extend coverage (CAPS-EXT 12 Scheduler) or land verifier moves (Doc 736 §III Moves 2-5).
+
+---
+
 ## CAPS-EXT 0 — 2026-05-21 (workstream founding)
 
 ### Headline
