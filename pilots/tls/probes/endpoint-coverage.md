@@ -49,7 +49,23 @@ The columns below are the feature classes the workstream's substrate moves expan
 | Session resumption / 0-RTT | NO | carved out (seed §IV) |
 | OCSP stapling | NO | carved out (seed §IV) |
 
-## §3. Matrix — TLS-EXT 0 baseline (2026-05-21)
+## §3. Matrix — current (re-run on every TLS-EXT close)
+
+### TLS-EXT 2 (close_notify drain semantics) — 2026-05-21
+
+Last-probed commit: (this commit).
+
+| endpoint | observed | delta from TLS-EXT 0 |
+|---|---|---|
+| E1 example.com | `Codec("Truncated")` | unchanged |
+| E2 httpbin.org | `Tls("CloseNotify")` | better-typed (was raw alert bytes [1,0]) |
+| E3 google.com | `Codec("Truncated")` | unchanged |
+| E4 api.github.com | `Codec("Truncated")` | unchanged |
+| E5 registry.npmjs.org | `Tls("server alert: [2, 70]")` | unchanged (fatal alert, not close_notify) |
+
+**Score: 0/5 PASS.** No cells flipped to PASS; the close_notify fix is structurally correct (RFC 8446 §6.1 conformant) and prepares the substrate for future cells whose body + close_notify is currently fatally misinterpreted, but the four currently-failing endpoints fail upstream of close_notify (UnexpectedEnd or fatal alert).
+
+### TLS-EXT 0 baseline (2026-05-21, archived)
 
 Last-probed commit: `4d7115a2` (pre-TLS-EXT-0 founding; identical to TLS-EXT 0 since the founding round committed no code).
 

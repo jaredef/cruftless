@@ -85,9 +85,10 @@ pub fn pm_http_get(url: &str) -> Result<Vec<u8>, HttpError> {
         .map_err(|e| HttpError::Tls(format!("send: {e:?}")))?;
 
     // Drain the response. With Connection: close the server sends its
-    // close_notify after the body; receive_application_data returns
-    // Err on that path. We accumulate everything that arrived before
-    // the error, then hand the buffer to parse_response.
+    // close_notify after the body; receive_application_data now
+    // returns Err(CloseNotify) explicitly (TLS-EXT 2). CloseNotify is
+    // benign: hand whatever we accumulated to parse_response. Other
+    // errors propagate.
     let mut raw = Vec::<u8>::new();
     let mut accumulator = Vec::<u8>::new();
     loop {
@@ -104,7 +105,9 @@ pub fn pm_http_get(url: &str) -> Result<Vec<u8>, HttpError> {
                     }
                 }
             }
-            Err(_) => break,
+            Err(rusty_tls::record::TlsError::CloseNotify) => break,
+            Err(rusty_tls::record::TlsError::UnexpectedEnd) => break,
+            Err(e) => return Err(HttpError::Tls(format!("recv: {e:?}"))),
         }
     }
 

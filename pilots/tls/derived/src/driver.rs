@@ -312,8 +312,7 @@ impl<T: TlsTransport> TlsSession<T> {
                 self.server_app_seq += 1;
                 match inner_ct {
                     23 => return Ok(Some(plaintext)),
-                    21 => return Err(TlsError::SignatureFail(
-                        format!("TLS alert during app data: {:?}", plaintext))),
+                    21 => return Err(crate::record::classify_alert(&plaintext)),
                     22 => continue,
                     _ => return Err(TlsError::SignatureFail(
                         format!("unknown inner content type {}", inner_ct))),
@@ -352,8 +351,7 @@ impl<T: TlsTransport> TlsSession<T> {
                 self.server_app_seq += 1;
                 match inner_ct {
                     23 /* ApplicationData */ => return Ok(plaintext),
-                    21 /* Alert */ => return Err(TlsError::SignatureFail(
-                        format!("TLS alert during app data: {:?}", plaintext))),
+                    21 /* Alert */ => return Err(crate::record::classify_alert(&plaintext)),
                     22 /* Handshake */ => {
                         // Post-handshake messages (NewSessionTicket,
                         // KeyUpdate). Ignore for this round.
@@ -470,7 +468,7 @@ pub fn complete_handshake<T: TlsTransport>(
                 }
             }
             ContentType::Alert => {
-                return Err(TlsError::SignatureFail(format!("server alert: {:?}", rec.fragment)));
+                return Err(crate::record::classify_alert(&rec.fragment));
             }
             _ => return Err(TlsError::SignatureFail(
                 "unexpected content type before ServerHello".into())),

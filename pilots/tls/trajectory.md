@@ -88,4 +88,35 @@ Pin-Art tag count: 0 substrate moves under the new prefix so far (workstream fou
 
 ---
 
-*TLS-EXT 0 closes the founding round. Subsequent rounds add substrate moves at the TLS transport tier under the CDN-passable telos.*
+## TLS-EXT 2 — 2026-05-21 (close_notify drain semantics)
+
+### Headline
+
+Per seed §III move-class 1: distinguish close_notify (alert 1, 0) from fatal alerts; route through a uniform classifier at all three alert-receive sites (handshake-phase plaintext + two post-handshake encrypted variants in `receive_application_data`). Adds `TlsError::CloseNotify` variant + `record::classify_alert(bytes) -> TlsError` helper. PM's `pm_http_get` drain loop now treats CloseNotify as benign end-of-stream and parses the accumulated body, rather than silently breaking on opaque Err.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P06.E2.tls-close-notify-graceful` | uniform alert classifier; CloseNotify variant; three driver-site updates; PM drain-loop typed-handling |
+
+### Probe result
+
+Score: **0/5 PASS** (unchanged). E2 httpbin's error type improved from raw `SignatureFail("server alert: [1, 0]")` to typed `CloseNotify`, but the underlying failure (server hung up mid-handshake) was not addressed by this move (it is upstream of close_notify graceful handling). E1/E3/E4 fail at UnexpectedEnd (no alert in play) and E5 fails at fatal alert — both are §4 cluster C (alphabet expansion + ALPN) work, not cluster A.
+
+The move is structurally correct per RFC 8446 §6.1; its empirical payoff appears once E1/E3/E4 are unblocked and servers begin sending body + close_notify (the currently-fatal case in the old code path) on the response.
+
+### Substrate at TLS-EXT 2 close
+
+- `TlsError::CloseNotify` variant exists and is distinct from `SignatureFail`.
+- `record::classify_alert` is the single classifier all three driver sites use.
+- PM's `pm_http_get` distinguishes CloseNotify / UnexpectedEnd (both → break to parse) from other Tls errors (→ propagate).
+- Probe score unchanged at 0/5; matrix updated in `probes/endpoint-coverage.md`.
+
+### Open scope at TLS-EXT 2 boundary
+
+The probe-flipping work moves to cluster B (instrumentation) and cluster C (alphabet expansion). TLS-EXT 3: tcpdump capture of E1/E3/E4 + curl-vs-rusty-tls diff to confirm whether the root cause is ALPN-required (the most likely hypothesis), missing modern cipher, or a different post-handshake-record-handling bug.
+
+---
+
+*TLS-EXT 2 closes with the close_notify substrate in place and the probe unchanged. Subsequent rounds proceed to instrumentation (cluster B) and alphabet expansion (cluster C).*

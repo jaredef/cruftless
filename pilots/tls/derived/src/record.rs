@@ -79,6 +79,12 @@ pub enum TlsError {
     /// readiness and retry. Distinct from UnexpectedEnd (orderly close)
     /// and SignatureFail (real I/O error).
     WouldBlock,
+    /// TLS-EXT 2 (Ω.5.P06.E2.tls-close-notify-graceful): the peer sent
+    /// an Alert with level=Warning (1) and description=close_notify (0)
+    /// per RFC 8446 §6.1. Spec-defined clean-shutdown signal; callers
+    /// should treat it as benign end-of-stream rather than a fatal
+    /// error. Distinct from SignatureFail (genuinely-fatal alerts).
+    CloseNotify,
 }
 
 use rusty_x509::X509Error;
@@ -102,11 +108,29 @@ impl std::fmt::Display for TlsError {
             TlsError::StoreLoad(s) => write!(f, "trust store load failed: {}", s),
             TlsError::X509(e) => write!(f, "X.509: {}", e),
             TlsError::WouldBlock => write!(f, "transport would block"),
+            TlsError::CloseNotify => write!(f, "peer sent close_notify (clean shutdown)"),
         }
     }
 }
 
 impl std::error::Error for TlsError {}
+
+/// Classify a 2-byte Alert payload (RFC 8446 §6) into either the
+/// CloseNotify clean-shutdown signal or a SignatureFail fatal alert.
+/// Used by the driver at every Alert-receive site so close_notify
+/// is handled uniformly. Bytes shorter than 2 → InvalidAlert.
+pub fn classify_alert(bytes: &[u8]) -> TlsError {
+    if bytes.len() < 2 {
+        return TlsError::InvalidAlert;
+    }
+    let level = bytes[0];
+    let description = bytes[1];
+    if level == AlertLevel::Warning as u8 && description == AlertDescription::CLOSE_NOTIFY.0 {
+        TlsError::CloseNotify
+    } else {
+        TlsError::SignatureFail(format!("server alert: [{}, {}]", level, description))
+    }
+}
 
 /// Encode a single TLSPlaintext / TLSCiphertext record to wire bytes.
 pub fn encode_record(record: &TlsRecord) -> Result<Vec<u8>, TlsError> {
