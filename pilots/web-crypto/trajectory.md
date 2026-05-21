@@ -253,3 +253,60 @@ Score: **3/5 PASS** (unchanged from WC-EXT 3). The substrate addition is structu
 ---
 
 *WC-EXT 4 closes with a negative empirical finding that refines rather than falsifies Doc 731 §XV. The substrate move is correct; the amortization regime requires build-time bake. The Pin-Art apparatus surfaces this distinction because the probe (measure wallclock on a real workload) cared about init cost in a way that structural analysis alone would have missed.*
+
+---
+
+## WC-EXT 5 — 2026-05-21 (build-time bake — Doc 731 §XV.g Regime 1 realized)
+
+### Headline
+
+Per §XV.g.c + .e: the regime-promotion move (Regime 2 → Regime 1) for the P-256 base-point comb table. New `examples/gen_p256_base_table.rs` (one-shot generator) emits `src/p256_base_table.rs` (~1047 lines, 256 affine points as hex literals committed as source). Module init at first call: parses hex + constructs BigUInts for 256 points — measured ~100ms, down from ~3 seconds of affine doublings.
+
+Routed `ecdsa_verify`'s P-256 u1·G call through `p256_scalar_mul_base` again, this time backed by the baked table.
+
+### Measurement
+
+| metric | WC-EXT 3 (Jacobian only) | WC-EXT 4 (Regime 2) | WC-EXT 5 (Regime 1) |
+|---|---|---|---|
+| Fixture test wallclock | 0.29s | 2.85s | **0.21s** |
+| 5-endpoint TLS probe | ~37s | ~39s | ~36s |
+
+Fixture verify is ~28% faster than Jacobian-only. The remaining time on a single verify is dominated by the u2·Q half (variable-input, no precomputation possible without wNAF or similar).
+
+### §XV.g.f Pred-731.XV.g.3 corroborated
+
+The amendment predicted: "the regime-promotion move (Regime 2 → Regime 1 when amortization is insufficient) is bounded in complexity: it requires a build.rs script or a one-shot offline computation, not a redesign." Confirmed:
+
+- Generator: 65 LOC (`examples/gen_p256_base_table.rs`).
+- Generated source: 1047 lines but mechanically produced; commits as a single artifact.
+- Module integration: 3-line change in lib.rs (`mod p256_base_table;` + replace OnceLock init).
+- Routing change: 5-line ECDSA-verify dispatch.
+
+Total substrate work: ~80 LOC of human-written code, well under the §XV.g.f Pred-XV.g.3 expected ceiling. The framework's regime-promotion shape is structurally cheap once the underlying primitive (Jacobian-coordinate scalar mul) is in place.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P06.E3.wc-baked-base-table` | Regime 1 bake for P-256 base table; fixture verify 0.29s → 0.21s; Pred-731.XV.g.3 corroborated; init cost 2.85s → 100ms |
+
+### Probe result
+
+5/5 unchanged at 3/5 PASS. E2 + E5 remain as their separate cases (httpbin's mid-handshake bug; npm's TLS-1.2-only endpoint policy).
+
+### What this round confirms about §XV.g
+
+The build-time-vs-init-time distinction is empirically load-bearing. The same substrate move under different regimes produced wallclock differences of 10× in opposite directions (WC-EXT 4 was 10× slower than baseline; WC-EXT 5 is ~28% faster than baseline at the fixture-test scale, and the gap will widen with longer-running processes that do more verifies).
+
+The keeper's conjecture ("we will run into other optimizations that have this same form") now has one engagement-tier corroboration. Each future precomputed-table optimization (AES T-tables when the key is reused, Poly1305 multiplication tables, RSA Montgomery tables per key) admits the same Regime 1 / Regime 2 choice, and the empirical break-even-count will need to be measured per primitive.
+
+### Open scope at WC-EXT 5 boundary
+
+1. **WC-EXT 6**: wNAF window scalar mul for the u2·Q (variable-input) half. Expected ~2× speedup on that half, ~30% on total verify.
+2. **WC-EXT 7+**: extend baked-table approach to P-384 and P-521 base points if needed. Symmetric work.
+3. **TLS-EXT 9** (separate workstream): investigate E2 httpbin CloseNotify-mid-handshake.
+4. **Keeper-decision still open**: E5 npm scope.
+
+---
+
+*WC-EXT 5 closes with the Doc 731 §XV.g.f Pred-731.XV.g.3 substrate-cost prediction corroborated and the §XV.c-true optimization realized. The build-time-bake regime is operational at this tier; the framework now has the build-vs-init distinction empirically grounded at one substrate-tier instance.*
