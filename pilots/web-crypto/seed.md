@@ -83,3 +83,42 @@ Engine state at this workstream's founding (WC-EXT 0 / 2026-05-21):
 - `pilots/web-crypto/derived/src/lib.rs` is populated with ~2000 lines covering the listed primitives.
 - One known bug: `ecdsa_verify` for curve P-256, SHA-256 hash, captured fixture from api.github.com — hangs.
 - All other primitives are exercised by downstream consumers without known hangs, but the broader probe set has not been run under this pair's discipline yet.
+
+### VI.1 State at WC-EXT 10 close (2026-05-21, end of session 1)
+
+Substantial substrate work landed over 11 rounds (WC-EXT 0 founding + WC-EXT 1–10 substrate moves). The pilot now has:
+
+- **Working P-256 ECDSA verify in Montgomery form, 82× cumulative speedup over the WC-EXT 1 baseline.** Fixture `ecdsa_verify(api.github.com qx/qy/sig)`: 8.18s → 0.10s.
+- **Three substrate tiers operating** (per §II.1): BigUInt (Montgomery REDC, batch inversion, from_limbs accessor); modular arithmetic (`batch_mod_inv` via Montgomery's trick); elliptic-curve (Jacobian coords + base-point comb table + wNAF infrastructure + Mont-form EC routines).
+- **Two regimes operative on the baked base table**: WC-EXT 5 standard-form Regime 1 (1047-line generated source); WC-EXT 10 Mont-form Regime 2 (lazy first-use init from the Regime 1 table).
+- **Standing infrastructure for future substrate moves**: `batch_mod_inv` reusable for any multi-inversion site; Mont-form helper primitives (`p256_mont_pow`, `p256_mont_inv`, `p256_mont_mul_by_small`) reusable for any future EC-tier work.
+- **5-endpoint TLS probe at 3/5 PASS** (engagement-internal HTTPS reaches example.com, google.com, api.github.com). Remaining: E2 httpbin (separate bug), E5 npm (Case-4 scope, TLS-1.2-only endpoint).
+
+### VI.2 Bottleneck has relocated — next strategic target
+
+After WC-EXT 10, the api.github.com TLS handshake still takes ~9.5s wallclock despite ECDSA verify dropping to 0.10s. Bottleneck has relocated to **RSA verify on cert chain intermediates** (chain_walk runs ECDSA on the leaf but RSA on intermediates). RSA-2048 verify computes m^65537 mod n via ~17 squarings of 2048-bit `mod_mul` calls, all going through the current binary-long-division `BigUInt::modulo`.
+
+Next strategic substrate-move target: **WC-EXT 12 generalize Montgomery to arbitrary odd-prime moduli** — RSA 2048/3072/4096, P-384, P-521. Per Doc 731 §XV.e Pred-731.XV.1, the framework should apply directly. Expected: 30-40× speedup on every RSA operation, propagating through chain_walk and JOSE/JWT primitives.
+
+### VI.3 Doc 731 §XV.b empirical corroboration table
+
+Each R-condition of §VII R1–R8 verified across the 10 substrate rounds:
+
+- **R1 single tier**: no Mont-meta; one Mont implementation per substrate site (BigUInt REDC, EC mul/double/add).
+- **R2 standard apparatus owns heavy lifting**: Hankerson §3.2 (Jacobian); Montgomery 1985 (REDC); Hankerson §3.3 (wNAF).
+- **R3 verifier-before-emission**: on_curve + scalar range checks gate before Mont code runs.
+- **R4 small enumerable deopt set**: ~4 deopt categories — (a) non-P-256 curve, (b) Identity, (c) Y-zero, (d) std-form upstream caller.
+- **R5 first-cut tier-1 sufficient**: Jacobian + Mont without Montgomery ladder / Almost-Mont / Karatsuba gave 82×.
+- **R7 no internal optimization passes**: every speedup came from algorithm-selection or substrate-tier choice.
+- **R8 no async/generator**: cryptographic primitives are synchronous, single-call.
+
+### VI.4 Open-scope catalog for the next session
+
+| EXT | name | tier | target | projected |
+|---|---|---|---|---|
+| 11 | TLS handshake breakdown probe | TLS+web-crypto | locate the 9.5s | surface RSA paths |
+| 12 | Mont generalize | BigUInt | arbitrary odd-prime moduli | 30-40× on RSA |
+| 13 | Mont RSA route | RSA layer | apply Mont to RSA verify/sign | TLS handshake → <2s |
+| 14 | Mont ECDH | ECDH layer | route key derivation through Mont | TLS handshake → <1s |
+| — | Doc 735 §X amendment | corpus | intra-tier cost stratification (T-tier ops not uniform-cost; queued since WC-EXT 8) | corpus refinement |
+| — | TLS-EXT 9 | TLS | E2 httpbin close-notify mid-handshake bug | independent, 4/5 PASS |
