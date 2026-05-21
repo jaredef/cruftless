@@ -609,6 +609,14 @@ pub struct ClosureInternals {
     /// the surrounding `obj()` borrow is shared with the rest of the
     /// dispatch path.
     pub call_count: std::cell::Cell<u32>,
+    /// Ω.5.P04.E2.jit-deopt-disable: profile-driven JIT disable. Set to
+    /// true once the per-call argument-type guard has failed (a non-
+    /// integer-Number arrived). Once disabled, the JIT dispatch is
+    /// skipped permanently for this Closure — the per-call guard
+    /// overhead would otherwise compound for functions that never
+    /// match the JIT contract. The bytecode interpreter remains the
+    /// fallback in all cases.
+    pub jit_disabled: std::cell::Cell<bool>,
 }
 
 /// Native function (intrinsic) backed by a Rust callback.

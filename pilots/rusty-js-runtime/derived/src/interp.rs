@@ -7052,6 +7052,7 @@ impl Runtime {
                             is_arrow,
                             bound_this,
                             call_count: std::cell::Cell::new(0),
+                            jit_disabled: std::cell::Cell::new(false),
                         }),
                     };
                     let id = self.alloc_object(closure);
@@ -7514,15 +7515,15 @@ impl Runtime {
             let o = self.obj(id);
             match &o.internal_kind {
                 crate::value::InternalKind::Closure(c) => {
-                    // Ω.5.P04.E2.jit-runtime-dispatch: bump the call
-                    // counter; if hot AND args are integer-Numbers AND
-                    // params in {1,2}, dispatch to JIT if cached or
-                    // available. The threshold + integer check are
-                    // cheap; the JIT dispatch itself unboxes f64→i64,
-                    // invokes the native function pointer, and reboxes
-                    // the i64 result as Number(f64). On any mismatch
-                    // (type, arity, JIT compile failure), fall through
-                    // to the bytecode interpreter path below.
+                    // Ω.5.P04.E2.jit-runtime-dispatch + jit-deopt-disable:
+                    // bump the call counter; if hot AND args are integer-
+                    // Numbers AND params in {1,2} AND not previously
+                    // disabled, dispatch to JIT if cached/available. On
+                    // any guard mismatch AFTER a JIT compile succeeded
+                    // (i.e., we know the function is JIT-able but the
+                    // current arg shape doesn't match), permanently
+                    // disable JIT for this Closure to avoid burning the
+                    // per-call guard overhead on every subsequent call.
                     let count = c.call_count.get() + 1;
                     c.call_count.set(count);
                     let proto_key = std::rc::Rc::as_ptr(&c.proto) as usize;
@@ -7530,7 +7531,9 @@ impl Runtime {
                         c.bound_this.clone().unwrap_or(Value::Undefined)
                     } else { this.clone() };
                     let params = c.proto.params;
-                    if count >= self.jit_threshold
+                    let jit_disabled = c.jit_disabled.get();
+                    if !jit_disabled
+                        && count >= self.jit_threshold
                         && (params == 1 || params == 2)
                         && args.len() == params as usize
                         && args.iter().all(jit_compatible_int_arg)
@@ -7571,6 +7574,19 @@ impl Runtime {
                             _ => unreachable!("closure flipped kind mid-dispatch"),
                         }
                     } else {
+                        // Ω.5.P04.E2.jit-deopt-disable: if we already
+                        // tried (and successfully cached) a JIT compile
+                        // for this Closure but the current call doesn't
+                        // meet the guard, mark the Closure as JIT-
+                        // disabled. The per-call guard overhead would
+                        // otherwise compound for every subsequent
+                        // mismatched call.
+                        if count >= self.jit_threshold
+                            && matches!(self.jit_cache.get(&proto_key), Some(Some(_)))
+                            && !args.iter().all(jit_compatible_int_arg)
+                        {
+                            c.jit_disabled.set(true);
+                        }
                         (Some(c.proto.clone()), None, actual_this, args)
                     }
                 }
