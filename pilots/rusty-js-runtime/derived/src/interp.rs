@@ -7574,7 +7574,18 @@ impl Runtime {
                             let compiled = rusty_js_jit::compile_function(&*proto_rc).ok();
                             self.jit_cache.insert(proto_key, compiled);
                         }
+                        // JIT-EXT 14: wire deopt for this call. The
+                        // dispatcher sets the active deopt-site table
+                        // pointer BEFORE invoking the JIT and clears
+                        // it AFTER. If the JIT trips, `take_last_deopt`
+                        // returns the recovered state and the dispatcher
+                        // falls through to the interpreter path
+                        // (re-execution from pc=0 with the original
+                        // args — first-cut retry semantics; resume-from-
+                        // trip-pc is queued for a future round).
+                        let mut deopt_fell_through = false;
                         if let Some(Some(jit_fn)) = self.jit_cache.get(&proto_key) {
+                            rusty_js_jit::set_current_deopt_sites(&jit_fn.deopt_sites);
                             let r = match params {
                                 1 => {
                                     let a = unbox_int_arg(&args[0]);
@@ -7587,12 +7598,18 @@ impl Runtime {
                                 }
                                 _ => unreachable!(),
                             };
-                            return Ok(Value::Number(r as f64));
+                            rusty_js_jit::clear_current_deopt_sites();
+                            if rusty_js_jit::take_last_deopt().is_some() {
+                                // Deopt fired; produce the interp-fallback
+                                // tuple below.
+                                deopt_fell_through = true;
+                            } else {
+                                return Ok(Value::Number(r as f64));
+                            }
                         }
-                        // JIT compile failed (cached None). Fall through
-                        // to the bytecode interpreter by re-entering the
-                        // dispatch via the standard path. Re-acquire the
-                        // borrow.
+                        // JIT compile failed (cached None), OR a deopt
+                        // tripped above. Both paths run the interpreter.
+                        let _ = deopt_fell_through;  // (currently unused; future EXT can split metrics)
                         let o2 = self.obj(id);
                         match &o2.internal_kind {
                             crate::value::InternalKind::Closure(c2) => {

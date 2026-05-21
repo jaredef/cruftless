@@ -555,3 +555,95 @@ The XOR-idiom overflow check is a Case-4 (implementation freedom) substrate choi
 ---
 
 *JIT-EXT 13 closes the first-wired-demonstrator round. The deopt mechanism is proven end-to-end through translator → JIT'd code → thunk → recovered state. JIT-EXT 14 wires the dispatcher half so an actual program can deopt → resume → return the correct result.*
+
+---
+
+## JIT-EXT 14 — 2026-05-21 (dispatcher-side deopt wiring; the runtime half of the chain)
+
+### Headline
+
+The dispatcher in `interp.rs` now sets `CURRENT_DEOPT_SITES` before invoking a JIT'd function and checks `take_last_deopt()` after. **If a deopt fires, the dispatcher falls through to the interpreter path (re-execution from pc=0 with the original args) rather than returning the JIT's i64 result.** Otherwise, the return path is unchanged. All regression GREEN: 20/20 JIT + 15/15 caps unit + 2/2 PM + 18/18 caps probes.
+
+### Substrate landed
+
+- `pilots/rusty-js-runtime/derived/src/interp.rs` (+~30 LOC, -~25 LOC restructure):
+  - Before `jit_fn.func.call*()`: `rusty_js_jit::set_current_deopt_sites(&jit_fn.deopt_sites)`
+  - After: `rusty_js_jit::clear_current_deopt_sites()`
+  - `if rusty_js_jit::take_last_deopt().is_some() { /* fall through to interp tuple */ } else { return Ok(Value::Number(r as f64)) }`
+  - The fall-through case produces the same `(Some(proto), None, actual_this, args)` tuple the JIT-compile-failed branch already produces; the outer dispatcher runs the interpreter with the original args
+- No translator changes
+- No CompiledFn changes (deopt_sites field landed at JIT-EXT 11)
+
+### Probe result
+
+Regression sweep — every test that exercises JIT dispatch under Mode 0 (no env var) passes unchanged:
+
+- **20/20 JIT lib tests PASS** (`jit_compile_sum_function` with sum(1_000_000)=499999500000 still hot-loops through the JIT; `guarded_add_trips_on_overflow` still trips correctly at the JIT-crate level)
+- **15/15 caps unit tests PASS**
+- **2/2 PM-EXT 11+12 PASS** in 2.95 s — `lodash.identity(N)` JIT-compiles and runs unchanged
+- **18/18 caps_probes PASS**
+
+The default-off invariant is preserved: with `CRUFTLESS_JIT_GUARD_OVERFLOW` unset, the JIT emits no guards, the dispatcher's `take_last_deopt()` check always returns `None`, the JIT's i64 result is returned. **Zero perf risk for the standing engagement workload.**
+
+### Why no new runtime-side test in this round
+
+The end-to-end "JIT trips → dispatcher catches → interpreter re-executes → correct widened result" verification requires:
+
+1. The guard env var set at host startup
+2. A JS function whose JIT-compiled body actually overflows on its args
+3. Args that are simultaneously (a) `jit_compatible_int_arg`-accepted, (b) precisely f64-representable, and (c) sum to an i64-overflowing value
+
+Constraint (c) is the bind: f64 can exactly represent integers up to 2^53. i64::MAX is 2^63 - 1. The values needed to actually overflow i64 in JIT live above f64's exact-integer range — JS code cannot construct them precisely. The JIT-crate-level `guarded_add_trips_on_overflow` test (JIT-EXT 13) bypasses this by injecting bytecode directly with `i64::MAX as f64` (which rounds, but the i64 value the JIT sees IS overflow-capable).
+
+The runtime-side end-to-end trip-and-resume test is **deferred to JIT-EXT 17+ (ICs)**, where the trip condition (shape mismatch) is reachable from normal JS code without precision contortions. JIT-EXT 14's correctness is established by:
+
+1. **JIT-EXT 13's synthetic trip test**: proves the trip mechanism through `take_last_deopt()`
+2. **Mode-0 regression**: proves the dispatcher wiring doesn't break normal JIT dispatch
+3. **Code-review-level analysis**: the deopt fall-through produces the same tuple the existing JIT-compile-failed branch produces; the outer dispatcher runs the interpreter from pc=0 with the original args
+
+The composition of these three is the proof. A unified end-to-end test arrives with ICs.
+
+### What this completes
+
+After JIT-EXT 10-14, the full deopt round-trip is wired:
+
+```
+translator    → emits XOR overflow check; records DeoptSite
+JIT'd code    → on overflow: call deopt_trip(...)
+deopt_trip    → reads CURRENT_DEOPT_SITES, reconstruct_state, write LAST_DEOPT_FRAME, returns 0
+JIT'd code    → returns 0 to dispatcher
+dispatcher    → clear_current_deopt_sites + take_last_deopt() → Some(state)
+              → produces interpreter-fallback tuple
+              → outer dispatcher runs interp from pc=0 with original args
+              → interpreter returns correct widened Number result
+```
+
+The dispatcher does not yet *consume* `state.local_values` / `state.stack_values` / `state.resume_pc` — it simply detects the trip and re-executes from pc=0. The recovered state is correctly populated (verified by JIT-EXT 13's test) but unused. JIT-EXT 17+ will consume it when ICs need mid-function resume.
+
+### Pred-731 corroboration
+
+- **R5 (deopt sites finite-enumerable per emitted module)**: corroborated end-to-end with dispatcher participation. The dispatcher reads `compiled.deopt_sites` per call; the thunk uses it via TLS.
+- **R6 (single tier)**: corroborated. The deopt path is the interpreter (a different *kind*, not a *lower tier*). No "tier-1" JIT exists.
+- **R7 (stack maps)**: partially corroborated. The hand-rolled `DeoptSite` carries the live-value layout. The dispatcher does not yet *use* the layout for resume; it falls back to pc=0. The full R7 corroboration arrives with the mid-function resume in JIT-EXT 17+.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P04.E2.jit-deopt-dispatcher` | JIT-EXT 14: dispatcher-side deopt wiring; set_current_deopt_sites/clear/take_last_deopt; deopt fall-through to interpreter re-execution; regression GREEN; runtime-side end-to-end test deferred to JIT-EXT 17+ |
+
+### Open scope at JIT-EXT 14 boundary
+
+1. **JIT-EXT 15 (extend guards to Sub/Mul/Inc/Dec)**: same XOR idiom for Sub; for Mul, cast to i128 and check high bits. Inc/Dec are Add/Sub with constant 1.
+
+2. **JIT-EXT 16 (replace `jit_disabled` with retry-on-fresh-args)**: with deopt fully wired, the permanent-disable workaround can be relaxed. Subsequent valid-arg calls re-engage the JIT.
+
+3. **JIT-EXT 17+ (ICs)**: first IC site lands (GetProp with hidden-class check). This is where the deopt infrastructure starts paying back the forward investment.
+
+### Doc 730 §XVI status
+
+The dispatcher fall-through to interpreter re-execution is Case-3 (compositional success at the runtime tier): cruftless's narrow first-cut JIT can offload mid-execution failure to the interpreter without losing semantic correctness, because the interpreter is structurally complete. Mainstream JITs do not have this property — V8/SpiderMonkey deopts must produce a precise frame for the interpreter to resume *exactly* where the JIT left off. Cruftless can re-execute from pc=0 because the function's side effects (locals/stack) are recoverable from the original args alone, given the narrow alphabet. As ICs land and side effects accumulate before the trip point, the dispatcher will need to consume `state.local_values` / `state.stack_values` / `state.resume_pc` for resume — but for now, re-execution from pc=0 is correct.
+
+---
+
+*JIT-EXT 14 closes the runtime-side wiring. The deopt round-trip is operational. The dispatcher does not yet consume the recovered state for mid-function resume; that's queued for the IC round. The infrastructure is now ready to pay back when ICs need it.*
