@@ -167,3 +167,56 @@ The TLS-EXT 1 ordering forecast (5/5 PASS at TLS-EXT 6–8) is unchanged in card
 ---
 
 *TLS-EXT 3 closes with the workstream reoriented. The remaining cells are not alphabet gaps; they are app-data correctness bugs (E1/E3/E4) plus one endpoint-policy blocker (E5).*
+
+---
+
+## TLS-EXT 4 — 2026-05-21 (bidirectional Pin-Art design + detection-direction readout)
+
+### Headline
+
+Two findings reshape the workstream again.
+
+**(1) Localhost openssl s_server probe falsified the Case-1 reclassification.** Setting up a local TLS 1.3 server with self-signed cert, rusty-tls connected, sent a 54-byte GET, received the full 3831-byte response, handled close_notify cleanly. The pilot's TLS is structurally correct against the spec-conformant reference. The four app-data-correctness candidates from TLS-EXT 3 are all falsified; the bug isn't there.
+
+**(2) Bidirectional Pin-Art design + detection-direction readout** (per Doc 619 + Doc 691). Six-probe design captured in `pilots/tls/probes/bidirectional-pin-art-probe-design.md` (three detection direction D1/D2/D3, three composition direction C1/C2/C3). D1+D2 executed via `openssl s_client -msg` against CDN endpoints + local openssl s_server. **Joint pattern: post-handshake record sequence is identical between CDN and openssl s_server (2× NewSessionTicket → ApplicationData → close_notify alert).** Falsifier F1 from the design doc triggered: the discrimination is not post-handshake message types.
+
+Hypothesis space redirected to:
+- H1 — transcript-hash drift (high likelihood)
+- H2 — cipher-suite negotiation difference (lower likelihood)
+- H3 — ServerHello extension we silently ignore that mandates action (medium likelihood)
+- H4 — cert-chain state corruption (lower likelihood)
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P06.E1.tls-pin-art-design` + `Ω.5.P06.E1.tls-pin-art-detection` | bidirectional-pin-art-probe-design.md + wire-captures/tls-ext-4-pin-art-readout.md; localhost_tls_probe.rs example; detection-direction probe complete; F1 triggered; hypothesis space redirected |
+
+### Probe result
+
+Score: **0/5 PASS** (unchanged). TLS-EXT 4 is pure design + detection-direction instrumentation; no code change at the substrate. Composition-direction probes (C-NEW-1/2/3 targeting H1/H2/H3) deferred to TLS-EXT 5.
+
+### Substrate at TLS-EXT 4 close
+
+- `pilots/tls/probes/bidirectional-pin-art-probe-design.md` produced (six-probe design + falsifiers).
+- `pilots/tls/probes/wire-captures/tls-ext-4-pin-art-readout.md` produced (detection-direction joint pattern + F1 trigger + redirected hypothesis space + TLS-EXT 5 plan).
+- `pilots/rusty-js-pm/derived/examples/localhost_tls_probe.rs` produced (probes rusty-tls against local openssl s_server; establishes the spec-conformant-reference control).
+- One-paragraph note: Pin-Art's detection-side joint pattern was load-bearing on its own here; composition-direction not needed when one hypothesis was structurally distinguishable. Recorded as an operational property of the apparatus.
+
+### Open scope at TLS-EXT 4 boundary
+
+1. **TLS-EXT 5 (C-NEW-1)**: record-content logging in `receive_application_data`. Log every record's outer header + decrypt-success + inner_ct. Run against openssl s_server (control) + example.com. First record-decryption divergence reveals H1 vs H3.
+
+2. **TLS-EXT 5 (C-NEW-2)**: transcript-hash + app-key logging at `tls_connect` close. Dump transcript bytes, transcript hash, client_app_secret, client_app_keys. Cross-reference against openssl's `SSLKEYLOGFILE` output for the same endpoint. H1 confirmed or falsified.
+
+3. **TLS-EXT 5 (C-NEW-3)**: ServerHello extension audit. Debug-print every extension byte seen and which our code skips. H3 confirmed or falsified.
+
+4. **Independent of TLS-EXT 5**: the keeper-decision on E5 (Case-4 endpoint-policy: lift TLS-1.2 carve-out vs substitute endpoint vs document as out-of-cut) remains open. Independent of cluster-C resolution.
+
+### Conjecture status
+
+The original TLS-EXT 1 forecast (5/5 PASS at TLS-EXT 6-8) is again unchanged in cardinality but reoriented. The next 2-3 EXTs are H1/H2/H3 elimination via the C-NEW probes; the substrate move that closes E1/E3/E4 is whichever hypothesis survives those probes.
+
+---
+
+*TLS-EXT 4 closes with the bidirectional Pin-Art apparatus in place at the workstream's substrate-debugging tier and the hypothesis space redirected via detection-direction readout. The composition direction is queued for TLS-EXT 5.*
