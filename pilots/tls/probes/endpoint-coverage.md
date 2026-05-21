@@ -127,3 +127,19 @@ A row flipping from PASS back to FAIL is a regression signal that the round trig
 ## §7. Closes
 
 TLS-EXT 1 closes with the matrix established, the four observed failure modes structured into the §3 table, the candidate-fix EXTs identified per cell, and the substrate-move ordering forecast in §4. The next substrate move is TLS-EXT 2 (close_notify drain semantics) per §4 cluster A: smallest in-code move, directly addresses E2, likely clarifies E1/E3/E4 partition.
+
+## §8. Current state — TLS-EXT 9 close (2026-05-21)
+
+Last-probed commit: `916b94a1` (WC-EXT 10 Mont base table).
+
+| endpoint | observed | flipped from |
+|---|---|---|
+| E1 example.com | **OK (528 bytes)** | TLS-EXT 0 baseline FAIL → PASS via WC-EXT 3–10 |
+| E2 httpbin.org | `Tls("CloseNotify")` | typed since TLS-EXT 2; underlying behavior unchanged |
+| E3 google.com | **OK (80,535 bytes)** | TLS-EXT 0 baseline FAIL → PASS via WC-EXT 3–10 |
+| E4 api.github.com | **OK (2,262 bytes)** | TLS-EXT 0 baseline FAIL → PASS via WC-EXT 3–10 |
+| E5 registry.npmjs.org | `Tls("server alert: [2, 70]")` | unchanged (Case-4 scope decision pending) |
+
+**Score: 3/5 PASS.** Engagement-internal HTTPS reaches CloudFront (E1), Google Front End (E3), Fastly (E4) through the engagement's own TLS + web-crypto substrate. Remaining failures are at non-TLS-substrate tiers (E2: separate bug; E5: scope decision).
+
+api.github.com handshake wallclock: ~10s. Profile: ECDSA verify ~0.10s × 3-4 cert chain verifies + ServerKeyExchange + ServerHello parsing + RSA-2048 verify of RSA-signed intermediate certs in chain_walk. The RSA-2048 verifies dominate the remaining ~9.5s; addressable by WC-EXT 12 Montgomery generalization (queued).

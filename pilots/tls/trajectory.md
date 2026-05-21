@@ -261,3 +261,105 @@ Next:
 ---
 
 *TLS-EXT 6 closes with the hang localized to a downstream pilot. The substrate-move target relocated; TLS workstream's structural debugging produced a one-tier-deeper finding rather than a probe-cell flip. Doc 733's prediction holds: pinning the right pair surfaces the next pair to found.*
+
+---
+
+## TLS-EXT 7 — 2026-05-21 (H8 local-probe attempt, openssl substituted RSA)
+
+Per the TLS-EXT 6 plan: regenerated localhost cert with ECDSA-P-256 (`prime256v1`), restarted `openssl s_server` with it, pointed rusty-tls. Handshake completed all CV processing + Finished cleanly (no hang) but the captured `[hs-cv]` print showed `scheme=0x0804 sig_len=256` — openssl substituted an RSA cert internally for the CertificateVerify signing (likely because our pilot advertises RSA sigalgs alongside ECDSA in ClientHello, and openssl chose the path it could sign without exercising its EC key).
+
+H8 status: probe didn't actually test the ECDSA path. Logged the finding to `probes/wire-captures/tls-ext-7-h8-local-falsified.md`. The wider takeaway: any single Pin-Art probe may fail to discriminate; the workstream chains probes until the pattern is unambiguous.
+
+| commit | tag | recognition |
+|---|---|---|
+| `afbbad66` | `Ω.5.P06.E1.tls-ec-local-control` | H8 local-probe attempt; openssl substituted RSA, probe didn't isolate ECDSA |
+
+Probe: 0/5 PASS unchanged.
+
+---
+
+## TLS-EXT 8 — 2026-05-21 (H8 confirmed via scheme-byte capture)
+
+Re-ran the `[hs-cv]`-instrumented binary against api.github.com. Last debug line before hang:
+
+```
+[hs-cv] scheme=0x0403 sig_len=71
+[hang]
+```
+
+`scheme=0x0403` = `SIG_ECDSA_SECP256R1_SHA256`. `sig_len=71` = DER-encoded ECDSA-P-256 signature. **H8 confirmed.**
+
+The bug lives in one of two places per `verify_certificate_verify_signature` → `rusty_web_crypto::ecdsa_verify` (or its DER-parse prelude). Substrate-move target relocates to the web-crypto pilot. WC pair founded as WC-EXT 0.
+
+| commit | tag | recognition |
+|---|---|---|
+| `cc6f6a3a` | `Ω.5.P06.E1.tls-cv-scheme-captured` | H8 confirmed; substrate-move target relocates to pilots/web-crypto/derived/src/lib.rs |
+
+Probe: 0/5 PASS unchanged. The TLS-pilot CDN-hang investigation closes here; downstream consequence handled in WC-EXT 0–10.
+
+---
+
+## TLS-EXT 9 — 2026-05-21 (WC-EXT 0–10 propagation: 0/5 → 3/5 PASS)
+
+### Headline
+
+The web-crypto workstream's 10 substrate rounds (WC-EXT 0 founding through WC-EXT 10 Mont-form base table) propagate into the TLS pilot as a probe-cell flip. **No TLS-pilot code changed in this round** — the entire delta comes from downstream substrate at one tier deeper (pilots/web-crypto). This is the §XII diagnostic-legibility property Doc 730 names operating across pilots: a substrate move at the right tier propagates upward without touching upstream code.
+
+### Probe result
+
+Re-ran `cargo run -p rusty-js-pm --release --example tls_probe` after WC-EXT 10:
+
+| endpoint | TLS-EXT 0 baseline | TLS-EXT 9 (post-WC-EXT 10) | delta |
+|---|---|---|---|
+| E1 example.com | Codec(Truncated) | **OK (528 bytes)** | FAIL → **PASS** |
+| E2 httpbin.org | server alert [1,0] | CloseNotify mid-handshake | typed; underlying behavior unchanged |
+| E3 google.com | Codec(Truncated) | **OK (80,535 bytes)** | FAIL → **PASS** |
+| E4 api.github.com | Codec(Truncated) | **OK (2,262 bytes)** | FAIL → **PASS** |
+| E5 npm | server alert [2,70] | server alert [2,70] | unchanged (Case-4 scope, TLS-1.2-only endpoint) |
+
+**Score: 0/5 → 3/5 PASS.** Three CDN endpoints (CloudFront, Google Front End, Fastly) now reachable through engagement-internal HTTPS substrate.
+
+### What this corroborates
+
+Doc 730 §XII operating: the diagnostic-legibility property of a P1–P4 resolver-instance pipeline means a substrate move at the right tier flips probe cells without touching upstream code. The TLS-pilot's 8-round Pin-Art narrowing surfaced the substrate-move target precisely (one function in one downstream pilot). The web-crypto's 10-round substrate sequence closed it. The pipeline's auditable diagnosis converted opaque CDN failures into a structured cross-pilot dispatch.
+
+Doc 731 §XV.b R1–R8 framework operating: ECDSA verify went 8.18s → 0.10s (82×) at the web-crypto tier, propagating to TLS as "the CDN endpoints now complete handshake in bounded time."
+
+Doc 733 §V threshold ordering operating: the engagement's fractal coverage went from 5/6 (root + IR + JIT + PM + TLS) at WC-EXT 0 to 6/6 (added web-crypto). Crossing the cross-level threshold made the substrate work cross-pilot-navigable.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P06.E1.tls-probe-wc-propagation` | TLS probe re-run records WC-EXT 0–10 propagation; 0/5 → 3/5 PASS; no TLS-pilot code change |
+
+### Substrate at TLS-EXT 9 close
+
+- TLS-pilot code unchanged since TLS-EXT 6 + 8 instrumentation rounds (the [hs-phase1/3/drain/cv/cv-fixture/ecdsa-der] debug prints are gated and remain dormant unless CRUFTLESS_TLS_DEBUG is set).
+- The TLS-pilot's 5-endpoint probe matrix in `probes/endpoint-coverage.md` requires update to record 3/5 PASS as the current observable state.
+- Probe-runner artifact `pilots/rusty-js-pm/derived/examples/tls_probe.rs` unchanged; same probe runs against the substrate-improved web-crypto.
+- api.github.com handshake wallclock: ~10s (chain_walk's RSA cert intermediates dominate; ECDSA verify is no longer the bottleneck).
+
+### Open scope at TLS-EXT 9 boundary
+
+The TLS-pilot's open-scope contracts but does not close:
+
+1. **E2 httpbin.org CloseNotify mid-handshake** — separate bug, not addressed by WC work. Independent TLS-pilot investigation needed. Hypothesis: server-side hangup is response to something in our ClientHello that httpbin's edge specifically rejects (Heroku-specific cipher / TLS-version constraint?). Probe: openssl s_client against httpbin with various flag combinations vs rusty-tls.
+2. **E5 registry.npmjs.org Case-4 scope decision** — npm endpoint is TLS-1.2 only; rusty-tls is TLS-1.3 only (seed §IV carve-out). Empty intersection. The keeper-decision (lift the carve-out vs substitute endpoint) remains open.
+3. **TLS-EXT 10 (probe)**: api.github.com handshake breakdown. The ~10s wallclock despite ECDSA verify at 0.10s implies RSA chain-verify dominates. Probe with `[hs-phase3-drain]` + per-cert timing to confirm. This is the TLS-pilot side of WC's queued WC-EXT 11; same observation different vantage point.
+4. **TLS-EXT 11+**: route chain_walk's RSA cert verifications through Mont arithmetic once WC-EXT 12 generalizes Montgomery to arbitrary moduli. Projected TLS handshake wallclock: ~10s → <1s.
+5. The standing TLS-pilot Pin-Art probe + matrix is operational and re-runnable; future substrate moves at any tier (TLS, web-crypto, BigUInt, x509) propagate visibly through it.
+
+### Pin-Art apparatus running across pilots
+
+Nine TLS-EXTs + 11 WC-EXTs + 6 PM-EXTs across this session demonstrate the apparatus operating across the engagement's fractal pair structure (Doc 733). Each substrate-move-target relocation closed without losing diagnostic legibility:
+
+- PM-EXT 4 relocated PM's substrate-move target to TLS pilot (PM bus → TLS); TLS pair founded as TLS-EXT 0.
+- TLS-EXT 8 relocated TLS's substrate-move target to web-crypto pilot (TLS bug → WC); web-crypto pair founded as WC-EXT 0.
+- WC-EXT 10 closed the substrate move; propagated back UP through TLS (TLS-EXT 9) and (when needed by package work) PM.
+
+The cross-pilot dispatch is auditable: the TLS-EXT 9 probe re-run produces the empirical evidence that the cross-tier substrate work closed the loop.
+
+---
+
+*TLS-EXT 9 closes with the cross-pilot substrate-work propagation recorded as an explicit TLS-pilot deliverable. The 0/5 → 3/5 PASS flip happened entirely through downstream web-crypto substrate work; no TLS-pilot code changed. Doc 730 §XII diagnostic-legibility operating as designed. The TLS workstream's next moves (TLS-EXT 10 RSA handshake probe + TLS-EXT 11+ chain_walk Mont routing) are gated on the queued WC-EXT 12 Montgomery-generalization work; substrate moves at the engagement-internal-HTTPS tier and downstream are now coordinated through the fractal pair structure.*
