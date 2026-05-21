@@ -57,6 +57,53 @@ impl Runtime {
         install_function_proto(self, function_proto);
         install_promise_proto(self, promise_proto);
         install_number_proto(self, number_proto);
+
+        // Tier-Ω Round 1 (2026-05-21): generator + async-generator
+        // prototype chain per ECMA-262 §27.3 / §27.4 / §27.5.
+        //
+        // Each *Function.prototype is the [[Prototype]] of fn objects
+        // created from generator / async-generator declarations. Its
+        // .prototype property is the *Generator prototype assigned to
+        // each generator's fn.prototype. The *Generator prototype's
+        // [[Prototype]] is the *Iterator prototype (sync) or
+        // %AsyncIteratorPrototype% (async).
+        //
+        // First-cut: bare allocation with [[Prototype]] chain. Method
+        // installation (next/return/throw, [Symbol.iterator], etc.) is
+        // queued; ponyfills that only walk the chain (e.g.
+        // @sec-ant/readable-stream) work without methods present.
+
+        let iter_proto = self.alloc_object(Object::new_ordinary());
+        let gen_proto = self.alloc_object(Object::new_ordinary());
+        self.obj_mut(gen_proto).proto = Some(iter_proto);
+        let gen_fn_proto = self.alloc_object(Object::new_ordinary());
+        self.obj_mut(gen_fn_proto).properties.insert(
+            "prototype".into(),
+            crate::value::PropertyDescriptor {
+                value: Value::Object(gen_proto),
+                writable: false, enumerable: false, configurable: false,
+                getter: None, setter: None,
+            },
+        );
+        self.iterator_prototype = Some(iter_proto);
+        self.generator_prototype = Some(gen_proto);
+        self.generator_function_prototype = Some(gen_fn_proto);
+
+        let async_iter_proto = self.alloc_object(Object::new_ordinary());
+        let async_gen_proto = self.alloc_object(Object::new_ordinary());
+        self.obj_mut(async_gen_proto).proto = Some(async_iter_proto);
+        let async_gen_fn_proto = self.alloc_object(Object::new_ordinary());
+        self.obj_mut(async_gen_fn_proto).properties.insert(
+            "prototype".into(),
+            crate::value::PropertyDescriptor {
+                value: Value::Object(async_gen_proto),
+                writable: false, enumerable: false, configurable: false,
+                getter: None, setter: None,
+            },
+        );
+        self.async_iterator_prototype = Some(async_iter_proto);
+        self.async_generator_prototype = Some(async_gen_proto);
+        self.async_generator_function_prototype = Some(async_gen_fn_proto);
     }
 }
 

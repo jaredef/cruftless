@@ -182,6 +182,30 @@ pub struct Runtime {
     /// Tier-Ω.5.i: %RegExp.prototype% — installed alongside other
     /// intrinsic prototypes; alloc_object auto-wires RegExp objects.
     pub regexp_prototype: Option<rusty_js_gc::ObjectId>,
+    /// Tier-Ω Round 1 (2026-05-21): generator + async-generator
+    /// prototype-chain intrinsics per ECMA-262 §27.3 / §27.4 / §27.5.
+    /// Layout per spec:
+    ///   %IteratorPrototype%        ← root of sync iter chain
+    ///     ← %GeneratorPrototype%   (Generator instances' [[Prototype]])
+    ///       ← function.prototype on fn declared as function*()
+    ///   %GeneratorFunction.prototype% ← Generator fn's [[Prototype]]
+    ///   %AsyncIteratorPrototype%   ← root of async iter chain
+    ///     ← %AsyncGeneratorPrototype%
+    ///   %AsyncGeneratorFunction.prototype% ← async-gen fn's [[Prototype]]
+    /// Allocated at install_prototypes; chained via .proto. MakeClosure
+    /// for generator/async-generator closures sets the closure's
+    /// [[Prototype]] to the corresponding *Function.prototype intrinsic
+    /// and sets fn.prototype to the corresponding *Generator.prototype.
+    /// Without these, `Object.getPrototypeOf(asyncGenFn).prototype`
+    /// returned undefined; the @sec-ant/readable-stream ponyfill (and
+    /// transitively got + get-stream + runtypes) failed at module-init
+    /// with a Cannot-convert-undefined error.
+    pub iterator_prototype: Option<rusty_js_gc::ObjectId>,
+    pub generator_prototype: Option<rusty_js_gc::ObjectId>,
+    pub generator_function_prototype: Option<rusty_js_gc::ObjectId>,
+    pub async_iterator_prototype: Option<rusty_js_gc::ObjectId>,
+    pub async_generator_prototype: Option<rusty_js_gc::ObjectId>,
+    pub async_generator_function_prototype: Option<rusty_js_gc::ObjectId>,
     /// Tier-Ω.5.gggggg: stack of currently-running generator yields-arrays.
     /// Each generator function invocation pushes a fresh array on entry,
     /// pops it on completion. `__yield_push__(v)` appends to the top.
@@ -289,6 +313,12 @@ impl Runtime {
             bigint_prototype: None,
             symbol_prototype: None,
             regexp_prototype: None,
+            iterator_prototype: None,
+            generator_prototype: None,
+            generator_function_prototype: None,
+            async_iterator_prototype: None,
+            async_generator_prototype: None,
+            async_generator_function_prototype: None,
             gen_yields_stack: Vec::new(),
             pending_live_bindings: HashMap::new(),
             fd_table: HashMap::new(),
@@ -7193,25 +7223,56 @@ impl Runtime {
                     // pattern: `module.exports = async function name(){}`
                     // with named exports attached). Bun strips it because
                     // it isn't actually an own property of the function.
-                    if !is_arrow && !is_async && !is_gen {
+                    //
+                    // 2026-05-21 (Tier-Ω Round 1): generator and async-
+                    // generator functions DO have a .prototype per
+                    // ECMA-262 §27.4 / §27.5. The earlier strip over-applied
+                    // and broke `Object.getPrototypeOf(gen_fn.prototype)`
+                    // patterns used by ponyfills (asyncIterator in
+                    // @sec-ant/readable-stream, transitive failure point
+                    // for got / get-stream / runtypes). Install on
+                    // generators (sync or async); still skip on arrows and
+                    // plain async functions.
+                    let install_prototype = !is_arrow && (!is_async || is_gen);
+                    if install_prototype {
+                        // Allocate the per-fn .prototype object. For generator
+                        // and async-generator functions, its [[Prototype]] is
+                        // %GeneratorPrototype% / %AsyncGeneratorPrototype% per
+                        // §27.4.4 / §27.5.4. For ordinary functions, default
+                        // (object_prototype via alloc_time wiring).
                         let mut proto_obj = Object::new_ordinary();
-                        // Ω.5.P61.E19 (revised by E20): constructor backlink
-                        // is { writable:true, enumerable:false, configurable:true } per §10.2.4.
                         proto_obj.set_own_internal("constructor".into(), Value::Object(id));
                         let proto_id = self.alloc_object(proto_obj);
+                        if is_gen && is_async {
+                            if let Some(p) = self.async_generator_prototype {
+                                self.obj_mut(proto_id).proto = Some(p);
+                            }
+                        } else if is_gen {
+                            if let Some(p) = self.generator_prototype {
+                                self.obj_mut(proto_id).proto = Some(p);
+                            }
+                        }
                         // Ω.5.P62.E7: user-function .prototype is per ECMA §10.2.4
                         // { writable:true, enumerable:false, configurable:false }.
-                        // Pre-E7 used set_own_frozen (P61.E20 collateral) which
-                        // made .prototype non-writable, so `F.prototype = X`
-                        // silently no-op'd and Con.prototype-style inheritance
-                        // broke. Built-in ctor .prototype stays frozen via
-                        // the intrinsics-side install (P61.E20).
                         self.obj_mut(id).properties.insert("prototype".into(),
                             crate::value::PropertyDescriptor {
                                 value: Value::Object(proto_id),
                                 writable: true, enumerable: false, configurable: false,
                                 getter: None, setter: None,
                             });
+                    }
+                    // Tier-Ω Round 1: set the closure's [[Prototype]] to the
+                    // appropriate *Function.prototype intrinsic so
+                    // Object.getPrototypeOf(fn) reaches the spec-ordained
+                    // ancestor (per §27.3.1 / §27.4.1 / §27.5.1).
+                    if is_gen && is_async {
+                        if let Some(p) = self.async_generator_function_prototype {
+                            self.obj_mut(id).proto = Some(p);
+                        }
+                    } else if is_gen {
+                        if let Some(p) = self.generator_function_prototype {
+                            self.obj_mut(id).proto = Some(p);
+                        }
                     }
                     frame.push(Value::Object(id));
                 }
