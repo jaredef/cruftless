@@ -1567,7 +1567,15 @@ impl Runtime {
                     Value::String(_) => "string", _ => "other",
                 }))),
         };
-        let key = self.coerce_to_string(key_v)?;
+        // Tier-Ω Round 2 (2026-05-21): preserve Symbol-typed keys.
+        // Pre-fix: coerce_to_string stringified Symbol keys (storing
+        // them under PropertyKey::String("@@sym:N")), breaking
+        // Reflect.ownKeys + Object.getOwnPropertySymbols visibility.
+        // Now: track both forms; key_pk routes the descriptor insert
+        // to the correct bucket; key (String) preserves backward-
+        // compat with the function's exists/check/error-message paths.
+        let key_pk = crate::interp::property_key(key_v);
+        let key = key_pk.as_str().to_string();
         let desc_id = match desc_v {
             Value::Object(id) => *id,
             _ => return Err(RuntimeError::TypeError("Object.defineProperty: descriptor must be an object".into())),
@@ -1677,7 +1685,7 @@ impl Runtime {
             let final_setter = if has_set_key {
                 if has_setter { Some(setter) } else { None }
             } else { existing_setter };
-            self.obj_mut(target).properties.insert(crate::value::PropertyKey::String(key), crate::value::PropertyDescriptor {
+            self.obj_mut(target).properties.insert(key_pk.clone(), crate::value::PropertyDescriptor {
                 value: Value::Undefined,
                 writable: false, enumerable: new_e, configurable: new_c,
                 getter: final_getter,
@@ -1741,7 +1749,7 @@ impl Runtime {
                         "Cannot redefine non-configurable non-writable property '{}'", key)));
                 }
             }
-            self.obj_mut(target).properties.insert(crate::value::PropertyKey::String(key), crate::value::PropertyDescriptor {
+            self.obj_mut(target).properties.insert(key_pk.clone(), crate::value::PropertyDescriptor {
                 value, writable: new_w, enumerable: new_e, configurable: new_c,
                 getter: None, setter: None,
             });
@@ -4940,17 +4948,31 @@ impl Runtime {
             Value::Object(id) => *id,
             _ => return Err(RuntimeError::TypeError("Reflect.ownKeys: target must be Object".into())),
         };
-        let keys: Vec<String> = self.obj(id).string_key_clones().collect();
+        // Tier-Ω Round 2 (2026-05-21): enumerate ALL PropertyKey variants
+        // per ECMA §28.1.7 (Reflect.ownKeys → OrdinaryOwnPropertyKeys).
+        // Pre-fix: used string_key_clones() which filtered out
+        // PropertyKey::Symbol entries, so `Reflect.ownKeys` and
+        // `Object.getOwnPropertyDescriptors` missed symbol-keyed props.
+        // This broke libraries that propagate symbol slots via
+        // Reflect.ownKeys-then-defineProperty (runtypes' RuntypePrivate
+        // slot, transitively breaking 14-package failure-cluster
+        // entries that depend on runtypes' symbol-based dispatch).
+        let keys: Vec<Value> = self.obj(id).properties.keys().map(|k| match k {
+            crate::value::PropertyKey::String(s) => {
+                if s.as_str().starts_with("@@sym:") {
+                    Value::Symbol(std::rc::Rc::new(s.clone()))
+                } else {
+                    Value::String(std::rc::Rc::new(s.clone()))
+                }
+            }
+            crate::value::PropertyKey::Symbol(rc) => Value::Symbol(rc.clone()),
+        }).collect();
         let arr = self.alloc_object(crate::value::Object::new_array());
-        for (i, k) in keys.iter().enumerate() {
-            let v = if k.as_str().starts_with("@@sym:") {
-                Value::Symbol(std::rc::Rc::new(k.clone()))
-            } else {
-                Value::String(std::rc::Rc::new(k.clone()))
-            };
+        let len = keys.len();
+        for (i, v) in keys.into_iter().enumerate() {
             self.object_set(arr, i.to_string(), v);
         }
-        self.object_set(arr, "length".into(), Value::Number(keys.len() as f64));
+        self.object_set(arr, "length".into(), Value::Number(len as f64));
         Ok(Value::Object(arr))
     }
 
