@@ -1145,6 +1145,186 @@ pub fn p256_from_mont(am: &BigUInt) -> BigUInt {
     p256_redc(am.limbs().to_vec())
 }
 
+// ──────────────── WC-EXT 9: Montgomery-form EC routines ────────────
+//
+// Bug surfaced + fixed during WC-EXT 9 substrate work: JacPoint::
+// from_affine creates Z = BigUInt::one() (literal 1), which in Mont
+// form is NOT 1 (Mont form of 1 is R mod p). When mixing the Mont-
+// form (X, Y) with std-form Z = 1, every subsequent jac_double_mont
+// and jac_add_affine_mont produces wrong results. Helper below
+// reads R mod p once, used in any Mont-form Jacobian construction.
+
+static P256_MONT_ONE: OnceLock<BigUInt> = OnceLock::new();
+fn p256_mont_one() -> &'static BigUInt {
+    P256_MONT_ONE.get_or_init(|| p256_to_mont(&BigUInt::one()))
+}
+
+fn jacpoint_from_affine_mont(a: &P256Point) -> JacPoint {
+    match a {
+        P256Point::Identity => JacPoint::identity(),
+        P256Point::Affine { x, y } => JacPoint {
+            x: x.clone(),
+            y: y.clone(),
+            z: p256_mont_one().clone(),
+        },
+    }
+}
+
+//
+// All operations consume and produce Mont-form BigUInts. Routes the
+// variable-input scalar mul (u2·Q in ECDSA verify) through Mont
+// arithmetic to realize the 40× speedup measured at the BigUInt tier
+// (WC-EXT 8 bench).
+//
+// Per Doc 735 §V: this is a routing move at the EC tier that
+// composes on the WC-EXT 8 BigUInt-tier substrate. No new temporal-
+// tier work; just propagates the WC-EXT 8 cost reduction upward
+// through every operation in the live EC verify path.
+
+/// Multiplication of a Mont-form value by a small standard-form
+/// integer `k` (k ∈ [2, 8]), done as k-1 modular additions. Cheaper
+/// than going through mont_mul or to_mont for the small-constant case.
+fn p256_mont_mul_by_small(am: &BigUInt, k: u32) -> BigUInt {
+    let p = p256_p();
+    let mut acc = am.clone();
+    for _ in 1..k {
+        acc = mod_add(&acc, am, &p);
+    }
+    acc
+}
+
+/// Square-and-multiply modular exponentiation in Montgomery form.
+/// Returns (a_mont)^e in Mont form, i.e., (a_std^e)_mont.
+fn p256_mont_pow(am: &BigUInt, e: &BigUInt) -> BigUInt {
+    // Mont-form 1 is just R mod p = p256_to_mont(one).
+    let one_mont = p256_to_mont(&BigUInt::one());
+    let mut result = one_mont;
+    let mut base = am.clone();
+    let bits = e.bit_len();
+    for i in 0..bits {
+        if e.bit(i) {
+            result = p256_mont_mul(&result, &base);
+        }
+        base = p256_mont_mul(&base, &base);
+    }
+    result
+}
+
+/// Inverse in Mont form via Fermat's little theorem: a⁻¹ = a^(p-2) mod p.
+pub fn p256_mont_inv(am: &BigUInt) -> BigUInt {
+    let p = p256_p();
+    let two = BigUInt::from_be_bytes(&[2]);
+    let p_minus_2 = p.sub(&two);
+    p256_mont_pow(am, &p_minus_2)
+}
+
+/// Jacobian doubling in Mont form (a = -3 case, P-256). All fields
+/// of input/output are Mont-form BigUInts.
+fn p256_jac_double_mont(j: &JacPoint) -> JacPoint {
+    let p = p256_p();
+    if j.is_identity() { return j.clone(); }
+    if j.y.is_zero() { return JacPoint::identity(); }
+    let delta = p256_mont_mul(&j.z, &j.z);
+    let gamma = p256_mont_mul(&j.y, &j.y);
+    let beta = p256_mont_mul(&j.x, &gamma);
+    let x_minus_d = mod_sub(&j.x, &delta, &p);
+    let x_plus_d  = mod_add(&j.x, &delta, &p);
+    let xm_xp = p256_mont_mul(&x_minus_d, &x_plus_d);
+    let alpha = p256_mont_mul_by_small(&xm_xp, 3);  // 3·(X-Δ)·(X+Δ)
+    let alpha2 = p256_mont_mul(&alpha, &alpha);
+    let eight_beta = p256_mont_mul_by_small(&beta, 8);
+    let x3 = mod_sub(&alpha2, &eight_beta, &p);
+    let y_plus_z = mod_add(&j.y, &j.z, &p);
+    let z3 = mod_sub(&mod_sub(&p256_mont_mul(&y_plus_z, &y_plus_z), &gamma, &p), &delta, &p);
+    let four_beta = p256_mont_mul_by_small(&beta, 4);
+    let four_beta_minus_x3 = mod_sub(&four_beta, &x3, &p);
+    let gamma2 = p256_mont_mul(&gamma, &gamma);
+    let eight_gamma2 = p256_mont_mul_by_small(&gamma2, 8);
+    let y3 = mod_sub(&p256_mont_mul(&alpha, &four_beta_minus_x3), &eight_gamma2, &p);
+    JacPoint { x: x3, y: y3, z: z3 }
+}
+
+/// Mixed addition Jacobian + Affine → Jacobian, all in Mont form.
+fn p256_jac_add_affine_mont(j: &JacPoint, a: &P256Point) -> JacPoint {
+    use std::cmp::Ordering;
+    let p = p256_p();
+    let (ax, ay) = match a {
+        P256Point::Identity => return j.clone(),
+        P256Point::Affine { x, y } => (x, y),
+    };
+    if j.is_identity() { return jacpoint_from_affine_mont(a); }
+    let z1z1 = p256_mont_mul(&j.z, &j.z);
+    let u2 = p256_mont_mul(ax, &z1z1);
+    let z1_cubed = p256_mont_mul(&j.z, &z1z1);
+    let s2 = p256_mont_mul(ay, &z1_cubed);
+    if u2.cmp(&j.x) == Ordering::Equal {
+        if s2.cmp(&j.y) == Ordering::Equal { return p256_jac_double_mont(j); }
+        return JacPoint::identity();
+    }
+    let h = mod_sub(&u2, &j.x, &p);
+    let r = mod_sub(&s2, &j.y, &p);
+    let h2 = p256_mont_mul(&h, &h);
+    let h3 = p256_mont_mul(&h2, &h);
+    let x1_h2 = p256_mont_mul(&j.x, &h2);
+    let two_x1_h2 = p256_mont_mul_by_small(&x1_h2, 2);
+    let r2 = p256_mont_mul(&r, &r);
+    let x3 = mod_sub(&mod_sub(&r2, &h3, &p), &two_x1_h2, &p);
+    let y3 = mod_sub(
+        &p256_mont_mul(&r, &mod_sub(&x1_h2, &x3, &p)),
+        &p256_mont_mul(&j.y, &h3),
+        &p,
+    );
+    let z3 = p256_mont_mul(&j.z, &h);
+    JacPoint { x: x3, y: y3, z: z3 }
+}
+
+/// Convert Mont-form Jacobian point to standard-form affine. Performs
+/// one Montgomery inversion + a few mont_muls + one final from_mont per
+/// coordinate. Output is in standard (non-Mont) form.
+fn p256_jac_to_affine_mont(j: &JacPoint) -> P256Point {
+    if j.is_identity() { return P256Point::Identity; }
+    let z_inv_m = p256_mont_inv(&j.z);
+    let z_inv2_m = p256_mont_mul(&z_inv_m, &z_inv_m);
+    let z_inv3_m = p256_mont_mul(&z_inv2_m, &z_inv_m);
+    let x_m = p256_mont_mul(&j.x, &z_inv2_m);
+    let y_m = p256_mont_mul(&j.y, &z_inv3_m);
+    P256Point::Affine {
+        x: p256_from_mont(&x_m),
+        y: p256_from_mont(&y_m),
+    }
+}
+
+/// Convert affine std-form to affine Mont-form (for use as the
+/// addend in p256_jac_add_affine_mont).
+fn p256_affine_to_mont(p: &P256Point) -> P256Point {
+    match p {
+        P256Point::Identity => P256Point::Identity,
+        P256Point::Affine { x, y } => P256Point::Affine {
+            x: p256_to_mont(x),
+            y: p256_to_mont(y),
+        },
+    }
+}
+
+/// P-256 variable-input scalar mul in Mont form: takes a standard-form
+/// affine point Q, converts to Mont, runs scalar mul fully in Mont,
+/// converts result back to std form. Replaces the BigUInt-tier hot
+/// path with the 40×-faster Mont mul.
+pub fn p256_scalar_mul_mont(k: &BigUInt, q_std: &P256Point) -> P256Point {
+    let bits = k.bit_len();
+    if bits == 0 { return P256Point::Identity; }
+    if matches!(q_std, P256Point::Identity) { return P256Point::Identity; }
+    let q_mont = p256_affine_to_mont(q_std);
+    let mut result = JacPoint::identity();
+    for i in (0..bits).rev() {
+        result = p256_jac_double_mont(&result);
+        if k.bit(i) {
+            result = p256_jac_add_affine_mont(&result, &q_mont);
+        }
+    }
+    p256_jac_to_affine_mont(&result)
+}
+
 fn p256_double(pt: &P256Point) -> P256Point {
     let p = p256_p();
     let three = BigUInt::from_be_bytes(&[3]);
@@ -1906,8 +2086,12 @@ pub fn ecdsa_verify(
         ec_scalar_mul(c, &u1, &c.g)
     };
     if dbg_ec { eprintln!("[wc-ec]   p1 OK"); }
-    if dbg_ec { eprintln!("[wc-ec] → ec_scalar_mul(u2, Q) = p2"); }
-    let p2 = ec_scalar_mul(c, &u2, &q);
+    if dbg_ec { eprintln!("[wc-ec] → scalar_mul(u2, Q) = p2 (Mont fast path if P-256)"); }
+    let p2 = if c.coord_bytes == 32 && c.b.cmp(&p256_b()) == std::cmp::Ordering::Equal {
+        p256_scalar_mul_mont(&u2, &q)
+    } else {
+        ec_scalar_mul(c, &u2, &q)
+    };
     if dbg_ec { eprintln!("[wc-ec]   p2 OK"); }
     if dbg_ec { eprintln!("[wc-ec] → ec_add(p1, p2)"); }
     let r_pt = ec_add(c, &p1, &p2);

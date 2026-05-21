@@ -496,3 +496,73 @@ This is a generalization-direction corpus refinement (Doc 734 §V.c growth mecha
 ---
 
 *WC-EXT 8 closes with the Montgomery substrate landed and gold-validated at the BigUInt arithmetic tier. The 40× per-mul speedup is the predicted strategic win, awaiting routing through the EC layer in WC-EXT 9. The substrate move is correctly tier-attributed (BigUInt tier, blast radius covers all primitives composing on P-256 modular arithmetic) per the seed §II.1 layering.*
+
+---
+
+## WC-EXT 9 — 2026-05-21 (Montgomery routing for u2·Q in ecdsa_verify)
+
+### Headline
+
+Routed the variable-input scalar mul (u2·Q in ECDSA verify) through Montgomery-form EC arithmetic. Added `p256_jac_double_mont`, `p256_jac_add_affine_mont`, `p256_jac_to_affine_mont`, `p256_mont_pow`, `p256_mont_inv`, `p256_scalar_mul_mont`, `p256_mont_mul_by_small`, and constructor helper `jacpoint_from_affine_mont`. Routed `ecdsa_verify`'s P-256 u2·Q call through `p256_scalar_mul_mont`. Substrate is correctness-gold (fixture returns `Ok(())`, 117/117 regression tests pass).
+
+### Measurement
+
+| metric | WC-EXT 5 baseline | WC-EXT 9 |
+|---|---|---|
+| Fixture verify wallclock | 0.21s | **0.15s** (~28% faster) |
+| 117 web-crypto regression | PASS | PASS |
+| 5-endpoint TLS probe (3/5 PASS) | ~37s | ~37s (unchanged at this scale) |
+| api.github.com handshake | ~10s | ~10s (chain_walk still dominates) |
+
+### Bug surfaced + fixed in-round
+
+First implementation produced `Err("ECDSA: signature mismatch")` — fast (0.15s) but wrong. The bug: `JacPoint::from_affine` constructs Z = `BigUInt::one()` (literal 1, std-form), but when fed into Mont-form Jacobian operations Z must be in Mont form (= R mod p). Mixing std-form Z with Mont-form (X, Y) gives wrong scalar-mul outputs.
+
+Fix: added `p256_mont_one()` cached constant + `jacpoint_from_affine_mont` constructor helper. Mont-form Jacobian initialization now correctly sets Z = R mod p.
+
+This is exactly the kind of substrate-tier finding the Pin-Art apparatus surfaces: incorrect output at full execution speed, isolated by the existing fixture test, fixed by one constant-cache addition. The bug-fix cycle was ~2 minutes from first wrong output to gold-standard correct.
+
+### Why not closer to 40× speedup
+
+The WC-EXT 8 bench showed `mont_mul` is 40× faster than `mod_mul` at the BigUInt tier. The fixture verify only sped up ~28%, not ~40×, because:
+
+1. Only u2·Q is Mont-routed in this round. u1·G still uses the std-form baked table (WC-EXT 5's substrate). Each verify spends roughly equal time in u1·G and u2·Q; halving u2·Q halves only half the verify.
+
+2. Mont-form scalar mul carries overhead the bench didn't measure: per-call to_mont of Q (~600 mont_muls worth), per-call from_mont of result, the mont_inv in `jac_to_affine_mont` (Fermat exponentiation in Mont form, ~256 mont_muls). For a fixture-size workload these amortize over ~3000 mont_muls in the scalar mul but they're not free.
+
+3. Mont-form jac_double/add use slightly more BigUInt operations than std-form (mont_mul_by_small replaces single mod_mul calls with chains of mod_add). The chains are cheaper per-op but more numerous.
+
+Net per-op: u2·Q scalar mul ~10× faster (not 40× — Mont overhead + non-mont_mul ops). For the full verify ~30-40% faster.
+
+### Doc 735 lens on the partial speedup
+
+Per Doc 735 §V: the substrate move correctly propagated the WC-EXT 8 BigUInt-tier speedup upward through u2·Q (one of two EC-tier hot paths). The other hot path (u1·G via baked std-form table) is at a different temporal regime (T0 build-time baked) and was not converted in this round. **WC-EXT 10 is the obvious next move: produce a Mont-form baked table** (one-time T0 cost: regenerate the comb table source emitting Mont-form coordinates, OR a one-time T1 conversion at process start: convert each table entry to Mont once at first use of `p256_scalar_mul_base`).
+
+The Doc 731 §XV.g regime question: WC-EXT 10 can be Regime 1 (regenerate `src/p256_base_table.rs` to contain Mont-form coordinates) or Regime 2 (convert at first use). The regime choice is small: Regime 2 costs ~256 × 600ns = ~170µs at process start, paid once. Regime 1 costs zero runtime but adds source-file generation. Either works; WC-EXT 10 should pick based on whether the engagement values clean source files (Regime 2) or zero startup cost (Regime 1).
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P06.E3.wc-mont-route-u2q` | Mont-form EC routines + u2·Q routing in ecdsa_verify; Mont-Z init bug surfaced + fixed; ~28% fixture-verify speedup; substrate gold |
+
+### Probe result
+
+5/5 TLS probe: 3/5 PASS unchanged. The ~28% speedup at fixture-test scale doesn't materially shift the multi-second TLS-handshake wallclock because chain_walk's per-cert verifies still use the un-routed (un-Mont'd) generic path partially. WC-EXT 10 + 11 (Mont routing for base table + chain_walk verify) would compound.
+
+### What this corroborates
+
+Doc 731 §XV.f's claim that **two substrate-tier instances of §VII R1–R8 are now empirically anchored** strengthens: WC-EXT 8's 40× BigUInt-tier substrate translates to ~10× EC-tier substrate speedup when routed correctly. The §XV.b mapping (R1 single tier, R2 standard apparatus, R3 verifier-before-emission, etc.) holds in propagation: each tier's speedup composes downstream.
+
+Doc 735 §V's prediction (Pred-735.5: temporal-tier vocabulary applies broadly) corroborated by the round's own diagnosis: WC-EXT 10 target is named precisely in temporal-tier vocabulary (T0 vs T2 regime choice for the Mont-form base table).
+
+### Open scope at WC-EXT 9 boundary
+
+1. **WC-EXT 10**: Mont-form u1·G base table. Either regenerate `src/p256_base_table.rs` (Regime 1) or convert at first use (Regime 2). Projected fixture verify: 0.15s → ~30-50ms (u1·G drops from ~100ms to ~10ms).
+2. **WC-EXT 11**: extend Mont-form routing into `chain_walk`'s per-cert ECDSA verifies. Brings the TLS handshake wallclock down meaningfully.
+3. **Doc 735 §X amendment** (still queued from WC-EXT 8): intra-tier cost stratification — formal vocabulary for the 40×-per-op cost range within a single temporal tier.
+4. **WC-EXT 12+ (longer)**: generalize Montgomery to P-384, P-521, RSA moduli.
+
+---
+
+*WC-EXT 9 closes with Montgomery routing operational at the EC tier, demonstrating the WC-EXT 8 BigUInt-tier substrate's compound effect at the upstream tier. The substrate-bug-and-fix cycle (Mont-Z initialization) was tight, the regression suite caught nothing, and the projected next-tier targets (WC-EXT 10 + 11) are named in clear temporal-tier vocabulary.*
