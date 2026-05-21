@@ -265,6 +265,30 @@ pub fn get_force_shape_trip_addr() -> usize {
     &JIT_FORCE_SHAPE_TRIP as *const _ as usize
 }
 
+// ---------------------------------------------------------------------
+// JIT-EXT 20: GetPropOnObject runtime-helper stub.
+//
+// At JIT-EXT 20 close, the helper is a deterministic stub that returns
+// `(receiver_idx << 8) ^ prop_name_idx`. This proves the JIT can emit
+// a two-argument extern call and read its return value. The real
+// helper, which performs the actual hidden-class lookup against a
+// Runtime instance, lands at JIT-EXT 21 alongside dispatcher consume-
+// recovered-state (the round that wires the Runtime pointer through
+// TLS so the helper can access object data).
+//
+// Test orchestration uses the stub to verify the call chain end-to-
+// end without needing a Runtime instance:
+//
+//   compile bytecode containing GetPropOnObject(prop_idx)
+//   invoke JIT'd function with arg = receiver_idx
+//   result == (receiver_idx << 8) ^ prop_idx
+// ---------------------------------------------------------------------
+
+#[no_mangle]
+pub extern "C" fn jit_getprop_on_object(receiver_idx: i64, prop_name_idx: i64) -> i64 {
+    (receiver_idx << 8) ^ prop_name_idx
+}
+
 /// Extern thunk callable from Cranelift-emitted code. Returns a
 /// sentinel i64 (0) to the JIT'd caller; the dispatcher detects the
 /// trip via `LAST_DEOPT_FRAME`.

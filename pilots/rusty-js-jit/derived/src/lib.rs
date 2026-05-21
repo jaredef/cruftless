@@ -37,6 +37,7 @@ pub use deopt::{
     DeoptSiteTable, jit_deopt_thunk, reconstruct_state,
     deopt_trip, set_current_deopt_sites, clear_current_deopt_sites, take_last_deopt,
     set_force_shape_trip, get_force_shape_trip_addr,
+    jit_getprop_on_object,
 };
 
 // JIT-EXT 12: synthetic-trip smoke test. Builds a hand-rolled

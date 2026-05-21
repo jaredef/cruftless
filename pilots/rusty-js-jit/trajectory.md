@@ -1026,3 +1026,87 @@ The bytecode-side addition is a Case-1 substrate-introduction: cruftless gains a
 ---
 
 *JIT-EXT 19 closes the bytecode-tier preparation round. JIT-EXT 20 adds the actual JIT lowering, which is where ICs first land as a working substrate.*
+
+---
+
+## JIT-EXT 20 — 2026-05-21 (GetPropOnObject JIT lowering via stub helper)
+
+### Headline
+
+The JIT now lowers `GetPropOnObject(prop_idx)` to a Cranelift call into a runtime helper. **At JIT-EXT 20 close, the helper is a deterministic stub** (`(receiver_idx << 8) ^ prop_name_idx`); the call chain is proven end-to-end through Cranelift. The real helper (which does actual hidden-class lookup against a Runtime instance) lands at JIT-EXT 21 alongside dispatcher consume-recovered-state — the round that wires the Runtime pointer through TLS.
+
+### Substrate landed
+
+- `pilots/rusty-js-jit/derived/src/deopt.rs` (+~20 LOC):
+  - `extern "C" fn jit_getprop_on_object(receiver_idx: i64, prop_name_idx: i64) -> i64` — the stub helper
+  - Returns `(receiver_idx << 8) ^ prop_name_idx` — deterministic, testable, has nothing to do with real hidden-class lookup. The shape proves the JIT can pass two i64 args and receive one i64 back.
+
+- `pilots/rusty-js-jit/derived/src/translator.rs` (+~30 LOC):
+  - `has_getprop` scan of the parsed op list to decide whether to bind the helper symbol
+  - Pre-bind via `JITBuilder::symbol("jit_getprop_on_object", ...)` when `has_getprop`
+  - Declare the function in the JIT module + extract `getprop_ref` FuncRef into the function builder's scope
+  - Dispatch arm for `ParsedOp::GetPropOnObject(prop_idx)`:
+    - Pop the receiver i64 from the operand stack
+    - Emit `iconst(I64, prop_idx as i64)`
+    - Emit `call(getprop_ref, &[receiver, prop_v])`
+    - Push the result onto the operand stack
+
+- `pilots/rusty-js-jit/derived/src/lib.rs`: re-export `jit_getprop_on_object`
+
+- Updated test (replacing JIT-EXT 19's rejection test): `jit_lowers_getprop_on_object_calls_stub` verifies the stub formula. With `receiver=100, prop_idx=7`, result = `(100 << 8) ^ 7 = 25607`.
+
+### Probe result
+
+**26/26 JIT lib tests PASS in 0.03 s.**
+
+New test:
+- `jit_lowers_getprop_on_object_calls_stub`: compile + invoke a function `getprop_on_object(arg) { arg.[prop_idx=7] }`; verify `call1(100) == 25607` and `call1(42) == 10759`.
+
+Regression sweep:
+- PM-EXT 11+12: 2/2 PASS in 2.85 s
+- caps_probes: 18/18 PASS
+- All prior arith-guard + shape-trip tests still PASS
+
+### Why a stub helper
+
+A real helper would need to:
+1. Read the receiver as an `ObjectRef` index, then walk to the Object in the Runtime's Heap
+2. Decode the property name from the FunctionProto's constants table at `prop_name_idx`
+3. Call `Runtime::object_get(receiver, &name)` to do the actual lookup
+4. Encode the returned Value as i64 (handling Number / non-Number / deopt-on-non-Number)
+
+Steps (1) and (3) require a Runtime pointer, which the JIT-emitted code doesn't have. Step (2) requires the active FunctionProto's constants. Both need to be threaded through TLS — exactly the work JIT-EXT 21 plans to do.
+
+Until then, the stub returns a deterministic function of its arguments. The call chain is proven; the semantic content is queued.
+
+This mirrors JIT-EXT 12's pattern: prove the Cranelift→Rust call mechanism works (extern symbol binding, signature declaration, call emission) before adding the actual logic. The synthetic call shape isolates one substrate concern per round.
+
+### Pred-731 corroboration
+
+- **R5 (deopt sites finite-enumerable per emitted module)**: unchanged. The stub doesn't yet emit deopts; the real helper (JIT-EXT 21+) will emit `TypeWidening` or `ICShapeMismatch` deopts when the property value isn't a Number.
+- **R6 (single tier)**: corroborated. The JIT call into the runtime helper is part of the same JIT'd function's single-tier code path. There is no "lower-tier specialized GetProp JIT" to compose with.
+- **R8 (no internal optimization passes)**: corroborated. The lowering is straight-line: pop, iconst, call, push. No optimization pass involved.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P04.E2.jit-getprop-lowering-stub` | JIT-EXT 20: GetPropOnObject lowered to Cranelift call into runtime helper; helper is a deterministic stub; end-to-end JIT→extern→JIT call chain proven via stub formula; 26/26 JIT tests PASS; PM + caps regression unchanged |
+
+### Open scope at JIT-EXT 20 boundary
+
+1. **JIT-EXT 21 (real helper + dispatcher consume-recovered-state)**: thread the Runtime pointer through TLS so the helper can perform real `object_get`. At the same time, land `call_function_with_resume_state` so the dispatcher can resume the interpreter at an arbitrary pc with reconstructed state. Both are needed before real ICs can land: the helper does the slow-path lookup; the dispatcher catches the deopt and resumes.
+
+2. **JIT-EXT 22 (single-shape IC at the call site)**: cache the last observed `(shape, slot_offset)` at each GetPropOnObject site. Fast path checks the cached shape; slow path calls the helper; helper updates the cache on first miss.
+
+3. **JIT-EXT 23 (multi-shape IC)**: extend cache to 4 entries; deopt on cache-full miss.
+
+4. **JIT-EXT 24 (mixed-regime support)**: dispatcher accepts Object args alongside Number args.
+
+### Doc 730 §XVI status
+
+The stub helper is Case-4 (implementation freedom): cruftless's first cut proves the Cranelift→Rust call mechanism before threading the Runtime through. Mainstream JITs would skip the stub step (they have direct access to the engine's heap pointers from inside the JIT'd code). Cruftless's discipline of one-substrate-per-round produces these stepping stones; they're a feature of the Pin-Art process, not a defect of the design.
+
+---
+
+*JIT-EXT 20 closes the Cranelift-side lowering for GetPropOnObject. The call chain is proven against a stub; JIT-EXT 21 makes the helper real.*

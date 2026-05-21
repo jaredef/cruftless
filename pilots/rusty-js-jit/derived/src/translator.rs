@@ -167,11 +167,20 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
         .unwrap_or(false);
     let any_guard = guard_overflow || force_shape_trip;
 
+    // JIT-EXT 20: detect GetPropOnObject in the parsed op list so we
+    // can pre-bind the runtime helper. Pre-binding has no cost when
+    // the symbol isn't used.
+    let has_getprop = parsed.iter().any(|(_, op)| matches!(op, ParsedOp::GetPropOnObject(_)));
+
     let mut jit_builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
     if any_guard {
         // Pre-bind the deopt thunk's symbol so Cranelift can resolve
         // the import at link time.
         jit_builder.symbol("deopt_trip", crate::deopt::deopt_trip as *const u8);
+    }
+    if has_getprop {
+        jit_builder.symbol("jit_getprop_on_object",
+            crate::deopt::jit_getprop_on_object as *const u8);
     }
     let mut module = JITModule::new(jit_builder);
 
@@ -185,6 +194,17 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
         Some(module
             .declare_function("deopt_trip", Linkage::Import, &trip_sig)
             .map_err(|e| format!("declare deopt_trip: {e}"))?)
+    } else { None };
+
+    // JIT-EXT 20: declare the GetProp runtime helper if needed.
+    let getprop_id_opt = if has_getprop {
+        let mut sig = module.make_signature();
+        sig.params.push(AbiParam::new(I64));  // receiver_idx
+        sig.params.push(AbiParam::new(I64));  // prop_name_idx
+        sig.returns.push(AbiParam::new(I64));
+        Some(module
+            .declare_function("jit_getprop_on_object", Linkage::Import, &sig)
+            .map_err(|e| format!("declare jit_getprop_on_object: {e}"))?)
     } else { None };
 
     let mut ctx = module.make_context();
@@ -202,6 +222,8 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
         // scope if the guard-overflow feature is on. We declare it
         // before any other block work so subsequent code can call it.
         let trip_ref = trip_id_opt.map(|id| module.declare_func_in_func(id, &mut builder.func));
+        // JIT-EXT 20: same for the GetProp runtime helper.
+        let getprop_ref = getprop_id_opt.map(|id| module.declare_func_in_func(id, &mut builder.func));
 
         // Allocate a Cranelift Block per jump target.
         let mut blocks: HashMap<usize, Block> = HashMap::new();
@@ -503,13 +525,24 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
                 ParsedOp::GeI64 => cmpop(&mut stack, &mut builder, IntCC::SignedGreaterThanOrEqual)?,
                 ParsedOp::EqI64 => cmpop(&mut stack, &mut builder, IntCC::Equal)?,
                 ParsedOp::NeI64 => cmpop(&mut stack, &mut builder, IntCC::NotEqual)?,
-                ParsedOp::GetPropOnObject(_idx) => {
-                    // JIT-EXT 19: recognized at parser-tier, lowering
-                    // arrives at JIT-EXT 20. Until then, the translator
-                    // rejects the function so the interpreter handles
-                    // it.
-                    return Err(format!(
-                        "GetPropOnObject not yet lowered by JIT (JIT-EXT 20 target) at pc={}", pc));
+                ParsedOp::GetPropOnObject(prop_idx) => {
+                    // JIT-EXT 20: lower to a call into the runtime
+                    // helper. The receiver i64 (typed as ObjectRef
+                    // index by upstream) is popped from the stack; the
+                    // prop_name_idx is emitted as a Cranelift constant.
+                    // The helper's return value (i64) is pushed back
+                    // onto the stack as the result.
+                    //
+                    // At JIT-EXT 20 close the helper is a deterministic
+                    // stub (`(receiver << 8) ^ prop_idx`). The real
+                    // helper lands at JIT-EXT 21 alongside dispatcher
+                    // consume-recovered-state.
+                    let gpref = getprop_ref.expect("getprop_ref must be set when ParsedOp::GetPropOnObject is present");
+                    let receiver = stack.pop().ok_or("GetPropOnObject: stack underflow (receiver)")?;
+                    let prop_v = builder.ins().iconst(I64, *prop_idx as i64);
+                    let call_inst = builder.ins().call(gpref, &[receiver, prop_v]);
+                    let result = builder.inst_results(call_inst)[0];
+                    stack.push(result);
                 }
             }
             // Allow comparison op result (i8) to participate in stack
@@ -1131,23 +1164,30 @@ mod tests {
         clear_current_deopt_sites();
     }
 
-    /// JIT-EXT 19: GetPropOnObject is recognized by parse_bytecode but
-    /// the translator returns Err when it sees the op. The function
-    /// is uncompilable by the JIT at JIT-EXT 19 close; the interpreter
-    /// continues to handle it via the shared Op::GetProp dispatch.
+    /// JIT-EXT 20: GetPropOnObject is now lowered to a runtime-helper
+    /// call. The helper is a deterministic stub at this round:
+    /// `(receiver_idx << 8) ^ prop_name_idx`. The JIT-compiled
+    /// function calls the stub and returns its result; the test
+    /// verifies the call chain works end-to-end through Cranelift.
     #[test]
-    fn jit_rejects_getprop_on_object_at_ext19() {
+    fn jit_lowers_getprop_on_object_calls_stub() {
         let mut bc = Vec::new();
-        // Construct minimal bytecode containing GetPropOnObject. The
-        // receiver doesn't actually need to be valid — translator
-        // bails out at parse-time before any interpreter-tier check.
         encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 0);
-        encode_op(&mut bc, Op::GetPropOnObject); encode_u16(&mut bc, 0);
+        encode_op(&mut bc, Op::GetPropOnObject); encode_u16(&mut bc, 7);  // prop_idx = 7
         encode_op(&mut bc, Op::Return);
         let proto = empty_proto(bc, 1);
-        let err = compile_function(&proto).expect_err("JIT should reject GetPropOnObject at EXT 19");
-        assert!(err.contains("GetPropOnObject"),
-            "error should mention the op; got: {err}");
+        let jit = compile_function(&proto).expect("JIT-EXT 20 should compile GetPropOnObject");
+
+        // Helper stub returns `(receiver << 8) ^ prop_idx`.
+        // For receiver=100, prop_idx=7: (100 << 8) ^ 7 = 25600 ^ 7 = 25607.
+        let r = jit.func.call1(100);
+        assert_eq!(r, 25607,
+            "JIT-compiled GetPropOnObject should call the stub helper and return its result; got {r}");
+
+        // Another data point for confidence.
+        // receiver=42, prop_idx=7: (42 << 8) ^ 7 = 10752 ^ 7 = 10759.
+        let r = jit.func.call1(42);
+        assert_eq!(r, 10759);
     }
 
     /// JIT-EXT 17: ICShapeMismatch deopt demonstrator.
