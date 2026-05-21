@@ -1418,6 +1418,56 @@ pub fn ec_scalar_mul(c: &Curve, k: &BigUInt, pt: &P256Point) -> P256Point {
     jac_to_affine(c, &result)
 }
 
+// ──────────────── WC-EXT 4: precomputed base table for P-256 G ──
+//
+// Doc 731 §XV.c: the curve generator G is statically provable hot —
+// every ECDSA verify on this curve invokes u1·G. Precompute its
+// per-bit multiples once at first use; subsequent scalar mults with
+// G become pure adds (no doublings), routed through the existing
+// Jacobian add. Memory: 256 affine points (~32 KB on P-256). Init
+// cost: 255 affine doublings (~3 seconds on Pi, paid once per
+// process lifetime). Runtime cost per verify: ~128 expected mixed
+// adds (no doubles). Eliminates the doubling half of u1·G's cost.
+//
+// This is the §XV.c application: more upstream alphabet purity
+// (curve params + scalar + point all typed) → JIT-tier decisions
+// move from runtime to compile time (table is build-once, use-many).
+
+use std::sync::OnceLock;
+
+static P256_BASE_TABLE: OnceLock<Vec<P256Point>> = OnceLock::new();
+
+fn p256_base_table() -> &'static [P256Point] {
+    P256_BASE_TABLE.get_or_init(|| {
+        let c = curve_p256();
+        let mut table = Vec::with_capacity(256);
+        table.push(c.g.clone());
+        for i in 1..256 {
+            // table[i] = 2^i · G. Affine doubling here, paid once.
+            let next = ec_double(&c, &table[i - 1]);
+            table.push(next);
+        }
+        table
+    })
+}
+
+/// Scalar-mul for the fixed P-256 base point G, using the
+/// precomputed table. Strictly correct: identical output to
+/// `ec_scalar_mul(&curve_p256(), k, &curve_p256().g)`.
+pub fn p256_scalar_mul_base(k: &BigUInt) -> P256Point {
+    let c = curve_p256();
+    let bits = k.bit_len();
+    if bits == 0 { return P256Point::Identity; }
+    let table = p256_base_table();
+    let mut result = JacPoint::identity();
+    for i in 0..bits {
+        if k.bit(i) {
+            result = jac_add_affine(&c, &result, &table[i]);
+        }
+    }
+    jac_to_affine(&c, &result)
+}
+
 /// Generate an EC keypair on the given curve. Returns (d, x, y) where
 /// d is the private scalar (1 ≤ d ≤ n-1) and (x, y) = d·G is the public
 /// point. Uses /dev/urandom for the random scalar.
@@ -1523,6 +1573,12 @@ pub fn ecdsa_verify(
     if dbg_ec { eprintln!("[wc-ec] → mod_mul(r, w, n) = u2"); }
     let u2 = mod_mul(&r, &w, &c.n);
     if dbg_ec { eprintln!("[wc-ec] → ec_scalar_mul(u1, G) = p1"); }
+    // Note: p256_scalar_mul_base exists as a substrate move (WC-EXT 4)
+    // that pre-computes [2^i·G] at first use. On the Pi the init cost
+    // (~3s of affine doublings) exceeds the savings for few-verify
+    // workloads (TLS handshake = ~3 verifies). The §XV.c-true win
+    // requires build-time-baked constants; runtime init is a different
+    // amortization regime. Routed off until WC-EXT 5+ bakes the table.
     let p1 = ec_scalar_mul(c, &u1, &c.g);
     if dbg_ec { eprintln!("[wc-ec]   p1 OK"); }
     if dbg_ec { eprintln!("[wc-ec] → ec_scalar_mul(u2, Q) = p2"); }
