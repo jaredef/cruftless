@@ -1285,8 +1285,88 @@ pub fn mont_redc(mut t: Vec<u32>, ctx: &MontCtx) -> BigUInt {
 }
 
 pub fn mont_mul(am: &BigUInt, bm: &BigUInt, ctx: &MontCtx) -> BigUInt {
+    // WC-EXT 18 measurement: mont_mul_cios was ~4% SLOWER than the
+    // separate-pass mul+redc on this Pi. Bench: 607ns (two-pass with
+    // Comba mul) vs 631ns (CIOS). Counter to the literature's
+    // typical ~30% CIOS advantage; the regression is reproducible.
+    //
+    // Diagnosis: Rust's compiler optimizes the smaller two-pass
+    // functions better in isolation than the long fused CIOS loop.
+    // Comba mul gets to use u128 cleanly; CIOS uses u64+carry with
+    // more dependency-chain pressure on the in-register accumulator.
+    //
+    // mont_mul_cios retained as a correctness-gold substrate
+    // alternative; live path routes through two-pass per the
+    // measurement. Per Doc 730 §XVII (P2) framing: substrate move
+    // was case-(P2) constant-factor work; outcome was empirical
+    // wash on this hardware. Next (P2) candidate at this site:
+    // CIOS with u128 accumulator, OR FIOS (Finely-Integrated
+    // Operand Scanning), OR switch BigUInt to Vec<u64> limbs.
     let product = am.mul(bm);
     mont_redc(product.limbs().to_vec(), ctx)
+}
+
+/// CIOS Montgomery multiplication. T is the running accumulator
+/// (2k+2 limbs); for each outer iteration i in 0..k:
+///   1) T += a · b[i] · 2^(32·i)   (mul-add with one limb of b)
+///   2) u  = T[i] · m' mod 2^32     (reduction digit)
+///   3) T += u · p · 2^(32·i)        (add a multiple of p; cancels T[i])
+/// After k outer iterations, T is divisible by R = 2^(32·k); the
+/// result is T[k..] (modulo p, with one final conditional subtract).
+fn mont_mul_cios(am: &BigUInt, bm: &BigUInt, ctx: &MontCtx) -> BigUInt {
+    let k = ctx.k;
+    let p_limbs = ctx.p.limbs();
+    let m_prime = ctx.m_prime as u64;
+    let mut t = vec![0u32; 2 * k + 2];
+
+    let a_limbs = am.limbs();
+    let b_limbs = bm.limbs();
+
+    for i in 0..k {
+        let b_i = (*b_limbs.get(i).unwrap_or(&0)) as u64;
+        // Step 1: T += a · b_i, starting at limb position i.
+        let mut carry: u64 = 0;
+        for j in 0..k {
+            let a_j = (*a_limbs.get(j).unwrap_or(&0)) as u64;
+            let s = (t[i + j] as u64) + a_j * b_i + carry;
+            t[i + j] = s as u32;
+            carry = s >> 32;
+        }
+        let mut kk = k;
+        while carry > 0 && i + kk < t.len() {
+            let s = (t[i + kk] as u64) + carry;
+            t[i + kk] = s as u32;
+            carry = s >> 32;
+            kk += 1;
+        }
+        // Step 2: u_i = T[i] · m_prime mod 2^32.
+        let u = ((t[i] as u64).wrapping_mul(m_prime)) & 0xFFFF_FFFF;
+        // Step 3: T += u · p, starting at limb position i. After this,
+        // T[i] will be zero (m_prime is chosen so this holds).
+        let mut carry: u64 = 0;
+        for j in 0..k {
+            let p_j = p_limbs[j] as u64;
+            let s = (t[i + j] as u64) + u * p_j + carry;
+            t[i + j] = s as u32;
+            carry = s >> 32;
+        }
+        let mut kk = k;
+        while carry > 0 && i + kk < t.len() {
+            let s = (t[i + kk] as u64) + carry;
+            t[i + kk] = s as u32;
+            carry = s >> 32;
+            kk += 1;
+        }
+        // Invariant: t[i] == 0 after the inner reductions.
+    }
+
+    // Result is T[k..2k+1] (k+1 limbs after the operation).
+    let mut result = BigUInt::from_limbs(t[k..].to_vec());
+    use std::cmp::Ordering;
+    if result.cmp(&ctx.p) != Ordering::Less {
+        result = result.sub(&ctx.p);
+    }
+    result
 }
 
 pub fn mont_to(a: &BigUInt, ctx: &MontCtx) -> BigUInt {

@@ -1057,3 +1057,73 @@ The substrate move's correctness-gold landing under §XVII framing demonstrates 
 ---
 
 *WC-EXT 17 closes with Karatsuba landed correctness-gold under the Doc 730 §XVII performance-axis pipeline framing. The substrate move's small current-workload impact + large queued-workload impact is exactly the (P1) case the pipeline's apparatus discipline catalogs separately from (P2) constant-factor work. The framework's case discrimination operates as designed.*
+
+---
+
+## WC-EXT 18 — 2026-05-21 (CIOS Montgomery — substrate correct, empirical wash, reverted from live path)
+
+### Headline
+
+Implemented CIOS (Coarsely-Integrated Operand Scanning) Montgomery multiplication per Hankerson §14.3.2. Fuses the outer mul and the REDC pass into a single column-scan that never materializes the full intermediate product. The substrate is correctness-gold (117/117 regression PASS, fixture verifies). Empirically, CIOS measured **~4% slower** than the separate two-pass `mul + redc` on this Pi target.
+
+### Measurement
+
+| metric | WC-EXT 17 (two-pass) | WC-EXT 18 (CIOS) | delta |
+|---|---|---|---|
+| `mont_mul` micro-bench | 607 ns/op | **631 ns/op** | +4% (slower) |
+| 117 web-crypto regression | 1.37s | 1.45s | +6% (slower) |
+| TLS probe / api.github.com | unchanged | unchanged | margin of measurement |
+
+Counter to standard cryptographic-literature expectation (~30% CIOS advantage over separate two-pass), the regression is reproducible.
+
+### Diagnosis (Doc 730 §XVII (P2) case in action)
+
+The literature's CIOS advantage assumes hand-tuned C+asm where:
+- Each register holds one limb across the entire fused loop
+- The compiler emits tight `madd` + `addcs` instruction sequences
+- The integrated-loop's dependency chain pressure is offset by register reuse
+
+In Rust on ARMv8 Pi with the schoolbook+Comba two-pass:
+- The compiler optimizes the shorter two-pass functions better in isolation
+- Comba mul cleanly uses `u128` accumulator → single `mul`+`umulh` per limb-pair
+- The two passes share `Vec<u32>` allocation patterns the optimizer reasons about
+
+CIOS in Rust with u64+carry has more dependency-chain pressure on the in-register accumulator AND the compiler can't see the structural benefit (always-in-register T[i] across iterations) the asm version exploits. The fused loop's length exceeds the compiler's heuristic threshold for aggressive inlining.
+
+This is exactly the §XVII (P2) framework's case: constant-factor substrate move evaluated empirically. The outcome on Pi is: **two-pass wins on this hardware**. The CIOS substrate is retained as `mont_mul_cios` (correctness-gold alternative); live path routes through two-pass per the measurement.
+
+### Doc 730 §XVII (P2) operating as designed
+
+§XVII apparatus discipline step 5: *sequence by (impact × frequency) / LOC*. WC-EXT 18 ran CIOS as a candidate substrate move at the (P2) constant-factor site for the most-frequent operation (mont_mul). Measured: empirical wash. Re-routes back to two-pass; CIOS becomes a queued substrate alternative for hardware where the trade-off inverts (e.g., x86_64 with 64-bit limbs, or any platform where literal inline asm bypasses the compiler).
+
+This is the framework's case-(P2) cycle running through one complete iteration: probe → categorize → substrate-move → re-probe → outcome. Substrate move was correct + landed + measured + reverted because the measurement disagreed with the prediction. The cycle's value is the empirical correction.
+
+### Next (P2) candidates at this site
+
+Per the diagnosis, three substrate alternatives at the mont_mul site remain:
+1. **CIOS with u128 accumulator** — reduces dependency-chain pressure; possibly enables the compiler to use the same `umulh`+`mul` pattern Comba does. ~30 LOC.
+2. **FIOS (Finely-Integrated Operand Scanning)** — alternative integration shape; per-limb interleaving. Worth a probe.
+3. **BigUInt switch to Vec<u64>** — fundamental representation change. Substantial; ~200 LOC of refactor. Likely the biggest single (P2) win available in pure Rust.
+
+(3) is the next strategic substrate-tier move. It changes the limb representation across every primitive simultaneously, halving the iteration count of every loop.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P06.E3.wc-cios-mont` | CIOS Montgomery substrate landed correctness-gold; empirical wash on Pi; reverted live path; case (P2) under Doc 730 §XVII operating through one complete cycle including the reversion; CIOS retained as queued alternative for hardware where the trade-off inverts |
+
+### Probe result
+
+5/5: 3/5 PASS unchanged. WC-EXT 18 is a substrate-alternative landing + measurement; no probe-cell flip.
+
+### Open scope at WC-EXT 18 boundary
+
+1. **WC-EXT 19 (BigUInt to u64 limbs)** — fundamental representation switch. The biggest pure-Rust (P2) win available. Affects every primitive. Substantial refactor.
+2. **CIOS with u128 accumulator** — quick experiment alongside WC-EXT 19 to confirm whether CIOS is a Rust-codegen issue or a fundamental ARMv8 trade-off.
+3. **Connection pooling** — orthogonal (P3) move; biggest workload-level win remaining for multi-request workloads.
+4. **WC-EXT 17 Karatsuba threshold tuning** — empirically determine optimal threshold for current workload; possibly lower than 24.
+
+---
+
+*WC-EXT 18 closes with the substrate-alternative landed correctness-gold + measured + reverted. Per Doc 730 §XVII apparatus discipline: a (P2) move that produces an empirical wash is still informative — it pins where the next-tier substrate move lives. CIOS was the wrong (P2) shape on this hardware; the right one is either u128 accumulator within CIOS, or the more strategic u64-limb representation switch (WC-EXT 19). The framework's case-(P2) cycle continues operating as designed.*
