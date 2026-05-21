@@ -238,3 +238,68 @@ Doc 731's strong-form conjecture survives the engagement-tier corroboration at t
 ---
 
 *JIT-EXT 9 closes the runtime-integration round. Subsequent rounds extend the substrate: full deopt, broader Value coverage, IC sites for Class C.*
+
+---
+
+## JIT-EXT 10 — 2026-05-21 (deopt audit + design)
+
+### Headline
+
+Audit of the current first-cut JIT identifies **exactly one in-flight speculation point** (integer overflow on `iadd` / `isub` / `imul`), which by Doc 731 §VII R5 is not a P4 deopt site (arithmetic is P3). The `jit_disabled` flag is structurally correct for current scope but blocks IC landing (R6). Design doc lays out the deopt infrastructure as forward investment for the IC layer.
+
+### Substrate landed
+
+- `pilots/rusty-js-jit/docs/deopt-audit-and-design.md` (~190 lines):
+  - §I audit — every op the translator emits classified by speculation potential; integer overflow surfaced as the only in-flight assumption
+  - §II what full deopt would actually be — DeoptReason enum, DeoptSite stack-map format, deopt-thunk via return-value sentinel pattern (rejects `longjmp` for first cut), replacement strategy for `jit_disabled`
+  - §III EXT plan — JIT-EXT 11 (infrastructure), 12 (first wired demonstrator), 13 (replace `jit_disabled`), 14+ (ICs unlocked)
+  - §IV R5 conjecture revision — "deopt sites are enumerable per emitted JIT module"
+  - §V what's NOT proposed — no multi-tier, no Cranelift stackmap, no longjmp, no inlined caches in first wired round
+
+### Key audit findings
+
+1. **The current JIT body holds exactly one assumption beyond the boundary guard: arithmetic overflow.** Every other speculation (type tags, shape matches, callee identity) is structurally precluded because the four-condition boundary gate at `interp.rs:7562` validates everything before entry.
+
+2. **Overflow is NOT a Doc 731 §VII R5 deopt site.** R5 says P4 ops; arithmetic is P3. The current JIT has zero P4 sites and zero spec-defined deopt sites.
+
+3. **`jit_disabled` is the right tool for current scope.** Pre-call coarse forfeit covers the only failure mode that exists (boundary mismatch). It is not deopt; it is also not wrong.
+
+4. **Landing deopt is forward investment, not a current correctness fix.** Without ICs, broader Value coverage, or Op::Call in translator, deopt has no current sites to serve. JIT-EXT 11 builds infrastructure for the IC layer (JIT-EXT 14+).
+
+### Design choice: return-value sentinel over longjmp
+
+The audit settles on **return-value sentinel** for the deopt-thunk pattern:
+
+- The JIT'd function returns a tagged i64 (low bit indicating "deopt; high bits are the site_id").
+- The caller (Rust dispatcher at `interp.rs:7577`) checks the tag and routes to either the result-handling path or the deopt-recovery path.
+- Cost: one branch per JIT-call return (negligible vs avoiding platform-specific unwind).
+
+Rejected: `setjmp/longjmp`-style unwinding. Cleaner conceptually but introduces platform-specific glue (aarch64 vs x86_64 register sets, calling-convention mismatches with Cranelift codegen). Not worth the complexity for first cut.
+
+### Pred-731 corroboration status
+
+- **R5 (deopt sites finite-enumerable)**: refined to "enumerable per emitted JIT module." Each CompiledFn carries its own deopt-site table. The prediction holds as written; the audit clarifies the unit of enumeration.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P04.E2.jit-deopt-audit` | JIT-EXT 10: deopt audit + design doc; exactly one in-flight speculation (overflow); `jit_disabled` correct for current scope; deopt infrastructure planned as forward investment for IC layer |
+
+### Open scope at JIT-EXT 10 boundary
+
+1. **JIT-EXT 11**: `DeoptReason` enum + `DeoptSite` + `JitLocation` + `jit_deopt_thunk` skeleton in new `pilots/rusty-js-jit/derived/src/deopt.rs`. Per-CompiledFn `deopt_sites: Vec<DeoptSite>` field. Unit test exercises the lookup-and-reconstruct path with a hand-built DeoptSite. No translator change.
+
+2. **JIT-EXT 12**: first wired demonstrator. Feature-flagged "guarded overflow" mode: each arithmetic op emits `iadd_overflow` + brif-on-overflow → deopt thunk. Default off (no perf impact). Tests verify the interpreter resumes at the correct pc with the correct locals after a synthetic trip.
+
+3. **JIT-EXT 13**: replace `jit_disabled` with retry-on-fresh-args. Subsequent valid-arg calls re-engage the JIT instead of staying permanently disabled.
+
+4. **JIT-EXT 14+**: ICs unlocked. First IC site = GetProp with shape check + deopt-on-mismatch.
+
+### Doc 730 §XVI status
+
+The audit's finding (current JIT has no spec-defined deopt sites) is a Case-3 (both-diverge → compositional success at the design tier): cruftless's narrow first-cut alphabet structurally precludes the speculation surface that mainstream JITs (V8, JSC, SpiderMonkey) require deopt for. This corroborates Doc 731's "alphabet purity bounds JIT complexity" thesis at the engineering tier.
+
+---
+
+*JIT-EXT 10 closes the audit and design round. JIT-EXT 11 begins the implementation cascade. The current JIT's narrow speculation surface means deopt infrastructure ships before any current site needs it; the investment pays off at JIT-EXT 14+ when ICs land.*
