@@ -85,8 +85,8 @@ pub fn install(rt: &mut Runtime) {
         "ACL", "BIND", "CHECKOUT", "CONNECT", "COPY", "DELETE", "GET", "HEAD",
         "LINK", "LOCK", "M-SEARCH", "MERGE", "MKACTIVITY", "MKCALENDAR", "MKCOL",
         "MOVE", "NOTIFY", "OPTIONS", "PATCH", "POST", "PROPFIND", "PROPPATCH",
-        "PURGE", "PUT", "REBIND", "REPORT", "SEARCH", "SOURCE", "SUBSCRIBE",
-        "TRACE", "UNBIND", "UNLINK", "UNLOCK", "UNSUBSCRIBE",
+        "PURGE", "PUT", "QUERY", "REBIND", "REPORT", "SEARCH", "SOURCE",
+        "SUBSCRIBE", "TRACE", "UNBIND", "UNLINK", "UNLOCK", "UNSUBSCRIBE",
     ];
     for (i, n) in names.iter().enumerate() {
         rt.object_set(methods, i.to_string(), Value::String(Rc::new((*n).into())));

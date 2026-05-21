@@ -1745,22 +1745,49 @@ impl Object {
 ///   {path}, {path}.mjs, {path}.js, {path}/index.mjs, {path}/index.js.
 /// Returns the first hit as a canonical file:// URL.
 fn probe_with_extensions(candidate: &std::path::Path, original: &str) -> Result<String, RuntimeError> {
-    let attempts: Vec<std::path::PathBuf> = vec![
+    let mut attempts: Vec<std::path::PathBuf> = vec![
         candidate.to_path_buf(),
         with_suffix(candidate, ".mjs"),
         with_suffix(candidate, ".cjs"),
         with_suffix(candidate, ".js"),
         with_suffix(candidate, ".json"),
         with_suffix(candidate, ".node"),  // Ω.5.P46.E1.napi-v1
-        candidate.join("index.mjs"),
-        candidate.join("index.cjs"),
-        candidate.join("index.js"),
-        // Tier-Ω.5.AAAAAAAA: probe index.json as well per Node's CJS
-        // resolution algorithm (require() of a directory with no main
-        // falls back to index.js, then index.json). spdx-license-ids and
-        // other data-only packages ship just index.json.
-        candidate.join("index.json"),
     ];
+    // Node's directory-resolution algorithm (CJS): if candidate IS a
+    // directory, read candidate/package.json's `main` field and try that
+    // path BEFORE falling back to index.{mjs,cjs,js,json}. superagent's
+    // `require('../..')` from lib/node/agent.js resolves to the package
+    // directory, whose main is "lib/node/index.js" — not index.js in the
+    // root. Without this, the index.* fallbacks miss and resolution fails.
+    if candidate.is_dir() {
+        let pkg_path = candidate.join("package.json");
+        if let Ok(text) = std::fs::read_to_string(&pkg_path) {
+            if let Ok(raw) = serde_json::from_str::<serde_json::Value>(&text) {
+                if let Some(main_str) = raw.get("main").and_then(|v| v.as_str()) {
+                    // The main field may be bare ("lib/node/index.js"), a
+                    // path with leading "./", and may or may not include
+                    // an extension. Try the literal value plus the same
+                    // extension fan-out so partial-main forms resolve too.
+                    let main_path = candidate.join(main_str);
+                    attempts.push(main_path.clone());
+                    attempts.push(with_suffix(&main_path, ".mjs"));
+                    attempts.push(with_suffix(&main_path, ".cjs"));
+                    attempts.push(with_suffix(&main_path, ".js"));
+                    attempts.push(with_suffix(&main_path, ".json"));
+                    attempts.push(main_path.join("index.js"));
+                    attempts.push(main_path.join("index.json"));
+                }
+            }
+        }
+    }
+    attempts.push(candidate.join("index.mjs"));
+    attempts.push(candidate.join("index.cjs"));
+    attempts.push(candidate.join("index.js"));
+    // Tier-Ω.5.AAAAAAAA: probe index.json as well per Node's CJS
+    // resolution algorithm (require() of a directory with no main
+    // falls back to index.js, then index.json). spdx-license-ids and
+    // other data-only packages ship just index.json.
+    attempts.push(candidate.join("index.json"));
     for p in &attempts {
         if p.is_file() {
             let canonical = std::fs::canonicalize(p).map_err(|e| {
