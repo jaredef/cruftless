@@ -722,3 +722,75 @@ Continued Case-3: cruftless's deopt-guard surface (Add + Sub + Mul, plus their t
 ---
 
 *JIT-EXT 15 closes the arithmetic-guard extension. All three binary arithmetic ops are now overflow-guarded under the env flag; the deopt mechanism is exercised through three distinct trip conditions. JIT-EXT 16 cleans up the remaining unary ops + relaxes the boundary-disable workaround.*
+
+---
+
+## JIT-EXT 16 — 2026-05-21 (Inc/Dec guards + jit_disabled retry refactor)
+
+### Headline
+
+`Inc`, `Dec`, `IncI64`, `DecI64` gain overflow guards (synthesizing rhs=1 and reusing `emit_guarded_add` / `emit_guarded_sub`). The `jit_disabled` permanent-disable workaround is relaxed: the dispatcher no longer sets `jit_disabled = true` on boundary mismatch. Mismatched calls fall through to the interpreter; subsequent matched calls re-engage the JIT. **24/24 JIT lib tests PASS** (2 new `guarded_inc_trips_on_overflow` + `guarded_dec_trips_on_overflow`); PM + caps regression unchanged.
+
+### Substrate landed
+
+- `pilots/rusty-js-jit/derived/src/translator.rs` (+~45 LOC):
+  - `Inc` / `Dec` (plain) and `IncI64` / `DecI64` (typed) each get the guard treatment under the env flag
+  - Implementation pattern: push `iconst(I64, 1)` onto the operand stack, then reuse `emit_guarded_add` (for Inc) or `emit_guarded_sub` (for Dec). The helpers already pop rhs-then-lhs, so the synthetic 1 becomes the rhs and the original stack value becomes the lhs.
+  - This pattern reuses the existing helpers without adding new emit functions, keeping the deopt-site-recording shape uniform
+
+- `pilots/rusty-js-runtime/derived/src/interp.rs` (-~10 LOC):
+  - Removed the `c.jit_disabled.set(true)` call on boundary mismatch
+  - The `jit_disabled` field is retained (default `false`) so external probes that read it stay valid; this branch no longer writes to it
+  - Documented in-code: "With the deopt mechanism wired (JIT-EXT 11-14), the boundary-mismatch case is structurally equivalent to a deopt — both fall through to the interpreter for the failing call. A subsequent call with valid args will re-enter the JIT path at the top of dispatch."
+
+### Probe result
+
+**24/24 JIT lib tests PASS in 0.03 s.** New tests:
+
+- `translator::tests::guarded_inc_trips_on_overflow` — Inc(i64::MAX) trips; Inc(7) = 8 works
+- `translator::tests::guarded_dec_trips_on_overflow` — Dec(i64::MIN) trips; Dec(7) = 6 works
+
+Regression sweep:
+- PM-EXT 11+12: 2/2 PASS in 2.43 s
+- caps_probes: 18/18 PASS
+
+### Trade-off documented
+
+The `jit_disabled` permanent-disable was JIT-EXT 9's response to a real perf hazard: callers that JIT-compile then receive a single mismatched arg pay the boundary-guard cost on every subsequent call. The flag fixed this by removing the JIT path for that Closure forever.
+
+The relaxation in this round restores the per-call boundary-guard cost for long-tail mismatched callers. In exchange, callers that alternate between matched and mismatched argument shapes (a pattern that exists in real code, even if rare) regain JIT speed on the matched subset.
+
+The boundary-guard cost is ~10 instructions per arg. For a function with 2 args, that's ~20 instructions per call. The break-even point against staying in the interpreter depends on the function size; for any hot loop the interpreter dominates and the guard is noise. For a "called once per outer iteration" function with a tight body, the guard is observable but bounded.
+
+The deopt mechanism makes this trade-off cleaner: with deopt, even a function that gets JIT-compiled and then encounters runtime conditions the JIT can't handle (overflow, IC shape mismatch in future rounds) can fall back to the interpreter for THAT call without permanent disable. The retry-on-fresh-args pattern is the natural extension to the boundary case.
+
+### Pred-731 corroboration
+
+- **R5 (deopt sites finite-enumerable per emitted module)**: corroborated for all 5 arithmetic ops (Add/Sub/Mul/Inc/Dec, both plain and typed-i64). The in-flight arithmetic-overflow speculation surface is now fully covered.
+- **R6 (single tier)**: corroborated. The retry refactor confirms the single-tier discipline: when JIT can't handle a call, fall to interpreter; there is no "lower-tier JIT" to consider.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P04.E2.jit-deopt-inc-dec-retry` | JIT-EXT 16: Inc/Dec overflow guards via emit_guarded_add/sub reuse; jit_disabled permanent-disable workaround relaxed to retry-on-fresh-args; 24/24 JIT tests PASS; PM + caps regression unchanged |
+
+### Open scope at JIT-EXT 16 boundary
+
+The arithmetic-overflow chapter of Pilot α-style deopt work is **closed for the first cut**. Every binary and unary arithmetic op has an overflow guard available under the env flag. The deopt mechanism is exercised through five distinct trip conditions (Add overflow, Sub overflow, Mul overflow, Inc overflow, Dec overflow).
+
+Remaining JIT workstream:
+
+1. **JIT-EXT 17+ (ICs)**: the deopt infrastructure's actual payback. First IC site lands (GetProp with hidden-class check + shape-mismatch deopt). This is where mid-function resume becomes necessary (the dispatcher will start consuming `state.local_values` / `state.stack_values` / `state.resume_pc` for resume-at-failing-pc semantics).
+
+2. **JIT-EXT 18 (Op::Call in translator)**: inter-procedural JIT. JIT'd code calling JIT'd callees. The deopt machinery composes across frames.
+
+3. **JIT-EXT 19 (broader Value coverage)**: doubles, strings, objects. Each adds its own speculation surface; each uses the existing deopt mechanism.
+
+### Doc 730 §XVI status
+
+The retry-on-fresh-args refactor is a Case-4 (implementation freedom): cruftless previously chose to permanently disable (a coarse forfeit); cruftless now chooses to retry every call (re-engage when possible). Mainstream JITs handle this via more sophisticated mechanisms (V8 tracks the arg-shape per call site, recompiles if the shape stabilizes differently). Cruftless's choice is cheaper, less smart, and right-sized for the first cut.
+
+---
+
+*JIT-EXT 16 closes the arithmetic-overflow chapter. All 5 arithmetic ops are guard-capable; the permanent-disable workaround is relaxed. The deopt mechanism is now ready for the IC chapter (JIT-EXT 17+), where it will earn back the forward investment.*

@@ -292,16 +292,33 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
                     }
                 }
                 ParsedOp::Inc => {
-                    let v = stack.pop().ok_or("Inc: stack underflow")?;
-                    let one = builder.ins().iconst(I64, 1);
-                    let r = builder.ins().iadd(v, one);
-                    stack.push(r);
+                    if let Some(tr) = trip_ref {
+                        // Inc(v) = Add(v, 1). Synthesize rhs=1 onto the
+                        // stack and reuse emit_guarded_add. The stack
+                        // had [v]; after push, [v, 1]; emit_guarded_add
+                        // pops r=1, l=v, pushes v+1.
+                        let one = builder.ins().iconst(I64, 1);
+                        stack.push(one);
+                        emit_guarded_add(&mut stack, &mut builder, tr, *pc, &local_vars, &mut deopt_sites)?;
+                    } else {
+                        let v = stack.pop().ok_or("Inc: stack underflow")?;
+                        let one = builder.ins().iconst(I64, 1);
+                        let r = builder.ins().iadd(v, one);
+                        stack.push(r);
+                    }
                 }
                 ParsedOp::Dec => {
-                    let v = stack.pop().ok_or("Dec: stack underflow")?;
-                    let one = builder.ins().iconst(I64, 1);
-                    let r = builder.ins().isub(v, one);
-                    stack.push(r);
+                    if let Some(tr) = trip_ref {
+                        // Dec(v) = Sub(v, 1). Synthesize rhs=1.
+                        let one = builder.ins().iconst(I64, 1);
+                        stack.push(one);
+                        emit_guarded_sub(&mut stack, &mut builder, tr, *pc, &local_vars, &mut deopt_sites)?;
+                    } else {
+                        let v = stack.pop().ok_or("Dec: stack underflow")?;
+                        let one = builder.ins().iconst(I64, 1);
+                        let r = builder.ins().isub(v, one);
+                        stack.push(r);
+                    }
                 }
                 ParsedOp::Lt => cmpop(&mut stack, &mut builder, IntCC::SignedLessThan)?,
                 ParsedOp::Le => cmpop(&mut stack, &mut builder, IntCC::SignedLessThanOrEqual)?,
@@ -386,14 +403,26 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
                     }
                 }
                 ParsedOp::IncI64 => {
-                    let v = stack.pop().ok_or("IncI64: stack underflow")?;
-                    let one = builder.ins().iconst(I64, 1);
-                    stack.push(builder.ins().iadd(v, one));
+                    if let Some(tr) = trip_ref {
+                        let one = builder.ins().iconst(I64, 1);
+                        stack.push(one);
+                        emit_guarded_add(&mut stack, &mut builder, tr, *pc, &local_vars, &mut deopt_sites)?;
+                    } else {
+                        let v = stack.pop().ok_or("IncI64: stack underflow")?;
+                        let one = builder.ins().iconst(I64, 1);
+                        stack.push(builder.ins().iadd(v, one));
+                    }
                 }
                 ParsedOp::DecI64 => {
-                    let v = stack.pop().ok_or("DecI64: stack underflow")?;
-                    let one = builder.ins().iconst(I64, 1);
-                    stack.push(builder.ins().isub(v, one));
+                    if let Some(tr) = trip_ref {
+                        let one = builder.ins().iconst(I64, 1);
+                        stack.push(one);
+                        emit_guarded_sub(&mut stack, &mut builder, tr, *pc, &local_vars, &mut deopt_sites)?;
+                    } else {
+                        let v = stack.pop().ok_or("DecI64: stack underflow")?;
+                        let one = builder.ins().iconst(I64, 1);
+                        stack.push(builder.ins().isub(v, one));
+                    }
                 }
                 ParsedOp::LtI64 => cmpop(&mut stack, &mut builder, IntCC::SignedLessThan)?,
                 ParsedOp::LeI64 => cmpop(&mut stack, &mut builder, IntCC::SignedLessThanOrEqual)?,
@@ -1005,6 +1034,66 @@ mod tests {
         let state = take_last_deopt().expect("mul overflow should trip");
         assert!(matches!(state.reason, DeoptReason::IntegerOverflow { .. }));
         assert_eq!(state.local_values, vec![(0, i64::MAX), (1, 2)]);
+
+        clear_current_deopt_sites();
+    }
+
+    /// JIT-EXT 16: guarded Inc trips on Inc(i64::MAX).
+    #[test]
+    fn guarded_inc_trips_on_overflow() {
+        use crate::deopt::{set_current_deopt_sites, take_last_deopt, clear_current_deopt_sites, DeoptReason};
+
+        std::env::set_var("CRUFTLESS_JIT_GUARD_OVERFLOW", "1");
+        let mut bc = Vec::new();
+        encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 0);
+        encode_op(&mut bc, Op::Inc);
+        encode_op(&mut bc, Op::Return);
+        let proto = empty_proto(bc, 1);
+        let jit = compile_function(&proto).expect("guarded compile failed");
+        std::env::remove_var("CRUFTLESS_JIT_GUARD_OVERFLOW");
+
+        assert_eq!(jit.deopt_sites.len(), 1);
+        set_current_deopt_sites(&jit.deopt_sites);
+
+        // Inc(7) = 8, no trip.
+        assert_eq!(jit.func.call1(7), 8);
+        assert!(take_last_deopt().is_none());
+
+        // Inc(i64::MAX) overflows.
+        let r = jit.func.call1(i64::MAX);
+        assert_eq!(r, 0, "guarded inc trips on i64::MAX + 1");
+        let state = take_last_deopt().expect("inc overflow should trip");
+        assert!(matches!(state.reason, DeoptReason::IntegerOverflow { .. }));
+
+        clear_current_deopt_sites();
+    }
+
+    /// JIT-EXT 16: guarded Dec trips on Dec(i64::MIN).
+    #[test]
+    fn guarded_dec_trips_on_overflow() {
+        use crate::deopt::{set_current_deopt_sites, take_last_deopt, clear_current_deopt_sites, DeoptReason};
+
+        std::env::set_var("CRUFTLESS_JIT_GUARD_OVERFLOW", "1");
+        let mut bc = Vec::new();
+        encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 0);
+        encode_op(&mut bc, Op::Dec);
+        encode_op(&mut bc, Op::Return);
+        let proto = empty_proto(bc, 1);
+        let jit = compile_function(&proto).expect("guarded compile failed");
+        std::env::remove_var("CRUFTLESS_JIT_GUARD_OVERFLOW");
+
+        assert_eq!(jit.deopt_sites.len(), 1);
+        set_current_deopt_sites(&jit.deopt_sites);
+
+        // Dec(7) = 6, no trip.
+        assert_eq!(jit.func.call1(7), 6);
+        assert!(take_last_deopt().is_none());
+
+        // Dec(i64::MIN) overflows.
+        let r = jit.func.call1(i64::MIN);
+        assert_eq!(r, 0, "guarded dec trips on i64::MIN - 1");
+        let state = take_last_deopt().expect("dec overflow should trip");
+        assert!(matches!(state.reason, DeoptReason::IntegerOverflow { .. }));
 
         clear_current_deopt_sites();
     }

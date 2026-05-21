@@ -7618,19 +7618,28 @@ impl Runtime {
                             _ => unreachable!("closure flipped kind mid-dispatch"),
                         }
                     } else {
-                        // Ω.5.P04.E2.jit-deopt-disable: if we already
-                        // tried (and successfully cached) a JIT compile
-                        // for this Closure but the current call doesn't
-                        // meet the guard, mark the Closure as JIT-
-                        // disabled. The per-call guard overhead would
-                        // otherwise compound for every subsequent
-                        // mismatched call.
-                        if count >= self.jit_threshold
-                            && matches!(self.jit_cache.get(&proto_key), Some(Some(_)))
-                            && !args.iter().all(jit_compatible_int_arg)
-                        {
-                            c.jit_disabled.set(true);
-                        }
+                        // JIT-EXT 16: replaced the permanent jit_disabled
+                        // forfeit with retry-on-fresh-args. With the
+                        // deopt mechanism wired (JIT-EXT 11-14), the
+                        // boundary-mismatch case is structurally
+                        // equivalent to a deopt — both fall through to
+                        // the interpreter for the failing call. A
+                        // subsequent call with valid args will re-enter
+                        // the JIT path at the top of dispatch instead
+                        // of staying permanently disabled.
+                        //
+                        // The trade-off: long-tail mismatched callers
+                        // pay the per-call boundary-guard cost (~10
+                        // instructions per arg) on every call. The cost
+                        // is bounded; the benefit is that callers
+                        // alternating arg shapes get JIT speed on the
+                        // matching subset of calls instead of forfeiting
+                        // forever after the first mismatch.
+                        //
+                        // The `jit_disabled` field is retained (default
+                        // false) so external probes that read it stay
+                        // valid; this branch no longer writes to it.
+                        let _ = (count, proto_key);
                         (Some(c.proto.clone()), None, actual_this, args)
                     }
                 }
