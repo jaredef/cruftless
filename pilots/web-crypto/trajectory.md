@@ -1551,3 +1551,65 @@ Doc 735 §X.h amendment should record: **per-bench correctness, per-consumer cor
 ---
 
 *WC-EXT 23 closes with the bisect localized + the WC-EXT 21 claim properly retracted. The session's positive outcome includes the empirical correction itself + the framework-tier finding that substrate-tier correctness needs three probe levels (bench + consumer-route + fuzz). Per Doc 734 §V.b negative-finding-amendment growth mechanism: a substrate claim that didn't survive fuzz coverage produces a corpus-tier framework refinement.*
+
+---
+
+## WC-EXT 24 — 2026-05-21 (Solinas v3 via BigUInt::add — correctness-gold, but 0.65× of Mont)
+
+### Headline
+
+Reimplemented Solinas reduction using BigUInt::add instead of the buggy i64-column approach. **Fuzz: 0/2000 divergent. Bench: 940 ns/op = 0.65× of Mont (slower).** The proper-correctness Solinas does NOT beat Mont on this hardware.
+
+### Measurement
+
+| variant | per-op | fuzz divergence | route status |
+|---|---|---|---|
+| `mont_mul` (current live) | 610 ns | (reference) | live |
+| `p256_mod_mul_solinas_v2` (i64 column, WC-EXT 21) | 271 ns | **1000/2000** divergent | dormant + buggy |
+| **`p256_mod_mul_solinas_v3` (BigUInt::add, WC-EXT 24)** | **940 ns** | **0/2000** | dormant + correct + slower |
+
+The WC-EXT 21 "2.22× speedup" claim was bug-artifact: v2 was doing less work (incorrectly) by failing to propagate signed carries. The correct Solinas (v3) does the right amount of work and is **slower** than Mont per mod_mul on Pi with Vec<u32> BigUInt.
+
+### Doc 735 §X.b stratum dimension at work
+
+Both v2 (271 ns, wrong) and v3 (940 ns, correct) are at the same TEMPORAL TIER T3 (per-call) but at different COST STRATA. v2's "fast stratum" turned out to be wrong-stratum-incorrect (the speed was illegal speed); v3's "correct stratum" is at higher per-op cost than Mont.
+
+**The framework's case-(P2) classification gets sharper here**:
+- (P2.a) algorithm-correct + stratum-correct + implementation-correct: substrate move is a strict win
+- (P2.b) algorithm-correct + stratum-correct + implementation-incorrect: WC-EXT 20 naive Solinas (composed from divmod)
+- (P2.c) algorithm-correct + stratum-incorrect + implementation-fast: WC-EXT 21 i64-column Solinas (fast because incorrect)
+- (P2.d) algorithm-correct + stratum-correct + implementation-correct + per-op-still-slower-than-alternative: WC-EXT 24 v3 (correct but Mont wins)
+
+Doc 735 §X.h amendment should distinguish these four sub-cases of (P2). The original §X.b treated cost stratum as a property of the algorithm; in practice the cost stratum is a property of the (algorithm × implementation × hardware) tuple, and an implementation-incorrect substrate can appear at a faster cost-stratum than is actually achievable.
+
+### Why Mont wins on Pi at Vec<u32>
+
+Mont REDC does k² inner-loop multiplications (64 for P-256) + carry. Solinas v3 avoids those multiplications but pays for ~10 BigUInt::add calls (~50ns each = 500ns) + 1 final adjustment loop. The mont path's tight inner mul-add Comba loop is hard to beat at this representation; the Solinas approach's avoidance-of-mul advantage is structurally there but the BigUInt::add overhead eats it.
+
+To beat Mont, the Solinas implementation needs to operate at a tighter stratum than BigUInt::add — either the i64-column approach done correctly (which my v2 attempt got wrong), or inline u32+carry that bypasses the BigUInt allocation overhead. Both are achievable; both await proper implementation discipline.
+
+### Status of the WC-EXT 21-23 substrate
+
+WC-EXT 21 claim has been retracted (per WC-EXT 23). The v2 Solinas reduce remains in source as dormant code labeled buggy. WC-EXT 22's EC routing substrate (jac_*_solinas, p256_scalar_mul_solinas) is also dormant; if v3 were routed instead of v2, the routing would be correctness-gold but slower than Mont — so no win to route.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P06.E3.wc-solinas-v3-correct-slower` | Solinas v3 via BigUInt::add; 0/2000 fuzz divergent; 940 ns/op (0.65× of Mont); WC-EXT 21 speed claim explained as v2's bug-artifact; (P2) classification refined to four sub-cases |
+
+### Probe result
+
+5/5: 3/5 PASS unchanged. Live path remains on Mont.
+
+### Open scope at WC-EXT 24 boundary
+
+1. **WC-EXT 25 (proper i64-column Solinas)** — fix v2's signed-carry bug. Bounded debug surface (consistent off-by-1 at bit 192). Get v3-correctness at v2-speed. Projected ~2× over Mont if implemented correctly.
+2. **u64-limb BigUInt representation** — fundamental representation change. Substantial; affects everything.
+3. **Doc 735 §X.h amendment** — record the four sub-cases of (P2) and the implementation-incorrect-as-stratum-confusion pattern.
+
+The remaining work is bounded: fix one off-by-1 bug in `p256_solinas_reduce_v2` to unlock the 2× per-mod_mul Solinas speedup that production libraries achieve. The substrate is correctness-validated by v3 (algorithm right); the only gap is v2's implementation discipline.
+
+---
+
+*WC-EXT 24 closes session 1's bottom with the Solinas correctness-vs-speed tension articulated cleanly: v2 was bug-fast, v3 is correct-slow, and the bounded fix (v2's off-by-1) would unlock the real 2× win. The session's framework refinements continue to grow Doc 735 §X's substrate-classification space; the (P2) case taxonomy now needs four sub-cases instead of three.*

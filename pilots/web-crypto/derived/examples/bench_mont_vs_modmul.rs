@@ -100,9 +100,26 @@ fn main() {
 
     let canonical2 = a.mul(&b).modulo(&p);
     let via_sol2 = p256_mod_mul_solinas_v2(&a, &b);
-    assert_eq!(canonical2.to_be_bytes(32), via_sol2.to_be_bytes(32),
-        "Solinas v2 reduction diverges from canonical mod_mul");
-    println!("(sanity: Solinas v2 equivalence holds)");
+    let _ = via_sol2;  // v2 has known fuzz divergence; equivalence-on-this-input only
+
+    // WC-EXT 24: bench v3 (BigUInt-based, fuzz-correct).
+    use rusty_web_crypto::p256_mod_mul_solinas_v3;
+    let _ = p256_mod_mul_solinas_v3(&a, &b);
+    let t0 = Instant::now();
+    let mut acc = BigUInt::one();
+    for _ in 0..N {
+        acc = p256_mod_mul_solinas_v3(&a, &b);
+    }
+    let solinas3_t = t0.elapsed();
+    let _ = acc;
+    println!("solinas v3    (BigUInt-add based, fuzz-correct, N={}): {:?}, per-op {:?}",
+        N, solinas3_t, solinas3_t / N as u32);
+    let s3_vs_mont = mont_t.as_nanos() as f64 / solinas3_t.as_nanos() as f64;
+    println!("Solinas v3 vs Montgomery mont_mul: {:.2}x", s3_vs_mont);
+    let via_sol3 = p256_mod_mul_solinas_v3(&a, &b);
+    assert_eq!(canonical2.to_be_bytes(32), via_sol3.to_be_bytes(32),
+        "Solinas v3 reduction diverges from canonical mod_mul");
+    println!("(sanity: Solinas v3 equivalence holds)");
 
     // Verify Solinas equivalence.
     let canonical = a.mul(&b).modulo(&p);

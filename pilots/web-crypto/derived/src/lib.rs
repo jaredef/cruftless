@@ -4018,3 +4018,43 @@ pub fn argon2id_hash(
     let c_bytes = block_to_bytes(&mem[q - 1]);
     argon2_h_prime(&c_bytes, tau)
 }
+
+/// WC-EXT 24: alternative Solinas implementation using BigUInt::add
+/// for the sub-vector sums. Avoids the i64 column / signed-carry
+/// complexity of v2 that fuzz-tested at 50% divergence. Slower per-op
+/// (~3-5µs estimated) but should be correctness-gold on all inputs
+/// since the underlying BigUInt arithmetic is gold-validated.
+pub fn p256_mod_mul_solinas_v3(a: &BigUInt, b: &BigUInt) -> BigUInt {
+    let product = a.mul(b);
+    let mut t = [0u32; 16];
+    for (i, &l) in product.limbs().iter().take(16).enumerate() { t[i] = l; }
+    let mk = |arr: [u32; 8]| BigUInt::from_limbs(arr.to_vec());
+    let s1 = mk([t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7]]);
+    let s2 = mk([0, 0, 0, t[11], t[12], t[13], t[14], t[15]]);
+    let s3 = mk([0, 0, 0, t[12], t[13], t[14], t[15], 0]);
+    let s4 = mk([t[8], t[9], t[10], 0, 0, 0, t[14], t[15]]);
+    let s5 = mk([t[9], t[10], t[11], t[13], t[14], t[15], t[13], t[8]]);
+    let s6 = mk([t[11], t[12], t[13], 0, 0, 0, t[8], t[10]]);
+    let s7 = mk([t[12], t[13], t[14], t[15], 0, 0, t[9], t[11]]);
+    let s8 = mk([t[13], t[14], t[15], t[8], t[9], t[10], 0, t[12]]);
+    let s9 = mk([t[14], t[15], 0, t[9], t[10], t[11], 0, t[13]]);
+    // pos = s1 + 2·s2 + 2·s3 + s4 + s5
+    let pos = s1.add(&s2).add(&s2).add(&s3).add(&s3).add(&s4).add(&s5);
+    // neg = s6 + s7 + s8 + s9
+    let neg = s6.add(&s7).add(&s8).add(&s9);
+    let p = p256_p();
+    use std::cmp::Ordering;
+    // Compute pos − neg mod p. If pos >= neg, simple subtract.
+    // Else add k·p such that pos + k·p ≥ neg. (Negative contribution
+    // is bounded by 4·p in magnitude per FIPS analysis; 5·p is safe.)
+    let mut result = if pos.cmp(&neg) != Ordering::Less {
+        pos.sub(&neg)
+    } else {
+        let five_p = p.add(&p).add(&p).add(&p).add(&p);
+        pos.add(&five_p).sub(&neg)
+    };
+    while result.cmp(&p) != Ordering::Less {
+        result = result.sub(&p);
+    }
+    result
+}
