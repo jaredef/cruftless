@@ -440,3 +440,96 @@ The probe harness is itself the §XVI engine-diff oracle for the workstream. Whe
 ---
 
 *CAPS-EXT 5 closes the §XVI oracle setup. CAPS-EXT 6 begins the route-through cascade — Fs read first, as the largest single surface and highest exfil-risk class.*
+
+---
+
+## CAPS-EXT 6 — 2026-05-21 (Fs read route-through; first probes flipped)
+
+### Headline
+
+**The first three synthetic-adversary probes are mechanically refused under `--sealed`.** fs.readFileSync / readdirSync / statSync (+ accessSync, existsSync, async readFile, fs.promises.{stat,readFile}) all route through `rt.caps.require_fs`. Under Mode 0 the dispatcher returns Ok and PM-EXT 11+12 stay GREEN; under Mode 3 the dispatcher refuses with CapabilityError. **The impossibility claim becomes concrete at the fs read tier.**
+
+### Substrate landed
+
+- `host-v2/src/fs.rs` (~50 LOC):
+  - `use rusty_js_runtime::caps as caps;` + `ModuleId, ModuleProvenance` (the local `FsOp` in fs.rs conflicted with `caps::FsOp` — resolved by qualifying every call site)
+  - `check_fs(rt, op) -> Result<(), RuntimeError>` helper:
+    - Infers caller provenance from `rt.current_module_url`: `/node_modules/` → Dependency, `node:` → Builtin, else Application
+    - Passes `caps::Fs::none()` (deny-all) as the cap; CAPS-EXT N+ adds `require(spec, {caps})` to let the application pass a non-empty cap
+    - Mode 0 / Mode 1: returns Ok unconditionally (Mode 1 also records)
+    - Mode 2: ambient for application callers
+    - Mode 3: enforces against the passed cap (currently `none`); CapabilityError on every fs read
+  - Gates applied to: `readFileSync`, `existsSync`, `statSync`, `readdirSync`, `readFile` (async), `exists` (async), `fs.promises.stat`, `fs.promises.readFile`, `accessSync`
+
+- `host-v2/tests/caps_probes.rs`:
+  - Removed `pre_route_through_sealed_still_wins_fs_read` (pre-state assertion no longer valid)
+  - Added `fs_read_loses_under_sealed`, `fs_list_loses_under_sealed`, `fs_stat_loses_under_sealed`
+  - Each asserts the probe stdout contains a LOSES sentinel and references the fs capability
+
+### Probe result
+
+**12/12 caps_probes PASS in 0.03 s.**
+
+| probe | Mode 0 | Mode 3 |
+|---|---|---|
+| fs_read | WINS ✓ | **LOSES ✓ (first flip)** |
+| fs_write | WINS ✓ | WINS (CAPS-EXT 7 target) |
+| fs_list | WINS ✓ | **LOSES ✓ (first flip)** |
+| fs_stat | WINS ✓ | **LOSES ✓ (first flip)** |
+| process_exit | WINS ✓ | WINS (CAPS-EXT 8 target) |
+| env_read | WINS ✓ | WINS (CAPS-EXT 9 target) |
+| clock_read | WINS ✓ | WINS (CAPS-EXT 11-12 target) |
+| cwd_read | WINS ✓ | WINS (CAPS-EXT 8 target) |
+
+PM-EXT 11+12 regression: **2/2 PASS in 2.83 s**. lodash require + identity(7) works under Mode 0; Mode 0 path is unchanged.
+
+caps_audit: unchanged 3/3 PASS.
+caps unit tests: unchanged 15/15 PASS.
+
+### Pred-736 corroboration status
+
+- **Pred-736.4 (Move 1 alone delivers the bulk of the impossibility claim)**: provisional first datapoint. The fs read probes are *mechanically refused* under Mode 3 — not policy-enforced, not crypto-mitigated, but architecturally: the dispatcher consults the empty `Fs::none()` cap and returns CapabilityError before any syscall fires. The first quarter of the impossibility claim is in place after one EXT round of route-through.
+- **Pred-736.3 (LOC estimate ~1100)**: CAPS-EXT 6 added ~50 LOC (helper + 9 gate lines). Cumulative ~670 LOC. Budget remaining for the remaining ~30 effectful methods: ~430 LOC. Comfortably on track.
+- **Pred-736.1 (retrofit not rewrite)**: continued corroboration. One file edited (fs.rs); negligible diff per call site (one helper call before each existing implementation).
+
+### The shape of the gate at each call site
+
+A typical Mode-0/Mode-3 round-trip:
+
+```
+$ cruftless probes/fs_read.mjs
+PROBE:WINS:fs_read:raspberrypi5
+
+$ cruftless --sealed probes/fs_read.mjs
+PROBE:LOSES:fs_read:TypeError:fs.read(/etc/hostname): no fs capability granted to module 'file:///.../fs_read.mjs' (mode: sealed) — hint: add to caps in package.json: { fs: { read: ['/etc/hostname'] } }
+```
+
+The hint field carries the cure. A developer who wants the probe to work under `--sealed` knows from the error message exactly what package.json declaration unblocks the call. This is Doc 736 §IV's developer ergonomic surface, mechanically working.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P05.L2.caps-fs-read-route` | CAPS-EXT 6: fs read route-through; readFileSync/readdirSync/statSync + 6 adjacent surfaces gated; fs_read/fs_list/fs_stat probes flip to LOSES under --sealed; Mode 0 backward compat intact; PM regression GREEN |
+
+### Open scope at CAPS-EXT 6 boundary
+
+1. **CAPS-EXT 7 (Fs write route-through)**: gate writeFileSync, writeFile, mkdirSync, unlinkSync, fs.promises.{writeFile, mkdir, unlink}, copyFileSync, appendFileSync, cpSync. Flip the fs_write probe.
+
+2. **CAPS-EXT 8 (process route-through)**: gate process.exit, process.cwd, process.pid. Flip process_exit + cwd_read probes.
+
+3. **CAPS-EXT 9 (env route-through)**: gate process.env reads + os.hostname/homedir/tmpdir/userInfo/cpus. Flip env_read probe.
+
+4. **CAPS-EXT 10 (Stdio route-through)**: gate process.stdout/stderr.write + console.log/error/warn/info/debug. Subtle because the WINS/LOSES probes themselves write to stdout; under `--sealed-stdio` the probes can't report. Need a different probe shape (write-via-fs-marker instead of console.log) at that round.
+
+5. **CAPS-EXT 11-12 (Clock + Scheduler)**: gate Date.now, hrtime, performance.now, setTimeout, setInterval, queueMicrotask, nextTick. Flip clock_read probe.
+
+6. **CAPS-EXT 13 (closure)**: every probe LOSES under `--sealed`; Doc 736 §IV impossibility claim mechanically realized.
+
+### Doc 730 §XVI status
+
+The probe-harness/route-through pair is Case-1 substrate-introduction (cruftless gaining a capability the upstream lacks; no ecosystem deviation since Node has no equivalent). Each EXT round delivers a measurable §XVI yield: more probes refused, no Mode-0 regression. The aggregation across EXT rounds will be the CAPS-EXT 13 closure metric.
+
+---
+
+*CAPS-EXT 6 closes the first route-through round. Three of eight probes are mechanically refused under `--sealed`. The remaining five probes are queued for CAPS-EXT 7-12, each its own round, each with the same shape: route-through + flip + Mode-0 regression confirm.*

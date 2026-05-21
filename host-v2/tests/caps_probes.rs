@@ -120,12 +120,30 @@ fn baseline_cwd_read_wins() {
 // state and will flip to "probe loses under --sealed" as each surface
 // gets routed at CAPS-EXT 6+.
 
+// CAPS-EXT 6: fs read methods now route through dispatcher.
+// Under --sealed, every fs read probe must LOSE (refused with CapabilityError).
+
 #[test]
-fn pre_route_through_sealed_still_wins_fs_read() {
+fn fs_read_loses_under_sealed() {
     let (_, stdout, _) = run_probe("fs_read", Some("--sealed"));
-    // Pre-route-through expectation: even Mode 3 lets the probe win.
-    assert_eq!(classify(&stdout), ProbeOutcome::Wins,
-        "pre-route-through: --sealed should not yet block fs_read; stdout: {stdout}");
+    assert_eq!(classify(&stdout), ProbeOutcome::Loses,
+        "CAPS-EXT 6: --sealed must block fs_read; stdout: {stdout}");
+    assert!(stdout.contains("fs"),
+        "loss message should reference fs capability; got: {stdout}");
+}
+
+#[test]
+fn fs_list_loses_under_sealed() {
+    let (_, stdout, _) = run_probe("fs_list", Some("--sealed"));
+    assert_eq!(classify(&stdout), ProbeOutcome::Loses,
+        "CAPS-EXT 6: --sealed must block fs_list; stdout: {stdout}");
+}
+
+#[test]
+fn fs_stat_loses_under_sealed() {
+    let (_, stdout, _) = run_probe("fs_stat", Some("--sealed"));
+    assert_eq!(classify(&stdout), ProbeOutcome::Loses,
+        "CAPS-EXT 6: --sealed must block fs_stat; stdout: {stdout}");
 }
 
 #[test]

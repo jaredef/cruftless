@@ -28,6 +28,39 @@ use crate::register::{arg_string, make_callable, new_object, register_method};
 use rusty_js_runtime::promise::{new_promise, reject_promise, resolve_promise};
 use rusty_js_runtime::value::{Object, ObjectRef};
 use rusty_js_runtime::{HostHook, Runtime, RuntimeError, Value};
+use rusty_js_runtime::caps as caps;
+use rusty_js_runtime::caps::{ModuleId, ModuleProvenance};
+
+/// CAPS-EXT 6: gate an fs operation through the capability dispatcher.
+///
+/// Under Mode 0 / Mode 1 the dispatcher returns Ok unconditionally
+/// (Mode 1 also records the call). Under Mode 2 the dispatcher
+/// returns Ok for application callers; under Mode 3 it enforces
+/// against the passed capability.
+///
+/// Until `require(spec, {caps})` lands (CAPS-EXT N), call sites pass
+/// `Fs::none()` so that Mode 3 == "deny all fs". This makes `--sealed`
+/// a strict gate by default; the `cruftless-caps.json` mechanism (also
+/// CAPS-EXT N) will allow the application to declare its own caps and
+/// pass them to deps.
+///
+/// Caller provenance is inferred from the current module URL: anything
+/// under `node_modules/` is Dependency, `node:` URLs are Builtin,
+/// otherwise Application. This matches the design in CAPS-EXT 2 §VII
+/// without requiring a separate provenance pass at compile time.
+fn check_fs(rt: &Runtime, op: caps::FsOp) -> Result<(), RuntimeError> {
+    let url = rt.current_module_url.last().cloned().unwrap_or_default();
+    let provenance = if url.contains("/node_modules/") {
+        ModuleProvenance::Dependency
+    } else if url.starts_with("node:") {
+        ModuleProvenance::Builtin
+    } else {
+        ModuleProvenance::Application
+    };
+    let caller = ModuleId { url, provenance };
+    rt.caps.require_fs(&caps::Fs::none(), op, &caller)
+        .map_err(|e| RuntimeError::TypeError(e.to_string()))
+}
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -405,6 +438,7 @@ pub fn install(rt: &mut Runtime) {
 
     register_method(rt, fs, "readFileSync", |rt, args| {
         let path = arg_string(args, 0);
+        check_fs(rt, caps::FsOp::Read(path.clone().into()))?;
         let encoding = arg_encoding(args, 1);
         match std::fs::read(&path) {
             Ok(bytes) => Ok(bytes_to_value(rt, &bytes, encoding.as_deref())),
@@ -425,13 +459,15 @@ pub fn install(rt: &mut Runtime) {
         }
     });
 
-    register_method(rt, fs, "existsSync", |_rt, args| {
+    register_method(rt, fs, "existsSync", |rt, args| {
         let path = arg_string(args, 0);
+        check_fs(rt, caps::FsOp::Stat(path.clone().into()))?;
         Ok(Value::Boolean(std::path::Path::new(&path).exists()))
     });
 
     register_method(rt, fs, "statSync", |rt, args| {
         let path = arg_string(args, 0);
+        check_fs(rt, caps::FsOp::Stat(path.clone().into()))?;
         match std::fs::metadata(&path) {
             Ok(md) => Ok(Value::Object(stat_object(rt, &md))),
             Err(e) => Err(RuntimeError::TypeError(format!("statSync: {}", e))),
@@ -440,6 +476,7 @@ pub fn install(rt: &mut Runtime) {
 
     register_method(rt, fs, "readdirSync", |rt, args| {
         let path = arg_string(args, 0);
+        check_fs(rt, caps::FsOp::List(path.clone().into()))?;
         match std::fs::read_dir(&path) {
             Ok(iter) => {
                 let arr = rt.alloc_object(Object::new_array());
@@ -485,6 +522,7 @@ pub fn install(rt: &mut Runtime) {
 
     register_method(rt, fs, "readFile", |rt, args| {
         let path = arg_string(args, 0);
+        check_fs(rt, caps::FsOp::Read(path.clone().into()))?;
         let encoding = arg_encoding(args, 1);
         let p = new_promise(rt);
         push_pending(p, FsOp::Read { path, encoding });
@@ -505,6 +543,7 @@ pub fn install(rt: &mut Runtime) {
 
     register_method(rt, fs, "exists", |rt, args| {
         let path = arg_string(args, 0);
+        check_fs(rt, caps::FsOp::Stat(path.clone().into()))?;
         let p = new_promise(rt);
         push_pending(p, FsOp::Exists { path });
         Ok(Value::Object(p))
@@ -521,6 +560,7 @@ pub fn install(rt: &mut Runtime) {
     let promises = new_object(rt);
     register_method(rt, promises, "stat", |rt, args| {
         let path = arg_string(args, 0);
+        check_fs(rt, caps::FsOp::Stat(path.clone().into()))?;
         match std::fs::metadata(&path) {
             Ok(md) => Ok(Value::Object(stat_object(rt, &md))),
             Err(e) => Err(RuntimeError::TypeError(format!("fs.promises.stat: {}", e))),
@@ -528,6 +568,7 @@ pub fn install(rt: &mut Runtime) {
     });
     register_method(rt, promises, "readFile", |rt, args| {
         let path = arg_string(args, 0);
+        check_fs(rt, caps::FsOp::Read(path.clone().into()))?;
         let encoding = arg_encoding(args, 1);
         match std::fs::read(&path) {
             Ok(bytes) => Ok(bytes_to_value(rt, &bytes, encoding.as_deref())),
@@ -688,6 +729,7 @@ pub fn install(rt: &mut Runtime) {
 
     // access / accessSync — ECMA-262-adjacent; existence + mode check
     register_method(rt, fs, "accessSync", |rt, args| {
+        let _ = check_fs(rt, caps::FsOp::Stat(arg_string(args, 0).into()))?;
         let path = arg_string(args, 0);
         let mode = match args.get(1) { Some(Value::Number(n)) => *n as u32, _ => 0 };
         match std::fs::metadata(&path) {
