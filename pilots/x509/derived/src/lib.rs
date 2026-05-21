@@ -439,6 +439,8 @@ pub fn verify_signature(
     cert: &Certificate,
     issuer_spki: &SubjectPublicKeyInfo,
 ) -> Result<(), X509Error> {
+    let _profile = std::env::var("CRUFTLESS_TLS_PROFILE").is_ok();
+    let _t0 = std::time::Instant::now();
     let sig_oid = cert.signature_algorithm.oid.as_str();
     match sig_oid {
         OID_SHA256_WITH_RSA | OID_SHA384_WITH_RSA | OID_SHA512_WITH_RSA |
@@ -448,8 +450,11 @@ pub fn verify_signature(
                 _ => return Err(X509Error::UnsupportedSigAlg(sig_oid.into())),
             };
             let (hash, hash_name) = compute_hash_for_rsa(sig_oid, &cert.tbs_certificate)?;
-            rusty_web_crypto::rsa_pkcs1_v15_verify(n, e, &hash, &cert.signature_value, hash_name)
-                .map_err(X509Error::CryptoFail)
+            let r = rusty_web_crypto::rsa_pkcs1_v15_verify(n, e, &hash, &cert.signature_value, hash_name)
+                .map_err(X509Error::CryptoFail);
+            if _profile { eprintln!("[wc-ext-14] verify_signature RSA {} → {:?} in {:?}",
+                sig_oid, r.is_ok(), _t0.elapsed()); }
+            r
         }
         OID_ECDSA_WITH_SHA256 | OID_ECDSA_WITH_SHA384 | OID_ECDSA_WITH_SHA512 => {
             let (curve_oid, point) = match &issuer_spki.key {
@@ -487,8 +492,11 @@ pub fn verify_signature(
                 OID_ECDSA_WITH_SHA512 => rusty_web_crypto::digest_sha512(&cert.tbs_certificate).to_vec(),
                 _ => unreachable!(),
             };
-            rusty_web_crypto::ecdsa_verify(&curve, qx, qy, &hash, &sig_raw)
-                .map_err(X509Error::CryptoFail)
+            let r = rusty_web_crypto::ecdsa_verify(&curve, qx, qy, &hash, &sig_raw)
+                .map_err(X509Error::CryptoFail);
+            if _profile { eprintln!("[wc-ext-14] verify_signature ECDSA {} → {:?} in {:?}",
+                sig_oid, r.is_ok(), _t0.elapsed()); }
+            r
         }
         _ => Err(X509Error::UnsupportedSigAlg(sig_oid.into())),
     }

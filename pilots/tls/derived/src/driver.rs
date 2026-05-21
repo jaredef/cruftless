@@ -550,7 +550,10 @@ pub fn complete_handshake<T: TlsTransport>(
     if group != GROUP_SECP256R1 {
         return Err(TlsError::SignatureFail("server selected non-P256 group".into()));
     }
+    let profile_sh = std::env::var("CRUFTLESS_TLS_PROFILE").is_ok();
+    let t_sh = std::time::Instant::now();
     let dhe = ephemeral.shared_secret(server_pub)?;
+    if profile_sh { eprintln!("[wc-ext-14] ECDH shared_secret: {:?}", t_sh.elapsed()); }
     let schedule = KeySchedule::new(hash, &dhe, &hash.digest(&transcript))?;
     let transcript_hash_sh = hash.digest(&transcript);
     let server_hs_secret = schedule.server_handshake_traffic(&transcript_hash_sh)?;
@@ -644,8 +647,13 @@ pub fn complete_handshake<T: TlsTransport>(
                     // Verify against leaf cert's pubkey per the SignatureScheme.
                     let leaf = server_certs.first()
                         .ok_or(TlsError::SignatureFail("CertificateVerify before Certificate".into()))?;
-                    if dbg_hs { eprintln!("[hs-cv] scheme=0x{:04x} sig_len={}", scheme, sig_len); } verify_certificate_verify_signature(scheme, &leaf.subject_public_key_info,
+                    if dbg_hs { eprintln!("[hs-cv] scheme=0x{:04x} sig_len={}", scheme, sig_len); }
+                    let profile_cv = std::env::var("CRUFTLESS_TLS_PROFILE").is_ok();
+                    let t_cv = std::time::Instant::now();
+                    verify_certificate_verify_signature(scheme, &leaf.subject_public_key_info,
                                                         &tbs, signature)?;
+                    if profile_cv { eprintln!("[wc-ext-14] CertificateVerify scheme=0x{:04x}: {:?}",
+                        scheme, t_cv.elapsed()); }
                     transcript_through_cv = Some(transcript.clone());
                 }
                 HandshakeType::Finished => {
@@ -676,7 +684,11 @@ pub fn complete_handshake<T: TlsTransport>(
     let leaf = server_certs.first()
         .ok_or(TlsError::SignatureFail("no leaf cert".into()))?;
     let intermediates: Vec<_> = server_certs.iter().skip(1).cloned().collect();
+    let profile = std::env::var("CRUFTLESS_TLS_PROFILE").is_ok();
+    let t0 = std::time::Instant::now();
     chain_walk(leaf, &intermediates, trust_store, 8)?;
+    if profile { eprintln!("[wc-ext-14] chain_walk total: {:?} ({} intermediates + 1 leaf)",
+        t0.elapsed(), intermediates.len()); }
 
     // ── Phase 5: derive application-traffic keys ──
     let transcript_sf = transcript_through_finished.unwrap();

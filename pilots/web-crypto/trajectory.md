@@ -782,3 +782,73 @@ The chain_walk per-cert verify path is now the dominant cost in the remaining ~1
 4. **Connection pooling**: ~50 LOC + state machine; eliminates handshake on subsequent requests to same host; saves entire ~1.7s for the second+ request.
 
 (2) and (3) compose; (4) is orthogonal. Order: (1) → (2 or 3) → (4).
+
+---
+
+## WC-EXT 14 — 2026-05-21 (profile probe; high-resolution view of the constraints)
+
+### Headline
+
+Added `CRUFTLESS_TLS_PROFILE` env-var-gated timing instrumentation in three sites: x509::verify_signature (per-cert, per-sigalg), tls::driver::complete_handshake (chain_walk total, ECDH shared_secret, CertificateVerify). Re-ran against api.github.com and example.com.
+
+### Profile (api.github.com handshake, ~1.7s total)
+
+```
+[wc-ext-14] ECDH shared_secret: 72 ms
+[wc-ext-14] CertificateVerify scheme=0x0403: 101 ms
+[wc-ext-14] verify_signature ECDSA 1.2.840.10045.4.3.2 → true in 100 ms  (leaf: P-256/SHA-256)
+[wc-ext-14] verify_signature ECDSA 1.2.840.10045.4.3.3 → true in 737 ms  (intermediate 1: P-384/SHA-384)
+[wc-ext-14] verify_signature ECDSA 1.2.840.10045.4.3.3 → true in 740 ms  (intermediate 2: P-384/SHA-384)
+[wc-ext-14] chain_walk total: 1.577 s
+```
+
+### Profile (example.com handshake)
+
+```
+[wc-ext-14] ECDH shared_secret: 71 ms
+[wc-ext-14] CertificateVerify scheme=0x0403: 100 ms
+[wc-ext-14] verify_signature ECDSA 1.2.840.10045.4.3.2 → true in 101 ms  (leaf: P-256/SHA-256)
+[wc-ext-14] verify_signature ECDSA 1.2.840.10045.4.3.3 → true in 743 ms  (intermediate 1: P-384/SHA-384)
+[wc-ext-14] verify_signature ECDSA 1.2.840.10045.4.3.3 → true in 742 ms  (intermediate 2: P-384/SHA-384)
+[wc-ext-14] verify_signature ECDSA 1.2.840.10045.4.3.3 → true in 738 ms  (intermediate 3: P-384/SHA-384)
+[wc-ext-14] chain_walk total: 2.323 s
+```
+
+### Diagnosis
+
+**The bottleneck is ECDSA-P-384, not RSA, not P-256.** Github's Fastly chain and Amazon's CloudFront chain both use **ECDSA-P-384 intermediate certs** (DigiCert / Amazon Trust Services modern CA hierarchy). Each P-384 verify takes ~740 ms. Two intermediates per cert chain → ~1.5 s in chain_walk alone.
+
+The earlier WC-EXT 12 hypothesis (RSA dominates) was **partially wrong**: RSA-via-mod_pow_mont is fast; ECDSA-P-256 is fast; ECDSA-P-384 is slow because **P-384 has no Mont-form fast path**. Our `ec_scalar_mul` is Mont-routed for P-256 specifically (via the `c.coord_bytes == 32 && c.b == p256_b()` guard); for P-384 it falls back to generic Jacobian + binary-long-division `mod_mul`.
+
+**Per Doc 735 §X**: ECDSA-P-384 verify is at temporal tier T3 in the **T3-slow cost stratum** (binary-divmod-based mod_mul against the 12-limb P-384 prime). The intra-tier promotion target: route P-384 (and arbitrary curves) through generic MontCtx.
+
+### Substrate-move target named precisely (WC-EXT 15)
+
+Refactor the EC tier so `jac_double` + `jac_add_affine` + `jac_to_affine` take a `MontCtx` instead of just a `Curve`, routing every `mod_mul(_, _, &c.p)` call through `mont_mul(_, _, &ctx)`. Then `ec_scalar_mul` for any curve runs in Mont form throughout, identical structural shape to the P-256-specific path.
+
+Expected impact:
+- P-384 verify: ~740ms → ~75ms (10×)
+- chain_walk for api.github.com: 1.577s → ~250ms
+- Total api.github.com handshake: ~1.7s → ~0.8s (~2× wallclock from one substrate move)
+- Generalizes immediately to P-521 (when added to curve catalog)
+
+LOC estimate: ~80 LOC of refactor (parameterize jac_double/jac_add_affine on MontCtx; add curve-tier helpers; route ec_scalar_mul through it).
+
+### Doc 735 §X corroboration continues
+
+The profile probe operationally demonstrated §X.a: the slow ECDSA-P-384 verify (~740ms) and the fast ECDSA-P-256 verify (~100ms post-WC-EXT 10) are **at the same temporal tier** but at different cost strata. The substrate-tier classification needs both axes to capture the difference; flat temporal-only classification would miss the diagnostic.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P06.E3.wc-profile-probe` | `CRUFTLESS_TLS_PROFILE` instrumentation at x509::verify_signature + tls::driver chain_walk/CV/ECDH; high-resolution view: ECDSA-P-384 dominates remaining handshake at ~740ms/cert |
+
+### Probe result
+
+3/5 TLS probe PASS unchanged. WC-EXT 14 is pure instrumentation; no code change to the live path.
+
+### Open scope at WC-EXT 14 boundary
+
+1. **WC-EXT 15 (the strategic next move)**: route generic `ec_scalar_mul` through Mont for any curve. ~80 LOC. Projected api.github.com 1.7s → 0.8s.
+2. **WC-EXT 16+**: write assembly for the inner mod_mul loop (per keeper's WC-EXT 13 direction). ARMv8 `umulh` + `mul` ARM-native pair would give ~3-4× speedup on the limb-mul-and-carry loop alone. Hardware-accelerated AEAD (AES extensions on Pi where present) would also collapse the AEAD cost.
