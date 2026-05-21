@@ -122,3 +122,34 @@ Each R-condition of §VII R1–R8 verified across the 10 substrate rounds:
 | 14 | Mont ECDH | ECDH layer | route key derivation through Mont | TLS handshake → <1s |
 | — | Doc 735 §X amendment | corpus | intra-tier cost stratification (T-tier ops not uniform-cost; queued since WC-EXT 8) | corpus refinement |
 | — | TLS-EXT 9 | TLS | E2 httpbin close-notify mid-handshake bug | independent, 4/5 PASS |
+
+### VI.5 State at WC-EXT 26 close (session 1 full)
+
+WC-EXT 11-26 landed all the items in §VI.4 plus 13 more substrate rounds. Cumulative speedup:
+
+| metric | session start | WC-EXT 26 | × |
+|---|---|---|---|
+| ECDSA verify (P-256 fixture) | 8.18s | 0.07s | **117×** |
+| 5-endpoint TLS probe | hang | 2.45s · 3/5 PASS | **14.7×** |
+| api.github.com handshake | hang | 0.78s | **12.8×** |
+
+**Substrate tiers now operating** (per §II.1 layering):
+- BigUInt: Comba mul, Karatsuba above 24 limbs, generic MontCtx, P-256 + P-384 Solinas reduction (programmatic constants per §X.h.f)
+- Modular arithmetic: batch inversion (Montgomery's trick), generic mod_pow_mont
+- EC: per-curve Mont contexts cached; Solinas-form Jacobian for P-256 and P-384; generic Mont-form Jacobian for any curve (used for P-521)
+
+**Corpus articulations driven by this workstream**: Doc 731 §XV (cryptographic optimization as lowering-compiler closure), Doc 731 §XV.g (build-time vs first-use init regimes), Doc 730 §XVII (performance-axis deviation pipeline), Doc 735 §X.h (cost-stratum tuple + three probe levels + four (P2) sub-cases). Each driven by one or more productive negative findings.
+
+**Vs Bun**: 691ms 5/5 vs 2,450ms 3/5 = ~3.5× probe gap; per-endpoint ~16× gap. Down from infinite at session start.
+
+### VI.6 Session 2 resume protocol
+
+Read this section, then trajectory.md's "Cumulative status at WC-EXT 26 close" block. Session 2 priorities (by impact / LOC):
+
+1. **Connection pooling** at TLS pilot tier — (P3) orthogonal. ~50 LOC. Biggest single-LOC workload-level win.
+2. **WC-EXT 27 P-384 micro-bench** — quantify why P-384 Solinas's wallclock gain was 4%.
+3. **TLS 1.2 fallback** — opens E5 npm. Substantial (~500 LOC).
+4. **u64-limb BigUInt** — fundamental (P2) escalation. ~300 LOC.
+5. **AES-NI / ARM crypto extensions** — (P5) hardware-bound.
+
+The framework's amendment discipline is internalized; substrate moves at the BigUInt arithmetic tier should now ship with bench + consumer-route + fuzz probes per Doc 735 §X.h.c discipline, and use programmatic constants per Doc 735 §X.h.f to avoid the WC-EXT 25-style typo class.

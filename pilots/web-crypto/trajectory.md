@@ -1761,3 +1761,93 @@ This is the first substrate move in the session where the discipline learned fro
 ---
 
 *WC-EXT 26 closes session 1 with P-384 Solinas substrate landed correctness-gold first try. The framework's discipline from WC-EXT 18-25's productive negative findings was applied prophylactically; the substrate move avoided the (P2.c) illegal-speed bug-cycle. Empirically modest speedup (~4%) but the substrate is now in place for the larger-than-P-256 representation tier; further (P2) work at this site is bounded by 12-limb representation effects.*
+
+---
+
+## Cumulative status at WC-EXT 26 close (session 1, full close)
+
+### Speedup ladder (full session)
+
+| EXT | tier | move | fixture | TLS probe | × |
+|---|---|---|---|---|---|
+| WC-EXT 1 (baseline) | (start) | fixture replay | 8.18s | hang | 1× |
+| WC-EXT 3 | EC | Jacobian coords | 0.29s | hang | 28× |
+| WC-EXT 5 | opt-impl | Regime 1 base table | 0.21s | hang | 39× |
+| WC-EXT 9 | EC×BigUInt | Mont u2·Q | 0.15s | hang | 54× |
+| WC-EXT 10 | EC×opt | Mont u1·G | 0.10s | ~37s · 3/5 | 82× |
+| WC-EXT 12 | BigUInt | generic Mont (RSA+ECDH) | 0.10s | 5.37s · 3/5 | 82× / TLS 6.7× |
+| WC-EXT 15 | EC×BigUInt | generic Mont scalar mul (any curve) | 0.10s | 2.59s · 3/5 | 82× / TLS 14× |
+| WC-EXT 25 | BigUInt+EC | Solinas P-256 (after byte-fix) | 0.07s | 2.47s · 3/5 | 117× / TLS 14.6× |
+| **WC-EXT 26** | **BigUInt+EC** | **Solinas P-384** | **0.07s** | **2.45s · 3/5** | **117× / TLS 14.7×** |
+
+### Productive negative findings (5 of 27 EXTs)
+
+| EXT | move | outcome | corpus growth driven |
+|---|---|---|---|
+| WC-EXT 4 | comb table Regime 2 | reverted; runtime init dominated | Doc 731 §XV.g (build vs init regimes) |
+| WC-EXT 18 | CIOS u64+carry | wash, reverted | Doc 735 §X.h (P2.b–.d sub-cases) |
+| WC-EXT 20 | Solinas naive composition | (P2.b) wrong-stratum | Doc 735 §X.h (composition pattern) |
+| WC-EXT 21→23 | Solinas v2 illegal-speed | retracted; bug-artifact | Doc 735 §X.h.c (three probe levels) |
+| WC-EXT 24 | Solinas v3 correct-slower | (P2.d) | Doc 735 §X.h (cost-stratum tuple) |
+
+Each negative finding produced a framework refinement; the cumulative §X.h amendment articulates all five patterns. Per Doc 734 §V.b: the framework grows by being used; growth includes corrections, retractions, and amendments.
+
+### Prophylactic discipline (WC-EXT 26)
+
+The amendment-then-fix cycle's structural value: WC-EXT 26 (P-384 Solinas) ran without entering the WC-EXT 18-25 bug-cycle. The discipline — programmatic constants, fuzz-from-start, three-probe-levels, careful column derivation — was internalized; the substrate landed correctness-gold first try.
+
+This is Doc 734's prediction operating: when the framework's amendments are internalized, the next substrate work consumes them; productive negative findings stop firing on the same patterns.
+
+### Standing infrastructure at WC-EXT 26 close
+
+BigUInt tier (the deepest substrate tier per seed §II.1):
+- Comba schoolbook mul (`mul_schoolbook`); Karatsuba above 24 limbs (`mul`)
+- Montgomery: `MontCtx`, `mont_redc`, `mont_mul`, `mont_to`, `mont_from`, `mod_pow_mont`
+- P-256 specialized Mont: `p256_redc`, `p256_to_mont`, `p256_from_mont`, `p256_mont_mul`, `p256_mont_pow`, `p256_mont_inv`, `p256_mont_mul_by_small`
+- P-256 Solinas: `p256_solinas_reduce_v2`, `p256_mod_mul_solinas_v2`
+- P-384 Solinas: `p384_solinas_reduce`, `p384_mod_mul_solinas`, `p384_c_2_384_mod_p` programmatic
+- Batch inversion: `batch_mod_inv` (Montgomery's trick)
+- Accessors: `BigUInt::limbs()`, `BigUInt::from_limbs()`, `BigUInt::shl_limbs()`
+
+EC tier:
+- Generic Mont-form Jacobian: `jac_double_mont_g`, `jac_add_affine_mont_g`, `jac_to_affine_mont_g`, `ec_scalar_mul_mont_g` per curve
+- P-256 Solinas-form Jacobian: `jac_double_solinas`, `jac_add_affine_solinas`, `jac_to_affine_solinas`, `p256_scalar_mul_solinas`, `p256_scalar_mul_base_solinas`
+- P-384 Solinas-form Jacobian: `jac_*_solinas_p384`, `p384_scalar_mul_solinas`
+- Baked tables (WC-EXT 5): `p256_base_table()` (std), `p256_base_table_mont()` (Mont via lazy convert)
+- Per-curve Mont contexts cache: `MONT_CTX_P256/P384/P521`
+
+Dormant alternatives (correctness-gold, not in live path):
+- `mont_mul_cios` (u64+carry CIOS; queued for asm hardware)
+- `mont_mul_cios_u128` (u128 CIOS at parity with two-pass)
+- `p256_mod_mul_solinas` (naive WC-EXT 20)
+- `p256_mod_mul_solinas_v3` (BigUInt::add WC-EXT 24)
+- `wnaf` + `affine_negate` + `jac_negate` + `BigUInt::shl_limbs`
+
+Tests:
+- `tests/ecdsa_p256_apigithub_hang.rs` (fixture replay; gates regression)
+- `tests/p256_mont_smoke.rs` (5-test Mont correctness)
+- 117 cargo-test web-crypto regression tests
+- `examples/bench_mont_vs_modmul.rs` (mont vs mod_mul, plus solinas v2 + v3)
+- `examples/solinas_unit.rs` (2000-fuzz cross-check)
+- `examples/p384_fuzz.rs` (2000-fuzz cross-check)
+
+Probe instrumentation:
+- `CRUFTLESS_TLS_PROFILE` in tls/driver + x509/lib (per-phase timing)
+- `CRUFTLESS_TLS_DEBUG` in tls/driver + rusty-js-pm/http (record-level)
+- `CRUFTLESS_WC_DEBUG` in web-crypto (ecdsa_verify sub-function timing)
+
+### Resume protocol (session 2)
+
+Read seed §VI.1-4 (state) + this cumulative-status block (substrate catalog + open scope).
+
+Session 2 priorities (by impact/LOC ratio):
+1. **Connection pooling** at TLS-pilot tier — orthogonal (P3) move; biggest workload-level win for multi-request scenarios. ~50 LOC.
+2. **WC-EXT 27**: P-384 micro-bench to quantify Solinas-vs-Mont per-op ratio. Determines whether further P-384 substrate work is bounded by representation or by impl details.
+3. **TLS 1.2 fallback** to open E5 npm — substantial (~500 LOC of new TLS state machine).
+4. **u64-limb BigUInt representation** — fundamental (P2) escalation per Doc 735 §X.b. ~250-300 LOC + u128 accumulator re-architecture.
+5. **AES-NI / ARM crypto extensions** — (P5) hardware-bound; out of reach on Pi without crypto extensions.
+6. **Doc 730 §XVII (P5) carve-out articulation** — record the hardware-bound case as a first-class substrate axis (deploy-to-hardware vs accept-gap).
+
+---
+
+*WC-EXT 26 closes session 1. The substrate work, corpus articulations, and framework refinements compose: 27 EXTs of substrate moves + 9 corpus articulations + 5 pilot pair foundings + Doc 730 §XVII performance-axis pipeline + Doc 735 §X.h amendment + 117× ECDSA verify speedup + 14.7× TLS probe wallclock + 12.8× api.github.com handshake. Session 2 picks up at connection pooling or further (P2) work.*
