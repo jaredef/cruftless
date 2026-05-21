@@ -7648,7 +7648,7 @@ impl Runtime {
                         && count >= self.jit_threshold
                         && (params == 1 || params == 2)
                         && args.len() == params as usize
-                        && args.iter().all(jit_compatible_int_arg)
+                        && args.iter().all(jit_compatible_arg)
                     {
                         // Take the proto out so we don't hold a borrow
                         // across the JIT-compile mutation below.
@@ -7681,12 +7681,12 @@ impl Runtime {
                             rusty_js_jit::set_current_proto(proto_ptr_usize);
                             let r = match params {
                                 1 => {
-                                    let a = unbox_int_arg(&args[0]);
+                                    let a = unbox_arg(&args[0]);
                                     jit_fn.func.call1(a)
                                 }
                                 2 => {
-                                    let a = unbox_int_arg(&args[0]);
-                                    let b = unbox_int_arg(&args[1]);
+                                    let a = unbox_arg(&args[0]);
+                                    let b = unbox_arg(&args[1]);
                                     jit_fn.func.call2(a, b)
                                 }
                                 _ => unreachable!(),
@@ -8066,6 +8066,33 @@ pub fn jit_compatible_int_arg(v: &Value) -> bool {
 pub fn unbox_int_arg(v: &Value) -> i64 {
     match v {
         Value::Number(f) => *f as i64,
+        _ => 0,
+    }
+}
+
+/// JIT-EXT 23: extended boundary check that accepts either
+/// integer-Number args (Doc 731 §XIV.d typed-i64 alphabet) OR
+/// Object args (the typed-object alphabet — receiver of
+/// GetPropOnObject). The JIT body interprets the resulting i64 per
+/// what op consumes it; per design Option B (per-kind specialization),
+/// the bytecode emitter is responsible for not mixing arith-on-arg
+/// with GetPropOnObject-on-arg in the same function.
+pub fn jit_compatible_arg(v: &Value) -> bool {
+    match v {
+        Value::Number(f) => f.is_finite() && f.fract() == 0.0
+            && *f >= i64::MIN as f64 && *f <= i64::MAX as f64,
+        Value::Object(_) => true,
+        _ => false,
+    }
+}
+
+/// Companion to jit_compatible_arg: unbox a guard-passed Number or
+/// Object as an i64. For Number, this is the integer truncation;
+/// for Object, the inner ObjectId.0 widened to i64.
+pub fn unbox_arg(v: &Value) -> i64 {
+    match v {
+        Value::Number(f) => *f as i64,
+        Value::Object(id) => id.0 as i64,
         _ => 0,
     }
 }
