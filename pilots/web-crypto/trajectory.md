@@ -852,3 +852,75 @@ The profile probe operationally demonstrated §X.a: the slow ECDSA-P-384 verify 
 
 1. **WC-EXT 15 (the strategic next move)**: route generic `ec_scalar_mul` through Mont for any curve. ~80 LOC. Projected api.github.com 1.7s → 0.8s.
 2. **WC-EXT 16+**: write assembly for the inner mod_mul loop (per keeper's WC-EXT 13 direction). ARMv8 `umulh` + `mul` ARM-native pair would give ~3-4× speedup on the limb-mul-and-carry loop alone. Hardware-accelerated AEAD (AES extensions on Pi where present) would also collapse the AEAD cost.
+
+---
+
+## WC-EXT 15 — 2026-05-21 (generic Mont scalar mul for any curve; ~2× TLS speedup at ~130 LOC)
+
+### Headline
+
+Per WC-EXT 14's diagnosis: ECDSA-P-384 was on T3-slow stratum (no Mont fast path). WC-EXT 15 promotes any-curve scalar mul to T3-fast by parameterizing the Mont-form Jacobian routines on `MontCtx` and routing `ec_scalar_mul` through them.
+
+Added `jac_double_mont_g`, `jac_add_affine_mont_g`, `jac_to_affine_mont_g`, `jacpoint_from_affine_mont_g`, `ec_scalar_mul_mont_g`, and `mont_ctx_for_curve(c)` (lazy-init per-curve MontCtx cache for P-256/P-384/P-521). `ec_scalar_mul` body replaced with `return ec_scalar_mul_mont_g(c, k, pt)`; the old wNAF+batch-inversion path is preserved unreachable for archaeology.
+
+### Measurement
+
+| metric | WC-EXT 14 | WC-EXT 15 | speedup |
+|---|---|---|---|
+| 117 web-crypto regression | 3.49s | **1.46s** | 2.4× |
+| 5-endpoint TLS probe wallclock | 4.98s | **2.59s** | 1.9× |
+| api.github.com handshake (estimated) | ~1.76s | **~0.85s** | ~2× |
+| P-384 verify (per cert) | ~740ms | **~259ms** | 2.9× |
+| chain_walk api.github.com (2 P-384 intermediates) | 1.577s | **0.613s** | 2.6× |
+| Fixture verify (P-256 ECDSA) | 0.10s | 0.10s | unchanged |
+
+The expected ~10× P-384 speedup came in at ~3× because the WC-EXT 15 generic path's per-op cost is higher than the P-256-specialized path (jac_to_affine_mont_g does Fermat exponentiation in Mont for arbitrary modulus; the specialized p256_jac_to_affine_mont uses the P-256 cached constants). The 3× is still substantial and propagates through every chain_walk in the engagement.
+
+### Cumulative speedup ladder, updated
+
+| EXT | tier | move | fixture | TLS probe | × from baseline |
+|---|---|---|---|---|---|
+| WC-EXT 1 | (baseline) | fixture replay | 8.18s | 0/5 PASS / hang | 1× |
+| WC-EXT 3 | EC | Jacobian coords | 0.29s | 0/5 | 28× |
+| WC-EXT 5 | opt-impl | Regime 1 base table | 0.21s | 0/5 | 39× |
+| WC-EXT 9 | EC × BigUInt | Mont u2·Q | 0.15s | 0/5 | 54× |
+| WC-EXT 10 | EC × opt | Mont u1·G | 0.10s | 3/5 · 37s | 82× |
+| WC-EXT 12 | BigUInt | generic Mont (RSA + ECDH) | 0.10s | 3/5 · 5.4s | 82× / 7× probe |
+| WC-EXT 13 | TLS-tier | route ephemeral to Mont base | 0.10s | 3/5 · 4.98s | 82× / 7.4× probe |
+| **WC-EXT 15** | **EC × BigUInt** | **generic Mont scalar mul (any curve)** | **0.10s** | **3/5 · 2.59s** | **82× / 14× probe** |
+
+### Methodology compactness ratio (per keeper's WC-EXT 13 conjecture)
+
+Total substrate LOC this session (Mont REDC + Jacobian + base tables + generic Mont scalar mul + routing): **~380 cumulative LOC** added/modified in `pilots/web-crypto/derived/src/lib.rs` plus ~15 LOC across `tls/driver.rs` + `rusty-js-pm/http.rs`. Effect: ECDSA verify 8.18s → 0.10s (82×); TLS probe wallclock 36s → 2.59s (14×); api.github.com handshake ~10s → ~0.85s (~12×).
+
+**~400 cumulative LOC → ~12× wallclock improvement at the engagement-internal-HTTPS tier.** BoringSSL's equivalent: ~300,000 LOC of C+assembly for ~35× over cruftless's current state (Bun is ~35× faster than current cruftless). The methodology compresses the *first-cut* substrate space by ~1000× while reaching within 35× of the production reference.
+
+### Doc 735 §X corroboration (third instance)
+
+WC-EXT 15 is the third intra-tier cost-stratum promotion this session:
+- WC-EXT 8 — P-256 mod_mul T3-slow → T3-fast (40× per-op)
+- WC-EXT 12 — arbitrary odd-modulus mod_pow T3-slow → T3-fast (~20× per RSA verify)
+- WC-EXT 15 — any-curve scalar mul T3-slow → T3-fast (~3× per P-384 verify)
+
+Each is a distinct cost-stratum promotion at the BigUInt arithmetic tier; all compose downstream into upstream consumers (RSA verify, ECDH, ECDSA, every cryptographic primitive built on modular arithmetic).
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P06.E3.wc-mont-generic-ec` | generic Mont-form EC for any curve; ec_scalar_mul routes through MontCtx-parameterized path; P-384 verify 740ms → 259ms (~3×); TLS probe 4.98s → 2.59s (~2×); 117 regression 3.49s → 1.46s (~2.4×) |
+
+### Probe result
+
+5/5 TLS probe: 3/5 PASS in 2.59s wallclock. The 14× cumulative probe speedup is now within ~5× of Bun's 691ms 5/5 result; the gap is dominated by E2 (httpbin separate bug) + E5 (TLS-1.2 endpoint policy) not being handled, plus the per-handshake ~600ms still attributable to non-assembly substrate.
+
+### Open scope at WC-EXT 15 boundary
+
+1. **WC-EXT 16 (the assembly track per keeper direction)**: write `ec_mul_carry_armv8(a: u32, b: u32, carry: u32) -> (u32, u32)` in inline asm (umulh + mul + adds). The single most-called primitive in BigUInt mul; ~3-4× speedup on every limb-mul-and-carry. Tied to all Mont multiplications.
+2. **Karatsuba mul** at threshold ≥ 16 limbs: helps RSA-2048 (64 limbs) ~5×; minor help for P-256/P-384. ~50 LOC.
+3. **Solinas-form fast reduction** for P-256 specifically: ~3× over Mont REDC for the P-256 prime, ~80 LOC.
+4. **AES-NI / ARMv8 AES extensions** for AES-GCM AEAD: collapse AEAD cost for big-body responses (google.com 80KB).
+5. **Connection pooling** (TLS session reuse): eliminates handshake on subsequent requests; for multi-request workloads ~3-5× wallclock improvement.
+6. **TLS 1.2 fallback** (~500 LOC of new state machine): closes E5 npm Case-4 scope. Substantial.
+
+Most strategic next move: assembly (WC-EXT 16) per keeper's direction. Tied to the single hottest substrate primitive (limb-mul-and-carry); blast radius covers every modular operation.

@@ -1462,6 +1462,166 @@ pub fn p256_scalar_mul_base_mont(k: &BigUInt) -> P256Point {
     p256_jac_to_affine_mont(&result)
 }
 
+// ──────────────── WC-EXT 15: generic Mont-form EC for any curve ───
+//
+// Per WC-EXT 14's profile: ECDSA-P-384 verify takes ~740ms per cert
+// because P-384 falls back to the non-Mont generic ec_scalar_mul.
+// WC-EXT 15 lifts the Mont-form jac_double / jac_add_affine /
+// jac_to_affine routines from P-256-specific to MontCtx-parameterized,
+// then routes ec_scalar_mul through the Mont path for any curve.
+//
+// Per Doc 735 §X (intra-tier cost stratification): this is the
+// promotion of ECDSA-P-384 verify from the T3-slow stratum to the
+// T3-fast stratum, matching what WC-EXT 8/9/10 did for P-256.
+
+static MONT_CTX_P256: OnceLock<MontCtx> = OnceLock::new();
+static MONT_CTX_P384: OnceLock<MontCtx> = OnceLock::new();
+static MONT_CTX_P521: OnceLock<MontCtx> = OnceLock::new();
+
+fn mont_ctx_for_curve(c: &Curve) -> &'static MontCtx {
+    match c.coord_bytes {
+        32 => MONT_CTX_P256.get_or_init(|| MontCtx::for_modulus(&c.p)),
+        48 => MONT_CTX_P384.get_or_init(|| MontCtx::for_modulus(&c.p)),
+        66 => MONT_CTX_P521.get_or_init(|| MontCtx::for_modulus(&c.p)),
+        _ => panic!("mont_ctx_for_curve: unsupported coord_bytes {}", c.coord_bytes),
+    }
+}
+
+/// Construct a Mont-form Jacobian point from a Mont-form affine point.
+/// Z must be Mont(1) = R mod p, not std-form 1. (See WC-EXT 9 bug.)
+fn jacpoint_from_affine_mont_g(ctx: &MontCtx, a: &P256Point) -> JacPoint {
+    match a {
+        P256Point::Identity => JacPoint::identity(),
+        P256Point::Affine { x, y } => JacPoint {
+            x: x.clone(),
+            y: y.clone(),
+            z: mont_to(&BigUInt::one(), ctx),
+        },
+    }
+}
+
+/// Mont-form Jacobian doubling (a = -3 case; works for all NIST P-curves).
+fn jac_double_mont_g(ctx: &MontCtx, j: &JacPoint) -> JacPoint {
+    if j.is_identity() { return j.clone(); }
+    if j.y.is_zero() { return JacPoint::identity(); }
+    let p = &ctx.p;
+    let delta = mont_mul(&j.z, &j.z, ctx);
+    let gamma = mont_mul(&j.y, &j.y, ctx);
+    let beta = mont_mul(&j.x, &gamma, ctx);
+    let x_minus_d = mod_sub(&j.x, &delta, p);
+    let x_plus_d  = mod_add(&j.x, &delta, p);
+    let xm_xp = mont_mul(&x_minus_d, &x_plus_d, ctx);
+    // alpha = 3·xm_xp via mod_add chain (cheap)
+    let alpha = {
+        let v2 = mod_add(&xm_xp, &xm_xp, p);
+        mod_add(&v2, &xm_xp, p)
+    };
+    let alpha2 = mont_mul(&alpha, &alpha, ctx);
+    // 8·beta via three doublings
+    let beta2 = mod_add(&beta, &beta, p);
+    let beta4 = mod_add(&beta2, &beta2, p);
+    let beta8 = mod_add(&beta4, &beta4, p);
+    let x3 = mod_sub(&alpha2, &beta8, p);
+    let y_plus_z = mod_add(&j.y, &j.z, p);
+    let z3 = mod_sub(
+        &mod_sub(&mont_mul(&y_plus_z, &y_plus_z, ctx), &gamma, p),
+        &delta, p,
+    );
+    let four_beta_minus_x3 = mod_sub(&beta4, &x3, p);
+    let gamma2 = mont_mul(&gamma, &gamma, ctx);
+    let g2_2 = mod_add(&gamma2, &gamma2, p);
+    let g2_4 = mod_add(&g2_2, &g2_2, p);
+    let g2_8 = mod_add(&g2_4, &g2_4, p);
+    let y3 = mod_sub(&mont_mul(&alpha, &four_beta_minus_x3, ctx), &g2_8, p);
+    JacPoint { x: x3, y: y3, z: z3 }
+}
+
+/// Mont-form mixed Jacobian + Affine addition.
+fn jac_add_affine_mont_g(ctx: &MontCtx, j: &JacPoint, a_mont: &P256Point) -> JacPoint {
+    use std::cmp::Ordering;
+    let p = &ctx.p;
+    let (ax, ay) = match a_mont {
+        P256Point::Identity => return j.clone(),
+        P256Point::Affine { x, y } => (x, y),
+    };
+    if j.is_identity() { return jacpoint_from_affine_mont_g(ctx, a_mont); }
+    let z1z1 = mont_mul(&j.z, &j.z, ctx);
+    let u2 = mont_mul(ax, &z1z1, ctx);
+    let z1_cubed = mont_mul(&j.z, &z1z1, ctx);
+    let s2 = mont_mul(ay, &z1_cubed, ctx);
+    if u2.cmp(&j.x) == Ordering::Equal {
+        if s2.cmp(&j.y) == Ordering::Equal { return jac_double_mont_g(ctx, j); }
+        return JacPoint::identity();
+    }
+    let h = mod_sub(&u2, &j.x, p);
+    let r = mod_sub(&s2, &j.y, p);
+    let h2 = mont_mul(&h, &h, ctx);
+    let h3 = mont_mul(&h2, &h, ctx);
+    let x1_h2 = mont_mul(&j.x, &h2, ctx);
+    let two_x1_h2 = mod_add(&x1_h2, &x1_h2, p);
+    let r2 = mont_mul(&r, &r, ctx);
+    let x3 = mod_sub(&mod_sub(&r2, &h3, p), &two_x1_h2, p);
+    let y3 = mod_sub(
+        &mont_mul(&r, &mod_sub(&x1_h2, &x3, p), ctx),
+        &mont_mul(&j.y, &h3, ctx),
+        p,
+    );
+    let z3 = mont_mul(&j.z, &h, ctx);
+    JacPoint { x: x3, y: y3, z: z3 }
+}
+
+/// Mont-form Jacobian → std-form affine.
+fn jac_to_affine_mont_g(ctx: &MontCtx, j: &JacPoint) -> P256Point {
+    if j.is_identity() { return P256Point::Identity; }
+    // z⁻¹ in Mont form via Fermat: z^(p-2).
+    let two = BigUInt::from_be_bytes(&[2]);
+    let p_minus_2 = ctx.p.sub(&two);
+    // Square-and-multiply in Mont form.
+    let one_mont = mont_to(&BigUInt::one(), ctx);
+    let mut z_inv_m = one_mont;
+    let mut base = j.z.clone();
+    let bits = p_minus_2.bit_len();
+    for i in 0..bits {
+        if p_minus_2.bit(i) {
+            z_inv_m = mont_mul(&z_inv_m, &base, ctx);
+        }
+        base = mont_mul(&base, &base, ctx);
+    }
+    let z_inv2_m = mont_mul(&z_inv_m, &z_inv_m, ctx);
+    let z_inv3_m = mont_mul(&z_inv2_m, &z_inv_m, ctx);
+    let x_m = mont_mul(&j.x, &z_inv2_m, ctx);
+    let y_m = mont_mul(&j.y, &z_inv3_m, ctx);
+    P256Point::Affine {
+        x: mont_from(&x_m, ctx),
+        y: mont_from(&y_m, ctx),
+    }
+}
+
+/// Generic curve-parameterized Mont scalar mul. Takes a std-form
+/// affine point, converts to Mont, runs binary double-and-add in
+/// Mont form, converts result back to std form.
+pub fn ec_scalar_mul_mont_g(c: &Curve, k: &BigUInt, pt_std: &P256Point) -> P256Point {
+    let bits = k.bit_len();
+    if bits == 0 { return P256Point::Identity; }
+    if matches!(pt_std, P256Point::Identity) { return P256Point::Identity; }
+    let ctx = mont_ctx_for_curve(c);
+    let pt_mont = match pt_std {
+        P256Point::Affine { x, y } => P256Point::Affine {
+            x: mont_to(x, ctx),
+            y: mont_to(y, ctx),
+        },
+        P256Point::Identity => unreachable!(),
+    };
+    let mut result = JacPoint::identity();
+    for i in (0..bits).rev() {
+        result = jac_double_mont_g(ctx, &result);
+        if k.bit(i) {
+            result = jac_add_affine_mont_g(ctx, &result, &pt_mont);
+        }
+    }
+    jac_to_affine_mont_g(ctx, &result)
+}
+
 /// P-256 variable-input scalar mul in Mont form: takes a standard-form
 /// affine point Q, converts to Mont, runs scalar mul fully in Mont,
 /// converts result back to std form. Replaces the BigUInt-tier hot
@@ -2043,13 +2203,19 @@ fn jac_to_affine_batch(c: &Curve, jacs: &[JacPoint]) -> Vec<P256Point> {
 }
 
 pub fn ec_scalar_mul(c: &Curve, k: &BigUInt, pt: &P256Point) -> P256Point {
+    // WC-EXT 15: route ANY curve through the generic Mont scalar mul.
+    // Per WC-EXT 14 profile: ECDSA-P-384 verify dominates remaining
+    // handshake at ~740ms/cert because P-384 was on the T3-slow
+    // stratum (no Mont fast path); WC-EXT 15 promotes it to T3-fast
+    // via ec_scalar_mul_mont_g.
+    //
+    // The wNAF + batch-inversion path below is preserved unreachable
+    // for archaeology / future-bench but is no longer in the live
+    // path. Allowed dead code so the substrate remains visible.
+    return ec_scalar_mul_mont_g(c, k, pt);
+    #[allow(unreachable_code, dead_code, unused_variables)]
     // WC-EXT 7: wNAF window-4 scalar mul with Montgomery batch
-    // inversion for the precompute table. The precompute's 4
-    // jac_to_affine conversions (each one modular inverse, ~20ms on
-    // Pi) collapse to 1 modular inverse + 9 modular multiplications
-    // via jac_to_affine_batch. Net: precompute cost ~3× cheaper than
-    // WC-EXT 6's naive variant, restoring wNAF's predicted win over
-    // binary double-and-add.
+    // inversion (preserved for archaeology; routed off in WC-EXT 15).
     let bits = k.bit_len();
     if bits == 0 { return P256Point::Identity; }
     if matches!(pt, P256Point::Identity) { return P256Point::Identity; }
