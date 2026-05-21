@@ -1543,14 +1543,79 @@ impl Runtime {
                 // "undefined". Now we capture the getter ref alongside,
                 // and below invoke it (with the source object as receiver)
                 // before setting the namespace property.
+                // rusty-js-esm Rung-7: when exports is a function-typed
+                // value that extends a superclass (e.g.,
+                // `class Enquirer extends EventEmitter` with
+                // `module.exports = Enquirer`), bun applies an
+                // enumerability filter to enum=false own properties: KEEP
+                // only those whose name appears on the superclass's
+                // prototype (or is a function intrinsic name/length/
+                // prototype). All other enum=false names are DROPPED.
+                //
+                // The motivation: a class that copies its statics from
+                // EventEmitter (via inheritance) shouldn't surface its
+                // PascalCase private prompt-class refs (AutoComplete,
+                // BasicAuth, ...) at the namespace level, but SHOULD
+                // surface the EventEmitter API method names (addListener,
+                // emit, on, ...) since consumers may pull them off the
+                // namespace.
+                //
+                // Probe: enquirer (cruftless 64 → 43 after filter).
+                let exports_is_callable = matches!(
+                    self.obj(*oid).internal_kind,
+                    crate::value::InternalKind::Function(_)
+                    | crate::value::InternalKind::Closure(_)
+                    | crate::value::InternalKind::BoundFunction(_)
+                );
+                let super_proto_names: Option<std::collections::HashSet<String>> = if exports_is_callable {
+                    let super_ctor = self.obj(*oid).proto;
+                    match super_ctor {
+                        Some(sid) => {
+                            let super_proto_v = self.object_get(sid, "prototype");
+                            match super_proto_v {
+                                Value::Object(spid) => {
+                                    let names: std::collections::HashSet<String> = self
+                                        .obj(spid)
+                                        .properties
+                                        .iter()
+                                        .map(|(k, _)| k.to_string_content())
+                                        .collect();
+                                    // Only apply the filter if the
+                                    // superclass actually contributes
+                                    // distinct prototype methods. If
+                                    // super_proto is just `{constructor}`
+                                    // (i.e. the bare Function.prototype or
+                                    // an empty user-class proto), there's
+                                    // no meaningful filter signal — fall
+                                    // back to unfiltered to preserve
+                                    // lodash/debug/ms-style cases.
+                                    if names.len() > 1 { Some(names) } else { None }
+                                }
+                                _ => None,
+                            }
+                        }
+                        None => None,
+                    }
+                } else { None };
                 let triples: Vec<(String, Value, Option<Value>)> = self
                     .obj(*oid)
                     .properties
                     .iter()
-                    .filter(|(k, _)| {
+                    .filter(|(k, d)| {
                         if k.as_str() == "__esModule" { return false; }
                         if strip_fn_intrinsics && matches!(k.as_str(), "name" | "length" | "prototype") {
                             return false;
+                        }
+                        // Rung-7 enumerability filter (only when a
+                        // meaningful superclass prototype was found).
+                        if let Some(super_names) = &super_proto_names {
+                            if !d.enumerable {
+                                let kn = k.as_str();
+                                let is_fn_intrinsic = matches!(kn, "name" | "length" | "prototype");
+                                if !is_fn_intrinsic && !super_names.contains(kn) {
+                                    return false;
+                                }
+                            }
                         }
                         true
                     })

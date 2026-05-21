@@ -266,6 +266,25 @@ pub fn install(rt: &mut Runtime) {
         append_listener(rt, arr, fn_v);
         Ok(Value::Object(em))
     });
+    register_method(rt, proto, "prependOnceListener", |rt, args| {
+        // Same as prependListener in v1 (no once-tracking on the slot).
+        let em = this_emitter(rt).ok_or_else(|| RuntimeError::TypeError("prependOnceListener: this is not an EventEmitter".into()))?;
+        let event = abstract_ops::to_string(args.first().unwrap_or(&Value::Undefined)).as_str().to_string();
+        let fn_v = args.get(1).cloned().unwrap_or(Value::Undefined);
+        let bag = get_or_create_listeners(rt, em);
+        let arr = get_event_list(rt, bag, &event);
+        append_listener(rt, arr, fn_v);
+        Ok(Value::Object(em))
+    });
+    register_method(rt, proto, "rawListeners", |rt, args| {
+        // Returns the raw listener array (including once-wrappers per spec;
+        // our model doesn't distinguish, so it's identical to listeners).
+        let em = this_emitter(rt).ok_or_else(|| RuntimeError::TypeError("rawListeners: this is not an EventEmitter".into()))?;
+        let event = abstract_ops::to_string(args.first().unwrap_or(&Value::Undefined)).as_str().to_string();
+        let bag = get_or_create_listeners(rt, em);
+        let arr = get_event_list(rt, bag, &event);
+        Ok(Value::Object(arr))
+    });
 
     // EventEmitter constructor.
     let proto_for_ctor = proto;
