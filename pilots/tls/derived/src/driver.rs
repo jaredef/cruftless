@@ -467,14 +467,24 @@ pub fn complete_handshake<T: TlsTransport>(
     transcript.extend_from_slice(client_hello_handshake_msg);
 
     // ── Phase 1: read records until ServerHello ──
+    let dbg_hs = std::env::var("CRUFTLESS_TLS_DEBUG").is_ok();
     let mut accumulator: Vec<u8> = Vec::new();
     let mut server_hello: Option<ServerHello> = None;
     let mut server_hello_handshake_msg: Vec<u8> = Vec::new();
+    let mut phase1_iter = 0u32;
     while server_hello.is_none() {
+        phase1_iter += 1;
+        if dbg_hs { eprintln!("[hs-phase1] iter={} acc_len={}", phase1_iter, accumulator.len()); }
         let (rec, n) = match decode_record(&accumulator) {
             Ok(r) => r,
-            Err(_) => { transport.read_some(&mut accumulator)?; continue; }
+            Err(_) => {
+                if dbg_hs { eprintln!("[hs-phase1]   need more; read_some..."); }
+                let nb = transport.read_some(&mut accumulator)?;
+                if dbg_hs { eprintln!("[hs-phase1]   read_some → {} bytes (acc={})", nb, accumulator.len()); }
+                continue;
+            }
         };
+        if dbg_hs { eprintln!("[hs-phase1]   got record ct={:?} frag_len={}", rec.content_type, rec.fragment.len()); }
         accumulator.drain(..n);
         match rec.content_type {
             ContentType::ChangeCipherSpec => continue,  // ignore per §5
@@ -535,18 +545,26 @@ pub fn complete_handshake<T: TlsTransport>(
     let mut transcript_through_cv: Option<Vec<u8>> = None;
     let mut transcript_through_finished: Option<Vec<u8>> = None;
 
+    let mut phase3_iter = 0u32;
     'outer: while !got_finished {
+        phase3_iter += 1;
+        if dbg_hs { eprintln!("[hs-phase3] iter={} acc_len={} hb_len={} seq={}",
+            phase3_iter, accumulator.len(), handshake_buffer.len(), server_seq); }
         // Pull more records if buffer is empty.
         while !decode_record(&accumulator).is_ok() {
-            transport.read_some(&mut accumulator)?;
+            if dbg_hs { eprintln!("[hs-phase3]   inner: need more for record; read_some..."); }
+            let nb = transport.read_some(&mut accumulator)?;
+            if dbg_hs { eprintln!("[hs-phase3]   inner: read_some → {} bytes (acc={})", nb, accumulator.len()); }
         }
         let (rec, n) = decode_record(&accumulator)?;
+        if dbg_hs { eprintln!("[hs-phase3]   record ct={:?} frag_len={}", rec.content_type, rec.fragment.len()); }
         accumulator.drain(..n);
         if rec.content_type == ContentType::ChangeCipherSpec { continue; }
         if rec.content_type != ContentType::ApplicationData {
             return Err(TlsError::SignatureFail("unexpected plaintext in handshake phase".into()));
         }
         let (inner_ct, plaintext) = aead_decrypt_record(&server_hs_keys, server_seq, &rec.fragment)?;
+        if dbg_hs { eprintln!("[hs-phase3]   decrypted: inner_ct={} pt_len={}", inner_ct, plaintext.len()); }
         server_seq += 1;
         if inner_ct != 22 /* Handshake */ {
             return Err(TlsError::SignatureFail(
@@ -554,11 +572,19 @@ pub fn complete_handshake<T: TlsTransport>(
         }
         handshake_buffer.extend_from_slice(&plaintext);
         // Drain complete handshake messages.
+        let mut drain_iter = 0u32;
         loop {
+            drain_iter += 1;
+            if dbg_hs { eprintln!("[hs-phase3-drain] iter={} hb_len={}",
+                drain_iter, handshake_buffer.len()); }
             let (msg, used) = match decode_handshake(&handshake_buffer) {
                 Ok(p) => p,
-                Err(_) => continue 'outer,  // need more bytes
+                Err(e) => {
+                    if dbg_hs { eprintln!("[hs-phase3-drain]   decode_handshake Err: {:?} (continue 'outer for more bytes)", e); }
+                    continue 'outer;
+                }
             };
+            if dbg_hs { eprintln!("[hs-phase3-drain]   msg_type={:?} used={}", msg.msg_type, used); }
             let msg_bytes = handshake_buffer[..used].to_vec();
             handshake_buffer.drain(..used);
             transcript.extend_from_slice(&msg_bytes);
@@ -596,7 +622,7 @@ pub fn complete_handshake<T: TlsTransport>(
                     // Verify against leaf cert's pubkey per the SignatureScheme.
                     let leaf = server_certs.first()
                         .ok_or(TlsError::SignatureFail("CertificateVerify before Certificate".into()))?;
-                    verify_certificate_verify_signature(scheme, &leaf.subject_public_key_info,
+                    if dbg_hs { eprintln!("[hs-cv] scheme=0x{:04x} sig_len={}", scheme, sig_len); } verify_certificate_verify_signature(scheme, &leaf.subject_public_key_info,
                                                         &tbs, signature)?;
                     transcript_through_cv = Some(transcript.clone());
                 }
