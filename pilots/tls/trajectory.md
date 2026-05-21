@@ -120,3 +120,50 @@ The probe-flipping work moves to cluster B (instrumentation) and cluster C (alph
 ---
 
 *TLS-EXT 2 closes with the close_notify substrate in place and the probe unchanged. Subsequent rounds proceed to instrumentation (cluster B) and alphabet expansion (cluster C).*
+
+---
+
+## TLS-EXT 3 — 2026-05-21 (wire-level instrumentation; root-cause map revised)
+
+### Headline
+
+Per seed §III move-class equivalent of "instrument and diff against curl." Probed all five endpoints with `curl --no-alpn` and `openssl s_client -tls1_3 -msg`. **Three findings reorient the workstream:**
+
+1. **ALPN is not required by any of the five endpoints.** curl with `--no-alpn` completes the fetch against E1–E5. The TLS-EXT 1 ordering forecast (cluster C: ALPN as the limiting factor for E1/E3/E4) was wrong.
+2. **E1, E3, E4 fail post-handshake, not at handshake.** Curl traces confirm TLS 1.3 handshake completes against example/google/github. Our pilot's failure is in the application-data exchange that follows: send our request, server sends nothing back (TCP EOF). Most-likely cause: app-data record encryption bug — our records are produced under wrong keys, server cannot decrypt, server silently closes.
+3. **E5 npm registry path does not support TLS 1.3.** Even openssl with `-tls1_3` forced is rejected with the identical `protocol_version` alert. Cloudflare's per-hostname edge policy is TLS 1.2 only for this endpoint. Our pilot is TLS 1.3 only per seed §IV carve-out. Reaching E5 requires lifting a carve-out or substituting a different probe endpoint.
+
+The full wire-diff is at `pilots/tls/probes/wire-captures/tls-ext-3-findings.md`.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P06.E2.tls-wire-diff` | endpoint diff vs curl; root-cause map revised across all 5 endpoints; new "endpoint policy" §XVI case-5 identified; substrate-move ordering reoriented |
+
+### Probe result
+
+Score: **0/5 PASS** (unchanged). TLS-EXT 3 is pure instrumentation; no code change. The value is the revised diagnosis, not a cell flip.
+
+### Substrate at TLS-EXT 3 close
+
+- `pilots/tls/probes/wire-captures/tls-ext-3-findings.md` produced with the five-endpoint diff and revised root-cause assignments.
+- Cluster B (instrumentation) closed.
+- Cluster C reframed: was "alphabet expansion (ALPN, X25519, modern ciphers)"; now "post-handshake app-data correctness debugging (key derivation, nonce sequencing, direction-swap, GCM nonce XOR)."
+- Cluster E (endpoint policy) introduced as a new §XVI case for hostnames whose edge policy refuses our profile independent of substrate moves.
+
+### Open scope at TLS-EXT 3 boundary
+
+1. **TLS-EXT 4 (post-handshake app-data debugging)**: instrument `send_application_data` to dump record bytes; replay through `openssl s_client -trace` against E1 (the simplest endpoint that fails post-handshake). Identify which of the four candidate sub-causes (C1 app_traffic_secret derivation; C2 nonce sequence reset; C3 direction-swap; C4 GCM nonce XOR off-by-one) is the bug.
+
+2. **Load-bearing keeper-decision open**: should E5 npm registry stay in the first-cut probe set? Three options recorded in wire-captures §4 question 2. Decision required because it determines whether the TLS workstream pulls in a multi-EXT TLS 1.2 substrate sub-workstream (substantial; out of seed §IV carve-out) or whether PM-EXT 5 can proceed against a TLS 1.3-supporting registry alternative.
+
+3. **Codify probe-protocol with curl-diff step**: `endpoint-coverage.md` §5 verification protocol should include "before classifying a row as a substrate-move target, run curl against the same endpoint; if curl succeeds, our pilot's handshake or app-data path has the bug; if curl also fails, the endpoint policy is the issue."
+
+### Conjecture status
+
+The TLS-EXT 1 ordering forecast (5/5 PASS at TLS-EXT 6–8) is unchanged in cardinality but reoriented in content. The next 4–6 EXTs are no longer "add ALPN, X25519, modern ciphers, supported_versions audit, expanded sigalgs"; they are "debug app-data correctness (TLS-EXT 4), close E1/E3/E4 (TLS-EXT 5), make a decision on E5 (TLS-EXT 6+ or carved out)." The reorientation increases confidence that the workstream is bounded (the cluster of bugs in app-data correctness is enumerable: ~4 candidates) and reduces confidence in any single-EXT close (the TLS 1.2 alternative for E5 is substantial work or a scope change).
+
+---
+
+*TLS-EXT 3 closes with the workstream reoriented. The remaining cells are not alphabet gaps; they are app-data correctness bugs (E1/E3/E4) plus one endpoint-policy blocker (E5).*
