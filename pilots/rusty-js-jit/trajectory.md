@@ -794,3 +794,91 @@ The retry-on-fresh-args refactor is a Case-4 (implementation freedom): cruftless
 ---
 
 *JIT-EXT 16 closes the arithmetic-overflow chapter. All 5 arithmetic ops are guard-capable; the permanent-disable workaround is relaxed. The deopt mechanism is now ready for the IC chapter (JIT-EXT 17+), where it will earn back the forward investment.*
+
+---
+
+## JIT-EXT 17 — 2026-05-21 (ICShapeMismatch deopt demonstrator; non-arithmetic deopt reason exercised)
+
+### Headline
+
+A new env flag `CRUFTLESS_JIT_FORCE_SHAPE_TRIP=1` makes the translator emit a shape-check at function entry that reads a process-wide `AtomicBool` and fires an `ICShapeMismatch` deopt when the bool is `true`. Tests toggle the bool to demonstrate both the trip and the normal-pass paths. **This is the first demonstrator of a non-arithmetic deopt reason flowing through the full mechanism**: emit → trip → thunk → recovered state with `ICShapeMismatch` reason variant. 25/25 JIT tests PASS; PM + caps regression unchanged.
+
+Additionally surfaced a dispatch bug in the JIT-EXT 13-16 path: the arith-guard branches checked `if let Some(tr) = trip_ref { ... }` (firing whenever the trip extern was declared) rather than checking the specific `guard_overflow` flag. Under the new shape-trip flag (which declares the extern but doesn't enable arith guards), both site types would emit. Fixed: arith dispatch now checks `guard_overflow` directly; the `trip_ref` Option just carries the FuncRef.
+
+### Substrate landed
+
+- `pilots/rusty-js-jit/derived/src/deopt.rs` (+~20 LOC):
+  - `static JIT_FORCE_SHAPE_TRIP: AtomicBool` — the toggle JIT'd code reads
+  - `set_force_shape_trip(bool)` — test-side mutation
+  - `get_force_shape_trip_addr() -> usize` — address for JIT'd code to load
+
+- `pilots/rusty-js-jit/derived/src/translator.rs` (+~70 LOC):
+  - `force_shape_trip` env-var detection
+  - `any_guard = guard_overflow || force_shape_trip` — extern is declared when either flag is on
+  - Entry shape-check emission: `iconst` the static's address, `load.i8`, `uextend` to i64, `icmp NE 0`, `brif` to trip vs normal block. Trip block calls deopt_trip + returns sentinel; normal block continues to the user-bytecode dispatch loop.
+  - Records `DeoptSite { reason: ICShapeMismatch { ic_id: 0 }, resume_pc: 0, ... }`
+  - Fixed arith-dispatch gating: 10 sites changed from `if let Some(tr) = trip_ref` to `if guard_overflow { let tr = trip_ref.expect(...) }`
+
+- `pilots/rusty-js-jit/derived/src/lib.rs`: re-exports for `set_force_shape_trip`, `get_force_shape_trip_addr`
+
+### Probe result
+
+**25/25 JIT lib tests PASS in 0.03 s.** New test:
+
+- `translator::tests::shape_trip_at_entry_demonstrator`:
+  - Compiles `add(a, b)` under `CRUFTLESS_JIT_FORCE_SHAPE_TRIP=1` (without `CRUFTLESS_JIT_GUARD_OVERFLOW`)
+  - Asserts exactly one DeoptSite, with reason `ICShapeMismatch`
+  - Flag = false: `call2(7, 5) = 12` (Add runs); no trip recorded
+  - Flag = true: `call2(7, 5) = 0` (sentinel from trip); trip records `ICShapeMismatch` + `resume_pc=0` + `local_values=[(0, 7), (1, 5)]`
+  - Flag = false again: `call2(3, 4) = 7` (resumes normal behavior)
+
+Regression sweep:
+- PM-EXT 11+12: 2/2 PASS in 2.28 s
+- caps_probes: 18/18 PASS
+- All 5 prior guard tests (Add/Sub/Mul/Inc/Dec) still PASS
+
+### What this demonstrates
+
+Three things land in one round:
+
+1. **A non-arithmetic deopt reason variant flows end-to-end**: `ICShapeMismatch { ic_id: 0 }` is constructed at translation, encoded in the DeoptSite table, recovered by the thunk, returned via `take_last_deopt`. The same plumbing that handled `IntegerOverflow` handles `ICShapeMismatch` without modification — the variants are interchangeable from the mechanism's perspective.
+
+2. **JIT'd code can read arbitrary Rust statics via Cranelift's memory primitives**: `iconst(addr) + load(I8)` is the load path. This is the same machinery a real IC site would use to read its cached hidden-class state. Confirming the mechanism works on a synthetic `AtomicBool` proves it will work on a real `CacheEntry` struct.
+
+3. **The dispatch bug fix tightens the env-flag contract**: each guard flag now controls its own emission independently. Future flags (e.g., `CRUFTLESS_JIT_INLINE_GETPROP` in JIT-EXT 18+) can be added orthogonally.
+
+### Pred-731 corroboration
+
+- **R5 (deopt sites finite-enumerable per emitted module)**: corroborated for the IC class. Each emitted JIT module's DeoptSite table includes IC sites with their reason variant + recovery layout. The mechanism does not care whether the reason is arithmetic or shape-mismatch.
+- **R6 (single tier)**: corroborated. The shape-trip path lands in the interpreter via the same fall-through as arithmetic trips. No "lower tier" with shape-specialized code.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P04.E2.jit-deopt-ic-shape-demonstrator` | JIT-EXT 17: ICShapeMismatch deopt demonstrator via entry shape-check reading an AtomicBool; arith-dispatch gating bug fixed; 25/25 JIT tests PASS; PM + caps regression unchanged |
+
+### Open scope at JIT-EXT 17 boundary
+
+The demonstrator proves the mechanism. The remaining work to land **real** ICs:
+
+1. **JIT-EXT 18 (GetProp translator support)**: add `GetProp(prop_name)` to the supported op set. First cut: always call a runtime helper that does the hidden-class lookup. No IC yet; just the lowering.
+
+2. **JIT-EXT 19 (single-shape IC at call site)**: at each GetProp site, embed a small cache (per-call-site `(shape_id, slot_offset)`). Fast path reads the slot directly when the receiver matches the cached shape; slow path calls the runtime helper. Adds `DeoptSite { reason: ICShapeMismatch, resume_pc: <getprop_pc>, live_locals: <interp frame snapshot> }`.
+
+3. **JIT-EXT 20 (dispatcher consume-recovered-state)**: the dispatcher currently re-executes from pc=0 on deopt. For a real IC at a non-zero pc, the dispatcher must:
+   - Populate the interpreter frame from `state.local_values`
+   - Push `state.stack_values` onto the operand stack
+   - Set the interpreter pc to `state.resume_pc`
+   - Resume the dispatch loop
+   This is the half of the deopt round-trip that JIT-EXT 14 deferred. The new entry point on the interpreter side is the load-bearing work.
+
+4. **JIT-EXT 21 (multi-shape IC)**: extend the per-site cache to record N shapes (typically 4). Deopt fires only when N+1 distinct shapes are observed.
+
+### Doc 730 §XVI status
+
+The synthetic-IC demonstrator pattern (toggle a static; emit a check that reads it; deopt on toggle) is **the right shape for IC implementation** in cruftless's narrow-alphabet world. Mainstream JITs (V8, JSC) keep per-IC-site cache state in inlined machine code; cruftless can land the same pattern by reading a Cranelift-emitted load from a per-CompiledFn cache array. The substrate JIT-EXT 17 demonstrates is the same substrate JIT-EXT 18-21 will use for real ICs — just with multi-entry per-site state instead of a global bool.
+
+---
+
+*JIT-EXT 17 closes the synthetic-IC demonstrator round. The deopt machinery handles non-arithmetic reasons end-to-end. JIT-EXT 18+ lands real GetProp + ICs on top.*

@@ -149,15 +149,26 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
     //
     // When `CRUFTLESS_JIT_GUARD_OVERFLOW=1`, the translator emits
     // signed-overflow checks at every Add site and branches to a
-    // deopt block on trip. This is the demonstrator path; the
-    // default-off invariant means the existing perf profile is
-    // preserved for any caller that does not opt in.
+    // deopt block on trip.
+    //
+    // JIT-EXT 17: `CRUFTLESS_JIT_FORCE_SHAPE_TRIP=1` is the IC
+    // demonstrator flag. The translator emits an entry check that
+    // reads `JIT_FORCE_SHAPE_TRIP` (a static AtomicBool) and fires
+    // `ICShapeMismatch` deopt if true. Tests toggle the static to
+    // exercise both paths.
+    //
+    // Both flags are opt-in. With neither set, the existing perf
+    // profile is preserved.
     let guard_overflow = std::env::var("CRUFTLESS_JIT_GUARD_OVERFLOW")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
+    let force_shape_trip = std::env::var("CRUFTLESS_JIT_FORCE_SHAPE_TRIP")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    let any_guard = guard_overflow || force_shape_trip;
 
     let mut jit_builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
-    if guard_overflow {
+    if any_guard {
         // Pre-bind the deopt thunk's symbol so Cranelift can resolve
         // the import at link time.
         jit_builder.symbol("deopt_trip", crate::deopt::deopt_trip as *const u8);
@@ -165,9 +176,9 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
     let mut module = JITModule::new(jit_builder);
 
     // Declare the deopt thunk's signature so the translator can emit
-    // calls. Only consulted when `guard_overflow` is true.
+    // calls. Only consulted when at least one guard flag is set.
     let mut deopt_sites: crate::deopt::DeoptSiteTable = Vec::new();
-    let trip_id_opt = if guard_overflow {
+    let trip_id_opt = if any_guard {
         let mut trip_sig = module.make_signature();
         for _ in 0..5 { trip_sig.params.push(AbiParam::new(I64)); }
         trip_sig.returns.push(AbiParam::new(I64));
@@ -227,6 +238,68 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
             }
         }
 
+        // JIT-EXT 17: optional shape-trip check at function entry.
+        // Reads `JIT_FORCE_SHAPE_TRIP` (a static AtomicBool); if true,
+        // fires an ICShapeMismatch deopt before any user-bytecode op
+        // runs. This is the IC demonstrator without needing real
+        // GetProp support; real IC sites in JIT-EXT 18+ will read
+        // per-site cache state instead of this global flag.
+        if force_shape_trip {
+            let st_trip_ref = trip_ref.expect("force_shape_trip requires trip_ref");
+            let addr_val = builder.ins().iconst(I64,
+                crate::deopt::get_force_shape_trip_addr() as i64);
+            let flag_val = builder.ins().load(
+                cranelift_codegen::ir::types::I8,
+                cranelift_codegen::ir::MemFlags::trusted(),
+                addr_val,
+                0,
+            );
+            // Extend i8 to i64 so icmp accepts it cleanly.
+            let flag_i64 = builder.ins().uextend(I64, flag_val);
+            let z = builder.ins().iconst(I64, 0);
+            let should_trip = builder.ins().icmp(IntCC::NotEqual, flag_i64, z);
+
+            let trip_block = builder.create_block();
+            let normal_block = builder.create_block();
+            builder.ins().brif(should_trip, trip_block, &[], normal_block, &[]);
+
+            builder.switch_to_block(trip_block);
+            builder.seal_block(trip_block);
+            let site_id = deopt_sites.len() as i64;
+            let site_id_v = builder.ins().iconst(I64, site_id);
+            let r0 = if !local_vars.is_empty() {
+                builder.use_var(local_vars[0])
+            } else { builder.ins().iconst(I64, 0) };
+            let r1 = if local_vars.len() > 1 {
+                builder.use_var(local_vars[1])
+            } else { builder.ins().iconst(I64, 0) };
+            let r2_const = builder.ins().iconst(I64, 0);
+            let r3_const = builder.ins().iconst(I64, 0);
+            let call_inst = builder.ins().call(st_trip_ref, &[site_id_v, r0, r1, r2_const, r3_const]);
+            let sentinel = builder.inst_results(call_inst)[0];
+            builder.ins().return_(&[sentinel]);
+
+            deopt_sites.push(crate::deopt::DeoptSite {
+                reason: crate::deopt::DeoptReason::ICShapeMismatch { ic_id: 0 },
+                resume_pc: 0,
+                live_locals: vec![
+                    crate::deopt::DeoptLiveLocal {
+                        interp_slot: 0,
+                        jit_location: crate::deopt::JitLocation::Register(0),
+                    },
+                    crate::deopt::DeoptLiveLocal {
+                        interp_slot: 1,
+                        jit_location: crate::deopt::JitLocation::Register(1),
+                    },
+                ],
+                stack_depth: 0,
+                stack_slots: vec![],
+            });
+
+            builder.switch_to_block(normal_block);
+            builder.seal_block(normal_block);
+        }
+
         // Operand stack (virtual, SSA). Must be empty at block boundaries.
         let mut stack: Vec<ClValue> = Vec::new();
         let mut current_block: Block = entry;
@@ -271,28 +344,28 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
                     stack.push(v);
                 }
                 ParsedOp::Add => {
-                    if let Some(tr) = trip_ref {
+                    if guard_overflow { let tr = trip_ref.expect("guard_overflow requires trip_ref");
                         emit_guarded_add(&mut stack, &mut builder, tr, *pc, &local_vars, &mut deopt_sites)?;
                     } else {
                         binop(&mut stack, &mut builder, |b, l, r| b.ins().iadd(l, r))?;
                     }
                 }
                 ParsedOp::Sub => {
-                    if let Some(tr) = trip_ref {
+                    if guard_overflow { let tr = trip_ref.expect("guard_overflow requires trip_ref");
                         emit_guarded_sub(&mut stack, &mut builder, tr, *pc, &local_vars, &mut deopt_sites)?;
                     } else {
                         binop(&mut stack, &mut builder, |b, l, r| b.ins().isub(l, r))?;
                     }
                 }
                 ParsedOp::Mul => {
-                    if let Some(tr) = trip_ref {
+                    if guard_overflow { let tr = trip_ref.expect("guard_overflow requires trip_ref");
                         emit_guarded_mul(&mut stack, &mut builder, tr, *pc, &local_vars, &mut deopt_sites)?;
                     } else {
                         binop(&mut stack, &mut builder, |b, l, r| b.ins().imul(l, r))?;
                     }
                 }
                 ParsedOp::Inc => {
-                    if let Some(tr) = trip_ref {
+                    if guard_overflow { let tr = trip_ref.expect("guard_overflow requires trip_ref");
                         // Inc(v) = Add(v, 1). Synthesize rhs=1 onto the
                         // stack and reuse emit_guarded_add. The stack
                         // had [v]; after push, [v, 1]; emit_guarded_add
@@ -308,7 +381,7 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
                     }
                 }
                 ParsedOp::Dec => {
-                    if let Some(tr) = trip_ref {
+                    if guard_overflow { let tr = trip_ref.expect("guard_overflow requires trip_ref");
                         // Dec(v) = Sub(v, 1). Synthesize rhs=1.
                         let one = builder.ins().iconst(I64, 1);
                         stack.push(one);
@@ -382,28 +455,28 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
                 // alphabet's typed contract holds (operands already i64
                 // in JIT-internal SSA representation).
                 ParsedOp::AddI64 => {
-                    if let Some(tr) = trip_ref {
+                    if guard_overflow { let tr = trip_ref.expect("guard_overflow requires trip_ref");
                         emit_guarded_add(&mut stack, &mut builder, tr, *pc, &local_vars, &mut deopt_sites)?;
                     } else {
                         binop(&mut stack, &mut builder, |b, l, r| b.ins().iadd(l, r))?;
                     }
                 }
                 ParsedOp::SubI64 => {
-                    if let Some(tr) = trip_ref {
+                    if guard_overflow { let tr = trip_ref.expect("guard_overflow requires trip_ref");
                         emit_guarded_sub(&mut stack, &mut builder, tr, *pc, &local_vars, &mut deopt_sites)?;
                     } else {
                         binop(&mut stack, &mut builder, |b, l, r| b.ins().isub(l, r))?;
                     }
                 }
                 ParsedOp::MulI64 => {
-                    if let Some(tr) = trip_ref {
+                    if guard_overflow { let tr = trip_ref.expect("guard_overflow requires trip_ref");
                         emit_guarded_mul(&mut stack, &mut builder, tr, *pc, &local_vars, &mut deopt_sites)?;
                     } else {
                         binop(&mut stack, &mut builder, |b, l, r| b.ins().imul(l, r))?;
                     }
                 }
                 ParsedOp::IncI64 => {
-                    if let Some(tr) = trip_ref {
+                    if guard_overflow { let tr = trip_ref.expect("guard_overflow requires trip_ref");
                         let one = builder.ins().iconst(I64, 1);
                         stack.push(one);
                         emit_guarded_add(&mut stack, &mut builder, tr, *pc, &local_vars, &mut deopt_sites)?;
@@ -414,7 +487,7 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
                     }
                 }
                 ParsedOp::DecI64 => {
-                    if let Some(tr) = trip_ref {
+                    if guard_overflow { let tr = trip_ref.expect("guard_overflow requires trip_ref");
                         let one = builder.ins().iconst(I64, 1);
                         stack.push(one);
                         emit_guarded_sub(&mut stack, &mut builder, tr, *pc, &local_vars, &mut deopt_sites)?;
@@ -1034,6 +1107,69 @@ mod tests {
         let state = take_last_deopt().expect("mul overflow should trip");
         assert!(matches!(state.reason, DeoptReason::IntegerOverflow { .. }));
         assert_eq!(state.local_values, vec![(0, i64::MAX), (1, 2)]);
+
+        clear_current_deopt_sites();
+    }
+
+    /// JIT-EXT 17: ICShapeMismatch deopt demonstrator.
+    ///
+    /// Under `CRUFTLESS_JIT_FORCE_SHAPE_TRIP=1`, the translator emits
+    /// an entry check that reads the `JIT_FORCE_SHAPE_TRIP` static and
+    /// fires an `ICShapeMismatch` deopt if true. The test toggles the
+    /// static to demonstrate both the trip and the normal-pass paths,
+    /// without needing real GetProp IC support.
+    ///
+    /// This verifies:
+    ///   1. A non-arithmetic deopt reason (ICShapeMismatch) flows through
+    ///   2. JIT'd code can read a Rust static via Cranelift's memory load
+    ///   3. The recovered state's reason variant matches the emitted site
+    ///   4. Toggling the trip at runtime works in both directions
+    #[test]
+    fn shape_trip_at_entry_demonstrator() {
+        use crate::deopt::{
+            set_current_deopt_sites, take_last_deopt, clear_current_deopt_sites,
+            set_force_shape_trip, DeoptReason,
+        };
+
+        std::env::set_var("CRUFTLESS_JIT_FORCE_SHAPE_TRIP", "1");
+        let mut bc = Vec::new();
+        encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 0);
+        encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 1);
+        encode_op(&mut bc, Op::Add);
+        encode_op(&mut bc, Op::Return);
+        let proto = empty_proto(bc, 2);
+        let jit = compile_function(&proto).expect("shape-trip compile failed");
+        std::env::remove_var("CRUFTLESS_JIT_FORCE_SHAPE_TRIP");
+
+        // Exactly one DeoptSite for the entry check (no arith guards
+        // because guard_overflow was not set).
+        assert_eq!(jit.deopt_sites.len(), 1, "expected one entry-shape site");
+        assert!(matches!(jit.deopt_sites[0].reason, DeoptReason::ICShapeMismatch { .. }));
+        assert_eq!(jit.deopt_sites[0].resume_pc, 0);
+
+        set_current_deopt_sites(&jit.deopt_sites);
+
+        // Flag false → entry check passes, arithmetic runs.
+        set_force_shape_trip(false);
+        assert_eq!(jit.func.call2(7, 5), 12);
+        assert!(take_last_deopt().is_none(),
+            "no trip when JIT_FORCE_SHAPE_TRIP is false");
+
+        // Flag true → entry check trips before the Add runs.
+        set_force_shape_trip(true);
+        let r = jit.func.call2(7, 5);
+        assert_eq!(r, 0, "trip should return sentinel; got {r}");
+        let state = take_last_deopt().expect("flag-on trip should record state");
+        assert!(matches!(state.reason, DeoptReason::ICShapeMismatch { .. }),
+            "trip reason should be ICShapeMismatch; got {:?}", state.reason);
+        assert_eq!(state.resume_pc, 0, "trip site is at function entry");
+        assert_eq!(state.local_values, vec![(0, 7), (1, 5)],
+            "recovered locals should be the original args");
+
+        // Flag false again → resumes normal behavior.
+        set_force_shape_trip(false);
+        assert_eq!(jit.func.call2(3, 4), 7);
+        assert!(take_last_deopt().is_none());
 
         clear_current_deopt_sites();
     }

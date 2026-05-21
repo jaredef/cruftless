@@ -244,6 +244,27 @@ thread_local! {
     pub static LAST_DEOPT_FRAME: std::cell::RefCell<Option<DeoptRecoveredState>> = const { std::cell::RefCell::new(None) };
 }
 
+/// JIT-EXT 17: a process-wide flag that causes JIT-compiled functions
+/// emitted under `CRUFTLESS_JIT_FORCE_SHAPE_TRIP=1` to fire an
+/// `ICShapeMismatch` deopt at function entry whenever this flag is
+/// true. Tests toggle it to demonstrate the deopt path for a non-
+/// arithmetic deopt reason. Real IC sites in JIT-EXT 18+ will read
+/// per-site cache state instead of this global flag.
+///
+/// Uses `AtomicBool` because the JIT-emitted code reads a fixed memory
+/// address and the runtime mutates it; ordering is relaxed because the
+/// flag is purely for test orchestration.
+pub static JIT_FORCE_SHAPE_TRIP: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+pub fn set_force_shape_trip(v: bool) {
+    JIT_FORCE_SHAPE_TRIP.store(v, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn get_force_shape_trip_addr() -> usize {
+    &JIT_FORCE_SHAPE_TRIP as *const _ as usize
+}
+
 /// Extern thunk callable from Cranelift-emitted code. Returns a
 /// sentinel i64 (0) to the JIT'd caller; the dispatcher detects the
 /// trip via `LAST_DEOPT_FRAME`.
