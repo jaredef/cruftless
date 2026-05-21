@@ -4248,9 +4248,27 @@ impl Runtime {
         self.require_object_coercible(this)?;
         let s = self.to_string_strict(this)?;
         let needle = self.to_string_strict(search)?;
-        if !matches!(position, Value::Undefined) { let _ = self.coerce_to_number(position)?; }
-        match s.find(&needle) {
-            Some(byte_off) => Ok(Value::Number(s[..byte_off].chars().count() as f64)),
+        // ECMA §22.1.3.9 step 5: clamp position to [0, len].
+        // Pre-fix this fn coerced position but discarded the value, leaving
+        // every search starting from 0. The hang in entities loading was a
+        // direct downstream: parseEncodeTrie's readEntity loop relies on
+        // s.indexOf(';', cursor) returning the next ';' AFTER cursor.
+        let char_count = s.chars().count();
+        let start_char = if matches!(position, Value::Undefined) {
+            0usize
+        } else {
+            let n = self.coerce_to_number(position)?;
+            if n.is_nan() || n <= 0.0 { 0 }
+            else if n >= char_count as f64 { char_count }
+            else { n as usize }
+        };
+        // Convert start char index to byte offset.
+        let start_byte = s.char_indices().nth(start_char).map(|(b, _)| b).unwrap_or(s.len());
+        match s[start_byte..].find(&needle) {
+            Some(rel_byte) => {
+                let abs_byte = start_byte + rel_byte;
+                Ok(Value::Number(s[..abs_byte].chars().count() as f64))
+            }
             None => Ok(Value::Number(-1.0)),
         }
     }
