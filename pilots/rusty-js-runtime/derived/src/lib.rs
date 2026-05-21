@@ -20,6 +20,7 @@ pub mod iterator;
 pub mod regexp;
 pub mod regex_hand;
 pub mod napi;
+pub mod caps;
 
 pub use module::{HostHook, ModuleKind, ModuleStatus, detect_module_kind};
 pub use job_queue::{Job, JobKind, JobQueue};

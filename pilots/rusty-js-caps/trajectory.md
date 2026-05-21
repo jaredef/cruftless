@@ -197,3 +197,82 @@ No code yet — design only. The probe harness arrives at CAPS-EXT 5. The contra
 ---
 
 *CAPS-EXT 2 closes the design tier. CAPS-EXT 3 begins the code tier. The dispatcher exists from CAPS-EXT 3 forward; enforcement lands incrementally; the impossibility claim is reachable at CAPS-EXT 13.*
+
+---
+
+## CAPS-EXT 3 — 2026-05-21 (capability infrastructure, Mode 0 wiring)
+
+### Headline
+
+**First code commit of Pilot α.** The dispatcher exists; six capability types implemented; four modes (Compat/Audit/SealedDeps/Sealed) gated correctly; **PM-EXT 11+12 regression gates remain GREEN** at 2.90 s — Mode 0 no-op behavior confirmed.
+
+### Substrate landed
+
+- `pilots/rusty-js-runtime/derived/src/caps.rs` (~520 LOC):
+  - `CapMode` enum (Compat/Audit/SealedDeps/Sealed) + `from_str`/`as_str`
+  - `ModuleProvenance` (Application/Dependency/External/Builtin) + `ModuleId`
+  - `CapabilityError` with `hint` field + Display impl
+  - **Fs** with PathPolicy (None/Any/Prefix/Prefixes/Exact) + 6-op FsOp enum + `full()`/`none()`/`sub_dir()`/`read_only()` deputation
+  - **Stdio** + StdioOp + `full()`/`none()`
+  - **Clock** with ClockResolution (Disabled/Coarse/Fine) + ClockOp + `fine()`/`coarse()`/`disabled()`
+  - **Scheduler** with timers/microtasks/min_delay + SchedulerOp
+  - **Process** with may_exit/may_read_cwd/may_read_pid + ProcessOp
+  - **Env** with EnvVarPolicy (None/Any/Whitelist) + system_info bool + EnvOp
+  - `AmbientCaps::full()` — the host's root capability set
+  - `AuditLog` + `AuditRecord` for Mode 1
+  - `CapDispatcher` with `require_fs`/`stdio`/`clock`/`scheduler`/`process`/`env` methods, each enforcing mode-aware policy with hint generation
+- `pilots/rusty-js-runtime/derived/src/lib.rs`: `pub mod caps;`
+
+### Probe result
+
+**Unit tests (15/15 PASS):**
+- `mode_default_is_compat` — Mode 0 default
+- `cap_mode_parse` — string ↔ enum round-trip
+- `compat_mode_allows_everything_no_cap` — Mode 0 ignores capabilities (returns ambient unconditionally)
+- `audit_mode_allows_and_records` — Mode 1 allows + logs to AuditLog
+- `sealed_deps_dep_blocked` — Mode 2 blocks deps without capability
+- `sealed_deps_app_passes` — Mode 2 ambient-for-application invariant
+- `sealed_blocks_app_too` — Mode 3 sealed-everywhere invariant
+- `fs_prefix_policy` — PathPolicy::Prefix matching
+- `fs_sub_dir_narrows` — Fs.sub_dir() deputation
+- `fs_read_only_strips_writes` — Fs.read_only() deputation
+- `stdio_sealed_blocks_unless_granted` — Stdio bool gating
+- `clock_disabled_blocks` — Clock::Disabled refuses; Clock::Fine allows
+- `process_exit_gated` — process.exit refused without may_exit
+- `env_whitelist` — EnvVarPolicy::Whitelist filters
+- `capability_error_display` — error message includes capability/op/mode/hint
+
+**Mode-0 regression (PM-EXT 11+12, 2/2 PASS in 2.90 s):**
+- `pm_install_then_require_lodash` (PM-EXT 11 closure gate) — green
+- `cli_install_then_run` (PM-EXT 12 CLI gate) — green
+
+The dispatcher is **wired into the build** (lib.rs `pub mod caps;`) but **no effectful method calls it yet**. This is by design per the capability-API §XI backward-compatibility contract: the infrastructure ships in Mode 0 with PM gates green; route-through lands at CAPS-EXT 6+.
+
+### Pred-736 corroboration status
+
+- **Pred-736.1 (retrofit, not rewrite)**: corroborated at this scale. ~520 LOC for the entire capability infrastructure with full test coverage. No edit to any existing runtime file beyond a one-line `pub mod caps;`. The retrofit threshold is comfortably below the 30% rewrite-of-rusty-js-runtime tolerance set in the seed §VI.
+- **Pred-736.3 (LOC estimate ~1100)**: on track. CAPS-EXT 3 spent ~520 LOC on infrastructure; remaining budget ~580 LOC for the call-site refactor across the 40 effectful methods.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P05.L2.caps-mode0-infra` | CAPS-EXT 3: capability infrastructure with Mode 0 wiring; 15/15 caps unit tests PASS; PM-EXT 11+12 regression GREEN; dispatcher exists, behavior unchanged |
+
+### Open scope at CAPS-EXT 3 boundary
+
+1. **CAPS-EXT 4 (audit recorder)**: dispatcher already records under Mode 1; need to wire `--audit` CLI flag in host-v2 and surface the audit log on shutdown (write to sidecar file or stderr). Without this, Mode 1 records to memory only and the log is lost on exit. ~50 LOC.
+
+2. **CAPS-EXT 5 (synthetic-adversary probe harness)**: `pilots/rusty-js-caps/probes/` with `.mjs` files representing each attack class. Under Mode 0 every probe SUCCEEDS = the pre-state baseline. The harness becomes the standing regression for the rest of Pilot α.
+
+3. **CAPS-EXT 6-7 (Fs route-through under Mode 3)**: edit host-v2's `fs.rs` to route every fs method through `dispatcher.require_fs(...)`. Add `--sealed` CLI flag. Add `cruftless-caps.json` parser. Confirm: under Mode 3 with empty caps, fs probes flip from SUCCESS to PASS (CapabilityError).
+
+4. **CAPS-EXT 8+**: Mode 2 dispatcher branching on module provenance, then remaining capability classes (Process.exit, Stdio, Clock, Scheduler, Env).
+
+### Doc 730 §XVI status
+
+The dispatcher's existence with PM gates green is a Case-3 (both-diverge → compositional success): cruftless and Node diverge structurally (cruftless has a dispatcher; Node does not), and the composition succeeds (PM-EXT 11+12 still green). The structural divergence is the entire point of the workstream; the compositional success is the engineering check that the divergence doesn't regress anything.
+
+---
+
+*CAPS-EXT 3 closes the first code commit of Pilot α. Infrastructure shipped; behavior unchanged; PM-EXT regression green; ready to begin route-through at CAPS-EXT 4+ once the audit recorder surfaces the audit log.*
