@@ -44,10 +44,26 @@ pub fn install(rt: &mut Runtime, argv: Vec<String>) {
     set_constant(rt, process, "execArgv", Value::Object(exec_argv));
 
     // env: snapshot of std::env::vars() at startup.
+    //
+    // CAPS-EXT 9 mode-aware install: under Mode 3 (--sealed) and Mode 2
+    // (--sealed-deps), install an empty object — JS code reading
+    // `process.env.HOME` gets `undefined` and cannot exfiltrate. Under
+    // Mode 0 / Mode 1 (default + --audit), install the full snapshot so
+    // existing npm packages that read process.env at module load (PATH,
+    // NODE_ENV, HOME, etc.) keep working.
+    //
+    // This is the install-time form of capability enforcement. A
+    // future round will lift it to per-property getter semantics so
+    // Mode 2 can give the application the full env while sealing deps;
+    // for the first cut, the all-or-nothing install matches Mode 3's
+    // semantics correctly and Mode 2's partial.
     let env_obj = new_object(rt);
-    let vars: Vec<(String, String)> = std::env::vars().collect();
-    for (k, v) in vars {
-        rt.object_set(env_obj, k, Value::String(Rc::new(v)));
+    let mode = rt.caps.mode;
+    if matches!(mode, rusty_js_runtime::caps::CapMode::Compat | rusty_js_runtime::caps::CapMode::Audit) {
+        let vars: Vec<(String, String)> = std::env::vars().collect();
+        for (k, v) in vars {
+            rt.object_set(env_obj, k, Value::String(Rc::new(v)));
+        }
     }
     set_constant(rt, process, "env", Value::Object(env_obj));
 

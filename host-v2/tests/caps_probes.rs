@@ -181,3 +181,14 @@ fn cwd_read_loses_under_sealed() {
     assert_eq!(classify(&stdout), ProbeOutcome::Loses,
         "CAPS-EXT 8: --sealed must block process.cwd; stdout: {stdout}");
 }
+
+// CAPS-EXT 9: env route-through.
+
+#[test]
+fn env_read_loses_under_sealed() {
+    // Under --sealed, process.env is installed empty at host startup;
+    // the probe detects the emptiness and reports LOSES.
+    let (_, stdout, _) = run_probe("env_read", Some("--sealed"));
+    assert_eq!(classify(&stdout), ProbeOutcome::Loses,
+        "CAPS-EXT 9: --sealed must yield empty process.env; stdout: {stdout}");
+}

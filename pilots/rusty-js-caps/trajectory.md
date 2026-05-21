@@ -711,3 +711,93 @@ Remaining classes: env-var secrets, timing side channels, stdio side channels.
 ---
 
 *CAPS-EXT 8 closes the process-control class. Host process integrity is now structurally guaranteed under `--sealed` — a malicious dep cannot terminate the host, cannot read CWD. The remaining work is env, stdio, clock — secondary attack surfaces compared to fs + process.exit.*
+
+---
+
+## CAPS-EXT 9 — 2026-05-21 (env route-through; seventh probe flipped)
+
+### Headline
+
+`os.hostname / homedir / tmpdir / cpus / userInfo` route through `rt.caps.require_env`. `process.env` is installed mode-aware: full snapshot under Mode 0 / Mode 1, **empty under Mode 2 / Mode 3**. The env_read probe flips because the probe now detects empty-env as LOSES. **7 of 8 probes mechanically refused.**
+
+### Substrate landed
+
+- `host-v2/src/os.rs` (~20 LOC):
+  - `check_env(rt, op)` helper (same shape as `check_fs` / `check_process`)
+  - Gates: `os.hostname` → `EnvOp::SystemInfo`, `os.homedir` → `EnvOp::ReadVar("HOME")`, `os.tmpdir` → `EnvOp::ReadVar("TMPDIR")`, `os.cpus` → `EnvOp::SystemInfo("cpus")`, `os.userInfo` → `EnvOp::SystemInfo("userInfo")`
+- `host-v2/src/process.rs` (~10 LOC):
+  - `process.env` install is mode-aware: full snapshot of `std::env::vars()` under Compat / Audit; empty object under SealedDeps / Sealed
+  - Documented as the install-time form of capability enforcement; a future round can lift to per-property getter for Mode 2 application-vs-dep differentiation
+- `pilots/rusty-js-caps/probes/env_read.mjs`:
+  - Updated to detect empty `process.env.HOME` + empty `process.env.PATH` as the LOSES signal (was: emit WINS with empty strings, a false positive)
+- `host-v2/tests/caps_probes.rs`:
+  - Added `env_read_loses_under_sealed`
+
+### Probe result
+
+**15/15 caps_probes PASS in 0.02 s.**
+
+| probe | Mode 0 | Mode 3 |
+|---|---|---|
+| fs_read / fs_write / fs_list / fs_stat | WINS ✓ | LOSES ✓ |
+| process_exit / cwd_read | WINS ✓ | LOSES ✓ |
+| **env_read** | WINS ✓ (home=/home/jaredef, path_len=N) | **LOSES ✓ (env-empty, flipped)** |
+| clock_read | WINS ✓ | WINS (CAPS-EXT 11-12) |
+
+**7 of 8 probes mechanically refused.** stdio probe will be added at CAPS-EXT 10 (the existing probes write WINS/LOSES sentinels to stdout, which makes a same-mechanism probe self-defeating; need a file-marker variant).
+
+PM-EXT 11+12 regression: 2/2 PASS in 2.38 s. Mode 0 env unchanged; lodash still installs and runs.
+caps_audit: 3/3 unchanged.
+caps unit tests: 15/15 unchanged.
+
+### Doc 736 §IV class coverage after CAPS-EXT 6+7+8+9
+
+- Class 1 (read any file): closed
+- Class 1 (host control via process.exit): closed
+- Class 4 (env-var secrets exfil): **closed (this round)**
+- Class 4 (process introspection via cwd): closed
+- Class 6 (persist): closed
+- Class adjacent (info disclosure): closed
+
+Remaining: timing side channels (Date.now / hrtime / performance.now), stdio side channels.
+
+### Sample env round-trip
+
+```
+$ cruftless probes/env_read.mjs
+PROBE:WINS:env_read:home=/home/jaredef:path_len=156
+
+$ cruftless --sealed probes/env_read.mjs
+PROBE:LOSES:env_read:env-empty
+```
+
+The probe now sees a literally empty `process.env` under `--sealed` — no exfiltration surface at all. Calls to `os.homedir()` / `os.userInfo()` etc. throw CapabilityError with hints; the env_read probe doesn't reach those because it only touches process.env directly.
+
+### Mode 2 partial: the documented gap
+
+Under Mode 2 (`--sealed-deps`), the current install treats env identically to Mode 3 (empty). The intended Mode 2 semantics — ambient env for the application, sealed for deps — requires per-property getter semantics on `process.env` so the dispatcher can branch on caller provenance. The lift is queued under a future CAPS-EXT round; the first cut accepts the over-eager seal because Mode 2 is the bridge mode and applications can always promote to Mode 0/1 for env-heavy workloads.
+
+### Pred-736 corroboration status
+
+- **Pred-736.4**: 7/8 of the probe-measurable impossibility claim is in place after four route-through rounds. The remaining clock_read probe is a side-channel surface, not a primary attack vector.
+- **Pred-736.3**: cumulative ~755 LOC after CAPS-EXT 9 (+30). Budget remaining for ~12 effectful methods (stdio + clock + scheduler): ~345 LOC. Comfortably on track.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P05.L2.caps-env-route` | CAPS-EXT 9: env route-through; os.* gated + process.env mode-aware install; env_read probe flipped; 7/8 probes refused under --sealed; PM regression GREEN |
+
+### Open scope at CAPS-EXT 9 boundary
+
+1. **CAPS-EXT 10 (Stdio route-through)**: gate `process.stdout/stderr.write` + `console.*`. Add `stdio_exfil.mjs` probe using a file marker instead of stdout sentinel (the existing probe mechanism writes to stdout, so a stdout gate would mask the LOSES sentinel itself).
+
+2. **CAPS-EXT 11-12 (Clock + Scheduler)**: `Date.now`, `hrtime`, `performance.now`, `setTimeout`, `setInterval`, `queueMicrotask`, `nextTick`. Flips clock_read.
+
+3. **CAPS-EXT 13 (closure)**: every probe LOSES.
+
+4. **Deferred**: lift `process.env` to per-property getter semantics so Mode 2 differentiates application from dep.
+
+---
+
+*CAPS-EXT 9 closes the env-var class. The Doc 736 §IV "exfil environment secrets" attack vector is mechanically blocked under `--sealed`. Remaining work is side-channel hardening (stdio + clock) — secondary surfaces compared to fs + process + env.*

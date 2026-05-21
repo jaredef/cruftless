@@ -1,8 +1,25 @@
 //! node:os intrinsic — minimal v1 surface.
 
 use crate::register::{new_object, register_method, set_constant};
-use rusty_js_runtime::{Runtime, Value};
+use rusty_js_runtime::{Runtime, RuntimeError, Value};
+use rusty_js_runtime::caps as caps;
+use rusty_js_runtime::caps::{ModuleId, ModuleProvenance};
 use std::rc::Rc;
+
+/// CAPS-EXT 9: gate an env-class operation through the capability dispatcher.
+fn check_env(rt: &Runtime, op: caps::EnvOp) -> Result<(), RuntimeError> {
+    let url = rt.current_module_url.last().cloned().unwrap_or_default();
+    let provenance = if url.contains("/node_modules/") {
+        ModuleProvenance::Dependency
+    } else if url.starts_with("node:") {
+        ModuleProvenance::Builtin
+    } else {
+        ModuleProvenance::Application
+    };
+    let caller = ModuleId { url, provenance };
+    rt.caps.require_env(&caps::Env::none(), op, &caller)
+        .map_err(|e| RuntimeError::TypeError(e.to_string()))
+}
 
 pub fn install(rt: &mut Runtime) {
     let os = new_object(rt);
@@ -19,15 +36,18 @@ pub fn install(rt: &mut Runtime) {
     register_method(rt, os, "release", |_rt, _args| {
         Ok(Value::String(Rc::new("0.0.0".to_string())))
     });
-    register_method(rt, os, "hostname", |_rt, _args| {
+    register_method(rt, os, "hostname", |rt, _args| {
+        check_env(rt, caps::EnvOp::SystemInfo("hostname"))?;
         let h = std::env::var("HOSTNAME").unwrap_or_else(|_| "localhost".to_string());
         Ok(Value::String(Rc::new(h)))
     });
-    register_method(rt, os, "homedir", |_rt, _args| {
+    register_method(rt, os, "homedir", |rt, _args| {
+        check_env(rt, caps::EnvOp::ReadVar("HOME".into()))?;
         let h = std::env::var("HOME").unwrap_or_else(|_| "/".to_string());
         Ok(Value::String(Rc::new(h)))
     });
-    register_method(rt, os, "tmpdir", |_rt, _args| {
+    register_method(rt, os, "tmpdir", |rt, _args| {
+        check_env(rt, caps::EnvOp::ReadVar("TMPDIR".into()))?;
         let t = std::env::var("TMPDIR").unwrap_or_else(|_| "/tmp".to_string());
         Ok(Value::String(Rc::new(t)))
     });
@@ -41,6 +61,7 @@ pub fn install(rt: &mut Runtime) {
     // networkInterfaces / userInfo. fast-glob reads os.cpus().length to
     // pick its default worker count; many libs gate behavior on these.
     register_method(rt, os, "cpus", |rt, _args| {
+        check_env(rt, caps::EnvOp::SystemInfo("cpus"))?;
         // Read from /proc/cpuinfo on Linux; otherwise return a 1-entry stub.
         let count = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
         let arr = rt.alloc_object(rusty_js_runtime::value::Object::new_array());
@@ -80,6 +101,7 @@ pub fn install(rt: &mut Runtime) {
         Ok(Value::Object(rt.alloc_object(rusty_js_runtime::value::Object::new_ordinary())))
     });
     register_method(rt, os, "userInfo", |rt, _args| {
+        check_env(rt, caps::EnvOp::SystemInfo("userInfo"))?;
         let o = rt.alloc_object(rusty_js_runtime::value::Object::new_ordinary());
         let user = std::env::var("USER").unwrap_or_else(|_| "user".into());
         rt.object_set(o, "username".into(), Value::String(Rc::new(user)));
