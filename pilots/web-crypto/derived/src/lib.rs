@@ -895,14 +895,19 @@ pub fn rsaep(n: &BigUInt, e: &BigUInt, m: &BigUInt) -> Result<BigUInt, String> {
     if m.cmp(n) != std::cmp::Ordering::Less {
         return Err("RSAEP: message representative out of range".to_string());
     }
-    Ok(m.mod_pow(e, n))
+    // WC-EXT 12: route RSA verify through generic Montgomery. n is
+    // always odd for RSA (product of two odd primes), so mod_pow_mont
+    // is safe. Eliminates the per-mod_mul binary-long-division cost
+    // that dominated RSA-2048 verify (~17 squarings × ~ms each).
+    Ok(mod_pow_mont(m, e, n))
 }
 
 pub fn rsadp(n: &BigUInt, d: &BigUInt, c: &BigUInt) -> Result<BigUInt, String> {
     if c.cmp(n) != std::cmp::Ordering::Less {
         return Err("RSADP: ciphertext representative out of range".to_string());
     }
-    Ok(c.mod_pow(d, n))
+    // WC-EXT 12: same routing as rsaep.
+    Ok(mod_pow_mont(c, d, n))
 }
 
 // ───────────────────── RSASSA-PKCS1-v1_5 (RFC 8017 §8.2 + §9.2) ────
@@ -1143,6 +1148,124 @@ pub fn p256_to_mont(a: &BigUInt) -> BigUInt {
 /// Convert Montgomery-form `am` back to standard form via REDC(am).
 pub fn p256_from_mont(am: &BigUInt) -> BigUInt {
     p256_redc(am.limbs().to_vec())
+}
+
+// ──────────────── WC-EXT 12: generic Montgomery for arbitrary odd
+// modulus (RSA, P-384, P-521) ────
+//
+// Per Doc 735 §X intra-tier cost stratification: the same temporal
+// tier (T3 per-call modular multiplication) admits multiple cost
+// strata. WC-EXT 8 landed the T3-fast stratum for P-256 specifically.
+// WC-EXT 12 generalizes Mont to ARBITRARY odd-prime moduli, opening
+// the T3-fast stratum for RSA (every cert-chain RSA verify, JWS-RS256
+// signing/verification, RSA-OAEP), P-384 and P-521 (when added to
+// the engagement's curve catalog).
+//
+// The substrate move is at the BigUInt arithmetic tier; blast radius
+// covers every primitive composing on modular multiplication against
+// an odd-prime modulus. Per seed §II.1, this is the most strategic
+// substrate-tier in the crate.
+
+pub struct MontCtx {
+    p: BigUInt,
+    k: usize,           // number of limbs in p
+    m_prime: u32,       // -p[0]^(-1) mod 2^32
+    r_sq_mod_p: BigUInt, // R² mod p, where R = 2^(32·k)
+}
+
+impl MontCtx {
+    /// Build a Montgomery context for an odd modulus `p`.
+    /// Precomputes `m_prime = -p[0]^(-1) mod 2^32` (Newton iteration,
+    /// 5 rounds for 32-bit convergence) and `R² mod p` (one binary-
+    /// long-division at construction; amortized over all subsequent
+    /// mont_muls against this modulus).
+    pub fn for_modulus(p: &BigUInt) -> Self {
+        let p_limbs = p.limbs();
+        assert!(!p_limbs.is_empty(), "MontCtx: modulus is zero");
+        assert!(p_limbs[0] & 1 == 1, "MontCtx: modulus must be odd");
+        let k = p_limbs.len();
+        // Newton iteration for p[0]^(-1) mod 2^32:
+        //   x_{i+1} = x_i · (2 - p[0] · x_i)  (all mod 2^32)
+        // Converges in ⌈log₂ 32⌉ = 5 iterations.
+        let p0 = p_limbs[0];
+        let mut x: u32 = 1;
+        for _ in 0..6 {
+            x = x.wrapping_mul(2u32.wrapping_sub(p0.wrapping_mul(x)));
+        }
+        let m_prime = 0u32.wrapping_sub(x);
+        // R² = 2^(64·k) as a (64·k + 1)-bit big-endian integer.
+        let mut r_sq_bytes = vec![0u8; 8 * k + 1];
+        r_sq_bytes[0] = 1;
+        let r_sq = BigUInt::from_be_bytes(&r_sq_bytes).modulo(p);
+        MontCtx { p: p.clone(), k, m_prime, r_sq_mod_p: r_sq }
+    }
+}
+
+/// Generic Montgomery REDC: T · R⁻¹ mod p, where R = 2^(32·k).
+/// Input `t` is the unreduced product of two values in Mont form
+/// (up to 2·k limbs); output is one value in Mont form (k limbs).
+pub fn mont_redc(mut t: Vec<u32>, ctx: &MontCtx) -> BigUInt {
+    while t.len() < 2 * ctx.k + 1 { t.push(0); }
+    let p_limbs = ctx.p.limbs();
+    let m_prime = ctx.m_prime as u64;
+    for i in 0..ctx.k {
+        // u_i = t[i] · m_prime mod 2^32
+        let u = ((t[i] as u64).wrapping_mul(m_prime)) & 0xFFFF_FFFF;
+        if u == 0 { continue; }
+        let mut carry: u64 = 0;
+        for j in 0..ctx.k {
+            let prod = u * (p_limbs[j] as u64);
+            let sum = (t[i + j] as u64) + (prod & 0xFFFF_FFFF) + (carry & 0xFFFF_FFFF);
+            t[i + j] = sum as u32;
+            carry = (sum >> 32) + (prod >> 32) + (carry >> 32);
+        }
+        let mut kk = ctx.k;
+        while carry > 0 && (i + kk) < t.len() {
+            let sum = (t[i + kk] as u64) + carry;
+            t[i + kk] = sum as u32;
+            carry = sum >> 32;
+            kk += 1;
+        }
+    }
+    let mut result = BigUInt::from_limbs(t[ctx.k..].to_vec());
+    use std::cmp::Ordering;
+    if result.cmp(&ctx.p) != Ordering::Less {
+        result = result.sub(&ctx.p);
+    }
+    result
+}
+
+pub fn mont_mul(am: &BigUInt, bm: &BigUInt, ctx: &MontCtx) -> BigUInt {
+    let product = am.mul(bm);
+    mont_redc(product.limbs().to_vec(), ctx)
+}
+
+pub fn mont_to(a: &BigUInt, ctx: &MontCtx) -> BigUInt {
+    mont_mul(a, &ctx.r_sq_mod_p, ctx)
+}
+
+pub fn mont_from(am: &BigUInt, ctx: &MontCtx) -> BigUInt {
+    mont_redc(am.limbs().to_vec(), ctx)
+}
+
+/// Square-and-multiply modular exponentiation in Montgomery form.
+/// Returns base^e mod m for any odd m. Replaces the binary-long-
+/// division `mod_pow` for the odd-modulus case (which is RSA + all
+/// prime moduli used in EC).
+pub fn mod_pow_mont(base: &BigUInt, e: &BigUInt, m: &BigUInt) -> BigUInt {
+    let ctx = MontCtx::for_modulus(m);
+    let base_mont = mont_to(&base.modulo(m), &ctx);
+    let one_mont = mont_to(&BigUInt::one(), &ctx);
+    let mut result = one_mont;
+    let mut b = base_mont;
+    let bits = e.bit_len();
+    for i in 0..bits {
+        if e.bit(i) {
+            result = mont_mul(&result, &b, &ctx);
+        }
+        b = mont_mul(&b, &b, &ctx);
+    }
+    mont_from(&result, &ctx)
 }
 
 // ──────────────── WC-EXT 9: Montgomery-form EC routines ────────────
@@ -1417,8 +1540,17 @@ fn p256_add(p1: &P256Point, p2: &P256Point) -> P256Point {
     }
 }
 
-/// Scalar multiplication via binary double-and-add (LSB-first).
+/// Scalar multiplication. WC-EXT 12 routes through the Mont-form
+/// Jacobian implementation (`p256_scalar_mul_mont`), which is ~50×
+/// faster on Pi than the original affine binary double-and-add and
+/// produces identical output. Affine implementation preserved below
+/// in `p256_scalar_mul_affine` for reference and benchmarking.
 pub fn p256_scalar_mul(k: &BigUInt, pt: &P256Point) -> P256Point {
+    p256_scalar_mul_mont(k, pt)
+}
+
+#[allow(dead_code)]
+fn p256_scalar_mul_affine(k: &BigUInt, pt: &P256Point) -> P256Point {
     let mut result = P256Point::Identity;
     let mut addend = pt.clone();
     let bits = k.bit_len();

@@ -675,3 +675,76 @@ api.github.com TLS handshake ~9.5s despite ECDSA verify at 0.10s. Bottleneck has
 ### Resume protocol (next session)
 
 Read seed.md §VI.1 (state) + §VI.2 (next target) + §VI.4 (open-scope catalog). First substrate move next session: **WC-EXT 11** probe TLS handshake breakdown. Then **WC-EXT 12** generalize Montgomery to arbitrary odd-prime moduli (strategic).
+
+---
+
+## WC-EXT 12 — 2026-05-21 (generic Montgomery for arbitrary odd-prime moduli)
+
+### Headline
+
+Generalized Montgomery REDC from P-256-only to **arbitrary odd-prime moduli** via a `MontCtx` precomputed per modulus. Routed RSA verify (`rsaep`, `rsadp`) through Mont. Replaced the old affine `p256_scalar_mul` (binary double-and-add over affine coords) with a delegation to `p256_scalar_mul_mont`, propagating the Mont path into every internal caller (EphemeralEcdh in TLS, old p256-specific ECDSA sign/verify, test fixtures).
+
+Substrate at the BigUInt arithmetic tier (per seed §II.1). Blast radius covers **every modular-exponentiation primitive in the engagement**: RSA verify+sign (PKCS1, PSS, OAEP), ECDH key derivation, ECDSA over any curve, JOSE/JWT signing.
+
+### What landed
+
+- `MontCtx { p, k, m_prime, r_sq_mod_p }` — per-modulus context. m_prime computed via Newton iteration (5 rounds) over `p[0]^(-1) mod 2^32`; R² mod p computed via existing modulo (one binary-long-division at context construction, amortized over all subsequent mont_muls).
+- `mont_redc(t, ctx)` — generic REDC parameterized on the context's m_prime and k limbs.
+- `mont_mul`, `mont_to`, `mont_from`, `mod_pow_mont(base, e, m)` — generic Mont surface for any odd modulus.
+- `rsaep` + `rsadp` routed through `mod_pow_mont`.
+- `p256_scalar_mul` re-routed to `p256_scalar_mul_mont`. Old affine implementation preserved as `p256_scalar_mul_affine` for benchmarking.
+
+### Measurement
+
+| metric | before WC-EXT 12 | after WC-EXT 12 | speedup |
+|---|---|---|---|
+| 117 web-crypto regression | 19.07s | **3.49s** | 5.5× |
+| 5-endpoint TLS probe wallclock | ~36s | **5.37s** | 6.7× |
+| api.github.com single handshake | ~10s | **1.85s** | 5.4× |
+| Fixture ECDSA verify | 0.10s | 0.10s | unchanged (already at gold-form) |
+
+The regression suite's drop from 19s → 3.5s is a tell: the RSA tests dominated. Each RSA-PKCS1, RSA-PSS, RSA-OAEP test does ~17 squarings of a 2048-bit modular multiplication. The old binary-long-division `mod_pow` did them at ~ms each; Mont does them at ~50μs each. Per-test ~17×50μs vs 17×ms = a ~20× speedup per RSA test.
+
+### Cumulative speedup ladder updated
+
+| EXT | tier | move | fixture verify | TLS probe wallclock | × from baseline (fixture) |
+|---|---|---|---|---|---|
+| WC-EXT 1 | (baseline) | fixture replay | 8.18s | 0/5 PASS | 1× |
+| WC-EXT 3 | EC | Jacobian coords | 0.29s | 0/5 PASS | 28× |
+| WC-EXT 5 | optimization | Regime 1 base table | 0.21s | 0/5 PASS | 39× |
+| WC-EXT 9 | EC × BigUInt | Mont u2·Q | 0.15s | 0/5 PASS | 54× |
+| WC-EXT 10 | EC × optimization | Mont u1·G | 0.10s | 3/5 PASS · 37s | 82× |
+| **WC-EXT 12** | **BigUInt** | **generic Mont (RSA, ECDH)** | **0.10s** | **3/5 PASS · 5.4s** | **82× (fixture); +6.7× on TLS-wallclock** |
+
+### Why fixture didn't change but TLS dropped 7×
+
+The fixture verify path (`ecdsa_verify` against the captured api.github.com fixture) was already fully Mont-routed at WC-EXT 10 (both u1·G and u2·Q). WC-EXT 12 doesn't change that path; it generalizes Mont for OTHER primitives that the fixture doesn't exercise but that TLS handshake does — RSA chain-verify and ECDH key derivation. The blast radius difference shows up as a probe-wallclock drop without a fixture-verify drop.
+
+### Doc 735 §X intra-tier cost stratification corroborated
+
+§X.f Pred-735.X.1: within each temporal tier, multiple cost strata exist. WC-EXT 12 confirms this empirically at scale — moving RSA verify from T3-slow (binary-long-division mod_pow) to T3-fast (Mont mod_pow) produced ~5× wallclock improvement on the entire test suite without changing the temporal tier. The cost-stratum dimension is doing real work in the framework.
+
+§X.f Pred-735.X.2: intra-tier promotion is bounded in implementation complexity by the standard literature catalog. WC-EXT 12 added MontCtx + generic mont_redc + mont_mul + mod_pow_mont in ~110 LOC. Well within the predicted bound (the algorithm is in HAC §14.32 + Newton's iteration for modular inverse).
+
+§X.f Pred-735.X.3: intra-tier + temporal-tier promotions compose without conflict. WC-EXT 5 was a temporal-tier promotion (T2 → T1 base table). WC-EXT 8+9+10 were intra-tier promotions (T3-slow → T3-fast for P-256). WC-EXT 12 is also intra-tier (T3-slow → T3-fast for arbitrary odd modulus). Composing all three produced strict cumulative improvement; no axis-coupling pathology.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P06.E3.wc-mont-generic-odd-modulus` | generic Mont for arbitrary odd-prime moduli; RSA verify + ECDH routed; TLS probe 36s → 5.37s (6.7×); 117 regression 19s → 3.5s (5.5×); intra-tier stratum promotion at the BigUInt tier propagates through every primitive composing on modular arithmetic |
+
+### Probe result
+
+**5/5 TLS probe: 3/5 PASS in 5.37s wallclock (down from ~36s).** Same probe-cell distribution as WC-EXT 10 (E1/E3/E4 PASS; E2 separate bug; E5 scope decision). The substrate-move was an intra-tier T3-stratum promotion at the BigUInt tier — same diagnostic per Doc 735 §X.
+
+### Open scope at WC-EXT 12 boundary
+
+1. **WC-EXT 13** (if needed): tune for further speedup. Likely targets: ECDH-specific optimization (the base scalar mul in EphemeralEcdh::generate could use the Mont base table, currently goes through generic Mont scalar mul which is slower than the table path).
+2. **E2 httpbin.org separate bug**: still open at the TLS pilot.
+3. **E5 npm Case-4 scope decision**: still open at engagement scope.
+4. **Doc 731 §XV.e Pred-731.XV.1 corroboration**: the framework's claim that the §VII shape applies at RSA, AES T-tables, Poly1305, BLAKE2 is now corroborated at the RSA instance (this round). AES T-tables / Poly1305 / BLAKE2 remain open for future engagement instances.
+
+---
+
+*WC-EXT 12 closes with generic Montgomery operational at the BigUInt arithmetic tier, propagating through RSA + ECDH paths and producing a 6.7× TLS wallclock improvement. The cost-stratum dimension of Doc 735 §X has its second engagement-tier corroboration (after WC-EXT 8). The Doc 731 §XV framework now has empirically-anchored cases at three primitive classes (ECDSA-P-256 verify, RSA-2048 verify, P-256 ECDH).*
