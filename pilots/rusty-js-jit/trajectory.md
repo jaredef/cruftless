@@ -303,3 +303,75 @@ The audit's finding (current JIT has no spec-defined deopt sites) is a Case-3 (b
 ---
 
 *JIT-EXT 10 closes the audit and design round. JIT-EXT 11 begins the implementation cascade. The current JIT's narrow speculation surface means deopt infrastructure ships before any current site needs it; the investment pays off at JIT-EXT 14+ when ICs land.*
+
+---
+
+## JIT-EXT 11 — 2026-05-21 (deopt infrastructure landed; no translator change)
+
+### Headline
+
+`DeoptReason` + `DeoptSite` + `JitLocation` + `DeoptCallFrame` + `DeoptRecoveredState` + `jit_deopt_thunk` skeleton land in new module `pilots/rusty-js-jit/derived/src/deopt.rs`. Per-`CompiledFn` `deopt_sites: DeoptSiteTable` field added (empty at this round). No translator change. **15/15 JIT lib tests PASS, no regression in caps / PM / probe suites.**
+
+### Substrate landed
+
+- `pilots/rusty-js-jit/derived/src/deopt.rs` (~225 LOC):
+  - `DeoptReason` enum — 5 variants (IntegerOverflow, BoundaryArgMismatch, ICShapeMismatch, ICCallTargetChanged, TypeWidening), each documented with its target EXT round
+  - `JitLocation` enum — Register(u8) / StackSlot(i32) / Constant(i64)
+  - `DeoptLiveLocal` — (interp_slot, jit_location) pair
+  - `DeoptSite` — reason + resume_pc + live_locals + stack_depth + stack_slots
+  - `DeoptCallFrame` — site_id + regs[8] + frame_base (the trip-time state passed by JIT'd code)
+  - `DeoptRecoveredState` — what the runtime consumes to populate the interpreter frame
+  - `JitCallOutcome` — Returned(i64) / Deopted(site_id) tagged-enum for the eventual return-value sentinel
+  - `reconstruct_state(sites, frame)` — pure-Rust lookup-and-extract
+  - `jit_deopt_thunk(sites, frame)` — thunk skeleton (routes to reconstruct_state)
+  - 6 unit tests covering empty-site, register reconstruction, stack-slot reconstruction, missing-site-id, thunk routing, outcome enum
+
+- `pilots/rusty-js-jit/derived/src/lib.rs`: `pub mod deopt;` + re-exports
+- `pilots/rusty-js-jit/derived/src/translator.rs`: `CompiledFn.deopt_sites: DeoptSiteTable` field; initialized empty in `compile_function_inner`
+
+### Probe result
+
+**15/15 JIT lib tests PASS** (6 new deopt + 9 existing translator/promote/smoke tests).
+
+Regression sweep:
+- 15/15 caps unit tests PASS
+- 2/2 PM-EXT 11+12 PASS in 3.00 s
+- 18/18 caps_probes PASS
+
+The deopt infrastructure is wired into the build but no code path consults it yet. The dispatcher in `interp.rs` continues to use the `jit_disabled` flag. Translator emits no deopt sites. `CompiledFn.deopt_sites` is always empty.
+
+### Design choices realized
+
+The audit's design choices land as written:
+
+1. **Closed enum**: `DeoptReason` is sealed; adding a variant is a Pin-Art substrate decision. Mirrors `CapabilityError`'s structure.
+2. **Hand-rolled stack maps**: `DeoptSite` carries its own live-value layout rather than reading Cranelift's stackmap (which is GC-shaped).
+3. **Fixed-arity register convention**: `DeoptCallFrame.regs: [i64; 8]`. Sites with more live values use `StackSlot` (unimplemented at JIT-EXT 11; first cut's IC sites have 2-3 live values).
+4. **Return-value sentinel pattern**: `JitCallOutcome` discriminates Returned vs Deopted. JIT-EXT 12 wires this into the dispatcher; JIT-EXT 11 just declares the type.
+5. **Per-CompiledFn table**: each compiled function carries its own site table. The site_id is module-local, not engagement-wide.
+
+### Pred-731 corroboration status
+
+- **R5 (deopt sites finite-enumerable per emitted module)**: corroborated at the type level. `DeoptSiteTable = Vec<DeoptSite>` is exactly the shape R5 anticipated.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P04.E2.jit-deopt-infra` | JIT-EXT 11: deopt infrastructure landed; DeoptReason / DeoptSite / DeoptCallFrame / DeoptRecoveredState / jit_deopt_thunk + 6 unit tests; CompiledFn.deopt_sites field added (empty); no translator change; no regression |
+
+### Open scope at JIT-EXT 11 boundary
+
+1. **JIT-EXT 12 (first wired demonstrator)**: feature-flagged "guarded overflow" mode. Each arithmetic op emits `iadd_overflow` (Cranelift `sadd_overflow_trap` or manual brif on the carry flag) + branch to a deopt thunk on trip. The translator records a `DeoptSite` per arith op, stores it in `CompiledFn.deopt_sites`. End-to-end test: a function that JIT-compiles, runs hot, then receives args that overflow → deopts → interpreter resumes at the failing pc with correct state.
+
+2. **JIT-EXT 13 (replace `jit_disabled`)**: dispatcher in `interp.rs` no longer permanently disables the JIT on boundary mismatch. Subsequent valid-arg calls re-engage.
+
+3. **JIT-EXT 14+ (ICs unlocked)**: first IC site lands (GetProp with hidden-class check). Uses the deopt infrastructure for shape-mismatch recovery.
+
+### Doc 730 §XVI status
+
+Continued Case-3 (both-diverge → compositional success): the deopt machinery exists in Cruftless; mainstream JITs use functionally similar machinery; the alphabet-purity discipline narrows the surface that machinery has to cover. The Doc 731 conjecture survives the engineering tier through this round.
+
+---
+
+*JIT-EXT 11 lands the infrastructure that JIT-EXT 12+ will exercise. The type machinery + thunk skeleton ships with full test coverage; no translator change means no Mode-0 perf risk. JIT-EXT 12 begins the wiring.*

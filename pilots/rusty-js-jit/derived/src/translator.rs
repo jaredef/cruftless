@@ -74,6 +74,10 @@ impl std::fmt::Debug for JitFn {
 pub struct CompiledFn {
     pub func: JitFn,
     _module: &'static mut JITModule,
+    /// JIT-EXT 11: per-function deopt-site table. Empty until JIT-EXT 12
+    /// starts emitting deopt sites. Indexed by site_id (the immediate
+    /// the JIT'd code passes to `jit_deopt_thunk`).
+    pub deopt_sites: crate::deopt::DeoptSiteTable,
 }
 
 impl std::fmt::Debug for CompiledFn {
@@ -369,7 +373,7 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
         }
     };
     let leaked = Box::leak(Box::new(module));
-    Ok(CompiledFn { func, _module: leaked })
+    Ok(CompiledFn { func, _module: leaked, deopt_sites: Vec::new() })
 }
 
 fn binop<F>(stack: &mut Vec<ClValue>, builder: &mut FunctionBuilder, f: F) -> Result<(), String>

@@ -28,8 +28,14 @@
 
 pub mod translator;
 pub mod promote;
+pub mod deopt;
 pub use translator::{compile_function, CompiledFn, JitFn};
 pub use promote::promote_to_typed_i64;
+pub use deopt::{
+    DeoptReason, DeoptSite, DeoptLiveLocal, JitLocation,
+    DeoptCallFrame, DeoptRecoveredState, JitCallOutcome,
+    DeoptSiteTable, jit_deopt_thunk, reconstruct_state,
+};
 
 use cranelift_codegen::ir::types::I64;
 use cranelift_codegen::ir::{AbiParam, InstBuilder};
