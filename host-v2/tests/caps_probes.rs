@@ -160,9 +160,24 @@ fn fs_write_loses_under_sealed() {
         "marker file at {marker} should NOT exist after --sealed run; the write was supposed to be refused");
 }
 
+// CAPS-EXT 8: process route-through.
+
 #[test]
-fn pre_route_through_sealed_still_wins_process_exit() {
-    let (code, _, _) = run_probe("process_exit", Some("--sealed"));
-    assert_eq!(code, 42,
-        "pre-route-through: --sealed should not yet block process.exit");
+fn process_exit_loses_under_sealed() {
+    let (code, stdout, _) = run_probe("process_exit", Some("--sealed"));
+    // Under --sealed, the dispatcher refuses before std::process::exit fires;
+    // the probe's catch branch runs and prints LOSES, and the host exits 0.
+    assert_ne!(code, 42,
+        "CAPS-EXT 8: --sealed must NOT honor process.exit(42); code: {code}, stdout: {stdout}");
+    assert_eq!(classify(&stdout), ProbeOutcome::Loses,
+        "process_exit should LOSE under --sealed; stdout: {stdout}");
+    assert!(stdout.contains("process"),
+        "loss message should reference process capability; got: {stdout}");
+}
+
+#[test]
+fn cwd_read_loses_under_sealed() {
+    let (_, stdout, _) = run_probe("cwd_read", Some("--sealed"));
+    assert_eq!(classify(&stdout), ProbeOutcome::Loses,
+        "CAPS-EXT 8: --sealed must block process.cwd; stdout: {stdout}");
 }

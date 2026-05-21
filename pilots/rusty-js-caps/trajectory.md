@@ -619,3 +619,95 @@ Remaining classes: process control (exit/cwd), env secrets, timing side channels
 ---
 
 *CAPS-EXT 7 closes the filesystem class. The full fs surface — read + write + list + stat + mkdir + remove + copy + cp — is mechanically refused under `--sealed`. Next round leaves the fs.rs file and moves to node_stubs.rs for process.exit and friends.*
+
+---
+
+## CAPS-EXT 8 — 2026-05-21 (process route-through; sixth + seventh probes flipped)
+
+### Headline
+
+`process.exit` and `process.cwd` route through `rt.caps.require_process`. The probe's `try { process.exit(42) }` no longer reaches the syscall under `--sealed` — the dispatcher refuses before `std::process::exit` fires, the catch branch runs, the host exits with code 0 (probe LOSES). **6 of 8 probes mechanically refused.** The host-control attack class is closed.
+
+### Substrate landed
+
+- `host-v2/src/process.rs` (~25 LOC):
+  - `check_process(rt, op)` helper (same shape as `check_fs`)
+  - Gates: `process.exit` → `caps::ProcessOp::Exit(code)`, `process.cwd` → `caps::ProcessOp::ReadCwd`
+  - `process.pid` left as a `set_constant` value (read once at install_bun_host time, no per-call syscall; CAPS-EXT N can promote it to a getter under capability if needed)
+- `host-v2/tests/caps_probes.rs`:
+  - Removed `pre_route_through_sealed_still_wins_process_exit`
+  - Added `process_exit_loses_under_sealed` — asserts exit code != 42 AND stdout contains LOSES sentinel referencing process capability
+  - Added `cwd_read_loses_under_sealed`
+
+### Probe result
+
+**14/14 caps_probes PASS in 0.03 s.**
+
+| probe | Mode 0 | Mode 3 |
+|---|---|---|
+| fs_read | WINS ✓ | LOSES ✓ |
+| fs_write | WINS ✓ | LOSES ✓ |
+| fs_list | WINS ✓ | LOSES ✓ |
+| fs_stat | WINS ✓ | LOSES ✓ |
+| process_exit | WINS ✓ | **LOSES ✓ (flipped)** + host exits 0 |
+| cwd_read | WINS ✓ | **LOSES ✓ (flipped)** |
+| env_read | WINS ✓ | WINS (CAPS-EXT 9) |
+| clock_read | WINS ✓ | WINS (CAPS-EXT 11-12) |
+
+**6 of 8 probes mechanically refused.**
+
+PM-EXT 11+12 regression: 2/2 PASS in 2.57 s. Mode 0 unchanged.
+caps_audit: 3/3 unchanged.
+caps unit tests: 15/15 unchanged.
+
+### Sample round-trip on process_exit
+
+```
+$ cruftless probes/process_exit.mjs
+PROBE:STARTED:process_exit
+$ echo $?
+42
+
+$ cruftless --sealed probes/process_exit.mjs
+PROBE:STARTED:process_exit
+PROBE:LOSES:process_exit:TypeError:process.exit(42): no process capability granted to module 'file:///...' (mode: sealed) — hint: add to caps in package.json: { process: { may_exit: true } }
+$ echo $?
+0
+```
+
+The host process survives the malicious dep's exit attempt. Under Mode 0 the same probe terminates the host with exit code 42.
+
+### Doc 736 §IV class coverage after CAPS-EXT 6+7+8
+
+- Class 1 (read any file): closed
+- Class 1 (host control via process.exit): closed
+- Class 4 (process introspection via cwd): closed
+- Class 6 (persist): closed
+- Class adjacent (info disclosure via list/stat): closed
+
+Remaining classes: env-var secrets, timing side channels, stdio side channels.
+
+### Pred-736 corroboration status
+
+- **Pred-736.4**: ¾ of impossibility claim in place after three route-through rounds. The two largest catastrophic-attack surfaces (RCE-equivalent via fs.write, host-control via process.exit) are closed.
+- **Pred-736.3**: cumulative ~725 LOC after CAPS-EXT 8 (+25). Budget remaining for ~18 effectful methods (env, stdio, clock, scheduler, scheduling timers, microtasks): ~375 LOC. On track.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P05.L2.caps-process-route` | CAPS-EXT 8: process.exit + process.cwd route-through; 6/8 probes refused under --sealed; host survives malicious exit; PM regression GREEN |
+
+### Open scope at CAPS-EXT 8 boundary
+
+1. **CAPS-EXT 9 (env route-through)**: gate `process.env` reads (today a snapshot captured at install_bun_host; lifting it to a getter is the work) + `os.hostname/homedir/tmpdir/userInfo/cpus`. Flips env_read probe.
+
+2. **CAPS-EXT 10 (Stdio route-through)**: gate `process.stdout/stderr.write` + `console.log/error/warn/info/debug`. New stdio_exfil probe needed (file-marker variant, not stdout-sentinel).
+
+3. **CAPS-EXT 11-12 (Clock + Scheduler)**: `Date.now`, `hrtime`, `performance.now`, `setTimeout`, `setInterval`, `queueMicrotask`, `nextTick`. Flips clock_read.
+
+4. **CAPS-EXT 13 (closure)**: every probe LOSES.
+
+---
+
+*CAPS-EXT 8 closes the process-control class. Host process integrity is now structurally guaranteed under `--sealed` — a malicious dep cannot terminate the host, cannot read CWD. The remaining work is env, stdio, clock — secondary attack surfaces compared to fs + process.exit.*

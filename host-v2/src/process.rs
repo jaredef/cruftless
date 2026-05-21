@@ -1,8 +1,26 @@
 //! process intrinsic — minimal v1 surface.
 
 use crate::register::{new_object, register_method, set_constant};
-use rusty_js_runtime::{Runtime, Value};
+use rusty_js_runtime::{Runtime, RuntimeError, Value};
+use rusty_js_runtime::caps as caps;
+use rusty_js_runtime::caps::{ModuleId, ModuleProvenance};
 use std::rc::Rc;
+
+/// CAPS-EXT 8: gate a process operation through the capability
+/// dispatcher. Same shape as host-v2/src/fs.rs's check_fs.
+fn check_process(rt: &Runtime, op: caps::ProcessOp) -> Result<(), RuntimeError> {
+    let url = rt.current_module_url.last().cloned().unwrap_or_default();
+    let provenance = if url.contains("/node_modules/") {
+        ModuleProvenance::Dependency
+    } else if url.starts_with("node:") {
+        ModuleProvenance::Builtin
+    } else {
+        ModuleProvenance::Application
+    };
+    let caller = ModuleId { url, provenance };
+    rt.caps.require_process(&caps::Process::none(), op, &caller)
+        .map_err(|e| RuntimeError::TypeError(e.to_string()))
+}
 
 pub fn install(rt: &mut Runtime, argv: Vec<String>) {
     let process = new_object(rt);
@@ -78,7 +96,8 @@ pub fn install(rt: &mut Runtime, argv: Vec<String>) {
         set_constant(rt, process, name, Value::Object(s));
     }
 
-    register_method(rt, process, "cwd", |_rt, _args| {
+    register_method(rt, process, "cwd", |rt, _args| {
+        check_process(rt, caps::ProcessOp::ReadCwd)?;
         let cwd = std::env::current_dir()
             .ok()
             .and_then(|p| p.to_str().map(|s| s.to_string()))
@@ -86,10 +105,11 @@ pub fn install(rt: &mut Runtime, argv: Vec<String>) {
         Ok(Value::String(Rc::new(cwd)))
     });
 
-    register_method(rt, process, "exit", |_rt, args| {
+    register_method(rt, process, "exit", |rt, args| {
         let code = args.first().map(|v| {
             rusty_js_runtime::abstract_ops::to_number(v) as i32
         }).unwrap_or(0);
+        check_process(rt, caps::ProcessOp::Exit(code))?;
         std::process::exit(code);
     });
 
