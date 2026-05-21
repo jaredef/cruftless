@@ -735,3 +735,101 @@ $ cruftless app.mjs
 *PM-EXT 12 surfaces the workstream through the binary's own CLI.
 Cycle 5 of Doc 734's meta-pipeline closes here: the resolver-instance
 is now visible to its users at every layer it composes against.*
+
+---
+
+## PM-EXT 13 — 2026-05-21 (npm-coverage reconnaissance; ecosystem boundary surfaced)
+
+### Headline
+
+24-package recon run under `nice -n 19`, output staged on the mounted
+T7 drive. **16/24 (67%) Reachable, 8/24 (33%) RangeAt** — but every
+single Reachable package has **closure size 1**. The exact-pin
+carve-out covers leaf libraries cleanly; composed libraries
+universally use ranges in the current ecosystem.
+
+### Substrate landed
+
+- `resolver.rs`: `fetch_latest_version(registry, name) -> String`
+  (~12 LOC). Reads dist-tags.latest from the per-package root endpoint.
+  Used by the recon example to avoid hardcoding version pins that
+  drift.
+- `pilots/rusty-js-pm/derived/examples/npm_coverage.rs` (~110 LOC):
+  24-candidate harness. Per-package classifies as Reachable /
+  RangeAt / NotFound / HttpError / Other. Markdown-table output.
+- `pilots/rusty-js-pm/docs/npm-coverage-recon.md` (~80 lines):
+  curated report with headline, per-package outcomes, latency, and
+  the Branch A / Branch B scope-decision framing.
+
+### Engagement constraint compliance
+
+- Run under `nice -n 19` per keeper instruction
+- Raw output written to `/media/jaredef/T7/cruftless-pm-recon/recon-2026-05-21.md`
+  (mounted drive, not /home)
+- Tarballs NOT downloaded: recon only fetches per-package JSON
+  manifests (each <100 KB). No significant disk footprint.
+
+### Probe result
+
+```
+Total: 24
+Reachable: 16/24 (67%)  — ALL with closure size 1 (zero-transitive leaves)
+RangeAt:    8/24 (33%)
+NotFound:   0/24
+HttpError:  0/24
+Other:      0/24
+```
+
+**Leaves (Reachable):** lodash, ms, chalk, uuid, commander, minimist,
+semver, mkdirp, dotenv, classnames, ansi-styles, is-number, color-name,
+tslib, yallist, lru-cache
+
+**Composed (RangeAt):** debug→`^2.1.3`, axios→`^1.16.0`, express→
+`^2.0.0`, yargs→`^9.0.1`, glob→`^10.2.2`, rimraf→`^13.0.3`, fs-extra→
+`^4.2.0`, prop-types→`^1.4.0`
+
+Per-package latency: 1.5–2.9 s (two TLS 1.3 handshakes dominate);
+full sweep ~50 s under nice.
+
+### Key refinement to PM-EXT 10 hypothesis
+
+PM-EXT 10's debug@4.3.4 → ms@2.1.2 case was a **historical exception**,
+not the rule. debug@latest declares `ms: "^2.1.3"` as a range. The
+hypothesis "the carve-out reaches into composed graphs" should be
+revised to: **"the carve-out covers leaf libraries; composed libraries
+require either semver-range resolution (Branch A) or a documented
+leaves-only constraint (Branch B)."**
+
+Branch A is ~150 LOC for caret/tilde/basic-range per semver spec §11.
+Branch B is no code, just docs. The decision is the keeper's.
+
+### Doc 730 §XVI classification
+
+- Reachable outcomes → **Case-3** (both-diverge → compositional
+  success). Cruftless's PM composes correctly with the ecosystem at
+  the leaf tier.
+- RangeAt outcomes → **Case-2** (ecosystem deviation). The package
+  declares a range; the carve-out explicitly defers. Not a substrate
+  bug; the resolver correctly refuses to silently pick a version.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P05.L1.pm-recon-npm-coverage` | PM-EXT 13: npm-coverage recon (24 packages); 16/24 Reachable (all leaves), 8/24 RangeAt; ecosystem boundary surfaced |
+
+### Open scope at PM-EXT 13 close
+
+1. **Branch A vs Branch B scope decision** (keeper's call).
+2. Larger-sample probe (top-100 / top-500) if Branch A is chosen — to
+   confirm the leaf/composed dichotomy holds at scale and to surface
+   any third-class outcomes hidden in the long tail.
+3. Conflict detection in closure walker (needed regardless of branch).
+4. Lockfile integrity refetch.
+
+---
+
+*PM-EXT 13 surfaces the next scope-decision boundary cleanly. The
+PM-EXT 11 closure gate is unaffected: a user with package.json
+declaring exact-pinned leaf deps still gets a working install + runtime
+loop.*

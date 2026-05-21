@@ -122,6 +122,21 @@ pub fn resolve_specifier(
     })
 }
 
+/// Fetch the `dist-tags.latest` version for `name` from the registry's
+/// per-package root endpoint. Used by PM-EXT 13 reconnaissance to pin
+/// each probed name to a concrete version without hardcoding versions
+/// that drift. Not used by `pm_install` (which only accepts exact pins
+/// in package.json).
+pub fn fetch_latest_version(registry: &str, name: &str) -> Result<String, ResolverError> {
+    let url = format!("{}/{}", registry.trim_end_matches('/'), name);
+    let body = pm_http_get(&url)?;
+    let json: serde_json::Value = serde_json::from_slice(&body)
+        .map_err(|e| ResolverError::Json(format!("{e:?}")))?;
+    let v = json.get("dist-tags").and_then(|d| d.get("latest")).and_then(|v| v.as_str())
+        .ok_or(ResolverError::MissingField("dist-tags.latest"))?;
+    Ok(v.to_string())
+}
+
 /// Walk the transitive-deps closure starting from `roots`, returning
 /// the complete resolution set in BFS order. Dedup is by `(name,
 /// version)` — if two paths in the graph need the same pinned version,
