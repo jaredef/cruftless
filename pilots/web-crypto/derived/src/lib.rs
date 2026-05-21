@@ -1400,13 +1400,25 @@ pub fn ecdsa_verify(
         return Err("ECDSA: public key not on curve".into());
     }
     let q = P256Point::Affine { x: qx, y: qy };
+    let dbg_ec = std::env::var("CRUFTLESS_WC_DEBUG").is_ok();
+    if dbg_ec { eprintln!("[wc-ec] e = hash mod n"); }
     let e = BigUInt::from_be_bytes(hash).modulo(&c.n);
+    if dbg_ec { eprintln!("[wc-ec] → mod_inv_fermat(s, n)"); }
     let w = mod_inv_fermat(&s, &c.n);
+    if dbg_ec { eprintln!("[wc-ec]   mod_inv_fermat OK"); }
+    if dbg_ec { eprintln!("[wc-ec] → mod_mul(e, w, n) = u1"); }
     let u1 = mod_mul(&e, &w, &c.n);
+    if dbg_ec { eprintln!("[wc-ec] → mod_mul(r, w, n) = u2"); }
     let u2 = mod_mul(&r, &w, &c.n);
+    if dbg_ec { eprintln!("[wc-ec] → ec_scalar_mul(u1, G) = p1"); }
     let p1 = ec_scalar_mul(c, &u1, &c.g);
+    if dbg_ec { eprintln!("[wc-ec]   p1 OK"); }
+    if dbg_ec { eprintln!("[wc-ec] → ec_scalar_mul(u2, Q) = p2"); }
     let p2 = ec_scalar_mul(c, &u2, &q);
+    if dbg_ec { eprintln!("[wc-ec]   p2 OK"); }
+    if dbg_ec { eprintln!("[wc-ec] → ec_add(p1, p2)"); }
     let r_pt = ec_add(c, &p1, &p2);
+    if dbg_ec { eprintln!("[wc-ec]   ec_add OK"); }
     let x1 = match r_pt {
         P256Point::Affine { x, .. } => x,
         P256Point::Identity => return Err("ECDSA: u1·G + u2·Q is identity".into()),

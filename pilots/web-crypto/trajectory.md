@@ -60,3 +60,79 @@ Pin-Art tag count: 0 substrate moves under the new prefix so far (workstream fou
 ---
 
 *WC-EXT 0 closes the founding round. Subsequent rounds add substrate moves at the cryptographic-primitive tier.*
+
+---
+
+## WC-EXT 2 — 2026-05-21 (sub-function instrumentation — H8 falsified, H9 introduced)
+
+### Headline
+
+Added per-sub-function debug prints to `ecdsa_verify` (mod_inv_fermat, mod_mul × 2, ec_scalar_mul × 2, ec_add). Re-ran the WC-EXT 1 fixture test under `CRUFTLESS_WC_DEBUG=1`. **Major reframing:**
+
+```
+[wc-ec] e = hash mod n
+[wc-ec] → mod_inv_fermat(s, n)
+[wc-ec]   mod_inv_fermat OK
+[wc-ec] → mod_mul(e, w, n) = u1
+[wc-ec] → mod_mul(r, w, n) = u2
+[wc-ec] → ec_scalar_mul(u1, G) = p1
+[wc-ec]   p1 OK
+[wc-ec] → ec_scalar_mul(u2, Q) = p2
+[wc-ec]   p2 OK
+[wc-ec] → ec_add(p1, p2)
+[wc-ec]   ec_add OK
+[wc-ext-1] result: Ok(())
+test result: ok. 1 passed; 0 failed ... finished in 8.18s
+```
+
+**The test PASSED in 8.18 seconds.** `ecdsa_verify` returned `Ok(())` — meaning the signature verified correctly. **There is no hang.** What we called a "hang" across TLS-EXT 5–8 is actually slow execution: ec_scalar_mul on the Pi takes roughly 4 seconds per call. ECDSA-P-256 verification requires 2 scalar muls, so ~8 seconds per verify.
+
+In the TLS context: chain_walk performs additional ECDSA cert-signature verifications, AND there's the CertificateVerify verify itself. For api.github.com's 2-3-cert chain plus CV, total handshake time is in the 24-32+ second range. A 30-second timeout still falls short (confirmed empirically: TLS probe against api.github.com with `timeout 30` still hits 143).
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P06.E3.wc-h8-falsified-h9-introduced` | sub-function bisect produced 8s verify (not hang); H8 (non-terminating) falsified; H9 (ec_scalar_mul performance) introduced |
+
+### Hypothesis space reframed
+
+- ~~H8 ecdsa_verify enters non-terminating path~~ ❌ **FALSIFIED.**
+- **H9** introduced: `ec_scalar_mul` on Pi is glacially slow (~4s/call). ECDSA-P-256 verify needs 2 calls ≈ 8s. TLS handshakes against ECDSA-leaf CDNs need additional verifications during chain_walk; total handshake time exceeds any reasonable probe budget. The "hang" was actually slow-but-terminating execution beyond the timeout horizon.
+
+### Substrate-move target reframed
+
+The fix is **performance**, not **correctness**. Standard ECC scalar-multiplication optimizations:
+
+1. **Window-based scalar mul (wNAF)**: process k bits at a time instead of 1 bit at a time. 4-bit window reduces add operations by ~4×.
+2. **Precomputed comb table for the fixed generator G**: G is constant; precompute `[G, 2G, 4G, 8G, ...]` at module init; scalar mul with G becomes table lookup + adds (no doubles). 5-10× speedup for the u1*G call.
+3. **Constant-time Montgomery ladder**: alternative algorithm with predictable timing (also side-channel-friendly).
+4. **Projective coordinates**: avoid modular inverse on every point operation. The biggest single win — typical 5-20× speedup over affine-only.
+
+Any of (2) and (4) together would bring P-256 verify well under 1 second on the Pi, making CDN handshakes complete in normal probe budgets.
+
+### Probe-set implication
+
+Re-categorize the TLS workstream's 5-endpoint probe per the H9 reframing:
+
+| endpoint | observed | under-H9 reading |
+|---|---|---|
+| E1 example.com (CloudFront, ECDSA leaf likely) | "Codec/hang" | slow ECDSA verify; would succeed in 30-60+ s |
+| E3 google.com (Google FE, ECDSA leaf) | "Codec/hang" | same |
+| E4 api.github.com (Fastly, ECDSA-P-256 confirmed) | "hang at CV" | 8s+ per verify × multiple verifies = 30+s |
+| E2 httpbin.org | CloseNotify mid-handshake | unrelated to H9 |
+| E5 registry.npmjs.org | TLS-1.2-only fatal alert | unrelated to H9 (Case-4 scope) |
+
+H9 likely explains E1, E3, E4. E2 and E5 are different cases.
+
+### Open scope at WC-EXT 2 boundary
+
+1. **WC-EXT 3**: implement projective-coordinate scalar mul OR precomputed comb table for the generator. Either alone should bring verify below 2s; both together should land it under 500ms.
+2. **WC-EXT 4**: re-run WC-EXT 1 fixture test, expect sub-second result.
+3. **WC-EXT 5**: re-run TLS-EXT 4's 5-endpoint probe with budgets sized for new speed. Expect E1, E3, E4 to flip from FAIL to either PASS or some next-failure-mode (which is itself useful diagnostic).
+
+Verified empirically that 30s TLS budget against api.github.com still hits SIGTERM, so the speedup is genuinely needed; expanding the probe timeout is not a substitute.
+
+---
+
+*WC-EXT 2 closes with a major reframing. The "hang" was glacial-but-terminating execution. Substrate-move target moves from "fix non-terminating bug" to "optimize ec_scalar_mul to a sane speed for ECDSA-P-256 verify on Pi."*
