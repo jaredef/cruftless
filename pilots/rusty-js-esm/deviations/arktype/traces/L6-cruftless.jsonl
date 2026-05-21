@@ -1,0 +1,5 @@
+{"probe":"L6-pre-eq","i":0,"j":1,"li_kind":"unit","rj_kind":"unit"}
+{"probe":"L6-post-intersect","i":0,"j":1,"int_typeof":"object","is_disjoint":"Array"}
+{"probe":"L6-not-disjoint","i":0,"j":1}
+{"probe":"L6-post-overlap","i":0,"j":1}
+cruftless: evaluation error: TypeError("callee is not callable: undefined [argc=1] (method='rawIn') (receiver=Array(len=1) [...]) (proto-chain='Array→Array.prototype→Object.prototype: no 'rawIn' slot on chain') @file:///tmp/ak-probe/node_modules/@ark/schema/out/roots/union.js:665:46 (callee='inner') (callee_val=Object keys=[length,name]) (method='$') (receiver=Object keys=[kind,hasAssociatedError,collapsibleKey,…]) (callee='ctx') (callee_val=Object keys=[length,name]) (method='def') (receiver=Object keys=[config,resolvedConfig,name,…]) (method='maybeResolve') (receiver=Object keys=[config,resolvedConfig,name,…]) (method='export') (receiver=Object keys=[config,resolvedConfig,name,…])")
