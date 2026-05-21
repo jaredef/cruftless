@@ -1293,17 +1293,129 @@ fn ec_add(c: &Curve, p1: &P256Point, p2: &P256Point) -> P256Point {
     }
 }
 
-pub fn ec_scalar_mul(c: &Curve, k: &BigUInt, pt: &P256Point) -> P256Point {
-    let mut result = P256Point::Identity;
-    let mut addend = pt.clone();
-    let bits = k.bit_len();
-    for i in 0..bits {
-        if k.bit(i) {
-            result = ec_add(c, &result, &addend);
-        }
-        addend = ec_double(c, &addend);
+// ──────────────── WC-EXT 3: Jacobian-coordinate scalar mul ─────────
+//
+// Per Doc 731 §XV — the optimization at this tier is the lowering-
+// compiler closure applied to the arithmetic substrate. The substrate
+// move: stop doing one modular inverse per ec_double + ec_add (which
+// dominates the cost), and instead represent intermediate points in
+// Jacobian coordinates (X, Y, Z) where the affine (x, y) = (X/Z²,
+// Y/Z³). Jacobian double + (Jacobian + affine) addition are inverse-
+// free; only one inverse is required at the very end to convert
+// back to affine. For a 256-bit scalar, this collapses ~384 modular
+// inverses to 1.
+
+#[derive(Clone)]
+struct JacPoint {
+    x: BigUInt,
+    y: BigUInt,
+    z: BigUInt,  // Identity represented by Z = 0
+}
+
+impl JacPoint {
+    fn identity() -> Self {
+        JacPoint { x: BigUInt::one(), y: BigUInt::one(), z: BigUInt::from_be_bytes(&[]) }
     }
-    result
+    fn is_identity(&self) -> bool { self.z.is_zero() }
+    fn from_affine(pt: &P256Point) -> Self {
+        match pt {
+            P256Point::Identity => Self::identity(),
+            P256Point::Affine { x, y } => JacPoint {
+                x: x.clone(), y: y.clone(), z: BigUInt::one(),
+            }
+        }
+    }
+}
+
+// Jacobian doubling, a = -3 case (used by all NIST P-curves).
+// Per Hankerson §3.2.2 (formula 3.21):
+//   delta = Z²
+//   gamma = Y²
+//   beta  = X · gamma
+//   alpha = 3·(X - delta)·(X + delta)         (uses a = -3)
+//   X3 = alpha² - 8·beta
+//   Z3 = (Y + Z)² - gamma - delta
+//   Y3 = alpha·(4·beta - X3) - 8·gamma²
+fn jac_double(c: &Curve, j: &JacPoint) -> JacPoint {
+    let p = &c.p;
+    if j.is_identity() { return j.clone(); }
+    if j.y.is_zero() { return JacPoint::identity(); }
+    let three = BigUInt::from_be_bytes(&[3]);
+    let four = BigUInt::from_be_bytes(&[4]);
+    let eight = BigUInt::from_be_bytes(&[8]);
+    let delta = mod_mul(&j.z, &j.z, p);
+    let gamma = mod_mul(&j.y, &j.y, p);
+    let beta = mod_mul(&j.x, &gamma, p);
+    let x_minus_d = mod_sub(&j.x, &delta, p);
+    let x_plus_d  = mod_add(&j.x, &delta, p);
+    let alpha = mod_mul(&three, &mod_mul(&x_minus_d, &x_plus_d, p), p);
+    let alpha2 = mod_mul(&alpha, &alpha, p);
+    let x3 = mod_sub(&alpha2, &mod_mul(&eight, &beta, p), p);
+    let y_plus_z = mod_add(&j.y, &j.z, p);
+    let z3 = mod_sub(&mod_sub(&mod_mul(&y_plus_z, &y_plus_z, p), &gamma, p), &delta, p);
+    let four_beta_minus_x3 = mod_sub(&mod_mul(&four, &beta, p), &x3, p);
+    let gamma2 = mod_mul(&gamma, &gamma, p);
+    let y3 = mod_sub(&mod_mul(&alpha, &four_beta_minus_x3, p), &mod_mul(&eight, &gamma2, p), p);
+    JacPoint { x: x3, y: y3, z: z3 }
+}
+
+// Mixed addition: Jacobian + Affine → Jacobian. Per Hankerson §3.2.1.
+fn jac_add_affine(c: &Curve, j: &JacPoint, a: &P256Point) -> JacPoint {
+    use std::cmp::Ordering;
+    let p = &c.p;
+    let (ax, ay) = match a {
+        P256Point::Identity => return j.clone(),
+        P256Point::Affine { x, y } => (x, y),
+    };
+    if j.is_identity() { return JacPoint::from_affine(a); }
+    let z1z1 = mod_mul(&j.z, &j.z, p);
+    let u2 = mod_mul(ax, &z1z1, p);
+    let z1_cubed = mod_mul(&j.z, &z1z1, p);
+    let s2 = mod_mul(ay, &z1_cubed, p);
+    if u2.cmp(&j.x) == Ordering::Equal {
+        if s2.cmp(&j.y) == Ordering::Equal { return jac_double(c, j); }
+        return JacPoint::identity();
+    }
+    let h = mod_sub(&u2, &j.x, p);
+    let r = mod_sub(&s2, &j.y, p);
+    let h2 = mod_mul(&h, &h, p);
+    let h3 = mod_mul(&h2, &h, p);
+    let x1_h2 = mod_mul(&j.x, &h2, p);
+    let two = BigUInt::from_be_bytes(&[2]);
+    let r2 = mod_mul(&r, &r, p);
+    let x3 = mod_sub(&mod_sub(&r2, &h3, p), &mod_mul(&two, &x1_h2, p), p);
+    let y3 = mod_sub(&mod_mul(&r, &mod_sub(&x1_h2, &x3, p), p),
+                     &mod_mul(&j.y, &h3, p), p);
+    let z3 = mod_mul(&j.z, &h, p);
+    JacPoint { x: x3, y: y3, z: z3 }
+}
+
+fn jac_to_affine(c: &Curve, j: &JacPoint) -> P256Point {
+    let p = &c.p;
+    if j.is_identity() { return P256Point::Identity; }
+    let z_inv = mod_inv_fermat(&j.z, p);
+    let z_inv2 = mod_mul(&z_inv, &z_inv, p);
+    let z_inv3 = mod_mul(&z_inv2, &z_inv, p);
+    P256Point::Affine {
+        x: mod_mul(&j.x, &z_inv2, p),
+        y: mod_mul(&j.y, &z_inv3, p),
+    }
+}
+
+pub fn ec_scalar_mul(c: &Curve, k: &BigUInt, pt: &P256Point) -> P256Point {
+    // MSB-to-LSB double-and-add. Result accumulated in Jacobian;
+    // the addend pt stays affine throughout. The only inverse is the
+    // final jac_to_affine.
+    let bits = k.bit_len();
+    if bits == 0 { return P256Point::Identity; }
+    let mut result = JacPoint::identity();
+    for i in (0..bits).rev() {
+        result = jac_double(c, &result);
+        if k.bit(i) {
+            result = jac_add_affine(c, &result, pt);
+        }
+    }
+    jac_to_affine(c, &result)
 }
 
 /// Generate an EC keypair on the given curve. Returns (d, x, y) where

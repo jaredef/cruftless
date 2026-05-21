@@ -136,3 +136,65 @@ Verified empirically that 30s TLS budget against api.github.com still hits SIGTE
 ---
 
 *WC-EXT 2 closes with a major reframing. The "hang" was glacial-but-terminating execution. Substrate-move target moves from "fix non-terminating bug" to "optimize ec_scalar_mul to a sane speed for ECDSA-P-256 verify on Pi."*
+
+---
+
+## WC-EXT 3 — 2026-05-21 (Jacobian-coordinate scalar mul, the Doc 731 §XV substrate move)
+
+### Headline
+
+Implemented Jacobian-coordinate `ec_scalar_mul` per Hankerson §3.2.1–§3.2.2. Replaces affine double-and-add (which called `mod_inv_fermat` on every point operation) with Jacobian double + mixed (Jacobian+affine) addition. Only one modular inverse remains per scalar mul (the final `jac_to_affine` conversion), down from ~384 inverses per call.
+
+This is the empirical exercise of Doc 731 §XV (cryptographic primitive optimization as the lowering-compiler closure at the arithmetic tier). The substrate move's R1–R8 mapping:
+- R1 single tier — one Jacobian implementation, no tier hierarchy
+- R2 standard ECC literature owns the algorithm — Hankerson formulas (3.21 for doubling, mixed-add formula)
+- R3 verifier-before-emission — on_curve + range checks already in ecdsa_verify
+- R5 first-cut tier-1 — plain double-and-add over Jacobian (no wNAF window yet, no comb table yet — those are queued)
+- R7 no internal optimization passes — substrate-tier choice is algorithm-selection, not code-rewriting
+
+### Measurement
+
+| metric | before (affine) | after (Jacobian) | speedup |
+|---|---|---|---|
+| WC-EXT 1 fixture (`ecdsa_verify` on captured 64-byte sig + (qx, qy) + 32-byte hash) | 8.18s | **0.29s** | **~28×** |
+| All 117 web-crypto regression tests | (passed) | passed | no regression |
+| TLS handshake to api.github.com (ECDSA-P-256 leaf + chain) | timeout > 30s | **~10s** | from-infinite-to-bounded |
+
+### Probe re-run (5-endpoint TLS)
+
+| endpoint | before | after |
+|---|---|---|
+| E1 example.com | Codec(Truncated) / hang | **OK (528 bytes)** ✓ |
+| E2 httpbin.org | CloseNotify mid-handshake | CloseNotify (unrelated bug, separate workstream) |
+| E3 google.com | Codec(Truncated) / hang | **OK (80535 bytes)** ✓ |
+| E4 api.github.com | Codec(Truncated) / hang | **OK (2262 bytes)** ✓ |
+| E5 npm | protocol_version alert | protocol_version (TLS 1.2-only, Case-4 scope decision) |
+
+**Score: 3/5 PASS** (up from 0/5 at TLS-EXT 0). H9 confirmed in operation: removing the per-op modular-inverse cost flips three of the four CDN endpoints. Remaining E2 + E5 are different cases.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P06.E3.wc-jacobian-scalar-mul` | Jacobian ec_scalar_mul; 28× speedup on captured fixture; TLS probe 0/5 → 3/5 PASS; Doc 731 §XV empirically corroborated |
+
+### Conjecture status
+
+Doc 731 §XV.f's prediction ("ECDSA-P-256 verify dropping from 8 seconds to under 500 milliseconds via projective coordinates + comb table for G") is partially confirmed: projective coordinates alone gave 28× speedup, landing at 0.29s (under 500ms). The comb table for G is queued as WC-EXT 4 and would land another 5-10× on the u1·G call, bringing the full verify well under 100ms.
+
+The Doc 731 framework now has two empirically-anchored substrate-tier instances:
+- bytecode-to-machine-code (JIT-EXT 4: 425× speedup, trusted-i64 ceiling, doc §XIV)
+- affine-to-Jacobian ECC (WC-EXT 3: 28× speedup, projective ceiling, doc §XV)
+
+Pred-731.XV.1 (framework applies at RSA modexp + AES round dispatch + Poly1305 + BLAKE2) remains open — each is a candidate next-tier instance to corroborate.
+
+### Open scope at WC-EXT 3 boundary
+
+1. **WC-EXT 4 (Doc 731 §XV continuation)**: precomputed comb table for the generator G at module init. Expected another 5-10× on the u1·G call. Brings verify under 100ms.
+2. **WC-EXT 5**: wNAF window-based scalar mul for the variable-input case (u2·Q). Expected ~4× speedup on that half.
+3. **TLS-EXT 9** (separate workstream): investigate E2 httpbin CloseNotify-mid-handshake — likely cert validation issue or alert handling at the wrong site.
+4. **Keeper-decision still open**: E5 npm (lift TLS-1.2 carve-out vs substitute endpoint).
+
+---
+
+*WC-EXT 3 closes with Doc 731 §XV empirically corroborated. The substrate-move catalog at the arithmetic tier is now operative. The cruftless engagement can now talk to three of the five probed CDN endpoints via its own engagement-internal TLS+web-crypto substrate.*
