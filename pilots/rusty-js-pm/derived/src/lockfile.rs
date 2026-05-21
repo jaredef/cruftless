@@ -94,6 +94,7 @@ mod tests {
             tarball_url: format!("https://cdn.example/{name}-{version}.tgz"),
             integrity: Some(format!("sha512-{name}{version}=")),
             shasum: None,
+            dependencies: Default::default(),
         }
     }
 

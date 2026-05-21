@@ -177,6 +177,7 @@ mod tests {
             name: "x".into(), version: "0.0.1".into(),
             tarball_url: "ignored".into(),
             integrity: None, shasum: None,
+            dependencies: Default::default(),
         };
         let pkg = FetchedPackage { staging_dir: staging.clone(), file_count: 2 };
         let linked = link_package(&dep, pkg, &root).expect("link");
@@ -202,6 +203,7 @@ mod tests {
             name: "x".into(), version: "0.0.2".into(),
             tarball_url: "ignored".into(),
             integrity: None, shasum: None,
+            dependencies: Default::default(),
         };
         let pkg = FetchedPackage { staging_dir: staging, file_count: 1 };
         let linked = link_package(&dep, pkg, &root).unwrap();

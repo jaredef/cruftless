@@ -19,6 +19,8 @@
 //! 1.3 only per seed §IV carve-out). npmmirror.com is npm-protocol
 //! compatible and TLS 1.3 reachable through cruftless's substrate.
 
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
+
 use crate::http::{pm_http_get, HttpError};
 
 /// Default registry endpoint for the PM first cut. Chosen per Doc 732
@@ -34,6 +36,12 @@ pub struct ResolvedDep {
     pub tarball_url: String,
     pub integrity: Option<String>,  // SRI: sha512-<b64>
     pub shasum: Option<String>,     // hex sha1 (legacy fallback)
+    /// Transitive deps as declared in the per-version manifest's
+    /// `dependencies` object. Stored verbatim; ranges will be rejected
+    /// by `resolve_specifier` when the closure walker recurses into
+    /// them. Empty map for leaf packages.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub dependencies: BTreeMap<String, String>,
 }
 
 #[derive(Debug)]
@@ -84,6 +92,17 @@ pub fn resolve_specifier(
     let integrity = dist.get("integrity").and_then(|v| v.as_str()).map(String::from);
     let shasum = dist.get("shasum").and_then(|v| v.as_str()).map(String::from);
 
+    // Parse transitive deps (Class A field per docs/registry-response-
+    // schema.md). Absent means zero-transitive leaf.
+    let mut dependencies = BTreeMap::new();
+    if let Some(obj) = json.get("dependencies").and_then(|v| v.as_object()) {
+        for (k, v) in obj {
+            if let Some(s) = v.as_str() {
+                dependencies.insert(k.clone(), s.to_string());
+            }
+        }
+    }
+
     if name_returned != name {
         return Err(ResolverError::Json(format!(
             "registry returned name={} for requested {}", name_returned, name)));
@@ -99,7 +118,50 @@ pub fn resolve_specifier(
         tarball_url: tarball.to_string(),
         integrity,
         shasum,
+        dependencies,
     })
+}
+
+/// Walk the transitive-deps closure starting from `roots`, returning
+/// the complete resolution set in BFS order. Dedup is by `(name,
+/// version)` — if two paths in the graph need the same pinned version,
+/// it appears once. **Conflicts** — two roots needing different
+/// versions of the same name — are NOT handled in the first cut: the
+/// later visit silently replaces the earlier in the BFS dedup. Doc 732
+/// §VI carve-out: under exact-pin discipline, a conflict means the
+/// dep graph is inconsistent and should be surfaced by the caller. The
+/// closure walker keeps both ordering and dedup; conflict-detection is
+/// PM-EXT N+1 work.
+///
+/// Any transitive dep specified with a semver range (caret, tilde,
+/// `*`, etc.) causes the walker to error with `NonExactVersionSpec`.
+/// That is the §VI carve-out behaving as designed — surfacing the
+/// ecosystem-coverage boundary of the exact-pin first cut.
+pub fn resolve_closure(
+    registry: &str,
+    roots: &[(String, String)],
+) -> Result<Vec<ResolvedDep>, ResolverError> {
+    let mut seen: BTreeSet<(String, String)> = BTreeSet::new();
+    let mut queue: VecDeque<(String, String)> = VecDeque::new();
+    let mut out = Vec::new();
+
+    for (n, v) in roots {
+        if seen.insert((n.clone(), v.clone())) {
+            queue.push_back((n.clone(), v.clone()));
+        }
+    }
+
+    while let Some((name, version)) = queue.pop_front() {
+        let resolved = resolve_specifier(registry, &name, &version)?;
+        for (dn, dv) in &resolved.dependencies {
+            if seen.insert((dn.clone(), dv.clone())) {
+                queue.push_back((dn.clone(), dv.clone()));
+            }
+        }
+        out.push(resolved);
+    }
+
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -116,6 +178,41 @@ mod tests {
     fn rejects_tilde_range() {
         let r = resolve_specifier(DEFAULT_REGISTRY, "lodash", "~4.17.21");
         assert!(matches!(r, Err(ResolverError::NonExactVersionSpec(_))));
+    }
+
+    #[test]
+    #[ignore]
+    fn closure_lodash_is_leaf() {
+        let roots = vec![("lodash".to_string(), "4.17.21".to_string())];
+        let closure = resolve_closure(DEFAULT_REGISTRY, &roots).expect("closure");
+        assert_eq!(closure.len(), 1, "lodash 4.17.21 is zero-transitive");
+        assert_eq!(closure[0].name, "lodash");
+        assert!(closure[0].dependencies.is_empty());
+    }
+
+    #[test]
+    #[ignore]
+    fn closure_probe_small_transitive() {
+        // Probe a small package with declared dependencies. We don't
+        // know in advance whether all transitives are exact-pinned; the
+        // expected outcome is one of: (a) success with closure.len() > 1,
+        // demonstrating recursion, or (b) NonExactVersionSpec, surfacing
+        // the §VI exact-pin boundary on real ecosystem packages. Either
+        // is informative; this test prints and asserts only that the
+        // closure walker terminates without panicking.
+        let roots = vec![("debug".to_string(), "4.3.4".to_string())];
+        let result = resolve_closure(DEFAULT_REGISTRY, &roots);
+        match result {
+            Ok(closure) => {
+                eprintln!("debug@4.3.4 closure: {} packages", closure.len());
+                for r in &closure { eprintln!("  {}@{}", r.name, r.version); }
+                assert!(closure.iter().any(|r| r.name == "debug"));
+            }
+            Err(ResolverError::NonExactVersionSpec(v)) => {
+                eprintln!("debug@4.3.4 transitive surfaced range: {v}");
+            }
+            Err(e) => panic!("unexpected error: {e:?}"),
+        }
     }
 
     /// Network-dependent. Run via:

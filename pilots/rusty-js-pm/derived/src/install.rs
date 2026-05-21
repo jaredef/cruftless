@@ -18,7 +18,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::resolver::{resolve_specifier, ResolverError, ResolvedDep, DEFAULT_REGISTRY};
+use crate::resolver::{resolve_closure, ResolverError, ResolvedDep, DEFAULT_REGISTRY};
 use crate::fetcher::{fetch_and_extract, FetchError};
 use crate::linker::{link_package, LinkError};
 use crate::lockfile::{Lockfile, LockfileError, LOCKFILE_NAME};
@@ -61,7 +61,14 @@ pub fn pm_install(project_dir: &Path, registry: &str) -> Result<InstallReport, I
     let nm_root = project_dir.join("node_modules");
     let mut report = InstallReport { installed: Vec::new(), skipped: Vec::new() };
 
-    for (name, version) in deps {
+    // PM-EXT 10: walk the transitive closure before any fetch, so a
+    // range-using transitive surfaces NonExactVersionSpec before any
+    // disk writes. The closure is BFS-ordered; install order follows.
+    let closure: Vec<ResolvedDep> = resolve_closure(registry, &deps)?;
+
+    for resolved in closure {
+        let name = resolved.name.clone();
+        let version = resolved.version.clone();
         let install_dir = nm_root.join(&name);
         let already_present = install_dir.join("package.json").exists()
             && lock.get(&name, &version).is_some();
@@ -69,8 +76,6 @@ pub fn pm_install(project_dir: &Path, registry: &str) -> Result<InstallReport, I
             report.skipped.push((name, version));
             continue;
         }
-
-        let resolved: ResolvedDep = resolve_specifier(registry, &name, &version)?;
 
         // Stage in node_modules/.cruftless-staging/<name>-<version>/
         // so the rename in PM-R3 is same-fs (no EXDEV fallback under
@@ -194,6 +199,34 @@ mod tests {
         assert_eq!(r2.installed.len(), 0, "second run should skip, not refetch");
         assert_eq!(r2.skipped.len(), 1);
         assert_eq!(r2.skipped[0].0, "lodash");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// PM-EXT 10 end-to-end: install debug@4.3.4 which has one
+    /// exact-pinned transitive dep (ms@2.1.2). Verifies the closure
+    /// walker drives recursive resolution + install.
+    #[test]
+    #[ignore]
+    fn install_debug_with_transitive() {
+        let dir = workdir("install-debug");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("package.json"),
+            br#"{"name":"app","version":"0.0.1","dependencies":{"debug":"4.3.4"}}"#).unwrap();
+
+        let r = pm_install(&dir, DEFAULT_REGISTRY).expect("install");
+        assert_eq!(r.installed.len(), 2,
+            "expected debug + ms; got {:?}", r.installed);
+        let names: Vec<&str> = r.installed.iter().map(|(n, _)| n.as_str()).collect();
+        assert!(names.contains(&"debug"));
+        assert!(names.contains(&"ms"));
+
+        assert!(dir.join("node_modules/debug/package.json").exists());
+        assert!(dir.join("node_modules/ms/package.json").exists());
+
+        let lock = Lockfile::read_from(&dir.join(LOCKFILE_NAME)).unwrap();
+        assert!(lock.get("debug", "4.3.4").is_some());
+        assert!(lock.get("ms", "2.1.2").is_some());
 
         let _ = std::fs::remove_dir_all(&dir);
     }

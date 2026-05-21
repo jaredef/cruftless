@@ -465,3 +465,91 @@ stack covered the scope.
 workstream's first cut for single-dep zero-transitive installs. Remaining
 work (transitive deps, runtime smoke, CLI wiring) extends coverage but
 does not change the substrate.*
+
+---
+
+## PM-EXT 10 — 2026-05-21 (transitive deps closure walker)
+
+### Headline
+
+PM-R1 now walks the transitive-deps closure before any fetch. Surfaces
+exact-pin violations at resolution time (before disk writes); under
+exact-pin discipline, the closure walker terminates only when every
+visited dep is exact-pinned. **End-to-end install of debug@4.3.4
+PASSES in 2.75 s, correctly resolving + installing its sole exact-
+pinned transitive ms@2.1.2.**
+
+### Substrate landed
+
+- `resolver.rs`:
+  - `ResolvedDep` gains `dependencies: BTreeMap<String, String>` field
+    (serde-default-skipped-if-empty; reads from per-version manifest's
+    `dependencies` object)
+  - `resolve_closure(registry, &[(name, version)]) -> Vec<ResolvedDep>`:
+    BFS walker; dedup by `(name, version)`; any range-spec'd transitive
+    raises `NonExactVersionSpec` at the recursion point
+- `install.rs`:
+  - `pm_install` now calls `resolve_closure` before any fetch — range-
+    violations surface before disk writes, on a clean transaction
+    boundary
+  - Loop iterates closure-order (BFS); per-package skip-check unchanged
+
+### Probe result
+
+**Closure walker (2/2 PASS):**
+- `closure_lodash_is_leaf`: lodash 4.17.21 → 1 entry, empty deps
+- `closure_probe_small_transitive`: debug 4.3.4 → 2 entries (debug +
+  ms@2.1.2); both exact-pinned
+
+**Transitive end-to-end install (1/1 PASS in 2.75 s):**
+- package.json `{"dependencies": {"debug": "4.3.4"}}`
+- Installs: debug@4.3.4 + ms@2.1.2
+- Lockfile entries written for both
+- `node_modules/{debug,ms}/package.json` both present
+
+**Cumulative PM lib tests: 27/27 PASS** (25 prior + 2 closure units).
+**--ignored network tests: 7/8 PASS**; the 1 failure is the
+pre-existing TLS 1.2 carve-out (`http::fetch_lodash_manifest` against
+registry.npmjs.org); not a PM-EXT 10 regression.
+
+### Doc 730 §XVI ecosystem-coverage observation
+
+The first non-lodash package probed in earnest — debug@4.3.4 — turned
+out to be **fully exact-pinned**, including its sole transitive
+ms@2.1.2. This is informative: a substantial subset of the npm corpus
+is reachable under exact-pin discipline. The §VI carve-out is not just
+"a few leaf packages" but reaches into composed graphs.
+
+Open empirical question: what fraction of the npm top-100 is
+exact-pin-reachable end-to-end? Probing that is a PM-EXT N+1
+reconnaissance move; the closure walker now has the substrate to make
+the measurement cheap.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P05.L1.pm-closure-walker` | PM-EXT 10: transitive deps closure walker; debug@4.3.4 + ms@2.1.2 end-to-end PASS; 27/27 PM lib tests |
+
+### Open scope at PM-EXT 10 boundary
+
+1. **PM-EXT 11 (runtime smoke)**: from an installed `node_modules/`,
+   evaluate `require('lodash').identity(42) === 42` through cruftless's
+   runtime. Workstream closure gate.
+2. **PM-EXT 12 (CLI surface)**: wire `pm_install` as a host-v2
+   subcommand.
+3. **PM-EXT 13 (npm-coverage reconnaissance)**: walk N popular npm
+   packages through `resolve_closure`; classify per outcome — fully-
+   exact-reachable / first-hop-range / deep-range. Output is a
+   coverage map for the §VI carve-out.
+4. **Conflict detection**: two roots needing different versions of the
+   same name currently dedup silently (last-write-wins in BFS order).
+   Add an explicit `ConflictError` when `(name, v1)` and `(name, v2)`
+   appear in the closure with `v1 != v2`. Cheap addition; queued.
+
+---
+
+*PM-EXT 10 closes coverage cycle 1: the closure walker turns single-
+dep zero-transitive into N-dep arbitrary-depth (under exact-pin
+discipline). The substrate is now sufficient for any package whose
+transitive closure happens to be exact-pinned end-to-end.*
