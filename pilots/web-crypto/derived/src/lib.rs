@@ -686,6 +686,14 @@ impl BigUInt {
     /// a copy of the scalar's limbs.
     pub fn limbs(&self) -> &[u32] { &self.0 }
 
+    /// Build a BigUInt from a limbs vector (little-endian u32),
+    /// trimming trailing zeros. Used by WC-EXT 8 Montgomery REDC.
+    pub fn from_limbs(limbs: Vec<u32>) -> Self {
+        let mut r = BigUInt(limbs);
+        r.trim();
+        r
+    }
+
     pub fn from_be_bytes(b: &[u8]) -> Self {
         // Strip leading zeros; not strictly necessary but keeps trim() cheap.
         let n_limbs = (b.len() + 3) / 4;
@@ -1028,6 +1036,113 @@ fn mod_inv_fermat(a: &BigUInt, p: &BigUInt) -> BigUInt {
     let two = BigUInt::from_be_bytes(&[2]);
     let p_minus_2 = p.sub(&two);
     a.mod_pow(&p_minus_2, p)
+}
+
+// ──────────────── WC-EXT 8: Montgomery arithmetic at the BigUInt tier ──
+//
+// Per Doc 731 §XV.b's R5 ("first-cut tier-1 implementations") and
+// Doc 735 §V (temporal alphabet promotion): the current `modulo`
+// implementation uses bit-by-bit binary long division (8x scope of
+// limb-aligned division), making it the dominant cost per `mod_mul`
+// call. Montgomery multiplication eliminates division entirely from
+// the hot path by representing values in a domain where modular
+// reduction becomes a sequence of additions + shifts.
+//
+// This substrate move lives at the **BigUInt arithmetic tier** (per
+// the seed §II.1 layering), below modular-arithmetic and EC tiers.
+// Speedups here propagate upward through every primitive that uses
+// modular arithmetic against the P-256 prime: ECDSA verify, ECDSA
+// sign, ECDH key derivation, JWT/JOSE signing paths.
+//
+// First-cut scope: P-256 only (m_prime = 1 trivially because
+// p256_p's low limb is 0xFFFFFFFF = -1 mod 2^32). Generalization to
+// arbitrary odd modulus is queued for later rounds.
+//
+// What this round lands: the REDC primitive + to/from Montgomery
+// conversions + smoke test against canonical mod_mul outputs.
+// Routing of ec_scalar_mul / jac_double / jac_add_affine into
+// Montgomery form is queued for WC-EXT 9 once correctness is
+// gold-standard via the smoke suite.
+
+/// Precomputed R² mod p for P-256, where R = 2^256. Used to convert
+/// values into Montgomery form via `to_mont(a) = mont_mul(a, R²)`.
+/// Computed once at first use (one binary-long-division of 2^512 by p,
+/// a few-millisecond operation at process start).
+static P256_R_SQ_MOD_P: OnceLock<BigUInt> = OnceLock::new();
+fn p256_r_sq() -> &'static BigUInt {
+    P256_R_SQ_MOD_P.get_or_init(|| {
+        // 2^512 as BigUInt: 65-byte big-endian, msb = 1, rest = 0.
+        let mut bytes = vec![0u8; 65];
+        bytes[0] = 1;
+        BigUInt::from_be_bytes(&bytes).modulo(&p256_p())
+    })
+}
+
+/// Montgomery REDC for P-256 (8 limbs). Input `t` is a Vec<u32> of
+/// up to 16 limbs (the unreduced product T from a multiplication, or
+/// any value < p · R). Output is T · R⁻¹ mod p in standard form, as
+/// an 8-limb BigUInt. The algorithm follows HAC §14.32 specialized to
+/// m' = 1 (which holds for P-256 because p[0] = 0xFFFFFFFF).
+fn p256_redc(mut t: Vec<u32>) -> BigUInt {
+    // Ensure t has room for at least 17 limbs to absorb carries.
+    while t.len() < 17 { t.push(0); }
+    let p = p256_p();
+    let p_limbs = p.limbs();
+    debug_assert_eq!(p_limbs.len(), 8, "p256_p must be 8 limbs");
+
+    // For i = 0..8: t += t[i] * p << (32 * i).
+    // (m' = 1 for P-256, so u_i = t[i] * m' mod 2^32 = t[i].)
+    for i in 0..8 {
+        let u = t[i] as u64;
+        if u == 0 { continue; }
+        let mut carry: u64 = 0;
+        for j in 0..8 {
+            let prod = u * (p_limbs[j] as u64);
+            let sum = (t[i + j] as u64) + (prod & 0xFFFF_FFFF) + (carry & 0xFFFF_FFFF);
+            t[i + j] = sum as u32;
+            carry = (sum >> 32) + (prod >> 32) + (carry >> 32);
+        }
+        // Propagate remaining carry above limb (i + 8).
+        let mut k = 8;
+        while carry > 0 && (i + k) < t.len() {
+            let sum = (t[i + k] as u64) + carry;
+            t[i + k] = sum as u32;
+            carry = sum >> 32;
+            k += 1;
+        }
+    }
+
+    // Result is t[8..16] (plus any overflow at t[16]).
+    let mut limbs: Vec<u32> = t[8..].to_vec();
+    let mut result = BigUInt::from_limbs(limbs.clone());
+
+    // If result >= p, subtract p. The Montgomery invariant guarantees
+    // at most one such subtraction is needed.
+    use std::cmp::Ordering;
+    if result.cmp(&p) != Ordering::Less {
+        result = result.sub(&p);
+    }
+    result
+}
+
+/// Multiplication in Montgomery form: returns am · bm · R⁻¹ mod p,
+/// which equals (a · b)_montgomery when am, bm are in Montgomery
+/// form. Cost: 1 schoolbook mul (16 mul + carry) + 1 REDC (8·8
+/// mul/add + 8 carry-propagation passes). No division.
+pub fn p256_mont_mul(am: &BigUInt, bm: &BigUInt) -> BigUInt {
+    let product = am.mul(bm);
+    p256_redc(product.limbs().to_vec())
+}
+
+/// Convert standard-form `a` (in [0, p)) into Montgomery form
+/// `a · R mod p`. Implementation: `mont_mul(a, R²) = a · R² · R⁻¹ = a · R`.
+pub fn p256_to_mont(a: &BigUInt) -> BigUInt {
+    p256_mont_mul(a, p256_r_sq())
+}
+
+/// Convert Montgomery-form `am` back to standard form via REDC(am).
+pub fn p256_from_mont(am: &BigUInt) -> BigUInt {
+    p256_redc(am.limbs().to_vec())
 }
 
 fn p256_double(pt: &P256Point) -> P256Point {

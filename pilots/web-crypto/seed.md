@@ -22,6 +22,16 @@ The immediate workstream telos: **close the TLS-EXT 8 finding** — the `ecdsa_v
 
 Founded retroactively after substantial prior substrate work (the entire `pilots/web-crypto/derived/src/lib.rs` is already populated: SHA-2 family, AES-GCM, RSA-PSS, RSA-PKCS1, RSA-OAEP, ECDSA over P-256/P-384/P-521, ECDH over the same curves, HKDF, HMAC, Blake2b, Argon2id). The pair didn't exist before this round; the substrate is large but its structural state was illegible because of the missing pair. Founding the pair makes the existing surface workstream-shaped.
 
+### II.1 The substrate layering inside the crate
+
+The crate's source file structures three distinct substrate tiers that the seed.md / trajectory.md pair treat as a unit but that admit separate substrate-move discipline:
+
+- **BigUInt arithmetic tier**: `BigUInt` type + `add`, `sub`, `mul`, `divmod`, `modulo`, `mod_pow`. The lowest tier; every cryptographic primitive's per-op cost is bounded by this tier's `mod_mul` performance. Substrate moves here propagate upward through every primitive simultaneously. **WC-EXT 8+ landed Montgomery-form arithmetic for P-256 at this tier.**
+- **Modular-arithmetic tier**: `mod_add`, `mod_sub`, `mod_mul`, `mod_inv_fermat`, `batch_mod_inv`. Composes on the BigUInt tier. Most substrate moves at the engagement's optimization rounds operate here (WC-EXT 7's Montgomery batch inversion is at this tier).
+- **Elliptic-curve tier**: `JacPoint`, `jac_double`, `jac_add_affine`, `jac_to_affine_batch`, `ec_scalar_mul`, `ecdsa_verify`, plus the P-256 base-point table at `src/p256_base_table.rs` (built-time bake per Doc 731 §XV.g Regime 1). Composes on the modular-arithmetic tier.
+
+Substrate moves are recorded in trajectory.md with explicit tier-attribution. A WC-EXT round that targets `BigUInt` arithmetic (e.g., Montgomery multiplication, word-aligned division, Karatsuba) is at the BigUInt tier; a round that targets EC algorithm choice (e.g., wNAF, comb tables) is at the EC tier. The two have very different blast radii — BigUInt moves touch all primitives; EC moves touch only the primitive they're applied to.
+
 Per Doc 733 §V, the workstream is **resolver-instance at the cryptographic-primitive tier**, between the application-protocol pilots above (TLS, JOSE) and `BigUInt` arithmetic + raw byte-manipulation below. Composes upward as a substrate consumed by ~10 application pilots; composes downward on the in-crate BigUInt + raw primitives only.
 
 Per Doc 730 §XII–§XVI, substrate moves at this tier are gated on the §XVI bidirectional engine-diff oracle. The reference is **rustcrypto + openssl + node**: any input these three accept correctly, this pilot must also accept correctly. Any input they reject, this pilot may reject (but the rejection must be loud, never hanging).

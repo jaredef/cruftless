@@ -430,3 +430,69 @@ This is Pin-Art operating: each substrate move either flips a probe cell (probe-
 ---
 
 *WC-EXT 7 closes with the Doc 735 §V temporal-stack diagnosis confirmed: WC-EXT 6's regression was the T2 precompute cost; WC-EXT 7's batch inversion fixed it; the remaining bottleneck (T3 doublings × mod_mul) is the next strategic target. The framework's narrowing produced a precisely-located next-move target.*
+
+---
+
+## WC-EXT 8 — 2026-05-21 (Montgomery arithmetic substrate at the BigUInt tier — 40× speedup measured)
+
+### Headline
+
+Implemented Montgomery REDC + to/from Montgomery conversions + `p256_mont_mul` at the BigUInt arithmetic tier (per seed §II.1 layering). Smoke tests pass on 5 distinct input classes (trivial 0/1, api.github.com fixture qx/qy, near-modulus p-1/p-2, random 256-bit fixtures including all-ones). Bench shows **40× speedup per multiplication** vs canonical `mod_mul`:
+
+```
+mod_mul   (a·b mod p, N=1000): 26.728µs per op
+mont_mul  (am·bm·R⁻¹,  N=1000):    667ns per op
+Montgomery speedup: 40.01x
+```
+
+The substrate is correctness-gold and bench-validated. Routing into `ec_scalar_mul` / `jac_double` / `jac_add_affine` / `jac_to_affine_batch` is queued as WC-EXT 9 — conversion requires all EC operations to live in Montgomery form throughout, plus careful `from_mont` at boundary points.
+
+### Tier placement (per seed §II.1)
+
+This substrate move is at the **BigUInt arithmetic tier**, the deepest of the three tiers the crate structures. Per seed §II.1's blast-radius observation: BigUInt-tier moves propagate upward through every cryptographic primitive that uses the prime modulus. The 40× per-mul speedup will manifest at:
+
+- ECDSA verify (the substrate move's motivating use case)
+- ECDSA sign
+- ECDH key derivation
+- Any future primitive composing on P-256 modular arithmetic
+
+The same Montgomery REDC framework generalizes to arbitrary odd-prime moduli (P-384, P-521, RSA moduli) by computing per-modulus `m' = -p[0]⁻¹ mod 2³²` and `R² mod p`. For P-256 specifically `m' = 1` (because p[0] = 0xFFFFFFFF = -1 mod 2³²), which collapses the inner-loop multiplication to a no-op. Generalization is queued as WC-EXT 10+.
+
+### Why 40× and not 30%
+
+The earlier WC-EXT 7 analysis predicted "~30% speedup on every operation" for Montgomery. The measured 40× is dramatically higher because the current `BigUInt::modulo` is binary long division (1 bit per iteration × 512 bits) rather than word-aligned long division. Montgomery sidesteps division entirely; the comparison is Montgomery vs binary-bit-by-bit, not Montgomery vs word-aligned. A word-aligned divmod would close most of the gap (~10× speedup), but Montgomery is structurally simpler AND avoids per-call division setup costs.
+
+The Doc 735 §V framing: Montgomery moves the modular reduction from a per-call `divmod` (an expensive T3 operation) to a per-multiplication REDC pass (a cheaper T3 operation). Both are T3 — no temporal-tier shift, but the per-call cost dropped by ~40×.
+
+### Substrate landed
+
+- `p256_redc(t: Vec<u32>) -> BigUInt` — REDC algorithm for P-256, simplified by m' = 1
+- `p256_to_mont(a) -> BigUInt` — converts standard form to Montgomery form
+- `p256_from_mont(am) -> BigUInt` — converts back
+- `p256_mont_mul(am, bm) -> BigUInt` — Montgomery multiplication
+- `p256_r_sq()` — lazy-init R² mod p (one-time T2 cost ~few ms)
+- `BigUInt::from_limbs(Vec<u32>) -> Self` — public accessor for REDC's limb manipulation
+- `tests/p256_mont_smoke.rs` — 5-test correctness suite against canonical mod_mul reference
+- `examples/bench_mont_vs_modmul.rs` — micro-benchmark reproducing the 40× finding
+
+### Probe result
+
+5/5 TLS probe: 3/5 PASS unchanged. WC-EXT 8 is pure infrastructure + bench; ec_scalar_mul still uses canonical mod_mul. The probe-cell flip from this substrate work happens at WC-EXT 9 when EC operations route through Montgomery.
+
+### Doc 735 ratification
+
+Doc 735 Pred-735.3 ("the temporal stack admits indefinite vertical extension"): WC-EXT 8 confirms a finer-grained vertical tier inside what looked like a single T3 tier in WC-EXT 7's analysis. Within "T3 per-call operations," Montgomery and naive `mod_mul` are both T3 but at very different cost. The temporal-stack framework needs the orthogonal dimension of "cost per T3 op" (or equivalently, "depth within the BigUInt arithmetic tier" the seed §II.1 layering names).
+
+This is a generalization-direction corpus refinement (Doc 734 §V.c growth mechanism). The substrate-tier finding (40× per-mul speedup) gives empirical anchor for further refinements to Doc 735's tier model. Worth a §X amendment to Doc 735 in a future round: introduce **intra-tier cost stratification** — T-tier operations are not uniform-cost; the cost-per-op profile within a tier is itself a substrate-tier mapping worth catalogizing.
+
+### Open scope at WC-EXT 8 boundary
+
+1. **WC-EXT 9 (strategic, projected major win)**: route `ec_scalar_mul` + `jac_double` + `jac_add_affine` + `jac_to_affine_batch` through Montgomery form. Expected fixture verify: 0.21s → ~5ms (40× speedup propagates through the EC tier). TLS handshake to api.github.com: ~10s → ~250ms. Substantial work; touches every EC primitive in the live path.
+
+2. **WC-EXT 10 (later, less urgent)**: generalize Montgomery to P-384 / P-521 / RSA moduli. Requires computing per-modulus m' and R². Substrate work is one new function `mont_mul_generic(am, bm, p, m_prime) -> BigUInt`.
+
+3. **Corpus**: Doc 735 §X amendment introducing intra-tier cost stratification (the 40× per-mul speedup demonstrates that temporal tier T3 is not cost-uniform; within T3 there's a substantial cost-per-op range that the framework's current vocabulary collapses).
+
+---
+
+*WC-EXT 8 closes with the Montgomery substrate landed and gold-validated at the BigUInt arithmetic tier. The 40× per-mul speedup is the predicted strategic win, awaiting routing through the EC layer in WC-EXT 9. The substrate move is correctly tier-attributed (BigUInt tier, blast radius covers all primitives composing on P-256 modular arithmetic) per the seed §II.1 layering.*
