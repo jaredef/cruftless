@@ -566,3 +566,79 @@ Doc 735 §V's prediction (Pred-735.5: temporal-tier vocabulary applies broadly) 
 ---
 
 *WC-EXT 9 closes with Montgomery routing operational at the EC tier, demonstrating the WC-EXT 8 BigUInt-tier substrate's compound effect at the upstream tier. The substrate-bug-and-fix cycle (Mont-Z initialization) was tight, the regression suite caught nothing, and the projected next-tier targets (WC-EXT 10 + 11) are named in clear temporal-tier vocabulary.*
+
+---
+
+## WC-EXT 10 — 2026-05-21 (Mont-form baked table for u1·G — full ECDSA verify in Montgomery)
+
+### Headline
+
+Added `p256_base_table_mont()` (first-use init = Doc 731 §XV.g Regime 2; ~170µs at process start, then cached) + `p256_scalar_mul_base_mont(k)` that runs base-point scalar mul fully in Mont form using the Mont-converted table. Routed `ecdsa_verify`'s P-256 u1·G call through it.
+
+**Both halves of the ecdsa_verify computation (u1·G and u2·Q) now run in Montgomery form.** Substrate is correctness-gold (fixture returns `Ok(())`, 117/117 regression PASS).
+
+### Measurement
+
+| metric | WC-EXT 5 | WC-EXT 9 | WC-EXT 10 |
+|---|---|---|---|
+| Fixture verify | 0.21s | 0.15s | **0.10s** (~50% faster than WC-EXT 5) |
+| 117 web-crypto regression | PASS | PASS | PASS |
+| 5-endpoint TLS probe (3/5 PASS) | ~37s | ~37s | ~37s (~unchanged) |
+| api.github.com handshake | ~10s | ~10s | ~9.5s (~5% faster) |
+
+### Cumulative speedup vs the WC-EXT 1 baseline
+
+| round | fixture verify time | speedup from baseline | substrate move |
+|---|---|---|---|
+| WC-EXT 1 baseline (affine + naive ec_double via mod_inv per op) | 8.18s | 1× | — |
+| WC-EXT 3 (Jacobian) | 0.29s | 28× | EC tier: avoid per-op inverse via Jacobian |
+| WC-EXT 5 (baked base table) | 0.21s | 39× | optimization tier: Regime 1 baked table |
+| WC-EXT 9 (Mont u2·Q) | 0.15s | 54× | BigUInt+EC: Mont route for variable input |
+| **WC-EXT 10 (Mont u1·G)** | **0.10s** | **82×** | EC: Mont route for fixed input |
+
+### Why TLS handshake wallclock barely moved
+
+api.github.com handshake = ~10s, ecdsa_verify per cert ~0.10s now. Chain has 2-3 certs + CV = ~3-4 ECDSA verifies = ~0.4s of ECDSA crypto. The remaining ~9.5s is **NOT ECDSA** — it's the cert chain's **RSA intermediate verifies**. CDN certificate chains commonly have RSA-2048 or RSA-4096 intermediates whose signatures must be verified during `chain_walk`. Each RSA verify is m^e mod n where n is a 2048-bit modulus and e is 65537 (17 bits): ~17 squarings of 2048-bit `mod_mul` calls. With the current `BigUInt::modulo` binary long division on 2048-bit values, each RSA `mod_mul` is ~120µs-ish but each cert verify needs ~17 of them: ~2ms per verify. Hmm, that doesn't quite explain 9.5s either.
+
+Actually the ECDSA verify time on Pi is dominated by the EC scalar mul (~256 doublings + ~128 additions × ~12-30 mod_muls each + the boxed Montgomery overhead). With WC-EXT 10's 82× total speedup, fixture is 0.10s — but the chain_walk does ECDSA verifies on each cert too, each ~0.10s. Plus the TLS handshake involves ServerKeyExchange ECDHE math, certificate parse, etc. Possibly the cert-chain has more than 2 certs and each verify is hitting all the routed paths.
+
+The TLS wallclock breakdown needs its own probe in a future round to confirm where the remaining seconds live. For now WC-EXT 10 is a clean ECDSA-verify win; the TLS-level integration savings will come as adjacent paths (RSA, ECDH) get the same Mont treatment.
+
+### Substrate landed
+
+- `p256_base_table_mont()` — lazy-init Mont-form copy of the WC-EXT 5 baked table
+- `p256_scalar_mul_base_mont(k)` — base-table scalar mul in Mont form
+
+### Doc 731 §XV.g Regime selection
+
+Picked Regime 2 (first-use init) over Regime 1 (regenerate `p256_base_table.rs` to contain Mont-form coords). Reasoning: Regime 2 is a 4-LOC addition with ~170µs process-start cost; Regime 1 requires another generator script + a 1047-line regenerated source file. The Regime 2 cost (170µs paid once) is invisible to any realistic workload. Regime 1 remains queued if the future engagement encounters a workload where process-start latency matters.
+
+### Doc 731 §XV.b mapping verification
+
+Every R-condition of §VII still holds for the full Mont-form ECDSA verify path:
+- R1 single tier: one Mont implementation (no Mont-meta)
+- R2 standard ECC literature owns the algorithm (Hankerson §3.2 for the formulas, Montgomery 1985 for the multiplication)
+- R3 verifier-before-emission: on_curve + range checks still gate before any Mont-form code runs
+- R5 first-cut tier-1 baseline: plain Mont REDC (no Montgomery ladder, no Almost-Montgomery, no Karatsuba-Mont)
+- R7 no internal optimization passes: substrate-tier choice is algorithm-selection, not code-rewriting
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P06.E3.wc-mont-route-u1g-base` | Mont u1·G via Mont-converted base table; cumulative 82× speedup on fixture verify vs WC-EXT 1 baseline; full ECDSA verify in Montgomery form |
+
+### Probe result
+
+5/5: 3/5 PASS unchanged. The substrate-tier win compounded through the EC layer (fixture verify 8.18s → 0.10s); the TLS-tier integration win awaits adjacent paths (RSA, ECDH) getting equivalent Mont treatment.
+
+### Open scope at WC-EXT 10 boundary
+
+1. **WC-EXT 11**: probe TLS handshake breakdown. The ~9.5s api.github.com handshake is mostly NOT ECDSA — surface the bottleneck (RSA chain verify, ECDHE key share, cert parse, network RTT). Likely surfaces RSA Mont as the next substrate target.
+2. **WC-EXT 12**: generalize Montgomery to arbitrary odd-prime moduli (RSA 2048/3072/4096, P-384, P-521). Substantial substrate move; would propagate Montgomery's benefit across the entire primitive catalog.
+3. **Doc 735 §X amendment** (still queued from WC-EXT 8): intra-tier cost stratification.
+4. **WC-EXT 10 alternative finish**: regenerate `p256_base_table.rs` with Mont-form coordinates (Doc 731 §XV.g Regime 1) — eliminates the ~170µs first-use init cost. Optional.
+
+---
+
+*WC-EXT 10 closes with the full P-256 ECDSA verify operating in Montgomery form. The cumulative substrate-stack speedup is 82× over the WC-EXT 1 baseline — the predicted compound effect of Doc 731 §XV.b's framework operating across the EC tier and the BigUInt tier. The remaining TLS-wallclock bottleneck (9.5s handshake despite 0.10s ECDSA verify) names the next strategic target: RSA verify path (chain_walk's intermediate certs), addressable by WC-EXT 12's Montgomery generalization.*

@@ -1306,6 +1306,39 @@ fn p256_affine_to_mont(p: &P256Point) -> P256Point {
     }
 }
 
+// ──────────────── WC-EXT 10: Mont-form baked table for u1·G ─────
+//
+// Per Doc 731 §XV.g: Regime 2 (first-use init) is chosen because
+// the Mont-conversion of 256 affine points costs ~170µs once at
+// process start — negligible and avoids regenerating the source
+// file. Regime 1 (build-time bake of the Mont-form table directly)
+// remains a queued option if process-start cost matters in some
+// future workload.
+
+static P256_BASE_TABLE_MONT: OnceLock<Vec<P256Point>> = OnceLock::new();
+fn p256_base_table_mont() -> &'static [P256Point] {
+    P256_BASE_TABLE_MONT.get_or_init(|| {
+        p256_base_table().iter().map(p256_affine_to_mont).collect()
+    })
+}
+
+/// Scalar mul of the P-256 generator G using the Mont-form base
+/// table. Identical output to p256_scalar_mul_base but runs all
+/// arithmetic in Montgomery form (~40× per-op faster at the
+/// BigUInt tier per WC-EXT 8 bench).
+pub fn p256_scalar_mul_base_mont(k: &BigUInt) -> P256Point {
+    let bits = k.bit_len();
+    if bits == 0 { return P256Point::Identity; }
+    let table = p256_base_table_mont();
+    let mut result = JacPoint::identity();
+    for i in 0..bits {
+        if k.bit(i) {
+            result = p256_jac_add_affine_mont(&result, &table[i]);
+        }
+    }
+    p256_jac_to_affine_mont(&result)
+}
+
 /// P-256 variable-input scalar mul in Mont form: takes a standard-form
 /// affine point Q, converts to Mont, runs scalar mul fully in Mont,
 /// converts result back to std form. Replaces the BigUInt-tier hot
@@ -2079,9 +2112,9 @@ pub fn ecdsa_verify(
     let u1 = mod_mul(&e, &w, &c.n);
     if dbg_ec { eprintln!("[wc-ec] → mod_mul(r, w, n) = u2"); }
     let u2 = mod_mul(&r, &w, &c.n);
-    if dbg_ec { eprintln!("[wc-ec] → scalar_mul(u1, G) = p1 (baked-table fast path if P-256)"); }
+    if dbg_ec { eprintln!("[wc-ec] → scalar_mul(u1, G) = p1 (Mont baked-table fast path if P-256)"); }
     let p1 = if c.coord_bytes == 32 && c.b.cmp(&p256_b()) == std::cmp::Ordering::Equal {
-        p256_scalar_mul_base(&u1)
+        p256_scalar_mul_base_mont(&u1)
     } else {
         ec_scalar_mul(c, &u1, &c.g)
     };
