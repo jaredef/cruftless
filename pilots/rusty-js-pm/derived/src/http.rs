@@ -63,11 +63,15 @@ fn parse_url(url: &str) -> Result<ParsedUrl, HttpError> {
 /// HTTPS GET. Returns the response body bytes on 2xx. Errors loudly
 /// on TLS failure, non-2xx status, or malformed input.
 pub fn pm_http_get(url: &str) -> Result<Vec<u8>, HttpError> {
+    let dbg = std::env::var("CRUFTLESS_TLS_DEBUG").is_ok();
+    if dbg { eprintln!("[pm_http_get] start {}", url); }
     let u = parse_url(url)?;
     let trust_store = TrustStore::load_system_default()
         .map_err(|e| HttpError::TrustStore(format!("{e:?}")))?;
+    if dbg { eprintln!("[pm_http_get] connecting → {}:{}", u.host, u.port); }
     let mut session = tls_connect(&u.host, u.port, &trust_store)
         .map_err(|e| HttpError::Tls(format!("connect {}:{}: {e:?}", u.host, u.port)))?;
+    if dbg { eprintln!("[pm_http_get] handshake OK"); }
 
     let request = serialize_request(
         "GET",
@@ -81,8 +85,10 @@ pub fn pm_http_get(url: &str) -> Result<Vec<u8>, HttpError> {
         ],
         &[],
     );
+    if dbg { eprintln!("[pm_http_get] sending {} request bytes", request.len()); }
     session.send_application_data(&request)
         .map_err(|e| HttpError::Tls(format!("send: {e:?}")))?;
+    if dbg { eprintln!("[pm_http_get] send OK; entering drain loop"); }
 
     // Drain the response. With Connection: close the server sends its
     // close_notify after the body; receive_application_data now

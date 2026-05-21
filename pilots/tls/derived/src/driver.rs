@@ -338,16 +338,31 @@ impl<T: TlsTransport> TlsSession<T> {
         loop {
             // Try to decode a complete record from the accumulator.
             if let Ok((rec, n)) = decode_record(accumulator) {
+                let dbg = std::env::var("CRUFTLESS_TLS_DEBUG").is_ok();
+                if dbg { eprintln!("[tls-c-new-1] record: ct={:?} frag_len={} seq={}",
+                    rec.content_type, rec.fragment.len(), self.server_app_seq); }
                 accumulator.drain(..n);
                 if rec.content_type != ContentType::ApplicationData {
                     // Plaintext records during the application phase
                     // are unexpected except for ChangeCipherSpec which
                     // we ignore per RFC 8446 §5.
-                    if rec.content_type == ContentType::ChangeCipherSpec { continue; }
+                    if rec.content_type == ContentType::ChangeCipherSpec {
+                        if dbg { eprintln!("[tls-c-new-1]   ignored: ChangeCipherSpec"); }
+                        continue;
+                    }
                     return Err(TlsError::SignatureFail("unexpected plaintext record post-handshake".into()));
                 }
-                let (inner_ct, plaintext) = aead_decrypt_record(
-                    &self.server_app_keys, self.server_app_seq, &rec.fragment)?;
+                let dec = aead_decrypt_record(
+                    &self.server_app_keys, self.server_app_seq, &rec.fragment);
+                let (inner_ct, plaintext) = match dec {
+                    Ok(x) => x,
+                    Err(e) => {
+                        if dbg { eprintln!("[tls-c-new-1]   DECRYPT FAILED: {:?}", e); }
+                        return Err(e);
+                    }
+                };
+                if dbg { eprintln!("[tls-c-new-1]   decrypt OK: inner_ct={} pt_len={}",
+                    inner_ct, plaintext.len()); }
                 self.server_app_seq += 1;
                 match inner_ct {
                     23 /* ApplicationData */ => return Ok(plaintext),
@@ -355,14 +370,27 @@ impl<T: TlsTransport> TlsSession<T> {
                     22 /* Handshake */ => {
                         // Post-handshake messages (NewSessionTicket,
                         // KeyUpdate). Ignore for this round.
+                        if dbg {
+                            let ht = plaintext.first().copied().unwrap_or(0);
+                            eprintln!("[tls-c-new-1]   post-handshake handshake_type=0x{:02x} (4=NewSessionTicket, 24=KeyUpdate)", ht);
+                        }
                         continue;
                     }
                     _ => return Err(TlsError::SignatureFail(
                         format!("unknown inner content type {}", inner_ct))),
                 }
             } else {
-                // Need more bytes.
-                let _n = self.transport.read_some(accumulator)?;
+                let dbg = std::env::var("CRUFTLESS_TLS_DEBUG").is_ok();
+                if dbg { eprintln!("[tls-c-new-1] need more bytes; calling transport.read_some (acc={})", accumulator.len()); }
+                let n = match self.transport.read_some(accumulator) {
+                    Ok(n) => n,
+                    Err(e) => {
+                        if dbg { eprintln!("[tls-c-new-1]   read_some FAILED: {:?}", e); }
+                        return Err(e);
+                    }
+                };
+                if dbg { eprintln!("[tls-c-new-1] transport.read_some → {} bytes (accumulator now {})",
+                    n, accumulator.len()); }
                 if accumulator.len() > MAX_CIPHERTEXT_LEN + 5 + 16 && decode_record(accumulator).is_err() {
                     return Err(TlsError::SignatureFail("record buffer overflow without progress".into()));
                 }
