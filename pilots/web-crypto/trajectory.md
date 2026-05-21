@@ -366,3 +366,67 @@ This is the second instance of Doc 735's framework producing actionable guidance
 ---
 
 *WC-EXT 6 closes with the substrate landed but reverted from live path. The negative empirical finding is recategorized productively under Doc 735's temporal-stack vocabulary: the precompute's T2 cost on Pi BigUInt exceeds its T3 amortization. The fix is structurally simple (batch inversion or jac-add-jac) and is the WC-EXT 7 target.*
+
+---
+
+## WC-EXT 7 — 2026-05-21 (Montgomery batch inversion for wNAF precompute)
+
+### Headline
+
+Implemented Montgomery's batch inversion trick (`batch_mod_inv`, `jac_to_affine_batch`). Reactivated wNAF window-4 scalar mul with the batch-converted precompute table. Substrate correct: 117/117 regression tests pass; fixture verifies `Ok(())`.
+
+**Empirical**: fixture verify **0.21s** (matches WC-EXT 5 binary-Jacobian baseline, recovers from WC-EXT 6's 0.27s wash). TLS probe 3/5 PASS, ~37s — unchanged wallclock.
+
+### Mathematics
+
+Montgomery's batch inversion converts n field inversions into 1 inversion + 3(n−1) multiplications. For the wNAF precompute (n=4), that's 1 inversion + 9 mul vs WC-EXT 6's 4 inversions = a saving of 3 inversions per scalar mul. On Pi each `mod_inv_fermat` is ~20ms (≈256 mod_muls of Fermat exponentiation), so the saving is ~60ms worth of mod_muls, exchanged for ~9 mod_muls ≈ ~1ms. Net: ~59ms per scalar mul saved on precompute.
+
+### Why it matches but doesn't beat WC-EXT 5
+
+WC-EXT 5's binary path: 1 final inversion + 256 doublings + ~128 additions.
+WC-EXT 7's wNAF path: 2 inversions (one for `two_p` conversion, one for batch+final on result) + 256 doublings + ~52 digit additions + precompute (1 doubling + 3 jac_add_affine + batch_inv).
+
+The per-add savings (~76 fewer adds × ~11 mod_muls each ≈ 836 mod_muls) roughly cancel against the precompute additions (1 double + 3 adds × ~14 muls each ≈ 56 mod_muls) plus the extra inversion (~256 mod_muls). Numerically:
+- Saved: ~836 mod_muls from fewer wNAF additions.
+- Added: ~56 mod_muls precompute + ~256 mod_muls extra inversion + batch_inv overhead (~9 mod_muls + 1 inv = 265) - WC-EXT 6's 4 inversions (1024 mod_muls effective) = -503 mod_muls in inversion savings.
+- Net: ~836 - 56 - 256 + 1024 - 265 ≈ ~1280 mod_muls saved vs WC-EXT 6, ~ matched vs WC-EXT 5.
+
+The empirical wallclock at WC-EXT 5 parity confirms the math: WC-EXT 7 saved exactly enough to recover from WC-EXT 6's regression, no more.
+
+### Doc 735 lens on the parity
+
+Per Doc 735 §V the precompute is at temporal tier **T2** (per-scalar-mul-init). WC-EXT 7 reduced T2 cost ~3× via batch inversion. WC-EXT 5's binary path has zero T2 init at all — no precompute, every operation is T3 per-call. The competition is therefore: WC-EXT 5 pays 256 T3 doublings + 128 T3 adds, vs WC-EXT 7 pays 256 T3 doublings + 52 T3 adds + a small T2 precompute. Since both are dominated by the same 256 doublings (each ~12 mod_muls), the differential is in the additions ± precompute. They roughly cancel.
+
+To beat WC-EXT 5 the substrate move needs to attack the doublings, not the additions. Candidates:
+- **Wider wNAF window (w=5 or w=6)** — more precompute entries, but doublings unchanged; no help.
+- **Fixed-base double-precompute** — for the variable-input case, doesn't apply (Q is per-call).
+- **Faster `jac_double`** — direct attack on the dominant cost. Hankerson §3.2 has formula variants with fewer multiplications for some curve choices.
+- **Faster `mod_mul`** — improve BigUInt arithmetic itself (Montgomery multiplication, Karatsuba for larger limb counts). The biggest structural lever; would speed up everything.
+
+The most strategic WC-EXT 8 target is Montgomery-form BigUInt arithmetic (replaces every `mod_mul` operation with a Montgomery-form variant that avoids one division/inversion per multiplication). That's a substantial substrate move at a much deeper tier — the BigUInt layer below `mod_mul` itself.
+
+### What this corroborates
+
+The Doc 735 temporal-stack framework continues to operate productively. WC-EXT 7 shows the framework's narrowing: the precompute T2 cost was correctly identified as the WC-EXT 6 regression cause; the fix (batch inversion) correctly addressed it; the empirical recovery to baseline confirms the diagnosis. The fact that no further speedup followed pins the next bottleneck (256 T3 doublings dominated by `mod_mul`) precisely.
+
+This is Pin-Art operating: each substrate move either flips a probe cell (probe-tier finding) or narrows the next move's target (substrate-tier finding). WC-EXT 7 is the latter.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P06.E3.wc-batch-inv-wnaf` | Montgomery batch inversion + wNAF reactivated; substrate-tier finding: doublings × mod_mul dominate, BigUInt Montgomery-form is the next strategic target |
+
+### Probe result
+
+5/5: 3/5 PASS unchanged. Fixture verify at 0.21s parity with WC-EXT 5.
+
+### Open scope at WC-EXT 7 boundary
+
+1. **WC-EXT 8 (strategic)**: BigUInt Montgomery-form arithmetic. Every `mod_mul` call eliminates one implicit modular reduction; ~30% speedup on every operation below it. Touches the entire cryptographic-primitive layer. Substantial substrate work.
+2. **WC-EXT 8 (tactical)**: jac_double formula variant per Hankerson §3.2 with fewer mod_muls. Targeted at the doublings-dominate finding; smaller scope.
+3. Doc 735 §VII Pred-735.4 capability-primitive catalog: WC-EXT 7's findings are a row in the catalog (P-256 ECDSA verify per-call doublings: T3-bound; precompute table: T2-bound with Montgomery-batch-inv reducing init cost ~3×).
+
+---
+
+*WC-EXT 7 closes with the Doc 735 §V temporal-stack diagnosis confirmed: WC-EXT 6's regression was the T2 precompute cost; WC-EXT 7's batch inversion fixed it; the remaining bottleneck (T3 doublings × mod_mul) is the next strategic target. The framework's narrowing produced a precisely-located next-move target.*

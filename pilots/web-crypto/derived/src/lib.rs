@@ -1524,33 +1524,109 @@ fn shr1_inplace(limbs: &mut Vec<u32>) {
     while limbs.len() > 1 && *limbs.last().unwrap() == 0 { limbs.pop(); }
 }
 
+// WC-EXT 7: Montgomery's batch inversion trick. Given n field values
+// a_1, ..., a_n, compute all n inverses with only ONE field inversion.
+// Cost: 3(n-1) muls + 1 inversion vs naive n inversions.
+//
+// Per Doc 735 §V: this is a T2 (per-scalar-mul-init) substrate move
+// that reduces T2 cost so wNAF's T3 savings can dominate. Same
+// computation tier, much cheaper.
+fn batch_mod_inv(values: &[BigUInt], p: &BigUInt) -> Vec<BigUInt> {
+    let n = values.len();
+    if n == 0 { return Vec::new(); }
+    // Forward prefix products: prefix[i] = a_0 * a_1 * ... * a_i.
+    let mut prefix: Vec<BigUInt> = Vec::with_capacity(n);
+    prefix.push(values[0].clone());
+    for i in 1..n {
+        prefix.push(mod_mul(&prefix[i - 1], &values[i], p));
+    }
+    // One inversion of the full product.
+    let mut inv_acc = mod_inv_fermat(&prefix[n - 1], p);
+    // Backward pass to recover each inverse.
+    let mut inverses: Vec<BigUInt> = vec![BigUInt::zero(); n];
+    for i in (1..n).rev() {
+        // inverses[i] = inv_acc * prefix[i-1]
+        inverses[i] = mod_mul(&inv_acc, &prefix[i - 1], p);
+        // inv_acc = inv_acc * values[i]  (now equals inverse of product up through i-1)
+        inv_acc = mod_mul(&inv_acc, &values[i], p);
+    }
+    inverses[0] = inv_acc;
+    inverses
+}
+
+fn jac_to_affine_batch(c: &Curve, jacs: &[JacPoint]) -> Vec<P256Point> {
+    // Filter Identity points out of the batch-inv (their Z = 0 has
+    // no inverse). Collect non-Identity Z values; batch-invert; emit
+    // affine points in original order.
+    let zs: Vec<BigUInt> = jacs.iter()
+        .filter(|j| !j.is_identity())
+        .map(|j| j.z.clone())
+        .collect();
+    let z_invs = batch_mod_inv(&zs, &c.p);
+    let p = &c.p;
+    let mut out: Vec<P256Point> = Vec::with_capacity(jacs.len());
+    let mut zi = 0;
+    for j in jacs {
+        if j.is_identity() {
+            out.push(P256Point::Identity);
+        } else {
+            let z_inv = &z_invs[zi]; zi += 1;
+            let z_inv2 = mod_mul(z_inv, z_inv, p);
+            let z_inv3 = mod_mul(&z_inv2, z_inv, p);
+            out.push(P256Point::Affine {
+                x: mod_mul(&j.x, &z_inv2, p),
+                y: mod_mul(&j.y, &z_inv3, p),
+            });
+        }
+    }
+    out
+}
+
 pub fn ec_scalar_mul(c: &Curve, k: &BigUInt, pt: &P256Point) -> P256Point {
-    // WC-EXT 6 measured wNAF window-4 scalar mul; the substrate was
-    // correct (all 117 regression tests + fixture pass) but empirical
-    // wallclock on Pi was a wash vs binary Jacobian. Root cause: the
-    // wNAF precompute table (1P, 3P, 5P, 7P) requires 4 jac_to_affine
-    // conversions = 4 modular inverses ~80ms on Pi, eating the
-    // savings from fewer additions. The fix (jac-add-jac to avoid
-    // affine conversion, or batch inversion via Montgomery's trick)
-    // is queued as WC-EXT 7+.
-    //
-    // Per Doc 735 §V: wNAF's precompute is at T2 (per-scalar-mul init)
-    // amortizing over ~52 digit-ops. On Pi BigUInt the amortization
-    // doesn't pay; the substrate move's tier-T2 cost exceeds its
-    // per-call (T3) savings. The temporal-stack lens recategorizes
-    // the negative finding cleanly: not a correctness issue, an
-    // amortization-regime mismatch at the engagement's hardware.
-    //
-    // Reverted to binary Jacobian for the live path. wnaf() and
-    // helpers retained as standing substrate for WC-EXT 7+ when the
-    // precompute cost is addressable.
+    // WC-EXT 7: wNAF window-4 scalar mul with Montgomery batch
+    // inversion for the precompute table. The precompute's 4
+    // jac_to_affine conversions (each one modular inverse, ~20ms on
+    // Pi) collapse to 1 modular inverse + 9 modular multiplications
+    // via jac_to_affine_batch. Net: precompute cost ~3× cheaper than
+    // WC-EXT 6's naive variant, restoring wNAF's predicted win over
+    // binary double-and-add.
     let bits = k.bit_len();
     if bits == 0 { return P256Point::Identity; }
+    if matches!(pt, P256Point::Identity) { return P256Point::Identity; }
+
+    const W: u32 = 4;
+    let n_entries = 1usize << (W - 1);  // 4 for w=4: 1P, 3P, 5P, 7P
+
+    // Build odd-multiples table in Jacobian, then batch-convert to affine.
+    let mut odd_jac: Vec<JacPoint> = Vec::with_capacity(n_entries);
+    odd_jac.push(JacPoint::from_affine(pt));         // 1P
+    // 2P in Jacobian, then converted once for the add-affine path.
+    let two_p_j = jac_double(c, &odd_jac[0]);
+    // We need 2P in affine to do jac_add_affine. One inversion here,
+    // unavoidable without a jac_add_jac primitive. Still nets a win
+    // (1 + 1 batch ≪ 4 individual).
+    let two_p_aff = jac_to_affine(c, &two_p_j);
+    let mut prev = odd_jac[0].clone();
+    for _ in 1..n_entries {
+        prev = jac_add_affine(c, &prev, &two_p_aff);
+        odd_jac.push(prev.clone());
+    }
+    // Batch-convert the table to affine for jac_add_affine consumption.
+    let odd_aff = jac_to_affine_batch(c, &odd_jac);
+
+    let digits = wnaf(k, W);
+
     let mut result = JacPoint::identity();
-    for i in (0..bits).rev() {
+    for &d in digits.iter().rev() {  // MSB to LSB
         result = jac_double(c, &result);
-        if k.bit(i) {
-            result = jac_add_affine(c, &result, pt);
+        if d != 0 {
+            let idx = (d.abs() as usize - 1) / 2;
+            let entry = if d > 0 {
+                odd_aff[idx].clone()
+            } else {
+                affine_negate(c, &odd_aff[idx])
+            };
+            result = jac_add_affine(c, &result, &entry);
         }
     }
     jac_to_affine(c, &result)
