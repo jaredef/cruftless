@@ -61,8 +61,66 @@ fn parse_url(url: &str) -> Result<ParsedUrl, HttpError> {
 }
 
 /// HTTPS GET. Returns the response body bytes on 2xx. Errors loudly
-/// on TLS failure, non-2xx status, or malformed input.
+/// on TLS failure, non-2xx status, or malformed input. No redirects.
 pub fn pm_http_get(url: &str) -> Result<Vec<u8>, HttpError> {
+    let resp = pm_http_get_raw(url)?;
+    finalize_raw(resp)
+}
+
+/// HTTPS GET with bounded redirect following. Used by the tarball
+/// fetcher: registries commonly 302 to a CDN (e.g.
+/// registry.npmmirror.com → cdn.npmmirror.com). Follows up to
+/// `max_hops` 3xx responses with `Location:` headers; only https
+/// targets accepted.
+pub fn pm_http_get_follow(url: &str, max_hops: u8) -> Result<Vec<u8>, HttpError> {
+    let mut current = url.to_string();
+    for _ in 0..=max_hops {
+        let resp = pm_http_get_raw(&current)?;
+        if (300..400).contains(&resp.status) {
+            let loc = header_value(&resp.headers, "location")
+                .ok_or_else(|| HttpError::Status {
+                    code: resp.status,
+                    body_prefix: "3xx without Location header".into(),
+                })?;
+            current = resolve_location(&current, &loc)?;
+            continue;
+        }
+        return finalize_raw(resp);
+    }
+    Err(HttpError::Status { code: 310, body_prefix: format!("too many redirects from {url}") })
+}
+
+fn header_value(headers: &[(String, String)], name: &str) -> Option<String> {
+    headers.iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case(name))
+        .map(|(_, v)| v.clone())
+}
+
+fn resolve_location(base: &str, loc: &str) -> Result<String, HttpError> {
+    if loc.starts_with("https://") {
+        Ok(loc.to_string())
+    } else if loc.starts_with("http://") {
+        Err(HttpError::UnsupportedScheme(loc.to_string()))
+    } else if loc.starts_with('/') {
+        // path-absolute on same authority
+        let b = parse_url(base)?;
+        let port_suffix = if b.port == 443 { String::new() } else { format!(":{}", b.port) };
+        Ok(format!("https://{}{}{}", b.host, port_suffix, loc))
+    } else {
+        Err(HttpError::MalformedUrl(format!("relative redirect not supported: {loc}")))
+    }
+}
+
+fn finalize_raw(resp: rusty_http_codec::ParsedResponse) -> Result<Vec<u8>, HttpError> {
+    if !(200..300).contains(&resp.status) {
+        let prefix: String = String::from_utf8_lossy(&resp.body)
+            .chars().take(200).collect();
+        return Err(HttpError::Status { code: resp.status, body_prefix: prefix });
+    }
+    Ok(resp.body)
+}
+
+fn pm_http_get_raw(url: &str) -> Result<rusty_http_codec::ParsedResponse, HttpError> {
     let dbg = std::env::var("CRUFTLESS_TLS_DEBUG").is_ok();
     if dbg { eprintln!("[pm_http_get] start {}", url); }
     let u = parse_url(url)?;
@@ -106,9 +164,7 @@ pub fn pm_http_get(url: &str) -> Result<Vec<u8>, HttpError> {
                 // response, so we don't hang waiting for close_notify
                 // on servers that drop the connection without one.
                 if let Ok(resp) = parse_response(&raw) {
-                    if resp.status >= 100 {
-                        return finalize(resp);
-                    }
+                    if resp.status >= 100 { return Ok(resp); }
                 }
             }
             Err(rusty_tls::record::TlsError::CloseNotify) => break,
@@ -117,18 +173,7 @@ pub fn pm_http_get(url: &str) -> Result<Vec<u8>, HttpError> {
         }
     }
 
-    let resp = parse_response(&raw)
-        .map_err(|e| HttpError::Codec(format!("{e:?}")))?;
-    finalize(resp)
-}
-
-fn finalize(resp: rusty_http_codec::ParsedResponse) -> Result<Vec<u8>, HttpError> {
-    if !(200..300).contains(&resp.status) {
-        let prefix: String = String::from_utf8_lossy(&resp.body)
-            .chars().take(200).collect();
-        return Err(HttpError::Status { code: resp.status, body_prefix: prefix });
-    }
-    Ok(resp.body)
+    parse_response(&raw).map_err(|e| HttpError::Codec(format!("{e:?}")))
 }
 
 #[cfg(test)]

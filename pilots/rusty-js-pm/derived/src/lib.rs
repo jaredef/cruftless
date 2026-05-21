@@ -35,6 +35,7 @@ pub mod smoke;
 pub mod integrity;
 pub mod http;
 pub mod resolver;
+pub mod fetcher;
 
 #[cfg(test)]
 mod tests {

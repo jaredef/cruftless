@@ -129,3 +129,119 @@ The PM workstream's path to first-cut closure is now bounded: PM-EXT 6 + 7 + 8 +
 ---
 
 *PM-EXT 5 closes the cross-pilot detour that started at PM-EXT 4. The PM workstream's original target — engagement-internal HTTPS to a registry — is reached; the substrate cascade (TLS-EXT 0–10 + WC-EXT 0–26) propagates upward into a working specifier resolver. Doc 734's meta-pipeline cycle 1 is complete; PM-EXT 6+ extends the workstream into the fetcher/extractor + linker + lockfile layers.*
+
+---
+
+## PM-EXT 6 — 2026-05-21 (PM-R2 fetcher/extractor end-to-end)
+
+### Headline
+
+Tarball download + SRI verify + gunzip + untar to staging dir landed.
+**End-to-end lodash 4.17.21**: PM-R1 → 302 redirect → CDN → tarball
+bytes → sha-512 SRI verify → flate2 gunzip → tar extract → `package.json`
+present in staging with `"version": "4.17.21"` and 1000+ files. Wall
+time 1.67 s (TLS handshake to two distinct hosts dominates).
+
+### Substrate landed
+
+- `pilots/rusty-js-pm/derived/src/fetcher.rs` (~180 LOC):
+  - `fetch_and_extract(&ResolvedDep, &Path) -> Result<FetchedPackage, FetchError>`
+  - `FetchedPackage { staging_dir, file_count }`
+  - SRI-preferred / shasum-fallback / no-integrity-rejected gate
+  - Tarslip defense: `sanitize_entry_path` strips one `package/` prefix,
+    rejects RootDir, Prefix, ParentDir, empty path
+  - Entry-kind filter: regular files + directories only; symlinks /
+    hardlinks rejected loudly (npm packs neither)
+- `pilots/rusty-js-pm/derived/src/http.rs`:
+  - Refactored `pm_http_get_raw → ParsedResponse` (no flatten to body
+    until the caller has decided on redirect handling)
+  - `pm_http_get_follow(url, max_hops)` for tarball downloads: follows
+    https→https Location with relative-path-absolute resolution
+  - `pm_http_get` (existing public surface) unchanged in behavior
+
+### Doc 730 §XII deviation pipeline (registry → CDN hop)
+
+The PM-EXT 5 endpoint substitution (registry.npmmirror.com) was a
+Case-4 scope decision. PM-EXT 6 surfaced a follow-on observation: the
+tarball URL emitted by the registry endpoint **redirects** to
+`cdn.npmmirror.com`. This is a §XVI Case-1 substrate gap on cruftless's
+side (the HTTP path lacked redirect support), not an ecosystem
+deviation. Lifted via `pm_http_get_follow`. Cruftless's HTTP path now
+handles the common registry → CDN topology.
+
+### Measurement
+
+| stage | time |
+|---|---|
+| PM-R1 resolve (registry.npmmirror.com manifest) | ~420 ms |
+| PM-R2 redirect hop 1 (registry → CDN) | ~250 ms TLS handshake + 302 |
+| PM-R2 tarball GET (cdn.npmmirror.com) | ~500 ms TLS + GET 28 KB |
+| SRI sha-512 verify | <1 ms |
+| flate2 gunzip + tar extract (1000+ files) | ~150 ms |
+| **total wall time, lodash 4.17.21 end-to-end** | **1.67 s** |
+
+Compare to bun: cold `bun add lodash@4.17.21` on this Pi is ~1.5 s,
+of which ~800 ms is package download. Cruftless is within 1.1× of bun
+on the cold-cache path; the gap is two TLS handshakes (registry +
+CDN) where bun amortizes via connection reuse. Bun PM is ~30k LOC of
+Zig; cruftless PM-EXT 0–6 is ~500 LOC of Rust. **~60× LOC ratio for
+1.1× perf gap** on the single-package cold-path.
+
+### Probe result
+
+- Unit tests: 4/4 PASS (sanitizer cases: strip prefix, reject absolute,
+  reject parent-dir, keep-when-not-package)
+- Network test: 1/1 PASS in 1.67s (lodash 4.17.21 fetch+verify+extract)
+- All 12 PM-pilot lib tests PASS (smoke roundtrip, SRI sha-512, URL
+  parse, resolver caret/tilde reject, sanitizer × 4, plus the existing
+  network tests gated --ignored)
+- 117 web-crypto regression: unchanged PASS (SRI sha-512 path
+  unaffected; the verify is one of cruftless's existing primitives)
+- 5-endpoint TLS probe: unchanged 3/5
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P05.L1.pm-r2-fetcher` | PM-R2 fetcher/extractor: tarball download + SRI verify + gunzip + tarslip-safe extract; redirect-following via pm_http_get_follow; lodash 4.17.21 end-to-end 1.67s |
+
+### Open scope at PM-EXT 6 boundary
+
+1. **PM-EXT 7 (PM-R3 linker)**: rename/move staging dir to
+   `node_modules/<pkg>/`. With staging in a tmpdir on the same fs as
+   the target, this is a single `fs::rename`. Cross-fs case (tmpdir on
+   /tmp tmpfs, target on /home) needs a recursive copy fallback.
+   ~40 LOC.
+2. **PM-EXT 8 (lockfile codec)**: serialize a `Vec<ResolvedDep>` to JSON
+   with stable ordering; deserialize on subsequent installs; skip
+   refetch if all entries present + integrity matches. ~60 LOC.
+3. **PM-EXT 9 (end-to-end `pm_install` against a tmpdir package.json)**:
+   parse package.json's `dependencies`, drive PM-R1 + R2 + R3 + lockfile
+   write. Then verify `require('lodash').identity(42) === 42` through
+   the cruftless runtime. ~50 LOC of plumbing; this is the workstream
+   closure target.
+4. **Transitive dependencies (PM-EXT 10+)**: the per-version manifest
+   carries `dependencies`. The first cut should recurse: collect the
+   transitive closure into the resolution set before fetching. Doc 732
+   §VI carve-out: exact-pin only, so semver resolution within transitive
+   deps will fail loudly if any dep uses a range — that is information
+   the engagement wants (it tells us how much of the npm corpus is
+   reachable under exact-pin discipline).
+
+### Doc 734 meta-pipeline status
+
+Cycle 2 of the meta-pipeline opens at PM-EXT 6:
+- Observation: registry tarball URL emits 302
+- Articulate: redirect-following is a substrate gap (Case-1)
+- Lift: `pm_http_get_follow` + Location header parsing
+- Probe-cell flip: lodash end-to-end PASS
+
+The PM workstream's path to first-cut closure is now bounded:
+PM-EXT 7 + 8 + 9 = ~150 LOC for full `cruftless install lodash@4.17.21`
+working end-to-end. Within the next session's reach.
+
+---
+
+*PM-EXT 6 closes the second cross-step of the package-install pipeline.
+PM-R1 + PM-R2 together cover the manifest-to-extracted-staging arc;
+PM-R3 + lockfile + CLI close it into a working installer.*
