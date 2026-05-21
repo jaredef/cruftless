@@ -1127,3 +1127,72 @@ Per the diagnosis, three substrate alternatives at the mont_mul site remain:
 ---
 
 *WC-EXT 18 closes with the substrate-alternative landed correctness-gold + measured + reverted. Per Doc 730 §XVII apparatus discipline: a (P2) move that produces an empirical wash is still informative — it pins where the next-tier substrate move lives. CIOS was the wrong (P2) shape on this hardware; the right one is either u128 accumulator within CIOS, or the more strategic u64-limb representation switch (WC-EXT 19). The framework's case-(P2) cycle continues operating as designed.*
+
+---
+
+## WC-EXT 19 — 2026-05-21 (CIOS Mont with u128 accumulator; diagnosis confirmed, parity with two-pass)
+
+### Headline
+
+Per WC-EXT 18's diagnosis (CIOS u64+carry was slow due to dependency-chain pressure on the in-register accumulator): added `mont_mul_cios_u128` that moves the carry into a u128 accumulator the way Comba mul does. Routed `mont_mul` through it. Substrate is correctness-gold (117/117 regression PASS, fixture verifies, mont_mul bench matches reference).
+
+### Measurement
+
+| metric | WC-EXT 17 (two-pass) | WC-EXT 18 (CIOS u64+carry) | WC-EXT 19 (CIOS u128) |
+|---|---|---|---|
+| mont_mul micro-bench | 607 ns/op | 631 ns/op | **606 ns/op** |
+| 117 regression | 1.37s | 1.45s | 1.35s |
+| TLS probe | 2.61s | 2.61s | 2.64s |
+| api.github.com handshake | 0.846s | 0.833s | 0.836s |
+
+CIOS u128 **matches** two-pass at the mont_mul micro-bench (606ns vs 607ns; within noise) and the broader workload tests. The WC-EXT 18 diagnosis is **confirmed**: the u128 accumulator does close the gap that u64+carry opened. But the structural CIOS advantage (single pass, single buffer) doesn't produce additional gain over Comba two-pass on this hardware.
+
+### Diagnosis converged
+
+After WC-EXT 16 (Comba mul), WC-EXT 18 (CIOS u64+carry), and WC-EXT 19 (CIOS u128): three (P2) constant-factor substrate moves at the mont_mul site. All landed correctness-gold. Empirical pattern:
+- Comba two-pass: 607ns
+- CIOS u64+carry: 631ns (loses to dep-chain pressure)
+- CIOS u128: 606ns (recovers via u128, but no further gain)
+
+**At the current BigUInt representation (Vec<u32>) on Pi, two-pass and CIOS+u128 are at the local maximum of (P2) substrate moves at the mont_mul site.** Further substrate gains at this site require fundamental representation/algorithm change:
+
+1. **Switch BigUInt to Vec<u64> limbs.** Halves iteration count of every loop. Substantial refactor (~250-300 LOC); complicated by u128 accumulator overflow when summing many u64×u64=u128 products. The Comba u128 accumulator pattern that works cleanly for u32 limbs needs re-architecture for u64 limbs (need u256-tier accumulation or careful per-iteration carry-out).
+
+2. **Solinas reduction for P-256 specifically.** The P-256 prime p = 2^256 − 2^224 + 2^192 + 2^96 − 1 admits special-form reduction with ~16 32-bit ops instead of generic Mont REDC's k²=64 ops. ~80 LOC. P-256-specific; P-384/P-521 need their own variants. The standard "fast P-256 reduction" used by every production cryptographic library.
+
+3. **Inline assembly.** Per WC-EXT 16 reasoning, marginal gain — Rust's `u64 × u64 → u128` already compiles to `mul`+`umulh`. Asm wins only with SIMD or specific umaddl-class instructions.
+
+### Doc 730 §XVII (P2) framework — second complete cycle
+
+WC-EXT 18 + 19 ran the (P2) cycle through two iterations:
+- (P2) move A: CIOS u64+carry — measured loss, diagnosed dep-chain pressure
+- (P2) move B: CIOS u128 — measured parity, confirmed diagnosis but no further gain
+
+Per §XVII apparatus discipline: substrate moves at the same site with diminishing returns indicate the local maximum is reached. The framework's case (P2) inversion: when a tier's (P2) substrate moves saturate, the next substrate-move target is **outside the tier** — either a representation change (BigUInt limb-size) or a primitive-specific specialization (Solinas reduction).
+
+This is corpus-tier worth recording: §XVII's (P2) cycle has a saturation point that signals when to escalate to a different substrate axis. Worth a brief Doc 730 §XVII.h amendment in a later round.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P06.E3.wc-cios-mont-u128` | CIOS Mont with u128 accumulator; confirms WC-EXT 18 diagnosis (u128 closes the u64+carry gap); reaches parity with two-pass mul+redc; signals (P2) saturation at this site under current Vec<u32> representation |
+
+### Probe result
+
+5/5: 3/5 PASS unchanged. WC-EXT 19 is a substrate move at parity; no probe-cell flip.
+
+### Open scope at WC-EXT 19 boundary
+
+Per the saturation finding:
+
+1. **WC-EXT 20 (Solinas P-256 reduction)** — primitive-specific (P2) escalation. ~80 LOC. Projected ~2-3× per P-256 mont_mul; propagates through every ECDSA-P-256 + ECDH + leaf-cert verify. The single biggest pure-Rust (P2) win remaining at the current representation tier.
+2. **WC-EXT 21 (u64-limb representation)** — fundamental (P2) escalation at the representation tier. ~250-300 LOC + careful u128/u256-accumulator re-architecture. Strategic; affects everything.
+3. **Connection pooling** — orthogonal (P3) move.
+4. **TLS 1.2 fallback** — (P4 → carve-out vs lift) decision.
+
+(1) is the next strategic move per impact/LOC ratio (high impact at low LOC, primitive-specific). (2) is higher impact but higher cost + risk.
+
+---
+
+*WC-EXT 19 closes with the (P2) cycle's saturation point identified at the current Vec<u32> BigUInt representation + two-pass mul+redc shape. The framework's case-(P2) cycle ran through two complete iterations and converged; the next substrate-move target is structurally outside the tier (representation switch OR primitive-specific specialization). Per §XVII apparatus discipline, the next-move ranking puts Solinas P-256 reduction at the top.*
