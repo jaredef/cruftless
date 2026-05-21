@@ -659,3 +659,79 @@ workstream founded) → articulation (Doc 732) → substrate triad (PM-EXT
 *PM-EXT 11 marks the workstream's functional closure. The PM is now
 the "resolver-instance #0 below module load" promised by Doc 732,
 operational and composing with the layers above and below it.*
+
+---
+
+## PM-EXT 12 — 2026-05-21 (CLI surface: `cruftless install`)
+
+### Headline
+
+`cruftless install` works end-to-end as a subcommand. **The PM is now
+addressable from the cruftless binary itself, no Rust intermediary
+required.** A user with a project containing package.json runs
+`cruftless install`, gets a populated `node_modules/` + lockfile, then
+runs `cruftless app.mjs` and uses the installed packages.
+
+### Substrate landed
+
+- `host-v2/Cargo.toml`: rusty-js-pm promoted from `[dev-dependencies]`
+  to `[dependencies]` (the install subcommand needs it at runtime)
+- `host-v2/src/main.rs`:
+  - `run_install_subcommand()` (~25 LOC): runs `pm_install` against
+    cwd; registry from `CRUFTLESS_REGISTRY` env, defaulting to
+    `DEFAULT_REGISTRY`; prints `+ name@ver` per install + `= name@ver`
+    per skip
+  - `main` dispatches on `args[1] == "install"` before falling through
+    to the existing file-evaluation path
+  - Usage line updated: `<file.mjs>  |  install`
+- `host-v2/tests/pm_runtime_smoke.rs`: new test `cli_install_then_run`
+  exercises the binary's own subcommand dispatcher end-to-end:
+  install → idempotent reinstall → execute app.mjs that requires the
+  installed package
+
+### Probe result
+
+**CLI gate (1/1 PASS):**
+- `cruftless install` in tmpdir: exit 0; stdout contains `+ lodash@4.17.21`
+- Second `cruftless install`: exit 0; stdout contains `= lodash@4.17.21` (skip)
+- `node_modules/lodash/package.json` + `cruftless-lock.json` both present
+- `cruftless app.mjs` (app.mjs: `require('lodash').identity(7)`):
+  exit 0; stdout contains `cli-identity=7`
+
+**Cumulative (both PM smoke tests, network-gated):** 2/2 PASS in 2.23 s
+combined wall time.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P05.L1.pm-cli-install` | PM-EXT 12: `cruftless install` subcommand; CLI gate PASS end-to-end |
+
+### What this completes
+
+The PM is now a **first-class verb** of the cruftless binary, not a
+library buried behind integration tests. The seed §VI definition
+becomes a one-liner for end users:
+
+```
+$ cruftless install
+$ cruftless app.mjs
+```
+
+### Open scope at PM-EXT 12 boundary
+
+1. **PM-EXT 13 (npm-coverage reconnaissance)**: classify a sample of
+   the npm top-100 as fully-exact-reachable / first-hop-range /
+   deep-range. Output is a coverage map for the §VI carve-out.
+2. **Conflict detection** in the closure walker.
+3. **Lockfile integrity refetch** path.
+4. **`cruftless install <pkg>@<ver>`** form: parse a positional arg
+   and add to package.json before resolving. Currently `install` only
+   reads existing dependencies.
+5. **`-r/--registry` flag** as ergonomic shorthand for `CRUFTLESS_REGISTRY`.
+
+---
+
+*PM-EXT 12 surfaces the workstream through the binary's own CLI.
+Cycle 5 of Doc 734's meta-pipeline closes here: the resolver-instance
+is now visible to its users at every layer it composes against.*

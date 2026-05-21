@@ -18,8 +18,7 @@ rusty-js-bytecode = { path = "../pilots/rusty-js-bytecode/derived" }
 rusty-js-parser = { path = "../pilots/rusty-js-parser/derived" }
 rusty-js-ast = { path = "../pilots/rusty-js-ast" }
 indexmap = "2"
-
-[dev-dependencies]
-# PM-EXT 11 runtime-smoke integration test: orchestrate pm_install +
-# host-v2 binary run from a single test.
+# PM-EXT 12: rusty-js-pm exposed via `cruftless install` subcommand.
+# The PM is install-time only, but living in the same binary keeps the
+# CLI surface single.
 rusty-js-pm = { path = "../pilots/rusty-js-pm/derived" }

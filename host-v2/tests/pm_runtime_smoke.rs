@@ -68,3 +68,60 @@ console.log('keys=' + (Object.keys(lodash).length > 100 ? 'lots' : 'few'));
 
     let _ = std::fs::remove_dir_all(&project);
 }
+
+/// PM-EXT 12 CLI gate: `cruftless install` in a project dir, then
+/// `cruftless app.mjs` requires the installed package. End-to-end via
+/// the binary's own subcommand dispatcher, no Rust intermediary.
+#[test]
+#[ignore]
+fn cli_install_then_run() {
+    let project = tmpdir("cli");
+    std::fs::create_dir_all(&project).unwrap();
+    std::fs::write(
+        project.join("package.json"),
+        br#"{"name":"app","version":"0.0.1","dependencies":{"lodash":"4.17.21"}}"#,
+    ).unwrap();
+
+    let install_out = Command::new(bin())
+        .arg("install")
+        .current_dir(&project)
+        .output()
+        .expect("run cruftless install");
+    let install_stdout = String::from_utf8_lossy(&install_out.stdout);
+    let install_stderr = String::from_utf8_lossy(&install_out.stderr);
+    assert!(install_out.status.success(),
+        "install failed:\nstdout: {install_stdout}\nstderr: {install_stderr}");
+    assert!(install_stdout.contains("+ lodash@4.17.21"),
+        "expected '+ lodash@4.17.21' in stdout; got: {install_stdout}");
+    assert!(project.join("node_modules/lodash/package.json").exists(),
+        "lodash should be installed");
+    assert!(project.join("cruftless-lock.json").exists(),
+        "lockfile should be written");
+
+    // Second install: idempotent, all skipped.
+    let install2 = Command::new(bin())
+        .arg("install")
+        .current_dir(&project)
+        .output()
+        .expect("run cruftless install (2)");
+    let s2 = String::from_utf8_lossy(&install2.stdout);
+    assert!(install2.status.success());
+    assert!(s2.contains("= lodash@4.17.21"),
+        "second install should print '= lodash@4.17.21' (skipped); got: {s2}");
+
+    // Run an .mjs that requires the installed package.
+    let app = project.join("app.mjs");
+    std::fs::write(&app, br#"
+const lodash = require('lodash');
+console.log('cli-identity=' + lodash.identity(7));
+"#).unwrap();
+    let run = Command::new(bin()).arg(&app).output().expect("run app.mjs");
+    let rs = String::from_utf8_lossy(&run.stdout);
+    let re = String::from_utf8_lossy(&run.stderr);
+    assert!(run.status.success(),
+        "run failed:\nstdout: {rs}\nstderr: {re}");
+    assert!(rs.contains("cli-identity=7"),
+        "expected 'cli-identity=7'; got: {rs}");
+
+    let _ = std::fs::remove_dir_all(&project);
+}

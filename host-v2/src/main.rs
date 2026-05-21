@@ -35,11 +35,42 @@ fn format_thrown(rt: &Runtime, v: &Value) -> String {
     }
 }
 
+fn run_install_subcommand() -> ExitCode {
+    // PM-EXT 12: `cruftless install` — runs pm_install against the
+    // current working directory using the engagement's default
+    // registry (registry.npmmirror.com per Doc 730 §XVI Case-4 scope).
+    let cwd = match std::env::current_dir() {
+        Ok(p) => p,
+        Err(e) => { eprintln!("cruftless install: cannot read cwd: {e}"); return ExitCode::from(66); }
+    };
+    let registry = std::env::var("CRUFTLESS_REGISTRY")
+        .unwrap_or_else(|_| rusty_js_pm::resolver::DEFAULT_REGISTRY.to_string());
+    eprintln!("cruftless install: project={} registry={}", cwd.display(), registry);
+    match rusty_js_pm::install::pm_install(&cwd, &registry) {
+        Ok(report) => {
+            for (n, v) in &report.installed { println!("+ {n}@{v}"); }
+            for (n, v) in &report.skipped { println!("= {n}@{v}"); }
+            eprintln!("cruftless install: {} installed, {} skipped",
+                report.installed.len(), report.skipped.len());
+            ExitCode::from(0)
+        }
+        Err(e) => {
+            eprintln!("cruftless install: {e:?}");
+            ExitCode::from(70)
+        }
+    }
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {
-        eprintln!("usage: {} <file.mjs>", args.get(0).map(|s| s.as_str()).unwrap_or("cruftless"));
+        eprintln!("usage: {} <file.mjs>   |   {} install",
+            args.get(0).map(|s| s.as_str()).unwrap_or("cruftless"),
+            args.get(0).map(|s| s.as_str()).unwrap_or("cruftless"));
         return ExitCode::from(64); // EX_USAGE
+    }
+    if args[1] == "install" {
+        return run_install_subcommand();
     }
     let path = args[1].clone();
     let source = match std::fs::read_to_string(&path) {
