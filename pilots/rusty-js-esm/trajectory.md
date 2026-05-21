@@ -67,15 +67,66 @@ This means:
 
 ---
 
-## Rung-3 — Family B reading: enquirer over-synthesis (next)
+## Rung-3 — Family B reading: enquirer over-synthesis (closed, deferred)
 
-cruftless reports keyCount=64, bun reports keyCount=43. +21 spurious keys. The mirror image of Round 3's blanket default-synthesis. Suspected root cause: `populate_cjs_namespace_view` (module.rs:1388–1552) mirroring CJS exports onto a namespace for a package bun treats as pure ESM, OR an over-eager `export *` expansion picking up internal names.
+**Cross-engine probe**:
+- Node: 1 key (`default`) — pure CJS, no ESM bridge.
+- Bun: 43 keys.
+- cruftless: 64 keys. Δ = +21 spurious.
 
-Apply the locale's standard reading rung first: bun + Node + cruftless on the enquirer entry, plus a `Object.keys(M).sort()` diff to identify which 21 names are spurious. If the names share a structural origin (e.g., all from a particular re-exported file), the move is targeted; otherwise read the bytecode-exports list to see what cruftless's compiler emitted.
+**Reading**:
+- enquirer is CJS: `main: index.js`, no `module`, no `type`, no `exports`. Both bun and cruftless route through CJS namespace mirroring (`populate_cjs_namespace_view`, module.rs:1388–1552).
+- `module.exports = Enquirer` where `Enquirer extends EventEmitter`. Bun's own-property count of the constructor: 66. cruftless: 63. Engines see a near-identical object but differ by 3 own keys (unrelated; not in the spurious-21 set).
+- The 23 spurious keys (cruftless minus bun) are all `enumerable: false` per `Object.getOwnPropertyDescriptor` (verified in both engines). They split into 20 PascalCase class refs (`AutoComplete`, `BasicAuth`, `Confirm`, `Editable`, …) and 3 utility names (`prompt`, `prompts`, `types`).
+- Bun keeps 18 OTHER `enumerable: false` properties: the EventEmitter API surface (`addListener`, `emit`, `on`, `off`, `once`, `eventNames`, `getMaxListeners`, `listenerCount`, `listeners`, `prependListener`, `prependOnceListener`, `rawListeners`, `removeAllListeners`, `removeListener`, `setMaxListeners`) and the function intrinsics (`name`, `length`, `prototype`).
 
-## Rung-4 — Family C reading: superstruct re-export (queued)
+**Bun's filter rule — unresolved**: bun keeps SOME `enumerable: false` properties (EventEmitter/Function intrinsics) and drops OTHERS (`AutoComplete`, `prompts`, `types`). A pure enumerable-filter would drop both groups; a pure "keep all own" would keep both. Hypotheses considered and rejected:
+1. *Walks prototype chain*: `addListener` is own on Enquirer (not on EventEmitter.prototype), so a walk-up scheme doesn't explain its inclusion.
+2. *Whitelist of EventEmitter API names*: would mean bun has a hard-coded EventEmitter-method allow-list for `enumerable: false` CJS exports. Plausible but uncodified anywhere in bun's public surface; would be fragile to mirror.
+3. *Discriminator on capitalization*: rejected because `prompt`/`prompts`/`types` (lowercase) are also dropped.
 
-The Family C (superstruct –1) move requires resolver-level reading of `export { x } from` chains.
+**Verdict**: bun's filter for this package is package-shape-dependent in a way the locale's reading cannot fully recover without source access to bun. Shipping a substrate move here risks a Round-3-shaped over-application. **Defer enquirer** until either (a) a smaller-shape reading reveals the rule, or (b) the locale completes Rungs 5–6 on simpler packages and the residual count is small enough to accept package-level allow-lists.
+
+**No commit.**
+
+---
+
+## Rung-4 — Family C reading: superstruct re-export (closed, move designed)
+
+**Cross-engine probe**:
+- Bun: 52 keys.
+- cruftless: 51 keys. Δ = –1: missing `default`.
+
+**Reading**:
+- superstruct package.json: `type: "module"`, `main: "./dist/index.cjs"`, `module: "./dist/index.mjs"`, no `exports` field. **Dual-package shape**.
+- The ESM file `dist/index.mjs` has exactly one statement: `export { Struct, StructError, any, ... };` (51 named exports, no default).
+- Bun's `M.default` is an object with own keys equal to the 51 named exports. Confirmed `import D from 'superstruct'` returns that same object. It is a synthesized default constructed from the namespace's own enumerable properties.
+
+**Rule (proposed)**: when an ESM module finalizes with no `default` key on its namespace, AND the package.json has BOTH `main` and `module` fields (the dual-package shape), bun synthesizes a `default` whose value is a plain object snapshot of the namespace's named exports. The motivation is CJS↔ESM unification: the .cjs entry's `module.exports` is shape-identical to the synthesized default, so consumers writing `import D from 'pkg'` interop seamlessly across both forms.
+
+**Conditional gate** (anti-telos §I.2 compliance):
+- ESM module's namespace.default is Undefined after the export-binding loop.
+- The package.json (resolved via walking up from the module URL) has BOTH `main` and `module` keys.
+- The package.json has NO `exports` field (modern packages use `exports` to declare the dual-package shape explicitly; the heuristic doesn't apply).
+- The synthesized `default` is a plain object holding `(name, value)` pairs from the namespace's current own-property table, excluding `default` itself.
+
+**Edit surface**: `module.rs` between line 1075 (end of export-binding loop) and line 1077 (host-finalize-namespace hook). Add a package.json read helper if one doesn't already exist; cache by package-root URL to avoid re-reading per module.
+
+**Probe flip target**: superstruct (–1 → 0; flips to PASS).
+
+**Estimated parity delta**: +1 package at sweep tier (superstruct). Possible additional flips if other corpus packages share the dual-package-shape-without-default condition; possible regressions if the gate is too loose. Sweep is mandatory.
+
+**Status**: design closed; implementation deferred to Rung-5.
+
+---
+
+## Rung-5 — Family C move: dual-package default synthesis (queued)
+
+Implement the Rung-4 design behind the documented gate. Mandatory full 119-package sweep before commit.
+
+## Rung-6 — Family B revisit (queued)
+
+Return to enquirer with a smaller-shape reading: instrument cruftless to log which property descriptors it sees during `populate_cjs_namespace_view`, run on enquirer, and diff against bun's IR (if available). If a clear rule emerges, ship a gated move; otherwise close as out-of-locale.
 
 Each Family will earn its own rung-N reading (no-commit) followed by a rung-(N+1) move (commit-with-sweep).
 
