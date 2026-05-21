@@ -120,9 +120,25 @@ This means:
 
 ---
 
-## Rung-5 — Family C move: dual-package default synthesis (queued)
+## Rung-5 — Family C move: dual-package default synthesis (CLOSED, LANDED)
 
-Implement the Rung-4 design behind the documented gate. Mandatory full 119-package sweep before commit.
+**Status**: closed; substrate committed; parity 94.9% → **95.7% (114/119)**, net +1 (superstruct flipped, no regressions).
+
+**Implementation**: `module.rs` between the export-binding loop and the host-finalize-namespace hook. Walks up from the module URL (file:// only, capped at 32 parent steps) to the nearest `package.json`, reads it through the existing `read_package_json` cache, and synthesizes `default = <plain object holding namespace's own properties excluding default>` iff the namespace's default is currently `Undefined`.
+
+**Final gate (4 conditions, all required)**:
+1. `namespace.default` is `Undefined` after the export-binding loop.
+2. `package.json` has both `main` and `module` fields.
+3. `package.json` has NO `exports` field.
+4. `pkg.main != pkg.module_field` — the two fields point to **different files** (genuine dual-package shape, not a same-file ESM-only package masquerading via the `module` field).
+
+**Iteration cost**: first sweep with the 3-condition gate showed net-zero — superstruct flipped to PASS but lodash-es flipped to FAIL with `new WeakMap` callee-not-callable inside `_metaMap.js`. Diagnosis: lodash-es sets `main: lodash.js` and `module: lodash.js` (same file). The 3-condition gate matched, triggering default-synthesis on lodash-es's internal helper modules; the synthesized ordinary-object default replaced the real WeakMap-class default that the helper modules expected. Adding condition 4 (`main != module`) excluded lodash-es and closed the regression. Second sweep: net +1, no regressions.
+
+**Anti-telos checkpoint**: probe-before-commit caught the over-application at sweep tier, exactly as §I.2 requires. The 4-condition gate is now the load-bearing artifact of this rung; future rungs in this Family should extend (not loosen) it.
+
+**Counter-probe completeness**: superstruct (probe target) — PASS, keyCount 51 → 52, matches bun exactly. lodash-es (regression candidate) — keyCount 322, unchanged. No other corpus packages were affected.
+
+---
 
 ## Rung-6 — Family B revisit (queued)
 

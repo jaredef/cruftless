@@ -1,6 +1,6 @@
 # rusty-js-esm — Resume Vector / Seed
 
-**Status as of 2026-05-21**: **FOUNDED**. Locale scoped after Tier-Ω Round 3 catastrophic over-application (commit `1746bc72`, reverted as `25d4bd95`). The revert restored 94.9% (113/119) baseline; the residual six failures cluster heavily around ESM/CJS namespace synthesis, so the work earns its own Pin-Art locale rather than continuing as ad-hoc rounds inside `rusty-js-runtime`.
+**Status as of 2026-05-21**: **RUNG-5 CLOSED**. Parity 94.9% → **95.7% (114/119)** via the dual-package default-synthesis substrate. Net +1 (superstruct flipped, no regressions). Locale scoped after Tier-Ω Round 3 catastrophic over-application (commit `1746bc72`, reverted as `25d4bd95`). The revert restored 94.9% (113/119) baseline; the residual six failures cluster heavily around ESM/CJS namespace synthesis, so the work earns its own Pin-Art locale rather than continuing as ad-hoc rounds inside `rusty-js-runtime`.
 
 **Workstream**: ESM ↔ CJS interop and module-namespace synthesis inside the Cruftless runtime. The substrate question is "which bag of keys does `import * as M from 'pkg'` produce, and how does that bag relate to bun's reading of the same package?"
 

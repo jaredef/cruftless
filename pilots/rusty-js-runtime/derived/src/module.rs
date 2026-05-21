@@ -1074,6 +1074,60 @@ impl Runtime {
             }
         }
 
+        // rusty-js-esm Rung-5 (Family C, dual-package shape): when an ESM
+        // module's namespace has no `default` after the export-binding loop
+        // AND the package.json has BOTH `main` and `module` fields AND no
+        // `exports` field, synthesize `default` as a plain object holding the
+        // namespace's named exports. Bun does this for CJS↔ESM interop on
+        // the dual-package shape (the `.cjs` entry's `module.exports` is
+        // shape-identical to the synthesized default, so `import D from
+        // 'pkg'` unifies across both forms). Probe: superstruct.
+        //
+        // Anti-telos §I.2 compliance: the gate is the conjunction of three
+        // package-shape predicates, not a runtime condition; this is what
+        // distinguishes the move from the reverted Round 3 (which had no gate).
+        let needs_default_synth = matches!(self.object_get(namespace, "default"), Value::Undefined);
+        if needs_default_synth {
+            // Walk up from the module URL to the nearest package.json.
+            let walk_path = url.strip_prefix("file://").map(|p| std::path::PathBuf::from(p));
+            let mut pkg_dual_shape = false;
+            if let Some(mut p) = walk_path {
+                p.pop(); // drop filename → start at the module's directory
+                let mut steps = 0;
+                while steps < 32 {
+                    let candidate = p.join("package.json");
+                    if candidate.is_file() {
+                        if let Ok(pkg) = self.read_package_json(&candidate) {
+                            // Dual-package shape requires main AND module
+                            // pointing to DIFFERENT files. Packages like
+                            // lodash-es set both to the same .js file and
+                            // are not dual-package; treating them as such
+                            // corrupts default-import resolution in their
+                            // internal helper modules.
+                            pkg_dual_shape = pkg.main.is_some()
+                                && pkg.module_field.is_some()
+                                && pkg.main != pkg.module_field
+                                && pkg.raw.get("exports").is_none();
+                        }
+                        break;
+                    }
+                    if !p.pop() { break; }
+                    steps += 1;
+                }
+            }
+            if pkg_dual_shape {
+                let pairs: Vec<(String, Value)> = self.obj(namespace).properties.iter()
+                    .filter(|(k, _)| k.as_str() != "default")
+                    .map(|(k, d)| (k.to_string_content(), d.value.clone()))
+                    .collect();
+                let synth = self.alloc_object(Object::new_ordinary());
+                for (k, v) in pairs {
+                    self.object_set(synth, k, v);
+                }
+                self.object_set(namespace, "default".to_string(), Value::Object(synth));
+            }
+        }
+
         // Call HostFinalizeModuleNamespace if installed.
         if let Some(hook) = self.host_hooks.finalize_namespace.take() {
             hook(self, &ast_rc, namespace, url)?;
