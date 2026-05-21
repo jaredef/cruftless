@@ -284,9 +284,70 @@ pub fn get_force_shape_trip_addr() -> usize {
 //   result == (receiver_idx << 8) ^ prop_idx
 // ---------------------------------------------------------------------
 
+/// Function-pointer indirection for the GetPropOnObject helper.
+///
+/// The JIT crate cannot depend on `rusty-js-runtime` (it would form a
+/// cycle: runtime already depends on jit for CompiledFn). The real
+/// helper, which needs access to `Runtime` and `FunctionProto`, lives
+/// in the runtime crate. It registers itself via
+/// `set_active_getprop_fn` at startup; the JIT-emitted call lands in
+/// `jit_getprop_on_object`, which consults the registered fn and
+/// delegates. If no fn is registered, the deterministic stub fires
+/// (used by JIT-crate-only tests).
+pub type GetPropFn = extern "C" fn(i64, i64) -> i64;
+
+thread_local! {
+    static ACTIVE_GETPROP_FN: std::cell::Cell<Option<GetPropFn>> =
+        const { std::cell::Cell::new(None) };
+}
+
+pub fn set_active_getprop_fn(f: GetPropFn) {
+    ACTIVE_GETPROP_FN.with(|c| c.set(Some(f)));
+}
+
+pub fn clear_active_getprop_fn() {
+    ACTIVE_GETPROP_FN.with(|c| c.set(None));
+}
+
+/// JIT-EXT 22: TLS slots the real helper reads.
+///
+/// `CURRENT_RUNTIME` is a raw `*mut Runtime` packed into a `usize`
+/// (we cannot name the `Runtime` type here without a circular dep).
+/// `CURRENT_PROTO` is a raw `*const FunctionProto` similarly packed.
+/// Both are set by the dispatcher pre-JIT-call and cleared after.
+thread_local! {
+    pub static CURRENT_RUNTIME: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    pub static CURRENT_PROTO: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+pub fn set_current_runtime(rt_ptr: usize) {
+    CURRENT_RUNTIME.with(|c| c.set(rt_ptr));
+}
+pub fn clear_current_runtime() {
+    CURRENT_RUNTIME.with(|c| c.set(0));
+}
+pub fn get_current_runtime() -> usize {
+    CURRENT_RUNTIME.with(|c| c.get())
+}
+
+pub fn set_current_proto(proto_ptr: usize) {
+    CURRENT_PROTO.with(|c| c.set(proto_ptr));
+}
+pub fn clear_current_proto() {
+    CURRENT_PROTO.with(|c| c.set(0));
+}
+pub fn get_current_proto() -> usize {
+    CURRENT_PROTO.with(|c| c.get())
+}
+
 #[no_mangle]
 pub extern "C" fn jit_getprop_on_object(receiver_idx: i64, prop_name_idx: i64) -> i64 {
-    (receiver_idx << 8) ^ prop_name_idx
+    if let Some(f) = ACTIVE_GETPROP_FN.with(|c| c.get()) {
+        f(receiver_idx, prop_name_idx)
+    } else {
+        // JIT-crate-only tests use this deterministic stub.
+        (receiver_idx << 8) ^ prop_name_idx
+    }
 }
 
 /// Extern thunk callable from Cranelift-emitted code. Returns a

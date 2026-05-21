@@ -5845,6 +5845,18 @@ impl Runtime {
     /// `args[..proto.params]`, rest = Undefined). This matches the
     /// current arith-deopt invariant where the recovered state names
     /// only the live locals at the trip site.
+    /// JIT-EXT 22: install the runtime-side GetProp helper into the
+    /// JIT crate's function-pointer indirection. Called once at host
+    /// startup (the JIT calls `jit_getprop_on_object`, which delegates
+    /// through the indirection to this fn).
+    ///
+    /// The helper reads the JIT's TLS-stored Runtime + FunctionProto
+    /// pointers to do its work; the dispatcher sets those slots before
+    /// each JIT invocation via `set_current_runtime` / `set_current_proto`.
+    pub fn install_jit_getprop_helper() {
+        rusty_js_jit::set_active_getprop_fn(runtime_getprop_on_object);
+    }
+
     pub fn resume_from_deopt_state(
         &mut self,
         proto: &rusty_js_bytecode::compiler::FunctionProto,
@@ -7657,8 +7669,16 @@ impl Runtime {
                         // args — first-cut retry semantics; resume-from-
                         // trip-pc is queued for a future round).
                         let mut deopt_fell_through = false;
+                        // JIT-EXT 22: capture the Runtime + FunctionProto
+                        // pointers BEFORE entering the cache-borrow scope.
+                        // Both are raw pointers cast to usize to avoid
+                        // naming the types across the jit-crate boundary.
+                        let rt_ptr_usize = self as *mut Runtime as usize;
+                        let proto_ptr_usize = &*proto_rc as *const _ as usize;
                         if let Some(Some(jit_fn)) = self.jit_cache.get(&proto_key) {
                             rusty_js_jit::set_current_deopt_sites(&jit_fn.deopt_sites);
+                            rusty_js_jit::set_current_runtime(rt_ptr_usize);
+                            rusty_js_jit::set_current_proto(proto_ptr_usize);
                             let r = match params {
                                 1 => {
                                     let a = unbox_int_arg(&args[0]);
@@ -7671,6 +7691,8 @@ impl Runtime {
                                 }
                                 _ => unreachable!(),
                             };
+                            rusty_js_jit::clear_current_runtime();
+                            rusty_js_jit::clear_current_proto();
                             rusty_js_jit::clear_current_deopt_sites();
                             if rusty_js_jit::take_last_deopt().is_some() {
                                 // Deopt fired; produce the interp-fallback
@@ -8446,4 +8468,63 @@ fn describe_value_for_diag(rt: &Runtime, v: &Value) -> String {
             }
         }
     }
+}
+
+// JIT-EXT 22: runtime-side GetPropOnObject helper.
+//
+// Called by the JIT crate's `jit_getprop_on_object` via the function-
+// pointer indirection (`ACTIVE_GETPROP_FN`). Reads the active Runtime
+// + FunctionProto from the JIT's TLS slots, performs the property
+// lookup, encodes the result as i64.
+//
+// Encoding contract:
+//   - Number result: i64-truncated value (the JIT widens back to f64
+//     at the caller via the dispatcher's existing `Value::Number(r as f64)`).
+//   - Non-Number result (Object, String, Undefined, etc.): record a
+//     deopt in LAST_DEOPT_FRAME and return sentinel 0.
+//
+// Bad inputs (null TLS pointers, missing constant) are treated as
+// deopt-worthy: record a defensive deopt and return 0.
+extern "C" fn runtime_getprop_on_object(receiver_idx: i64, prop_name_idx: i64) -> i64 {
+    let rt_ptr = rusty_js_jit::get_current_runtime();
+    let proto_ptr = rusty_js_jit::get_current_proto();
+    if rt_ptr == 0 || proto_ptr == 0 {
+        record_synthetic_deopt(prop_name_idx as u32);
+        return 0;
+    }
+    // SAFETY: dispatcher guarantees the pointers are valid for the
+    // duration of the JIT call.
+    let rt: &mut Runtime = unsafe { &mut *(rt_ptr as *mut Runtime) };
+    let proto: &rusty_js_bytecode::compiler::FunctionProto =
+        unsafe { &*(proto_ptr as *const rusty_js_bytecode::compiler::FunctionProto) };
+
+    let name: String = match proto.constants.get(prop_name_idx as u16) {
+        Some(rusty_js_bytecode::constants::Constant::String(s)) => s.clone(),
+        _ => {
+            record_synthetic_deopt(prop_name_idx as u32);
+            return 0;
+        }
+    };
+
+    let obj_id = rusty_js_gc::ObjectId(receiver_idx as u32);
+    let v = rt.object_get(obj_id, &name);
+
+    match v {
+        Value::Number(n) => n as i64,
+        _ => {
+            record_synthetic_deopt(prop_name_idx as u32);
+            0
+        }
+    }
+}
+
+fn record_synthetic_deopt(ic_id: u32) {
+    use rusty_js_jit::{DeoptReason, DeoptRecoveredState};
+    let state = DeoptRecoveredState {
+        reason: DeoptReason::ICShapeMismatch { ic_id },
+        resume_pc: 0,
+        local_values: Vec::new(),
+        stack_values: Vec::new(),
+    };
+    rusty_js_jit::deopt::LAST_DEOPT_FRAME.with(|c| *c.borrow_mut() = Some(state));
 }

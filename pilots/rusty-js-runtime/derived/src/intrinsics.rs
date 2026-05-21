@@ -36,6 +36,12 @@ fn check_stdio(rt: &Runtime, op: crate::caps::StdioOp) -> Result<(), RuntimeErro
 
 impl Runtime {
     pub fn install_intrinsics(&mut self) {
+        // JIT-EXT 22: register the runtime-side GetPropOnObject helper
+        // with the JIT crate's function-pointer indirection. Idempotent
+        // (setting the same fn twice is a no-op), so calling it from
+        // install_intrinsics — which runs once per Runtime — is correct.
+        Self::install_jit_getprop_helper();
+
         // Prototype intrinsics must install first so subsequent alloc_object
         // calls (Math/JSON/console hosts, Promise) inherit from
         // Object.prototype. Tier-Ω.5.a.
