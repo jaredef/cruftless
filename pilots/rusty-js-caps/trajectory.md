@@ -51,3 +51,81 @@ Pin-Art tag count: 0 substrate moves so far (workstream founding only).
 ---
 
 *CAPS-EXT 0 closes the founding round. Subsequent rounds add substrate moves at the runtime tier and the PM tier per the Doc 736 §VI Pilot α + Moves 2-5 decomposition.*
+
+---
+
+## CAPS-EXT 1 — 2026-05-21 (ambient-authority audit)
+
+### Headline
+
+Static walk of host-v2 + rusty-js-runtime produced a per-method classification table covering ~625 JS-callable surfaces. **Only ~40 currently-callable effectful methods** (6% of the enumerated total); 130 are throw-on-call stubs (21%); ~450 are pure (72%); ~5 mixed (1%). The Move 1 gating budget is much smaller than Doc 736 §VI estimated — revised LOC estimate ~1100, well under the original 2-3k.
+
+### Substrate landed
+
+- `pilots/rusty-js-caps/docs/ambient-authority-audit.md` (~280 lines).
+  Per-namespace classification table, mixed-surface splitting recommendations, absent-surface inventory, distilled Move 1 gating budget (~40 methods), substrate-move ordering for CAPS-EXT 4+.
+
+### Key findings
+
+1. **Most "dangerous" Node surface is unreachable in cruftless today**:
+   - `node:child_process` (all RCE vectors) → all stubs
+   - `node:net` / `node:dgram` → not exposed
+   - `node:http` / `node:https` / `node:dns` / `node:vm` → all stubs
+   - `crypto.randomBytes` / WebCrypto → stubs
+   - `fs` fd surface (open/close/read/write) → not exposed
+   - `fs` symlink ops → not exposed
+
+   The substrate cascade hasn't built these yet. We gate what exists; we document the absent surface; we require future implementations to land behind capability gates from the start.
+
+2. **The 40 currently-callable effectful surfaces cluster into 5 capability classes**:
+   - `Fs`: ~17 methods (sync + async fs ops, plus require's filesystem walk)
+   - `Stdio`: ~7 methods (process.stdout.write/stderr.write, console.log/error/warn/info/debug)
+   - `Clock` + `Scheduler`: ~7 methods (Date.now, hrtime, performance.now, setTimeout/setInterval/setImmediate, nextTick, queueMicrotask)
+   - `Process`: ~3 methods (exit, cwd, pid)
+   - `Env`: ~5 methods (os.hostname/homedir/tmpdir/userInfo, os.cpus)
+
+3. **Revised LOC estimate (Pred-736.3 corroboration in progress)**:
+   - Gating: ~600 LOC
+   - Capability constructors/deputation/restriction: ~300 LOC
+   - install_bun_host rework: ~200 LOC
+   - **Total: ~1100 LOC**, below Doc 736 §VI's 2-3k.
+
+   Pred-736.1 (retrofit, not rewrite) appears corroborated at the design tier; final corroboration awaits CAPS-EXT 4+ implementation.
+
+### Substrate-move ordering (queued)
+
+Priority by attack-severity × implementation-cost:
+
+1. CAPS-EXT 4-5: `Fs` capability (largest surface, highest exfil risk, biggest single win — 2 rounds because sync + async have separate dispatch sites)
+2. CAPS-EXT 6: `process.exit` gating (trivial; one method; high severity)
+3. CAPS-EXT 7: `Stdio` capability (observable side channel via stdout; ergonomically tricky because console.log is everywhere)
+4. CAPS-EXT 8-9: `Clock` + `Scheduler` (timing side channels)
+5. CAPS-EXT 10: `Env` (low severity, completes the model)
+
+Move 3 (load-time SRI re-verifier, ~80 LOC) can land in parallel with any of the above as a no-regret hardening.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P05.L2.caps-audit` | CAPS-EXT 1 ambient-authority audit; 625 methods enumerated; ~40 effectful methods identified as Move 1 gating budget; revised LOC estimate ~1100 |
+
+### Probe status
+
+No code yet — audit only. The synthetic-adversary probe harness arrives at CAPS-EXT 3. The audit's gating-budget recommendation becomes a falsifiable claim at CAPS-EXT 4+ when implementation begins.
+
+### Open scope at CAPS-EXT 1 boundary
+
+1. **CAPS-EXT 2 (capability-API design)**: `pilots/rusty-js-caps/docs/capability-api.md`. Structured types (`Fs`, `Stdio`, `Clock`, `Scheduler`, `Process`, `Env`), constructors at the host boundary only, deputation/restriction operators (`Fs.subDir(path)`, `Net.allowHost(name)`), CapabilityError shape.
+
+2. **CAPS-EXT 3 (synthetic-adversary probes)**: `pilots/rusty-js-caps/probes/`. One `.mjs` per attack class catalogued in Doc 736 §IV. Pre-Move-1 state: all probes succeed (attacker wins). Move 1 success metric: every probe flips to PASS (CapabilityError refused).
+
+3. **CAPS-EXT 1.1 (deeper intrinsics walk, optional)**: per-method classification of `rusty-js-runtime/derived/src/intrinsics.rs`. Currently classified at namespace level (Math/JSON/Promise/etc. ~all pure). Defer unless CAPS-EXT 4+ surfaces an effectful intrinsic that the namespace-level classification missed.
+
+### Doc 730 §XVI status
+
+The audit's "absent surface" finding is a Case-3 (both-diverge) compositional success at the design tier: cruftless's substrate didn't build the dangerous Node surfaces in the first place, so they don't need explicit refusal. This is the kind of finding that justifies engagement-internal substrate construction over adaptation: the absences were earned by the discipline.
+
+---
+
+*CAPS-EXT 1 closes the audit. The Move 1 gating budget is bounded at ~40 methods / ~1100 LOC. Next move CAPS-EXT 2: capability-API design.*
