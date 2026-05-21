@@ -1,0 +1,37 @@
+[package]
+name = "cruftless-rquickjs"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "cruftless_rquickjs"
+path = "src/lib.rs"
+
+[[bin]]
+name = "cruftless-rquickjs"
+path = "src/main.rs"
+
+[dependencies]
+rquickjs = { version = "0.6", features = ["loader"] }
+serde_json = "1"
+mio = { version = "1", features = ["os-poll", "os-ext", "net"] }
+libc = "0.2"
+
+# Pilot crates exposed to JS via FFI.
+rusty-abort-controller = { path = "../../pilots/abort-controller/derived" }
+rusty-blob = { path = "../../pilots/blob/derived" }
+rusty-buffer = { path = "../../pilots/buffer/derived" }
+bun-file = { path = "../../pilots/bun-file/derived" }
+bun-serve = { path = "../../pilots/bun-serve/derived" }
+bun-spawn = { path = "../../pilots/bun-spawn/derived" }
+rusty-compression = { path = "../../pilots/compression/derived" }
+rusty-fetch-api = { path = "../../pilots/fetch-api/derived" }
+rusty-tls = { path = "../../pilots/tls/derived" }
+rusty-websocket = { path = "../../pilots/websocket/derived" }
+rusty-http-codec = { path = "../../pilots/http-codec/derived" }
+rusty-sockets = { path = "../../pilots/sockets/derived" }
+rusty-node-fs = { path = "../../pilots/node-fs/derived" }
+rusty-node-path = { path = "../../pilots/node-path/derived" }
+rusty-textencoder = { path = "../../pilots/textencoder/derived" }
+rusty-urlsearchparams = { path = "../../pilots/urlsearchparams/derived" }
+rusty-web-crypto = { path = "../../pilots/web-crypto/derived" }
