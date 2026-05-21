@@ -748,3 +748,37 @@ The fixture verify path (`ecdsa_verify` against the captured api.github.com fixt
 ---
 
 *WC-EXT 12 closes with generic Montgomery operational at the BigUInt arithmetic tier, propagating through RSA + ECDH paths and producing a 6.7× TLS wallclock improvement. The cost-stratum dimension of Doc 735 §X has its second engagement-tier corroboration (after WC-EXT 8). The Doc 731 §XV framework now has empirically-anchored cases at three primitive classes (ECDSA-P-256 verify, RSA-2048 verify, P-256 ECDH).*
+
+---
+
+## WC-EXT 13 — 2026-05-21 (route TLS ephemeral keygen to Mont base table; small win, methodology validation)
+
+### Headline
+
+7-LOC change in `pilots/tls/derived/src/driver.rs`: `EphemeralEcdh::generate` now calls `p256_scalar_mul_base_mont` directly instead of going through `p256_scalar_mul(scalar, generator)`. The base-table fast path replaces a variable-input scalar mul, saving one full ECDH ephemeral keygen worth of time per TLS handshake.
+
+### Measurement
+
+| metric | WC-EXT 12 | WC-EXT 13 | speedup |
+|---|---|---|---|
+| 5-endpoint TLS probe wallclock | 5.37s | **4.98s** | ~8% |
+| api.github.com single handshake | 1.85s | **1.76s** | ~5% |
+
+7 LOC for ~80-100ms saved. Demonstrates the methodology's compactness per the keeper's WC-EXT 13 conjecture: substrate-tier moves at the right composition site produce wallclock improvements at LOC-efficient ratios. The cumulative session ratio (~10 substrate-bearing LOC per saved-second-of-handshake) is the metric to track across WC-EXT 13+ as the gap to Bun closes.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P06.E1.tls-ephemeral-mont-base` | route EphemeralEcdh::generate to p256_scalar_mul_base_mont; ~8% TLS wallclock improvement at 7 LOC |
+
+### Open scope at WC-EXT 13 boundary
+
+The chain_walk per-cert verify path is now the dominant cost in the remaining ~1.7s api.github.com handshake. WC-EXT 14 candidates by estimated impact/LOC ratio:
+
+1. **Profiling probe**: add per-phase timing to chain_walk and verify_certificate_verify_signature; surface which phase eats which milliseconds. ~30 LOC. Diagnostic.
+2. **Karatsuba multiplication** above threshold (n ≥ 16 limbs): ~50 LOC; helps RSA-2048 mod_mul ~5×; RSA verify ~5× faster → ~150ms saved per handshake.
+3. **Solinas-form fast reduction** for P-256 (instead of generic Mont REDC for the P-256 prime): ~80 LOC; ~3× faster than Mont REDC on the P-256-specific prime; saves ~30ms per ECDSA verify × 4-5 verifies per handshake ≈ 120-150ms.
+4. **Connection pooling**: ~50 LOC + state machine; eliminates handshake on subsequent requests to same host; saves entire ~1.7s for the second+ request.
+
+(2) and (3) compose; (4) is orthogonal. Order: (1) → (2 or 3) → (4).

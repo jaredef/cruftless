@@ -249,11 +249,14 @@ impl EphemeralEcdh {
         // and re-sample if all zero.
         sk[0] &= 0x7F;  // ensure scalar < n with high probability
         if sk == [0u8; 32] { sk[31] = 1; }
-        let curve = rusty_web_crypto::curve_p256();
-        use rusty_web_crypto::{BigUInt, p256_scalar_mul};
+        // WC-EXT 13 (cross-pilot): the base-point scalar mul for
+        // ephemeral keygen uses the Mont-form baked table that
+        // ecdsa_verify's u1·G path uses. The table is precomputed
+        // at first use (~170µs) and amortized across every ECDH
+        // ephemeral + ECDSA verify in the process.
+        use rusty_web_crypto::{BigUInt, p256_scalar_mul_base_mont};
         let scalar = BigUInt::from_be_bytes(&sk);
-        let g = curve.g.clone();
-        let pubpt = p256_scalar_mul(&scalar, &g);
+        let pubpt = p256_scalar_mul_base_mont(&scalar);
         let (px, py) = match pubpt {
             rusty_web_crypto::P256Point::Affine { x, y } => (x.to_be_bytes(32), y.to_be_bytes(32)),
             rusty_web_crypto::P256Point::Identity => return Err(TlsError::SignatureFail(
