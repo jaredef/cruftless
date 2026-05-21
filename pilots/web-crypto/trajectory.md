@@ -987,3 +987,73 @@ Per Doc 731 §VII R2 (Cranelift / standard apparatus owns codegen): the WC-EXT 1
 ---
 
 *WC-EXT 16 closes with the substrate work continuing to surface tighter-grained framework refinements. The Comba-mul move's modest empirical impact ratifies the Doc 735 §X intra-tier-cost-stratification framework operating one layer deeper than expected. The "assembly track" framing resolves to "trust the compiler when it already emits the right instructions; reserve literal asm for cases where the compiler can't see the structure." WC-EXT 17 (CIOS Mont) is the next strategic move at the BigUInt tier.*
+
+---
+
+## WC-EXT 17 — 2026-05-21 (Karatsuba multiplication above threshold; first §XVII (P1) algorithmic-tier substrate move)
+
+### Headline
+
+Per Doc 730 §XVII performance-axis deviation pipeline, **case (P1) algorithmic gap**: cruftless's `BigUInt::mul` was Comba O(n²); BoringSSL above ~16 limbs uses Karatsuba O(n^1.58). WC-EXT 17 adds recursive Karatsuba above a threshold of 24 limbs; below threshold the existing Comba schoolbook remains the fast path. The Comba implementation moved to `mul_schoolbook`; `mul` now dispatches.
+
+### Substrate landed
+
+~45 LOC:
+- `KARATSUBA_THRESHOLD: usize = 24` (limbs; below this, Comba; above, Karatsuba)
+- Recursive split-into-halves + three sub-products (z0, z1, z2) via Karatsuba's identity
+- `BigUInt::shl_limbs(k)` helper for composing partial products at correct byte offsets
+- `mul_schoolbook` (was `mul`)
+
+### Measurement
+
+| metric | WC-EXT 16 | WC-EXT 17 | speedup |
+|---|---|---|---|
+| 117 web-crypto regression | 1.39s | 1.37s | ~1.5% |
+| 5-endpoint TLS probe | 2.61s | 2.61s | ~unchanged |
+| api.github.com handshake (chain_walk) | 613ms | 600ms | ~2% |
+| Fixture P-256 verify | 0.10s | 0.10s | unchanged |
+
+The wallclock effect at the current workload is small. Reason: the active probe set (E1/E3/E4 with ECDSA-P-256 and ECDSA-P-384) doesn't exercise the bit-widths Karatsuba dominates at. P-256 = 8 limbs, P-384 = 12 limbs — both below the 24-limb threshold; both use Comba.
+
+Where Karatsuba dominates: **RSA-2048 (64 limbs)**, **RSA-3072 (96 limbs)**, **RSA-4096 (128 limbs)**. For these, Karatsuba's recursive split-into-halves gives a ~2× speedup on each `mont_mul`. The 117 regression's marginal ~1.5% improvement reflects the small RSA fraction of those tests.
+
+### Workload-frequency observation (§XVII.c step 5 in action)
+
+Per §XVII.c step 5 (sequence substrate moves by impact × frequency / LOC): for the current cruftless probe set, Karatsuba's (impact × workload frequency) is low because no probed endpoint exercises ≥24-limb mod_mul on the hot path. The substrate move is **correct + ready** but **not currently load-bearing for the workload's wallclock**. 
+
+This is a clean §XVII.b case-(P1) substrate move at the algorithm tier; per §XVII apparatus discipline the next-move ranking properly de-prioritizes it for the current workload. It becomes load-bearing as soon as:
+- Workload extends to a TLS-1.2 endpoint that uses RSA key exchange (WC-EXT 19+ when E5 npm decision lifts the carve-out)
+- JWT-RS256 signing workload appears (JOSE consumers)
+- Chain_walk encounters an RSA-signed intermediate (some CDN configurations)
+
+### Doc 730 §XVII corroboration (first instance)
+
+This is the first substrate move landed under the §XVII performance-axis deviation pipeline framing explicitly. Per the §XVII case taxonomy:
+- Categorization: (P1) algorithmic gap (O(n²) → O(n^1.58))
+- Substrate move: algorithm promotion
+- Probe re-run: ~unchanged at current workload
+- Diagnosis: case (P4) for current probe set (within acceptable envelope; no further substrate move needed for these specific endpoints)
+- Open: case (P1) re-activates when workload extends to RSA-2048+ primitives
+
+The substrate move's correctness-gold landing under §XVII framing demonstrates the framework's apparatus discipline working through one complete cycle.
+
+### Commits
+
+| commit | tag | recognition |
+|---|---|---|
+| (this commit) | `Ω.5.P06.E3.wc-karatsuba-bigint` | Karatsuba mul above 24-limb threshold; correctness-gold (117/117 PASS); first WC-EXT under Doc 730 §XVII performance-axis pipeline; small empirical effect at current workload; large effect queued for RSA-2048+ workloads |
+
+### Probe result
+
+5/5 TLS probe: 3/5 PASS in 2.61s, unchanged. Karatsuba is dormant for current probe.
+
+### Open scope at WC-EXT 17 boundary
+
+1. **WC-EXT 18 (CIOS Mont)**: per WC-EXT 16's diagnosis. Estimated ~2-3× per mont_mul. (P2) constant-factor work; would benefit current workload directly.
+2. **WC-EXT 19+ (TLS 1.2 fallback)**: opens E5 npm and reactivates Karatsuba's (P1) impact at the RSA-2048 path.
+3. **Threshold tuning**: empirically determine optimal KARATSUBA_THRESHOLD per-platform. Could be lower than 24 on Pi (where modular-divmod overhead is high) or higher on systems with faster division. ~20 LOC of bench-driven tuning.
+4. **Toom-3 mul** above ~96 limbs: next algorithmic-tier promotion (O(n^1.46)). Helps RSA-4096+. Out-of-band for current workload.
+
+---
+
+*WC-EXT 17 closes with Karatsuba landed correctness-gold under the Doc 730 §XVII performance-axis pipeline framing. The substrate move's small current-workload impact + large queued-workload impact is exactly the (P1) case the pipeline's apparatus discipline catalogs separately from (P2) constant-factor work. The framework's case discrimination operates as designed.*

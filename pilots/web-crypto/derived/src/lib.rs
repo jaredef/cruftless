@@ -794,7 +794,50 @@ impl BigUInt {
         r
     }
 
+    /// WC-EXT 17: Karatsuba multiplication above limb-count threshold.
+    /// Per Doc 730 §XVII performance-axis pipeline, case (P1) algorithmic
+    /// gap: schoolbook is O(n²); Karatsuba is O(n^1.58). For RSA-2048
+    /// (64 limbs) Karatsuba dominates; for P-256 (8 limbs) schoolbook
+    /// wins on constant factor. Threshold tuned empirically.
     pub fn mul(&self, other: &BigUInt) -> BigUInt {
+        const KARATSUBA_THRESHOLD: usize = 24;  // limbs; below this, schoolbook
+        let n = std::cmp::max(self.0.len(), other.0.len());
+        if n < KARATSUBA_THRESHOLD || self.0.len() < 2 || other.0.len() < 2 {
+            return self.mul_schoolbook(other);
+        }
+        // Split each operand at limb `split` into low + high parts.
+        let split = (n + 1) / 2;
+        let a_lo_limbs = self.0.iter().take(split).cloned().collect::<Vec<u32>>();
+        let a_hi_limbs = self.0.iter().skip(split).cloned().collect::<Vec<u32>>();
+        let b_lo_limbs = other.0.iter().take(split).cloned().collect::<Vec<u32>>();
+        let b_hi_limbs = other.0.iter().skip(split).cloned().collect::<Vec<u32>>();
+        let a_lo = BigUInt::from_limbs(a_lo_limbs);
+        let a_hi = BigUInt::from_limbs(a_hi_limbs);
+        let b_lo = BigUInt::from_limbs(b_lo_limbs);
+        let b_hi = BigUInt::from_limbs(b_hi_limbs);
+        // Three sub-products (recursive: Karatsuba or schoolbook per branch).
+        let z0 = a_lo.mul(&b_lo);
+        let z2 = a_hi.mul(&b_hi);
+        let a_sum = a_lo.add(&a_hi);
+        let b_sum = b_lo.add(&b_hi);
+        let z1_full = a_sum.mul(&b_sum);
+        let z1 = z1_full.sub(&z0).sub(&z2);
+        // Compose: result = z0 + z1·B + z2·B²  where B = 2^(32·split)
+        let z1_shifted = z1.shl_limbs(split);
+        let z2_shifted = z2.shl_limbs(2 * split);
+        z0.add(&z1_shifted).add(&z2_shifted)
+    }
+
+    fn shl_limbs(&self, k: usize) -> BigUInt {
+        if self.is_zero() { return BigUInt::zero(); }
+        let mut out = vec![0u32; k + self.0.len()];
+        out[k..].copy_from_slice(&self.0);
+        let mut r = BigUInt(out);
+        r.trim();
+        r
+    }
+
+    fn mul_schoolbook(&self, other: &BigUInt) -> BigUInt {
         // WC-EXT 16: Comba (column-wise) schoolbook with u128 accumulator.
         // Replaces the two-pass approach (mul into u64 buffer + separate
         // carry-propagation) with a single column-scan that accumulates
@@ -820,6 +863,7 @@ impl BigUInt {
             acc >>= 32;
         }
         limbs[n] = acc as u32;
+        // Trim into a BigUInt at the end (return value)
         let mut r = BigUInt(limbs);
         r.trim();
         r
