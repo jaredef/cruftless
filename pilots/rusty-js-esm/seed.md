@@ -1,6 +1,14 @@
 # rusty-js-esm — Resume Vector / Seed
 
-**Status as of 2026-05-21**: **RUNG-5 CLOSED**. Parity 94.9% → **95.7% (114/119)** via the dual-package default-synthesis substrate. Net +1 (superstruct flipped, no regressions). Locale scoped after Tier-Ω Round 3 catastrophic over-application (commit `1746bc72`, reverted as `25d4bd95`). The revert restored 94.9% (113/119) baseline; the residual six failures cluster heavily around ESM/CJS namespace synthesis, so the work earns its own Pin-Art locale rather than continuing as ad-hoc rounds inside `rusty-js-runtime`.
+**Status as of 2026-05-21 (session close)**: **RUNG-6 CLOSED** + **deviation-pipeline operational**. Parity 94.9% → **95.7% (114/119)** across the session. Three substrate landings committed; one Doc 730 §XII–§XVII deviation-resolution pipeline built and executed end-to-end for arktype.
+
+Session-close summary:
+- Rung-5 (Family C, dual-package default synthesis): superstruct flipped, commit e3eec694.
+- Rung-6 (Op::New honors newTarget.prototype for Array-subclass): bracket flipped; arktype's original crash resolved, downstream gap surfaced; commit 764d7f88.
+- TypedArray + Buffer iterator triplet (values/keys/entries) standalone substrate, commit b2927524.
+- arktype deviation-resolution pipeline (pilots/rusty-js-esm/deviations/arktype/): §XII–§XVI closed, §XVII iteration 1 closed (Callable pattern verified-non-gap), commits c059852d / a55ed417 / fc4e1cc1 / 764d7f88 / e28b3e14.
+
+Remaining residual failures (5): arktype (downstream substrate gap, §XVII iter 2+ queued), node-fetch (out-of-locale: bun compatibility shim), superagent (out-of-locale: require resolution after the TypedArray-iterator unblocked the buf.values gap), entities (timeout, out-of-locale), enquirer (Family B reading deferred — bun's CJS-namespace filter rule unrecoverable without bun source). Locale scoped after Tier-Ω Round 3 catastrophic over-application (commit `1746bc72`, reverted as `25d4bd95`). The revert restored 94.9% (113/119) baseline; the residual six failures cluster heavily around ESM/CJS namespace synthesis, so the work earns its own Pin-Art locale rather than continuing as ad-hoc rounds inside `rusty-js-runtime`.
 
 **Workstream**: ESM ↔ CJS interop and module-namespace synthesis inside the Cruftless runtime. The substrate question is "which bag of keys does `import * as M from 'pkg'` produce, and how does that bag relate to bun's reading of the same package?"
 
