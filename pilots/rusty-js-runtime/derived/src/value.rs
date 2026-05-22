@@ -506,20 +506,38 @@ impl CompiledRegex {
     }
     /// Split `input` on each match, returning the pieces between matches.
     pub fn split_str(&self, input: &str) -> Vec<String> {
-        match self {
-            CompiledRegex::Rust(r) => r.split(input).map(|s| s.to_string()).collect(),
-            CompiledRegex::Hand(_) => {
-                let matches = self.find_iter_owned(input);
-                let mut out = Vec::new();
-                let mut cursor = 0;
-                for (ms, me, _) in matches {
-                    out.push(input[cursor..ms].to_string());
-                    cursor = me;
-                }
-                out.push(input[cursor..].to_string());
-                out
+        // ECMA-262 sec 22.1.3.21 step 18 / RegExp [Symbol.split]: empty
+        // matches at the current cursor position are skipped (q advances
+        // by 1 in spec) rather than emitting empty-string slices between
+        // every codepoint. Rust's regex::Regex::split and Hand regex's
+        // naive cursor walk both emit those empty slices, which produced
+        // "hello".split(new RegExp("")) === ["", "h", "e", "l", "l", "o", ""]
+        // instead of the spec's ["h","e","l","l","o"].
+        //
+        // Spec edge: an empty input with a regex that matches empty
+        // returns [] (no slice emitted because the empty match at 0
+        // equals p).
+        let matches = self.find_iter_owned(input);
+        if input.is_empty() {
+            if matches.iter().any(|(s, e, _)| *s == 0 && *e == 0) {
+                return Vec::new();
             }
+            return vec![String::new()];
         }
+        let mut out = Vec::new();
+        let mut p: usize = 0;
+        for (ms, me, _) in matches {
+            // Spec sec 22.1.3.21 step 18: loop while q < size. A match
+            // anchored at end-of-input (ms == input.len()) is past the
+            // loop boundary and must not contribute a slice.
+            if ms >= input.len() { break; }
+            if me == p { continue; }
+            if ms < p { continue; }
+            out.push(input[p..ms].to_string());
+            p = me;
+        }
+        out.push(input[p..].to_string());
+        out
     }
     /// Replace at most `n` matches with the given literal replacement string.
     /// Replacement does NOT honor $1..$9 backreferences yet (v1 deviation).

@@ -1694,3 +1694,40 @@ The converter handles:
 **Methodology note**: the property-key coercion gap is upstream of defineProperty alone. The same ToString-of-Object → "[object Object]" anti-pattern lives at `abstract_ops::to_string:62` and affects every code path that stringifies an object-typed value (defineProperties, Reflect.*, [] accessor on object-typed key, etc.). Defer to its own rung when the targeted defineProperty win demands a broader sweep.
 
 **Tag**: `cluster-defineProperty-key-coercion-3`. Next cluster candidate: descriptor-attribute defaulting (the ~30 "should not be configurable" / "should be enumerable" remaining FAILs in this same sub-tree).
+
+---
+
+## Rung-cluster-4 — String.prototype.split with RegExp separator (closed 2026-05-22)
+
+**Cluster** (per the test262-parity telos in seed §I.2):
+`built-ins/String/prototype/split/*` — 120 paths covering string-separator and regex-separator splitting + limit handling + lastIndex behavior. The pre-rung sample showed 30 FAIL / 90 PASS in this sub-tree.
+
+**Root cause**: `CompiledRegex::split_str` delegated to Rust's `regex::Regex::split` (and to a naive cursor walk in the Hand branch), both of which emit empty-string slices at zero-width-match positions. ECMA-262 §22.1.3.21 step 18 specifies that empty matches at the current cursor `p` are skipped (the spec's `q` advances by 1 without emitting a slice). Result: `"hello".split(new RegExp())` produced `["", "h", "e", "l", "l", "o", ""]` instead of the spec's `["h", "e", "l", "l", "o"]`. Empty input + empty regex returned `[""]` instead of `[]`.
+
+**Substrate fix**: rewrote `split_str` at `pilots/rusty-js-runtime/derived/src/value.rs:508` to walk `find_iter_owned` matches sequentially, applying the spec's three skip rules:
+1. Empty match at end-of-input (`ms >= input.len()`): break (the spec's loop bound).
+2. Empty match at the consumed cursor (`me == p`): continue (the spec's `q++`).
+3. Overlap with consumed region (`ms < p`): continue (defensive).
+Plus the spec's empty-input edge cases: `[]` when the regex matches empty at 0, `[""]` otherwise.
+
+**Post-rung result**: 22 FAIL / 98 PASS on the 120-path cluster.
+
+**Delta**: **+8 PASS** (30 FAIL → 22 FAIL, ~27% reduction).
+
+**Sample-wide cumulative** (with clusters 1-4):
+- Cluster-1 (Number numeric format): +10
+- Cluster-2 (dstr LHS): +72
+- Cluster-3 (defineProperty P coercion): +11
+- Cluster-4 (split regex empty-match): +8
+- Total: **+101 PASS** on the 7,203-runnable base = +1.40 pp
+- Cruftless 73.9% → ~75.3% runnable pass; gap 25.3 pp → ~23.9 pp
+
+**Remaining 22 split FAILs** — mixed:
+- 4 negative tests expecting SyntaxError (early errors in regex patterns)
+- 3 "Expected a Test262Error to be thrown" (assert.throws with regex side effects)
+- 5 limit-with-regex-side-effects (lastIndex observability)
+- Misc
+
+**Note**: the fix also applies through RegExp.prototype[@@split] which uses the same `CompiledRegex::split_str` — so any other test path that routes through `regex@@split` (some array-like split tests, e.g.) may also flip. Sample-wide re-measurement at the next rung close.
+
+**Tag**: `cluster-string-split-regex-empty-4`. Next cluster candidate: language/statements/for-of non-dstr SyntaxError negative tests (27 FAILs), or Array/prototype/concat TypeError-throwing on non-Array @@isConcatSpreadable (~9 FAILs).
