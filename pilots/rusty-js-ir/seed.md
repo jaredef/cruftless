@@ -39,21 +39,21 @@ Each cluster opens a rung in `trajectory.md` with:
 - the post-rung FAIL count
 - the gap delta against the parity-target telos
 
-### I.3 State at fold (2026-05-22, post rung-12)
+### I.3 State at fold (2026-05-22, post rung-19)
 
-Twelve cluster rungs landed in a single session. Cumulative reading at fold:
+Nineteen cluster rungs landed in a single session, including three structural lifts. Cumulative reading at fold:
 
-| Measurement | Pre rungs (baseline) | Post rung-10 (measured) | Post rung-12 (estimated) |
-|---|---:|---:|---:|
-| PASS | 5,321 | 5,522 | ~5,548 |
-| FAIL | 1,882 | 1,683 | ~1,657 |
-| Runnable pass rate | **73.9%** | **76.6%** | **~77.0%** |
-| Gap vs Bun (99.2%) | **25.3 pp** | **22.6 pp** | **~22.2 pp** |
-| Telos progress (toward ≤10 pp) | 0% | 18% | ~20% |
+| Measurement | Pre (baseline) | Post rung-10 | Post rung-13 | Post rung-17 | Post rung-19 |
+|---|---:|---:|---:|---:|---:|
+| PASS | 5,321 | 5,522 | 5,553 | 5,586 | 5,592 |
+| FAIL | 1,882 | 1,683 | 1,652 | 1,616 | 1,611 |
+| Runnable pass rate | **73.9%** | **76.6%** | **77.1%** | **77.6%** | **77.6%** |
+| Gap vs Bun (99.2%) | **25.3 pp** | **22.6 pp** | **22.1 pp** | **21.6 pp** | **21.6 pp** |
+| Telos progress (toward ≤10 pp) | 0% | 18% | 21% | 24% | 24% |
 
-The 76.6% / 22.6 pp numbers are measured; the post rung-12 numbers add cluster-11 (+7 measured) and cluster-12 (+1 measured directly + broader cascade unmeasured).
+All numbers above are sample-wide measured at the named rung close (no estimates).
 
-**Rung index by tag** (each rung is a coherent spec-step-anchored substrate fix, not an IR encoding — methodology note from rung-1: small spec-step defect rungs don't require the full IR detour to be linted, only the spec-step-anchored comment discipline; large-algorithm rungs will):
+**Rung index by tag** (each rung is a coherent spec-step-anchored substrate fix or structural lift — methodology note from rung-1: small spec-step defect rungs don't require the full IR detour to be linted, only the spec-step-anchored comment discipline; large-algorithm rungs will):
 
 | # | Tag | Surface | Direct flips |
 |---|---|---|---:|
@@ -69,8 +69,17 @@ The 76.6% / 22.6 pp numbers are measured; the post rung-12 numbers add cluster-1
 | 10 | `cluster-defineProperty-generic-preserve-10` | defineProperty generic descriptor preserves type | +15 |
 | 11 | `cluster-objlit-accessor-enum-and-rest-getter-11` | Object-literal accessor enumerable:true + rest-spread getter dispatch | +7 |
 | 12 | `cluster-arrayspecies-ctor-validate-and-concat-wire-12` | ArraySpeciesCreate constructor validation + concat wired through ASC | +1 measured |
+| 13 | `cluster-objectkeys-array-string-13` | Object.keys on Array/Arguments enumerates string-keyed properties | +31 (sweep) |
+| **14** | **`cluster-lift-enumerable-own-keys-14`** | **LIFT: EnumerableOwnPropertyNames helper canonicalized (5 sites)** | 0 direct |
+| **15** | **`cluster-lift-array-species-15`** | **LIFT: ArraySpeciesCreate routes through @@species protocol (installed Array[@@species] accessor)** | +4 |
+| 16 | `cluster-reflect-defineproperty-return-bool-16` | Reflect.defineProperty returns Boolean per spec; validation failures map to false | +0 sample (cluster Reflect/* not sampled) |
+| 17 | `cluster-ordinaryset-preserve-attrs-17` | object_set_pk preserves existing descriptor attrs (broad-cascade fix) | +29 |
+| **18** | **`cluster-lift-objectset-unify-18`** | **LIFT: object_set / object_set_pk collapsed to one OrdinarySet path** | +1 noise |
+| 19 | `cluster-collection-size-accessor-19` | Map.prototype.size / Set.prototype.size as accessor descriptors | +5 |
 
-Most rungs cascade beyond their measurement target — the +201 measured at rung-10 close vs +250 estimated reflects unmeasured cascade.
+Structural lifts in **bold**. Three lifts landed in the session, each replacing scattered open-coded versions of a spec abstract op with one canonical helper.
+
+Most rungs cascade beyond their measurement target — repeated sample-wide re-measurements showed real cumulative slightly under per-rung-sum (e.g. +271 measured vs +275 sum-of-rungs through rung-19) because some rungs unblock siblings and some rungs partly overlap.
 
 ### I.4 Cluster selection heuristic (operational)
 
@@ -82,13 +91,33 @@ Empirical pattern after twelve rungs:
 4. **Prefer broad-cascade fixes**: a fix in a helper (ToLength, ArraySpeciesCreate, __destr_object_rest, install_accessor) costs the same to write as a fix in a single method's body but moves more tests.
 
 Highest-yield deferred clusters (substantive substrate, queued for their own rungs):
-- TDZ enforcement (76 ReferenceError tests in dstr alone + unknown elsewhere)
-- Iterator-close protocol on early break/throw (~70 Test262Error-not-thrown in dstr + scattered elsewhere)
-- @@species full dispatch in ArraySpeciesCreate (many concat/map/filter Proxy/Reflect tests)
-- TypedArraySpeciesCreate parallel work
+- TDZ enforcement — ~87 ReferenceError tests (largest tractable yield; substantial: needs sentinel value + LoadLocalTDZ opcode + compiler-emitted scope-init)
+- Iterator-close protocol — revised down from ~70 to ~15-20 direct tests after closer look at sample; the apparent dstr concentration was partly destructure-step-error tests not iter.return tests
+- ValidateAndApplyPropertyDescriptor (§10.1.6.3) full lift — Result<bool, Err> return type unifies Object.defineProperty (throws) + Reflect.defineProperty (returns Boolean); rung-16 did the tractable shim
+- TC39 stage-3 proposals (NOT substrate work, but represent ~50 test-262 sample FAILs): JSON.{isRawJSON, rawJSON}, Map.{groupBy, getOrInsert, getOrInsertComputed}, Error.isError, Math.{f16round, sumPrecise}, Promise.{allKeyed, allSettledKeyed, try}
+- TypedArraySpeciesCreate parallel work (paralleling rung-15)
 - DataView instance methods (entire surface; same item as diff-prod's deferred backlog)
 - BigInt JSON serialization
 - Unpaired-surrogate string escape in JSON.stringify
+- Internal incrementer migration to bump_collection_size helper (maintenance debt, not yield)
+
+### I.5 Lift mechanics (recorded after rung-14/15/18)
+
+A lift is a structural rung whose primary value is reducing drift surface, not flipping tests. Each lift follows:
+
+1. **Identify**: a spec abstract op OR section algorithm with ≥3 scattered open-coded call sites
+2. **Cite**: the spec section in the helper's docstring
+3. **Centralize**: replace each call site with a single method call; comment cites the lift's rung
+4. **Justify**: yield from a pure lift is often near-zero in direct test flips; the value is reducing drift surface so subsequent spec-conformance work lands once
+
+The three lifts in this session moved 0 / +4 / +1 PASS directly, but each removed 50-75 LOC of inline drift and absorbed all future spec refinements at one site. The rung-17 defect (object_set_pk attribute-nuking) is a direct example of what unlifted drift causes; the rung-18 lift immediately closed that vector.
+
+Past IR-EXT lifts in the locale (precedent for this session's three):
+- IR-EXT 66: ArraySetLength
+- IR-EXT 68: SerializeJSONProperty
+- IR-EXT 69: ToObject + Object.assign source-keys helper
+- IR-EXT 72: ToPrimitive
+- IR-EXT 78: ToBigInt
 
 ## II. Apparatus
 

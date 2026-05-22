@@ -2167,3 +2167,32 @@ This is the dual-source pattern: the prototype accessor is the spec-correct surf
 - Telos progress: ~24% of the way
 
 **Tag**: `cluster-collection-size-accessor-19`. The 8 internal incrementers can be migrated to a `bump_collection_size(rt, this, delta)` helper in a future structural cleanup; that's a maintenance-debt rung not a yield rung.
+
+---
+
+## Fold (2026-05-22, post rung-19)
+
+Nineteen rungs total in this session (three structural lifts). Detailed state in seed.md §I.3, §I.4, §I.5.
+
+Headline (measured at rung-19 close):
+- **5,592 PASS / 1,611 FAIL / 384 SKIP = 77.6% runnable pass** (was 73.9% baseline)
+- Real cumulative: **+271 PASS, +3.7 pp**
+- Gap to bun: **21.6 pp** (was 25.3 pp); telos ≤10 pp; **~24% of the way**
+
+Yield by phase:
+- Rungs 1-10: +201 measured (substrate-defect rungs concentrated on highest-density FAIL clusters)
+- Rungs 11-13: +31 (broader-cascade defects)
+- Rungs 14-15: +4 (LIFTs — structural value, near-zero direct)
+- Rungs 16-17: +29 (one helper-divergence fix delivered 29)
+- Rungs 18-19: +6 (LIFT + Map/Set size accessor)
+
+Methodology data points (in seed §I.5):
+1. Lifts amplify rather than yield. Three lifts moved ~0 / +4 / +1 directly but absorbed all future spec refinements at one site.
+2. Helper divergence is a leading indicator of future bugs. Rung-17's defect was caused by object_set / object_set_pk drift; rung-18 closed the vector by unifying.
+3. ~50 sample FAILs are TC39 stage-3 proposals (un-touchable by substrate work). The "true" cruftless-vs-spec gap is ~17 pp after subtracting these from the 21.6 pp gap.
+
+Next session candidates (per seed §I.4 deferred list):
+1. TDZ enforcement — ~87 ReferenceError tests, biggest remaining tractable substrate yield, substantial alphabet+opcode work
+2. Full ValidateAndApplyPropertyDescriptor lift — folds rung-10 + rung-16 + rung-17 into one Result<bool, Err> helper
+3. TypedArraySpeciesCreate paralleling rung-15
+4. TC39 stage-3 proposal sweep (different work category: implementing un-shipped APIs)
