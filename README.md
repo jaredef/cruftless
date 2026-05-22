@@ -65,6 +65,60 @@ The design is articulated across the RESOLVE corpus:
 - `specs/diff-prod-testing.md` — the diff-prod methodology (11 sections).
 - `pilots/diff-prod/` — the diff-prod Pin-Art locale (seed + trajectory + deferred substrate backlog).
 
+## test262 coverage
+
+[test262](https://github.com/tc39/test262) is TC39's official ECMA-262 conformance suite (~53k tests covering language semantics and the entire built-in surface).
+
+Cruftless runs test262 via `legacy/host-rquickjs/tests/test262/runner.mjs`, a per-test driver that parses the upstream YAML frontmatter, prepends the required harness scripts, evaluates the test through indirect eval, and emits one JSON line per result. The driver honors `module`, `async`, `noStrict`, `onlyStrict`, `raw`, and `negative.{phase,type}` flags from the frontmatter.
+
+Because running the full 53k suite in CI is impractical at this stage, conformance is reported against a **curated representative sample** at `scripts/test262-sample/sample-paths.txt` — directory paths that target the surface production Node packages actually exercise: core builtins (`JSON`, `Map`, `Set`, `WeakMap`, `WeakSet`, `Number`, `Math`, `Symbol`, `Error`, `Promise`), the most-used `Array`/`String` prototype methods, key `Object` statics, `RegExp.prototype.{exec,test}`, and the language constructs real code uses (`arrow-function`, `for-of`, `for-in`). The sample expands to ~7,800 individual tests.
+
+To reproduce:
+
+```sh
+cargo build --release --bin cruftless
+./scripts/test262-sample/run-sample.sh        # writes results/test262-sample-<DATE>/{results.jsonl,summary.txt}
+```
+
+`PARALLEL=N` controls worker count (default 4); `T262_ROOT` points at an upstream test262 clone; `RB_BIN` overrides the cruftless binary path.
+
+Latest sample, **2026-05-22**: **5,321 PASS / 1,882 FAIL / 384 SKIP** out of 7,587 results emitted across 7,750 sampled tests — **73.9% runnable pass rate** (`5321 / 7203`). SKIPs are tests whose frontmatter flags a feature the harness elects not to run (e.g. legacy `noStrict`-only fixtures, async-iterator features behind feature-flag gates).
+
+Per-area breakdown:
+
+| Area                          | PASS | FAIL | SKIP | Pass% |
+|-------------------------------|-----:|-----:|-----:|------:|
+| `built-ins/Number`            |  310 |   30 |    0 | 91.2% |
+| `built-ins/Math`              |  298 |   29 |    0 | 91.1% |
+| `built-ins/Object`            | 1563 |  204 |    0 | 88.5% |
+| `built-ins/WeakSet`           |   68 |   15 |    0 | 81.9% |
+| `built-ins/Array`             | 1264 |  286 |    0 | 81.5% |
+| `built-ins/String`            |  495 |  113 |    0 | 81.4% |
+| `built-ins/Set`               |  264 |  117 |    0 | 69.3% |
+| `built-ins/RegExp` (exec/test)|   84 |   40 |    0 | 67.7% |
+| `built-ins/Symbol`            |   66 |   32 |    0 | 67.3% |
+| `built-ins/WeakMap`           |   94 |   47 |    0 | 66.7% |
+| `built-ins/Map`               |  126 |   78 |    0 | 61.8% |
+| `built-ins/Promise`           |  163 |  110 |  381 | 59.7% |
+| `built-ins/JSON`              |   89 |   69 |    0 | 56.3% |
+| `language/expressions`        |  146 |  172 |    0 | 45.9% |
+| `built-ins/Error`             |   26 |   32 |    0 | 44.8% |
+| `language/statements`         |  265 |  508 |    3 | 34.3% |
+
+The high-90s rates on `Number`, `Math`, and `Object` reflect surfaces whose specs are tight loops over numeric or descriptor algorithms — exactly what the rusty-js-ir locale targets first. The low rates on `language/expressions` and `language/statements` reflect tests targeting subtle parser/eval edges (TDZ enforcement, hoisting cases, generator semantics) that diff-prod has documented as deferred substrate work.
+
+The sample is the conformance baseline; the broader 53k suite is the eventual ceiling. Each substrate rung that flips a fixture in `pilots/diff-prod/` should also flip some count of test262 entries; the two probes triangulate together.
+
+## rusty-js-ir — spec-as-source-of-truth IR
+
+`pilots/rusty-js-ir/` is the locale that lifts spec-conformance work from hand-transcription to a stage-deterministic compilation. The hypothesis (from cruftless seed §A8.33 + `pilots/rusty-js-ir/IR-DESIGN.md` §9): **spec conformance becomes monotonically easier once an ECMA-262 algorithm is IR-encoded** — the linter enforces 1:1 IR-vs-spec correspondence, and the lowering compiler emits Rust against the existing `rusty-js-runtime` helper surface. Each new built-in passes through the linter once, then never drifts.
+
+Each ECMA-262 algorithm section becomes one `IRFunction`; the lint passes (`cargo run --example lint_all -p rusty-js-ir`) require zero diff against the parsed spec; the emitted Rust lands in `pilots/rusty-js-runtime/derived/src/generated.rs`. Sections currently encoded include `Array.prototype` iteration/mutator families, `Math` variadic operations, `JSON.serialize`, the property-descriptor cluster, and several global predicates.
+
+Status at locale's most recent close (IR-EXT 94b): **65 IR-alphabet nodes**, **33 sections IR-encoded** (28 wired into the runtime, 5 IR-only), linter ✓ on 33/33. Estimated 50–80 more sections to reach the bounded telos of "every cruftless `register_intrinsic_method` entry is either IR-encoded or explicitly carved out."
+
+The locale composes with the test262 sample above: IR-encoded sections regress at or above their prior test262 rate. Regression is a Tier-1.5 incompleteness signal (the runtime-helper surface needs expansion).
+
 ## Status
 
 39 / 39 diff-prod fixtures PASS across L and F categories. Top-500 namespace-shape parity at 77.4% raw / 82.1% incl-agreed-errors. Top-100 at 99.1%. Migration-cost gap between the rquickjs ceiling (`legacy/host-rquickjs/`) and the hand-rolled engine (`cruftless/`) is ~4.1 percentage points on the 1026-package basket. The morph trajectory toward the Cruftless terminal-property design proceeds under the walk-mode discipline of Doc 725; each substrate round is dispatched per Pin-Art near-necessity (Doc 581) and locatable on the two architectural addresses of Doc 729 §VIII.
