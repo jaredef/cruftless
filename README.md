@@ -107,6 +107,15 @@ Per-area breakdown:
 
 The high-90s rates on `Number`, `Math`, and `Object` reflect surfaces whose specs are tight loops over numeric or descriptor algorithms — exactly what the rusty-js-ir locale targets first. The low rates on `language/expressions` and `language/statements` reflect tests targeting subtle parser/eval edges (TDZ enforcement, hoisting cases, generator semantics) that diff-prod has documented as deferred substrate work.
 
+Head-to-head against the oracle on the same sample, same runner, same harness:
+
+| Engine               | PASS  | FAIL | SKIP | Runnable | Runnable pass% |
+|----------------------|------:|-----:|-----:|---------:|---------------:|
+| **Bun 1.3.11**       | 7,269 |   56 |  384 |    7,325 | **99.2%**      |
+| **Cruftless** (this) | 5,321 | 1,882|  384 |    7,203 | **73.9%**      |
+
+The 25.3-pp gap is the visible work remaining on the conformance axis. Bun's 56 FAILs are the upper-bound noise floor for the sample (proposals + edge cases where even the oracle disagrees with test262 head). Reproduce the bun column with `./scripts/test262-sample/run-sample-bun.sh`.
+
 The sample is the conformance baseline; the broader 53k suite is the eventual ceiling. Each substrate rung that flips a fixture in `pilots/diff-prod/` should also flip some count of test262 entries; the two probes triangulate together.
 
 ## rusty-js-ir — spec-as-source-of-truth IR
