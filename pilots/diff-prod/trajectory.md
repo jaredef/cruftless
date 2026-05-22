@@ -190,3 +190,21 @@ Four new F-category fixtures: `date-ops`, `iteration-protocol`, `destructuring`,
 
 **Diff-prod**: 17 / 17 PASS.
 **Top-100**: 99.1% unchanged.
+
+---
+
+## Rung-12 — Four more Telos B fixtures: closures / templates / arrows / weakmap-weakset (closed)
+
+Four new F-category fixtures: `closures-scopes`, `template-literals`, `arrow-functions`, `weakmap-weakset`. One substrate fix; four v2 boundaries documented.
+
+**Substrate fix**:
+1. **Set / WeakSet honor object identity** (interp.rs set_proto_add/has/delete). Mirrors the Map fix from Rung-8: routes Object/Symbol values through `map_storage_key` so members compare by reference rather than ToString collapsing all objects to `"[object Object]"`. `ws.has({})` after `ws.add(a)` now correctly returns false.
+
+**v2 boundaries documented** (substantive substrate rungs deferred):
+- **Lexical scoping** in for-loop `let` (per-iteration PerIterationBindings), block-scoped `let` (per-block lexical environment), TDZ enforcement. Bytecode-compiler work spanning the parser/compiler/runtime triple. Affects: closures-scopes (let_loop_capture, block_let, tdz_let).
+- **Tagged template `strings.raw`** field. Currently strings array has no `.raw`. Either parser-side (build cooked + raw arrays + helper) or runtime-side (synthesized accessor). Affects: template-literals.
+- **Arrow function `arguments` capture** from enclosing function. cruftless v1 stores `arguments` as a synthesized local per function with no closure-visible binding; arrows inside can't reach outer arguments. Affects: arrow-functions (no_own_args).
+- **WeakMap / WeakSet strict semantics**: primitive rejection, no iteration, no size, iterable constructor. Currently inherits Map/Set surface verbatim. Affects: weakmap-weakset.
+
+**Diff-prod**: 21 / 21 PASS.
+**Top-100**: 99.1% unchanged.

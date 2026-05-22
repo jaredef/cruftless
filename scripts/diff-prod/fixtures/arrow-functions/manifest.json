@@ -1,0 +1,8 @@
+{
+  "name": "arrow-functions",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Arrow functions: lexical `this`, no own `arguments`, no own `new.target`, curry, short body forms."
+}

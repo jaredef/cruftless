@@ -1292,8 +1292,11 @@ impl Runtime {
     pub fn set_proto_add_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let (this, storage) = self.set_this_and_storage("add")?;
         let v = args.first().cloned().unwrap_or(Value::Undefined);
-        let key_s = crate::abstract_ops::to_string(&v).as_str().to_string();
-        let existed = !matches!(self.object_get(storage, &key_s), Value::Undefined);
+        // Set uses SameValueZero identity per ECMA-262 §24.2.3. Mirror
+        // the Map fix: encode Object/Symbol values as identity-stable
+        // storage keys so object members compare by reference.
+        let key_s = Self::map_storage_key(&v);
+        let existed = self.obj(storage).has_own_str(&key_s);
         self.object_set(storage, key_s, v);
         if !existed {
             let prev = match self.object_get(this, "size") { Value::Number(n) => n, _ => 0.0 };
@@ -1306,7 +1309,7 @@ impl Runtime {
     pub fn set_proto_has_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let (_this, storage) = self.set_this_and_storage("has")?;
         let v = args.first().cloned().unwrap_or(Value::Undefined);
-        let key_s = crate::abstract_ops::to_string(&v).as_str().to_string();
+        let key_s = Self::map_storage_key(&v);
         Ok(Value::Boolean(self.obj(storage).has_own_str(&key_s)))
     }
 
@@ -1314,7 +1317,7 @@ impl Runtime {
     pub fn set_proto_delete_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let (this, storage) = self.set_this_and_storage("delete")?;
         let v = args.first().cloned().unwrap_or(Value::Undefined);
-        let key_s = crate::abstract_ops::to_string(&v).as_str().to_string();
+        let key_s = Self::map_storage_key(&v);
         let existed = self.obj_mut(storage).remove_str(&key_s).is_some();
         if existed {
             let prev = match self.object_get(this, "size") { Value::Number(n) => n, _ => 0.0 };

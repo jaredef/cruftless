@@ -1,0 +1,8 @@
+{
+  "name": "closures-scopes",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "let/var/const scoping, TDZ, closure capture across loops, IIFE, block scoping."
+}

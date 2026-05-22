@@ -1,0 +1,8 @@
+{
+  "name": "weakmap-weakset",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "WeakMap / WeakSet basic surface: set / get / has / delete by object identity, methods only (no iteration, no size)."
+}

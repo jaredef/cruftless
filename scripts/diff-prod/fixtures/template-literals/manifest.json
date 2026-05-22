@@ -1,0 +1,8 @@
+{
+  "name": "template-literals",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Template literals: expression interpolation, escapes, multi-line, tagged templates, String.raw."
+}
