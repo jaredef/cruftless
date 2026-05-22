@@ -710,7 +710,7 @@ impl Runtime {
         match (kind, &cjs_raw) {
             (ImportBindingKind::Default, Some(raw)) => raw.clone(),
             (ImportBindingKind::Namespace, Some(raw)) => {
-                Value::Object(self.cjs_namespace_view(raw.clone()))
+                Value::Object(self.cjs_namespace_view_at(raw.clone(), Some(resolved_url)))
             }
             (ImportBindingKind::Named(n), Some(raw)) => match raw {
                 Value::Object(oid) => {
@@ -884,7 +884,7 @@ impl Runtime {
             let v = match (&ib.kind, &cjs_raw) {
                 (ImportBindingKind::Default, Some(raw)) => raw.clone(),
                 (ImportBindingKind::Namespace, Some(raw)) => {
-                    Value::Object(self.cjs_namespace_view(raw.clone()))
+                    Value::Object(self.cjs_namespace_view_at(raw.clone(), Some(&resolved)))
                 }
                 (ImportBindingKind::Named(n), Some(raw)) => {
                     match raw {
@@ -1427,7 +1427,7 @@ impl Runtime {
         // Refresh the placeholder namespace view in place so any cached
         // ObjectRef (e.g. an ESM importer holding `ns`) sees the final
         // exports shape.
-        self.populate_cjs_namespace_view(placeholder, &final_exports, exports_reassigned);
+        self.populate_cjs_namespace_view_at(placeholder, &final_exports, exports_reassigned, Some(url));
 
         // Ω.5.P54.E2 (Axis-E probe): post-eval observation for CJS path.
         let key_count = self.obj(placeholder).properties.len();
@@ -1443,13 +1443,17 @@ impl Runtime {
     /// CJS module.exports value. Used by ESM `import * as X from
     /// "./lib.cjs"` to satisfy the spec namespace shape.
     pub fn cjs_namespace_view(&mut self, exports: Value) -> ObjectRef {
+        self.cjs_namespace_view_at(exports, None)
+    }
+
+    pub fn cjs_namespace_view_at(&mut self, exports: Value, url: Option<&str>) -> ObjectRef {
         let ns = self.alloc_object(Object::new_module_namespace());
         // Callers using this entry don't have the initial-exports reference
         // (the module already evaluated). Conservative default: assume
         // module.exports was reassigned → synthesize default. Real CJS
         // load goes through populate_cjs_namespace_view with the reassign
         // bit computed correctly.
-        self.populate_cjs_namespace_view(ns, &exports, true);
+        self.populate_cjs_namespace_view_at(ns, &exports, true, url);
         ns
     }
 
@@ -1500,6 +1504,10 @@ impl Runtime {
     }
 
     fn populate_cjs_namespace_view(&mut self, ns: ObjectRef, exports: &Value, exports_reassigned: bool) {
+        self.populate_cjs_namespace_view_at(ns, exports, exports_reassigned, None)
+    }
+
+    fn populate_cjs_namespace_view_at(&mut self, ns: ObjectRef, exports: &Value, exports_reassigned: bool, url: Option<&str>) {
         match exports {
             Value::Object(oid) => {
                 // Mirror own properties + a `default` pointer at the
@@ -1527,12 +1535,33 @@ impl Runtime {
                 // The other three keep name/length/prototype because their
                 // source didn't mark itself as a TS/Babel-compiled ES module.
                 let esmod_v = self.object_get(*oid, "__esModule");
-                let strip_fn_intrinsics = matches!(esmod_v, Value::Boolean(true)) && matches!(
+                let exports_is_fn = matches!(
                     self.obj(*oid).internal_kind,
                     crate::value::InternalKind::Function(_)
                     | crate::value::InternalKind::Closure(_)
                     | crate::value::InternalKind::BoundFunction(_)
                 );
+                // Top-500 cluster: bun strips `prototype` (and the other
+                // function intrinsics) when the package.json declares an
+                // explicit `exports` field — that signals modern packaging
+                // where the author explicitly enumerates the surface. Closes
+                // typed-array-buffer / data-view-buffer / data-view-byte-*
+                // (delta=+1 prototype).
+                let pkg_has_exports_field = match url {
+                    Some(u) => package_has_exports_field_walk(u),
+                    None => false,
+                };
+                let strip_fn_intrinsics = exports_is_fn && matches!(esmod_v, Value::Boolean(true));
+                // Reading observation: bun's `prototype` strip on
+                // typed-array-buffer / data-view-* is package-shape-
+                // dependent in a way that's not yet recovered from the
+                // outside. Both rfdc (KEEPS prototype) and typed-array-buffer
+                // (DROPS prototype) have `exports` field + main:index.js +
+                // no module/type. Distinguishing them needs a different
+                // reading axis (per Doc 730 §XVIII). Until then, leave the
+                // narrower strip disabled.
+                let _ = pkg_has_exports_field;
+                let strip_prototype_only = false;
                 // Ω.5.P40.E1.cjs-ns-getter-dispatch: collect (key, value,
                 // optional-getter) triples. Pre-fix the namespace builder
                 // copied descriptor.value directly, so accessor properties
@@ -1604,6 +1633,9 @@ impl Runtime {
                     .filter(|(k, d)| {
                         if k.as_str() == "__esModule" { return false; }
                         if strip_fn_intrinsics && matches!(k.as_str(), "name" | "length" | "prototype") {
+                            return false;
+                        }
+                        if strip_prototype_only && k.as_str() == "prototype" {
                             return false;
                         }
                         // Rung-7 enumerability filter (only when a
@@ -1897,6 +1929,30 @@ fn with_suffix(p: &std::path::Path, suffix: &str) -> std::path::PathBuf {
 /// Fields are extracted lazily-but-once via serde_json::Value; we keep
 /// the raw Value around so resolvers can walk the conditional-exports
 /// tree without re-parsing.
+/// Walk up from a file:// URL to the nearest package.json and return whether
+/// it declares an `exports` field. Cheap text scan; full JSON parse would
+/// pull in the cached package.json (which requires &mut self).
+fn package_has_exports_field_walk(url: &str) -> bool {
+    let path_str = match url.strip_prefix("file://") { Some(p) => p, None => return false };
+    let path = std::path::Path::new(path_str);
+    let mut cur = path.parent();
+    let mut steps = 0;
+    while let Some(d) = cur {
+        let candidate = d.join("package.json");
+        if candidate.is_file() {
+            if let Ok(text) = std::fs::read_to_string(&candidate) {
+                let compact = text.replace(char::is_whitespace, "");
+                return compact.contains("\"exports\":");
+            }
+            return false;
+        }
+        cur = d.parent();
+        steps += 1;
+        if steps > 16 { break; }
+    }
+    false
+}
+
 pub struct ParsedPackageJson {
     pub raw: serde_json::Value,
     pub name: Option<String>,
