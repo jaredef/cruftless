@@ -84,6 +84,8 @@ The runner is responsible for installing `deps` into the fixture's isolated sand
 
 `scripts/diff-prod/run-all.sh` iterates every fixture, parallelizes per CPU count, and emits a final summary.
 
+All heavy work runs behind `nice -n 19 ionice -c3` so the harness can share a workstation session without disrupting interactive use. The sandbox and results directories default to the T7 mounted drive (`/media/jaredef/T7/rusty-bun/diff-prod-{sandbox,results}/`) to keep system disk lean, matching the parity-measure convention.
+
 ## V. Comparator (per category)
 
 ### V.a L: namespace shape diff

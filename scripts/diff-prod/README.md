@@ -34,6 +34,22 @@ cargo build --release -p cruftless
 ./scripts/diff-prod/run-all.sh
 ```
 
+## Runtime hygiene
+
+All heavy work runs behind `nice -n 19 ionice -c3` so the harness can
+share a workstation without disrupting interactive use. The sandbox and
+results default to the **T7 mounted drive** (`/media/jaredef/T7/rusty-bun/diff-prod-{sandbox,results}/`)
+to keep system disk lean — same convention as the parity-measure harness.
+
+Override via env if needed:
+
+```sh
+PROD_SANDBOX=/tmp/diff-prod-sandbox RESULTS_DIR=/tmp/diff-prod-results ./run-all.sh
+```
+
+If `ionice` isn't installed, the wrapper falls back to `nice -n 19` only
+(visible at the top of `run.sh`).
+
 ## Shipped fixtures (rev 1)
 
 | Fixture | Category | Status (2026-05-22) | Note |
