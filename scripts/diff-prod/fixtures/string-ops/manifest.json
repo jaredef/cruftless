@@ -1,0 +1,9 @@
+{
+  "name": "string-ops",
+  "categories": ["F"],
+  "deps": [],
+  "env": {},
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "String.prototype methods exercised across boundary cases. Tests intrinsic equivalence (especially methods recently fixed: indexOf w/ fromIndex)."
+}

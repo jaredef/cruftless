@@ -1,0 +1,10 @@
+{
+  "name": "json-roundtrip",
+  "categories": ["F"],
+  "deps": [],
+  "env": {},
+  "tolerances": { "float": 1e-12, "stack-strip": true },
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "JSON.parse + JSON.stringify roundtrip across a diverse value spectrum. Stdlib-only; tests serialization equivalence."
+}

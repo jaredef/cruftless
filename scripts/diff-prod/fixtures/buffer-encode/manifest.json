@@ -1,0 +1,9 @@
+{
+  "name": "buffer-encode",
+  "categories": ["F"],
+  "deps": [],
+  "env": {},
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Buffer.from / toString roundtrip across utf8, hex, base64. Tests node:buffer semantics."
+}
