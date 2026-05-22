@@ -1009,7 +1009,11 @@ impl Runtime {
         // Special fast-path for `Function('return this')` retained for
         // identity stability — the eager lookup of globalThis at create
         // time is preserved.
-        register_global_fn(self, "Function", |rt, args| {
+        // ECMA-262 §20.2.1: Function is a constructor. `new Function(...)`
+        // and `Function(...)` should both yield a function compiled from
+        // the source body. depd / ejs / bluebird / uglify-js / metro and
+        // many top-500 packages use `new Function(...)`.
+        register_global_ctor(self, "Function", |rt, args| {
             let body = match args.last() {
                 Some(Value::String(s)) => s.as_str().to_string(),
                 _ => String::new(),
@@ -4528,6 +4532,15 @@ where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
         writable: true, enumerable: false, configurable: true,
         getter: None, setter: None,
     });
+}
+
+/// Register a global as a constructor-callable native. Use for §20.2.1
+/// Function and any other intrinsic that the spec marks `[[Construct]]`.
+fn register_global_ctor<F>(rt: &mut Runtime, name: &str, f: F)
+where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
+    let fn_obj = make_native(name, f);
+    let fn_id = rt.alloc_object(fn_obj);
+    rt.globals.insert(name.into(), Value::Object(fn_id));
 }
 
 fn register_global_fn<F>(rt: &mut Runtime, name: &str, f: F)
