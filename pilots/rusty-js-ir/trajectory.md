@@ -2088,3 +2088,28 @@ Cleaner architectural form (queued for a proper lift): factor out `OrdinaryDefin
 **Result on a 1,916-path Reflect+defineProperty+defineProperties sweep**: 180 FAIL / 1,736 PASS. Sample-wide: 5,557 PASS / 1,646 FAIL = 77.1% (FAIL count -2 from prior — the sample doesn't include Reflect/* directly so most of the rung's effect is invisible to the sample baseline).
 
 **Tag**: `cluster-reflect-defineproperty-return-bool-16`. Next: IteratorClose lift remains the largest queued candidate (~70 tests).
+
+---
+
+## Rung-cluster-17 — OrdinarySet preserves existing descriptor attrs (closed 2026-05-22)
+
+**Cluster**: cross-cutting — every code path that writes to an existing data property via bracket access (`obj[key] = value`) on an Array (Op::SetIndex).
+
+**Root cause**: `object_set_pk` at `interp.rs:6188` unconditionally inserted a fresh `PropertyDescriptor { writable: true, enumerable: true, configurable: true, getter: None, setter: None }` even when the property already existed. The sibling `object_set` (used by Op::SetProp / identifier keys) correctly delegated to `set_own` which preserved the existing flags per ECMA-262 §10.1.9 OrdinarySet. The pk-variant didn't.
+
+Result: any assignment via computed-key bracket access to an existing property would silently promote a non-configurable / non-enumerable / non-writable descriptor back to all-true. Test262's `verifyProperty` helper exercises this directly via `isWritable` (which performs `obj[name] = unlikelyValue` to test writability) — the write succeeded AND nuked the configurable flag, causing the subsequent configurable assertion to fail.
+
+**Substrate fix**: in `object_set_pk`, mirror `set_own`'s preserve-existing-attrs branch. If the property exists, update only `[[Value]]` (and skip the write for non-writable data properties per the existing sloppy-mode no-op).
+
+**Sample-wide post-rung**: 5,586 PASS / 1,616 FAIL / 384 SKIP = **77.6% runnable pass** (was 77.1%).
+
+**Delta**: **+29 PASS** sample-wide. The fix is a one-line semantic correction in a deeply-shared helper; the cascade is large because every property-attribute-tracking test runs through `verifyProperty` which writes-then-reads.
+
+**Cumulative through rung-17**:
+- +265 PASS measured from 5,321 baseline = +3.7 pp
+- Cruftless 73.9% → 77.6%; gap 25.3 pp → 21.6 pp
+- Telos progress: ~24% of the way from 25.3pp to ≤10pp
+
+**Methodology note**: this is a classic broad-cascade-helper rung (per seed §I.4 heuristic #4). The fix lives in a primitive (Op::SetIndex dispatch) and propagates through every test that exercises descriptor invariants over bracket-keyed writes. The locale's pattern of `object_set` vs `object_set_pk` divergence is a maintenance hazard worth flagging — a future structural lift could collapse them into one OrdinarySet helper with the PropertyKey-typed parameter.
+
+**Tag**: `cluster-ordinaryset-preserve-attrs-17`.

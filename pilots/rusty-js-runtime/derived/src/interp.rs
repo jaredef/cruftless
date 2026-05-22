@@ -6186,10 +6186,21 @@ impl Runtime {
 
     /// PropertyKey-aware own-key set. Honors non-writable descriptors.
     pub fn object_set_pk(&mut self, id: ObjectRef, key: crate::value::PropertyKey, value: Value) {
-        if let Some(d) = self.obj(id).properties.get(&key) {
+        // ECMA-262 sec 10.1.9 OrdinarySet: when the property already
+        // exists, only update [[Value]] - preserve writable / enumerable
+        // / configurable / getter / setter. Pre-fix this branch unconditionally
+        // installed {w:true,e:true,c:true}, so an assignment to an
+        // existing non-configurable array index (defined via Object.
+        // defineProperty(arr,'0',{configurable:false})) silently
+        // promoted it back to configurable:true. Surfaced by test262's
+        // verifyProperty helper which writes to test writable, then
+        // re-reads the descriptor.
+        if let Some(d) = self.obj_mut(id).properties.get_mut(&key) {
             if !d.writable && d.getter.is_none() && d.setter.is_none() {
-                return;
+                return; // silent no-op for non-writable data property
             }
+            d.value = value;
+            return;
         }
         self.obj_mut(id).properties.insert(key, crate::value::PropertyDescriptor {
             value, writable: true, enumerable: true, configurable: true,
