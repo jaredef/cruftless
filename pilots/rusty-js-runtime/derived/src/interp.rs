@@ -5588,13 +5588,31 @@ impl Runtime {
             let o = self.obj(id);
             let is_array = matches!(o.internal_kind, crate::value::InternalKind::Array);
             if is_array {
-                let mut ks: Vec<(u64, String)> = o.properties.iter()
-                    .filter_map(|(k, d)| if d.enumerable && k.is_string() && k.as_str() != "length" {
-                        k.as_str().parse::<u64>().ok().map(|n| (n, k.as_str().to_string()))
-                    } else { None })
+                // Spec sec 10.1.11 OrdinaryOwnPropertyKeys: integer-indexed
+                // keys in numeric order, then string-keyed in insertion
+                // order, then symbol-keyed. Object.keys filters to
+                // enumerable string-keyed. Pre-fix the Array branch kept
+                // ONLY integer-indexed keys, missing arr.foo = ... and the
+                // arguments-object's user-added properties.
+                let all: Vec<(String, bool)> = o.properties.iter()
+                    .filter(|(k, d)| d.enumerable
+                                     && k.is_string()
+                                     && k.as_str() != "length"
+                                     && !k.as_str().starts_with("@@"))
+                    .map(|(k, _)| (k.as_str().to_string(), crate::intrinsics::is_integer_index(k.as_str())))
                     .collect();
-                ks.sort_by_key(|(n, _)| *n);
-                ks.into_iter().map(|(_, k)| k).collect()
+                let mut numeric: Vec<(u64, String)> = all.iter()
+                    .filter(|(_, idx)| *idx)
+                    .filter_map(|(k, _)| k.parse::<u64>().ok().map(|n| (n, k.clone())))
+                    .collect();
+                numeric.sort_by_key(|(n, _)| *n);
+                let strings: Vec<String> = all.into_iter()
+                    .filter(|(_, idx)| !*idx)
+                    .map(|(k, _)| k)
+                    .collect();
+                let mut out: Vec<String> = numeric.into_iter().map(|(_, k)| k).collect();
+                out.extend(strings);
+                out
             } else {
                 // EXT 92: filter out @@-prefixed Symbol-shaped keys —
                 // cruftless stores Symbol property keys with an `@@`

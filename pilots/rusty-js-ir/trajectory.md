@@ -1968,3 +1968,31 @@ Next-rung candidates ranked by expected yield per seed §I.4:
 3. @@species full dispatch — ~30 across Array methods
 4. DataView instance methods — entire absent surface (~60 entries)
 5. BigInt JSON serialization — JSON.stringify sub-cluster
+
+---
+
+## Rung-cluster-13 — Object.keys on Array & Arguments enumerates string keys (closed 2026-05-22)
+
+**Cluster** (per the test262-parity telos in seed §I.2):
+Cross-cluster — `built-ins/Object/defineProperty/*` (the `genericProperty descriptor should be enumerable` sub-cluster around arguments objects) plus any Array.prototype/code path that depends on `Object.keys` returning non-index keys.
+
+**Root cause**: `enumerable_own_keys` (the IR-target for `Object.keys`) had an Array-specific branch that filtered to ONLY integer-indexed keys, discarding non-integer string keys like `arr.foo = 'x'` or `arguments.genericProperty = 1001`. Spec §10.1.11 OrdinaryOwnPropertyKeys yields integer-indexed keys in numeric order THEN string-keyed keys in insertion order; Object.keys filters to enumerable string-keyed but does NOT exclude non-integer ones. The Array branch effectively implemented "Object.indexedKeys".
+
+This affected:
+- `Object.keys(arr)` over arrays with user-added named properties
+- `Object.keys(arguments)` over arguments objects (arguments has `InternalKind::Array` in cruftless)
+- for-in over arrays with extra properties (which uses Object.keys-style enumeration internally)
+- `__destr_object_rest` indirectly when its source is an arguments object
+
+**Substrate fix**: in `enumerable_own_keys`'s Array branch, replicate the non-Array branch's two-pass enumeration (integer-indexed numeric-sorted, then string-keyed insertion-order, with `@@`-prefixed and `length` excluded) so the Array branch yields the same keys-as-non-Array-non-integer-and-non-length set + the integer-indexed keys.
+
+**Sample-wide post-rung result (full re-measurement)**: **5,553 PASS / 1,652 FAIL / 384 SKIP = 77.1% runnable pass** (was 76.6% at rung-10 close).
+
+**Delta**: **+31 PASS sample-wide** across rungs 11+12+13, with cluster-13 contributing the largest share (the rung-11 and rung-12 directly-measured deltas were +7 and +1; the unmeasured-cascade from cluster-13's broad fix accounts for the remainder).
+
+**Cumulative through rung-13** (measured):
+- +232 PASS on the 7,205-runnable base = +3.2 pp
+- Cruftless 73.9% → 77.1%; gap 25.3 pp → 22.1 pp
+- Telos progress: ~21% of the way from 25.3pp to ≤10pp
+
+**Tag**: `cluster-objectkeys-array-string-13`. Broad-cascade pattern continues (per seed §I.4 heuristic #4).
