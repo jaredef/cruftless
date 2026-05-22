@@ -10,9 +10,88 @@
 use crate::parser::{ParseError, Parser};
 use crate::token::{Punct, TokenKind};
 use rusty_js_ast::{
-    BindingIdentifier, BindingPattern, CatchClause, Expr, ForBinding, ForInit, Span, Stmt,
-    SwitchCase, VariableDeclarator, VariableKind, VariableStatement,
+    ArrayElement, ArrayPattern, BindingElement, BindingIdentifier, BindingPattern, CatchClause,
+    Expr, ForBinding, ForInit, ObjectKey, ObjectPattern, ObjectPatternProperty, ObjectProperty,
+    PropertyKey, Span, Stmt, SwitchCase, VariableDeclarator, VariableKind, VariableStatement,
 };
+
+/// Convert a parsed Expr produced by the cover grammar (e.g. an array or
+/// object literal in for-of/for-in LHS or destructuring-assignment LHS) into
+/// the equivalent BindingPattern. Returns None when the expression isn't a
+/// valid assignment target (which the caller treats as a syntax error or
+/// falls back to opaque-name handling).
+fn expr_to_binding_pattern(e: Expr) -> Option<BindingPattern> {
+    match e {
+        Expr::Identifier { name, span } => {
+            Some(BindingPattern::Identifier(BindingIdentifier { name, span }))
+        }
+        Expr::Array { elements, span } => {
+            let mut out: Vec<Option<BindingElement>> = Vec::with_capacity(elements.len());
+            let mut rest: Option<Box<BindingPattern>> = None;
+            let n = elements.len();
+            for (i, el) in elements.into_iter().enumerate() {
+                match el {
+                    ArrayElement::Elision { .. } => out.push(None),
+                    ArrayElement::Expr(inner) => {
+                        let (target_expr, default) = match inner {
+                            Expr::Assign { operator: rusty_js_ast::AssignOp::Assign, target, value, .. } => {
+                                (*target, Some(*value))
+                            }
+                            other => (other, None),
+                        };
+                        let span = target_expr.span();
+                        let target = expr_to_binding_pattern(target_expr)?;
+                        out.push(Some(BindingElement { target, default, span }));
+                    }
+                    ArrayElement::Spread { expr, .. } => {
+                        // Spec: rest element must be last.
+                        if i + 1 != n { return None; }
+                        rest = Some(Box::new(expr_to_binding_pattern(expr)?));
+                    }
+                }
+            }
+            Some(BindingPattern::Array(ArrayPattern { elements: out, rest, span }))
+        }
+        Expr::Object { properties, span } => {
+            let mut props: Vec<ObjectPatternProperty> = Vec::with_capacity(properties.len());
+            let mut rest: Option<Box<BindingIdentifier>> = None;
+            let n = properties.len();
+            for (i, p) in properties.into_iter().enumerate() {
+                match p {
+                    ObjectProperty::Property { key, value, shorthand, kind: _, span: pspan } => {
+                        let pk = match key {
+                            ObjectKey::Identifier { name, span } => PropertyKey::Identifier(BindingIdentifier { name, span }),
+                            ObjectKey::String { value, .. } => PropertyKey::String(std::rc::Rc::new(value)),
+                            ObjectKey::Number { value, .. } => PropertyKey::Number(value),
+                            ObjectKey::Computed { expr, .. } => PropertyKey::Computed(expr),
+                        };
+                        let (target_expr, default) = match value {
+                            Expr::Assign { operator: rusty_js_ast::AssignOp::Assign, target, value, .. } => (*target, Some(*value)),
+                            other => (other, None),
+                        };
+                        let target = expr_to_binding_pattern(target_expr)?;
+                        props.push(ObjectPatternProperty {
+                            key: pk,
+                            value: BindingElement { target, default, span: pspan },
+                            shorthand,
+                            span: pspan,
+                        });
+                    }
+                    ObjectProperty::Spread { expr, .. } => {
+                        if i + 1 != n { return None; }
+                        if let Expr::Identifier { name, span } = expr {
+                            rest = Some(Box::new(BindingIdentifier { name, span }));
+                        } else {
+                            return None;
+                        }
+                    }
+                }
+            }
+            Some(BindingPattern::Object(ObjectPattern { properties: props, rest, span }))
+        }
+        _ => None,
+    }
+}
 
 impl<'src> Parser<'src> {
     pub fn parse_statement(&mut self) -> Result<Stmt, ParseError> {
@@ -643,14 +722,12 @@ impl<'src> Parser<'src> {
                 self.expect_punct(Punct::RParen)?;
                 let body = self.parse_statement()?;
                 let end = self.last_span_end();
-                let left = match e {
-                    Expr::Identifier { name, span } => ForBinding::Pattern(BindingPattern::Identifier(BindingIdentifier { name, span })),
-                    _ => {
-                        // Non-identifier LHS — represent the underlying ident
-                        // via the expression's span. Round-3c keeps the type
-                        // narrow.
-                        let span = e.span();
-                        ForBinding::Pattern(BindingPattern::Identifier(BindingIdentifier { name: String::new(), span }))
+                let left = {
+                    let span_fallback = e.span();
+                    match expr_to_binding_pattern(e) {
+                        Some(pat) => ForBinding::Pattern(pat),
+                        None => ForBinding::Pattern(BindingPattern::Identifier(
+                            BindingIdentifier { name: String::new(), span: span_fallback })),
                     }
                 };
                 return if is_of {

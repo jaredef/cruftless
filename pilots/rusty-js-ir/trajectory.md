@@ -1631,3 +1631,34 @@ Pin-Art tag count: 137 commits as of EXT 94b.
 **Conjecture status (post-cluster)**: this rung was hand-coded directly in `interp.rs` rather than via the rusty-js-ir IR pipeline — the defects were small enough that the spec-step-anchored comments alone gave the linting discipline the IR encoding would. The IR encoding would be valuable when the remaining banker's-rounding work lands (a substantial algorithm whose spec correspondence benefits from the lint pass). Recorded as a methodology data point: small cluster-defect rungs may not require the full IR detour; large-algorithm rungs do.
 
 **Tag**: `cluster-Number-numeric-format-1`. Next cluster candidate: `Number.prototype.toString` (the `[object Number]`-vs-`[object Object]` defect cluster, 7+ test262 FAILs).
+
+---
+
+## Rung-cluster-2 — Destructuring-assignment LHS in for-of / for-in heads (closed 2026-05-22)
+
+**Cluster** (per the test262-parity telos in seed §I.2):
+`language/statements/for-of/dstr/* + language/expressions/arrow-function/dstr/*` — 800 test262 paths covering destructuring binding *and* destructuring assignment patterns in for-of / for-in heads + arrow params. The pre-rung sample showed 513 FAIL / 251 PASS across these two sub-trees — the single largest FAIL cluster in the 2026-05-22 baseline.
+
+**Root cause**: cruftless's parser collapsed any non-identifier for-of/for-in LHS to a `BindingPattern::Identifier { name: "" }` placeholder at `pilots/rusty-js-parser/derived/src/stmt.rs:646`. The compiler then bound the iteration value to the empty-name slot and never re-distributed it across the cover-grammar pattern. Effectively: `for ([a, b] of pairs)` parsed but didn't assign — `a` and `b` remained `undefined`.
+
+**Substrate fix**: added `expr_to_binding_pattern(Expr) -> Option<BindingPattern>` in the parser that converts a parsed array/object literal (with all its nested defaults, elisions, spreads, computed keys) into the equivalent `BindingPattern::{Array,Object}`. The for-of/for-in head parse now runs the converter first and falls back to the empty-name placeholder only when the LHS isn't a valid assignment target.
+
+The converter handles:
+- `Expr::Identifier` → `BindingPattern::Identifier`
+- `Expr::Array` elements: `Elision` → hole; `Expr` → BindingElement (recursive, with `Expr::Assign{Assign}` peeled to default); `Spread` → rest (last only)
+- `Expr::Object` properties: identifier/string/number/computed keys; default extraction; rest must be a plain identifier per spec
+
+**Post-rung result**: 441 FAIL / 323 PASS across the same 800 dstr paths.
+
+**Delta**: **+72 PASS** on the dstr cluster (513 FAIL → 441 FAIL, 14% reduction).
+
+**Sample-wide gap delta**: Cruftless runnable pass goes from 73.9% (5,321 / 7,203) to ~74.9% (5,393 / 7,203). +72 tests on a 7,203-runnable base = +1.0 pp. Gap against bun: 25.3 pp → 24.3 pp.
+
+**Remaining 441 FAILs** (deferred — each is its own sub-cluster):
+- ~78 SyntaxError negative tests (early errors / TDZ enforcement at parse time)
+- ~76 ReferenceError tests (TDZ enforcement at runtime — let/const access-before-init in destructuring)
+- ~70 Test262Error-not-thrown (assert.throws inside complex destructuring flows)
+- ~41 TypeError-not-thrown (invalid invocation patterns)
+- ~50 function-name-inference via destructuring default (`[x = function(){}]` should infer name "x" on the anon function)
+
+**Tag**: `cluster-dstr-for-loop-head-2`. Next cluster candidate: TDZ enforcement (76 ReferenceError tests in the dstr cluster + an unknown additional count in non-dstr code).
