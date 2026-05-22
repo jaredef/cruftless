@@ -2183,6 +2183,11 @@ pub fn json_serialize_property(rt: &mut Runtime, this: Value, args: &[Value])
     let mut key = args.get(1).cloned().unwrap_or(Value::Undefined);
     // step 2.tojson (§2.tojson step 2.tojson)
     value = rt.json_apply_to_json_via(&value.clone(), &key.clone())?;
+    // step 2.b (§2.b ReplacerFunction) — replacer applied AFTER toJSON,
+    // per ECMA-262 §25.5.2.4. Replacer return-value is the serialized
+    // value; if it returns undefined, the property is omitted (handled
+    // downstream by null-return + SerializeJSONObject's filter).
+    value = rt.json_apply_replacer_via(&value.clone(), &key.clone())?;
     // step 4.unwrap (§4.unwrap step 4.unwrap)
     value = rt.json_unwrap_wrapper_via(&value.clone())?;
     // step 5.null (§5.null step 5.null)

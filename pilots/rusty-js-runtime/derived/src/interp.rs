@@ -159,6 +159,12 @@ pub struct Runtime {
     /// for native dispatch.
     pub pending_new_target: Option<Value>,
     pub current_new_target: Option<Value>,
+    /// ECMA-262 §25.5.2 JSON.stringify state. LIFO stack of replacer
+    /// functions; the topmost is consulted by SerializeJSONProperty for
+    /// the active stringify call. Pushed by json_stringify_via on entry
+    /// and popped on exit; nested stringify (via toJSON callbacks that
+    /// re-enter stringify) push their own frame.
+    pub json_replacer_stack: Vec<Value>,
     // ─── Intrinsic prototypes (Tier-Ω.5.a) ───
     //
     // Stashed ObjectIds for the canonical prototype objects. Each
@@ -304,6 +310,7 @@ impl Runtime {
             tolerated_deviations: HashSet::new(),
             pending_new_target: None,
             current_new_target: None,
+            json_replacer_stack: Vec::new(),
             object_prototype: None,
             array_prototype: None,
             function_prototype: None,
@@ -2538,8 +2545,34 @@ impl Runtime {
     /// serializes to nothing (top-level undefined/function/symbol per spec).
     pub fn json_stringify_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let v = args.first().cloned().unwrap_or(Value::Undefined);
-        crate::generated::json_serialize_property(self, Value::Undefined,
-            &[v, Value::String(std::rc::Rc::new(String::new()))])
+        // ECMA-262 §25.5.2 step 4: if IsCallable(replacer) is true, store
+        // it as state.[[ReplacerFunction]]. cruftless threads this via a
+        // LIFO stack on Runtime — pushed here, popped after the recursive
+        // serialization completes, consulted by json_apply_replacer_via
+        // at the top of each SerializeJSONProperty call.
+        let pushed_replacer = if let Some(r) = args.get(1) {
+            if self.is_callable(r) {
+                self.json_replacer_stack.push(r.clone());
+                true
+            } else { false }
+        } else { false };
+        let result = crate::generated::json_serialize_property(self, Value::Undefined,
+            &[v, Value::String(std::rc::Rc::new(String::new()))]);
+        if pushed_replacer { self.json_replacer_stack.pop(); }
+        result
+    }
+
+    /// ECMA-262 §25.5.2.4 step 2.b — apply the active replacer function to
+    /// (key, value) and return its result. If no replacer is active (or it
+    /// isn't callable), returns the value unchanged. Replacer receives
+    /// `undefined` as `this` for simplicity; the spec passes the holder,
+    /// but most usage patterns ignore `this`.
+    pub fn json_apply_replacer_via(&mut self, value: &Value, key: &Value) -> Result<Value, RuntimeError> {
+        let replacer = match self.json_replacer_stack.last() {
+            Some(r) => r.clone(),
+            None => return Ok(value.clone()),
+        };
+        self.call_function(replacer, Value::Undefined, vec![key.clone(), value.clone()])
     }
 
     /// IR-EXT 68: §25.5.2.4 step 2 — invoke value.toJSON(key) when value

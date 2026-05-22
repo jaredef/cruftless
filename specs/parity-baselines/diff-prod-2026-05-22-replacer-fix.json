@@ -1,0 +1,27 @@
+{
+  "fixtures": {
+    "buffer-encode": {
+      "overall": "FAIL",
+      "categories": {
+        "F": "FAIL"
+      }
+    },
+    "json-roundtrip": {
+      "overall": "FAIL",
+      "categories": {
+        "F": "FAIL"
+      }
+    },
+    "string-ops": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    }
+  },
+  "totals": {
+    "pass": 1,
+    "fail": 2,
+    "total": 3
+  }
+}
