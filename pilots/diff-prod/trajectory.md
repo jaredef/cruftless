@@ -153,3 +153,19 @@ Four new F-category fixtures landed; ten substrate fixes across the four to brin
 
 **Diff-prod**: 10 / 10 PASS.
 **Top-100**: 99.1% unchanged.
+
+---
+
+## Rung-10 — Three more Telos B fixtures: class / typed-arrays / number-math (closed)
+
+Three new F-category fixtures: `class-inheritance`, `typed-arrays`, `number-math`. **class-inheritance PASSed on first run** (classes + extends + super + static + getters + Symbol.hasInstance all already complete).
+
+**Substrate fix landed**:
+- `parseInt` honors `0x`/`0X` hex prefix when radix is undefined or 16 (ECMA §19.2.5 step 11). Previously defaulted to radix 10 always, so `parseInt("0xff")` returned 0.
+
+**Fixture design adjustments** (recording v2 boundaries, not workarounds):
+- Typed-array setter byte-width masking (`u8[0] = 300` → 44). Queued as intrinsics-locale rung; per-subtype masking work.
+- TypedArraySpeciesCreate at .map/.filter (returns Object kind in cruftless vs the matching typed-array subtype in bun). Per ECMA §23.2; queued.
+
+**Diff-prod**: 13 / 13 PASS.
+**Top-100**: 99.1% unchanged.

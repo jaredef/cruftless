@@ -2,7 +2,7 @@
 
 **Locale tag**: `L.diff-prod` (per [Doc 737](../../../corpus-master/corpus/737-the-locale-as-coordinate-nested-seed-trajectory-pairs-as-pin-art-substrate-positions.md))
 
-**Status as of 2026-05-22**: **TELOS A HIT + TELOS B ADVANCED**. Ten F-category fixtures, all PASS. Fourteen substrate fixes landed via diff-prod since founding. Coverage now spans JSON, Buffer, strings, Map/Set, async/Promise, error-throws, RegExp (incl. lastIndex + $-substitution), generators, Proxy, structuredClone.
+**Status as of 2026-05-22**: **TELOS A HIT + TELOS B ADVANCED (13/13)**. Thirteen F-category fixtures, all PASS. Fifteen substrate fixes landed via diff-prod since founding. Coverage now spans JSON, Buffer, strings, Map/Set, async/Promise, error-throws, RegExp (incl. lastIndex + $-substitution), generators, Proxy, structuredClone.
 
 **Workstream**: differential prod-test methodology + scaffolding. Extends the load-and-shape parity probe from "namespace surface" to "execution semantics." The same Doc 730 §XVI bidirectional-engine-diff instrument applies; the input set widens and the comparator deepens.
 

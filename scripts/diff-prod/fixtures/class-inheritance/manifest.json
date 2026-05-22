@@ -1,0 +1,8 @@
+{
+  "name": "class-inheritance",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "ES2015 classes, extends + super, instanceof, static methods/fields, private fields, getters/setters."
+}

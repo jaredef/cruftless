@@ -1,0 +1,8 @@
+{
+  "name": "number-math",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Number coercion, parseInt/parseFloat, Math edge cases (NaN, Infinity, large ints, precision)."
+}

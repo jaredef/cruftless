@@ -1,0 +1,87 @@
+{
+  "fixtures": {
+    "async-promise": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "buffer-encode": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "class-inheritance": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "error-throws": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "generators": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "json-roundtrip": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "map-set-ops": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "number-math": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "proxy-basics": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "regexp-ops": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "string-ops": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "structured-clone": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "typed-arrays": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    }
+  },
+  "totals": {
+    "pass": 13,
+    "fail": 0,
+    "total": 13
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "typed-arrays",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "TypedArray (Uint8Array/Int16Array/Float64Array), ArrayBuffer views, slice/subarray, set/fill, iteration."
+}

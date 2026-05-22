@@ -2903,12 +2903,22 @@ impl Runtime {
     pub fn parse_int_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         if args.is_empty() { return Ok(Value::Number(f64::NAN)); }
         let s = crate::abstract_ops::to_string(&args[0]);
-        let radix = args.get(1).map(|v| crate::abstract_ops::to_number(v) as i32).unwrap_or(10);
-        let radix = if radix == 0 { 10 } else { radix };
+        // ECMA-262 §19.2.5 step 7: if radix arg is undefined or 0, set
+        // to 10 unless the string has a 0x/0X prefix, in which case 16.
+        let radix_arg = args.get(1).map(|v| crate::abstract_ops::to_number(v) as i32);
+        let mut radix = match radix_arg { Some(r) if r != 0 => r, _ => 10 };
         let trimmed = s.trim_start();
-        let (sign, body) = if let Some(rest) = trimmed.strip_prefix('-') { (-1.0, rest) }
+        let (sign, body0) = if let Some(rest) = trimmed.strip_prefix('-') { (-1.0, rest) }
             else if let Some(rest) = trimmed.strip_prefix('+') { (1.0, rest) }
             else { (1.0, trimmed) };
+        // ECMA-262 §19.2.5 step 11: if (radix === undefined || radix === 16)
+        // and body starts with '0x'/'0X', strip prefix and use radix 16.
+        let body = if (radix_arg.is_none() || radix == 16)
+            && (body0.starts_with("0x") || body0.starts_with("0X"))
+        {
+            radix = 16;
+            &body0[2..]
+        } else { body0 };
         let mut acc: u64 = 0;
         let mut any = false;
         for c in body.chars() {
