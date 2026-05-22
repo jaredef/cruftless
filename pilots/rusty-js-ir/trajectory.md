@@ -1876,3 +1876,26 @@ Concretely: `new Map().set(0,'a')` then `for (const [k,v] of m)` yielded `["0","
 - Cruftless 73.9% → ~77.1% runnable pass; gap 25.3 pp → ~22.1 pp.
 
 **Tag**: `cluster-map-iterator-key-decode-9`.
+
+---
+
+## Rung-cluster-10 — defineProperty generic-descriptor preservation (closed 2026-05-22)
+
+**Cluster** (per the test262-parity telos in seed §I.2):
+`built-ins/Object/defineProperty/*` — 1,131 paths. Pre-rung (latest sample, post rungs 1-9): 113 FAIL / 1,018 PASS.
+
+**Root cause**: `object_define_property_via` dispatched on `has_get_key || has_set_key` (accessor branch) vs. else (data branch). When a redefinition called with only `{enumerable, configurable}` (no value/writable/get/set — the spec's "generic" descriptor per §6.2.5.6), it fell into the data branch, which inserted `getter: None, setter: None` — wiping any existing accessor's get/set. Result: `Object.defineProperty(o, 'foo', {enumerable: true})` on an accessor turned it into an undefined data property.
+
+**Substrate fix**: at the data-branch entry, detect the generic descriptor case (`!has_value && !has_writable && !has_get_key && !has_set_key`) and route to a dedicated path that preserves the existing property's value/writable/getter/setter, only updating enumerable/configurable. Non-configurable invariants enforced on this path too: configurable promotion and enumerable change still throw TypeError when the existing property is non-configurable.
+
+**Post-rung result**: 98 FAIL / 1,033 PASS on the 1,131-path cluster.
+
+**Delta**: **+15 PASS** (113 FAIL → 98 FAIL, 13% reduction).
+
+**Sample-wide cumulative** (rungs 1-10, partial estimate):
+- Cluster-1 to 9 total: +228
+- Cluster-10: +15
+- Estimated total: **+243 PASS** on the 7,205-runnable base = +3.4 pp
+- Cruftless 73.9% → ~77.3% runnable pass; gap 25.3 pp → ~21.9 pp
+
+**Tag**: `cluster-defineProperty-generic-preserve-10`. Fix also flows through `Object.defineProperties` and `Reflect.defineProperty` which dispatch to the same primitive; further cascade likely.

@@ -1741,6 +1741,14 @@ impl Runtime {
             });
         } else {
             let has_value = self.has_property(desc_id, "value");
+            let has_writable = self.has_property(desc_id, "writable");
+            // §6.2.5.6 generic descriptor: when Desc has none of
+            // value/writable/get/set, the operation preserves the
+            // existing property's type (data or accessor) and only
+            // updates enumerable/configurable. Without this, redefining
+            // an accessor with `{enumerable: true}` would silently
+            // replace it with an undefined data property.
+            let is_generic = !has_value && !has_writable;
             // §6.2.5.5 attribute reads use ToBoolean per abstract_ops.
             let read_bool_via = |rt: &mut Runtime, name: &str| -> Result<Option<bool>, RuntimeError> {
                 if !rt.has_property(desc_id, name) { return Ok(None); }
@@ -1750,6 +1758,47 @@ impl Runtime {
             let writable = read_bool_via(self, "writable")?;
             let enumerable = read_bool_via(self, "enumerable")?;
             let configurable = read_bool_via(self, "configurable")?;
+            if is_generic {
+                let existed = self.obj(target).has_own_str(&key);
+                if existed {
+                    let prev = self.obj(target).get_own(&key).unwrap().clone();
+                    let new_e = enumerable.unwrap_or(prev.enumerable);
+                    let new_c = configurable.unwrap_or(prev.configurable);
+                    // §10.1.6.3 non-configurable invariants for generic
+                    // descriptor: only enumerable/configurable can change,
+                    // and only in the legal direction.
+                    if !prev.configurable {
+                        if configurable == Some(true) {
+                            return Err(RuntimeError::TypeError(format!(
+                                "Cannot redefine non-configurable property '{}': configurable would change", key)));
+                        }
+                        if enumerable.is_some() && new_e != prev.enumerable {
+                            return Err(RuntimeError::TypeError(format!(
+                                "Cannot redefine non-configurable property '{}': enumerable would change", key)));
+                        }
+                    }
+                    self.obj_mut(target).properties.insert(key_pk.clone(), crate::value::PropertyDescriptor {
+                        value: prev.value,
+                        writable: prev.writable,
+                        enumerable: new_e,
+                        configurable: new_c,
+                        getter: prev.getter,
+                        setter: prev.setter,
+                    });
+                    return Ok(Value::Object(target));
+                }
+                // No existing property: install a data property with
+                // value=undefined and absent flags defaulting to false.
+                self.obj_mut(target).properties.insert(key_pk.clone(), crate::value::PropertyDescriptor {
+                    value: Value::Undefined,
+                    writable: false,
+                    enumerable: enumerable.unwrap_or(false),
+                    configurable: configurable.unwrap_or(false),
+                    getter: None,
+                    setter: None,
+                });
+                return Ok(Value::Object(target));
+            }
             let value = if has_value {
                 self.read_property(desc_id, "value")?
             } else {
