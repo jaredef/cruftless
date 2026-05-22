@@ -2113,3 +2113,34 @@ Result: any assignment via computed-key bracket access to an existing property w
 **Methodology note**: this is a classic broad-cascade-helper rung (per seed §I.4 heuristic #4). The fix lives in a primitive (Op::SetIndex dispatch) and propagates through every test that exercises descriptor invariants over bracket-keyed writes. The locale's pattern of `object_set` vs `object_set_pk` divergence is a maintenance hazard worth flagging — a future structural lift could collapse them into one OrdinarySet helper with the PropertyKey-typed parameter.
 
 **Tag**: `cluster-ordinaryset-preserve-attrs-17`.
+
+---
+
+## Rung-cluster-18 — LIFT: object_set / object_set_pk unification (closed 2026-05-22)
+
+Third structural lift. Per the rung-17 methodology note: `object_set` (String key) and `object_set_pk` (PropertyKey-typed) carried duplicated OrdinarySet logic, with the divergence having caused rung-17's defect. Collapsed to one code path: `object_set` is now a one-line delegate to `object_set_pk` after wrapping the String key in `PropertyKey::String`.
+
+**Before this rung**:
+- `object_set` → `self.obj_mut(id).set_own(key, value)` (set_own in value.rs preserved attrs)
+- `object_set_pk` → inline preserve-existing-attrs branch + insert path (rung-17 made this correct)
+- Maintenance hazard: any future ECMA-262 §10.1.9 OrdinarySet evolution would need to be applied in both places.
+
+**Lift**:
+```rust
+pub fn object_set(&mut self, id: ObjectRef, key: String, value: Value) {
+    self.object_set_pk(id, PropertyKey::String(key), value);
+}
+```
+
+`set_own` on Object (in value.rs) remains as a low-level set-the-bucket primitive used by the insert branch of `object_set_pk` and by initialization paths that bypass the OrdinarySet protocol (set_own_internal, set_own_frozen).
+
+**Sample-wide post-rung**: 5,587 PASS / 1,616 FAIL / 384 SKIP = **77.6%** runnable pass. +1 PASS measured (the lift mostly preserves behavior; the +1 is sample noise — re-bucketing of a borderline test).
+
+**Structural value**: future OrdinarySet refinements (proxy invariants on assignment, strict-mode handling, accessor inheritance from prototypes) now land in one place. The 175 callers of `object_set` and 2 of `object_set_pk` in interp.rs all share the same primitive.
+
+**Cumulative through rung-18**:
+- +266 PASS measured, +3.7 pp
+- Cruftless 73.9% → 77.6%; gap 25.3 pp → 21.6 pp
+- Telos progress: ~24% of the way
+
+**Tag**: `cluster-lift-objectset-unify-18`. Next lift candidates remaining: IteratorClose (§7.4.6), full ValidateAndApplyPropertyDescriptor (§10.1.6.3) returning Result<bool,Err>.

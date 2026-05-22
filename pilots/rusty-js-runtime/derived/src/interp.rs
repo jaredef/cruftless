@@ -6289,18 +6289,13 @@ impl Runtime {
 
     /// OrdinaryDefineOwnProperty — own-key set on the named object.
     pub fn object_set(&mut self, id: ObjectRef, key: String, value: Value) {
-        // Ω.5.P61.E3: enforce non-writable descriptors per ECMA §10.1.9
-        // OrdinarySet step 3 — assigning to a non-writable own data
-        // property is a silent no-op (sloppy mode; strict mode throws,
-        // but throwing is deferred since cruftless's strict-mode tracking
-        // is incomplete). Object.freeze + the function-meta-props
-        // (name/length descriptor non-writable) both depend on this.
-        if let Some(d) = self.obj(id).get_own(&key) {
-            if !d.writable && d.getter.is_none() && d.setter.is_none() {
-                return; // silent no-op for non-writable data property
-            }
-        }
-        self.obj_mut(id).set_own(key, value);
+        // Lift (rung-18): String-keyed OrdinarySet routes through the
+        // PropertyKey-typed primitive so non-writable / preserve-existing-
+        // attrs logic lives in one place. Pre-lift, object_set and
+        // object_set_pk each had their own preserve-attrs (set_own + inline)
+        // branches; rung-17 fixed the pk branch but the divergence remained
+        // a maintenance hazard.
+        self.object_set_pk(id, crate::value::PropertyKey::String(key), value);
     }
 
     /// Typeof with heap deref for Object/function discrimination.
