@@ -294,7 +294,10 @@ impl Runtime {
             // Threshold defaults to 100 calls but is overridable via
             // CRUFTLESS_JIT_THRESHOLD env var for bench/test purposes.
             // Set to 1 to make every Closure JIT on first invocation.
-            jit_threshold: std::env::var("CRUFTLESS_JIT_THRESHOLD")
+            // CRUFT_JIT_THRESHOLD takes precedence; CRUFTLESS_JIT_THRESHOLD
+            // kept for one-release backwards-compat after the cruft rename.
+            jit_threshold: std::env::var("CRUFT_JIT_THRESHOLD")
+                .or_else(|_| std::env::var("CRUFTLESS_JIT_THRESHOLD"))
                 .ok()
                 .and_then(|s| s.parse::<u32>().ok())
                 .unwrap_or(100),

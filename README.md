@@ -14,7 +14,7 @@ A JavaScript runtime targeting **the Node.js package ecosystem** across ECMA-262
 
 Two binaries:
 
-- **`cruftless/`** — `cruftless` binary (renamed from `host-v2/` on 2026-05-21). Wraps the hand-rolled rusty-js engine (`pilots/rusty-js-{ast,parser,bytecode,gc,runtime}` crate family). The primary substrate target; the engine whose maturity Doc 729 names.
+- **`cruftless/`** — the `cruft` CLI binary (and a legacy `cruftless` binary built from the same source for one-release backwards compatibility with engagement-internal scripts). Wraps the hand-rolled rusty-js engine (`pilots/rusty-js-{ast,parser,bytecode,gc,runtime}` crate family). The crate name remains `cruftless` (the architectural concept per Doc 729); the binary is the user-facing tool. Primary substrate target.
 - **`legacy/host-rquickjs/`** — `cruftless-rquickjs` binary (renamed from `host/` on 2026-05-21). Wraps rquickjs (Rust bindings over QuickJS). Above-engine substrate matured; retained as the parity ceiling reference per Doc 717 §VIII. No new feature work lands here.
 
 Both binaries run the same parity sweeps; the migration-cost gap between them reads the rusty-js engine's maturity directly against the rquickjs ceiling.
@@ -76,11 +76,11 @@ Because running the full 53k suite in CI is impractical at this stage, conforman
 To reproduce:
 
 ```sh
-cargo build --release --bin cruftless
+cargo build --release --bin cruft
 ./scripts/test262-sample/run-sample.sh        # writes results/test262-sample-<DATE>/{results.jsonl,summary.txt}
 ```
 
-`PARALLEL=N` controls worker count (default 4); `T262_ROOT` points at an upstream test262 clone; `RB_BIN` overrides the cruftless binary path.
+`PARALLEL=N` controls worker count (default 4); `T262_ROOT` points at an upstream test262 clone; `RB_BIN` overrides the binary path (defaults to the legacy `cruftless` binary so existing scripts keep working; pass `RB_BIN=/path/to/cruft` to use the new name).
 
 Latest sample, **2026-05-22**: **5,321 PASS / 1,882 FAIL / 384 SKIP** out of 7,587 results emitted across 7,750 sampled tests — **73.9% runnable pass rate** (`5321 / 7203`). SKIPs are tests whose frontmatter flags a feature the harness elects not to run (e.g. legacy `noStrict`-only fixtures, async-iterator features behind feature-flag gates).
 

@@ -1,6 +1,7 @@
-//! cruftless entry point. Reads a JS source file, evaluates it
-//! through the rusty-js-runtime engine, drives the event loop to
-//! completion, exits.
+//! `cruft` CLI entry point. The binary's name is `cruft`; the crate
+//! and library remain `cruftless` (the architectural concept per
+//! corpus Doc 729). Reads a JS source file, evaluates it through the
+//! rusty-js-runtime engine, drives the event loop to completion, exits.
 
 use cruftless::install_bun_host;
 use rusty_js_runtime::{Runtime, Value};
@@ -36,26 +37,27 @@ fn format_thrown(rt: &Runtime, v: &Value) -> String {
 }
 
 fn run_install_subcommand() -> ExitCode {
-    // PM-EXT 12: `cruftless install` — runs pm_install against the
+    // PM-EXT 12: `cruft install` — runs pm_install against the
     // current working directory using the engagement's default
     // registry (registry.npmmirror.com per Doc 730 §XVI Case-4 scope).
     let cwd = match std::env::current_dir() {
         Ok(p) => p,
-        Err(e) => { eprintln!("cruftless install: cannot read cwd: {e}"); return ExitCode::from(66); }
+        Err(e) => { eprintln!("cruft install: cannot read cwd: {e}"); return ExitCode::from(66); }
     };
-    let registry = std::env::var("CRUFTLESS_REGISTRY")
+    let registry = std::env::var("CRUFT_REGISTRY")
+        .or_else(|_| std::env::var("CRUFTLESS_REGISTRY"))
         .unwrap_or_else(|_| rusty_js_pm::resolver::DEFAULT_REGISTRY.to_string());
-    eprintln!("cruftless install: project={} registry={}", cwd.display(), registry);
+    eprintln!("cruft install: project={} registry={}", cwd.display(), registry);
     match rusty_js_pm::install::pm_install(&cwd, &registry) {
         Ok(report) => {
             for (n, v) in &report.installed { println!("+ {n}@{v}"); }
             for (n, v) in &report.skipped { println!("= {n}@{v}"); }
-            eprintln!("cruftless install: {} installed, {} skipped",
+            eprintln!("cruft install: {} installed, {} skipped",
                 report.installed.len(), report.skipped.len());
             ExitCode::from(0)
         }
         Err(e) => {
-            eprintln!("cruftless install: {e:?}");
+            eprintln!("cruft install: {e:?}");
             ExitCode::from(70)
         }
     }
@@ -84,9 +86,12 @@ fn parse_cap_flags(args: Vec<String>) -> (rusty_js_runtime::caps::CapMode, Optio
             _ => out.push(a),
         }
     }
-    // CRUFTLESS_CAPS_MODE env var as override fallback.
+    // CRUFT_CAPS_MODE / CRUFTLESS_CAPS_MODE env var as override fallback
+    // (the CRUFTLESS_ prefix preserved for one release of backwards-compat).
     if mode == CapMode::Compat {
-        if let Ok(s) = std::env::var("CRUFTLESS_CAPS_MODE") {
+        let env = std::env::var("CRUFT_CAPS_MODE")
+            .or_else(|_| std::env::var("CRUFTLESS_CAPS_MODE"));
+        if let Ok(s) = env {
             if let Some(m) = CapMode::from_str(&s) { mode = m; }
         }
     }
@@ -100,14 +105,14 @@ fn drain_audit_log(rt: &rusty_js_runtime::Runtime, dest: Option<&str>) {
         Some(path) => match std::fs::File::create(path) {
             Ok(f) => Box::new(std::io::BufWriter::new(f)),
             Err(e) => {
-                eprintln!("cruftless: could not open audit log {path}: {e}; writing to stderr");
+                eprintln!("cruft: could not open audit log {path}: {e}; writing to stderr");
                 Box::new(std::io::stderr())
             }
         },
         None => Box::new(std::io::stderr()),
     };
     use std::io::Write;
-    let _ = writeln!(sink, "# cruftless audit log — {} records", records.len());
+    let _ = writeln!(sink, "# cruft audit log — {} records", records.len());
     let _ = writeln!(sink, "# format: <caller>\\t<capability>\\t<operation>\\t<unix_micros>");
     for r in &records {
         let _ = writeln!(sink, "{}\t{}\t{}\t{}",
@@ -116,25 +121,70 @@ fn drain_audit_log(rt: &rusty_js_runtime::Runtime, dest: Option<&str>) {
     let _ = sink.flush();
 }
 
+fn print_help() {
+    eprintln!("cruft {}", env!("CARGO_PKG_VERSION"));
+    eprintln!("The most architecturally pure JavaScript runtime ever built.");
+    eprintln!("Unfortunately, your JavaScript is still full of cruft.");
+    eprintln!();
+    eprintln!("USAGE:");
+    eprintln!("    cruft <subcommand> [OPTIONS]");
+    eprintln!("    cruft <file.mjs>            # shorthand for `cruft run <file.mjs>`");
+    eprintln!();
+    eprintln!("SUBCOMMANDS:");
+    eprintln!("    run        Run JavaScript full of cruft");
+    eprintln!("    install    Install dependencies into ./node_modules (more cruft will arrive)");
+    eprintln!("    help       Print this message");
+    eprintln!();
+    eprintln!("OPTIONS:");
+    eprintln!("    --audit              Enable capability audit mode (log all I/O attempts)");
+    eprintln!("    --sealed-deps        Treat node_modules as sealed (no new I/O)");
+    eprintln!("    --sealed             Seal everything (project + deps)");
+    eprintln!("    --audit-log <path>   Write audit records to <path> (default: stderr)");
+    eprintln!("    -h, --help           Print help");
+    eprintln!("    -V, --version        Print version");
+    eprintln!();
+    eprintln!("Note: Zero cruft in the engine. Maximum cruft in your node_modules.");
+}
+
+fn print_version() {
+    println!("cruft {}", env!("CARGO_PKG_VERSION"));
+}
+
 fn main() -> ExitCode {
     let raw_args: Vec<String> = std::env::args().collect();
     let (cap_mode, audit_log_path, args) = parse_cap_flags(raw_args);
+
+    // Global flags handled before subcommand dispatch.
+    if args.iter().skip(1).any(|a| a == "-h" || a == "--help" || a == "help") {
+        print_help();
+        return ExitCode::SUCCESS;
+    }
+    if args.iter().skip(1).any(|a| a == "-V" || a == "--version") {
+        print_version();
+        return ExitCode::SUCCESS;
+    }
+
     if args.len() < 2 {
-        eprintln!("usage: {} <file.mjs>   |   {} install",
-            args.get(0).map(|s| s.as_str()).unwrap_or("cruftless"),
-            args.get(0).map(|s| s.as_str()).unwrap_or("cruftless"));
-        eprintln!("       Capability modes: --audit | --sealed-deps | --sealed");
-        eprintln!("                         [--audit-log <path>]");
+        print_help();
         return ExitCode::from(64); // EX_USAGE
     }
     if args[1] == "install" {
         return run_install_subcommand();
     }
-    let path = args[1].clone();
+    // `cruft run <file>` and bare `cruft <file>` both treat args[N] as the source.
+    let path = if args[1] == "run" {
+        if args.len() < 3 {
+            eprintln!("cruft run: missing file argument");
+            return ExitCode::from(64);
+        }
+        args[2].clone()
+    } else {
+        args[1].clone()
+    };
     let source = match std::fs::read_to_string(&path) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("cruftless: cannot read {}: {}", path, e);
+            eprintln!("cruft: cannot read {}: {}", path, e);
             return ExitCode::from(66); // EX_NOINPUT
         }
     };
@@ -156,16 +206,18 @@ fn main() -> ExitCode {
                 rusty_js_runtime::RuntimeError::Thrown(v) => format_thrown(&rt, v),
                 _ => format!("{:?}", e),
             };
-            eprintln!("cruftless: evaluation error: {}", msg);
+            eprintln!("cruft: evaluation error: {}", msg);
             return ExitCode::from(70);
         }
     }
 
-    let t_loop = if std::env::var("CRUFTLESS_PROFILE").is_ok() {
+    let t_loop = if std::env::var("CRUFT_PROFILE").is_ok()
+        || std::env::var("CRUFTLESS_PROFILE").is_ok()
+    {
         Some(std::time::Instant::now())
     } else { None };
     if let Err(e) = rt.run_to_completion() {
-        eprintln!("cruftless: event-loop error: {:?}", e);
+        eprintln!("cruft: event-loop error: {:?}", e);
         return ExitCode::from(70);
     }
     if let Some(t) = t_loop {
@@ -177,7 +229,7 @@ fn main() -> ExitCode {
         let modules = pp::read(&pp::MODULE_COUNT);
         let ms = |n: u64| (n as f64) / 1.0e6;
         eprintln!(
-            "cruftless-profile: modules={} parse={:.1}ms compile={:.1}ms eval={:.1}ms event_loop={:.1}ms total_phases={:.1}ms",
+            "cruft-profile: modules={} parse={:.1}ms compile={:.1}ms eval={:.1}ms event_loop={:.1}ms total_phases={:.1}ms",
             modules, ms(parse), ms(compile), ms(eval), ms(loop_ns),
             ms(parse + compile + eval + loop_ns),
         );
@@ -186,7 +238,7 @@ fn main() -> ExitCode {
     let unhandled = rt.drain_unhandled_rejections();
     if !unhandled.is_empty() {
         for (_id, reason) in &unhandled {
-            eprintln!("cruftless: unhandled promise rejection: {:?}", reason);
+            eprintln!("cruft: unhandled promise rejection: {:?}", reason);
         }
         drain_audit_log(&rt, audit_log_path.as_deref());
         return ExitCode::from(70);

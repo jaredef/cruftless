@@ -8,6 +8,18 @@ build = "build.rs"
 name = "cruftless"
 path = "src/lib.rs"
 
+# The user-facing CLI binary is `cruft` per the cruftless/cruft repo
+# convention. The crate name and library name remain `cruftless` (the
+# architectural concept per corpus Doc 729); the binary is the user-
+# facing tool. A legacy `cruftless` binary is also built from the same
+# main.rs so engagement-internal scripts (parity sweeps, test262
+# harnesses, diff-prod runners) keep working unchanged through one
+# release of backwards compatibility. Both binaries are byte-identical
+# from the same source.
+[[bin]]
+name = "cruft"
+path = "src/main.rs"
+
 [[bin]]
 name = "cruftless"
 path = "src/main.rs"
