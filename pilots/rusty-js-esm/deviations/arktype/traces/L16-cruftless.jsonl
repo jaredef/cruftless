@@ -1,0 +1,4 @@
+{"probe":"L16-parseString","def":"root","def_length":4,"def_typeof":"string"}
+{"probe":"L16-parseString","def":"generic","def_length":7,"def_typeof":"string"}
+{"probe":"L15-missing-operand","scanned":"","unscanned":"","lookahead":"","ctx_args_keys":null}
+cruftless: evaluation error: Thrown: ParseError: Expected an expression

@@ -1,0 +1,7 @@
+{"probe":"L16-parseString","def":"root","def_length":4,"def_typeof":"string"}
+{"probe":"L16-parseString","def":"v4 | v6","def_length":7,"def_typeof":"string"}
+{"probe":"L16-parseString","def":"NFC","def_length":3,"def_typeof":"string"}
+{"probe":"L16-parseString","def":"versioned | nil | max","def_length":21,"def_typeof":"string"}
+{"probe":"L16-parseString","def":"'00000000-0000-0000-0000-000000000000'","def_length":38,"def_typeof":"string"}
+{"probe":"L16-parseString","def":"'ffffffff-ffff-ffff-ffff-ffffffffffff'","def_length":38,"def_typeof":"string"}
+{"status":"OK","keyCount":21}

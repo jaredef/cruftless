@@ -4618,7 +4618,9 @@ impl Compiler {
             in_constructor: true,
             is_static: false,
         });
-        let ctor_proto = self.compile_function_proto(None, false, false, &ctor_params, &ctor_body)?;
+        let class_display_name = name.as_ref().map(|n| n.name.clone());
+        let ctor_proto = self.compile_function_proto_with_name_hint(
+            None, class_display_name.as_deref(), false, false, &ctor_params, &ctor_body)?;
         self.class_stack.pop();
         let ctor_captures = ctor_proto.upvalues.clone();
         let ctor_idx = self.constants.intern(Constant::Function(Box::new(ctor_proto)));
@@ -4758,7 +4760,8 @@ impl Compiler {
                         in_constructor: false,
                         is_static: *is_static,
                     });
-                    let m_proto = self.compile_function_proto(None, false, false, params, body)?;
+                    let m_proto = self.compile_function_proto_with_name_hint(
+                        None, method_key.as_deref(), false, false, params, body)?;
                     self.class_stack.pop();
                     let captures = m_proto.upvalues.clone();
                     let m_idx = self.constants.intern(Constant::Function(Box::new(m_proto)));
