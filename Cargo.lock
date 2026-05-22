@@ -415,7 +415,9 @@ dependencies = [
  "indexmap",
  "rusty-js-ast",
  "rusty-js-bytecode",
+ "rusty-js-jit",
  "rusty-js-parser",
+ "rusty-js-pm",
  "rusty-js-runtime",
 ]
 
@@ -872,6 +874,8 @@ dependencies = [
  "base64",
  "flate2",
  "hex",
+ "rusty-http-codec",
+ "rusty-tls",
  "serde",
  "serde_json",
  "sha1",

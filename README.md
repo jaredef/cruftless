@@ -2,13 +2,15 @@
 
 Cruftless is a micro JavaScript runtime that punches above its weight. Built with Fielding Constraint Accumulation as the governing principle of architectural derivation, Cruftless achieves compatibility with the majority of Node.js packages in 50k LoC or less.
 
-A hand-derived, Bun-compatible JavaScript runtime in Rust, constructed under the resolver-instance discipline. Each layer's directives are consumed at that layer's resolver; no layer's artifact carries residue from the layer above. The terminal property the design induces is *vertically-recursive directive consumption with stage-deterministic emission*.
+A hand-derived JavaScript runtime in Rust, targeting **the Node.js package ecosystem** as its compatibility surface. Constructed under the resolver-instance discipline: each layer's directives are consumed at that layer's resolver; no layer's artifact carries residue from the layer above. The terminal property the design induces is *vertically-recursive directive consumption with stage-deterministic emission*.
+
+The repository was originally formulated as an AI-assisted source-translation apparatus reading Bun's Zig source for a Rust port — hence the working directory name `rusty-bun`, and the choice of Bun as the empirical oracle. The translation focus dissolved as the resolver-instance discipline crystallized; what remained is Cruftless: an independent runtime that uses Bun for measurement, not for inheritance.
 
 The corpus articulation is [Doc 729 — Cruftless](https://jaredfoy.com/resolve/doc/729-cruftless-a-primary-articulation-of-the-resolver-instance-pattern-as-the-comprehensive-design-toward-which-rusty-bun-morphs).
 
 ## What this is
 
-A JavaScript runtime targeting **parity with Bun** across ECMA-262 language semantics and the Node/Web platform surface that Bun re-implements (`node:*` builtins, `fetch`, `Buffer`, `URL`, `structuredClone`, …). Bun is the parity oracle for both the namespace-shape probe (`legacy/host-rquickjs/tools/parity-measure.sh`, a 1026-package top-500 + top-100 basket) and the runtime-semantics probe (`scripts/diff-prod/`, a curated fixture set diffed byte-for-byte against bun's stdout). The engine is hand-derived under [Pin-Art](https://jaredfoy.com/resolve/doc/581-pin-art-the-resume-vector-and-the-discipline-of-near-necessity-substrate-construction) discipline from Bun's source per [Doc 702](https://jaredfoy.com/resolve/doc/702-ai-assisted-cross-language-code-translation-as-a-pin-art-bilateral-under-sipe-t-threshold-conditions-reading-the-bun-zig-to-rust-port).
+A JavaScript runtime targeting **the Node.js package ecosystem** across ECMA-262 language semantics and the Node/Web platform surface that real packages depend on (`node:*` builtins, `fetch`, `Buffer`, `URL`, `structuredClone`, …). Bun is the **empirical oracle** for both the namespace-shape probe (`legacy/host-rquickjs/tools/parity-measure.sh`, a 1026-package top-500 + top-100 basket) and the runtime-semantics probe (`scripts/diff-prod/`, a curated fixture set diffed byte-for-byte against bun's stdout). Bun's role is instrumental: it correctly implements the union of Node + Web APIs that production packages exercise, which makes it a reliable yardstick against which Cruftless's compatibility can be measured. The engine itself is independent — built under [Pin-Art](https://jaredfoy.com/resolve/doc/581-pin-art-the-resume-vector-and-the-discipline-of-near-necessity-substrate-construction) discipline against ECMA-262 + WHATWG, not derived from any existing engine's code.
 
 Two binaries:
 
@@ -17,7 +19,7 @@ Two binaries:
 
 Both binaries run the same parity sweeps; the migration-cost gap between them reads the rusty-js engine's maturity directly against the rquickjs ceiling.
 
-Cruftless is **not** a generic ECMA-262 implementation, not a re-port of QuickJS, and not a Bun source translation. It is the hand-derived terminal substrate that emerges when Bun's source is read under the resolver-instance discipline of Doc 729 and the Pin-Art bilateral of Doc 702.
+Cruftless is **not** a re-port of QuickJS, not a Bun source translation, and not a wrapper around any existing engine. It is a hand-derived terminal substrate that emerges from the resolver-instance discipline of Doc 729 — measured against Bun, not built from Bun.
 
 ## The design
 

@@ -1,5 +1,5 @@
 # cruftless workspace — registers all per-pilot crates plus the apparatus
-# binaries (derive-constraints, welch).
+# binaries (derive-constraints, legacy/welch).
 #
 # Per Doc 581 trajectory §II Tier-D #9: workspace consolidation lets
 # `cargo test --workspace --release` run every pilot's verifier and consumer-
@@ -11,7 +11,7 @@ resolver = "2"
 members = [
     # Apparatus binaries
     "derive-constraints",
-    "welch",
+    "legacy/welch",
     # Pilots — alphabetical by surface
     "pilots/abort-controller/derived",
     "pilots/asn1-der/derived",
@@ -50,7 +50,9 @@ members = [
     "pilots/websocket/derived",
     "pilots/x509/derived",
     # JS host integration (trajectory Tier-H, seed §VII Sub-criterion 4)
-    "host",
-    # Tier-Ω.4: cruftless host migration onto rusty-js-runtime
-    "host-v2",
+    # Primary substrate: cruftless host on rusty-js-runtime.
+    "cruftless",
+    # Legacy reference: rquickjs-based host (renamed from host/; retained
+    # as the parity ceiling reference per Doc 717 §VIII).
+    "legacy/host-rquickjs",
 ]
