@@ -1852,3 +1852,27 @@ Cumulative across the seven rungs landed today:
 - Cruftless 73.9% → ~76.4% runnable pass; gap 25.3 pp → ~22.8 pp.
 
 **Tag**: `cluster-namedeval-dstr-default-8`. Note the NamedEvaluation fix also applies through every other destructuring site (parameter destructuring, variable-decl destructuring with defaults), so additional cascade is expected on next sample-wide re-measurement.
+
+---
+
+## Rung-cluster-9 — Map.prototype[@@iterator] key-decoding (closed 2026-05-22)
+
+**Cluster** (per the test262-parity telos in seed §I.2):
+`built-ins/{Map,Set,WeakMap,WeakSet}/* + language/statements/{for-of,for-in}/*` — 1,679 paths sampled. Pre-rung (latest sample, post rungs 1-8): 692 FAIL / 890 PASS / 3 SKIP.
+
+**Root cause**: `Map.prototype[@@iterator]` at `intrinsics.rs:2877` wrapped storage keys as `Value::String(Rc::new(k))` without consulting the `__map_orig_keys` side channel. The other Map iteration paths (`entries`, `keys`, `values`, `forEach`) correctly route through `map_decode_key`, which restores the original `Value` type (Number, Object, Symbol, Boolean, null, undefined) for non-string keys. The @@iterator path is what `for (const [k,v] of map)` and `[...map]` reach — so user code using the default Map iteration got stringified keys.
+
+Concretely: `new Map().set(0,'a')` then `for (const [k,v] of m)` yielded `["0","a"]` instead of `[0,"a"]`. test262 surfaces this in for-of/map-* tests with `SameValue(«"0"», «0»)` failures and downstream in `Set`/iterator cases that chain off the same protocol.
+
+**Substrate fix**: at `intrinsics.rs:2883`, before wrapping the storage key, look up `this.__map_orig_keys[k]` and return the original Value if present; else fall back to `Value::String(Rc::new(k))`. Inlined because `map_decode_key` is a private method on `Runtime::Interp`; refactor to a free helper is a follow-on chore.
+
+**Post-rung result**: 644 FAIL / 938 PASS on the same 1,679 paths.
+
+**Delta**: **+48 PASS** (692 FAIL → 644 FAIL, 7% reduction).
+
+**Sample-wide cumulative** (rungs 1-9, partial estimate):
+- Cluster-1: +10, Cluster-2: +72, Cluster-3: +11, Cluster-4: +8, Cluster-5: +2, Cluster-6: +3, Cluster-7: +9, Cluster-8: +65, Cluster-9: +48.
+- Estimated total: **+228 PASS** on the 7,205-runnable base = +3.2 pp.
+- Cruftless 73.9% → ~77.1% runnable pass; gap 25.3 pp → ~22.1 pp.
+
+**Tag**: `cluster-map-iterator-key-decode-9`.

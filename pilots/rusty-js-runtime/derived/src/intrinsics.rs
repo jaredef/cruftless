@@ -2880,12 +2880,33 @@ impl Runtime {
                     Value::Object(id) => id,
                     _ => return Ok(Value::Object(rt.alloc_object(Object::new_array()))),
                 };
+                // Same key-decoding discipline as map_proto_entries_via:
+                // route storage-key strings through the __map_orig_keys
+                // side channel so non-string original keys (Number, Object,
+                // Symbol, Boolean, null, undefined) round-trip as their
+                // original type. Without this, `for (const [k,v] of map)`
+                // yielded string keys for what was set via Number.
                 let pairs: Vec<(String, Value)> = rt.obj(storage).properties.iter()
                     .map(|(k, d)| (k.to_string_content(), d.value.clone())).collect();
                 let arr = rt.alloc_object(Object::new_array());
                 for (i, (k, v)) in pairs.into_iter().enumerate() {
+                    let key_v = {
+                        // Inline of map_decode_key — that helper is private
+                        // to interp::Runtime; replicate the lookup here.
+                        let orig = rt.object_get(this, "__map_orig_keys");
+                        if let Value::Object(orig_id) = orig {
+                            let candidate = rt.object_get(orig_id, &k);
+                            if !matches!(candidate, Value::Undefined) {
+                                candidate
+                            } else {
+                                Value::String(Rc::new(k.clone()))
+                            }
+                        } else {
+                            Value::String(Rc::new(k.clone()))
+                        }
+                    };
                     let pair = rt.alloc_object(Object::new_array());
-                    rt.object_set(pair, "0".into(), Value::String(Rc::new(k)));
+                    rt.object_set(pair, "0".into(), key_v);
                     rt.object_set(pair, "1".into(), v);
                     rt.object_set(pair, "length".into(), Value::Number(2.0));
                     rt.object_set(arr, i.to_string(), Value::Object(pair));
