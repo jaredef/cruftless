@@ -1983,7 +1983,20 @@ impl Compiler {
             encode_op(&mut self.bytecode, Op::StrictEq);
             let j_skip = self.emit_jump(Op::JumpIfFalse);
             encode_op(&mut self.bytecode, Op::Pop);
-            self.compile_expr(def_expr)?;
+            // ECMA-262 §13.15.5.3 NamedEvaluation: when the binding target
+            // is an Identifier and the default expression is an anonymous
+            // function/class/arrow/parenthesized-cover, the function's
+            // own .name receives the identifier's text. Without the hint
+            // the default compiles to name="" — test262 surfaces this
+            // across the dstr cluster as 50 fn-name-inference failures.
+            let name_hint = if let rusty_js_ast::BindingPattern::Identifier(id) = target {
+                Some(id.name.as_str())
+            } else { None };
+            if name_hint.is_some() {
+                self.compile_expr_with_name_hint(def_expr, name_hint)?;
+            } else {
+                self.compile_expr(def_expr)?;
+            }
             self.patch_jump(j_skip);
         }
         match target {
@@ -2162,6 +2175,14 @@ impl Compiler {
                 encode_u16(&mut self.bytecode, idx);
                 emit_captures(&mut self.bytecode, &captures);
                 Ok(())
+            }
+            Expr::Class { name: None, super_class, members, span } => {
+                self.record_span(*span);
+                self.compile_class_with_name_hint(
+                    *span, None, hint, super_class.as_ref().map(|b| b.as_ref()), members)
+            }
+            Expr::Parenthesized { expr, .. } => {
+                self.compile_expr_with_name_hint(expr, hint)
             }
             _ => self.compile_expr(e),
         }
@@ -4366,6 +4387,17 @@ impl Compiler {
         super_class: Option<&Expr>,
         members: &[ClassMember],
     ) -> Result<(), CompileError> {
+        self.compile_class_with_name_hint(span, name, None, super_class, members)
+    }
+
+    fn compile_class_with_name_hint(
+        &mut self,
+        span: Span,
+        name: Option<&BindingIdentifier>,
+        display_name_hint: Option<&str>,
+        super_class: Option<&Expr>,
+        members: &[ClassMember],
+    ) -> Result<(), CompileError> {
         let seq = self.class_seq;
         self.class_seq += 1;
 
@@ -4618,7 +4650,10 @@ impl Compiler {
             in_constructor: true,
             is_static: false,
         });
-        let class_display_name = name.as_ref().map(|n| n.name.clone());
+        let class_display_name = name
+            .as_ref()
+            .map(|n| n.name.clone())
+            .or_else(|| display_name_hint.map(|s| s.to_string()));
         let ctor_proto = self.compile_function_proto_with_name_hint(
             None, class_display_name.as_deref(), false, false, &ctor_params, &ctor_body)?;
         self.class_stack.pop();

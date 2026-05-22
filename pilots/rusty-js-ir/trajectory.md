@@ -1817,3 +1817,38 @@ Next cluster candidate: `language/expressions/arrow-function` non-dstr (23 FAILs
 - Cruftless 73.9% → ~75.5% runnable pass; gap 25.3 pp → ~23.7 pp
 
 **Tag**: `cluster-regexp-exec-lastindex-7`.
+
+---
+
+## Sample-wide re-measurement (post rungs 1-7, 2026-05-22)
+
+Cumulative across the seven rungs landed today:
+- **5,439 PASS / 1,766 FAIL / 384 SKIP** on the 7,750-test sample.
+- **75.5% runnable pass** (5,439 / 7,205) — up from 73.9% (5,321 / 7,203) at the locale's opening.
+- **+118 PASS** measured (vs +115 estimated by per-rung deltas).
+- Gap against bun (99.2%): **23.7 pp**. Telos: ≤10 pp. Closed 1.6 pp.
+
+---
+
+## Rung-cluster-8 — NamedEvaluation through destructuring defaults (closed 2026-05-22)
+
+**Cluster** (per the test262-parity telos in seed §I.2):
+`language/statements/for-of/dstr/* + language/expressions/arrow-function/dstr/*` — 800 paths. Post-rung-7 sample: 441 FAIL / 323 PASS.
+
+**Root cause**: `emit_element_with_default` (the destructuring-default emit path at `compiler.rs:1979`) compiled the default expression via plain `compile_expr`, ignoring the binding's name. Spec §13.15.5.3 (NamedEvaluation) requires that when the target is an Identifier and the default is an anonymous function/class/arrow/parenthesized cover, the function's own `.name` receives the identifier text. Test262 surfaces this across the dstr cluster as 50 fn-name-inference failures (10 each for arrow/cls/cover/fn/gen).
+
+**Substrate fix**:
+1. `emit_element_with_default`: when target is `BindingPattern::Identifier`, route default through `compile_expr_with_name_hint` with the binding's name.
+2. `compile_expr_with_name_hint`: extend to handle `Expr::Class { name: None, .. }` and `Expr::Parenthesized { .. }` (the latter recurses).
+3. `compile_class`: introduce a `compile_class_with_name_hint` thin wrapper; the existing inline `class_display_name = name.map(...)` now ORs with the hint. The hint feeds the ctor's `compile_function_proto_with_name_hint`, surfacing the class's `.name` to spec.
+
+**Post-rung result**: 376 FAIL / 388 PASS on 800 dstr paths.
+
+**Delta**: **+65 PASS** (441 FAIL → 376 FAIL, 15% reduction).
+
+**Sample-wide cumulative** (rungs 1-8):
+- Cluster-1: +10, Cluster-2: +72, Cluster-3: +11, Cluster-4: +8, Cluster-5: +2, Cluster-6: +3, Cluster-7: +9, Cluster-8: +65.
+- Estimated total: **+180 PASS** on the 7,205-runnable base = +2.5 pp.
+- Cruftless 73.9% → ~76.4% runnable pass; gap 25.3 pp → ~22.8 pp.
+
+**Tag**: `cluster-namedeval-dstr-default-8`. Note the NamedEvaluation fix also applies through every other destructuring site (parameter destructuring, variable-decl destructuring with defaults), so additional cascade is expected on next sample-wide re-measurement.
