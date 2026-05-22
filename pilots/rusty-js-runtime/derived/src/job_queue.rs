@@ -37,12 +37,12 @@ pub struct JobQueue {
     /// macrotasks" work. Per §9.4.1: drain to quiescence between every
     /// macrotask boundary; microtasks enqueued during drain process in
     /// the same drain phase.
-    microtasks: VecDeque<Job>,
+    pub(crate) microtasks: VecDeque<Job>,
     /// Macrotasks — timer firings, ready I/O completions, host-scheduled
     /// work. Per HTML §8: one macrotask runs to completion per loop
     /// iteration; the next is dequeued after the post-macrotask
     /// microtask drain.
-    macrotasks: VecDeque<Job>,
+    pub(crate) macrotasks: VecDeque<Job>,
 }
 
 impl JobQueue {
@@ -126,4 +126,30 @@ impl Runtime {
             JobKind::Closure(f) => f(self),
         }
     }
+}
+
+/// Free-function variant for callers (notably __await) that already hold
+/// `&mut Runtime` outside the run_to_completion entrypoint. Same dispatch
+/// as the impl method.
+pub fn run_job_static(rt: &mut Runtime, job: Job) -> Result<(), RuntimeError> {
+    match job.kind {
+        JobKind::Closure(f) => f(rt),
+    }
+}
+
+/// Pump one tick: drain all microtasks, then advance up to one macrotask.
+/// Returns true if any work was done. Used by __await to pump until an
+/// awaited Promise settles (event-loop-blocking await stand-in for real
+/// frame park/resume).
+pub fn pump_one_tick(rt: &mut Runtime) -> Result<bool, RuntimeError> {
+    let mut did_work = false;
+    while let Some(job) = rt.job_queue.microtasks.pop_front() {
+        run_job_static(rt, job)?;
+        did_work = true;
+    }
+    if let Some(job) = rt.job_queue.macrotasks.pop_front() {
+        run_job_static(rt, job)?;
+        did_work = true;
+    }
+    Ok(did_work)
 }

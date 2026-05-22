@@ -262,9 +262,55 @@ impl Runtime {
                     Err(RuntimeError::Thrown(value))
                 }
                 crate::value::PromiseStatus::Pending => {
-                    Err(RuntimeError::TypeError(
-                        "await on pending Promise not yet supported (Tier-Ω.5.P17.E1 stub)".into()
-                    ))
+                    // v1 stand-in for proper frame park/resume: pump the
+                    // event loop synchronously until the awaited Promise
+                    // settles. Real suspension is queued as its own rung;
+                    // this unblocks any program whose await target is
+                    // settleable by draining queues (Promise.allSettled,
+                    // Promise.race against resolved, await setTimeout).
+                    let max_pumps = 100_000usize;
+                    let mut pumps = 0usize;
+                    loop {
+                        let did_work = crate::job_queue::pump_one_tick(rt)?;
+                        // Re-check promise status.
+                        let (status, value) = {
+                            let o = rt.obj(id);
+                            if let InternalKind::Promise(ps) = &o.internal_kind {
+                                (ps.status, ps.value.clone())
+                            } else {
+                                return Err(RuntimeError::TypeError(
+                                    "await: lost-track on Promise during pump".into()));
+                            }
+                        };
+                        match status {
+                            crate::value::PromiseStatus::Fulfilled => {
+                                rt.pending_unhandled.remove(&id);
+                                return Ok(value);
+                            }
+                            crate::value::PromiseStatus::Rejected => {
+                                rt.pending_unhandled.remove(&id);
+                                return Err(RuntimeError::Thrown(value));
+                            }
+                            crate::value::PromiseStatus::Pending => {}
+                        }
+                        if !did_work {
+                            // Try poll_io once before declaring idle.
+                            let progressed = if let Some(poll) = rt.host_hooks.poll_io.take() {
+                                let p = poll(rt)?;
+                                rt.host_hooks.poll_io = Some(poll);
+                                p
+                            } else { false };
+                            if !progressed {
+                                return Err(RuntimeError::TypeError(
+                                    "await: Promise never settled (event loop idle)".into()));
+                            }
+                        }
+                        pumps += 1;
+                        if pumps > max_pumps {
+                            return Err(RuntimeError::TypeError(
+                                "await: max-pump bound exceeded (likely self-pending promise cycle)".into()));
+                        }
+                    }
                 }
             }
         });

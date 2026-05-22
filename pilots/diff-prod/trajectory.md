@@ -78,13 +78,17 @@ Effect: `error-throws`'s rc-mismatch (SIGABRT) gone; comparator now reports clea
 
 Three fixture-level FAILs remain, each a substantive substrate gap warranting its own focused rung:
 
-### Rung-6 candidate: `async-promise` Promise.allSettled gap
+### Rung-6 — `async-promise` await-on-pending Promise (CLOSED, this commit)
 
-**Crash**: `await on pending Promise not yet supported (Tier-Ω.5.P17.E1 stub)` at `Promise.allSettled([Promise.resolve(...), Promise.reject(...), Promise.resolve(...)])`.
+**Substrate fix** (intrinsics.rs __await + job_queue.rs pump_one_tick):
+when await hits a Pending promise, synchronously pump the event loop —
+drain microtasks then advance one macrotask — until the awaited Promise
+settles or queues idle. Bounded at 100k pumps; idle-and-still-pending
+throws cleanly. This is a v1 stand-in for proper frame park/resume;
+proper suspension is queued as its own substrate rung.
 
-**Locale assignment**: `pilots/rusty-js-runtime/` (Promise integration). Existing Tier-Ω.5.P17.E1 stub flagged for completion.
-
-**Bracket** (already implicit in fixture): a minimal Promise.allSettled probe with mixed fulfilled/rejected.
+Effect: `async-promise` flipped to PASS. Promise.allSettled / race /
+any / await-setTimeout now work end-to-end.
 
 ### Rung-7 candidate: `error-throws` const-reassign-in-eval gap
 
