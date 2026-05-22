@@ -1999,12 +1999,17 @@ impl Runtime {
     /// IR-EXT 56 — Object.create per §20.1.2.2 with full descriptor semantics.
     pub fn object_create_via(&mut self, proto_v: &Value, props_v: &Value) -> Result<Value, RuntimeError> {
         let mut obj = crate::value::Object::new_ordinary();
+        let explicit_null = matches!(proto_v, Value::Null);
         obj.proto = match proto_v {
             Value::Object(id) => Some(*id),
             Value::Null => None,
             _ => return Err(RuntimeError::TypeError("Object.create: prototype must be object or null".into())),
         };
-        let id = self.alloc_object(obj);
+        let id = if explicit_null {
+            self.alloc_object_with_explicit_null_proto(obj)
+        } else {
+            self.alloc_object(obj)
+        };
         if let Value::Object(props_id) = props_v {
             let props_id = *props_id;
             let keys: Vec<String> = self.obj(props_id).properties.iter()
@@ -2992,13 +2997,38 @@ impl Runtime {
     }
 
     /// Date.parse(s) per ECMA §21.4.3.2 — v1 stub returns 0.
-    pub fn date_parse_via(&mut self, _args: &[Value]) -> Result<Value, RuntimeError> {
-        Ok(Value::Number(0.0))
+    pub fn date_parse_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let s = match args.first() {
+            Some(Value::String(s)) => s.as_str().to_string(),
+            Some(v) => crate::abstract_ops::to_string(v).as_str().to_string(),
+            None => return Ok(Value::Number(f64::NAN)),
+        };
+        Ok(parse_iso8601_to_epoch_ms(&s).map(Value::Number).unwrap_or(Value::Number(f64::NAN)))
     }
 
-    /// Date.UTC(...) per ECMA §21.4.3.4 — v1 stub returns 0.
-    pub fn date_utc_via(&mut self, _args: &[Value]) -> Result<Value, RuntimeError> {
-        Ok(Value::Number(0.0))
+    /// Date.UTC(year, month, day?, hours?, min?, sec?, ms?) per ECMA
+    /// §21.4.3.4. Returns the milliseconds-since-epoch for the UTC
+    /// timestamp. month is 0-indexed per JS convention.
+    pub fn date_utc_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let read = |i: usize, dflt: i64| -> i64 {
+            match args.get(i) {
+                Some(v) => {
+                    let n = crate::abstract_ops::to_number(v);
+                    if n.is_nan() { dflt } else { n as i64 }
+                }
+                None => dflt,
+            }
+        };
+        let mut year = read(0, 0);
+        // §21.4.3.4 step 8: if 0 ≤ year ≤ 99, year += 1900.
+        if year >= 0 && year <= 99 { year += 1900; }
+        let month = read(1, 0);
+        let day   = read(2, 1);
+        let h     = read(3, 0);
+        let mi    = read(4, 0);
+        let s     = read(5, 0);
+        let ms    = read(6, 0);
+        Ok(Value::Number(utc_components_to_epoch_ms(year, month, day, h, mi, s, ms) as f64))
     }
 
     /// String.raw(template, ...subs) per ECMA §22.1.2.4.
@@ -5850,6 +5880,17 @@ impl Runtime {
         self.heap.alloc(obj)
     }
 
+    /// Variant of alloc_object that bypasses the intrinsic-proto default
+    /// when the caller explicitly wants a null-proto object (e.g.,
+    /// Object.create(null), Object.create() with explicit null first
+    /// arg). alloc_object treats `proto: None` as "default to the
+    /// intrinsic prototype"; this entrypoint takes the leave-it-null
+    /// branch.
+    pub fn alloc_object_with_explicit_null_proto(&mut self, obj: crate::value::Object) -> rusty_js_gc::ObjectId {
+        // obj.proto is already None and we want it to STAY None.
+        self.heap.alloc(obj)
+    }
+
     /// Ergonomic heap accessors. Panic on missing — the migration's
     /// invariant is that every ObjectId in a live Value points to a live
     /// slot. Stale handles after a sweep would be a GC-correctness bug
@@ -6040,11 +6081,36 @@ impl Runtime {
                 return Value::Number((max + 1) as f64);
             }
         }
+        // Well-known-Symbol fallback shim. Per PropertyKey migration
+        // (value.rs:90), well-known Symbols use a string form like
+        // "@@iterator". User code `o[Symbol.iterator] = fn` stores
+        // under PropertyKey::Symbol; intrinsic dispatchers (for-of's
+        // CallMethod with "@@iterator") read via PropertyKey::String.
+        // Without this fallback the two never meet. Try String first
+        // (covers intrinsic-installed methods); on miss, also try Symbol
+        // (covers user-installed methods).
+        let is_wellknown_sym = key.starts_with("@@");
         let mut cur = Some(id);
         while let Some(c) = cur {
             let o = self.obj(c);
             if let Some(d) = o.get_own(key) {
                 return d.value.clone();
+            }
+            if is_wellknown_sym {
+                // PropertyKey::Symbol eq is Rc::ptr_eq (identity), so a
+                // freshly-allocated Rc never matches a stored Symbol key
+                // by-value. Walk Symbol-keyed entries looking for any
+                // whose internal identifier equals the queried name.
+                // Cost is O(n) on Symbol bucket size, amortized
+                // acceptable for the well-known-Symbol path (only fires
+                // when the string lookup missed AND the key is "@@...").
+                for (pk, d) in &o.properties {
+                    if let crate::value::PropertyKey::Symbol(rc) = pk {
+                        if rc.as_str() == key {
+                            return d.value.clone();
+                        }
+                    }
+                }
             }
             cur = o.proto;
         }
@@ -8682,6 +8748,98 @@ impl<'a> Frame<'a> {
 /// frame's pc + source_map + line_starts. Idempotent — re-throws through
 /// nested frames will see the marker " @" and skip re-enrichment. Empty
 /// source_map / line_starts (hand-built frames) leave the error untouched.
+/// Compute UTC epoch milliseconds for a (year, month-0idx, day-1idx,
+/// hours, minutes, seconds, ms) tuple. Uses the Gregorian calendar
+/// algorithm; valid across the full IEEE-754-representable date range.
+fn utc_components_to_epoch_ms(year: i64, month: i64, day: i64, h: i64, mi: i64, s: i64, ms: i64) -> i64 {
+    // Normalize month overflow into year.
+    let total_months = year * 12 + month;
+    let y = total_months.div_euclid(12);
+    let m = total_months.rem_euclid(12) as i32;  // 0..11
+    // Days from epoch (1970-01-01) to start of year y.
+    let days_from_epoch_to_year_start = |y: i64| -> i64 {
+        // Number of days from year 1 to year y (Gregorian). Then subtract
+        // 1969 years × 365 + leap-day count up to 1970.
+        let y_prev = y - 1;
+        let days_to_y = 365 * y_prev + y_prev.div_euclid(4) - y_prev.div_euclid(100) + y_prev.div_euclid(400);
+        let days_to_1970 = 365 * 1969 + 1969 / 4 - 1969 / 100 + 1969 / 400;
+        days_to_y - days_to_1970
+    };
+    let is_leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+    let month_days = [31, if is_leap {29} else {28}, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let mut days_in_year: i64 = 0;
+    for i in 0..(m as usize) { days_in_year += month_days[i] as i64; }
+    days_in_year += day - 1;
+    let total_days = days_from_epoch_to_year_start(y) + days_in_year;
+    let total_secs = total_days * 86400 + h * 3600 + mi * 60 + s;
+    total_secs * 1000 + ms
+}
+
+/// Public wrapper for the ISO 8601 parser (called from intrinsics.rs).
+pub fn parse_iso8601_to_epoch_ms_public(s: &str) -> Option<f64> {
+    parse_iso8601_to_epoch_ms(s)
+}
+
+/// Parse an ISO 8601 datetime string to UTC epoch milliseconds. Supports:
+///   YYYY-MM-DD
+///   YYYY-MM-DDTHH:MM:SS
+///   YYYY-MM-DDTHH:MM:SSZ
+///   YYYY-MM-DDTHH:MM:SS.sssZ
+///   YYYY-MM-DDTHH:MM:SS+HH:MM (tz offset)
+/// Returns None on parse failure.
+fn parse_iso8601_to_epoch_ms(s: &str) -> Option<f64> {
+    let s = s.trim();
+    let bytes = s.as_bytes();
+    if bytes.len() < 10 { return None; }
+    // Year-month-day
+    let year: i64 = std::str::from_utf8(&bytes[0..4]).ok()?.parse().ok()?;
+    if bytes[4] != b'-' { return None; }
+    let month: i64 = std::str::from_utf8(&bytes[5..7]).ok()?.parse().ok()?;
+    if bytes[7] != b'-' { return None; }
+    let day: i64 = std::str::from_utf8(&bytes[8..10]).ok()?.parse().ok()?;
+    if month < 1 || month > 12 || day < 1 || day > 31 { return None; }
+    let (mut h, mut mi, mut sc, mut ms) = (0i64, 0i64, 0i64, 0i64);
+    let mut tz_offset_min: i64 = 0;
+    let rest = &s[10..];
+    if !rest.is_empty() {
+        let rb = rest.as_bytes();
+        if rb[0] != b'T' && rb[0] != b' ' { return None; }
+        if rb.len() >= 9 {
+            h = std::str::from_utf8(&rb[1..3]).ok()?.parse().ok()?;
+            if rb[3] != b':' { return None; }
+            mi = std::str::from_utf8(&rb[4..6]).ok()?.parse().ok()?;
+            if rb[6] != b':' { return None; }
+            sc = std::str::from_utf8(&rb[7..9]).ok()?.parse().ok()?;
+            let mut p = 9usize;
+            if p < rb.len() && rb[p] == b'.' {
+                let end = p + 1 + rb[p + 1..].iter().take_while(|c| c.is_ascii_digit()).count();
+                let frac = std::str::from_utf8(&rb[p + 1..end]).ok()?;
+                // Convert fractional seconds → ms. Pad/truncate to 3 digits.
+                let mut digits: String = frac.chars().take(3).collect();
+                while digits.len() < 3 { digits.push('0'); }
+                ms = digits.parse().ok()?;
+                p = end;
+            }
+            if p < rb.len() {
+                match rb[p] {
+                    b'Z' => {}
+                    b'+' | b'-' => {
+                        if p + 5 < rb.len() && rb[p + 3] == b':' {
+                            let sign: i64 = if rb[p] == b'+' { 1 } else { -1 };
+                            let oh: i64 = std::str::from_utf8(&rb[p + 1..p + 3]).ok()?.parse().ok()?;
+                            let om: i64 = std::str::from_utf8(&rb[p + 4..p + 6]).ok()?.parse().ok()?;
+                            tz_offset_min = sign * (oh * 60 + om);
+                        }
+                    }
+                    _ => return None,
+                }
+            }
+        }
+    }
+    let epoch_ms = utc_components_to_epoch_ms(year, month - 1, day, h, mi, sc, ms);
+    Some((epoch_ms - tz_offset_min * 60_000) as f64)
+}
+
 /// ECMA-262 §22.1.3.15 step 11 GetSubstitution — for string-form replacement:
 ///   $$  → literal $
 ///   $&  → matched substring

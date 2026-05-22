@@ -5142,12 +5142,16 @@ pub(crate) fn ymd_to_ms(year: i64, month: i64, day: i64) -> i64 {
     days_since_epoch * 86_400_000
 }
 
-/// Parse a Date string. Supports:
-/// - "YYYY-MM-DD"
-/// - "YYYY-MM-DDTHH:MM:SS"
-/// - "YYYY-MM-DDTHH:MM:SS.sssZ"
-/// Returns f64 ms-since-epoch, or NaN on parse failure.
+/// Parse a Date string. Delegates to interp's parse_iso8601_to_epoch_ms
+/// for consistent behavior with Date.parse(). Returns NaN on failure.
 fn parse_date_string(s: &str) -> f64 {
+    if let Some(v) = crate::interp::parse_iso8601_to_epoch_ms_public(s) { return v; }
+    // Fall through to the legacy hand-rolled parser for shapes the new
+    // parser doesn't recognize.
+    parse_date_string_legacy(s)
+}
+
+fn parse_date_string_legacy(s: &str) -> f64 {
     let s = s.trim();
     if s.len() < 10 { return f64::NAN; }
     let y: i64 = match s[0..4].parse() { Ok(v) => v, Err(_) => return f64::NAN };

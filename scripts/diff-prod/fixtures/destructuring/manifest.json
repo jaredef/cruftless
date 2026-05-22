@@ -1,0 +1,8 @@
+{
+  "name": "destructuring",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Array/object destructuring: defaults, nested, rest, alias, computed keys, parameter destructuring."
+}

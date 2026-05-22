@@ -1,0 +1,8 @@
+{
+  "name": "iteration-protocol",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Symbol.iterator on built-ins, custom iterables, for-of / spread / destructuring of iterables."
+}

@@ -1,0 +1,8 @@
+{
+  "name": "date-ops",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Date construction, parsing, arithmetic, ISO/UTC formatting, getter coverage."
+}

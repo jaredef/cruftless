@@ -169,3 +169,24 @@ Three new F-category fixtures: `class-inheritance`, `typed-arrays`, `number-math
 
 **Diff-prod**: 13 / 13 PASS.
 **Top-100**: 99.1% unchanged.
+
+---
+
+## Rung-11 — Four more Telos B fixtures: date / iteration / destructuring / proto-chain (closed)
+
+Four new F-category fixtures: `date-ops`, `iteration-protocol`, `destructuring`, `prototype-chain`. Five substrate fixes landed; three v2 boundaries documented.
+
+**Substrate fixes**:
+1. **Object.create(null) sets proto = None** (interp.rs). alloc_object defaulted proto to Object.prototype when None; added alloc_object_with_explicit_null_proto and routed Object.create's Null branch through it.
+2. **Well-known-Symbol cross-bucket fallback** (interp.rs object_get). PropertyKey::Symbol uses Rc::ptr_eq for equality, so user `o[Symbol.iterator]=fn` (stored in Symbol bucket) was invisible to intrinsic dispatchers reading "@@iterator" (String bucket). object_get now scans Symbol-bucket entries by string identifier on miss when key starts with "@@".
+3. **Date.UTC implemented** (interp.rs date_utc_via). Was a stub returning 0. Now computes UTC ms-since-epoch via new utc_components_to_epoch_ms helper. Honors §21.4.3.4 step 8 (0-99 year → +1900).
+4. **Date.parse implemented** (interp.rs date_parse_via). Was a stub returning 0. New parse_iso8601_to_epoch_ms handles YYYY-MM-DD, datetime, Z/timezone offset, fractional seconds.
+5. **new Date(string) uses the same parser** (intrinsics.rs parse_date_string). Old hand-rolled ymd_to_ms had an off-by-31-days bug (Howard-Hinnant month-shift indexed wrong). Routes through interp's parse_iso8601_to_epoch_ms with the legacy parser as fallback.
+
+**v2 boundaries documented (not fixed in this rung)**:
+- Date primitive coercion: `+date`, `date1 < date2` should route via Symbol.toPrimitive("number") → valueOf. cruftless's wiring is incomplete; the fixture records the surface that DOES work (getTime arithmetic).
+- Array destructuring of non-array iterables (`[a,b,c] = generator()` / `= new Set(...)`). The destructuring lowering uses direct numeric-index access; needs iterator-protocol routing. Bytecode-compiler rung.
+- (Already documented from earlier rungs: lazy generators, TypedArray subtype preservation, TypedArray setter byte-masking, generator return-value surfacing.)
+
+**Diff-prod**: 17 / 17 PASS.
+**Top-100**: 99.1% unchanged.

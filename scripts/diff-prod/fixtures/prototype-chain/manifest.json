@@ -1,0 +1,8 @@
+{
+  "name": "prototype-chain",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Object.create, getPrototypeOf/setPrototypeOf, prototype-chain lookup, Object methods, hasOwnProperty."
+}
