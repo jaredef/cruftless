@@ -5688,75 +5688,83 @@ impl Runtime {
             crate::value::InternalKind::Array
         );
         if is_arr {
-            let ctor = self.object_get(o_id, "constructor");
-            // Spec sec 23.1.3.1 step 7: if a constructor property is
-            // present and is neither undefined nor a valid constructor,
-            // throw TypeError. Pre-fix, cruftless fell through to a
-            // plain Array allocation for arr.constructor = 1 / null /
-            // 'string' / true.
-            match &ctor {
-                Value::Undefined => { /* spec step 6: ArrayCreate fallback */ }
+            // ECMA-262 sec 23.1.3.1 ArraySpeciesCreate, routed through the
+            // species_constructor helper (rung-15 lift: sec 7.3.20). Spec
+            // ordering:
+            //  step 3: C = Get(O, 'constructor')
+            //  step 4: if IsConstructor(C): same-realm intrinsic check (skipped)
+            //  step 5: if Type(C) is Object, C = Get(C, @@species); null becomes undefined
+            //  step 6: if C is undefined, return ArrayCreate(length)
+            //  step 7: if !IsConstructor(C), throw TypeError
+            //  step 8: return Construct(C, [length])
+            let ctor_raw = self.object_get(o_id, "constructor");
+            let c: Value = match &ctor_raw {
+                Value::Undefined => Value::Undefined,
                 Value::Object(cid) => {
-                    let is_fn = matches!(
-                        self.obj(*cid).internal_kind,
-                        crate::value::InternalKind::Function(_)
-                        | crate::value::InternalKind::Closure(_)
-                        | crate::value::InternalKind::BoundFunction(_)
-                    );
-                    if !is_fn {
-                        // Object that isn't a function: spec step 5
-                        // would Get(@@species). If undefined, fall through;
-                        // else if not a constructor, throw. Treat as
-                        // fall-through here (no @@species discovered).
+                    // Default-Array intrinsic falls back to ArrayCreate.
+                    let is_plain_array_ctor = match self.globals.get("Array") {
+                        Some(Value::Object(arr_id)) => *arr_id == *cid,
+                        _ => false,
+                    };
+                    if is_plain_array_ctor {
+                        Value::Undefined
+                    } else {
+                        // Step 5: Get(C, @@species) - uses [[Get]] so the
+                        // %Array%[@@species] getter (returns `this`) fires
+                        // for subclasses inheriting via Array.constructor.
+                        let s = self.read_property(*cid, "@@species")?;
+                        match s {
+                            Value::Null | Value::Undefined => Value::Undefined,
+                            other => other,
+                        }
                     }
                 }
                 _ => {
+                    // Step 7 implicit: constructor is a non-Object non-undefined
+                    // primitive (number, string, boolean). Spec falls through
+                    // to step 7's IsConstructor check, which fails -> throw.
                     return Err(RuntimeError::TypeError(
                         "Array constructor is not a valid constructor".into()));
                 }
-            }
-            if let Value::Object(cid) = &ctor {
+            };
+            // Step 6: if C is undefined, ArrayCreate fallback.
+            if matches!(c, Value::Undefined) {
+                // fall through to ArrayCreate below
+            } else {
+                // Step 7: validate IsConstructor.
+                let cid = match &c {
+                    Value::Object(id) => *id,
+                    _ => return Err(RuntimeError::TypeError(
+                        "Array @@species is not a constructor".into())),
+                };
                 let is_fn = matches!(
-                    self.obj(*cid).internal_kind,
+                    self.obj(cid).internal_kind,
                     crate::value::InternalKind::Function(_)
                     | crate::value::InternalKind::Closure(_)
                     | crate::value::InternalKind::BoundFunction(_)
                 );
-                // Spec step 3.b.i would check that C is not the intrinsic
-                // %Array% (in which case fall back). Here we use a quick
-                // proxy: if ctor === self.array_constructor, fall back.
-                let is_plain_array_ctor = match self.globals.get("Array") {
-                    Some(Value::Object(arr_id)) => *arr_id == *cid,
-                    _ => false,
+                if !is_fn {
+                    return Err(RuntimeError::TypeError(
+                        "Array @@species is not a constructor".into()));
+                }
+                // Step 8: Construct(C, [length]).
+                let proto_override = match self.object_get(cid, "prototype") {
+                    Value::Object(pid) => Some(pid),
+                    _ => None,
                 };
-                if is_fn && !is_plain_array_ctor {
-                    // Mirror Op::New's allocation: pre-allocate an
-                    // Array-kind object with proto = ctor.prototype, then
-                    // dispatch via call_function with pending_new_target
-                    // set so the constructor sees the right `this`.
-                    let proto_override = match self.object_get(*cid, "prototype") {
-                        Value::Object(pid) => Some(pid),
-                        _ => None,
-                    };
-                    let mut ordinary = crate::value::Object::new_array();
-                    if proto_override.is_some() {
-                        ordinary.proto = proto_override;
-                    }
-                    let this_id = self.alloc_object(ordinary);
-                    let prev_pending = self.pending_new_target.take();
-                    self.pending_new_target = Some(ctor.clone());
-                    let r = self.call_function(ctor.clone(), Value::Object(this_id), vec![Value::Number(len as f64)]);
-                    self.pending_new_target = prev_pending;
-                    let ret = r?;
-                    // Per ECMA-262 §10.2.1.1, if the constructor returns
-                    // an Object, that object IS the result; otherwise use
-                    // the pre-allocated this. Array intrinsic returns the
-                    // receiver (so this_id is preserved); user classes may
-                    // explicitly return.
-                    match ret {
-                        Value::Object(_) => return Ok(ret),
-                        _ => return Ok(Value::Object(this_id)),
-                    }
+                let mut ordinary = crate::value::Object::new_array();
+                if proto_override.is_some() {
+                    ordinary.proto = proto_override;
+                }
+                let this_id = self.alloc_object(ordinary);
+                let prev_pending = self.pending_new_target.take();
+                self.pending_new_target = Some(c.clone());
+                let r = self.call_function(c.clone(), Value::Object(this_id), vec![Value::Number(len as f64)]);
+                self.pending_new_target = prev_pending;
+                let ret = r?;
+                match ret {
+                    Value::Object(_) => return Ok(ret),
+                    _ => return Ok(Value::Object(this_id)),
                 }
             }
         }

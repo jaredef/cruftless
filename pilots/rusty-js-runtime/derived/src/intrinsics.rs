@@ -1992,6 +1992,27 @@ impl Runtime {
             // Ω.5.P58.E4: Array.prototype.constructor = Array per ECMA §10.2.12.
             self.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(arr_ctor));
         }
+        // ECMA-262 sec 23.1.5.2 get %Array%[@@species]: accessor whose
+        // getter returns `this`. ArraySpeciesCreate (sec 23.1.3.1) reads
+        // this property; when not installed, subclass-extends-Array
+        // patterns degrade to plain Array (their .map / .filter / .slice
+        // lose the subclass type). Pre-rung-15 cruftless's array_species_
+        // create had a hand-rolled subclass branch; rung-15 routes it
+        // through the spec @@species path which requires this getter.
+        let species_getter = make_native("[Symbol.species]", |rt, _args| Ok(rt.current_this()));
+        let species_getter_id = self.alloc_object(species_getter);
+        let species_desc = crate::value::PropertyDescriptor {
+            value: Value::Undefined,
+            writable: false,
+            enumerable: false,
+            configurable: true,
+            getter: Some(Value::Object(species_getter_id)),
+            setter: None,
+        };
+        self.obj_mut(arr_ctor).properties.insert(
+            crate::value::PropertyKey::String("@@species".into()),
+            species_desc,
+        );
         self.globals.insert("Array".into(), Value::Object(arr_ctor));
     }
 

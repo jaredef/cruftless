@@ -2028,3 +2028,41 @@ Retrofitted all five consumers to call it. Each call site shrank from ~15 LOC of
 4. Yield from a pure lift is often near-zero in direct test flips; the value is reducing drift surface so subsequent spec-conformance work lands once.
 
 **Tag**: `cluster-lift-enumerable-own-keys-14`. Next lift candidates queued per scan: IteratorClose (§7.4.6), SpeciesConstructor (§7.3.20), ValidateAndApplyPropertyDescriptor (§10.1.6.3).
+
+---
+
+## Rung-cluster-15 — LIFT: ArraySpeciesCreate → SpeciesConstructor protocol (closed 2026-05-22)
+
+Second structural lift. ECMA-262 §23.1.3.1 ArraySpeciesCreate now follows the spec's literal step ordering by routing through the @@species protocol (§7.3.20 SpeciesConstructor pattern).
+
+**Before this rung**: `array_species_create` had two coexisting paths that didn't compose with the spec:
+1. (cluster-12) constructor-typed primitive non-undefined → throw TypeError. Correct.
+2. (legacy) constructor is a function and not the plain Array intrinsic → `new C(length)`. Hand-rolled subclass detection; never read @@species.
+
+This worked for `class X extends Array {}` because the constructor check fired. But it bypassed @@species entirely — `Array[@@species]` was never installed (spec §23.1.5.2 specifies a getter returning `this`), and reading it via `object_get` would have returned undefined anyway, collapsing to ArrayCreate.
+
+**Lift**:
+1. Install `Array[@@species]` as an accessor descriptor whose getter returns `this` (matching ECMA-262 §23.1.5.2: `get %Array%[@@species]`).
+2. Rewrite `array_species_create`'s constructor walk to mirror spec step ordering:
+   - step 3: C = Get(O, 'constructor')
+   - step 4: same-realm intrinsic check (Array intrinsic → C=undefined fallback)
+   - step 5: if C is Object: C = Get(C, @@species) via read_property (invokes the getter); null → undefined
+   - step 6: if C is undefined: ArrayCreate
+   - step 7: if !IsConstructor(C): throw TypeError
+   - step 8: Construct(C, [length])
+
+The `read_property` (vs `object_get`) at step 5 is what enables the subclass case: MyArr inherits `@@species` from `Array.constructor` whose accessor getter returns `this` (= MyArr), so MyArr.prototype.map / .filter / .slice now correctly produce MyArr instances per spec, without the hand-rolled subclass branch.
+
+**Spec coverage gained**:
+- @@species installed on Array (was missing). Other subclass dispatchers that consult `obj[@@species]` directly now find it.
+- Non-Object constructor: TypeError (already from cluster-12).
+- `class X extends Array { static get [Symbol.species]() { return SomeOther; } }`: now respected at runtime.
+
+**Sample-wide**: 5,557 PASS / 1,648 FAIL / 384 SKIP = **77.1%** runnable pass. +4 PASS measured; the structural value is that ArraySpeciesCreate now follows the spec verbatim and can absorb future spec-conformance work (TypedArraySpeciesCreate parallel, Promise species, etc.) under the same pattern.
+
+**Cumulative through rung-15**:
+- Sample-wide: +236 PASS measured from 5,321 baseline = +3.3 pp
+- Gap to bun: 22.1 pp → 22.1 pp (rung-14 was structural, rung-15 yielded +4)
+- Telos progress: ~21% of the way to ≤10 pp
+
+**Tag**: `cluster-lift-array-species-15`. Next lift candidates: IteratorClose (§7.4.6, largest queued, ~70 tests), ValidateAndApplyPropertyDescriptor (§10.1.6.3).
