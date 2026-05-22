@@ -602,6 +602,15 @@ pub struct ClosureInternals {
     /// ECMA-262 §10.2.1.4; call_function ignores the receiver argument
     /// for arrows and substitutes this value.
     pub bound_this: Option<Value>,
+    /// Optional cell-backed `this` binding. When set, the arrow reads
+    /// `this` from the cell at call time (lazy resolution), not at
+    /// creation time. Used to make `this` inside arrows track the
+    /// enclosing function's `this` binding through derived-class
+    /// super() rebinding per ECMA-262 §10.2.1.4 + §10.2.1.3. Without
+    /// this, arrows created BEFORE super() resolves capture the
+    /// pre-super pre-allocated empty this and never see the post-super
+    /// constructor return value.
+    pub bound_this_cell: Option<UpvalueCell>,
     /// Ω.5.P04.E2.jit-runtime-dispatch: per-closure invocation counter.
     /// Incremented at every call_function entry; the runtime consults the
     /// JIT after the counter crosses a threshold (see Runtime::jit_threshold).

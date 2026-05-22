@@ -6272,6 +6272,7 @@ impl Runtime {
             pc: state.resume_pc as usize,
             try_stack: Vec::new(),
             this_value,
+            this_cell: None,
             upvalues: Vec::new(),
             last_property_lookup: None,
             pending_method_name: None,
@@ -7518,10 +7519,18 @@ impl Runtime {
                     let is_async = proto_rc.is_async;
                     let is_gen = proto_rc.is_generator;
                     // Tier-Ω.5.sss: arrow inherits `this` from current
-                    // frame. Capture at MakeArrow time so the arrow's
-                    // call_function ignores its receiver argument and
-                    // uses this captured value instead.
+                    // frame. Capture at MakeArrow time as a VALUE
+                    // snapshot (bound_this) AND promote to a CELL
+                    // (bound_this_cell). Op::SetThis writes through the
+                    // cell, so arrows created BEFORE super() resolves
+                    // see the updated post-super value at call time.
                     let bound_this = if is_arrow { Some(frame.this_value.clone()) } else { None };
+                    let bound_this_cell = if is_arrow {
+                        if frame.this_cell.is_none() {
+                            frame.this_cell = Some(crate::value::new_upvalue_cell(frame.this_value.clone()));
+                        }
+                        frame.this_cell.clone()
+                    } else { None };
                     let closure = Object {
                         proto: None,
                         extensible: true,
@@ -7531,6 +7540,7 @@ impl Runtime {
                             upvalues: Vec::new(),
                             is_arrow,
                             bound_this,
+                            bound_this_cell,
                             call_count: std::cell::Cell::new(0),
                             jit_disabled: std::cell::Cell::new(false),
                         }),
@@ -7752,7 +7762,15 @@ impl Runtime {
                     frame.push(result);
                 }
                 Op::PushThis => {
-                    let t = frame.this_value.clone();
+                    // Prefer the cell when present — arrow created
+                    // before super() may have updated the cell while
+                    // this_value also stays in sync, but the cell is
+                    // the canonical reference for lazy resolution.
+                    let t = if let Some(cell) = &frame.this_cell {
+                        cell.borrow().clone()
+                    } else {
+                        frame.this_value.clone()
+                    };
                     frame.push(t);
                 }
                 Op::PushImportMeta => {
@@ -7776,8 +7794,14 @@ impl Runtime {
                     // Tier-Ω.5.nnnnn: rebind this when super(...) returns
                     // an Object. Pops the top of stack; if Object, replaces
                     // this_value; otherwise leaves this_value unchanged.
+                    // If a cell was promoted (arrow created before super
+                    // resolved), write through it so the arrow's lazy
+                    // lookup sees the new value.
                     let v = frame.pop()?;
                     if matches!(&v, Value::Object(_)) {
+                        if let Some(cell) = &frame.this_cell {
+                            *cell.borrow_mut() = v.clone();
+                        }
                         frame.this_value = v;
                     }
                 }
@@ -8068,7 +8092,15 @@ impl Runtime {
                     c.call_count.set(count);
                     let proto_key = std::rc::Rc::as_ptr(&c.proto) as usize;
                     let actual_this = if c.is_arrow {
-                        c.bound_this.clone().unwrap_or(Value::Undefined)
+                        // Prefer the cell-backed binding if present (it
+                        // tracks post-super rebinding); fall back to the
+                        // snapshot for arrows created in non-derived
+                        // contexts.
+                        if let Some(cell) = &c.bound_this_cell {
+                            cell.borrow().clone()
+                        } else {
+                            c.bound_this.clone().unwrap_or(Value::Undefined)
+                        }
                     } else { this.clone() };
                     let params = c.proto.params;
                     let jit_disabled = c.jit_disabled.get();
@@ -8350,6 +8382,7 @@ impl Runtime {
             pc: 0,
             try_stack: Vec::new(),
             this_value: this,
+            this_cell: None,
             upvalues,
             last_property_lookup: None,
             pending_method_name: None,
@@ -8618,6 +8651,11 @@ pub struct Frame<'a> {
     /// `this` for the executing frame. Module frames default to Undefined;
     /// method-call frames receive the receiver. Tier-Ω.5.a.
     pub this_value: Value,
+    /// Cell-backed `this` binding. Lazily promoted when an arrow inside
+    /// this frame captures `this`. Op::SetThis writes through the cell
+    /// (if present) so arrows created BEFORE super() resolves see the
+    /// updated post-super value at call time.
+    pub this_cell: Option<UpvalueCell>,
     /// Captured upvalues for this frame as shared binding cells. Closure
     /// frames receive Rc-clones of the closure's upvalue cells so writes
     /// propagate to the outer frame and to sibling closures. Tier-Ω.5.e.
@@ -8675,6 +8713,7 @@ impl<'a> Frame<'a> {
             pc: 0,
             try_stack: Vec::new(),
             this_value: Value::Undefined,
+            this_cell: None,
             upvalues: Vec::new(),
             last_property_lookup: None,
             pending_method_name: None,
