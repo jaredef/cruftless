@@ -1,0 +1,8 @@
+{
+  "name": "symbol-registry",
+  "categories": ["L"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Symbol creation, description, Symbol.for/keyFor registry, well-known symbols."
+}

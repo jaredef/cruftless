@@ -1,0 +1,8 @@
+{
+  "name": "bigint-ops",
+  "categories": ["L"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "BigInt arithmetic, comparison, conversion, BigInt64Array roundtrip."
+}

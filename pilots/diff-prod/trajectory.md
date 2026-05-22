@@ -271,3 +271,15 @@ Re-enabled the previously-deferred `let_loop_capture` case in the closures-scope
 **Diff-prod**: 29 / 29 PASS (closures-scopes now has 11 active cases instead of 10).
 **Top-100**: 99.1% unchanged.
 **Top-500**: 77.4% / 82.1% unchanged.
+---
+
+## Rung-16 — Three more L-category fixtures: bigint-ops / reflect-api / symbol-registry (closed)
+
+**Three new L-category fixtures**: `bigint-ops`, `reflect-api`, `symbol-registry`. All three PASSed on first run after one v1-boundary trim in reflect-api.
+
+**v1 boundary documented (deferred, not blocking)**:
+- Cruftless throws TypeError on writing to a non-writable data property in non-strict mode; spec mandates silent no-op outside strict. Reflect.defineProperty installation itself works correctly. Marked in the fixture comment.
+
+**Substrate context**: class constructor and method `.name` properties landed this session (separate commit) closed two upstream gaps surfaced during the arktype deviation-pipeline. No further substrate work needed for the three new fixtures.
+
+**Diff-prod**: 32 / 32 PASS.

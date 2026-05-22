@@ -1,0 +1,8 @@
+{
+  "name": "reflect-api",
+  "categories": ["L"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Reflect.* surface: get/set/has/deleteProperty/ownKeys/getPrototypeOf/construct/apply/defineProperty."
+}
