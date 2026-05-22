@@ -65,4 +65,9 @@ The repository began as an apparatus for AI-assisted cross-language code transla
 
 ## License
 
-[MIT](./LICENSE) — Copyright (c) 2026 Jared Foy.
+Dual-licensed at the user's option under either:
+
+- [MIT License](./LICENSE-MIT)
+- [Apache License, Version 2.0](./LICENSE-APACHE)
+
+Copyright (c) 2026 Jared Foy. Contributions submitted for inclusion shall be dual-licensed as above, without any additional terms or conditions.
