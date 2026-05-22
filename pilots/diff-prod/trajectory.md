@@ -301,3 +301,22 @@ Re-enabled the previously-deferred `let_loop_capture` case in the closures-scope
 **Substrate fixes this rung**: none — all gaps deferred as v1 boundaries.
 
 **Diff-prod**: 35 / 35 PASS.
+
+---
+
+## Rung-18 — Four more fixtures: regexp-advanced / object-statics / array-methods / math-statics (closed)
+
+**Four new L-category fixtures landed**: `regexp-advanced`, `object-statics`, `array-methods`, `math-statics`. All PASS.
+
+**Two fixtures dropped during landing** (substrate surface too broken to comparison-test in v1):
+- `node-querystring` — qs.parse routes through node:url url.parse (unimplemented stub), and qs.stringify not present on the node:querystring namespace at all (the import resolves to node:url's exports). The whole node:querystring module surface needs its own substrate rung.
+- `node-util` — util.format / util.types.{isPromise,isRegExp} work, but util.promisify wraps the callback but the awaited value channel returns undefined; util.types.{isDate,isMap,isSet} return false for matching instances. Unhandled-promise-rejection emitted at module shutdown with empty callee. Multiple gaps; defer pending dedicated util substrate rung.
+
+**v1 boundaries documented inline (deferred)**:
+- `match.groups` accessor absent (named groups match positionally; only the .groups view is missing)
+- DataView instance methods (from Rung-17)
+- (more itemized in their fixtures)
+
+**Substrate fixes this rung**: none.
+
+**Diff-prod**: 39 / 39 PASS.

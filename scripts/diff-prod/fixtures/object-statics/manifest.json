@@ -1,0 +1,8 @@
+{
+  "name": "object-statics",
+  "categories": ["L"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Object static methods: assign, entries, fromEntries, keys, values, freeze, getOwnPropertyDescriptor, hasOwn."
+}

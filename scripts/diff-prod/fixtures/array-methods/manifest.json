@@ -1,0 +1,8 @@
+{
+  "name": "array-methods",
+  "categories": ["L"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Array methods: flat, flatMap, at, includes, indexOf, find, findIndex, findLast, sort stability, with/toSorted/toReversed."
+}

@@ -1,0 +1,8 @@
+{
+  "name": "math-statics",
+  "categories": ["L"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Math static methods: trig, hyperbolic, log family, hypot, trunc, sign, cbrt, expm1, log1p, fround."
+}

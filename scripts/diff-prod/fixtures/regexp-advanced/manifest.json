@@ -1,0 +1,8 @@
+{
+  "name": "regexp-advanced",
+  "categories": ["L"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "RegExp advanced surface: named groups, lookbehind, sticky/global state, unicode escapes, dotAll."
+}
