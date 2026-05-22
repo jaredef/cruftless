@@ -1787,3 +1787,33 @@ Next cluster candidate: `language/expressions/arrow-function` non-dstr (23 FAILs
 - Cruftless 73.9% → ~75.4% runnable pass; gap 25.3 pp → ~23.9 pp
 
 **Tag**: `cluster-json-stringify-array-replacer-6`.
+
+---
+
+## Rung-cluster-7 — RegExp.prototype.exec lastIndex ToLength coercion (closed 2026-05-22)
+
+**Cluster** (per the test262-parity telos in seed §I.2):
+`built-ins/RegExp/prototype/exec/*` — 79 paths. Pre-rung sample: 22 FAIL / 57 PASS.
+
+**Root cause**: `regexp_exec` at `regexp.rs:638` read `lastIndex` via raw property-get and only honored the result if it was a `Value::Number`; non-Number values fell through to `0`. Spec §22.2.7.2 RegExpBuiltinExec step 4 requires `ToLength(? Get(R, "lastIndex"))`, which invokes `valueOf`/`@@toPrimitive` for object-typed lastIndex. The coercion's side effects must fire even for non-global/non-sticky regexes (spec step 8 resets the WORKING start to 0 only AFTER the ToLength happens). Result: `r.lastIndex = { valueOf: fn }` never called `fn`; test262 detects this via call counters.
+
+**Substrate fix**: replace the raw `object_get → Value::Number match` with `rt.object_get(...)` → `rt.coerce_to_number(...)` → clamp to `[0, 2^53-1]` (matching `try_array_length`'s recent fix from cluster-5). The clamp result feeds the global/sticky branch; non-global still uses `start=0` per spec step 8, but the side effects of ToLength fire either way.
+
+**Post-rung result**: 13 FAIL / 66 PASS on 79 paths.
+
+**Delta**: **+9 PASS** (22 FAIL → 13 FAIL, 41% reduction).
+
+**Expected cascade**: every code path that invokes `regexp_exec` (String.prototype.match / matchAll / replace / replaceAll / split, plus the @@-method dispatchers) inherits the coercion behavior; subsequent test262 runs against those clusters may flip additional tests.
+
+**Sample-wide cumulative** (rungs 1-7):
+- Cluster-1 (Number numeric format): +10
+- Cluster-2 (dstr LHS): +72
+- Cluster-3 (defineProperty P coercion): +11
+- Cluster-4 (split regex empty-match): +8
+- Cluster-5 (ToLength Infinity clamp): +2 (indexOf measured; broader cascade unmeasured)
+- Cluster-6 (JSON.stringify array-replacer): +3
+- Cluster-7 (regexp exec lastIndex ToLength): +9 (exec measured; broader cascade unmeasured)
+- Total: **+115 PASS** on the 7,203-runnable base = +1.60 pp
+- Cruftless 73.9% → ~75.5% runnable pass; gap 25.3 pp → ~23.7 pp
+
+**Tag**: `cluster-regexp-exec-lastindex-7`.

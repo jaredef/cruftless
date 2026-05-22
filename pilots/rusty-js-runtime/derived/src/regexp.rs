@@ -630,16 +630,18 @@ pub fn regexp_exec(rt: &mut Runtime, this_id: ObjectRef, input: &str) -> Result<
         let is_global = re.flags.contains('g') || re.flags.contains('y');
         (is_global, re.compiled.is_some())
     };
-    // ECMA-262 §22.2.7.2 RegExpBuiltinExec step 9: read lastIndex from
-    // the JS property (user-settable), not the internal field. The
-    // internal field tracks the cached value but is overridden by any
-    // explicit `re.lastIndex = N` assignment between calls.
-    let start = if is_global {
-        match rt.object_get(this_id, "lastIndex") {
-            Value::Number(n) if n.is_finite() && n >= 0.0 => n as usize,
-            _ => 0,
-        }
-    } else { 0 };
+    // ECMA-262 §22.2.7.2 RegExpBuiltinExec step 4: read lastIndex from
+    // the JS property (user-settable) and ToLength-coerce. The coercion
+    // is observable (the property's valueOf is called) and happens even
+    // for non-global / non-sticky regexes — spec step 8 then resets the
+    // working start to 0 for the non-(global|sticky) case AFTER the
+    // ToLength side effects have fired.
+    let last_index_v = rt.object_get(this_id, "lastIndex");
+    let last_index_n = {
+        let n = rt.coerce_to_number(&last_index_v)?;
+        if n.is_nan() || n <= 0.0 { 0.0 } else if !n.is_finite() { 9007199254740991.0 } else { n.floor() }
+    };
+    let start: usize = if is_global { last_index_n as usize } else { 0 };
     if !has_compiled {
         let (src, flags) = match &rt.obj(this_id).internal_kind {
             InternalKind::RegExp(r) => ((*r.source).clone(), (*r.flags).clone()),
