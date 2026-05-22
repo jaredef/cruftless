@@ -4732,26 +4732,38 @@ fn json_parse_string(b: &[u8], p: &mut usize) -> Result<String, RuntimeError> {
         return Err(RuntimeError::SyntaxError("JSON.parse: expected string".into()));
     }
     *p += 1;
-    let mut out = String::new();
+    // Collect bytes (not chars). Non-ASCII UTF-8 byte sequences pass
+    // through verbatim and decode correctly at from_utf8_lossy time at
+    // the end. Pre-fix, `out.push(c as char)` decoded each byte as a
+    // Latin-1 codepoint, mangling multi-byte sequences like "中"
+    // (0xE4 0xB8 0xAD → "ä¸­" instead of one Unicode codepoint).
+    let mut bytes: Vec<u8> = Vec::new();
     while *p < b.len() {
         let c = b[*p];
-        if c == b'"' { *p += 1; return Ok(out); }
+        if c == b'"' {
+            *p += 1;
+            return Ok(String::from_utf8_lossy(&bytes).to_string());
+        }
         if c == b'\\' {
             *p += 1;
             if *p >= b.len() { return Err(RuntimeError::SyntaxError("JSON.parse: dangling \\".into())); }
             match b[*p] {
-                b'"' => out.push('"'),
-                b'\\' => out.push('\\'),
-                b'/' => out.push('/'),
-                b'n' => out.push('\n'),
-                b'r' => out.push('\r'),
-                b't' => out.push('\t'),
-                b'b' => out.push('\u{0008}'),
-                b'f' => out.push('\u{000C}'),
+                b'"' => bytes.push(b'"'),
+                b'\\' => bytes.push(b'\\'),
+                b'/' => bytes.push(b'/'),
+                b'n' => bytes.push(b'\n'),
+                b'r' => bytes.push(b'\r'),
+                b't' => bytes.push(b'\t'),
+                b'b' => bytes.push(0x08),
+                b'f' => bytes.push(0x0C),
                 b'u' if *p + 4 < b.len() => {
                     let hex = std::str::from_utf8(&b[*p+1..*p+5]).map_err(|_|RuntimeError::SyntaxError("JSON.parse: bad \\u".into()))?;
                     let cp = u32::from_str_radix(hex, 16).map_err(|_|RuntimeError::SyntaxError("JSON.parse: bad \\u".into()))?;
-                    if let Some(ch) = char::from_u32(cp) { out.push(ch); }
+                    if let Some(ch) = char::from_u32(cp) {
+                        let mut buf = [0u8; 4];
+                        let s = ch.encode_utf8(&mut buf);
+                        bytes.extend_from_slice(s.as_bytes());
+                    }
                     *p += 4;
                 }
                 _ => return Err(RuntimeError::SyntaxError("JSON.parse: bad escape".into())),
@@ -4764,7 +4776,7 @@ fn json_parse_string(b: &[u8], p: &mut usize) -> Result<String, RuntimeError> {
                 return Err(RuntimeError::SyntaxError(
                     "JSON.parse: invalid control character in string".into()));
             }
-            out.push(c as char);
+            bytes.push(c);
             *p += 1;
         }
     }

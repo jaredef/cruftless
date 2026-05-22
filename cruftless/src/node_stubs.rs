@@ -12,6 +12,61 @@ use rusty_js_runtime::caps as caps;
 use rusty_js_runtime::caps::{ModuleId, ModuleProvenance};
 use std::rc::Rc;
 
+/// Standard base64 decoder (RFC 4648). Tolerant of `=` padding; returns
+/// the raw bytes. Invalid chars stop the decode (best-effort).
+fn base64_decode(s: &str) -> Vec<u8> {
+    let mut lut = [255u8; 128];
+    for (i, c) in b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/".iter().enumerate() {
+        lut[*c as usize] = i as u8;
+    }
+    let mut out = Vec::with_capacity(s.len() * 3 / 4);
+    let mut buf: u32 = 0;
+    let mut bits = 0;
+    for c in s.bytes() {
+        if c == b'=' { break; }
+        if c >= 128 { continue; }
+        let v = lut[c as usize];
+        if v == 255 { continue; }
+        buf = (buf << 6) | v as u32;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push(((buf >> bits) & 0xff) as u8);
+        }
+    }
+    out
+}
+
+/// Standard base64 encoder (RFC 4648). Mirrors crypto.rs's helper to keep
+/// node_stubs.rs self-contained. Returns `=`-padded output.
+fn base64_encode(bytes: &[u8]) -> String {
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::new();
+    let mut i = 0;
+    while i + 2 < bytes.len() {
+        let b = ((bytes[i] as u32) << 16) | ((bytes[i+1] as u32) << 8) | (bytes[i+2] as u32);
+        out.push(T[((b >> 18) & 0x3f) as usize] as char);
+        out.push(T[((b >> 12) & 0x3f) as usize] as char);
+        out.push(T[((b >> 6) & 0x3f) as usize] as char);
+        out.push(T[(b & 0x3f) as usize] as char);
+        i += 3;
+    }
+    let rem = bytes.len() - i;
+    if rem == 1 {
+        let b = (bytes[i] as u32) << 16;
+        out.push(T[((b >> 18) & 0x3f) as usize] as char);
+        out.push(T[((b >> 12) & 0x3f) as usize] as char);
+        out.push_str("==");
+    } else if rem == 2 {
+        let b = ((bytes[i] as u32) << 16) | ((bytes[i+1] as u32) << 8);
+        out.push(T[((b >> 18) & 0x3f) as usize] as char);
+        out.push(T[((b >> 12) & 0x3f) as usize] as char);
+        out.push(T[((b >> 6) & 0x3f) as usize] as char);
+        out.push('=');
+    }
+    out
+}
+
 /// CAPS-EXT 11+12: gate clock/scheduler ops from this file.
 fn check_clock_ns(rt: &Runtime, op: caps::ClockOp) -> Result<(), RuntimeError> {
     let url = rt.current_module_url.last().cloned().unwrap_or_default();
@@ -223,7 +278,7 @@ fn install_buffer_methods(rt: &mut Runtime, id: rusty_js_runtime::ObjectRef) {
         let this_id = match rt.current_this() {
             Value::Object(o) => o, _ => return Ok(Value::String(Rc::new(String::new()))),
         };
-        let _enc = match args.first() { Some(Value::String(s)) => s.as_str().to_string(), _ => "utf8".into() };
+        let enc = match args.first() { Some(Value::String(s)) => s.as_str().to_string(), _ => "utf8".into() };
         let len = match rt.object_get(this_id, "length") { Value::Number(n) => n as usize, _ => 0 };
         let mut bytes: Vec<u8> = Vec::with_capacity(len);
         for i in 0..len {
@@ -231,7 +286,15 @@ fn install_buffer_methods(rt: &mut Runtime, id: rusty_js_runtime::ObjectRef) {
                 bytes.push(n as u8);
             }
         }
-        Ok(Value::String(Rc::new(String::from_utf8_lossy(&bytes).to_string())))
+        let out = match enc.as_str() {
+            "hex" => bytes.iter().map(|b| format!("{:02x}", b)).collect::<String>(),
+            "base64" => base64_encode(&bytes),
+            "base64url" => base64_encode(&bytes).trim_end_matches('=').replace('+', "-").replace('/', "_"),
+            "latin1" | "binary" => bytes.iter().map(|b| *b as char).collect::<String>(),
+            "ascii" => bytes.iter().map(|b| (b & 0x7f) as char).collect::<String>(),
+            _ => String::from_utf8_lossy(&bytes).to_string(),  // utf8 default
+        };
+        Ok(Value::String(Rc::new(out)))
     });
     register_method(rt, id, "copy", |rt, args| {
         let this_id = match rt.current_this() {
@@ -407,19 +470,50 @@ pub fn install_buffer(rt: &mut Runtime) {
         }
     });
     register_method(rt, buf_ctor, "from", |rt, args| {
-        // Buffer.from(str) → produces a plain object pretending to be a Buffer.
+        // Buffer.from(str, encoding?) → decode according to encoding.
+        // Encodings honored: utf8 (default), hex, base64, base64url,
+        // latin1, ascii, binary. Other args (Array, ArrayBuffer, Buffer)
+        // are handled via length-fallback for now.
         let s = match args.first() {
             Some(Value::String(s)) => s.as_str().to_string(),
             _ => String::new(),
         };
+        let enc = match args.get(1) {
+            Some(Value::String(s)) => s.as_str().to_string(),
+            _ => "utf8".into(),
+        };
+        let bytes: Vec<u8> = match enc.as_str() {
+            "hex" => {
+                let mut v = Vec::with_capacity(s.len() / 2);
+                let chars: Vec<char> = s.chars().collect();
+                let mut i = 0;
+                while i + 1 < chars.len() {
+                    let hi = chars[i].to_digit(16);
+                    let lo = chars[i + 1].to_digit(16);
+                    match (hi, lo) {
+                        (Some(h), Some(l)) => v.push(((h << 4) | l) as u8),
+                        _ => break,
+                    }
+                    i += 2;
+                }
+                v
+            }
+            "base64" | "base64url" => {
+                let mut normalized = s.replace('-', "+").replace('_', "/");
+                // Pad to multiple of 4.
+                while normalized.len() % 4 != 0 { normalized.push('='); }
+                base64_decode(&normalized)
+            }
+            "latin1" | "binary" => s.chars().map(|c| c as u8).collect(),
+            "ascii" => s.chars().map(|c| (c as u32 & 0x7f) as u8).collect(),
+            _ => s.as_bytes().to_vec(),  // utf8 default
+        };
         let mut o = RtObject::new_ordinary();
         o.set_own_internal("__buffer_data".into(), Value::String(Rc::new(s.clone())));
-        o.set_own("length".into(), Value::Number(s.as_bytes().len() as f64));
+        o.set_own("length".into(), Value::Number(bytes.len() as f64));
         o.set_own_internal("__is_buffer__".into(), Value::Boolean(true));
         let id = rt.alloc_object(o);
-        // Tier-Ω.5.wwwww: populate indexed byte access. csv-parse reads
-        // bytes via buf[i] to compare escape/quote/delimiter byte streams.
-        for (i, b) in s.as_bytes().iter().enumerate() {
+        for (i, b) in bytes.iter().enumerate() {
             rt.object_set(id, i.to_string(), Value::Number(*b as f64));
         }
         install_buffer_methods(rt, id);

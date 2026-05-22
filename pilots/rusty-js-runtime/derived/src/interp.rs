@@ -2633,14 +2633,32 @@ impl Runtime {
             }
             Ok(Value::String(std::rc::Rc::new(format!("[{}]", parts.join(",")))))
         } else {
+            // ECMA-262 §10.1.11 OrdinaryOwnPropertyKeys: integer-indexed
+            // keys first in numeric order, then string keys in insertion
+            // order. Without this, JSON.stringify({0:'a',10:'x',2:'b'})
+            // produced {"0":"a","10":"x","2":"b"} instead of the
+            // spec-correct {"0":"a","2":"b","10":"x"}. Surfaced by the
+            // diff-prod json-roundtrip fixture's canonicalizer.
             let keys: Vec<String> = {
                 let obj = self.obj(id);
-                obj.properties.iter()
+                let all: Vec<(String, bool)> = obj.properties.iter()
                     .filter(|(k, d)| d.enumerable
                                      && k.as_str() != "__primitive__"
                                      && !k.as_str().starts_with("@@"))
-                    .map(|(k, _)| k.as_str().to_string())
-                    .collect()
+                    .map(|(k, _)| (k.as_str().to_string(), crate::intrinsics::is_integer_index(k.as_str())))
+                    .collect();
+                let mut numeric: Vec<(u64, String)> = all.iter()
+                    .filter(|(_, idx)| *idx)
+                    .filter_map(|(k, _)| k.parse::<u64>().ok().map(|n| (n, k.clone())))
+                    .collect();
+                numeric.sort_by_key(|(n, _)| *n);
+                let strings: Vec<String> = all.into_iter()
+                    .filter(|(_, idx)| !*idx)
+                    .map(|(k, _)| k)
+                    .collect();
+                let mut out: Vec<String> = numeric.into_iter().map(|(_, k)| k).collect();
+                out.extend(strings);
+                out
             };
             let mut parts: Vec<String> = Vec::new();
             for k in keys {
