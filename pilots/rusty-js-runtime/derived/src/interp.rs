@@ -6169,14 +6169,15 @@ impl Runtime {
     /// Array.prototype.* methods that test262 probes with throwing
     /// length getters (every/filter/find/forEach/map/some/reduce/etc.).
     pub fn try_array_length(&mut self, id: ObjectRef) -> Result<usize, RuntimeError> {
-        // §7.1.20 ToLength.
+        // §7.1.20 ToLength: clamps to [0, 2^53 - 1]. Infinity, finite >
+        // max-safe, and NaN all collapse to one of the bounds; the
+        // previous Infinity branch returned usize::MAX which downstream
+        // i64 casts in indexOf/lastIndexOf rendered as -1.
         let v = self.read_property(id, "length")?;
         let n = self.coerce_to_number(&v)?;
         if n.is_nan() || n <= 0.0 { return Ok(0); }
-        if !n.is_finite() { return Ok(usize::MAX); }
-        let n = n.floor();
         let max_safe = 9007199254740991.0_f64;
-        let clamped = if n > max_safe { max_safe } else { n };
+        let clamped = if !n.is_finite() || n > max_safe { max_safe } else { n.floor() };
         Ok(clamped as usize)
     }
 

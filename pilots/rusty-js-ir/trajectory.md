@@ -1731,3 +1731,29 @@ Plus the spec's empty-input edge cases: `[]` when the regex matches empty at 0, 
 **Note**: the fix also applies through RegExp.prototype[@@split] which uses the same `CompiledRegex::split_str` — so any other test path that routes through `regex@@split` (some array-like split tests, e.g.) may also flip. Sample-wide re-measurement at the next rung close.
 
 **Tag**: `cluster-string-split-regex-empty-4`. Next cluster candidate: language/statements/for-of non-dstr SyntaxError negative tests (27 FAILs), or Array/prototype/concat TypeError-throwing on non-Array @@isConcatSpreadable (~9 FAILs).
+
+---
+
+## Rung-cluster-5 — ToLength clamping of Infinity (closed 2026-05-22)
+
+**Cluster** (per the test262-parity telos in seed §I.2):
+`built-ins/Array/prototype/indexOf/*` — 201 paths probing fromIndex behavior, length-coercion, and array-like callee paths.
+
+**Root cause** (broad): `try_array_length` at `interp.rs:6171` returned `usize::MAX` for `length: Infinity`, then `array_proto_index_of_via` cast that to `i64` (→ -1) which made the `while i < len` loop exit immediately, producing -1 instead of finding the value. Spec §7.1.20 ToLength clamps `length` to `[0, 2^53 - 1]`; Infinity should collapse to the max-safe bound, same as a large finite input.
+
+**Substrate fix**: in `try_array_length`, treat `!n.is_finite() || n > max_safe` as the same clamp branch returning `max_safe`. The earlier early-return for `!is_finite() → usize::MAX` is removed.
+
+**Post-rung result on indexOf cluster**: 22 FAIL → 20 FAIL on 201 paths (+2 PASS, ~9% reduction).
+
+**Sample-wide cumulative** (rungs 1-5):
+- Cluster-1 (Number numeric format): +10
+- Cluster-2 (dstr LHS): +72
+- Cluster-3 (defineProperty P coercion): +11
+- Cluster-4 (split regex empty-match): +8
+- Cluster-5 (ToLength Infinity clamp): +2 (indexOf cluster); cascade across every Array.prototype.* using try_array_length expected but unmeasured this rung
+- Total: **+103 PASS** on the 7,203-runnable base = +1.43 pp
+- Cruftless 73.9% → ~75.3% runnable pass; gap 25.3 pp → ~23.9 pp
+
+**Tag**: `cluster-toLength-infinity-5`. Note: the fix is in a shared helper (`try_array_length`) used by every Array.prototype.* method that calls into the length-of-array-like coercion. The +2 on indexOf understates broader impact; full sample-wide re-measurement at next major rung close will surface the cascade across reduce/filter/some/every/forEach/etc.
+
+Next cluster candidate: `language/expressions/arrow-function` non-dstr (23 FAILs in the sample), or `Array/prototype/concat` TypeError-throwing paths (~9 FAILs).
