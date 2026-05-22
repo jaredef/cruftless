@@ -1,0 +1,8 @@
+{
+  "name": "async-iteration",
+  "categories": ["L"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "async generators, for-await-of, async iterator protocol, Symbol.asyncIterator."
+}

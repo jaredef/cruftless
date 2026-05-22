@@ -1,0 +1,8 @@
+{
+  "name": "promise-statics",
+  "categories": ["L"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Promise.{all, allSettled, race, any, resolve, reject, withResolvers}."
+}

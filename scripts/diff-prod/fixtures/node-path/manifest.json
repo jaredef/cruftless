@@ -1,0 +1,8 @@
+{
+  "name": "node-path",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "node:path — join, resolve, basename, dirname, extname, parse, normalize, sep."
+}

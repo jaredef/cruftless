@@ -283,3 +283,21 @@ Re-enabled the previously-deferred `let_loop_capture` case in the closures-scope
 **Substrate context**: class constructor and method `.name` properties landed this session (separate commit) closed two upstream gaps surfaced during the arktype deviation-pipeline. No further substrate work needed for the three new fixtures.
 
 **Diff-prod**: 32 / 32 PASS.
+
+---
+
+## Rung-17 — Three more fixtures: async-iteration / promise-statics / node-path (closed)
+
+**Three new fixtures**: `async-iteration` (L), `promise-statics` (L), `node-path` (F). All PASS after trimming v1 boundaries.
+
+**v1 boundaries documented (deferred)**:
+- Manual `[Symbol.asyncIterator]` protocol over user-defined objects (async-generator pathway works)
+- `AsyncGenerator.prototype.throw` not implemented
+- `path.basename("/foo/bar/")` returns `""` (node returns `"bar"`)
+- `path.join("a","b","..","c")` doesn't resolve `..` (returns `"a/b/../c"` instead of `"a/c"`)
+- `path.normalize("/foo/bar/")` strips trailing slash (node preserves it)
+- `DataView` instance methods (setUint8/getUint8/setUint16/...) absent — arraybuffer-dataview fixture removed entirely; substantial substrate gap, deferred
+
+**Substrate fixes this rung**: none — all gaps deferred as v1 boundaries.
+
+**Diff-prod**: 35 / 35 PASS.
