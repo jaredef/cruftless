@@ -4609,24 +4609,38 @@ impl Runtime {
             _ => return Err(RuntimeError::TypeError(
                 "Number.prototype.toExponential: this is not a Number".into())),
         };
-        // EXT 80: same ToIntegerOrInfinity treatment as toFixed (§21.1.3.2).
+        // §21.1.3.2 step 2 must coerce fractionDigits before NaN/Infinity
+        // shortcut so observable side effects on the argument's
+        // ToIntegerOrInfinity coercion still occur (per spec ordering).
         let digits = match digits_arg {
             Value::Undefined => None,
             v => {
                 let raw = self.coerce_to_number(v)?;
                 let dn = if raw.is_nan() { 0.0 } else { raw.trunc() };
+                Some(dn)
+            }
+        };
+        // §21.1.3.2 step 4: NaN short-circuit BEFORE the bounds check on f.
+        if n.is_nan() { return Ok(Value::String(std::rc::Rc::new("NaN".into()))); }
+        // §21.1.3.2 step 5: Infinity shortcut likewise BEFORE bounds check.
+        if !n.is_finite() {
+            return Ok(Value::String(std::rc::Rc::new(
+                if n > 0.0 { "Infinity".into() } else { "-Infinity".into() })));
+        }
+        // §21.1.3.2 step 7: bounds check (only when fractionDigits supplied).
+        let digits: Option<usize> = match digits {
+            Some(dn) => {
                 if !dn.is_finite() || dn < 0.0 || dn > 100.0 {
                     return Err(RuntimeError::RangeError(
                         "toExponential() digits argument must be between 0 and 100".into()));
                 }
                 Some(dn as usize)
             }
+            None => None,
         };
-        if n.is_nan() { return Ok(Value::String(std::rc::Rc::new("NaN".into()))); }
-        if !n.is_finite() {
-            return Ok(Value::String(std::rc::Rc::new(
-                if n > 0.0 { "Infinity".into() } else { "-Infinity".into() })));
-        }
+        // §21.1.3.2 step 9: if x is 0 then s="0"; spec emits unsigned "0" form.
+        // Rust's {:.*e} on -0.0 yields "-0e0"; flip sign here.
+        let n = if n == 0.0 { 0.0 } else { n };
         let s = match digits {
             Some(d) => format!("{:.*e}", d, n),
             None => format!("{:e}", n),
@@ -4656,19 +4670,23 @@ impl Runtime {
             Value::Undefined => Ok(Value::String(std::rc::Rc::new(
                 crate::abstract_ops::number_to_string(n)))),
             v => {
-                // EXT 80: same ToIntegerOrInfinity treatment (§21.1.3.5).
+                // §21.1.3.5 step 2: ToIntegerOrInfinity(precision).
                 let raw = self.coerce_to_number(v)?;
                 let pn = if raw.is_nan() { 0.0 } else { raw.trunc() };
+                // §21.1.3.5 step 4: NaN short-circuit BEFORE the bounds check.
+                if n.is_nan() { return Ok(Value::String(std::rc::Rc::new("NaN".into()))); }
+                // §21.1.3.5 step 5: Infinity shortcut likewise BEFORE bounds check.
+                if !n.is_finite() {
+                    return Ok(Value::String(std::rc::Rc::new(
+                        if n > 0.0 { "Infinity".into() } else { "-Infinity".into() })));
+                }
                 if !pn.is_finite() || pn < 1.0 || pn > 100.0 {
                     return Err(RuntimeError::RangeError(
                         "toPrecision() argument must be between 1 and 100".into()));
                 }
                 let p = pn as usize;
-                if n.is_nan() { return Ok(Value::String(std::rc::Rc::new("NaN".into()))); }
-                if !n.is_finite() {
-                    return Ok(Value::String(std::rc::Rc::new(
-                        if n > 0.0 { "Infinity".into() } else { "-Infinity".into() })));
-                }
+                // §21.1.3.5 step 8: zero short-circuit emits unsigned "0".
+                let n = if n == 0.0 { 0.0 } else { n };
                 Ok(Value::String(std::rc::Rc::new(format!("{:.*}", p.saturating_sub(1), n))))
             }
         }
@@ -4701,12 +4719,14 @@ impl Runtime {
             _ => return Err(RuntimeError::TypeError(
                 "Number.prototype.toFixed: this is not a Number".into())),
         };
-        // EXT 80: ECMA §21.1.3.3 step 1 — ToIntegerOrInfinity(fractionDigits),
-        // not ToNumber. ToIntegerOrInfinity(NaN) = 0; ToIntegerOrInfinity(x)
-        // truncates toward zero. The RangeError only fires when the
-        // resulting integer is < 0 or > 100, or when it is non-finite
-        // (NumberToBigInt-style). Without this, toFixed(NaN), toFixed(-0.1),
-        // and toFixed("some string") all wrongly threw RangeError.
+        // §21.1.3.3 step 1: BigInt argument throws TypeError (no implicit
+        // coercion from BigInt to Number; coerce_to_number rejects BigInts
+        // via the abstract op, but we surface a clearer error here).
+        if matches!(digits_arg, Value::BigInt(_)) {
+            return Err(RuntimeError::TypeError(
+                "Number.prototype.toFixed: fractionDigits must not be a BigInt".into()));
+        }
+        // §21.1.3.3 step 1 — ToIntegerOrInfinity(fractionDigits).
         let raw = match digits_arg {
             Value::Undefined => 0.0,
             v => self.coerce_to_number(v)?,
@@ -4721,6 +4741,12 @@ impl Runtime {
         if !n.is_finite() {
             return Ok(Value::String(std::rc::Rc::new(
                 if n > 0.0 { "Infinity".into() } else { "-Infinity".into() })));
+        }
+        // §21.1.3.3 step 6: if |x| >= 1e21, return ToString(x) (which uses
+        // exponential notation for large magnitudes).
+        if n.abs() >= 1.0e21 {
+            return Ok(Value::String(std::rc::Rc::new(
+                crate::abstract_ops::number_to_string(n))));
         }
         Ok(Value::String(std::rc::Rc::new(format!("{:.*}", digits, n))))
     }

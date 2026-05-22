@@ -27,6 +27,18 @@ Two empirical refinements after the first 33 sections:
 
 The conjunction of (a) + (b) gives a falsifiable termination condition: telos reached when *(i)* every non-carved-out cruftless section is in `sections/`, *(ii)* `cargo run --example lint_all` is ✓ across all entries, *(iii)* no section's translation triggered an alphabet extension in the last N rounds.
 
+### I.2 Test262-parity telos (added 2026-05-22)
+
+The empirical anchor for the IR thesis ("spec conformance gets monotonically easier post-IR") is the **test262 representative sample** at `scripts/test262-sample/`. Baseline 2026-05-22: Cruftless **73.9%** runnable pass (5,321 / 7,203); Bun **99.2%** on the same sample. Gap: 25.3 pp.
+
+The IR locale targets that gap section-by-section. **Parity-target telos: close the gap to ≤10 pp on the sample.** Movement happens cluster-by-cluster — each cluster is a coherent spec surface (e.g., `Number.prototype.{toFixed,toExponential,toPrecision}`) whose test262 sub-tree currently emits some FAIL count `N`. IR-encoding the cluster lands a single linted Rust artifact and is judged by how much of `N` flips to PASS in the post-rung test262 measurement.
+
+Each cluster opens a rung in `trajectory.md` with:
+- the cluster's pre-rung FAIL count from the latest sample
+- the IR sections written / extended in the rung
+- the post-rung FAIL count
+- the gap delta against the parity-target telos
+
 ## II. Apparatus
 
 The IR is **resolver-instance #0** per IR-DESIGN.md §0, decomposed into three sub-stages above Doc 729 §IV's resolver-instance #1 (Cargo):

@@ -1599,3 +1599,35 @@ Pin-Art tag count: 137 commits as of EXT 94b.
 **Doc 730 §XV.a corroboration #2 (2026-05-20, EXT 93 → 94b)**: the deviation's broad scope at rt.to_object produced a downstream invariant violation (prototype-walk loop) that the EXT 93 Waivers did NOT predict. §XV.c's "did the divergence map to a Waived invariant or a scoping defect?" framing was the principled way to attribute the cause; the §XIII-tier correction (per-method scoping at Object.getPrototypeOf) preserved the deviation's positive effects on the other 13 recoveries. The two-axis pipeline operated under the co-evolution contract as Doc 730 §XV designed.
 
 **Doc 730 §XIV.b co-evolution feedback (2026-05-20, EXT 93 → 94 → 94b)**: investigating one §XIV deviation candidate (yeoman-environment's recovery) produced two §XIII-tier fixes — EXT 94 (Buffer.toString, broadly applicable host-compat) and EXT 94b (per-site scoping correction). Each §XIV iteration generates §XIII work items; each §XIII fix unblocks further §XIV recoveries downstream. The pipeline self-extends along both axes from a single empirical probe.
+
+---
+
+## Rung-cluster-1 — Number.prototype.{toFixed,toExponential,toPrecision} (closed 2026-05-22)
+
+**Cluster** (per the test262-parity telos in seed §I.2):
+`Number/prototype/toFixed/* + Number/prototype/toExponential/* + Number/prototype/toPrecision/*` — 48 test262 entries in the representative sample.
+
+**Pre-rung baseline** (2026-05-22 sample, post README sweep):
+- 33 PASS / 15 FAIL across the cluster.
+
+**Defects identified** (spec §21.1.3.{2,3,5}):
+1. NaN/Infinity short-circuit happened AFTER bounds check on `f`/`p` instead of BEFORE (toExponential, toPrecision). Spec orders NaN check at step 4, Infinity at step 5, bounds check at step 7.
+2. `(-0).toExponential(d)` emitted `"-0e+0"` because Rust's `{:.*e}` on `-0.0` carries the sign. Spec uses `if x is 0 then s="0"` (unsigned). Same for `toPrecision`.
+3. `n >= 1e21` should fall back to `ToString(x)` (exponential form) per `toFixed` step 6; was emitting fixed-point.
+4. BigInt `fractionDigits` argument should throw `TypeError` (no BigInt-to-Number coercion); was silently coercing or no-op-ing.
+
+**Substrate fixes**: three edits in `pilots/rusty-js-runtime/derived/src/interp.rs` against `number_proto_to_exponential_via`, `number_proto_to_precision_via`, and `number_proto_to_fixed_via`. Each fix is anchored to a numbered spec step in the comment.
+
+**Post-rung result**: 43 PASS / 5 FAIL on the same cluster paths.
+
+**Delta**: **+10 PASS** (15 FAIL → 5 FAIL on the cluster; 67% reduction).
+
+**Sample-wide gap delta**: Cruftless runnable pass goes from 73.9% (5,321 / 7,203) to 73.96% (5,331 / 7,203). +10 tests on a 7,203-runnable base = +0.14 pp. Toward the parity-target telos (gap ≤10 pp), 25.3 pp → 25.16 pp.
+
+**Remaining 5 FAILs** (deferred to their own rung, family: floating-point ToString rounding):
+- `toFixed/exactness.js` — Rust's f64 fixed-point formatting differs from spec's banker's rounding on the edge case `1000000000000000128` (the boundary case at f64 precision).
+- `toExponential/return-values.js`, `toPrecision/return-values.js`, `toPrecision/exponential.js`, `toPrecision/tointeger-precision.js` — toPrecision must switch to exponential notation when the precision is insufficient for fixed form; current impl always emits fixed. Requires proper dtoa-style emission tracking exponent magnitude.
+
+**Conjecture status (post-cluster)**: this rung was hand-coded directly in `interp.rs` rather than via the rusty-js-ir IR pipeline — the defects were small enough that the spec-step-anchored comments alone gave the linting discipline the IR encoding would. The IR encoding would be valuable when the remaining banker's-rounding work lands (a substantial algorithm whose spec correspondence benefits from the lint pass). Recorded as a methodology data point: small cluster-defect rungs may not require the full IR detour; large-algorithm rungs do.
+
+**Tag**: `cluster-Number-numeric-format-1`. Next cluster candidate: `Number.prototype.toString` (the `[object Number]`-vs-`[object Object]` defect cluster, 7+ test262 FAILs).
