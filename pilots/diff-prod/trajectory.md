@@ -320,3 +320,17 @@ Re-enabled the previously-deferred `let_loop_capture` case in the closures-scope
 **Substrate fixes this rung**: none.
 
 **Diff-prod**: 39 / 39 PASS.
+
+---
+
+## Backlog consolidation (Rung-18 close)
+
+Seventeen v1 boundaries accumulated across Rungs 14–18 are folded into [`seed.md` §V](./seed.md#v-deferred-substrate-rungs-surfaced-by-diff-prod) as the diff-prod deferred-substrate backlog. Each is scoped narrowly enough to be its own rung when prioritized; until then the offending case is commented inline in the fixture or the fixture itself is deferred (flagged † in the seed).
+
+Highest-leverage next rungs (by expected diff-prod fixture flip + real-world package impact):
+1. DataView instance methods — single largest absent surface
+2. `Function.prototype.bind` target-name read — surfaced by arktype deviation, propagates into dispatch-on-name workloads
+3. `match.groups` accessor — used by every modern parser that wants named captures
+4. node:util.promisify value channel — gateway to a large class of Node-callback APIs
+
+The remaining boundaries are smaller localized stubs whose individual ROI is lower but cumulative impact on the node-module surface is substantial.

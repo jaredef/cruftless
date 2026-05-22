@@ -2,7 +2,7 @@
 
 **Locale tag**: `L.diff-prod` (per [Doc 737](../../../corpus-master/corpus/737-the-locale-as-coordinate-nested-seed-trajectory-pairs-as-pin-art-substrate-positions.md))
 
-**Status as of 2026-05-22**: **TELOS A HIT + TELOS B (29/29)**. Twenty-nine F-category fixtures, all PASS. Twenty-four substrate fixes landed via diff-prod since founding. Top-500 measured at 77.4% raw / 82.1% incl-agreed after cumulative fix-set. Coverage now spans JSON, Buffer, strings, Map/Set, async/Promise, error-throws, RegExp (incl. lastIndex + $-substitution), generators, Proxy, structuredClone.
+**Status as of 2026-05-22**: **TELOS A HIT + TELOS B (39/39)**. Thirty-nine fixtures (mix of L and F categories), all PASS. Twenty-six+ substrate fixes landed via diff-prod since founding (incl. two class-name fixes surfaced via the arktype deviation locale). Top-500 measured at 77.4% raw / 82.1% incl-agreed after cumulative fix-set. Coverage now spans JSON, Buffer, strings, Map/Set, async/Promise/iteration, error-throws, RegExp (incl. advanced surface), generators, Proxy, structuredClone, BigInt, Reflect, Symbol, Object/Array/Math statics, node:fs/crypto/stream/events/path.
 
 **Workstream**: differential prod-test methodology + scaffolding. Extends the load-and-shape parity probe from "namespace surface" to "execution semantics." The same Doc 730 §XVI bidirectional-engine-diff instrument applies; the input set widens and the comparator deepens.
 
@@ -78,6 +78,37 @@ Out of scope for this locale (deferred or handled elsewhere):
 | L-category telos | 99.1% (top-100) | parity-measure baseline |
 | Methodology landed | 2026-05-22 | commits be37c14b → 1461efad |
 
-## V. Trajectory pointer
+## V. Deferred substrate rungs surfaced by diff-prod
+
+Each entry below is a substrate gap discovered while a fixture was landing. They are scoped narrowly enough that each could be a focused rung; until then the offending case is commented inline in the fixture (or the fixture itself is deferred — flagged with †).
+
+**Runtime / value semantics**
+- `match.groups` accessor: named regexp captures match positionally but `.groups` view is undefined (regexp-advanced)
+- `Function.prototype.bind` target-name read for non-method bind targets returns `""` even when the target's `.name` is set (arktype deviation locale)
+- Writes to non-writable data properties in non-strict mode throw TypeError; spec mandates silent no-op (reflect-api)
+- TDZ enforcement: access-before-declaration of `let`/`const` reads `undefined` instead of throwing ReferenceError (closures-scopes deferral)
+- Arrow function `arguments` capture from enclosing function (closures-scopes deferral)
+- Block-scoped `let` interaction with top-level `var`-in-block (closures-scopes deferral)
+
+**Built-in surface**
+- `DataView` instance methods (setUint8/getUint8/setUint16/setInt32/setFloat32/setFloat64 + getters) — entire surface absent (arraybuffer-dataview †)
+- `util.types.{isDate,isMap,isSet}` return false for matching instances (node-util †)
+- `util.promisify` value channel returns undefined instead of the callback's second arg (node-util †)
+- `node:querystring` module imports resolve to node:url's exports; `qs.stringify`/`qs.parse` not present (node-querystring †)
+- AsyncGenerator.prototype.throw not implemented (async-iteration)
+- Manual `[Symbol.asyncIterator]` protocol over user-defined objects throws `undefined` (async-iteration)
+
+**node:path arithmetic**
+- `path.basename("/foo/bar/")` returns `""` (node returns `"bar"`)
+- `path.join("a","b","..","c")` does not resolve `..` (returns `"a/b/../c"`)
+- `path.normalize("/foo/bar/")` strips trailing slash (node preserves it)
+
+**Other**
+- `btoa("中")` silently encodes instead of throwing `InvalidCharacterError` (encoding)
+- `stream.Readable.from(iterable)` static absent (node-stream)
+
+The runtime/value-semantics group has the highest expected diff-prod ROI per fix (each affects multiple fixtures and real-world packages). The DataView gap is the largest single surface; it warrants its own substrate rung. Most node-module gaps are localized stubs that can be backfilled without architectural change.
+
+## VI. Trajectory pointer
 
 See [`trajectory.md`](./trajectory.md) for the rung log.
