@@ -979,20 +979,15 @@ impl Runtime {
                     excluded_keys.push(abstract_ops::to_string(&v).as_str().to_string());
                 }
             }
-            // Snapshot own enumerable property KEY NAMES from src.
-            // Spec sec 14.3.1 (rest-binding in object destructuring) uses
-            // CopyDataProperties which does [[OwnPropertyKeys]] + [[Get]]
-            // per key. The [[Get]] dispatches accessor getters - simply
-            // cloning the descriptor's value field skips them, so a rest
-            // pattern over { get v() { ... } } copied the literal
-            // `undefined` slot value rather than invoking the getter.
-            let keys: Vec<String> = {
-                let o = rt.obj(src_id);
-                o.properties.iter()
-                    .filter(|(_, d)| d.enumerable)
-                    .map(|(k, _)| k.to_string_content())
-                    .collect()
-            };
+            // Lift (rung-14): canonical OrdinaryOwnEnumerableStringKeys.
+            // Spec sec 14.3.1 (rest-binding) uses CopyDataProperties =
+            // [[OwnPropertyKeys]] + [[Get]] per key. The [[Get]] dispatches
+            // accessor getters - simply cloning the descriptor's value
+            // field skipped them, so a rest pattern over { get v(){...} }
+            // copied undefined. Routed through the canonical helper so
+            // ordering and the @@/__primitive__/Array-length filters
+            // match every other own-enumerable-keys site.
+            let keys = rt.ordinary_own_enumerable_string_keys(src_id);
             for k in keys {
                 if excluded_keys.iter().any(|e| e == &k) { continue; }
                 let v = rt.read_property(src_id, &k)?;

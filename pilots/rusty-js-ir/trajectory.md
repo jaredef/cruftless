@@ -1996,3 +1996,35 @@ This affected:
 - Telos progress: ~21% of the way from 25.3pp to ≤10pp
 
 **Tag**: `cluster-objectkeys-array-string-13`. Broad-cascade pattern continues (per seed §I.4 heuristic #4).
+
+---
+
+## Rung-cluster-14 — LIFT: OrdinaryOwnEnumerableStringKeys helper retrofit (closed 2026-05-22)
+
+This rung is a **structural lift**, not a yield rung. Per the seed §I.4 cluster-selection heuristic #4 ("broad-cascade helpers outperform method-body fixes") and the scan of past lifts (IR-EXT 66, 68, 69, 72, 78 — all canonicalizing a spec abstract op into one helper with N call sites), the rung retrofits the `EnumerableOwnPropertyNames` abstract op (ECMA-262 §7.3.21 + §10.1.11 OrdinaryOwnPropertyKeys) into a single helper that five sites now route through.
+
+**Before this rung**: each consumer open-coded its own version of "enumerable own string-keyed property names":
+- `enumerable_own_keys` (Object.keys) — fixed in cluster-13; was Array-only-integer pre-fix.
+- `enumerable_own_values` (Object.values) — separate filter, different ordering pattern (sort_by_key with u64::MAX fallback).
+- `enumerable_own_entries` (Object.entries) — same separate filter.
+- `own_enumerable_string_keys_via` (Object.assign) — looser filter, no integer-first ordering, didn't exclude Array's "length".
+- `json_serialize_compound_via` non-array branch — its own two-pass filter.
+- `__destr_object_rest` — its own filter (cluster-11 fixed the getter dispatch but not the ordering / exclusion).
+
+Each of these had drift potential: a future spec fix at one site would not propagate. The cluster-13 Array-keys-include-string fix is illustrative — its expected cascade was incomplete because Object.values / Object.entries / Object.assign source enumeration each had their own paths.
+
+**Lift**: introduced `Runtime::ordinary_own_enumerable_string_keys(id) -> Vec<String>` at `interp.rs` with one canonical filter+order:
+- Filter: `d.enumerable && k.is_string() && k != "__primitive__" && !k.starts_with("@@") && !(is_array && k == "length")`
+- Order: integer-indexed (parse::<u64> ok) numeric-sorted, then string-keyed insertion-order
+
+Retrofitted all five consumers to call it. Each call site shrank from ~15 LOC of inline logic to one line.
+
+**Post-rung sample**: 5,553 PASS / 1,650 FAIL / 384 SKIP = **77.1% runnable pass** (vs 77.1% pre-lift). +0 direct PASS flips; -2 FAIL (the difference re-bucketed). The lift's value is structural: drift surface shrunk by ~75 LOC; future EnumerableOwnPropertyNames fixes land once.
+
+**Lift mechanics recorded for future rungs** (per the keeper's scan-prompt):
+1. Identify an abstract op or section algorithm with ≥3 scattered call sites.
+2. Cite the spec section in the helper's comment block.
+3. Each call site shrinks to one method call; the comment cites the lift's rung.
+4. Yield from a pure lift is often near-zero in direct test flips; the value is reducing drift surface so subsequent spec-conformance work lands once.
+
+**Tag**: `cluster-lift-enumerable-own-keys-14`. Next lift candidates queued per scan: IteratorClose (§7.4.6), SpeciesConstructor (§7.3.20), ValidateAndApplyPropertyDescriptor (§10.1.6.3).

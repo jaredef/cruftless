@@ -2834,25 +2834,8 @@ impl Runtime {
             let keys: Vec<String> = if let Some(Some(list)) = self.json_property_list_stack.last() {
                 list.clone()
             } else {
-                let obj = self.obj(id);
-                let all: Vec<(String, bool)> = obj.properties.iter()
-                    .filter(|(k, d)| d.enumerable
-                                     && k.as_str() != "__primitive__"
-                                     && !k.as_str().starts_with("@@"))
-                    .map(|(k, _)| (k.as_str().to_string(), crate::intrinsics::is_integer_index(k.as_str())))
-                    .collect();
-                let mut numeric: Vec<(u64, String)> = all.iter()
-                    .filter(|(_, idx)| *idx)
-                    .filter_map(|(k, _)| k.parse::<u64>().ok().map(|n| (n, k.clone())))
-                    .collect();
-                numeric.sort_by_key(|(n, _)| *n);
-                let strings: Vec<String> = all.into_iter()
-                    .filter(|(_, idx)| !*idx)
-                    .map(|(k, _)| k)
-                    .collect();
-                let mut out: Vec<String> = numeric.into_iter().map(|(_, k)| k).collect();
-                out.extend(strings);
-                out
+                // Lift: route through canonical helper.
+                self.ordinary_own_enumerable_string_keys(id)
             };
             let mut parts: Vec<String> = Vec::new();
             for k in keys {
@@ -2897,15 +2880,11 @@ impl Runtime {
             Value::Object(id) => *id,
             _ => return Ok(Value::Object(self.alloc_object(crate::value::Object::new_array()))),
         };
-        let keys: Vec<String> = {
-            let obj = self.obj(id);
-            obj.properties.iter()
-                .filter(|(k, d)| d.enumerable
-                                 && k.as_str() != "__primitive__"
-                                 && !k.as_str().starts_with("@@"))
-                .map(|(k, _)| k.as_str().to_string())
-                .collect()
-        };
+        // Lift: canonical ordering + filter. Pre-lift this site used a
+        // looser filter (no integer-first ordering, didn't exclude
+        // Array's "length") which made Object.assign's source enumeration
+        // diverge from Object.keys' on Array sources.
+        let keys = self.ordinary_own_enumerable_string_keys(id);
         let arr = self.alloc_object(crate::value::Object::new_array());
         for (i, k) in keys.iter().enumerate() {
             self.object_set(arr, i.to_string(), Value::String(std::rc::Rc::new(k.clone())));
@@ -5577,6 +5556,45 @@ impl Runtime {
     /// the Array of own string keys of O, filtering @@-prefixed (Symbol)
     /// keys and Array's implicit `length`. Integer-index keys come first
     /// in ascending numeric order, then string keys in insertion order.
+    /// Canonical OrdinaryOwnEnumerableStringKeys per ECMA-262 sec 10.1.11
+    /// + sec 7.3.21 EnumerableOwnPropertyNames. Returns the source's own
+    /// enumerable string-keyed property names in spec order:
+    /// integer-indexed in numeric order, then non-integer string-keyed
+    /// in insertion order. Excludes the well-known-Symbol "@@"-prefixed
+    /// keys (cruftless stores them in the string bucket), the internal
+    /// __primitive__ slot, and Array exotic "length".
+    ///
+    /// This is the lift introduced at the rusty-js-ir locale's
+    /// 'cluster-objectkeys-array-string-13' rung close: every site that
+    /// previously open-coded the filter+order should call this. The
+    /// helper acts as the canonical resolver for the abstract op so
+    /// future spec-conformance work (Symbol keys in Reflect.ownKeys,
+    /// non-string-keyed extensions, ordering invariants) lands once.
+    pub fn ordinary_own_enumerable_string_keys(&self, id: rusty_js_gc::ObjectId) -> Vec<String> {
+        let o = self.obj(id);
+        let is_array = matches!(o.internal_kind, crate::value::InternalKind::Array);
+        let all: Vec<(String, bool)> = o.properties.iter()
+            .filter(|(k, d)| d.enumerable
+                             && k.is_string()
+                             && k.as_str() != "__primitive__"
+                             && !k.as_str().starts_with("@@")
+                             && !(is_array && k.as_str() == "length"))
+            .map(|(k, _)| (k.as_str().to_string(), crate::intrinsics::is_integer_index(k.as_str())))
+            .collect();
+        let mut numeric: Vec<(u64, String)> = all.iter()
+            .filter(|(_, idx)| *idx)
+            .filter_map(|(k, _)| k.parse::<u64>().ok().map(|n| (n, k.clone())))
+            .collect();
+        numeric.sort_by_key(|(n, _)| *n);
+        let strings: Vec<String> = all.into_iter()
+            .filter(|(_, idx)| !*idx)
+            .map(|(k, _)| k)
+            .collect();
+        let mut out: Vec<String> = numeric.into_iter().map(|(_, k)| k).collect();
+        out.extend(strings);
+        out
+    }
+
     /// IR-target for Object.keys per §20.1.2.18.
     pub fn enumerable_own_keys(&mut self, v: &Value) -> Result<Value, RuntimeError> {
         let id = match v {
@@ -5584,64 +5602,10 @@ impl Runtime {
             _ => return Ok(Value::Object(self.alloc_object(crate::value::Object::new_array()))),
         };
         let arr = self.alloc_object(crate::value::Object::new_array());
-        let keys: Vec<String> = {
-            let o = self.obj(id);
-            let is_array = matches!(o.internal_kind, crate::value::InternalKind::Array);
-            if is_array {
-                // Spec sec 10.1.11 OrdinaryOwnPropertyKeys: integer-indexed
-                // keys in numeric order, then string-keyed in insertion
-                // order, then symbol-keyed. Object.keys filters to
-                // enumerable string-keyed. Pre-fix the Array branch kept
-                // ONLY integer-indexed keys, missing arr.foo = ... and the
-                // arguments-object's user-added properties.
-                let all: Vec<(String, bool)> = o.properties.iter()
-                    .filter(|(k, d)| d.enumerable
-                                     && k.is_string()
-                                     && k.as_str() != "length"
-                                     && !k.as_str().starts_with("@@"))
-                    .map(|(k, _)| (k.as_str().to_string(), crate::intrinsics::is_integer_index(k.as_str())))
-                    .collect();
-                let mut numeric: Vec<(u64, String)> = all.iter()
-                    .filter(|(_, idx)| *idx)
-                    .filter_map(|(k, _)| k.parse::<u64>().ok().map(|n| (n, k.clone())))
-                    .collect();
-                numeric.sort_by_key(|(n, _)| *n);
-                let strings: Vec<String> = all.into_iter()
-                    .filter(|(_, idx)| !*idx)
-                    .map(|(k, _)| k)
-                    .collect();
-                let mut out: Vec<String> = numeric.into_iter().map(|(_, k)| k).collect();
-                out.extend(strings);
-                out
-            } else {
-                // EXT 92: filter out @@-prefixed Symbol-shaped keys —
-                // cruftless stores Symbol property keys with an `@@`
-                // prefix as strings for storage compatibility, but
-                // Object.keys per ECMA §20.1.2.{17,18} returns only
-                // String-keyed enumerable own properties (Symbols are
-                // excluded). Leaking `@@toStringTag` into Object.keys
-                // produced the +1 keyCount divergence the EXT 91b
-                // byte-parity check on dayjs-plugin-utc / luxon-business-
-                // days / graceful-fs / fs-jetpack exposed (the symbol
-                // is set on ESM module namespaces' default export).
-                let all: Vec<(String, bool)> = o.properties.iter()
-                    .filter(|(k, d)| d.enumerable && k.is_string() && !k.as_str().starts_with("@@"))
-                    .map(|(k, _)| (k.as_str().to_string(), crate::intrinsics::is_integer_index(k.as_str())))
-                    .collect();
-                let mut numeric: Vec<(u64, String)> = all.iter()
-                    .filter(|(_, idx)| *idx)
-                    .filter_map(|(k, _)| k.parse::<u64>().ok().map(|n| (n, k.clone())))
-                    .collect();
-                numeric.sort_by_key(|(n, _)| *n);
-                let strings: Vec<String> = all.into_iter()
-                    .filter(|(_, idx)| !*idx)
-                    .map(|(k, _)| k)
-                    .collect();
-                let mut out: Vec<String> = numeric.into_iter().map(|(_, k)| k).collect();
-                out.extend(strings);
-                out
-            }
-        };
+        // Lift: route through the canonical helper. EXT 92's @@-prefixed
+        // filter and the Array vs non-Array two-pass ordering both live
+        // in the helper so all consumers stay in sync.
+        let keys = self.ordinary_own_enumerable_string_keys(id);
         for (i, k) in keys.iter().enumerate() {
             self.object_set(arr, i.to_string(), Value::String(std::rc::Rc::new(k.clone())));
         }
@@ -5657,25 +5621,11 @@ impl Runtime {
             _ => return Ok(Value::Object(self.alloc_object(crate::value::Object::new_array()))),
         };
         let arr = self.alloc_object(crate::value::Object::new_array());
-        let entries: Vec<(String, Option<Value>)> = {
-            let o = self.obj(id);
-            let is_array = matches!(o.internal_kind, crate::value::InternalKind::Array);
-            let mut es: Vec<(String, Option<Value>)> = o.properties.iter()
-                .filter(|(k, d)| d.enumerable && !(is_array && k.as_str() == "length") && k.is_string())
-                .map(|(k, d)| (k.to_string_content(), d.getter.clone()))
-                .collect();
-            if is_array {
-                es.sort_by_key(|(k, _)| k.as_str().parse::<u64>().unwrap_or(u64::MAX));
-            }
-            es
-        };
-        let mut kvs: Vec<Value> = Vec::with_capacity(entries.len());
-        for (k, getter_opt) in entries {
-            let val = if let Some(getter) = getter_opt {
-                self.call_function(getter, Value::Object(id), Vec::new())?
-            } else {
-                self.object_get(id, &k)
-            };
+        // Lift: canonical ordering + filter through ordinary_own_enumerable_string_keys.
+        let keys = self.ordinary_own_enumerable_string_keys(id);
+        let mut kvs: Vec<Value> = Vec::with_capacity(keys.len());
+        for k in &keys {
+            let val = self.read_property(id, k)?;
             kvs.push(val);
         }
         for (i, val) in kvs.iter().enumerate() {
@@ -5693,25 +5643,11 @@ impl Runtime {
             _ => return Ok(Value::Object(self.alloc_object(crate::value::Object::new_array()))),
         };
         let arr = self.alloc_object(crate::value::Object::new_array());
-        let entries: Vec<(String, Option<Value>)> = {
-            let o = self.obj(id);
-            let is_array = matches!(o.internal_kind, crate::value::InternalKind::Array);
-            let mut es: Vec<(String, Option<Value>)> = o.properties.iter()
-                .filter(|(k, d)| d.enumerable && !(is_array && k.as_str() == "length") && k.is_string())
-                .map(|(k, d)| (k.to_string_content(), d.getter.clone()))
-                .collect();
-            if is_array {
-                es.sort_by_key(|(k, _)| k.as_str().parse::<u64>().unwrap_or(u64::MAX));
-            }
-            es
-        };
-        let mut kvs: Vec<(String, Value)> = Vec::with_capacity(entries.len());
-        for (k, getter_opt) in entries {
-            let val = if let Some(getter) = getter_opt {
-                self.call_function(getter, Value::Object(id), Vec::new())?
-            } else {
-                self.object_get(id, &k)
-            };
+        // Lift: canonical ordering + filter.
+        let keys = self.ordinary_own_enumerable_string_keys(id);
+        let mut kvs: Vec<(String, Value)> = Vec::with_capacity(keys.len());
+        for k in keys {
+            let val = self.read_property(id, &k)?;
             kvs.push((k, val));
         }
         for (i, (k, val)) in kvs.iter().enumerate() {
