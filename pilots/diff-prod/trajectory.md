@@ -90,13 +90,19 @@ proper suspension is queued as its own substrate rung.
 Effect: `async-promise` flipped to PASS. Promise.allSettled / race /
 any / await-setTimeout now work end-to-end.
 
-### Rung-7 candidate: `error-throws` const-reassign-in-eval gap
+### Rung-7 — `error-throws` const-reassign (CLOSED, this commit)
 
-**Behavior**: `eval('const x=1; x=2;')` should throw TypeError in strict mode (eval contents are strict by default per ECMA §19.2.1). cruftless allows the reassignment.
+**Substrate fix** (rusty-js-bytecode/compiler.rs):
+Added `is_const_binding(name)` helper that walks the local/enclosing
+descriptor chain checking for VariableKind::Const. Both compile_plain_assign
+and compile_assign now call it at the Identifier-target branch; on
+match, emit code that evaluates RHS for side-effects, pops, then
+throws `new TypeError("Assignment to constant variable '<name>'")`.
+JS-catchable per ECMA §13.15.4 + §15.2.7.
 
-**Locale assignment**: `pilots/rusty-js-runtime/` (eval + strict-mode enforcement).
-
-**Bracket**: `eval('const x=1; x=2')` should throw; `let x=1; x=2` outside eval is allowed.
+Effect: `error-throws` flipped to PASS. const-reassignment now throws
+TypeError both top-level and inside eval (the same compiler path
+handles both). Diff-prod 6/6 PASS — Telos A hit.
 
 ### Rung-8 — `map-set-ops` Map-with-object-keys (CLOSED, this commit)
 

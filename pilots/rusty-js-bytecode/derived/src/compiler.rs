@@ -2029,6 +2029,27 @@ impl Compiler {
         None
     }
 
+    /// Check whether an identifier is currently bound as `const` in this
+    /// frame's locals (including outer-frame upvalues). Used by user-level
+    /// assignment sites to reject const-reassignment per ECMA-262 §13.15.4
+    /// at compile time. Declaration sites bypass this check (the initial
+    /// `const x = 1` binding writes into the slot via emit_store_ident too).
+    fn is_const_binding(&self, name: &str) -> bool {
+        for l in self.locals.iter().rev() {
+            if l.name == name {
+                return matches!(l.kind, VariableKind::Const);
+            }
+        }
+        for enc in self.enclosing.iter().rev() {
+            for l in (*enc.locals).iter().rev() {
+                if l.name == name {
+                    return matches!(l.kind, VariableKind::Const);
+                }
+            }
+        }
+        false
+    }
+
     /// Tier-Ω.5.c: resolve an identifier to an upvalue slot in this proto.
     /// Walks the enclosing chain bottom-up. If the name resolves to a local
     /// in an outer frame, an upvalue is created in this proto (and in every
@@ -3474,6 +3495,23 @@ impl Compiler {
         }
     }
 
+    /// Emit code that throws `new TypeError(msg)` at runtime. Used at
+    /// compile-time-detectable spec violations (const reassignment) so
+    /// the resulting error is JS-catchable rather than a host-level
+    /// CompileError. Leaves nothing on the stack (Throw consumes its
+    /// operand and unwinds).
+    fn emit_throw_typeerror(&mut self, msg: &str) {
+        let ctor_name = self.constants.intern(Constant::String("TypeError".to_string()));
+        let msg_idx = self.constants.intern(Constant::String(msg.to_string()));
+        encode_op(&mut self.bytecode, Op::LoadGlobal);
+        encode_u16(&mut self.bytecode, ctor_name);
+        encode_op(&mut self.bytecode, Op::PushConst);
+        encode_u16(&mut self.bytecode, msg_idx);
+        encode_op(&mut self.bytecode, Op::New);
+        self.bytecode.push(1u8); // argc
+        encode_op(&mut self.bytecode, Op::Throw);
+    }
+
     fn emit_store_ident(&mut self, name: &str) {
         if let Some(s) = self.resolve_local(name) {
             encode_op(&mut self.bytecode, Op::StoreLocal);
@@ -3513,6 +3551,16 @@ impl Compiler {
 
         match target {
             Expr::Identifier { name, .. } => {
+                if self.is_const_binding(name) {
+                    // Evaluate RHS for side effects, discard, throw TypeError.
+                    self.compile_expr(value)?;
+                    encode_op(&mut self.bytecode, Op::Pop);
+                    self.emit_throw_typeerror(&format!(
+                        "Assignment to constant variable '{}'", name));
+                    encode_op(&mut self.bytecode, Op::PushUndef);
+                    let _ = span;
+                    return Ok(());
+                }
                 self.emit_load_ident(name);          // [old]
                 self.compile_expr(value)?;            // [old, v]
                 encode_op(&mut self.bytecode, binop); // [new]
@@ -3535,6 +3583,23 @@ impl Compiler {
     ) -> Result<(), CompileError> {
         match target {
             Expr::Identifier { name, .. } => {
+                // ECMA-262 §13.15.4 + §15.2.7: assignment to a const-bound
+                // identifier is a TypeError. Emit code that evaluates the
+                // value expression for side-effects, then throws a
+                // TypeError. Runtime-emitted so try/catch can catch it
+                // (matches bun's surface behavior even though bun catches
+                // at parse time).
+                if self.is_const_binding(name) {
+                    self.compile_expr(value)?;
+                    encode_op(&mut self.bytecode, Op::Pop);  // discard value
+                    self.emit_throw_typeerror(&format!(
+                        "Assignment to constant variable '{}'", name));
+                    // Push undefined so any stack-balance assumption downstream
+                    // (assign-as-expression yields the assigned value) holds.
+                    encode_op(&mut self.bytecode, Op::PushUndef);
+                    let _ = span;
+                    return Ok(());
+                }
                 self.compile_expr(value)?;
                 encode_op(&mut self.bytecode, Op::Dup);
                 self.emit_store_ident(name);
