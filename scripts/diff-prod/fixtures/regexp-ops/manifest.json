@@ -1,0 +1,8 @@
+{
+  "name": "regexp-ops",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "RegExp construction (literal + ctor), test/exec/match/matchAll/replace/split across flag combinations and edge cases."
+}

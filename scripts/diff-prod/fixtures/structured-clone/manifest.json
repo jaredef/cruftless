@@ -1,0 +1,8 @@
+{
+  "name": "structured-clone",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "structuredClone() — deep clone with identity preservation across cycles, Map/Set, Date, RegExp, typed arrays."
+}

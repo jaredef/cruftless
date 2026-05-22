@@ -1,0 +1,8 @@
+{
+  "name": "generators",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Generator functions (function*) — yield, iteration protocol, return, throw, generator delegation (yield*)."
+}

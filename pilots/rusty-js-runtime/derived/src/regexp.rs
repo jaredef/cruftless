@@ -621,16 +621,25 @@ fn install_regexp_proto(rt: &mut Runtime, host: ObjectRef) {
 /// else an Array with [match, ...groups] plus .index / .input properties.
 /// Honors the 'g' flag via lastIndex.
 pub fn regexp_exec(rt: &mut Runtime, this_id: ObjectRef, input: &str) -> Result<Value, RuntimeError> {
-    let (is_global, start, has_compiled) = {
+    let (is_global, has_compiled) = {
         let o = rt.obj(this_id);
         let re = match &o.internal_kind {
             InternalKind::RegExp(r) => r,
             _ => return Err(RuntimeError::TypeError("RegExp.prototype.exec: this is not a RegExp".into())),
         };
         let is_global = re.flags.contains('g') || re.flags.contains('y');
-        let start = if is_global { re.last_index } else { 0 };
-        (is_global, start, re.compiled.is_some())
+        (is_global, re.compiled.is_some())
     };
+    // ECMA-262 §22.2.7.2 RegExpBuiltinExec step 9: read lastIndex from
+    // the JS property (user-settable), not the internal field. The
+    // internal field tracks the cached value but is overridden by any
+    // explicit `re.lastIndex = N` assignment between calls.
+    let start = if is_global {
+        match rt.object_get(this_id, "lastIndex") {
+            Value::Number(n) if n.is_finite() && n >= 0.0 => n as usize,
+            _ => 0,
+        }
+    } else { 0 };
     if !has_compiled {
         let (src, flags) = match &rt.obj(this_id).internal_kind {
             InternalKind::RegExp(r) => ((*r.source).clone(), (*r.flags).clone()),
@@ -837,6 +846,68 @@ fn install_string_regex_methods(rt: &mut Runtime) {
 /// Common backend for .replace and .replaceAll. `force_global` is true
 /// for .replaceAll. Replacement may be a string (no $1 backref handling
 /// in v1) or a function (called with (match) — extended args deferred).
+/// ECMA-262 §22.1.3.18 step 11 GetSubstitution for regex replacement:
+///   $$ → literal $
+///   $& → matched substring
+///   $` → portion before the match
+///   $' → portion after the match
+///   $N → Nth capture group (1-indexed; $0 is not special)
+///   $NN → two-digit group form (if NN is a valid 1-99 group index)
+///   ${name} → named group (best-effort; v1 returns empty for missing)
+fn process_regex_substitution(
+    repl: &str, matched: &str, before: &str, after: &str, groups: &[Option<&str>],
+) -> String {
+    let mut out = String::with_capacity(repl.len());
+    let bytes = repl.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'$' && i + 1 < bytes.len() {
+            match bytes[i + 1] {
+                b'$' => { out.push('$'); i += 2; continue; }
+                b'&' => { out.push_str(matched); i += 2; continue; }
+                b'`' => { out.push_str(before); i += 2; continue; }
+                b'\'' => { out.push_str(after); i += 2; continue; }
+                b'0'..=b'9' => {
+                    // Try two-digit form first, then single-digit.
+                    let n2 = if i + 2 < bytes.len() && (bytes[i + 2] as char).is_ascii_digit() {
+                        let n = (bytes[i + 1] - b'0') as usize * 10 + (bytes[i + 2] - b'0') as usize;
+                        if n >= 1 && n <= groups.len() { Some((n, 3usize)) } else { None }
+                    } else { None };
+                    let n1 = {
+                        let n = (bytes[i + 1] - b'0') as usize;
+                        if n >= 1 && n <= groups.len() { Some((n, 2usize)) } else { None }
+                    };
+                    let pick = n2.or(n1);
+                    if let Some((n, adv)) = pick {
+                        if let Some(g) = groups.get(n - 1).and_then(|g| g.as_deref()) {
+                            out.push_str(g);
+                        }
+                        i += adv;
+                        continue;
+                    }
+                }
+                b'{' => {
+                    // ${name} — find the closing brace; v1 returns empty
+                    // string for missing names (RegExp named groups are
+                    // not fully threaded through the captures tuple yet).
+                    if let Some(end) = repl[i + 2..].find('}') {
+                        let _name = &repl[i + 2..i + 2 + end];
+                        i += 2 + end + 1;
+                        continue;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let ch_start = i;
+        let mut ch_end = i + 1;
+        while ch_end < bytes.len() && (bytes[ch_end] & 0xC0) == 0x80 { ch_end += 1; }
+        out.push_str(&repl[ch_start..ch_end]);
+        i = ch_end;
+    }
+    out
+}
+
 fn string_replace_impl(
     rt: &mut Runtime,
     s: &str,
@@ -877,11 +948,34 @@ fn string_replace_impl(
 
     if !is_callable {
         let repl_s = abstract_ops::to_string(&repl).as_str().to_string();
-        let out = if is_global {
-            rx.replace_all_lit(s, repl_s.as_str())
-        } else {
-            rx.replacen_lit(s, 1, repl_s.as_str())
-        };
+        // ECMA-262 §22.1.3.18 step 11 GetSubstitution — honor $$, $&,
+        // $`, $', $N (capture groups), ${name} (named groups). Loop per
+        // match so substitutions see the right before/after context.
+        let mut out = String::new();
+        let mut cursor = 0usize;
+        let mut search_start = 0usize;
+        let mut count = 0usize;
+        let max_n = if is_global { usize::MAX } else { 1 };
+        while count < max_n {
+            let caps = match rx.captures_at(s, search_start) {
+                Some(c) => c, None => break,
+            };
+            let (mstart, mend, groups) = caps;
+            out.push_str(&s[cursor..mstart]);
+            let matched = &s[mstart..mend];
+            let before = &s[..mstart];
+            let after = &s[mend..];
+            let group_slices: Vec<Option<&str>> = groups.iter().skip(1)
+                .map(|g| g.as_deref()).collect();
+            let substituted = process_regex_substitution(
+                &repl_s, matched, before, after, &group_slices);
+            out.push_str(&substituted);
+            cursor = mend;
+            search_start = if mend == mstart { mend + 1 } else { mend };
+            count += 1;
+            if search_start > s.len() { break; }
+        }
+        out.push_str(&s[cursor..]);
         return Ok(Value::String(Rc::new(out)));
     }
 

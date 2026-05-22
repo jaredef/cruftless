@@ -1,0 +1,8 @@
+{
+  "name": "proxy-basics",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Proxy core traps: get, set, has, deleteProperty, ownKeys, getPrototypeOf. Tests trap dispatch + Reflect-based fallthrough."
+}

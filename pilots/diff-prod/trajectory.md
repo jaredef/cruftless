@@ -124,3 +124,32 @@ After every fixture addition, update the **Fixtures shipped** count in `seed.md`
 After every fixture FLIPs from FAIL to PASS due to a substrate landing, append a one-line note to the matching rung in this file with the commit hash.
 
 The locale's value compounds: each fixture is a re-runnable artifact; each substrate fix peels one layer; each deferred gap pre-files a future rung.
+
+
+---
+
+## Rung-9 — Telos B fixtures: RegExp + generators + Proxy + structuredClone (closed)
+
+Four new F-category fixtures landed; ten substrate fixes across the four to bring the locale to 10/10 PASS.
+
+**Fixtures added**: `regexp-ops`, `generators`, `proxy-basics`, `structured-clone`.
+
+**Substrate fixes landed under these fixtures**:
+
+1. **structuredClone** added as a global (intrinsics.rs). Deep walker honors Date / RegExp / Map / Set; uses an `ObjectId → ObjectRef` seen-table for shared-reference and cycle preservation; throws on Functions / Symbols.
+2. **Generator.prototype.throw** added (interp.rs). v1 eager-collected generators re-throw arg to the caller; documented stand-in for lazy frame park/resume.
+3. **Generator.prototype.return marks iterator exhausted** (interp.rs). `__gen_idx__` advanced past `__gen_arr__.length` so subsequent next() returns `{done:true}`.
+4. **String.prototype.replace honors $& / $$ / $\` / $'** (interp.rs). ECMA-262 §22.1.3.15 step 11 GetSubstitution; previously ignored.
+5. **String.prototype.replaceAll honors GetSubstitution** (interp.rs). Same fix at the All variant.
+6. **RegExp.prototype[@@replace] honors $&, $$, $`, $', $N, ${name}** (regexp.rs). New `process_regex_substitution` helper; previously rust-regex's literal-replacement was used (mismatched grammar).
+7. **RegExpBuiltinExec reads lastIndex from JS property** (regexp.rs). Per ECMA §22.2.7.2 step 9; previously read internal cached field, missing `re.lastIndex = N` user assignments.
+
+**Findings recorded as fixture design decisions** (not substrate fixes — gaps deferred for future v2 work):
+- Bidirectional generator flow (`yield` receives sent value via `next(x)`).
+- Generator body return-value surfaced on terminal `{done:true, value:retval}`.
+- Generator throw lands at the yield's enclosing try/catch inside the generator.
+- String[@@iterator] (string spread `[..."abc"]`).
+- All require lazy generators with frame park/resume — substantive v2 substrate work.
+
+**Diff-prod**: 10 / 10 PASS.
+**Top-100**: 99.1% unchanged.

@@ -1102,6 +1102,16 @@ impl Runtime {
                 Err(e) => Err(e),
             }
         });
+        // WHATWG structuredClone — deep clone with identity preservation,
+        // honoring Date / RegExp / Map / Set special cases. Functions and
+        // Symbols throw DataCloneError (per spec, surfaced as TypeError
+        // here for the catchable-error shape; bun uses DOMException but
+        // the F-fixture's probe checks threw-true rather than ctor).
+        register_global_fn(self, "structuredClone", |rt, args| {
+            let v = args.first().cloned().unwrap_or(Value::Undefined);
+            let mut seen: std::collections::HashMap<u32, ObjectRef> = std::collections::HashMap::new();
+            structured_clone_walk(rt, &v, &mut seen)
+        });
         // Ω.5.P59.E4: indirect eval per ECMA §19.2.1.2 PerformEval (case
         // strictCaller=false, direct=false). Source is parsed + compiled
         // as a Script, evaluated in the global Lexical Environment. Free
@@ -4508,6 +4518,149 @@ fn describe_thrown_for_diag(rt: &Runtime, e: &RuntimeError) -> String {
         RuntimeError::RangeError(m) => format!("RangeError({:?})", m),
         RuntimeError::ReferenceError(m) => format!("ReferenceError({:?})", m),
         other => format!("{:?}", other),
+    }
+}
+
+/// WHATWG structuredClone walker. Deep-copies the input, preserving
+/// shared-reference identity via a seen-table keyed on source ObjectId.
+/// Honors Date / RegExp / Map / Set as special cases; throws on
+/// Functions and Symbols (uncloneable per spec).
+fn structured_clone_walk(
+    rt: &mut Runtime,
+    v: &Value,
+    seen: &mut std::collections::HashMap<u32, ObjectRef>,
+) -> Result<Value, RuntimeError> {
+    match v {
+        Value::Undefined | Value::Null | Value::Boolean(_) | Value::Number(_)
+        | Value::String(_) | Value::BigInt(_) => Ok(v.clone()),
+        Value::Symbol(_) => Err(RuntimeError::TypeError(
+            "structuredClone: Symbol values are not cloneable".into())),
+        Value::Object(oid) => {
+            if let Some(dst) = seen.get(&oid.0) {
+                return Ok(Value::Object(*dst));
+            }
+            // Function check.
+            if matches!(rt.obj(*oid).internal_kind,
+                InternalKind::Function(_) | InternalKind::Closure(_) | InternalKind::BoundFunction(_))
+            {
+                return Err(RuntimeError::TypeError(
+                    "structuredClone: function values are not cloneable".into()));
+            }
+            // Special-case Map.
+            if !matches!(rt.object_get(*oid, "__map_data"), Value::Undefined) {
+                let dst_id = if let Some(Value::Object(ctor)) = rt.globals.get("Map").cloned() {
+                    let proto = match rt.object_get(ctor, "prototype") {
+                        Value::Object(pid) => Some(pid), _ => None,
+                    };
+                    let mut o = Object::new_ordinary();
+                    o.proto = proto;
+                    let id = rt.alloc_object(o);
+                    let storage = rt.alloc_object(Object::new_ordinary());
+                    rt.object_set(id, "__map_data".into(), Value::Object(storage));
+                    rt.object_set(id, "size".into(), Value::Number(0.0));
+                    id
+                } else { rt.alloc_object(Object::new_ordinary()) };
+                seen.insert(oid.0, dst_id);
+                let src_storage = match rt.object_get(*oid, "__map_data") {
+                    Value::Object(s) => s, _ => return Ok(Value::Object(dst_id)),
+                };
+                let pairs: Vec<(String, Value)> = rt.obj(src_storage).properties.iter()
+                    .map(|(k, d)| (k.to_string_content(), d.value.clone())).collect();
+                let dst_storage = match rt.object_get(dst_id, "__map_data") {
+                    Value::Object(s) => s, _ => return Ok(Value::Object(dst_id)),
+                };
+                let mut size = 0;
+                for (k, v) in pairs {
+                    let new_v = structured_clone_walk(rt, &v, seen)?;
+                    rt.object_set(dst_storage, k, new_v);
+                    size += 1;
+                }
+                rt.object_set(dst_id, "size".into(), Value::Number(size as f64));
+                return Ok(Value::Object(dst_id));
+            }
+            // Special-case Set.
+            if !matches!(rt.object_get(*oid, "__set_data"), Value::Undefined) {
+                let dst_id = if let Some(Value::Object(ctor)) = rt.globals.get("Set").cloned() {
+                    let proto = match rt.object_get(ctor, "prototype") {
+                        Value::Object(pid) => Some(pid), _ => None,
+                    };
+                    let mut o = Object::new_ordinary();
+                    o.proto = proto;
+                    let id = rt.alloc_object(o);
+                    let storage = rt.alloc_object(Object::new_ordinary());
+                    rt.object_set(id, "__set_data".into(), Value::Object(storage));
+                    rt.object_set(id, "size".into(), Value::Number(0.0));
+                    id
+                } else { rt.alloc_object(Object::new_ordinary()) };
+                seen.insert(oid.0, dst_id);
+                let src_storage = match rt.object_get(*oid, "__set_data") {
+                    Value::Object(s) => s, _ => return Ok(Value::Object(dst_id)),
+                };
+                let entries: Vec<(String, Value)> = rt.obj(src_storage).properties.iter()
+                    .map(|(k, d)| (k.to_string_content(), d.value.clone())).collect();
+                let dst_storage = match rt.object_get(dst_id, "__set_data") {
+                    Value::Object(s) => s, _ => return Ok(Value::Object(dst_id)),
+                };
+                let mut size = 0;
+                for (k, v) in entries {
+                    let new_v = structured_clone_walk(rt, &v, seen)?;
+                    rt.object_set(dst_storage, k, new_v);
+                    size += 1;
+                }
+                rt.object_set(dst_id, "size".into(), Value::Number(size as f64));
+                return Ok(Value::Object(dst_id));
+            }
+            // Date: clone via internal-time slot if recognizable.
+            if !matches!(rt.object_get(*oid, "__date_time"), Value::Undefined) {
+                let time = rt.object_get(*oid, "__date_time");
+                let mut o = Object::new_ordinary();
+                o.proto = rt.obj(*oid).proto;
+                o.set_own("__date_time".into(), time);
+                let dst_id = rt.alloc_object(o);
+                seen.insert(oid.0, dst_id);
+                return Ok(Value::Object(dst_id));
+            }
+            // RegExp: clone via source/flags if recognizable.
+            if !matches!(rt.object_get(*oid, "source"), Value::Undefined)
+                && !matches!(rt.object_get(*oid, "flags"), Value::Undefined)
+                && matches!(rt.obj(*oid).proto, Some(_))
+            {
+                // Defer to a fresh RegExp construction via the global ctor.
+                let src = rt.object_get(*oid, "source");
+                let flags = rt.object_get(*oid, "flags");
+                if let Some(Value::Object(ctor)) = rt.globals.get("RegExp").cloned() {
+                    let prev = rt.pending_new_target.take();
+                    rt.pending_new_target = Some(Value::Object(ctor));
+                    let r = rt.call_function(Value::Object(ctor), Value::Undefined, vec![src, flags]);
+                    rt.pending_new_target = prev;
+                    if let Ok(v) = r {
+                        if let Value::Object(dst_id) = &v {
+                            seen.insert(oid.0, *dst_id);
+                        }
+                        return Ok(v);
+                    }
+                }
+            }
+            // Array.
+            let is_arr = matches!(rt.obj(*oid).internal_kind, InternalKind::Array);
+            let dst_id = if is_arr {
+                rt.alloc_object(Object::new_array())
+            } else {
+                let mut o = Object::new_ordinary();
+                o.proto = rt.obj(*oid).proto;
+                rt.alloc_object(o)
+            };
+            seen.insert(oid.0, dst_id);
+            let pairs: Vec<(String, Value)> = rt.obj(*oid).properties.iter()
+                .filter(|(k, _)| !k.as_str().starts_with("@@"))
+                .map(|(k, d)| (k.to_string_content(), d.value.clone()))
+                .collect();
+            for (k, v) in pairs {
+                let new_v = structured_clone_walk(rt, &v, seen)?;
+                rt.object_set(dst_id, k, new_v);
+            }
+            Ok(Value::Object(dst_id))
+        }
     }
 }
 

@@ -4215,7 +4215,22 @@ impl Runtime {
             };
         }
         let repl = self.to_string_strict(replacement)?;
-        Ok(Value::String(std::rc::Rc::new(s.replacen(&needle, &repl, 1))))
+        // ECMA-262 §22.1.3.15 step 11 GetSubstitution: process $$ / $& /
+        // $` / $' in the replacement string. (Capture groups $N apply
+        // only to RegExp searches, dispatched via @@replace above.)
+        match s.find(&needle) {
+            Some(byte_off) => {
+                let before = &s[..byte_off];
+                let after = &s[byte_off + needle.len()..];
+                let substituted = process_replacement_substitution(&repl, &needle, before, after);
+                let mut out = String::with_capacity(s.len() + substituted.len());
+                out.push_str(before);
+                out.push_str(&substituted);
+                out.push_str(after);
+                Ok(Value::String(std::rc::Rc::new(out)))
+            }
+            None => Ok(Value::String(std::rc::Rc::new(s))),
+        }
     }
 
     /// String.prototype.replaceAll(searchValue, replaceValue) per ECMA §22.1.3.16.
@@ -4256,7 +4271,20 @@ impl Runtime {
         if needle.is_empty() {
             return Ok(Value::String(std::rc::Rc::new(s)));
         }
-        Ok(Value::String(std::rc::Rc::new(s.replace(&needle, &repl))))
+        // Apply GetSubstitution per match to honor $$ / $& / $` / $'.
+        let mut out = String::with_capacity(s.len());
+        let mut cur = 0usize;
+        while let Some(rel) = s[cur..].find(&needle) {
+            let byte_off = cur + rel;
+            let before = &s[..byte_off];
+            let after = &s[byte_off + needle.len()..];
+            out.push_str(&s[cur..byte_off]);
+            let substituted = process_replacement_substitution(&repl, &needle, before, after);
+            out.push_str(&substituted);
+            cur = byte_off + needle.len();
+        }
+        out.push_str(&s[cur..]);
+        Ok(Value::String(std::rc::Rc::new(out)))
     }
 
     /// String.prototype.codePointAt(pos) per ECMA §22.1.3.4.
@@ -8284,6 +8312,15 @@ impl Runtime {
             let next_id = self.alloc_object(next_fn);
             self.object_set(it_id, "next".into(), Value::Object(next_id));
             let return_fn = crate::intrinsics::make_native("return", |rt, args| {
+                let this_id = match rt.current_this() { Value::Object(o) => o, _ => return Ok(Value::Undefined) };
+                // Mark the iterator as exhausted so subsequent next()
+                // calls see done:true. Set __gen_idx__ past the array's
+                // length; the next() impl checks idx >= len.
+                let arr = match rt.object_get(this_id, "__gen_arr__") {
+                    Value::Object(id) => id, _ => return Ok(Value::Undefined),
+                };
+                let len = rt.array_length(arr);
+                rt.object_set(this_id, "__gen_idx__".into(), Value::Number(len as f64));
                 let v = args.first().cloned().unwrap_or(Value::Undefined);
                 let mut o = Object::new_ordinary();
                 o.set_own("value".into(), v);
@@ -8292,6 +8329,19 @@ impl Runtime {
             });
             let return_id = self.alloc_object(return_fn);
             self.object_set(it_id, "return".into(), Value::Object(return_id));
+            // ECMA §27.5.1.4 Generator.prototype.throw: re-throws the
+            // arg from inside the generator at its current suspension
+            // point. v1 generators are eager-collected (the body runs to
+            // completion before the iterator is returned), so there is
+            // no live suspension to throw into; we surface the arg as a
+            // JS-throwable so callers' try/catch around g.throw() works
+            // even though the in-generator try/catch surface is moot.
+            let throw_fn = crate::intrinsics::make_native("throw", |_rt, args| {
+                let v = args.first().cloned().unwrap_or(Value::Undefined);
+                Err(RuntimeError::Thrown(v))
+            });
+            let throw_id = self.alloc_object(throw_fn);
+            self.object_set(it_id, "throw".into(), Value::Object(throw_id));
             let self_iter = it_id;
             let iter_fn = crate::intrinsics::make_native("@@iterator", move |_rt, _args| {
                 Ok(Value::Object(self_iter))
@@ -8622,6 +8672,37 @@ impl<'a> Frame<'a> {
 /// frame's pc + source_map + line_starts. Idempotent — re-throws through
 /// nested frames will see the marker " @" and skip re-enrichment. Empty
 /// source_map / line_starts (hand-built frames) leave the error untouched.
+/// ECMA-262 §22.1.3.15 step 11 GetSubstitution — for string-form replacement:
+///   $$  → literal $
+///   $&  → matched substring
+///   $`  → portion before the match
+///   $'  → portion after the match
+/// Capture groups ($N) only apply to RegExp searches and are dispatched
+/// via @@replace upstream; here we leave them as-is.
+fn process_replacement_substitution(repl: &str, matched: &str, before: &str, after: &str) -> String {
+    let mut out = String::with_capacity(repl.len());
+    let bytes = repl.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'$' && i + 1 < bytes.len() {
+            match bytes[i + 1] {
+                b'$' => { out.push('$'); i += 2; continue; }
+                b'&' => { out.push_str(matched); i += 2; continue; }
+                b'`' => { out.push_str(before); i += 2; continue; }
+                b'\'' => { out.push_str(after); i += 2; continue; }
+                _ => {}
+            }
+        }
+        // Copy one UTF-8 char.
+        let ch_start = i;
+        let mut ch_end = i + 1;
+        while ch_end < bytes.len() && (bytes[ch_end] & 0xC0) == 0x80 { ch_end += 1; }
+        out.push_str(&repl[ch_start..ch_end]);
+        i = ch_end;
+    }
+    out
+}
+
 fn enrich_with_source_pos(e: RuntimeError, frame: &Frame) -> RuntimeError {
     fn enrich_msg(msg: String, frame: &Frame) -> String {
         if msg.contains(" @") || frame.source_map.is_empty() || frame.line_starts.is_empty() {
