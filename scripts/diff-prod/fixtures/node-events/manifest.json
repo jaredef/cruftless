@@ -1,0 +1,8 @@
+{
+  "name": "node-events",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "node:events EventEmitter — on/emit/off/once/listenerCount/eventNames."
+}

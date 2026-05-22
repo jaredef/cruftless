@@ -208,3 +208,24 @@ Four new F-category fixtures: `closures-scopes`, `template-literals`, `arrow-fun
 
 **Diff-prod**: 21 / 21 PASS.
 **Top-100**: 99.1% unchanged.
+
+---
+
+## Rung-13 — Five more Telos B fixtures: url / encoding / events / headers / error-types (closed)
+
+Five new F-category fixtures: `url-api`, `encoding`, `node-events`, `fetch-headers`, `error-types`. **node-events PASSed on first run**. Three substrate fixes; six v2 boundaries documented.
+
+**Substrate fixes**:
+1. **`encodeURI` / `encodeURIComponent` / `decodeURI` / `decodeURIComponent`** registered as globals (intrinsics.rs). Were undefined. RFC 3986 percent-encoding with separate unreserved sets for the two encode variants.
+2. **Error cause field (ES2022 §20.5.7.1 step 4 InstallErrorCause)** — Error ctor now reads `options.cause` from the second-arg Object and installs as a non-enumerable property on the instance.
+3. **Error-subclass prototype chain** — TypeError/RangeError/SyntaxError/ReferenceError/URIError/EvalError/AggregateError now have `.prototype.__proto__ === Error.prototype` per ECMA §20.5.6. Previously each had a bare proto chain, so `new TypeError() instanceof Error` returned false.
+
+**v2 boundaries documented**:
+- `btoa` should throw on non-Latin-1 input (InvalidCharacterError per spec)
+- Headers `@@iterator` (for-of / entries() / keys() / values())
+- Headers constructor from array-of-pairs
+- URLSearchParams (stub returns "not yet implemented")
+- URL relative-path resolution per WHATWG (currently concatenates rather than resolving)
+
+**Diff-prod**: 26 / 26 PASS.
+**Top-100**: 99.1% unchanged.

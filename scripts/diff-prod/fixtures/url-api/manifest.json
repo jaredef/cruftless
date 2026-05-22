@@ -1,0 +1,8 @@
+{
+  "name": "url-api",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "URL constructor, URLSearchParams, parsing + roundtrip."
+}

@@ -1,0 +1,8 @@
+{
+  "name": "error-types",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Built-in Error subclasses: Error, TypeError, RangeError, SyntaxError, ReferenceError. ctor, message, stack-presence, instanceof, throw + catch."
+}

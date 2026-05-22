@@ -1017,6 +1017,41 @@ impl Runtime {
         });
         register_global_fn(self, "parseInt",   |rt, args| crate::generated::parse_int(rt, rt.current_this(), args));
         register_global_fn(self, "parseFloat", |rt, args| crate::generated::parse_float(rt, rt.current_this(), args));
+        // ECMA-262 §19.2.6 URI handling. v1 uses Rust's percent-encoding
+        // standard library mappings; the unreserved-character sets match
+        // RFC 3986. encodeURI keeps reserved chars (`/`, `?`, `:`, `@`,
+        // `&`, `=`, `+`, `$`, `,`, `#`, `;`); encodeURIComponent encodes
+        // all reserved chars.
+        register_global_fn(self, "encodeURIComponent", |_rt, args| {
+            let s = match args.first() {
+                Some(v) => crate::abstract_ops::to_string(v).as_str().to_string(),
+                None => "undefined".to_string(),
+            };
+            Ok(Value::String(Rc::new(uri_percent_encode(&s, false))))
+        });
+        register_global_fn(self, "encodeURI", |_rt, args| {
+            let s = match args.first() {
+                Some(v) => crate::abstract_ops::to_string(v).as_str().to_string(),
+                None => "undefined".to_string(),
+            };
+            Ok(Value::String(Rc::new(uri_percent_encode(&s, true))))
+        });
+        register_global_fn(self, "decodeURIComponent", |_rt, args| {
+            let s = match args.first() {
+                Some(v) => crate::abstract_ops::to_string(v).as_str().to_string(),
+                None => "undefined".to_string(),
+            };
+            uri_percent_decode(&s).map(|d| Value::String(Rc::new(d)))
+                .ok_or_else(|| RuntimeError::TypeError("decodeURIComponent: malformed URI".into()))
+        });
+        register_global_fn(self, "decodeURI", |_rt, args| {
+            let s = match args.first() {
+                Some(v) => crate::abstract_ops::to_string(v).as_str().to_string(),
+                None => "undefined".to_string(),
+            };
+            uri_percent_decode(&s).map(|d| Value::String(Rc::new(d)))
+                .ok_or_else(|| RuntimeError::TypeError("decodeURI: malformed URI".into()))
+        });
         // Ω.5.P63.E9: global isNaN / isFinite routed through IR-lowered
         // generated::global_is_*. Differ from Number.isNaN / Number.isFinite
         // by coercing the arg via ToNumber.
@@ -4071,6 +4106,16 @@ impl Runtime {
                 }
                 rt.object_set(id, "name".into(), Value::String(Rc::new(default_name.clone())));
                 rt.object_set(id, "stack".into(), Value::String(Rc::new("".into())));
+                // ES2022 (§20.5.7.1 step 4) — InstallErrorCause: if the
+                // second argument is an Object with a `cause` own key,
+                // install error.cause as a non-enumerable property.
+                if let Some(Value::Object(opts_id)) = args.get(1) {
+                    let has_cause = rt.obj(*opts_id).get_own("cause").is_some();
+                    if has_cause {
+                        let cause = rt.object_get(*opts_id, "cause");
+                        rt.object_set(id, "cause".into(), cause);
+                    }
+                }
                 Ok(Value::Object(id))
             });
             let ctor_id = self.alloc_object(ctor_obj);
@@ -4143,6 +4188,26 @@ impl Runtime {
             // probe `Error.stackTraceLimit = Infinity` then set back.
             self.object_set(ctor_id, "stackTraceLimit".into(), Value::Number(10.0));
             self.globals.insert((*name).to_string(), Value::Object(ctor_id));
+        }
+        // Chain Error-subclass prototypes through Error.prototype per
+        // ECMA-262 §20.5.6 (each NativeError.prototype's [[Prototype]]
+        // is %Error.prototype%). Without this, `e instanceof Error` is
+        // false even when e is a TypeError / RangeError / etc.
+        let err_proto_id = match self.globals.get("Error").cloned() {
+            Some(Value::Object(eid)) => match self.object_get(eid, "prototype") {
+                Value::Object(pid) => Some(pid), _ => None,
+            },
+            _ => None,
+        };
+        if let Some(epid) = err_proto_id {
+            for sub_name in &["TypeError", "RangeError", "SyntaxError", "ReferenceError",
+                              "URIError", "EvalError", "AggregateError"] {
+                if let Some(Value::Object(sid)) = self.globals.get(*sub_name).cloned() {
+                    if let Value::Object(spid) = self.object_get(sid, "prototype") {
+                        self.obj_mut(spid).proto = Some(epid);
+                    }
+                }
+            }
         }
     }
 
@@ -4662,6 +4727,45 @@ fn structured_clone_walk(
             Ok(Value::Object(dst_id))
         }
     }
+}
+
+/// RFC 3986 percent-encoding. When keep_reserved=true (encodeURI), the
+/// reserved set `; , / ? : @ & = + $` plus mark chars + alphanumerics
+/// pass through unchanged; otherwise (encodeURIComponent) only
+/// alphanumerics and the mark set `- _ . ! ~ * ' ( )` pass through.
+fn uri_percent_encode(s: &str, keep_reserved: bool) -> String {
+    let mut out = String::with_capacity(s.len());
+    for byte in s.bytes() {
+        let keep = (byte as char).is_ascii_alphanumeric()
+            || matches!(byte, b'-' | b'_' | b'.' | b'!' | b'~' | b'*' | b'\'' | b'(' | b')')
+            || (keep_reserved && matches!(byte,
+                b';' | b',' | b'/' | b'?' | b':' | b'@' | b'&' | b'=' | b'+' | b'$' | b'#'));
+        if keep {
+            out.push(byte as char);
+        } else {
+            out.push_str(&format!("%{:02X}", byte));
+        }
+    }
+    out
+}
+
+fn uri_percent_decode(s: &str) -> Option<String> {
+    let bytes = s.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            if i + 2 >= bytes.len() { return None; }
+            let h1 = (bytes[i + 1] as char).to_digit(16)?;
+            let h2 = (bytes[i + 2] as char).to_digit(16)?;
+            out.push(((h1 << 4) | h2) as u8);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(out).ok()
 }
 
 pub(crate) fn make_native(name: &str, f: impl Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static) -> Object {

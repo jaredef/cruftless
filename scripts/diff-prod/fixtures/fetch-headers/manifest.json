@@ -1,0 +1,8 @@
+{
+  "name": "fetch-headers",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Headers class — construction, get/set/append/delete/has, iteration. No actual fetch."
+}

@@ -1,0 +1,8 @@
+{
+  "name": "encoding",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "TextEncoder/TextDecoder, atob/btoa, encodeURIComponent/decodeURIComponent roundtrips."
+}
