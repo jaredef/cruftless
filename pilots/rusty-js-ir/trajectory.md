@@ -1757,3 +1757,33 @@ Plus the spec's empty-input edge cases: `[]` when the regex matches empty at 0, 
 **Tag**: `cluster-toLength-infinity-5`. Note: the fix is in a shared helper (`try_array_length`) used by every Array.prototype.* method that calls into the length-of-array-like coercion. The +2 on indexOf understates broader impact; full sample-wide re-measurement at next major rung close will surface the cascade across reduce/filter/some/every/forEach/etc.
 
 Next cluster candidate: `language/expressions/arrow-function` non-dstr (23 FAILs in the sample), or `Array/prototype/concat` TypeError-throwing paths (~9 FAILs).
+
+---
+
+## Rung-cluster-6 — JSON.stringify array-replacer PropertyList (closed 2026-05-22)
+
+**Cluster** (per the test262-parity telos in seed §I.2):
+`built-ins/JSON/stringify/*` — 66 paths. The pre-rung sample showed 31 FAIL / 28 PASS in this sub-tree, concentrated around the array-replacer feature.
+
+**Root cause**: cruftless's `json_stringify_via` stored only a callable replacer; array replacers were silently ignored. Spec §25.5.2 step 4.b requires that when replacer is an Array, its items (after String/Number coercion + wrapper unwrap + dedupe) form a PropertyList that filters AND orders the keys serialized in every non-array compound. Result: `JSON.stringify({a:1,b:2,c:3}, ["b","a"])` returned `{"a":1,"b":2,"c":3}` (whole object, natural order) instead of `{"b":1,"a":2}`.
+
+**Substrate fix**:
+1. Add `json_property_list_stack: Vec<Option<Vec<String>>>` field on Runtime alongside the existing `json_replacer_stack` (parallel discipline: each stringify entry pushes a frame; nested toJSON-reentries get their own).
+2. In `json_stringify_via`, when `replacer` is an Array, compute the PropertyList per spec step 4.b: iterate `ToLength`-clamped indices, coerce String/Number/wrappers, skip non-coercible, dedupe; push the resulting list. Otherwise push `None`.
+3. In `json_serialize_compound_via`'s non-array branch, if the topmost frame holds a property list, use it as the key set (filter + order). Otherwise compute OrdinaryOwnPropertyKeys-style ordering as before.
+
+**Post-rung result**: 28 FAIL / 31 PASS on the 66-path cluster (the additional 7 paths timeout or rc-mismatch in both runs).
+
+**Delta**: **+3 PASS** measured. The array-replacer fix lands cleanly; the remaining FAILs decompose into deeper sub-defects (BigInt support, Proxy abruptness, string escape for unpaired surrogates, String/Number wrapper as `this` value at top-level, etc.) each needing its own rung.
+
+**Sample-wide cumulative** (rungs 1-6):
+- Cluster-1 (Number numeric format): +10
+- Cluster-2 (dstr LHS): +72
+- Cluster-3 (defineProperty P coercion): +11
+- Cluster-4 (split regex empty-match): +8
+- Cluster-5 (ToLength Infinity clamp): +2
+- Cluster-6 (JSON.stringify array-replacer): +3
+- Total: **+106 PASS** on the 7,203-runnable base = +1.47 pp
+- Cruftless 73.9% → ~75.4% runnable pass; gap 25.3 pp → ~23.9 pp
+
+**Tag**: `cluster-json-stringify-array-replacer-6`.

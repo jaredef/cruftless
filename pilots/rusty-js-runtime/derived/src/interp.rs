@@ -165,6 +165,13 @@ pub struct Runtime {
     /// and popped on exit; nested stringify (via toJSON callbacks that
     /// re-enter stringify) push their own frame.
     pub json_replacer_stack: Vec<Value>,
+    /// ECMA-262 §25.5.2 step 4.b — when the replacer is an Array, its
+    /// items (after the spec's String/Number coercion) form the
+    /// PropertyList that filters and orders the keys serialized for
+    /// every non-array compound. None at a frame means "no PropertyList
+    /// active for this stringify call"; Some(list) means the list is
+    /// the whitelist, in the given order.
+    pub json_property_list_stack: Vec<Option<Vec<String>>>,
     // ─── Intrinsic prototypes (Tier-Ω.5.a) ───
     //
     // Stashed ObjectIds for the canonical prototype objects. Each
@@ -311,6 +318,7 @@ impl Runtime {
             pending_new_target: None,
             current_new_target: None,
             json_replacer_stack: Vec::new(),
+            json_property_list_stack: Vec::new(),
             object_prototype: None,
             array_prototype: None,
             function_prototype: None,
@@ -2643,15 +2651,54 @@ impl Runtime {
         // LIFO stack on Runtime — pushed here, popped after the recursive
         // serialization completes, consulted by json_apply_replacer_via
         // at the top of each SerializeJSONProperty call.
-        let pushed_replacer = if let Some(r) = args.get(1) {
+        // §25.5.2 step 4: replacer can be a callable, OR an Array whose
+        // items (after String/Number coercion) form a PropertyList.
+        let mut pushed_replacer = false;
+        let mut pushed_property_list = false;
+        if let Some(r) = args.get(1) {
             if self.is_callable(r) {
                 self.json_replacer_stack.push(r.clone());
-                true
-            } else { false }
-        } else { false };
+                pushed_replacer = true;
+            } else if let Value::Object(rid) = r {
+                if matches!(self.obj(*rid).internal_kind, crate::value::InternalKind::Array) {
+                    let len = self.try_array_length(*rid)?;
+                    let mut list: Vec<String> = Vec::with_capacity(len);
+                    for i in 0..len {
+                        let item = self.read_property(*rid, &i.to_string())?;
+                        let coerced: Option<String> = match &item {
+                            Value::String(s) => Some((**s).clone()),
+                            Value::Number(n) => Some(crate::abstract_ops::number_to_string(*n)),
+                            Value::Object(_) => {
+                                // §25.5.2 step 4.b.iii.3 — String/Number wrappers
+                                // unwrap via ToString; other objects skip.
+                                let prim = self.json_unwrap_wrapper_via(&item)?;
+                                match prim {
+                                    Value::String(s) => Some((*s).clone()),
+                                    Value::Number(n) => Some(crate::abstract_ops::number_to_string(n)),
+                                    _ => None,
+                                }
+                            }
+                            _ => None,
+                        };
+                        if let Some(s) = coerced {
+                            if !list.contains(&s) { list.push(s); }
+                        }
+                    }
+                    self.json_property_list_stack.push(Some(list));
+                    pushed_property_list = true;
+                }
+            }
+        }
+        // Push a None frame for nested calls when no replacer was given,
+        // so the compound-serialization site can pop a frame unconditionally.
+        if !pushed_property_list {
+            self.json_property_list_stack.push(None);
+            pushed_property_list = true;
+        }
         let result = crate::generated::json_serialize_property(self, Value::Undefined,
             &[v, Value::String(std::rc::Rc::new(String::new()))]);
         if pushed_replacer { self.json_replacer_stack.pop(); }
+        if pushed_property_list { self.json_property_list_stack.pop(); }
         result
     }
 
@@ -2732,7 +2779,12 @@ impl Runtime {
             // produced {"0":"a","10":"x","2":"b"} instead of the
             // spec-correct {"0":"a","2":"b","10":"x"}. Surfaced by the
             // diff-prod json-roundtrip fixture's canonicalizer.
-            let keys: Vec<String> = {
+            // §25.5.2.5 step 4: if a PropertyList is active for this
+            // stringify frame, that list IS the key set (filter + order).
+            // Otherwise compute OrdinaryOwnPropertyKeys-style ordering.
+            let keys: Vec<String> = if let Some(Some(list)) = self.json_property_list_stack.last() {
+                list.clone()
+            } else {
                 let obj = self.obj(id);
                 let all: Vec<(String, bool)> = obj.properties.iter()
                     .filter(|(k, d)| d.enumerable
