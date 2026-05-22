@@ -10,7 +10,7 @@ The corpus articulation is [Doc 729 — Cruftless](https://jaredfoy.com/resolve/
 
 ## What this is
 
-A JavaScript runtime targeting **the Node.js package ecosystem** across ECMA-262 language semantics and the Node/Web platform surface that real packages depend on (`node:*` builtins, `fetch`, `Buffer`, `URL`, `structuredClone`, …). Bun is the **empirical oracle** for both the namespace-shape probe (`legacy/host-rquickjs/tools/parity-measure.sh`, a 1026-package top-500 + top-100 basket) and the runtime-semantics probe (`scripts/diff-prod/`, a curated fixture set diffed byte-for-byte against bun's stdout). Bun's role is instrumental: it correctly implements the union of Node + Web APIs that production packages exercise, which makes it a reliable yardstick against which Cruftless's compatibility can be measured. The engine itself is independent — built under [Pin-Art](https://jaredfoy.com/resolve/doc/581-pin-art-the-resume-vector-and-the-discipline-of-near-necessity-substrate-construction) discipline against ECMA-262 + WHATWG, not derived from any existing engine's code.
+A JavaScript runtime targeting **the Node.js package ecosystem** across ECMA-262 language semantics and the Node/Web platform surface that real packages depend on (`node:*` builtins, `fetch`, `Buffer`, `URL`, `structuredClone`, …). Bun is the **empirical oracle** for both the namespace-shape probe (`legacy/host-rquickjs/tools/parity-measure.sh`, a 1026-package top-500 + top-100 basket) and the runtime-semantics probe (`scripts/diff-prod/`, a curated fixture set diffed byte-for-byte against bun's stdout). Bun's role is instrumental: it correctly implements the union of Node + Web APIs that production packages exercise, which makes it a reliable yardstick against which Cruftless's compatibility can be measured. The engine itself is independent — built under [Pin-Art](https://jaredfoy.com/resolve/doc/581-the-resume-vector) discipline against ECMA-262 + WHATWG, not derived from any existing engine's code.
 
 Two binaries:
 
@@ -35,6 +35,12 @@ The runtime is composed of five vertically-stacked resolver-instances, each a `s
 
 Each level's induced properties function as constraints on the level beneath it. The terminal property is preserved end-to-end only when each level respects the inherited constraint from above and emits a directive-free artifact to the level below.
 
+## About RESOLVE
+
+Cruftless is part of the **RESOLVE research program** — a long-running effort by [Jared Foy](https://jaredfoy.com) producing novel syntheses across AI-assisted philosophy of science, systems engineering, and computer science, with operational implications for how software is designed, derived, and implemented. The **RESOLVE corpus** is the program's primary artifact: a growing collection of numbered documents at [jaredfoy.com/resolve](https://jaredfoy.com/resolve/) that develop the program's concepts, architectural styles (SERVER, PRESTO, …), and disciplines (Pin-Art, Fielding Constraint Accumulation, …) in cross-referenced form.
+
+Each Cruftless substrate decision is dispatched against a specific corpus position and back-referenced in the round log. The result is a runtime whose architecture is legible as the operationalization of a research program, not as an isolated codebase.
+
 ## Corpus references
 
 The design is articulated across the RESOLVE corpus:
@@ -44,7 +50,7 @@ The design is articulated across the RESOLVE corpus:
 - [Doc 426 — PRESTO: An Architectural Style for Representation Construction](https://jaredfoy.com/resolve/doc/426-presto-an-architectural-style-for-representation-construction) — the construction-level constraint specification.
 - [Doc 719 — The Pipeline Pattern Across Subjects](https://jaredfoy.com/resolve/doc/719-the-pipeline-pattern-across-subjects-presto-and-the-javascript-engine-as-two-realizations-of-the-same-derivation) — the structural correspondence between this runtime and PRESTO.
 - [Doc 717 — The Apparatus Above the Engine Boundary](https://jaredfoy.com/resolve/doc/717-the-apparatus-above-the-engine-boundary-the-three-projections-lifted-to-engine-substrate-and-the-pure-abstraction-point) — the cut-rung framework that places each resolver-instance's boundary.
-- [Doc 581 — Pin-Art and the Discipline of Near-Necessity Substrate Construction](https://jaredfoy.com/resolve/doc/581-pin-art-the-resume-vector-and-the-discipline-of-near-necessity-substrate-construction) — the discipline by which substrate work proceeds.
+- [Doc 581 — Pin-Art and the Discipline of Near-Necessity Substrate Construction](https://jaredfoy.com/resolve/doc/581-the-resume-vector) — the discipline by which substrate work proceeds.
 - [Doc 725 — The Cluster-to-Walk Mode Transition](https://jaredfoy.com/resolve/doc/725-the-cluster-to-walk-mode-transition-soft-saturation-as-protocol-signal-in-substrate-introduction) — the walk-mode discipline for per-package fault chains.
 
 ## Apparatus
