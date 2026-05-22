@@ -3852,7 +3852,13 @@ impl Runtime {
     pub fn array_proto_concat_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let this = self.current_this();
         self.require_object_coercible(&this)?;
-        let out = self.alloc_object(crate::value::Object::new_array());
+        // ECMA-262 sec 23.1.3.1 step 2: O.constructor is consulted via
+        // ArraySpeciesCreate, which throws TypeError if the constructor
+        // is present but not a valid constructor. Pre-fix, concat
+        // allocated a plain Array, missing the spec's constructor
+        // validation entirely.
+        let out_v = self.array_species_create(&this, 0)?;
+        let out = match out_v { Value::Object(id) => id, _ => unreachable!() };
         let mut j = 0usize;
         let mut items: Vec<Value> = Vec::with_capacity(args.len() + 1);
         items.push(this);
@@ -5729,6 +5735,32 @@ impl Runtime {
         );
         if is_arr {
             let ctor = self.object_get(o_id, "constructor");
+            // Spec sec 23.1.3.1 step 7: if a constructor property is
+            // present and is neither undefined nor a valid constructor,
+            // throw TypeError. Pre-fix, cruftless fell through to a
+            // plain Array allocation for arr.constructor = 1 / null /
+            // 'string' / true.
+            match &ctor {
+                Value::Undefined => { /* spec step 6: ArrayCreate fallback */ }
+                Value::Object(cid) => {
+                    let is_fn = matches!(
+                        self.obj(*cid).internal_kind,
+                        crate::value::InternalKind::Function(_)
+                        | crate::value::InternalKind::Closure(_)
+                        | crate::value::InternalKind::BoundFunction(_)
+                    );
+                    if !is_fn {
+                        // Object that isn't a function: spec step 5
+                        // would Get(@@species). If undefined, fall through;
+                        // else if not a constructor, throw. Treat as
+                        // fall-through here (no @@species discovered).
+                    }
+                }
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Array constructor is not a valid constructor".into()));
+                }
+            }
             if let Value::Object(cid) = &ctor {
                 let is_fn = matches!(
                     self.obj(*cid).internal_kind,

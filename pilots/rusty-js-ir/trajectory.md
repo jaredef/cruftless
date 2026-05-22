@@ -1922,3 +1922,24 @@ Concretely: `new Map().set(0,'a')` then `for (const [k,v] of m)` yielded `["0","
 **Sample-wide measurement at rung-10 close**: 5,522 PASS / 1,683 FAIL / 384 SKIP = 76.6% (vs 73.9% baseline). Real cumulative +201 PASS, +2.7pp. Gap 22.6pp (started 25.3pp).
 
 **Tag**: `cluster-objlit-accessor-enum-and-rest-getter-11`.
+
+---
+
+## Rung-cluster-12 — ArraySpeciesCreate constructor validation + concat wiring (closed 2026-05-22)
+
+**Cluster** (per the test262-parity telos in seed §I.2):
+`built-ins/Array/prototype/concat/*` — 68 paths. Pre-rung (latest sample): 27 FAIL / 41 PASS.
+
+**Root causes** (two coordinated defects):
+1. **`array_species_create` missing constructor validation**: spec §23.1.3.1 step 7 requires throwing `TypeError` when the original array's constructor is present but is neither undefined nor a valid constructor (e.g. `arr.constructor = 1`, `null`, `'string'`, `true`). Cruftless fell through to a plain Array allocation in those cases.
+2. **`array_proto_concat_via` skipped ArraySpeciesCreate entirely**: it allocated a plain Array directly (`alloc_object(Object::new_array())`), bypassing both the subclass-aware species dispatch AND the constructor validation from (1).
+
+**Substrate fix**:
+1. In `array_species_create`, add a `match` on the constructor value: `Undefined` falls through to ArrayCreate; `Object` continues the existing function-or-fall-through path; **any other primitive type throws TypeError** with "Array constructor is not a valid constructor".
+2. In `array_proto_concat_via`, replace the direct `alloc_object(new_array())` with `self.array_species_create(&this, 0)?` so concat picks up the validation + subclass dispatch.
+
+**Post-rung result**: 26 FAIL / 42 PASS on the 68-path concat cluster.
+
+**Delta**: **+1 PASS** measured on the concat cluster (the test that covers all four non-object constructor variants — null, Number, String, Boolean — in one file). Broader reach: every Array.prototype.* method that calls ArraySpeciesCreate (map, filter, slice, splice, every — already calling it; concat now calling it for the first time) inherits the constructor validation; cascade unmeasured this rung.
+
+**Tag**: `cluster-arrayspecies-ctor-validate-and-concat-wire-12`. Many remaining concat FAILs involve @@species dispatch, @@isConcatSpreadable, Proxy/Reflect semantics — each its own rung.
