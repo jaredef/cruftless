@@ -2894,6 +2894,49 @@ impl Runtime {
             register_intrinsic_method(self, proto, "set",     2, |rt, args| crate::generated::map_prototype_set(rt, rt.current_this(), args));
             register_intrinsic_method(self, proto, "has",     1, |rt, args| crate::generated::map_prototype_has(rt, rt.current_this(), args));
             register_intrinsic_method(self, proto, "delete",  1, |rt, args| crate::generated::map_prototype_delete(rt, rt.current_this(), args));
+            // ECMA-262 sec 24.1.3.10 get Map.prototype.size: accessor on
+            // the prototype, not a data property on instances. Pre-fix
+            // cruftless stored a per-instance data 'size' that shadowed
+            // the (missing) accessor. Install the accessor here so
+            // Object.getOwnPropertyDescriptor(Map.prototype, 'size')
+            // returns the accessor descriptor with .get/.set per spec.
+            // The instance data property is preserved for compatibility
+            // with internal incrementers; instance lookup of m.size
+            // finds the own data property first, so the existing
+            // increment/decrement code keeps working unchanged.
+            if !is_weak_proto {
+                let size_getter = make_native("get size", |rt, _args| {
+                    let this = match rt.current_this() {
+                        Value::Object(id) => id,
+                        _ => return Err(RuntimeError::TypeError("Map.prototype.size: this is not a Map".into())),
+                    };
+                    // If the instance carries an own 'size' data property
+                    // (initialized by the Map constructor), return it.
+                    // Otherwise compute from __map_data storage.
+                    if let Some(d) = rt.obj(this).get_own("size") {
+                        return Ok(d.value.clone());
+                    }
+                    match rt.object_get(this, "__map_data") {
+                        Value::Object(storage) => {
+                            let n = rt.obj(storage).properties.len();
+                            Ok(Value::Number(n as f64))
+                        }
+                        _ => Err(RuntimeError::TypeError(
+                            "Map.prototype.size: this is not a Map (no __map_data)".into())),
+                    }
+                });
+                let size_getter_id = self.alloc_object(size_getter);
+                let size_desc = crate::value::PropertyDescriptor {
+                    value: Value::Undefined,
+                    writable: false, enumerable: false, configurable: true,
+                    getter: Some(Value::Object(size_getter_id)),
+                    setter: None,
+                };
+                self.obj_mut(proto).properties.insert(
+                    crate::value::PropertyKey::String("size".into()),
+                    size_desc,
+                );
+            }
             // EXT 81: per ECMA §24.3.3, WeakMap.prototype has only
             // {get, set, has, delete} — not clear / forEach / entries /
             // keys / values / @@iterator. The Map-only methods below are
@@ -3030,10 +3073,43 @@ impl Runtime {
         }
         for collection in &["Set", "WeakSet"] {
             let proto = self.alloc_object(Object::new_ordinary());
+            let is_weak_proto = *collection == "WeakSet";
             // §24.2.3 spec arities.
             register_intrinsic_method(self, proto, "add",     1, |rt, args| crate::generated::set_prototype_add(rt, rt.current_this(), args));
             register_intrinsic_method(self, proto, "has",     1, |rt, args| crate::generated::set_prototype_has(rt, rt.current_this(), args));
             register_intrinsic_method(self, proto, "delete",  1, |rt, args| crate::generated::set_prototype_delete(rt, rt.current_this(), args));
+            // ECMA-262 sec 24.2.3.10 get Set.prototype.size: accessor on
+            // the prototype, parallel to Map.prototype.size.
+            if !is_weak_proto {
+                let size_getter = make_native("get size", |rt, _args| {
+                    let this = match rt.current_this() {
+                        Value::Object(id) => id,
+                        _ => return Err(RuntimeError::TypeError("Set.prototype.size: this is not a Set".into())),
+                    };
+                    if let Some(d) = rt.obj(this).get_own("size") {
+                        return Ok(d.value.clone());
+                    }
+                    match rt.object_get(this, "__set_data") {
+                        Value::Object(storage) => {
+                            let n = rt.obj(storage).properties.len();
+                            Ok(Value::Number(n as f64))
+                        }
+                        _ => Err(RuntimeError::TypeError(
+                            "Set.prototype.size: this is not a Set (no __set_data)".into())),
+                    }
+                });
+                let size_getter_id = self.alloc_object(size_getter);
+                let size_desc = crate::value::PropertyDescriptor {
+                    value: Value::Undefined,
+                    writable: false, enumerable: false, configurable: true,
+                    getter: Some(Value::Object(size_getter_id)),
+                    setter: None,
+                };
+                self.obj_mut(proto).properties.insert(
+                    crate::value::PropertyKey::String("size".into()),
+                    size_desc,
+                );
+            }
             register_intrinsic_method(self, proto, "clear",   0, |rt, args| crate::generated::set_prototype_clear(rt, rt.current_this(), args));
             register_intrinsic_method(self, proto, "forEach", 1, |rt, args| crate::generated::set_prototype_for_each(rt, rt.current_this(), args));
             // Tier-Ω.5.rrr: @@iterator returns a values-iterator. Per

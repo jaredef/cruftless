@@ -2144,3 +2144,26 @@ pub fn object_set(&mut self, id: ObjectRef, key: String, value: Value) {
 - Telos progress: ~24% of the way
 
 **Tag**: `cluster-lift-objectset-unify-18`. Next lift candidates remaining: IteratorClose (§7.4.6), full ValidateAndApplyPropertyDescriptor (§10.1.6.3) returning Result<bool,Err>.
+
+---
+
+## Rung-cluster-19 — Map.prototype.size and Set.prototype.size as accessor descriptors (closed 2026-05-22)
+
+**Cluster**: `built-ins/Map/prototype/size/*` and `built-ins/Set/prototype/size/*` — descriptor-shape tests verifying that `size` is an accessor (getter on prototype) per ECMA-262 §24.1.3.10 / §24.2.3.10.
+
+**Root cause**: cruftless tracked `size` as a per-instance data property only — the Map / Set constructors did `rt.object_set(id, "size", Number(0))` and various mutators (set, delete, clear) updated it. The spec defines `Map.prototype.size` and `Set.prototype.size` as accessor descriptors on the prototype, not data properties on instances. So `Object.getOwnPropertyDescriptor(Map.prototype, 'size')` returned undefined; downstream test code reading `desc.get` hit "Cannot read property 'get' of undefined".
+
+**Substrate fix**: install `size` as an accessor descriptor on Map.prototype and Set.prototype. The getter:
+- Prefers the instance's own `size` data property if present (preserves the per-instance cache that 8 internal incrementers maintain).
+- Falls back to counting `__map_data` / `__set_data` storage properties.
+
+This is the dual-source pattern: the prototype accessor is the spec-correct surface; the instance data property is an implementation detail. Instance reads of `m.size` hit the own data property first (faster + same value); only Map.prototype.size descriptor inspection sees the accessor.
+
+**Sample-wide post-rung**: 5,592 PASS / 1,611 FAIL / 384 SKIP = **77.6%** runnable pass. +5 PASS.
+
+**Cumulative through rung-19**:
+- +271 PASS measured from 5,321 baseline = +3.8 pp
+- Cruftless 73.9% → 77.6%; gap 25.3 pp → 21.6 pp
+- Telos progress: ~24% of the way
+
+**Tag**: `cluster-collection-size-accessor-19`. The 8 internal incrementers can be migrated to a `bump_collection_size(rt, this, delta)` helper in a future structural cleanup; that's a maintenance-debt rung not a yield rung.
