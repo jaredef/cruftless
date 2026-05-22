@@ -6,7 +6,7 @@ A hand-derived JavaScript runtime in Rust, targeting **the Node.js package ecosy
 
 The repository was originally formulated as an AI-assisted source-translation apparatus reading Bun's Zig source for a Rust port — hence the working directory name `rusty-bun`, and the choice of Bun as the empirical oracle. The translation focus dissolved as the resolver-instance discipline crystallized; what remained is Cruftless: an independent runtime that uses Bun for measurement, not for inheritance.
 
-The corpus articulation is [Doc 729 — Cruftless](https://jaredfoy.com/resolve/doc/729-cruftless-a-primary-articulation-of-the-resolver-instance-pattern-as-the-comprehensive-design-toward-which-rusty-bun-morphs).
+[Read more here](https://jaredfoy.com/resolve/doc/729-cruftless-a-primary-articulation-of-the-resolver-instance-pattern-as-the-comprehensive-design-toward-which-rusty-bun-morphs).
 
 ## What this is
 
