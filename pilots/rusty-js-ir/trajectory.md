@@ -2066,3 +2066,25 @@ The `read_property` (vs `object_get`) at step 5 is what enables the subclass cas
 - Telos progress: ~21% of the way to ≤10 pp
 
 **Tag**: `cluster-lift-array-species-15`. Next lift candidates: IteratorClose (§7.4.6, largest queued, ~70 tests), ValidateAndApplyPropertyDescriptor (§10.1.6.3).
+
+---
+
+## Rung-cluster-16 — Reflect.defineProperty return value + validation-failure capture (closed 2026-05-22)
+
+**Cluster**: `built-ins/Reflect/defineProperty/*` and downstream Reflect.* consumers.
+
+**Root cause** (two-part): Reflect.defineProperty per spec sec 28.1.3 dispatches to OrdinaryDefineOwnProperty (NOT DefinePropertyOrThrow) and returns the Boolean result; validation failures return false instead of throwing. cruftless's Reflect.defineProperty was a thin pass-through to `object_define_property` which returned the target object (not Boolean) AND propagated validation TypeErrors instead of catching them.
+
+  Reflect.defineProperty(o, 'x', {value:1})  // returned `o`, not `true`
+  Reflect.defineProperty(o_with_nonconfig, 'y', {...})  // threw, should return false
+
+**Fix**: shim Reflect.defineProperty around `object_define_property`:
+- Successful Ok(_) → Ok(Value::Boolean(true))
+- Err(TypeError(msg)) matching validation patterns ("Cannot redefine", "Cannot add property", "not extensible") → Ok(Value::Boolean(false))
+- Other Err propagates (abrupt completions from getter/setter side effects)
+
+Cleaner architectural form (queued for a proper lift): factor out `OrdinaryDefineOwnProperty -> Result<bool, RuntimeError>` returning bool for spec-validation outcomes and Err only for abrupt completions; Object.defineProperty maps Ok(false) to TypeError throw; Reflect.defineProperty returns Boolean directly. The current shim is the tractable middle step; the full lift is queued as a follow-on.
+
+**Result on a 1,916-path Reflect+defineProperty+defineProperties sweep**: 180 FAIL / 1,736 PASS. Sample-wide: 5,557 PASS / 1,646 FAIL = 77.1% (FAIL count -2 from prior — the sample doesn't include Reflect/* directly so most of the rung's effect is invisible to the sample baseline).
+
+**Tag**: `cluster-reflect-defineproperty-return-bool-16`. Next: IteratorClose lift remains the largest queued candidate (~70 tests).

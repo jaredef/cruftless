@@ -3934,6 +3934,15 @@ impl Runtime {
             crate::generated::reflect_get_prototype_of(rt, Value::Undefined, args)
         });
         register_intrinsic_method(self, r, "defineProperty", 3, |rt, args| {
+            // Spec sec 28.1.3 Reflect.defineProperty: dispatch to
+            // OrdinaryDefineOwnProperty (NOT DefinePropertyOrThrow), then
+            // return the Boolean result. Validation failures return false;
+            // only abrupt completions from getter/setter side effects
+            // propagate. The shim here invokes Object.defineProperty's
+            // helper (which throws on validation failure) and catches the
+            // validation-shaped TypeErrors back into Boolean(false).
+            // Abrupt completions from descriptor getters / accessor calls
+            // continue to propagate.
             if let Some(Value::Object(id)) = args.first() {
                 if let Some((tgt, handler)) = rt.proxy_target_handler_checked(*id)? {
                     let trap = rt.object_get(handler, "defineProperty");
@@ -3947,10 +3956,22 @@ impl Runtime {
                     }
                     let mut new_args = args.to_vec();
                     new_args[0] = Value::Object(tgt);
-                    return crate::generated::object_define_property(rt, Value::Undefined, &new_args);
+                    return match crate::generated::object_define_property(rt, Value::Undefined, &new_args) {
+                        Ok(_) => Ok(Value::Boolean(true)),
+                        Err(RuntimeError::TypeError(msg)) if msg.contains("Cannot redefine")
+                            || msg.contains("Cannot add property")
+                            || msg.contains("not extensible") => Ok(Value::Boolean(false)),
+                        Err(e) => Err(e),
+                    };
                 }
             }
-            crate::generated::object_define_property(rt, Value::Undefined, args)
+            match crate::generated::object_define_property(rt, Value::Undefined, args) {
+                Ok(_) => Ok(Value::Boolean(true)),
+                Err(RuntimeError::TypeError(msg)) if msg.contains("Cannot redefine")
+                    || msg.contains("Cannot add property")
+                    || msg.contains("not extensible") => Ok(Value::Boolean(false)),
+                Err(e) => Err(e),
+            }
         });
         register_intrinsic_method(self, r, "getOwnPropertyDescriptor", 2, |rt, args| {
             if let Some(Value::Object(id)) = args.first() {
