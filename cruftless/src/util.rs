@@ -57,6 +57,70 @@ pub fn install(rt: &mut Runtime) {
         "custom".into(),
         Value::Symbol(Rc::new("@@sym:nodejs.util.inspect.custom".to_string())),
     );
+    // Node's util.inspect.colors — keys are color names, values are
+    // [open, close] ANSI-code pairs. listr2 / lint-staged enumerate the
+    // keys via Object.keys to build a color palette; the values aren't
+    // read here, but other consumers may iterate them.
+    let colors_obj = crate::register::new_object(rt);
+    let palette: &[(&str, i32, i32)] = &[
+        ("reset", 0, 0),
+        ("bold", 1, 22),
+        ("dim", 2, 22),
+        ("italic", 3, 23),
+        ("underline", 4, 24),
+        ("blink", 5, 25),
+        ("inverse", 7, 27),
+        ("hidden", 8, 28),
+        ("strikethrough", 9, 29),
+        ("doubleunderline", 21, 24),
+        ("overlined", 53, 55),
+        ("framed", 51, 54),
+        ("encircled", 52, 54),
+        ("black", 30, 39),
+        ("red", 31, 39),
+        ("green", 32, 39),
+        ("yellow", 33, 39),
+        ("blue", 34, 39),
+        ("magenta", 35, 39),
+        ("cyan", 36, 39),
+        ("white", 37, 39),
+        ("gray", 90, 39),
+        ("grey", 90, 39),
+        ("blackBright", 90, 39),
+        ("redBright", 91, 39),
+        ("greenBright", 92, 39),
+        ("yellowBright", 93, 39),
+        ("blueBright", 94, 39),
+        ("magentaBright", 95, 39),
+        ("cyanBright", 96, 39),
+        ("whiteBright", 97, 39),
+        ("bgBlack", 40, 49),
+        ("bgRed", 41, 49),
+        ("bgGreen", 42, 49),
+        ("bgYellow", 43, 49),
+        ("bgBlue", 44, 49),
+        ("bgMagenta", 45, 49),
+        ("bgCyan", 46, 49),
+        ("bgWhite", 47, 49),
+        ("bgGray", 100, 49),
+        ("bgGrey", 100, 49),
+        ("bgBlackBright", 100, 49),
+        ("bgRedBright", 101, 49),
+        ("bgGreenBright", 102, 49),
+        ("bgYellowBright", 103, 49),
+        ("bgBlueBright", 104, 49),
+        ("bgMagentaBright", 105, 49),
+        ("bgCyanBright", 106, 49),
+        ("bgWhiteBright", 107, 49),
+    ];
+    for (name, open, close) in palette {
+        let pair_obj = crate::register::new_object(rt);
+        rt.object_set(pair_obj, "0".into(), Value::Number(*open as f64));
+        rt.object_set(pair_obj, "1".into(), Value::Number(*close as f64));
+        rt.object_set(pair_obj, "length".into(), Value::Number(2.0));
+        rt.object_set(colors_obj, name.to_string(), Value::Object(pair_obj));
+    }
+    rt.object_set(inspect_fn, "colors".into(), Value::Object(colors_obj));
     rt.object_set(util, "inspect".into(), Value::Object(inspect_fn));
 
     // format(fmt, ...args) → printf-style substitution with %s/%d/%j.
