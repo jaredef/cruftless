@@ -1943,3 +1943,28 @@ Concretely: `new Map().set(0,'a')` then `for (const [k,v] of m)` yielded `["0","
 **Delta**: **+1 PASS** measured on the concat cluster (the test that covers all four non-object constructor variants — null, Number, String, Boolean — in one file). Broader reach: every Array.prototype.* method that calls ArraySpeciesCreate (map, filter, slice, splice, every — already calling it; concat now calling it for the first time) inherits the constructor validation; cascade unmeasured this rung.
 
 **Tag**: `cluster-arrayspecies-ctor-validate-and-concat-wire-12`. Many remaining concat FAILs involve @@species dispatch, @@isConcatSpreadable, Proxy/Reflect semantics — each its own rung.
+
+---
+
+## Fold (2026-05-22, post rung-12)
+
+Twelve cluster rungs landed in one session. Detailed state lives in seed.md §I.3 and §I.4.
+
+Headline:
+- Measured at rung-10 close: **5,522 / 1,683 / 384 = 76.6% runnable pass** (was 73.9% baseline)
+- Real cumulative through rung-10: **+201 PASS, +2.7 pp**
+- Post-rung-12 estimate (cluster-11 +7 measured + cluster-12 +1 measured): ~+209 measured
+- Gap against bun (99.2%): **22.6 pp measured / ~22.2 pp estimated** (telos: ≤10 pp)
+- Telos progress: ~20% of the way
+
+Methodology data points recorded (per seed §I.4):
+1. Small spec-step-anchored defect rungs don't require the IR encoding detour — the spec-step-anchored comment discipline alone suffices for linting (corroborated rung-by-rung).
+2. Broad-cascade helpers (ToLength, ArraySpeciesCreate, __destr_object_rest, install_accessor, regexp_exec lastIndex coercion) deliver more flips per rung than method-body-specific fixes. Half the twelve rungs touched a shared helper.
+3. Each rung's measurement undershoots cascade by ~10-20% because most fixes propagate into unmeasured sibling clusters (visible at sample-wide re-measurements: estimated +243 → real +201; the +42 gap is reabsorbed elsewhere or never realized).
+
+Next-rung candidates ranked by expected yield per seed §I.4:
+1. TDZ enforcement — ~150+ test262 entries blocked across language clusters
+2. Iterator-close protocol — ~100+ in dstr alone
+3. @@species full dispatch — ~30 across Array methods
+4. DataView instance methods — entire absent surface (~60 entries)
+5. BigInt JSON serialization — JSON.stringify sub-cluster

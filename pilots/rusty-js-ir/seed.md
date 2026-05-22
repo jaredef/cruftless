@@ -39,6 +39,57 @@ Each cluster opens a rung in `trajectory.md` with:
 - the post-rung FAIL count
 - the gap delta against the parity-target telos
 
+### I.3 State at fold (2026-05-22, post rung-12)
+
+Twelve cluster rungs landed in a single session. Cumulative reading at fold:
+
+| Measurement | Pre rungs (baseline) | Post rung-10 (measured) | Post rung-12 (estimated) |
+|---|---:|---:|---:|
+| PASS | 5,321 | 5,522 | ~5,548 |
+| FAIL | 1,882 | 1,683 | ~1,657 |
+| Runnable pass rate | **73.9%** | **76.6%** | **~77.0%** |
+| Gap vs Bun (99.2%) | **25.3 pp** | **22.6 pp** | **~22.2 pp** |
+| Telos progress (toward ≤10 pp) | 0% | 18% | ~20% |
+
+The 76.6% / 22.6 pp numbers are measured; the post rung-12 numbers add cluster-11 (+7 measured) and cluster-12 (+1 measured directly + broader cascade unmeasured).
+
+**Rung index by tag** (each rung is a coherent spec-step-anchored substrate fix, not an IR encoding — methodology note from rung-1: small spec-step defect rungs don't require the full IR detour to be linted, only the spec-step-anchored comment discipline; large-algorithm rungs will):
+
+| # | Tag | Surface | Direct flips |
+|---|---|---|---:|
+| 1 | `cluster-Number-numeric-format-1` | Number.prototype.{toFixed,toExponential,toPrecision} NaN/Infinity ordering + −0 + ≥1e21 fallback + BigInt TypeError | +10 |
+| 2 | `cluster-dstr-for-loop-head-2` | for-of/in cover-grammar Expr→BindingPattern conversion | +72 |
+| 3 | `cluster-defineProperty-key-coercion-3` | Object.defineProperty Object-typed P → ToPrimitive("string") | +11 |
+| 4 | `cluster-string-split-regex-empty-4` | regex split spec-compliant empty-match skipping | +8 |
+| 5 | `cluster-toLength-infinity-5` | ToLength clamps Infinity to max-safe (broad Array.* cascade) | +2 measured |
+| 6 | `cluster-json-stringify-array-replacer-6` | JSON.stringify array-replacer PropertyList | +3 |
+| 7 | `cluster-regexp-exec-lastindex-7` | RegExp.prototype.exec ToLength-coerces lastIndex | +9 |
+| 8 | `cluster-namedeval-dstr-default-8` | NamedEvaluation through destructuring defaults (5 expr forms) | +65 |
+| 9 | `cluster-map-iterator-key-decode-9` | Map.prototype[@@iterator] consults __map_orig_keys | +48 |
+| 10 | `cluster-defineProperty-generic-preserve-10` | defineProperty generic descriptor preserves type | +15 |
+| 11 | `cluster-objlit-accessor-enum-and-rest-getter-11` | Object-literal accessor enumerable:true + rest-spread getter dispatch | +7 |
+| 12 | `cluster-arrayspecies-ctor-validate-and-concat-wire-12` | ArraySpeciesCreate constructor validation + concat wired through ASC | +1 measured |
+
+Most rungs cascade beyond their measurement target — the +201 measured at rung-10 close vs +250 estimated reflects unmeasured cascade.
+
+### I.4 Cluster selection heuristic (operational)
+
+Empirical pattern after twelve rungs:
+
+1. **Run latest sample** → bucket FAILs by directory; pick the directory with the largest concentrated single-defect signature (not the largest absolute FAIL count if the FAILs decompose into 5+ unrelated sub-defects).
+2. **Concentrated single defect** = same reason string appears ≥4 times AND the reason names a specific spec invariant (not "Expected a TypeError" which is too generic).
+3. **Substrate-step anchored fix** = the fix comment cites a numbered ECMA-262 step. If a defect can't be anchored, defer.
+4. **Prefer broad-cascade fixes**: a fix in a helper (ToLength, ArraySpeciesCreate, __destr_object_rest, install_accessor) costs the same to write as a fix in a single method's body but moves more tests.
+
+Highest-yield deferred clusters (substantive substrate, queued for their own rungs):
+- TDZ enforcement (76 ReferenceError tests in dstr alone + unknown elsewhere)
+- Iterator-close protocol on early break/throw (~70 Test262Error-not-thrown in dstr + scattered elsewhere)
+- @@species full dispatch in ArraySpeciesCreate (many concat/map/filter Proxy/Reflect tests)
+- TypedArraySpeciesCreate parallel work
+- DataView instance methods (entire surface; same item as diff-prod's deferred backlog)
+- BigInt JSON serialization
+- Unpaired-surrogate string escape in JSON.stringify
+
 ## II. Apparatus
 
 The IR is **resolver-instance #0** per IR-DESIGN.md §0, decomposed into three sub-stages above Doc 729 §IV's resolver-instance #1 (Cargo):
