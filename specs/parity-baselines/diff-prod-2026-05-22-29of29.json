@@ -1,0 +1,183 @@
+{
+  "fixtures": {
+    "arrow-functions": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "async-promise": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "buffer-encode": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "class-inheritance": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "closures-scopes": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "date-ops": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "destructuring": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "encoding": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "error-throws": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "error-types": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "fetch-headers": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "generators": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "iteration-protocol": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "json-roundtrip": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "map-set-ops": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "node-crypto": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "node-events": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "node-fs": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "node-stream": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "number-math": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "prototype-chain": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "proxy-basics": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "regexp-ops": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "string-ops": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "structured-clone": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "template-literals": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "typed-arrays": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "url-api": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "weakmap-weakset": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    }
+  },
+  "totals": {
+    "pass": 29,
+    "fail": 0,
+    "total": 29
+  }
+}

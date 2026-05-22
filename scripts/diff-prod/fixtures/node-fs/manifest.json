@@ -1,0 +1,8 @@
+{
+  "name": "node-fs",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "node:fs sync surface — readFileSync, writeFileSync, existsSync, statSync, readdirSync."
+}

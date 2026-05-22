@@ -1,0 +1,8 @@
+{
+  "name": "node-crypto",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "node:crypto basic surface — createHash, randomBytes shape, randomUUID format."
+}

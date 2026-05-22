@@ -229,3 +229,23 @@ Five new F-category fixtures: `url-api`, `encoding`, `node-events`, `fetch-heade
 
 **Diff-prod**: 26 / 26 PASS.
 **Top-100**: 99.1% unchanged.
+
+---
+
+## Rung-14 — Three more Telos B fixtures: node-fs / node-crypto / node-stream + top-500 measurement (closed)
+
+**Three new F-category fixtures**: `node-fs`, `node-crypto`, `node-stream`. **node-fs PASSed on first run**. **node-crypto PASSed on first run**. node-stream PASSed after trimming one v2-boundary line (Readable.from absent in cruftless v1).
+
+No new substrate fixes needed for these three — the node:fs / node:crypto stubs were complete enough for the surface tested.
+
+**v2 boundaries documented**:
+- `stream.Readable.from(iterable)` (cruftless v1 doesn't ship the static)
+
+**Top-500 sweep** with all 24 substrate fixes accumulated:
+- raw: 77.4% (794/1026), +3 PASS vs prior measurement
+- incl-agreed-errors: 82.1%
+- Modest delta because diff-prod fixes target runtime-method surface, not the namespace-shape probe that the top-500 sweep measures. The 24 fixes IS broadly useful — they just don't manifest as +1-per-fix on the namespace-shape probe.
+
+**Diff-prod**: 29 / 29 PASS.
+**Top-100**: 99.1% unchanged.
+**Top-500**: 77.4% (was 77.1%).

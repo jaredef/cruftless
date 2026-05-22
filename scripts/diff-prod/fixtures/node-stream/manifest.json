@@ -1,0 +1,8 @@
+{
+  "name": "node-stream",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "node:stream Readable + Writable basic shape. Just structural checks (constructor exists, instances have expected methods); no actual data flow."
+}
