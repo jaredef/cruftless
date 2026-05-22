@@ -1,0 +1,9 @@
+{
+  "name": "error-throws",
+  "categories": ["F"],
+  "deps": [],
+  "env": {},
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Canonical error-throwing operations. Asserts (constructor, message-prefix) equivalence by capturing each throw into a structured record (so the F-category's stdout comparator handles it; the E category is for fixtures whose top-level run throws)."
+}

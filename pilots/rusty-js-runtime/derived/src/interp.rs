@@ -383,6 +383,15 @@ impl Runtime {
     pub fn op_add_rt(&mut self, l: &Value, r: &Value) -> Result<Value, RuntimeError> {
         let lp = self.to_primitive(l, "default")?;
         let rp = self.to_primitive(r, "default")?;
+        // ECMA-262 §13.15.3 step 8 + §7.1.17 ToString: if either operand
+        // primitive is a Symbol and the other is a String (forcing string-
+        // concat path), throw TypeError. Without this, `"" + Symbol("s")`
+        // silently stringified the Symbol's description.
+        let either_string = matches!(lp, Value::String(_)) || matches!(rp, Value::String(_));
+        if either_string && (matches!(lp, Value::Symbol(_)) || matches!(rp, Value::Symbol(_))) {
+            return Err(RuntimeError::TypeError(
+                "Cannot convert a Symbol value to a string".into()));
+        }
         Ok(crate::abstract_ops::op_add(&lp, &rp))
     }
 
@@ -875,6 +884,17 @@ impl Runtime {
         };
         if n_n.is_nan() || n_n < 0.0 || n_n == f64::INFINITY {
             return Err(RuntimeError::RangeError("Invalid count value".into()));
+        }
+        // ECMA §22.1.3.16 step 6: if result length exceeds 2^53-1, throw
+        // RangeError. cruftless previously trusted the count blindly,
+        // which let `"x".repeat(Number.MAX_SAFE_INTEGER)` attempt a 9PB
+        // allocation and SIGABRT the process. Guard before computing the
+        // product; tighten the practical cap to 512 MiB so an accidental
+        // huge count throws cleanly rather than triggering the OS OOM.
+        let total_bytes = (s.len() as f64) * n_n;
+        const PRACTICAL_CAP: f64 = (512u64 << 20) as f64;  // 512 MiB
+        if total_bytes >= 9007199254740992.0 || total_bytes > PRACTICAL_CAP {
+            return Err(RuntimeError::RangeError("Invalid string length".into()));
         }
         Ok(Value::String(std::rc::Rc::new(s.repeat(n_n as usize))))
     }

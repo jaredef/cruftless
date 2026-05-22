@@ -1,0 +1,45 @@
+{
+  "fixtures": {
+    "async-promise": {
+      "overall": "FAIL",
+      "categories": {
+        "F": "FAIL"
+      }
+    },
+    "buffer-encode": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "error-throws": {
+      "overall": "FAIL",
+      "categories": {
+        "F": "FAIL"
+      }
+    },
+    "json-roundtrip": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    },
+    "map-set-ops": {
+      "overall": "FAIL",
+      "categories": {
+        "F": "FAIL"
+      }
+    },
+    "string-ops": {
+      "overall": "PASS",
+      "categories": {
+        "F": "PASS"
+      }
+    }
+  },
+  "totals": {
+    "pass": 3,
+    "fail": 3,
+    "total": 6
+  }
+}

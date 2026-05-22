@@ -1,0 +1,9 @@
+{
+  "name": "async-promise",
+  "categories": ["F"],
+  "deps": [],
+  "env": {},
+  "timeout-ms": 10000,
+  "gate2": true,
+  "description": "Async/await + Promise.all/allSettled/race/any. Tests microtask ordering + settled-result shape."
+}

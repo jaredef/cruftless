@@ -1838,6 +1838,15 @@ impl Runtime {
             };
             if args.len() == 1 {
                 if let Value::Number(n) = &args[0] {
+                    // ECMA-262 §22.1.1.2 step 5: if argument is a Number
+                    // and ToUint32(argument) != argument (or < 0 or
+                    // non-integer or ≥ 2^32), throw RangeError. Without
+                    // this, `new Array(-1)` silently constructed an array
+                    // of length 0 (lossy usize cast) instead of throwing.
+                    if !n.is_finite() || *n < 0.0 || *n > 4294967295.0 || n.fract() != 0.0 {
+                        return Err(RuntimeError::RangeError(
+                            "Invalid array length".into()));
+                    }
                     let len = *n as usize;
                     rt.object_set(id, "length".into(), Value::Number(len as f64));
                     let _ = arr_proto_ref;
@@ -2823,14 +2832,31 @@ impl Runtime {
                 // is deferred — array-shape covers the dense majority.
                 if let Some(init) = args.first().cloned() {
                     if let Value::Object(arr_id) = init {
-                        let len = rt.array_length(arr_id);
-                        for i in 0..len {
-                            let entry = rt.object_get(arr_id, &i.to_string());
-                            if let Value::Object(eid) = entry {
-                                let k = rt.object_get(eid, "0");
-                                let v = rt.object_get(eid, "1");
-                                let key_s = abstract_ops::to_string(&k).as_str().to_string();
-                                rt.object_set(storage, key_s, v);
+                        // `new Map(otherMap)` — if the arg is itself a Map
+                        // instance, iterate its __map_data storage rather
+                        // than treating it as a length-keyed array (which
+                        // returns zero entries since Map has no length).
+                        let src_storage = match rt.object_get(arr_id, "__map_data") {
+                            Value::Object(sid) => Some(sid),
+                            _ => None,
+                        };
+                        if let Some(sid) = src_storage {
+                            let pairs: Vec<(String, Value)> = rt.obj(sid).properties.iter()
+                                .map(|(k, d)| (k.to_string_content(), d.value.clone()))
+                                .collect();
+                            for (k, v) in pairs {
+                                rt.object_set(storage, k, v);
+                            }
+                        } else {
+                            let len = rt.array_length(arr_id);
+                            for i in 0..len {
+                                let entry = rt.object_get(arr_id, &i.to_string());
+                                if let Value::Object(eid) = entry {
+                                    let k = rt.object_get(eid, "0");
+                                    let v = rt.object_get(eid, "1");
+                                    let key_s = abstract_ops::to_string(&k).as_str().to_string();
+                                    rt.object_set(storage, key_s, v);
+                                }
                             }
                         }
                         let cnt = rt.obj(storage).properties.len() as f64;
