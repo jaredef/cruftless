@@ -1,5 +1,7 @@
 # rusty-tls — Resume Vector / Seed
 
+**Locale tag**: `L.tls` (per [Doc 737](../../../corpus-master/corpus/737-the-locale-as-coordinate-nested-seed-trajectory-pairs-as-pin-art-substrate-positions.md))
+
 **Workstream**: the TLS 1.3 substrate of the Cruftless engine, structured per Doc 731 R1–R8 shape (one-tier, alphabet-bounded) and gated by [Doc 733](../../../corpus-master/corpus/733-fractal-seeds-and-trajectories-recurrent-resume-vector-pairs-across-substrate-depth-as-the-operating-conditions-layer-for-pin-art-at-engagement-scale.md) (the fractal-pair discipline applied to a previously pair-less pilot).
 **Author**: 2026-05-21 session. Retroactively founded after PM-EXT 4 surfaced the engagement-internal-TLS CDN-incompatibility gap. The prior substrate-introduction phase (Π1.4.a through Π1.4.i) ran without an explicit pair; the workstream's existing state is reconstructed in trajectory.md's "Phase Π1.4 — prior substrate" entry.
 **Parent**: cruftless engagement (`/home/jaredef/rusty-bun`).

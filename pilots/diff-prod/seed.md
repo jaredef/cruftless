@@ -1,5 +1,7 @@
 # diff-prod — Resume Vector / Seed
 
+**Locale tag**: `L.diff-prod` (per [Doc 737](../../../corpus-master/corpus/737-the-locale-as-coordinate-nested-seed-trajectory-pairs-as-pin-art-substrate-positions.md))
+
 **Status as of 2026-05-22**: **FOUNDED**. Six fixtures, three categories represented (L via parity-measure, F directly, E sketched). Nine substrate fixes landed in the first session against six fixtures.
 
 **Workstream**: differential prod-test methodology + scaffolding. Extends the load-and-shape parity probe from "namespace surface" to "execution semantics." The same Doc 730 §XVI bidirectional-engine-diff instrument applies; the input set widens and the comparator deepens.

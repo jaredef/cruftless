@@ -1,0 +1,95 @@
+{
+  "generated_by": "scripts/locales/discover.sh",
+  "doc_reference": "Doc 737 (The Locale as Coordinate)",
+  "locale_root": "/home/jaredef/rusty-bun/pilots",
+  "totals": {
+    "locales": 9,
+    "top_level": 8,
+    "nested": 1,
+    "warnings": 0
+  },
+  "locales": [
+    {
+      "coord": "diff-prod",
+      "tag": "L.diff-prod",
+      "parent": null,
+      "scope": "diff-prod",
+      "depth": 1,
+      "rung_count": 7,
+      "status": "**FOUNDED**. Six fixtures, three categories represented (L via parity-measure, F directly, E sketched). Nine substrate fixes landed in the first session against six fixtures."
+    },
+    {
+      "coord": "rusty-js-caps",
+      "tag": "L.rusty-js-caps",
+      "parent": null,
+      "scope": "rusty-js-caps",
+      "depth": 1,
+      "rung_count": 0,
+      "status": "**PILOT \u03b1 FIRST-CUT CLOSED**. The capability-passing runtime substrate (Move 1) is operational. 9/9 synthetic-adversary probes refused under `--sealed`. Doc 736 \u00a7IV impossibility claim mechanically realized for the probe-covered surface. ~835 LOC across rusty-js-runtime + host-v2. PM-EXT 11+12 regression GREEN at every round. See \u00a7VIII below for the closure summary."
+    },
+    {
+      "coord": "rusty-js-esm",
+      "tag": "L.rusty-js-esm",
+      "parent": null,
+      "scope": "rusty-js-esm",
+      "depth": 1,
+      "rung_count": 7,
+      "status": "**RUNG-6 CLOSED** + **deviation-pipeline operational**. Parity 94.9% \u2192 **95.7% (114/119)** across the session. Three substrate landings committed; one Doc 730 \u00a7XII\u2013\u00a7XVII deviation-resolution pipeline built and executed end-to-end for arktype."
+    },
+    {
+      "coord": "rusty-js-esm/deviations/arktype",
+      "tag": "L.rusty-js-esm.deviations.arktype",
+      "parent": "L.rusty-js-esm.deviations",
+      "scope": "arktype",
+      "depth": 3,
+      "rung_count": 0,
+      "status": "**\u00a7XVI iter 2 LANDED** (ArraySpeciesCreate honors O.constructor, commit 533443e6). Original `rawIn-on-Array` crash signature gone; \u00a7XVII iter 3 queued for the downstream `generic.js:56 paramDefs of undefined` gap."
+    },
+    {
+      "coord": "rusty-js-ir",
+      "tag": "L.rusty-js-ir",
+      "parent": null,
+      "scope": "rusty-js-ir",
+      "depth": 1,
+      "rung_count": 0,
+      "status": null
+    },
+    {
+      "coord": "rusty-js-jit",
+      "tag": "L.rusty-js-jit",
+      "parent": null,
+      "scope": "rusty-js-jit",
+      "depth": 1,
+      "rung_count": 0,
+      "status": "**DEOPT CHAPTER CLOSED + IC INFRASTRUCTURE COMPLETE (without shapes)**. JIT-EXT 10-24 landed in one session \u2014 arithmetic deopt machinery, ICShapeMismatch demonstrator, full GetPropOnObject lowering with real runtime helper, mixed-regime dispatcher, IC chain success+failure paths proven end-to-end. ~1.2k LOC across pilots/rusty-js-jit + pilots/rusty-js-runtime + pilots/rusty-js-bytecode + host-v2. PM-EXT 11+12 regression GREEN every round. See \u00a7VIII below for the closure summary."
+    },
+    {
+      "coord": "rusty-js-pm",
+      "tag": "L.rusty-js-pm",
+      "parent": null,
+      "scope": "rusty-js-pm",
+      "depth": 1,
+      "rung_count": 0,
+      "status": null
+    },
+    {
+      "coord": "tls",
+      "tag": "L.tls",
+      "parent": null,
+      "scope": "tls",
+      "depth": 1,
+      "rung_count": 0,
+      "status": null
+    },
+    {
+      "coord": "web-crypto",
+      "tag": "L.web-crypto",
+      "parent": null,
+      "scope": "web-crypto",
+      "depth": 1,
+      "rung_count": 0,
+      "status": null
+    }
+  ],
+  "warnings": []
+}

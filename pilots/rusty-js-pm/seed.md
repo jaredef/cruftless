@@ -1,5 +1,7 @@
 # rusty-js-pm — Resume Vector / Seed
 
+**Locale tag**: `L.rusty-js-pm` (per [Doc 737](../../../corpus-master/corpus/737-the-locale-as-coordinate-nested-seed-trajectory-pairs-as-pin-art-substrate-positions.md))
+
 **Workstream**: the package-manager tier of the Cruftless stack, structured per Doc 732 §VI (PM-R1 specifier resolver, PM-R2 fetcher/extractor, PM-R3 linker) and Doc 730 §III–§VII (vertical-recurrence lowering-compiler shape).
 **Author**: 2026-05-21 session, founded immediately after JIT-EXT 9.
 **Parent**: cruftless engagement (`/home/jaredef/rusty-bun`).

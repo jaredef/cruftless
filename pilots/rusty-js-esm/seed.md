@@ -1,5 +1,7 @@
 # rusty-js-esm — Resume Vector / Seed
 
+**Locale tag**: `L.rusty-js-esm` (per [Doc 737](../../../corpus-master/corpus/737-the-locale-as-coordinate-nested-seed-trajectory-pairs-as-pin-art-substrate-positions.md))
+
 **Status as of 2026-05-21 (session close)**: **RUNG-6 CLOSED** + **deviation-pipeline operational**. Parity 94.9% → **95.7% (114/119)** across the session. Three substrate landings committed; one Doc 730 §XII–§XVII deviation-resolution pipeline built and executed end-to-end for arktype.
 
 Session-close summary:

@@ -1,5 +1,7 @@
 # rusty-js-caps — Resume Vector / Seed
 
+**Locale tag**: `L.rusty-js-caps` (per [Doc 737](../../../corpus-master/corpus/737-the-locale-as-coordinate-nested-seed-trajectory-pairs-as-pin-art-substrate-positions.md))
+
 **Status as of 2026-05-21**: **PILOT α FIRST-CUT CLOSED**. The capability-passing runtime substrate (Move 1) is operational. 9/9 synthetic-adversary probes refused under `--sealed`. Doc 736 §IV impossibility claim mechanically realized for the probe-covered surface. ~835 LOC across rusty-js-runtime + host-v2. PM-EXT 11+12 regression GREEN at every round. See §VIII below for the closure summary.
 
 **Workstream**: the capability-passing runtime substrate per Doc 736 §III Move 1, with subsidiary verifiers per Moves 2-5. The dominant pilot for the "supply-chain-attack architecturally impossible" design.

@@ -23,5 +23,6 @@ libloading = "0.8"
 
 [dev-dependencies]
 # Tier-Ω.5.b module loader tests exercise the node:* built-in dispatch
-# path, which is wired by host-v2. Dev-dep avoids the production cycle.
-cruftless = { path = "../../../host-v2" }
+# path, which is wired by cruftless (renamed from host-v2 on 2026-05-21).
+# Dev-dep avoids the production cycle.
+cruftless = { path = "../../../cruftless" }

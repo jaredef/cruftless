@@ -1,5 +1,11 @@
 # Deviation-Resolution Pipeline: arktype
 
+**Locale tag**: `L.rusty-js-esm.deviations.arktype` (per [Doc 737](../../../../../corpus-master/corpus/737-the-locale-as-coordinate-nested-seed-trajectory-pairs-as-pin-art-substrate-positions.md))
+
+**Status as of 2026-05-21**: **§XVI iter 2 LANDED** (ArraySpeciesCreate honors O.constructor, commit 533443e6). Original `rawIn-on-Array` crash signature gone; §XVII iter 3 queued for the downstream `generic.js:56 paramDefs of undefined` gap.
+
+**Parent locale**: [rusty-js-esm](../../seed.md). Spawned 2026-05-21 when the arktype work outgrew a single row of the parent's trajectory.md (eight L-levels of trace, three bracket probes, two §XVI substrate moves).
+
 Per **Doc 730 §XII–§XVII**: a structured pipeline for resolving an engine-vs-engine deviation without reading the package's source as if it were one's own. The package is opaque on purpose; the pipeline produces the substrate gap as its output.
 
 **Subject**: arktype@latest, load-time crash inside `@ark/schema`. cruftless throws `TypeError: callee is not callable: undefined (method='rawIn')` 7 levels deep into the import; bun completes the import and exposes 21 namespace keys.

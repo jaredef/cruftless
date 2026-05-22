@@ -1,5 +1,7 @@
 # rusty-web-crypto — Resume Vector / Seed
 
+**Locale tag**: `L.web-crypto` (per [Doc 737](../../../corpus-master/corpus/737-the-locale-as-coordinate-nested-seed-trajectory-pairs-as-pin-art-substrate-positions.md))
+
 **Workstream**: the cryptographic-primitive substrate (hashes, AEAD, ECC, RSA, HMAC, HKDF, ECDH, ECDSA) for cruftless. Founded per Doc 733 §V open-scope after the TLS workstream localized a non-terminating bug to this pilot's `ecdsa_verify` path (TLS-EXT 6–8, commits 484419c0 → cc6f6a3a).
 **Author**: 2026-05-21 session.
 **Parent**: cruftless engagement (`/home/jaredef/rusty-bun`).

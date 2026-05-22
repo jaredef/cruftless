@@ -1,5 +1,7 @@
 # rusty-js-jit — Resume Vector / Seed
 
+**Locale tag**: `L.rusty-js-jit` (per [Doc 737](../../../corpus-master/corpus/737-the-locale-as-coordinate-nested-seed-trajectory-pairs-as-pin-art-substrate-positions.md))
+
 **Status as of 2026-05-21**: **DEOPT CHAPTER CLOSED + IC INFRASTRUCTURE COMPLETE (without shapes)**. JIT-EXT 10-24 landed in one session — arithmetic deopt machinery, ICShapeMismatch demonstrator, full GetPropOnObject lowering with real runtime helper, mixed-regime dispatcher, IC chain success+failure paths proven end-to-end. ~1.2k LOC across pilots/rusty-js-jit + pilots/rusty-js-runtime + pilots/rusty-js-bytecode + host-v2. PM-EXT 11+12 regression GREEN every round. See §VIII below for the closure summary.
 
 **Workstream**: a baseline JIT compiler at the bytecode-to-machine-code substrate boundary, structured per Doc 731 §VII (R1–R8).

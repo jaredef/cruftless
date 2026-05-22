@@ -1,5 +1,7 @@
 # rusty-js-ir — Resume Vector / Seed
 
+**Locale tag**: `L.rusty-js-ir` (per [Doc 737](../../../corpus-master/corpus/737-the-locale-as-coordinate-nested-seed-trajectory-pairs-as-pin-art-substrate-positions.md))
+
 **Workstream**: spec-as-source-of-truth IR between ECMA-262 and rusty-js-runtime.
 **Author**: 2026-05-19 session (post-cruftless P62.E25).
 **Parent**: cruftless engagement (`/home/jaredef/rusty-bun`).
