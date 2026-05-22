@@ -4,7 +4,7 @@ Cruftless is a micro JavaScript runtime that punches above its weight. Built wit
 
 A hand-derived JavaScript runtime in Rust, targeting **the Node.js package ecosystem** as its compatibility surface. Constructed under the resolver-instance discipline: each layer's directives are consumed at that layer's resolver; no layer's artifact carries residue from the layer above. The terminal property the design induces is *vertically-recursive directive consumption with stage-deterministic emission*.
 
-The repository was originally formulated as an AI-assisted source-translation apparatus reading Bun's Zig source for a Rust port — hence the working directory name `rusty-bun`, and the choice of Bun as the empirical oracle. The translation focus dissolved as the resolver-instance discipline crystallized; what remained is Cruftless: an independent runtime that uses Bun for measurement, not for inheritance.
+The repository was originally formulated as an AI-assisted source-translation apparatus reading Bun's Zig source for a Rust port — with the working repository name, `rusty-bun`, and the choice of Bun as the empirical oracle. The translation focus dissolved as the resolver-instance discipline crystallized; what remained is Cruftless: an independent runtime that uses Bun for measurement, not for inheritance.
 
 [Read more here](https://jaredfoy.com/resolve/doc/729-cruftless-a-primary-articulation-of-the-resolver-instance-pattern-as-the-comprehensive-design-toward-which-rusty-bun-morphs).
 
@@ -71,7 +71,7 @@ The design is articulated across the RESOLVE corpus:
 
 ## Origins
 
-The repository began as an apparatus for AI-assisted cross-language code translation against Bun's Zig source, accompanying [Doc 702](https://jaredfoy.com/resolve/doc/702-ai-assisted-cross-language-code-translation-as-a-pin-art-bilateral-under-sipe-t-threshold-conditions-reading-the-bun-zig-to-rust-port) — hence the working directory name `rusty-bun`. The hand-derived JavaScript runtime that emerged through the engagement supplanted the original translation focus; the design crystallized through Doc 717's engine-cut framework and Doc 719's recognition of the structural correspondence with PRESTO. The Doc 729 articulation names the destination and renames the runtime: **Cruftless**, the substrate that remains when residue-carrying directives have been consumed at their resolver instances and only directive-free artifacts cross layer boundaries.
+The repository began as an apparatus for AI-assisted cross-language code translation against Bun's Zig source, accompanying [Doc 702](https://jaredfoy.com/resolve/doc/702-ai-assisted-cross-language-code-translation-as-a-pin-art-bilateral-under-sipe-t-threshold-conditions-reading-the-bun-zig-to-rust-port) — with the working repository name, `rusty-bun`. The hand-derived JavaScript runtime that emerged through the engagement supplanted the original translation focus; the design crystallized through Doc 717's engine-cut framework and Doc 719's recognition of the structural correspondence with PRESTO. The Doc 729 articulation names the destination and renames the runtime: **Cruftless**, the substrate that remains when residue-carrying directives have been consumed at their resolver instances and only directive-free artifacts cross layer boundaries.
 
 ## License
 
