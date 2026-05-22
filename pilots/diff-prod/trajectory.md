@@ -94,13 +94,12 @@ Three fixture-level FAILs remain, each a substantive substrate gap warranting it
 
 **Bracket**: `eval('const x=1; x=2')` should throw; `let x=1; x=2` outside eval is allowed.
 
-### Rung-8 candidate: `map-set-ops` Map-with-object-keys gap
+### Rung-8 — `map-set-ops` Map-with-object-keys (CLOSED, this commit)
 
-**Behavior**: `m.set({id:1}, "first"); m.set({id:2}, "second");` should produce two distinct entries by identity. cruftless collapses both to a single entry because storage uses `abstract_ops::to_string(&k)` for the key (both objects ToString to `"[object Object]"`).
+**Substrate fix** (interp.rs `map_storage_key` + `map_decode_key`):
+Map storage now encodes object keys as `__objkey@<heap-id>` and stashes the original Value in a parallel `__map_orig_keys` side-channel on the Map instance. set/get/has/delete consult the encoded key; iteration (keys/values/entries/forEach) decodes back through the side-channel so consumers see the original Value, not the encoded string.
 
-**Locale assignment**: `pilots/rusty-js-runtime/` (Map storage redesign). Substantial — needs an alternative storage path for object-keyed entries (probably a Vec<(ObjectId, Value)> alongside the existing string-keyed IndexMap).
-
-**Bracket**: `const m = new Map(); const k1 = {}; m.set(k1, 1); m.get(k1)` should return 1.
+Effect: `map-set-ops` flipped to PASS. Spec semantics: SameValueZero by identity for object keys, preserved on iteration.
 
 ---
 

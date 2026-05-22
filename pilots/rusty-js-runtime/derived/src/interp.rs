@@ -2422,11 +2422,30 @@ impl Runtime {
         Ok(capability_promise)
     }
 
+    /// ECMA-262 §24.1: Map keys compare by SameValueZero. cruftless's
+    /// storage uses a string-keyed IndexMap, so we encode each JS key
+    /// value into a stable storage key that preserves SameValueZero
+    /// semantics:
+    ///   - Object → "__objkey@<heap-id>" (identity-based)
+    ///   - Symbol → "@@sym:<content>"    (already-prefixed unique)
+    ///   - other  → ToString result
+    /// Without this, `new Map().set({a:1},"x").set({a:1},"y").size` was
+    /// 1 (both keys collapsed to "[object Object]") instead of 2.
+    fn map_storage_key(key: &Value) -> String {
+        match key {
+            Value::Object(oid) => format!("__objkey@{}", oid.0),
+            Value::Symbol(s) => {
+                if s.starts_with("@@") { (**s).clone() } else { format!("@@sym:{}", s) }
+            }
+            _ => crate::abstract_ops::to_string(key).as_str().to_string(),
+        }
+    }
+
     /// Map.prototype.get(key).
     pub fn map_proto_get_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let (_this, storage) = self.map_this_and_storage("get")?;
         let key = args.first().cloned().unwrap_or(Value::Undefined);
-        let key_s = crate::abstract_ops::to_string(&key).as_str().to_string();
+        let key_s = Self::map_storage_key(&key);
         Ok(self.object_get(storage, &key_s))
     }
 
@@ -2435,9 +2454,24 @@ impl Runtime {
         let (this, storage) = self.map_this_and_storage("set")?;
         let key = args.first().cloned().unwrap_or(Value::Undefined);
         let val = args.get(1).cloned().unwrap_or(Value::Undefined);
-        let key_s = crate::abstract_ops::to_string(&key).as_str().to_string();
-        let existed = !matches!(self.object_get(storage, &key_s), Value::Undefined);
-        self.object_set(storage, key_s, val);
+        let key_s = Self::map_storage_key(&key);
+        let existed = self.obj(storage).has_own_str(&key_s);
+        self.object_set(storage, key_s.clone(), val);
+        // Side-channel: for non-string original keys (Object, Number,
+        // Boolean, BigInt, null, undefined, Symbol), stash the original
+        // Value under __map_orig_keys so iterators can return the proper
+        // key shape rather than the encoded storage string.
+        if !matches!(&key, Value::String(_)) {
+            let orig_id = match self.object_get(this, "__map_orig_keys") {
+                Value::Object(id) => id,
+                _ => {
+                    let id = self.alloc_object(crate::value::Object::new_ordinary());
+                    self.object_set(this, "__map_orig_keys".into(), Value::Object(id));
+                    id
+                }
+            };
+            self.object_set(orig_id, key_s, key);
+        }
         if !existed {
             let prev = match self.object_get(this, "size") { Value::Number(n) => n, _ => 0.0 };
             self.object_set(this, "size".into(), Value::Number(prev + 1.0));
@@ -2449,7 +2483,7 @@ impl Runtime {
     pub fn map_proto_has_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let (_this, storage) = self.map_this_and_storage("has")?;
         let key = args.first().cloned().unwrap_or(Value::Undefined);
-        let key_s = crate::abstract_ops::to_string(&key).as_str().to_string();
+        let key_s = Self::map_storage_key(&key);
         Ok(Value::Boolean(self.obj(storage).has_own_str(&key_s)))
     }
 
@@ -2457,7 +2491,7 @@ impl Runtime {
     pub fn map_proto_delete_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let (this, storage) = self.map_this_and_storage("delete")?;
         let key = args.first().cloned().unwrap_or(Value::Undefined);
-        let key_s = crate::abstract_ops::to_string(&key).as_str().to_string();
+        let key_s = Self::map_storage_key(&key);
         let existed = self.obj_mut(storage).remove_str(&key_s).is_some();
         if existed {
             let prev = match self.object_get(this, "size") { Value::Number(n) => n, _ => 0.0 };
@@ -2476,13 +2510,32 @@ impl Runtime {
     }
 
     /// Map.prototype.forEach(cb).
+    /// Decode a storage key string back into the original JS Value. For
+    /// string keys this is identity; for object/symbol/etc. keys it
+    /// looks up the original Value from the __map_orig_keys side channel.
+    fn map_decode_key(&mut self, this: crate::value::ObjectRef, k: &str) -> Value {
+        if k.starts_with("__objkey@") || k.starts_with("@@sym:") {
+            if let Value::Object(orig_id) = self.object_get(this, "__map_orig_keys") {
+                let v = self.object_get(orig_id, k);
+                if !matches!(v, Value::Undefined) { return v; }
+            }
+        }
+        // For numeric/boolean/null/undefined original keys, the side
+        // channel preserves them too; check before falling back to string.
+        if let Value::Object(orig_id) = self.object_get(this, "__map_orig_keys") {
+            let v = self.object_get(orig_id, k);
+            if !matches!(v, Value::Undefined) { return v; }
+        }
+        Value::String(std::rc::Rc::new(k.to_string()))
+    }
+
     pub fn map_proto_for_each_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let (this, storage) = self.map_this_and_storage("forEach")?;
         let cb = args.first().cloned().unwrap_or(Value::Undefined);
         let pairs: Vec<(String, Value)> = self.obj(storage).properties.iter()
             .map(|(k, d)| (k.to_string_content(), d.value.clone())).collect();
         for (k, v) in pairs {
-            let key_v = Value::String(std::rc::Rc::new(k));
+            let key_v = self.map_decode_key(this, &k);
             self.call_function(cb.clone(), Value::Undefined, vec![v, key_v, Value::Object(this)])?;
         }
         Ok(Value::Undefined)
@@ -2503,11 +2556,12 @@ impl Runtime {
 
     /// Map.prototype.keys() — v1 eager-collect.
     pub fn map_proto_keys_via(&mut self) -> Result<Value, RuntimeError> {
-        let (_this, storage) = self.map_this_and_storage("keys")?;
+        let (this, storage) = self.map_this_and_storage("keys")?;
         let ks: Vec<String> = self.obj(storage).string_key_clones().collect();
         let arr = self.alloc_object(crate::value::Object::new_array());
         for (i, k) in ks.into_iter().enumerate() {
-            self.object_set(arr, i.to_string(), Value::String(std::rc::Rc::new(k)));
+            let key_v = self.map_decode_key(this, &k);
+            self.object_set(arr, i.to_string(), key_v);
         }
         let len = self.array_length(arr);
         self.object_set(arr, "length".into(), Value::Number(len as f64));
@@ -2516,13 +2570,14 @@ impl Runtime {
 
     /// Map.prototype.entries() — v1 eager-collect array-of-pairs.
     pub fn map_proto_entries_via(&mut self) -> Result<Value, RuntimeError> {
-        let (_this, storage) = self.map_this_and_storage("entries")?;
+        let (this, storage) = self.map_this_and_storage("entries")?;
         let pairs: Vec<(String, Value)> = self.obj(storage).properties.iter()
             .map(|(k, d)| (k.to_string_content(), d.value.clone())).collect();
         let arr = self.alloc_object(crate::value::Object::new_array());
         for (i, (k, v)) in pairs.into_iter().enumerate() {
+            let key_v = self.map_decode_key(this, &k);
             let pair = self.alloc_object(crate::value::Object::new_array());
-            self.object_set(pair, "0".into(), Value::String(std::rc::Rc::new(k)));
+            self.object_set(pair, "0".into(), key_v);
             self.object_set(pair, "1".into(), v);
             self.object_set(pair, "length".into(), Value::Number(2.0));
             self.object_set(arr, i.to_string(), Value::Object(pair));
