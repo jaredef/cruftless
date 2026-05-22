@@ -1662,3 +1662,35 @@ The converter handles:
 - ~50 function-name-inference via destructuring default (`[x = function(){}]` should infer name "x" on the anon function)
 
 **Tag**: `cluster-dstr-for-loop-head-2`. Next cluster candidate: TDZ enforcement (76 ReferenceError tests in the dstr cluster + an unknown additional count in non-dstr code).
+
+---
+
+## Rung-cluster-3 — Object.defineProperty property-key coercion (closed 2026-05-22)
+
+**Cluster** (per the test262-parity telos in seed §I.2):
+`built-ins/Object/defineProperty/*` — 1,131 paths covering descriptor installation, attribute defaulting, accessor/data conflict checks, configurability invariants. The pre-rung sample showed 124 FAIL / 1,007 PASS in this sub-tree — the third-largest single-directory FAIL cluster.
+
+**Root cause** (one of several defects in this sub-tree): `Object.defineProperty(o, P, desc)` coerced `P` via `abstract_ops::to_string` directly, which for `Value::Object` returns the literal `"[object Object]"` (the case is commented "Object ToString deferred" — a long-standing carve-out). The spec at §10.1.6.1 ToPropertyKey requires ToPrimitive(P, hint=string) followed by ToString, which dispatches through `@@toPrimitive` / `toString` / `valueOf`. Result: `Object.defineProperty(o, [1,2], {})` should install key `"1,2"` (Array.prototype.toString → join), but installed `"[object Object]"` instead.
+
+**Substrate fix**: in `object_define_property_via` at `interp.rs:1589`, route Object-typed key arguments through `self.to_primitive(key_v, "string")` then `abstract_ops::to_string` on the resulting primitive before the property-key bucket dispatch. Symbol-typed primitives are preserved (not stringified).
+
+**Post-rung result**: 113 FAIL / 1,018 PASS on the 1,131-path cluster.
+
+**Delta**: **+11 PASS** (124 FAIL → 113 FAIL, ~9% reduction).
+
+**Sample-wide cumulative** (with cluster-1 and cluster-2):
+- Cluster-1: +10 PASS (Number-numeric-format)
+- Cluster-2: +72 PASS (dstr LHS in for-of/in)
+- Cluster-3: +11 PASS (defineProperty P coercion)
+- Total: +93 PASS on the 7,203-runnable base = +1.29 pp
+- Cruftless 73.9% → ~75.2% runnable pass; gap 25.3 pp → ~24.0 pp
+
+**Remaining 113 defineProperty FAILs** — all about descriptor invariants, not key coercion:
+- ~30 across "should not be configurable" / "should be enumerable" / "should be writable" — descriptor-attribute defaulting when the input descriptor omits the flag
+- ~12 "Expected TypeError" — invalid-descriptor rejection paths
+- ~12 "Expected obj[foo] to equal data, actually undefined" — accessor-descriptor data fallthrough
+- ~5 desc-on-array-index interaction with array length truncation
+
+**Methodology note**: the property-key coercion gap is upstream of defineProperty alone. The same ToString-of-Object → "[object Object]" anti-pattern lives at `abstract_ops::to_string:62` and affects every code path that stringifies an object-typed value (defineProperties, Reflect.*, [] accessor on object-typed key, etc.). Defer to its own rung when the targeted defineProperty win demands a broader sweep.
+
+**Tag**: `cluster-defineProperty-key-coercion-3`. Next cluster candidate: descriptor-attribute defaulting (the ~30 "should not be configurable" / "should be enumerable" remaining FAILs in this same sub-tree).

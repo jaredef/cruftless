@@ -1597,14 +1597,24 @@ impl Runtime {
                     Value::String(_) => "string", _ => "other",
                 }))),
         };
+        // §10.1.6.1 ToPropertyKey: the P argument is coerced via
+        // ToPrimitive(hint=string) then ToString. For Object inputs this
+        // dispatches through @@toPrimitive / toString / valueOf so that
+        // `Object.defineProperty(o, [1,2], desc)` lands at key "1,2"
+        // (Array.prototype.toString → join), not "[object Object]".
+        let coerced_key = match key_v {
+            Value::Object(_) => {
+                let prim = self.to_primitive(key_v, "string")?;
+                // ToPrimitive may still return a Symbol; preserve it.
+                match prim {
+                    Value::Symbol(_) => prim,
+                    _ => Value::String(crate::abstract_ops::to_string(&prim)),
+                }
+            }
+            other => other.clone(),
+        };
         // Tier-Ω Round 2 (2026-05-21): preserve Symbol-typed keys.
-        // Pre-fix: coerce_to_string stringified Symbol keys (storing
-        // them under PropertyKey::String("@@sym:N")), breaking
-        // Reflect.ownKeys + Object.getOwnPropertySymbols visibility.
-        // Now: track both forms; key_pk routes the descriptor insert
-        // to the correct bucket; key (String) preserves backward-
-        // compat with the function's exists/check/error-message paths.
-        let key_pk = crate::interp::property_key(key_v);
+        let key_pk = crate::interp::property_key(&coerced_key);
         let key = key_pk.as_str().to_string();
         let desc_id = match desc_v {
             Value::Object(id) => *id,
