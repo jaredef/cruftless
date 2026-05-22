@@ -7,7 +7,7 @@
 #   ./run.sh <fixture-name>
 # Env:
 #   PROD_SANDBOX   — install root (default /media/jaredef/T7/rusty-bun/diff-prod-sandbox)
-#   RB_BIN         — cruftless binary (default $HOME/rusty-bun/target/release/cruftless)
+#   CRUFT_BIN         — cruftless binary (default $HOME/rusty-bun/target/release/cruftless)
 #   RESULTS_DIR    — per-run results (default /media/jaredef/T7/rusty-bun/diff-prod-results)
 #
 # Runs all heavy work behind `nice -n 19 ionice -c3` so the harness can
@@ -22,7 +22,7 @@ FIX="$HERE/fixtures/$NAME"
 [ -d "$FIX" ] || { echo "no such fixture: $FIX" >&2; exit 2; }
 
 PROD_SANDBOX="${PROD_SANDBOX:-/media/jaredef/T7/rusty-bun/diff-prod-sandbox}"
-RB_BIN="${RB_BIN:-$HOME/rusty-bun/target/release/cruftless}"
+CRUFT_BIN="${CRUFT_BIN:-${RB_BIN:-$HOME/rusty-bun/target/release/cruft}}"
 RESULTS_DIR="${RESULTS_DIR:-/media/jaredef/T7/rusty-bun/diff-prod-results}"
 
 # Nice/ionice wrapper. If ionice isn't installed, fall back to nice-only.
@@ -70,7 +70,7 @@ bun_out=$(cd "$SBOX" && timeout "$TIMEOUT_S" "${NICE_WRAP[@]}" bun exec.mjs 2>"$
 bun_rc=$?
 
 # Run exec under cruftless.
-rb_out=$(cd "$SBOX" && timeout "$TIMEOUT_S" "${NICE_WRAP[@]}" "$RB_BIN" exec.mjs 2>"$TMP/rb.stderr")
+rb_out=$(cd "$SBOX" && timeout "$TIMEOUT_S" "${NICE_WRAP[@]}" "$CRUFT_BIN" exec.mjs 2>"$TMP/rb.stderr")
 rb_rc=$?
 
 # Write per-engine snapshots.

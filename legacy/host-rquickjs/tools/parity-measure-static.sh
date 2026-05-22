@@ -8,14 +8,14 @@
 #   1. bun install into an isolated sandbox dir (reused with parity-measure.sh)
 #   2. Codegen probe-static.mjs with `import * as M from "<pkg>"` literal
 #   3. Run under Bun, capture stdout + exit code
-#   4. Run under $RB, capture stdout + exit code
+#   4. Run under $CRUFT, capture stdout + exit code
 #   5. Compare byte-for-byte (matching parity-measure.sh semantics)
 #
 # Empty stdout + nonzero exit → synthetic ERR JSON ("LoadFailed").
 # This keeps host-v2's substrate-honest "throw at module-eval" path
 # legible to downstream jq queries.
 #
-# Override target host via RB_BIN= (default $ROOT/target/release/cruftless).
+# Override target host via CRUFT_BIN= (default $ROOT/target/release/cruftless).
 # Override package list via positional arg (default parity-top100.txt).
 # Override output via second positional arg (default parity-results-static.json).
 #
@@ -26,13 +26,13 @@ ROOT="$(cd "$TOOLS/../.." && pwd)"
 LIST="${1:-$TOOLS/parity-top100.txt}"
 OUT="${2:-$TOOLS/parity-results-static.json}"
 SANDBOX="${PARITY_SANDBOX:-/tmp/parity-sandbox}"
-RB="${RB_BIN:-$ROOT/target/release/cruftless}"
+CRUFT="${CRUFT_BIN:-${RB_BIN:-$ROOT/target/release/cruft}}"
 
 mkdir -p "$SANDBOX"
 
-if [ ! -x "$RB" ]; then
-  echo "Binary not found: $RB"
-  echo "Build first: cargo build --release --bin $(basename "$RB")"
+if [ ! -x "$CRUFT" ]; then
+  echo "Binary not found: $CRUFT"
+  echo "Build first: cargo build --release --bin $(basename "$CRUFT")"
   exit 1
 fi
 
@@ -101,7 +101,7 @@ EOF
 
   bun_out=$(cd "$d" && bun parity-probe-static.mjs 2>/dev/null)
   bun_rc=$?
-  rb_out=$(cd "$d" && "$RB" parity-probe-static.mjs 2>/dev/null)
+  rb_out=$(cd "$d" && "$CRUFT" parity-probe-static.mjs 2>/dev/null)
   rb_rc=$?
 
   # Empty stdout + nonzero exit → synthetic LoadFailed JSON. This
@@ -142,7 +142,7 @@ echo "]" >> "$OUT"
 echo
 echo "==============================================================="
 echo "Parity measurement summary (static-probe variant)"
-echo "Host: $RB"
+echo "Host: $CRUFT"
 echo "==============================================================="
 echo "Total:    $total"
 echo "Pass:     $n_pass"

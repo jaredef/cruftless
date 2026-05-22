@@ -25,14 +25,14 @@ OUT="${2:-$TOOLS/parity-results.json}"
 SANDBOX="${PARITY_SANDBOX:-/tmp/parity-sandbox}"
 mkdir -p "$SANDBOX"
 
-# cruftless-rquickjs binary. Override via RB_BIN= to point at an alternate
+# cruftless-rquickjs binary. Override via CRUFT_BIN= to point at an alternate
 # host (e.g. host-v2's cruftless) per seed §A8.20 + the Ω.4.f
 # Tuple A/B-close falsifier loop. The output file path can also be
 # overridden via the second positional arg or OUT= for parallel runs.
-RB="${RB_BIN:-$ROOT/target/release/cruftless}"
-if [ ! -x "$RB" ]; then
-  echo "Binary not found: $RB"
-  echo "Build first: cargo build --release --bin $(basename "$RB")"
+CRUFT="${CRUFT_BIN:-${RB_BIN:-$ROOT/target/release/cruft}}"
+if [ ! -x "$CRUFT" ]; then
+  echo "Binary not found: $CRUFT"
+  echo "Build first: cargo build --release --bin $(basename "$CRUFT")"
   exit 1
 fi
 
@@ -83,7 +83,7 @@ for pkg in $PKGS; do
   cp "$TOOLS/parity-probe.mjs" "$d/parity-probe.mjs"
   bun_out=$(cd "$d" && PARITY_PROBE_PKG="$pkg" timeout 30s nice -n 19 ionice -c3 bun parity-probe.mjs 2>/dev/null)
   bun_rc=$?
-  rb_out=$(cd "$d" && PARITY_PROBE_PKG="$pkg" timeout 30s nice -n 19 ionice -c3 "$RB" parity-probe.mjs 2>/dev/null)
+  rb_out=$(cd "$d" && PARITY_PROBE_PKG="$pkg" timeout 30s nice -n 19 ionice -c3 "$CRUFT" parity-probe.mjs 2>/dev/null)
   rb_rc=$?
 
   # Compare. exit 124 = timeout — record separately so hang-prone packages

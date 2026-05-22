@@ -14,7 +14,7 @@
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
-RB="${RB_BIN:-$ROOT/target/release/cruftless}"
+CRUFT="${CRUFT_BIN:-${RB_BIN:-$ROOT/target/release/cruft}}"
 T262="${T262_ROOT:-/home/jaredef/test262}"
 PARALLEL="${PARALLEL:-4}"
 RUNNER="$ROOT/legacy/host-rquickjs/tests/test262/runner.mjs"
@@ -38,11 +38,11 @@ echo "Sample size: $COUNT tests; parallelism: $PARALLEL"
 run_one() {
   local p="$1"
   T262_TEST_PATH="$p" T262_HARNESS_DIR="$HARNESS" \
-    timeout 10s "$RB" "$RUNNER" 2>/dev/null \
+    timeout 10s "$CRUFT" "$RUNNER" 2>/dev/null \
     | head -1
 }
 export -f run_one
-export RB RUNNER HARNESS
+export CRUFT RUNNER HARNESS
 
 nice -n 19 ionice -c3 xargs -a "$OUT/paths.txt" -P "$PARALLEL" -I {} \
   bash -c 'run_one "$@"' _ {} \

@@ -80,7 +80,7 @@ cargo build --release --bin cruft
 ./scripts/test262-sample/run-sample.sh        # writes results/test262-sample-<DATE>/{results.jsonl,summary.txt}
 ```
 
-`PARALLEL=N` controls worker count (default 4); `T262_ROOT` points at an upstream test262 clone; `RB_BIN` overrides the binary path (defaults to the legacy `cruftless` binary so existing scripts keep working; pass `RB_BIN=/path/to/cruft` to use the new name).
+`PARALLEL=N` controls worker count (default 4); `T262_ROOT` points at an upstream test262 clone; `CRUFT_BIN` overrides the binary path (defaults to `target/release/cruft`; the legacy `RB_BIN` name is also accepted for one release of backwards compatibility).
 
 Latest sample, **2026-05-22**: **5,321 PASS / 1,882 FAIL / 384 SKIP** out of 7,587 results emitted across 7,750 sampled tests — **73.9% runnable pass rate** (`5321 / 7203`). SKIPs are tests whose frontmatter flags a feature the harness elects not to run (e.g. legacy `noStrict`-only fixtures, async-iterator features behind feature-flag gates).
 

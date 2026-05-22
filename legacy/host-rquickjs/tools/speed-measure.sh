@@ -8,7 +8,7 @@
 # Output: per-package CSV row + aggregate summary (median + p95 +
 # geomean of rb/bun ratio).
 #
-# Targets host-v2 (override via RB_BIN). Reuses the parity-sandbox
+# Targets host-v2 (override via CRUFT_BIN). Reuses the parity-sandbox
 # install layout so the install step doesn't dominate measurement.
 #
 # Usage: ./speed-measure.sh [list.txt] [out.csv]
@@ -17,7 +17,7 @@
 set -uo pipefail
 TOOLS="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$TOOLS/../.." && pwd)"
-RB="${RB_BIN:-$ROOT/target/release/cruftless}"
+CRUFT="${CRUFT_BIN:-${RB_BIN:-$ROOT/target/release/cruft}}"
 # Sandbox layout matches parity-measure.sh exactly. The PARITY_SANDBOX
 # env var is the same one parity-measure honors; setting it once in
 # the shell (e.g. export PARITY_SANDBOX=/media/jaredef/T7/rusty-bun/parity-sandbox)
@@ -28,9 +28,9 @@ LIST="${1:-$TOOLS/parity-exemplars.txt}"
 OUT="${2:-$TOOLS/speed-results.csv}"
 WARM_RUNS=3
 
-if [ ! -x "$RB" ]; then
-  echo "Binary not found: $RB" >&2
-  echo "Build first: cargo build --release --bin $(basename "$RB")" >&2
+if [ ! -x "$CRUFT" ]; then
+  echo "Binary not found: $CRUFT" >&2
+  echo "Build first: cargo build --release --bin $(basename "$CRUFT")" >&2
   exit 1
 fi
 
@@ -91,18 +91,18 @@ while IFS= read -r pkg; do
 
   # T1 — engine cold-start with empty script.
   bun_t1=$(cd "$d" && time_ms bun t1.mjs)
-  rb_t1=$(cd "$d" && time_ms "$RB" t1.mjs)
+  rb_t1=$(cd "$d" && time_ms "$CRUFT" t1.mjs)
 
   # T2 — cold import (first run, OS cache warm; engine cold).
   bun_t2=$(cd "$d" && PARITY_PROBE_PKG="$pkg" time_ms bun tt.mjs)
-  rb_t2=$(cd "$d" && PARITY_PROBE_PKG="$pkg" time_ms "$RB" tt.mjs)
+  rb_t2=$(cd "$d" && PARITY_PROBE_PKG="$pkg" time_ms "$CRUFT" tt.mjs)
 
   # T3 — warm repeat-mean over $WARM_RUNS runs. Any sentinel (-1) from
   # time_ms taints the whole T3 row → propagate as -1.
   sum_bun=0; sum_rb=0; bad_t3=0
   for _ in $(seq 1 $WARM_RUNS); do
     bun_n=$(cd "$d" && PARITY_PROBE_PKG="$pkg" time_ms bun tt.mjs)
-    rb_n=$(cd "$d" && PARITY_PROBE_PKG="$pkg" time_ms "$RB" tt.mjs)
+    rb_n=$(cd "$d" && PARITY_PROBE_PKG="$pkg" time_ms "$CRUFT" tt.mjs)
     if [ "$bun_n" -lt 0 ] || [ "$rb_n" -lt 0 ]; then bad_t3=1; break; fi
     sum_bun=$((sum_bun + bun_n))
     sum_rb=$((sum_rb + rb_n))

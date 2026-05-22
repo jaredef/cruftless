@@ -20,7 +20,7 @@
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
-RB="${RB_BIN:-$ROOT/target/release/cruftless}"
+CRUFT="${CRUFT_BIN:-${RB_BIN:-$ROOT/target/release/cruft}}"
 RUNNER="$HERE/runner.mjs"
 # Ω.5.P61.E2: support running against the upstream test262 tree by
 # setting T262_ROOT to the cloned repo. Harness + tests both come from
@@ -34,8 +34,8 @@ else
   DEFAULT_TESTS="$HERE/tests"
 fi
 
-if [ ! -x "$RB" ]; then
-  echo "cruftless binary not found at $RB" >&2
+if [ ! -x "$CRUFT" ]; then
+  echo "cruftless binary not found at $CRUFT" >&2
   echo "Build first: cargo build --release --bin cruftless" >&2
   exit 2
 fi
@@ -66,7 +66,7 @@ for t in $TESTS; do
   rel="${t#$DEFAULT_TESTS/}"
   rel="${rel#$HERE/tests/}"
   out=$(T262_TEST_PATH="$t" T262_HARNESS_DIR="$HARNESS_DIR" \
-        timeout 10s "$RB" "$RUNNER" 2>/dev/null)
+        timeout 10s "$CRUFT" "$RUNNER" 2>/dev/null)
   rc=$?
   if [ $rc -eq 124 ]; then
     n_timeout=$((n_timeout + 1))
