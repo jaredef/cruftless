@@ -2635,6 +2635,24 @@ impl Compiler {
                     encode_u8(&mut self.bytecode, 3);
                 } else {
                     self.compile_expr(callee)?;
+                    // ECMA-262 §13.3.7 OptionalChain: bare-callee optional
+                    // call `f?.(args)` — if f is null/undefined, skip the
+                    // call and yield undefined. Pre-fix the call site fell
+                    // through to Op::Call which then threw "callee not
+                    // callable: undefined". Matters for arktype's
+                    // `reduceMapped?.(mappedBranches)` pattern at
+                    // root.js:65 (distribute).
+                    let opt_call_sinks: Vec<usize> = if *call_optional {
+                        encode_op(&mut self.bytecode, Op::Dup);
+                        encode_op(&mut self.bytecode, Op::PushUndef);
+                        encode_op(&mut self.bytecode, Op::StrictEq);
+                        let s1 = self.emit_jump(Op::JumpIfTrue);
+                        encode_op(&mut self.bytecode, Op::Dup);
+                        encode_op(&mut self.bytecode, Op::PushNull);
+                        encode_op(&mut self.bytecode, Op::StrictEq);
+                        let s2 = self.emit_jump(Op::JumpIfTrue);
+                        vec![s1, s2]
+                    } else { Vec::new() };
                     for a in arguments {
                         match a {
                             Argument::Expr(e) => self.compile_expr(e)?,
@@ -2643,6 +2661,15 @@ impl Compiler {
                     }
                     encode_op(&mut self.bytecode, Op::Call);
                     encode_u8(&mut self.bytecode, n as u8);
+                    if !opt_call_sinks.is_empty() {
+                        let done = self.emit_jump(Op::Jump);
+                        for s in opt_call_sinks { self.patch_jump_at(s); }
+                        // Short-circuit landing: pop the leftover callee,
+                        // push undefined.
+                        encode_op(&mut self.bytecode, Op::Pop);
+                        encode_op(&mut self.bytecode, Op::PushUndef);
+                        self.patch_jump_at(done);
+                    }
                 }
             }
             Expr::New { callee, arguments, .. } => {
@@ -4830,8 +4857,36 @@ impl Compiler {
                     match static_key {
                         Some(key) => {
                             // Order: ctor on stack, then value, then SetProp.
+                            // Per ECMA-262 §15.7.10 step 31.b, `this` inside
+                            // a static field initializer is the class itself.
+                            // Lower the init expression as a 0-arg method
+                            // called on the ctor so `this` (and any arrow
+                            // capture of `this` therein) resolves correctly.
+                            // Mirrors the static-block lowering at L4884.
                             match init {
-                                Some(e) => self.compile_expr(e)?,
+                                Some(e) => {
+                                    self.class_stack.push(ClassFrame {
+                                        super_ctor_name: super_ctor_slot.map(|_| super_ctor_name.clone()),
+                                        super_proto_name: super_ctor_slot.map(|_| super_proto_name.clone()),
+                                        in_constructor: false,
+                                        is_static: true,
+                                    });
+                                    let init_body = vec![rusty_js_ast::Stmt::Return {
+                                        argument: Some(e.clone()),
+                                        span: e.span(),
+                                    }];
+                                    let init_proto = self.compile_function_proto(None, false, false, &[], &init_body)?;
+                                    self.class_stack.pop();
+                                    let captures = init_proto.upvalues.clone();
+                                    let idx_proto = self.constants.intern(Constant::Function(Box::new(init_proto)));
+                                    encode_op(&mut self.bytecode, Op::LoadLocal);
+                                    encode_u16(&mut self.bytecode, ctor_slot);
+                                    encode_op(&mut self.bytecode, Op::MakeClosure);
+                                    encode_u16(&mut self.bytecode, idx_proto);
+                                    emit_captures(&mut self.bytecode, &captures);
+                                    encode_op(&mut self.bytecode, Op::CallMethod);
+                                    encode_u8(&mut self.bytecode, 0);
+                                }
                                 None => { encode_op(&mut self.bytecode, Op::PushUndef); }
                             }
                             let idx = self.constants.intern(Constant::String(key));
