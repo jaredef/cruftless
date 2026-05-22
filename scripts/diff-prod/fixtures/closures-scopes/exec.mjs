@@ -21,16 +21,14 @@ function counter() {
   result.basic_closure = [c(), c(), c()];
 }
 
-// Closure capture in loop (let). cruftless v1 doesn't yet emit a
-// per-iteration fresh binding for `let` in for-loops (ECMA-262
-// §13.7.4 step 11 PerIterationBindings). All captured closures see
-// the final i (3, 3, 3) instead of (0, 1, 2). Substantive bytecode-
-// compiler rung; recorded as v2 boundary.
-// {
-//   const fns = [];
-//   for (let i = 0; i < 3; i++) fns.push(() => i);
-//   result.let_loop_capture = fns.map(f => f());  // bun:[0,1,2] rb:[3,3,3]
-// }
+// Closure capture in loop (let) — per-iteration binding per
+// ECMA-262 §13.7.4 step 11 PerIterationBindings. Each iteration's
+// closure captures THAT iteration's i, not the final value.
+{
+  const fns = [];
+  for (let i = 0; i < 3; i++) fns.push(() => i);
+  result.let_loop_capture = fns.map(f => f());
+}
 
 // Closure capture in loop (var) — all share final i.
 {

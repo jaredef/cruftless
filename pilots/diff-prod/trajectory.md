@@ -249,3 +249,25 @@ No new substrate fixes needed for these three — the node:fs / node:crypto stub
 **Diff-prod**: 29 / 29 PASS.
 **Top-100**: 99.1% unchanged.
 **Top-500**: 77.4% (was 77.1%).
+
+---
+
+## Rung-15 — Per-iteration let binding (PerIterationBindings §13.7.4) (closed)
+
+**Substrate fix** (rusty-js-bytecode/compiler.rs Stmt::For):
+For `for (let i = ...; cond; step) body`, emit at end-of-body a per-slot cell-reset sequence (`LoadLocal → ResetLocalCell → StoreLocal`) for each header `let`/`const` slot. Detaches the iteration's upvalue cell so the next iteration's `CaptureLocal` promotes fresh; closures captured during THIS iteration retain their cell at THIS iteration's value. The runtime already had Op::ResetLocalCell with the right semantics; the compiler-side emission was missing.
+
+Probe: `for (let i = 0; i < 3; i++) fns.push(() => i); fns.map(f => f())` now yields `[0,1,2]` (was `[3,3,3]`).
+
+Re-enabled the previously-deferred `let_loop_capture` case in the closures-scopes fixture.
+
+**Top-500 delta**: 0 packages flipped. The fix targets runtime closure-semantics, not the namespace-shape probe. Real workloads using closures-in-for-let WILL behave correctly; top-500's load-and-shape probe doesn't measure runtime correctness.
+
+**Other lexical-scoping v2 boundaries** still deferred:
+- Block-scoped `let` interaction with top-level `var-in-block`: `{ var c = letBinding; }` outside a function reads undefined instead of the let value. Function-scoped is correct.
+- TDZ enforcement (access-before-declaration of `let` throws ReferenceError; cruftless v1 silently reads undefined).
+- Arrow function `arguments` capture from enclosing function.
+
+**Diff-prod**: 29 / 29 PASS (closures-scopes now has 11 active cases instead of 10).
+**Top-100**: 99.1% unchanged.
+**Top-500**: 77.4% / 82.1% unchanged.

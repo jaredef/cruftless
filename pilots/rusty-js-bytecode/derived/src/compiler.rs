@@ -1193,9 +1193,22 @@ impl Compiler {
                 // stops matching the header bindings after loop exit.
                 let scope_snapshot = self.locals.len();
                 self.block_depth += 1;
+                // Track which header bindings need PerIterationBindings per
+                // ECMA-262 §13.7.4 step 11 (only let/const, not var).
+                let mut per_iter_slots: Vec<u16> = Vec::new();
                 if let Some(init) = init {
                     match init {
-                        ForInit::Variable(v) => self.compile_stmt(&Stmt::Variable(v.clone()))?,
+                        ForInit::Variable(v) => {
+                            let needs_per_iter = matches!(v.kind,
+                                rusty_js_ast::VariableKind::Let | rusty_js_ast::VariableKind::Const);
+                            self.compile_stmt(&Stmt::Variable(v.clone()))?;
+                            if needs_per_iter {
+                                // Header bindings were just appended to locals.
+                                for slot in scope_snapshot..self.locals.len() {
+                                    per_iter_slots.push(slot as u16);
+                                }
+                            }
+                        }
                         ForInit::Expression(e) => {
                             self.compile_expr(e)?;
                             encode_op(&mut self.bytecode, Op::Pop);
@@ -1212,6 +1225,23 @@ impl Compiler {
                     Some(self.emit_jump(Op::JumpIfFalse))
                 } else { None };
                 self.compile_stmt(body)?;
+                // ECMA-262 §13.7.4 step 11 PerIterationBindings: at end of
+                // iteration body, for each let/const header binding,
+                // detach the upvalue cell so the next iteration's
+                // CaptureLocal promotes fresh. Closures created in THIS
+                // iteration retain their cell; the next iteration's
+                // closures get a fresh cell. Value is preserved by
+                // round-trip through the slot (LoadLocal → ResetLocalCell
+                // → StoreLocal). Without this, `for (let i...) fns.push(()=>i)`
+                // closures all capture the same final i.
+                for slot in &per_iter_slots {
+                    encode_op(&mut self.bytecode, Op::LoadLocal);
+                    encode_u16(&mut self.bytecode, *slot);
+                    encode_op(&mut self.bytecode, Op::ResetLocalCell);
+                    encode_u16(&mut self.bytecode, *slot);
+                    encode_op(&mut self.bytecode, Op::StoreLocal);
+                    encode_u16(&mut self.bytecode, *slot);
+                }
                 let update_pos = self.bytecode.len();
                 // Finalize continue target and patch pending continue sites.
                 {
