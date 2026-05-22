@@ -2794,8 +2794,12 @@ impl Compiler {
                             // a fresh data property.
                             if matches!(kind, rusty_js_ast::ObjectPropertyKind::Get
                                             | rusty_js_ast::ObjectPropertyKind::Set) {
+                                // Object-literal accessors are enumerable per
+                                // ECMA-262 sec 13.2.5.5; class accessors are
+                                // not. Use the obj-specific helper so the
+                                // resulting descriptor is enumerable: true.
                                 let helper = self.constants.intern(
-                                    Constant::String("__install_accessor__".into()));
+                                    Constant::String("__install_accessor_obj__".into()));
                                 let kind_str = if matches!(kind, rusty_js_ast::ObjectPropertyKind::Get) { "get" } else { "set" };
                                 let kind_idx = self.constants.intern(Constant::String(kind_str.into()));
                                 // Stack: [target] -> dup so target survives the call.

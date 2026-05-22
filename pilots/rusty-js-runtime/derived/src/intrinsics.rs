@@ -620,19 +620,42 @@ impl Runtime {
             let kind: String = match args.get(2) { Some(Value::String(s)) => (**s).clone(), _ => return Ok(Value::Undefined) };
             let fn_v = args.get(3).cloned().unwrap_or(Value::Undefined);
             let o = rt.obj_mut(target);
-            // Ω.5.P03.E2.class-method-non-enumerable: class accessors
-            // (`get x() {...} / set x(v) {...}`) install as {writable: false,
-            // enumerable: false, configurable: true} per ECMA-262 §15.7
-            // MethodDefinitionEvaluation. Pre-substrate this was enumerable
-            // true — Object.keys(Class.prototype) returned the getter names
-            // in addition to the method names. Eight BaseNode getters in
-            // arktype were leaking through every Object.keys / for-in walk
-            // over a class prototype.
+            // Class accessors install as enumerable:false per ECMA-262 sec
+            // 15.7 MethodDefinitionEvaluation. Object-literal accessors
+            // use a separate helper (__install_accessor_obj__) below to
+            // get enumerable:true per sec 13.2.5.5 PropertyDefinitionEvaluation.
             let desc = o.properties.entry(crate::value::PropertyKey::String(key)).or_insert_with(|| crate::value::PropertyDescriptor {
                 value: Value::Undefined,
                 writable: false, enumerable: false, configurable: true,
                 getter: None, setter: None,
             });
+            if kind == "get" { desc.getter = Some(fn_v); }
+            else if kind == "set" { desc.setter = Some(fn_v); }
+            Ok(Value::Undefined)
+        });
+        // Object-literal accessors variant. ECMA-262 sec 13.2.5.5
+        // PropertyDefinitionEvaluation step 8 makes object-literal
+        // accessors {writable:false, enumerable:true, configurable:true}.
+        // Sharing one helper with class-side install hid this defect
+        // behind enumerable:false, so {get v(){}} -wrapped objects had
+        // their getters excluded from Object.keys / for-in / object-rest
+        // spread - the latter surfaced as the dstr obj-ptrn-rest-getter
+        // cluster (4 tests in the sample).
+        register_engine_helper(self, "__install_accessor_obj__", |rt, args| {
+            let target = match args.first() { Some(Value::Object(id)) => *id, _ => return Ok(Value::Undefined) };
+            let key: String = match args.get(1) { Some(Value::String(s)) => (**s).clone(), _ => return Ok(Value::Undefined) };
+            let kind: String = match args.get(2) { Some(Value::String(s)) => (**s).clone(), _ => return Ok(Value::Undefined) };
+            let fn_v = args.get(3).cloned().unwrap_or(Value::Undefined);
+            let o = rt.obj_mut(target);
+            let desc = o.properties.entry(crate::value::PropertyKey::String(key)).or_insert_with(|| crate::value::PropertyDescriptor {
+                value: Value::Undefined,
+                writable: false, enumerable: true, configurable: true,
+                getter: None, setter: None,
+            });
+            // If the property already existed (e.g. installed by a
+            // sibling getter/setter half of the pair), force enumerable
+            // back to true in case the prior install used the class form.
+            desc.enumerable = true;
             if kind == "get" { desc.getter = Some(fn_v); }
             else if kind == "set" { desc.setter = Some(fn_v); }
             Ok(Value::Undefined)
@@ -956,16 +979,23 @@ impl Runtime {
                     excluded_keys.push(abstract_ops::to_string(&v).as_str().to_string());
                 }
             }
-            // Snapshot own enumerable property keys from src.
-            let entries: Vec<(String, Value)> = {
+            // Snapshot own enumerable property KEY NAMES from src.
+            // Spec sec 14.3.1 (rest-binding in object destructuring) uses
+            // CopyDataProperties which does [[OwnPropertyKeys]] + [[Get]]
+            // per key. The [[Get]] dispatches accessor getters - simply
+            // cloning the descriptor's value field skips them, so a rest
+            // pattern over { get v() { ... } } copied the literal
+            // `undefined` slot value rather than invoking the getter.
+            let keys: Vec<String> = {
                 let o = rt.obj(src_id);
                 o.properties.iter()
                     .filter(|(_, d)| d.enumerable)
-                    .map(|(k, d)| (k.to_string_content(), d.value.clone()))
+                    .map(|(k, _)| k.to_string_content())
                     .collect()
             };
-            for (k, v) in entries {
+            for k in keys {
                 if excluded_keys.iter().any(|e| e == &k) { continue; }
+                let v = rt.read_property(src_id, &k)?;
                 rt.object_set(out_id, k, v);
             }
             Ok(Value::Object(out_id))

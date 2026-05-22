@@ -1899,3 +1899,26 @@ Concretely: `new Map().set(0,'a')` then `for (const [k,v] of m)` yielded `["0","
 - Cruftless 73.9% → ~77.3% runnable pass; gap 25.3 pp → ~21.9 pp
 
 **Tag**: `cluster-defineProperty-generic-preserve-10`. Fix also flows through `Object.defineProperties` and `Reflect.defineProperty` which dispatch to the same primitive; further cascade likely.
+
+---
+
+## Rung-cluster-11 — Object-literal accessor enumerability + rest-spread getter dispatch (closed 2026-05-22)
+
+**Cluster** (per the test262-parity telos in seed §I.2):
+`built-ins/Object/defineProperty/* + language/statements/for-of/dstr/* + language/expressions/arrow-function/dstr/*` — 1,931 paths combined. Pre-rung (post rungs 1-10): 474 FAIL / 1,421 PASS.
+
+**Root causes** (two coordinated defects in the same install path):
+1. **Object-literal accessor enumerability**: `__install_accessor__` installed accessors with `enumerable: false`. That's correct for **class** accessors (§15.7 MethodDefinitionEvaluation) but wrong for **object-literal** accessors (§13.2.5.5 PropertyDefinitionEvaluation step 8: `{writable: false, enumerable: true, configurable: true}`). One helper shared both call sites; class side was right, object-literal was wrong. So `{get v() {}}` had `enumerable: false`, making `Object.keys` / for-in / `__destr_object_rest` all skip it.
+2. **Object-rest spread bypassing getters**: `__destr_object_rest` enumerated `obj.properties.iter()` directly and cloned `d.value` — never invoking `[[Get]]`. So even when accessor enumerability was fixed by (1), `const {...x} = src` over `{get v(){...}}` would have copied `Value::Undefined` from the descriptor's value slot. Spec §14.3.1 (CopyDataProperties) requires `[[Get]]` per key.
+
+**Substrate fix**:
+1. Add a new helper `__install_accessor_obj__` (with `enumerable: true`); dispatch object-literal accessor compile to it. `__install_accessor__` retains the class-side semantics.
+2. Rewrite `__destr_object_rest`'s value-read to enumerate keys then `rt.read_property(src_id, &k)` (the `&mut self` variant that invokes getters), rather than reading the descriptor's value field.
+
+**Post-rung result**: 467 FAIL / 1,428 PASS on the 1,931-path combined cluster.
+
+**Delta**: **+7 PASS** measured on the targeted clusters; the object-literal accessor enumerability fix has broader reach (every code path that iterates own-enumerable own-keys of an object with a literal accessor — Object.keys, for-in, Object.assign source enumeration, etc.) so the full sample-wide cascade will surface in the next major sweep.
+
+**Sample-wide measurement at rung-10 close**: 5,522 PASS / 1,683 FAIL / 384 SKIP = 76.6% (vs 73.9% baseline). Real cumulative +201 PASS, +2.7pp. Gap 22.6pp (started 25.3pp).
+
+**Tag**: `cluster-objlit-accessor-enum-and-rest-getter-11`.
