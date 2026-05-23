@@ -33,6 +33,7 @@ use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{Linkage, Module};
 use rusty_js_bytecode::compiler::FunctionProto;
+use rusty_js_bytecode::constants::{Constant, ConstantsPool};
 use rusty_js_bytecode::op::{op_from_byte, Op};
 use std::collections::HashMap;
 
@@ -136,7 +137,7 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
 
     // Pre-scan: parse bytecode into a structured op list with absolute
     // pcs; identify all jump targets so we can allocate blocks.
-    let parsed = parse_bytecode(&proto.bytecode)?;
+    let parsed = parse_bytecode(&proto.bytecode, &proto.constants)?;
     let mut targets: Vec<usize> = parsed.iter()
         .filter_map(|(_, op)| op.jump_target())
         .collect();
@@ -510,6 +511,14 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
                     // Φ-EXT 3: literal i32 becomes f64 (lossless: i32
                     // fits in f64 mantissa).
                     let v = builder.ins().f64const(*n as f64);
+                    stack.push(v);
+                }
+                ParsedOp::PushConst(n) => {
+                    // TL-EXT 2 (2026-05-23): PushConst resolved at parse
+                    // time to f64; emit as f64const directly. Φ-EXT 3
+                    // calling convention; the Number constant flows on
+                    // the f64 stack.
+                    let v = builder.ins().f64const(*n);
                     stack.push(v);
                 }
                 ParsedOp::Add => {
@@ -1005,6 +1014,10 @@ enum ParsedOp {
     LoadLocal(u16),
     StoreLocal(u16),
     PushI32(i32),
+    /// TL-EXT 2 (2026-05-23): Op::PushConst with Number constant resolved
+    /// to f64 at parse-time. Other Constant variants (String/BigInt/Regex/
+    /// Function) cause parse_bytecode to bail per C8 bail-discipline.
+    PushConst(f64),
     Add, Sub, Mul, Inc, Dec,
     Lt, Le, Gt, Ge, Eq, Ne, StrictEq, StrictNe,
     Dup, Pop,
@@ -1034,7 +1047,7 @@ impl ParsedOp {
     }
 }
 
-fn parse_bytecode(bc: &[u8]) -> Result<Vec<(usize, ParsedOp)>, String> {
+fn parse_bytecode(bc: &[u8], constants: &ConstantsPool) -> Result<Vec<(usize, ParsedOp)>, String> {
     let mut out = Vec::new();
     let mut pc = 0;
     while pc < bc.len() {
@@ -1047,6 +1060,18 @@ fn parse_bytecode(bc: &[u8]) -> Result<Vec<(usize, ParsedOp)>, String> {
             Op::LoadLocal => { let s = u16::from_le_bytes([bc[pc], bc[pc + 1]]); pc += 2; ParsedOp::LoadLocal(s) }
             Op::StoreLocal => { let s = u16::from_le_bytes([bc[pc], bc[pc + 1]]); pc += 2; ParsedOp::StoreLocal(s) }
             Op::PushI32 => { let n = i32::from_le_bytes([bc[pc], bc[pc + 1], bc[pc + 2], bc[pc + 3]]); pc += 4; ParsedOp::PushI32(n) }
+            // TL-EXT 2 (2026-05-23): resolve PushConst's constant pool
+            // index at parse time. Only Number constants are JIT-eligible;
+            // other variants bail the whole function per C8 bail discipline.
+            Op::PushConst => {
+                let idx = u16::from_le_bytes([bc[pc], bc[pc + 1]]);
+                pc += 2;
+                match constants.get(idx) {
+                    Some(Constant::Number(n)) => ParsedOp::PushConst(*n),
+                    Some(_) => return Err(format!("PushConst at pc={op_pc}: non-Number constant unsupported in JIT alphabet")),
+                    None => return Err(format!("PushConst at pc={op_pc}: constant idx {idx} out of bounds")),
+                }
+            }
             Op::Add => ParsedOp::Add,
             Op::Sub => ParsedOp::Sub,
             Op::Mul => ParsedOp::Mul,

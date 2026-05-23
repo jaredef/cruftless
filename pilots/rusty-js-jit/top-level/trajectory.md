@@ -103,3 +103,56 @@ LOC delta: ~225 (design doc). 5 rounds enumerated; pipeline-connection projected
 ---
 
 *TL-EXT 1 closes. Design enumerated. TL-EXT 2 begins implementation with Move 1 PushConst-Number.*
+
+---
+
+## TL-EXT 2 — 2026-05-23 (Move 1 PushConst-Number in JIT alphabet)
+
+### Headline
+
+`ParsedOp::PushConst(f64)` added to JIT alphabet. parse_bytecode signature extended to take `&ConstantsPool`; PushConst's u16 index resolved at parse-time to f64; non-Number constants bail per C8. Translate-pass emits `builder.ins().f64const(n)`. ~30 LOC delta in translator.rs. Substrate-introduction at the alphabet tier; no reclaim expected by design (Finding II.2-bis signature).
+
+### Three-probe results
+
+| probe | result |
+|---|---|
+| Pred-tl.2 canonical fuzz (acc=-932188103) | ✅ GREEN |
+| Pred-tl.3 diff-prod 42/42 | ✅ GREEN |
+| Pred-tl.5 JIT lib tests | ✅ 38 pass, 9 ignored (pre-existing Φ-EXT 3 hold) |
+| Pred-tl.bench A/B probe checksum | flat (1480 → 1470-1507 median, within noise) |
+
+### Substrate moves landed
+
+1. **Import**: added `use rusty_js_bytecode::constants::{Constant, ConstantsPool};`
+2. **ParsedOp enum**: added `PushConst(f64)` variant.
+3. **compile_function_inner**: parse_bytecode call now passes `&proto.constants`.
+4. **parse_bytecode signature**: now takes `(bc: &[u8], constants: &ConstantsPool)`.
+5. **parse-pass Op::PushConst arm**: decodes u16 idx; matches `constants.get(idx)`: `Some(Constant::Number(n))` → `ParsedOp::PushConst(*n)`; other Constant variants return Err per C8 bail discipline.
+6. **translate-pass ParsedOp::PushConst arm**: `builder.ins().f64const(*n)` push onto operand stack.
+
+### Composition with prior corpus / engagement work
+
+- **Doc 740 multi-tier reading + Finding II.2-bis**: Move 1 is substrate-introduction at the alphabet tier; near-zero standalone reclaim is the signature, not a falsification.
+- **Φ-EXT 3 f64-default calling convention**: PushConst flows on the f64 stack; lossless for any Number constant.
+- **Pred-tl.4 scope discipline**: only Number constants accepted; String/BigInt/Regex/Function bail at parse-time. Falsifier met (no other Constant variants supported in this round).
+- **Standing rule 9 (raw-pointer audit)**: not applicable (no new pointer caches).
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable.
+Per Doc 734 §V: growth (c) preparatory — Move 1 is the alphabet substrate-intro that enables Moves 3+4 cascade-revival pilots.
+Per Doc 735 §X.h.b: **(P2.d) bench at substrate-introduction round, expected per Doc 739 §II.2 + Finding II.2-bis. Re-categorization to (P2.a) expected at TL-EXT 5 (M4 CallMethod+charCodeAt-IC) per the cumulative-reclaim materialization point.**
+
+### Open scope at TL-EXT 2 close
+
+1. **TL-EXT 3** — Move 2 module-body JIT entry wrapper (entry-mechanism substrate-intro)
+2. **TL-EXT 4** — Move 3 GetProp+length-IC (cascade-revival #1)
+3. **TL-EXT 5** — Move 4 CallMethod+charCodeAt-IC (cascade-revival #2; pipeline-connection)
+
+### Cumulative status at TL-EXT 2 close
+
+LOC delta: ~30 (translator.rs alphabet extension). Canonical fuzz + diff-prod GREEN. JIT lib tests 38/38 (9 ignored pre-existing). A/B probe flat as predicted.
+
+---
+
+*TL-EXT 2 closes. Move 1 PushConst-Number landed at the JIT alphabet tier. Flat A/B probe is the substrate-introduction signature; TL-EXT 3 lands Move 2 module-body wrap (the entry-mechanism upstream constraint-closure).*
