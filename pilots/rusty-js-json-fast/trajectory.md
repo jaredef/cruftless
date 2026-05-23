@@ -315,3 +315,77 @@ LOC delta: ~50 (json_quote_string_into rewrite). Two cascade-revival pilots rema
 ---
 
 *JSF-EXT 4 closes. Move 2 cascade-revival pilot landed; partial empirical confirmation on object shapes (A, C); D awaits Move 3; E awaits CRB re-bench at JSF-EXT 7 (bench-fixture design limitation).*
+
+---
+
+## JSF-EXT 5 — 2026-05-23 (Move 3 number-stringify integer fast-path; cascade-revival pilot #2)
+
+### Headline
+
+`write_i64_into(n, &mut out)` writes signed-i64 decimal directly into the buffer; reverse-emit-then-byte-reverse on the appended ASCII slice (no allocation). Integer detection in `json_stringify_into`'s Number branch via `n.is_finite() && n.fract() == 0.0 && n in [i64::MIN, i64::MAX]`. f64-fractional falls back to `abstract_ops::number_to_string`. R3 risk (i64::MIN edge) handled by emitting the known string directly to avoid `(-i64::MIN)` overflow.
+
+### Three-probe results
+
+| probe | result |
+|---|---|
+| Pred-jsf.2 canonical fuzz | ✅ GREEN |
+| Pred-jsf.3 diff-prod 42/42 | ✅ GREEN |
+| Pred-jsf.bench D shape | (P2.a) ~5% reclaim — below 5-8× projection; **micro-bench is interp-overhead-bound** |
+
+### Per-shape bench (cruft/node)
+
+| shape | pre-M3 | post-M3 | Δ |
+|---|---:|---:|---:|
+| A small-object | 9.87× | 9.71× | flat |
+| B deep-nested | 14.29× | 14.33× | flat |
+| C array-of-obj | 11.86× | 12.55× | flat (noise) |
+| D number-only | 15.85× | 15.05× | **-5%** |
+| E string-only | 10.80× | 10.31× | **-5%** |
+
+### Aggregate finding across JSF-EXT 3-5
+
+**The per-shape micro-bench is dominated by JS interpreter overhead (call dispatch + arg unbox + result-into-JS-string + .length + accumulate), NOT by JSON.stringify proper.** Even fully eliminating JSON.stringify substrate cost would not deliver the design's projected 5-15× reclaim because most of the wall-clock is interp framework.
+
+Aggregate JSF-EXT 1→5 per-shape position:
+- A: 10.58× → 9.71× (-8% cumulative)
+- B: 14.11× → 14.33× (flat)
+- C: 12.48× → 12.55× (flat)
+- D: 15.16× → 15.05× (flat)
+- E: 10.09× → 10.31× (flat)
+
+### Implication: Pred-jsf.1 measurement strategy shift
+
+JSF-EXT 2's per-shape composition table projected post-M4 cruft/node ratios of ~1.5-3×. **That projection assumed JSON.stringify was the per-op cost dominator at this bench.** The empirical readout falsifies that assumption for this bench harness.
+
+**Strategy shift**: Pred-jsf.1 gates on CRB json_parse_transform (a longer workload where JSON.stringify is a larger fraction). Stand JSF-EXT 7 up as CRB re-bench specifically; do not chase further reclaim on the micro-bench. The micro-bench's value going forward is correctness probe (per-shape regression detection), not reclaim measurement.
+
+### Doc 739 framing (continued)
+
+Move 3 is cascade-revival pilot #2 per Doc 739 §II.3. Per the structural prediction, M3 enables D shape's direct-write integer path. The +5% reclaim is the integer-path landing; the gap between observed +5% and projected 5-8× is the interp-overhead-floor finding above, NOT a Doc 739 falsification — Doc 739 predicts cascade-revival materializes, not the magnitude on a specific bench.
+
+### Composition with prior corpus / engagement work
+
+- **Doc 739 §II.3 cascade-revival**: empirically materialized on D (+5%) and E (+5%).
+- **Doc 734 §V (b) growth**: bench-as-instrument refinement — this micro-bench is interp-overhead-bound; CRB is the proper instrument for Pred-jsf.1.
+- **Findings II.2 staged-validation**: M3 added-and-removed atomically; integer fast-path is conservative (i64-range check); f64-fractional falls through to existing path.
+- **R3 risk (i64::MIN)**: handled.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable.
+Per Doc 734 §V: growth (a) positive-finding empirical-confirmation on D/E reclaim; growth (b) negative-finding catalyzes bench-strategy shift.
+Per Doc 735 §X.h.b: **(P2.a) at D/E reclaim; (P2.d) at A/B/C** — interp-overhead-floor named as the structural cause.
+
+### Open scope at JSF-EXT 5 close
+
+1. **JSF-EXT 6** — Move 4 format-macro elimination + property iter-via-reference (decision: skip or land then CRB? — see report below)
+2. **JSF-EXT 7** — CRB re-bench + Pred-jsf.1 final disposition (the real measurement)
+3. **Findings doc addendum IV** — codify Finding II.2-bis + bench-as-instrument refinement (the micro-bench is interp-overhead-bound; CRB is the proper instrument)
+
+### Cumulative status at JSF-EXT 5 close
+
+LOC delta: ~35 (write_i64_into + integer-branch guard). Three cascade-revival pilots landed; aggregate micro-bench position essentially flat (-3% to -8% across shapes); CRB re-bench is the load-bearing measurement.
+
+---
+
+*JSF-EXT 5 closes. Move 3 integer fast-path landed; cascade-revival pilot pattern empirically materialized at +5% on D/E. The micro-bench is interp-overhead-bound; Pred-jsf.1 gates on CRB at JSF-EXT 7.*

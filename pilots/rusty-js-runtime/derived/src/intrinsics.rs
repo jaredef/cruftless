@@ -5706,9 +5706,21 @@ pub(crate) fn json_stringify_into(rt: &Runtime, v: &Value, out: &mut String) {
         Value::Boolean(b) => out.push_str(if *b { "true" } else { "false" }),
         Value::Number(n) => {
             if n.is_finite() {
-                // Move 3 (JSF-EXT 5) will replace this with a direct
-                // buffer-write integer fast path; for now we delegate.
-                out.push_str(&abstract_ops::number_to_string(*n));
+                // JSF-EXT 5 (Move 3 — cascade-revival pilot #2 per Doc
+                // 739): integer fast-path writes digits directly into
+                // the buffer; f64-fractional falls back to
+                // number_to_string. Integer detection via the bit-exact
+                // fract()==0 + range check that JS itself uses for
+                // ECMA number-to-string integer branch.
+                let n = *n;
+                if n == 0.0 {
+                    out.push('0');
+                } else if n.is_finite() && n.fract() == 0.0
+                    && n >= i64::MIN as f64 && n <= i64::MAX as f64 {
+                    write_i64_into(n as i64, out);
+                } else {
+                    out.push_str(&abstract_ops::number_to_string(n));
+                }
             } else {
                 out.push_str("null");
             }
@@ -5798,6 +5810,30 @@ pub(crate) fn json_stringify_into(rt: &Runtime, v: &Value, out: &mut String) {
             }
         }
     }
+}
+
+/// JSF-EXT 5 (Move 3): write a signed 64-bit integer's decimal form
+/// directly into the buffer with no allocation. Reverse-emit digits
+/// then in-place reverse the appended ASCII slice. i64::MIN handled
+/// by emitting its known string ("-9223372036854775808") directly
+/// to avoid the negate overflow.
+fn write_i64_into(n: i64, out: &mut String) {
+    if n == i64::MIN {
+        out.push_str("-9223372036854775808");
+        return;
+    }
+    let neg = n < 0;
+    let mut m: u64 = if neg { (-n) as u64 } else { n as u64 };
+    if neg { out.push('-'); }
+    let start = out.len();
+    while m > 0 {
+        // SAFETY: digit byte 0x30..=0x39 is valid UTF-8 (ASCII).
+        unsafe { out.as_mut_vec().push(b'0' + (m % 10) as u8); }
+        m /= 10;
+    }
+    // SAFETY: only ASCII digits were pushed at [start..]; byte-level
+    // reverse preserves UTF-8 validity.
+    unsafe { out.as_mut_vec()[start..].reverse(); }
 }
 
 pub(crate) fn json_quote_string_pub(s: &str) -> String { json_quote_string(s) }
