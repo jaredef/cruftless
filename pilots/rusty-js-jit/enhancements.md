@@ -395,6 +395,62 @@ Multiplicative composition: (1) × (2) × (3) × (4) × (5) ≈ realistic-worklo
 
 ---
 
+## 2026-05-23 — TB-EXT 3b: approach A (P2.a) STRICT-WIN; Pred-tb.1 exceeded by 50% **[UNANTICIPATED]**
+
+**Locale**: `pilots/rusty-js-jit/tiny-baseline/trajectory.md` → TB-EXT 3b.
+
+**Substrate change**: Approach A from the TB-EXT 3b scope-analysis. Added `tb_metadata_ptr: Cell<Option<NonNull<()>>>` to `ClosureInternals`; fast-path in `call_function` reads the cell and skips standard path's HashMap lookup + multi-condition AND + proto_rc clone. Cell populated on first JIT-hit. ~120 LOC.
+
+**Measurement**:
+
+| bench | TB OFF | TB ON | Δ |
+|---|---:|---:|---:|
+| bench_call_overhead | 133.6 ns/iter | **70.9 ns/iter** | **−62.7 ns (−47%)** |
+| bench_call_shapes id1 | ~131 ns | 96.2 ns | −27% |
+| bench_call_shapes id2 | ~136 ns | 105.2 ns | −23% |
+| bench_call_shapes id_locals | ~127 ns | 95.7 ns | −25% |
+
+CRB cruft TB=1 cross-validation (small but real):
+- json_parse_transform: 2489.5 → 2434.0 ms (−2.2%)
+- string_url_sweep: 747.5 → 743.0 ms (~noise)
+- arith_tight_loop: 335.5 → 334.5 ms (no change — dispatcher is <2% of cost)
+
+diff-prod 42/42 PASS under TB=1. 46/46 JIT lib + 35/35 runtime lib tests PASS.
+
+**Why this was unanticipated**: TB-EXT 2 decomposition estimated 38-74 ns reclaim for approach A. The empirical 62.7 ns sits at the upper end. More importantly, **the (P2.d) risk standing from the TB-EXT 3b scope-analysis is CLOSED at first cut** — approach A alone validates the framework without needing 3c (deopt-restructure) or 3d (native thunk). This was named in the scope-analysis as "low risk, additive, behind flag" but the *outcome* — that approach A alone would EXCEED Pred-tb.1 by 50% — exceeded what the staging anticipated.
+
+**Hypothesis** for the 62.7 ns reclaim's composition:
+1. HashMap lookup absorbed (~25-30 ns) — validates Finding II.3 from findings.md
+2. Multi-condition AND removed (~5-10 ns) — predicted in TB-EXT 2 decomposition §4
+3. proto_rc.clone() + jit_compatible_arg per-arg call removed (~5-10 ns)
+4. Inline args check is cheap (~2-3 ns net positive for the fast path's work)
+5. Cache-line / branch-predictor improvements from the streamlined hot path (~5-10 ns; was not credited in the decomposition)
+
+(1) + (2) + (3) = 35-50 ns identified; (5) accounts for the rest. The decomposition was slightly conservative.
+
+**Implication for forward work**:
+
+- **TB-EXT 3c (approach B deopt-restructure) is NO LONGER needed for framework validation.** The pilot's first-cut perf goal is met. 3c becomes optional/forward-work if Pred-tb.2 (composition on bench_ic with shape + STUB + TB) needs additional reclaim.
+
+- **TB-EXT 3d (approach C native thunk) becomes very-distant forward-work.** The substantial-LOC native emission round is not justified by per-call-tier reclaim alone given approach A already delivers 47%.
+
+- **VTI-EXT 3c (the deferred inline tag-check round)** path is now more clearly viable. The VTI seed §I.2 falsifier "below 3× re-categorize as (P2.d)" can be re-attempted after the TB success demonstrates that calling-convention restructuring CAN pay when done right. VTI-EXT 3c specifically removes the dispatcher's jit_compatible_arg precheck (which TB-EXT 3b already does for TB-eligible closures); the VTI-side restructure becomes additive on top of TB-eligible state.
+
+- **LeJIT seed §I.3 composition reading sharpens** with the empirical anchor. Bench_ic-class composition target (cruft self-improvement reaching bun-parity) now has TB contributing ~47% per-call-tier reclaim. The seed §I.3 amendment from CRB-EXT 8 holds; the post-TB-EXT-3b numbers will need to be threaded through when the engagement next composes bench_ic + LeJIT-Σ + LeJIT-Τ readings (TB-EXT 4 will produce this composition matrix).
+
+- **Findings doc validation**: this round validated Findings V.1 (TB bounded CRB-side benefit, predicted ~2% on json — measured 2.2%), II.2 (never split substrate moves; approach A removes work), II.3 (HashMap + TLS gap — HashMap alone gave ~25-30 ns confirmation). The findings doc proves itself useful at first application.
+
+- **The "approach A first, validate, then escalate" staging proved its worth.** Per the scope-analysis trajectory entry: VTI-EXT 3b's (P2.d) lesson constrained TB-EXT 3b's staging. Without that constraint, an attempt at approach B or C as first cut would have cost 3-5× more LOC for the same (or worse) outcome. The framework's response to (P2.d) findings is now empirically validated.
+
+**Provenance**:
+- Substrate: `pilots/rusty-js-runtime/derived/src/value.rs` (Cell field) + `pilots/rusty-js-runtime/derived/src/interp.rs` (fast path + cell populate)
+- Trajectory: `pilots/rusty-js-jit/tiny-baseline/trajectory.md` TB-EXT 3b (close)
+- Snapshot: `pilots/cross-runtime-bench/results/2026-05-23-post-tb-ext-3b/{summary.md, results.jsonl}`
+- Cross-reference: this file's prior entries — VTI-EXT 3b ((P2.d) lesson), TB-EXT 2 (decomposition gap), TB-EXT 3a (substrate-introduction), CRB-EXT 8 (§I.3 amendment), CRB-EXT 9 (per-workload spread)
+- Findings validation: `pilots/rusty-js-jit/findings.md` V.1 + II.2 + II.3 confirmed empirically
+
+---
+
 ## Template — for future entries
 
 ### `<date>` — `<locale-tag>` `<round-id>`: `<one-line headline>` **[ANTICIPATED]**

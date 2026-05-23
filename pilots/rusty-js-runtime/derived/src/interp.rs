@@ -7823,6 +7823,7 @@ impl Runtime {
                             bound_this_cell,
                             call_count: std::cell::Cell::new(0),
                             jit_disabled: std::cell::Cell::new(false),
+                            tb_metadata_ptr: std::cell::Cell::new(None),
                         }),
                     
                         ..Default::default()
@@ -8355,6 +8356,91 @@ impl Runtime {
         // Op::New sets it just before dispatching; plain Call sites leave it
         // None. Taken (not cloned) so nested calls don't inherit it.
         let nt_for_this_call = self.pending_new_target.take();
+
+        // LeJIT-Τ TB-EXT 3b (approach A — closure-side metadata cache fast path).
+        // Skips the standard dispatcher's jit_cache HashMap lookup + multi-
+        // condition AND check + proto_rc clone by reading the closure's
+        // tb_metadata_ptr cell (populated on first JIT-hit by the standard
+        // path below). Falls through to standard path if the cell is None
+        // (not yet populated, or TB env flag is off, or closure isn't
+        // eligible). Per Finding II.2 from findings.md: this move
+        // ELIMINATES work (HashMap + match-arm) and only adds a Cell read.
+        // Deopt fallthrough: invalidates the cell + falls through to
+        // standard path which will retry interp re-execution.
+        if nt_for_this_call.is_none() {
+            // new.target sites need full setup; bypass TB fast path.
+            // Cast self to *mut Runtime BEFORE the obj() borrow so the
+            // raw pointer doesn't conflict with the borrow checker.
+            let rt_ptr_for_tb = self as *mut Runtime as usize;
+            let fast_path_taken_result = {
+                let o = self.obj(id);
+                if let crate::value::InternalKind::Closure(c) = &o.internal_kind {
+                    if let Some(nn) = c.tb_metadata_ptr.get() {
+                        let cf: &rusty_js_jit::CompiledFn = unsafe { &*(nn.as_ptr() as *const _) };
+                        let params = c.proto.params as usize;
+                        if args.len() == params && (params == 1 || params == 2)
+                            && args.iter().all(jit_compatible_arg)
+                            && !c.jit_disabled.get()
+                        {
+                            let actual_this = if c.is_arrow {
+                                if let Some(cell) = &c.bound_this_cell {
+                                    cell.borrow().clone()
+                                } else {
+                                    c.bound_this.clone().unwrap_or(Value::Undefined)
+                                }
+                            } else { this.clone() };
+                            let proto_ptr = &*c.proto as *const _ as usize;
+                            let rt_ptr = rt_ptr_for_tb;
+                            let _ = actual_this;  // not used in JIT body path
+                            let vti = cf.vti_enabled;
+                            // Release the obj borrow before invoking JIT
+                            // (JIT helper externs may need &mut self).
+                            drop(o);
+                            rusty_js_jit::set_current_deopt_sites(&cf.deopt_sites);
+                            rusty_js_jit::set_current_runtime(rt_ptr);
+                            rusty_js_jit::set_current_proto(proto_ptr);
+                            let r = match params {
+                                1 => {
+                                    let a = if vti {
+                                        &args[0] as *const Value as i64
+                                    } else { unbox_arg(&args[0]) };
+                                    cf.func.call1(a)
+                                }
+                                2 => {
+                                    let (a, b) = if vti {
+                                        (&args[0] as *const Value as i64,
+                                         &args[1] as *const Value as i64)
+                                    } else {
+                                        (unbox_arg(&args[0]), unbox_arg(&args[1]))
+                                    };
+                                    cf.func.call2(a, b)
+                                }
+                                _ => unreachable!(),
+                            };
+                            rusty_js_jit::clear_current_runtime();
+                            rusty_js_jit::clear_current_proto();
+                            rusty_js_jit::clear_current_deopt_sites();
+                            if rusty_js_jit::take_last_deopt().is_some() {
+                                // Deopt: invalidate the cell + fall through
+                                // to standard path which handles deopt
+                                // re-execution.
+                                let o2 = self.obj(id);
+                                if let crate::value::InternalKind::Closure(c2) = &o2.internal_kind {
+                                    c2.tb_metadata_ptr.set(None);
+                                }
+                                None
+                            } else {
+                                Some(Ok(Value::Number(r as f64)))
+                            }
+                        } else { None }
+                    } else { None }
+                } else { None }
+            };
+            if let Some(result) = fast_path_taken_result {
+                return result;
+            }
+        }
+        // Standard dispatcher path follows.
         // Extract proto-or-native by inspecting the heap object once.
         // BoundFunction: rewrite to its target, prepending bound args.
         let (proto_opt, native_opt, effective_this, effective_args) = {
@@ -8418,6 +8504,14 @@ impl Runtime {
                         let rt_ptr_usize = self as *mut Runtime as usize;
                         let proto_ptr_usize = &*proto_rc as *const _ as usize;
                         if let Some(Some(jit_fn)) = self.jit_cache.get(&proto_key) {
+                            // LeJIT-Τ TB-EXT 3b (approach A): capture
+                            // CompiledFn pointer + TB eligibility for the
+                            // post-call closure-cell populate. Pointer is
+                            // stable for process lifetime (leaked module
+                            // per CompiledFn._module).
+                            let tb_cf_ptr: *const rusty_js_jit::CompiledFn = jit_fn;
+                            let tb_eligible = jit_fn.tb_metadata.as_ref()
+                                .map_or(false, |m| m.eligible());
                             rusty_js_jit::set_current_deopt_sites(&jit_fn.deopt_sites);
                             rusty_js_jit::set_current_runtime(rt_ptr_usize);
                             rusty_js_jit::set_current_proto(proto_ptr_usize);
@@ -8456,6 +8550,23 @@ impl Runtime {
                                 // tuple below.
                                 deopt_fell_through = true;
                             } else {
+                                // LeJIT-Τ TB-EXT 3b (approach A): populate
+                                // the closure's tb_metadata_ptr cell on
+                                // successful first JIT-hit. Subsequent calls
+                                // take the fast path at the top of dispatch
+                                // (skips jit_cache HashMap lookup + the
+                                // 5-condition AND check). Re-borrow obj to
+                                // access the Closure cell — borrows of
+                                // self.jit_cache and self.obj coexist via NLL
+                                // (separate fields).
+                                if tb_eligible && rusty_js_jit::tiny_baseline::lejit_tb_enabled() {
+                                    if let Some(nn) = std::ptr::NonNull::new(tb_cf_ptr as *mut ()) {
+                                        let o2 = self.obj(id);
+                                        if let crate::value::InternalKind::Closure(c2) = &o2.internal_kind {
+                                            c2.tb_metadata_ptr.set(Some(nn));
+                                        }
+                                    }
+                                }
                                 return Ok(Value::Number(r as f64));
                             }
                         }

@@ -917,7 +917,31 @@ pub struct ClosureInternals {
     /// match the JIT contract. The bytecode interpreter remains the
     /// fallback in all cases.
     pub jit_disabled: std::cell::Cell<bool>,
+    /// LeJIT-Τ TB-EXT 3b (approach A — closure-side metadata cache):
+    /// raw pointer to the per-proto TinyBaselineMetadata, populated
+    /// on the first JIT-hit when `CRUFTLESS_LEJIT_TB=1`. Some(_)
+    /// means the closure has a TB-eligible JIT'd body the dispatcher
+    /// can fast-path-route around the standard jit_cache HashMap
+    /// lookup + multi-condition AND check. The pointer is into the
+    /// leaked JITModule (stable for process lifetime per
+    /// translator.rs CompiledFn._module). None when TB is off OR
+    /// when the function is not yet JIT-compiled.
+    ///
+    /// The cache is per-closure, not per-proto, because each closure
+    /// has its own call_count + jit_disabled state; the metadata
+    /// reference itself is proto-level data but lifetime-bound to
+    /// the CompiledFn in the per-proto jit_cache. Cell-typed for
+    /// interior mutability: the dispatcher's read-and-populate
+    /// happens while the surrounding `obj()` borrow is shared.
+    pub tb_metadata_ptr: std::cell::Cell<Option<std::ptr::NonNull<()>>>,
 }
+
+// SAFETY: the tb_metadata_ptr is read-only after first population
+// and the underlying TinyBaselineMetadata lives in the leaked
+// JITModule per CompiledFn._module. The dispatcher reads it
+// single-threaded (cruft is single-threaded per the engagement's
+// design). Send/Sync are not required; the field is a raw pointer
+// in a Cell which is already !Send by default.
 
 /// Native function (intrinsic) backed by a Rust callback.
 pub struct FunctionInternals {
