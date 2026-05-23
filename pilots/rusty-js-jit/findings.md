@@ -342,3 +342,64 @@ This round names a third tier:
 - Cross-reference: this file's prior addendum Finding V.3 (LeJIT-Ψ (P2.d) at first cut) — NOW RESOLVED via cascade
 - Cross-reference: Φ seed §I.2 constraint enumeration C1-C10 (the apparatus that named the constraint to be closed)
 - Corpus articulation: jaredfoy.com Doc 739 (formalizes the abstract pattern + the LeJIT-Φ instance)
+
+---
+
+## Addendum III — 2026-05-23 (post CMig-EXT 16 + 16.bis + 17 substrate-correctness chapter close)
+
+This addendum captures three lessons from the engagement's shape-enrollment substrate-correctness work (CMig-EXT 15 + 16 + 16.bis + 17). The lessons are operational rather than per-pilot performance findings; they refine the engagement's standing apparatus discipline. Per the append-only protocol, addenda land sequentially without editing prior sections.
+
+### New finding
+
+**Finding IV.3 (Audit quick-scans produce HYPOTHESIS lists, not fix lists)** *[new, 2026-05-23 via CMig-EXT 16 → 16.bis precision delta]*
+
+**Anchor**: CMig-EXT 16's quick-scan audit identified 5 NEEDS-FIX call sites by grep + brief context inspection. The CMig-EXT 16.bis fix round's per-site reads moved 2 of the 5 to SAFE (intrinsics.rs:2682 + 5507 — both already had the shape-iter-chain pattern that the quick-scan missed in surrounding context). Plus 1 more was moved to SAFE during the audit's own verification pass (value.rs:508 has_own_str — shape-aware-via-fallback). Net actual NEEDS-FIX after full per-site read: 2 of original 5 = 40% precision.
+
+**Substrate implication**: any audit that enumerates call sites without reading the surrounding scope is necessarily over-conservative. The discipline:
+
+1. **Quick-scan produces a hypothesis list.** Per-call-site grep + minimal context to flag candidates.
+2. **Per-site read in fix round refines the hypothesis.** Read 20+ lines around each site; verify whether the shape-aware pattern is already present in the surrounding scope.
+3. **Categorization is finalized at fix-round close, not audit close.** The audit's NEEDS-FIX count is a ceiling; the actual fix count is bounded below by the audit's precision.
+
+This generalizes beyond shape-enrollment: any future audit of call-site classes (security review, deprecation cleanup, semantic migration) should follow the same hypothesis-list → verify-in-fix-round workflow.
+
+### New finding
+
+**Finding IV.4 (Canonical fuzz harness as standing engagement instrument)** *[new, 2026-05-23 via CMig-EXT 17]*
+
+**Anchor**: CMig-EXT 17 landed an 8-pattern × 2000-fixture × 8-configuration fuzz harness producing 128,000 effective fixture-runs, all byte-identical across cruft-default / cruft-explicit-flags / cruft-shape-off / node. The harness is engagement-wide, not pilot-specific.
+
+**Substrate implication**: future default-on flips (any pilot, any session) can run this harness as their fuzz-probe-level instrument under the three-probe-levels discipline (rule 5). They do NOT need to spawn a new per-flip fuzz fixture; the canonical fuzz IS the standing instrument.
+
+The CMig-EXT 15 + 16 + 16.bis pattern (per-flip fixture spawn, e.g., fuzz-tb.mjs at TB-EXT 7) was appropriate when no canonical harness existed. Now that the canonical exists, per-flip fixtures are SUPPLEMENTARY (for pilot-specific patterns the canonical doesn't cover), not REPLACEMENT.
+
+**Generalization for future engagement sessions**: when running a default-on flip's three-probe-levels gate, the procedure is:
+1. Bench probe: pilot-specific bench (e.g., bench_ic for STUB; bench_call_overhead for TB)
+2. Consumer-route probe: diff-prod under the flag's default-on state
+3. Fuzz probe: run `pilots/rusty-js-shapes/consumer-migration/fixtures/fuzz-canonical.mjs` under the flag's default-on state; verify byte-identity vs node
+4. Pilot-specific fuzz fixture is OPTIONAL supplementary coverage; only required if the pilot's substrate exercises patterns the canonical doesn't cover.
+
+### New standing rule
+
+**Standing rule 10 (added 2026-05-23)**: any future default-on flip's three-probe-levels gate must include a run of `pilots/rusty-js-shapes/consumer-migration/fixtures/fuzz-canonical.mjs` under the flag's default-on state. Output must be byte-identical to the node baseline (`acc=-932188103` at the CMig-EXT 17 version `cmig-ext-17-2026-05-23`; the version + reference acc update whenever the canonical fuzz is extended).
+
+The rule's value compounds across flips: each future flip's correctness is gated on the canonical's coverage; the canonical's coverage grows over time as new patterns get added to it (when the engagement encounters a new substrate-correctness class). Per CMig-EXT 17's pattern set, the canonical currently covers JSON.stringify + spread + delete+re-add migration + Object.* enumeration + Map/Set iteration + hot property-access loops + nested composition + array-of-objects.
+
+### Promotion of prior findings via the CMig-EXT 15-17 work
+
+**Finding IV.1 (diff-prod + test262-sample alone insufficient for shape-enrollment correctness)** — **PROMOTED TO RESOLVED at canonical scope**. The third probe level (canonical fuzz per CMig-EXT 17) now exists as standing instrument. The "insufficient" qualifier was the gap CMig-EXT 17 closes.
+
+**Finding IV.2 (Surface-completeness audit is a missing engagement discipline)** — **PROMOTED TO PARTIALLY RESOLVED**. The audit discipline now exists (per CMig-EXT 16). Its refinement (Finding IV.3 hypothesis-list workflow) is part of this addendum. Engagement-wide application of the audit to future data-structure-storage changes (per standing rule 6) is queued; the apparatus is in place.
+
+### Findings-doc-as-standing-instrument cumulative status
+
+After this addendum, the findings doc contains:
+- 6 original finding sections (I-VI; per-category)
+- 8 original standing rules
+- Addendum: 5 findings (3 promoted; 2 new) + 1 new standing rule (#9)
+- Addendum II: 1 new finding (II.5 gap-closure-as-cascade-revival)
+- Addendum III (this): 2 new findings (IV.3 audit-precision; IV.4 canonical-fuzz-as-standing-instrument) + 1 new standing rule (#10) + 2 promotions (IV.1 RESOLVED; IV.2 PARTIALLY RESOLVED)
+
+Total: 9 findings (6 original + 3 new across addenda); 10 standing rules (8 original + 2 added); multiple promotions tracking empirical anchor strengthening.
+
+The findings doc is now a working engagement instrument with 4+ self-applications validated in the session it was created. The "use these to improve substrate" directive that motivated the doc's creation has produced compounding returns: each new finding refines future substrate work; each new standing rule prevents a bug class from recurring.
