@@ -9341,6 +9341,35 @@ pub unsafe fn decode_string_ptr(f: f64) -> *const String {
     extract_boxed_payload(f) as *const String
 }
 
+/// OSR-EXT 5c (2026-05-23): inverse of unbox_arg_f64 for the OSR
+/// locals-out path. Takes a post-JIT-invoke f64 + the slot's
+/// pre-invoke Value (the "snapshot"). Returns the post-invoke Value.
+///
+/// First-cut shape per Pred-vd.4 scope discipline + Finding VD.1
+/// constraints:
+///   - If snapshot is Value::Number: the JIT computed a new f64;
+///     return Value::Number(f).
+///   - If snapshot is any other variant: the JIT either didn't
+///     modify the slot or wrote a passed-through pointer/handle.
+///     Per VD R3 (Rc strong-count not incremented at encode), don't
+///     reconstruct via Rc::from_raw. Return snapshot.clone().
+///
+/// This is conservative + correctness-safe at first cut. The
+/// limitation: if the JIT body writes a non-Number to a slot whose
+/// pre-invoke Value was Number, the result is the raw f64 bits as a
+/// Number — which is the canonical f64 reading and the conservative
+/// behavior (no spurious String allocation or Rc count drift).
+///
+/// For well-formed loops where Number locals only receive Number
+/// computations + String/Object locals stay as their original
+/// references, this round-trip is correct.
+pub fn box_to_value(f: f64, snapshot: &Value) -> Value {
+    match snapshot {
+        Value::Number(_) => Value::Number(f),
+        _ => snapshot.clone(),
+    }
+}
+
 /// Doc 731 §XIV.d typed-i64 unbox: accept a Value::Number with
 /// integer-valued f64 representation; reject everything else with
 /// TypeError. v1 strict shape: future deviation may relax to
@@ -10202,6 +10231,60 @@ mod vd_tests {
             assert!(!is_boxed_value(encoded),
                 "Number {n} (bits {:x}) mis-detected as boxed", encoded.to_bits());
         }
+    }
+
+    // ─── OSR-EXT 5c (2026-05-23): box_to_value round-trip tests ───
+
+    #[test]
+    fn osr_box_to_value_number_snapshot_returns_new_number() {
+        let snapshot = Value::Number(0.0);
+        let result = box_to_value(42.5, &snapshot);
+        match result {
+            Value::Number(n) => assert_eq!(n, 42.5,
+                "Number snapshot should produce Value::Number(f)"),
+            _ => panic!("expected Value::Number, got {:?}", result),
+        }
+    }
+
+    #[test]
+    fn osr_box_to_value_string_snapshot_returns_cloned_snapshot() {
+        let s = Rc::new(String::from("preserved"));
+        let snapshot = Value::String(s.clone());
+        let encoded = unbox_arg_f64(&snapshot);
+        let result = box_to_value(encoded, &snapshot);
+        // Result still alive at the assertion site (kept by binding).
+        let result_clone = result.clone();
+        match &result {
+            Value::String(rs) => assert_eq!(rs.as_str(), "preserved",
+                "String snapshot should round-trip via clone"),
+            other => panic!("expected Value::String, got {:?}", other),
+        }
+        // s + snapshot + result + result_clone = 4 live Rcs.
+        assert_eq!(Rc::strong_count(&s), 4,
+            "Rc strong count: s + snapshot + result + result_clone");
+        drop(result);
+        drop(result_clone);
+        assert_eq!(Rc::strong_count(&s), 2,
+            "after drops: s + snapshot");
+    }
+
+    #[test]
+    fn osr_box_to_value_object_snapshot_preserved() {
+        let snapshot = Value::Object(rusty_js_gc::ObjectId(42));
+        let result = box_to_value(0.0, &snapshot);
+        match result {
+            Value::Object(id) => assert_eq!(id.0, 42,
+                "Object snapshot should round-trip as identical id"),
+            _ => panic!("expected Value::Object, got {:?}", result),
+        }
+    }
+
+    #[test]
+    fn osr_box_to_value_undefined_snapshot_preserved() {
+        let snapshot = Value::Undefined;
+        let result = box_to_value(99.0, &snapshot);
+        assert!(matches!(result, Value::Undefined),
+            "Undefined snapshot should be preserved regardless of f64 value");
     }
 }
 

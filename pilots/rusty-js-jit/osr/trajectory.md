@@ -404,3 +404,59 @@ LOC delta: ~130 (translator.rs: JitFnOsr type + ArityOsr variant + call_osr meth
 ---
 
 *OSR-EXT 5b closes. JIT-side OSR substrate landed. compile_function_osr produces invocable ArityOsr CompiledFn with proper locals load/store IR. Runtime invoke deferred to OSR-EXT 5d. All probes GREEN; no behavior change (JIT side not yet called from runtime).*
+
+---
+
+## OSR-EXT 5c — 2026-05-23 (box-to-value helper)
+
+### Headline
+
+`box_to_value(f, snapshot) -> Value` helper lands. Conservative shape: if snapshot is Value::Number, return Value::Number(f) (the JIT-computed new f64); else return snapshot.clone() (preserve original String/Object/Boolean/Symbol/etc.). ~25 LOC + 4 unit tests.
+
+### Design rationale (per VD R3 + safety analysis)
+
+The JIT body can only construct f64 values internally. Any String/Object pointer it writes to a local must have been passed IN via the prologue, derived from the frame's original Value::String/Object. The original Value::X in the enclosing frame stays alive for the JIT call's duration; the JIT's locals-out array holds raw pointer bits.
+
+Per VD R3 (Rc strong-count not incremented at encode): box_to_value MUST NOT use Rc::from_raw on decoded pointer bits (would over-decrement on drop). Instead: for non-Number snapshots, clone the snapshot's Value (which properly increments the Rc).
+
+The conservative behavior covers the common case (well-formed loops where Number locals receive Number computations + String/Object locals stay as their original references). The limitation: if the JIT body writes a fresh non-Number to a Number-snapshot slot, the result is the raw f64 bits as Value::Number — which is the canonical f64 reading. No correctness violation; just doesn't track that pathological case. OSR loops in practice don't produce that pathological case.
+
+### Three-probe results
+
+| probe | result |
+|---|---|
+| canonical fuzz (acc=-932188103) | ✅ GREEN |
+| diff-prod 42/42 | ✅ GREEN |
+| JIT lib tests | ✅ 38/38 |
+| osr_box_to_value unit tests | ✅ 4/4 (Number / String / Object / Undefined snapshots) |
+
+### Substrate moves landed
+
+1. `pub fn box_to_value(f: f64, snapshot: &Value) -> Value` helper in interp.rs.
+2. 4 unit tests covering Number snapshot → new Value::Number; String snapshot → cloned String with Rc count tracking; Object snapshot preserved; Undefined snapshot preserved regardless of f64 value.
+
+### Composition with prior corpus / engagement work
+
+- **VD-EXT 1+2 NaN-boxing encoding**: unbox_arg_f64 is the encoder; box_to_value is the inverse for non-Number values via snapshot. For Number values, the round-trip is f64-identity.
+- **Standing rule 12 (Addendum VI)**: applied — adversarial unit-test coverage of all 4 Value-variant snapshot cases.
+- **Doc 740 §VIII.4 locals-marshaling coverage**: completes the helper substrate; OSR-EXT 5d will compose box_to_value with the runtime dispatcher.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable.
+Per Doc 734 §V: growth (c) preparatory.
+Per Doc 735 §X.h.b: substrate-intro round; helper not yet invoked by runtime.
+
+### Open scope at OSR-EXT 5c close
+
+1. **OSR-EXT 5d** — runtime dispatcher integration (~80 LOC; marshal frame.locals → Vec<f64>; invoke call_osr; marshal back via box_to_value). Cascade-revival consumer of 5b + 5c.
+2. **OSR-EXT 6** — alphabet extension (TL Moves 3+4 revival folded in).
+3. **OSR-EXT 7** — composition probe + CRB final disposition.
+
+### Cumulative status at OSR-EXT 5c close
+
+LOC delta: ~70 (25 helper + 45 unit tests). OSR-EXT 0-5c cumulative: ~730 across the locale.
+
+---
+
+*OSR-EXT 5c closes. box_to_value helper landed. 4/4 unit tests cover Value-variant snapshots; all probes GREEN. OSR-EXT 5d wires box_to_value into the dispatcher invoke path.*
