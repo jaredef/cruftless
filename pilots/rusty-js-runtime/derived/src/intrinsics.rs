@@ -2643,11 +2643,26 @@ impl Runtime {
             if let Some(init) = args.first() {
                 if let Value::Object(src) = init {
                     // Try as plain object: copy own enumerable string keys.
-                    let pairs: Vec<(String, Value)> = rt.obj(*src).properties
-                        .iter()
-                        .filter(|(k, d)| d.enumerable && k.as_str() != "__headers")
-                        .map(|(k, d)| (k.to_string_content(), d.value.clone()))
-                        .collect();
+                    // CMig-EXT 9 Family B: shape entries first (insertion
+                    // order; all enumerable + non-__headers by carve-out),
+                    // then non-__headers IndexMap entries.
+                    let pairs: Vec<(String, Value)> = {
+                        let s = rt.obj(*src);
+                        let mut out: Vec<(String, Value)> = Vec::new();
+                        if let Some(shape) = s.shape.as_ref() {
+                            for (name, slot) in shape.iter_slots() {
+                                if name == "__headers" { continue; }
+                                let idx = slot as usize;
+                                if let Some(v) = s.shape_values.get(idx) {
+                                    out.push((name.to_string(), v.clone()));
+                                }
+                            }
+                        }
+                        out.extend(s.properties.iter()
+                            .filter(|(k, d)| d.enumerable && k.as_str() != "__headers")
+                            .map(|(k, d)| (k.to_string_content(), d.value.clone())));
+                        out
+                    };
                     for (k, v) in pairs {
                         let lk = k.to_ascii_lowercase();
                         let s = abstract_ops::to_string(&v).as_str().to_string();
@@ -5455,10 +5470,24 @@ fn structured_clone_walk(
                 rt.alloc_object(o)
             };
             seen.insert(oid.0, dst_id);
-            let pairs: Vec<(String, Value)> = rt.obj(*oid).properties.iter()
-                .filter(|(k, _)| !k.as_str().starts_with("@@"))
-                .map(|(k, d)| (k.to_string_content(), d.value.clone()))
-                .collect();
+            // CMig-EXT 9 Family B: shape entries first (insertion order),
+            // then non-@@ string-keyed properties entries.
+            let pairs: Vec<(String, Value)> = {
+                let src = rt.obj(*oid);
+                let mut out: Vec<(String, Value)> = Vec::new();
+                if let Some(shape) = src.shape.as_ref() {
+                    for (name, slot) in shape.iter_slots() {
+                        let idx = slot as usize;
+                        if let Some(v) = src.shape_values.get(idx) {
+                            out.push((name.to_string(), v.clone()));
+                        }
+                    }
+                }
+                out.extend(src.properties.iter()
+                    .filter(|(k, _)| !k.as_str().starts_with("@@"))
+                    .map(|(k, d)| (k.to_string_content(), d.value.clone())));
+                out
+            };
             for (k, v) in pairs {
                 let new_v = structured_clone_walk(rt, &v, seen)?;
                 rt.object_set(dst_id, k, new_v);

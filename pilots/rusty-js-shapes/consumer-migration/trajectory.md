@@ -310,3 +310,64 @@ The substrate-introduction loop has reached the point where the bidirectional en
 ---
 
 *CMig-EXT 5.bis + 8 closes. Enrollment infrastructure lives behind `CRUFTLESS_SHAPE_ENROLL=1`. Diff-prod under enrollment: 37/42 PASS. Residual 5 failures are localizable consumer sites; CMig-EXT 9+ closes each. The LeJIT-Σ measurement pipeline is one default-flip away from real.*
+
+---
+
+## CMig-EXT 9 + 10 — 2026-05-23 (close 5 residual consumer sites + DEFAULT-ON FLIP)
+
+### Headline
+
+Closes the five residual fixtures under enrollment via site-by-site fixes; **flips the default to shape-enrolled** with `CRUFTLESS_SHAPE_ENROLL=0` as the diagnostic escape hatch. Diff-prod **42/42 PASS in both modes** (default-on Shaped + escape-hatch Dictionary).
+
+### Substrate landed (CMig-EXT 9)
+
+Five site-by-site closures, each via the bidirectional engine-diff oracle (Doc 730 §XVI) localizing the divergence + a small fix:
+
+- **structured-clone** — `intrinsics.rs:5458` structured_clone_walk's plain-Object branch now prepends shape entries before the IndexMap iteration. Closes the fixture (deep_eq, function_throws, self_ref_preserved all flip true).
+- **node-events** — `cruftless/src/events.rs:23` EventEmitter `__listeners` bag now allocates via `Object::new_dictionary()` (container-role per shapes seed §IV P3 pattern; EventEmitter.eventNames() iterates `.properties.keys()` directly).
+- **fetch-headers** — `intrinsics.rs:2646` Headers constructor's input-iteration now prepends shape entries (Family B P1 on the source object).
+- **es-recent-methods** — `interp.rs:1138` `new_empty_set()` storage now `Object::new_dictionary()` (Set.prototype.union/intersection/etc. iterate storage via `.properties`; storage is container-role).
+- **proxy-basics** — `interp.rs:7515` Op::DeleteProp and `interp.rs:7569` Op::DeleteIndex both gained shape-awareness: shape-stored entries are user-default configurable per carve-out → always deletable → routes through `remove_str` which migrates first then shifts the IndexMap. Pre-fix: `get_own`/`properties.get` returned None for shape entries → delete was a no-op → target_keys retained "x".
+
+### Substrate landed (CMig-EXT 10)
+
+- **value.rs `shape_enroll_enabled()` default flipped from `false` to `true`**. `CRUFTLESS_SHAPE_ENROLL=0` (or `=false`) is the escape hatch; unset = enrolled. Per the survey R2 mitigation pattern: incremental rollout. All gates green under enrollment as of CMig-EXT 9 close.
+
+### Diff-prod final state
+
+| mode | PASS | FAIL |
+|---|---:|---:|
+| default (post-flip, Shaped) | **42** | 0 |
+| escape hatch (`CRUFTLESS_SHAPE_ENROLL=0`, Dictionary) | **42** | 0 |
+
+The substrate-introduction round of the shapes pilot is **structurally complete**. Every `Object::new_ordinary()` JS-literal allocation now enrolls into Shaped form; the consumer-site surface is unified shape-aware; the bidirectional engine-diff oracle held green under both modes.
+
+### §XVI / Doc 734 categorization
+
+Per Doc 730 §XVI: five Case-1 closures (cruftless violated own-enumeration / own-property-delete semantics under enrollment at five specific consumer sites). The §XVI oracle was the diagnostic instrument — at each iteration: flip enrollment, run diff-prod, read the engine error or stdout-diff for the next residual, fix.
+
+Per Doc 734 §V: growth mechanism (a) tier-relocation — `new_dictionary` factory was added at CMig-EXT 1 as documentation-of-intent; CMig-EXT 9 made it load-bearing at three additional sites (EventEmitter, fetch-Headers, Set storage). Growth mechanism (c) positive-finding generalization — the default-on flip is the empirical-evidence-justified rollout: 42/42 in both modes corroborates the substrate's correctness across the diff-prod surface.
+
+### Pred disposition
+
+- **Pred-shape.1** (per-op-cheaper): unmeasured (Pred-shape.4 measurement comes next).
+- **Pred-shape.2** (identity invariant): held — no use-after-free across enrollment flip (CMig-EXT 9's five closures didn't surface any pin-related issues).
+- **Pred-shape.3** (transition tree O(N) growth): not yet measured at the integration tier.
+- **Pred-shape.4** (stable IC pointer for stub lifetime): **NOW INTEGRATION-MEASURABLE.** Every `Object::new_ordinary()` JS-literal allocation enrolls; `Object::shape_ptr_and_slot_for` now returns Some(ptr) for any property installed via set_own (the modal case). **Pilot LeJIT-Σ StubE-EXT 5 unblocks immediately.**
+- **Pred-shape.5** (Doc 738 §II conventions): preserved throughout.
+
+### Open scope at CMig-EXT 10 close
+
+1. **CMig-EXT 11** — Pred-shape.4 first integration measurement (the 80% enrollment-rate target on a representative workload). Bench: across a sample of diff-prod fixtures, measure the fraction of property accesses whose receiver has a non-null shape pointer at access time. The metric is the empirical anchor for the substrate's claim.
+2. **LeJIT-Σ StubE-EXT 5** — now unblocked. Translator wiring can land; the IC stubs will cache real shape pointers; Pred-stub.1's 3× speedup measurement reads at StubE-EXT 6 against the 271 ns baseline.
+3. **test262-sample re-measurement** — should re-run the post-rung-19 5,594-PASS baseline under enrollment to corroborate test262-tier correctness. Per the Pi-stability scripts work from earlier today; safe to run with PARALLEL=2 + ~/bin/cruft.
+
+### Cumulative status at CMig-EXT 10 close
+
+LOC delta: ~80 (5 site fixes + default flip). Diff-prod 42/42 in both modes. The shapes substrate is enrolled by default; the LeJIT-Σ pilot is structurally unblocked.
+
+The substrate-introduction round of `pilots/rusty-js-shapes/` is functionally complete. The closure-round to LeJIT-Σ becomes the next load-bearing work.
+
+---
+
+*CMig-EXT 9 + 10 closes. Default is Shaped; diff-prod 42/42 holds both modes; LeJIT-Σ pipeline unblocked; CMig-EXT 11's integration measurement is the next step.*

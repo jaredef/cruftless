@@ -24,7 +24,10 @@ fn get_or_create_listeners(rt: &mut Runtime, emitter: rusty_js_runtime::value::O
     if let Value::Object(id) = rt.object_get(emitter, "__listeners") {
         return id;
     }
-    let bag = rt.alloc_object(RtObject::new_ordinary());
+    // CMig-EXT 9: listener bag is a container-role object (consumers
+    // iterate .properties.keys()); explicit Dictionary per shapes pilot
+    // consumer-migration seed §I P3 pattern.
+    let bag = rt.alloc_object(RtObject::new_dictionary());
     rt.object_set(emitter, "__listeners".into(), Value::Object(bag));
     bag
 }

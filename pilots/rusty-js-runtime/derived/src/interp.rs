@@ -1137,7 +1137,9 @@ impl Runtime {
         let mut o = crate::value::Object::new_ordinary();
         o.proto = out_proto;
         let new_set = self.alloc_object(o);
-        let storage = self.alloc_object(crate::value::Object::new_ordinary());
+        // CMig-EXT 9: storage is container-role (Set methods iterate it
+        // via .properties); explicit Dictionary per shapes seed §IV P3.
+        let storage = self.alloc_object(crate::value::Object::new_dictionary());
         self.object_set(new_set, "__set_data".into(), Value::Object(storage));
         (new_set, storage)
     }
@@ -7510,7 +7512,19 @@ impl Runtime {
                                 // strict mode throws but cruftless's strict
                                 // tracking is incomplete (parity with sloppy
                                 // delete semantics in P61.E3).
-                                if let Some(d) = self.obj(id).get_own(&key) {
+                                //
+                                // CMig-EXT 9 shape-awareness: shape-stored
+                                // entries are user-default {w:t,e:t,c:t} per
+                                // carve-out → always configurable → always
+                                // deletable. has_own_str + shape_get is the
+                                // shape-aware probe; get_own only sees
+                                // properties. remove_str migrates first so
+                                // the actual deletion lands on Dictionary
+                                // form.
+                                let in_shape = self.obj(id).shape_get(&key).is_some();
+                                if in_shape {
+                                    self.obj_mut(id).remove_str(&key).is_some() || true
+                                } else if let Some(d) = self.obj(id).get_own(&key) {
                                     if !d.configurable {
                                         false
                                     } else {
@@ -7553,7 +7567,14 @@ impl Runtime {
                                 }
                             } else {
                                 // Ω.5.P62.E10: §10.1.10 non-configurable guard.
-                                if let Some(d) = self.obj(id).properties.get(&key_pk) {
+                                // CMig-EXT 9 shape-awareness: shape-stored
+                                // entries are user-default configurable per
+                                // carve-out; route through has_own_str +
+                                // dict_mut (migrating).
+                                let in_shape = matches!(&key_pk, crate::value::PropertyKey::String(s) if self.obj(id).shape_get(s).is_some());
+                                if in_shape {
+                                    self.obj_mut(id).dict_mut().shift_remove(&key_pk).is_some() || true
+                                } else if let Some(d) = self.obj(id).properties.get(&key_pk) {
                                     if !d.configurable { false }
                                     else { self.obj_mut(id).dict_mut().shift_remove(&key_pk).is_some() }
                                 } else { true }
