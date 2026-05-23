@@ -1307,6 +1307,8 @@ impl Runtime {
                     length: 1,
                     native: require_fn, is_constructor: true }
             ),
+        
+            ..Default::default()
         };
         let require_id = self.alloc_object(require_obj);
         // Tier-Ω.5.YYYYYYY: require.resolve(specifier) returns the resolved
@@ -1336,6 +1338,8 @@ impl Runtime {
             internal_kind: crate::value::InternalKind::Function(
                 crate::value::FunctionInternals { name: "resolve".to_string(), length: 1, native: require_resolve_fn, is_constructor: true }
             ),
+        
+            ..Default::default()
         };
         let require_resolve_id = self.alloc_object(require_resolve_obj);
         // .paths(spec) returns an array of candidate node_modules dirs.
@@ -1351,6 +1355,8 @@ impl Runtime {
             internal_kind: crate::value::InternalKind::Function(
                 crate::value::FunctionInternals { name: "paths".to_string(), length: 1, native: require_paths_fn, is_constructor: true }
             ),
+        
+            ..Default::default()
         };
         let require_paths_id = self.alloc_object(require_paths_obj);
         self.object_set(require_resolve_id, "paths".into(), Value::Object(require_paths_id));
@@ -1834,6 +1840,8 @@ impl Object {
             extensible: false,
             properties: indexmap::IndexMap::new(),
             internal_kind: crate::value::InternalKind::ModuleNamespace,
+        
+            ..Default::default()
         }
     }
 }

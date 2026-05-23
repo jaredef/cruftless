@@ -5576,13 +5576,24 @@ impl Runtime {
     pub fn ordinary_own_enumerable_string_keys(&self, id: rusty_js_gc::ObjectId) -> Vec<String> {
         let o = self.obj(id);
         let is_array = matches!(o.internal_kind, crate::value::InternalKind::Array);
-        let all: Vec<(String, bool)> = o.properties.iter()
+        // Shape-EXT 4: include shape-stored entries first (in insertion
+        // order via shape.iter_slots), then property-stored string keys.
+        // Shape entries are all user-default `{w:t, e:t, c:t}` data
+        // descriptors per shapes seed §IV carve-out, so the enumerable
+        // / not-@@ / not-internal-sentinel filters all pass for them.
+        let mut shape_entries: Vec<(String, bool)> = Vec::new();
+        if let Some(shape) = o.shape.as_ref() {
+            for (name, _) in shape.iter_slots() {
+                shape_entries.push((name.to_string(), crate::intrinsics::is_integer_index(name)));
+            }
+        }
+        let all: Vec<(String, bool)> = shape_entries.into_iter().chain(o.properties.iter()
             .filter(|(k, d)| d.enumerable
                              && k.is_string()
                              && k.as_str() != "__primitive__"
                              && !k.as_str().starts_with("@@")
                              && !(is_array && k.as_str() == "length"))
-            .map(|(k, _)| (k.as_str().to_string(), crate::intrinsics::is_integer_index(k.as_str())))
+            .map(|(k, _)| (k.as_str().to_string(), crate::intrinsics::is_integer_index(k.as_str()))))
             .collect();
         let mut numeric: Vec<(u64, String)> = all.iter()
             .filter(|(_, idx)| *idx)
@@ -6188,16 +6199,28 @@ impl Runtime {
     }
 
     /// PropertyKey-aware own-key set. Honors non-writable descriptors.
+    /// Shape-EXT 4 dispatch:
+    ///   - `__name` engine-internal sentinel keys migrate to Dictionary
+    ///     first (non-Shape-eligible per shapes seed §IV; avoids cohabitation
+    ///     with IndexMap-walking consumers like Map.size / Set.size that
+    ///     read .properties directly for sentinel data).
+    ///   - String-keyed sets on Shaped objects route through set_own
+    ///     (shape transition or in-place mutate).
+    ///   - Symbol-keyed sets always migrate to Dictionary first.
     pub fn object_set_pk(&mut self, id: ObjectRef, key: crate::value::PropertyKey, value: Value) {
-        // ECMA-262 sec 10.1.9 OrdinarySet: when the property already
-        // exists, only update [[Value]] - preserve writable / enumerable
-        // / configurable / getter / setter. Pre-fix this branch unconditionally
-        // installed {w:true,e:true,c:true}, so an assignment to an
-        // existing non-configurable array index (defined via Object.
-        // defineProperty(arr,'0',{configurable:false})) silently
-        // promoted it back to configurable:true. Surfaced by test262's
-        // verifyProperty helper which writes to test writable, then
-        // re-reads the descriptor.
+        match &key {
+            crate::value::PropertyKey::String(s) => {
+                if s.starts_with("__") {
+                    self.obj_mut(id).migrate_to_dictionary();
+                } else if self.obj(id).shape.is_some() {
+                    self.obj_mut(id).set_own(s.clone(), value);
+                    return;
+                }
+            }
+            crate::value::PropertyKey::Symbol(_) => {
+                self.obj_mut(id).migrate_to_dictionary();
+            }
+        }
         if let Some(d) = self.obj_mut(id).properties.get_mut(&key) {
             if !d.writable && d.getter.is_none() && d.setter.is_none() {
                 return; // silent no-op for non-writable data property
@@ -6212,6 +6235,14 @@ impl Runtime {
     }
 
     pub fn object_get(&self, id: ObjectRef, key: &str) -> Value {
+        // Shape-EXT 4 fast path: Shaped receivers go through the
+        // shape's slot lookup before any IndexMap probe.
+        {
+            let o = self.obj(id);
+            if let Some(v) = o.shape_get(key) {
+                return v.clone();
+            }
+        }
         if key == "length" {
             let o = self.obj(id);
             if matches!(o.internal_kind, InternalKind::Array) {
@@ -6241,6 +6272,10 @@ impl Runtime {
         let mut cur = Some(id);
         while let Some(c) = cur {
             let o = self.obj(c);
+            // Shape-EXT 4: proto-chain ancestors may be Shaped too.
+            if let Some(v) = o.shape_get(key) {
+                return v.clone();
+            }
             if let Some(d) = o.get_own(key) {
                 return d.value.clone();
             }
@@ -7685,6 +7720,8 @@ impl Runtime {
                             call_count: std::cell::Cell::new(0),
                             jit_disabled: std::cell::Cell::new(false),
                         }),
+                    
+                        ..Default::default()
                     };
                     let id = self.alloc_object(closure);
                     // Tier-Ω.5.P15.E1: install spec-mandated .name + .length

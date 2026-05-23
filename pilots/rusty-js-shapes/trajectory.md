@@ -286,3 +286,90 @@ The substrate-introduction round's code phase begins. Shape-EXT 4 wires the crat
 ---
 
 *Shape-EXT 3 closes. The crate exists, builds, tests pass. The Rc::ptr_eq identity gate (Pred-shape.2) is corroborated at the unit-test layer. Shape-EXT 4 carries the integration risk.*
+
+---
+
+## Shape-EXT 4 — 2026-05-23 (Object integration: infrastructure only; enrollment deferred)
+
+### Headline
+
+First code round on the runtime side. `Object` gains `shape: Option<Rc<Shape>>` + `shape_values: Vec<Value>` parallel slots; the IC consumer API + migration helpers + shape-aware fast paths land in value.rs / interp.rs; the rusty-js-shapes path-dep wires into rusty-js-runtime. **42/42 diff-prod PASS** held; behavior identical to pre-shape baseline.
+
+Scope narrowed mid-round from "auto-enroll new ordinary objects into Shaped form" to **"infrastructure only, enrollment deferred to Shape-EXT 5"** when a first enrollment attempt regressed diff-prod 39→31/42 PASS. The regression localized to ~41 direct `.properties` consumer sites (Map/Set internal storage iteration, JSON.stringify enumeration, for-in dispatch) that bypass the shape mechanism and miss shape-stored entries. Per Doc 729 §A8.13 substrate-amortization, that consumer-site migration belongs in its own focused round (Shape-EXT 5), not bundled into the infrastructure-introduction round.
+
+### Substrate landed
+
+- `pilots/rusty-js-runtime/derived/Cargo.toml` — `rusty-js-shapes = { path = "../../rusty-js-shapes/derived" }` added.
+- `pilots/rusty-js-runtime/derived/src/value.rs`:
+  - Object fields `shape: Option<Rc<Shape>>` + `shape_values: Vec<Value>`.
+  - `impl Default for Object` — supports `..Default::default()` spread in literals.
+  - Object methods `is_shaped`, `shape_get`, `shape_ptr_and_slot_for` (IC consumer API per shapes pilot docs/shape-design.md §11), `migrate_to_dictionary` (idempotent Shaped→Dictionary).
+  - `set_own` shape-aware (in-place value mutation on existing slot; transition + push on new key; migrate-first on `__`-prefixed keys per shapes seed §IV).
+  - `set_own_internal` / `set_own_frozen` / `insert_str` / `remove_str` migrate to Dictionary first.
+  - `has_own_str` / `string_keys` / `string_key_clones` shape-aware (read shape slots before properties).
+  - `new_ordinary()` starts `shape: None` (deferred enrollment; Shape-EXT 5 flips this default).
+  - `new_array()` starts `shape: None` (Arrays bypass shapes per carve-out).
+- `pilots/rusty-js-runtime/derived/src/interp.rs`:
+  - `object_get` shape-aware fast path (slot lookup before IndexMap probe) on the receiver + proto-chain ancestors.
+  - `object_set_pk` dispatches: `__`-prefixed keys migrate first (engine sentinels stay in Dictionary), string-keyed Shaped objects route through `set_own`, Symbol-keyed sets migrate first.
+  - `ordinary_own_enumerable_string_keys` shape-aware (shape slots concatenate before properties entries in insertion order).
+- 7 runtime crate source files (interp / intrinsics / module / promise / prototype / iterator / regexp) gained `..Default::default()` spread in 15 Object literal sites via a careful Python helper (regex matches `Object {` / `Self {` but skips `-> Object {` return-type and `impl Object {` block declarations).
+- 1 cruftless host file (process.rs) + 1 register.rs site likewise updated.
+
+### Build + gate results
+
+| measure | before | after |
+|---|---:|---:|
+| `cargo build --release -p rusty-js-runtime` | clean | clean |
+| `cargo build --release --bin cruft -p cruftless` | clean | clean |
+| diff-prod PASS | 42/42 | **42/42** (no regression) |
+| (intermediate auto-enroll attempt) | n/a | 31/42 (rolled back) |
+
+### Why the scope narrowed
+
+The first integration attempt set `Object::new_ordinary()` to start at the shape root. Cruft's runtime has ~41 sites that iterate `.properties` directly (most concentrated in JSON enumeration, Map/Set storage iteration, intrinsics enumeration helpers, for-in / Object.keys dispatch). When ordinary Objects started Shaped, those sites missed all shape-stored entries → empty enumerations → cascading test failures.
+
+Two paths considered:
+- **Path A**: make every consumer site shape-aware (touch 41 call sites). Big blast radius for one round; violates substrate-introduction discipline.
+- **Path B**: enroll in Shape only on opt-in (closure round) and stabilize the infrastructure in this round. Narrow blast radius; clean substrate-introduction.
+
+Path B chosen. Shape-EXT 5 lands the enrollment with carefully scoped migration shims per consumer family (Map/Set storage migrates on alloc; JSON enumeration adds shape-iteration; for-in dispatch likewise).
+
+### Pred disposition
+
+- **Pred-shape.2** (identity invariant) — preserved (unit-test layer); not exercised at integration tier yet (no Shaped objects in this round).
+- **Pred-shape.3** (linear transition tree growth) — not exercised at integration tier yet.
+- **Pred-shape.4** (stable IC pointer for stub lifetime) — API exists at Object::shape_ptr_and_slot_for, returns None for all objects in this round (no Shaped objects). Pilot LeJIT-Σ can scaffold against the API surface; IC hits become measurable when Shape-EXT 5 turns enrollment on.
+- **Pred-shape.1** (shaped read per-op-cheaper than Dictionary) — not measurable this round.
+- **Pred-shape.5** (Doc 738 §II convention conformance) — preserved by construction; all new identifiers fit the source-tier coordinate system.
+
+### Composition with prior corpus work
+
+- **Doc 729 §A8.13 substrate-amortization.** The narrowing IS the discipline operating as designed: when a substrate move's blast radius exceeded a focused round, split into infrastructure (this round) + enrollment (Shape-EXT 5). The empirical signal (diff-prod 39→31 on auto-enroll) localized the split point.
+- **Doc 730 §XVI bidirectional engine-diff oracle.** The 31/42 regression localized the 11 failing fixtures to enumeration-pattern divergence; the four-case categorization is Case-1 (cruftless violated spec via missing-shape-enumeration), but the fix is structural (consumer migration) not local (per-fixture patch), so the move belongs in its own round.
+- **Doc 735 §X.h three-probe-levels discipline.** Bench probe (Shape-EXT 3 unit tests) passes; consumer-route probe (diff-prod 42/42) passes; fuzz probe not yet activated (no enrollment to fuzz against).
+- **Doc 738 §II source-tier coordinate system.** All new identifiers conform: `shape` / `shape_values` (snake_case fields), `shape_get` / `shape_ptr_and_slot_for` / `migrate_to_dictionary` / `is_shaped` (snake_case methods), no `__`-prefixed JS-visible names (the shape itself is engine-internal data structure, not JS-observable).
+
+### §XVI / Doc 734 categorization
+
+Per Doc 730 §XVI: not applicable directly (no spec divergence introduced; behavior preserved). The 31/42 intermediate regression triggered a Case-1 read internally (cruftless violated own-property enumeration semantics under the auto-enroll attempt) → corpus growth mechanism (b) negative-finding amendment to the Shape-EXT 4 scope (narrowing to infrastructure-only).
+
+Per Doc 734 §V: growth mechanism (a) tier-relocation recursion + (b) negative-finding amendment. The negative finding (auto-enroll regresses 11 fixtures) refined the framework's understanding of the substrate-introduction round's blast-radius limit; the trajectory entry records the refinement so Shape-EXT 5 plans against it explicitly.
+
+### Open scope at Shape-EXT 4 close
+
+1. **Shape-EXT 5** — Enrollment + consumer-site migration. Two-sub-step plan:
+   - **5a**: identify the consumer-site families (Map/Set storage, JSON enumeration, for-in dispatch, Object.keys/values/entries, etc.). Document each family's migration shape (add shape-iteration vs migrate-first).
+   - **5b**: implement the migration shims family by family, gating each on diff-prod 42/42 + test262-sample 77.6% baselines. When all consumers are shape-aware, flip `new_ordinary()` to start Shaped.
+2. **Shape-EXT 6** — Dictionary fallback complexity-ceiling triggers (per design §8).
+3. **Shape-EXT 7** — IC consumer surface promoted to public; first LeJIT-Σ call site documented.
+
+### Cumulative status at Shape-EXT 4 close
+
+LOC delta: ~150 (Object field additions, methods, dispatch shims, Default impl, 17 `..Default::default()` spreads). diff-prod 42/42 PASS unchanged. test262-sample not re-run this round (no behavior change to measure).
+
+The shape data structure is now live on every Object. Pilot LeJIT-Σ can scaffold against `Object::shape_ptr_and_slot_for` with stable API contract; the API returns None today, will return Some on Shape-EXT 5 enrollment.
+
+---
+
+*Shape-EXT 4 closes. Infrastructure landed; enrollment deferred. The substrate-introduction-round discipline of Doc 729 §A8.13 held the round's blast radius even when the first attempt overreached.*

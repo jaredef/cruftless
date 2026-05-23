@@ -79,6 +79,8 @@ fn install_self_returning_iterator(rt: &mut Runtime, host: ObjectRef) {
         extensible: true,
         properties,
         internal_kind: InternalKind::Function(FunctionInternals { name: "[Symbol.iterator]".into(), length: 0, native, is_constructor: false }),
+    
+        ..Default::default()
     };
     let fn_id = rt.alloc_object(fn_obj);
     rt.object_set(host, "@@iterator".into(), Value::Object(fn_id));
@@ -94,6 +96,8 @@ where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
         extensible: true,
         properties,
         internal_kind: InternalKind::Function(FunctionInternals { name: "next".into(), length: 0, native, is_constructor: true }),
+    
+        ..Default::default()
     };
     let fn_id = rt.alloc_object(fn_obj);
     rt.object_set(host, "next".into(), Value::Object(fn_id));

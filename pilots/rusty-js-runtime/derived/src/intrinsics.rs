@@ -5529,6 +5529,8 @@ pub(crate) fn make_native_with_length(
             native,
             is_constructor: true,
         }),
+    
+        ..Default::default()
     }
 }
 
@@ -5554,6 +5556,8 @@ pub(crate) fn make_native_non_ctor(
             native,
             is_constructor: false,
         }),
+    
+        ..Default::default()
     }
 }
 

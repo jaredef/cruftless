@@ -157,15 +157,19 @@ impl SmallOrLargeTransitionMap {
 
 impl Shape {
     /// Root shape per design §4: empty slots, empty transitions,
-    /// no parent. One Rc instance per Runtime, held by
-    /// `Runtime::shape_root` (Shape-EXT 4 wires this).
+    /// no parent. Thread-local singleton so every caller sees the same
+    /// Rc<Shape> root; identity invariant requires this (per Pred-shape.2).
+    /// Cruftless's runtime is single-threaded so thread-local is sufficient.
     pub fn root() -> Rc<Shape> {
-        Rc::new(Shape {
-            slots: SmallOrLargeSlotMap::new(),
-            transitions: RefCell::new(SmallOrLargeTransitionMap::new()),
-            parent: None,
-            slot_count: 0,
-        })
+        thread_local! {
+            static ROOT: Rc<Shape> = Rc::new(Shape {
+                slots: SmallOrLargeSlotMap::new(),
+                transitions: RefCell::new(SmallOrLargeTransitionMap::new()),
+                parent: None,
+                slot_count: 0,
+            });
+        }
+        ROOT.with(|r| Rc::clone(r))
     }
 
     /// Return the shape that results from adding `name` to this shape.

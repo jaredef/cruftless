@@ -214,6 +214,24 @@ impl From<&str> for PropertyKey { fn from(s: &str) -> Self { Self::String(s.to_s
 impl From<String> for PropertyKey { fn from(s: String) -> Self { Self::String(s) } }
 impl From<&String> for PropertyKey { fn from(s: &String) -> Self { Self::String(s.clone()) } }
 
+// Shape-EXT 4: Default impl so existing Object literals can fill the new
+// shape + shape_values fields via `..Default::default()` rather than
+// requiring per-site updates. Default constructs an Ordinary, no-proto,
+// non-shaped, empty-properties object; callers using the spread syntax
+// override the meaningful fields and inherit shape=None + shape_values=[].
+impl Default for Object {
+    fn default() -> Self {
+        Self {
+            proto: None,
+            extensible: true,
+            properties: IndexMap::new(),
+            internal_kind: InternalKind::Ordinary,
+            shape: None,
+            shape_values: Vec::new(),
+        }
+    }
+}
+
 pub struct Object {
     pub proto: Option<ObjectRef>,
     pub extensible: bool,
@@ -223,15 +241,39 @@ pub struct Object {
     // integer-index branch is sorted at enumeration sites.
     pub properties: IndexMap<PropertyKey, PropertyDescriptor>,
     pub internal_kind: InternalKind,
+    /// Shape-EXT 4 (per pilots/rusty-js-shapes/docs/shape-design.md):
+    /// parallel storage slot for the modal-case shape form. Invariant:
+    /// `shape.is_some()` => the object's user-default data properties
+    /// live exclusively in `shape_values` indexed by `shape.slot_of(name)`.
+    /// `properties` may still carry non-Shape-eligible entries
+    /// (accessor/non-default descriptors, Symbol keys) — but those
+    /// install paths first call `migrate_to_dictionary()` which moves
+    /// any shape contents into `properties` and sets `shape = None`.
+    pub shape: Option<std::rc::Rc<rusty_js_shapes::Shape>>,
+    /// Shape-EXT 4: values backing the shape's slots. When `shape` is
+    /// `Some(s)`, `shape_values.len() == s.slot_count()` and
+    /// `shape_values[s.slot_of(name).unwrap() as usize]` is the value
+    /// for that property name.
+    pub shape_values: Vec<Value>,
 }
 
 impl Object {
     pub fn new_ordinary() -> Self {
+        // Shape-EXT 4 (infrastructure-only round): new ordinary objects
+        // start NON-Shaped (shape = None) in this round. Enrollment of
+        // user-code `{}` literals into Shaped form is deferred to
+        // Shape-EXT 5, which lands consumer-site migration shims for
+        // the ~41 direct `.properties` access sites (Map/Set internal
+        // storage iteration, JSON.stringify enumeration, for-in
+        // dispatch, etc.). Shape-EXT 4 lands the data structure +
+        // dispatch fast paths; Shape-EXT 5 turns enrollment on.
         Self {
             proto: None,
             extensible: true,
             properties: IndexMap::new(),
             internal_kind: InternalKind::Ordinary,
+            shape: None,
+            shape_values: Vec::new(),
         }
     }
 
@@ -242,16 +284,75 @@ impl Object {
         // value is derived from max numeric index when not explicitly set).
         // Pre-installing length here would defeat the derive-from-indices
         // path used by object_get when length is absent from properties.
+        //
+        // Shape-EXT 4: Arrays bypass shapes per shapes seed §IV (only
+        // InternalKind::Ordinary admits shapes in first cut).
         Self {
             proto: None,
             extensible: true,
             properties: IndexMap::new(),
             internal_kind: InternalKind::Array,
+            shape: None,
+            shape_values: Vec::new(),
+        }
+    }
+
+    /// Shape-EXT 4: is this object currently in Shaped storage form?
+    pub fn is_shaped(&self) -> bool { self.shape.is_some() }
+
+    /// Shape-EXT 4: read a value from the shape's slot. Returns None
+    /// for properties not in the shape (which may still live in
+    /// `properties`).
+    pub fn shape_get(&self, name: &str) -> Option<&Value> {
+        let shape = self.shape.as_ref()?;
+        let slot = shape.slot_of(name)? as usize;
+        self.shape_values.get(slot)
+    }
+
+    /// Shape-EXT 4: IC consumer API per shapes pilot docs/shape-design.md
+    /// §11. Returns (shape_ptr, slot_index) iff the object is Shaped and
+    /// the name resolves to a slot. Pilot LeJIT-Σ consumes this as the
+    /// IC fast-path cache key. Stable for the lifetime of any Rc<Shape>
+    /// the caller keeps alive.
+    pub fn shape_ptr_and_slot_for(&self, name: &str)
+        -> Option<(*const rusty_js_shapes::Shape, u32)>
+    {
+        let shape = self.shape.as_ref()?;
+        let slot = shape.slot_of(name)?;
+        Some((std::rc::Rc::as_ptr(shape), slot))
+    }
+
+    /// Shape-EXT 4: migrate from Shaped to Dictionary form. Idempotent.
+    /// Copies shape-stored slots into `properties` as user-default data
+    /// descriptors, then clears the shape. After migration the object
+    /// stays in pure-Dictionary form (back-promotion deferred per
+    /// shapes seed §IV).
+    pub fn migrate_to_dictionary(&mut self) {
+        let Some(shape) = self.shape.take() else { return; };
+        let values = std::mem::take(&mut self.shape_values);
+        for (name, slot) in shape.iter_slots() {
+            let idx = slot as usize;
+            if idx >= values.len() { continue; }
+            self.properties.insert(
+                PropertyKey::String(name.to_string()),
+                PropertyDescriptor {
+                    value: values[idx].clone(),
+                    writable: true, enumerable: true, configurable: true,
+                    getter: None, setter: None,
+                },
+            );
         }
     }
 
     /// OrdinaryGet per §10.1.8.1. Own-property only. Prototype-chain
     /// walk moved to Runtime::object_get (proto deref requires heap).
+    ///
+    /// Shape-EXT 4 dispatch note: shape-stored entries do NOT have a
+    /// stored PropertyDescriptor (only a value). Callers needing the
+    /// value should use Runtime::object_get (which is shape-aware).
+    /// Callers needing the descriptor attributes for a shape-stored
+    /// entry receive None here; the entry's descriptor is the
+    /// user-default `{w:t, e:t, c:t}` by invariant.
     pub fn get_own(&self, key: &str) -> Option<&PropertyDescriptor> {
         // Backwards-compat shim during PropertyKey migration: callers
         // passing &str look up the String-variant; Symbol-keyed reads
@@ -271,46 +372,86 @@ impl Object {
     }
 
     /// String-key membership test (migration shim).
+    /// Shape-EXT 4: shape-aware; checks shape slots before properties.
     pub fn has_own_str(&self, key: &str) -> bool {
+        if let Some(shape) = self.shape.as_ref() {
+            if shape.slot_of(key).is_some() { return true; }
+        }
         self.properties.contains_key(&PropertyKey::String(key.to_string()))
     }
 
     /// String-key delete (migration shim).
+    /// Shape-EXT 4: delete migrates to Dictionary first per shapes seed §IV.
     pub fn remove_str(&mut self, key: &str) -> Option<PropertyDescriptor> {
+        self.migrate_to_dictionary();
         self.properties.shift_remove(&PropertyKey::String(key.to_string()))
     }
 
     /// String-key insert with full descriptor (migration shim).
+    /// Shape-EXT 4: arbitrary-descriptor insert migrates first.
     pub fn insert_str(&mut self, key: impl Into<String>, desc: PropertyDescriptor) -> Option<PropertyDescriptor> {
+        self.migrate_to_dictionary();
         self.properties.insert(PropertyKey::String(key.into()), desc)
     }
 
     /// Iterate string-keyed entries only (migration shim — most legacy callers
     /// expected an IndexMap<String, _>).
+    /// Shape-EXT 4: shape-aware; concatenates shape slots (insertion order)
+    /// then property string keys (insertion order). Per ECMA §10.1.11 both
+    /// sequences are in insertion order.
     pub fn string_keys(&self) -> impl Iterator<Item = &str> {
-        self.properties.keys().filter_map(|k| match k {
+        let shape_names: Vec<&str> = match self.shape.as_ref() {
+            Some(shape) => shape.iter_slots().map(|(n, _)| n).collect(),
+            None => Vec::new(),
+        };
+        let prop_names: Vec<&str> = self.properties.keys().filter_map(|k| match k {
             PropertyKey::String(s) => Some(s.as_str()),
             PropertyKey::Symbol(_) => None,
-        })
+        }).collect();
+        shape_names.into_iter().chain(prop_names)
     }
 
     /// String-key content as String for the convenience of callers that need
     /// owned strings. Skips Symbol keys.
+    /// Shape-EXT 4: shape-aware (same concatenation as string_keys).
     pub fn string_key_clones(&self) -> impl Iterator<Item = String> + '_ {
-        self.properties.keys().filter_map(|k| match k {
+        let shape_names: Vec<String> = match self.shape.as_ref() {
+            Some(shape) => shape.iter_slots().map(|(n, _)| n.to_string()).collect(),
+            None => Vec::new(),
+        };
+        let prop_names: Vec<String> = self.properties.keys().filter_map(|k| match k {
             PropertyKey::String(s) => Some(s.clone()),
             PropertyKey::Symbol(_) => None,
-        })
+        }).collect();
+        shape_names.into_iter().chain(prop_names)
     }
 
     /// OrdinaryDefineOwnProperty per §10.1.6.1 (simplified — full
     /// invariants check lands with intrinsics).
+    /// Shape-EXT 4 fast path: if Shaped, in-place mutate existing slot
+    /// or advance shape via transition_to + push to shape_values.
+    /// `__`-prefixed keys (engine-internal sentinels) migrate to
+    /// Dictionary first per shapes seed §IV (consumers like Map.size /
+    /// Set.size read .properties directly for sentinel data).
     pub fn set_own(&mut self, key: String, value: Value) {
         // §10.1.9 OrdinarySet: when the property already exists, only
         // update [[Value]] — preserve writable/enumerable/configurable/
         // getter/setter. This matters for Array.length (non-configurable),
         // function .name/.length (non-writable, non-enumerable), and
         // any other property whose descriptor was set deliberately.
+        if key.starts_with("__") {
+            self.migrate_to_dictionary();
+        }
+        if let Some(shape) = self.shape.as_ref() {
+            if let Some(slot) = shape.slot_of(&key) {
+                self.shape_values[slot as usize] = value;
+                return;
+            }
+            let next = shape.transition_to(&key);
+            self.shape = Some(next);
+            self.shape_values.push(value);
+            return;
+        }
         let pk = PropertyKey::String(key);
         if let Some(d) = self.properties.get_mut(&pk) {
             d.value = value;
@@ -335,6 +476,8 @@ impl Object {
     /// `Object.defineProperty(o, k, {value, writable: true,
     /// configurable: true, enumerable: false})`.
     pub fn set_own_internal(&mut self, key: String, value: Value) {
+        // Shape-EXT 4: non-default descriptors migrate to Dictionary first.
+        self.migrate_to_dictionary();
         self.properties.insert(PropertyKey::String(key), PropertyDescriptor {
             value,
             writable: true,
@@ -350,6 +493,8 @@ impl Object {
     /// built-in constructor's `.prototype` slot has this descriptor shape.
     /// User-defined function `.prototype` differs (writable: true).
     pub fn set_own_frozen(&mut self, key: String, value: Value) {
+        // Shape-EXT 4: non-default descriptors migrate to Dictionary first.
+        self.migrate_to_dictionary();
         self.properties.insert(PropertyKey::String(key), PropertyDescriptor {
             value,
             writable: false,

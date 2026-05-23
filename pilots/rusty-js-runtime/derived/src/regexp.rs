@@ -117,6 +117,8 @@ pub fn new_regexp(rt: &mut Runtime, pattern: &str, flags: &str) -> Result<Object
         extensible: true,
         properties: indexmap::IndexMap::new(),
         internal_kind: InternalKind::RegExp(internals),
+    
+        ..Default::default()
     };
     let id = rt.alloc_object(obj);
     // Plain own-properties for the accessor surface — v1 stand-in for

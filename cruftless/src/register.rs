@@ -20,6 +20,8 @@ where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
         extensible: true,
         properties,
         internal_kind: InternalKind::Function(FunctionInternals { name: name.to_string(), length: 0, native, is_constructor: true }),
+    
+        ..Default::default()
     };
     let fn_id = rt.alloc_object(fn_obj);
     rt.object_set(host, name.into(), Value::Object(fn_id));
@@ -42,6 +44,8 @@ where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
         extensible: true,
         properties,
         internal_kind: InternalKind::Function(FunctionInternals { name: name.to_string(), length: 0, native, is_constructor: true }),
+    
+        ..Default::default()
     };
     rt.alloc_object(fn_obj)
 }

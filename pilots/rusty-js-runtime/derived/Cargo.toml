@@ -15,6 +15,12 @@ rusty-js-gc = { path = "../../rusty-js-gc/derived" }
 # has integer-Number args, and is in the typed-i64 subset, dispatch
 # to the JIT-compiled version instead of the bytecode interpreter.
 rusty-js-jit = { path = "../../rusty-js-jit/derived" }
+# Shape-EXT 4: hidden classes (shapes) for cruftless's Object representation.
+# Substrate-introduction round per cruftless seed §A8.13. See
+# pilots/rusty-js-shapes/seed.md + docs/shape-design.md. Object carries a
+# parallel shape slot for the modal storage form; on non-Shape-eligible
+# installs the Object migrates to the legacy IndexMap-only Dictionary form.
+rusty-js-shapes = { path = "../../rusty-js-shapes/derived" }
 regex = "1"
 serde_json = { version = "1", features = ["preserve_order"] }
 indexmap = "2"

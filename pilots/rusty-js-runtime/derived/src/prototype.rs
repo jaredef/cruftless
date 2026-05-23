@@ -642,6 +642,8 @@ fn install_function_proto(rt: &mut Runtime, host: ObjectRef) {
                 this: bound_this,
                 args: bound_args,
             }),
+        
+            ..Default::default()
         };
         let id = rt.alloc_object(bf);
         Ok(Value::Object(id))
@@ -791,6 +793,8 @@ where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
         extensible: true,
         properties,
         internal_kind: InternalKind::Function(FunctionInternals { name: name.to_string(), length: 0, native, is_constructor: true }),
+    
+        ..Default::default()
     };
     let fn_id = rt.alloc_object(fn_obj);
     rt.object_set(host, name.into(), Value::Object(fn_id));
@@ -866,6 +870,8 @@ where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
         internal_kind: InternalKind::Function(FunctionInternals {
             name: name.to_string(), length, native, is_constructor: false,
         }),
+    
+        ..Default::default()
     };
     let fn_id = rt.alloc_object(fn_obj);
     rt.obj_mut(host).properties.insert(crate::value::PropertyKey::String(name.to_string()), crate::value::PropertyDescriptor {

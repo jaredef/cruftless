@@ -896,7 +896,15 @@ dependencies = [
  "rusty-js-gc",
  "rusty-js-jit",
  "rusty-js-parser",
+ "rusty-js-shapes",
  "serde_json",
+]
+
+[[package]]
+name = "rusty-js-shapes"
+version = "0.1.0"
+dependencies = [
+ "smallvec",
 ]
 
 [[package]]
