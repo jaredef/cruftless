@@ -49,6 +49,13 @@ use std::collections::HashMap;
 pub type JitFn0 = extern "C" fn() -> f64;
 pub type JitFn1 = extern "C" fn(f64) -> f64;
 pub type JitFn2 = extern "C" fn(f64, f64) -> f64;
+/// OSR-EXT 5b (2026-05-23): OSR loop-body signature. Single arg is a
+/// `*mut f64` pointer into a caller-managed array of length
+/// `proto.locals.len()`. Entry-block prologue loads each local from
+/// the array; every Return / ReturnUndef site stores all locals back
+/// to the array before returning. Closes the locals-marshaling
+/// coverage tier per Doc 740 §VIII.2 + Finding VIII.2.
+pub type JitFnOsr = extern "C" fn(*mut f64) -> f64;
 
 pub enum JitFn {
     /// TL-EXT 3 (2026-05-23): 0-arg variant for module-body JIT entry.
@@ -58,6 +65,10 @@ pub enum JitFn {
     Arity0(JitFn0),
     Arity1(JitFn1),
     Arity2(JitFn2),
+    /// OSR-EXT 5b (2026-05-23): OSR loop-body variant. Caller passes
+    /// a `*mut f64` to a pre-marshaled locals array; JIT body loads on
+    /// entry + stores on every return.
+    ArityOsr(JitFnOsr),
 }
 
 impl JitFn {
@@ -66,6 +77,7 @@ impl JitFn {
             JitFn::Arity0(f) => f(),
             JitFn::Arity1(f) => f(0.0),
             JitFn::Arity2(f) => f(0.0, 0.0),
+            JitFn::ArityOsr(f) => f(std::ptr::null_mut()),
         }
     }
     pub fn call1(&self, a: f64) -> f64 {
@@ -73,6 +85,7 @@ impl JitFn {
             JitFn::Arity0(f) => f(),
             JitFn::Arity1(f) => f(a),
             JitFn::Arity2(f) => f(a, 0.0),
+            JitFn::ArityOsr(f) => f(std::ptr::null_mut()),
         }
     }
     pub fn call2(&self, a: f64, b: f64) -> f64 {
@@ -80,6 +93,21 @@ impl JitFn {
             JitFn::Arity0(f) => f(),
             JitFn::Arity1(f) => f(a),
             JitFn::Arity2(f) => f(a, b),
+            JitFn::ArityOsr(f) => f(std::ptr::null_mut()),
+        }
+    }
+    /// OSR-EXT 5b (2026-05-23): invoke an OSR-compiled body. Caller
+    /// passes a `*mut f64` to a pre-marshaled locals array (the
+    /// frame.locals values unboxed via unbox_arg_f64; length =
+    /// proto.locals.len()); on return, the array contains the post-
+    /// JIT-body locals (the dispatcher reads back via box_to_value
+    /// at OSR-EXT 5c). For non-OSR variants the pointer is unused.
+    pub fn call_osr(&self, arr_ptr: *mut f64) -> f64 {
+        match self {
+            JitFn::Arity0(f) => f(),
+            JitFn::Arity1(f) => f(0.0),
+            JitFn::Arity2(f) => f(0.0, 0.0),
+            JitFn::ArityOsr(f) => f(arr_ptr),
         }
     }
 }
@@ -90,6 +118,7 @@ impl std::fmt::Debug for JitFn {
             JitFn::Arity0(p) => write!(f, "JitFn::Arity0(0x{:x})", *p as usize),
             JitFn::Arity1(p) => write!(f, "JitFn::Arity1(0x{:x})", *p as usize),
             JitFn::Arity2(p) => write!(f, "JitFn::Arity2(0x{:x})", *p as usize),
+            JitFn::ArityOsr(p) => write!(f, "JitFn::ArityOsr(0x{:x})", *p as usize),
         }
     }
 }
@@ -143,15 +172,35 @@ pub fn compile_function(proto: &FunctionProto) -> Result<CompiledFn, String> {
     // will re-enable the promotion with a proper bytecode-tier-driven
     // typed-i64 IR that emits the typed ops at compile time, not at
     // JIT-translator entry. Until then: f64 path only.
-    compile_function_inner(proto)
+    compile_function_inner(proto, false)
 }
 
-fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
+/// OSR-EXT 5b (2026-05-23): compile an OSR loop-body's synthetic
+/// FunctionProto. Signature: `extern "C" fn(*mut f64) -> f64`. The
+/// pointer is a caller-managed array of length `proto.locals.len()`;
+/// entry-block prologue loads each local from the array; every
+/// Return / ReturnUndef site stores all locals back to the array
+/// before returning. Closes Doc 740 §VIII.2 locals-marshaling
+/// coverage tier per Finding VIII.2.
+///
+/// Runtime dispatcher integration lands at OSR-EXT 5d (consumes this
+/// + the OSR-EXT 5c box-to-value helper); this round's deliverable is
+/// the compilable OSR-shape CompiledFn ready for consumption.
+pub fn compile_function_osr(proto: &FunctionProto) -> Result<CompiledFn, String> {
+    compile_function_inner(proto, true)
+}
+
+fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<CompiledFn, String> {
     // TL-EXT 3 (2026-05-23): also accept params=0 for module-body JIT
     // entry. The top-level module body has no formal parameters; the
     // JIT signature emits no AbiParam entries and call0 is used at the
     // dispatcher.
-    if proto.params != 0 && proto.params != 1 && proto.params != 2 {
+    //
+    // OSR-EXT 5b (2026-05-23): under osr_mode, proto.params is ignored;
+    // the JIT signature uses a single I64 (the *mut f64 locals array)
+    // and locals are populated by the entry-block prologue. The OSR
+    // synthetic FunctionProto is built with params=0 at try_osr_compile.
+    if !osr_mode && proto.params != 0 && proto.params != 1 && proto.params != 2 {
         return Err(format!("first-cut JIT supports 0, 1, or 2 params; got {}", proto.params));
     }
 
@@ -321,8 +370,17 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
     // I64 → F64 via fcvt_from_sint just before the return instruction.
     // Φ-EXT 3 flips the body IR to native f64 (fadd etc.); this round
     // is substrate-introduction only.
-    for _ in 0..proto.params {
-        ctx.func.signature.params.push(AbiParam::new(F64));
+    //
+    // OSR-EXT 5b (2026-05-23): under osr_mode, signature is a single
+    // I64 (the *mut f64 locals array pointer) + F64 return. Entry-
+    // block prologue captures the pointer + loads locals from it;
+    // every Return / ReturnUndef site stores locals back.
+    if osr_mode {
+        ctx.func.signature.params.push(AbiParam::new(I64));
+    } else {
+        for _ in 0..proto.params {
+            ctx.func.signature.params.push(AbiParam::new(F64));
+        }
     }
     ctx.func.signature.returns.push(AbiParam::new(F64));
 
@@ -364,6 +422,21 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
         for v in &local_vars {
             builder.def_var(*v, zero);
         }
+        // OSR-EXT 5b (2026-05-23): allocate a Variable for the arr_ptr
+        // (the *mut f64 locals array passed as the single entry-block
+        // param under osr_mode). The Variable's index is allocated past
+        // the local_vars range to avoid collision. None under non-osr
+        // mode; Some at index local_vars.len() under osr_mode. Saved
+        // here so Return / ReturnUndef sites can use it to emit the
+        // epilogue store loop.
+        let osr_arr_ptr_var: Option<Variable> = if osr_mode {
+            let v = Variable::from_u32(local_vars.len() as u32);
+            builder.declare_var(v, I64);
+            // Initialize to 0 (will be overwritten from entry param below).
+            let z = builder.ins().iconst(I64, 0);
+            builder.def_var(v, z);
+            Some(v)
+        } else { None };
         // Args land in locals 0..params at function entry per the
         // interpreter convention (compile_function_proto allocates one
         // slot per param at the head of self.locals).
@@ -398,22 +471,35 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
         // loads the f64 payload.
         let entry_params: Vec<ClValue> = builder.block_params(entry).to_vec();
         const VALUE_NUMBER_PAYLOAD_OFFSET: i32 = 8;
-        for (i, &p) in entry_params.iter().enumerate() {
-            if i < local_vars.len() {
-                if lejit_vti && i < proto.params as usize {
-                    // VTI=1: p is F64 holding *const Value bits.
-                    let ptr_as_i64 = builder.ins().bitcast(I64,
-                        cranelift_codegen::ir::MemFlags::new(), p);
-                    let payload = builder.ins().load(
-                        F64,
-                        MemFlags::trusted(),
-                        ptr_as_i64,
-                        VALUE_NUMBER_PAYLOAD_OFFSET,
-                    );
-                    builder.def_var(local_vars[i], payload);
-                } else {
-                    // Standard Φ path: F64 arg directly into F64 local.
-                    builder.def_var(local_vars[i], p);
+        if osr_mode {
+            // OSR-EXT 5b (2026-05-23): entry param 0 is *mut f64 (the
+            // locals array). Save to arr_ptr_var; then load each local
+            // from arr_ptr + i*8, overriding the 0.0 init above.
+            let arr_ptr = entry_params[0];
+            builder.def_var(osr_arr_ptr_var.expect("osr_mode requires arr_ptr_var"), arr_ptr);
+            for i in 0..local_vars.len() {
+                let offset = (i * 8) as i32;
+                let v = builder.ins().load(F64, MemFlags::trusted(), arr_ptr, offset);
+                builder.def_var(local_vars[i], v);
+            }
+        } else {
+            for (i, &p) in entry_params.iter().enumerate() {
+                if i < local_vars.len() {
+                    if lejit_vti && i < proto.params as usize {
+                        // VTI=1: p is F64 holding *const Value bits.
+                        let ptr_as_i64 = builder.ins().bitcast(I64,
+                            cranelift_codegen::ir::MemFlags::new(), p);
+                        let payload = builder.ins().load(
+                            F64,
+                            MemFlags::trusted(),
+                            ptr_as_i64,
+                            VALUE_NUMBER_PAYLOAD_OFFSET,
+                        );
+                        builder.def_var(local_vars[i], payload);
+                    } else {
+                        // Standard Φ path: F64 arg directly into F64 local.
+                        builder.def_var(local_vars[i], p);
+                    }
                 }
             }
         }
@@ -613,6 +699,16 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
                 }
                 ParsedOp::Return => {
                     let v = stack.pop().ok_or("Return: stack underflow")?;
+                    // OSR-EXT 5b (2026-05-23): under osr_mode, store all
+                    // locals back to the arr_ptr array before returning.
+                    if let Some(ap_var) = osr_arr_ptr_var {
+                        let ap = builder.use_var(ap_var);
+                        for i in 0..local_vars.len() {
+                            let lv = builder.use_var(local_vars[i]);
+                            let offset = (i * 8) as i32;
+                            builder.ins().store(MemFlags::trusted(), lv, ap, offset);
+                        }
+                    }
                     // Φ-EXT 3: stack is F64; return F64 directly. No
                     // conversion at the return boundary.
                     builder.ins().return_(&[v]);
@@ -620,6 +716,15 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
                     stack.clear();
                 }
                 ParsedOp::ReturnUndef => {
+                    // OSR-EXT 5b (2026-05-23): same epilogue under osr_mode.
+                    if let Some(ap_var) = osr_arr_ptr_var {
+                        let ap = builder.use_var(ap_var);
+                        for i in 0..local_vars.len() {
+                            let lv = builder.use_var(local_vars[i]);
+                            let offset = (i * 8) as i32;
+                            builder.ins().store(MemFlags::trusted(), lv, ap, offset);
+                        }
+                    }
                     let z = builder.ins().f64const(0.0);
                     builder.ins().return_(&[z]);
                     block_terminated = true;
@@ -715,6 +820,17 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
         // If the last instruction wasn't a terminator, synthesize a
         // ReturnUndef.
         if !block_terminated {
+            // OSR-EXT 5b: same locals-store epilogue for synthesized
+            // ReturnUndef at end-of-body (the OSR loop body falls
+            // through here on natural loop exit).
+            if let Some(ap_var) = osr_arr_ptr_var {
+                let ap = builder.use_var(ap_var);
+                for i in 0..local_vars.len() {
+                    let lv = builder.use_var(local_vars[i]);
+                    let offset = (i * 8) as i32;
+                    builder.ins().store(MemFlags::trusted(), lv, ap, offset);
+                }
+            }
             // Φ-EXT 2: F64 signature; return f64 0.0 instead of i64 0.
             let z = builder.ins().f64const(0.0);
             builder.ins().return_(&[z]);
@@ -741,11 +857,15 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
 
     let code_ptr = module.get_finalized_function(id);
     let func = unsafe {
-        match proto.params {
-            0 => JitFn::Arity0(std::mem::transmute::<*const u8, JitFn0>(code_ptr)),
-            1 => JitFn::Arity1(std::mem::transmute::<*const u8, JitFn1>(code_ptr)),
-            2 => JitFn::Arity2(std::mem::transmute::<*const u8, JitFn2>(code_ptr)),
-            _ => unreachable!(),
+        if osr_mode {
+            JitFn::ArityOsr(std::mem::transmute::<*const u8, JitFnOsr>(code_ptr))
+        } else {
+            match proto.params {
+                0 => JitFn::Arity0(std::mem::transmute::<*const u8, JitFn0>(code_ptr)),
+                1 => JitFn::Arity1(std::mem::transmute::<*const u8, JitFn1>(code_ptr)),
+                2 => JitFn::Arity2(std::mem::transmute::<*const u8, JitFn2>(code_ptr)),
+                _ => unreachable!(),
+            }
         }
     };
     let leaked = Box::leak(Box::new(module));

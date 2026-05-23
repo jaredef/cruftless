@@ -346,3 +346,61 @@ LOC delta: ~25 (Frame field rename + try_osr_compile cache writes + Jump handler
 ---
 
 *OSR-EXT 5 closes. Cache structure landed; invoke deferred per Finding OSR.1. Keeper deliberation: OSR-EXT 5b (locals-marshaling extension) before OSR-EXT 6 (alphabet) before OSR-EXT 7 (final disposition); OR engagement findings Addendum VII first; OR pivot.*
+
+---
+
+## OSR-EXT 5b — 2026-05-23 (locals-marshaling JIT-side substrate; option 2 first cut)
+
+### Headline
+
+Per keeper directive 2026-05-23 23:29-local (option β three-round split). OSR-EXT 5b lands the JIT-side substrate for option 2 (extern-pre-populate). New compile entry `compile_function_osr` produces a CompiledFn with `JitFn::ArityOsr` signature `extern "C" fn(*mut f64) -> f64`. Entry-block prologue loads N locals from `arr_ptr + i*8`; Return / ReturnUndef / synthesized-ReturnUndef epilogues store N locals back. ~130 LOC delta in translator.rs.
+
+### Three-probe results
+
+| probe | result |
+|---|---|
+| canonical fuzz (acc=-932188103) | ✅ GREEN |
+| diff-prod 42/42 | ✅ GREEN |
+| JIT lib tests | ✅ 38/38 (9 ignored) |
+| OSR helper unit tests | ✅ 5/5 |
+| A/B composition | unchanged (compile_function_osr not yet invoked by runtime; OSR-EXT 5d wires it) |
+
+### Substrate moves landed
+
+1. `JitFnOsr = extern "C" fn(*mut f64) -> f64` type alias.
+2. `JitFn::ArityOsr(JitFnOsr)` variant + Debug impl + `call_osr(arr_ptr)` method (also fallback for non-OSR variants).
+3. `pub fn compile_function_osr(proto)` API that wraps compile_function_inner with osr_mode=true.
+4. `compile_function_inner(proto, osr_mode)` signature change: osr_mode=true skips the params count check.
+5. Signature build: under osr_mode, single I64 param + F64 return.
+6. New Variable `osr_arr_ptr_var` allocated past local_vars range; declared in entry block.
+7. Entry-block prologue (osr_mode): capture entry_params[0] as arr_ptr; save to arr_ptr_var; load each local from arr_ptr+i*8.
+8. Return / ReturnUndef / synthesized-ReturnUndef sites: under osr_mode, emit N store_f64 instructions to arr_ptr+i*8 before the return.
+9. JitFn match at finalize: under osr_mode, JitFn::ArityOsr.
+
+### Composition with prior corpus / engagement work
+
+- **Doc 740 §VIII.2 locals-marshaling coverage tier**: this round closes the JIT-side substrate.
+- **Finding VIII.2 (Addendum VII)**: implementation per option 2 (extern-pre-populate prologue). The "extern" here is implicit — the dispatcher (OSR-EXT 5d) marshals the array; the JIT entry-block prologue reads from it.
+- **Standing rule 9 (raw-pointer audit)**: the arr_ptr is a Cranelift Variable holding I64; the dispatcher (OSR-EXT 5d) will provide the pointer; lifetime managed by the dispatcher's call scope (same shape as Object's id-encoding in TLS).
+- **Finding II.2-bis substrate-introduction signature**: A/B unchanged as predicted (compile path exists but isn't invoked yet by runtime).
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable.
+Per Doc 734 §V: growth (c) preparatory — JIT-side substrate enables OSR-EXT 5d's runtime invoke.
+Per Doc 735 §X.h.b: substrate-intro round; (P2.d) bench unchanged by design; consumer at OSR-EXT 5d.
+
+### Open scope at OSR-EXT 5b close
+
+1. **OSR-EXT 5c** — box-to-value helper (Value reconstruction from f64; reuses VD encoding for String; ~40 LOC). Cross-cutting helper; useful beyond OSR.
+2. **OSR-EXT 5d** — runtime dispatcher integration (marshal frame.locals → Vec<f64>; invoke call_osr; marshal back via 5c's helper; ~80 LOC). Cascade-revival pilot consuming 5b + 5c.
+3. **OSR-EXT 6** — alphabet extension (TL Moves 3+4 revival folded in) (cascade-revival).
+4. **OSR-EXT 7** — composition probe + CRB final disposition.
+
+### Cumulative status at OSR-EXT 5b close
+
+LOC delta: ~130 (translator.rs: JitFnOsr type + ArityOsr variant + call_osr method + compile_function_osr API + osr_mode parameter + signature/entry/epilogue branching). OSR-EXT 0-5b cumulative: ~660 across the locale.
+
+---
+
+*OSR-EXT 5b closes. JIT-side OSR substrate landed. compile_function_osr produces invocable ArityOsr CompiledFn with proper locals load/store IR. Runtime invoke deferred to OSR-EXT 5d. All probes GREEN; no behavior change (JIT side not yet called from runtime).*
