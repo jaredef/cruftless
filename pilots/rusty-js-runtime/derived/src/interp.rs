@@ -9433,8 +9433,39 @@ pub struct Frame<'a> {
 }
 
 /// OSR-EXT 2 (2026-05-23): threshold for OSR JIT-attempt trigger.
-/// Reserved for OSR-EXT 3+ consumption; not consulted at this round.
+/// Reserved for OSR-EXT 3+ consumption; consulted at OSR-EXT 4 first.
 pub const OSR_BACK_EDGE_THRESHOLD: u32 = 1000;
+
+/// OSR-EXT 3 (2026-05-23): given a back-edge site (Op::Jump or
+/// JumpIfX with negative disp at `site_pc`), compute the loop region
+/// bytecode range `(entry_pc, end_pc)` where:
+///   - `entry_pc` = (site_pc + 5) + disp — the back-edge's target,
+///     which is the loop's entry point.
+///   - `end_pc` = site_pc + 5 — one byte past the back-edge's disp
+///     bytes (every Jump variant is 1 op byte + 4 disp bytes).
+///
+/// The region [entry_pc, end_pc) is the loop body bytecode slice the
+/// JIT would compile at OSR-EXT 4. This helper is the boundary
+/// detector ONLY; it does not validate JIT-eligibility (alphabet
+/// coverage, nested-back-edge containment, break/continue handling)
+/// — those checks belong to OSR-EXT 4's compile attempt.
+///
+/// Returns None if site_pc is out of bounds, disp is non-negative
+/// (not a back-edge), or entry_pc would be out of bounds.
+pub fn compute_loop_region(bytecode: &[u8], site_pc: usize) -> Option<(usize, usize)> {
+    if site_pc + 5 > bytecode.len() { return None; }
+    let disp = i32::from_le_bytes([
+        bytecode[site_pc + 1], bytecode[site_pc + 2],
+        bytecode[site_pc + 3], bytecode[site_pc + 4],
+    ]);
+    if disp >= 0 { return None; }
+    let end_pc = site_pc + 5;
+    let entry_pc_signed = (end_pc as i32).checked_add(disp)?;
+    if entry_pc_signed < 0 { return None; }
+    let entry_pc = entry_pc_signed as usize;
+    if entry_pc >= end_pc { return None; }  // sanity: forward disp got past the check
+    Some((entry_pc, end_pc))
+}
 
 #[derive(Debug)]
 pub struct TryFrame {
@@ -10080,5 +10111,65 @@ mod vd_tests {
             assert!(!is_boxed_value(encoded),
                 "Number {n} (bits {:x}) mis-detected as boxed", encoded.to_bits());
         }
+    }
+}
+
+#[cfg(test)]
+mod osr_tests {
+    //! OSR-EXT 3 (2026-05-23): loop bytecode boundary detection tests.
+
+    use super::*;
+
+    fn make_jump_bytecode(disp: i32) -> (Vec<u8>, usize) {
+        // [Op::Jump_byte (0x60 per op.rs Jump opcode value), disp_le_bytes].
+        // We use 0x60 directly to avoid coupling to the op enum's debug name.
+        // The boundary detector doesn't actually check the op byte; it
+        // reads disp from site_pc+1..site_pc+5.
+        let mut bc = vec![0u8; 5];
+        bc[0] = 0x60;
+        bc[1..5].copy_from_slice(&disp.to_le_bytes());
+        let site_pc = 0;
+        (bc, site_pc)
+    }
+
+    #[test]
+    fn osr_loop_region_basic_back_edge() {
+        // Loop spans bytecode pcs [0, 10); back-edge at pc=5 jumps back to 0.
+        // site_pc=5, end_pc=10, entry_pc = 10 + disp where disp = 0-10 = -10.
+        let mut bc = vec![0u8; 10];
+        bc[5] = 0x60;
+        bc[6..10].copy_from_slice(&(-10_i32).to_le_bytes());
+        let region = compute_loop_region(&bc, 5);
+        assert_eq!(region, Some((0, 10)),
+            "back-edge at site=5 disp=-10 should produce region (0, 10); got {:?}", region);
+    }
+
+    #[test]
+    fn osr_loop_region_rejects_forward_jump() {
+        let (bc, site_pc) = make_jump_bytecode(10);  // positive disp
+        assert_eq!(compute_loop_region(&bc, site_pc), None,
+            "forward jump must not be detected as a loop region");
+    }
+
+    #[test]
+    fn osr_loop_region_rejects_out_of_bounds_site() {
+        let (bc, _) = make_jump_bytecode(-5);
+        assert_eq!(compute_loop_region(&bc, 100), None,
+            "out-of-bounds site_pc must return None");
+    }
+
+    #[test]
+    fn osr_loop_region_rejects_negative_entry_pc() {
+        // disp = -100, site_pc = 0, end_pc = 5, entry would be -95: out of bounds.
+        let (bc, site_pc) = make_jump_bytecode(-100);
+        assert_eq!(compute_loop_region(&bc, site_pc), None,
+            "negative entry_pc must return None");
+    }
+
+    #[test]
+    fn osr_loop_region_rejects_zero_displacement() {
+        let (bc, site_pc) = make_jump_bytecode(0);
+        assert_eq!(compute_loop_region(&bc, site_pc), None,
+            "zero displacement is not a back-edge");
     }
 }

@@ -171,3 +171,54 @@ LOC delta: ~30 (interp.rs: Frame field + 3 init sites + threshold const + 5 Jump
 ---
 
 *OSR-EXT 2 closes. Back-edge counter substrate landed; all probes GREEN; composition within ±5%. OSR-EXT 3 lands loop boundary detection.*
+
+---
+
+## OSR-EXT 3 — 2026-05-23 (Move 2 loop boundary detector)
+
+### Headline
+
+`compute_loop_region(bytecode, site_pc) -> Option<(entry_pc, end_pc)>` lands as a pure helper in interp.rs. Reads the back-edge's 4-byte disp at site_pc+1..5; computes entry_pc = (site_pc + 5) + disp; end_pc = site_pc + 5. Returns None on out-of-bounds, non-negative disp, negative entry, or zero displacement. ~35 LOC + 5 unit tests. Pure helper; not yet integrated into the dispatch loop (OSR-EXT 4 integrates).
+
+### Three-probe results
+
+| probe | result |
+|---|---|
+| OSR unit tests | ✅ 5/5 |
+| canonical fuzz (acc=-932188103) | ✅ GREEN |
+| diff-prod 42/42 | ✅ GREEN |
+| JIT lib tests | ✅ 38/38 (9 ignored) |
+| A/B composition | unchanged (pure helper not yet called) |
+
+### Substrate moves landed
+
+1. `compute_loop_region` helper function exposed `pub` for OSR-EXT 4's consumption.
+2. 5 unit tests covering: basic back-edge; forward-jump rejection; out-of-bounds site rejection; negative entry_pc rejection; zero-disp rejection.
+
+### Composition with prior corpus / engagement work
+
+- **OSR-EXT 2 back-edge counter**: this round's helper will be invoked when counter > threshold; consumed by OSR-EXT 4.
+- **Doc 740 §II.2 op-set coverage tier**: incremental closure progress; helper is the pre-condition for sub-region JIT compile.
+- **Finding II.2-bis substrate-introduction signature**: A/B unchanged as expected (helper not yet integrated).
+- **Standing rule 12 adversarial special-value testing**: applied at unit-test scope (edge cases enumerated: out-of-bounds, zero disp, forward jump, negative entry).
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable.
+Per Doc 734 §V: growth (c) preparatory.
+Per Doc 735 §X.h.b: substrate-intro round; (P2.d) bench-flat is the signature; consumer at OSR-EXT 4.
+
+### Open scope at OSR-EXT 3 close
+
+1. **OSR-EXT 4** — synthetic FunctionProto builder + JIT compile attempt; integrates the counter + boundary detector at threshold hit
+2. **OSR-EXT 5** — local-state copy-in/out + JIT body invoke (cascade-revival #1)
+3. **OSR-EXT 6** — alphabet extension (TL Moves 3+4 revival folded in) (cascade-revival #2)
+4. **OSR-EXT 7** — composition probe + CRB final disposition
+
+### Cumulative status at OSR-EXT 3 close
+
+LOC delta: ~70 (35 helper + 35 unit tests). OSR-EXT 0+1+2+3 cumulative: ~450 across the locale.
+
+---
+
+*OSR-EXT 3 closes. Loop boundary detector substrate landed; 5/5 unit tests; correctness probes GREEN; A/B unchanged. OSR-EXT 4 integrates the counter + detector + JIT compile attempt.*
