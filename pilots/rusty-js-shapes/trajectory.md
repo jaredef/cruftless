@@ -75,3 +75,74 @@ Read seed §I (telos) + seed §III (methodology) + this entry. Next substrate mo
 ---
 
 *Shape-EXT 0 closes the founding round. The workstream's locale exists; the coordinate is registered. The substrate work begins at Shape-EXT 1 when keeper directs.*
+
+---
+
+## Shape-EXT 1 — 2026-05-22 (Object layout survey)
+
+### Headline
+
+Apparatus-tier round. No code change. Surveys the current `pilots/rusty-js-runtime/derived/src/value.rs` + `interp.rs` Object representation against the substrate the Shape-EXT 4 introduction will reach into. Anchors Shape-EXT 2's design against measured numbers rather than guessed ones.
+
+### Substrate delivered
+
+- `pilots/rusty-js-shapes/docs/object-layout-survey.md` (~150 lines). Surveys Object anatomy, the construction / read / write API surface, eligibility filter for the Shape substrate, spec invariants that must be preserved, risk areas (~30 direct `properties.insert` sites all non-Shape-eligible by descriptor shape), and pre-design constraints for Shape-EXT 2.
+
+### Measured contract surface
+
+| API | Call-site count (runtime crate) | Shape-eligible subset |
+|---|---:|---:|
+| `alloc_object` | ~338 | ~120 (Ordinary kind) |
+| `object_get` | ~360 | varies by receiver kind |
+| `object_set` / `object_set_pk` | ~417 | majority (string-keyed user-default) |
+| Direct `obj.properties.insert(...)` | ~30 | 0 (all install accessor / non-default descriptors) |
+
+The migration's blast radius is bounded by `set_own` / `object_set_pk` (write path) + `object_get` (read path). No call-site grep-and-fix required; the branch lives inside the helper functions.
+
+### Eligibility filter derived
+
+A property addition is Shape-eligible iff: (1) `Object.internal_kind == InternalKind::Ordinary`, (2) the key is `PropertyKey::String(_)` (not Symbol), (3) the install path is `set_own` or `object_set` / `object_set_pk` (user-default `{w:t, e:t, c:t}`). Shape→Dictionary migration triggers on delete, non-default descriptor, Symbol-key addition, or shape-tree complexity ceiling. One-way per seed §IV carve-out.
+
+### Spec invariants the Shape substrate must preserve (catalogued)
+
+- §10.1.11 OrdinaryOwnPropertyKeys insertion order (the shape's name→slot map IS the order record).
+- §10.1.9 OrdinarySet preserve-attrs-on-re-set semantics (in-place value mutation at the slot; no shape transition for re-set).
+- Array.length synthetic computation (Arrays bypass Shape; carve-out preserved).
+- Well-known-Symbol @@-prefix fallback in `object_get` (fires on Dictionary path or proto-chain ancestors; orthogonal to Shape).
+- Proto-chain walking (independent of storage form per object).
+- Accessor descriptor dispatch (accessors are non-Shape-eligible; Dictionary path unchanged).
+
+### Pre-design constraints for Shape-EXT 2 (carried forward)
+
+1. `Shape` struct: name→slot map (smallvec for tiny, hashmap above), transition table keyed on `(String, descriptor-class)`, parent shape pointer.
+2. `ShapedObject` storage layout: `(Rc<Shape>, Vec<Value>)`. Rc-clone cost amortized via shape sharing; Vec realloc amortized O(1).
+3. `ShapeRegistry` lifetime: root shape singleton per Runtime; transitions stored on parent shapes.
+4. `ObjectStorage` enum: `Shaped(Rc<Shape>, Vec<Value>) | Dictionary(IndexMap<PropertyKey, PropertyDescriptor>)`. Object.properties becomes Object.storage.
+5. IC consumer API: `Object::shape_ptr_and_slot_for(name: &str) -> Option<(*const Shape, u32)>`. Stable pointer for IC stub lifetime because shapes are Rc-shared and immutable post-construction (transitions create new shapes; existing ones are never mutated).
+6. Transition-table key: `(String, ())` name-only for first cut; descriptor-class invariant by carve-out construction. Future-flex to `(String, DescriptorClass)` if Symbol-keyed or non-default-descriptor closure rounds need it.
+
+### Composition with prior corpus work
+
+- **Doc 729 §A8.13 substrate-amortization.** This round produces the substrate-introduction round's reading material; Shape-EXT 2 produces its design; Shape-EXT 3 lands code.
+- **Doc 730 §XII–§XVI deviation pipeline.** No probe gated on this round (no behavioral change). Shape-EXT 4 is the first round under the §XVI bidirectional engine-diff oracle.
+- **Doc 738 §II source-tier conventions.** The survey maps the existing identifier conventions in `value.rs` / `interp.rs` (`set_own*` family, `object_get` / `object_set_pk` family) onto the Shape pilot's planned `__shape_*` prefix and `_via` suffix conventions. Cross-axis consistency preserved by construction.
+
+### §XVI / Doc 734 categorization
+
+Per Doc 730 §XVI: not applicable (no probe gated). Per Doc 734 §V: growth mechanism (a) tier-relocation recursion — the survey identified that the substrate work belongs at the Object-tier code locations (`value.rs:217+`, `interp.rs:6004+`, `interp.rs:6168+`) and that the call-site migration burden is zero (the abstraction boundary is at `set_own` / `object_set_pk` / `object_get`).
+
+### Open scope at Shape-EXT 1 close
+
+1. **Shape-EXT 2** — Shape data-structure design. Decides the smallvec vs hashmap thresholds, the transition-table keying scheme, the migration-trigger ceiling, the `ObjectStorage` enum layout. Output: `pilots/rusty-js-shapes/docs/shape-design.md`. Apparatus-tier round; no code.
+2. **Shape-EXT 3** — Crate scaffold. First code round. `pilots/rusty-js-shapes/derived/Cargo.toml`, `src/shape.rs`, `src/transition.rs`, `src/registry.rs`, `tests/`. Test-only; not yet wired into Object.
+3. **Shape-EXT 4** — Object gains `ObjectStorage` field. **First round with diff-prod 42/42 + test262-sample 77.6% gates active.**
+
+### Cumulative status at Shape-EXT 1 close
+
+LOC delta: 0 (apparatus-tier round). docs/ artifacts: 1. Locale state unchanged.
+
+The substrate-introduction round's reading phase is complete. The design phase (Shape-EXT 2) begins when keeper directs.
+
+---
+
+*Shape-EXT 1 closes. The contract surface is measured. Shape-EXT 2 designs against it.*
