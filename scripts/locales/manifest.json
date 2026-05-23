@@ -3,9 +3,9 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 21,
+    "locales": 22,
     "top_level": 13,
-    "nested": 8,
+    "nested": 9,
     "warnings": 0
   },
   "locales": [
@@ -116,6 +116,15 @@
       "depth": 2,
       "rung_count": 0,
       "status": "**WORKSTREAM FOUNDED (TL-EXT 0)**. Spawned per keeper directive 2026-05-23 20:52-local as the (b-narrow) first cut from Doc 740's multi-tier reading. Addresses the json_parse_transform CRB residual after the JSF + CharCode chain landed (cumulative -12%; cruft/node 17.93\u00d7; residual checksum loop 1480 ms at 0.592 \u03bcs per charCodeAt call). The dispatch-tier IC closed the per-call cost floor; the remaining residual is interp loop dispatch + arithmetic + comparison overhead per iter. Top-level JIT closes that residual."
+    },
+    {
+      "coord": "rusty-js-jit/value-domain",
+      "tag": "L.rusty-js-jit.value-domain",
+      "parent": "L.rusty-js-jit",
+      "scope": "value-domain",
+      "depth": 2,
+      "rung_count": 0,
+      "status": "**WORKSTREAM FOUNDED (VD-EXT 0)**. Spawned per keeper directive 2026-05-23 21:51-local as the (\u03b1) \u03a6-encoding extension pivot from TL locale's chapter-close (Findings VII.2 + VII.3 + standing rule 11 multi-axis extension at engagement findings doc Addendum V). Architectural-tier pilot."
     },
     {
       "coord": "rusty-js-jit/value-tag-inline",
