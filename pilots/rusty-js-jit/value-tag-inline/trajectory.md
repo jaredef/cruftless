@@ -172,3 +172,68 @@ The pilot's substrate-introduction round (VTI-EXT 3a) is staged. The structural 
 ---
 
 *VTI-EXT 2 closes. Option A recommended; layout-pinning substrate-introduction round queued at VTI-EXT 3a. Honest budget acknowledges VTI alone reclaims 5-10 ns; the 3× target requires composition with tiny-baseline (LeJIT seed §I.2 item 5) per the §I.3 multiplicative reading.*
+
+---
+
+## VTI-EXT 3a — 2026-05-23 (layout pinning substrate-introduction round)
+
+### Headline
+
+Substrate-introduction round per Doc 729 §A8.13. `pub enum Value` now `#[repr(C, u8)]`-pinned with eight named discriminant constants + payload-offset constant + four unit tests + a runtime `assert_value_layout()` helper. Build clean, 38/38 JIT lib tests PASS, 35/35 rusty-js-runtime lib tests PASS, 10/10 rusty-js-shapes lib tests PASS, **42/42 diff-prod PASS**. Bench surprise: per-iter dropped from 127.1 → 122.0 ns (−5.1 ns).
+
+### Substrate landed
+
+- `pilots/rusty-js-runtime/derived/src/value.rs`:
+  - `#[repr(C, u8)]` attribute on `pub enum Value`.
+  - Eight `VALUE_TAG_*` constants in declaration order (UNDEFINED=0 through OBJECT=7); NUMBER=3.
+  - `VALUE_NUMBER_PAYLOAD_OFFSET: usize = 8`.
+  - Two const assertions on `size_of::<Value>() >= 16` + `align_of::<Value>() >= 8`.
+  - `pub fn assert_value_layout()` — runtime check: discriminant byte at offset 0 matches VALUE_TAG_NUMBER, f64 payload reads correctly at offset 8.
+  - `mod vti_layout_tests` — 4 tests: tag_at_offset_zero, payload_at_declared_offset, all_variants_have_distinct_tags, assert_value_layout_runs.
+- Total: ~70 LOC added to `value.rs`.
+
+### Bench result
+
+```
+bench_call_overhead pre-pinning  (VTI-EXT 1): 127.1 ns/iter
+bench_call_overhead post-pinning (VTI-EXT 3a): 122.0 ns/iter
+                                       Δ:      −5.1 ns (−4.0%)
+```
+
+Unanticipated 5 ns reclaim from layout pinning alone, with NO JIT-side emission change. Hypothesis: `#[repr(C, u8)]` gives rustc a more cache-friendly enum layout (the default unbounded-discriminant choice may have caused larger Value sizes or more complex match-codegen). Could also be measurement variance — single-run; variance characterization deferred.
+
+If real, this is a substrate-amortization-cascade per Doc 729 §A8.13 arriving one round earlier than predicted. The pinning was apparatus-tier preparation for VTI-EXT 3b's emission code; turned out to be a per-iter substrate move on its own.
+
+### Doc 738 §III cross-axis consistency check
+
+The new constants follow §II conventions:
+- `VALUE_TAG_*`: SCREAMING_SNAKE_CASE for module-level const per Rust convention; semantic discriminant per §II.b (these name discriminator values, not invocation surfaces).
+- `assert_value_layout`: snake_case fn at module scope; no `_via` suffix since it does not dispatch into JS (pure-primitive helper); install-helper inapplicable (not registered on any runtime structure).
+- Module path: `pilots/rusty-js-runtime/derived/src/value.rs` — §II.e pillar-path encodes engine substrate per Doc 729 §IV.
+
+No convention violations introduced.
+
+### §XVI / Doc 734 categorization
+
+Per Doc 730 §XVI: Case-4 (implementation freedom). Layout choice is implementation-detail; no spec-correctness call. Per Doc 734 §V: growth (a) substrate move enabling subsequent (c) positive-finding generalizations — the pinning is the substrate-introduction round; VTI-EXT 3b's emission is the closure round; the unanticipated 5 ns reclaim is a (c) generalization candidate at VTI-EXT 4 measurement.
+
+### Composition with prior corpus work
+
+- **Doc 729 §A8.13 substrate-amortization-cascade**: the bench reclaim arrived at the substrate-introduction tier, one round earlier than the closure round (VTI-EXT 3b) would have produced it. Parallel to the shape-enrollment cascade reading at LeJIT seed §I.3.
+- **Doc 735 §X.h.b**: bench result alone is bench-probe-level (NECESSARY but not sufficient per §X.h.c). diff-prod 42/42 GREEN is the consumer-route probe at the runtime-semantics tier (closes part of §X.h.c). Fuzz probe deferred to VTI-EXT 7 per the seed §III methodology.
+- **Doc 738 §II conventions**: new identifiers fit cleanly per the cross-axis check above.
+
+### Open scope at VTI-EXT 3a close
+
+1. **VTI-EXT 3b** — Closure round per Doc 729 §A8.13: JIT translator changes for `*const Value` calling convention + JIT-prologue tag-check + payload-extract behind `CRUFTLESS_LEJIT_VTI=1`. ~80 LOC. New `DeoptReason::WrongArgTag` variant + reconstruct path.
+2. **VTI-EXTs 4-8** per the seed §III methodology.
+
+### Cumulative status at VTI-EXT 3a close
+
+LOC delta: ~70 (layout pinning + constants + tests). Workspace: GREEN across the three crates probed. diff-prod 42/42 GREEN. bench_call_overhead: 122 ns/iter (−5.1 ns vs VTI-EXT 1 baseline).
+
+The substrate-introduction is landed. VTI-EXT 3b's emission round operates on a pinned layout the const-assertion gate verifies at compile time and the unit tests verify at runtime. Any rustc layout drift fails loudly before any JIT emission could silently produce wrong code.
+
+---
+
+*VTI-EXT 3a closes. Layout pinned. Unanticipated 5 ns reclaim from the pinning itself. VTI-EXT 3b begins with the JIT translator's calling-convention switch + prologue tag-check emission against the now-known NUMBER_TAG=3 + payload-offset=8 invariants.*

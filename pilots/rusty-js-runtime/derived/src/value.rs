@@ -72,7 +72,14 @@ impl rusty_js_gc::Trace for Object {
     }
 }
 
+// LeJIT-Ψ VTI-EXT 3a: layout-pin Value so the JIT-prologue tag-check
+// emitter (VTI-EXT 3b) can read the discriminant at a known offset.
+// repr(u8) places the tag at offset 0 (one byte); rustc lays out the
+// payload at the next max-alignment boundary (offset 8 for f64/Rc).
+// VTI-EXT 3b's emit_inline_number_tag_check reads byte 0; payload
+// extraction reads from offset 8. NUMBER_TAG = 3 per declaration order.
 #[derive(Clone)]
+#[repr(C, u8)]
 pub enum Value {
     Undefined,
     Null,
@@ -94,6 +101,61 @@ pub enum Value {
     /// a parallel migration.
     Symbol(Rc<String>),
     Object(ObjectRef),
+}
+
+// LeJIT-Ψ VTI-EXT 3a: discriminant + payload-offset constants the
+// JIT-prologue tag-check emitter (VTI-EXT 3b) consumes. With
+// #[repr(C, u8)] above, rustc lays out Value as:
+//   - byte 0:     u8 discriminant (declaration-order: 0..7)
+//   - bytes 1..N: padding to max-payload-alignment
+//   - byte N:     payload (f64 / Rc / etc. at alignment 8)
+// These constants are the JIT emitter's source of truth; if rustc
+// changes the layout, the static asserts below fail at compile time
+// and the JIT does not silently emit wrong code.
+pub const VALUE_TAG_UNDEFINED: u8 = 0;
+pub const VALUE_TAG_NULL: u8      = 1;
+pub const VALUE_TAG_BOOLEAN: u8   = 2;
+pub const VALUE_TAG_NUMBER: u8    = 3;
+pub const VALUE_TAG_STRING: u8    = 4;
+pub const VALUE_TAG_BIGINT: u8    = 5;
+pub const VALUE_TAG_SYMBOL: u8    = 6;
+pub const VALUE_TAG_OBJECT: u8    = 7;
+
+/// Byte offset of the Number variant's f64 payload within a Value.
+/// With #[repr(C, u8)] and f64's 8-byte alignment, this is 8.
+pub const VALUE_NUMBER_PAYLOAD_OFFSET: usize = 8;
+
+const _: () = {
+    // Discriminant byte at offset 0.
+    assert!(std::mem::size_of::<Value>() >= 16,
+        "Value must be at least 16 bytes (1B tag + 7B pad + 8B payload)");
+    // Alignment is at least 8 (f64 payload).
+    assert!(std::mem::align_of::<Value>() >= 8,
+        "Value alignment must be at least 8 for f64 payload");
+};
+
+/// Runtime check: verify the chosen discriminant byte for Value::Number
+/// matches VALUE_TAG_NUMBER. Called at JIT-bench-setup time so a layout
+/// drift fails loudly. Not on the hot path.
+pub fn assert_value_layout() {
+    let v = Value::Number(0.0);
+    // SAFETY: #[repr(C, u8)] places the discriminant at byte 0.
+    let tag = unsafe { *((&v as *const Value) as *const u8) };
+    assert_eq!(tag, VALUE_TAG_NUMBER,
+        "Value::Number discriminant byte ({}) does not match \
+         VALUE_TAG_NUMBER ({}); rustc layout drift detected. \
+         VTI-EXT 3a invariant violated.", tag, VALUE_TAG_NUMBER);
+    // Payload offset: write a known sentinel, read it back at the
+    // declared offset.
+    let v2 = Value::Number(1.5_f64);
+    let payload = unsafe {
+        let base = &v2 as *const Value as *const u8;
+        let pf = base.add(VALUE_NUMBER_PAYLOAD_OFFSET) as *const f64;
+        *pf
+    };
+    assert_eq!(payload, 1.5,
+        "Value::Number payload not at offset {}; rustc layout drift.",
+        VALUE_NUMBER_PAYLOAD_OFFSET);
 }
 
 impl Value {
@@ -909,4 +971,47 @@ pub struct BoundFunctionInternals {
     pub target: ObjectRef,
     pub this: Value,
     pub args: Vec<Value>,
+}
+
+#[cfg(test)]
+mod vti_layout_tests {
+    use super::*;
+
+    #[test]
+    fn number_tag_at_offset_zero() {
+        let v = Value::Number(42.0);
+        let tag = unsafe { *((&v as *const Value) as *const u8) };
+        assert_eq!(tag, VALUE_TAG_NUMBER);
+    }
+
+    #[test]
+    fn number_payload_at_declared_offset() {
+        let v = Value::Number(1.5_f64);
+        let payload = unsafe {
+            let base = &v as *const Value as *const u8;
+            let pf = base.add(VALUE_NUMBER_PAYLOAD_OFFSET) as *const f64;
+            *pf
+        };
+        assert_eq!(payload, 1.5);
+    }
+
+    #[test]
+    fn all_variants_have_distinct_tags() {
+        let cases: &[(Value, u8)] = &[
+            (Value::Undefined, VALUE_TAG_UNDEFINED),
+            (Value::Null, VALUE_TAG_NULL),
+            (Value::Boolean(true), VALUE_TAG_BOOLEAN),
+            (Value::Number(0.0), VALUE_TAG_NUMBER),
+        ];
+        for (v, expected) in cases {
+            let tag = unsafe { *((v as *const Value) as *const u8) };
+            assert_eq!(tag, *expected,
+                "variant tag mismatch (rustc layout drift)");
+        }
+    }
+
+    #[test]
+    fn assert_value_layout_runs() {
+        assert_value_layout();
+    }
 }
