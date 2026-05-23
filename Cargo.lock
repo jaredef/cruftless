@@ -858,6 +858,7 @@ dependencies = [
  "cranelift-native",
  "rusty-js-ast",
  "rusty-js-bytecode",
+ "rusty-js-shapes",
 ]
 
 [[package]]

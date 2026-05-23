@@ -21,5 +21,11 @@ cranelift-native = "0.118"
 
 rusty-js-bytecode = { path = "../../rusty-js-bytecode/derived" }
 
+# LeJIT-Σ (pilots/rusty-js-jit/stub-emitter/) StubE-EXT 3+: IC cache
+# keys are (*const Shape, u32 slot) per shapes pilot
+# docs/shape-design.md §11. The stub state machine consumes Rc<Shape>
+# for pin-against-drop per Pred-stub.2.
+rusty-js-shapes = { path = "../../rusty-js-shapes/derived" }
+
 [dev-dependencies]
 rusty-js-ast = { path = "../../rusty-js-ast" }

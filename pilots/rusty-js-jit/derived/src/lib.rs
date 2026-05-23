@@ -29,6 +29,7 @@
 pub mod translator;
 pub mod promote;
 pub mod deopt;
+pub mod stub_aarch64;
 pub use translator::{compile_function, CompiledFn, JitFn};
 pub use promote::promote_to_typed_i64;
 pub use deopt::{

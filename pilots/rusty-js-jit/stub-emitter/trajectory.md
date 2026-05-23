@@ -188,3 +188,84 @@ LOC delta: 0 (apparatus). docs/ artifacts: 2 (bench-baseline + stub-design). The
 ---
 
 *StubE-EXT 2 closes. Design is anchored: side-table cache, memory-store patching, four-state machine, side-table indexed by IC-site id. §8 honestly flags the per-iter budget gap; StubE-EXT 6's measurement decides the (P2) categorization.*
+
+---
+
+## StubE-EXT 3 — 2026-05-23 (stub_aarch64 module scaffold + state-machine tests)
+
+### Headline
+
+First code round of LeJIT-Σ. Scaffolds `pilots/rusty-js-jit/derived/src/stub_aarch64.rs` (~325 LOC including tests) with the `ICStubCache` + `ICEntry` types, the four-state state machine, the thread-local cache singleton, and the slow-path observer helpers. `emit_getprop_stub` declared as placeholder; the Cranelift IR emission body lands at StubE-EXT 4. **10/10 unit tests PASS on first build**; the state-machine logic is verified (cold → warm → cold-after-miss → degraded transitions) without Cranelift integration.
+
+### Substrate landed
+
+- `pilots/rusty-js-jit/derived/Cargo.toml` — `rusty-js-shapes` path-dep added (the stub state machine consumes `Rc<Shape>` for pin-against-drop per Pred-stub.2).
+- `pilots/rusty-js-jit/derived/src/lib.rs` — `pub mod stub_aarch64;`.
+- `pilots/rusty-js-jit/derived/src/stub_aarch64.rs` (~325 LOC):
+  - `ICSiteId` type alias (u32).
+  - `MISS_THRESHOLD` constant (8 per stub-design.md §5 tunable).
+  - `ICState` enum: Cold / WarmMono / ColdAfterMiss / Degraded.
+  - `ICEntry` struct: cached_shape (*const Shape) + cached_slot (u32) + pinned_shape_holder (Option<Rc<Shape>> per design §11 stable-pointer safety story) + miss_count + degraded.
+  - `ICEntry::observe(shape, slot)`: handles cold → warm; counts misses on shape change; degrades past MISS_THRESHOLD.
+  - `ICEntry::observe_miss_no_shape()`: slow-path called when receiver is Dictionary-form (no shape to cache).
+  - `ICStubCache` side-table: `Vec<ICEntry>` indexed by `ICSiteId`. `alloc_site()` allocates a new id; `entry` / `entry_mut` access; `state_histogram` diagnostic.
+  - Thread-local `IC_STUB_CACHE` per design §5 single-threaded discipline.
+  - Helper fns `alloc_ic_site`, `observe_at_site`, `observe_miss_no_shape_at_site` for the eventual slow-path observer surface.
+  - `emit_getprop_stub(site_id, ...)` declared with placeholder body. Full Cranelift IR emission lands at StubE-EXT 4.
+
+### Tests (10/10 PASS)
+
+| test | corroborates |
+|---|---|
+| `cold_entry_starts_null` | constructor invariant |
+| `cold_to_warm_on_first_observe` | first-hit cache patching |
+| `warm_to_cold_after_miss_on_shape_change` | shape-change triggers ColdAfterMiss + miss_count++ |
+| `degrades_past_miss_threshold` | MISS_THRESHOLD=8 boundary; cache cleared on degrade |
+| `degraded_entry_stops_observing` | degraded entries are sticky |
+| `observe_miss_no_shape_increments_count` | Dictionary-receiver miss counted |
+| `observe_miss_no_shape_on_cold_is_noop` | cold entries don't pre-count |
+| `icstubcache_alloc_assigns_sequential_ids` | id allocation contract |
+| `icstubcache_histogram_classifies_state` | diagnostic surface |
+| `doc738_convention_smoke_test` | Pred-stub.4 compile-time conformance |
+
+### Build + engagement-wide gates
+
+- `cargo build --release -p rusty-js-jit`: clean.
+- `cargo test --release -p rusty-js-jit --lib stub_aarch64`: 10/10 PASS (0.00s).
+- `cargo build --release --bin cruft -p cruftless`: clean.
+- diff-prod **42/42 PASS** unchanged.
+
+### §XVI / Doc 734 categorization
+
+Per Doc 730 §XVI: not applicable (no behavioral change — `emit_getprop_stub` is a placeholder; translator doesn't call it yet).
+
+Per Doc 734 §V: growth mechanism (a) tier-relocation — the IC state machine is now a first-class type with explicit transitions, where the parent LeJIT crate previously had no IC-state representation at all (extern slow path made every call without tracking miss counts or shapes).
+
+### Composition with prior corpus work
+
+- **Doc 729 §A8.13 substrate-amortization**: LeJIT-Σ's substrate-introduction round divides further into infrastructure (state machine + types: this round) + Cranelift IR emission (StubE-EXT 4) + translator wiring (StubE-EXT 5). Each is a focused round.
+- **Doc 735 §X.h.c three-probe-levels discipline**: this round adds the **bench probe substrate** at the state-machine layer (the unit tests are the bench-probe equivalent for the cache state contract). Consumer-route probe at StubE-EXT 5; fuzz probe at StubE-EXT 7.
+- **Doc 738 §II source-tier conventions**: PascalCase types (ICStubCache / ICEntry / ICState), snake_case methods (observe / observe_miss_no_shape / alloc_site / entry_mut), `ICSiteId` type alias (no `_via` because not Runtime-dispatching), thread-local singleton convention matches Shape::root().
+
+### Pred disposition
+
+- **Pred-stub.2** (no use-after-free under shape transitions): the `pinned_shape_holder: Option<Rc<Shape>>` field IS the safety mechanism; tests confirm the holder is set when cached_shape is non-null and cleared when degraded. Integration-tier corroboration at StubE-EXT 4 + 7 (fuzz).
+- **Pred-stub.3** (cache convergence under monomorphic workload): the state machine's contract IS the convergence guarantee; `cold_to_warm_on_first_observe` + the absence of any path back to Cold from WarmMono (except via Degrade) corroborate.
+- **Pred-stub.4** (Doc 738 §II conventions): `doc738_convention_smoke_test` compiles iff all public identifiers exist with the conformant naming.
+- **Pred-stub.1** + **Pred-stub.5**: wait for StubE-EXT 6 + 8 measurements.
+
+### Open scope at StubE-EXT 3 close
+
+1. **StubE-EXT 4** — Cranelift IR emission body for `emit_getprop_stub`. Lands the actual aarch64 inline shape-check + slot-load IR. Plus synthetic shape-pointer integration test exercising emit + execute via Cranelift JITModule. Coordinated cross-crate change: extend `runtime_getprop_on_object` signature to return `(value, *const Shape, u32 slot)` so the slow path can observe at the IC site.
+2. **StubE-EXT 5** — Wire emitter into translator under `CRUFTLESS_LEJIT_STUB=1` env flag. **Gates on shapes CMig-EXT 8** (enrollment flip).
+3. **StubE-EXT 6** — Re-measure; (P2) categorize per Doc 735 §X.h.b.
+4. **StubE-EXT 7** — Fuzz probe.
+5. **StubE-EXT 8** — Default-on flip.
+
+### Cumulative status at StubE-EXT 3 close
+
+LOC delta: ~340 (stub_aarch64.rs 325 + Cargo.toml dep). 10/10 unit tests; diff-prod 42/42 unchanged. The IC state machine exists, is tested in isolation, and is ready to receive its Cranelift IR emission body at StubE-EXT 4.
+
+---
+
+*StubE-EXT 3 closes. The cache state machine compiles, tests, and is ready. StubE-EXT 4 emits the actual aarch64 IR against synthetic shape pointers.*
