@@ -146,3 +146,58 @@ The substrate-introduction round's reading phase is complete. The design phase (
 ---
 
 *Shape-EXT 1 closes. The contract surface is measured. Shape-EXT 2 designs against it.*
+
+---
+
+## Shape-EXT 2 — 2026-05-22 (Shape data-structure design)
+
+### Headline
+
+Apparatus-tier round. No code change. Designs the `Shape`, `ObjectStorage`, transition table, and IC consumer API against Shape-EXT 1's pre-design constraints. Output: `pilots/rusty-js-shapes/docs/shape-design.md` (~250 lines).
+
+### Substrate delivered
+
+- `pilots/rusty-js-shapes/docs/shape-design.md` — concrete design for Shape struct (eager-denormalized name→slot map + transition table + parent backptr); ObjectStorage enum (Shaped | Dictionary cohabitation); transition_to API with parent-reuse to satisfy Pred-shape.2; interior-mutability via RefCell on the transitions table only; migration helper (Shaped → Dictionary on delete / non-default descriptor / Symbol key / complexity ceiling); IC consumer API `Object::shape_ptr_and_slot_for(name) -> Option<(*const Shape, u32)>` with the raw-pointer safety story (IC stub keeps `Rc<Shape>` alongside `*const Shape` cache).
+
+### Design decisions (the load-bearing ones)
+
+1. **No `ShapeRegistry` type in the first cut.** Root shape lives as one `Rc<Shape>` on `Runtime::shape_root`. Transition tree is self-organizing via per-shape `transitions` tables. Registry promoted to a type if cross-Runtime sharing or shape GC pressure surfaces (neither in v1 scope).
+2. **`SmallOrLargeMap<K, V>` newtype enum** for both `slots` (inline cap 8) and `transitions` (inline cap 4). Linear scan for the modal case; HashMap activation lazily at cap+1.
+3. **Eager denormalization of `slots`** — every shape carries the FULL name→slot map, not just the parent-delta. Trades memory for O(1) lookup (no parent walk per property read). Closure-round revisit if memory pressure surfaces.
+4. **Transition-table key is `String` name alone** for first cut. Descriptor-class invariant by carve-out construction (only `{w:t, e:t, c:t}` data properties are Shape-eligible). Future-flex to `(String, DescriptorClass)` if closure rounds lift the Symbol-keyed or non-default-descriptor carve-outs.
+5. **Interior mutability via `RefCell<SmallOrLargeMap<...>>` on `transitions` only**; `slots` and `parent` stay plain after construction. One RefCell borrow per transition lookup; negligible vs the lookup cost itself.
+6. **`Object.properties` → `Object.storage: ObjectStorage`** is a one-line type rename at `value.rs:224`. The Object API surface (`set_own*`, `get_own*`, etc.) gets shimmed to dispatch through the storage variant; call-site API unchanged.
+7. **Migration thresholds for Shaped → Dictionary on complexity**: `slot_count > 32 && transition_fanout > 16` (V8 dictionary-mode precedent, conservative).
+8. **`Vec<Value>` for the slot store** (cheap push for transitions, amortized O(1) realloc) rather than `Box<[Value]>` (compact but realloc-and-replace).
+9. **Identity invariant load-bearing**: two Objects with the same property-addition history share `Rc::ptr_eq` shape pointers. Single bug-risk site: `Shape::transition_to` MUST consult the parent's transitions table first and reuse. Falsifier wired into Shape-EXT 3 unit tests.
+10. **IC raw-pointer safety story**: `*const Shape = Rc::as_ptr(&shape)` is valid as long as some Rc<Shape> references the allocation. IC stub keeps a `Rc<Shape>` alongside the cached `*const Shape` to guarantee the allocation outlives the stub.
+
+### Anti-design points (carve-outs from this design)
+
+The first cut excludes: polymorphic IC support beyond `shape_ptr_and_slot_for` (LeJIT-Σ closure round), shape garbage collection (acceptable v1 memory leak), hidden-class-aware enumeration acceleration (O(N) Vec scan is fine), cross-Runtime sharing, concurrent shape access (Rc not Arc), shape-mediated Object.keys/entries/values bulk acceleration.
+
+### Composition with prior corpus work
+
+- **Doc 729 §A8.13 substrate-amortization.** Shape-EXT 2's design feeds Shape-EXT 3 (scaffold) feeds Shape-EXT 4 (Object integration). Each round bounded; together the substrate-introduction.
+- **Doc 729 §A8.28 descriptor-shape discipline.** The transition-table key's descriptor-class invariance comes from the carve-out (only `set_own`-installed user-default descriptors are Shape-eligible); `set_own_internal` and `set_own_frozen` install paths route to Dictionary.
+- **Doc 735 §X.h three-probe-levels discipline.** The Shape pilot's (P2.a) strict-win claim will need bench + consumer-route + fuzz probes when Shape-EXT 4+ measure against the diff-prod 42/42 + test262-sample 77.6% baselines + a hidden-classes-specific fuzz probe over the property-addition-history space.
+- **Doc 738 §II source-tier conventions.** The shape pilot's identifiers conform: `Shape` / `ShapeTransition` / `ObjectStorage` for public types (PascalCase per Rust); `slot_of` / `transition_to` / `shape_ptr_and_slot_for` for methods (snake_case); `__shape_data` internal sentinel reserved for if Object ends up carrying a shape-pointer slot directly (currently lives inside the ObjectStorage enum, so no `__`-prefixed leak to JS).
+
+### §XVI / Doc 734 categorization
+
+Per Doc 730 §XVI: not applicable (no probe gated by this round). Per Doc 734 §V: growth mechanism (a) tier-relocation recursion — the design crystallized one structural decision the keeper hadn't named (the no-Registry-type call) and one risk site the survey hadn't located (the `Shape::transition_to` parent-reuse invariant as the single load-bearing identity gate).
+
+### Open scope at Shape-EXT 2 close
+
+1. **Shape-EXT 3** — Crate scaffold. `pilots/rusty-js-shapes/derived/Cargo.toml` + `src/{lib,shape,storage}.rs` + tests. LOC estimate: ~480 (~250 shape.rs, ~80 storage.rs, ~150 tests). Test-only; Object struct unchanged in Shape-EXT 3.
+2. **Shape-EXT 4** — Object integration. `Object.properties` → `Object.storage`. `object_get` / `object_set_pk` / `set_own` dispatch through ObjectStorage variant. **First round with diff-prod 42/42 + test262-sample 77.6% gates active.**
+
+### Cumulative status at Shape-EXT 2 close
+
+LOC delta: 0. docs/ artifacts: 2 (survey + design). Locale state unchanged.
+
+The substrate-introduction round's design phase is complete. The first-cut scaffolding (Shape-EXT 3) begins when keeper directs.
+
+---
+
+*Shape-EXT 2 closes. Output: docs/shape-design.md. Shape-EXT 3 scaffolds against it.*
