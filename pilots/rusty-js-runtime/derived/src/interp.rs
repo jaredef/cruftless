@@ -8421,14 +8421,29 @@ impl Runtime {
                             rusty_js_jit::set_current_deopt_sites(&jit_fn.deopt_sites);
                             rusty_js_jit::set_current_runtime(rt_ptr_usize);
                             rusty_js_jit::set_current_proto(proto_ptr_usize);
+                            // LeJIT-Ψ VTI-EXT 3b: under vti_enabled the JIT
+                            // prologue extracts the f64 payload itself; pass
+                            // raw `*const Value` (reinterpreted as i64). The
+                            // args Vec outlives the JIT call (we hold it
+                            // borrowed through this scope) so the pointer is
+                            // valid for the call's duration.
+                            let vti = jit_fn.vti_enabled;
                             let r = match params {
                                 1 => {
-                                    let a = unbox_arg(&args[0]);
+                                    let a = if vti {
+                                        &args[0] as *const Value as i64
+                                    } else {
+                                        unbox_arg(&args[0])
+                                    };
                                     jit_fn.func.call1(a)
                                 }
                                 2 => {
-                                    let a = unbox_arg(&args[0]);
-                                    let b = unbox_arg(&args[1]);
+                                    let (a, b) = if vti {
+                                        (&args[0] as *const Value as i64,
+                                         &args[1] as *const Value as i64)
+                                    } else {
+                                        (unbox_arg(&args[0]), unbox_arg(&args[1]))
+                                    };
                                     jit_fn.func.call2(a, b)
                                 }
                                 _ => unreachable!(),

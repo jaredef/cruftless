@@ -25,7 +25,8 @@
 //! mem2reg / ssa-conversion handles the SSA promotion automatically.
 
 use cranelift_codegen::ir::condcodes::IntCC;
-use cranelift_codegen::ir::types::{I64, I8};
+use cranelift_codegen::ir::types::{F64, I64, I8};
+use cranelift_codegen::ir::MemFlags;
 use cranelift_codegen::ir::{AbiParam, Block, InstBuilder, Value as ClValue};
 use cranelift_codegen::settings::{self, Configurable};
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
@@ -78,6 +79,13 @@ pub struct CompiledFn {
     /// starts emitting deopt sites. Indexed by site_id (the immediate
     /// the JIT'd code passes to `jit_deopt_thunk`).
     pub deopt_sites: crate::deopt::DeoptSiteTable,
+    /// LeJIT-Ψ VTI-EXT 3b: true iff this function was compiled with
+    /// `CRUFTLESS_LEJIT_VTI=1`. The dispatcher consults this flag at
+    /// call time to decide whether to pre-unbox args (Rust-side
+    /// `unbox_arg`, the historical path) or pass `*const Value`
+    /// pointers (the VTI calling convention). Set at compile time so
+    /// the dispatcher's choice agrees with the prologue's expectation.
+    pub vti_enabled: bool,
 }
 
 impl std::fmt::Debug for CompiledFn {
@@ -177,6 +185,21 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
     // and is harmless when the flag is unset (site_ids alloc but
     // dispatch path stays the existing extern).
     let lejit_stub = std::env::var("CRUFTLESS_LEJIT_STUB")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+
+    // LeJIT-Ψ VTI-EXT 3b (payload-extract-only first cut): when
+    // `CRUFTLESS_LEJIT_VTI=1`, the dispatcher passes args as raw
+    // `*const Value` pointers (reinterpreted as i64) instead of
+    // pre-unboxed i64 payloads. The JIT prologue takes responsibility
+    // for the f64 payload extraction at the layout-pinned offset
+    // VALUE_NUMBER_PAYLOAD_OFFSET = 8 (per VTI-EXT 3a + value.rs
+    // const assertions). The inline tag-check + WrongArgTag deopt
+    // wiring is deferred to VTI-EXT 3c; this first cut trusts the
+    // dispatcher's existing jit_compatible_arg precondition. Bench
+    // measurement at 3b's end isolates the calling-convention
+    // reinterpretation cost from the tag-check cost.
+    let lejit_vti = std::env::var("CRUFTLESS_LEJIT_VTI")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
     // Allocate one IC site per Op::GetPropOnObject occurrence (StubE-EXT
@@ -292,10 +315,37 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
         // Args land in locals 0..params at function entry per the
         // interpreter convention (compile_function_proto allocates one
         // slot per param at the head of self.locals).
+        //
+        // LeJIT-Ψ VTI-EXT 3b (payload-extract-only): under
+        // CRUFTLESS_LEJIT_VTI=1 the entry block params arrive as raw
+        // `*const Value` pointers (i64-typed at the Cranelift ABI
+        // level, reinterpreted from the dispatcher's `&args[i] as
+        // *const Value as i64`). The prologue loads the f64 payload
+        // at VALUE_NUMBER_PAYLOAD_OFFSET (=8 per value.rs const) and
+        // saturating-converts to i64 to match the historical
+        // `unbox_arg` semantics (`*f as i64`). Tag-check + WrongArgTag
+        // deopt deferred to VTI-EXT 3c; this first cut trusts the
+        // dispatcher's jit_compatible_arg precheck.
         let entry_params: Vec<ClValue> = builder.block_params(entry).to_vec();
+        const VALUE_NUMBER_PAYLOAD_OFFSET: i32 = 8;
         for (i, &p) in entry_params.iter().enumerate() {
             if i < local_vars.len() {
-                builder.def_var(local_vars[i], p);
+                if lejit_vti && i < proto.params as usize {
+                    // p is *const Value reinterpreted as i64.
+                    // Load f64 from p + 8 (the Number variant's payload
+                    // per value.rs #[repr(C, u8)] layout).
+                    let payload = builder.ins().load(
+                        F64,
+                        MemFlags::trusted(),
+                        p,
+                        VALUE_NUMBER_PAYLOAD_OFFSET,
+                    );
+                    // Saturating f64 -> i64 to match `*f as i64`.
+                    let as_i64 = builder.ins().fcvt_to_sint_sat(I64, payload);
+                    builder.def_var(local_vars[i], as_i64);
+                } else {
+                    builder.def_var(local_vars[i], p);
+                }
             }
         }
 
@@ -630,7 +680,7 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
         }
     };
     let leaked = Box::leak(Box::new(module));
-    Ok(CompiledFn { func, _module: leaked, deopt_sites })
+    Ok(CompiledFn { func, _module: leaked, deopt_sites, vti_enabled: lejit_vti })
 }
 
 fn binop<F>(stack: &mut Vec<ClValue>, builder: &mut FunctionBuilder, f: F) -> Result<(), String>

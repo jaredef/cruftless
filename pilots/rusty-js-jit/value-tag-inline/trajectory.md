@@ -237,3 +237,90 @@ The substrate-introduction is landed. VTI-EXT 3b's emission round operates on a 
 ---
 
 *VTI-EXT 3a closes. Layout pinned. Unanticipated 5 ns reclaim from the pinning itself. VTI-EXT 3b begins with the JIT translator's calling-convention switch + prologue tag-check emission against the now-known NUMBER_TAG=3 + payload-offset=8 invariants.*
+
+---
+
+## VTI-EXT 3b — 2026-05-23 (payload-extract-only first cut — NEGATIVE EMPIRICAL FINDING)
+
+### Headline
+
+**Bench probe NEGATIVE. VTI-EXT 3b's payload-extract-only path is 18.9 ns SLOWER than the historical Rust dispatcher (145.5 vs 126.6 ns/iter, +14.9% regression).** Clean Doc 735 §X.h.b (P2.d) correct-but-losing categorization at first cut. Substrate retained behind the `CRUFTLESS_LEJIT_VTI=1` env flag (default OFF, no regression to anyone not opting in); VTI-EXT 3c (full inline tag-check + dispatcher precheck-skip) is now the load-bearing round for the (P2.a) vs (P2.d) decision.
+
+### Substrate landed
+
+- `pilots/rusty-js-jit/derived/src/translator.rs`:
+  - Imports: `F64`, `MemFlags`.
+  - New env-flag: `lejit_vti = std::env::var("CRUFTLESS_LEJIT_VTI") == "1"`.
+  - New `CompiledFn.vti_enabled: bool` field threaded through the constructor.
+  - Per-arg prologue switch: under `lejit_vti`, treats the i64 block-param as `*const Value`, emits `load.f64 [p + 8]` → `fcvt_to_sint_sat.i64`, def_var into local slot. Default path (`!lejit_vti`) unchanged.
+- `pilots/rusty-js-runtime/derived/src/interp.rs`:
+  - Dispatcher JIT-call site reads `jit_fn.vti_enabled`; under VTI, passes `&args[i] as *const Value as i64` instead of `unbox_arg(&args[i])`.
+- Total: ~50 LOC across two files. All tests GREEN:
+  - 38/38 rusty-js-jit lib tests PASS
+  - 35/35 rusty-js-runtime lib tests PASS
+  - Bench produces correct result for id(42)=42 under both VTI=0 and VTI=1.
+
+### Measurement
+
+| mode | per-iter | Δ vs VTI OFF |
+|---|---:|---:|
+| VTI OFF (regression baseline) | 126.6 ns | — |
+| **VTI ON (this round)** | **145.5 ns** | **+18.9 ns (+14.9%)** |
+
+Workload: 1M `id(Number(42))` via `Runtime::call_function`. Single run, no variance characterization yet (deferred to VTI-EXT 6).
+
+VTI OFF result of 126.6 ns walks back the strength of VTI-EXT 3a's "−5 ns from layout pinning alone" claim; the apparent 122.0 ns post-pinning may have been variance-low. Multi-run variance band is now load-bearing for both findings.
+
+### Why this was unanticipated
+
+Inline-design.md §3 Option A predicted 5-10 ns reclaim. The bench shows the opposite. Five plausible mechanisms compose:
+
+1. **`fcvt_to_sint_sat` on aarch64 is a longer codegen than rustc's `*f as i64`** (likely emits NaN-check + saturate fixup; rustc inlines tight bounds-saturate via min/max constants).
+2. **Memory load through raw pointer is not free**; rustc had the f64 already in a register at the dispatcher.
+3. **Calling-convention reinterpretation defeats the register allocator's view** at the dispatcher's call-site.
+4. **Cranelift's `MemFlags::trusted()` asserts no-trap but not no-alias**; load cannot be hoisted across other instructions.
+5. **VTI-EXT 3b alone doesn't remove the dispatcher's existing `jit_compatible_arg` precheck**; it ADDS the JIT load on top. The "save the Rust match" reclaim Option A anticipated requires VTI-EXT 3c's inline tag-check to let the dispatcher SKIP the precheck.
+
+(5) is the structural argument that 3b alone CANNOT win. The verbose analysis is in `enhancements.md` (VTI-EXT 3b entry).
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: Case-4 (implementation freedom). No spec-correctness issue.
+
+Per Doc 734 §V: growth (b) **negative-finding amendment in waiting**. The seed §VIII falsifier ("≥3× per-hit speedup or re-categorize as (P2.d)") fires partially — VTI's first-cut substrate move is (P2.d) by itself; whether the pilot as a whole is (P2.d) is contingent on 3c. The amendment to the seed § I.3 composition table is queued pending 3c's measurement.
+
+Per Doc 735 §X.h.b sub-cases — clean **(P2.d) correct-but-losing** at first cut:
+- Algorithm-correct (the design's payload-extract semantics match unbox_arg's `*f as i64`)
+- Implementation-correct (38/38 + 35/35 tests; bench result is mathematically right)
+- Cost-stratum is the algorithm's best achievable on the target hardware for the payload-extract-only path
+- Per-op cost is +18.9 ns worse than the alternative substrate-tier path (Rust dispatcher unbox)
+
+Per §X.h.c three-probe-levels: bench probe NEGATIVE (this round). Consumer-route probe (diff-prod with VTI=1) not run; expected NEUTRAL since diff-prod fixtures don't routinely hit the JIT path. Fuzz probe (VTI-EXT 7) not run. The (P2.d) categorization is bench-tier; final categorization gates on full three-probe sweep.
+
+### Composition with prior corpus work
+
+- **Doc 729 §A8.13 substrate-amortization-cascade**: VTI-EXT 3a's substrate-introduction was supposed to enable the closure-round reclaim. The bench shows the cascade did not arrive at the closure round; instead 3a captured an apparent (possibly variance-only) 5 ns at the substrate-introduction tier, and 3b reverses it +18.9 ns. The cascade signal that worked for shapes (Shape-EXT 4: +26%) does not hold for VTI (3a+3b net: +18.9 ns). This is itself an empirical finding worth recording: cascade patterns are not universal across LeJIT-tier substrate-introduction rounds.
+
+- **Doc 735 §X.h.b four sub-cases**: VTI-EXT 3b is the engagement's first explicit (P2.d) substrate-tier landing where the substrate stays in tree behind a flag rather than reverting. The choice models §X.h.b's principle that (P2.d) is a partial-failure category whose substrate may still enable downstream (P2.a) work — VTI-EXT 3c being the test.
+
+- **Doc 738 §II conventions**: new identifiers (`lejit_vti`, `vti_enabled`) follow conventions. No violations.
+
+### Open scope at VTI-EXT 3b close
+
+1. **VTI-EXT 3c** — Full inline tag-check + dispatcher precheck-skip. Add `DeoptReason::WrongArgTag { arg_index: u8, expected_tag: u8, observed_tag: u8 }` variant + reconstruct path. Translator under VTI=1 emits: load byte 0 → cmp NUMBER_TAG → brif success/trip-block → trip_block emits deopt_trip call → success_block does the existing payload-extract. Dispatcher under VTI=1: **skip jit_compatible_arg precheck** — let the JIT-emitted tag-check be the gate. ~100 LOC. Load-bearing round for (P2.a) vs (P2.d) categorization. Re-bench after landing.
+
+2. **VTI-EXT 4** (gated on 3c outcome): if 3c flips bench positive, three-probe-levels per §X.h.c. If 3c also stays negative, pivot per Doc 735 §X.h.d saturation-as-escalation-signal: spawn `pilots/rusty-js-jit/tiny-baseline/` (LeJIT seed §I.2 item 5).
+
+3. **VTI-EXT 6** (variance characterization): multi-run bench to bound the variance band on both 3a and 3b readings.
+
+### Cumulative status at VTI-EXT 3b close
+
+LOC delta: ~50 (translator + dispatcher). Test surface: GREEN. Bench: NEGATIVE at first cut by 18.9 ns.
+
+**Honest reading**: VTI-EXT 3b is a (P2.d) substrate landing per Doc 735 §X.h.b. The apparatus is in place; the bench-positive outcome requires VTI-EXT 3c. If 3c also stays negative, the pilot is (P2.d) at first cut and the substrate calls (per Doc 735 §X.h.d saturation) for the tiny-baseline dispatcher refactor as the remaining required arm of the seed §I.3 multiplicative composition.
+
+The enhancements log (`pilots/rusty-js-jit/enhancements.md`) carries the verbose analysis of this negative finding — five hypothesized mechanisms, the structural argument that 3b alone cannot win, the categorization gate, and the queued amendment to LeJIT seed §I.3's composition table.
+
+---
+
+*VTI-EXT 3b closes with a negative empirical finding properly logged. The substrate stays in tree behind `CRUFTLESS_LEJIT_VTI=1` (default OFF; no regression to non-opt-in callers). VTI-EXT 3c is the load-bearing round for the (P2.a) vs (P2.d) decision at the pilot scale.*

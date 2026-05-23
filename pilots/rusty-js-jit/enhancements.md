@@ -61,6 +61,67 @@ The bench shows otherwise. The 5 ns reclaim arrived at the substrate-introductio
 
 ---
 
+## 2026-05-23 — VTI-EXT 3b: payload-extract-only first cut is 18.9 ns SLOWER (P2.d) **[UNANTICIPATED]**
+
+**Locale**: `pilots/rusty-js-jit/value-tag-inline/trajectory.md` → VTI-EXT 3b (closure round to VTI-EXT 3a's substrate-introduction, per Doc 729 §A8.13).
+
+**Substrate change**: First-cut closure of VTI Option A from inline-design.md §3. Added `CRUFTLESS_LEJIT_VTI=1` env flag detection in translator; added `vti_enabled: bool` to CompiledFn so dispatcher can agree with prologue's expectation; translator's per-arg prologue, when VTI=1, treats the i64 entry-block-param as `*const Value`, loads f64 at offset 8 (VALUE_NUMBER_PAYLOAD_OFFSET per VTI-EXT 3a), saturating-converts to i64. Dispatcher under VTI=1 passes `&args[i] as *const Value as i64` instead of `unbox_arg(&args[i])`. Inline tag-check + WrongArgTag deopt deferred to VTI-EXT 3c (this round trusts dispatcher's existing `jit_compatible_arg` precheck).
+
+**Measurement**:
+
+```
+bench_call_overhead VTI OFF (regression baseline): 126.6 ns/iter
+bench_call_overhead VTI ON  (3b path):              145.5 ns/iter
+                                              Δ:     +18.9 ns (+14.9%)
+```
+
+Workload: 1M iterations of `id(Number(42))` via `Runtime::call_function`. Same hardware (Pi), same build, single-run measurement.
+
+VTI OFF result of 126.6 ns is consistent with VTI-EXT 3a's 122.0 ns reading within plausible variance (±5 ns), which itself walks back the strength of 3a's "−5 ns reclaim from layout pinning alone" claim — possibly the 3a reading was variance-low. Variance characterization (VTI-EXT 6) remains the load-bearing measurement for both findings.
+
+**Why this was unanticipated**: VTI-EXT 2 inline-design.md §3 Option A predicted 5-10 ns reclaim. Per the design's hypothesis, removing the Rust dispatcher's `match` (`unbox_arg`) from the hot path would reclaim 5-10 ns. The empirical reading shows the opposite — pushing the work into the JIT prologue costs MORE than leaving it in Rust.
+
+**Hypothesis** for why the prediction missed:
+
+1. **`fcvt_to_sint_sat` is more expensive than `*f as i64`'s codegen.** On aarch64, `*f as i64` from Rust compiles to a single `fcvtzs x, d` with bounds-saturate via `min`/`max` constants inlined; Cranelift's `fcvt_to_sint_sat` may emit a longer sequence with explicit NaN-check branch + saturate fixup blocks. The Rust optimizer has more context (it knows the f64 came from a Value::Number which restricts the range) than Cranelift's IR-level lowering has.
+
+2. **Memory load through raw pointer is not free, and the dispatcher already had the f64 in a register.** `unbox_arg(&Value::Number(f))` reads `*f` directly via Rust pattern-matching — the optimizer can keep the f64 in a register across the call to `jit_fn.func.call1`. Under VTI, the dispatcher writes the pointer through the calling convention; the JIT prologue must do a fresh memory load. The substitution replaces one register-to-register move with one load + one cast + one conversion.
+
+3. **Calling-convention reinterpretation defeats register allocator's view.** When the dispatcher passes a value-typed i64 (the historical path), rustc's optimizer can sometimes inline the call sequence + register-pass the i64 efficiently. When passing a raw pointer, the optimizer treats it as an opaque foreign-ABI value and may emit conservative spill/reload sequences around the call site.
+
+4. **JIT-side load is unaliased only by trust, not by `MemFlags::trusted()` alone.** Cranelift's load with `MemFlags::trusted()` asserts no traps but does not assert no-alias; the optimizer cannot hoist the load across other emitted instructions. In a longer function body this would matter less; in the minimal id(x) bench it accounts for an entire round-trip cost.
+
+5. **The dispatcher still does the precheck.** Even under VTI=1, the dispatcher calls `jit_compatible_arg(v)` which already pattern-matches on the discriminant. VTI's first cut doesn't remove that work — it adds the JIT-prologue load on top. The "save the Rust match" reclaim Option A anticipated requires VTI-EXT 3c's inline tag-check to let dispatcher SKIP the precheck.
+
+The combination of (1) + (2) + (3) plausibly accounts for the +18.9 ns regression. (5) is the structural argument that VTI-EXT 3b alone CANNOT win — the full VTI path needs 3c to land the precheck-removal before the calling-convention switch pays.
+
+**Implication for forward work** per Doc 735 §X.h.b sub-case categorization:
+
+- **VTI-EXT 3b as landed is (P2.d) correct-but-losing.** Algorithm-correct (the JIT produces the right i64 for the test workload + 38/38 JIT tests + 35/35 runtime tests PASS) + implementation-correct + per-op slower on target hardware. Exact match for §X.h.b's (P2.d) definition.
+
+- **Whether VTI as a whole is (P2.d) is not yet settled.** The structural argument under hypothesis (5) is that VTI-EXT 3c (inline tag-check + dispatcher precheck-skip) is the substrate move that lets VTI net-win. Without 3c, the calling-convention switch is wasted work. With 3c, the comparison is:
+  - Historical: `jit_compatible_arg(match v) + unbox_arg(match v) + call_function(i64)`
+  - Full VTI: `call_function(*const Value) + JIT load+fcvt+tag-check+deopt-on-mismatch`
+  The full VTI removes TWO Rust matches; 3b alone removed ZERO. If 3c's deopt-machinery overhead is comparable to or less than the two Rust matches' cost, VTI nets positive.
+
+- **Three-probe-levels per Doc 735 §X.h.c**: bench probe NEGATIVE. Consumer-route probe (diff-prod with VTI=1) not yet run; expected NEUTRAL since diff-prod fixtures don't exercise the JIT hot path. Fuzz probe (VTI-EXT 7) not run. The (P2.d) categorization is gated on full three-probe sweep, but the bench negative is already disqualifying for (P2.a) strict-win.
+
+- **Substrate move retention question**: VTI-EXT 3b's substrate code is correct, well-tested, and behind an env flag (default OFF). Leaving it in tree under the flag preserves the apparatus for VTI-EXT 3c to consume; reverting it costs the apparatus but removes a (P2.d)-marked path. Recommendation: **retain the substrate behind the flag; mark VTI-EXT 3b's bench result as the empirical anchor for the 3c attempt; declare VTI-EXT 3c the load-bearing round for the (P2.a) vs (P2.d) decision.**
+
+- **If VTI-EXT 3c also fails to net-positive**: VTI as a pilot is (P2.d) at first cut. Per Doc 735 §X.h.d saturation-as-escalation-signal, the next substrate target is OUTSIDE VTI — specifically the tiny-baseline dispatcher refactor pre-filed at LeJIT seed §I.2 item 5. The substrate is calling more loudly each round.
+
+- **Sharpening for the seed §I.3 composition table**: VTI's expected contribution was named "1.2-1.4×"; today's empirical reading places that prediction at risk. The §I.3 amendment candidate (queued from VTI-EXT 3a's enhancement-log entry) should now also reflect: VTI's contribution is contingent on VTI-EXT 3c's success; if 3c does not flip the bench positive, VTI's arm in the §I.3 multiplicative composition is 1.0× (no contribution) and the dispatcher-refactor arm must alone carry from 1.36× (shape) + 1.x× (LeJIT-Σ) to the 3× target.
+
+**Provenance**:
+- Trajectory: `pilots/rusty-js-jit/value-tag-inline/trajectory.md` VTI-EXT 3b (in progress at this writing)
+- Design doc: `pilots/rusty-js-jit/value-tag-inline/docs/inline-design.md` §3 Option A predicted 5-10 ns reclaim
+- Substrate: `pilots/rusty-js-jit/derived/src/translator.rs` lejit_vti env flag + per-arg prologue switch + CompiledFn.vti_enabled field
+- Dispatcher: `pilots/rusty-js-runtime/derived/src/interp.rs` conditional pointer-pass under vti_enabled
+- Bench harness: `cruftless/examples/bench_call_overhead.rs`
+- Measurement runs (this writing): VTI OFF 126.6 ns; VTI ON 145.5 ns; Δ +18.9 ns
+
+---
+
 ## Template — for future entries
 
 ### `<date>` — `<locale-tag>` `<round-id>`: `<one-line headline>` **[ANTICIPATED]**
