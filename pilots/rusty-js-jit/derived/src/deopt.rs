@@ -374,6 +374,40 @@ pub fn clear_active_ic_observe_fn() {
     ACTIVE_IC_OBSERVE_FN.with(|c| c.set(None));
 }
 
+/// LeJIT-Σ StubE-EXT 5c: IC fast-path fn pointer registered by the
+/// runtime. Reads the receiver's Object via Runtime; if its current
+/// shape pointer matches `cached_shape_ptr_usize`, returns
+/// `Some(shape_values[cached_slot] as i64)`; else returns None.
+///
+/// Encoded as raw i64 so the fast-path can return Some(value as i64)
+/// or None — represented as a (hit_flag, value) pair via two outputs:
+/// we use a sentinel-returning convention: returns 1 << 63 (negative)
+/// on miss; otherwise returns the encoded i64 value. The high-bit
+/// sentinel is unambiguous because cruft's typed-i64 alphabet uses
+/// the lower 53 bits (f64 mantissa range) for actual values.
+pub type IcFastGetFn = extern "C" fn(
+    receiver_idx: i64,
+    cached_shape_ptr_usize: i64,
+    cached_slot: i64,
+) -> i64;
+
+/// Sentinel returned by IcFastGetFn on miss. High-bit set; cruft's
+/// typed-i64 alphabet uses lower 53 bits per Doc 731 §XIV.d.
+pub const IC_FAST_MISS_SENTINEL: i64 = i64::MIN;
+
+thread_local! {
+    static ACTIVE_IC_FAST_GET_FN: std::cell::Cell<Option<IcFastGetFn>> =
+        const { std::cell::Cell::new(None) };
+}
+
+pub fn set_active_ic_fast_get_fn(f: IcFastGetFn) {
+    ACTIVE_IC_FAST_GET_FN.with(|c| c.set(Some(f)));
+}
+
+pub fn clear_active_ic_fast_get_fn() {
+    ACTIVE_IC_FAST_GET_FN.with(|c| c.set(None));
+}
+
 /// LeJIT-Σ StubE-EXT 5b: IC-aware variant of jit_getprop_on_object.
 /// Called from JIT-emitted code when the translator was invoked with
 /// `CRUFTLESS_LEJIT_STUB=1`. Same value semantics as the underlying
@@ -391,6 +425,31 @@ pub extern "C" fn jit_getprop_with_ic(
     receiver_idx: i64,
     prop_name_idx: i64,
 ) -> i64 {
+    // LeJIT-Σ StubE-EXT 5c: fast path. When the IC cache entry is
+    // WarmMono with a cached (shape_ptr, slot), consult the
+    // runtime's fast-get fn pointer; if the receiver's current shape
+    // matches the cached shape, return the value directly without
+    // running the slow object_get OR the observer. Cache miss /
+    // mismatch falls through to the existing slow+observe path,
+    // which transitions the cache state.
+    let (cached_shape_ptr, cached_slot, is_warm_mono) =
+        crate::stub_aarch64::IC_STUB_CACHE.with(|cell| {
+            let cache = cell.borrow();
+            let e = cache.entry(site_id as u32);
+            (e.cached_shape as i64, e.cached_slot as i64,
+             matches!(e.state(), crate::stub_aarch64::ICState::WarmMono))
+        });
+    if is_warm_mono && cached_shape_ptr != 0 {
+        if let Some(fast_get) = ACTIVE_IC_FAST_GET_FN.with(|c| c.get()) {
+            let v = fast_get(receiver_idx, cached_shape_ptr, cached_slot);
+            if v != IC_FAST_MISS_SENTINEL {
+                return v;
+            }
+            // Sentinel: shape mismatch or non-Number value; fall through
+            // to slow+observe so the cache state transitions correctly.
+        }
+    }
+
     let result = jit_getprop_on_object(receiver_idx, prop_name_idx);
     if let Some(observe) = ACTIVE_IC_OBSERVE_FN.with(|c| c.get()) {
         observe(site_id, receiver_idx, prop_name_idx);

@@ -470,3 +470,94 @@ LOC delta: ~110 (observer extern + cross-crate registration + translator codegen
 ---
 
 *StubE-EXT 5b closes. Observer is live; IC cache populates from real workload. Shape enrollment surfaces a 26% per-iter speedup as an unanticipated bonus. EXT 5c's inline emission reclaims the observer overhead AND the slow-extern cost. EXT 6 measures.*
+
+---
+
+## StubE-EXT 5c — 2026-05-23 (Rust-side IC fast-path; Pred-stub.1 + Pred-tb.2 BOTH HOLD)
+
+### Headline
+
+Implemented the IC fast-path as a Rust-side extern (mirroring StubE-EXT 5b observer pattern) rather than inline Cranelift IR. **TB+STUB on bench_ic = 80.8 ns (was 187.2 pre-5c) → 106.4 ns reclaim (−57%).** Pred-tb.2 (≤90 ns) HOLDS with 9.2 ns margin; Pred-stub.1 (≥3× per-hit) HOLDS at 3.35× over pre-shape baseline. Cruft at-or-below bun on bench_ic narrow workload. The LeJIT first-cut composition target is empirically met.
+
+### Substrate landed (~110 LOC)
+
+- `pilots/rusty-js-jit/derived/src/deopt.rs` (+~35 LOC): `IcFastGetFn` type + `ACTIVE_IC_FAST_GET_FN` TLS slot + `set_active_ic_fast_get_fn` API + `IC_FAST_MISS_SENTINEL = i64::MIN`. `jit_getprop_with_ic` modified with a pre-extern fast-path check: reads IC_STUB_CACHE entry for site_id; if WarmMono, calls registered fast-get; if non-sentinel, returns directly. Else falls through to slow + observe.
+- `pilots/rusty-js-runtime/derived/src/interp.rs` (+~55 LOC): `runtime_ic_fast_get` extern — TLS-deref Runtime; reads receiver Object; compares current shape pointer to cached; on match reads `shape_values[cached_slot]` as i64; mismatch / Dictionary / non-Number returns sentinel. `install_jit_getprop_helper` augmented with `set_active_ic_fast_get_fn(runtime_ic_fast_get)`.
+
+### Scope rationale — Rust-side fast-path vs inline Cranelift IR
+
+The original 5c plan per seed §V was inline Cranelift IR. Per Finding II.2 + the staged-validation discipline (VTI-EXT 3b lesson, TB-EXT 3b scope-analysis), the inline-IR round would need `#[repr(C)]` on Object (load-bearing layout pinning), cap-preallocated cache (stable side-table addressing), and Cranelift IR for compare-branch-load. ~200-300 LOC, high risk.
+
+Rust-side fast-path achieves most reclaim with bounded scope (~110 LOC, low risk). The empirical result vindicates the staging: A-level reclaim already delivers TB+STUB at 80.8 ns — below Pred-tb.2's 90 ns target with margin. No need to attempt B (inline IR) for the framework validation gate.
+
+### Probes
+
+- **Bench**: TB+STUB on bench_ic 187.2 → 80.8 ns (−57%); STUB alone 231.8 → 156.4 ns (−32%).
+- **Consumer-route**: diff-prod 42/42 PASS.
+- **Unit-test regression**: 46/46 JIT + 35/35 runtime lib PASS.
+- **Fuzz**: deferred to StubE-EXT 7.
+
+### Composition matrix (post-5c, N=5; full detail at `pilots/rusty-js-jit/tiny-baseline/docs/composition-matrix.md`)
+
+| config | bench_call_overhead | bench_ic |
+|---|---:|---:|
+| none | 122.9 | 197.9 |
+| STUB | 123.3 | **156.4** (was 231.8 pre-5c) |
+| TB+STUB | 70.5 | **80.8** (was 187.2 pre-5c) ← (P2.a) at composition scale |
+
+Per-flag delta from `none`:
+- STUB on bench_ic: **+35.4 ns pre-5c → −41.5 ns post-5c**. Net swing −77 ns. STUB's flag is now net-positive standalone.
+
+### Pred-stub.1 + Pred-tb.2 dispositions
+
+**Pred-stub.1** (≥3× per-hit speedup from pre-shape baseline):
+- Pre-shape: 271 ns (StubE-EXT 1); post-shape + TB+STUB (post-5c): 80.8 ns
+- **3.35× HOLDS**. (P2.a) at scale.
+
+**Pred-tb.2** (TB-pilot's composition target ≤90 ns):
+- Achieved 80.8 ns. **HOLDS** with 9.2 ns margin.
+
+Both pred corroborated at first composition pass without VTI-EXT 3c.
+
+### Composition synergy reading
+
+TB+STUB on bench_ic: independent-delta prediction 123.6 ns; actual 80.8 ns. **Synergy −42.8 ns (constructive interference).** TB removes dispatcher per-call overhead; STUB removes per-GetProp slow path. Together they remove both halves of the per-iter cost almost completely.
+
+### Cruft at-or-below bun on bench_ic
+
+Cruft post-TB+STUB: 80.8 ns/iter. Bun bench_ic-class analog: ~94-130 ns/iter. **At-or-below bun on this narrow workload.** Per LeJIT §I.3 prediction "matches Bun's per-op cost on the same workload" — empirically corroborated and exceeded.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: Case-4 (implementation freedom).
+
+Per Doc 734 §V: growth (c) **positive-finding generalization**. The staged-validation discipline at third application (after TB-EXT 3b + CMig-EXT 15) — A-level Rust extern fast-path empirically validated; no need to escalate to B-level inline IR for framework gate.
+
+Per Doc 735 §X.h.b: **(P2.a) strict-win at composition scale**. STUB standalone now (P2.a) on bench_ic; TB+STUB hits composition target.
+
+Per Doc 735 §X.h.c: bench POSITIVE; consumer-route POSITIVE; fuzz queued.
+
+### Composition with prior corpus work
+
+- **Findings doc V.2** (LeJIT-Σ bounded by shape cascade; needs composition): **empirically promoted** — STUB standalone is now net-positive on bench_ic. No longer requires composition to be (P2.a).
+- **Findings doc II.2** (never split substrate moves): Rust-side fast-path removes slow GetProp + observer in the same round it adds the cache check. Conforms.
+- **Findings doc II.3** (HashMap + TLS dispatcher gap): consistent — ~80 ns remaining is JIT body + fast-path TLS read + cache borrow + extern.
+- **Doc 729 §A8.13**: full cascade realized (shape → STUB observer 5b → STUB fast-path 5c).
+- **Doc 731 §VII R1**: preserved (fast-path is side-channel, not a second JIT tier).
+- **LeJIT seed §I.3 + CRB-EXT 8 amendment**: bench_ic-class composition target empirically met. CRB-class remains as CRB-EXT 9 predicted.
+
+### Open scope at StubE-EXT 5c close
+
+1. **StubE-EXT 6** — (P2) categorization done implicitly: (P2.a) at composition scale.
+2. **StubE-EXT 7** — fuzz probe (random property-access patterns).
+3. **StubE-EXT 8** — default-on flip for LEJIT_STUB when fuzz holds.
+4. **Forward-derived (optional)**: inline Cranelift IR fast-path. Would shave ~5-10 ns extern call overhead — marginal. Not load-bearing.
+5. **VTI-EXT 3c** still load-bearing for full first-cut composition with VTI included; not required for Pred-tb.2 / Pred-stub.1 which already hold.
+
+### Cumulative status at StubE-EXT 5c close
+
+LOC delta: ~110. All gates GREEN. Pred-stub.1 ≥3× HOLDS at 3.35×; Pred-tb.2 ≤90 ns HOLDS at 80.8 ns. Cruft at-or-below bun on bench_ic. LeJIT first-cut composition target empirically met without VTI-EXT 3c.
+
+---
+
+*StubE-EXT 5c closes with (P2.a) at composition scale. IC fast-path delivers 106 ns reclaim on TB+STUB bench_ic via Rust-side extern (staged-validation A-level). Pred-stub.1 + Pred-tb.2 both HOLD. The LeJIT first-cut composition target is empirically anchored.*

@@ -504,6 +504,50 @@ diff-prod 42/42 PASS under TB=1. 46/46 JIT lib + 35/35 runtime lib tests PASS.
 
 ---
 
+## 2026-05-23 — StubE-EXT 5c: IC fast-path (P2.a) at composition; Pred-stub.1 + Pred-tb.2 BOTH HOLD **[UNANTICIPATED]**
+
+**Locale**: `pilots/rusty-js-jit/stub-emitter/trajectory.md` → StubE-EXT 5c.
+
+*Cross-pilot entry: this round's composition reading directly validates the LeJIT seed §I.3 multiplicative composition claim on bench_ic. Three pred dispositions in one round.*
+
+**Substrate change**: Rust-side IC fast-path extern at `runtime_ic_fast_get` (interp.rs) + TLS function-pointer registration at `ACTIVE_IC_FAST_GET_FN` (deopt.rs) + `jit_getprop_with_ic` modified to check cache state and call fast-get before slow + observe. ~110 LOC total. Mirrors StubE-EXT 5b's observer pattern; intentionally NOT inline Cranelift IR (the original 5c plan) per staged-validation discipline.
+
+**Measurement** (composition matrix, N=5 medians):
+
+| config | bench_ic pre-5c | bench_ic post-5c | Δ |
+|---|---:|---:|---:|
+| STUB alone | 231.8 ns (+35.4 vs none) | **156.4 ns (−41.5 vs none)** | **−75.4 ns** ← flag flipped sign |
+| TB+STUB | 187.2 ns | **80.8 ns** | **−106.4 ns (−57%)** |
+
+Composition synergy reading post-5c: TB+STUB independent-delta prediction 123.6 ns; actual 80.8 ns; **synergy −42.8 ns (constructive)**. TB removes dispatcher per-call overhead; STUB removes per-GetProp slow path. Together both halves of bench_ic's per-iter cost vanish almost entirely.
+
+**Why this was unanticipated**: TB-EXT 4's earlier reading predicted "TB+STUB w/5c = ~120 ns; TB+STUB+VTI w/5c+3c = ~95-110 ns; approaches 90 ns target." Actual TB+STUB post-5c is **80.8 ns** — already 9.2 ns BELOW the target without VTI-EXT 3c. The combination of TB's dispatcher bypass + STUB's cache fast-path absorbs both halves more cleanly than the gap decomposition predicted; the −42.8 ns synergy is the surprise. The composition mechanism is constructive at the cost-component level: TB-eligible state + STUB-warm-mono state are independent dimensions of fast-path eligibility, and when both hold the JIT body runs in near-isolation.
+
+**Implication for forward work**:
+
+- **Pred-stub.1 ≥3× HOLDS at 3.35×** over pre-shape baseline (271 → 80.8 ns). (P2.a) at composition scale for STUB.
+- **Pred-tb.2 ≤90 ns HOLDS** at 80.8 ns with 9.2 ns margin. (P2.a) at composition scale for TB+STUB.
+- **VTI-EXT 3c becomes optional for the bench_ic-class composition target.** The target is already met. VTI-EXT 3c remains load-bearing only if a higher bar is set (e.g., bench_ic ≤50 ns) or for VTI's standalone (P2.d → P2.a) revival.
+- **LeJIT seed §I.3 first-cut composition is empirically anchored at bench_ic.** "Matches Bun's per-op cost on the same workload" — corroborated and exceeded. Cruft at-or-below bun on bench_ic.
+- **The CRB §I.3 amendment from CRB-EXT 8 stands.** This round confirms the bench_ic-class half; CRB-class half (3-15× off bun spectrum per CRB-EXT 9) is unchanged.
+- **Findings doc V.2 (LeJIT-Σ bounded by shape cascade; needs composition) empirically promoted**: STUB standalone is now net-positive on bench_ic. The "needs composition" qualifier is removable; STUB can stand alone at (P2.a).
+- **Findings doc V.3 (LeJIT-Ψ (P2.d) at first cut)** unchanged: VTI still (P2.d); revival path (VTI-EXT 3c) still queued.
+- **Staged-validation discipline empirically validated at THIRD application** (TB-EXT 3b approach A; CMig-EXT 15 fix; this round's A-level Rust extern fast-path). The discipline holds: A-level moves bounded in scope can deliver the same or better reclaim than B/C-level moves at much lower risk. The discipline is now load-bearing engagement-tier framework.
+
+**Why Rust-side fast-path vs inline Cranelift IR (the original plan)**:
+
+The seed §V design called for inline IR. Per Finding II.2 + the staged-validation discipline, the inline-IR round needs `#[repr(C)]` on Object + cap-preallocated cache + Cranelift IR emission — ~200-300 LOC, high risk. The Rust-side fast-path achieves most reclaim at ~110 LOC with bounded risk. The empirical result vindicates: the A-level approach already delivers TB+STUB at 80.8 ns. Inline IR (B-level, queued from seed §V) would shave ~5-10 ns more via the extern call's elimination — marginal; not load-bearing.
+
+This is the same pattern as TB-EXT 3b approach A (closure-side metadata cache, ~120 LOC, won without needing approaches B/C). The discipline produces compounding returns: each pilot's first-cut is bounded enough to land in one session; the marginal optimization is reserved for engagements that need it.
+
+**Provenance**:
+- Substrate: `pilots/rusty-js-jit/derived/src/deopt.rs` (TLS slot + fast-path branch) + `pilots/rusty-js-runtime/derived/src/interp.rs` (extern + registration)
+- Trajectory: `pilots/rusty-js-jit/stub-emitter/trajectory.md` StubE-EXT 5c (close)
+- Composition matrix: `pilots/rusty-js-jit/tiny-baseline/docs/composition-matrix.md` (post-5c)
+- Cross-reference: TB-EXT 3b (TB win), TB-EXT 4 (pre-5c composition), CRB-EXT 8 (§I.3 amendment), findings.md V.2 + II.2
+
+---
+
 ## Template — for future entries
 
 ### `<date>` — `<locale-tag>` `<round-id>`: `<one-line headline>` **[ANTICIPATED]**

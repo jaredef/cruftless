@@ -6490,6 +6490,11 @@ impl Runtime {
         // cache state machine progresses when JIT-emitted code (under
         // CRUFTLESS_LEJIT_STUB=1) calls jit_getprop_with_ic.
         rusty_js_jit::deopt::set_active_ic_observe_fn(runtime_ic_observe);
+        // LeJIT-Σ StubE-EXT 5c: register the IC fast-path getter.
+        // jit_getprop_with_ic consults this BEFORE the slow path when
+        // cache state is WarmMono; on shape match the fast-get returns
+        // the value directly without running object_get + observer.
+        rusty_js_jit::deopt::set_active_ic_fast_get_fn(runtime_ic_fast_get);
     }
 
     pub fn resume_from_deopt_state(
@@ -9582,6 +9587,61 @@ extern "C" fn runtime_getprop_on_object(receiver_idx: i64, prop_name_idx: i64) -
 /// Lives in the runtime crate because it needs Runtime + heap + Shape
 /// access; called via the TLS function-pointer slot the JIT crate
 /// exposes.
+/// LeJIT-Σ StubE-EXT 5c: IC fast-path getter. Called from
+/// `jit_getprop_with_ic` when the cache entry is WarmMono. Compares
+/// the receiver's current shape pointer to the cached shape pointer;
+/// on match, reads the value from `shape_values[cached_slot]` and
+/// returns it encoded as i64 per the typed-i64 alphabet. On shape
+/// mismatch OR on non-Number value, returns the
+/// `IC_FAST_MISS_SENTINEL` so the caller falls through to the slow +
+/// observe path (which transitions the cache state correctly).
+///
+/// Per Doc 731 §VII R1 (single tier): this is not a second tier; it's
+/// a side-channel fast-extract that the JIT-emitted code dispatches
+/// through. Equivalent semantics to the slow path on cache hit,
+/// strictly faster wall-clock.
+///
+/// Reclaim hypothesis: removes ~30-50 ns per cache-hit compared to
+/// the slow `object_get` + observer path. bench_ic hot loop should
+/// see this on ~100% of iterations after warmup (monomorphic).
+extern "C" fn runtime_ic_fast_get(
+    receiver_idx: i64,
+    cached_shape_ptr_usize: i64,
+    cached_slot: i64,
+) -> i64 {
+    let rt_ptr = rusty_js_jit::get_current_runtime();
+    if rt_ptr == 0 {
+        return rusty_js_jit::deopt::IC_FAST_MISS_SENTINEL;
+    }
+    let rt: &Runtime = unsafe { &*(rt_ptr as *const Runtime) };
+    let obj_id = rusty_js_gc::ObjectId(receiver_idx as u32);
+    let o = rt.obj(obj_id);
+    // Shape pointer compare. If Object is Dictionary (shape=None) or
+    // its shape pointer differs from cached, miss-sentinel.
+    let current_shape_ptr = match o.shape.as_ref() {
+        Some(rc) => std::rc::Rc::as_ptr(rc) as i64,
+        None => 0,
+    };
+    if current_shape_ptr == 0 || current_shape_ptr != cached_shape_ptr_usize {
+        return rusty_js_jit::deopt::IC_FAST_MISS_SENTINEL;
+    }
+    // Shape matches. Read the value at the cached slot.
+    let slot = cached_slot as usize;
+    if slot >= o.shape_values.len() {
+        // Defensive: shouldn't happen if observer populated correctly,
+        // but fall through to slow path to be safe.
+        return rusty_js_jit::deopt::IC_FAST_MISS_SENTINEL;
+    }
+    match &o.shape_values[slot] {
+        Value::Number(n) => *n as i64,
+        // Non-Number values fall through to slow + observe per the
+        // typed-i64 alphabet constraint. The cache won't degrade
+        // because the cache entry stays WarmMono — but the per-call
+        // cost reverts to slow.
+        _ => rusty_js_jit::deopt::IC_FAST_MISS_SENTINEL,
+    }
+}
+
 extern "C" fn runtime_ic_observe(site_id: i64, receiver_idx: i64, prop_name_idx: i64) {
     let rt_ptr = rusty_js_jit::get_current_runtime();
     let proto_ptr = rusty_js_jit::get_current_proto();
