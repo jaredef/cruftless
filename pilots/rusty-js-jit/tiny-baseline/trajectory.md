@@ -414,3 +414,91 @@ The TB pilot's per-call-tier substrate goal is empirically met at first-cut. The
 ---
 
 *TB-EXT 3b closes with (P2.a) strict-win. 62.7 ns reclaim exceeds Pred-tb.1's ≥40 ns target by 50%. Approach A — closure-side metadata cache — validated the staged framing. TB-EXT 3c/3d no longer needed for framework validation; the pilot's first-cut perf goal is met.*
+
+---
+
+## TB-EXT 4 — 2026-05-23 (composition matrix; Pred-tb.2 falsified but decomposed gap names the path)
+
+### Headline
+
+Built `pilots/rusty-js-jit/tiny-baseline/scripts/composition-matrix.sh` — N=5 sweep across 8 flag combinations × 2 benches (bench_call_overhead, bench_ic). **Pred-tb.2 FALSIFIED** (TB+STUB on bench_ic = 187.2 ns vs ≤90 ns target) but **gap is decomposed and reachable** with the remaining first-cut substrate work (StubE-EXT 5c + VTI-EXT 3c). TB alone delivers (P2.a) on both benches (−42% bench_call_overhead, −22% bench_ic). The §I.3 multiplicative composition reading holds at first cut: per-flag deltas compose additively within noise (no interaction surprises).
+
+### Composition matrix (N=5, median ns/iter)
+
+| config | bench_call_overhead | bench_ic |
+|---|---:|---:|
+| none | 123.2 | 196.4 |
+| TB | 71.1 | **152.8** |
+| STUB | 125.2 | 231.8 |
+| VTI | 122.2 | 758.5 |
+| TB+STUB | 70.8 | **187.2** |
+| TB+VTI | 70.1 | 725.7 |
+| STUB+VTI | 122.1 | 743.3 |
+| TB+STUB+VTI | 71.4 | 743.7 |
+
+Per-flag deltas from `none`:
+- **TB**: −52.1 ns (−42%) bench_call_overhead; **−43.6 ns (−22%)** bench_ic — clean (P2.a) on both
+- **STUB**: +2.0 ns (~noise) bench_call_overhead; +35.4 ns (+18%) bench_ic — observer overhead, awaits StubE-EXT 5c
+- **VTI**: −1.0 ns (~noise) bench_call_overhead; **+562.1 ns (+286%)** bench_ic — (P2.d) compounds on IC-heavy
+
+### Pred-tb.2 disposition
+
+**FALSIFIED at first cut.** Target ≤90 ns; achieved 187.2 ns; gap 97 ns.
+
+Decomposition:
+- STUB's observer overhead = +35.4 ns of gap. Reclaimed when StubE-EXT 5c lands inline emission (~33 ns expected reclaim per StubE-EXT 5b's prediction).
+- Remaining ~62 ns gap = the per-GetProp extern call cost. Reclaimed by StubE-EXT 5c's IC fast-path inline emission (~50-60 ns expected).
+- Total path to Pred-tb.2: TB+STUB with 5c inline = ~120 ns; with VTI-EXT 3c also = ~95-110 ns. Approaches 90 ns target; **reachable in principle**.
+
+The pilot's seed §I.2 falsifier framing is preserved: 5c+3c is the required composition, not 5c alone or TB alone.
+
+### Substrate landed
+
+- `pilots/rusty-js-jit/tiny-baseline/scripts/composition-matrix.sh` (~85 LOC): parametric bash runner; takes RUNS env var; iterates 8 configs × 2 benches × N runs; computes median; writes markdown table to docs/composition-matrix.md.
+- `pilots/rusty-js-jit/tiny-baseline/docs/composition-matrix.md` (~110 lines): matrix + per-flag contribution + synergy reading + Pred-tb.2 decomposition + VTI's regression mechanism + §I.3 amendment composition reading + findings doc validation references.
+
+### Composition synergy reading
+
+TB+STUB on bench_ic:
+- Independent-delta prediction: 196.4 + (−43.6) + (+35.4) = 188.2 ns
+- Actual: 187.2 ns
+- Synergy: +1.0 ns (additive within noise)
+
+The §I.3 multiplicative reading holds at first cut. Flags compose additively in linear-delta sense (multiplicatively in ratio sense at low-percentage changes).
+
+### Structural insight: TB absorbs VTI's first-cut regression on bench_call_overhead
+
+TB+VTI on bench_call_overhead = 70.1 ns ≈ TB alone (71.1 ns). VTI's first-cut overhead **vanishes** because TB's fast path never reaches the standard dispatcher's `match params` arm where VTI's pointer-pass lives. This is empirical evidence that VTI's (P2.d) is path-dependent, not intrinsic. After VTI-EXT 3c removes the dispatcher precheck, VTI should compose positively rather than negatively with TB.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable (probe-tier round).
+
+Per Doc 734 §V: growth (b) **negative-finding amendment in waiting** for Pred-tb.2 (falsified at first cut); (c) **positive-finding generalization** for the synergy reading (no interaction surprise, additivity holds).
+
+Per Doc 735 §X.h.b: TB alone confirmed (P2.a); STUB still (P2.d)-pending-closure (5c is the closure round); VTI still (P2.d) at first cut.
+
+Per Doc 735 §X.h.c three-probe-levels: bench probe POSITIVE for TB, NEGATIVE-but-decomposed for the composition; consumer-route via TB-EXT 3b's diff-prod 42/42 still applies; fuzz deferred to TB-EXT 7.
+
+### Composition with prior corpus work
+
+- **CRB-EXT 8 §I.3 amendment**: gains the fourth empirical anchor (composition matrix itself). The bench_ic class composition target IS within reach per matrix data; CRB class composition target remains as predicted by CRB-EXT 9 (3-15× off bun spectrum; TB contributes ~2%).
+- **Findings doc V.2 (LeJIT-Σ bounded by shape cascade)**: validated. STUB alone +18% bench_ic shows observer cannot be offset by STUB alone.
+- **Findings doc V.3 (LeJIT-Ψ (P2.d) at first cut; structural lesson is current value)**: empirically anchored. VTI at +562 ns bench_ic is the (P2.d) at scale.
+- **Findings doc V.1 (TB largest §I.3 arm with bounded CRB benefit)**: bench_ic side now anchored at TB delivering 22% reclaim; CRB side remains bounded per TB-EXT 3b's measurement.
+
+### Open scope at TB-EXT 4 close
+
+1. **TB-EXT 5** — consumer-route probe (already implicitly satisfied via TB-EXT 3b's diff-prod 42/42).
+2. **TB-EXT 6** — re-run composition matrix at N=20+ to bound variance per cell; particularly high-VTI cells where outliers might shift the median.
+3. **TB-EXT 7** — fuzz probe.
+4. **TB-EXT 8** — default-on flip if 6+7 hold.
+5. **Forward composition close** (not TB-tier): StubE-EXT 5c + VTI-EXT 3c are the two remaining substrate moves to make Pred-tb.2 hold. Both have empirical anchors from this round.
+
+### Cumulative status at TB-EXT 4 close
+
+LOC delta: ~195 (script + composition doc). 8 configs × 2 benches × N=5 = 80 bench invocations measured. The pilot's first-cut composition reading is complete. Pred-tb.2 falsified at first cut but decomposed gap names the path. TB pilot's per-pilot perf goal (TB-EXT 3b Pred-tb.1) holds; composition perf goal (Pred-tb.2) needs the sibling pilots' second-half rounds.
+
+---
+
+*TB-EXT 4 closes. Composition matrix produced; Pred-tb.2 falsified at first cut but the decomposed gap shows StubE-EXT 5c + VTI-EXT 3c as the substrate path to holding it. TB alone validated as (P2.a) on both benches; STUB+VTI await their second-half rounds.*

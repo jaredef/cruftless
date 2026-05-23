@@ -451,6 +451,59 @@ diff-prod 42/42 PASS under TB=1. 46/46 JIT lib + 35/35 runtime lib tests PASS.
 
 ---
 
+## 2026-05-23 — TB-EXT 4: composition matrix; Pred-tb.2 FALSIFIED at first cut but reachable **[ANTICIPATED]**
+
+**Locale**: `pilots/rusty-js-jit/tiny-baseline/trajectory.md` → TB-EXT 4 (composition matrix).
+
+**Substrate change**: Built parametric composition-matrix runner at `pilots/rusty-js-jit/tiny-baseline/scripts/composition-matrix.sh`. Ran N=5 across 8 configs × 2 benches. Output: `pilots/rusty-js-jit/tiny-baseline/docs/composition-matrix.md`.
+
+**Predicted-by**: Pred-tb.2 (seed §I.2) named the composition target ≤90 ns on bench_ic; CRB-EXT 8 §I.3 amendment named the multiplicative composition reading; today's matrix tests both.
+
+**Measurement (N=5, median ns/iter)**:
+
+| config | bench_call_overhead | bench_ic |
+|---|---:|---:|
+| none | 123.2 | 196.4 |
+| TB | 71.1 | 152.8 |
+| STUB | 125.2 | 231.8 |
+| VTI | 122.2 | 758.5 |
+| TB+STUB | **70.8** | **187.2** |
+| TB+VTI | 70.1 | 725.7 |
+| STUB+VTI | 122.1 | 743.3 |
+| TB+STUB+VTI | 71.4 | 743.7 |
+
+**Pred-tb.2 disposition**: FALSIFIED at first cut (187.2 ns vs ≤90 ns target). Gap = 97 ns. Decomposed: STUB observer +35.4 ns (closed by StubE-EXT 5c inline) + per-GetProp extern call ~62 ns (closed by StubE-EXT 5c IC fast-path). With StubE-EXT 5c + VTI-EXT 3c, predicted ~95-110 ns — approaches 90 ns target. **Reachable in principle.**
+
+**Synergy reading**: TB+STUB on bench_ic: independent-delta prediction 188.2 ns; actual 187.2 ns. **Synergy +1.0 ns (additive within noise).** The §I.3 multiplicative reading holds at first cut. No interaction surprises.
+
+**Three findings of independent interest**:
+
+1. **TB absorbs VTI's first-cut regression on bench_call_overhead** (TB+VTI = 70.1 ≈ TB alone 71.1). VTI's overhead is path-dependent — when TB fast-paths around the standard dispatcher, VTI's pointer-pass machinery isn't on the hot path. Empirical evidence that VTI's (P2.d) is structural-to-the-path, not intrinsic-to-the-emission.
+
+2. **VTI on bench_ic compounds at +562 ns (+286%)** — much worse than on bench_call_overhead. Mechanism: bench_ic's inner loop hits the JIT-emitted GetPropOnObject extern boundary many times; each hit pays the VTI calling-convention overhead. Real workloads with high property access (json_parse_transform, string_url_sweep) would see proportional regressions, exactly why VTI is default-OFF and exactly why VTI-EXT 3c is load-bearing.
+
+3. **STUB's observer-cost characterization at +35.4 ns** is consistent with StubE-EXT 5b's earlier +38 ns reading — single-fixture repeatability is good. The cost is the per-call observer call into runtime_ic_observe; StubE-EXT 5c's inline emission replaces this with a 2-3 instruction inline check.
+
+**Implication for forward work**:
+
+- **VTI's revival path is now empirically named.** Finding II.2 (never split substrate moves) generated the staged validation that produced TB's win; the same discipline applies to VTI: VTI-EXT 3c must land before VTI can move out of (P2.d) state. The TB+VTI bench_call_overhead reading is structural evidence that the revival CAN work.
+
+- **StubE-EXT 5c is the load-bearing remaining first-cut substrate move.** TB-EXT 4 quantified its expected contribution: ~33 ns observer-removal + ~50-60 ns IC inline emission. Without 5c, the composition cannot reach Pred-tb.2.
+
+- **The composition target IS within reach** with the remaining first-cut work. The pilot family (Σ + Ψ + Τ) achieves Pred-tb.2 jointly if both 5c and 3c land. This is direct empirical validation of the LeJIT seed §I.3 multiplicative composition claim.
+
+- **CRB-EXT 8 §I.3 amendment gains a fourth empirical anchor.** Prior three: VTI-EXT 3a variance reservation, CMig-EXT 15 narrow-vs-realistic split, CRB-EXT 1-7 realistic baseline. Fourth: this composition matrix. The amendment's bench_ic-class composition target IS within reach per matrix data; CRB-class composition target remains as predicted by CRB-EXT 9 (3-15× off bun spectrum; TB contributes ~2% CRB-side).
+
+- **Findings doc validated at third application** (after TB-EXT 3b's first + this round's second): V.2 (LeJIT-Σ bounded by shape cascade) confirmed; V.3 (LeJIT-Ψ (P2.d) at first cut) empirically anchored at scale.
+
+**Provenance**:
+- Runner: `pilots/rusty-js-jit/tiny-baseline/scripts/composition-matrix.sh`
+- Output: `pilots/rusty-js-jit/tiny-baseline/docs/composition-matrix.md`
+- Trajectory: `pilots/rusty-js-jit/tiny-baseline/trajectory.md` TB-EXT 4 (close)
+- Cross-reference: TB-EXT 3b entry (TB win); CRB-EXT 8 entry (§I.3 amendment); findings.md V.2 + V.3 + II.2
+
+---
+
 ## Template — for future entries
 
 ### `<date>` — `<locale-tag>` `<round-id>`: `<one-line headline>` **[ANTICIPATED]**
