@@ -122,6 +122,24 @@ The combination of (1) + (2) + (3) plausibly accounts for the +18.9 ns regressio
 
 ---
 
+## 2026-05-23 — TB-EXT 0: spawn LeJIT-Τ (tiny-baseline) per Doc 735 §X.h.d saturation **[ANTICIPATED]**
+
+**Locale**: `pilots/rusty-js-jit/tiny-baseline/trajectory.md` → TB-EXT 0 (workstream founding).
+
+**Substrate change**: New nested locale at `pilots/rusty-js-jit/tiny-baseline/` (third under LeJIT parent, alongside Σ and Ψ). seed.md + trajectory.md + docs/ scaffold. Manifest refreshed: 13 → 14 locales (9 top-level, 5 nested).
+
+**Predicted-by**: LeJIT seed §I.2 item 5 named tiny-fn fast-baseline as one of four hand-rolled regions; §I.3's multiplicative composition table identified it as the "1.5-2× the largest single arm" of the four-pilot composition. VTI-EXT 1's bench decomposition (logged in this file as the first VTI entry) empirically located the dispatcher at ~120 ns of the 127 ns per-iter cost, confirming the §I.3 prediction. VTI-EXT 3b's (P2.d) negative finding (logged as the second VTI entry) closed the case that VTI alone could reach the 3× target — leaving tiny-baseline as the load-bearing remaining arm.
+
+**Measurement**: not applicable (founding round; no substrate code).
+
+**Provenance**:
+- New locale: `pilots/rusty-js-jit/tiny-baseline/`
+- Manifest: `scripts/locales/manifest.json` (refreshed; tiny-baseline at depth 2, parent L.rusty-js-jit, status WORKSTREAM FOUNDED)
+- Empirical anchors: this file's VTI-EXT 1 entry (127 ns baseline) + VTI-EXT 3b entry (P2.d at +18.9 ns regression)
+- Keeper direction: 2026-05-23 06:35-local "go with b right now" (option (b) of the VTI-EXT 3b report: spawn tiny-baseline immediately, skip VTI-EXT 3c)
+
+---
+
 ## Template — for future entries
 
 ### `<date>` — `<locale-tag>` `<round-id>`: `<one-line headline>` **[ANTICIPATED]**

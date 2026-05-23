@@ -3,9 +3,9 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 13,
+    "locales": 14,
     "top_level": 9,
-    "nested": 4,
+    "nested": 5,
     "warnings": 0
   },
   "locales": [
@@ -71,6 +71,15 @@
       "depth": 2,
       "rung_count": 0,
       "status": "**WORKSTREAM FOUNDED (StubE-EXT 0)**. No code yet. Pre-filed at LeJIT seed \u00a7I.2 (JIT-EXT 25) as the closure round to the hidden-classes substrate (`pilots/rusty-js-shapes/`). Spawn triggered now to begin scaffolding against the stable IC consumer API contract `Object::shape_ptr_and_slot_for(name) -> Option<(*const Shape, u32)>` \u2014 the API is in place since Shape-EXT 4 and returns None for every Object pre-enrollment; the stub emitter can be designed, implemented, and tested against synthetic shape pointers in advance of the enrollment flip."
+    },
+    {
+      "coord": "rusty-js-jit/tiny-baseline",
+      "tag": "L.rusty-js-jit.tiny-baseline",
+      "parent": "L.rusty-js-jit",
+      "scope": "tiny-baseline",
+      "depth": 2,
+      "rung_count": 0,
+      "status": "**WORKSTREAM FOUNDED (TB-EXT 0)**. No code yet. Spawned per LeJIT seed \u00a7I.2 item 5 + Doc 735 \u00a7X.h.d saturation-as-escalation-signal triggered by VTI-EXT 3b's (P2.d) negative empirical finding, with keeper direction at 2026-05-23 06:35-local."
     },
     {
       "coord": "rusty-js-jit/value-tag-inline",

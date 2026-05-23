@@ -1596,3 +1596,17 @@ Per Doc 737 §IV + the keeper's pivot directive: spawn Pilot LeJIT-Ψ (hand-roll
 See [value-tag-inline/seed.md](value-tag-inline/seed.md) and [value-tag-inline/trajectory.md](value-tag-inline/trajectory.md). Per Doc 733 §III composition relations: this row records the child by reference.
 
 *JIT-EXT 27 stays open until VTI-EXT 8 closes the nested workstream.*
+
+---
+
+## JIT-EXT 28 — 2026-05-23 (spawns nested locale `tiny-baseline` for Pilot LeJIT-Τ)
+
+Per Doc 737 §IV + Doc 735 §X.h.d saturation-as-escalation-signal + keeper direction at 06:35-local after VTI-EXT 3b's (P2.d) negative finding: spawn Pilot LeJIT-Τ (tiny-fn fast-baseline) at coordinate `pilots/rusty-js-jit/tiny-baseline/`. Third nested sibling under this LeJIT pilot; siblings are LeJIT-Σ (stub-emitter) and LeJIT-Ψ (value-tag-inline).
+
+**Trigger**: VTI-EXT 1's bench decomposition (127 ns per-iter, ~95% in dispatcher) empirically located the dispatcher as the largest single arm of the seed §I.3 multiplicative composition. VTI-EXT 3b's (P2.d) result at +18.9 ns regression closed the case that VTI alone could reach the 3× target. Per §X.h.d, when consecutive (P2) moves at the same site stop producing improvement, the next substrate target is OUTSIDE that site — the dispatcher itself per LeJIT seed §I.2 item 5.
+
+See [tiny-baseline/seed.md](tiny-baseline/seed.md) and [tiny-baseline/trajectory.md](tiny-baseline/trajectory.md). Per Doc 733 §III composition relations: this row records the child by reference.
+
+Locale count: 13 → 14 after this spawn (manifest refreshed). The engagement's fifth nested locale, third under this LeJIT pilot.
+
+*JIT-EXT 28 stays open until TB-EXT 8 closes the nested workstream.*
