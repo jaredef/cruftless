@@ -6,7 +6,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
 T262="${T262_ROOT:-/home/jaredef/test262}"
-PARALLEL="${PARALLEL:-4}"
+PARALLEL="${PARALLEL:-2}"
 RUNNER="$ROOT/legacy/host-rquickjs/tests/test262/runner.mjs"
 HARNESS="$T262/harness"
 
