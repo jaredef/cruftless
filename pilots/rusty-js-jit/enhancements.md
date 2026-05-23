@@ -354,6 +354,47 @@ Multiplicative composition: (1) × (2) × (3) × (4) × (5) ≈ realistic-worklo
 
 ---
 
+## 2026-05-23 — CRB-EXT 9: 12× per-workload spread; LeJIT JIT works on its eligible workloads **[ANTICIPATED]**
+
+**Locale**: `pilots/cross-runtime-bench/trajectory.md` → CRB-EXT 9.
+
+*Cross-pilot entry: the per-workload spread reading directly informs LeJIT pilot-priority decisions.*
+
+**Substrate change**: Added arith_tight_loop fixture (pure-integer hot loop, JIT-fully-eligible, ~30 LOC) + reading doc (~120 lines). Post-EXT-9 unified canonical baseline covers 4 fixtures.
+
+**Predicted-by**: Pred-crb.5 from CRB seed §I.2 named the prediction. The JIT-eligible-vs-realistic spread reading was implicit in the LeJIT enhancements log's prior entries (VTI-EXT 3a, CMig-EXT 15, CRB-EXT 1-7, CRB-EXT 8); CRB-EXT 9 quantifies it.
+
+**Measurement** (N=10, Pi, post-EXT-9 unified baseline):
+
+| fixture | cruft/node | cruft/bun | classification |
+|---|---:|---:|---|
+| arith_tight_loop | **1.67×** | **3.41×** | JIT-eligible |
+| string_url_sweep | 8.31× | 14.66× | mixed |
+| json_parse_transform | 20.57× | 26.63× | JSON-dominated |
+| crypto_sha256_batch | FAIL | FAIL | surface-gap (no SubtleCrypto) |
+
+**Spread: 12× across four fixtures (1.67× → 20.57× cruft/node).** This is direct empirical evidence — not noise.
+
+**Per-LeJIT-pilot CRB-benefit reading**:
+- **LeJIT-Σ** (IC dispatch): relevant to mixed (partial); not arith_tight_loop
+- **LeJIT-Ψ** (arg-coerce inline): relevant to bench_ic; minimal at arith_tight_loop (dispatch is <2% of cost there)
+- **LeJIT-Τ** (tiny-baseline dispatcher): relevant to bench_ic + bench_call_overhead; CRB-side benefit only on callback-heavy workloads (Array.filter/map). Will NOT close arith_tight_loop's 3.41× gap.
+
+**The 3.41× cruft/bun on arith_tight_loop reads structurally**: Cranelift's per-iter lowering is ~3.4× slower than bun's for a tight integer loop. Dispatcher is <2% of cost here so LeJIT-Σ/Ψ/Τ won't close it. Closing would require: better Cranelift configuration, hand-rolled tight-inner-loop emitter (Sparkplug variant for loops not calls), or different JIT backend. None are pre-filed.
+
+**Implication for the §I.3 amendment**: holds without modification. Spectrum reading refines the "5-15× off bun" forward expectation to **"3-15× off bun spectrum, arith-bound low end to JSON-bound high end."** Not a corpus amendment; a per-locale reading refinement.
+
+**Implication for current LeJIT pilots**: LeJIT-Τ remains the largest-arm pilot per the seed §I.3 multiplicative composition reading; this round confirms its CRB-side benefit is structurally bounded (callback-dispatch workloads only, not the JIT-tight or JSON-bound ends). The pilot should proceed but the keeper should know CRB-side gains are bounded ahead of TB-EXT 4's measurement.
+
+**Provenance**:
+- New fixture: `pilots/cross-runtime-bench/fixtures/arith_tight_loop/main.mjs`
+- Reading doc: `pilots/cross-runtime-bench/docs/jit-eligible-vs-realistic.md`
+- Trajectory: `pilots/cross-runtime-bench/trajectory.md` CRB-EXT 9 (close)
+- Unified baseline: `pilots/cross-runtime-bench/results/2026-05-23/{summary.md, results.jsonl}`
+- Cross-reference: this file's CRB-EXT 8 entry (§I.3 amendment); the amendment's "5-15× off bun" range is now refined to "3-15×" spectrum end-to-end
+
+---
+
 ## Template — for future entries
 
 ### `<date>` — `<locale-tag>` `<round-id>`: `<one-line headline>` **[ANTICIPATED]**
