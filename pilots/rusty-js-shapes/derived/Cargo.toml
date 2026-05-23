@@ -1,0 +1,11 @@
+[package]
+name = "rusty-js-shapes"
+version = "0.1.0"
+edition = "2021"
+description = "Hidden classes (shapes) for cruftless's Object representation. Substrate-introduction round per cruftless Doc 729 §A8.13; consumed by LeJIT-Σ as the IC fast-path cache-key supplier. See pilots/rusty-js-shapes/seed.md."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+smallvec = "1.13"

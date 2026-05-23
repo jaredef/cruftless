@@ -201,3 +201,88 @@ The substrate-introduction round's design phase is complete. The first-cut scaff
 ---
 
 *Shape-EXT 2 closes. Output: docs/shape-design.md. Shape-EXT 3 scaffolds against it.*
+
+---
+
+## Shape-EXT 3 — 2026-05-22 (crate scaffold)
+
+### Headline
+
+First code round. Crate `pilots/rusty-js-shapes/derived/` scaffolded against the Shape-EXT 2 design. `Shape` type + `SmallOrLarge{Slot,Transition}Map` two-form variants + `transition_to` identity gate + IC consumer pointer (`as_raw_ptr`) + ten unit tests. **10/10 tests PASS** on first build; Pred-shape.2 (same-history-same-pointer) and Pred-shape.3 (linear shape count in unique paths) corroborated at the unit-test layer. Test-only; Object struct unchanged in rusty-js-runtime.
+
+### Substrate delivered
+
+- `pilots/rusty-js-shapes/derived/Cargo.toml` — crate manifest. `smallvec = "1.13"` is the only dep.
+- `pilots/rusty-js-shapes/derived/src/lib.rs` — `pub use shape::Shape;` + a no-deps-on-runtime architectural note (see §Design divergence below).
+- `pilots/rusty-js-shapes/derived/src/shape.rs` (~330 LOC including tests):
+  - `Shape` struct with `slots: SmallOrLargeSlotMap`, `transitions: RefCell<SmallOrLargeTransitionMap>`, `parent: Option<Rc<Shape>>`, `slot_count: u32`.
+  - `SmallOrLargeSlotMap` two-form enum: `Small(SmallVec<[(String, u32); 8]>)` linear scan; `Large(Vec<(String, u32)>, HashMap<String, u32>)` denormalized (Vec preserves insertion order for §10.1.11 enumeration; HashMap provides O(1) lookup). Promotion at SLOTS_INLINE_CAP + 1.
+  - `SmallOrLargeTransitionMap` two-form enum: `Small(SmallVec<[(String, Rc<Shape>); 4]>)`; `Large(HashMap<String, Rc<Shape>>)`. Promotion at TRANSITIONS_INLINE_CAP + 1.
+  - `Shape::root()` — empty singleton-shape constructor.
+  - `Shape::transition_to(self: &Rc<Shape>, name)` — the load-bearing identity gate. Consults parent's transitions table; reuses existing child shape if present; otherwise allocates new child + registers transition + returns. The reuse IS Pred-shape.2.
+  - `Shape::slot_of(&self, name) -> Option<u32>`, `slot_count`, `iter_slots`, `parent`, `as_raw_ptr`, `transition_count`.
+  - `Debug` impl for diagnostic dumps.
+- `Cargo.toml` (workspace root) — `pilots/rusty-js-shapes/derived` registered as workspace member.
+
+### Test results
+
+10/10 PASS:
+
+| test | corroborates |
+|---|---|
+| `root_is_empty` | constructor invariant |
+| `single_transition_assigns_slot_zero` | first-slot assignment |
+| `same_transition_same_shape` | **Pred-shape.2** (Rc::ptr_eq identity gate) |
+| `different_transitions_distinct_shapes` | non-collision of distinct names |
+| `chain_preserves_insertion_order_and_identity` | §10.1.11 enumeration order + Pred-shape.2 across chains |
+| `order_divergent_chains_distinct` | Object{x,y} ≠ Object{y,x} at shape tier |
+| `slot_map_promotes_past_inline_cap` | SmallOrLarge promotion behaves identically across the boundary |
+| `transition_map_promotes_past_inline_cap` | identity invariant holds across transition-map promotion |
+| `shape_count_linear_in_unique_paths` | **Pred-shape.3** bounded (5 distinct paths → 5 distinct leaf shapes, replayed 100× per object) |
+| `as_raw_ptr_is_rc_pointer` | IC consumer-API stable-pointer contract |
+
+Build: `cargo build --release -p rusty-js-shapes` finished in 0.81s. Test: `cargo test --release -p rusty-js-shapes` finished in 0.00s (10 tests). The crate is isolated; no other workspace member affected.
+
+### Design divergence from Shape-EXT 2
+
+One design decision was revised at scaffold-time:
+
+- **`ObjectStorage` will live in `rusty-js-runtime`, not in `rusty-js-shapes`.** Shape-EXT 2 §1 + §7 placed it in this crate; doing so would force `rusty-js-shapes` to depend on `rusty-js-runtime::value::{Value, PropertyKey, PropertyDescriptor}`, but `rusty-js-runtime` will depend on `rusty-js-shapes` for `Shape`. That is a cycle. Resolution: `Shape` is value-payload-agnostic and lives here; `ObjectStorage` and its `Vec<Value>` payload live in `rusty-js-runtime` where `Value` is defined. The IC consumer API `Object::shape_ptr_and_slot_for` likewise lives in `rusty-js-runtime` because `Object` does. The crate boundary is the clean fix.
+
+The `lib.rs` carries the architectural note for future readers.
+
+### §XVI / Doc 734 categorization
+
+Per Doc 730 §XVI: not applicable (no probe gated; the integration tests at Shape-EXT 4 will be the first §XVI-eligible work).
+
+Per Doc 734 §V: growth mechanism (a) tier-relocation recursion — the cycle-fix on the crate dependency direction surfaced at scaffold time and shifted ObjectStorage one tier (from rusty-js-shapes to rusty-js-runtime). The shift is recorded inline in `lib.rs` so future-readers see the rationale at the load site.
+
+### Composition with prior corpus work
+
+- **Doc 729 §A8.13 substrate-amortization.** Crate scaffolded; the substrate-introduction round's code phase begins. Shape-EXT 4 integrates against Object; Shape-EXT 5-7 close the substrate. Total runway estimate from Shape-EXT 0 founding to LeJIT-Σ-consumable surface: ~600-900 LOC per pilot seed §I.1, now revised to ~600 + ~120 (the ObjectStorage rust file in rusty-js-runtime) ≈ 720 LOC.
+- **Doc 735 §X.h three-probe-levels discipline.** This round's unit tests are the **bench probe** (deterministic small-input corroboration); consumer-route probe activates at Shape-EXT 4 (the diff-prod 42/42 + test262-sample 77.6% gates); fuzz probe activates at Shape-EXT 5 with property-addition-history fuzz over the transition tree.
+- **Doc 738 §II source-tier conventions.** The crate's identifiers conform: PascalCase types (`Shape`, `SmallOrLargeSlotMap`, `SmallOrLargeTransitionMap`); snake_case methods (`slot_of`, `transition_to`, `iter_slots`, `as_raw_ptr`); module-internal `SLOTS_INLINE_CAP` / `TRANSITIONS_INLINE_CAP` constants; pillar-path `pilots/rusty-js-shapes/derived/src/shape.rs` (§II.e); no engine-internal `__`-prefixed identifiers because this crate doesn't touch the JS-observability surface (Shape is a Rust-internal type; only the `Object::shape_ptr_and_slot_for` API will expose anything to LeJIT's IC tier).
+
+### Pred disposition
+
+- **Pred-shape.2** (same property-addition sequence → Rc::ptr_eq shape): corroborated in `same_transition_same_shape`, `chain_preserves_insertion_order_and_identity`, `transition_map_promotes_past_inline_cap`.
+- **Pred-shape.3** (transition tree O(N) in unique add-sequences): corroborated bounded in `shape_count_linear_in_unique_paths` (5 sequences × 100 replays → 5 distinct leaf shapes). Full corroboration awaits Shape-EXT 4+ with the diff-prod fixture corpus driving real workloads through the tree.
+- **Pred-shape.4** (stable IC pointer for stub lifetime): corroborated at the unit-test layer in `as_raw_ptr_is_rc_pointer`. Full corroboration awaits LeJIT-Σ's bench harness.
+- **Pred-shape.1** (shaped per-op-cheaper than dictionary) and **Pred-shape.5** (Doc 738 §II convention conformance) await Shape-EXT 4+ measurement.
+
+### Open scope at Shape-EXT 3 close
+
+1. **Shape-EXT 4** — Object integration. Add `pub mod storage;` to `pilots/rusty-js-runtime/derived/src/`; define `ObjectStorage` enum there (per the §Design divergence reasoning); change `Object.properties: IndexMap<...>` → `Object.storage: ObjectStorage`; shim the Object API surface (`set_own*`, `get_own*`) to dispatch through the storage variant; add `Runtime::shape_root: Rc<Shape>` initialized in `Runtime::new()`. **First round with diff-prod 42/42 + test262-sample 77.6% gates active.** LOC estimate: ~150-200 (storage.rs ~80, value.rs shims ~50, Runtime init ~10, intrinsics.rs / interp.rs dispatch tweaks at the chokepoints).
+2. **Shape-EXT 5** — Property addition through transitions (the write path). `set_own` on a Shaped object follows or creates the transition. `object_set_pk` branches on storage form. Diff-prod + test262-sample gates active. Add property-addition-history fuzz tests.
+3. **Shape-EXT 6** — Migration triggers (delete, non-default descriptor, Symbol key, complexity ceiling).
+4. **Shape-EXT 7** — IC consumer surface `Object::shape_ptr_and_slot_for` lifted to public; first call site documented for LeJIT-Σ.
+
+### Cumulative status at Shape-EXT 3 close
+
+LOC delta: ~340 (shape.rs 332 + lib.rs 22 + Cargo.toml). docs/ artifacts unchanged. Workspace builds clean; new crate isolated. PM-EXT 11+12 regression untouched (no integration yet).
+
+The substrate-introduction round's code phase begins. Shape-EXT 4 wires the crate into Object.
+
+---
+
+*Shape-EXT 3 closes. The crate exists, builds, tests pass. The Rc::ptr_eq identity gate (Pred-shape.2) is corroborated at the unit-test layer. Shape-EXT 4 carries the integration risk.*

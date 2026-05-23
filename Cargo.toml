@@ -41,6 +41,11 @@ members = [
     # Doc 732 / PM-EXT 0+: package manager at the resolver-instance-#0
     # substrate boundary. Bilateral source (package.json + npm registry).
     "pilots/rusty-js-pm/derived",
+    # LeJIT seed §I.2 / Shape-EXT 0+: hidden classes (shapes) for cruftless's
+    # Object representation. Substrate-introduction round per Doc 729 §A8.13;
+    # Pilot LeJIT-Σ (IC stub emitter) is the closure round that consumes
+    # Object::shape_ptr_and_slot_for as the IC fast-path cache key.
+    "pilots/rusty-js-shapes/derived",
     "pilots/streams/derived",
     "pilots/structured-clone/derived",
     "pilots/textencoder/derived",
