@@ -124,3 +124,69 @@ The pilot's bench baseline is established. The dispatcher dominates per-iter cos
 ---
 
 *TB-EXT 1 closes. Multi-shape baselines on the Pi: 130.8 / 135.5 / 126.5 ns. Shape-invariant ~125 ns ± 5 ns confirms §I.3's reading. TB-EXT 2 decomposes the dispatcher source-tier.*
+
+---
+
+## TB-EXT 2 — 2026-05-23 (dispatcher decomposition audit)
+
+### Headline
+
+Apparatus-tier design round. Read `Runtime::call_function`'s hot JIT-success branch source-tier (lines 8331-8460). Partitioned the ~125 ns shape-invariant cost into 22 named components across caller + callee. Identified ~40-65 ns directly; the **~60-86 ns gap** is attributed (with hypotheses) primarily to HashMap lookups (~20-30 ns) and TLS slot writes (~20-40 ns) — both of which are eliminable. Total TB-EXT 3b reclaim estimate: **38-74 ns**; mid-range ~55 ns comfortably exceeds Pred-tb.1's ≥40 ns threshold.
+
+### Substrate landed
+
+- `pilots/rusty-js-jit/tiny-baseline/docs/dispatcher-decomposition.md` (~220 lines): per-component cost decomposition (22 items with line refs), unidentified-gap reading with five hypothesized mechanisms, classification by elimination mechanism (compile-time-resolve / thunk-inline / Vec-replacement / restructure-amortize / unavoidable), reclaim estimates per group, Doc 736 §IX.6 cap-passing constraint reading, thunk shape sketch in aarch64 pseudocode, TB-EXT 3a forward pointer.
+
+### Component classification
+
+| mechanism | components | est. reclaim |
+|---|---|---:|
+| **compile-time-resolve** (bake into TinyBaselineMetadata struct) | obj-lookup, proto_key, actual_this, params, proto_rc clone, jit_cache contains_key + get, pointer captures | ~12-22 + HashMap gap ~20-30 = **32-52 ns** |
+| **thunk-inline** (specialized straight-line aarch64 in thunk preamble) | Value match, new_target take, InternalKind match, call_count Cell, jit_disabled get, jit_compatible_arg, vti flag, unbox_arg, take_last_deopt, Value::Number rebox, Result wrap | **10-15 ns** |
+| **Vec-replacement** (call_function_n variants taking &[Value]) | caller-side vec![arg.clone()] | **4-7 ns** |
+| **restructure-amortize** (bake state into per-thunk metadata; extern callbacks read from there instead of TLS) | set_current_* + clear_current_* (6 TLS accesses) | ~12 + TLS gap ~20-40 = **32-52 ns** |
+| **unavoidable** | jit_fn.func.call1 + id body | ~5-10 ns |
+
+### The unidentified gap finding
+
+The 22 identified components sum to ~40-65 ns; measured is ~125 ns. The 60-86 ns gap is real and lives in non-obvious places:
+
+- **HashMap lookups** (std SipHash-13, two per call) likely cost 20-30 ns total, not 6-10 as my initial estimate
+- **TLS slot access** on aarch64 Linux (TPIDR_EL0 + dispatch table) likely costs 5-10 ns per access; six per call ≈ 30-60 ns
+- **Cache-miss memory traffic** across the dispatcher's distributed reads (8+ memory regions touched) likely costs 20-40 ns of stall time
+- **Branch mispredict** on the five-condition AND at line 8389-8393 plausibly costs 5-10 ns
+
+This gap reading is the load-bearing finding for TB-EXT 6 micro-profiling. For TB-EXT 3b: targeting compile-time-resolve + restructure-amortize alone (the two largest groups) reclaims ~40-70 ns by construction — exactly Pred-tb.1's threshold. The gap is the engagement's opportunity.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable (design-tier round).
+
+Per Doc 734 §V: growth (c) positive-finding generalization preparatory — the named-cost partition is the empirical anchor for TB-EXT 3b's (P2.a) attempt. The gap-finding is a (c) candidate in its own right: the dispatcher cost is structurally bigger than the obvious source-tier components because of memory hierarchy + TLS access + HashMap codegen costs that the corpus framework has not previously named. The decomposition method (estimate components + identify gap + hypothesize gap mechanisms) is the corpus-tier articulation candidate.
+
+Per Doc 735 §X.h.c three-probe-levels: this round is bench-tier preparation (consumer-route + fuzz at TB-EXT 5 + 7).
+
+### Composition with prior corpus work
+
+- **Doc 729 §A8.13 substrate-amortization-cascade**: TinyBaselineMetadata is the substrate-introduction (one-time per JIT-compile); the thunk consumes it per call. Cascade structure exactly parallels shape Shape-EXT 4 + consumer-migration (substrate-introduction enables N consumer rounds).
+- **Doc 731 §VII R1–R8**: R1 single-tier preserved (thunk is sub-substrate of same JIT tier); R8 no-internal-optimization-passes preserved (thunk is straight-line aarch64, not an optimization pass).
+- **Doc 735 §X.h.b**: TB-EXT 4 will be the load-bearing (P2.a) vs (P2.d) call. The 38-74 ns reclaim estimate makes (P2.a) the predicted outcome.
+- **Doc 736 §IX.6 cap-dispatcher modes**: §5 of decomposition doc names the mode-check at thunk entry. ~2 ns cost; cheaper than the per-call work it conditionally skips. First-cut Mode-0-only carve-out per seed §IV.
+- **Doc 738 §II conventions**: TinyBaselineMetadata fits §II.e (struct in `pilots/rusty-js-jit/derived/src/tiny_baseline.rs`); thunk emitter functions follow post-§A8.32 receiver-discriminated form (no `_via`).
+
+### Open scope at TB-EXT 2 close
+
+1. **TB-EXT 3a** — Substrate-introduction per Doc 729 §A8.13: `TinyBaselineMetadata` struct + per-JIT-function table (proto_key → metadata) construction at compile time. No thunk emission yet. ~80 LOC estimate.
+2. **TB-EXT 3b** — Closure round: emit inline call thunk for ≤2-arg ≤20-op functions under `CRUFTLESS_LEJIT_TB=1`. Dispatcher under flag routes eligible calls. Standard dispatcher is the fallback. ~150-200 LOC estimate (the largest single round of the pilot).
+3. **TB-EXT 4** — Re-bench against TB-EXT 1 multi-shape baselines. Load-bearing (P2) categorization.
+4. **TB-EXTs 5-8** per the seed §III methodology.
+
+### Cumulative status at TB-EXT 2 close
+
+LOC delta: ~220 (decomposition doc, design-tier).
+
+The dispatcher is fully decomposed source-tier. TB-EXT 3b has a concrete named-component target list with per-group reclaim estimates. The unidentified gap is itself a forward-work item the design accepts honestly. The substrate-amortization-cascade pattern from shapes recurs here structurally (substrate-introduction at 3a; closure at 3b).
+
+---
+
+*TB-EXT 2 closes. 22-component decomposition + 60-86 ns gap-finding + 38-74 ns reclaim estimate. TB-EXT 3a begins the TinyBaselineMetadata substrate-introduction.*

@@ -162,6 +162,51 @@ The combination of (1) + (2) + (3) plausibly accounts for the +18.9 ns regressio
 
 ---
 
+## 2026-05-23 — TB-EXT 2: dispatcher decomposed; ~60-86 ns unidentified gap **[UNANTICIPATED]**
+
+**Locale**: `pilots/rusty-js-jit/tiny-baseline/trajectory.md` → TB-EXT 2 (dispatcher decomposition audit).
+
+**Substrate change**: Design-tier round. Read `Runtime::call_function` source-tier (interp.rs:8331-8460). Partitioned the hot JIT-success path into 22 named components with per-component cost estimates. Output: `pilots/rusty-js-jit/tiny-baseline/docs/dispatcher-decomposition.md` (~220 lines).
+
+**Measurement**: not applicable (design-tier; no substrate code). The decomposition's estimates are anchored against TB-EXT 1's measured ~125 ns shape-invariant baseline.
+
+**Why this was unanticipated**: TB-EXT 0/1's framing assumed `call_function`'s 120 ns shape-invariant cost decomposed roughly evenly across 5-7 named components (closure-bound-this resolve, Vec alloc, Frame setup, JIT-cache lookup, deopt-TLS plumbing — the seed §I.1 named list). The source-tier audit shows the cost actually decomposes across 22 components, with the obvious ones summing to only ~40-65 ns. **The remaining ~60-86 ns (roughly half the total) is in non-obvious places not named in the seed's framing.**
+
+**Hypothesis** for the ~60-86 ns gap, attributed in priority order:
+
+1. **HashMap lookups cost ~20-30 ns total** (two per call: contains_key + get on `jit_cache: HashMap<usize, Option<CompiledFn>>`). Std's SipHash-13 is more expensive than my mental model of 3-5 ns per lookup; on Pi at ~10-15 ns each, two lookups account for the largest single gap component.
+
+2. **TLS slot access on aarch64 Linux costs ~5-10 ns per access** (TPIDR_EL0 read + dispatch table walk). Six TLS accesses per call (3 set + 3 clear: CURRENT_DEOPT_SITES, CURRENT_RUNTIME, CURRENT_PROTO) plausibly account for 30-60 ns.
+
+3. **Cache-miss memory traffic** across 8+ distributed memory reads per call (args Vec, callee, heap[id], proto.params, call_count, jit_disabled, bound_this, JIT cache map, TLS slots, JitFn vtable, deopt_sites slice). Sustained pressure on Pi's 64KB L1D likely costs 20-40 ns of memory-stall time.
+
+4. **Branch mispredict on the five-condition AND** at line 8389-8393 (`!jit_disabled && count >= threshold && (params == 1 || params == 2) && args.len() == params && args.iter().all(...)`). Branch predictors unlikely to predict all five clauses correctly every iteration. ~5-10 ns per call.
+
+5. **Value::clone on `this`** is cheaper than estimated for Undefined (trivially copyable) but for Object/String includes Rc atomic bump (~3-5 ns).
+
+(1) + (2) together plausibly account for ~50-90 ns of the 60-86 ns gap — within range. (3) + (4) explain the remainder.
+
+**Implication for forward work**:
+
+- **TB-EXT 3b targeting becomes clearer.** The two largest single sources of reclaim are HashMap (~20-30 ns) and TLS (~20-40 ns). Both fall under the "compile-time-resolve" + "restructure-amortize" classifications in the decomposition doc. Targeting these two alone reclaims ~40-70 ns by construction — already at Pred-tb.1's ≥40 ns threshold.
+
+- **Pred-tb.1 likelihood reassessed.** With the gap identified and the two largest components classified as eliminable, the (P2.a) strict-win outcome at TB-EXT 4 is now the *predicted* outcome rather than the *target*. The 38-74 ns reclaim estimate from the decomposition's component-group sums covers Pred-tb.1's threshold from below.
+
+- **Methodological generalization candidate (Doc 734 §V.c).** The decomposition method itself — name components from source-tier read, estimate per-component cost, identify gap, hypothesize gap mechanisms — surfaced unexpected structure the seed's framing missed. The pattern likely recurs at any dispatcher-tier decomposition. Candidate corpus articulation: "Dispatcher decomposition discovers gap between named components and measured cost; gap is the substrate's untapped reclaim potential." Reserved for later session.
+
+- **TB-EXT 6 micro-profiling is more load-bearing than originally framed.** The gap-finding makes TB-EXT 6's multi-run + per-component instrumentation the empirical anchor for the gap-hypotheses listed above. Without 6's empirical pinning, the gap reading stays hypothesis-tier.
+
+- **Adjacent pilots affected**: LeJIT-Σ's StubE-EXT 5b's bench reading (199 ns post-shape) also includes this 60-86 ns gap (the IC dispatch cost is on top of the same dispatcher path). LeJIT-Σ's reclaim ceiling is bounded by the same gap; the IC fast path doesn't help the dispatcher's HashMap + TLS cost. The seed §I.3 composition reading's "shape (1.36×) + LeJIT-Σ (~1.3-1.5×) + tiny-baseline (1.5-2×)" multiplicative target depends on tiny-baseline absorbing this gap. If TB-EXT 4 confirms the reclaim, the composition becomes reachable; if it doesn't, the §I.3 reading needs further refinement.
+
+**Provenance**:
+- Trajectory: `pilots/rusty-js-jit/tiny-baseline/trajectory.md` TB-EXT 2 (close)
+- Design doc: `pilots/rusty-js-jit/tiny-baseline/docs/dispatcher-decomposition.md` (22-component table + classifications)
+- Source read: `pilots/rusty-js-runtime/derived/src/interp.rs:8331-8460`
+- Anchored against: TB-EXT 1's 125 ns ± 5 ns id1 baseline; cross-validated against VTI-EXT 1/3a/3b's 122-131 ns measurement range
+- Cross-reference: this file's VTI-EXT 1 entry (original 127 ns measurement); TB-EXT 1 entry (multi-shape decomposition)
+
+---
+
 ## Template — for future entries
 
 ### `<date>` — `<locale-tag>` `<round-id>`: `<one-line headline>` **[ANTICIPATED]**
