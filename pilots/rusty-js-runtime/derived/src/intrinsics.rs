@@ -5808,20 +5808,50 @@ fn json_quote_string(s: &str) -> String {
     out
 }
 
-/// JSF-EXT 3 (2026-05-23): buffer-threaded variant. Move 2 (JSF-EXT 4)
-/// will replace the per-char loop with a branchless ASCII fast-path
-/// that bulk-copies runs of safe bytes via push_str.
+/// JSF-EXT 4 (2026-05-23, Move 2 — cascade-revival pilot per Doc 739):
+/// branchless ASCII fast-path. Stage 1 scans bytes forward to the next
+/// byte requiring escape (special ASCII or control char); stage 1
+/// bulk-copies the run via push_str. Stage 2 emits the escape and
+/// advances. Multibyte UTF-8 continuation bytes (>= 0x80) are
+/// non-special and stay in the fast scan. The format!("\\u{:04x}")
+/// allocation per control char is replaced by a direct 6-byte emit.
 fn json_quote_string_into(s: &str, out: &mut String) {
     out.push('"');
-    for c in s.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
-            c => out.push(c),
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        let start = i;
+        while i < bytes.len() {
+            let b = bytes[i];
+            if b == b'"' || b == b'\\' || b < 0x20 { break; }
+            i += 1;
+        }
+        if i > start {
+            // SAFETY: bytes[start..i] is a valid UTF-8 prefix of s; we
+            // only advanced past ASCII non-special bytes and through
+            // multibyte continuations as opaque bytes, and stopped
+            // before any byte that could start a fresh ASCII special.
+            out.push_str(unsafe { std::str::from_utf8_unchecked(&bytes[start..i]) });
+        }
+        if i < bytes.len() {
+            let b = bytes[i];
+            match b {
+                b'"'    => out.push_str("\\\""),
+                b'\\'   => out.push_str("\\\\"),
+                b'\n'   => out.push_str("\\n"),
+                b'\r'   => out.push_str("\\r"),
+                b'\t'   => out.push_str("\\t"),
+                b'\x08' => out.push_str("\\b"),
+                b'\x0c' => out.push_str("\\f"),
+                c => {
+                    let hi = (c >> 4) & 0xF;
+                    let lo = c & 0xF;
+                    out.push_str("\\u00");
+                    out.push(if hi < 10 { (b'0' + hi) as char } else { (b'a' + hi - 10) as char });
+                    out.push(if lo < 10 { (b'0' + lo) as char } else { (b'a' + lo - 10) as char });
+                }
+            }
+            i += 1;
         }
     }
     out.push('"');

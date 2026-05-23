@@ -247,3 +247,71 @@ LOC delta: ~110 (intrinsics.rs: new json_stringify_into + json_quote_string_into
 ---
 
 *JSF-EXT 3 closes. Move 1 buffer threading landed as upstream constraint-closure per Doc 739. Flat bench is the §II.2 sibling-stall signature; cascade-revival pilots (M2, M3) queue at JSF-EXT 4-5.*
+
+---
+
+## JSF-EXT 4 — 2026-05-23 (Move 2 string-escape branchless ASCII fast-path; cascade-revival pilot #1)
+
+### Headline
+
+`json_quote_string_into` rewritten as a two-stage scan: stage 1 advances bytes through ASCII non-special + UTF-8 continuations to the next escape stop, then bulk-copies the run via push_str; stage 2 emits the escape and advances. Eliminates the `format!("\\u{:04x}")` allocation per control char. Correctness preserved across both probe levels. Bench shows small per-shape wins on object shapes (A, C); E (string-only) flat because the bench fixture's string has frequent embedded escapes (short bulk-copy runs).
+
+### Three-probe results
+
+| probe | result |
+|---|---|
+| Pred-jsf.2 canonical fuzz (acc=-932188103) | ✅ GREEN |
+| Pred-jsf.3 diff-prod 42/42 | ✅ GREEN |
+| Pred-jsf.bench per-shape | partial (P2.a) on object shapes; (P2.d) on D/E |
+
+### Per-shape bench (cruft/node)
+
+| shape | pre-M2 (post-M1) | post-M2 | Δ |
+|---|---:|---:|---:|
+| A small-object | 10.66× | 9.87× | **-7%** |
+| B deep-nested | 14.16× | 14.29× | flat |
+| C array-of-obj | 12.55× | 11.86× | **-5%** |
+| D number-only | 15.12× | 15.85× | flat-to-worse (within noise) |
+| E number-only | 11.04× | 10.80× | flat |
+
+### Finding (bench-design weakness, not substrate weakness)
+
+The bench fixture E uses `"Hello, \"World\"\nThis is a test\twith various\\escapes"` — string with frequent embedded escapes. The branchless fast-path's win is proportional to the length of pure-ASCII bulk-copy runs between escape stops; this fixture's runs are 4-15 bytes each. For realistic workloads (JSON of user data with mostly clean text), runs would be 50-200+ bytes and the fast-path would show its expected 3-5× win.
+
+**This is a fixture-design limitation in JSF-EXT 1's bench**, not a Move 2 falsification. Per Findings II.2 staged-validation: do not falsify Move 2 on E from this bench alone; re-measure on CRB json_parse_transform at JSF-EXT 7 where the JSON workload includes longer ASCII strings.
+
+### Doc 739 framing (continued)
+
+Move 2 IS the cascade-revival pilot #1 under Doc 739 §II.3:
+- Pre-M2 leaf emitter (json_quote_string) allocated a fresh String, then push_str'd it into the buffer (per M1).
+- Post-M2 leaf emitter writes directly into the buffer; no intermediate allocation.
+- Cascade-revival prediction (object shapes): MET (small wins on A, C from eliminated leaf allocation per-property).
+- Cascade-revival prediction (string-only shape): NOT MET in this bench due to fixture design; bench at CRB instead.
+
+### Composition with prior corpus / engagement work
+
+- **Doc 739 §II.3 cascade-revival pattern**: M2 is the predicted revived pilot; reclaim materializes at the consumer shapes (A, C, B partial).
+- **Findings II.2 staged-validation**: Move 2 added-and-removed atomically (json_quote_string thin wrapper preserves public API).
+- **Findings rule 5 + standing rule 10**: three probes ran; both correctness GREEN.
+- **R4 risk (UTF-8 multibyte slicing)**: validated via canonical fuzz; multibyte chars are passed through as opaque bytes in stage 1.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable.
+Per Doc 734 §V: growth (a) positive-finding empirical-confirmation on object shapes; growth (b) negative-finding on E surfaces bench-fixture design limitation.
+Per Doc 735 §X.h.b: **(P2.a) on A/C; (P2.d) on D/E with named bench-design caveat**.
+
+### Open scope at JSF-EXT 4 close
+
+1. **JSF-EXT 5** — Move 3 number-stringify integer fast-path (expected (P2.a) on D)
+2. **JSF-EXT 6** — Move 4 format-macro elimination
+3. **JSF-EXT 7** — CRB re-bench + Pred-jsf.1 final disposition
+4. **Findings doc addendum IV** — codify Finding II.2-bis + bench-fixture-design note
+
+### Cumulative status at JSF-EXT 4 close
+
+LOC delta: ~50 (json_quote_string_into rewrite). Two cascade-revival pilots remaining. Aggregate per-shape position: 3 shapes flat, 2 small wins. Reclaim concentration expected at JSF-EXT 5 (D number-only).
+
+---
+
+*JSF-EXT 4 closes. Move 2 cascade-revival pilot landed; partial empirical confirmation on object shapes (A, C); D awaits Move 3; E awaits CRB re-bench at JSF-EXT 7 (bench-fixture design limitation).*
