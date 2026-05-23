@@ -6657,7 +6657,7 @@ impl Runtime {
             new_target: None,
             strict: proto.strict,
             back_edge_counts: HashMap::new(),
-            osr_attempted: HashMap::new(),
+            osr_cache: HashMap::new(),
         };
         self.run_frame(&mut frame)
     }
@@ -7180,8 +7180,7 @@ impl Runtime {
                         // OSR compile once per site (substrate-introduction:
                         // attempt + log; OSR-EXT 5 invokes).
                         if *c == OSR_BACK_EDGE_THRESHOLD
-                            && !frame.osr_attempted.contains_key(&site_pc) {
-                            frame.osr_attempted.insert(site_pc, ());
+                            && !frame.osr_cache.contains_key(&site_pc) {
                             try_osr_compile(frame, site_pc);
                         }
                     }
@@ -7196,8 +7195,7 @@ impl Runtime {
                             let c = frame.back_edge_counts.entry(site_pc).or_insert(0);
                             *c += 1;
                             if *c == OSR_BACK_EDGE_THRESHOLD
-                                && !frame.osr_attempted.contains_key(&site_pc) {
-                                frame.osr_attempted.insert(site_pc, ());
+                                && !frame.osr_cache.contains_key(&site_pc) {
                                 try_osr_compile(frame, site_pc);
                             }
                         }
@@ -7213,8 +7211,7 @@ impl Runtime {
                             let c = frame.back_edge_counts.entry(site_pc).or_insert(0);
                             *c += 1;
                             if *c == OSR_BACK_EDGE_THRESHOLD
-                                && !frame.osr_attempted.contains_key(&site_pc) {
-                                frame.osr_attempted.insert(site_pc, ());
+                                && !frame.osr_cache.contains_key(&site_pc) {
                                 try_osr_compile(frame, site_pc);
                             }
                         }
@@ -7230,8 +7227,7 @@ impl Runtime {
                             let c = frame.back_edge_counts.entry(site_pc).or_insert(0);
                             *c += 1;
                             if *c == OSR_BACK_EDGE_THRESHOLD
-                                && !frame.osr_attempted.contains_key(&site_pc) {
-                                frame.osr_attempted.insert(site_pc, ());
+                                && !frame.osr_cache.contains_key(&site_pc) {
                                 try_osr_compile(frame, site_pc);
                             }
                         }
@@ -7247,8 +7243,7 @@ impl Runtime {
                             let c = frame.back_edge_counts.entry(site_pc).or_insert(0);
                             *c += 1;
                             if *c == OSR_BACK_EDGE_THRESHOLD
-                                && !frame.osr_attempted.contains_key(&site_pc) {
-                                frame.osr_attempted.insert(site_pc, ());
+                                && !frame.osr_cache.contains_key(&site_pc) {
                                 try_osr_compile(frame, site_pc);
                             }
                         }
@@ -9051,7 +9046,7 @@ impl Runtime {
             new_target: nt_for_this_call.clone(),
             strict: proto.strict,
             back_edge_counts: HashMap::new(),
-            osr_attempted: HashMap::new(),
+            osr_cache: HashMap::new(),
         };
         let body_result = self.run_frame(&mut inner);
         if is_generator {
@@ -9465,14 +9460,16 @@ pub struct Frame<'a> {
     /// what uniquely identifies the loop in the bytecode). Empty by
     /// default (no allocation until first back-edge fires).
     pub back_edge_counts: HashMap<usize, u32>,
-    /// OSR-EXT 4 (2026-05-23): set of back-edge site_pcs for which an
-    /// OSR JIT-compile has already been attempted on this frame. Used
-    /// to skip re-attempting compile on every subsequent back-edge fire
-    /// once the threshold has tripped once. Records the site_pc only;
-    /// the compile result (success/failure) is not consumed at this
-    /// round — OSR-EXT 5 adds the per-site CompiledFn cache for actual
-    /// invocation.
-    pub osr_attempted: HashMap<usize, ()>,
+    /// OSR-EXT 4+5 (2026-05-23): per-site OSR compile cache.
+    ///   - Absent: not yet attempted.
+    ///   - Present + Some(boxed): compiled successfully (invoke at
+    ///     OSR-EXT 5b once locals-marshaling lands per Finding OSR.1).
+    ///   - Present + None: compile failed (e.g., op outside JIT
+    ///     alphabet per Finding VII.2); skip subsequent attempts.
+    ///
+    /// Box-wrap per standing rule 9 (TB-EXT 7 raw-pointer-cache pattern)
+    /// in case downstream consumers cache pointers into the CompiledFn.
+    pub osr_cache: HashMap<usize, Option<Box<rusty_js_jit::CompiledFn>>>,
 }
 
 /// OSR-EXT 2 (2026-05-23): threshold for OSR JIT-attempt trigger.
@@ -9495,22 +9492,30 @@ pub const OSR_BACK_EDGE_THRESHOLD: u32 = 1000;
 ///
 /// Returns None if site_pc is out of bounds, disp is non-negative
 /// (not a back-edge), or entry_pc would be out of bounds.
-/// OSR-EXT 4 (2026-05-23): at back-edge threshold trigger, attempt to
-/// JIT-compile the loop region as a synthetic 0-arg FunctionProto.
-/// Substrate-introduction: compile attempt only; result is discarded
-/// (OSR-EXT 5 caches the CompiledFn + invokes). The expected outcome
-/// on json_parse_transform's charCodeAt loop: COMPILE FAILS at parse-
-/// time because the loop body uses Op::GetProp + Op::CallMethod which
-/// aren't in the JIT alphabet (Finding VII.2 op-set coverage gap).
-/// OSR-EXT 6 closes the alphabet gap via TL Moves 3+4 revival folded in.
+/// OSR-EXT 4+5 (2026-05-23): at back-edge threshold trigger, attempt to
+/// JIT-compile the loop region as a synthetic 0-arg FunctionProto + cache
+/// the result. Box-wrap per standing rule 9 (TB-EXT 7 raw-pointer-cache
+/// pattern). Subsequent back-edge fires at the same site_pc consult the
+/// cache and skip if previously failed.
 ///
-/// Per Pred-osr.4 ±5% composition gate: this round adds only the
-/// compile attempt (~milliseconds per attempt, amortized over
-/// THRESHOLD=1000 iters); near-zero per-iter overhead.
-fn try_osr_compile(frame: &Frame, site_pc: usize) {
+/// The invoke step is NOT performed here per Finding OSR.1 (locale
+/// findings.md): JIT calling convention's params-only-as-args shape
+/// blocks frame-state marshaling without a locals-marshaling
+/// substrate extension. Cached CompiledFn (Some variant) is unused
+/// until OSR-EXT 5b lands locals-marshaling per Finding OSR.1's
+/// recommended option 2 (extern-pre-populate).
+///
+/// Expected outcome on json_parse_transform: cache stores None per
+/// Finding VII.2 alphabet gap. The cache eliminates repeated
+/// compile attempts (small but real engineering value).
+fn try_osr_compile(frame: &mut Frame, site_pc: usize) {
     let region = match compute_loop_region(frame.bytecode, site_pc) {
         Some(r) => r,
-        None => return,  // not a loop region; ignore
+        None => {
+            // Not a loop region; cache None to skip future attempts.
+            frame.osr_cache.insert(site_pc, None);
+            return;
+        }
     };
     let (entry_pc, end_pc) = region;
     let sub_bytecode = frame.bytecode[entry_pc..end_pc].to_vec();
@@ -9533,8 +9538,8 @@ fn try_osr_compile(frame: &Frame, site_pc: usize) {
         is_async: false,
         strict: frame.strict,
     };
-    // Substrate-intro: discard the result. OSR-EXT 5 will cache it.
-    let _ = rusty_js_jit::compile_function(&synth);
+    let compiled = rusty_js_jit::compile_function(&synth).ok().map(Box::new);
+    frame.osr_cache.insert(site_pc, compiled);
 }
 
 pub fn compute_loop_region(bytecode: &[u8], site_pc: usize) -> Option<(usize, usize)> {
@@ -9585,7 +9590,7 @@ impl<'a> Frame<'a> {
             new_target: None,
             strict: m.strict,
             back_edge_counts: HashMap::new(),
-            osr_attempted: HashMap::new(),
+            osr_cache: HashMap::new(),
         }
     }
 

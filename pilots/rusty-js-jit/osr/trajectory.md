@@ -281,3 +281,68 @@ LOC delta: ~50 (Frame field + 3 inits + helper + 5 trigger sites). OSR-EXT 0-4 c
 ---
 
 *OSR-EXT 4 closes. Synthetic FunctionProto builder + compile-attempt trigger landed; all probes GREEN; A/B within ±5%. Substrate-intro per Finding II.2-bis. OSR-EXT 5 caches the compile result + invokes the JIT body.*
+
+---
+
+## OSR-EXT 5 — 2026-05-23 (Move 4 compile-result cache + Finding OSR.1 surfaced)
+
+### Headline
+
+`Frame::osr_attempted` replaced by `Frame::osr_cache: HashMap<usize, Option<Box<CompiledFn>>>`. try_osr_compile now stores the result; subsequent back-edge fires at the same site check the cache and skip if already attempted. Box-wrap per standing rule 9 (TB-EXT 7 raw-pointer-cache pattern).
+
+**Pre-implementation source-read surfaced Finding OSR.1**: the JIT calling convention's params-only-as-args shape blocks frame-state marshaling without a major substrate extension. The OSR-EXT 1 design's "local-state copy-in/out" bullet was structurally incomplete. **Invoke step DEFERRED to OSR-EXT 5b (new round, scope to be confirmed).**
+
+### Substrate landed
+
+1. `Frame::osr_cache: HashMap<usize, Option<Box<CompiledFn>>>` field (replaces osr_attempted).
+2. Updated all 3 Frame init sites.
+3. try_osr_compile now takes `&mut Frame`; stores compile result in osr_cache (Some for success; None for compile failure or non-loop-region).
+4. 5 Jump handlers gate on `!osr_cache.contains_key(&site_pc)`; first threshold-crossing per site triggers try_osr_compile (which writes the cache); subsequent crossings short-circuit.
+
+### Finding OSR.1 (local findings.md)
+
+The JIT calling convention currently initializes locals 0..params from f64 args; locals params..N = 0.0. OSR loop bodies read/write the enclosing frame's locals, which the JIT initializes to 0.0 — not the frame's actual values. **The invoke path as designed would produce wrong results.**
+
+Three structural alternatives surfaced; recommended option 2 (extern-pre-populate prologue at JIT body entry); ~80 LOC; non-invasive composition with existing Σ/Τ/Ψ/Φ paths.
+
+**Doc 740 R extension**: for OSR loop invoke, R has a fifth tier: **JIT calling convention's locals-marshaling capability**. The original 4-tier reading missed it.
+
+Promotion candidate at engagement findings.md Addendum VII: "JIT calling convention's locals-marshaling capability" as a tier in Doc 740 §II.2's relevant-tier-set apparatus.
+
+### Three-probe results
+
+| probe | result |
+|---|---|
+| canonical fuzz (acc=-932188103) | ✅ GREEN |
+| diff-prod 42/42 | ✅ GREEN |
+| JIT lib tests | ✅ 38/38 |
+| OSR helper unit tests | ✅ 5/5 |
+| A/B composition (5-run median) | 1550 vs baseline 1480 (+4.7%; within ±5% Pred-osr.4 gate) |
+
+### Composition with prior corpus / engagement work
+
+- **Doc 740 §II.2 op-set coverage tier**: this round prevents wasted re-compile cycles at sites that previously failed compile (cache None records the failure).
+- **Standing rule 9 (raw-pointer audit)**: applied — Box-wrap on CompiledFn cache value.
+- **Finding II.2-bis substrate-introduction signature**: A/B drift +4.7% is the compile-attempt cost amortized over 1000-iter threshold per site; near-zero per-iter after the cache settles.
+- **Standing rule 11 (multi-axis coverage check)**: Finding OSR.1 surfaces a NEW coverage axis (locals-marshaling) candidate for engagement-wide promotion.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable.
+Per Doc 734 §V: growth (a) positive-finding (cache structure landed); growth (b) negative-finding (Finding OSR.1 surfaces locals-marshaling blocker).
+Per Doc 735 §X.h.b: substrate-intro round; (P2.d) bench within ±5% by design; consumer at OSR-EXT 5b + 6.
+
+### Open scope at OSR-EXT 5 close
+
+1. **OSR-EXT 5b** (new round, keeper-pending) — locals-marshaling per Finding OSR.1 recommended option 2 (extern-pre-populate). ~80 LOC. Unlocks invoke for loops whose alphabet IS in JIT scope.
+2. **OSR-EXT 6** — alphabet extension (TL Moves 3+4 revival folded in: GetProp+length-IC + CallMethod+charCodeAt-IC consuming VD String encoding). Closes the alphabet gap.
+3. **OSR-EXT 7** — composition probe + CRB final disposition + Pred-osr.1 gate.
+4. **Findings addendum VII candidate** — promotion of OSR.1 to engagement-wide as the locals-marshaling-coverage tier in Doc 740.
+
+### Cumulative status at OSR-EXT 5 close
+
+LOC delta: ~25 (Frame field rename + try_osr_compile cache writes + Jump handler gate updates). OSR-EXT 0-5 cumulative: ~530 across the locale. Local findings.md created with Finding OSR.1.
+
+---
+
+*OSR-EXT 5 closes. Cache structure landed; invoke deferred per Finding OSR.1. Keeper deliberation: OSR-EXT 5b (locals-marshaling extension) before OSR-EXT 6 (alphabet) before OSR-EXT 7 (final disposition); OR engagement findings Addendum VII first; OR pivot.*
