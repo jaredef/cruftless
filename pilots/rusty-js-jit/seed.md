@@ -61,6 +61,28 @@ Three structural consequences:
 
 **Forward queue at JIT-EXT 25 close:** Pilot LeJIT-Σ (IC stub emitter, hand-rolled aarch64, paired with hidden-classes pilot). The two together close the seed §VIII "hidden classes" gap and the seed §VIII "dispatcher branching for non-zero pc deopts" gap simultaneously, since hidden-classes lands the shape descriptors that make non-trivial IC fast-paths landable.
 
+### I.3 Substrate-amortization cascade from shape enrollment (2026-05-23 empirical recognition)
+
+The hidden-classes substrate's contribution to LeJIT proved bigger than its named telos at integration measurement. Per StubE-EXT 5b's bench_ic measurement on the Pi (1M-iteration `getx(obj) = obj.x` hot loop):
+
+| mode | per-iter | delta vs baseline |
+|---|---:|---:|
+| pre-shape-enrollment baseline (StubE-EXT 1) | 271 ns | — |
+| **default after shape enrollment** | **199 ns** | **−26% (1.36× speedup)** |
+| LEJIT_STUB=1 observer wired (no inline emission yet) | 237 ns | observer overhead +38 ns |
+
+The 26% per-iter speedup from shape enrollment alone was **unanticipated**: the shapes pilot's seed §I telos was about IC cache key supply, not per-op read speedup. The speedup is a side effect of Shape-EXT 4's `object_get` shape-aware fast path (skips the IndexMap probe for hot string-keyed property accesses).
+
+**Recognition.** This is Doc 729 §A8.13 substrate-amortization cascading into per-iter cost reduction. The cascade arrived at the property-access tier as soon as enrollment defaulted on; the integration measurement quantified what was structurally implicit in Shape-EXT 4.
+
+**Operational consequence for LeJIT's telos.** §I.2's hybrid stance claim now reads against a **199 ns baseline**, not the 271 ns pre-shape baseline. Pred-stub.1's ≥3× target becomes ≤66.3 ns/iter (from the new baseline) rather than ≤90.3 ns (from the old). The threshold is tighter; the room for LeJIT-Σ's inline-stub contribution shrinks accordingly. Most of the reclaim that EXT 5c was targeting (~50 ns extern-call overhead) is what the shape fast path already partly absorbed.
+
+**Reading**: shape enrollment is a load-bearing perf move in its own right, not merely supplying the IC cache key. The corpus's Doc 731 alphabet-purity claim gets a corroboration at the property-access tier: a narrow-alphabet shape substrate is the per-op-cost reduction at every property read site, separate from any IC fast-path inlining.
+
+**Implication for the §I.2 perf telos**: the LeJIT-Σ pilot's 3× threshold should be re-read as "3× over the pre-cascade baseline including shape gains" not "3× over LeJIT-Σ's own narrow contribution." Under the tighter ≤66.3 ns target, EXT 5c's pre-implementation budget (~180 ns/iter projected at StubE-EXT 2 §8) cannot meet (P2.a); the (P2.d) correct-but-losing categorization is now the predicted outcome. Composition with the sibling value-tag-inline + dispatcher-refactor pilots becomes load-bearing for the full 3× claim, exactly as §I.2 anticipated.
+
+**Forward-reading for LeJIT-Σ at EXT 5c+6**: the measurement at EXT 6 should report against both baselines (271 ns pre-shape AND 199 ns post-shape) so the substrate-amortization-cascade contribution and the LeJIT-Σ contribution are separately attributable. Combined the engagement is heading toward a ~1.5-2× speedup from LeJIT alone (per §VIII bench precedent) on top of the 1.36× from shape enrollment, multiplicatively reaching the ~2-2.5× zone that matches Bun's per-op cost on the same workload.
+
 ## II. Apparatus
 
 The JIT is **resolver-instance #N+1 below the bytecode tier** per Doc 730 §IV's vertical-recurrence reading. It composes with:
