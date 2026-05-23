@@ -7172,34 +7172,47 @@ impl Runtime {
                     let site_pc = frame.pc - 1;  // pc of the Op::Jump byte
                     let disp = decode_i32(&frame.bytecode, frame.pc);
                     frame.pc += 4;
+                    let mut osr_fired = false;
                     if disp < 0 {
-                        // OSR-EXT 2: loop back-edge; count.
                         let c = frame.back_edge_counts.entry(site_pc).or_insert(0);
                         *c += 1;
-                        // OSR-EXT 4: at exact threshold-crossing, attempt
-                        // OSR compile once per site (substrate-introduction:
-                        // attempt + log; OSR-EXT 5 invokes).
-                        if *c == OSR_BACK_EDGE_THRESHOLD
-                            && !frame.osr_cache.contains_key(&site_pc) {
-                            try_osr_compile(frame, site_pc);
+                        if *c >= OSR_BACK_EDGE_THRESHOLD {
+                            if !frame.osr_cache.contains_key(&site_pc) {
+                                try_osr_compile(frame, site_pc);
+                            }
+                            // OSR-EXT 5d: invoke if cache has Some; on
+                            // success frame.pc = end_pc + skip back-edge.
+                            if matches!(frame.osr_cache.get(&site_pc), Some(Some(_))) {
+                                osr_fired = try_osr_invoke(frame, site_pc);
+                            }
                         }
                     }
-                    frame.pc = (frame.pc as i32 + disp) as usize;
+                    if !osr_fired {
+                        frame.pc = (frame.pc as i32 + disp) as usize;
+                    }
                 }
                 Op::JumpIfTrue => {
                     let site_pc = frame.pc - 1;
                     let disp = decode_i32(&frame.bytecode, frame.pc);
                     frame.pc += 4;
                     if to_boolean(&frame.pop()?) {
+                        let mut osr_fired = false;
                         if disp < 0 {
                             let c = frame.back_edge_counts.entry(site_pc).or_insert(0);
                             *c += 1;
-                            if *c == OSR_BACK_EDGE_THRESHOLD
-                                && !frame.osr_cache.contains_key(&site_pc) {
-                                try_osr_compile(frame, site_pc);
+                            if *c >= OSR_BACK_EDGE_THRESHOLD {
+                                if !frame.osr_cache.contains_key(&site_pc) {
+                                    try_osr_compile(frame, site_pc);
+                                }
+                                // Fast-path: skip function call if cache is empty or None.
+                                if matches!(frame.osr_cache.get(&site_pc), Some(Some(_))) {
+                                    osr_fired = try_osr_invoke(frame, site_pc);
+                                }
                             }
                         }
-                        frame.pc = (frame.pc as i32 + disp) as usize;
+                        if !osr_fired {
+                            frame.pc = (frame.pc as i32 + disp) as usize;
+                        }
                     }
                 }
                 Op::JumpIfFalse => {
@@ -7207,15 +7220,23 @@ impl Runtime {
                     let disp = decode_i32(&frame.bytecode, frame.pc);
                     frame.pc += 4;
                     if !to_boolean(&frame.pop()?) {
+                        let mut osr_fired = false;
                         if disp < 0 {
                             let c = frame.back_edge_counts.entry(site_pc).or_insert(0);
                             *c += 1;
-                            if *c == OSR_BACK_EDGE_THRESHOLD
-                                && !frame.osr_cache.contains_key(&site_pc) {
-                                try_osr_compile(frame, site_pc);
+                            if *c >= OSR_BACK_EDGE_THRESHOLD {
+                                if !frame.osr_cache.contains_key(&site_pc) {
+                                    try_osr_compile(frame, site_pc);
+                                }
+                                // Fast-path: skip function call if cache is empty or None.
+                                if matches!(frame.osr_cache.get(&site_pc), Some(Some(_))) {
+                                    osr_fired = try_osr_invoke(frame, site_pc);
+                                }
                             }
                         }
-                        frame.pc = (frame.pc as i32 + disp) as usize;
+                        if !osr_fired {
+                            frame.pc = (frame.pc as i32 + disp) as usize;
+                        }
                     }
                 }
                 Op::JumpIfTrueKeep => {
@@ -7223,15 +7244,23 @@ impl Runtime {
                     let disp = decode_i32(&frame.bytecode, frame.pc);
                     frame.pc += 4;
                     if to_boolean(frame.peek(0)?) {
+                        let mut osr_fired = false;
                         if disp < 0 {
                             let c = frame.back_edge_counts.entry(site_pc).or_insert(0);
                             *c += 1;
-                            if *c == OSR_BACK_EDGE_THRESHOLD
-                                && !frame.osr_cache.contains_key(&site_pc) {
-                                try_osr_compile(frame, site_pc);
+                            if *c >= OSR_BACK_EDGE_THRESHOLD {
+                                if !frame.osr_cache.contains_key(&site_pc) {
+                                    try_osr_compile(frame, site_pc);
+                                }
+                                // Fast-path: skip function call if cache is empty or None.
+                                if matches!(frame.osr_cache.get(&site_pc), Some(Some(_))) {
+                                    osr_fired = try_osr_invoke(frame, site_pc);
+                                }
                             }
                         }
-                        frame.pc = (frame.pc as i32 + disp) as usize;
+                        if !osr_fired {
+                            frame.pc = (frame.pc as i32 + disp) as usize;
+                        }
                     }
                 }
                 Op::JumpIfFalseKeep => {
@@ -7239,15 +7268,23 @@ impl Runtime {
                     let disp = decode_i32(&frame.bytecode, frame.pc);
                     frame.pc += 4;
                     if !to_boolean(frame.peek(0)?) {
+                        let mut osr_fired = false;
                         if disp < 0 {
                             let c = frame.back_edge_counts.entry(site_pc).or_insert(0);
                             *c += 1;
-                            if *c == OSR_BACK_EDGE_THRESHOLD
-                                && !frame.osr_cache.contains_key(&site_pc) {
-                                try_osr_compile(frame, site_pc);
+                            if *c >= OSR_BACK_EDGE_THRESHOLD {
+                                if !frame.osr_cache.contains_key(&site_pc) {
+                                    try_osr_compile(frame, site_pc);
+                                }
+                                // Fast-path: skip function call if cache is empty or None.
+                                if matches!(frame.osr_cache.get(&site_pc), Some(Some(_))) {
+                                    osr_fired = try_osr_invoke(frame, site_pc);
+                                }
                             }
                         }
-                        frame.pc = (frame.pc as i32 + disp) as usize;
+                        if !osr_fired {
+                            frame.pc = (frame.pc as i32 + disp) as usize;
+                        }
                     }
                 }
                 Op::JumpIfNullish => {
@@ -9567,8 +9604,71 @@ fn try_osr_compile(frame: &mut Frame, site_pc: usize) {
         is_async: false,
         strict: frame.strict,
     };
-    let compiled = rusty_js_jit::compile_function(&synth).ok().map(Box::new);
+    // OSR-EXT 5b+5d (2026-05-23): use compile_function_osr to produce
+    // an ArityOsr CompiledFn with proper locals load/store IR. The
+    // compiled body's signature is extern "C" fn(*mut f64) -> f64;
+    // OSR-EXT 5d wires the invoke via call_osr.
+    let compiled = rusty_js_jit::compile_function_osr(&synth).ok().map(Box::new);
     frame.osr_cache.insert(site_pc, compiled);
+}
+
+/// OSR-EXT 5d (2026-05-23): invoke a cached OSR CompiledFn on a back-
+/// edge fire. Returns true if invoke fired (caller skips normal jump);
+/// false otherwise.
+///
+/// Invoke flow:
+///   1. Snapshot frame.locals (Vec<Value>) for the box_to_value path.
+///   2. Marshal frame.locals → Vec<f64> via unbox_arg_f64.
+///   3. Call compiled.func.call_osr(arr.as_mut_ptr()) — JIT body reads
+///      locals from arr on entry, runs the loop, writes locals back at
+///      exit (Return / ReturnUndef / synthesized-end-of-body).
+///   4. Marshal Vec<f64> → frame.locals via box_to_value with snapshot.
+///   5. Set frame.pc = end_pc (post-back-edge pc; loop done).
+///
+/// Per Finding OSR.1 + Doc 740 §VIII.2: locals-marshaling closure;
+/// JIT body runs ALL remaining iters internally (do-while-shape loops);
+/// for-loop / while-loop with forward exit jumps to out-of-bounds
+/// targets and would have compile-failed at try_osr_compile (cache
+/// stores None) — this helper sees cache None and returns false.
+fn try_osr_invoke(frame: &mut Frame, site_pc: usize) -> bool {
+    // OSR-EXT 5d: fast-path early-out when cache has None (compile
+    // previously failed; saves the function-call overhead at every
+    // back-edge fire past threshold).
+    let compiled = match frame.osr_cache.get(&site_pc) {
+        Some(Some(boxed)) => boxed.as_ref() as *const rusty_js_jit::CompiledFn,
+        Some(None) | None => return false,
+    };
+    let end_pc = site_pc + 5;
+    let n_locals = frame.locals.len();
+    let mut snapshot: Vec<Value> = Vec::with_capacity(n_locals);
+    let mut arr: Vec<f64> = Vec::with_capacity(n_locals);
+    for v in &frame.locals {
+        snapshot.push(v.clone());
+        arr.push(unbox_arg_f64(v));
+    }
+    // TLS plumbing: OSR loop bodies don't make extern calls (Finding
+    // VII.2 + Pred-tl.4 keep alphabet narrow), so proto/runtime ptrs
+    // are unused. Pass 0 to satisfy the API.
+    rusty_js_jit::set_current_runtime(0);
+    rusty_js_jit::set_current_proto(0);
+    // SAFETY: the cache holds Box<CompiledFn>; *const CompiledFn is
+    // stable for the box's lifetime (TB-EXT 7 standing rule 9 pattern);
+    // we hold &mut frame which owns the cache, so the boxed alloc
+    // lives for the call's duration.
+    let _r = unsafe { (*compiled).func.call_osr(arr.as_mut_ptr()) };
+    rusty_js_jit::clear_current_runtime();
+    rusty_js_jit::clear_current_proto();
+    // Marshal locals back. Per box_to_value: Number snapshots get the
+    // new f64; other variants preserve the snapshot.
+    for (i, f) in arr.into_iter().enumerate() {
+        if i < frame.locals.len() {
+            frame.locals[i] = box_to_value(f, &snapshot[i]);
+        }
+    }
+    // Skip the normal back-edge jump; advance past the back-edge to
+    // the post-loop pc.
+    frame.pc = end_pc;
+    true
 }
 
 pub fn compute_loop_region(bytecode: &[u8], site_pc: usize) -> Option<(usize, usize)> {

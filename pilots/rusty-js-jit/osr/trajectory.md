@@ -460,3 +460,70 @@ LOC delta: ~70 (25 helper + 45 unit tests). OSR-EXT 0-5c cumulative: ~730 across
 ---
 
 *OSR-EXT 5c closes. box_to_value helper landed. 4/4 unit tests cover Value-variant snapshots; all probes GREEN. OSR-EXT 5d wires box_to_value into the dispatcher invoke path.*
+
+---
+
+## OSR-EXT 5d — 2026-05-23 (runtime dispatcher integration; OSR loop invoke wired)
+
+### Headline
+
+Per option β three-round split close. OSR loop invoke now wired end-to-end:
+- try_osr_compile uses `compile_function_osr` (instead of compile_function)
+- `compile_function_osr` exported from JIT crate's lib.rs
+- New `try_osr_invoke(frame, site_pc) -> bool` helper marshals frame.locals → Vec<f64> → call_osr → box_to_value → frame.locals; sets frame.pc = end_pc on success
+- 5 Jump handlers restructured: at every back-edge fire past threshold, fast-path cache hit check + invoke; on success, skip the normal back-edge jump
+- Fast-path inline cache check (`matches!(frame.osr_cache.get(&site_pc), Some(Some(_)))`) skips function-call overhead when cache is None or empty
+
+~90 LOC delta (interp.rs: try_osr_invoke + 5 Jump handler restructures; JIT crate: compile_function_osr export).
+
+### Three-probe results
+
+| probe | result |
+|---|---|
+| canonical fuzz (acc=-932188103) | ✅ GREEN |
+| diff-prod 42/42 | ✅ GREEN |
+| JIT lib tests | ✅ 38/38 |
+| OSR helper unit tests | ✅ 5/5 |
+| box_to_value unit tests | ✅ 4/4 |
+| A/B composition (5-run median) | 1528 vs baseline 1480 (+3.2%; within ±5% Pred-osr.4 gate) |
+| CRB json_parse_transform | 2207 vs post-CharCode-2 baseline 2188 (+1%; within noise; cruft/node 17.38×) |
+
+### Expected outcome on json_parse_transform (per Finding VII.2)
+
+The invoke fast-path's correctness preservation is verified by ALL probes GREEN. But the invoke does NOT actually fire on json_parse_transform's checksum loop:
+
+1. **Alphabet gap**: the loop body uses Op::GetProp (.length) + Op::CallMethod (.charCodeAt) — not in JIT alphabet per Finding VII.2. compile_function_osr fails at parse-time; cache stores None.
+
+2. **Structural while/for forward-exit issue (Finding OSR.2 candidate)**: even if alphabet covered the inner ops, for-loop bytecode has the shape `loop_top: cond; JumpIfFalse loop_exit; body; Op::Jump loop_top` where `loop_exit` is OUTSIDE the extracted slice. The JIT translator's parse_bytecode would record loop_exit as a jump target; the translator allocates a Cranelift Block for it; the block is never filled (out of slice bounds); Cranelift fails at finalize. Only do-while-shape loops (`JumpIfTrue back-edge` at bottom, no forward exit out of body) extract cleanly.
+
+So on json_parse_transform, OSR-EXT 5d's invoke path is verified by correctness probes (it doesn't fire; behavior is identical) but produces 0% CRB reclaim by construction.
+
+**For invoke-path empirical validation**, a synthetic do-while-shape fixture would be needed (queued as candidate for an OSR-EXT 5e if keeper requests). Or wait for OSR-EXT 6 (alphabet extension) + OSR-EXT 6b (forward-exit handling) which together unblock json_parse_transform.
+
+### Composition with prior corpus / engagement work
+
+- **Doc 740 §VIII (this session's amendment)**: this round's invoke wiring is the (A4) locals-marshaling closure tier. (A2) op-set coverage + (A3) value-domain coverage are partially closed; full pipeline-connection still pending (A2) + the structural forward-exit issue.
+- **OSR-EXT 5b + 5c**: cascade-revival consumer at this round; closes the option-β three-round chain.
+- **Standing rule 9 (raw-pointer audit)**: applied — `boxed.as_ref() as *const CompiledFn` is stable for the cache box's lifetime; frame holds the cache; no aliasing concerns.
+- **Standing rule 11 (multi-axis coverage)**: this round closes the (A4) axis substrate; (A2) + structural-extraction remain open.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable.
+Per Doc 734 §V: growth (a) positive-finding (invoke wired + correctness preserved); growth (b) negative-finding (Finding OSR.2 forward-exit-extraction structural blocker surfaces, candidate for follow-on findings work).
+Per Doc 735 §X.h.b: substrate-introduction at locals-marshaling tier; (P2.d) on json_parse_transform CRB by construction (compile-fail on this fixture); empirical materialization queued for OSR-EXT 6 + forward-exit closure.
+
+### Open scope at OSR-EXT 5d close
+
+1. **Finding OSR.2 surfacing** — for-loop / while-loop forward-exit jumps to out-of-bounds targets; OSR loop extraction structurally limited to do-while-shape loops in current first cut. Local findings entry + candidate engagement-wide promotion at Addendum VIII.
+2. **OSR-EXT 6** — alphabet extension (TL Moves 3+4 revival folded in: GetProp+length-IC + CallMethod+charCodeAt-IC consuming VD String encoding). Closes (A2) op-set coverage for the loop body. Combined with locals-marshaling (closed at 5d), unlocks ANY do-while loop that uses these intrinsics.
+3. **OSR-EXT 6b** (candidate) — forward-exit extraction handling (extend loop boundary detection to include the forward-exit target's pc; emit synthetic block returning at exit). ~50 LOC. Unlocks for/while loops.
+4. **OSR-EXT 7** — composition probe + CRB final disposition + Pred-osr.1 gate.
+
+### Cumulative status at OSR-EXT 5d close
+
+LOC delta: ~90 (interp.rs try_osr_invoke + 5 handler restructures + cache hot-path; JIT lib.rs export). OSR-EXT 0-5d cumulative: ~820 across the locale.
+
+---
+
+*OSR-EXT 5d closes. Option β three-round chain complete: 5b (JIT-side) + 5c (helper) + 5d (runtime wiring). Invoke is correctness-preserving + within composition gate; doesn't fire on json_parse_transform by construction (alphabet + structural extraction limits). OSR-EXT 6 + forward-exit handling are the remaining tiers to materialize CRB reclaim.*
