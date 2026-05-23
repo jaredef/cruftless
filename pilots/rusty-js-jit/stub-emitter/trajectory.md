@@ -54,3 +54,66 @@ The pilot's locale exists; the substrate work begins at StubE-EXT 1.
 ---
 
 *StubE-EXT 0 closes. The pilot is founded; the next round is the bench baseline measurement.*
+
+---
+
+## StubE-EXT 1 — 2026-05-23 (pre-stub bench baseline)
+
+### Headline
+
+Bench probe activated. Hand-built `function getx(obj) { return obj.x; }` driven through the current extern-call IC dispatch path (`Op::GetPropOnObject` → Cranelift `call jit_getprop_on_object` → `runtime_getprop_on_object` → `rt.object_get`); 1M iterations on the Pi target. **Baseline: 271.0 ns/iter** (270.986 ms elapsed). Pred-stub.1 target reads: ≤90.3 ns/iter for the (P2.a) strict-win claim.
+
+### Substrate delivered
+
+- `cruftless/examples/bench_ic.rs` (~135 LOC) — bench harness. Hand-builds the FunctionProto with `Op::GetPropOnObject` bypassing the upstream-parser gap (per JIT-EXT 24 open scope item 2). Allocates an Ordinary Object with `obj.x = 42.0`, JIT-compiles getx() with `jit_threshold = 1`, warms up 10 calls, measures 1M-iter elapsed.
+- `pilots/rusty-js-jit/stub-emitter/docs/bench-baseline.md` (~95 lines) — bench protocol; Pi baseline (271 ns/iter); estimated cost breakdown by component (Rust dispatcher ~120 ns; JIT preamble ~30 ns; **Cranelift extern call ~50 ns** [target of LeJIT-Σ]; runtime helper body ~50 ns [partly addressable post-CMig-EXT 8]; return + reboxing ~20 ns); Pred-stub.1 four-case categorization per Doc 735 §X.h.b ((P2.a) strict-win / (P2.d) correct-but-losing / (P2.c) illegal-speed / (P2.b) slow-stratum); comparison points (Bun IC fast-path low-single-digit ns; cruftless interpreter ~3-5× slower than JIT per seed §VIII).
+
+### Bench location decision
+
+Lives in `cruftless/examples/bench_ic.rs` rather than `pilots/rusty-js-jit/derived/examples/`. Reason: the bench needs the full `Runtime` to drive `call_function`, which requires a `rusty-js-runtime` dependency. The LeJIT crate doesn't depend on the runtime (the dependency direction is runtime → JIT, not JIT → runtime), so adding the dev-dep would invert the architecture. cruftless already wires all the deps for examples like `bench_sum.rs`-equivalent driving; bench_ic.rs slots in alongside.
+
+### Build + gate
+
+- `cargo build --release --example bench_ic -p cruftless`: clean (8.9 MB binary).
+- `target/release/examples/bench_ic`: 271 ns/iter on Pi (single run; variance characterization deferred to StubE-EXT 6).
+- diff-prod 42/42 unchanged (no behavior change; bench is observe-only).
+
+### §XVI / Doc 734 categorization
+
+Per Doc 730 §XVI: not applicable (bench is observe-only). The bench result IS the §X.h.c bench-probe data point that Pred-stub.1 reads against.
+
+Per Doc 734 §V: growth mechanism (c) positive-finding generalization preparatory — the baseline number is the empirical anchor against which all subsequent LeJIT-Σ substrate moves are measured.
+
+### Composition with prior corpus work
+
+- **Doc 735 §X.h.c three-probe-levels discipline**: this is the **bench probe** for Pred-stub.1. Consumer-route probe activates at StubE-EXT 5 (diff-prod 42/42 + a JIT-on hot-loop fixture). Fuzz probe activates at StubE-EXT 7 (shape-transition-history fuzz over the IC dispatch space).
+- **Doc 735 §X.h.b (P2) sub-cases** mapped explicitly in bench-baseline.md §4. The four-case categorization is the falsifier rubric for the eventual StubE-EXT 6 re-measurement.
+- **LeJIT seed §I.2 falsifier threshold**: the 3× speedup threshold (271 → ≤90.3 ns/iter) is the explicit Pred-stub.1 target. Below threshold = (P2.d) revert + document boundary.
+
+### Pred disposition
+
+- **Pred-stub.1** (≥3× speedup): baseline established at 271 ns/iter. Target ≤90.3 ns/iter post-StubE-EXT 5. Falsifier reading deferred to StubE-EXT 6.
+- **Pred-stub.2** (no use-after-free under shape transitions): fuzz probe at StubE-EXT 7.
+- **Pred-stub.3** (cache convergence under monomorphic workload): integration test at StubE-EXT 5.
+- **Pred-stub.4** (Doc 738 §II convention conformance): bench identifier `bench_ic.rs` fits the pillar-path convention (cruftless/examples/ is the engagement's standing examples location); no `__`-prefix because the bench doesn't introduce JS-observable state.
+- **Pred-stub.5** (Doc 731 §VII R1 single-tier preservation): no change at the bench tier; preservation tested when LeJIT-Σ stub emitter lands (StubE-EXTs 3+).
+
+### Open scope at StubE-EXT 1 close
+
+1. **StubE-EXT 2** — Stub emitter design. Choose cache layout, patching mechanism, state machine. Output: `docs/stub-design.md`. Apparatus-tier; no code.
+2. **StubE-EXT 3** — Scaffold `pilots/rusty-js-jit/derived/src/stub_aarch64.rs` module + unit tests against synthetic shape pointers. Test-only; not wired into translator.
+3. **StubE-EXT 4** — Synthetic shape-pointer integration test.
+4. **StubE-EXT 5** — Wire stub into JIT translator under `CRUFTLESS_LEJIT_STUB=1` env flag.
+5. **StubE-EXT 6** — Bench re-measurement; (P2) categorization per Doc 735 §X.h.b.
+6. **StubE-EXT 7** — Fuzz probe.
+7. **StubE-EXT 8** — Default-on flip.
+
+### Cumulative status at StubE-EXT 1 close
+
+LOC delta: ~135 (bench harness) + docs. Pi baseline: 271 ns/iter for the current dispatch path. diff-prod 42/42 unchanged.
+
+The substrate move that LeJIT-Σ ships against has a measured anchor. StubE-EXT 2's design round begins next.
+
+---
+
+*StubE-EXT 1 closes. The bench-probe baseline is 271 ns/iter on the Pi. Pred-stub.1's 3× threshold reads at ≤90.3 ns/iter for the post-stub-emitter measurement.*
