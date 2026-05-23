@@ -491,3 +491,60 @@ After this addendum, the findings doc contains:
 Total: 12 findings (6 original + 6 new across addenda); 11 standing rules (8 original + 3 added); 2 new engagement instruments (canonical fuzz + component A/B probe).
 
 The findings doc continues compounding: each session's work refines future substrate work; each standing rule prevents a bug class or mis-targeting class from recurring. The JSF chain's empirical demonstration of multi-tier cascade-revival is corpus-articulation candidate (Doc 740, forthcoming).
+
+---
+
+## Addendum V — 2026-05-23 (post TL-EXT 3 + TL-locale Findings TL.1+TL.2; promotes coverage discipline to engagement scope)
+
+This addendum promotes two findings surfaced at the rusty-js-jit/top-level (TL) nested locale to engagement-wide scope, and extends standing rule 11 along the coverage axis.
+
+### Promotion: Finding TL.1 → engagement-wide
+
+**Finding VII.2 (Whole-body-or-nothing JIT bail discipline gates inner-loop JIT eligibility on FULL enclosing-scope alphabet coverage)** *[new, 2026-05-23 via TL-EXT 3 empirical readout, promoted from TL.1]*
+
+**Anchor**: TL-EXT 3 module-body JIT entry wrapper landed correctly + bailed cleanly on json_parse_transform's top-level body because the body contained ops outside the (b-narrow) alphabet. The cleanup confirmed JIT's whole-body C8 bail discipline holds; the surface consequence is that inner-loop JIT eligibility is bounded by the WHOLE enclosing scope's alphabet coverage, not just the inner-loop sub-region.
+
+**Substrate implication**: at any pilot whose telos is "extend JIT alphabet to close a measured bottleneck," the source-read enumeration must include the FULL bytecode of the enclosing scope (whole module for top-level; whole function for function-body), not just the inner loop. If the alphabet coverage required is larger than the pilot's scope, the pilot's reclaim ceiling on that fixture is 0% via that pilot alone.
+
+### Promotion: Finding TL.2 → engagement-wide
+
+**Finding VII.3 (JIT calling-convention value-domain coverage gates IC fast-paths on whether the receiver Value variant is representable in the convention)** *[new, 2026-05-23 via TL-EXT 4 pre-implementation source-read, promoted from TL.2]*
+
+**Anchor**: pre-implementation source-read of unbox_arg_f64 (interp.rs:9200-9206) revealed the Φ calling convention encodes only Value::Number → f64 payload and Value::Object(id) → f64::from_bits(id.0 as u64); all other Value variants degrade to 0.0. (b-narrow)'s Moves 3+4 fast paths required String-receiver bitcast back to Rc<String>; no such encoding exists.
+
+**Substrate implication**: before spawning a JIT-alphabet pilot whose telos requires non-Number / non-Object receivers, verify the calling convention encodes the receiver variant. If not, name calling-convention extension (e.g., NaN-boxing for String/BigInt/etc.) as a prerequisite tier per Doc 740 §II.2's relevant-tier set R.
+
+### Extension of standing rule 11
+
+**Standing rule 11 (extended 2026-05-23)**: before spawning any pilot whose telos is "close a CRB-measured gap," run a component A/B probe to identify the actual dominator empirically (per Addendum IV). The rule extends with two pre-spawn coverage checks:
+
+- **Op-set coverage (Finding VII.2)**: for JIT-alphabet pilots, source-read the FULL bytecode of the target fixture's hot-path enclosing scope; enumerate the op set; verify the pilot's alphabet additions cover ALL ops in scope.
+- **Value-domain coverage (Finding VII.3)**: for JIT-IC pilots requiring non-Number / non-Object receivers, verify the calling convention encodes the receiver Value variant. If not, name calling-convention extension as a prerequisite tier.
+
+If either coverage check fails, the pilot's reclaim ceiling on that fixture is 0% via that pilot alone; the missing tier(s) must be addressed in dependency order (per Doc 740 §II.2 P4) for cumulative reclaim to materialize.
+
+### Engagement-wide structural reading
+
+The TL pilot's empirical surface generates a refinement of Doc 740's multi-tier reading: the relevant-tier set R for any JIT-closure pilot has a structural lower bound of **{op-set coverage, value-domain coverage, IC fast-path body, entry mechanism}** when the target requires non-Number receivers. Pilots whose scope addresses only a subset of these tiers deliver substrate-introduction value but not cumulative reclaim.
+
+For the cruftless engagement specifically:
+- Σ (IC stub emitter): closed IC fast-path body tier for Object receivers via the existing Object encoding.
+- Τ (tiny-baseline): closed entry-mechanism tier for hot-called function bodies.
+- Ψ (value-tag-inline): closed inline-tag-check tier (downstream of Φ).
+- Φ (f64-calling-convention): closed value-domain coverage for Number; extended Object encoding via f64::from_bits.
+- TL (top-level): closed entry-mechanism tier for module bodies (TL-EXT 3). Did not close op-set coverage or value-domain coverage for String; (b-narrow) plan was bounded by both gaps.
+
+The next sibling pilot at the JIT tier needs to address one or both of (a) Φ-encoding extension for String/non-Object Values (closes the value-domain tier), (b) OSR / loop-extraction (closes the op-set-coverage tier by reducing the enclosing scope to the loop). (b) was the keeper's (b-architectural) framing pre-TL-EXT 4; (a) surfaces from Finding VII.3 as a co-equal architectural target.
+
+### Findings-doc cumulative status
+
+After Addendum V, the findings doc contains:
+- 6 original finding sections (I-VI; per-category)
+- 8 original standing rules
+- Addendum I: 5 findings (3 promoted; 2 new) + 1 new standing rule (#9)
+- Addendum II: 1 new finding (II.5 cascade-revival)
+- Addendum III: 2 new findings (IV.3 audit-precision; IV.4 canonical-fuzz) + 1 new standing rule (#10) + 2 promotions
+- Addendum IV: 3 new findings (II.2-bis substrate-introduction-signature; VII.1 component-A/B; II.3 multi-tier-cascade) + 1 new standing rule (#11) + 1 promotion + 2 new engagement instruments
+- Addendum V (this): 2 new findings (VII.2 op-set-coverage; VII.3 value-domain-coverage) + extension of standing rule #11 along two coverage axes
+
+Total: 14 findings (6 original + 8 new across addenda); 11 standing rules (rule 11 now multi-axis). The TL pilot's substrate-introduction value (entry-mechanism tier closed) + Findings VII.2 + VII.3 are the locale's load-bearing contributions; Pred-tl.1 (CRB reclaim) is structurally infeasible via (b-narrow) alone per the new findings.

@@ -206,3 +206,73 @@ LOC delta: ~90 (translator.rs: JitFn0 + Arity0 variant + call0 + param check rel
 ---
 
 *TL-EXT 3 closes. Move 2 module-body JIT entry wrapper landed. The wrapper attempts JIT compile at module entry; bails cleanly on alphabet gaps (per C8); falls through to interp without regression. A/B probe flat — substrate-introduction signature per Finding II.2-bis. TL-EXT 4 lands Move 3 GetProp+length-IC.*
+
+---
+
+## (b-narrow) chapter close — 2026-05-23
+
+### Summary
+
+(b-narrow) closed structurally at TL-EXT 3, not at TL-EXT 5 as the design projected. Two new findings surfaced during TL-EXT 3 + TL-EXT 4 pre-implementation source-read; both promoted to engagement-wide scope at findings.md Addendum V.
+
+### Rounds landed
+
+| round | substrate | LOC | three-probe | bench |
+|---|---|---:|---|---|
+| TL-EXT 0 | locale founding + manifest refresh | ~150 | n/a | n/a |
+| TL-EXT 1 | design doc | ~225 | n/a | n/a |
+| TL-EXT 2 | M1 PushConst-Number (alphabet) | ~30 | GREEN | flat (subst-intro signature) |
+| TL-EXT 3 | M2 module-body JIT entry wrapper | ~90 | GREEN | flat (subst-intro signature) |
+
+Total (b-narrow) substrate: ~120 LOC of correctness-preserving JIT-tier infrastructure (JitFn0 + module-body wrapper + PushConst alphabet variant).
+
+### Rounds NOT landed (per Findings VII.2 + VII.3)
+
+| round | originally designed | not landed because |
+|---|---|---|
+| TL-EXT 4 | M3 GetProp+length-IC | Finding VII.3 — Φ encoding can't carry String receiver identity into JIT body; IC fast-path cannot emit |
+| TL-EXT 5 | M4 CallMethod+charCodeAt-IC | Same as TL-EXT 4 |
+| TL-EXT 6 | composition probe | Would have measured 0% on json_parse_transform per Finding VII.2 (whole-body bail on top-level body's MakeClosure/LoadGlobal/Op::Call) AND per Finding VII.3 (String identity loss). Both blockers structurally independent of inner-loop alphabet coverage |
+
+### Findings generated (engagement-wide promotion at Addendum V)
+
+- **Finding VII.2 (op-set-coverage)**: whole-body JIT bail discipline gates inner-loop eligibility on FULL enclosing-scope alphabet coverage. (b-narrow)'s inner-loop-only alphabet additions wouldn't have closed json_parse_transform's top-level body. Source-read enumeration must include the FULL bytecode of the enclosing scope at pilot design time.
+- **Finding VII.3 (value-domain coverage)**: JIT calling convention encodes only Number+Object Values; all others (String, BigInt, etc.) degrade to 0.0 at unbox_arg_f64. IC fast-paths requiring String receivers cannot emit until Φ encoding is extended. Pre-spawn check: verify calling convention covers required receiver variants.
+- **Standing rule 11 extension (two coverage axes)**: rule 11's component A/B probe (Addendum IV) now also gates on op-set coverage + value-domain coverage for JIT-alphabet/IC pilots.
+
+### Locale disposition
+
+**(b-narrow) closed at TL-EXT 3.** Pilot delivered substrate-introduction value at the entry-mechanism tier + alphabet groundwork (PushConst-Number) + two engagement-wide findings (VII.2 + VII.3) + standing rule 11 extension.
+
+**Pred-tl.1 (≥40% CRB reclaim on json_parse_transform): structurally infeasible via (b-narrow) alone.** Both coverage gaps (VII.2 op-set; VII.3 value-domain) must close before any meaningful CRB reclaim materializes. Pivot to (b-architectural) per keeper directive 2026-05-23 21:34-local.
+
+### Composition with prior corpus / engagement work
+
+- **Doc 740 §II.2 (P4) multi-tier reading**: TL pilot empirically validated the pattern — closing one tier (entry-mechanism, TL-EXT 3) without closing the other relevant tiers (op-set coverage; value-domain coverage) produces 0% cumulative reclaim. The pattern's prediction (full pipeline-connection requires ALL relevant tiers closed) held.
+- **Finding II.2-bis (substrate-introduction (P2.d) signature)**: TL-EXT 2 + TL-EXT 3's flat A/B is the correct categorization; the rounds DID close their respective upstream tier. The failure mode is on the cumulative consumer side (Moves 3+4) not on the substrate-introduction side.
+- **Finding VII.1 (component A/B before pilot spawn)**: rule 11 satisfied at JSF-EXT 8; (b-narrow) plan still mis-projected reclaim because the rule didn't cover op-set / value-domain coverage at the time. Findings VII.2 + VII.3 close that gap going forward.
+
+### Cumulative status at (b-narrow) chapter close
+
+LOC delta (TL-EXT 0-3): ~270 trajectory + ~120 source = ~390 across the locale.
+Pred-tl.1: structurally falsified by Findings VII.2 + VII.3.
+Pred-tl.2 (canonical fuzz), Pred-tl.3 (diff-prod): GREEN throughout.
+Pred-tl.5 (composition with TB/Φ/Σ): GREEN throughout.
+JIT lib tests: 38/38 (9 pre-existing ignored).
+
+Findings docs updated:
+- TL local findings.md: Findings TL.1 + TL.2
+- LeJIT engagement findings.md Addendum V: Findings VII.2 + VII.3 + standing rule 11 multi-axis extension
+
+### Forward to (b-architectural)
+
+Per keeper directive 2026-05-23 21:34-local + 21:45-local: pivot to (b-architectural). Two structurally co-equal pivot targets surfaced by Findings VII.2 + VII.3:
+
+1. **Φ-encoding extension** — close value-domain coverage. NaN-boxing or sentinel-bit pattern for Rc<String> + other non-Number/Object Value variants. Major Φ-tier work; cuts across all JIT pilots.
+2. **OSR / loop-extraction** — close op-set coverage by reducing enclosing scope to the loop. Bytecode transform at runtime to extract hot loops into JIT-eligible synthetic functions.
+
+Either or both. Per Doc 740 §II.2 P4: full pipeline-connection on json_parse_transform requires BOTH. The new pilot's scope is a keeper decision.
+
+---
+
+*(b-narrow) chapter closes. Substrate-introduction value at entry-mechanism tier + alphabet groundwork + 2 engagement-wide findings + rule 11 extension delivered. Pred-tl.1 structurally infeasible without architectural pivot. Spawn (b-architectural) pilot per next keeper directive.*
