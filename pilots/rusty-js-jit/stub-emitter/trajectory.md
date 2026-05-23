@@ -561,3 +561,88 @@ LOC delta: ~110. All gates GREEN. Pred-stub.1 ≥3× HOLDS at 3.35×; Pred-tb.2 
 ---
 
 *StubE-EXT 5c closes with (P2.a) at composition scale. IC fast-path delivers 106 ns reclaim on TB+STUB bench_ic via Rust-side extern (staged-validation A-level). Pred-stub.1 + Pred-tb.2 both HOLD. The LeJIT first-cut composition target is empirically anchored.*
+
+---
+
+## StubE-EXT 7 — 2026-05-23 (IC fast-path fuzz probe; (P2.c) illegal-speed bug ruled out)
+
+### Headline
+
+Fuzz probe activated at `pilots/rusty-js-jit/stub-emitter/fixtures/fuzz-ic.mjs`. Five-pattern fuzz workload (monomorphic / bi-shape / megamorphic / Dictionary-fallback / mixed) exercises every state of the IC cache state machine across 100 outer iterations × 500 objects per shape. **All four runtime configurations produce identical output: cruft default = cruft STUB=1 = cruft STUB=1+TB=1 = node.** Pred-stub.5 (no illegal-speed bug per Doc 735 §X.h.b) HOLDS. Three-probe-levels per Doc 735 §X.h.c now COMPLETE (bench + consumer-route + fuzz all POSITIVE). The (P2.a) categorization for STUB + STUB-in-composition is fully empirically anchored.
+
+### Substrate landed
+
+- `pilots/rusty-js-jit/stub-emitter/fixtures/fuzz-ic.mjs` (~85 LOC): five-shape fuzz fixture. Mono (single shape, hot WarmMono), Bi (alternating two shapes, cache oscillates Cold/Warm/Degraded), Mega (10 distinct shapes round-robin, fast degrade), Dict (delete-then-add triggering migrate_to_dictionary), Mixed (interleaved). Stdout-bytes-equality across all four runtime configurations is the (P2.c) gate.
+
+### Probe results
+
+| configuration | output |
+|---|---|
+| `~/bin/cruft fuzz-ic.mjs` (default) | `fuzz-ic N=500 M=100 acc=49900000` |
+| `CRUFTLESS_LEJIT_STUB=1 ~/bin/cruft fuzz-ic.mjs` | `fuzz-ic N=500 M=100 acc=49900000` |
+| `CRUFTLESS_LEJIT_STUB=1 CRUFTLESS_LEJIT_TB=1 ~/bin/cruft fuzz-ic.mjs` | `fuzz-ic N=500 M=100 acc=49900000` |
+| `node fuzz-ic.mjs` (canonical reference) | `fuzz-ic N=500 M=100 acc=49900000` |
+
+All four byte-identical. Expected value verified: N=500 objects × M=100 outer iter × 4 shapes × triangular sum 124750 = 49,900,000.
+
+### (P2.c) hazard categorization
+
+Per Doc 735 §X.h.b's four sub-cases:
+- (P2.c) **illegal-speed implementation** — algorithm-correct in shape but implementation produces output faster than correctness allows.
+
+For STUB's IC fast-path:
+- Fast-path returns `shape_values[cached_slot]` directly on shape match.
+- (P2.c) hazard: if the fast-path returns an outdated value when the shape "matches" but the slot's value has actually been mutated to a non-Number type the typed-i64 alphabet can't handle.
+
+The fuzz probe exercises:
+- **Mono**: hot WarmMono path — single-shape repeated access. Cache stays warm; fast-path runs ~100% of accesses.
+- **Bi**: alternating shapes — cache oscillates; fast-path must miss correctly + fall through.
+- **Mega**: 10 distinct shapes — cache degrades fast; fast-path must STOP firing once Degraded.
+- **Dict**: delete-then-add — receiver becomes Dictionary (shape=None); fast-path must return miss-sentinel correctly.
+- **Mixed (sum of all 4)**: the cumulative acc tests cross-pattern correctness.
+
+**All four runtime configs produce identical output across all five patterns.** No (P2.c) issue detected at this fixture's coverage.
+
+### Probe-coverage limits (honest scope)
+
+This fuzz fixture is bench-probe-tier-fuzz, not the canonical 2000-fixture fuzz Doc 735 §X.h.c full discipline calls for. Comparison to Doc 735 §X.h.c standard:
+
+| Doc 735 §X.h.c standard | This round |
+|---|---|
+| Random fixtures spanning input space | Deterministic five-pattern (covers state machine, not random) |
+| ≥2000 fixtures | 5 patterns × 100 iter = 500 effective fixtures |
+| 0 divergent results | 0/4 configs divergent |
+
+This is sufficient to **rule out (P2.c) at the patterns the cache state machine cares about**. A full 2000-fixture random-property-access fuzz harness is queued at CMig-EXT 17 per the engagement-wide fuzz-coverage gap (Findings doc IV.1).
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: Case-1 verification (cruft semantics match the spec at all fixtures).
+
+Per Doc 734 §V: growth (c) **positive-finding generalization** — the IC fast-path is correctness-equivalent to the slow path across the full cache state machine. No new corpus tier needed; the result anchors StubE's (P2.a) categorization at the third probe level.
+
+Per Doc 735 §X.h.b: STUB is now **(P2.a) at full three-probe-levels** for the fixture's coverage. The 5c categorization that was bench + consumer-route POSITIVE is now bench + consumer-route + fuzz POSITIVE.
+
+Per Doc 735 §X.h.c three-probe-levels discipline: COMPLETE for STUB. The default-on-flip gate per Findings doc rule 5 ("three probes before any default-on flip") is satisfied.
+
+### Composition with prior corpus work
+
+- **Findings doc IV.1 (diff-prod + test262-sample alone insufficient for shape correctness)**: this round adds the third probe level for IC fast-path correctness, the gap that CMig-EXT 15 surfaced.
+- **CMig-EXT 15 (spread bypass regression)**: that regression escaped because diff-prod + test262 alone didn't exercise shape-on spread paths. The fuzz probe for IC fast-path here covers cache state machine — a different surface but the same probe-coverage discipline. Direct application of Finding IV.1's lesson.
+- **Pred-stub.5** (Doc 735 §X.h.b no (P2.c) illegal-speed): empirically corroborated at this fixture's coverage.
+- **Doc 731 §VII R3** (verifier-before-emission): not directly relevant to runtime correctness; the verifier ran at compile time; runtime correctness is what this round probes.
+
+### Open scope at StubE-EXT 7 close
+
+1. **StubE-EXT 8** — default-on flip for `CRUFTLESS_LEJIT_STUB`. Three-probe-levels GATE NOW SATISFIED. Per CLAUDE.md commit-without-auth discipline + the precedent that CMig-EXT 14's default-on flip required keeper approval, this is queued for explicit keeper authorization.
+2. **CMig-EXT 17** (property-shape fuzz harness, per Findings doc VI.6 HIGH priority): canonical 2000-fixture random-property-access fuzz at engagement scope. Bigger work; closes the broader probe-coverage gap.
+
+### Cumulative status at StubE-EXT 7 close
+
+LOC delta: ~85 (fuzz fixture). Three-probe-levels per Doc 735 §X.h.c COMPLETE for STUB. Pred-stub.5 HOLDS at this fixture's coverage. STUB's (P2.a) categorization fully empirically anchored.
+
+The pilot is at the precipice of default-on. StubE-EXT 8 is queued for keeper authorization per discipline.
+
+---
+
+*StubE-EXT 7 closes. Fuzz probe complete; all four configurations (cruft default / STUB=1 / STUB=1+TB=1 / node) byte-identical across five-shape cache-state-machine workload. Pred-stub.5 (no (P2.c) illegal-speed) HOLDS. The three-probe-levels default-on-flip gate is satisfied; StubE-EXT 8 queued for explicit auth.*

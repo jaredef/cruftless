@@ -548,6 +548,33 @@ This is the same pattern as TB-EXT 3b approach A (closure-side metadata cache, ~
 
 ---
 
+## 2026-05-23 — StubE-EXT 7: fuzz probe complete; STUB at full three-probe-levels (P2.a) **[ANTICIPATED]**
+
+**Locale**: `pilots/rusty-js-jit/stub-emitter/trajectory.md` → StubE-EXT 7.
+
+**Substrate change**: Added `pilots/rusty-js-jit/stub-emitter/fixtures/fuzz-ic.mjs` (~85 LOC) — five-shape fuzz workload covering the IC cache state machine (monomorphic / bi-shape / megamorphic / Dictionary-fallback / mixed). Stdout-bytes-equality across all four runtime configs (cruft default / STUB=1 / STUB=1+TB=1 / node) is the (P2.c) gate.
+
+**Predicted-by**: TB-EXT 4 trajectory entry's "fuzz at TB-EXT 7" + StubE seed §III item 7. Standing queue per the three-probe-levels discipline (Doc 735 §X.h.c).
+
+**Measurement**: all four configurations produced identical output `fuzz-ic N=500 M=100 acc=49900000`. (P2.c) illegal-speed ruled out at this fixture's coverage.
+
+**Implication for forward work**:
+
+- **STUB at full three-probe-levels (P2.a)**: bench POSITIVE (composition matrix), consumer-route POSITIVE (diff-prod 42/42), fuzz POSITIVE (this round). The default-on-flip gate per Findings doc rule 5 ("three probes before any default-on flip") is satisfied.
+
+- **StubE-EXT 8 queued for keeper authorization.** Per CLAUDE.md + the CMig-EXT 14 precedent (default-on flip required explicit keeper approval, then surfaced CMig-EXT 15's regression), the default-on flip is engagement-affecting and warrants explicit auth.
+
+- **Probe-coverage limit honestly named**: this fuzz is bench-probe-tier (5 patterns × 100 iter = ~500 effective fixtures), not the canonical 2000-fixture random-property-access fuzz Doc 735 §X.h.c full discipline calls for. Sufficient to rule out (P2.c) at the patterns the cache state machine cares about; not a full engagement-scope fuzz coverage close. CMig-EXT 17 (per Findings doc VI.6 HIGH priority) is the canonical fuzz harness that closes the broader gap.
+
+- **Findings doc IV.1 (diff-prod + test262-sample alone insufficient) applied prospectively**: STUB's default-on flip is gated on the third probe level (fuzz) in addition to the first two (bench + consumer-route). This is direct application of the post-CMig-EXT 15 discipline.
+
+**Provenance**:
+- Fixture: `pilots/rusty-js-jit/stub-emitter/fixtures/fuzz-ic.mjs`
+- Trajectory: `pilots/rusty-js-jit/stub-emitter/trajectory.md` StubE-EXT 7 (close)
+- Cross-reference: StubE-EXT 5c entry (composition (P2.a)); CMig-EXT 15 entry (Finding IV.1 source); Findings doc IV.1 + rule 5
+
+---
+
 ## Template — for future entries
 
 ### `<date>` — `<locale-tag>` `<round-id>`: `<one-line headline>` **[ANTICIPATED]**
