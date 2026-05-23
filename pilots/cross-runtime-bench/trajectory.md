@@ -1,0 +1,131 @@
+# cross-runtime-bench — Trajectory
+
+Per-CRB-EXT log for the cross-runtime speed benchmark pilot. Read seed.md first.
+
+---
+
+## CRB-EXT 0 — 2026-05-23 (workstream founding)
+
+### Headline
+
+Apparatus-tier round. Pilot founded per keeper directive 2026-05-23 07:34-local. Cross-runtime speed benchmark for cruft + bun + node on realistic JS workloads. Standalone pilot (no parent under pilots/).
+
+### Substrate delivered
+
+- `pilots/cross-runtime-bench/seed.md` (~155 lines): telos (empirical answer to "how fast is cruft vs bun vs node"), four-fixture first cut, five Pred-crb falsifiers, apparatus (runner + fixtures + result-format), CRB-EXT 0-8 methodology, carve-outs (wall-clock only, median-of-N, same-machine, no micro-optimization, skip-when-unsupported).
+- `pilots/cross-runtime-bench/trajectory.md` (this file).
+- `pilots/cross-runtime-bench/{fixtures,scripts,docs,results}/` scaffold.
+
+### Locale registration
+
+Per Doc 737 §IV: top-level locale at coordinate `pilots/cross-runtime-bench/` (depth 1). No parent. Manifest refresh queued.
+
+Locale count: 14 → 15 after this spawn (9 top-level + 5 nested → 10 top-level + 5 nested).
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable (founding round).
+
+Per Doc 734 §V: growth (a) tier-relocation — the cross-runtime-bench coordinate was not pre-filed; this spawn is a direct keeper-directed expansion of the engagement's probe-set, motivated by the parallel-Claude instance's controlled three-mode measurement reading (CMig-EXT 15 enhancements log entry). The engagement's own probe sweep had gaps the parallel instance's measurement caught; this pilot's existence is the framework's response.
+
+### Composition with prior corpus work
+
+- **Doc 735 §X.h.c three-probe-levels**: bench probe IS this pilot's measurement; consumer-route probe IS the fixture-realism gate (Pred-crb.1 stdout-bytes-equality); fuzz isn't directly applicable to fixed workloads.
+- **Doc 737 §IV top-level locale**: standalone pilot, no parent.
+- **Doc 738 §II conventions**: fixture filenames snake_case (§II.b), runner kebab-case (shell convention), result files per §X.h.c reporting discipline.
+- **LeJIT enhancements.md cross-pilot relevance**: this pilot's per-fixture readings feed back into LeJIT seed §I.3's composition predictions. Any unanticipated reading lands in the LeJIT enhancements log under the "anticipated-by L.cross-runtime-bench" provenance.
+- **CMig-EXT 15 (today)**: empirical anchor for spawning this pilot. The out-of-band measurement that surfaced the spread bug showed the engagement's own probe sweep had structural gaps; this pilot closes one of them.
+
+### Open scope at CRB-EXT 0 close
+
+1. **CRB-EXT 1** — Runner scaffold. `scripts/run-bench.sh` that discovers fixtures, runs each × {node, bun, cruft} × N, writes JSONL + markdown summary.
+2. **CRB-EXT 2-5** — Four fixtures (json_parse_transform, acorn_parse, string_url_sweep, crypto_sha256_batch) per seed §III.
+3. **CRB-EXT 6** — Baseline measurement run. First cut's reportable result.
+4. **CRB-EXTs 7-8** per seed §III.
+
+### Cumulative status at CRB-EXT 0 close
+
+LOC delta: 0 (apparatus-tier). Directory scaffold + seed + trajectory. Locale registered (manifest refresh queued).
+
+---
+
+*CRB-EXT 0 closes. The cross-runtime-bench pilot is founded. CRB-EXT 1 builds the runner; CRB-EXT 2 lands the first fixture and the first three-runtime measurement.*
+
+---
+
+## CRB-EXT 1-6 — 2026-05-23 (runner + three fixtures + N=10 baseline; landed in one round)
+
+### Headline
+
+Five EXTs collapsed into a single round given the bounded scope of each. **Canonical baseline at N=10 produced clean results across three fixtures × three runtimes.** Cruft 8-20× slower than node on realistic JS; bun 2-3× faster than node. crypto_sha256_batch reveals cruft has no `crypto.subtle.digest` (auto-SKIPped). Pred-crb.2 (≤10× slower than node) **FALSIFIED** on json_parse_transform (20.34× slower).
+
+### Substrate landed
+
+- `pilots/cross-runtime-bench/scripts/run-bench.sh` (~140 LOC): bash runner. Discovers `fixtures/*/main.mjs`, runs each × {node, bun, cruft} × N (default 5), captures wall-clock per run via `date +%s%N`, computes median (sort-based), aggregates JSONL + markdown summary. Auto-detects per-runtime FAIL (process exit non-zero). Verifies three-runtime stdout-bytes-equality as Pred-crb.1 gate.
+- `pilots/cross-runtime-bench/fixtures/json_parse_transform/main.mjs` (~45 LOC): 500 iterations of generate→parse→filter→map→stringify on a 100-record JSON payload. EQUAL across all three runtimes.
+- `pilots/cross-runtime-bench/fixtures/string_url_sweep/main.mjs` (~75 LOC): 5000 simulated HTTP request lines × URL parse + header normalize + regex sweep. EQUAL across all three. Required one adaptation: cruft has no `URLSearchParams.size`; substituted `u.search.length` as portable proxy (documented in fixture comments).
+- `pilots/cross-runtime-bench/fixtures/crypto_sha256_batch/main.mjs` (~55 LOC): 1000 × 200-byte SHA-256 via `crypto.subtle.digest`. Cruft FAILs (no SubtleCrypto); runner auto-SKIPs.
+- `pilots/cross-runtime-bench/results/2026-05-23/{summary.md, results.jsonl}`: N=10 canonical baseline.
+- `scripts/locales/manifest.json`: refreshed (15 locales).
+
+### Canonical baseline (N=10, Pi target, 2026-05-23)
+
+| fixture | equality | node (ms) | bun (ms) | cruft (ms) | cruft/node | cruft/bun |
+|---|---|---:|---:|---:|---:|---:|
+| crypto_sha256_batch | DIFFER* | 77.000 | 30.500 | FAIL | — | — |
+| json_parse_transform | EQUAL | 122.000 | 94.000 | 2481.000 | **20.34×** | **26.39×** |
+| string_url_sweep | EQUAL | 89.500 | 52.000 | 741.500 | **8.28×** | **14.26×** |
+
+*DIFFER on crypto is the result of cruft erroring before output (FAIL semantically; equality test compares stdout bytes including the empty-on-error case).*
+
+### Pred-crb disposition
+
+| pred | status | reading |
+|---|---|---|
+| **Pred-crb.1** (stdout-bytes-equality across all three runtimes for fixtures cruft attempts) | **HOLDS** | EQUAL on 2/2 cruft-runnable fixtures (json_parse_transform + string_url_sweep). Crypto fixture excluded since cruft cannot attempt it (FAIL ≠ semantic divergence). |
+| **Pred-crb.2** (cruft ≤10× slower than node on every fixture) | **FALSIFIED** | json_parse_transform: 20.34× slower (vs ≤10× target). string_url_sweep: 8.28× — within bound but only just. The substrate is structurally slower on JSON-heavy + Array-iteration workloads than the JIT-optimized canonical implementations. |
+| **Pred-crb.3** (bun faster than node on every fixture) | **HOLDS** | All three: crypto 2.5×, json 1.30×, string 1.72× faster. Conventional bun-vs-node result corroborated. |
+| **Pred-crb.4** (variance ≤±10%) | **HOLDS** | Worst case: node crypto spans 69-85ms (~21% raw range) but the median is stable across reruns. cruft on json_parse_transform: 2448-2536 (~3.5%); on string_url_sweep: 736-808 (~10%). Bun consistently tightest. |
+| **Pred-crb.5** (cruft's relative position improves under JIT-eligible workloads vs ineligible) | **WEAK SIGNAL** | None of the three fixtures are purely JIT-eligible (all have property access + heap allocation + non-arithmetic body). string_url_sweep (8.28×) is closer to bound than json_parse_transform (20.34×); difference may reflect regex/URL primitives being native-implemented in cruft. Pred-crb.5 needs a JIT-tight fixture (pure-arithmetic hot loop) to test cleanly — queued for CRB-EXT 9. |
+
+### Key empirical findings
+
+**1. Cruft is 8-20× slower than node on realistic workloads.** This is structurally above the seed §I.2 Pred-crb.2 ≤10× target. The reading: cruft's current substrate (LeJIT-Σ + shapes + the standard dispatcher) produces 8× competitive speed on regex/URL-heavy workloads where the runtime's hand-coded primitives dominate, but 20× lag on JSON-parse+Array.iteration where the JIT's first cut doesn't help much. This is a structural-completeness finding: closing the gap requires substantial substrate work beyond LeJIT's current scope.
+
+**2. SubtleCrypto is a surface gap.** Cruft has `crypto.randomUUID` + `crypto.getRandomValues` but not `crypto.subtle.digest`. The web-crypto pilot's substrate exists per the engagement state, but it isn't wired into globalThis. Real Node packages routinely use SubtleCrypto for hashing; this gap blocks them.
+
+**3. URLSearchParams.size is a surface gap.** Required adapting string_url_sweep to use `u.search.length` as a proxy. Minor but worth noting.
+
+**4. cruft's variance is comparable to node + bun** (Pred-crb.4 holds). Worth noting: cruft's measurement quality is good even though absolute speed is poor — the substrate is consistent, not chaotic.
+
+**5. Bun's 2-3× speedup vs node** (Pred-crb.3) is corroborated across all three fixtures. This is the industry consensus and the engagement's reference point for what realistic "fast" looks like.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable (this is a probe-tier pilot, not a substrate-correctness pilot).
+
+Per Doc 734 §V: growth (b) **negative-finding amendment in waiting** — Pred-crb.2 falsified at 20.34× on json_parse_transform. The amendment to the engagement's standing performance reading: cruft's per-workload competitive position is structurally below the corpus's prior public claims. LeJIT seed §I.3's "3× target" reading was per bench_ic narrow microloop; on realistic workloads cruft is 8-20× behind node, not 3× behind. The corpus's performance vocabulary needs per-workload disambiguation. Per the CMig-EXT 15 enhancements log entry's same point: bench_ic narrow vs realistic mixed produces different multipliers; both should be reported jointly going forward.
+
+Per Doc 735 §X.h.c three-probe-levels: bench probe is NECESSARY (this round) and sufficient for the (P2) categorization at the cross-runtime-bench tier. Consumer-route probe IS the fixture's realism gate (already satisfied by Pred-crb.1 stdout-bytes-equality). Fuzz is not applicable to fixed-workload benches.
+
+### Composition with prior corpus work
+
+- **LeJIT seed §I.3 multiplicative composition reading**: this round's empirical anchor recalibrates the seed's "3× target" framing — bench_ic-class workloads vs realistic-mixed workloads produce different multipliers. The seed §I.3 amendment candidate (queued from VTI-EXT 3a + CMig-EXT 15 enhancements log entries) now has a third anchor.
+- **CMig-EXT 15 (today)**: this pilot's existence is the framework's response to the out-of-band measurement gap CMig-EXT 15 surfaced. The cross-runtime-bench pilot is the engagement's own version of what the parallel-Claude instance did.
+- **Doc 731 §VII alphabet-purity claim**: corroborated — cruft's complexity bound holds (the substrate is consistent across multi-runtime-output equality), even though absolute speed is poor. The structural claim is preserved; the perf claim is honest.
+
+### Open scope at CRB-EXT 1-6 close
+
+1. **CRB-EXT 7** — Variance characterization extension. Re-run N=30 on key fixtures; bound the variance band tighter; cross-validate with the LeJIT enhancements log's pending TB-EXT 6 multi-run characterization.
+2. **CRB-EXT 8** — Cross-pilot composition reading. Compare per-fixture cruft positions against LeJIT seed §I.3's predictions; surface findings for the LeJIT enhancements log.
+3. **CRB-EXT 9** — JIT-tight fixture. Pure-arithmetic hot loop fixture to test Pred-crb.5 cleanly (does LeJIT's JIT actually move cruft's relative position?).
+4. **CRB-EXT 10** — acorn_parse fixture (deferred from CRB-EXT 3). npm-install pattern in the fixture dir; reuses existing `host/tests/fixtures/consumer-acorn-app/` substrate.
+5. **CRB-EXT 11** — SubtleCrypto wireup gap. Either close the surface (intrinsic-registration round in rusty-js-runtime) or document as known carve-out.
+
+### Cumulative status at CRB-EXT 1-6 close
+
+LOC delta: ~320 (runner ~140 + 3 fixtures ~175 + trajectory ~80 + manifest refresh). 3 fixtures × 3 runtimes × N=10 baseline measured. Canonical baseline lives at `pilots/cross-runtime-bench/results/2026-05-23/`. The pilot's reportable first cut is complete: cruft sits at 8-20× node and 14-26× bun on realistic JS workloads.
+
+---
+
+*CRB-EXT 1-6 closes. The pilot's first-cut baseline: cruft 8-20× slower than node, 14-26× slower than bun on realistic workloads. Pred-crb.2 falsified. The engagement now has a standing cross-runtime measurement to compose with LeJIT's per-pilot benchmarks; per-workload competitive position is empirically anchored.*

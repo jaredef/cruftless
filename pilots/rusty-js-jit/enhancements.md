@@ -274,6 +274,61 @@ Plus 5 spread-variant cases (nested/override/multi-source/empty/spread-into-popu
 
 ---
 
+## 2026-05-23 — CRB-EXT 1-6 (cross-pilot): cruft 8-20× node, 14-26× bun on realistic JS **[UNANTICIPATED]**
+
+**Locale**: `pilots/cross-runtime-bench/trajectory.md` → CRB-EXT 1-6.
+
+*Cross-pilot entry: the cross-runtime-bench pilot's first measurement reading directly recalibrates LeJIT seed §I.3's "3× target" composition reading. The third empirical anchor (after VTI-EXT 3a's variance reservation + CMig-EXT 15's narrow-vs-realistic split) for a pending §I.3 amendment.*
+
+**Substrate change**: Founded `pilots/cross-runtime-bench/` (standalone top-level locale), built runner + three fixtures (json_parse_transform, string_url_sweep, crypto_sha256_batch), produced N=10 canonical baseline.
+
+**Measurement (N=10, Pi, 2026-05-23)**:
+
+| fixture | node (ms) | bun (ms) | cruft (ms) | cruft/node | cruft/bun |
+|---|---:|---:|---:|---:|---:|
+| crypto_sha256_batch | 77 | 30.5 | FAIL | — | — |
+| json_parse_transform | 122 | 94 | 2481 | **20.34×** | **26.39×** |
+| string_url_sweep | 89.5 | 52 | 741.5 | **8.28×** | **14.26×** |
+
+**Why this was unanticipated**: the LeJIT seed §I.3 multiplicative composition reading framed cruft's perf trajectory as "shape (1.36×) + LeJIT-Σ (~1.3-1.5×) + LeJIT-Ψ (~1.2-1.4×) ≈ 3× target" — implying cruft would land near 3× off bun. The empirical reading places cruft at **14-26× off bun on realistic JS workloads**, an order of magnitude wider than the §I.3 prediction. The seed's reading was anchored on the narrow bench_ic IC-cache microloop (271 ns pre-shape → 199 ns post-shape, 1.36× speedup); on realistic workloads the multiplier is structurally different because property-access cost is a small fraction of total work.
+
+**Hypothesis**: the 8-20× cruft-vs-node gap on realistic workloads decomposes as:
+
+1. **JSON.parse + JSON.stringify** are hand-coded primitives in node + bun, heavily JIT-optimized via specialized hot-paths. Cruft's JSON implementation likely runs interpreted Rust code per character. Estimated multiplier on JSON-heavy workloads: 5-10× alone.
+
+2. **Array.filter + Array.map** allocate intermediate Arrays + invoke user-supplied callbacks. Cruft's dispatcher overhead (the ~125 ns per call that LeJIT-Τ targets) compounds at ~thousands of callback invocations per fixture iteration. Estimated multiplier: 2-3× alone.
+
+3. **Object iteration / property access** is where the shape substrate is supposed to help. The CMig-EXT 15 enhancements log entry already flagged that shape's 26% bench_ic claim translates to 1-5% on realistic workloads. Cumulative shape contribution to this bench: probably <10%.
+
+4. **Cranelift JIT compile overhead**: cruft's JIT threshold = 1 means every hot function pays compile cost. Bun + node have multi-tier hierarchies that amortize this differently. Estimated multiplier: 1.2-1.5×.
+
+5. **The dispatcher itself** (LeJIT-Τ's target) is the irreducible per-call overhead. Per TB-EXT 1's reading: ~125 ns per call. At thousands of calls per fixture, that's 100+ ms attributable to dispatcher alone.
+
+Multiplicative composition: (1) × (2) × (3) × (4) × (5) ≈ realistic-workload total. The numbers are consistent with the observed 20× on json_parse_transform.
+
+**Implication for forward work**:
+
+- **LeJIT seed §I.3 amendment becomes load-bearing.** The seed's "3× target" framing is bench_ic-scoped; it needs explicit per-workload disambiguation. Proposed amendment: "Composition reading at bench_ic (narrow IC-cache loop) targets 3× off bun; composition reading at realistic-mixed workloads (CRB fixtures) targets the 14-26× cruft/bun ratio to reduce to ~10× by closing the workload-dominant cost components (JSON-parse, callback dispatch, Array allocation)."
+
+- **TB-EXT 3b's reclaim target reads against a different baseline now.** TB-EXT 1's bench_call_overhead reads 125 ns/iter on a minimal id(x); the cross-runtime fixture measurements suggest the dispatcher's per-call cost compounded across realistic workloads is the dominant cruft-vs-node gap component. A 40 ns reclaim on the dispatcher (Pred-tb.1) translates to ~30% per-call reduction; at 1000+ calls per fixture iteration that's potentially 30 ms savings. On the 2481 ms json_parse_transform total, that's ~1.2% improvement — measurable but not the 10× gap closer the cruft-vs-node ratio needs.
+
+- **The structural conclusion**: closing the cruft-vs-node gap to single digits requires substrate work *beyond LeJIT*. JSON.parse needs a faster implementation. Array.filter/map need fast-path allocation. Callback dispatch needs the tiny-baseline pilot AND a tighter inline-call substrate. These are multiple new pilots' worth of work.
+
+- **The cross-runtime-bench is itself the framework**: future LeJIT-tier substrate moves should run against `pilots/cross-runtime-bench/` to surface their actual realistic-workload impact, not just the narrow bench_ic / bench_call_overhead readings. The bench_ic loop is a microbench; CRB fixtures are the load-bearing competitive position reading.
+
+- **SubtleCrypto surface gap** is a separate substrate move queued at CRB-EXT 11. Real Node packages routinely use SubtleCrypto for hashing; the gap blocks them.
+
+**Provenance**:
+- New pilot: `pilots/cross-runtime-bench/`
+- Runner: `pilots/cross-runtime-bench/scripts/run-bench.sh`
+- Fixtures: `pilots/cross-runtime-bench/fixtures/{json_parse_transform,string_url_sweep,crypto_sha256_batch}/main.mjs`
+- Baseline: `pilots/cross-runtime-bench/results/2026-05-23/{summary.md,results.jsonl}`
+- Trajectory: `pilots/cross-runtime-bench/trajectory.md` CRB-EXT 1-6 (close)
+- Empirical anchor for: pending LeJIT seed §I.3 amendment
+- Cross-reference: this file's VTI-EXT 3a entry (variance reservation) + CMig-EXT 15 entry (narrow-vs-realistic split). Three empirical anchors now stand for the §I.3 amendment
+
+---
+
 ## Template — for future entries
 
 ### `<date>` — `<locale-tag>` `<round-id>`: `<one-line headline>` **[ANTICIPATED]**

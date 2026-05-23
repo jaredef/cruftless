@@ -3,12 +3,21 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 14,
-    "top_level": 9,
+    "locales": 15,
+    "top_level": 10,
     "nested": 5,
     "warnings": 0
   },
   "locales": [
+    {
+      "coord": "cross-runtime-bench",
+      "tag": "L.cross-runtime-bench",
+      "parent": null,
+      "scope": "cross-runtime-bench",
+      "depth": 1,
+      "rung_count": 0,
+      "status": "**WORKSTREAM FOUNDED (CRB-EXT 0)**. Spawned per keeper directive 2026-05-23 07:34-local. Cross-runtime speed benchmark for cruft, bun, and node executing realistic JS workloads. Independent of diff-prod (which tests semantic parity); this pilot tests *speed* on workloads representative of what real Node-ecosystem code does."
+    },
     {
       "coord": "diff-prod",
       "tag": "L.diff-prod",
