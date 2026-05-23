@@ -658,3 +658,61 @@ LOC delta: ~26. diff-prod 42/42 GREEN; runtime lib 35/35 GREEN; manual spread 5/
 ---
 
 *CMig-EXT 15 closes. Out-of-band regression localized, fixed, verified in one round. Demonstrates that diff-prod + test262-sample is insufficient probe-coverage for shape-enrollment correctness; CMig-EXT 16/17 (audit + fuzz) are queued.*
+
+---
+
+## CMig-EXT 16 — 2026-05-23 (property-bypass audit; engagement-wide enumeration)
+
+### Headline
+
+Audit-tier round per Findings VI.6 HIGH priority. Enumerated every `properties.iter()` / `.keys()` / `.values()` / `.contains_key()` call site in the rusty-js-runtime crate (~40 sites). Categorized each by Shape-aware safety. **Net result**: 4 NEEDS-FIX sites identified for CMig-EXT 16.bis substrate round; the rest are SAFE (engine-Dictionary, shape-aware helpers, or Family-B verified chains). Output: `docs/property-bypass-audit.md` (~140 lines).
+
+### Substrate landed
+
+- `pilots/rusty-js-shapes/consumer-migration/docs/property-bypass-audit.md` (~140 lines): methodology, per-file audit tables (intrinsics.rs + interp.rs + value.rs/module.rs/napi.rs), summary by category, NEEDS-FIX list with per-site rationale, forward to CMig-EXT 16.bis substrate fix round + CMig-EXT 17 canonical fuzz harness, §XVI / §V / §X.h categorization, composition with prior corpus work.
+
+### The 4 NEEDS-FIX sites
+
+1. **intrinsics.rs:5731** — JSON.stringify property enumeration. **HIGHEST PRIORITY**. Per CRB-EXT 9 reading, JSON.stringify is one of the largest contributors to cruft's realistic-workload gap; a shape-bypass correctness bug here would compound across realistic workloads + would silently mis-serialize Shape-enrolled objects.
+2. **intrinsics.rs:2682** — Headers spread variant. Similar pattern to CMig-EXT 15's __object_spread.
+3. **intrinsics.rs:5507** — Generic spread variant (different call site). Same fix pattern.
+4. **interp.rs:781** — Set.union / setLike op target_keys enumeration.
+
+All 4 follow the CMig-EXT 15 shape-aware-then-dictionary pattern; the fix shape is well-known and consistent.
+
+### Verification cleanup
+
+Initial scan flagged ~5 NEEDS-FIX sites; verification reads moved two to SAFE:
+- **value.rs:508** (`has_own_str`): the shape.slot_of() check at line 506-507 precedes the contains_key fallback. SAFE-VIA-HELPER.
+- **interp.rs:1992/2098/2148** (Object.defineProperties/.values/.keys class enumeration): all use the CMig-EXT 4 Family B pattern (shape-iter block chained with properties.iter()). SAFE.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable (audit-tier; no substrate-correctness call).
+
+Per Doc 734 §V: growth (a) tier-relocation realized — the property-bypass audit was queued at CMig-EXT 15 close as a follow-up; this round produces it. Growth (b) negative-finding amendment in waiting — the 4 NEEDS-FIX sites are not-yet-failed but are correctness gaps that CMig-EXT 16.bis closes.
+
+Per Doc 735 §X.h.c three-probe-levels: this round is design-tier; the actual fix-and-verify is CMig-EXT 16.bis (bench + consumer-route via diff-prod + fuzz via CMig-EXT 17).
+
+### Composition with prior corpus work
+
+- **CMig-EXT 15**: empirically anchored the bug class; this audit enumerates the residual sites.
+- **Findings doc IV.1 + IV.2**: directly applied; the audit is the discipline rule 6 queued.
+- **Findings doc rule 6 (surface-completeness audit for data-structure changes)**: this round IS rule 6's apparatus applied retroactively to the CMig-EXT 14 default-on flip.
+- **Doc 739 cascade-revival pattern**: the audit's NEEDS-FIX sites are NOT (P2.d) stalls; they're CORRECTNESS GAPS at the consumer tier. Doc 739 doesn't apply; sub-pilot-local fixes (CMig-EXT 16.bis) are the right move.
+- **CRB-EXT 9 per-workload spread reading**: the JSON.stringify site's HIGH priority cross-references CRB's realistic-workload finding (JSON.parse/.stringify estimated at 5-10× contributor to cruft-vs-bun gap on json_parse_transform).
+
+### Open scope at CMig-EXT 16 close
+
+1. **CMig-EXT 16.bis** — substrate fix round for the 4 NEEDS-FIX sites. ~80-120 LOC across intrinsics.rs + interp.rs. Each fix follows the CMig-EXT 15 pattern. Re-run diff-prod + fuzz-tb + fuzz-ic + manual JSON.stringify probe.
+2. **CMig-EXT 17** — canonical 2000-fixture fuzz harness (Findings VI.6 HIGH priority). Engagement-wide instrument that catches shape-bypass bugs proactively. Scope: random property-mutation patterns + spread + JSON.stringify + Object.entries/.values/.keys + Map/Set iteration.
+
+### Cumulative status at CMig-EXT 16 close
+
+LOC delta: ~140 (audit doc only; no source changes). 4 NEEDS-FIX sites identified; ~26 SAFE; ~3 NEEDS-VERIFY (deferred); ~5 DEFENSIVE.
+
+The audit closes Findings VI.6's HIGH-priority audit gap. The substrate fixes (CMig-EXT 16.bis) + canonical fuzz (CMig-EXT 17) remain as the engagement's standing shape-correctness work.
+
+---
+
+*CMig-EXT 16 closes. 4 NEEDS-FIX sites identified (JSON.stringify HIGHEST PRIORITY); CMig-EXT 16.bis substrate fix queued; CMig-EXT 17 canonical fuzz harness remains the engagement-wide probe-coverage close.*
