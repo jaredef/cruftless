@@ -337,3 +337,62 @@ LOC delta: ~125 (stub IR emission + integration helper + 2 tests). 12/12 unit te
 ---
 
 *StubE-EXT 4 closes. The inline compare-branch-load IR pattern is corroborated on aarch64; the substrate is ready for StubE-EXT 5's translator integration.*
+
+---
+
+## StubE-EXT 5a — 2026-05-23 (translator env-flag plumbing + site-id allocation)
+
+### Headline
+
+Narrow integration round: `CRUFTLESS_LEJIT_STUB=1` env flag detection lands in the translator + IC site ids pre-allocated per `Op::GetPropOnObject` parse occurrence. **Behavior unchanged**: the flag is detected but no codegen branching yet; the existing extern call dispatch stays. Diff-prod 42/42 in both modes; stub_aarch64 unit tests 12/12.
+
+Scope narrowed from the original "EXT 5: full translator wiring + observer + inline emission" to **EXT 5a: env-flag plumbing only** because the substantive wiring is two distinct sub-rounds:
+
+- **5b** — Observer extern + cross-crate TLS function pointer registration. New `jit_getprop_with_ic(site_id, recv, prop_idx)` extern in rusty-js-jit that wraps the existing slow-path call + invokes a registered observer (the observer lives in rusty-js-runtime and calls `Object::shape_ptr_and_slot_for` + `observe_at_site` / `observe_miss_no_shape_at_site`). The IC cache populates; per-iter cost goes UP by ~5-10 ns (extra observer dispatch).
+- **5c** — Inline emit_stub_pattern at the codegen site. JIT-emitted code does the compare-branch-load inline (per StubE-EXT 4's `emit_stub_pattern`); the side-table address needs to be a stable Cranelift literal (requires cap-preallocated `ICStubCache.sites`). Per-iter cost goes DOWN substantially.
+
+EXT 5a's value: the env-flag knob is in place + site-id allocation is parse-stable. Subsequent rounds wire the observer and emit the fast path; they consume the site IDs allocated here.
+
+### Substrate landed
+
+- `pilots/rusty-js-jit/derived/src/translator.rs` — `CRUFTLESS_LEJIT_STUB=1` env-var detection. When set, allocate one IC site id per `ParsedOp::GetPropOnObject` occurrence via `crate::stub_aarch64::alloc_ic_site()`. Stored in `_ic_site_ids: Vec<ICSiteId>` parallel to the parse order. Currently unused in codegen (the `_` prefix flags this); EXT 5b/c consume the vec.
+
+### Build + gates
+
+- `cargo build --release -p rusty-js-jit`: clean.
+- `cargo test --release -p rusty-js-jit --lib stub_aarch64`: 12/12 PASS.
+- `cargo build --release --bin cruft -p cruftless`: clean.
+- diff-prod default (Shaped): **42/42 PASS**.
+- diff-prod under `CRUFTLESS_LEJIT_STUB=1`: **42/42 PASS** (no behavior change).
+
+### §XVI / Doc 734 categorization
+
+Per Doc 730 §XVI: not applicable (no observable behavior change). Per Doc 734 §V: growth (a) tier-relocation — the env-flag is now part of the translator's pre-codegen apparatus; EXT 5b/c consume it without re-introducing the flag detection.
+
+### Pred disposition
+
+Unchanged from EXT 4. Pred-stub.1/.2/.3 wait for EXT 5c + EXT 6 measurements.
+
+### Why split EXT 5 into a/b/c
+
+The original EXT 5 was scoped as one round but the integration has three structurally-distinct moves:
+
+1. **Plumbing the dispatch decision into the translator** — what 5a delivers.
+2. **Observer extern wiring + cross-crate registration** — 5b. The runtime calls `Object::shape_ptr_and_slot_for`; the JIT records via `observe_at_site`. Substantive but mechanical.
+3. **Inline IR emission at the codegen site** — 5c. Requires cap-preallocated `ICStubCache.sites` for stable side-table address; Cranelift IR emission for the inline cache lookup + compare-branch-load (using EXT 4's `emit_stub_pattern`); careful cross-FFI work for the receiver Object's shape-field-offset extraction (which isn't repr(C); needs an extern helper in the runtime).
+
+Splitting matches the Doc 729 §A8.13 substrate-amortization discipline: each sub-round has its own focused scope; each gates on diff-prod 42/42 separately; (P2) categorization at EXT 6 reads against the cumulative landed state.
+
+### Open scope at StubE-EXT 5a close
+
+1. **StubE-EXT 5b** — Observer extern. ~80 LOC (new extern in deopt.rs + TLS slot + runtime registration + translator emits the new extern under flag).
+2. **StubE-EXT 5c** — Inline emit_stub_pattern at codegen + cap-preallocated cache + shape-field-offset extraction extern. ~150 LOC; the most careful round.
+3. **StubE-EXT 6** — Re-measure vs the 271 ns baseline; (P2) categorize per Doc 735 §X.h.b.
+
+### Cumulative status at StubE-EXT 5a close
+
+LOC delta: ~25 (env flag + site_id allocation + scoped doc comment). Stub_aarch64 unit tests 12/12. Diff-prod 42/42 both modes. The substrate is ready for EXT 5b's observer wiring.
+
+---
+
+*StubE-EXT 5a closes. Env-flag plumbing + IC site allocation are in. No behavior change. EXT 5b lands the observer; EXT 5c lands the inline emission; EXT 6 measures.*

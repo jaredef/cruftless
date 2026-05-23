@@ -167,6 +167,30 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
         .unwrap_or(false);
     let any_guard = guard_overflow || force_shape_trip;
 
+    // LeJIT-Σ StubE-EXT 5a (env-flag plumbing only — behavior unchanged
+    // in this round): `CRUFTLESS_LEJIT_STUB=1` opts into the LeJIT-Σ
+    // IC stub emitter dispatch path at Op::GetPropOnObject sites. This
+    // round adds the flag detection + site-id allocation; EXT 5b wires
+    // the observer extern (IC cache populates); EXT 5c emits the
+    // inline compare-branch-load fast path. Pre-binding the IC site
+    // ids at translate time costs ~1 µs per GetPropOnObject occurrence
+    // and is harmless when the flag is unset (site_ids alloc but
+    // dispatch path stays the existing extern).
+    let lejit_stub = std::env::var("CRUFTLESS_LEJIT_STUB")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    // Allocate one IC site per Op::GetPropOnObject occurrence (StubE-EXT
+    // 3 site-id allocator + ICStubCache). Used by EXT 5b/c codegen
+    // branching. Allocation in parse-order so site ordering is stable.
+    let _ic_site_ids: Vec<crate::stub_aarch64::ICSiteId> = if lejit_stub {
+        parsed.iter()
+            .filter(|(_, op)| matches!(op, ParsedOp::GetPropOnObject(_)))
+            .map(|_| crate::stub_aarch64::alloc_ic_site())
+            .collect()
+    } else {
+        Vec::new()
+    };
+
     // JIT-EXT 20: detect GetPropOnObject in the parsed op list so we
     // can pre-bind the runtime helper. Pre-binding has no cost when
     // the symbol isn't used.
