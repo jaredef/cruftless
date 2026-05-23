@@ -3,9 +3,9 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 16,
-    "top_level": 10,
-    "nested": 6,
+    "locales": 20,
+    "top_level": 13,
+    "nested": 7,
     "warnings": 0
   },
   "locales": [
@@ -53,6 +53,15 @@
       "depth": 3,
       "rung_count": 0,
       "status": "**\u00a7XVI iter 2 LANDED** (ArraySpeciesCreate honors O.constructor, commit 533443e6). Original `rawIn-on-Array` crash signature gone; \u00a7XVII iter 3 queued for the downstream `generic.js:56 paramDefs of undefined` gap."
+    },
+    {
+      "coord": "rusty-js-http-server",
+      "tag": "L.rusty-js-http-server",
+      "parent": null,
+      "scope": "rusty-js-http-server",
+      "depth": 1,
+      "rung_count": 0,
+      "status": "**WORKSTREAM FOUNDED (HS-EXT 0)**. No code yet. Spawned per keeper directive 2026-05-23 18:12-local. Fourth of four spawns in this round."
     },
     {
       "coord": "rusty-js-ir",
@@ -109,6 +118,15 @@
       "status": "**WORKSTREAM FOUNDED (VTI-EXT 0)**. No code yet. Spawned per LeJIT seed \u00a7I.2 item 4 + the keeper's pivot directive after LeJIT-\u03a3 StubE-EXT 5b's bench measurement surfaced that the shape-substrate cascade (Doc 729 \u00a7A8.13) had absorbed most of LeJIT-\u03a3's IC-only contribution (Pred-stub.1 target tightened from \u226490.3 \u2192 \u226466.3 ns/iter). The hybrid stance per LeJIT seed \u00a7I.2 anticipated this composition; LeJIT-\u03a3 + LeJIT-\u03a8 + the future dispatcher refactor land multiplicatively, not additively."
     },
     {
+      "coord": "rusty-js-json-fast",
+      "tag": "L.rusty-js-json-fast",
+      "parent": null,
+      "scope": "rusty-js-json-fast",
+      "depth": 1,
+      "rung_count": 0,
+      "status": "**WORKSTREAM FOUNDED (JSF-EXT 0)**. No code yet. Spawned per keeper directive 2026-05-23 18:12-local alongside three sibling spawns (rusty-js-regex-fast, web-crypto/subtle-wireup, rusty-js-http-server) addressing the engagement's named substrate gaps from CRB-EXT 9 reading."
+    },
+    {
       "coord": "rusty-js-pm",
       "tag": "L.rusty-js-pm",
       "parent": null,
@@ -116,6 +134,15 @@
       "depth": 1,
       "rung_count": 0,
       "status": null
+    },
+    {
+      "coord": "rusty-js-regex-fast",
+      "tag": "L.rusty-js-regex-fast",
+      "parent": null,
+      "scope": "rusty-js-regex-fast",
+      "depth": 1,
+      "rung_count": 0,
+      "status": "**WORKSTREAM FOUNDED (RXF-EXT 0)**. No code yet. Spawned per keeper directive 2026-05-23 18:12-local. **Dual focus**: regex performance + memory leak. Per the engagement's pattern, related concerns at the same substrate live in one locale's trajectory with sub-rounds per concern."
     },
     {
       "coord": "rusty-js-shapes",
@@ -152,6 +179,15 @@
       "depth": 1,
       "rung_count": 0,
       "status": null
+    },
+    {
+      "coord": "web-crypto/subtle-wireup",
+      "tag": "L.web-crypto.subtle-wireup",
+      "parent": "L.web-crypto",
+      "scope": "subtle-wireup",
+      "depth": 2,
+      "rung_count": 0,
+      "status": "**WORKSTREAM FOUNDED (SW-EXT 0)**. No code yet. Spawned per keeper directive 2026-05-23 18:12-local. Nested under existing `pilots/web-crypto/` top-level locale."
     }
   ],
   "warnings": []
