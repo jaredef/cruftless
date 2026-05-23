@@ -307,3 +307,38 @@ This addendum is append-only per the update protocol. Existing findings I-VI + s
 **Standing rule 9 (added 2026-05-23)**: any raw-pointer cache capturing a pointer to a struct living in a HashMap or Vec value slot must verify the underlying storage uses Box-wrapping or equivalent stable-address discipline. The structure must be address-stable for the cache's intended lifetime. Default audit: any `*const T` capture where `T` lives in `HashMap<_, T>` or `Vec<T>` is suspect.
 
 *(Per Finding II.4. The TB-EXT 7 segfault would have been prevented by this rule applied prospectively at TB-EXT 3b design time.)*
+
+---
+
+## Addendum II — 2026-05-23 (post Φ-EXT 2+3 merged round)
+
+### New finding
+
+**Finding II.5 (gap-closure at the structural-constraint tier cascades sibling-pilot revival)** *[new, 2026-05-23 via Φ-EXT 2+3 → VTI revival]*
+
+**Anchor**: Φ-EXT 2+3 merged round. Pre-Φ TB+STUB+VTI on bench_ic was 743.8 ns ((P2.d) at composition scale). Post-Φ (no other substrate moves to VTI) it is 85.5 ns. **VTI revived without any VTI-specific substrate work.** The Φ pilot's intended scope was the calling-convention shift; VTI's revival was an unanticipated cascade.
+
+**Structural mechanism**: pre-Φ the JIT's value-domain interface (the P2 stage of an implicit resolver-instance pipeline per Doc 729 §IV) had an i64-only constraint. The constraint propagated downstream: P3 dispatcher had to integer-validate every arg (the `jit_compatible_arg` precheck); P4 externs had to encode Numbers as i64. **VTI's structural (P2.d) was a consequence of working around the P2 constraint** (its inline tag-check couldn't beat the precheck's integer-validity work). When Φ closed the P2 gap by lifting i64-only to f64-default, the constraint propagation collapsed: P3's precheck collapsed to tag-only; VTI's inline tag-check became an equivalent replacement; VTI's existing payload-extract-only code (per VTI-EXT 3b) became correct as-is because the JIT body now operates on loaded f64 directly.
+
+**The cascade pattern**: substrate-amortization-cascade per Doc 729 §A8.13 has been engaged at two prior tiers in this engagement:
+1. Per-iter cost reduction (Shape-EXT 4 enrollment, TB-EXT 3b reclaim)
+2. Composition synergy (Φ III.4: constructive interference when targets are orthogonal)
+
+This round names a third tier:
+3. **Sibling-pilot revival**: gap-closure at the structural-constraint tier cascades downstream sub-pilot (P2.d) → (P2.a) without substrate work.
+
+**Substrate implication**: when a sub-pilot stalls at (P2.d), the engagement should investigate whether the stall is downstream of a STRUCTURAL constraint at an upstream tier. If yes, the right substrate move may be to lift the upstream constraint (which addresses the stalled pilot AND may cascade-revive other downstream stalls), not to attempt yet another sub-pilot at the same constrained tier. The constraint-enumeration discipline (C1-C10 in Φ seed §I.2 + Pin-Art apparatus per Doc 581) is the framework for naming the upstream constraint.
+
+**Generalization** (corpus-articulation candidate, formalized as Doc 739): the pattern likely recurs at any engagement that runs a resolver-instance pipeline per Doc 729. The engagement's standing reading should include "constraint-closure as cascade-revival" as a diagnostic instrument: when a sub-pilot stalls, the first question becomes "what upstream constraint propagates the stall?" before "what new sub-pilot do we spawn?"
+
+**Forward implication for future LeJIT-tier work**:
+- VTI is no longer (P2.d). Pred-vti.5 effectively met. VTI's "revival path" framing from earlier in the session is resolved.
+- Forward-derived pilots from Findings VI (fast JSON, tight-inner-loop emitter, Array.filter/map fast-path) should be evaluated under the same lens: are they addressing constraint-propagated stalls, or local perf optimizations?
+- Move 2 (typed-i64 promoted fast path) reads differently post-Φ: it's not a competitor to f64-default, it's a SPECIALIZATION ON TOP of f64-default. The architectural shift makes Move 2 simpler.
+
+**Provenance**:
+- Round: `pilots/rusty-js-jit/f64-calling-convention/trajectory.md` Φ-EXT 2+3
+- Composition matrix: `pilots/rusty-js-jit/tiny-baseline/docs/composition-matrix.md`
+- Cross-reference: this file's prior addendum Finding V.3 (LeJIT-Ψ (P2.d) at first cut) — NOW RESOLVED via cascade
+- Cross-reference: Φ seed §I.2 constraint enumeration C1-C10 (the apparatus that named the constraint to be closed)
+- Corpus articulation: jaredfoy.com Doc 739 (formalizes the abstract pattern + the LeJIT-Φ instance)
