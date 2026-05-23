@@ -1,10 +1,12 @@
-# rusty-js-jit — Resume Vector / Seed
+# LeJIT — Resume Vector / Seed
 
-**Locale tag**: `L.rusty-js-jit` (per [Doc 737](../../../corpus-master/corpus/737-the-locale-as-coordinate-nested-seed-trajectory-pairs-as-pin-art-substrate-positions.md))
+*(Internal name for the rusty-js-jit pilot as of 2026-05-22 telos-sharpening; on-disk crate path `pilots/rusty-js-jit/` retained until a separate clerical-migration round renames it. The `LeJIT` reading: "le JIT" / "legit JIT", naming the pilot's deliberate hybrid stance — consume Cranelift where Cranelift is structurally upstream of the alphabet contract, hand-roll where the alphabet contract is finer-grained than Cranelift's defaults. Per §I.2 below.)*
 
-**Status as of 2026-05-21**: **DEOPT CHAPTER CLOSED + IC INFRASTRUCTURE COMPLETE (without shapes)**. JIT-EXT 10-24 landed in one session — arithmetic deopt machinery, ICShapeMismatch demonstrator, full GetPropOnObject lowering with real runtime helper, mixed-regime dispatcher, IC chain success+failure paths proven end-to-end. ~1.2k LOC across pilots/rusty-js-jit + pilots/rusty-js-runtime + pilots/rusty-js-bytecode + host-v2. PM-EXT 11+12 regression GREEN every round. See §VIII below for the closure summary.
+**Locale tag**: `L.rusty-js-jit` (per [Doc 737](../../../corpus-master/corpus/737-the-locale-as-coordinate-nested-seed-trajectory-pairs-as-pin-art-substrate-positions.md); the locale-tag preserves the on-disk path per Doc 737's coordinate-uniqueness invariant, while the workstream's internal name advances to LeJIT).
 
-**Workstream**: a baseline JIT compiler at the bytecode-to-machine-code substrate boundary, structured per Doc 731 §VII (R1–R8).
+**Status as of 2026-05-22**: **DEOPT CHAPTER CLOSED + IC INFRASTRUCTURE COMPLETE (without shapes); TELOS SHARPENED to the hybrid Cranelift+hand-rolled-IC-stub stance per §I.2.** JIT-EXT 10-24 landed across the prior two sessions — arithmetic deopt machinery, ICShapeMismatch demonstrator, full GetPropOnObject lowering with real runtime helper, mixed-regime dispatcher, IC chain success+failure paths proven end-to-end. ~1.2k LOC across pilots/rusty-js-jit + pilots/rusty-js-runtime + pilots/rusty-js-bytecode + host-v2. PM-EXT 11+12 regression GREEN every round. See §VIII below for the closure summary. JIT-EXT 25 (this entry) sharpens the forward telos to name the next two pilots: IC stub emitter + hidden classes substrate.
+
+**Workstream**: a hybrid baseline JIT at the bytecode-to-machine-code substrate boundary, structured per Doc 731 §VII (R1–R8). Hybrid means: Cranelift owns the generic codegen tier (instruction selection, register allocation, scheduling, peephole, machine-code emission); LeJIT owns the substrate-specific layers Cranelift cannot reach (IC stub emission with patching, hand-rolled stack maps per §VII R7, deopt machinery, Value-tag inline checks).
 **Author**: 2026-05-20 session (EXT 0-9), extended 2026-05-21 (EXT 10-24).
 **Parent**: cruftless engagement (`/home/jaredef/rusty-bun`).
 **Composes with**:
@@ -29,6 +31,35 @@ Two empirical refinements after the Doc 731 articulation:
 **(b) Telos is also alphabet-completeness corroboration.** The JIT's per-Op translation table (Doc 731's §XI step 2 artifact) becomes the empirical map of which bytecode ops are P1-pure (single Cranelift instruction or small composition) and which are P4 sites (call into runtime helper). The cardinality of P4 sites is the JIT's IC surface. A small cardinality (single digits to low tens) corroborates the strong form of Doc 731's conjecture. A large cardinality weakens it to the residual "smaller than canonical but not LuaJIT-class."
 
 The conjunction of (a) + (b) gives a falsifiable termination condition for the first-cut JIT: termination reached when *(i)* the bytecode-to-Cranelift translation table covers every Op in `rusty-js-bytecode/src/op.rs`, *(ii)* every function called past the compile threshold runs through the JIT-emitted code, *(iii)* a small basket of npm-package loads with hot init functions shows measurable JIT benefit, and *(iv)* the P4-site enumeration produces a single-digit-or-low-tens cardinality.
+
+### I.2 Sharpened telos (2026-05-22): the LeJIT hybrid stance
+
+The first-cut termination condition of §I.1 is structurally met as of JIT-EXT 24 (deopt chapter closed + IC infrastructure complete modulo hidden classes). The post-first-cut telos surfaced from a 2026-05-22 keeper exchange on whether hand-rolling Cranelift could provide performance benefits, and concurrence on the answer.
+
+**Recognition.** Hand-rolling a Cranelift replacement is *probably no overall* (Cranelift carries 20+ years of regalloc / isel / scheduling engineering on aarch64 that hand-rolling cannot match in any tractable substrate budget; the engagement's hand-rolled discipline elsewhere is anchored in Pin-Art derivation against published specs, and Cranelift has no analogous spec to derive against). Hand-rolling is *probably yes in narrow regions* — specifically four sites where Cranelift's generality is structurally incapable of expressing what cruftless needs:
+
+- **IC stub emission with self-modifying patching.** Cranelift cannot patch call targets in place; V8/JSC/SpiderMonkey ICs all rely on inline-cached 2-3-instruction shape-checks that self-modify on miss. Today's GetPropOnObject IC routes through an `extern "C"` call per JIT-EXT 22-24 (~5-15ns overhead per hit on the engagement's Pi). A hand-rolled stub emitter that inlines the shape-check and patches on miss is the structural fast-path Cranelift cannot reach.
+- **Value-tag inline checks.** cruftless's Value encoding is finer-grained than Cranelift's IR sees. A hand-rolled emitter that knows the Value layout can emit one inline branch-on-tag where Cranelift routes through a function-call abstraction.
+- **Tiny-function compile latency.** Cranelift's fixed compile-time overhead (regalloc + scheduling + isel) dominates for functions of ~20 instructions. A hand-rolled Sparkplug-style stack-machine-to-register baseline compiles in microseconds.
+- **Tail-call-shaped dispatch loops.** Cranelift's calling conventions add prologue/epilogue cost the bytecode dispatch loop doesn't need.
+
+**Sharpened telos.** The LeJIT pilot's forward telos is to demonstrate the hybrid-codegen structural claim empirically:
+
+> A JIT with Cranelift owning the generic codegen tier AND a hand-rolled substrate-specific emitter owning the IC-fast-path / tagged-Value / inline-tiny-fn tier achieves IC fast-path latency competitive with mainstream JITs while preserving the Doc 731 §VII R1–R8 single-tier baseline shape.
+
+Three structural consequences:
+
+**(i) The hand-rolled scope is finite and named.** Not "hand-roll codegen"; specifically hand-roll: (a) the per-IC-family stub emitter for aarch64 (and x86_64 later) with self-modifying patching, (b) the Value-tag inline emitter for the hot Op::GetProp / Op::SetProp / Op::Call paths, (c) the tiny-fn fast-baseline emitter that bypasses Cranelift when function size is below threshold. Each is bounded by published codegen-literature templates; none requires reinventing regalloc or isel.
+
+**(ii) The Cranelift dependency stays, with a sharper division of labor.** Cranelift handles function bodies for non-tiny functions and the slow-path fallback when the hand-rolled stub misses through its patches. The boundary is: "Cranelift owns what Cranelift can express; LeJIT owns what Cranelift structurally cannot reach." Doc 731 §VII R8 ("no internal optimization passes in the JIT") remains satisfied because the hand-rolled emitter is straight-line lowering, not optimization.
+
+**(iii) The hidden-classes substrate is the dependency.** Per the seed §VIII gap list, IC fast paths require shared shape descriptors that cruftless's current Object representation lacks. A separate workstream — locale-coordinate `pilots/rusty-js-shapes/` per Doc 737 §IV's coordinate discipline — is pre-filed for the hidden-classes substrate. The IC stub emitter pilot and the hidden-classes pilot compose: the emitter is the consumer of shape descriptors the hidden-classes pilot produces. Neither lands without the other; the order is hidden-classes first (substrate-introduction round per Doc 729 §A8.13's substrate-amortization pattern), then IC stub emitter (closure round reusing the substrate).
+
+**(iv) Per Doc 738's source-tier coordinate system, the LeJIT hand-rolled tier gets its own convention sub-namespace.** Functions in the hand-rolled emitter live at `pilots/rusty-js-jit/derived/src/{stub_aarch64,stub_x86_64,value_tag_inline,tiny_baseline}.rs`. The pillar-path encoding of Doc 738 §II.e applies; the prefix convention of Doc 738 §II.a applies (engine-internal sentinels for IC stub state use `__ic_*`). Cross-tier consistency with the Cranelift-using translator path is maintained at the source-identifier coordinate level.
+
+**Falsifier added to §IX (existing):** If the hand-rolled IC stub emitter (Pilot LeJIT-Σ, queued) does not achieve at least 3× per-hit speedup over the current extern-call IC dispatch on a representative property-access hot loop, the §I.2 hybrid claim is weakened; the work should re-categorize either as (P2.d) correct-but-losing per Doc 735 §X.h.b (in which case revert to extern-call dispatch and document the boundary) or as (P2.c) illegal-speed (in which case fuzz coverage caught the gap before the bench-shape miscategorization persisted). The §X.h.c three-probe-levels discipline (bench + consumer-route + fuzz) gates the (P2.a) strict-win claim for the hand-rolled emitter.
+
+**Forward queue at JIT-EXT 25 close:** Pilot LeJIT-Σ (IC stub emitter, hand-rolled aarch64, paired with hidden-classes pilot). The two together close the seed §VIII "hidden classes" gap and the seed §VIII "dispatcher branching for non-zero pc deopts" gap simultaneously, since hidden-classes lands the shape descriptors that make non-trivial IC fast-paths landable.
 
 ## II. Apparatus
 

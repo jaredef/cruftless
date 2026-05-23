@@ -1,6 +1,8 @@
-# rusty-js-jit — Trajectory
+# LeJIT — Trajectory
 
-Chronological resume anchors for the JIT workstream. Reads seed.md first; this file is the time-ordered record of substrate moves and their yields.
+*(Internal workstream name LeJIT as of JIT-EXT 25 / 2026-05-22 telos sharpening; on-disk crate path `pilots/rusty-js-jit/` retained until a separate clerical-migration round renames it. See seed §I.2 for the etymology and the hybrid-stance rationale.)*
+
+Chronological resume anchors for the LeJIT workstream. Reads seed.md first; this file is the time-ordered record of substrate moves and their yields.
 
 Format: one section per "EXT" (extension round); each round closes with a status block, a cumulative numbers table, and an open-scope list. Same shape as `pilots/rusty-js-ir/trajectory.md` and the top-level `trajectory.md`.
 
@@ -35,10 +37,11 @@ Format: one section per "EXT" (extension round); each round closes with a status
 | 22 | jit-real-getprop-helper | real helper via TLS Runtime + FunctionProto | 2026-05-21 |
 | 23 | jit-mixed-regime-getprop-e2e | dispatcher accepts Object args; full IC chain E2E | 2026-05-21 |
 | 24 | jit-ic-failure-path-e2e | IC chain failure path E2E; deopt → interp returns correct String | 2026-05-21 |
+| **25** | **lejit-telos-sharpening + rename** | **apparatus-tier round; workstream internally renamed rusty-js-jit → LeJIT; telos sharpened to the hybrid Cranelift+hand-rolled-IC-stub stance per seed §I.2; pre-files Pilot LeJIT-Σ (IC stub emitter) + hidden-classes substrate pilot as the next two coordinates per Doc 737 §IV** | **2026-05-22** |
 
 Cumulative source footprint: ~1.2k LOC across pilots/rusty-js-jit + pilots/rusty-js-runtime + pilots/rusty-js-bytecode + host-v2. PM-EXT 11+12 regression GREEN every round.
 
-Subsequent JIT work depends on cross-pilot substrate: hidden classes (new pilot), upstream emitter typed-promotion extension (bytecode pilot), dispatcher branching for non-zero pc deopts.
+Subsequent LeJIT work depends on cross-pilot substrate: hidden classes (new pilot — pre-filed coordinate `pilots/rusty-js-shapes/` per Doc 737 §IV; substrate-introduction round per Doc 729 §A8.13 staging), then IC stub emitter (Pilot LeJIT-Σ; closure round reusing the shape-descriptor substrate), upstream emitter typed-promotion extension (bytecode pilot concern), dispatcher branching for non-zero pc deopts.
 
 ---
 
@@ -1517,3 +1520,53 @@ The deferral of shape-based IC caching to a future workstream is Case-4 (impleme
 ---
 
 *JIT-EXT 24 closes the IC chapter's substrate-side work for the first cut. The fast-path-cache layer awaits hidden classes (separate workstream). The deopt-fallback path is proven end-to-end. The JIT workstream's standing claim at this point: every component of the Doc 736-style impossibility infrastructure that is reachable without hidden classes is operational.*
+
+---
+
+## JIT-EXT 25 — 2026-05-22 (telos sharpening + rename to LeJIT)
+
+### Headline
+
+Apparatus-tier round. No code substrate moves; pure framework refinement triggered by a 2026-05-22 keeper exchange on whether hand-rolling a Cranelift replacement would provide performance benefits. The analysis surfaced a four-region answer (probably yes in narrow regions, probably no overall) and identified the productive next move as a hand-rolled IC stub emitter *alongside* Cranelift, paired with a hidden-classes substrate pilot. Keeper concurred and directed the telos sharpening; the workstream is internally renamed rusty-js-jit → LeJIT to mark the hybrid stance.
+
+### Substrate delivered
+
+- `seed.md` §I.2 added: "Sharpened telos (2026-05-22): the LeJIT hybrid stance." Names the four sites where hand-rolling structurally wins over Cranelift (IC stub patching, Value-tag inline checks, tiny-fn compile latency, tail-call dispatch tightness); names the four sites where Cranelift's 20+ years of codegen engineering is the right consumed substrate; defines the hybrid telos as a single sentence; pre-files Pilot LeJIT-Σ (IC stub emitter) and the hidden-classes substrate pilot at coordinate `pilots/rusty-js-shapes/` per Doc 737 §IV.
+- `seed.md` header + `trajectory.md` header: workstream internally renamed LeJIT (etymology: "le JIT" / "legit JIT" — naming the deliberate hybrid stance: consume Cranelift where structurally upstream of the alphabet contract, hand-roll where the alphabet contract is finer-grained). On-disk crate path `pilots/rusty-js-jit/` retained until a separate clerical-migration round; locale-tag `L.rusty-js-jit` preserved per Doc 737's coordinate-uniqueness invariant.
+- Closure-summary table augmented with EXT 25 row.
+
+### §XVI / §V categorization
+
+Per Doc 730 §XVI: Case-3 (cruftless and Bun both diverge along different axes; no spec-correctness call needed) — the hand-rolled-vs-Cranelift choice is purely an implementation-freedom move at the (P2.d) cost-stratum dimension per Doc 735 §X.h.b. Mainstream JITs all use bespoke codegen (V8, JSC, SpiderMonkey); LeJIT's hybrid stance is the corpus-original synthesis enabled by Doc 731's alphabet-purity claim.
+
+Per Doc 734 §V: growth mechanism (c) positive-finding generalization. The 2026-05-22 keeper exchange surfaced the hybrid stance as a recognition implicit in JIT-EXT 24's closure but not previously articulated. The telos sharpening is the framework-tier refinement; no negative empirical finding was required to motivate it.
+
+### Composition with prior corpus work
+
+- **Doc 731 §VII R1–R8.** All six measurable conjectures remain corroborated under the sharpened telos. R1 (single tier) extends naturally to the hybrid: Cranelift + hand-rolled emitter are not two tiers, they are two sub-substrates of the same tier with complementary expressiveness. R8 (no internal optimization passes) remains satisfied because the hand-rolled emitter is straight-line lowering.
+- **Doc 729 §A8.13 substrate-amortization.** The hidden-classes pilot is the substrate-introduction round; Pilot LeJIT-Σ is the closure round reusing the substrate. Order is fixed by the dependency: hidden classes first, IC stub emitter second.
+- **Doc 735 §X.h three-probe-levels discipline.** The (P2.a) strict-win claim for the hand-rolled IC stub emitter requires bench probe + consumer-route probe + fuzz probe. §I.2's falsifier names the explicit 3× per-hit speedup threshold; below that, re-categorize as (P2.d) correct-but-losing and revert.
+- **Doc 737 §IV pre-filing.** The two pre-filed coordinates (`pilots/rusty-js-shapes/` and `pilots/rusty-js-jit/derived/src/stub_aarch64.rs` namespace within the LeJIT crate) materialize when the substrate calls per Doc 737 §IX's "pre-file generously, spawn only when the substrate calls" discipline.
+- **Doc 738 §II.** The hand-rolled emitter's source-tier coordinates fit cleanly into the five-axis convention space: pillar-path `pilots/rusty-js-jit/derived/src/{stub_aarch64,stub_x86_64,value_tag_inline,tiny_baseline}.rs`; prefix `__ic_*` for IC stub state per §II.a; install via `set_own_internal` per §II.c. Cross-axis consistency with the Cranelift-using translator path maintained by construction.
+
+### Pred-731 disposition (unchanged)
+
+All six R-conjectures of seed §VIII remain corroborated. Pred-731.XV.1 (cryptographic-primitive optimization recurs as alphabet promotion) now has a parallel at the JIT tier: the IC stub fast-path emitter is to the IC dispatch what Doc 731 §XV's primitive-optimization is to the cryptographic primitives — a hand-rolled tier-internal specialization that consumes the alphabet's purity rather than reinventing the alphabet.
+
+### Open scope at JIT-EXT 25 close
+
+1. **Hidden-classes substrate pilot** at coordinate `pilots/rusty-js-shapes/`. Substrate-introduction round per Doc 729 §A8.13. Multi-week. Pre-filed.
+2. **Pilot LeJIT-Σ — IC stub emitter (aarch64 first cut)**. Closure round reusing the hidden-classes substrate. Hand-rolled emitter for property-access IC stubs with self-modifying patching. Pre-filed; depends on (1).
+3. **Pilot LeJIT-Σ' — IC stub emitter (x86_64)**. Parallel closure for the second target ISA. Lower priority than (2) since Pi is the engagement's reference hardware.
+4. **Value-tag inline emitter for hot Op::GetProp / Op::SetProp / Op::Call paths**. Composes with (2); same hand-rolled emitter infrastructure.
+5. **Tiny-fn fast-baseline emitter** that bypasses Cranelift when function size is below threshold. Independent of (1)/(2); could land in parallel.
+
+### Cumulative status at JIT-EXT 25 close
+
+LOC delta: 0 (apparatus-tier round; framework-only). Source footprint unchanged. PM-EXT 11+12 regression unchanged.
+
+The workstream's standing claim at this point: the first-cut hybrid baseline JIT is structurally complete. The next two rounds (hidden classes + IC stub emitter) instantiate the §I.2 sharpened telos. Doc 731's alphabet-purity claim is corroborated; the new claim under test is Doc 731 + §I.2: that a JIT with Cranelift owning the generic codegen tier AND a hand-rolled substrate-specific emitter owning the IC-fast-path / tagged-Value / inline-tiny-fn tier achieves IC fast-path latency competitive with mainstream JITs while preserving the single-tier baseline shape.
+
+---
+
+*JIT-EXT 25 closes the apparatus-tier round. No code commits. The workstream resumes at the hidden-classes substrate pilot's founding round when keeper directs.*
