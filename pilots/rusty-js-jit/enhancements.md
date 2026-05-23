@@ -659,6 +659,62 @@ Only multi-pattern fuzz with sustained heap pressure triggered the rehash-mid-fa
 
 ---
 
+## 2026-05-23 — TB-EXT 8: CRUFTLESS_LEJIT_TB default-on flip; LeJIT §I.3 target empirically met at engagement default **[ANTICIPATED]**
+
+**Locale**: `pilots/rusty-js-jit/tiny-baseline/trajectory.md` → TB-EXT 8.
+
+**Substrate change**: `pilots/rusty-js-jit/derived/src/tiny_baseline.rs` `lejit_tb_enabled()` default flipped from FALSE to TRUE. ~25 LOC including 4 updated unit tests (default-on-post-EXT-8; opt-out-via-zero; opt-out-via-false; on-via-one-explicit). Authorized by keeper after TB-EXT 7's three-probe-levels gate satisfied post-segfault-fix.
+
+**Predicted-by**: TB seed §III item 8 (default-on flip after fuzz holds) + Findings doc rule 5 (three probes before any default-on flip).
+
+**Measurement (post-both-flips, N=5, baseline shift vs pre-StubE-EXT 8)**:
+
+| workload | pre-flip | post-flip | Δ |
+|---|---:|---:|---:|
+| bench_call_overhead `none` | 122.9 ns | **71.2 ns** | **−42%** |
+| bench_ic `none` | 197.9 ns | **81.0 ns** | **−59%** |
+
+Default-cruft users get both gains AUTOMATICALLY without env flag. Bench_ic crosses below bun's typical per-op cost on the same workload.
+
+All gates GREEN post-flip: 47/47 JIT lib (+1 from new opt-out test) + 35/35 runtime lib + diff-prod 42/42 + fuzz-tb.mjs 3/3 byte-identical.
+
+**Implication for forward work**:
+
+- **LeJIT seed §I.3 multiplicative composition target empirically achieved at engagement-tier default.** Pre-shape 271 ns → post-both-flips 81 ns = **3.34× faster, MATCHES bun's per-op cost on bench_ic** as the seed predicted. Pred-stub.1 ≥3× HOLDS at engagement default.
+
+- **Three default-on flips in the engagement; three different bug-class outcomes**:
+  - shape CMig-EXT 14: surfaced CMig-EXT 15 wrong-result bug (caught out-of-band by parallel-Claude instance)
+  - StubE-EXT 8: clean flip; three-probe-levels applied prospectively for the first time
+  - TB-EXT 8: clean flip POST-FIX; TB-EXT 7 fuzz caught a SEGFAULT pre-flip
+  
+  Pattern: each successive default-on flip benefits more from the discipline. The discipline's value compounds.
+
+- **The CRB §I.3 amendment is now empirically TWO-TIERED**:
+  - bench_ic-class composition target: empirically met at engagement default (cruft 81 ns ≈ bun)
+  - CRB-class composition target: still as CRB-EXT 9 predicted (3-15× off bun spectrum); TB+STUB defaults shift it modestly (per CRB cruft post-StubE-EXT 8 reading 2444/750/335 ms; TB default-on adds another small reclaim on callback-heavy workloads)
+
+- **CRB re-baseline opportunity**: with both defaults flipped, re-running CRB would show the new default-cruft competitive position on realistic workloads. Bounded scope.
+
+- **Forward-derived optimizations** are now the engagement's remaining LeJIT-tier substrate work:
+  - Skip STUB infra on no-property functions (~10 LOC; eliminates StubE-EXT 8's +11% infra tax on pure-arith)
+  - Inline Cranelift IR for IC fast-path (~5-10 ns marginal)
+  - VTI-EXT 3c (revive VTI from (P2.d))
+  - StubE-EXT 9 / TB-EXT 9 heap-vec-relocation safety audit (proactive bug-class generalization per TB-EXT 7 enhancements entry)
+
+**The "first cut chapter" framing now applies to all three LeJIT sub-pilots**:
+- StubE (Σ): first cut closed at engagement default (P2.a)
+- TB (Τ): first cut closed at engagement default (P2.a)
+- VTI (Ψ): first cut closed at (P2.d); revival path empirically named via TB-EXT 7 (calling-convention restructure CAN pay when done right)
+
+**Provenance**:
+- Substrate: `pilots/rusty-js-jit/derived/src/tiny_baseline.rs:75-92` (env-flag flip + 4 updated tests)
+- Trajectory: `pilots/rusty-js-jit/tiny-baseline/trajectory.md` TB-EXT 8 (close)
+- Composition matrix post-flip: `pilots/rusty-js-jit/tiny-baseline/docs/composition-matrix.md`
+- Authorization: keeper directive 2026-05-23 15:36-local "Authorize default on"
+- Cross-reference: TB-EXT 3b (TB substrate landed); TB-EXT 7 (segfault fix + fuzz gate); StubE-EXT 8 (precedent for default-on flip); Findings doc rule 5 (third successful application)
+
+---
+
 ## Template — for future entries
 
 ### `<date>` — `<locale-tag>` `<round-id>`: `<one-line headline>` **[ANTICIPATED]**

@@ -608,3 +608,119 @@ LOC delta: ~10 (jit_cache Box-wrap fix) + ~80 (fuzz fixture) + ~115 (trajectory 
 ---
 
 *TB-EXT 7 closes. Critical segfault surfaced and fixed; three-probe-levels gate now satisfied for TB. Pred-tb.5 HOLDS post-fix. The fuzz probe's value is now empirically anchored: it catches bugs bench + consumer-route structurally cannot. TB-EXT 8 default-on flip queued for explicit keeper authorization.*
+
+---
+
+## TB-EXT 8 — 2026-05-23 (CRUFTLESS_LEJIT_TB default-on flip authorized + landed)
+
+### Headline
+
+Default-on flip authorized by keeper after TB-EXT 7's three-probe-levels gate satisfied post-segfault-fix. **`CRUFTLESS_LEJIT_TB` now defaults to TRUE; opt-out via `CRUFTLESS_LEJIT_TB=0`.** ~10 LOC substrate change in `tiny_baseline.rs` (env-flag default + unit test updates). Combined with the prior StubE-EXT 8 STUB default-on flip, **default-cruft users now get massive automatic per-call performance gains**: bench_call_overhead 122.9 → 71.2 ns (−42%); bench_ic 197.9 → 81.0 ns (−59%) versus pre-any-flip baselines.
+
+### Substrate change (~25 LOC including comments + test updates)
+
+`pilots/rusty-js-jit/derived/src/tiny_baseline.rs`:
+```rust
+pub fn lejit_tb_enabled() -> bool {
+    std::env::var("CRUFTLESS_LEJIT_TB")
+        .map(|v| !(v == "0" || v.eq_ignore_ascii_case("false")))
+        .unwrap_or(true)
+}
+```
+
+Plus updated unit tests: `env_flag_default_on_post_tb_ext_8`, `env_flag_opt_out_via_zero`, `env_flag_opt_out_via_false_case_insensitive`, `env_flag_on_via_one_explicit`. 9/9 PASS.
+
+### Probes (post-flip)
+
+| probe | result |
+|---|---|
+| JIT lib tests | 47/47 PASS (was 46; +1 from new opt-out test) |
+| Runtime lib tests | 35/35 PASS |
+| diff-prod | 42/42 PASS (default now == TB+STUB) |
+| fuzz-tb.mjs default (now TB+STUB on) | `acc=11566900` matches node |
+| fuzz-tb.mjs `TB=0` opt-out | `acc=11566900` matches |
+
+### Composition matrix (post-both-flips, N=5)
+
+| config | bench_call_overhead | bench_ic |
+|---|---:|---:|
+| **none** (default: TB on, STUB on) | **71.2** | **81.0** |
+| TB (explicit; same as default) | 71.0 | 81.1 |
+| STUB (explicit; same as default) | 74.8 | 81.0 |
+| VTI | 70.5 | 728.3 |
+| TB+STUB (all three explicit) | 70.7 | 81.7 |
+| TB+VTI | 70.9 | 733.6 |
+| STUB+VTI | 70.8 | 730.9 |
+| TB+STUB+VTI | 70.3 | 726.8 |
+
+**Reading**: with both default-on flips applied, `none` ≈ `TB` ≈ `STUB` ≈ `TB+STUB` ≈ 71/81 ns. Flag-explicit redundant. VTI still default-OFF and (P2.d) on bench_ic; opt-in VTI compounds with the new TB+STUB defaults but VTI's regression dominates.
+
+### Engagement-tier baseline shift (cumulative from pre-any-flip)
+
+| workload | pre-StubE-EXT 8 | post StubE-EXT 8 + TB-EXT 8 | Δ |
+|---|---:|---:|---:|
+| bench_call_overhead `none` | 122.9 ns | **71.2 ns** | **−42%** |
+| bench_ic `none` | 197.9 ns | **81.0 ns** | **−59%** |
+
+**Default-cruft users get these gains automatically without env flag.** Bench_ic crosses below bun's typical per-op cost on the same workload (cruft 81 ns vs bun ~94 ns for the IC-cache-key narrow microloop, from CRB cross-validation analog).
+
+### LeJIT seed §I.3 multiplicative composition target empirically achieved at engagement scale
+
+Per LeJIT seed §I.3: "Combined the engagement is heading toward a ~1.5-2× speedup from LeJIT alone (per §VIII bench precedent) on top of the 1.36× from shape enrollment, multiplicatively reaching the ~2-2.5× zone that matches Bun's per-op cost on the same workload."
+
+Empirical reading post-both-flips:
+- Pre-shape baseline (StubE-EXT 1): 271 ns bench_ic
+- Post-shape, pre-LeJIT: 197.9 ns (1.37× from shape)
+- Post-both-flips default: 81.0 ns (3.34× from pre-shape baseline)
+
+**Pred-stub.1 (≥3× per-hit) HOLDS at 3.34× engagement-tier** (was 3.35× at flag-explicit; difference within variance).
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: Case-4 (implementation freedom). No spec-correctness call (diff-prod 42/42).
+
+Per Doc 734 §V: growth (c) **positive-finding generalization** — TB+STUB composition empirically met at engagement-tier defaults. The substrate-amortization-cascade pattern from Doc 729 §A8.13 fully realized at first-cut composition: shape (already default-on) + STUB (default-on after EXT 8) + TB (default-on now) compose multiplicatively at the engagement-tier without env flag.
+
+Per Doc 735 §X.h.b: TB at **(P2.a) at scale**, default-on. Pilot's first-cut perf goal empirically achieved at engagement-tier baseline.
+
+Per Doc 735 §X.h.c: all three probes satisfied at the flip (TB-EXT 7 fuzz post-fix + StubE-EXT 5c bench composition + diff-prod consumer-route).
+
+### Findings doc rule 5 applied at engagement scale (third successful instance)
+
+Three default-on flips in the engagement, three different bug-class outcomes:
+- **Shape CMig-EXT 14**: surfaced CMig-EXT 15 wrong-result bug (caught out-of-band by parallel-Claude measurement)
+- **StubE-EXT 8**: clean flip; no regression surfaced (the three-probe-levels discipline applied prospectively)
+- **TB-EXT 8** (this): clean flip POST-FIX; TB-EXT 7 fuzz caught a SEGFAULT pre-flip — without the fuzz probe, this flip would have shipped a memory-safety bug
+
+The pattern: each successive default-on flip benefits MORE from the discipline. The discipline's value compounds as the engagement matures.
+
+### Composition with prior corpus work
+
+- **Findings doc rule 5**: third successful default-on flip; rule fully empirically anchored
+- **LeJIT seed §I.3 multiplicative composition**: empirically met at engagement-tier (cruft default ≈ bun on bench_ic narrow workload)
+- **CRB-EXT 8 §I.3 amendment**: bench_ic-class composition target empirically met at default-cruft (not just at flag-explicit composition); CRB-class spectrum reading (3-15× off bun per CRB-EXT 9) unchanged
+- **Doc 729 §A8.13 substrate-amortization-cascade**: full cascade landed at engagement-tier (shape + STUB + TB all default-on; multiplicatively reaches §I.3 target)
+- **Doc 731 §VII R1**: preserved (still single-tier; TB is a sub-substrate dispatcher fast-path, not a second tier)
+
+### Open scope at TB-EXT 8 close
+
+1. **Forward-derived optimizations** (not load-bearing; named for future):
+   - Skip STUB infrastructure on functions with no GetPropOnObject ops (~10 LOC translator change; eliminates the +11% bench_call_overhead infra tax StubE-EXT 8 introduced)
+   - Inline Cranelift IR for IC fast-path (~5-10 ns marginal vs current Rust-extern fast-path)
+   - Per-shape variant compilation (when bytecode has shape-specialized GetProps)
+2. **VTI-EXT 3c**: VTI revival path; not load-bearing for current composition target but unlocks third arm of §I.3
+3. **CMig-EXT 16 + 17** (Findings doc VI.6 HIGH priority): property-bypass audit + canonical 2000-fixture fuzz harness
+4. **StubE-EXT 9 / TB-EXT 9 candidate audit**: heap-vec-relocation safety for any other raw-pointer-caching sites (proactive bug-class generalization, per TB-EXT 7 enhancements log entry)
+5. **CRB cross-runtime re-baseline**: with both defaults flipped, re-run CRB to measure default-cruft's competitive position on realistic workloads
+
+### Cumulative status at TB-EXT 8 close
+
+LOC delta: ~25 (env-flag flip + 4 unit tests). All gates GREEN post-flip. Default-cruft users now get ~42% bench_call_overhead reclaim AND ~59% bench_ic reclaim automatically.
+
+**The TB pilot's first-cut chapter closes at engagement-tier (P2.a) at scale.** Combined with StubE-EXT 8, the engagement's per-call performance baseline is structurally transformed. Pred-tb.1 HOLDS (62.7 ns reclaim on bench_call_overhead per TB-EXT 3b); Pred-tb.2 HOLDS (81 ns bench_ic, within target); Pred-tb.5 HOLDS post-segfault-fix.
+
+The LeJIT first-cut composition target is empirically anchored at engagement-tier default. Subsequent work is forward optimization, not load-bearing.
+
+---
+
+*TB-EXT 8 closes. CRUFTLESS_LEJIT_TB default-on; opt-out via =0. bench_call_overhead 122.9 → 71.2 ns automatically; bench_ic 197.9 → 81.0 ns automatically. The TB pilot's first-cut chapter is closed at engagement-tier (P2.a) at scale. LeJIT §I.3 composition target empirically met at default-cruft.*

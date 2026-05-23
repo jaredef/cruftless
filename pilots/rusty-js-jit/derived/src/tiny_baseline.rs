@@ -83,13 +83,18 @@ impl TinyBaselineMetadata {
     pub fn eligible(&self) -> bool { self.tb_eligible }
 }
 
-/// Read the `CRUFTLESS_LEJIT_TB` env flag. Returns true iff the
-/// value is `"1"` or `"true"` (case-insensitive). Mirrors the
-/// `CRUFTLESS_LEJIT_STUB` + `CRUFTLESS_LEJIT_VTI` precedent.
+/// Read the `CRUFTLESS_LEJIT_TB` env flag.
+///
+/// LeJIT-Τ TB-EXT 8 (2026-05-23): default-on flip authorized by
+/// keeper after TB-EXT 7's three-probe-levels gate satisfied
+/// (bench: TB+STUB 81 ns on bench_ic; consumer-route: diff-prod
+/// 42/42 under default + TB=1; fuzz: fuzz-tb.mjs 3/3 configs
+/// byte-identical post-Box-wrap fix). Opt out via
+/// `CRUFTLESS_LEJIT_TB=0`.
 pub fn lejit_tb_enabled() -> bool {
     std::env::var("CRUFTLESS_LEJIT_TB")
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false)
+        .map(|v| !(v == "0" || v.eq_ignore_ascii_case("false")))
+        .unwrap_or(true)
 }
 
 #[cfg(test)]
@@ -135,24 +140,30 @@ mod tests {
     }
 
     #[test]
-    fn env_flag_default_off() {
-        // No setting; default is OFF. Per the engagement's discipline:
-        // VTI was default-off behind the flag; STUB was default-off
-        // behind the flag; TB follows the same pattern.
+    fn env_flag_default_on_post_tb_ext_8() {
+        // TB-EXT 8 default-on flip (2026-05-23): no flag set → ON.
+        // Mirrors STUB's StubE-EXT 8 default-on flip pattern.
         std::env::remove_var("CRUFTLESS_LEJIT_TB");
-        assert!(!lejit_tb_enabled());
-    }
-
-    #[test]
-    fn env_flag_on_via_one() {
-        std::env::set_var("CRUFTLESS_LEJIT_TB", "1");
         assert!(lejit_tb_enabled());
+    }
+
+    #[test]
+    fn env_flag_opt_out_via_zero() {
+        std::env::set_var("CRUFTLESS_LEJIT_TB", "0");
+        assert!(!lejit_tb_enabled());
         std::env::remove_var("CRUFTLESS_LEJIT_TB");
     }
 
     #[test]
-    fn env_flag_on_via_true_case_insensitive() {
-        std::env::set_var("CRUFTLESS_LEJIT_TB", "TrUe");
+    fn env_flag_opt_out_via_false_case_insensitive() {
+        std::env::set_var("CRUFTLESS_LEJIT_TB", "FaLsE");
+        assert!(!lejit_tb_enabled());
+        std::env::remove_var("CRUFTLESS_LEJIT_TB");
+    }
+
+    #[test]
+    fn env_flag_on_via_one_explicit() {
+        std::env::set_var("CRUFTLESS_LEJIT_TB", "1");
         assert!(lejit_tb_enabled());
         std::env::remove_var("CRUFTLESS_LEJIT_TB");
     }
