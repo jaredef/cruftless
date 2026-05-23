@@ -6657,6 +6657,7 @@ impl Runtime {
             new_target: None,
             strict: proto.strict,
             back_edge_counts: HashMap::new(),
+            osr_attempted: HashMap::new(),
         };
         self.run_frame(&mut frame)
     }
@@ -7173,7 +7174,16 @@ impl Runtime {
                     frame.pc += 4;
                     if disp < 0 {
                         // OSR-EXT 2: loop back-edge; count.
-                        *frame.back_edge_counts.entry(site_pc).or_insert(0) += 1;
+                        let c = frame.back_edge_counts.entry(site_pc).or_insert(0);
+                        *c += 1;
+                        // OSR-EXT 4: at exact threshold-crossing, attempt
+                        // OSR compile once per site (substrate-introduction:
+                        // attempt + log; OSR-EXT 5 invokes).
+                        if *c == OSR_BACK_EDGE_THRESHOLD
+                            && !frame.osr_attempted.contains_key(&site_pc) {
+                            frame.osr_attempted.insert(site_pc, ());
+                            try_osr_compile(frame, site_pc);
+                        }
                     }
                     frame.pc = (frame.pc as i32 + disp) as usize;
                 }
@@ -7183,7 +7193,13 @@ impl Runtime {
                     frame.pc += 4;
                     if to_boolean(&frame.pop()?) {
                         if disp < 0 {
-                            *frame.back_edge_counts.entry(site_pc).or_insert(0) += 1;
+                            let c = frame.back_edge_counts.entry(site_pc).or_insert(0);
+                            *c += 1;
+                            if *c == OSR_BACK_EDGE_THRESHOLD
+                                && !frame.osr_attempted.contains_key(&site_pc) {
+                                frame.osr_attempted.insert(site_pc, ());
+                                try_osr_compile(frame, site_pc);
+                            }
                         }
                         frame.pc = (frame.pc as i32 + disp) as usize;
                     }
@@ -7194,7 +7210,13 @@ impl Runtime {
                     frame.pc += 4;
                     if !to_boolean(&frame.pop()?) {
                         if disp < 0 {
-                            *frame.back_edge_counts.entry(site_pc).or_insert(0) += 1;
+                            let c = frame.back_edge_counts.entry(site_pc).or_insert(0);
+                            *c += 1;
+                            if *c == OSR_BACK_EDGE_THRESHOLD
+                                && !frame.osr_attempted.contains_key(&site_pc) {
+                                frame.osr_attempted.insert(site_pc, ());
+                                try_osr_compile(frame, site_pc);
+                            }
                         }
                         frame.pc = (frame.pc as i32 + disp) as usize;
                     }
@@ -7205,7 +7227,13 @@ impl Runtime {
                     frame.pc += 4;
                     if to_boolean(frame.peek(0)?) {
                         if disp < 0 {
-                            *frame.back_edge_counts.entry(site_pc).or_insert(0) += 1;
+                            let c = frame.back_edge_counts.entry(site_pc).or_insert(0);
+                            *c += 1;
+                            if *c == OSR_BACK_EDGE_THRESHOLD
+                                && !frame.osr_attempted.contains_key(&site_pc) {
+                                frame.osr_attempted.insert(site_pc, ());
+                                try_osr_compile(frame, site_pc);
+                            }
                         }
                         frame.pc = (frame.pc as i32 + disp) as usize;
                     }
@@ -7216,7 +7244,13 @@ impl Runtime {
                     frame.pc += 4;
                     if !to_boolean(frame.peek(0)?) {
                         if disp < 0 {
-                            *frame.back_edge_counts.entry(site_pc).or_insert(0) += 1;
+                            let c = frame.back_edge_counts.entry(site_pc).or_insert(0);
+                            *c += 1;
+                            if *c == OSR_BACK_EDGE_THRESHOLD
+                                && !frame.osr_attempted.contains_key(&site_pc) {
+                                frame.osr_attempted.insert(site_pc, ());
+                                try_osr_compile(frame, site_pc);
+                            }
                         }
                         frame.pc = (frame.pc as i32 + disp) as usize;
                     }
@@ -9017,6 +9051,7 @@ impl Runtime {
             new_target: nt_for_this_call.clone(),
             strict: proto.strict,
             back_edge_counts: HashMap::new(),
+            osr_attempted: HashMap::new(),
         };
         let body_result = self.run_frame(&mut inner);
         if is_generator {
@@ -9430,6 +9465,14 @@ pub struct Frame<'a> {
     /// what uniquely identifies the loop in the bytecode). Empty by
     /// default (no allocation until first back-edge fires).
     pub back_edge_counts: HashMap<usize, u32>,
+    /// OSR-EXT 4 (2026-05-23): set of back-edge site_pcs for which an
+    /// OSR JIT-compile has already been attempted on this frame. Used
+    /// to skip re-attempting compile on every subsequent back-edge fire
+    /// once the threshold has tripped once. Records the site_pc only;
+    /// the compile result (success/failure) is not consumed at this
+    /// round — OSR-EXT 5 adds the per-site CompiledFn cache for actual
+    /// invocation.
+    pub osr_attempted: HashMap<usize, ()>,
 }
 
 /// OSR-EXT 2 (2026-05-23): threshold for OSR JIT-attempt trigger.
@@ -9452,6 +9495,48 @@ pub const OSR_BACK_EDGE_THRESHOLD: u32 = 1000;
 ///
 /// Returns None if site_pc is out of bounds, disp is non-negative
 /// (not a back-edge), or entry_pc would be out of bounds.
+/// OSR-EXT 4 (2026-05-23): at back-edge threshold trigger, attempt to
+/// JIT-compile the loop region as a synthetic 0-arg FunctionProto.
+/// Substrate-introduction: compile attempt only; result is discarded
+/// (OSR-EXT 5 caches the CompiledFn + invokes). The expected outcome
+/// on json_parse_transform's charCodeAt loop: COMPILE FAILS at parse-
+/// time because the loop body uses Op::GetProp + Op::CallMethod which
+/// aren't in the JIT alphabet (Finding VII.2 op-set coverage gap).
+/// OSR-EXT 6 closes the alphabet gap via TL Moves 3+4 revival folded in.
+///
+/// Per Pred-osr.4 ±5% composition gate: this round adds only the
+/// compile attempt (~milliseconds per attempt, amortized over
+/// THRESHOLD=1000 iters); near-zero per-iter overhead.
+fn try_osr_compile(frame: &Frame, site_pc: usize) {
+    let region = match compute_loop_region(frame.bytecode, site_pc) {
+        Some(r) => r,
+        None => return,  // not a loop region; ignore
+    };
+    let (entry_pc, end_pc) = region;
+    let sub_bytecode = frame.bytecode[entry_pc..end_pc].to_vec();
+    let synth = rusty_js_bytecode::compiler::FunctionProto {
+        bytecode: sub_bytecode,
+        constants: frame.constants.clone(),
+        params: 0,
+        display_name: format!("<osr-loop@{site_pc}>"),
+        function_length: 0,
+        locals: frame.locals_names.to_vec(),
+        upvalues: Vec::new(),
+        rest_param_slot: None,
+        arguments_slot: None,
+        self_name_slot: None,
+        is_generator: false,
+        line_starts: Vec::new(),
+        source_map: Vec::new(),
+        construct_tags: Vec::new(),
+        source_url: String::new(),
+        is_async: false,
+        strict: frame.strict,
+    };
+    // Substrate-intro: discard the result. OSR-EXT 5 will cache it.
+    let _ = rusty_js_jit::compile_function(&synth);
+}
+
 pub fn compute_loop_region(bytecode: &[u8], site_pc: usize) -> Option<(usize, usize)> {
     if site_pc + 5 > bytecode.len() { return None; }
     let disp = i32::from_le_bytes([
@@ -9500,6 +9585,7 @@ impl<'a> Frame<'a> {
             new_target: None,
             strict: m.strict,
             back_edge_counts: HashMap::new(),
+            osr_attempted: HashMap::new(),
         }
     }
 

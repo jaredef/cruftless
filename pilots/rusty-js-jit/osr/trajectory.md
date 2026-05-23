@@ -222,3 +222,62 @@ LOC delta: ~70 (35 helper + 35 unit tests). OSR-EXT 0+1+2+3 cumulative: ~450 acr
 ---
 
 *OSR-EXT 3 closes. Loop boundary detector substrate landed; 5/5 unit tests; correctness probes GREEN; A/B unchanged. OSR-EXT 4 integrates the counter + detector + JIT compile attempt.*
+
+---
+
+## OSR-EXT 4 — 2026-05-23 (Move 3 synthetic FunctionProto builder + JIT compile attempt)
+
+### Headline
+
+`try_osr_compile(frame, site_pc)` lands as a free helper in interp.rs. At exact threshold-crossing (counter == OSR_BACK_EDGE_THRESHOLD) per back-edge site, the 5 Jump handlers call try_osr_compile once per site (osr_attempted HashMap tracks already-attempted sites). The helper builds a synthetic 0-arg FunctionProto wrapping bytecode[entry_pc..end_pc] + frame.locals_names + frame.constants + frame.strict; attempts compile_function; discards the result. Substrate-introduction: compile attempted, result discarded; OSR-EXT 5 caches + invokes.
+
+~50 LOC delta in interp.rs (Frame field + 3 init sites + 5 Jump handler extensions + try_osr_compile helper).
+
+### Expected outcome on json_parse_transform
+
+Compile fails at parse-time because the loop body uses Op::GetProp (.length) + Op::CallMethod (.charCodeAt) which aren't in the JIT alphabet (Finding VII.2 op-set coverage gap). The compile attempt itself is harmless (~ms per attempt; amortized over 1000-iter threshold). No invoke; no behavior change.
+
+### Three-probe results
+
+| probe | result |
+|---|---|
+| canonical fuzz (acc=-932188103) | ✅ GREEN |
+| diff-prod 42/42 | ✅ GREEN |
+| JIT lib tests | ✅ 38/38 |
+| OSR helper unit tests | ✅ 5/5 |
+| A/B composition | median 1533 vs baseline 1480 (~3.6% drift; within ±5% gate) |
+
+### Substrate moves landed
+
+1. Added `Frame::osr_attempted: HashMap<usize, ()>` field.
+2. Initialized at all 3 Frame creation sites.
+3. Added `try_osr_compile(frame, site_pc)` free helper.
+4. Wired threshold-crossing trigger in 5 Jump handlers (exact-equality check on OSR_BACK_EDGE_THRESHOLD; once-per-site).
+
+### Composition with prior corpus / engagement work
+
+- **Doc 740 §II.2 op-set coverage tier**: this round delivers the substrate-introduction for the compile path; OSR-EXT 6 closes the alphabet gap.
+- **VD pilot encoding**: synthetic FunctionProto uses Φ-default unboxing; VD String encoding becomes consumable at OSR-EXT 6 alphabet additions.
+- **TL pilot wrapper pattern**: try_osr_compile mirrors try_jit_run_module's synthetic-FunctionProto build shape.
+- **Finding II.2-bis substrate-introduction signature**: A/B drift +3.6% is the compile-attempt cost amortized; near-zero per-iter overhead as predicted.
+- **Standing rule 11 (op-set coverage axis)**: this round's compile attempts will UNIFORMLY FAIL on json_parse_transform due to the alphabet gap; the failures are silent (discarded result); OSR-EXT 5+6 add the alphabet + invoke for the loop bodies that DO match the alphabet.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable.
+Per Doc 734 §V: growth (c) preparatory.
+Per Doc 735 §X.h.b: substrate-intro round; (P2.d) bench within ±5% by design; consumer at OSR-EXT 5+6.
+
+### Open scope at OSR-EXT 4 close
+
+1. **OSR-EXT 5** — local-state copy-in/out + JIT body invoke (consumes try_osr_compile's result; caches CompiledFn per site_pc)
+2. **OSR-EXT 6** — alphabet extension (TL Moves 3+4 revival folded in: GetProp+length-IC + CallMethod+charCodeAt-IC consuming VD String encoding) (cascade-revival)
+3. **OSR-EXT 7** — composition probe + CRB final disposition + Pred-osr.1 gate
+
+### Cumulative status at OSR-EXT 4 close
+
+LOC delta: ~50 (Frame field + 3 inits + helper + 5 trigger sites). OSR-EXT 0-4 cumulative: ~500 across the locale.
+
+---
+
+*OSR-EXT 4 closes. Synthetic FunctionProto builder + compile-attempt trigger landed; all probes GREEN; A/B within ±5%. Substrate-intro per Finding II.2-bis. OSR-EXT 5 caches the compile result + invokes the JIT body.*
