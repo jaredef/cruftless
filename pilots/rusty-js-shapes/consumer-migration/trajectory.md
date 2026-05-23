@@ -597,3 +597,64 @@ LOC delta: ~20 (Object.getOwnPropertyDescriptor synthesis + default flip). diff-
 ---
 
 *CMig-EXT 13 + 14 closes. Object.getOwnPropertyDescriptor shape-aware; default-on flip held. test262 within 0.1pp of default-off; diff-prod parity. 98.6% of original 283-PASS regression closed via two single-site fixes using the bisect-by-jsonl-diff pattern. LeJIT-Σ StubE-EXT 5 unblocks under default enrollment.*
+
+---
+
+## CMig-EXT 15 — 2026-05-23 (object-spread regression close, out-of-band)
+
+### Headline
+
+Regression report surfaced by an independent measurement instance: `{...src}` silently produces `{}` under shape-on. Root-caused to `__object_spread` at `intrinsics.rs:831` iterating `.properties.iter()` directly — a classic unmigrated-bypass site CMig's family sweep missed. Fixed via the same shape-aware-then-dictionary pattern CMig-EXT 12/13 used. 42/42 diff-prod + 35/35 runtime lib + 5/5 spread-variant tests PASS.
+
+### The bug
+
+Pre-fix `__object_spread` iteration read only `properties`. For Shape-enrolled source objects (default since CMig-EXT 14), `properties` is empty (values live in `shape_values`); spread silently produced `{}`. The "crash" the parallel instance reported is the downstream consequence of empty-spread breaking an invariant in their workload.
+
+Repro:
+```
+const src = { a: 1, b: 2, c: 3 };
+JSON.stringify({ ...src })
+// shape-on:  "{}"           ← bug
+// shape-off: '{"a":1,"b":2,"c":3}'   ← correct
+```
+
+### The fix (~26 LOC)
+
+Shape-aware iteration following CMig-EXT 12/13 pattern:
+1. Iterate shape-stored entries first (shape's `iter_slots`) — plain-data descriptors per shapes seed §IV carve-out, no accessor dispatch needed.
+2. Iterate dictionary-stored entries with the existing accessor-handling path.
+3. Materialize both lists before the for-loop body so the `rt.obj` borrow is released before `rt.call_function` / `rt.object_set`.
+
+### Probes (Doc 735 §X.h.c)
+
+- **Bench probe**: 5 spread-variant fixtures (nested + override + multiple-source + empty + spread-into-populated) all correct under shape-on.
+- **Consumer-route probe**: diff-prod 42/42 PASS. None of the 42 fixtures exercised spread+shape pre-fix — the regression escaped via this gap.
+- **Unit-test regression**: rusty-js-runtime lib 35/35 PASS.
+- **Fuzz probe**: not run; queued for CMig-EXT 17.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: Case-2 (cruftless violated spec under shape-on; ECMA-262 spread semantics require all enumerable own properties). §XII coercion lift; fix at substrate boundary.
+
+Per Doc 734 §V: growth (b) **negative-finding amendment surfaced out-of-band**. The amendment to CMig: diff-prod + test262-sample alone are NECESSARY but not SUFFICIENT for catching every unmigrated-bypass site. A property-shape-completeness audit (read every site that touches `.properties.iter()`) is the load-bearing discipline CMig's first cut was missing.
+
+Per Doc 735 §X.h.c: load-bearing demonstration that the three-probe-levels discipline catches what bench + consumer-route alone miss. Fuzz would have caught this; CMig's coverage stopped at consumer-route.
+
+### Composition with prior corpus work
+
+- **Doc 729 §A8.13**: consumer-migration is incompletely closed pending a full property-bypass audit (CMig-EXT 16+).
+- **Doc 735 §X.h.c**: empirical anchor for the fuzz-probe gap in CMig.
+- **Doc 738 §II**: fix's identifiers conform (in-place patch of existing engine helper).
+
+### Open scope at CMig-EXT 15 close
+
+1. **CMig-EXT 16** — Property-bypass audit. grep `.properties.iter()` / `.properties.keys()` / `.properties.values()` across the runtime crate; audit each site for shape-awareness; close additional unmigrated bypasses.
+2. **CMig-EXT 17** — Property-shape fuzz harness. Random property-mutation + spread patterns to catch the §X.h.c gap that let CMig-EXT 15 escape.
+
+### Cumulative status at CMig-EXT 15 close
+
+LOC delta: ~26. diff-prod 42/42 GREEN; runtime lib 35/35 GREEN; manual spread 5/5 GREEN. Structural reading: CMig-EXT 16 (audit) + 17 (fuzz) are the remaining substrate work for completeness.
+
+---
+
+*CMig-EXT 15 closes. Out-of-band regression localized, fixed, verified in one round. Demonstrates that diff-prod + test262-sample is insufficient probe-coverage for shape-enrollment correctness; CMig-EXT 16/17 (audit + fuzz) are queued.*

@@ -55,7 +55,9 @@ The first-cut closure criterion: a hand-built `function id(x) { return x; }` ben
 
 ### I.2 Falsifiers
 
-**Pred-tb.1**: a tiny-baseline-emitted call thunk reduces per-call overhead by ≥40 ns on `bench_call_overhead` (≥30% of the ~127 ns dispatcher cost). Falsifier: a substrate-complete implementation that fails to flip the bench by ≥40 ns. If true, the dispatcher's overhead is not in the named per-call work but in some other component the design did not identify.
+**Pred-tb.1**: cumulatively across TB-EXT 3b + 3c + (3d if needed), tiny-baseline reduces per-call overhead by ≥40 ns on `bench_call_overhead` (≥30% of the ~127 ns dispatcher cost). Falsifier: substrate-complete implementation across all three rounds fails to flip the bench by ≥40 ns. If true, the dispatcher's overhead is not in the named per-call work but in some other component the design did not identify (the unidentified gap from TB-EXT 2 §3 is structurally inaccessible from the per-call substrate axis).
+
+*Per-round sub-targets* (added 2026-05-23 after TB-EXT 3b scope analysis — see trajectory.md): TB-EXT 3b first-cut bar is ≥20 ns reclaim as framework validation under approach (A) closure-side metadata caching; TB-EXT 3c bar is the additional 20+ ns reclaim under approach (B) deopt-restructure-to-arg-passing; TB-EXT 3d if needed is approach (C) native call thunk emission. VTI-EXT 3b's (P2.d) experience constrained the staging: the Rust optimizer's response to restructured calling conventions is the surprising mechanism that flipped VTI from +5-10 ns prediction to +18.9 ns regression. The 3b → 3c → 3d staging validates the framework empirically before committing higher-LOC restructuring.
 
 **Pred-tb.2**: composition with shape (1.36×) + LeJIT-Σ (~1.3-1.5×) reaches the seed §I.3 multiplicative target (~3×) on `bench_ic` under (shape + LEJIT_STUB + LEJIT_TB). Falsifier: composition stays below 2.5×. If true, the seed §I.3 composition reading needs further refinement; possibly a fourth arm (e.g., GC interaction reduction) is required.
 
@@ -85,17 +87,23 @@ Per the LeJIT-tier methodology refined across StubE-EXT 0-5b + VTI-EXT 0-3b:
 
 3. **TB-EXT 3a — Substrate-introduction**: per Doc 729 §A8.13. Compile-time pointer resolution table (per-JIT-function metadata holding closure_v Rc, FunctionProto Rc, JIT-cache slot pointer). No thunk emission yet; the table is the apparatus.
 
-4. **TB-EXT 3b — Closure round**: emit the inline call thunk for ≤2-arg functions under `CRUFTLESS_LEJIT_TB=1` env flag. Dispatcher under flag routes eligible calls through the thunk; the standard path is the fallback.
+4. **TB-EXT 3b — Closure round (approach A: closure-side metadata caching)**: add `Cell<Option<*const TinyBaselineMetadata>>` to `ClosureInternals`; populate on first JIT-hit. Dispatcher under `CRUFTLESS_LEJIT_TB=1` reads the cell; if Some + eligible, fast-paths around the `jit_cache.get` HashMap lookup + the multi-condition AND + jit_compatible_arg per-arg match. Keeps TLS sets/clears + InternalKind match + Vec-arg cost (deferred to 3c). LOC estimate: ~80-120. Reclaim target: ≥20 ns (framework validation; HashMap absorption + match-arm simplification). Behind the env flag; default OFF.
 
-5. **TB-EXT 4 — Bench measurement**: re-bench `bench_call_overhead` under (a) no flags, (b) TB=1 only, (c) TB=1 + STUB=1, (d) TB=1 + STUB=1 + VTI=1. Three-probe-levels per Doc 735 §X.h.c starts here.
+   *(Staging refinement added 2026-05-23 — see trajectory TB-EXT 3b scope-analysis entry.)* Per VTI-EXT 3b's (P2.d) lesson, the Rust optimizer's behavior under restructured calling conventions is unpredictable; the 3b → 3c → 3d staging validates the framework empirically at each step before committing higher-LOC restructuring. If 3b shows <10 ns reclaim or regresses, the tiny-baseline pilot is (P2.d) at first cut and the gap is structurally inaccessible from the per-call substrate axis (consider AHash for the JIT cache as alternative, or escalate to a different substrate per Doc 735 §X.h.d).
 
-6. **TB-EXT 5 — Consumer-route probe**: diff-prod under TB=1; expected NEUTRAL since diff-prod fixtures don't exercise JIT hot paths. Surface any unexpected regressions.
+5. **TB-EXT 3c — Closure round (approach B: restructured deopt to arg-passing)**: gated on TB-EXT 3b showing ≥20 ns reclaim. Remove the `set_current_*` / `clear_current_*` TLS pattern; thread metadata pointer through extern callbacks. Eliminates the ~20-40 ns TLS gap component identified in TB-EXT 2 §3 (d). LOC estimate: ~250-400 across deopt.rs + 3 extern fn signatures + thunk callers. Additional reclaim target: ≥20 ns (cumulative ≥40 ns vs TB-EXT 1 baseline — meets Pred-tb.1).
 
-7. **TB-EXT 6 — Variance characterization**: multi-run bench (≥20 runs per configuration) to bound the variance band on TB-EXT 4's reading + retroactively on VTI-EXT 3a/3b.
+6. **TB-EXT 3d — Closure round (approach C: native call thunk)**: gated on TB-EXT 3c result + keeper authorization. Emit aarch64 directly that bypasses the Rust dispatcher entirely (Sparkplug-style per the seed's original framing). LOC estimate: ~400-600; first hand-rolled native emission in the engagement. Additional reclaim target: ≥20 ns (cumulative ≥60 ns vs TB-EXT 1 baseline). Only pursued if the cumulative reclaim from 3b + 3c falls short of Pred-tb.1's full target.
 
-8. **TB-EXT 7 — Fuzz probe**: random call patterns exercising deopt + capability-mode boundaries. Goal: 2000-fixture run, 0 divergent results per Doc 735 §X.h.c.
+7. **TB-EXT 4 — Bench measurement**: re-bench `bench_call_overhead` under (a) no flags, (b) TB=1 only, (c) TB=1 + STUB=1, (d) TB=1 + STUB=1 + VTI=1. Run after each of 3b/3c/3d closes. Three-probe-levels per Doc 735 §X.h.c starts here.
 
-9. **TB-EXT 8 — Default-on flip**: if TB-EXT 4 shows (P2.a) strict-win, TB-EXT 7 shows 0/2000 divergent, and the LeJIT seed §I.3 composition target is reached — flip default to ON. Otherwise document the (P2) sub-case categorization and leave behind the flag.
+8. **TB-EXT 5 — Consumer-route probe**: diff-prod under TB=1; expected NEUTRAL since diff-prod fixtures don't exercise JIT hot paths. Surface any unexpected regressions.
+
+9. **TB-EXT 6 — Variance characterization**: multi-run bench (≥20 runs per configuration) to bound the variance band on TB-EXT 4's reading + retroactively on VTI-EXT 3a/3b.
+
+10. **TB-EXT 7 — Fuzz probe**: random call patterns exercising deopt + capability-mode boundaries. Goal: 2000-fixture run, 0 divergent results per Doc 735 §X.h.c.
+
+11. **TB-EXT 8 — Default-on flip**: if TB-EXT 4 shows (P2.a) strict-win, TB-EXT 7 shows 0/2000 divergent, and the LeJIT seed §I.3 composition target is reached — flip default to ON. Otherwise document the (P2) sub-case categorization and leave behind the flag.
 
 ## IV. Carve-outs and bounded scope
 

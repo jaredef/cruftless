@@ -228,6 +228,52 @@ The combination of (1) + (2) + (3) plausibly accounts for the +18.9 ns regressio
 
 ---
 
+## 2026-05-23 — CMig-EXT 15 (out-of-band): __object_spread silently empty under shape-on **[UNANTICIPATED]**
+
+**Locale**: `pilots/rusty-js-shapes/consumer-migration/trajectory.md` → CMig-EXT 15.
+
+*Cross-pilot entry: the bug lives in shapes/consumer-migration, but it directly affects every LeJIT-tier pilot because the §I.3 shape "1.36×" cascade now reads with an asterisk — the shape substrate had a hole until this round closed it.*
+
+**Substrate change**: `__object_spread` in `intrinsics.rs:823-846` was iterating `rt.obj(*sid).properties.iter()` directly — a classic unmigrated-bypass site. For Shape-enrolled source objects (default since CMig-EXT 14's flip), `properties` is empty (values in `shape_values`); spread silently produced `{}`. Fixed with the shape-aware-then-dictionary pattern from CMig-EXT 12/13 (~26 LOC).
+
+**Measurement**:
+```
+const src = { a:1, b:2, c:3 };
+JSON.stringify({...src})
+// pre-fix shape-on:  "{}"           ← bug
+// pre-fix shape-off: '{"a":1,...}'   ← correct
+// post-fix both:     '{"a":1,...}'   ← correct
+```
+Plus 5 spread-variant cases (nested/override/multi-source/empty/spread-into-populated) all correct post-fix. diff-prod 42/42 + rusty-js-runtime lib 35/35 GREEN.
+
+**Why this was unanticipated**: CMig-EXT 14 flipped shape-on default with documented "4 long-tail test262 residuals" and held diff-prod 42/42. The flip's gate was: diff-prod GREEN + test262 within 0.1pp of off. Neither probe exercises spread+shape directly — diff-prod fixtures don't routinely spread JSON-built objects; test262 sample fixtures that spread tend to also assert structural invariants in ways that mask silent-empty as "different output" rather than the canonical "spread produces N keys" check. The bug escaped through the gap between the two probes' coverages.
+
+**The out-of-band-surfacing finding itself is load-bearing**: an independent measurement instance (parallel Claude doing controlled three-mode comparison) caught the regression by running spread in a workload that downstream-asserted on key presence. The engagement's own probe coverage did not. This is the §X.h.c three-probe-levels discipline catching what two probes alone miss — but the third probe (fuzz) wasn't run, so the catch came from outside the engagement.
+
+**Hypothesis** for additional bypass sites: any `intrinsics.rs` engine helper that iterates `.properties.iter()` without shape-routing is a candidate. The CMig-EXT 16 audit will enumerate them. Candidate sites (high-priority to grep):
+- Object.assign (already shape-aware per CMig-EXT 5)
+- Object.entries / Object.values / Object.keys (already shape-aware per CMig-EXT 4 + 7)
+- Reflect.ownKeys (already shape-aware per Shape-EXT 4 wider-net round)
+- JSON.stringify (unknown — needs audit)
+- Iteration via @@iterator on plain objects (unknown — needs audit)
+- The remaining 4-5 long-tail test262 residuals from CMig-EXT 14's regression list
+
+**Implication for forward work**:
+
+- **CMig-EXT 16 (property-bypass audit)** becomes load-bearing for closing the structural-completeness gap.
+- **CMig-EXT 17 (fuzz harness)** becomes load-bearing for catching the next regression of this shape before an out-of-band instance does.
+- **LeJIT §I.3 composition reading** stands with an asterisk: the "shape 1.36×" cascade contribution was measured on bench_ic post-CMig-EXT 14 default-on; the parallel instance's measurement of "~5% property-bench / ~1% realistic" is *also* the post-CMig-EXT 14 reading on different workloads. Both are true; the §I.3 table needs per-workload disambiguation. Reserved for a later round.
+- **The "did our 26% reclaim hold?" question** is now bifurcated: bench_ic narrow loop still gives the 1.36×; realistic mixed workload gives 1.01×. Neither claim invalidates the other; both should be reported jointly in any future §I.3 amendment.
+
+**Provenance**:
+- Trigger: out-of-band report from parallel Claude instance (2026-05-23 07:08-local via keeper)
+- Trajectory: `pilots/rusty-js-shapes/consumer-migration/trajectory.md` CMig-EXT 15
+- Patch: `pilots/rusty-js-runtime/derived/src/intrinsics.rs` lines 823-866 (+26/-5)
+- Verification: `/tmp/spread_repro.mjs` + 5 spread-variant fixtures + diff-prod 42/42 + runtime lib 35/35
+- Cross-reference: this file's VTI-EXT 3a entry already flagged the 26% claim as "possibly variance-low"; CMig-EXT 15 is the direct realization of that risk — the cascade-claim's empirical anchor was partially fictitious because the substrate was incomplete
+
+---
+
 ## Template — for future entries
 
 ### `<date>` — `<locale-tag>` `<round-id>`: `<one-line headline>` **[ANTICIPATED]**

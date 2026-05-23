@@ -828,11 +828,32 @@ impl Runtime {
             };
             if let Some(Value::Object(sid)) = args.get(1) {
                 // Tier-Ω.5.bbbbb: dispatch accessor getters during spread.
-                let entries: Vec<(String, Option<Value>)> = rt.obj(*sid).properties.iter()
-                    .filter(|(_, d)| d.enumerable)
-                    .map(|(k, d)| (k.to_string_content(), d.getter.clone()))
-                    .collect();
-                for (k, getter_opt) in entries {
+                // CMig-EXT 15 (2026-05-23): shape-aware iteration. Shape-
+                // enrolled sources keep values in shape_values with empty
+                // .properties; pre-fix iteration here returned {} silently
+                // for any Shaped source. Per shapes seed §IV carve-out,
+                // shape-stored entries are all enumerable plain-data
+                // descriptors with no accessor — emit them without the
+                // getter dispatch path. Dictionary-stored entries follow
+                // the original property-map iteration with accessor handling.
+                let mut shape_entries: Vec<String> = Vec::new();
+                let mut dict_entries: Vec<(String, Option<Value>)> = Vec::new();
+                {
+                    let o = rt.obj(*sid);
+                    if let Some(shape) = o.shape.as_ref() {
+                        for (name, _) in shape.iter_slots() {
+                            shape_entries.push(name.to_string());
+                        }
+                    }
+                    for (k, d) in o.properties.iter().filter(|(_, d)| d.enumerable) {
+                        dict_entries.push((k.to_string_content(), d.getter.clone()));
+                    }
+                }
+                for k in shape_entries {
+                    let v = rt.object_get(*sid, &k);
+                    rt.object_set(target, k, v);
+                }
+                for (k, getter_opt) in dict_entries {
                     let v = if let Some(getter) = getter_opt {
                         rt.call_function(getter, Value::Object(*sid), Vec::new())?
                     } else {

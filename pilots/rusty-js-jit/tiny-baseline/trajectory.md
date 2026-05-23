@@ -265,3 +265,65 @@ The apparatus is in place. The metadata struct holds the four compile-time-resol
 ---
 
 *TB-EXT 3a closes. TinyBaselineMetadata + 8 unit tests landed; no per-call cost change (metadata built once per compile, dispatcher unchanged). TB-EXT 3b begins the inline call thunk emission against this substrate.*
+
+---
+
+## TB-EXT 3b — 2026-05-23 (scope analysis: three-option staging surfaced before implementation)
+
+### Headline
+
+Design-tier round that re-evaluates TB-EXT 2 §7's "150-200 LOC inline call thunk emission" scope estimate before writing code. Reading the dispatcher source-tier with TB-EXT 3b's intent in mind surfaces a structural constraint: for real reclaim the caller must hold a metadata pointer DIRECTLY, bypassing the Closure→proto_key→jit_cache lookup chain. Three implementation approaches identified, with VTI-EXT 3b's (P2.d) lesson informing the staged-validation framing. **No code written; the round folds the staging into seed §I.2 + §III before implementation begins.**
+
+### Three approaches identified
+
+| approach | mechanism | LOC | reclaim target | risk |
+|---|---|---:|---:|---|
+| **(A) Closure-side metadata caching** | `Cell<Option<*const TBM>>` on `ClosureInternals`; populate on first JIT-hit; dispatcher reads cell + fast-paths around HashMap + multi-AND + jit_compatible_arg | 80-120 | ≥20 ns (HashMap absorption + match-arm simplification) | low — additive, behind flag |
+| **(B) Restructured deopt to arg-passing** | Remove `set_current_*` / `clear_current_*` TLS pattern; metadata pointer threaded through extern callbacks | 250-400 | ≥20 ns additional (cumulative ≥40 ns; meets Pred-tb.1) | high — touches load-bearing deopt across crate boundaries |
+| **(C) Native call thunk (Sparkplug-style)** | Emit aarch64 directly that bypasses Rust dispatcher entirely | 400-600 | ≥20 ns additional (cumulative ≥60 ns) | very high — first hand-rolled native emission in engagement |
+
+### The VTI-EXT 3b lesson constrains the staging
+
+Per the LeJIT enhancements log's VTI-EXT 3b entry (logged 2026-05-23): a payload-extract-only calling-convention switch — predicted as a 5-10 ns reclaim — produced an empirical +18.9 ns regression. The mechanism: Rust optimizer's behavior under restructured calling conventions defeats register-allocator's view at call sites; loads through pointers are not free; the dispatcher's existing precheck doesn't go away unless the substrate removes it explicitly.
+
+The lesson translates directly here. Doing (B) or (C) as a first cut — without first validating the framework with (A) — risks the same trap at substantially higher LOC cost. The (B) round restructures TLS plumbing across deopt.rs + 3 extern callbacks + thunk callers; if the optimizer's response is hostile, recovering would mean reverting all of it and reading why. The (C) round adds hand-rolled native emission on top of that. Both are unrecoverable at first-cut scope without first proving the framework can reclaim ≥20 ns from any per-call work elimination.
+
+### Recommendation folded into seed.md
+
+Updated seed §I.2 (Pred-tb.1) and §III (methodology) to reflect the staged structure:
+
+- **Pred-tb.1 reframed**: cumulative ≥40 ns reclaim across TB-EXT 3b + 3c + (3d if needed), with per-round sub-targets. Original "≥40 ns in 3b alone" was unrealistic given the dispatcher's structure.
+- **TB-EXT 3b**: approach (A) closure-side caching, ≥20 ns reclaim as framework validation.
+- **TB-EXT 3c**: approach (B) deopt restructure, gated on 3b success. Additional ≥20 ns.
+- **TB-EXT 3d**: approach (C) native thunk, gated on 3c result. Additional ≥20 ns if needed.
+- **TB-EXT 4**: re-bench after each of 3b/3c/3d.
+- Renumbered TB-EXT 5-8 → 8-11 to accommodate the new 3c + 3d + 4 staging.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable (design-tier round).
+
+Per Doc 734 §V: growth (b) negative-finding amendment — VTI-EXT 3b's (P2.d) finding (logged in enhancements.md) is the empirical anchor that motivated this scope-analysis round. The framework's response to (P2.d) is structural staging that validates each component empirically before committing higher-LOC restructuring. The §I.2 + §III amendments encode this discipline.
+
+Per Doc 735 §X.h.b: TB-EXT 3b's reclaim target (≥20 ns) is now framed as a (P2.a) framework-validation bar rather than the full (P2.a) strict-win bar. The pilot's overall (P2.a) vs (P2.d) decision is now distributed across 3b + 3c + (3d), with each round contributing measurable evidence.
+
+### Composition with prior corpus work
+
+- **Doc 729 §A8.13 substrate-amortization-cascade**: the 3-round staging fits the cascade pattern — each round is a substrate-introduction enabling the next round's closure work. (A)'s metadata cache enables (B)'s arg-passing wireup; (B) enables (C)'s direct dispatch.
+- **Doc 731 §VII R1**: preserved across all three approaches by construction.
+- **Doc 735 §X.h.d saturation-as-escalation-signal**: if (A) shows <10 ns reclaim, the saturation signal fires — escalate beyond per-call substrate axis (e.g., AHash for JIT cache, or different pilot entirely). The staging makes this decision empirically tractable.
+- **Doc 736 §IX.6 cap-passing modes**: (A) preserves modes trivially (cell is a hint; dispatcher's existing mode check is untouched). (B) requires careful metadata-threading to preserve modes. (C) needs explicit mode-check emission. Risk scales with approach.
+- **Doc 737 §IV pre-filing**: the 3c + 3d coordinates are pre-filed in the seed §III; spawn only when (A) validates.
+- **Doc 738 §II conventions**: identifiers for each approach already named in the seed.
+
+### Open scope at TB-EXT 3b scope-analysis close
+
+The actual implementation round (TB-EXT 3b approach A) is queued pending keeper authorization of the staged framing. The keeper's regression review may also surface adjustments before implementation begins.
+
+### Cumulative status
+
+LOC delta: 0 (design-tier; no source code). Seed.md amended with staged 3b/3c/3d + reframed Pred-tb.1 + per-round sub-targets. Trajectory now records the scope-analysis as its own round, separately from the implementation round which begins next.
+
+---
+
+*TB-EXT 3b scope-analysis closes. The 150-200 LOC estimate from TB-EXT 2 §7 is split across three approaches with VTI-EXT 3b's (P2.d) lesson informing staging. Approach (A) — closure-side metadata caching, ~80-120 LOC, ≥20 ns reclaim target — is the queued first-cut implementation. Keeper authorization pending; a regression review is queued before implementation.*
