@@ -1584,3 +1584,15 @@ This is the engagement's second prospective-spawn case (first was `pilots/rusty-
 See [stub-emitter/seed.md](stub-emitter/seed.md) and [stub-emitter/trajectory.md](stub-emitter/trajectory.md). Per Doc 733 §III composition relations: this row records the child existence by reference; the child's internal structure stays inside the child.
 
 *JIT-EXT 26 stays open until StubE-EXT 8 closes the nested workstream.*
+
+---
+
+## JIT-EXT 27 — 2026-05-23 (spawns nested locale `value-tag-inline` for Pilot LeJIT-Ψ)
+
+Per Doc 737 §IV + the keeper's pivot directive: spawn Pilot LeJIT-Ψ (hand-rolled value-tag inline emitter) at coordinate `pilots/rusty-js-jit/value-tag-inline/`. Sibling locale to LeJIT-Σ; both children of this LeJIT pilot.
+
+**Trigger**: StubE-EXT 5b's bench measurement surfaced that the shape-substrate cascade (Doc 729 §A8.13) had absorbed most of LeJIT-Σ's IC-only contribution. Per the §I.3 substrate-amortization-cascade reading, LeJIT-Ψ is the second arm of the multiplicative composition that reaches Pred-stub.1's 3× target.
+
+See [value-tag-inline/seed.md](value-tag-inline/seed.md) and [value-tag-inline/trajectory.md](value-tag-inline/trajectory.md). Per Doc 733 §III composition relations: this row records the child by reference.
+
+*JIT-EXT 27 stays open until VTI-EXT 8 closes the nested workstream.*

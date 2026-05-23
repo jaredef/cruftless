@@ -3,9 +3,9 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 12,
+    "locales": 13,
     "top_level": 9,
-    "nested": 3,
+    "nested": 4,
     "warnings": 0
   },
   "locales": [
@@ -71,6 +71,15 @@
       "depth": 2,
       "rung_count": 0,
       "status": "**WORKSTREAM FOUNDED (StubE-EXT 0)**. No code yet. Pre-filed at LeJIT seed \u00a7I.2 (JIT-EXT 25) as the closure round to the hidden-classes substrate (`pilots/rusty-js-shapes/`). Spawn triggered now to begin scaffolding against the stable IC consumer API contract `Object::shape_ptr_and_slot_for(name) -> Option<(*const Shape, u32)>` \u2014 the API is in place since Shape-EXT 4 and returns None for every Object pre-enrollment; the stub emitter can be designed, implemented, and tested against synthetic shape pointers in advance of the enrollment flip."
+    },
+    {
+      "coord": "rusty-js-jit/value-tag-inline",
+      "tag": "L.rusty-js-jit.value-tag-inline",
+      "parent": "L.rusty-js-jit",
+      "scope": "value-tag-inline",
+      "depth": 2,
+      "rung_count": 0,
+      "status": "**WORKSTREAM FOUNDED (VTI-EXT 0)**. No code yet. Spawned per LeJIT seed \u00a7I.2 item 4 + the keeper's pivot directive after LeJIT-\u03a3 StubE-EXT 5b's bench measurement surfaced that the shape-substrate cascade (Doc 729 \u00a7A8.13) had absorbed most of LeJIT-\u03a3's IC-only contribution (Pred-stub.1 target tightened from \u226490.3 \u2192 \u226466.3 ns/iter). The hybrid stance per LeJIT seed \u00a7I.2 anticipated this composition; LeJIT-\u03a3 + LeJIT-\u03a8 + the future dispatcher refactor land multiplicatively, not additively."
     },
     {
       "coord": "rusty-js-pm",
