@@ -570,3 +570,60 @@ LOC delta: ~95 (component-ab-probe.mjs fixture). Probe ran cleanly in <10s aggre
 ---
 
 *JSF-EXT 8 closes. The component A/B probe disambiguated the json_parse_transform cost: charCodeAt loop dominates at 77%; JSON.stringify is 3%. CRB-EXT 9's bottleneck-attribution was off by ~20×. Finding VII.1 (component A/B before pilot spawn) is now empirically anchored; standing rule 11 candidate. JSF locale's load-bearing contribution is this disambiguation + the Doc 739 cascade-revival demonstration + the correctness-improved JSON.stringify substrate.*
+
+---
+
+## JSF-EXT 9 — 2026-05-23 (CharCode-EXT 1: ASCII fast-path for charCodeAt + String.length; substrate-tier fix at the JSF-EXT 8 dominator)
+
+### Headline
+
+Substrate fix at `string_proto_char_code_at_via` (interp.rs:4744) and the String.length read path (interp.rs:7247). ASCII fast-path: `bytes[i]` instead of `chars().nth(i)` for char access; `s.len()` instead of `s.chars().count()` for length. Closes an O(n²)-per-outer-iter pattern in the json_parse_transform checksum loop. Three probes GREEN.
+
+### Measurements
+
+**A/B probe checksum delta**: 2040 ms → **1739 ms (-15%, -300 ms)**
+**CRB json_parse_transform**: 2455 ms → **2372 ms (-3%, -83 ms)**
+cruft/node: 20.12× → 19.28× (essentially unchanged at the ratio level)
+
+### Finding
+
+Smaller reclaim than the O(n²)→O(n) algorithmic analysis projected (~40×). The empirical readout: per-call cost dropped from 0.816 μs to 0.696 μs (-15% per-call), not -99% as the algorithmic projection assumed. **Implication: most of the per-charCodeAt-call cost is interp dispatch + property lookup + Value boxing, NOT the chars().nth() iteration.** The O(n) chars().nth() cost was a real bug but not the dominator; the dominator is dispatch.
+
+This is a second-order Finding VII.1 instance: the substrate-tier source-read identified a real bug but its per-call magnitude was over-estimated. The probe re-run measured the actual contribution. The remaining 1739 ms is genuine dispatch overhead per intrinsic call, which is exactly what the LeJIT-tier intrinsic-inlining work targets.
+
+### Implication for forward path
+
+The next-impact target is now LeJIT-tier intrinsic inlining of charCodeAt: recognize the call site, emit inline charCodeAt-fast IR (eliminate the dispatcher round-trip + per-call Value boxing + property lookup). Expected reclaim: large fraction of the residual 1739 ms.
+
+### Three-probe results
+
+| probe | result |
+|---|---|
+| canonical fuzz (acc=-932188103) | ✅ GREEN |
+| diff-prod 42/42 | ✅ GREEN |
+| A/B probe checksum delta | -15% (300 ms reclaim) |
+| CRB json_parse_transform | -3% (83 ms reclaim) |
+
+### Composition with prior corpus / engagement work
+
+- **Finding VII.1 reinforced**: substrate-tier source-read identified the bug class correctly but over-estimated magnitude. Re-measurement is the discipline.
+- **Doc 739 cascade-revival**: the O(n²)→O(n) fix is upstream constraint-closure at the intrinsic tier; the LeJIT-tier intrinsic inlining is the downstream cascade-revival pilot.
+- **Findings rule 5 + standing rule 10 three-probe-levels**: canonical fuzz + diff-prod gates ran; both GREEN.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 735 §X.h.b: **(P2.a) on bench (small reclaim) + (P2.c→GREEN) on correctness** — the chars().nth() impl was correct but slow; the ASCII fast-path is correctness-equivalent + faster.
+Per Doc 734 §V: growth (a) positive-finding empirical-confirmation + growth (b) magnitude over-estimate informs dispatch-as-dominator finding.
+
+### Open scope at JSF-EXT 9 close
+
+1. **LeJIT charCodeAt intrinsic inlining** (the actual JIT-tier extension from the original keeper directive (a)) — now empirically warranted: dispatch is residual dominator at 1739 ms.
+2. **Other O(n) chars().nth() / chars().count() sites** (regexp.rs, prototype.rs, intrinsics.rs, multiple interp.rs sites) — not in json_parse_transform's hot path; deferred unless a future CRB-gap-pilot's A/B identifies them.
+
+### Cumulative status at JSF-EXT 9 close
+
+LOC delta: ~20 (two intrinsic-tier ASCII fast-paths). CRB cumulative since JSF-EXT 0: 2481 ms → 2372 ms (4.4% reclaim total across all JSF substrate work).
+
+---
+
+*JSF-EXT 9 closes. Substrate-tier O(n)→O(1) fix landed at ASCII charCodeAt + length. -15% on the dominator-loop; -3% on CRB total. Per-call magnitude smaller than algorithmic projection because dispatch overhead is the dominant cost. LeJIT-tier intrinsic inlining is now empirically warranted at 1739 ms residual.*

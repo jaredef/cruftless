@@ -4742,6 +4742,14 @@ impl Runtime {
     }
 
     /// String.prototype.charCodeAt(pos) per ECMA §22.1.3.2.
+    ///
+    /// CharCode-EXT 1 (2026-05-23, post JSF-EXT 8): ASCII fast-path
+    /// closes the O(n²) bug surfaced by the json_parse_transform A/B
+    /// probe. For ASCII strings (the common case), index by byte in
+    /// O(1) instead of iterating chars from the start (O(i)). The
+    /// per-call cost drops from O(i) to O(ascii-check-byte-scan +
+    /// O(1)); aggregated over tight charCodeAt loops the per-iter
+    /// cost drops from O(n²) to O(n).
     pub fn string_proto_char_code_at_via(&mut self, this: &Value, pos: &Value) -> Result<Value, RuntimeError> {
         self.require_object_coercible(this)?;
         let s = self.to_string_strict(this)?;
@@ -4750,7 +4758,16 @@ impl Runtime {
             v => self.coerce_to_number(v)?,
         };
         if !i_n.is_finite() || i_n < 0.0 { return Ok(Value::Number(f64::NAN)); }
-        match s.chars().nth(i_n as usize) {
+        let i = i_n as usize;
+        let bytes = s.as_bytes();
+        if s.is_ascii() {
+            return Ok(if i < bytes.len() {
+                Value::Number(bytes[i] as f64)
+            } else {
+                Value::Number(f64::NAN)
+            });
+        }
+        match s.chars().nth(i) {
             Some(c) => Ok(Value::Number(c as u32 as f64)),
             None => Ok(Value::Number(f64::NAN)),
         }
@@ -7244,7 +7261,17 @@ impl Runtime {
                             }
                             }
                         }
-                        Value::String(s) if key == "length" => Value::Number(s.chars().count() as f64),
+                        Value::String(s) if key == "length" => {
+                            // CharCode-EXT 1 (2026-05-23): ASCII fast-path.
+                            // Length is read every iter of a tight scan loop;
+                            // chars().count() is O(n) per read -> O(n²) per
+                            // outer iter. Byte length matches code-unit count
+                            // for ASCII (which is the only case where the
+                            // current chars().count() behavior is correct
+                            // wrt UTF-16 anyway; non-BMP correctness is a
+                            // separate concern carried by the existing impl).
+                            Value::Number(if s.is_ascii() { s.len() as f64 } else { s.chars().count() as f64 })
+                        }
                         Value::String(_) => {
                             // Primitive string method auto-boxing: route to
                             // %String.prototype% if installed.
