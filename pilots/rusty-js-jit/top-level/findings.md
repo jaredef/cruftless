@@ -50,3 +50,42 @@ Three pivot options at this finding's recognition point (before TL-EXT 4 impleme
 ---
 
 *This findings.md grows as TL-locale-specific findings surface. Promotions to LeJIT parent findings.md (engagement-wide JIT discipline) or to engagement findings doc Addendum V (corpus-level) noted explicitly.*
+
+---
+
+## Finding TL.2 (Non-Number, non-Object Values degrade to 0.0 at the JIT calling convention — (b-narrow) Moves 3+4 fast-paths structurally cannot deliver within Φ encoding) *[new, 2026-05-23 via TL-EXT 4 pre-implementation source-read]*
+
+**Anchor**: pre-implementation source-read of `unbox_arg_f64` (interp.rs:9200-9206) reveals the JIT's f64-default calling convention encodes only:
+- Value::Number → its f64 payload
+- Value::Object(id) → `f64::from_bits(id.0 as u64)`
+- **all other Value variants (String, BigInt, Boolean, Symbol, Null, Undefined) → 0.0**
+
+Strings (and any non-Number / non-Object value) lose identity at the JIT/interp boundary. A `Value::String(Rc::new("abc..."))` becomes the f64 0.0 when passed to a JIT function or stored in a JIT local via LoadLocal → StoreLocal flow.
+
+**Substrate implication for (b-narrow) Moves 3+4**: the design's Move 3 (GetProp+length-IC for String receivers) and Move 4 (CallMethod+charCodeAt-IC for String receivers) assumed the receiver f64 could be bitcast back to a String pointer or otherwise carry String identity. **No such encoding exists.** The f64 the JIT body holds for a String receiver is 0.0 — no String pointer recoverable.
+
+TL-EXT 1 design's R1 ("String encoding bit-layout discovery") was named as a risk to resolve at TL-EXT 4 implementation time. The empirical resolution: **there is no encoding to discover; it doesn't exist.** Moves 3+4's IC fast-path bodies CANNOT be emitted within Φ's calling convention.
+
+The structural alternatives at the engagement-tier level:
+1. **Extend Φ encoding**: add a String tag scheme. NaN-boxing or sentinel-bit pattern that holds Rc<String> pointer bits. Major Φ-tier work; ~10+ LOC across translator + unbox helpers + dispatcher; risks breaking existing Σ/Τ/Ψ default-on paths if encoding choice conflicts.
+2. **Per-receiver-type deopt at JIT body**: any time the JIT encounters a non-Number, non-Object Value (from LoadLocal of a previously String-typed local), trip a deopt and fall through to interp. Doesn't deliver reclaim (deopt cost > interp cost on first trip; cache state machine doesn't help here); essentially equivalent to whole-body bail.
+3. **Source-read receiver type before compile**: at parse-time, infer that a local has only Number/Object values throughout the function (a flow analysis). Bail at compile if any LoadLocal sees a String/etc. Conservative; would bail json_parse_transform's inner loop because `out` is a String. Same outcome as Finding TL.1.
+
+None of these alternatives are (b-narrow) scope. The cleanest read: **(b-narrow) as written cannot deliver Moves 3+4 fast paths in any session.** TL-EXT 4 and TL-EXT 5 reduce to skeleton-only delivery (ParsedOp variants + parse-pass scope check + immediate bail-to-non-JIT for the body), which is degenerate substrate-introduction work that doesn't enable any future fast-path.
+
+**The honest closure of (b-narrow)**: TL-EXT 3 closed the entry-mechanism tier. Moves 3+4 cannot close their tier without prior Φ-encoding extension. The (b-narrow) plan was structurally bounded at TL-EXT 3, not at TL-EXT 5.
+
+**Substrate implication (candidate Addendum V refinement to engagement findings doc)**: extends Finding TL.1's op-set-coverage check with a **value-domain-coverage check**: before spawning a JIT-alphabet pilot whose telos requires non-Number / non-Object receivers, verify the calling convention's encoding supports those receivers. If not, name the calling-convention extension as a prerequisite tier in the multi-tier reading (per Doc 740 §II.2 P1 relevant-tier set R).
+
+**Composition with prior findings**:
+- **Finding TL.1**: whole-body bail is the SECONDARY blocker. Finding TL.2 is the PRIMARY blocker for Moves 3+4 (they cannot deliver fast paths even if alphabet covered the whole body).
+- **Doc 740 multi-tier reading**: R for json_parse_transform's checksum loop = {substrate algorithm (closed by CharCode-EXT 1), interp dispatch (closed by CharCode-EXT 2), JIT-tier loop dispatch (open; gated on TL pilot)}. Finding TL.2 adds a fourth tier: **JIT-tier value-domain encoding** (currently Φ encodes only Number+Object). The relevant-tier set R for the full pipeline-connection has 4 members, not 3.
+- **Finding II.2-bis substrate-introduction signature**: TL-EXT 3 delivered structural substrate-introduction value at the entry-mechanism tier; that value stands. The (b-narrow) plan's Moves 3+4 design was wrong about the available substrate at the next tier.
+
+### Forward implication
+
+Per keeper directive "continue with (b-narrow) then pivot to (b-architectural)": Finding TL.2 reframes "continue with (b-narrow)" as a structural impossibility for Moves 3+4 fast-path delivery. **Honest closure**: TL-EXT 4 lands the alphabet variant skeletons (ParsedOp::GetProp + ParsedOp::CallMethod with parse-pass scope discipline) but translates each to bail-to-interp via whole-function-bail; document as "skeleton-only landing pending Φ-encoding extension." TL-EXT 5 measurement confirms zero reclaim (Pred-tl.1 falsified by Finding TL.2 as the structural cause). Pivot to (b-architectural) immediately.
+
+Or: skip TL-EXT 4+5 entirely; close the locale at TL-EXT 3 + Findings TL.1+TL.2; pivot now. Saves substrate-introduction-without-future-value rounds.
+
+Recommendation pending keeper signal.
