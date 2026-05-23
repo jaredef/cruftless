@@ -3,9 +3,9 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 20,
+    "locales": 21,
     "top_level": 13,
-    "nested": 7,
+    "nested": 8,
     "warnings": 0
   },
   "locales": [
@@ -107,6 +107,15 @@
       "depth": 2,
       "rung_count": 0,
       "status": "**WORKSTREAM FOUNDED (TB-EXT 0)**. No code yet. Spawned per LeJIT seed \u00a7I.2 item 5 + Doc 735 \u00a7X.h.d saturation-as-escalation-signal triggered by VTI-EXT 3b's (P2.d) negative empirical finding, with keeper direction at 2026-05-23 06:35-local."
+    },
+    {
+      "coord": "rusty-js-jit/top-level",
+      "tag": "L.rusty-js-jit.top-level",
+      "parent": "L.rusty-js-jit",
+      "scope": "top-level",
+      "depth": 2,
+      "rung_count": 0,
+      "status": "**WORKSTREAM FOUNDED (TL-EXT 0)**. Spawned per keeper directive 2026-05-23 20:52-local as the (b-narrow) first cut from Doc 740's multi-tier reading. Addresses the json_parse_transform CRB residual after the JSF + CharCode chain landed (cumulative -12%; cruft/node 17.93\u00d7; residual checksum loop 1480 ms at 0.592 \u03bcs per charCodeAt call). The dispatch-tier IC closed the per-call cost floor; the remaining residual is interp loop dispatch + arithmetic + comparison overhead per iter. Top-level JIT closes that residual."
     },
     {
       "coord": "rusty-js-jit/value-tag-inline",
