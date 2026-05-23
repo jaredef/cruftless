@@ -403,3 +403,91 @@ After this addendum, the findings doc contains:
 Total: 9 findings (6 original + 3 new across addenda); 10 standing rules (8 original + 2 added); multiple promotions tracking empirical anchor strengthening.
 
 The findings doc is now a working engagement instrument with 4+ self-applications validated in the session it was created. The "use these to improve substrate" directive that motivated the doc's creation has produced compounding returns: each new finding refines future substrate work; each new standing rule prevents a bug class from recurring.
+
+---
+
+## Addendum IV — 2026-05-23 (post JSF chain + CharCode-EXT 1-2 multi-tier pipeline-connection)
+
+This addendum captures four lessons from the engagement's JSF (JSON.stringify fast-path) workstream plus the post-JSF charCodeAt chain. The lessons span Pin-Art apparatus refinement, substrate-spawn discipline, and a multi-tier cascade-revival shape that extends Doc 739.
+
+### New finding
+
+**Finding II.2-bis (Substrate-introduction (P2.d) as cascade-revival signature)** *[new, 2026-05-23 via JSF-EXT 3 first-cut + JSF-EXT 5 aggregate]*
+
+**Anchor**: JSF-EXT 3 (Move 1 buffer threading) landed correctly across both correctness probes but produced essentially flat per-shape bench. Per Finding II.2 (never split substrate moves), the round would naively classify as a partial failure. Per Doc 739 §II.2, the flat bench was instead the SIGNATURE of an upstream-constraint-closure round whose reclaim materializes downstream at cascade-revival pilots (M2/M3/M4 each closing a leaf emitter tier).
+
+**Substrate implication**: when classifying a substrate-introduction round's (P2.d) outcome, the question is not "did this round deliver reclaim" but "did this round close an upstream constraint whose downstream consumers can now cascade-revive?" If yes, the (P2.d) is the round's correct categorization and is the SIGNATURE that the round IS substrate-introduction, not a falsification.
+
+**How to apply** at each substrate-introduction round:
+1. Name the upstream constraint being closed by the round.
+2. Name the downstream consumer pilots that become cascade-revival candidates per the closure.
+3. If both are nameable, accept (P2.d) bench at the introduction round and proceed to the consumer rounds.
+4. If neither is nameable, the (P2.d) is a genuine pilot-failure signal.
+
+Cross-reference: Doc 729 §A8.13 substrate-amortization-cascade (the per-iter cost axis); Doc 739 cascade-revival (the categorization axis).
+
+### New finding
+
+**Finding VII.1 (Component-decomposition estimates require empirical anchoring before pilot spawn)** *[new, 2026-05-23 via JSF-EXT 8 component-A/B probe]*
+
+**Anchor**: CRB-EXT 9's component-decomposition estimate for json_parse_transform placed JSON.stringify at ~5-10× of the 20× cruft/node gap (so ~50-70% contributor). The JSF pilot was spawned on that anchor. The A/B probe (JSF-EXT 8) measured the actual decomposition empirically: JSON.stringify is 3% of cruft's total wall-clock; the actual dominator is a top-level `for (i; i<out.length; i++) cs += out.charCodeAt(i)` checksum loop at 77% — not part of the "JSON pipeline" at all. CRB-EXT 9's estimate was off by ~20×.
+
+The A/B probe ran in <10 seconds. Had it been run before JSF spawn, the entire JSF pilot would have targeted a different component (charCodeAt + interp dispatch) at ~25× higher leverage per LOC.
+
+**Substrate implication**: before spawning a substrate pilot whose telos is "close a CRB-measured gap," run a component A/B probe on the target fixture. Replace each suspect component with a no-op or near-no-op variant; measure per-variant wall-clock; the per-variant Δ isolates each component's contribution.
+
+**How to apply** before pilot spawn:
+1. Identify the suspect components in the target fixture (5-8 typically).
+2. Author a probe fixture with N additive variants (V0 = baseline minus all suspects; V1 = +1 suspect; ... Vn = full fixture).
+3. Run the probe on cruft + node (or whatever oracle); per-component Δ = (Vk - Vk-1) per runtime.
+4. Per-component cruft/node ratio + absolute contribution ranks the actual targets.
+5. Spawn the pilot at the actual dominator. Carry the probe forward as a standing fixture for subsequent measurement.
+
+### New standing rule
+
+**Standing rule 11 (added 2026-05-23)**: before spawning any pilot whose telos is "close a CRB-measured gap," run a component A/B probe to identify the actual dominator empirically. The probe should run in <10 minutes; its cost is amortized across the prevented mis-targeting of substrate work.
+
+The rule's value compounds across pilot spawns: each future CRB-driven pilot spawns at the actual bottleneck, not a theoretically suspected one. CRB-EXT 9's mis-attribution is the cautionary anchor; the JSF chain's reclaim curve (12% CRB cumulative after 6 rounds + 2 follow-on chain rounds) is the empirical cost-of-not-applying-the-rule.
+
+### New finding
+
+**Finding II.3 (Multi-tier cascade-revival: closing one tier alone is insufficient when the hot path traverses multiple tiers)** *[new, 2026-05-23 via JSF + CharCode-EXT 1+2 chain]*
+
+**Anchor**: Doc 739's cascade-revival pattern (single-tier: upstream constraint-closure → downstream sibling-pilot revival) materialized partially at the JSON-stringify pipeline (JSF M1 → M2/M3 revival at +5-7% each). The full CRB gap remained because the actual hot path traversed multiple tiers:
+- substrate-tier (chars().nth() O(n²) bug in charCodeAt + length)
+- dispatch-tier (call_function frame setup + this-binding + descriptor walk per method call)
+
+Closing the substrate-tier alone (CharCode-EXT 1: ASCII fast-path) produced -15% on the dominator-loop; closing the dispatch-tier alone (a hypothetical interp-IC without substrate fix) would similarly produce partial reclaim. Closing BOTH (CharCode-EXT 1 + 2) produced -27% on the dominator-loop (-12% CRB cumulative); the cascade-revival pattern recurs at the multi-tier scope.
+
+**Substrate implication**: when the hot path traverses N tiers, the cascade-revival pattern is sufficient at each tier-pair but NOT at the cross-tier scope unless all N tiers are addressed. A pilot whose telos is "close a CRB gap" should enumerate the tiers along the hot path; close each in dependency order; gate reclaim measurement only after all relevant tiers are closed.
+
+**How to apply**:
+1. Per Finding VII.1 + rule 11, identify the actual hot-path component empirically.
+2. For that component, source-read the tier stack (substrate intrinsic → dispatch path → call frame → bytecode dispatch → JIT eligibility).
+3. Name each tier's contribution to the per-call cost.
+4. Spawn substrate work per-tier in dependency order (upstream → downstream).
+5. Gate reclaim measurement after each tier; the cumulative is the pipeline-connection point.
+
+### Promotion of prior findings via the JSF chain
+
+**Finding II.5 (Cascade-revival at structural constraint tier)** — **PROMOTED TO GENERALIZED: multi-tier scope**. The JSF chain demonstrated cascade-revival across non-adjacent tiers (substrate → dispatch); Doc 740 (forthcoming) articulates the generalization. Doc 739's single-tier formulation remains a special case of the multi-tier pattern.
+
+### Engagement instruments delta
+
+**New standing instrument**: `pilots/rusty-js-json-fast/fixtures/component-ab-probe.mjs` — the JSF A/B probe is the engagement's first standing component-decomposition instrument. Future CRB-driven pilots adapt this fixture's pattern (5 additive variants × 50-iter warmup × 500-iter measurement) for their target fixture per rule 11.
+
+**Hot-intrinsic IC pattern (engagement-tier substrate-work candidate)**: CharCode-EXT 2's interp-tier IC fast-path for String.prototype.charCodeAt validated the dispatcher-bypass pattern at ~100 ns/call reclaim. Generalization candidate: hot-intrinsic table for charAt, codePointAt, indexOf, slice, push, pop, shift, splice, and other dispatch-bound intrinsic calls. The pattern is small per-intrinsic; broadly applicable across the engine.
+
+### Findings-doc cumulative status
+
+After this addendum, the findings doc contains:
+- 6 original finding sections (I-VI; per-category)
+- 8 original standing rules
+- Addendum I: 5 findings (3 promoted; 2 new) + 1 new standing rule (#9)
+- Addendum II: 1 new finding (II.5 cascade-revival)
+- Addendum III: 2 new findings (IV.3 audit-precision; IV.4 canonical-fuzz) + 1 new standing rule (#10) + 2 promotions
+- Addendum IV (this): 3 new findings (II.2-bis substrate-introduction-signature; VII.1 component-A/B; II.3 multi-tier-cascade) + 1 new standing rule (#11) + 1 promotion + 2 new standing instruments
+
+Total: 12 findings (6 original + 6 new across addenda); 11 standing rules (8 original + 3 added); 2 new engagement instruments (canonical fuzz + component A/B probe).
+
+The findings doc continues compounding: each session's work refines future substrate work; each standing rule prevents a bug class or mis-targeting class from recurring. The JSF chain's empirical demonstration of multi-tier cascade-revival is corpus-articulation candidate (Doc 740, forthcoming).
