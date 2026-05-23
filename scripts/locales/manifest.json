@@ -3,9 +3,9 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 15,
+    "locales": 16,
     "top_level": 10,
-    "nested": 5,
+    "nested": 6,
     "warnings": 0
   },
   "locales": [
@@ -71,6 +71,15 @@
       "depth": 1,
       "rung_count": 0,
       "status": "**DEOPT CHAPTER CLOSED + IC INFRASTRUCTURE COMPLETE (without shapes); TELOS SHARPENED to the hybrid Cranelift+hand-rolled-IC-stub stance per \u00a7I.2.** JIT-EXT 10-24 landed across the prior two sessions \u2014 arithmetic deopt machinery, ICShapeMismatch demonstrator, full GetPropOnObject lowering with real runtime helper, mixed-regime dispatcher, IC chain success+failure paths proven end-to-end. ~1.2k LOC across pilots/rusty-js-jit + pilots/rusty-js-runtime + pilots/rusty-js-bytecode + host-v2. PM-EXT 11+12 regression GREEN every round. See \u00a7VIII below for the closure summary. JIT-EXT 25 (this entry) sharpens the forward telos to name the next two pilots: IC stub emitter + hidden classes substrate."
+    },
+    {
+      "coord": "rusty-js-jit/f64-calling-convention",
+      "tag": "L.rusty-js-jit.f64-calling-convention",
+      "parent": "L.rusty-js-jit",
+      "scope": "f64-calling-convention",
+      "depth": 2,
+      "rung_count": 0,
+      "status": "**WORKSTREAM FOUNDED (\u03a6-EXT 0)**. No code yet. Spawned per keeper directive 2026-05-23 16:02-local after pre-implementation analysis surfaced that VTI's structural (P2.d) traces to the JIT's i64-only calling convention. The architectural move induced by enumerating C1-C10 (substrate constraints; see \u00a7I.2) is: f64 default + bytecode-tier-driven typed-i64 promoted fast path."
     },
     {
       "coord": "rusty-js-jit/stub-emitter",

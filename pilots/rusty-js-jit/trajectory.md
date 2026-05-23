@@ -1691,3 +1691,23 @@ The LeJIT first-cut chapter at the parent pilot level is **closed**. The substra
 ---
 
 *JIT-EXT 29 closes. Parent LeJIT trajectory's open rows for JIT-EXT 26/28 close (Σ + Τ at default-on); JIT-EXT 27 stays open (Ψ at (P2.d); revival queued). The LeJIT seed §I.3 composition target empirically met at engagement-tier default. Session's substrate goal achieved.*
+
+---
+
+## JIT-EXT 30 — 2026-05-23 (spawns nested locale `f64-calling-convention` for Pilot LeJIT-Φ)
+
+Per Doc 737 §IV + keeper directive 2026-05-23 16:02-local after the pre-implementation analysis (logged in this trajectory's enhancement-log entry via the corresponding round) surfaced that VTI's structural (P2.d) traces to the JIT's i64-only calling convention (the LeJIT seed §I.1 "typed-i64 first; f64 deferred" carve-out). The constraint enumeration C1-C10 (folded into the new locale's seed §I.2) induced the architectural move: f64 default + bytecode-tier-driven typed-i64 promoted fast path. Φ lands Move 1 (f64 default); Move 2 is a separate downstream pilot at the bytecode tier per Doc 731 §XIII alphabet promotion.
+
+**Spawned nested locale**: `pilots/rusty-js-jit/f64-calling-convention/` (locale tag `L.rusty-js-jit/f64-calling-convention`).
+
+Fourth nested sibling under this LeJIT parent. Siblings: LeJIT-Σ (default-on), LeJIT-Τ (default-on), LeJIT-Ψ ((P2.d); Φ's downstream Φ-EXT 7 is its revival path).
+
+**Trigger**: pre-implementation analysis of VTI-EXT 3c surfaced that the inline replacement of the dispatcher's `jit_compatible_arg` precheck would require BOTH inline tag-check (cheap) AND inline integer-validity check (expensive: ~24-30 cycles vs precheck's ~15-20). VTI as designed is structurally (P2.d) within the i64-only architecture. The keeper named the deeper bottleneck ("our simple Cranelift i64 implementation is becoming a bottleneck") and directed naming constraints to induce the next layer's properties. The constraint enumeration C1-C10 produced f64-default as near-necessity, not arbitrary choice.
+
+The substrate work begins at Φ-EXT 1 (design doc); Φ-EXT 3 is the load-bearing implementation round; Φ-EXT 7 attempts VTI revival under the new architecture.
+
+See [f64-calling-convention/seed.md](f64-calling-convention/seed.md) and [f64-calling-convention/trajectory.md](f64-calling-convention/trajectory.md). Per Doc 733 §III composition relations: this row records the child by reference.
+
+Locale count: 15 → 16 after this spawn (manifest refreshed). The engagement's sixth nested locale overall (fourth under this LeJIT parent).
+
+*JIT-EXT 30 stays open until Φ-EXT 8 closes the nested workstream.*

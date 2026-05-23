@@ -715,6 +715,46 @@ All gates GREEN post-flip: 47/47 JIT lib (+1 from new opt-out test) + 35/35 runt
 
 ---
 
+## 2026-05-23 — Pre-Φ analysis + JIT-EXT 30: constraint enumeration C1-C10 induces f64-default architecture; LeJIT-Φ spawned **[UNANTICIPATED — structural recognition]**
+
+**Locale**: `pilots/rusty-js-jit/trajectory.md` → JIT-EXT 30 + `pilots/rusty-js-jit/f64-calling-convention/trajectory.md` → Φ-EXT 0.
+
+*Cross-pilot entry: this round's deliverable is a structural recognition + new pilot spawn, not a per-iter measurement.*
+
+**Substrate change**: Pre-implementation analysis of VTI-EXT 3c surfaced that VTI is structurally (P2.d) within the i64-only JIT architecture. The keeper named the deeper bottleneck ("our simple Cranelift i64 implementation is becoming a bottleneck") and directed naming constraints to induce the next-layer architecture. Constraint enumeration C1-C10 named ten substrate-tier invariants; the architecture induced by C1+C2+C3+C5+C10 is f64 default + bytecode-tier-driven typed-i64 promoted fast path. New nested locale `pilots/rusty-js-jit/f64-calling-convention/` spawned. Locale count 15 → 16.
+
+**Predicted-by**: not predicted explicitly. Two prior log entries (TB-EXT 7 + StubE-EXT 5c) implicitly named the architectural constraint but didn't surface it as the bottleneck framing. TB-EXT 7's "VTI revival path empirically named" reading was structurally incomplete; this round corrects it.
+
+**Measurement**: not applicable (analysis-tier round; no substrate code, no per-iter measurement). The substrate work begins at Φ-EXT 1 (design doc) and lands at Φ-EXT 3 (closure round emitting fadd/fsub/fmul).
+
+**Why this was unanticipated**: VTI-EXT 3b's first cut + 3c's planned implementation framed VTI as a value-tag inlining problem. The dispatcher precheck was treated as something to be moved-into-the-JIT, not removed. Pre-implementation analysis surfaced that the precheck does TWO things (tag-discrimination + integer-validity); replacing both inline requires roughly the same work as the precheck itself. **VTI cannot win at the cost-component level within the i64-only architecture.** The structural recognition: VTI's (P2.d) is downstream of the LeJIT seed §I.1 "typed-i64 first; f64 deferred" carve-out hitting its limit.
+
+The keeper's framing question — "what implicit constraints can we name to constrain the next layer affected" — directly produced the constraint enumeration C1-C10. The constraints induce f64-default as near-necessity, not arbitrary choice. **This is Pin-Art at the apparatus tier**: name constraints, derive architecture from constraints, substrate move follows the derivation.
+
+**Implication for forward work**:
+
+- **VTI-EXT 3c is permanently shelved as currently framed.** The substrate stays behind `CRUFTLESS_LEJIT_VTI=1` flag for future engagements but the architectural-revival path is Φ, not 3c.
+- **Φ-EXT 7 is the load-bearing VTI revival.** Once Φ-EXT 3 lands f64 default, VTI's inline tag-check becomes cheap (no integer-validity check needed); Φ-EXT 7 measures whether VTI nets positive in the new architecture.
+- **Findings doc V.3 reading must be updated post-Φ-EXT 7.** Current V.3: "(P2.d) at first cut; revival path empirically named via TB-EXT 7." Post-Φ: "(P2.d) under i64 architecture; revival depends on Φ-EXT 7."
+- **The constraint-enumeration discipline is itself a findings-doc-candidate.** Naming C1-C10 before choosing the substrate move is the Pin-Art apparatus discipline; making it explicit at engagement scale is a corpus-articulation candidate. Reserved for later corpus-tier round.
+- **The LeJIT seed §I.1 "typed-i64 first" carve-out reached its limit honestly.** Per Finding V.6, the first-cut chapter closed at engagement-tier (P2.a); this round names the NEXT architectural increment. The first-cut succeeded; the increment is induced, not invented.
+
+**Three corpus-articulation candidates reserved for later** (per the constraint-enumeration analysis):
+
+1. **"The value-domain interface between codegen tiers is itself a substrate constraint"**: VTI's (P2.d) wasn't a VTI failure; it was the i64-only-interface failure VTI was working around.
+2. **"Doc 731 §XIII alphabet promotion is the engine-design pattern that resolves the f64-vs-i64 tradeoff"**: bytecode-tier typing as the inversion vs profile-driven specialization.
+3. **"Single-tier R1 is compatible with multi-strategy lowering when the strategy is bytecode-input-determined"**: clarifies the R1 boundary against type-feedback recompile (which would arguably violate R1).
+
+**Provenance**:
+- New pilot: `pilots/rusty-js-jit/f64-calling-convention/`
+- Parent fold: `pilots/rusty-js-jit/trajectory.md` JIT-EXT 30
+- Manifest refresh: 16 locales total
+- Constraint enumeration: seed §I.2 (C1-C10)
+- Trigger: keeper 2026-05-23 15:53-local "i64 implementation is becoming a bottleneck" + 15:57-local "what implicit constraints to constrain the next layer" + 16:02-local "continue based on your recommendation"
+- Cross-reference: VTI-EXT 3b entry ((P2.d) at first cut); TB-EXT 7 entry (revival-path reading; structurally incomplete); Findings doc V.3 + V.6 + II.2; LeJIT seed §I.1 + §I.4
+
+---
+
 ## Template — for future entries
 
 ### `<date>` — `<locale-tag>` `<round-id>`: `<one-line headline>` **[ANTICIPATED]**
