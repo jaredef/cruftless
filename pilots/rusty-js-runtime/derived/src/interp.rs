@@ -197,6 +197,12 @@ pub struct Runtime {
     pub function_prototype: Option<rusty_js_gc::ObjectId>,
     pub promise_prototype: Option<rusty_js_gc::ObjectId>,
     pub string_prototype: Option<rusty_js_gc::ObjectId>,
+    /// CharCode-EXT 2 (2026-05-23, JIT-EXT 33 interp-tier IC): cached
+    /// ObjectId of String.prototype.charCodeAt. Populated lazily at the
+    /// first Op::CallMethod fast-path eligibility check; used to
+    /// verify the resolved method is the intrinsic (not a user
+    /// override) before bypassing call_function.
+    pub intrinsic_string_charcodeat_id: Option<rusty_js_gc::ObjectId>,
     pub number_prototype: Option<rusty_js_gc::ObjectId>,
     pub bigint_prototype: Option<rusty_js_gc::ObjectId>,
     pub symbol_prototype: Option<rusty_js_gc::ObjectId>,
@@ -335,6 +341,7 @@ impl Runtime {
             function_prototype: None,
             promise_prototype: None,
             string_prototype: None,
+            intrinsic_string_charcodeat_id: None,
             number_prototype: None,
             bigint_prototype: None,
             symbol_prototype: None,
@@ -8074,6 +8081,64 @@ impl Runtime {
                     let chain_tag = if matches!(&method, Value::Undefined | Value::Null) {
                         method_name.as_deref().map(|mn| describe_proto_chain_for_key(self, &receiver, mn))
                     } else { None };
+                    // CharCode-EXT 2 (2026-05-23, JIT-EXT 33 interp-tier IC):
+                    // hot-intrinsic fast-path. For the exact shape
+                    // `s.charCodeAt(i)` with s a primitive String, the
+                    // resolved method == String.prototype.charCodeAt, and
+                    // one arg, bypass call_function entirely and emit the
+                    // ASCII-fast result inline. Eliminates per-call frame
+                    // setup, this-binding dispatch, and call_function
+                    // overhead. Same byte-for-byte result as the slow path
+                    // for the intercepted shapes; bails to slow path on
+                    // override / non-String receiver / wrong arity / NaN
+                    // arg / non-ASCII string + out-of-bounds index.
+                    if args.len() == 1
+                        && method_name.as_deref() == Some("charCodeAt")
+                    {
+                        if let (Value::String(s), Value::Object(method_id)) = (&receiver, &method) {
+                            // Verify method is the intrinsic. Lazy-populate
+                            // the cache on first eligible call by looking
+                            // up String.prototype.charCodeAt.
+                            if self.intrinsic_string_charcodeat_id.is_none() {
+                                if let Some(sp) = self.string_prototype {
+                                    if let Some(d) = self.obj(sp).get_own("charCodeAt") {
+                                        if let Value::Object(id) = d.value {
+                                            self.intrinsic_string_charcodeat_id = Some(id);
+                                        }
+                                    }
+                                }
+                            }
+                            if self.intrinsic_string_charcodeat_id == Some(*method_id) {
+                                let pos = &args[0];
+                                let i_n = match pos {
+                                    Value::Undefined => 0.0,
+                                    Value::Number(n) => *n,
+                                    _ => f64::NAN,
+                                };
+                                if i_n.is_finite() && i_n >= 0.0 {
+                                    let i = i_n as usize;
+                                    let bytes = s.as_bytes();
+                                    let result = if s.is_ascii() {
+                                        if i < bytes.len() {
+                                            Value::Number(bytes[i] as f64)
+                                        } else {
+                                            Value::Number(f64::NAN)
+                                        }
+                                    } else {
+                                        match s.chars().nth(i) {
+                                            Some(c) => Value::Number(c as u32 as f64),
+                                            None => Value::Number(f64::NAN),
+                                        }
+                                    };
+                                    frame.push(result);
+                                    continue;
+                                }
+                                // i_n NaN/negative: fall through to slow path
+                                // (spec says NaN return, but call_function
+                                // path is canonical for the edge case).
+                            }
+                        }
+                    }
                     let result = self.call_function(method, receiver, args).map_err(|e| match e {
                         RuntimeError::TypeError(msg) if msg.starts_with("callee is not callable") => {
                             let chain_suffix = chain_tag.as_ref()

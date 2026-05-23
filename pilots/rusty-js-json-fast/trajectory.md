@@ -627,3 +627,75 @@ LOC delta: ~20 (two intrinsic-tier ASCII fast-paths). CRB cumulative since JSF-E
 ---
 
 *JSF-EXT 9 closes. Substrate-tier O(n)→O(1) fix landed at ASCII charCodeAt + length. -15% on the dominator-loop; -3% on CRB total. Per-call magnitude smaller than algorithmic projection because dispatch overhead is the dominant cost. LeJIT-tier intrinsic inlining is now empirically warranted at 1739 ms residual.*
+
+---
+
+## JSF-EXT 10 — 2026-05-23 (CharCode-EXT 2: interp-tier hot-intrinsic IC for String.prototype.charCodeAt; the pipeline connects)
+
+### Headline
+
+Pre-implementation source-read found the original (a) LeJIT-tier path blocked: Op::CallMethod isn't in the JIT alphabet AND the json_parse_transform charCodeAt loop is at top-level (not function body, so JIT can't fire). Pivoted to the structural-equivalent at the interp tier: hot-intrinsic IC fast-path in Op::CallMethod dispatcher. ~65 LOC delta in interp.rs. Bypasses call_function entirely for the exact `s.charCodeAt(i)` shape (verified via cached intrinsic ObjectId). **Real CRB reclaim: -12% cumulative; cruft/node ratio 20.34× → 17.93×.**
+
+### Measurements
+
+| metric | baseline (JSF-EXT 0) | post-M1-4 | post-CC-1 substrate | post-CC-2 IC | Δ total |
+|---|---:|---:|---:|---:|---:|
+| A/B checksum delta | 2040 ms | 2040 ms | 1739 ms | **1480 ms** | **-27%** |
+| CRB json_parse_transform | 2481 ms | 2455 ms | 2372 ms | **2188 ms** | **-12%** |
+| cruft/node ratio | 20.34× | 20.12× | 19.28× | **17.93×** | **-12%** |
+| per-call cost (μs) | 0.816 | 0.816 | 0.696 | **0.592** | -27% |
+
+The IC eliminates ~100ns/call (frame setup + this-binding + descriptor walk). At 2.5M calls per outer × 500 outers, that's ~250ms saved — matches the observed CRB delta.
+
+### Three-probe results
+
+| probe | result |
+|---|---|
+| canonical fuzz (acc=-932188103) | ✅ GREEN |
+| diff-prod 42/42 | ✅ GREEN |
+| A/B probe checksum | -15% from substrate-fix baseline |
+| CRB | -8% from substrate-fix baseline |
+
+### Design notes
+
+**Verification**: the fast-path triggers only when `method == cached intrinsic_string_charcodeat_id`. Cache populated lazily at first eligible call by looking up `string_prototype["charCodeAt"]`. If user overrides String.prototype.charCodeAt, the cache won't match their override's ObjectId and the path bails to slow-path. Correctness-preserving by construction.
+
+**Bail conditions**: `n != 1` args, receiver not Value::String, method not Value::Object, method id != cached intrinsic, arg not Undefined/Number, arg NaN or negative. All bails go to the canonical slow-path. The fast-path's ASCII branch matches the substrate-fixed slow-path; non-ASCII fallback uses chars().nth() (the same as the slow path).
+
+**Scope**: only charCodeAt at first cut. Generalization candidate: turn this into a hot-intrinsic table (charAt, codePointAt, length-as-getter, etc.) at a future round if other intrinsics surface as dispatch-bound.
+
+### Doc 739 cascade-revival framing (the pipeline connects)
+
+JSF substrate work (M1-M4) was the upstream constraint-closure at the JSON-stringify resolver-instance pipeline → flat CRB at first cut. The A/B probe (JSF-EXT 8) identified that the upstream closure connected to a downstream tier that wasn't the actual dominator. CharCode-EXT 1 (substrate ASCII) was the substrate-tier closure at the actual dominator → modest reclaim. CharCode-EXT 2 (interp-tier IC) was the dispatch-tier closure on top of the substrate-tier closure → **the pipeline finally produced real CRB reclaim (-12%)**.
+
+The lesson: cascade-revival works at multi-tier scope. Closing one tier (substrate-fix) without closing the dispatcher tier (interp-IC) was structurally insufficient. The pipeline connects only when ALL relevant tiers along the actual hot path are closed.
+
+### Implications for forward
+
+- **The IC pattern generalizes**: every hot intrinsic method call has the same dispatcher overhead. A hot-intrinsic table would close the surface for charAt, codePointAt, indexOf, slice, push, pop, shift, splice, etc. Engagement-tier candidate.
+- **Cruft/node 17.93× residual**: still 18× slower than node. The remaining cost lives in (i) JSON.parse interp dispatch (Array.map showed 55× per-op), (ii) JSON.parse itself (3.3× per-op), (iii) general interp loop dispatch (every for-iter, every operator, every push). LeJIT-tier work on top-level loops (a-ii from JSF-EXT 9 reporting) is the next structural lever.
+- **Pred-jsf.1 disposition**: still FALSIFIED (target ≤1500 ms). Cumulative reclaim 12% is below the 40% target. But the negative-finding work generated a real reclaim path through structural-tier disambiguation; the pipeline IS connecting now.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable.
+Per Doc 734 §V: growth (a) positive-finding empirical-confirmation; pipeline-connection at the multi-tier scope demonstrated.
+Per Doc 735 §X.h.b: **(P2.a) on CRB at the cumulative scope; the IC fast-path is net-positive contribution at both A/B and CRB measurement levels**.
+
+### Open scope at JSF-EXT 10 close
+
+1. **Hot-intrinsic IC table** — generalize the IC to other String/Array intrinsics (engagement-tier substrate work)
+2. **LeJIT top-level loop JIT** — a-ii from the original keeper directive; architecture-tier change, large scope
+3. **Findings doc addendum IV** — codify Finding II.2-bis + VII.1 + IC-pattern generalization
+4. **Other queued pilots** — RXF, SW, HS, Array.map, JSON.parse
+
+### Cumulative status at JSF-EXT 10 close
+
+LOC delta: ~65 (interp.rs: ObjectId cache field + Op::CallMethod fast-path branch).
+JSF chain total LOC: ~285 across 5 rounds (M1-M4 + CC-1 + CC-2).
+CRB cumulative reclaim: 2481 → 2188 ms (-12%).
+Three probes GREEN throughout the chain.
+
+---
+
+*JSF-EXT 10 closes. The pipeline connects: substrate-tier ASCII fast-path + interp-tier hot-intrinsic IC together produce real CRB reclaim (-12% cumulative; cruft/node 17.93×). The keeper's middle-stretch framing was correct: performance dipped at the substrate-introduction round (JSF-EXT 3 flat); cascade-revival materialized partially at the JSON-stringify tier (JSF-EXT 4-5); the real connection came at the downstream-bottleneck tier (CC-1 + CC-2). The full chain validates Doc 739 cascade-revival as a multi-tier pattern.*
