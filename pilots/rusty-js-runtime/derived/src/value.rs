@@ -40,6 +40,16 @@ pub type ObjectRef = rusty_js_gc::ObjectId;
 impl rusty_js_gc::Trace for Object {
     fn trace(&self, ids: &mut Vec<rusty_js_gc::ObjectId>) {
         if let Some(p) = self.proto { ids.push(p); }
+        // CMig-EXT 16 NEEDS-VERIFY follow-up (2026-05-23): trace
+        // shape_values for Object references. Shape-enrolled objects
+        // store user-default properties in shape_values (not in
+        // .properties); pre-fix Trace missed these, which under a
+        // future mark-and-sweep GC pass would collect referenced
+        // Objects → use-after-free. Currently dormant because cruft's
+        // GC leaks, but the fix is correctness-required forward-looking.
+        for v in &self.shape_values {
+            if let Value::Object(id) = v { ids.push(*id); }
+        }
         for d in self.properties.values() {
             if let Value::Object(id) = &d.value { ids.push(*id); }
         }

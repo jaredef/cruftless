@@ -882,3 +882,87 @@ The consumer-migration pilot's first-cut chapter is **closed at engagement-wide 
 ---
 
 *CMig-EXT 17 closes. Engagement-wide canonical fuzz harness landed; 8 configurations × 2000 fixtures × 8 patterns all byte-identical. Consumer-migration pilot's first-cut chapter closed at engagement-wide correctness gate. The standing instrument is in place for any future default-on flip's three-probe-levels discipline.*
+
+---
+
+## CMig-EXT 17.bis — 2026-05-23 (NEEDS-VERIFY follow-up; 3 sites all NEEDS-FIX + fixed)
+
+### Headline
+
+CMig-EXT 16 deferred 3 NEEDS-VERIFY sites for follow-up inspection. Per-site reads revealed **ALL 3 are actually NEEDS-FIX**, including a CRITICAL GC-correctness site in value.rs that would surface as use-after-free under any future non-leaking GC. All 3 fixed; all gates GREEN; canonical fuzz still byte-identical post-fix.
+
+### The 3 NEEDS-VERIFY sites — all NEEDS-FIX on inspection
+
+1. **`value.rs:43` — `impl Trace for Object`** (CRITICAL):
+   - Pre-fix: iterates only `self.properties.values()` to find Object refs for GC marking
+   - Shape-enrolled objects store user-default properties in `shape_values`; pre-fix Trace missed these Object refs → mark-and-sweep would collect referenced Objects → use-after-free
+   - Currently dormant because cruft's GC leaks (per engagement state); fix is forward-correctness-required.
+   - **Fix**: iterate `self.shape_values` for Object refs BEFORE `self.properties.values()` (same pattern as other Family B fixes)
+
+2. **`module.rs:1119` — pkg_dual_shape namespace synthesis**:
+   - Pre-fix: `self.obj(namespace).properties.iter()` → empty for Shape-enrolled namespace → silently missing exports in the synthesized default
+   - **Fix**: shape-iter chain pattern
+
+3. **`module.rs:1484` — JSON module re-export to namespace**:
+   - Pre-fix: `self.obj(*oid).properties.iter()` → empty for Shape-enrolled JSON-parse results → namespace would have only `default` key (the documented incident pattern from `statuses/express` per the comment at module.rs:1477-1483)
+   - **Fix**: shape-iter chain pattern
+
+### Substrate landed (~45 LOC)
+
+- `pilots/rusty-js-runtime/derived/src/value.rs` Trace impl (~7 LOC + comment)
+- `pilots/rusty-js-runtime/derived/src/module.rs:1119` pkg_dual_shape (~17 LOC + comment)
+- `pilots/rusty-js-runtime/derived/src/module.rs:1484` JSON re-export (~17 LOC + comment)
+
+### Probes
+
+| probe | result |
+|---|---|
+| Runtime lib tests | 35/35 PASS |
+| diff-prod | 42/42 PASS |
+| **Canonical fuzz (cruft default)** | `acc=-932188103` |
+| **Canonical fuzz (node baseline)** | `acc=-932188103` |
+
+Byte-identical post-fix. No regressions; the fixes address dormant correctness gaps not currently exercised by the fuzz harness's patterns (Trace runs only during GC, which cruft doesn't trigger; module export paths use specific patterns the canonical fuzz doesn't yet exercise).
+
+### Generalization for the audit-precision finding (IV.3)
+
+The 3-of-3 NEEDS-VERIFY-actually-NEEDS-FIX rate sharpens Finding IV.3. The original CMig-EXT 16 quick-scan produced:
+- Hypothesis: 5 NEEDS-FIX
+- After audit verification: 5 NEEDS-FIX + 3 NEEDS-VERIFY (= 8 hypothesis)
+- After fix-round verification: 2 NEEDS-FIX from initial 5 + 3 NEEDS-FIX from initial NEEDS-VERIFY = **5 actual NEEDS-FIX** of 8 hypothesis = 62.5% audit precision
+
+The NEEDS-VERIFY category's 3-of-3 confirmation rate suggests the category was UNDER-conservative (should have been NEEDS-FIX-pending-verification). Finding IV.3's discipline holds; the categorization label was the imprecise part, not the methodology.
+
+**Refinement candidate for Finding IV.3**: rename "NEEDS-VERIFY" to "NEEDS-FIX-pending-verification" to signal that the verification's PURPOSE is to confirm the fix is required, not to determine WHETHER it's required. The default categorization for an unread call site that touches shape-relevant data is NEEDS-FIX, not NEEDS-VERIFY.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: Case-2 verification (cruft would have produced silently-empty namespace exports + use-after-free under non-leaking GC).
+
+Per Doc 734 §V: growth (b) negative-finding amendment realized — the 3 NEEDS-VERIFY-actually-NEEDS-FIX sites are now closed. Growth (c) positive-finding generalization for the IV.3 refinement.
+
+Per Doc 735 §X.h.c three-probe-levels: bench probe N/A; consumer-route POSITIVE (diff-prod + canonical fuzz); fuzz POSITIVE (canonical). All probes satisfied at canonical scope post-fix.
+
+### Composition with prior corpus work
+
+- **CMig-EXT 16 audit + Finding IV.3**: this round operationalizes the audit's residual NEEDS-VERIFY category; refines IV.3 with the audit-precision-on-deferred-sites finding.
+- **CMig-EXT 17 canonical fuzz + Finding IV.4**: the canonical fuzz doesn't yet cover Trace / module-export patterns; the audit + per-site fix closes what the canonical fuzz currently misses. **Forward extension**: CMig-EXT 17.bis could add module-re-export + Trace-related patterns to the canonical fuzz.
+- **Findings doc standing rule 9 (raw-pointer-cache audit)**: this round is its complement at the property-iteration discipline; the engagement now has paired audit disciplines.
+
+### Open scope at CMig-EXT 17.bis close
+
+1. **Canonical fuzz extension** (CMig-EXT 17.bis-fuzz): add patterns for module re-exports + Trace-relevant scenarios. Optional; the manual fix here closes the immediate correctness gap.
+2. **Finding IV.3 refinement** (NEEDS-FIX-pending-verification framing): codify in next Findings doc addendum or inline edit.
+3. **Forward optimization queue** (Φ-EXT 4-6/8; Move 2; non-LeJIT pilots): unchanged.
+
+### Cumulative status at CMig-EXT 17.bis close
+
+LOC delta: ~45. All gates GREEN. The audit's deferred-NEEDS-VERIFY sites are now closed. The shape-enrollment surface-completeness gap is substantially closed at canonical scope.
+
+Total shape-enrollment chapter (CMig-EXT 1 through CMig-EXT 17.bis):
+- Substrate-introduction + consumer-migration + default-on flip + spread bug fix + audit + audit-fix + canonical fuzz + NEEDS-VERIFY follow-up
+- 7 substrate moves, 1 canonical fuzz harness, 1 standing instrument, 1 critical GC-correctness fix (dormant), engagement-wide canonical-scope correctness gate satisfied
+
+---
+
+*CMig-EXT 17.bis closes. 3 NEEDS-VERIFY sites all NEEDS-FIX on inspection; all fixed; canonical fuzz still byte-identical; GC Trace use-after-free dormant correctness gap closed. Finding IV.3 refinement queued (NEEDS-FIX-pending-verification framing).*

@@ -1116,10 +1116,27 @@ impl Runtime {
                 }
             }
             if pkg_dual_shape {
-                let pairs: Vec<(String, Value)> = self.obj(namespace).properties.iter()
-                    .filter(|(k, _)| k.as_str() != "default")
-                    .map(|(k, d)| (k.to_string_content(), d.value.clone()))
-                    .collect();
+                // CMig-EXT 16 NEEDS-VERIFY follow-up (2026-05-23):
+                // shape-aware. If namespace is Shape-enrolled, its
+                // exports live in shape_values not properties; pre-fix
+                // missed them silently.
+                let pairs: Vec<(String, Value)> = {
+                    let o = self.obj(namespace);
+                    let mut out: Vec<(String, Value)> = Vec::new();
+                    if let Some(shape) = o.shape.as_ref() {
+                        for (name, slot) in shape.iter_slots() {
+                            if name == "default" { continue; }
+                            let idx = slot as usize;
+                            if let Some(v) = o.shape_values.get(idx) {
+                                out.push((name.to_string(), v.clone()));
+                            }
+                        }
+                    }
+                    out.extend(o.properties.iter()
+                        .filter(|(k, _)| k.as_str() != "default")
+                        .map(|(k, d)| (k.to_string_content(), d.value.clone())));
+                    out
+                };
                 let synth = self.alloc_object(Object::new_ordinary());
                 for (k, v) in pairs {
                     self.object_set(synth, k, v);
@@ -1481,8 +1498,28 @@ impl Runtime {
         // this: Object.keys(codes) returned ['default'] instead of the
         // numeric status codes, then codes[code].toLowerCase() failed).
         if let Value::Object(oid) = &value {
-            let pairs: Vec<(String, Value)> = self.obj(*oid).properties.iter()
-                .map(|(k, d)| (k.to_string_content(), d.value.clone())).collect();
+            // CMig-EXT 16 NEEDS-VERIFY follow-up (2026-05-23): shape-
+            // aware. JSON-parsed objects route through Op::SetProp
+            // shape-aware paths; their values live in shape_values
+            // for fresh enrollments. Pre-fix the JSON-module re-export
+            // would have produced empty namespace re-exports for
+            // shape-enrolled JSON results — exactly the bug class
+            // CMig-EXT 15 surfaced for spread.
+            let pairs: Vec<(String, Value)> = {
+                let o = self.obj(*oid);
+                let mut out: Vec<(String, Value)> = Vec::new();
+                if let Some(shape) = o.shape.as_ref() {
+                    for (name, slot) in shape.iter_slots() {
+                        let idx = slot as usize;
+                        if let Some(v) = o.shape_values.get(idx) {
+                            out.push((name.to_string(), v.clone()));
+                        }
+                    }
+                }
+                out.extend(o.properties.iter()
+                    .map(|(k, d)| (k.to_string_content(), d.value.clone())));
+                out
+            };
             for (k, v) in pairs {
                 self.object_set(ns, k, v);
             }
