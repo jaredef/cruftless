@@ -241,4 +241,69 @@ Codified for future substrate work:
 
 ---
 
-*Last updated 2026-05-23 (session close of CRB-EXT 9). Update protocol: append new findings as they emerge from subsequent LeJIT-tier rounds; never edit historical findings (per Doc 727 §X basin-stability discipline). Findings that turn out to be wrong become new entries referencing the prior, not edits.*
+*Last updated 2026-05-23 (session close of TB-EXT 8 + JIT-EXT 29). Update protocol: append new findings as they emerge from subsequent LeJIT-tier rounds; never edit historical findings (per Doc 727 §X basin-stability discipline). Findings that turn out to be wrong become new entries referencing the prior, not edits.*
+
+---
+
+## Addendum — 2026-05-23 (post StubE-EXT 5c+7+8, TB-EXT 3b+4+7+8, JIT-EXT 29)
+
+This addendum is append-only per the update protocol. Existing findings I-VI + standing rules above are preserved unchanged; this addendum records empirical validations + new findings that emerged from the substrate work after the original findings doc was seeded earlier in the same session.
+
+### Promoted findings (empirical anchor strengthened)
+
+**Finding V.1 (TB largest §I.3 arm BUT bounded CRB-side benefit)** — **CORROBORATED**. TB-EXT 3b delivered 62.7 ns reclaim on bench_call_overhead (Pred-tb.1 EXCEEDED by 50%); CRB-side reclaim was 2.2% on json (TB+STUB CRB cruft TB=1) — exactly the bounded-CRB-benefit pattern predicted. Per-pilot priority follows the bench reclaim, not the CRB reclaim.
+
+**Finding V.2 (LeJIT-Σ bounded by shape cascade; needs composition)** — **PROMOTED**. StubE-EXT 5c flipped STUB's sign on bench_ic from +35.4 ns net-negative to −41.5 ns net-positive standalone. STUB no longer needs composition to be (P2.a). The "needs composition" qualifier is removable.
+
+**Finding V.3 (LeJIT-Ψ (P2.d) at first cut)** — **UNCHANGED**, revival path empirically named: TB-EXT 7 + TB-EXT 4's TB+VTI bench_call_overhead reading (70.1 ≈ TB alone) prove that calling-convention restructure CAN pay when done with the precheck-removal (VTI-EXT 3c). VTI revival is queued, not deprecated.
+
+**Finding II.2 (never split substrate moves)** — **TRIPLE-VALIDATED** at three applications in the same session: TB-EXT 3b approach A (low-LOC alternative to B/C, won); CMig-EXT 15 (out-of-band regression caught; spread fix removes the bypass without adding equivalent work); StubE-EXT 5c (Rust-extern A-level vs inline-IR B-level; A won bigger than B was predicted to).
+
+**Standing rule 5 ("three probes before any default-on flip")** — **EMPIRICALLY VALIDATED at engagement scale** via three default-on flips: shape CMig-EXT 14 surfaced CMig-EXT 15 wrong-result bug (caught out-of-band, gap explicit); StubE-EXT 8 clean (three-probe-levels applied prospectively); **TB-EXT 8 clean POST-FIX** — TB-EXT 7 fuzz caught a SEGFAULT pre-flip. The rule's value compounds at each successive flip.
+
+### New findings
+
+**Finding II.4 (HashMap-value-slot raw-pointer caching is a load-bearing bug class)** *[new, 2026-05-23 via TB-EXT 7]*
+
+**Anchor**: TB-EXT 7 enhancements log entry. TB-EXT 3b's design said "CompiledFn stable for process lifetime per leaked module" — wrong: the MODULE is stable (Box::leak'd) but the CompiledFn STRUCT in HashMap value slots moves on rehash. The TB closure-cell's cached `*const CompiledFn` dangled when subsequent JIT-compiles triggered HashMap rehash → segfault under fuzz workload. Fix: Box-wrap to `HashMap<usize, Option<Box<CompiledFn>>>`.
+
+**Substrate implication**: any substrate move caching raw pointers into HashMap value-slot entries has the same dangling-pointer risk. Future raw-pointer-caching moves should audit upstream storage for by-value HashMap entries; if yes, the source needs Box-wrapping (or other stable-address discipline). The bench probes structurally CANNOT catch this — single-shape benches don't trigger rehash mid-fast-path. Only multi-pattern fuzz with sustained heap pressure during hot loop will reproduce.
+
+**Generalization**: the engagement should audit existing raw-pointer caches for the same class. Candidates: `runtime_ic_fast_get`'s receiver-Object access (TLS-deref + heap-Vec read); any other pointer captured from HashMap or Vec containers. Audit queued as `StubE-EXT 9 / TB-EXT 9` candidate.
+
+**Finding V.5 (Default-on flip discipline compounds at engagement scale)** *[new, 2026-05-23 via three-flip pattern]*
+
+**Anchor**: three default-on flips this session, each with different bug-class outcome:
+- shape CMig-EXT 14: regression caught OUT-OF-BAND (parallel-Claude measurement)
+- StubE-EXT 8: clean flip (three-probe-levels first prospective application)
+- TB-EXT 8: clean POST-FIX (TB-EXT 7 fuzz caught segfault)
+
+**Substrate implication**: the engagement's default-on flip discipline (three-probe-levels per standing rule 5) is empirically validated at three applications. The discipline's value MEASURABLY COMPOUNDS — each successive flip's bug surface is closed before the flip, not after. The fuzz probe class catches what bench + consumer-route structurally cannot.
+
+**Generalization**: any future default-on flip in the engagement (across pilots) MUST run the three-probe-levels gate. The cost of NOT running it (CMig-EXT 14 → CMig-EXT 15 retrospective regression + ~half-day debugging) substantially exceeds the cost of running it (~85 LOC fuzz fixture + 15 minutes to run).
+
+**Finding V.6 (LeJIT first-cut composition target empirically met at engagement default)** *[new, 2026-05-23 via JIT-EXT 29 synthesis]*
+
+**Anchor**: post-StubE-EXT 8 + TB-EXT 8 default-on flips, bench_call_overhead = 71 ns and bench_ic = 81 ns at default-cruft (no env flags). Pre-session baselines were 122.9 / 197.9 ns. The bench_ic narrow-microloop result matches bun's typical per-op cost (~94 ns); LeJIT seed §I.3's prediction "matches Bun's per-op cost on the same workload" is corroborated and exceeded.
+
+**Substrate implication**: the LeJIT pilot's first-cut chapter is closed at engagement-tier (P2.a) at scale. Subsequent LeJIT-tier work is forward optimization, not load-bearing for any standing Pred:
+- VTI revival (VTI-EXT 3c)
+- Skip STUB infra on no-property functions
+- Inline Cranelift IR for IC fast-path (marginal vs current Rust-extern)
+- Cross-pilot bug-class audits (StubE/TB-EXT 9)
+
+**Engagement-tier consequence**: the CRB-class composition target (3-15× off bun on realistic workloads per CRB-EXT 9) is NOT met by LeJIT alone — closing it requires forward-derived non-LeJIT pilots per findings VI.1-VI.3 (fast JSON, tight-inner-loop emitter, Array.filter/map fast-path). These are multi-pilot, multi-session work.
+
+**Finding III.4 (Composition synergy is constructive when flag mechanisms target different cost components)** *[new, 2026-05-23 via TB-EXT 4 → StubE-EXT 5c]*
+
+**Anchor**: TB+STUB on bench_ic post-StubE-EXT 5c reads 80.8 ns; independent-delta prediction was 123.6 ns; **synergy −42.8 ns (constructive interference)**. TB removes dispatcher per-call overhead; STUB removes per-GetProp slow path. Together they remove both halves of bench_ic's per-iter cost almost completely.
+
+**Substrate implication**: the §I.3 multiplicative composition claim holds at first cut with a SHARPENING — per-flag deltas don't just sum, they compose more tightly when each flag's reclaim mechanism is in a different cost component. VTI does NOT compose constructively yet because it overlaps TB's dispatcher target on the SAME cost component (calling-convention).
+
+**Generalization for future LeJIT-tier pilots**: composition synergy is positive when reclaim mechanisms target ORTHOGONAL cost components; near-zero when targets overlap. Future pilot priority should consider not just per-pilot reclaim but cost-component orthogonality with existing pilots.
+
+### New standing rule
+
+**Standing rule 9 (added 2026-05-23)**: any raw-pointer cache capturing a pointer to a struct living in a HashMap or Vec value slot must verify the underlying storage uses Box-wrapping or equivalent stable-address discipline. The structure must be address-stable for the cache's intended lifetime. Default audit: any `*const T` capture where `T` lives in `HashMap<_, T>` or `Vec<T>` is suspect.
+
+*(Per Finding II.4. The TB-EXT 7 segfault would have been prevented by this rule applied prospectively at TB-EXT 3b design time.)*

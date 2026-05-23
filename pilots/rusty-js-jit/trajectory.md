@@ -1610,3 +1610,84 @@ See [tiny-baseline/seed.md](tiny-baseline/seed.md) and [tiny-baseline/trajectory
 Locale count: 13 → 14 after this spawn (manifest refreshed). The engagement's fifth nested locale, third under this LeJIT pilot.
 
 *JIT-EXT 28 stays open until TB-EXT 8 closes the nested workstream.*
+
+---
+
+## JIT-EXT 29 — 2026-05-23 (first-cut composition closes at engagement-tier default; three sub-pilots' status synthesized)
+
+### Headline
+
+Cross-pilot synthesis round closing the parent LeJIT trajectory's open rows for the three nested sub-pilots. **The LeJIT seed §I.3 multiplicative composition target is empirically met at engagement-tier default**: post both default-on flips (StubE-EXT 8 + TB-EXT 8), bench_ic = 81 ns (vs 271 ns pre-shape baseline = 3.34×; matches §I.3's "bun's per-op cost" prediction). This is the parent-pilot-tier close of the rounds JIT-EXT 26/27/28 opened.
+
+### Sub-pilot status synthesized
+
+| sub-pilot | first-cut status | engagement default |
+|---|---|---|
+| LeJIT-Σ (stub-emitter) | (P2.a) at composition scale via StubE-EXT 5c | DEFAULT-ON post StubE-EXT 8 |
+| LeJIT-Τ (tiny-baseline) | (P2.a) at composition scale via TB-EXT 3b + 5c-composition | DEFAULT-ON post TB-EXT 8 |
+| LeJIT-Ψ (value-tag-inline) | (P2.d) at first cut; revival path empirically named via TB-EXT 7 | default-OFF; VTI-EXT 3c queued |
+
+JIT-EXT 26 (spawn LeJIT-Σ stub-emitter) — closes with Σ at default-on.
+JIT-EXT 27 (spawn LeJIT-Ψ value-tag-inline) — stays open; Ψ at (P2.d).
+JIT-EXT 28 (spawn LeJIT-Τ tiny-baseline) — closes with Τ at default-on.
+
+### Engagement-tier baseline transformation
+
+| workload | pre-StubE-EXT 8 | post-both-flips default | Δ |
+|---|---:|---:|---:|
+| bench_call_overhead `none` | 122.9 ns | **71.2 ns** | **−42%** AUTOMATIC |
+| bench_ic `none` | 197.9 ns | **81.0 ns** | **−59%** AUTOMATIC |
+
+Default-cruft users get both gains without env flag.
+
+### Engagement framework instruments seeded this session
+
+- **`pilots/rusty-js-jit/findings.md`** — substrate-improvement guidance doc (per keeper 2026-05-23 14:09-local directive). Six sections + standing rules. Has been validated empirically at four+ applications during the same session it was created.
+- **`pilots/rusty-js-jit/enhancements.md`** — cross-locale append-only event log. Verbose UNANTICIPATED entries (now ~10) preserve substrate-amortization-cascade signals + (P2.d)/(P2.c) findings.
+- **`pilots/cross-runtime-bench/`** — standalone top-level pilot founded mid-session per keeper directive. 15 locales total post-spawn (10 top-level + 5 nested).
+- **LeJIT seed §I.3 amendment** (CRB-EXT 8) — per-workload composition disambiguation as standing framework vocabulary.
+- **TB-EXT 7 segfault discovery** — engagement-class HashMap-value-slot raw-pointer-cache bug class named + fixed via Box-wrap pattern.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: Case-4 (implementation freedom). No spec-correctness call.
+
+Per Doc 734 §V: growth (c) **positive-finding generalization at engagement scale**. The substrate-amortization-cascade pattern from Doc 729 §A8.13 fully realized at first-cut: shape (default-on) + STUB (default-on) + TB (default-on) compose multiplicatively at the engagement-tier without env flag. The §I.3 prediction was both reached and exceeded.
+
+Per Doc 735 §X.h.b: two of three sub-pilots at (P2.a) at scale; third at (P2.d) with empirically-named revival path.
+
+Per Doc 735 §X.h.c: three-probe-levels discipline applied prospectively at all three default-on flips of the session; the discipline's value is now anchored at engagement scale per the StubE-EXT 7 + TB-EXT 7 fuzz probes.
+
+### Composition with prior corpus work
+
+- **LeJIT seed §I.2 hybrid stance**: the four hand-rolled regions framing materializes at three of four (Σ, Τ landed; Ψ at (P2.d); Σ' pre-filed). The §I.2 prediction "hybrid Cranelift+hand-rolled wins" is empirically corroborated.
+- **LeJIT seed §I.3 substrate-amortization cascade + amendment**: empirically met at engagement default; bench_ic-class composition target HOLDS.
+- **CRB-EXT 8 §I.3 amendment**: bench_ic-class composition target met; CRB-class spectrum reading (3-15× off bun) unchanged.
+- **CMig-EXT 15 retrospective** + **TB-EXT 7 prospective**: the engagement's three-probe-levels discipline catches different bug classes (wrong-result; memory-safety). Both required for (P2.a) at scale.
+- **Findings doc rule 5**: validated at three successive default-on flips (shape CMig-EXT 14 → StubE-EXT 8 → TB-EXT 8). Discipline's value compounds.
+
+### Forward optimization queue (not load-bearing for any standing Pred)
+
+1. **VTI-EXT 3c** — VTI revival from (P2.d). Path empirically named: calling-convention restructure CAN pay when done with the precheck-removal that VTI-EXT 3c includes. JIT-EXT 27 stays open until 3c closes.
+2. **Skip STUB infra on no-property functions** (~10 LOC translator change) — eliminates StubE-EXT 8's +11% bench_call_overhead infra tax.
+3. **Inline Cranelift IR for IC fast-path** (B-level vs current A-level Rust-extern) — ~5-10 ns marginal; not load-bearing.
+4. **StubE-EXT 9 / TB-EXT 9 heap-vec-relocation audit** — proactive bug-class generalization per TB-EXT 7's HashMap-slot lesson.
+5. **CRB re-baseline post-flips** — show default-cruft's new competitive position on realistic workloads.
+6. **CMig-EXT 16 + 17** (Findings VI.6 HIGH priority) — property-bypass audit + canonical 2000-fixture fuzz harness.
+7. **VI.1 fast JSON, VI.2 tight-inner-loop emitter, VI.3 Array.filter/map fast-path** — forward-derived non-LeJIT pilots named in findings.
+
+### Cumulative status at JIT-EXT 29 close
+
+LeJIT parent pilot has now landed:
+- 28 prior JIT-EXTs (0-28 inclusive)
+- 3 nested sub-pilots, 2 default-on at engagement-tier
+- The engagement-tier baseline shifted by 42-59% on per-call benches
+- 4 engagement-tier framework instruments seeded (findings, enhancements, CRB pilot, §I.3 amendment)
+- 1 critical bug class discovered + fixed (HashMap-slot raw-pointer cache)
+- 3 default-on flips, all gated on three-probe-levels discipline
+
+The LeJIT first-cut chapter at the parent pilot level is **closed**. The substrate's engagement-tier performance is anchored on a new baseline 42-59% faster than pre-session. The remaining LeJIT-tier work is forward optimization, not load-bearing.
+
+---
+
+*JIT-EXT 29 closes. Parent LeJIT trajectory's open rows for JIT-EXT 26/28 close (Σ + Τ at default-on); JIT-EXT 27 stays open (Ψ at (P2.d); revival queued). The LeJIT seed §I.3 composition target empirically met at engagement-tier default. Session's substrate goal achieved.*

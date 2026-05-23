@@ -98,6 +98,48 @@ Three independent empirical anchors converge on this amendment (all logged 2026-
 
 The supporting reading is at `pilots/cross-runtime-bench/docs/composition-reading-vs-lejit-i3.md`.
 
+### I.4 First-cut composition empirically met at engagement-tier default (2026-05-23 close)
+
+§I.3's prediction "matches Bun's per-op cost on the same workload" was **empirically corroborated and exceeded** at the engagement-tier default after both StubE-EXT 8 + TB-EXT 8 default-on flips landed (2026-05-23).
+
+**Engagement-tier baseline shift** (vs pre-StubE-EXT 8):
+
+| workload | pre-flip | post-both-flips default | Δ |
+|---|---:|---:|---:|
+| bench_call_overhead `none` | 122.9 ns | **71.2 ns** | **−42%** AUTOMATIC |
+| bench_ic `none` | 197.9 ns | **81.0 ns** | **−59%** AUTOMATIC |
+
+Pre-shape baseline (StubE-EXT 1): 271 ns bench_ic. Post-both-flips default: 81 ns. **3.34× faster** — meets the §I.3 multiplicative composition target without any env flag.
+
+**The three LeJIT-tier sub-pilots' first-cut status**:
+
+| sub-pilot | locale | first-cut status | engagement-tier default |
+|---|---|---|---|
+| LeJIT-Σ (IC stub) | stub-emitter | closed (P2.a) at composition scale | DEFAULT-ON post-StubE-EXT 8 |
+| LeJIT-Τ (tiny-baseline) | tiny-baseline | closed (P2.a) at composition scale | DEFAULT-ON post-TB-EXT 8 |
+| LeJIT-Ψ (value-tag-inline) | value-tag-inline | closed (P2.d) at first cut; revival path empirically named via TB-EXT 7 | default-OFF; VTI-EXT 3c queued |
+| LeJIT-Σ' (x86_64 IC stub) | (not yet spawned) | pre-filed per seed §I.2 (iii) | n/a |
+
+**Pred dispositions HOLD at engagement-tier default**:
+- Pred-stub.1 (≥3× per-hit): HOLDS at 3.34×
+- Pred-stub.5 (no illegal-speed): HOLDS at fuzz coverage (StubE-EXT 7)
+- Pred-tb.1 (≥40 ns dispatcher reclaim): HOLDS at 62.7 ns per TB-EXT 3b
+- Pred-tb.2 (≤90 ns bench_ic composition): HOLDS at 81 ns
+- Pred-tb.5 (no illegal-speed): HOLDS post-segfault-fix (TB-EXT 7)
+- Pred-vti.1: NOT MET (VTI (P2.d) at first cut; revival queued)
+
+**Findings doc rule 5 ("three probes before any default-on flip") validated at engagement scale via three default-on flips** (shape CMig-EXT 14; StubE-EXT 8; TB-EXT 8). Each successive flip benefited more from the discipline: shape flip surfaced CMig-EXT 15 regression out-of-band; StubE flip clean; TB flip POST-FIX (TB-EXT 7 fuzz caught a segfault before flip would have shipped it). The discipline's value compounds.
+
+**Forward optimization queue** (not load-bearing for any standing Pred):
+- VTI-EXT 3c (revive LeJIT-Ψ from (P2.d) per the TB-EXT 7 calling-convention-restructure-CAN-pay finding)
+- Skip STUB infrastructure on no-property functions (~10 LOC; eliminates the +11% bench_call_overhead infra tax StubE-EXT 8 introduced)
+- Inline Cranelift IR for IC fast-path (~5-10 ns marginal vs Rust-extern A-level fast-path)
+- StubE-EXT 9 / TB-EXT 9 heap-vec-relocation safety audit (proactive bug-class generalization per TB-EXT 7 enhancements entry)
+
+CRB-class composition target (3-15× off bun spectrum per CRB-EXT 9) remains as predicted; closing it requires substrate work BEYOND LeJIT (fast JSON, multi-tier JIT, Array.filter/map fast-path) — per findings doc VI.1-VI.3 forward-derived candidate pilots.
+
+The supporting reading for this section is at `pilots/rusty-js-jit/findings.md` + the per-pilot trajectory closes (`stub-emitter/trajectory.md` StubE-EXT 5c+7+8; `tiny-baseline/trajectory.md` TB-EXT 3b+7+8).
+
 ## II. Apparatus
 
 The JIT is **resolver-instance #N+1 below the bytecode tier** per Doc 730 §IV's vertical-recurrence reading. It composes with:
