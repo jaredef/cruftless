@@ -6656,6 +6656,7 @@ impl Runtime {
             import_meta: None,
             new_target: None,
             strict: proto.strict,
+            back_edge_counts: HashMap::new(),
         };
         self.run_frame(&mut frame)
     }
@@ -7167,35 +7168,56 @@ impl Runtime {
 
                 // ─── Control flow ───
                 Op::Jump => {
+                    let site_pc = frame.pc - 1;  // pc of the Op::Jump byte
                     let disp = decode_i32(&frame.bytecode, frame.pc);
                     frame.pc += 4;
+                    if disp < 0 {
+                        // OSR-EXT 2: loop back-edge; count.
+                        *frame.back_edge_counts.entry(site_pc).or_insert(0) += 1;
+                    }
                     frame.pc = (frame.pc as i32 + disp) as usize;
                 }
                 Op::JumpIfTrue => {
+                    let site_pc = frame.pc - 1;
                     let disp = decode_i32(&frame.bytecode, frame.pc);
                     frame.pc += 4;
                     if to_boolean(&frame.pop()?) {
+                        if disp < 0 {
+                            *frame.back_edge_counts.entry(site_pc).or_insert(0) += 1;
+                        }
                         frame.pc = (frame.pc as i32 + disp) as usize;
                     }
                 }
                 Op::JumpIfFalse => {
+                    let site_pc = frame.pc - 1;
                     let disp = decode_i32(&frame.bytecode, frame.pc);
                     frame.pc += 4;
                     if !to_boolean(&frame.pop()?) {
+                        if disp < 0 {
+                            *frame.back_edge_counts.entry(site_pc).or_insert(0) += 1;
+                        }
                         frame.pc = (frame.pc as i32 + disp) as usize;
                     }
                 }
                 Op::JumpIfTrueKeep => {
+                    let site_pc = frame.pc - 1;
                     let disp = decode_i32(&frame.bytecode, frame.pc);
                     frame.pc += 4;
                     if to_boolean(frame.peek(0)?) {
+                        if disp < 0 {
+                            *frame.back_edge_counts.entry(site_pc).or_insert(0) += 1;
+                        }
                         frame.pc = (frame.pc as i32 + disp) as usize;
                     }
                 }
                 Op::JumpIfFalseKeep => {
+                    let site_pc = frame.pc - 1;
                     let disp = decode_i32(&frame.bytecode, frame.pc);
                     frame.pc += 4;
                     if !to_boolean(frame.peek(0)?) {
+                        if disp < 0 {
+                            *frame.back_edge_counts.entry(site_pc).or_insert(0) += 1;
+                        }
                         frame.pc = (frame.pc as i32 + disp) as usize;
                     }
                 }
@@ -8994,6 +9016,7 @@ impl Runtime {
             import_meta: None,
             new_target: nt_for_this_call.clone(),
             strict: proto.strict,
+            back_edge_counts: HashMap::new(),
         };
         let body_result = self.run_frame(&mut inner);
         if is_generator {
@@ -9394,7 +9417,24 @@ pub struct Frame<'a> {
     /// Call frames leave this None; Op::PushNewTarget pushes Undefined
     /// in that case. Mirrors the import_meta threading shape.
     pub new_target: Option<Value>,
+    /// OSR-EXT 2 (2026-05-23): per-pc back-edge counter for OSR / loop-
+    /// extraction (Option A — Runtime Bytecode Transform per Doc 740
+    /// §II.2 op-set coverage closure). Incremented at every Jump /
+    /// JumpIfTrue / JumpIfFalse / JumpIfTrueKeep / JumpIfFalseKeep
+    /// with negative displacement (loop back-edge). Substrate-
+    /// introduction: counts only; OSR-EXT 3+ consumes the counts for
+    /// threshold detection + loop-body extraction + JIT entry.
+    ///
+    /// Key: the back-edge instruction's pc (NOT the loop entry pc; the
+    /// back-edge target is the loop entry, but the back-edge SITE is
+    /// what uniquely identifies the loop in the bytecode). Empty by
+    /// default (no allocation until first back-edge fires).
+    pub back_edge_counts: HashMap<usize, u32>,
 }
+
+/// OSR-EXT 2 (2026-05-23): threshold for OSR JIT-attempt trigger.
+/// Reserved for OSR-EXT 3+ consumption; not consulted at this round.
+pub const OSR_BACK_EDGE_THRESHOLD: u32 = 1000;
 
 #[derive(Debug)]
 pub struct TryFrame {
@@ -9428,6 +9468,7 @@ impl<'a> Frame<'a> {
             import_meta: None,
             new_target: None,
             strict: m.strict,
+            back_edge_counts: HashMap::new(),
         }
     }
 

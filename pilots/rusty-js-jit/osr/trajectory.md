@@ -118,3 +118,56 @@ LOC delta: ~230 (design doc). 3 options enumerated; recommendation made.
 ---
 
 *OSR-EXT 1 closes. Design enumerated; recommendation: Option A (RBT). Keeper selection pending; OSR-EXT 2 begins implementation per selection.*
+
+---
+
+## OSR-EXT 2 — 2026-05-23 (Move 1 back-edge counter + threshold detection; Option A selected)
+
+### Headline
+
+Per keeper selection 2026-05-23 22:52-local: Option A (Runtime Bytecode Transform). OSR-EXT 2 lands the back-edge counter substrate: `Frame::back_edge_counts: HashMap<usize, u32>` field; 5 Jump handlers (Op::Jump / JumpIfTrue / JumpIfFalse / JumpIfTrueKeep / JumpIfFalseKeep) increment the counter when disp < 0. `OSR_BACK_EDGE_THRESHOLD = 1000` constant reserved for OSR-EXT 3+ consumption. ~30 LOC delta in interp.rs. Substrate-introduction; counter only counts, no threshold action yet.
+
+### Three-probe results
+
+| probe | result |
+|---|---|
+| Pred-osr.2 canonical fuzz (acc=-932188103) | ✅ GREEN |
+| Pred-osr.3 diff-prod 42/42 | ✅ GREEN |
+| JIT lib tests | ✅ 38/38 (9 pre-existing ignored) |
+| Pred-osr.4 A/B composition | ~3% drift (median 1538 vs baseline 1480; within ±5% gate) |
+
+### Substrate moves landed
+
+1. Added `Frame::back_edge_counts: HashMap<usize, u32>` field.
+2. Initialized in all 3 Frame creation sites (new_module, resume_from_deopt_state, call_function).
+3. Added `OSR_BACK_EDGE_THRESHOLD = 1000` constant.
+4. Wired increment in 5 Jump handlers; key is the Op byte's pc (site_pc), incremented only on disp < 0.
+
+### Composition with prior corpus / engagement work
+
+- **Doc 740 §II.2 op-set coverage tier**: this round delivers the substrate for OSR-EXT 3+ to consume.
+- **Finding II.2-bis substrate-introduction signature**: A/B drift +3% is the counter-allocation cost; near-zero impact as predicted; no JIT triggers fire yet.
+- **VD + TL substrate**: composed cleanly (no encoding or wrapper interactions).
+- **Standing rule 9 raw-pointer audit**: not applicable (HashMap of plain u32; no pointer caches).
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable.
+Per Doc 734 §V: growth (c) preparatory — back-edge counter is the apparatus that OSR-EXT 3 boundary detection + OSR-EXT 4 synthetic FunctionProto + OSR-EXT 5 invoke consume.
+Per Doc 735 §X.h.b: **(P2.d) bench at substrate-introduction round, expected per Finding II.2-bis. Cumulative reclaim materializes at OSR-EXT 6 close per Doc 740 §II.2 (P4).**
+
+### Open scope at OSR-EXT 2 close
+
+1. **OSR-EXT 3** — loop bytecode boundary detection (forward-scan from back-edge target to identify the loop body's pc range)
+2. **OSR-EXT 4** — synthetic FunctionProto builder + JIT compile attempt
+3. **OSR-EXT 5** — local-state copy-in/out + JIT body invoke (cascade-revival #1)
+4. **OSR-EXT 6** — alphabet extension (TL Moves 3+4 revival folded in) (cascade-revival #2)
+5. **OSR-EXT 7** — composition probe + CRB final disposition + Pred-osr.1 gate
+
+### Cumulative status at OSR-EXT 2 close
+
+LOC delta: ~30 (interp.rs: Frame field + 3 init sites + threshold const + 5 Jump-handler increments). OSR-EXT 0+1+2 cumulative: ~380 across the locale.
+
+---
+
+*OSR-EXT 2 closes. Back-edge counter substrate landed; all probes GREEN; composition within ±5%. OSR-EXT 3 lands loop boundary detection.*
