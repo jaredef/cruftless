@@ -117,3 +117,74 @@ The substrate move that LeJIT-Σ ships against has a measured anchor. StubE-EXT 
 ---
 
 *StubE-EXT 1 closes. The bench-probe baseline is 271 ns/iter on the Pi. Pred-stub.1's 3× threshold reads at ≤90.3 ns/iter for the post-stub-emitter measurement.*
+
+---
+
+## StubE-EXT 2 — 2026-05-23 (stub emitter design)
+
+### Headline
+
+Apparatus-tier round. No code. Output: `docs/stub-design.md` (~220 lines) — concrete choices for the four design decisions named in seed §III + the new finding from §8 that the per-iter budget may not hit Pred-stub.1's 3× threshold from the IC layer alone (which has roadmap implications recorded in §8).
+
+### Design decisions chosen
+
+1. **Cache layout: side-table indexed by IC-site id** (`ICStubCache.sites: Vec<ICEntry>`). Alternative (inline literal in JIT-emitted code) rejected because it requires `mprotect` + I-cache flush per patch; side-table needs only memory store + `dsb ish`. Per-IC-site id assigned at translator time; cache grows as functions JIT-compile.
+
+2. **Patching mechanism: memory-store-only with `dsb ish`** data-memory barrier. No I-cache flush needed because patching DATA (the side-table) not INSTRUCTIONS. Single-threaded runtime; no cross-core visibility concern.
+
+3. **State machine**: Cold (cached_shape=null) → Warm-Mono (first hit patches) → Cold-after-miss (transitional re-patch) → Degraded (after MISS_THRESHOLD=8, stop patching and permanently route to slow path). Polymorphic-IC (linear scan of N cached shapes per site) queued as LeJIT-Σ.poly closure round.
+
+4. **Deopt handoff**: stub itself never deopts. On stub miss, the existing `runtime_getprop_on_object` extern call handles deopt-on-non-Number per JIT-EXT 24. The deopt machinery is unchanged; LeJIT-Σ adds a cache layer in front of it.
+
+### Source-tier conformance (Doc 738 §II)
+
+- Module: `pilots/rusty-js-jit/derived/src/stub_aarch64.rs` (§II.e).
+- Types: `ICStubCache`, `ICEntry`, `ICState` (PascalCase).
+- Methods: `emit_getprop_stub` (snake_case, no `_via` because this is JIT-emitter-side not Runtime-dispatching).
+- Internal sentinels reserved: `__ic_site_id`, `__ic_cached_shape`, `__ic_cached_slot` (per §II.a if needed; not used in the side-table design).
+
+### Finding: per-iter budget may not hit Pred-stub.1 from IC layer alone
+
+Pre-implementation budget estimate (post-stub, cache hit): **~180 ns/iter** — vs the 90.3 ns/iter target.
+
+Decomposition:
+- Rust dispatcher (call_function) ~120 ns — invariant
+- JIT preamble (arg coercion) ~30 ns — sibling Value-tag inline emitter's territory
+- Side-table load + receiver shape load + compare + branch + slot load: ~9 ns net new
+- Return + reboxing ~20 ns — invariant
+
+The ~120 ns Rust dispatcher dominates. **Without dispatcher refactoring or value-tag-inline, the stub alone shows ~1.5-2× speedup, not 3×.**
+
+Resolution: StubE-EXT 6's measurement reports the actual; (P2) categorization per Doc 735 §X.h.b decides the next move:
+- **(P2.a) strict-win** if observed ≥3× (unlikely from IC layer alone per the budget).
+- **(P2.d) correct-but-losing** if 1.5-2× (likely). Two follow-on paths:
+  - (a) document partial speedup; pivot to value-tag-inline + dispatcher refactoring as separate sibling pilots.
+  - (b) merge IC stub work with dispatcher refactoring into one larger substrate move.
+- The four-case categorization is the decision rubric, not a verdict in advance.
+
+### Composition with prior corpus work
+
+- **Doc 735 §X.h.b (P2) sub-cases**: §8 of the design doc enumerates explicitly which cases the StubE-EXT 6 measurement might land in + the response per each. Falsifier rubric is concrete.
+- **Doc 738 §II source-tier coordinate system**: design §7 maps the stub-emitter's types + methods + sentinels onto the five-axis convention space. Cross-axis consistency by construction.
+- **Doc 729 §A8.13 substrate-amortization**: the design anticipates the substrate-amortization shape — if the stub alone is (P2.d), the value-tag-inline + dispatcher-refactor sibling pilots compose with this one to close the 3× target collectively.
+
+### §XVI / Doc 734 categorization
+
+Per Doc 730 §XVI: not applicable (no probe gated; design-only). Per Doc 734 §V: growth mechanism (b) **negative-finding amendment** preparatory — the §8 budget analysis surfaces a likely-shortfall against Pred-stub.1's threshold; the design records this as a forward concern so StubE-EXT 6's measurement reads against an honest expectation, not an aspirational one.
+
+### Open scope at StubE-EXT 2 close
+
+1. **StubE-EXT 3** — Scaffold `pilots/rusty-js-jit/derived/src/stub_aarch64.rs` (~250 LOC) + tests (~150 LOC) per design §10. Coordinated cross-crate change: `runtime_getprop_on_object` signature extension to return `(value, *const Shape, u32 slot)` lands at this round too (in rusty-js-runtime).
+2. **StubE-EXT 4** — Synthetic shape-pointer integration test.
+3. **StubE-EXT 5** — Wire into translator under env flag. **Gates on CMig-EXT 8.**
+4. **StubE-EXT 6** — Re-measure; (P2) categorize.
+5. **StubE-EXT 7** — Fuzz.
+6. **StubE-EXT 8** — Default-on flip.
+
+### Cumulative status at StubE-EXT 2 close
+
+LOC delta: 0 (apparatus). docs/ artifacts: 2 (bench-baseline + stub-design). The stub's structural shape is chosen; the implementation begins at StubE-EXT 3.
+
+---
+
+*StubE-EXT 2 closes. Design is anchored: side-table cache, memory-store patching, four-state machine, side-table indexed by IC-site id. §8 honestly flags the per-iter budget gap; StubE-EXT 6's measurement decides the (P2) categorization.*
