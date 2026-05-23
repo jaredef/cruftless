@@ -3,9 +3,9 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 22,
+    "locales": 23,
     "top_level": 13,
-    "nested": 9,
+    "nested": 10,
     "warnings": 0
   },
   "locales": [
@@ -89,6 +89,15 @@
       "depth": 2,
       "rung_count": 0,
       "status": "**WORKSTREAM FOUNDED (\u03a6-EXT 0)**. No code yet. Spawned per keeper directive 2026-05-23 16:02-local after pre-implementation analysis surfaced that VTI's structural (P2.d) traces to the JIT's i64-only calling convention. The architectural move induced by enumerating C1-C10 (substrate constraints; see \u00a7I.2) is: f64 default + bytecode-tier-driven typed-i64 promoted fast path."
+    },
+    {
+      "coord": "rusty-js-jit/osr",
+      "tag": "L.rusty-js-jit.osr",
+      "parent": "L.rusty-js-jit",
+      "scope": "osr",
+      "depth": 2,
+      "rung_count": 0,
+      "status": "**WORKSTREAM FOUNDED (OSR-EXT 0)**. Spawned per keeper directive 2026-05-23 22:37-local as the (ii) OSR / loop-extraction pivot from the session chapter close (VD locale trajectory). Architectural-tier pilot."
     },
     {
       "coord": "rusty-js-jit/stub-emitter",
