@@ -37,3 +37,69 @@ LOC delta: 0 (apparatus round only).
 ---
 
 *TL-EXT 0 closes. Pilot founded as (b-narrow) first cut. TL-EXT 1 designs the per-move substrate plan.*
+
+---
+
+## TL-EXT 1 — 2026-05-23 (design doc; 5-round dependency-ordered substrate plan)
+
+### Headline
+
+Design-tier round. `docs/design.md` (~225 lines) enumerates five substrate rounds dependency-ordered per Doc 740 §II.2 multi-tier reading: M1 PushConst-Number → M2 module-body wrap → M3 GetProp+length-IC → M4 CallMethod+charCodeAt-IC → M5 composition probe + CRB final disposition. Per-move mechanism + LOC + reclaim + falsifier specified. 6 named risks with mitigations.
+
+### The 5 rounds
+
+| round | move | tier | LOC | reclaim |
+|---|---|---|---:|---:|
+| TL-EXT 2 | M1 PushConst-Number | alphabet | ~30 | ~0% (substrate-intro signature) |
+| TL-EXT 3 | M2 module-body wrap | entry-mechanism | ~80 | ~0% (entry-introduction) |
+| TL-EXT 4 | M3 GetProp+length-IC | alphabet+IC | ~80 | ~5-15% |
+| TL-EXT 5 | M4 CallMethod+charCodeAt-IC | alphabet+IC | ~100 | **~40-60% (pipeline-connection)** |
+| TL-EXT 6 | M5 composition probe | measurement | 0 | (gate) |
+
+Per Doc 740 §II.2 (P4): cumulative reclaim materializes at the final-tier-closure round (TL-EXT 5). M1-M3 are each substrate-introduction at their respective tier; per Finding II.2-bis, near-zero standalone reclaim is the signature.
+
+### Pred-tl.1 gating analysis
+
+Current state: CRB json_parse_transform 2188 ms; checksum loop 1480 ms at 0.592 μs/charCodeAt-call. Target: ≤1500 ms.
+
+Required reclaim: ~688 ms. If JIT body matches typical Cranelift tight-loop output (~50 ns/iter), checksum loop drops from 1480 ms to ~125 ms — releases ~1355 ms. Pred-jsf.1 + Pred-tl.1 both met at projected ceiling.
+
+### 6 named risks
+
+R1 String encoding bit-layout discovery (at TL-EXT 4 impl time);
+R2 Module-body GC roots preservation;
+R3 Compile-time bail predictability for alphabet check;
+R4 TB metadata cache vs module-once entry semantics;
+R5 Top-level scope LoadGlobal/StoreGlobal — empirical at TL-EXT 3; may expand scope if json_parse_transform's globals bail the wrapper;
+R6 Per-iter JIT body floor (interp-floor finding from JSF chain may recur).
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable (design-tier).
+Per Doc 734 §V: growth (c) positive-finding generalization preparatory — design's reclaim projection anchors Pred-tl.1 gate.
+Per Doc 735 §X.h.c: three-probe-levels applied at each substrate round.
+
+### Composition with prior corpus / engagement work
+
+- **Doc 740 multi-tier cascade-revival**: this pilot is the (b-narrow) instantiation; M1-M3 are upstream constraint-closures; M4 is the final tier closure that produces cumulative reclaim.
+- **Doc 739 single-tier cascade-revival**: M3+M4 form a cascade-revival pair at the alphabet+IC tier.
+- **Doc 731 §XIV.d alphabet purity**: this pilot extends the alphabet narrowly per Pred-tl.4 (3 new ops only).
+- **Finding II.2-bis substrate-introduction signature**: M1+M2 each expected to produce ~0% standalone reclaim per the signature shape.
+- **Standing rule 11**: satisfied via JSF-EXT 8 A/B probe; the actual dominator is empirically anchored at this pilot's spawn.
+- **CharCode-EXT 2 interp-tier IC pattern**: M3+M4 reuse the same intrinsic-ObjectId verification discipline at the JIT tier.
+
+### Open scope at TL-EXT 1 close
+
+1. **TL-EXT 2** — Move 1 PushConst-Number (alphabet substrate-intro)
+2. **TL-EXT 3** — Move 2 module-body wrap (entry-mechanism substrate-intro)
+3. **TL-EXT 4** — Move 3 GetProp+length-IC (cascade-revival #1)
+4. **TL-EXT 5** — Move 4 CallMethod+charCodeAt-IC (cascade-revival #2; pipeline-connection)
+5. **TL-EXT 6** — Composition probe + CRB final disposition
+
+### Cumulative status at TL-EXT 1 close
+
+LOC delta: ~225 (design doc). 5 rounds enumerated; pipeline-connection projected at TL-EXT 5.
+
+---
+
+*TL-EXT 1 closes. Design enumerated. TL-EXT 2 begins implementation with Move 1 PushConst-Number.*
