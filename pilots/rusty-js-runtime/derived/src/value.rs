@@ -214,6 +214,20 @@ impl From<&str> for PropertyKey { fn from(s: &str) -> Self { Self::String(s.to_s
 impl From<String> for PropertyKey { fn from(s: String) -> Self { Self::String(s) } }
 impl From<&String> for PropertyKey { fn from(s: &String) -> Self { Self::String(s.clone()) } }
 
+// CMig-EXT 8: env-flag-cached enrollment switch. Read once on first
+// call via OnceLock; subsequent calls use the cached bool. Allows
+// `CRUFTLESS_SHAPE_ENROLL=1` to flip the default of new_ordinary()
+// from Dictionary (shape: None) to Shaped (shape: Some(root)) without
+// per-call env lookup cost.
+fn shape_enroll_enabled() -> bool {
+    static FLAG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *FLAG.get_or_init(|| {
+        std::env::var("CRUFTLESS_SHAPE_ENROLL")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+    })
+}
+
 // Shape-EXT 4: Default impl so existing Object literals can fill the new
 // shape + shape_values fields via `..Default::default()` rather than
 // requiring per-site updates. Default constructs an Ordinary, no-proto,
@@ -259,20 +273,24 @@ pub struct Object {
 
 impl Object {
     pub fn new_ordinary() -> Self {
-        // Shape-EXT 4 (infrastructure-only round): new ordinary objects
-        // start NON-Shaped (shape = None) in this round. Enrollment of
-        // user-code `{}` literals into Shaped form is deferred to
-        // Shape-EXT 5, which lands consumer-site migration shims for
-        // the ~41 direct `.properties` access sites (Map/Set internal
-        // storage iteration, JSON.stringify enumeration, for-in
-        // dispatch, etc.). Shape-EXT 4 lands the data structure +
-        // dispatch fast paths; Shape-EXT 5 turns enrollment on.
+        // CMig-EXT 8 (consumer-migration enrollment flip): new ordinary
+        // objects start Shaped at the thread-local root shape WHEN the
+        // env flag `CRUFTLESS_SHAPE_ENROLL=1` is set. Default (flag off)
+        // remains Dictionary form per Shape-EXT 4's deferred-enrollment
+        // shape. Per the consumer-migration survey R2 mitigation: gate
+        // the enrollment behind the flag so diff-prod + test262-sample
+        // can be re-run under enrollment without committing to a
+        // default-on flip until all gates hold green.
         Self {
             proto: None,
             extensible: true,
             properties: IndexMap::new(),
             internal_kind: InternalKind::Ordinary,
-            shape: None,
+            shape: if shape_enroll_enabled() {
+                Some(rusty_js_shapes::Shape::root())
+            } else {
+                None
+            },
             shape_values: Vec::new(),
         }
     }

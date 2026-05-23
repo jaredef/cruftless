@@ -4455,7 +4455,11 @@ impl Runtime {
                 // second argument is an Object with a `cause` own key,
                 // install error.cause as a non-enumerable property.
                 if let Some(Value::Object(opts_id)) = args.get(1) {
-                    let has_cause = rt.obj(*opts_id).get_own("cause").is_some();
+                    // CMig-EXT 8: shape-aware own-property check.
+                    // get_own returns None for shape-stored entries
+                    // (Shape-EXT 4 design); use has_own_str which is
+                    // shape-aware. object_get is also shape-aware.
+                    let has_cause = rt.obj(*opts_id).has_own_str("cause");
                     if has_cause {
                         let cause = rt.object_get(*opts_id, "cause");
                         rt.object_set(id, "cause".into(), cause);

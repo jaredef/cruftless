@@ -5469,8 +5469,13 @@ impl Runtime {
 
     /// Object.freeze(O) per ECMA §20.1.2.7 — sets extensible:false and
     /// every own property to non-writable + non-configurable. Returns O.
+    /// CMig-EXT 5.bis (Family D P2 migrate-on-access): freezing flips
+    /// descriptor attrs that the shape mechanism cannot represent (shape
+    /// entries are user-default {w:t,e:t,c:t} by invariant); migrate to
+    /// Dictionary first so the descriptor flip lands on a real IndexMap.
     pub fn object_freeze_via(&mut self, v: &Value) -> Result<Value, RuntimeError> {
         if let Value::Object(id) = v {
+            self.obj_mut(*id).migrate_to_dictionary();
             let o = self.obj_mut(*id);
             o.extensible = false;
             for d in o.properties.values_mut() {
@@ -5482,8 +5487,11 @@ impl Runtime {
     }
 
     /// Object.seal(O) per ECMA §20.1.2.20.
+    /// CMig-EXT 5.bis (Family D P2 migrate-on-access): same reasoning
+    /// as object_freeze_via.
     pub fn object_seal_via(&mut self, v: &Value) -> Result<Value, RuntimeError> {
         if let Value::Object(id) = v {
+            self.obj_mut(*id).migrate_to_dictionary();
             let o = self.obj_mut(*id);
             o.extensible = false;
             for d in o.properties.values_mut() {
@@ -6214,7 +6222,11 @@ impl Runtime {
         let mut cur = Some(id);
         while let Some(c) = cur {
             let o = self.obj(c);
-            if o.properties.contains_key(key) { return true; }
+            // CMig-EXT 8: shape-aware check for String keys via
+            // has_own_str (which is shape-aware per Shape-EXT 4).
+            if let crate::value::PropertyKey::String(s) = key {
+                if o.has_own_str(s.as_str()) { return true; }
+            } else if o.properties.contains_key(key) { return true; }
             if let crate::value::PropertyKey::Symbol(rc) = key {
                 if o.has_own_str(rc.as_str()) { return true; }
             }
@@ -7587,18 +7599,12 @@ impl Runtime {
                             ])?;
                             found = crate::abstract_ops::to_boolean(&r);
                         } else {
-                            let mut cur = Some(target);
-                            while let Some(c) = cur {
-                                if self.obj(c).properties.contains_key(&key_pk) { found = true; break; }
-                                cur = self.obj(c).proto;
-                            }
+                            // CMig-EXT 8: shape-aware via has_property_pk.
+                            found = self.has_property_pk(target, &key_pk);
                         }
                     } else {
-                    let mut cur = Some(obj_id);
-                    while let Some(c) = cur {
-                        if self.obj(c).properties.contains_key(&key_pk) { found = true; break; }
-                        cur = self.obj(c).proto;
-                    }
+                        // CMig-EXT 8: shape-aware via has_property_pk.
+                        found = self.has_property_pk(obj_id, &key_pk);
                     }
                     frame.push(Value::Boolean(found));
                 }

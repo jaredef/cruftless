@@ -243,3 +243,70 @@ The hidden-classes substrate is now four read-path families closer to enrollment
 ---
 
 *CMig-EXT 4+5 closes. Family B + the Family D introspection synthesis are shape-aware; the remaining Family D mutating sites + residuals are queued for CMig-EXT 5.bis.*
+
+---
+
+## CMig-EXT 5.bis + 8 — 2026-05-23 (Family D mutating + ENROLLMENT FLIP behind env flag)
+
+### Headline
+
+Bundles Family D mutating-site migrations + the **enrollment flip behind `CRUFTLESS_SHAPE_ENROLL=1` env flag** in one round. Under enrollment: diff-prod **37/42 PASS** (down 5 from the 42/42 default-off baseline; each failure is a separate consumer-site enumeration that bypasses shape). Default (flag off): **42/42 PASS** unchanged.
+
+The enrollment infrastructure is now live. CMig-EXT 9+ closes the residual 5 failures site-by-site; once all gates hold under enrollment, the default flip is mechanical.
+
+### Substrate landed
+
+**Family D mutating (Object.freeze / Object.seal)** at `interp.rs:5472, 5485`:
+- Both call `migrate_to_dictionary()` first per Family D P2 (mutating descriptor attrs that the shape mechanism cannot represent — shape entries are user-default `{w:t, e:t, c:t}` by invariant).
+
+**Enrollment flip infrastructure** at `value.rs`:
+- `shape_enroll_enabled()` — `OnceLock<bool>` cached env-var read of `CRUFTLESS_SHAPE_ENROLL`. First call reads env; subsequent calls hit the cache (no per-allocation env cost).
+- `Object::new_ordinary()` — when enabled, returns `shape: Some(Shape::root())`; otherwise `shape: None` per the deferred-enrollment default.
+
+**Consumer-site fixes** triggered by initial enrollment regression:
+- `intrinsics.rs:4458` Error.cause install — switched `get_own("cause").is_some()` (only checks .properties; returns None for shape entries per Shape-EXT 4 design) → `has_own_str("cause")` (shape-aware per Shape-EXT 4).
+- `interp.rs:6221` `has_property_pk` — was `o.properties.contains_key(key)` for String keys (bypasses shape); switched to `has_own_str(s)` which is shape-aware. Symbol path unchanged (shape has no Symbol entries).
+- `interp.rs:7591` `Op::In` operator — had two inline `properties.contains_key` loops bypassing shape; replaced with `has_property_pk` calls (now shape-aware).
+
+### Diff-prod under enrollment
+
+| mode | PASS | FAIL |
+|---|---:|---:|
+| default (`CRUFTLESS_SHAPE_ENROLL` unset) | **42** | 0 |
+| enrolled (`CRUFTLESS_SHAPE_ENROLL=1`) | **37** | **5** |
+
+Remaining failures under enrollment (deferred to CMig-EXT 9+ site-by-site close):
+- `es-recent-methods` — likely Object.groupBy / Array statics enumerate via `.properties`.
+- `fetch-headers` — Headers class likely iterates its internal dictionary.
+- `node-events` — EventEmitter `eventNames()` likely walks `.properties.keys()`; partial output (`"names":[]` vs `["a","b"]`) confirms.
+- `proxy-basics` — Proxy traps may walk target's `.properties` directly.
+- `structured-clone` — structuredClone walker iterates `o.properties.iter()` for the recursive clone; partial output (`deep_eq:false`, `function_throws:false`, `self_ref_preserved:false`) confirms multiple deep-walk sites.
+
+### §XVI / Doc 734 categorization
+
+Per Doc 730 §XVI: Case-1 (cruftless violated own-enumeration invariants under enrollment via consumer sites that bypassed shape). The fixes at intrinsics.rs:4458, interp.rs:6221, interp.rs:7591 each close one such violation. Remaining 5 fixtures' failures localize to additional consumer sites the survey hadn't catalogued specifically (they were aggregated into "Family B" generically); CMig-EXT 9+ surfaces and fixes each.
+
+Per Doc 734 §V: growth mechanism (b) negative-finding amendment — the enrollment flip surfaced 8 regressions on first run; the empirical signal localized 3 fixes (closed 3 fixtures) + 5 deferred (need separate site-by-site work). This is exactly the §X.h.c three-probe-levels discipline operating: the consumer-route probe (diff-prod under enrollment) is the empirical instrument that says "the substrate's correctness under enrollment is 37/42; here are the 5 residual consumer sites."
+
+### Pred disposition
+
+- **Pred-shape.2** (identity invariant): held — no use-after-free signal across enrollment flip.
+- **Pred-shape.4** (stable IC pointer for stub lifetime): enrollment lit up; ready for LeJIT-Σ StubE-EXT 5+ consumer integration when the 5 residual failures close (so the enrollment can become default-on).
+- **Pred-shape.1** (per-op-cheaper): not measured yet — bench probe needs the 5 residuals closed first to compare apples-to-apples.
+
+### Open scope at CMig-EXT 8 close
+
+1. **CMig-EXT 9a-e** — Five site-by-site closures for the residual failures (es-recent-methods, fetch-headers, node-events, proxy-basics, structured-clone). Each is one consumer-site enumeration walk to make shape-aware. Mechanical-ish.
+2. **CMig-EXT 10** — Default-on flip. `shape_enroll_enabled()` defaults to `true` when all gates hold under enrollment. Until then, `CRUFTLESS_SHAPE_ENROLL=1` is the opt-in.
+3. **CMig-EXT 11** — Pred-shape.4 first integration measurement (the 80% enrollment-rate target on a representative workload). Once CMig-EXT 10 default-flips.
+4. **LeJIT-Σ StubE-EXT 5** unblocked once default-on flip lands — IC stubs can finally cache real shape pointers.
+
+### Cumulative status at CMig-EXT 8 close
+
+LOC delta: ~60 (shape_enroll_enabled + Object.freeze/seal migrate + 3 consumer-site fixes). diff-prod default 42/42 unchanged; enrolled 37/42 PASS. The enrollment infrastructure is live and gated; the residual 5 failures are localizable to specific consumer sites with the engine-diff oracle (Doc 730 §XVI Case-1 in each instance).
+
+The substrate-introduction loop has reached the point where the bidirectional engine-diff probe (Doc 730 §XVI) IS the iteration mechanism: flip on enrollment, run diff-prod, localize failures, close, repeat. Pred-shape.4's integration corroboration is one (or a few) such loops away.
+
+---
+
+*CMig-EXT 5.bis + 8 closes. Enrollment infrastructure lives behind `CRUFTLESS_SHAPE_ENROLL=1`. Diff-prod under enrollment: 37/42 PASS. Residual 5 failures are localizable consumer sites; CMig-EXT 9+ closes each. The LeJIT-Σ measurement pipeline is one default-flip away from real.*
