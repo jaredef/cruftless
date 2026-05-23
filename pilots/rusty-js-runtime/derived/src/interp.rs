@@ -30,7 +30,15 @@ pub struct Runtime {
     /// Some(jit_fn) if a JIT compile succeeded, None if it failed and
     /// we should not retry. Populated lazily at the call_function entry
     /// for hot closures (call_count > jit_threshold).
-    pub jit_cache: HashMap<usize, Option<rusty_js_jit::CompiledFn>>,
+    // LeJIT-Τ TB-EXT 7 (segfault fix 2026-05-23): values boxed so the
+    // CompiledFn sits at a stable heap address. The TB closure-side
+    // metadata cache holds `*const CompiledFn` populated on first
+    // JIT-hit; if CompiledFn lived directly in the HashMap, subsequent
+    // inserts triggering rehash would move the struct + dangle every
+    // cached pointer. Box puts the CompiledFn on its own heap
+    // allocation, stable for as long as the Box lives (forever, since
+    // entries are insert-once never-evicted).
+    pub jit_cache: HashMap<usize, Option<Box<rusty_js_jit::CompiledFn>>>,
     /// Doc 731 §VII R6: compilation budget is a counter threshold. After
     /// this many invocations of a Closure that hasn't yet been JIT-compiled,
     /// the runtime attempts compile. Default 100; can be overridden for
@@ -8489,7 +8497,11 @@ impl Runtime {
                         drop(o);
                         // Compile-if-absent.
                         if !self.jit_cache.contains_key(&proto_key) {
-                            let compiled = rusty_js_jit::compile_function(&*proto_rc).ok();
+                            // LeJIT-Τ TB-EXT 7 (segfault fix): Box so
+                            // the CompiledFn's address is stable across
+                            // subsequent HashMap rehashes; TB cell holds
+                            // *const CompiledFn into this allocation.
+                            let compiled = rusty_js_jit::compile_function(&*proto_rc).ok().map(Box::new);
                             self.jit_cache.insert(proto_key, compiled);
                         }
                         // JIT-EXT 14: wire deopt for this call. The
@@ -8514,7 +8526,10 @@ impl Runtime {
                             // post-call closure-cell populate. Pointer is
                             // stable for process lifetime (leaked module
                             // per CompiledFn._module).
-                            let tb_cf_ptr: *const rusty_js_jit::CompiledFn = jit_fn;
+                            // jit_fn is &Box<CompiledFn> post-EXT-7 fix;
+                            // dereference twice to get the address of
+                            // the CompiledFn INSIDE the Box (stable).
+                            let tb_cf_ptr: *const rusty_js_jit::CompiledFn = &**jit_fn;
                             let tb_eligible = jit_fn.tb_metadata.as_ref()
                                 .map_or(false, |m| m.eligible());
                             rusty_js_jit::set_current_deopt_sites(&jit_fn.deopt_sites);

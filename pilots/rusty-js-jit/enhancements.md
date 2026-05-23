@@ -616,6 +616,49 @@ All gates GREEN post-flip: 46/46 JIT lib + 35/35 runtime lib + diff-prod 42/42 +
 
 ---
 
+## 2026-05-23 — TB-EXT 7: fuzz probe SURFACED CRITICAL SEGFAULT (jit_cache rehash dangled TB cell pointer); fixed via Box-wrap **[UNANTICIPATED — load-bearing]**
+
+**Locale**: `pilots/rusty-js-jit/tiny-baseline/trajectory.md` → TB-EXT 7.
+
+*Cross-pilot entry: this is the most load-bearing single round in the session. The Findings doc rule 5 ("three probes before any default-on flip") just prevented shipping a segfault to all default-cruft users.*
+
+**Substrate change**: Five-pattern fuzz fixture at `pilots/rusty-js-jit/tiny-baseline/fixtures/fuzz-tb.mjs` (~85 LOC) immediately segfaulted under TB=1. Root-caused to dangling pointer: `jit_cache: HashMap<usize, Option<CompiledFn>>` stored CompiledFn by value; subsequent JIT-compile inserts triggered HashMap rehash → CompiledFn moved → TB closure-cell's cached `*const CompiledFn` dangled. Fix: changed to `HashMap<usize, Option<Box<CompiledFn>>>` so CompiledFn sits at a stable heap address (~10 LOC across one type change + one insert + one pointer-capture site). Post-fix all gates GREEN.
+
+**Why this was unanticipated**: TB-EXT 3b's substrate landed assuming "CompiledFn is stable for process lifetime per leaked module." The assumption confused two stability properties: the JITModule (Box::leak'd) IS stable; the CompiledFn STRUCT (in a HashMap value slot) is NOT — rehashing moves it. The TB-EXT 3b round's bench + diff-prod probes happened to never trigger HashMap rehash within a single call_function invocation, so the dangling pointer was structurally unreachable under those probes. The fuzz fixture's interaction of patterns (arrow + mixed in particular) drove enough heap allocation between cell populate and read to trigger rehash mid-run → dangling deref → segfault.
+
+**The crash needed a probe shape that BENCH AND CONSUMER-ROUTE STRUCTURALLY COULDN'T PROVIDE**:
+- bench_call_overhead: single closure, single JIT-compile, no rehash → safe by construction
+- bench_ic: similar single-shape
+- bench_call_shapes: 3 distinct closures but all 3 JIT'd before fast-path runs hot → cell populated AFTER all rehashes
+- diff-prod: fixtures run JIT-eligible workloads but each fixture is single-shot → again all JIT-compiles complete before fast-path becomes hot
+
+Only multi-pattern fuzz with sustained heap pressure triggered the rehash-mid-fast-path scenario.
+
+**Hypothesis** for why the bug shape was missed in design review of TB-EXT 3b: the design doc named "leaked module = stable for process lifetime" but conflated module-stable (true) with CompiledFn-stable (false). The CompiledFn struct's address is HashMap-slot-dependent; only `func: JitFn` (which is an extern fn pointer to mmap'd code) and `_module: &'static mut JITModule` (the leaked Box) live at stable addresses. The design missed that the CompiledFn struct itself moves.
+
+**Implication for forward work**:
+
+- **TB-EXT 8 default-on flip** is now GENUINELY gated on this fix. Three-probe-levels gate satisfied post-fix. Queued for explicit keeper authorization.
+
+- **Findings doc rule 5 EMPIRICALLY VALIDATED at engagement-scale**. Without the fuzz probe, the segfault would have shipped to all default-cruft users. The rule's value is anchored at the most-load-bearing point.
+
+- **The findings doc rule 5 should be sharpened**: "three probes before any default-on flip — INCLUDING multi-pattern fuzz with sustained heap pressure that can trigger reallocation events the bench probes structurally cannot create." (Implicit in §X.h.c; now explicit at the engagement level.)
+
+- **Generalize the bug class**: any TB-EXT-3b-class substrate move that caches raw pointers to HashMap value-slot entries has the same dangling-pointer risk. Future raw-pointer-caching substrate moves should check whether the cached source has by-value HashMap storage somewhere upstream; if yes, the source needs Box-wrapping. This is now a Findings doc rule candidate.
+
+- **Cross-pilot impact**: the Box-wrap is invisible to all consumers of jit_cache except the one I'm fixing. The standard JIT path already uses Deref auto-magic. The TB fast path now references the stable allocation. Zero functional change beyond the bug fix.
+
+- **The bug class generalizes to STUB's IC_FAST_GET_FN too**: that fn-pointer slot is in a thread-local Cell, set once at install_intrinsics. No HashMap involved. Safe by construction. But the IcFastGetFn's data dependency on receiver Objects (read via Runtime+ObjectId) is heap-vec-stored; if heap_vec relocs during a JIT call, the receiver-shape extraction inside runtime_ic_fast_get could read stale data. Let me audit later (queue: TB-EXT 9 audit + StubE-EXT 9 audit for heap-vec-relocation safety).
+
+**Provenance**:
+- Substrate fix: `pilots/rusty-js-runtime/derived/src/interp.rs` (jit_cache type + insert site + pointer capture site)
+- Fuzz fixture: `pilots/rusty-js-jit/tiny-baseline/fixtures/fuzz-tb.mjs`
+- Trajectory: `pilots/rusty-js-jit/tiny-baseline/trajectory.md` TB-EXT 7 (close)
+- Cross-reference: TB-EXT 3b entry (the substrate that introduced the dangling-pointer risk); Findings doc rule 5 (empirically validated by this round)
+- Bisect localization: bug surfaced only with arrow + mixed patterns combined (heap-allocation pressure on closure-creation + string-concat)
+
+---
+
 ## Template — for future entries
 
 ### `<date>` — `<locale-tag>` `<round-id>`: `<one-line headline>` **[ANTICIPATED]**

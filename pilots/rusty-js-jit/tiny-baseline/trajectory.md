@@ -502,3 +502,109 @@ LOC delta: ~195 (script + composition doc). 8 configs × 2 benches × N=5 = 80 b
 ---
 
 *TB-EXT 4 closes. Composition matrix produced; Pred-tb.2 falsified at first cut but the decomposed gap shows StubE-EXT 5c + VTI-EXT 3c as the substrate path to holding it. TB alone validated as (P2.a) on both benches; STUB+VTI await their second-half rounds.*
+
+---
+
+## TB-EXT 7 — 2026-05-23 (fuzz probe SURFACED CRITICAL SEGFAULT; root-caused + fixed)
+
+### Headline
+
+Fuzz probe activated at `pilots/rusty-js-jit/tiny-baseline/fixtures/fuzz-tb.mjs`. **Five-pattern fuzz fixture immediately segfaulted under TB=1** when patterns combined to grow the JIT cache HashMap mid-run. Root cause: `jit_cache: HashMap<usize, Option<CompiledFn>>` stored CompiledFn by value; HashMap rehashing on subsequent JIT-compiles moved CompiledFn → TB closure-cell's cached `*const CompiledFn` dangled → segfault on next fast-path read. **Fix**: changed jit_cache value type to `Option<Box<CompiledFn>>` so CompiledFn sits at a stable heap address. Post-fix all gates GREEN: 46/46 + 35/35 lib tests; diff-prod 42/42 under default AND TB=1; fuzz fixture 3/3 configurations byte-identical (cruft default / TB=1 / node).
+
+**The findings doc rule 5 ("three probes before any default-on flip") just saved the engagement from shipping this segfault** to all TB-default-on users had it been authorized without the fuzz probe. Pred-tb.5 (no illegal-speed bug) was framed about output divergence, but the fuzz probe caught a true memory-safety bug instead. Larger lesson than the original Pred named: fuzz finds bugs the framework's other probes structurally cannot.
+
+### The bug
+
+```rust
+// Pre-fix (segfault path):
+pub jit_cache: HashMap<usize, Option<rusty_js_jit::CompiledFn>>,
+//                                  ^^^^ by-value; HashMap rehash moves entries
+
+// TB-EXT 3b populate (cached pointer captures pre-hashmap-move address):
+let tb_cf_ptr: *const rusty_js_jit::CompiledFn = jit_fn;
+// ... store nn=NonNull(tb_cf_ptr) in closure cell ...
+
+// Later, another JIT-compile inserts → HashMap rehash → CompiledFn moves
+// TB fast-path: let cf = unsafe { &*(nn.as_ptr() as *const _) }; ← dangling deref
+```
+
+### The fix (~10 LOC)
+
+`pilots/rusty-js-runtime/derived/src/interp.rs`:
+- `jit_cache: HashMap<usize, Option<rusty_js_jit::CompiledFn>>` → `HashMap<usize, Option<Box<rusty_js_jit::CompiledFn>>>`
+- Insert: `compile_function(...).ok()` → `compile_function(...).ok().map(Box::new)`
+- Standard-path pointer capture: `jit_fn` → `&**jit_fn` (dereference twice to get address INSIDE the Box, stable for Box's lifetime)
+
+Box puts CompiledFn on its own heap allocation. HashMap stores only the Box pointer (8 bytes); rehashing moves the Box pointer but the CompiledFn allocation stays put. TB cell's cached `*const CompiledFn` now references a stable address.
+
+**Cost**: one heap allocation per JIT-compile (one-time, not per call), plus one Deref::deref per `jit_fn.field` access (negligible — Box::Deref is `*self` and rustc inlines completely).
+
+### The bisect
+
+The crash needed `mixed + arrow` patterns combined. Localization sequence:
+- Mono alone: PASS
+- Multi alone: PASS
+- Mixed alone: PASS
+- Arrow alone: PASS
+- Deopt alone: PASS
+- Triple combos (mono+multi+deopt, mono+multi+arrow, etc.): PASS
+- mono+multi+mixed+deopt (4 patterns): PASS
+- mono+multi+mixed+arrow (4 patterns): SEGFAULT
+- Full 5-pattern fixture: SEGFAULT
+
+The differentiator: `arrow` + `mixed` together. Hypothesis: arrow's Op::CreateClosure + mixed's string-concat allocations together drove enough heap allocation between TB cell populates and reads to trigger HashMap rehash mid-run. Pre-fix the dangling pointer was triggered probabilistically based on allocator + HashMap state.
+
+### Probes (post-fix)
+
+| probe | result |
+|---|---|
+| JIT lib tests | 46/46 PASS |
+| Runtime lib tests | 35/35 PASS |
+| diff-prod default | 42/42 PASS |
+| diff-prod TB=1 | 42/42 PASS |
+| Composition matrix `none` bench_ic | 146.5 ns (was 144.4 pre-fix, within ±5 noise) |
+| Composition matrix TB+STUB bench_ic | 81.3 ns (Pred-tb.2 still HOLDS) |
+| fuzz-tb.mjs default (STUB on, TB off) | `acc=11566900` |
+| fuzz-tb.mjs TB=1 | `acc=11566900` |
+| fuzz-tb.mjs node baseline | `acc=11566900` |
+
+All three runtime configurations byte-identical. **Pred-tb.5 (no illegal-speed / no memory-safety bug) NOW HOLDS** at this fixture's coverage.
+
+### Honest scope of the probe
+
+This fuzz fixture is bench-probe-tier-fuzz (5 patterns × 50 reps = ~250 effective fixtures), not the canonical 2000-fixture random fuzz Doc 735 §X.h.c full discipline calls for. Sufficient to catch the dangling-pointer bug because the bug was triggered by interaction of pattern shapes (specifically: heap-allocating during JIT-compile flow). 2000-fixture random coverage would have caught it faster; this targeted bench coverage caught it on the FIRST run of the multi-pattern fixture.
+
+The canonical 2000-fixture fuzz (CMig-EXT 17 per Findings doc VI.6 HIGH priority) remains queued as the engagement-scope fuzz close.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: Case-1 verification post-fix (cruft semantics match node + cruft default match TB=1).
+
+Per Doc 734 §V: growth (b) **negative-finding amendment**, then growth (c) positive-finding generalization post-fix. The (b) is the dangling pointer; the (c) is the empirical validation that the fuzz probe catches what bench + consumer-route alone cannot.
+
+Per Doc 735 §X.h.b: pre-fix this was a clean (P2.c) **illegal-speed-implementation** bug (TB ON appeared faster but was incorrect via memory unsafety, not via wrong output — the bug was caught at the SEGFAULT layer not the output layer). Post-fix: (P2.a) at three-probe-levels.
+
+Per Doc 735 §X.h.c three-probe-levels discipline: bench + consumer-route had passed for TB-EXT 3b. Fuzz caught the (P2.c). The discipline VALIDATED itself: without the fuzz probe, the bug would have shipped.
+
+### Composition with prior corpus work
+
+- **Findings doc rule 5** (three probes before any default-on flip): **EMPIRICALLY VALIDATED at engagement-scale**. Without this round's fuzz probe, TB-EXT 8 default-on would have shipped a segfault to all default-cruft users. The rule's value is now anchored at the most-load-bearing point: a default-on flip prevented from causing crashes.
+- **CMig-EXT 15 (out-of-band regression catch)** and this round (in-band regression catch via fuzz) together demonstrate: the engagement's three-probe-levels discipline catches different bug classes. Out-of-band caught a wrong-result bug; in-band fuzz catches a memory-safety bug. Both required to be (P2.a)-correct.
+- **Doc 729 §A8.13 substrate-amortization-cascade**: the Box wrapping is an additional one-time cost; doesn't disrupt the cascade.
+- **Doc 731 §VII R1**: preserved (still single-tier; just changed storage layout).
+- **LeJIT seed §I.3 + CRB-EXT 8 amendment**: bench_ic composition target still HOLDS post-fix (TB+STUB 81.3 ns vs ≤90 ns target).
+
+### Open scope at TB-EXT 7 close
+
+1. **TB-EXT 8** (default-on flip) — now genuinely gated on this fix landing. Three-probe-levels gate satisfied post-fix. Queued for explicit keeper authorization.
+2. **CMig-EXT 16 + 17** (Findings doc VI.6 HIGH priority): canonical fuzz harness still queued; would have caught this bug faster + would catch future similar bugs in other pilots.
+
+### Cumulative status at TB-EXT 7 close
+
+LOC delta: ~10 (jit_cache Box-wrap fix) + ~80 (fuzz fixture) + ~115 (trajectory + enhancements log). The TB pilot's correctness gate is now empirically anchored; the previously-falsifier-only Pred-tb.5 has a positive empirical reading.
+
+**This is the most load-bearing single round in the session per the substrate-improvement criterion.** The fix prevents shipping a segfault; the fuzz fixture documents the bug class for future regression detection; the findings doc rule 5 is empirically validated at engagement scale.
+
+---
+
+*TB-EXT 7 closes. Critical segfault surfaced and fixed; three-probe-levels gate now satisfied for TB. Pred-tb.5 HOLDS post-fix. The fuzz probe's value is now empirically anchored: it catches bugs bench + consumer-route structurally cannot. TB-EXT 8 default-on flip queued for explicit keeper authorization.*
