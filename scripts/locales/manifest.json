@@ -3,9 +3,9 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 11,
+    "locales": 12,
     "top_level": 9,
-    "nested": 2,
+    "nested": 3,
     "warnings": 0
   },
   "locales": [
@@ -62,6 +62,15 @@
       "depth": 1,
       "rung_count": 0,
       "status": "**DEOPT CHAPTER CLOSED + IC INFRASTRUCTURE COMPLETE (without shapes); TELOS SHARPENED to the hybrid Cranelift+hand-rolled-IC-stub stance per \u00a7I.2.** JIT-EXT 10-24 landed across the prior two sessions \u2014 arithmetic deopt machinery, ICShapeMismatch demonstrator, full GetPropOnObject lowering with real runtime helper, mixed-regime dispatcher, IC chain success+failure paths proven end-to-end. ~1.2k LOC across pilots/rusty-js-jit + pilots/rusty-js-runtime + pilots/rusty-js-bytecode + host-v2. PM-EXT 11+12 regression GREEN every round. See \u00a7VIII below for the closure summary. JIT-EXT 25 (this entry) sharpens the forward telos to name the next two pilots: IC stub emitter + hidden classes substrate."
+    },
+    {
+      "coord": "rusty-js-jit/stub-emitter",
+      "tag": "L.rusty-js-jit.stub-emitter",
+      "parent": "L.rusty-js-jit",
+      "scope": "stub-emitter",
+      "depth": 2,
+      "rung_count": 0,
+      "status": "**WORKSTREAM FOUNDED (StubE-EXT 0)**. No code yet. Pre-filed at LeJIT seed \u00a7I.2 (JIT-EXT 25) as the closure round to the hidden-classes substrate (`pilots/rusty-js-shapes/`). Spawn triggered now to begin scaffolding against the stable IC consumer API contract `Object::shape_ptr_and_slot_for(name) -> Option<(*const Shape, u32)>` \u2014 the API is in place since Shape-EXT 4 and returns None for every Object pre-enrollment; the stub emitter can be designed, implemented, and tested against synthetic shape pointers in advance of the enrollment flip."
     },
     {
       "coord": "rusty-js-pm",

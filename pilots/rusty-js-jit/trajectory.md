@@ -1570,3 +1570,17 @@ The workstream's standing claim at this point: the first-cut hybrid baseline JIT
 ---
 
 *JIT-EXT 25 closes the apparatus-tier round. No code commits. The workstream resumes at the hidden-classes substrate pilot's founding round when keeper directs.*
+
+---
+
+## JIT-EXT 26 — 2026-05-23 (spawns nested locale `stub-emitter` for Pilot LeJIT-Σ)
+
+Per Doc 737 §IV + the keeper's standing "set up seeds at every fractal locale that requires it" directive: Pilot LeJIT-Σ (hand-rolled aarch64 IC stub emitter) was pre-filed at JIT-EXT 25 seed §I.2; the spawn is now explicit because the pilot has multi-rung shape (StubE-EXT 0-8: founding → bench-baseline → design → scaffold → synthetic-pointer test → translator wiring → bench measurement → fuzz → default-on flip).
+
+**Spawned nested locale**: `pilots/rusty-js-jit/stub-emitter/` (locale tag `L.rusty-js-jit/stub-emitter`).
+
+This is the engagement's second prospective-spawn case (first was `pilots/rusty-js-shapes/consumer-migration/` earlier today). LeJIT-Σ's substrate-introduction round can begin in advance of CMig-EXT 8's enrollment flip — StubE-EXT 0-3 (founding + bench baseline + design + scaffold) operate against the stable `Object::shape_ptr_and_slot_for` API contract without needing actual enrolled Shaped objects; StubE-EXT 4-8 gate on CMig-EXT 8.
+
+See [stub-emitter/seed.md](stub-emitter/seed.md) and [stub-emitter/trajectory.md](stub-emitter/trajectory.md). Per Doc 733 §III composition relations: this row records the child existence by reference; the child's internal structure stays inside the child.
+
+*JIT-EXT 26 stays open until StubE-EXT 8 closes the nested workstream.*
