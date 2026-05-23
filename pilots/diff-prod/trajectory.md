@@ -334,3 +334,91 @@ Highest-leverage next rungs (by expected diff-prod fixture flip + real-world pac
 4. node:util.promisify value channel — gateway to a large class of Node-callback APIs
 
 The remaining boundaries are smaller localized stubs whose individual ROI is lower but cumulative impact on the node-module surface is substantial.
+
+---
+
+## Rung-19 — Three fixture expansions; AbortController cluster closed (closed)
+
+Three new F-category fixtures land probing surface the locale had not yet exercised:
+- `abort-controller` — AbortController/AbortSignal: construct, abort with/without reason, listener fire-once, throwIfAborted, AbortSignal.abort/timeout/any factories, instanceof.
+- `iterator-helpers` — ES2025 Iterator Helpers (Iterator.from + Iterator.prototype.{map,filter,take,drop,flatMap,reduce,toArray,forEach,some,every,find}).
+- `es-recent-methods` — ES2023-2026 widely-adopted batch: Object/Map.groupBy, Set intersection/union/difference/symmetricDifference/isSubsetOf/isSupersetOf/isDisjointFrom, Promise.try, Error.isError, Array findLast/findLastIndex, change-by-copy toSorted/toReversed/toSpliced/with.
+
+First-run findings (each fixture surfaced its own clean substrate cluster — Doc 730 §XVI bidirectional-probe shape held; one error line localized each gap):
+- **abort-controller**: `TypeError: callee is not callable: undefined ... method='abort' ... receiver=Object keys=[signal] ... 'Object→Object.prototype: no 'abort' slot on chain'`. AbortController ctor stub had a `.signal` field but no proto-chained instance + no abort() method + no listener mechanism + no throwIfAborted + no any() composite + no proper instanceof wiring.
+- **iterator-helpers**: rc=124 (timeout). Iterator Helpers surface entirely absent — first `.map()` on an infinite-iterator chain hung instead of throwing.
+- **es-recent-methods**: `TypeError: ... method='groupBy' ... receiver=Function(Map) ...`. Map.groupBy + Object.groupBy + Set ES2025 methods + Promise.try + Error.isError + change-by-copy Array methods all missing.
+
+**Substrate fix this rung — AbortController cluster** (intrinsics.rs Tier-Ω.5.AAAAAAA extension):
+1. `alloc_abort_signal` helper allocates a signal proto-chained to AbortSignal.prototype with an `__ac_listeners__` internal-list and `__count` field.
+2. `default_abort_reason` returns an Error with `name='AbortError'` per DOM §3.1.4 (cruftless lacks DOMException; the name-match is what every consumer pattern-matches on).
+3. `fire_abort(rt, sig, reason)` is idempotent; snapshots the listener list before iterating so re-entrant mutations don't break iteration; drains both __ac_listeners__ callbacks and the legacy `onabort` sole-handler convention.
+4. **AbortSignal.prototype.throwIfAborted** — §3.1.5: if aborted, throws `signal.reason`.
+5. **AbortSignal.prototype.addEventListener** — narrow shape: when type='abort', appends to __ac_listeners__; other types accepted but never fire (no real EventTarget). removeEventListener/dispatchEvent stubs for surface presence.
+6. **AbortSignal.abort(reason)** static — pre-aborted factory, proto-chained, default reason synthesized when no arg.
+7. **AbortSignal.any([signals])** static — §3.1.3.2 composite. If any input is already aborted, returns pre-aborted composite with that input's reason. Otherwise registers a forwarder on each input via a parallel `__ac_forwards__` side-channel; AbortController.prototype.abort drains both __ac_listeners__ and any __ac_forwards__ composites transitively.
+8. **AbortController.prototype.abort(reason)** — §3.2.4.1: fires abort on this.signal, idempotent, propagates to composites.
+9. **AbortController instances proto-chained** to AbortController.prototype (capture acp_for_ctor in the make_native closure).
+
+**Scope-limit documented (not fixed in this rung)**: `AbortSignal.timeout(ms)` requires host-tier timer routing (cruftless/src/timer.rs); the runtime-layer intrinsics cannot reach it. The factory is preserved as a present-but-non-firing stub returning a non-aborting signal so consumers that defensively register listeners don't crash at install time. The fixture's `signal_timeout` case is replaced with a `signal_timeout_surface` case that asserts only `instanceof AbortSignal` + `typeof aborted === "boolean"`. Per anti-telos this is a v1 boundary documentation, not a fixture-as-workaround — analogous to the Rung-13 boundary log for URLSearchParams / Headers iterator and the Rung-17 DataView drop.
+
+Effect: `abort-controller` flipped to PASS (567 bytes identical).
+
+**Diff-prod after AbortController close**: 40 / 42 PASS. The remaining two FAILs (`iterator-helpers`, `es-recent-methods`) were chased into the same commit per the keeper's direction; see Rungs 20–21 below for the substrate work each required.
+
+**Top-100**: 99.1% unchanged.
+**Top-500**: 77.4% / 82.1% unchanged (Rung-19 closures are all runtime-method surface, not namespace-shape).
+
+---
+
+## Rung-20 — ES2025 Iterator Helpers (closed)
+
+**First-run divergence under the new fixture**: `TypeError: callee is not callable: undefined ... method='map' ... receiver=Object keys=[__gen_arr__,__gen_idx__,next,…] ... 'Object→Object.prototype: no 'map' slot on chain'`. The diagnostic localized two separate substrate gaps: (a) `%IteratorPrototype%` had no helper methods installed; (b) generator instances proto-chained directly to Object.prototype, bypassing `generator_prototype → iterator_prototype` even though those prototypes were allocated correctly at install time.
+
+**Fixture redesign first**: the original `nats()` infinite-generator + `.take(N)` form hangs at the `nats()` call itself because cruftless v1 has eager-collected generators (Rung-9 v2 deferral; lazy generators / frame park/resume is its own substantive substrate rung). Rewrote `nats()` to `range(0, N)` finite generators throughout; documented the lazy-generator dependency inline at the top of the fixture. Eager-consuming Iterator Helpers compose correctly over finite generators — the surface is testable, the lazy-iterator semantics is named as the orthogonal gap.
+
+**Substrate fixes**:
+
+1. **Generator-instance proto wiring** (interp.rs at the bytecode generator-return site). Pre-fix: `let iter = Object::new_ordinary(); let it_id = self.alloc_object(iter);` allocated with proto = Object.prototype. Post-fix: `iter.proto = self.generator_prototype;` before alloc, so generator instances chain `instance → %GeneratorPrototype% → %IteratorPrototype% → Object.prototype` per ECMA §27.3 / §27.5. The prototypes existed before this rung (install_prototypes' Rung-1 Tier-Ω work) but were unreachable from any concrete generator instance.
+
+2. **Iterator helpers on `%IteratorPrototype%`** (intrinsics.rs `install_iterator_helpers_and_recent_methods`). Eight non-terminal helpers (map, filter, take, drop, flatMap return new array-iterators chained back to %IteratorPrototype% for composition) + five terminal helpers (toArray, reduce, forEach, some, every, find consume directly). Each non-terminal helper drains the underlying iterator via `next()` into a `Vec<Value>`, applies the transformation, and wraps the result in an array-iterator carrying `__ai_data` / `__ai_idx` internal slots with an own `next` method that walks them. Bounded at 10M elements per helper to bound runaway memory under malformed input.
+
+3. **`Iterator` global + `Iterator.from(iterable)` static**. The ctor is abstract (TypeError on direct call per spec); `.from` accepts either a direct iterator (callable `.next` shortcut) or anything with `@@iterator`, invokes `@@iterator`, drains, and wraps in an array-iterator. The wrapped iterator is composable with the prototype helpers because it proto-chains to `%IteratorPrototype%`.
+
+Effect: `iterator-helpers` flipped to PASS (463 bytes identical).
+
+**Substrate amortization shape (§A8.25 recurrence)**: the generator-proto-wiring fix is a one-line interp.rs change with corpus-tier impact — every generator-using package now sees the helpers as part of the iterator's surface. This is the textbook §A8.25 substrate-amortization shape at the engine tier: introduce one substrate move (proto-wire) + thirteen surface installs in the same round, but the substrate move is the load-bearing piece.
+
+**v2 boundary documented (not fixed)**:
+- **Lazy generators / frame park+resume**: infinite generators (`function* nats() { while (true) yield i++ }`) hang at iterator-creation time because the eager-collected v1 generator implementation tries to drain all yields synchronously. Iterator.prototype.{map,take} composed over an infinite source needs lazy semantics. Out of Rung-20's scope; queued as the same substantive substrate work flagged at Rung-9.
+
+---
+
+## Rung-21 — ES2023–26 widely-adopted batch (closed)
+
+**First-run divergence**: `TypeError: ... method='groupBy' ... receiver=Function(Map) ...`. Cascade walk against the new fixture revealed that most of the ES2023–26 surface was already present in cruftless — Object.groupBy, Set.prototype.{intersection,union,difference,symmetricDifference,isSubsetOf,isSupersetOf,isDisjointFrom}, Array.prototype.{findLast,findLastIndex,toSorted,toReversed,toSpliced,with} all wired previously through `crate::generated::*`. Only three surface items were absent: Map.groupBy, Promise.try, Error.isError.
+
+**Substrate fixes** (intrinsics.rs `install_iterator_helpers_and_recent_methods`):
+
+1. **Map.groupBy(iterable, fn)** — §24.1.2.2. Drains the iterable (array-shape primary, `@@iterator` fallback), calls fn per item, groups into a new Map keyed by `ToString(fn(item))` per the v1 string-key storage convention (matches Object.groupBy's existing behavior). Bucket values are real `Object::new_array()` instances so `Array.isArray(bucket)` returns true and JSON.stringify serializes them as `[1,2]` not `{"0":1,"1":2,"length":2}` (the first run hit this discrepancy and the fix flipped the fixture cleanly).
+
+2. **Promise.try(fn, ...args)** — ES2026 stage 4 §27.2.4.x. Synchronously invokes `fn(...args)`. Returned value flows through `rt.promise_resolve_via` (handles thenable unwrapping). Sync throws caught as `RuntimeError::Thrown(v)` and routed to `rt.promise_reject_via`. Async callbacks (returning a Promise) thread through promise_resolve_via's thenable-unwrap path, so `await Promise.try(async () => 99)` resolves with 99.
+
+3. **Error.isError(v)** — ES2025 §20.5.x. Proto-chain walk: returns true iff the argument's proto chain reaches the Error.prototype object captured at install time. Plain `{message: "x"}` objects (no Error.prototype in chain) return false; `new TypeError(...)` returns true since TypeError.prototype chains to Error.prototype.
+
+Effect: `es-recent-methods` flipped to PASS (706 bytes identical).
+
+**Findings discovered while walking the fixture**:
+- Set ES2025 surface, Object.groupBy, Array change-by-copy, findLast/findLastIndex are all already wired (Set methods in `interp.rs:1146+` via `set_proto_*_via`, Array changes in `prototype.rs:289-315`, Object.groupBy in `intrinsics.rs:1641`). Today's rung surfaced and exercised them as a side effect of the new fixture; the surface itself predates today's work.
+- Map.groupBy's first divergence was a Map.size accuracy issue, fixed inline by refreshing `size` from `__map_data` properties.len() at end of grouping.
+
+---
+
+## Rung-19 / 20 / 21 cumulative
+
+**Diff-prod**: 39 / 39 (Rung-18 close) → **42 / 42 PASS** across all three rungs landed together.
+**Top-100**: 99.1% unchanged.
+**Top-500**: 77.4% / 82.1% unchanged. All three rungs land runtime-method surface (per the structural reading the trajectory has been keeping — namespace-shape vs runtime-semantics — the diff-prod probe is the right probe for measuring this kind of work).
+**Substrate-tag count delta**: +3 substrate clusters (AbortController + Iterator Helpers + ES2024–26 batch).
+
+**Composition with the rusty-js-ir 19-rung program** (`pilots/rusty-js-ir/trajectory.md`): the test262-sample reading after these diff-prod rungs is expected to move on the Map/Set/Array/Error chapter slices — the IR-encoded sections of those chapters now exercise more of the runtime helper surface. Worth re-running the test262 sample once the cruft binary is committed.

@@ -1,0 +1,10 @@
+{
+  "name": "abort-controller",
+  "categories": ["F"],
+  "deps": [],
+  "env": {},
+  "tolerances": { "float": 1e-12, "stack-strip": true },
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "AbortController + AbortSignal surface: construct, abort with/without reason, listener fire-once, throwIfAborted, AbortSignal.abort/timeout/any factories."
+}

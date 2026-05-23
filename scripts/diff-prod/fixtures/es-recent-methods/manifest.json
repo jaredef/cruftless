@@ -1,0 +1,10 @@
+{
+  "name": "es-recent-methods",
+  "categories": ["F"],
+  "deps": [],
+  "env": {},
+  "tolerances": { "float": 1e-12, "stack-strip": true },
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "ES2023-2026 widely-adopted method surface: Object/Map.groupBy, Set intersection/union/difference/symmetricDifference/isSubsetOf/isSupersetOf/isDisjointFrom, Promise.try, Error.isError, Array findLast/findLastIndex, change-by-copy toSorted/toReversed/toSpliced/with."
+}

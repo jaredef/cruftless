@@ -1,0 +1,10 @@
+{
+  "name": "iterator-helpers",
+  "categories": ["F"],
+  "deps": [],
+  "env": {},
+  "tolerances": { "float": 1e-12, "stack-strip": true },
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "ES2025 Iterator Helpers: Iterator.prototype.{map,filter,take,drop,flatMap,reduce,toArray,forEach,some,every,find} + Iterator.from."
+}

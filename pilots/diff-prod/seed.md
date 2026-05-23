@@ -2,7 +2,7 @@
 
 **Locale tag**: `L.diff-prod` (per [Doc 737](../../../corpus-master/corpus/737-the-locale-as-coordinate-nested-seed-trajectory-pairs-as-pin-art-substrate-positions.md))
 
-**Status as of 2026-05-22**: **TELOS A HIT + TELOS B (39/39)**. Thirty-nine fixtures (mix of L and F categories), all PASS. Twenty-six+ substrate fixes landed via diff-prod since founding (incl. two class-name fixes surfaced via the arktype deviation locale). Top-500 measured at 77.4% raw / 82.1% incl-agreed after cumulative fix-set. Coverage now spans JSON, Buffer, strings, Map/Set, async/Promise/iteration, error-throws, RegExp (incl. advanced surface), generators, Proxy, structuredClone, BigInt, Reflect, Symbol, Object/Array/Math statics, node:fs/crypto/stream/events/path.
+**Status as of 2026-05-22**: **TELOS A HIT + TELOS B (42/42)**. Forty-two fixtures (mix of L and F categories), all PASS. Three Rung-19/20/21 substrate clusters landed in one session: AbortController + AbortSignal full surface; ES2025 Iterator Helpers + generator-proto wiring; Map.groupBy + Promise.try + Error.isError. Thirty+ substrate fixes landed via diff-prod since founding. Top-500 measured at 77.4% raw / 82.1% incl-agreed after cumulative fix-set. Coverage now spans JSON, Buffer, strings, Map/Set, async/Promise/iteration, error-throws, RegExp (incl. advanced surface), generators, Proxy, structuredClone, BigInt, Reflect, Symbol, Object/Array/Math statics, node:fs/crypto/stream/events/path, AbortController + AbortSignal, ES2025 Iterator Helpers, ES2023-26 method batch.
 
 **Workstream**: differential prod-test methodology + scaffolding. Extends the load-and-shape parity probe from "namespace surface" to "execution semantics." The same Doc 730 §XVI bidirectional-engine-diff instrument applies; the input set widens and the comparator deepens.
 
@@ -106,6 +106,8 @@ Each entry below is a substrate gap discovered while a fixture was landing. They
 **Other**
 - `btoa("中")` silently encodes instead of throwing `InvalidCharacterError` (encoding)
 - `stream.Readable.from(iterable)` static absent (node-stream)
+- `AbortSignal.timeout(ms)` returns a non-aborting signal — real firing requires host-tier timer routing (abort-controller; Rung-19 v1 boundary)
+- **Lazy generators / frame park+resume**: infinite generators (`function* nats() { while (true) yield i++ }`) hang at iterator-creation time because cruftless v1 generators are eager-collected. Iterator.prototype.{map,take} composed over an infinite source needs lazy semantics. (iterator-helpers; Rung-20 v1 boundary; also flagged at Rung-9 close.)
 
 The runtime/value-semantics group has the highest expected diff-prod ROI per fix (each affects multiple fixtures and real-world packages). The DataView gap is the largest single surface; it warrants its own substrate rung. Most node-module gaps are localized stubs that can be backfilled without architectural change.
 

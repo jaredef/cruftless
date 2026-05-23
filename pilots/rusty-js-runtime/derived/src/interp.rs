@@ -8541,7 +8541,13 @@ impl Runtime {
             let yields_id = self.gen_yields_stack.pop().expect("gen_yields_stack underflow");
             let _ = gen_yields_id;
             let _ = body_result; // even on Err, return an iterator that drains as if empty
-            let iter = Object::new_ordinary();
+            // diff-prod Rung-19: chain generator instances to %GeneratorPrototype%
+            // (which in turn chains to %IteratorPrototype%). Pre-fix, generator
+            // instances proto-chained only to Object.prototype, so the ES2025
+            // Iterator Helpers installed on %IteratorPrototype% were invisible
+            // to `g().map(...)` patterns.
+            let mut iter = Object::new_ordinary();
+            iter.proto = self.generator_prototype;
             let it_id = self.alloc_object(iter);
             self.object_set(it_id, "__gen_arr__".into(), Value::Object(yields_id));
             self.object_set(it_id, "__gen_idx__".into(), Value::Number(0.0));

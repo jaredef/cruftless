@@ -55,6 +55,12 @@ impl Runtime {
         self.install_json();
         self.install_console();
         self.install_promise();
+        // diff-prod Rung-19 continuation: Iterator helpers + ES2024–26 batch.
+        // Must run after install_promise (Promise.try needs the global) and
+        // after install_map_set_globals + install_error_globals (Map.groupBy
+        // + Error.isError need theirs). install_intrinsics enforces those
+        // orderings already; the call lands after them.
+        // (The actual call is moved below to land after all dependencies.)
         self.install_regexp();
         self.install_test_record();
         self.install_destructure_helpers();
@@ -383,6 +389,7 @@ impl Runtime {
         }
         self.globals.insert("WebAssembly".into(), Value::Object(wasm));
 
+        self.install_iterator_helpers_and_recent_methods();
         self.install_global_this();
     }
 
@@ -2338,53 +2345,227 @@ impl Runtime {
         });
         self.globals.insert("URL".into(), Value::Object(url_id));
 
-        // Tier-Ω.5.AAAAAAA: AbortController + AbortSignal globals per WHATWG DOM
-        // AbortController interface. execa / node-fetch / undici-style HTTP
-        // consumers do `new AbortController()` and reference `.signal` at
-        // module-init or in the closure that defines a request helper. Class
-        // shape needs to exist for the class compile / instance construction
-        // to resolve; the signal's `aborted`/`reason`/`onabort` slots are
-        // present on the prototype (false / undefined respectively); abort()
-        // flips `signal.aborted` to true. Event-dispatch to listeners is
-        // deferred — sufficient for load-time presence and the most common
-        // sync-check pattern (`if (signal.aborted) { ... }`).
+        // Tier-Ω.5.AAAAAAA + diff-prod Rung-19: AbortController + AbortSignal
+        // globals per WHATWG DOM §3.1. Signal instances carry an internal
+        // listener list (__ac_listeners__) and synchronously dispatch on
+        // abort. abort() is idempotent. Signal instances chain to
+        // AbortSignal.prototype so `instanceof AbortSignal` resolves.
+        //
+        // Scope-limit deferred to a future rung: AbortSignal.timeout(ms)
+        // requires routing through the host-tier timer queue (cruftless/
+        // src/timer.rs), which the runtime layer cannot reach. The factory
+        // is preserved as a present-but-non-firing stub; consumers that
+        // depend on real timeout behavior get a non-aborting signal.
         let abort_signal_proto = self.alloc_object(Object::new_ordinary());
         let abort_signal_ctor = make_native("AbortSignal", |_rt, _args| {
             Err(RuntimeError::TypeError(
-                "AbortSignal constructor not directly callable (use AbortController) — Tier-Ω.5.AAAAAAA stub".into()
+                "AbortSignal constructor not directly callable (use AbortController.prototype.abort, AbortSignal.abort, or AbortSignal.any)".into()
             ))
         });
         let abort_signal_id = self.alloc_object(abort_signal_ctor);
         self.obj_mut(abort_signal_id).set_own_frozen("prototype".into(), Value::Object(abort_signal_proto));
         self.obj_mut(abort_signal_proto).set_own_internal("constructor".into(), Value::Object(abort_signal_id));
-        // Static factories per spec §3.1.3.
-        register_method(self, abort_signal_id, "abort", |rt, args| {
-            let sig = rt.alloc_object(Object::new_ordinary());
+
+        // Helper: build a fresh signal instance proto-chained to AbortSignal.prototype.
+        fn alloc_abort_signal(rt: &mut Runtime, proto: ObjectRef, aborted: bool, reason: Value) -> ObjectRef {
+            let mut o = Object::new_ordinary();
+            o.proto = Some(proto);
+            let sig = rt.alloc_object(o);
+            rt.object_set(sig, "aborted".into(), Value::Boolean(aborted));
+            rt.object_set(sig, "reason".into(), reason);
+            rt.object_set(sig, "onabort".into(), Value::Null);
+            let listeners = rt.alloc_object(Object::new_ordinary());
+            rt.obj_mut(listeners).set_own_internal("__count".into(), Value::Number(0.0));
+            rt.obj_mut(sig).set_own_internal("__ac_listeners__".into(), Value::Object(listeners));
+            sig
+        }
+
+        // Helper: default reason when abort() is called with no argument is an
+        // Error with name='AbortError', per DOM §3.1.4. cruftless lacks
+        // DOMException; an Error with the right name is what every consumer
+        // pattern-matches on (`e && e.name === 'AbortError'`).
+        fn default_abort_reason(rt: &mut Runtime) -> Value {
+            let e = rt.alloc_object(Object::new_ordinary());
+            rt.object_set(e, "name".into(), Value::String(Rc::new("AbortError".into())));
+            rt.object_set(e, "message".into(), Value::String(Rc::new("The operation was aborted.".into())));
+            Value::Object(e)
+        }
+
+        // Helper: fire abort on a signal. Idempotent; second call is a no-op.
+        fn fire_abort(rt: &mut Runtime, sig: ObjectRef, reason: Value) {
+            if let Value::Boolean(true) = rt.object_get(sig, "aborted") { return; }
             rt.object_set(sig, "aborted".into(), Value::Boolean(true));
-            rt.object_set(sig, "reason".into(), args.first().cloned().unwrap_or(Value::Undefined));
+            rt.object_set(sig, "reason".into(), reason);
+            // Drain listeners. Snapshot first so a listener that mutates the
+            // list doesn't break iteration.
+            let listeners_v = rt.object_get(sig, "__ac_listeners__");
+            if let Value::Object(listeners) = listeners_v {
+                let count = match rt.object_get(listeners, "__count") { Value::Number(n) => n as usize, _ => 0 };
+                let mut callbacks: Vec<Value> = Vec::with_capacity(count);
+                for i in 0..count {
+                    let key = format!("__l{}", i);
+                    let v = rt.object_get(listeners, &key);
+                    if !matches!(v, Value::Undefined) { callbacks.push(v); }
+                }
+                for cb in callbacks {
+                    let _ = rt.call_function(cb, Value::Object(sig), Vec::new());
+                }
+            }
+            // onabort sole-handler convention.
+            let onabort = rt.object_get(sig, "onabort");
+            if !matches!(onabort, Value::Null | Value::Undefined) {
+                let _ = rt.call_function(onabort, Value::Object(sig), Vec::new());
+            }
+        }
+
+        // AbortSignal.prototype.throwIfAborted — §3.1.5.
+        register_method(self, abort_signal_proto, "throwIfAborted", |rt, _args| {
+            let this = rt.current_this();
+            if let Value::Object(sig) = this {
+                if let Value::Boolean(true) = rt.object_get(sig, "aborted") {
+                    let r = rt.object_get(sig, "reason");
+                    return Err(RuntimeError::Thrown(r));
+                }
+            }
+            Ok(Value::Undefined)
+        });
+
+        // AbortSignal.prototype.addEventListener — narrow shape: type='abort',
+        // callback appended to __ac_listeners__. Other event types are accepted
+        // but never fire (no real EventTarget). removeEventListener is a no-op
+        // stub for surface presence.
+        register_method(self, abort_signal_proto, "addEventListener", |rt, args| {
+            let ty = match args.first() { Some(Value::String(s)) => (**s).clone(), _ => String::new() };
+            let cb = args.get(1).cloned().unwrap_or(Value::Undefined);
+            if ty != "abort" { return Ok(Value::Undefined); }
+            let this = rt.current_this();
+            if let Value::Object(sig) = this {
+                let listeners_v = rt.object_get(sig, "__ac_listeners__");
+                if let Value::Object(listeners) = listeners_v {
+                    let count = match rt.object_get(listeners, "__count") { Value::Number(n) => n as usize, _ => 0 };
+                    let key = format!("__l{}", count);
+                    rt.obj_mut(listeners).set_own_internal(key.into(), cb);
+                    rt.obj_mut(listeners).set_own_internal("__count".into(), Value::Number((count + 1) as f64));
+                }
+            }
+            Ok(Value::Undefined)
+        });
+        register_method(self, abort_signal_proto, "removeEventListener", |_rt, _args| Ok(Value::Undefined));
+        register_method(self, abort_signal_proto, "dispatchEvent", |_rt, _args| Ok(Value::Boolean(false)));
+
+        // AbortSignal.abort(reason) — §3.1.3.1. Returns a pre-aborted signal.
+        let asp_for_static = abort_signal_proto;
+        register_method(self, abort_signal_id, "abort", move |rt, args| {
+            let reason = match args.first() {
+                Some(v) => v.clone(),
+                None => default_abort_reason(rt),
+            };
+            let sig = alloc_abort_signal(rt, asp_for_static, true, reason);
             Ok(Value::Object(sig))
         });
-        register_method(self, abort_signal_id, "timeout", |rt, _args| {
-            let sig = rt.alloc_object(Object::new_ordinary());
-            rt.object_set(sig, "aborted".into(), Value::Boolean(false));
-            rt.object_set(sig, "reason".into(), Value::Undefined);
+        // AbortSignal.timeout(ms) — present surface; firing requires host-tier
+        // timer routing (deferred). Returns a non-aborting signal so consumers
+        // that defensively register listeners don't crash at install time.
+        register_method(self, abort_signal_id, "timeout", move |rt, _args| {
+            let sig = alloc_abort_signal(rt, asp_for_static, false, Value::Undefined);
             Ok(Value::Object(sig))
         });
+        // AbortSignal.any([s1, s2, ...]) — §3.1.3.2. Composite signal that
+        // aborts when any input aborts. If any input is already aborted, the
+        // returned signal is pre-aborted with that input's reason.
+        register_method(self, abort_signal_id, "any", move |rt, args| {
+            let arr = match args.first() { Some(Value::Object(id)) => *id, _ => return Ok(Value::Object(alloc_abort_signal(rt, asp_for_static, false, Value::Undefined))) };
+            // Iterate array-like.
+            let len = match rt.object_get(arr, "length") { Value::Number(n) => n as usize, _ => 0 };
+            // First, check for an already-aborted input.
+            for i in 0..len {
+                let v = rt.object_get(arr, &i.to_string());
+                if let Value::Object(s) = v {
+                    if let Value::Boolean(true) = rt.object_get(s, "aborted") {
+                        let r = rt.object_get(s, "reason");
+                        let sig = alloc_abort_signal(rt, asp_for_static, true, r);
+                        return Ok(Value::Object(sig));
+                    }
+                }
+            }
+            // Otherwise, build a composite that attaches to each input.
+            let composite = alloc_abort_signal(rt, asp_for_static, false, Value::Undefined);
+            for i in 0..len {
+                let v = rt.object_get(arr, &i.to_string());
+                if let Value::Object(s) = v {
+                    let listeners_v = rt.object_get(s, "__ac_listeners__");
+                    if let Value::Object(listeners) = listeners_v {
+                        // Synthesize a forwarder closure that fires the composite when this input fires.
+                        // We approximate the closure by storing the composite-id alongside; fire_abort
+                        // doesn't know about composites, so we add a parallel __ac_forwards__ list.
+                        let fwds_v = rt.object_get(s, "__ac_forwards__");
+                        let fwds = if let Value::Object(id) = fwds_v {
+                            id
+                        } else {
+                            let new_fwds = rt.alloc_object(Object::new_ordinary());
+                            rt.obj_mut(new_fwds).set_own_internal("__count".into(), Value::Number(0.0));
+                            rt.obj_mut(s).set_own_internal("__ac_forwards__".into(), Value::Object(new_fwds));
+                            new_fwds
+                        };
+                        let count = match rt.object_get(fwds, "__count") { Value::Number(n) => n as usize, _ => 0 };
+                        let key = format!("__f{}", count);
+                        rt.obj_mut(fwds).set_own_internal(key.into(), Value::Object(composite));
+                        rt.obj_mut(fwds).set_own_internal("__count".into(), Value::Number((count + 1) as f64));
+                        let _ = listeners; // listeners list already exists; forwarders are a parallel channel
+                    }
+                }
+            }
+            Ok(Value::Object(composite))
+        });
+
         self.globals.insert("AbortSignal".into(), Value::Object(abort_signal_id));
 
         let abort_controller_proto = self.alloc_object(Object::new_ordinary());
-        let abort_controller_ctor = make_native("AbortController", |rt, _args| {
-            let inst = rt.alloc_object(Object::new_ordinary());
-            let sig = rt.alloc_object(Object::new_ordinary());
-            rt.object_set(sig, "aborted".into(), Value::Boolean(false));
-            rt.object_set(sig, "reason".into(), Value::Undefined);
-            rt.object_set(sig, "onabort".into(), Value::Null);
+        let asp_for_ctor = abort_signal_proto;
+        let acp_for_ctor = abort_controller_proto;
+        let abort_controller_ctor = make_native("AbortController", move |rt, _args| {
+            let mut o = Object::new_ordinary();
+            o.proto = Some(acp_for_ctor);
+            let inst = rt.alloc_object(o);
+            let sig = alloc_abort_signal(rt, asp_for_ctor, false, Value::Undefined);
             rt.object_set(inst, "signal".into(), Value::Object(sig));
             Ok(Value::Object(inst))
         });
         let abort_controller_id = self.alloc_object(abort_controller_ctor);
         self.obj_mut(abort_controller_id).set_own_frozen("prototype".into(), Value::Object(abort_controller_proto));
         self.obj_mut(abort_controller_proto).set_own_internal("constructor".into(), Value::Object(abort_controller_id));
+
+        // AbortController.prototype.abort(reason) — §3.2.4.1. Fires abort on
+        // this.signal, idempotent. Also drains any composite forwarders so
+        // AbortSignal.any() targets fire transitively.
+        register_method(self, abort_controller_proto, "abort", |rt, args| {
+            let this = rt.current_this();
+            if let Value::Object(inst) = this {
+                let sig_v = rt.object_get(inst, "signal");
+                if let Value::Object(sig) = sig_v {
+                    let reason = match args.first() {
+                        Some(v) => v.clone(),
+                        None => default_abort_reason(rt),
+                    };
+                    // Snapshot composite forwarders before mutating state (the
+                    // forwarders are signals whose abort() must be triggered).
+                    let fwds_v = rt.object_get(sig, "__ac_forwards__");
+                    let mut fwd_composites: Vec<ObjectRef> = Vec::new();
+                    if let Value::Object(fwds) = fwds_v {
+                        let count = match rt.object_get(fwds, "__count") { Value::Number(n) => n as usize, _ => 0 };
+                        for i in 0..count {
+                            let key = format!("__f{}", i);
+                            if let Value::Object(c) = rt.object_get(fwds, &key) { fwd_composites.push(c); }
+                        }
+                    }
+                    fire_abort(rt, sig, reason.clone());
+                    for c in fwd_composites {
+                        fire_abort(rt, c, reason.clone());
+                    }
+                }
+            }
+            Ok(Value::Undefined)
+        });
         self.globals.insert("AbortController".into(), Value::Object(abort_controller_id));
 
         // Tier-Ω.5.xxxxxx: URLSearchParams as a callable global Function with
@@ -4559,6 +4740,396 @@ impl Runtime {
             Ok(Value::Undefined)
         });
         self.globals.insert("console".into(), Value::Object(console));
+    }
+
+    // diff-prod Rung-19 continuation: Iterator Helpers (ES2025) +
+    // Map.groupBy / Promise.try / Error.isError surface (ES2023–26).
+    //
+    // Iterator helpers are eager-consuming over finite iterators. Lazy
+    // iterators (infinite generators threaded through .map/.take) require
+    // lazy generator semantics (frame park/resume) deferred per Rung-9.
+    // Each non-terminal helper drains the underlying iterator via .next()
+    // calls into a Vec<Value>, then returns a fresh array-iterator chained
+    // to iterator_prototype so further helpers compose. Terminal helpers
+    // (reduce/forEach/some/every/find/toArray) consume directly.
+    fn install_iterator_helpers_and_recent_methods(&mut self) {
+        // ── Iterator Helpers ──────────────────────────────────────────────
+        let iter_proto = match self.iterator_prototype {
+            Some(id) => id,
+            None => return, // install_prototypes didn't run; shouldn't happen
+        };
+
+        fn drain_iterator(rt: &mut Runtime, this: Value) -> Result<Vec<Value>, RuntimeError> {
+            let it = match this {
+                Value::Object(id) => id,
+                _ => return Err(RuntimeError::TypeError(
+                    "Iterator helper: receiver is not an iterator".into())),
+            };
+            let next = rt.object_get(it, "next");
+            if !rt.is_callable(&next) {
+                return Err(RuntimeError::TypeError(
+                    "Iterator helper: receiver has no callable 'next' method".into()));
+            }
+            let mut out = Vec::new();
+            loop {
+                let step = rt.call_function(next.clone(), Value::Object(it), Vec::new())?;
+                let step_id = match step { Value::Object(id) => id, _ => break };
+                if matches!(rt.object_get(step_id, "done"), Value::Boolean(true)) { break; }
+                out.push(rt.object_get(step_id, "value"));
+                if out.len() > 10_000_000 {
+                    return Err(RuntimeError::RangeError(
+                        "Iterator helper: result exceeds 10M elements".into()));
+                }
+            }
+            Ok(out)
+        }
+
+        fn make_array_iterator(rt: &mut Runtime, iter_proto: ObjectRef, items: Vec<Value>) -> ObjectRef {
+            let mut o = Object::new_ordinary();
+            o.proto = Some(iter_proto);
+            let it = rt.alloc_object(o);
+            // Store backing array under __ai_data with explicit length.
+            let arr = rt.alloc_object(Object::new_ordinary());
+            let n = items.len();
+            for (i, v) in items.into_iter().enumerate() {
+                rt.object_set(arr, i.to_string(), v);
+            }
+            rt.object_set(arr, "length".into(), Value::Number(n as f64));
+            rt.obj_mut(it).set_own_internal("__ai_data".into(), Value::Object(arr));
+            rt.obj_mut(it).set_own_internal("__ai_idx".into(), Value::Number(0.0));
+            // Install own `next` method dispatching against __ai_data/__ai_idx.
+            let next_fn = make_native("next", |rt, _args| {
+                let this_id = match rt.current_this() {
+                    Value::Object(o) => o, _ => return Ok(Value::Undefined),
+                };
+                let arr = match rt.object_get(this_id, "__ai_data") {
+                    Value::Object(id) => id, _ => return Ok(Value::Undefined),
+                };
+                let idx = match rt.object_get(this_id, "__ai_idx") {
+                    Value::Number(n) => n as usize, _ => 0,
+                };
+                let len = match rt.object_get(arr, "length") {
+                    Value::Number(n) => n as usize, _ => 0,
+                };
+                let mut o = Object::new_ordinary();
+                if idx >= len {
+                    o.set_own("value".into(), Value::Undefined);
+                    o.set_own("done".into(), Value::Boolean(true));
+                } else {
+                    let v = rt.object_get(arr, &idx.to_string());
+                    rt.obj_mut(this_id).set_own_internal(
+                        "__ai_idx".into(), Value::Number((idx + 1) as f64));
+                    o.set_own("value".into(), v);
+                    o.set_own("done".into(), Value::Boolean(false));
+                }
+                Ok(Value::Object(rt.alloc_object(o)))
+            });
+            let next_id = rt.alloc_object(next_fn);
+            rt.object_set(it, "next".into(), Value::Object(next_id));
+            it
+        }
+
+        let ip_for_helpers = iter_proto;
+
+        register_method(self, iter_proto, "map", move |rt, args| {
+            let fn_v = args.first().cloned().unwrap_or(Value::Undefined);
+            if !rt.is_callable(&fn_v) {
+                return Err(RuntimeError::TypeError(
+                    "Iterator.prototype.map: callback is not callable".into()));
+            }
+            let items = drain_iterator(rt, rt.current_this())?;
+            let mut out = Vec::with_capacity(items.len());
+            for v in items {
+                out.push(rt.call_function(fn_v.clone(), Value::Undefined, vec![v])?);
+            }
+            Ok(Value::Object(make_array_iterator(rt, ip_for_helpers, out)))
+        });
+        register_method(self, iter_proto, "filter", move |rt, args| {
+            let fn_v = args.first().cloned().unwrap_or(Value::Undefined);
+            if !rt.is_callable(&fn_v) {
+                return Err(RuntimeError::TypeError(
+                    "Iterator.prototype.filter: callback is not callable".into()));
+            }
+            let items = drain_iterator(rt, rt.current_this())?;
+            let mut out = Vec::new();
+            for v in items {
+                let keep = rt.call_function(fn_v.clone(), Value::Undefined, vec![v.clone()])?;
+                if abstract_ops::to_boolean(&keep) { out.push(v); }
+            }
+            Ok(Value::Object(make_array_iterator(rt, ip_for_helpers, out)))
+        });
+        register_method(self, iter_proto, "take", move |rt, args| {
+            let n = match args.first() {
+                Some(Value::Number(n)) if *n >= 0.0 => *n as usize,
+                _ => 0,
+            };
+            let items = drain_iterator(rt, rt.current_this())?;
+            let out: Vec<Value> = items.into_iter().take(n).collect();
+            Ok(Value::Object(make_array_iterator(rt, ip_for_helpers, out)))
+        });
+        register_method(self, iter_proto, "drop", move |rt, args| {
+            let n = match args.first() {
+                Some(Value::Number(n)) if *n >= 0.0 => *n as usize,
+                _ => 0,
+            };
+            let items = drain_iterator(rt, rt.current_this())?;
+            let out: Vec<Value> = items.into_iter().skip(n).collect();
+            Ok(Value::Object(make_array_iterator(rt, ip_for_helpers, out)))
+        });
+        register_method(self, iter_proto, "flatMap", move |rt, args| {
+            let fn_v = args.first().cloned().unwrap_or(Value::Undefined);
+            if !rt.is_callable(&fn_v) {
+                return Err(RuntimeError::TypeError(
+                    "Iterator.prototype.flatMap: callback is not callable".into()));
+            }
+            let items = drain_iterator(rt, rt.current_this())?;
+            let mut out = Vec::new();
+            for v in items {
+                let mapped = rt.call_function(fn_v.clone(), Value::Undefined, vec![v])?;
+                // mapped is expected to be iterable. Handle Array-shape + Iterator-shape.
+                if let Value::Object(id) = mapped {
+                    // Array-shape: walk length.
+                    let len = rt.array_length(id);
+                    if len > 0 || matches!(rt.object_get(id, "length"), Value::Number(_)) {
+                        for i in 0..len { out.push(rt.object_get(id, &i.to_string())); }
+                    } else {
+                        // Iterator-shape: drain via .next().
+                        out.extend(drain_iterator(rt, Value::Object(id))?);
+                    }
+                }
+            }
+            Ok(Value::Object(make_array_iterator(rt, ip_for_helpers, out)))
+        });
+
+        // Terminal helpers — consume only.
+        register_method(self, iter_proto, "toArray", |rt, _args| {
+            let items = drain_iterator(rt, rt.current_this())?;
+            let arr = rt.alloc_object(crate::value::Object::new_array());
+            for (i, v) in items.iter().enumerate() {
+                rt.object_set(arr, i.to_string(), v.clone());
+            }
+            rt.object_set(arr, "length".into(), Value::Number(items.len() as f64));
+            Ok(Value::Object(arr))
+        });
+        register_method(self, iter_proto, "reduce", |rt, args| {
+            let fn_v = args.first().cloned().unwrap_or(Value::Undefined);
+            if !rt.is_callable(&fn_v) {
+                return Err(RuntimeError::TypeError(
+                    "Iterator.prototype.reduce: callback is not callable".into()));
+            }
+            let items = drain_iterator(rt, rt.current_this())?;
+            let (start_idx, mut acc) = if args.len() >= 2 {
+                (0usize, args[1].clone())
+            } else if !items.is_empty() {
+                (1usize, items[0].clone())
+            } else {
+                return Err(RuntimeError::TypeError(
+                    "Iterator.prototype.reduce: empty iterator with no initial value".into()));
+            };
+            for v in items.into_iter().skip(start_idx) {
+                acc = rt.call_function(fn_v.clone(), Value::Undefined, vec![acc, v])?;
+            }
+            Ok(acc)
+        });
+        register_method(self, iter_proto, "forEach", |rt, args| {
+            let fn_v = args.first().cloned().unwrap_or(Value::Undefined);
+            if !rt.is_callable(&fn_v) {
+                return Err(RuntimeError::TypeError(
+                    "Iterator.prototype.forEach: callback is not callable".into()));
+            }
+            let items = drain_iterator(rt, rt.current_this())?;
+            for v in items {
+                let _ = rt.call_function(fn_v.clone(), Value::Undefined, vec![v])?;
+            }
+            Ok(Value::Undefined)
+        });
+        register_method(self, iter_proto, "some", |rt, args| {
+            let fn_v = args.first().cloned().unwrap_or(Value::Undefined);
+            if !rt.is_callable(&fn_v) {
+                return Err(RuntimeError::TypeError(
+                    "Iterator.prototype.some: callback is not callable".into()));
+            }
+            let items = drain_iterator(rt, rt.current_this())?;
+            for v in items {
+                let r = rt.call_function(fn_v.clone(), Value::Undefined, vec![v])?;
+                if abstract_ops::to_boolean(&r) { return Ok(Value::Boolean(true)); }
+            }
+            Ok(Value::Boolean(false))
+        });
+        register_method(self, iter_proto, "every", |rt, args| {
+            let fn_v = args.first().cloned().unwrap_or(Value::Undefined);
+            if !rt.is_callable(&fn_v) {
+                return Err(RuntimeError::TypeError(
+                    "Iterator.prototype.every: callback is not callable".into()));
+            }
+            let items = drain_iterator(rt, rt.current_this())?;
+            for v in items {
+                let r = rt.call_function(fn_v.clone(), Value::Undefined, vec![v])?;
+                if !abstract_ops::to_boolean(&r) { return Ok(Value::Boolean(false)); }
+            }
+            Ok(Value::Boolean(true))
+        });
+        register_method(self, iter_proto, "find", |rt, args| {
+            let fn_v = args.first().cloned().unwrap_or(Value::Undefined);
+            if !rt.is_callable(&fn_v) {
+                return Err(RuntimeError::TypeError(
+                    "Iterator.prototype.find: callback is not callable".into()));
+            }
+            let items = drain_iterator(rt, rt.current_this())?;
+            for v in items {
+                let r = rt.call_function(fn_v.clone(), Value::Undefined, vec![v.clone()])?;
+                if abstract_ops::to_boolean(&r) { return Ok(v); }
+            }
+            Ok(Value::Undefined)
+        });
+
+        // Iterator global with .from static.
+        let iter_ctor = make_native("Iterator", |_rt, _args| {
+            Err(RuntimeError::TypeError(
+                "Iterator constructor is abstract; use Iterator.from(iterable)".into()))
+        });
+        let iter_id = self.alloc_object(iter_ctor);
+        self.obj_mut(iter_id).set_own_frozen("prototype".into(), Value::Object(iter_proto));
+        self.obj_mut(iter_proto).set_own_internal("constructor".into(), Value::Object(iter_id));
+        let ip_for_from = iter_proto;
+        register_method(self, iter_id, "from", move |rt, args| {
+            let arg = args.first().cloned().unwrap_or(Value::Undefined);
+            let obj = match arg {
+                Value::Object(id) => id,
+                _ => return Err(RuntimeError::TypeError(
+                    "Iterator.from: argument is not iterable".into())),
+            };
+            // If obj is itself an iterator (has callable .next), drain directly.
+            let next_v = rt.object_get(obj, "next");
+            let inner = if rt.is_callable(&next_v) {
+                obj
+            } else {
+                // Look up @@iterator and call it to get an iterator.
+                let it_method = rt.object_get(obj, "@@iterator");
+                if !rt.is_callable(&it_method) {
+                    return Err(RuntimeError::TypeError(
+                        "Iterator.from: argument is not iterable (no @@iterator)".into()));
+                }
+                match rt.call_function(it_method, Value::Object(obj), Vec::new())? {
+                    Value::Object(id) => id,
+                    _ => return Err(RuntimeError::TypeError(
+                        "Iterator.from: @@iterator did not return an object".into())),
+                }
+            };
+            let items = drain_iterator(rt, Value::Object(inner))?;
+            Ok(Value::Object(make_array_iterator(rt, ip_for_from, items)))
+        });
+        self.globals.insert("Iterator".into(), Value::Object(iter_id));
+
+        // ── Map.groupBy ───────────────────────────────────────────────────
+        // §24.1.2.2: like Object.groupBy but returns a Map. Iterate items,
+        // call callback for each, accumulate into a Map keyed by callback
+        // return (SameValueZero — but our Map uses ToString-keys, so v1
+        // matches Object.groupBy's string-key behavior with the same caveat).
+        if let Some(Value::Object(map_ctor)) = self.globals.get("Map").cloned() {
+            let mc = map_ctor;
+            register_intrinsic_method(self, map_ctor, "groupBy", 2, move |rt, args| {
+                let map_ctor = mc;
+                let iterable = args.first().cloned().unwrap_or(Value::Undefined);
+                let cb = args.get(1).cloned().unwrap_or(Value::Undefined);
+                if !rt.is_callable(&cb) {
+                    return Err(RuntimeError::TypeError(
+                        "Map.groupBy: callback is not callable".into()));
+                }
+                // Drain the iterable. Array-shape primary, iterator-shape fallback.
+                let items: Vec<Value> = match iterable {
+                    Value::Object(id) => {
+                        let len = rt.array_length(id);
+                        if len > 0 || matches!(rt.object_get(id, "length"), Value::Number(_)) {
+                            (0..len).map(|i| rt.object_get(id, &i.to_string())).collect()
+                        } else {
+                            let it_m = rt.object_get(id, "@@iterator");
+                            if rt.is_callable(&it_m) {
+                                let it = rt.call_function(it_m, Value::Object(id), Vec::new())?;
+                                drain_iterator(rt, it)?
+                            } else {
+                                return Err(RuntimeError::TypeError(
+                                    "Map.groupBy: argument is not iterable".into()));
+                            }
+                        }
+                    }
+                    _ => return Err(RuntimeError::TypeError(
+                        "Map.groupBy: argument is not iterable".into())),
+                };
+                // Construct a new Map via the ctor so it's properly wired.
+                let new_map = rt.call_function(Value::Object(map_ctor), Value::Undefined, Vec::new())?;
+                let map_id = match new_map { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
+                let storage = match rt.object_get(map_id, "__map_data") {
+                    Value::Object(id) => id, _ => return Ok(Value::Object(map_id)),
+                };
+                // Group items by ToString(cb(item)). Within each bucket, append.
+                for v in items {
+                    let key_v = rt.call_function(cb.clone(), Value::Undefined, vec![v.clone()])?;
+                    let key_s = abstract_ops::to_string(&key_v).as_str().to_string();
+                    // Get or create the bucket array.
+                    let bucket_id = match rt.object_get(storage, &key_s) {
+                        Value::Object(id) => id,
+                        _ => {
+                            let arr = rt.alloc_object(crate::value::Object::new_array());
+                            rt.object_set(arr, "length".into(), Value::Number(0.0));
+                            rt.object_set(storage, key_s.clone(), Value::Object(arr));
+                            arr
+                        }
+                    };
+                    let len = rt.array_length(bucket_id);
+                    rt.object_set(bucket_id, len.to_string(), v);
+                    rt.object_set(bucket_id, "length".into(), Value::Number((len + 1) as f64));
+                }
+                // Refresh size.
+                let count = rt.obj(storage).properties.len() as f64;
+                rt.object_set(map_id, "size".into(), Value::Number(count));
+                Ok(Value::Object(map_id))
+            });
+        }
+
+        // ── Promise.try ────────────────────────────────────────────────────
+        // ES2026 stage 4 §27.2.4.x: Promise.try(fn, ...args). Sync-invokes fn,
+        // wraps return value in a resolved promise; catches sync throws into
+        // a rejected promise. Async returns flow through promise_resolve_via
+        // which handles thenable unwrapping.
+        if let Some(Value::Object(promise_ctor)) = self.globals.get("Promise").cloned() {
+            register_intrinsic_method(self, promise_ctor, "try", 1, |rt, args| {
+                let fn_v = args.first().cloned().unwrap_or(Value::Undefined);
+                if !rt.is_callable(&fn_v) {
+                    return Err(RuntimeError::TypeError(
+                        "Promise.try: callback is not callable".into()));
+                }
+                let rest: Vec<Value> = args.iter().skip(1).cloned().collect();
+                match rt.call_function(fn_v, Value::Undefined, rest) {
+                    Ok(v) => rt.promise_resolve_via(&v),
+                    Err(RuntimeError::Thrown(v)) => rt.promise_reject_via(&v),
+                    Err(e) => Err(e),
+                }
+            });
+        }
+
+        // ── Error.isError ─────────────────────────────────────────────────
+        // ES2025 §20.5.x: returns true iff argument has an [[ErrorData]]
+        // internal slot. cruftless marks Error instances via the
+        // %Error.prototype% chain; the proto-chain walk is the durable
+        // discriminator. Plain {message: "x"} objects without the chain
+        // return false per spec.
+        if let Some(Value::Object(error_ctor)) = self.globals.get("Error").cloned() {
+            let err_proto_v = self.object_get(error_ctor, "prototype");
+            let err_proto = if let Value::Object(id) = err_proto_v { Some(id) } else { None };
+            register_intrinsic_method(self, error_ctor, "isError", 1, move |rt, args| {
+                let v = args.first().cloned().unwrap_or(Value::Undefined);
+                let id = match v { Value::Object(id) => id, _ => return Ok(Value::Boolean(false)) };
+                // Walk the proto chain looking for Error.prototype.
+                let target = match err_proto { Some(p) => p, None => return Ok(Value::Boolean(false)) };
+                let mut cur = rt.obj(id).proto;
+                while let Some(p) = cur {
+                    if p == target { return Ok(Value::Boolean(true)); }
+                    cur = rt.obj(p).proto;
+                }
+                Ok(Value::Boolean(false))
+            });
+        }
     }
 }
 
