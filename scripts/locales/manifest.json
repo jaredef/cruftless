@@ -3,9 +3,9 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 9,
-    "top_level": 8,
-    "nested": 1,
+    "locales": 11,
+    "top_level": 9,
+    "nested": 2,
     "warnings": 0
   },
   "locales": [
@@ -15,8 +15,8 @@
       "parent": null,
       "scope": "diff-prod",
       "depth": 1,
-      "rung_count": 7,
-      "status": "**FOUNDED**. Six fixtures, three categories represented (L via parity-measure, F directly, E sketched). Nine substrate fixes landed in the first session against six fixtures."
+      "rung_count": 21,
+      "status": "**TELOS A HIT + TELOS B (42/42)**. Forty-two fixtures (mix of L and F categories), all PASS. Three Rung-19/20/21 substrate clusters landed in one session: AbortController + AbortSignal full surface; ES2025 Iterator Helpers + generator-proto wiring; Map.groupBy + Promise.try + Error.isError. Thirty+ substrate fixes landed via diff-prod since founding. Top-500 measured at 77.4% raw / 82.1% incl-agreed after cumulative fix-set. Coverage now spans JSON, Buffer, strings, Map/Set, async/Promise/iteration, error-throws, RegExp (incl. advanced surface), generators, Proxy, structuredClone, BigInt, Reflect, Symbol, Object/Array/Math statics, node:fs/crypto/stream/events/path, AbortController + AbortSignal, ES2025 Iterator Helpers, ES2023-26 method batch."
     },
     {
       "coord": "rusty-js-caps",
@@ -61,7 +61,7 @@
       "scope": "rusty-js-jit",
       "depth": 1,
       "rung_count": 0,
-      "status": "**DEOPT CHAPTER CLOSED + IC INFRASTRUCTURE COMPLETE (without shapes)**. JIT-EXT 10-24 landed in one session \u2014 arithmetic deopt machinery, ICShapeMismatch demonstrator, full GetPropOnObject lowering with real runtime helper, mixed-regime dispatcher, IC chain success+failure paths proven end-to-end. ~1.2k LOC across pilots/rusty-js-jit + pilots/rusty-js-runtime + pilots/rusty-js-bytecode + host-v2. PM-EXT 11+12 regression GREEN every round. See \u00a7VIII below for the closure summary."
+      "status": "**DEOPT CHAPTER CLOSED + IC INFRASTRUCTURE COMPLETE (without shapes); TELOS SHARPENED to the hybrid Cranelift+hand-rolled-IC-stub stance per \u00a7I.2.** JIT-EXT 10-24 landed across the prior two sessions \u2014 arithmetic deopt machinery, ICShapeMismatch demonstrator, full GetPropOnObject lowering with real runtime helper, mixed-regime dispatcher, IC chain success+failure paths proven end-to-end. ~1.2k LOC across pilots/rusty-js-jit + pilots/rusty-js-runtime + pilots/rusty-js-bytecode + host-v2. PM-EXT 11+12 regression GREEN every round. See \u00a7VIII below for the closure summary. JIT-EXT 25 (this entry) sharpens the forward telos to name the next two pilots: IC stub emitter + hidden classes substrate."
     },
     {
       "coord": "rusty-js-pm",
@@ -71,6 +71,24 @@
       "depth": 1,
       "rung_count": 0,
       "status": null
+    },
+    {
+      "coord": "rusty-js-shapes",
+      "tag": "L.rusty-js-shapes",
+      "parent": null,
+      "scope": "rusty-js-shapes",
+      "depth": 1,
+      "rung_count": 0,
+      "status": "**WORKSTREAM FOUNDED (Shape-EXT 0)**. No substrate code yet. Pre-filed at the LeJIT seed \u00a7I.2 (JIT-EXT 25) as the substrate-introduction round per Doc 729 \u00a7A8.13 staging; spawn triggered by the JIT-EXT 25 telos sharpening and the keeper's \"Begin\" directive. The seed names the workstream; the first substrate move (Shape-EXT 1) surveys the current Object layout to anchor the contract surface."
+    },
+    {
+      "coord": "rusty-js-shapes/consumer-migration",
+      "tag": "L.rusty-js-shapes.consumer-migration",
+      "parent": "L.rusty-js-shapes",
+      "scope": "consumer-migration",
+      "depth": 2,
+      "rung_count": 0,
+      "status": "**FOUNDED (CMig-EXT 0)**. Sub-workstream of `pilots/rusty-js-shapes/` spawned per Shape-EXT 4's deferred-enrollment finding. The parent's Shape-EXT 4 round landed shape infrastructure on Object but kept `new_ordinary()` defaulting to `shape: None` because the first enrollment attempt regressed diff-prod 39\u219231/42 PASS. Root cause: ~41 sites across the runtime crate iterate `.properties` directly and bypass the shape mechanism. This sub-workstream migrates those sites family by family so enrollment can flip back on without regression."
     },
     {
       "coord": "tls",
