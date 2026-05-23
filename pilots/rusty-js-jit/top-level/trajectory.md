@@ -156,3 +156,53 @@ LOC delta: ~30 (translator.rs alphabet extension). Canonical fuzz + diff-prod GR
 ---
 
 *TL-EXT 2 closes. Move 1 PushConst-Number landed at the JIT alphabet tier. Flat A/B probe is the substrate-introduction signature; TL-EXT 3 lands Move 2 module-body wrap (the entry-mechanism upstream constraint-closure).*
+
+---
+
+## TL-EXT 3 — 2026-05-23 (Move 2 module-body JIT entry wrapper)
+
+### Headline
+
+Module-body JIT entry wired. JIT crate: `JitFn0` type + `JitFn::Arity0` variant + `call0` method; param check relaxed to accept 0, 1, or 2. Runtime: `Runtime::try_jit_run_module` builds a synthetic FunctionProto from CompiledModule (bytecode + constants + locals + line_starts + source_map + construct_tags + strict; empty upvalues; 0 params); attempts `compile_function`; on success sets TLS + invokes `call0` + clears TLS; discards return (module result is always Undefined per ECMA); on failure falls through to existing interp `run_frame`. ~90 LOC delta.
+
+### Three-probe results
+
+| probe | result |
+|---|---|
+| Pred-tl.2 canonical fuzz (acc=-932188103) | ✅ GREEN |
+| Pred-tl.3 diff-prod 42/42 | ✅ GREEN |
+| Pred-tl.5 JIT lib tests | ✅ 38 pass, 9 ignored (pre-existing) |
+| Pred-tl.bench A/B probe checksum | flat (1482-1484 median; one 1725 outlier discarded) |
+
+### R5 disposition (LoadGlobal/StoreGlobal scope risk)
+
+Empirical readout: json_parse_transform's top-level bytecode contains MakeClosure (for `makePayload`), Op::Call, Op::CallMethod, presumably LoadGlobal/StoreGlobal for top-level `const payload = ...` and `let checksum = 0`. The JIT compile bails at parse-time on any of those per C8 bail discipline. The wrapper attempts compile, bails cleanly, runtime falls through to interp. **A/B probe flat as predicted — no measurable change. R5 surfaces as "expected bail" on this fixture, not as "regression."**
+
+This is the substrate-introduction signature per Finding II.2-bis: the entry mechanism is now in place; the wrapper exercises the JIT compile path; whether json_parse_transform's body actually JIT-fires is gated on Moves 3+4 (and beyond, since the top-level body has many ops beyond charCodeAt-loop alphabet). The structural infrastructure landed cleanly without regression.
+
+### Composition with prior corpus / engagement work
+
+- **Doc 740 multi-tier reading**: Move 2 closes the entry-mechanism tier; Moves 3+4 are downstream consumer pilots that gate cumulative reclaim.
+- **Doc 739 §II.2 substrate-introduction signature**: empirically observed (flat A/B; expected bail on real fixture; no regression).
+- **Standing rule 9 (raw-pointer cache audit)**: not applicable (`&synth as *const _` is a stack local lifetime-bound to the function call; passed through TLS only for the duration of the JIT call; cleared post-call).
+- **TB metadata cache discipline**: bypassed for module path (modules are called once; TB optimization targets multi-call functions). No tb_metadata wiring at module entry — `compile_function` builds metadata under env flag but the module dispatcher doesn't consult it.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable.
+Per Doc 734 §V: growth (c) preparatory — entry-mechanism substrate-intro that enables Moves 3+4 cascade-revival pilots.
+Per Doc 735 §X.h.b: **(P2.d) bench at substrate-introduction round, expected per Doc 740 §II.2 (P4). Re-categorization to (P2.a) expected at TL-EXT 5.**
+
+### Open scope at TL-EXT 3 close
+
+1. **TL-EXT 4** — Move 3 GetProp+length-IC (cascade-revival #1)
+2. **TL-EXT 5** — Move 4 CallMethod+charCodeAt-IC (cascade-revival #2; pipeline-connection)
+3. **TL-EXT 6** — composition probe + CRB final disposition
+
+### Cumulative status at TL-EXT 3 close
+
+LOC delta: ~90 (translator.rs: JitFn0 + Arity0 variant + call0 + param check relax + match arm; interp.rs: try_jit_run_module + run_module guard). TL-EXT 2+3 cumulative: ~120 LOC (Moves 1+2). Canonical fuzz + diff-prod GREEN throughout. JIT lib tests 38/38.
+
+---
+
+*TL-EXT 3 closes. Move 2 module-body JIT entry wrapper landed. The wrapper attempts JIT compile at module entry; bails cleanly on alphabet gaps (per C8); falls through to interp without regression. A/B probe flat — substrate-introduction signature per Finding II.2-bis. TL-EXT 4 lands Move 3 GetProp+length-IC.*

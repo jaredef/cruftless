@@ -46,23 +46,38 @@ use std::collections::HashMap;
 /// per-arg prologue converts F64 → I64 via fcvt_to_sint_sat, and the
 /// return converts I64 → F64 via fcvt_from_sint. Φ-EXT 3 flips the
 /// body IR to f64-throughout.
+pub type JitFn0 = extern "C" fn() -> f64;
 pub type JitFn1 = extern "C" fn(f64) -> f64;
 pub type JitFn2 = extern "C" fn(f64, f64) -> f64;
 
 pub enum JitFn {
+    /// TL-EXT 3 (2026-05-23): 0-arg variant for module-body JIT entry.
+    /// Top-level module bodies have no formal parameters; the dispatcher
+    /// calls via `call0` and discards the f64 return (module result is
+    /// always Undefined per ECMA module evaluation semantics).
+    Arity0(JitFn0),
     Arity1(JitFn1),
     Arity2(JitFn2),
 }
 
 impl JitFn {
+    pub fn call0(&self) -> f64 {
+        match self {
+            JitFn::Arity0(f) => f(),
+            JitFn::Arity1(f) => f(0.0),
+            JitFn::Arity2(f) => f(0.0, 0.0),
+        }
+    }
     pub fn call1(&self, a: f64) -> f64 {
         match self {
+            JitFn::Arity0(f) => f(),
             JitFn::Arity1(f) => f(a),
             JitFn::Arity2(f) => f(a, 0.0),
         }
     }
     pub fn call2(&self, a: f64, b: f64) -> f64 {
         match self {
+            JitFn::Arity0(f) => f(),
             JitFn::Arity1(f) => f(a),
             JitFn::Arity2(f) => f(a, b),
         }
@@ -72,6 +87,7 @@ impl JitFn {
 impl std::fmt::Debug for JitFn {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            JitFn::Arity0(p) => write!(f, "JitFn::Arity0(0x{:x})", *p as usize),
             JitFn::Arity1(p) => write!(f, "JitFn::Arity1(0x{:x})", *p as usize),
             JitFn::Arity2(p) => write!(f, "JitFn::Arity2(0x{:x})", *p as usize),
         }
@@ -131,8 +147,12 @@ pub fn compile_function(proto: &FunctionProto) -> Result<CompiledFn, String> {
 }
 
 fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
-    if proto.params != 1 && proto.params != 2 {
-        return Err(format!("first-cut JIT supports 1 or 2 params; got {}", proto.params));
+    // TL-EXT 3 (2026-05-23): also accept params=0 for module-body JIT
+    // entry. The top-level module body has no formal parameters; the
+    // JIT signature emits no AbiParam entries and call0 is used at the
+    // dispatcher.
+    if proto.params != 0 && proto.params != 1 && proto.params != 2 {
+        return Err(format!("first-cut JIT supports 0, 1, or 2 params; got {}", proto.params));
     }
 
     // Pre-scan: parse bytecode into a structured op list with absolute
@@ -722,6 +742,7 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
     let code_ptr = module.get_finalized_function(id);
     let func = unsafe {
         match proto.params {
+            0 => JitFn::Arity0(std::mem::transmute::<*const u8, JitFn0>(code_ptr)),
             1 => JitFn::Arity1(std::mem::transmute::<*const u8, JitFn1>(code_ptr)),
             2 => JitFn::Arity2(std::mem::transmute::<*const u8, JitFn2>(code_ptr)),
             _ => unreachable!(),

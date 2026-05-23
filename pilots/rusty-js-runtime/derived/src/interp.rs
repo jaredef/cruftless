@@ -6501,8 +6501,68 @@ impl Runtime {
     /// Execute a compiled module. Returns the terminal stack value (the
     /// last value on the operand stack at module exit) or Undefined.
     pub fn run_module(&mut self, m: &CompiledModule) -> Result<Value, RuntimeError> {
+        // TL-EXT 3 (2026-05-23): attempt top-level module-body JIT before
+        // falling through to interp. Doc 740 §III.4 entry-mechanism
+        // upstream constraint-closure. Build a synthetic FunctionProto
+        // wrapping the module bytecode + constants; try compile_function;
+        // on success, set TLS, call0, return Undefined; on failure (any
+        // op outside the JIT alphabet → per C8 bail), fall through to the
+        // existing interp dispatch.
+        //
+        // The module result is always Undefined per ECMA module
+        // evaluation semantics regardless of what ReturnUndef emits as
+        // its f64 sentinel; the JIT's return value is discarded.
+        if self.try_jit_run_module(m).is_some() {
+            return Ok(Value::Undefined);
+        }
         let mut frame = Frame::new_module(m);
         self.run_frame(&mut frame)
+    }
+
+    /// TL-EXT 3 (2026-05-23): try to JIT-compile + invoke the module
+    /// body. Returns Some(()) on success (caller treats as Undefined);
+    /// None on any failure (caller falls through to interp).
+    fn try_jit_run_module(&mut self, m: &CompiledModule) -> Option<()> {
+        let jit_disabled = std::env::var("CRUFTLESS_JIT_DISABLE")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+        if jit_disabled { return None; }
+        let synth = rusty_js_bytecode::compiler::FunctionProto {
+            bytecode: m.bytecode.clone(),
+            constants: m.constants.clone(),
+            params: 0,
+            display_name: "<module>".into(),
+            function_length: 0,
+            locals: m.locals.clone(),
+            upvalues: Vec::new(),
+            rest_param_slot: None,
+            arguments_slot: None,
+            self_name_slot: None,
+            is_generator: false,
+            line_starts: m.line_starts.clone(),
+            source_map: m.source_map.clone(),
+            construct_tags: m.construct_tags.clone(),
+            source_url: String::new(),
+            is_async: false,
+            strict: m.strict,
+        };
+        let compiled = rusty_js_jit::compile_function(&synth).ok()?;
+        let rt_ptr_usize = self as *mut Runtime as usize;
+        let proto_ptr_usize = &synth as *const _ as usize;
+        rusty_js_jit::set_current_deopt_sites(&compiled.deopt_sites);
+        rusty_js_jit::set_current_runtime(rt_ptr_usize);
+        rusty_js_jit::set_current_proto(proto_ptr_usize);
+        let _r = compiled.func.call0();
+        rusty_js_jit::clear_current_runtime();
+        rusty_js_jit::clear_current_proto();
+        rusty_js_jit::clear_current_deopt_sites();
+        // Discard the return value; module result is Undefined.
+        // If a deopt fired, bail to interp by returning None so the
+        // caller takes the existing run_frame path.
+        if rusty_js_jit::take_last_deopt().is_some() {
+            return None;
+        }
+        Some(())
     }
 
     /// JIT-EXT 21: resume function execution from a deopt-recovered
