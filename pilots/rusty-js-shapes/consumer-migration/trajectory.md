@@ -716,3 +716,71 @@ The audit closes Findings VI.6's HIGH-priority audit gap. The substrate fixes (C
 ---
 
 *CMig-EXT 16 closes. 4 NEEDS-FIX sites identified (JSON.stringify HIGHEST PRIORITY); CMig-EXT 16.bis substrate fix queued; CMig-EXT 17 canonical fuzz harness remains the engagement-wide probe-coverage close.*
+
+---
+
+## CMig-EXT 16.bis — 2026-05-23 (substrate fix; only 2 of 4 NEEDS-FIX sites were actually broken)
+
+### Headline
+
+Substrate fix round following CMig-EXT 16 audit. **Audit precision-check during the fix surfaced that 2 of 4 NEEDS-FIX sites were already shape-aware** (intrinsics.rs:2682 + intrinsics.rs:5507 — both had the shape-iter-chain pattern that my audit's quick-scan missed). Only 2 sites required substrate work: intrinsics.rs JSON.stringify (5731) + interp.rs Proxy ownKeys (781). Both landed in this round. All gates GREEN: 35/35 runtime lib + 42/42 diff-prod + fuzz-tb + fuzz-ic byte-identical; JSON.stringify on shape-enrolled objects byte-equal to node.
+
+### The audit-precision lesson
+
+Per Finding II.4 + standing rule 9, the audit identified raw .properties.iter() sites but the SAFE/NEEDS-FIX categorization required reading the surrounding code for shape-iter prelude. The CMig-EXT 16 audit's quick-scan flagged 5 NEEDS-FIX; verification reads moved 1 to SAFE (value.rs:508). The fix round's per-site reads moved another 2 to SAFE (intrinsics.rs:2682 + 5507). Net actual NEEDS-FIX: 2.
+
+**Generalization**: any audit that enumerates call sites without reading the surrounding scope is necessarily over-conservative. The "quick-scan → verify in fix round → adjust categorization" workflow is the right discipline; the audit's NEEDS-FIX category is a HYPOTHESIS list, not a fix list.
+
+### Substrate landed (~35 LOC)
+
+- **`intrinsics.rs:5728-5748` JSON.stringify shape-aware prop snapshot** (+~17 LOC):
+  - Pre-fix: `let v: Vec<_> = obj.properties.iter().map(...).collect()` — for Shape-enrolled objects, returns empty → JSON.stringify produces `{}`.
+  - Post-fix: shape-iter chain emits Shape-stored entries as PropertyDescriptors with user-default {w:t, e:t, c:t} (per shapes seed §IV carve-out); Dictionary entries follow with their actual descriptors.
+- **`interp.rs:781-795` Proxy ownKeys target-key collection** (+~13 LOC):
+  - Pre-fix: `self.obj(target_id).properties.iter().map(...)` — Shape-enrolled targets reported empty key list to the Proxy ownKeys trap validator.
+  - Post-fix: shape-iter chain emits Shape-stored keys as configurable=true (per carve-out); Dictionary entries follow with actual configurable flag.
+
+### Probes
+
+- **Runtime lib tests**: 35/35 PASS
+- **diff-prod**: 42/42 PASS
+- **fuzz-tb.mjs default**: `acc=11566900` (byte-identical to pre-fix and to node)
+- **fuzz-ic.mjs default**: `acc=49900000` (byte-identical)
+- **JSON.stringify shape coverage** (3 fixtures: simple object / nested / array-of-objects): cruft default == cruft shape-off == node, **byte-equal** verified via diff
+
+### Why diff-prod 42/42 passed pre-fix despite JSON.stringify being broken for Shape-enrolled objects
+
+The diff-prod fixtures that exercise JSON.stringify generally do so on:
+- Test-arena objects passed through specific construction paths that ended in Dictionary form, OR
+- Simple primitive arrays / strings (no shape interaction), OR
+- Engine-internal storage (already Dictionary)
+
+The pre-fix bug was structurally latent: JSON.stringify of a JS-literal-constructed object under shape-on default would have produced `{}`. The fact that diff-prod didn't catch it is the same probe-coverage gap CMig-EXT 15's spread regression demonstrated. The audit + targeted fix here closes the bug class without needing the canonical fuzz harness (CMig-EXT 17) to surface it as a failed run.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: Case-2 (cruft would have violated spec under shape-on; ECMA-262 §25.5.2 JSON.stringify semantics require iterating own enumerable properties). §XII coercion lift; fix at substrate boundary.
+
+Per Doc 734 §V: growth (b) negative-finding amendment realized — the CMig-EXT 16 audit was the apparatus; this round closed the bugs the apparatus identified. Growth (c) positive-finding generalization preparatory — the audit-precision lesson (quick-scan as hypothesis list, not fix list) is a candidate Findings doc addendum rule.
+
+Per Doc 735 §X.h.c three-probe-levels: bench probe (not applicable; correctness round); consumer-route POSITIVE (diff-prod 42/42 + manual JSON.stringify fixtures); fuzz POSITIVE (existing fuzz-tb + fuzz-ic byte-identical; canonical fuzz CMig-EXT 17 still queued).
+
+### Composition with prior corpus work
+
+- **CMig-EXT 16 audit**: this round operationalizes the audit. The 2-of-4 precision lesson refines the audit-fix workflow for future engagement applications.
+- **Findings doc rule 6 (surface-completeness audit for data-structure changes)**: this round closes one residual gap from the CMig-EXT 14 default-on flip. Combined with CMig-EXT 15's spread fix + CMig-EXT 16's audit, the surface-completeness for shape-enrollment is substantially closed (modulo CMig-EXT 17's canonical fuzz).
+- **Doc 739 cascade-revival**: not applicable — these were correctness gaps at consumer tier, not (P2.d) stalls.
+- **CRB-EXT 9 per-workload spread reading**: JSON.stringify correctness was the HIGHEST-priority site per the audit because of CRB-EXT 9's estimate that JSON.parse/.stringify contributes 5-10× to cruft-vs-bun realistic-workload gap. Closing the correctness bug doesn't directly improve CRB perf but removes a latent regression that any future JSON-perf work would hit.
+
+### Open scope at CMig-EXT 16.bis close
+
+1. **CMig-EXT 17** — canonical 2000-fixture fuzz harness (Findings VI.6 HIGH priority). Still queued; would have caught these bugs proactively + would catch future similar bugs in other pilots.
+2. **NEEDS-VERIFY sites** from the audit (module.rs:1119/1484 + value.rs:43): deferred to follow-up inspection round.
+
+### Cumulative status at CMig-EXT 16.bis close
+
+LOC delta: ~35 (2 fixes + comments). All gates GREEN. The shape-enrollment surface-completeness gap is substantially closed; only the canonical fuzz harness (CMig-EXT 17) remains as the engagement-wide instrument.
+
+---
+
+*CMig-EXT 16.bis closes. JSON.stringify + Proxy ownKeys shape-aware; audit-precision lesson recorded (quick-scan as hypothesis; verify-in-fix-round refines). CMig-EXT 17 remains the engagement-wide canonical-fuzz close.*

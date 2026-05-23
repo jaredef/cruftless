@@ -5725,11 +5725,32 @@ pub(crate) fn json_stringify(rt: &Runtime, v: &Value) -> String {
             // expose call_function through &Runtime (only &mut Runtime),
             // and toJSON dispatch is rarer than wrapper unwrap.
             // Snapshot the props (clones Value) to avoid recursive borrow.
+            // CMig-EXT 16.bis (2026-05-23): shape-aware. Per shapes seed
+            // §IV carve-out, shape-stored entries are plain-data
+            // descriptors with user-default {w:t, e:t, c:t}; emit them
+            // as if they had a PropertyDescriptor. Dictionary entries
+            // follow with their original descriptors.
             let (is_array, props): (bool, Vec<(String, PropertyDescriptor)>) = {
                 let obj = rt.obj(*id);
                 let is_array = matches!(obj.internal_kind, InternalKind::Array);
-                let v: Vec<_> = obj.properties.iter()
-                    .map(|(k, d)| (k.to_string_content(), d.clone())).collect();
+                let mut v: Vec<(String, PropertyDescriptor)> = Vec::new();
+                if let Some(shape) = obj.shape.as_ref() {
+                    for (name, slot) in shape.iter_slots() {
+                        let idx = slot as usize;
+                        if let Some(val) = obj.shape_values.get(idx) {
+                            v.push((name.to_string(), PropertyDescriptor {
+                                value: val.clone(),
+                                writable: true,
+                                enumerable: true,
+                                configurable: true,
+                                getter: None,
+                                setter: None,
+                            }));
+                        }
+                    }
+                }
+                v.extend(obj.properties.iter()
+                    .map(|(k, d)| (k.to_string_content(), d.clone())));
                 (is_array, v)
             };
             if is_array {

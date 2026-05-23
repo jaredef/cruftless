@@ -777,10 +777,23 @@ impl Runtime {
             trap_keys.push(k);
         }
         // 2. Collect target's own keys + extensibility.
+        // CMig-EXT 16.bis (2026-05-23): shape-aware. Per shapes seed
+        // §IV carve-out, shape-stored entries are all configurable
+        // (user-default {w:t, e:t, c:t}); Dictionary entries follow
+        // with their actual configurable flag.
         let extensible = self.obj(target_id).extensible;
-        let target_keys: Vec<(String, bool)> = self.obj(target_id).properties.iter()
-            .map(|(k, d)| (k.to_string_content(), d.configurable))
-            .collect();
+        let target_keys: Vec<(String, bool)> = {
+            let o = self.obj(target_id);
+            let mut out: Vec<(String, bool)> = Vec::new();
+            if let Some(shape) = o.shape.as_ref() {
+                for (name, _) in shape.iter_slots() {
+                    out.push((name.to_string(), true));
+                }
+            }
+            out.extend(o.properties.iter()
+                .map(|(k, d)| (k.to_string_content(), d.configurable)));
+            out
+        };
         let target_nonconf: std::collections::HashSet<String> = target_keys.iter()
             .filter(|(_, c)| !c)
             .map(|(k, _)| k.clone())
