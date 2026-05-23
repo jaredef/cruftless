@@ -606,3 +606,83 @@ After Addendum VI, the findings doc contains:
 Total: 15 findings (6 original + 9 new across addenda); 12 standing rules (8 original + 4 added); rule 11 multi-axis; 2 standing engagement instruments.
 
 The VD pilot's load-bearing contributions: (1) String encoding substrate now consumable by JIT-tier consumers; (2) Finding VIII.1 + standing rule 12 added engagement-wide discipline for any future bit-pattern-tagging work; (3) -∞-collision precedent informs any sibling pilot considering NaN-boxing extensions.
+
+---
+
+## Addendum VII — 2026-05-23 (post OSR-EXT 5 + Finding OSR.1; JIT calling-convention locals-marshaling coverage as a third axis on standing rule 11)
+
+This addendum promotes Finding OSR.1 (from rusty-js-jit/osr/findings.md) to engagement-wide scope as Finding VIII.2, and extends standing rule 11 with a third coverage axis (the second new axis added in this 2026-05-23 architectural-pivot session, alongside the rule-11 extensions at Addendum V for op-set coverage + value-domain coverage).
+
+### Promotion: Finding OSR.1 → engagement-wide
+
+**Finding VIII.2 (JIT calling convention's locals-marshaling capability gates any pilot that invokes JIT bodies from enclosing-frame state)** *[new, 2026-05-23 via OSR-EXT 5 pre-implementation source-read, promoted from OSR.1]*
+
+**Anchor**: pre-implementation source-read for OSR-EXT 5 (JIT body invoke for extracted loops) revealed the JIT's locals-init shape: locals 0..params populated from f64 args; locals params..N initialized to 0.0 (translator.rs:341-346). For OSR invoke, the synthetic FunctionProto's locals must reflect the ENCLOSING FRAME's local values — but the JIT initializes them to 0.0 instead. The invoke step as designed at OSR-EXT 1 (under "local-state copy-in/out") was structurally incomplete: there is no mechanism in the current calling convention to populate locals from non-arg state.
+
+**Substrate implication**: any pilot that needs to invoke a JIT body from non-arg state (OSR loop extraction; coroutine / async resume; mid-function deopt resume; ICs that synthesize JIT bodies from runtime-known state) must address the calling convention's locals-marshaling capability BEFORE the invoke step can deliver correct results.
+
+The current calling convention's structural shape: **args-only initialization**. This is sufficient for function-call entry (the calling site has the args) and module-body entry (no args). It is INSUFFICIENT for any state-injection pilot.
+
+**Generalization (engagement-tier reading)**: the relevant-tier set R from Doc 740 §II.2 for JIT-invoke pilots has a structural lower bound that includes locals-marshaling alongside op-set coverage + value-domain coverage. Per Finding VII.2 + Finding VII.3 + Finding VIII.2 together, the 5-tier reading for JIT-invoke pilots is: {entry mechanism, op-set coverage, value-domain coverage, **locals-marshaling capability**, IC fast-path body}. A pilot addressing only a subset delivers substrate-introduction value but not invoke-ready substrate.
+
+### Extension of standing rule 11
+
+**Standing rule 11 (extended 2026-05-23, third axis)**: before spawning any pilot whose telos is "close a CRB-measured gap," run a component A/B probe (Addendum IV) + verify op-set coverage (Addendum V Finding VII.2) + verify value-domain coverage (Addendum V Finding VII.3) + **verify locals-marshaling coverage (this addendum's Finding VIII.2)**.
+
+The locals-marshaling axis applies specifically to pilots whose JIT bodies are invoked from non-arg state. For pilots that invoke JIT bodies only from function-call entry or module-body entry (where args / no-args populates locals), the rule holds vacuously. For OSR / coroutine / async-resume / state-injection pilots, the rule blocks the pilot's invoke step until locals-marshaling is addressed.
+
+If any of the coverage checks fails, the pilot's reclaim ceiling on that fixture is 0% via that pilot alone; the missing tier(s) must be addressed in dependency order (per Doc 740 §II.2 P4) for cumulative reclaim to materialize.
+
+### Engagement-wide structural reading
+
+The 2026-05-23 architectural-pivot session generated three coverage axes for rule 11:
+
+| axis | finding | applies to | check |
+|---|---|---|---|
+| component A/B (Addendum IV) | VII.1 | any CRB-driven pilot | run A/B probe on target fixture; identify actual dominator |
+| op-set coverage (Addendum V) | VII.2 | JIT-alphabet pilots | source-read FULL enclosing-scope bytecode; verify alphabet covers all ops |
+| value-domain coverage (Addendum V) | VII.3 | JIT-IC pilots with non-Number/Object receivers | verify calling convention encodes required receiver Value variants |
+| **locals-marshaling coverage (this Addendum)** | **VIII.2** | **JIT-invoke pilots from non-arg state** | **verify calling convention populates locals from required source (args / pre-populate prologue / frame-pointer access)** |
+
+Per Doc 734 §V (b): each axis emerged from a pilot's (P2.d) outcome catalyzing apparatus refinement. The compound rule is engagement-wide; future JIT-tier pilots gate on all four checks before substrate work begins.
+
+### Recommended option for closing Finding VIII.2 at the cruftless engagement
+
+Per Finding OSR.1's option 2 (extern-pre-populate prologue at JIT body entry):
+
+- At synthetic FunctionProto build (e.g., try_osr_compile), insert a synthetic prologue at the bytecode's start that calls an extern (`runtime_load_osr_locals(frame_ptr)`) once.
+- The extern returns a pointer to the frame's locals values; the prologue reads each value through the pointer and initializes the corresponding JIT Variable.
+- ~80 LOC; non-invasive composition with existing Σ/Τ/Ψ/Φ paths (the synthetic prologue applies only to OSR-built FunctionProtos; ordinary function-call FunctionProtos don't carry it).
+
+Alternatives 1 (marshal all locals as args) + 3 (frame-pointer access in JIT body) carry more risk to existing default-on paths; defer unless option 2 proves insufficient.
+
+### Composition with prior corpus / engagement work
+
+- **Doc 740 §II.2 relevant-tier-set R**: extended to 5 tiers for JIT-invoke pilots (per this finding's §II.2-extension proposal). Corpus articulation candidate (Doc 741 or in-place §VIII amendment to Doc 740).
+- **Finding II.2-bis substrate-introduction signature**: applies to OSR-EXT 5 (cache-structure landed; invoke-step substrate-intro deferred per VIII.2).
+- **Finding II.3 multi-tier cascade-revival**: applies — closing locals-marshaling without alphabet (VII.2) doesn't deliver reclaim; both must close per Doc 740 §II.2 P4.
+
+### Findings-doc cumulative status
+
+After Addendum VII, the findings doc contains:
+- 6 original finding sections (I-VI; per-category)
+- 8 original standing rules
+- Addendum I: 5 findings + 1 new standing rule (#9)
+- Addendum II: 1 new finding (II.5)
+- Addendum III: 2 new findings (IV.3, IV.4) + 1 new standing rule (#10) + 2 promotions
+- Addendum IV: 3 new findings (II.2-bis, VII.1, II.3) + 1 new standing rule (#11) + 1 promotion + 2 new engagement instruments
+- Addendum V: 2 new findings (VII.2, VII.3) + extension of rule 11 along 2 coverage axes
+- Addendum VI: 1 new finding (VIII.1) + 1 new standing rule (#12)
+- Addendum VII (this): 1 new finding (VIII.2 locals-marshaling) + extension of rule 11 with a third coverage axis
+
+Total: 16 findings (6 original + 10 new across addenda); 12 standing rules (rule 11 now multi-axis: 4 coverage axes); 2 standing engagement instruments.
+
+The OSR pilot's load-bearing contributions to engagement scope: (1) cache structure preventing wasted compile cycles; (2) Finding VIII.2 (locals-marshaling coverage axis); (3) Doc 740 R's 5-tier extension for JIT-invoke pilots; (4) the precedent that "design enumeration MISSED a structural prerequisite" — promoting design-source-read at the implementation tier into the engagement's standing pre-implementation discipline.
+
+### Optional follow-on: corpus articulation
+
+The 5-tier R reading for JIT-invoke pilots could be a corpus articulation extending Doc 740. Either:
+- In-place §VIII amendment to Doc 740 (smaller; preserves doc's current shape).
+- New Doc 741 specializing Doc 740 to JIT-tier multi-coverage discipline (cleaner; matches the engagement's "one corpus doc per primary articulation" pattern, e.g., Doc 739 separate from Doc 729).
+
+Recommendation deferred pending keeper signal.
