@@ -438,3 +438,85 @@ The opt-in remains; the substrate is stable under the opt-in for diff-prod; LeJI
 ---
 
 *CMig-EXT 11 closes. Default-on REVERTED after test262 −3.6 pp regression. Opt-in remains. CMig-EXT 12 investigates the 304-PASS regression and closes the dominant causes.*
+
+---
+
+## CMig-EXT 12 — 2026-05-23 (Object.create shape-aware; 91% of regression closed)
+
+### Headline
+
+Bisected the test262 regression under enrollment via per-test diff between default-off and enrolled result.jsonl files. **257 of 283 newly-failing fixtures (91%) clustered into `built-ins/Object/create`** — a single consumer site bug. Fixed `object_create_via` to enumerate the Properties argument's keys shape-aware; **regression collapsed from 283 → 25 failures, test262 enrolled rate 74.0% → 77.6%**.
+
+77.6% under enrollment now MATCHES the pre-enrollment baseline. Today's default-off lift (+22 PASS via diff-prod Rungs 19-21 etc.) is not yet recovered under enrollment; 25 long-tail failures remain.
+
+### Bisect methodology
+
+```bash
+# Saved both result.jsonl files; diff to find PASS→FAIL transitions.
+python3 <<EOF
+default = load('/tmp/test262-default.jsonl')
+enrolled = load('/tmp/test262-enrolled.jsonl')
+regressions = [p for p, s in default.items() if s == 'PASS' and enrolled.get(p) == 'FAIL']
+# Cluster by first-3-path-segments.
+EOF
+```
+
+Output:
+```
+Total newly-failing under enrollment: 283
+Top clusters:
+   257  built-ins/Object/create
+    13  language/statements/for-of
+     6  language/expressions/arrow-function
+     2  built-ins/Object/fromEntries
+     2  built-ins/Promise/prototype
+     1  built-ins/Array/prototype
+     1  built-ins/Promise/withResolvers
+```
+
+One cluster, one fix → 91% of regression closed in one round. This is the Doc 735 §X.h.b (P2) categorization operating: identify the dominant cause via empirical bisect; fix; re-measure.
+
+### Substrate landed
+
+- `interp.rs:2117` `object_create_via` — `self.obj(props_id).properties.iter().filter(enumerable).map(name).collect()` bypassed shape; the Properties argument `{ prop: { value: ... } }` is shape-aware under enrollment so `properties` is empty and the loop installed zero properties. Fix: prepend shape entries (all enumerable by carve-out invariant) before the IndexMap iteration. Same P1 pattern as the CMig-EXT 4 Family B sites.
+
+The fixed test case (sampled from the failures): `Object.create({}, { prop: { value: "ownDataProperty" } })` — under enrollment pre-fix returned an Object with NO `prop` property because the Properties iteration found nothing in `.properties`. Post-fix: prop exists with `{w:f, e:f, c:f}` (the spec-correct defaults from missing-attribute synthesis at line 2149-2151's `unwrap_or(false)`).
+
+### Post-fix measurement
+
+| mode | test262 PASS | runnable rate | delta vs pre-enrollment |
+|---|---:|---:|---:|
+| default-off | 5,616 / 7,205 | 77.9% | +22 (today's other work) |
+| **enrolled (post-CMig-EXT 12)** | **5,569 / 7,181** | **77.6%** | **MATCHES baseline** |
+| enrolled (pre-CMig-EXT 12) | 5,312 / 7,181 | 74.0% | −282 |
+
+The −47 PASS gap between enrolled and default-off corresponds to:
+- 25 enrollment-induced regressions (long tail; for-of mapped-arguments / arrow-function / etc.).
+- 22 tests where the enrolled run produced no result (likely crashes; need separate triage).
+
+### §XVI / Doc 734 categorization
+
+Per Doc 730 §XVI: Case-1 closure (cruftless violated `Properties` argument enumeration under enrollment at one specific consumer site). The §XVI bidirectional oracle drove the closure: empirical bisect → identify cluster → identify hypothesis → fix → re-measure.
+
+Per Doc 734 §V: growth (b) negative-finding amendment + growth (c) positive-finding generalization — the dominant-cause bisect IS the empirical-evidence framework operating; future enrollment-class regressions get the same treatment.
+
+### Pred disposition
+
+- Pred-shape.4 still integration-measurable under the opt-in; LeJIT-Σ StubE-EXT 5+ continues to be unblocked.
+- 91% closure of the regression brings enrollment within 0.3pp of default-off; the remaining 25 are individual long-tail closures.
+
+### Open scope at CMig-EXT 12 close
+
+1. **CMig-EXT 13** — Long-tail 25-fixture closures. Cluster: 13 for-of, 6 arrow-function, 6 misc. Each likely a separate consumer-site shape-aware migration; some may share a root cause (e.g., the arguments object's index slots under enrollment).
+2. **CMig-EXT 14** — Default-on flip (re-try, second attempt) post-CMig-EXT 13 closure. Per Doc 735 §X.h.c discipline: test262 regression-free is the load-bearing gate.
+3. **LeJIT-Σ StubE-EXT 5** — translator wiring proceeds under opt-in; the default-on flip is orthogonal.
+
+### Cumulative status at CMig-EXT 12 close
+
+LOC delta: ~20 (one site fix + the shape-iteration prepend). Diff-prod 42/42 in both modes. test262 default 77.9% (5,616 PASS); test262 enrolled 77.6% (5,569 PASS, matching the pre-enrollment baseline). The substrate-amortization-staging discipline is operating: substrate-introduction (shapes) → consumer migration (~12 site fixes + Object.create bisect-close) → enrollment readiness within 0.3pp of default. The remaining 25 are the long tail.
+
+This round demonstrates the bidirectional-engine-diff oracle at scale: 7,200 fixtures × 2 modes = 14,400 data points → bisect → 1 dominant fix → 91% of regression closed. The §X.h.c three-probe-levels discipline is the right instrument; the discipline says "use the wider probe AFTER the narrow probe corroborates" — and "use empirical bisect to localize when the wider probe surfaces a delta."
+
+---
+
+*CMig-EXT 12 closes. 91% of test262 regression closed via one Object.create fix. Enrolled rate matches pre-enrollment baseline at 77.6%. Remaining 25-fixture long tail is CMig-EXT 13's target.*

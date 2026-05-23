@@ -2114,10 +2114,26 @@ impl Runtime {
         };
         if let Value::Object(props_id) = props_v {
             let props_id = *props_id;
-            let keys: Vec<String> = self.obj(props_id).properties.iter()
-                .filter(|(_, d)| d.enumerable)
-                .map(|(k, _)| k.as_str().to_string())
-                .collect();
+            // CMig-EXT 12: shape-aware key enumeration of the Properties
+            // argument. Pre-fix this iterated .properties only; under
+            // enrollment the descriptor map `{ prop: { value: ... } }`
+            // has `prop` in shape → keys was empty → 257 test262
+            // built-ins/Object/create fixtures failed because the
+            // properties were silently skipped. Shape entries are all
+            // enumerable by carve-out invariant.
+            let keys: Vec<String> = {
+                let o = self.obj(props_id);
+                let mut out: Vec<String> = Vec::new();
+                if let Some(shape) = o.shape.as_ref() {
+                    for (name, _) in shape.iter_slots() {
+                        out.push(name.to_string());
+                    }
+                }
+                out.extend(o.properties.iter()
+                    .filter(|(_, d)| d.enumerable)
+                    .map(|(k, _)| k.as_str().to_string()));
+                out
+            };
             for k in keys {
                 let dv = self.read_property(props_id, &k)?;
                 let did = match dv {
