@@ -490,3 +490,83 @@ LOC delta this round: 0 (measurement-only round). Aggregate JSF locale LOC delta
 ---
 
 *JSF-EXT 7 closes. JSF locale closed at (P2.d). The pipeline was built through the middle stretch; the upstream-constraint-closure landed; the cascade-revival pilots landed; and the empirical readout falsified the bottleneck-attribution from CRB-EXT 9. The negative finding is the locale's load-bearing contribution: JSON.stringify is not the json_parse_transform bottleneck.*
+
+---
+
+## JSF-EXT 8 — 2026-05-23 (component A/B probe; actual dominator identified; Finding VII.1 prospective application)
+
+### Headline
+
+Per Finding VII.1, ran a component A/B probe on json_parse_transform: 5 additive variants (V0 parse-only → V4 full) each 500 iters with 50-iter warmup. Per-component cost isolated by Δ between adjacent variants. **The actual dominator is the per-iter charCodeAt checksum loop at 77% of cruft's total wall-clock.** JSON.stringify is 3% of total.
+
+### Per-component cost (cruft, json_parse_transform 500 iters, post-warmup):
+
+| component | cruft Δ (ms) | % of total | node Δ (ms) | cruft/node |
+|---|---:|---:|---:|---:|
+| JSON.parse | 246 | 9% | 75 | 3.3× |
+| Array.filter | 124 | 5% | 0 | ∞ |
+| Array.map | 165 | 6% | 3 | 55× |
+| JSON.stringify | 86 | 3% | 7 | 12× |
+| **charCodeAt loop** | **2040** | **77%** | -1 | n/a (node jits to ~0) |
+| **TOTAL** | **2661** | 100% | 84 | 31.7× |
+
+Validation: V4 total 2661 ms aligns with prior CRB measurement (2455-2481 ms; ~8% high here because this fixture includes per-variant warmup overhead + 5 separate variant runs in single process).
+
+### What this empirically confirms
+
+**CRB-EXT 9's component estimate was wrong by an order of magnitude.** The "JSON.stringify ~5-10× contributor" attribution placed JSON.stringify at ~50-70% of the 20× gap; the actual measurement places JSON.stringify at 3% of total wall-clock (and ~6% of the cruft-node gap measured in absolute ms).
+
+**The actual dominator is the bench's own bookkeeping**, not the JSON pipeline. The `for (let i = 0; i < out.length; i++) cs = (cs + out.charCodeAt(i)) | 0` loop iterates ~5000 times per outer iter × 500 outers = 2.5M charCodeAt calls. Node JITs this to ~0 ms; cruft's interpreter path is 2040 ms.
+
+### Implications for the engagement
+
+**The actual high-impact targets for closing the json_parse_transform gap, in order:**
+1. **String.prototype.charCodeAt + tight-loop interp dispatch** (77% contributor). Either a substrate pilot for charCodeAt specifically OR a LeJIT-tier extension for tight integer-accumulator loops over string indexing.
+2. **Array.map** (6% contributor, 55× per-op gap). Significant per-call gap; closing it would help broader Array-heavy workloads beyond this fixture.
+3. **JSON.parse** (9% contributor, 3.3× per-op gap). Modest gap; substrate pilot is moderate priority.
+4. **Array.filter** (5% contributor; node-side is JIT'd to 0 so the absolute gap is large).
+5. **JSON.stringify** (3% contributor, 12× per-op gap). Already substrate-closed at JSF; the closure is correctness-improvement value but doesn't shift the CRB needle.
+
+### Finding VII.1 (prospective confirmation)
+
+**Finding VII.1**: component-decomposition estimates require empirical anchoring before pilot spawn. CRB-EXT 9's estimate ("JSON.stringify ~5-10× contributor") was theoretical; the A/B probe ran in <10s and would have prevented the JSF pilot spawn from targeting the wrong component.
+
+**Standing rule 11 (proposed)**: before spawning a pilot whose telos is "close a CRB gap," run a 5-minute component-A/B probe on the target fixture; identify the actual dominator empirically; spawn the pilot at that dominator. The cost is one probe round; the benefit is preventing entire substrate pilots from targeting non-dominators.
+
+### What the JSF pilot delivered (revised disposition)
+
+JSF's load-bearing contributions, after the probe disambiguates:
+
+1. **Correctness-improvement value**: JSON.stringify is now structurally cleaner (buffer-threaded, fast-path leaf emitters, no per-property clones). Real value at the substrate-tier level.
+2. **Doc 739 cascade-revival empirical demonstration**: pattern observed at the micro-bench at +5-7%/move. Validated the abstract pattern.
+3. **Finding II.2-bis (substrate-introduction (P2.d) as cascade-revival signature)**: ready for findings addendum IV.
+4. **Finding VII.1 (probe before spawn)**: this round IS the prospective demonstration; standing rule candidate.
+5. **CRB-EXT 9 component-decomposition correction**: the actual cost breakdown is now empirically anchored, not estimated.
+
+### Composition with prior corpus / engagement work
+
+- **Doc 734 §V (b) negative-finding catalyzes refinement**: this round IS the catalysis. The JSF pilot's (P2.d) CRB outcome → Finding VII.1 → standing rule 11 → component-A/B becomes the standing instrument for CRB-gap-pilot spawns.
+- **Doc 581 Pin-Art apparatus**: the A/B probe is constraint-enumeration applied to bench measurement (enumerate per-component contributions instead of jumping to substrate work on the suspected component).
+- **Doc 729 §A8.13 + Doc 739 §II.3**: the cascade-revival pattern still empirically holds; what JSF-EXT 7 falsified was the bottleneck-attribution, not the cascade-revival mechanism.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable (probe round, no diff-prod surface).
+Per Doc 734 §V: growth (b) negative-finding-catalyzes-refinement; growth (a) positive-finding (component breakdown is now empirical).
+Per Doc 735 §X.h.b: not applicable (probe round; no substrate move).
+
+### Open scope at JSF-EXT 8 close
+
+1. **Most-impact next pilot**: `rusty-js-string-charcode-fast` or `lejit-tier extension for tight integer-accumulator loops over string indexing` — 77% contributor. Either substrate-tier (charCodeAt intrinsic optimization) or JIT-tier (loop fast-path).
+2. **Second-impact**: `rusty-js-array-methods-fast` (filter/map 55× per-op gap).
+3. **Third-impact**: `rusty-js-json-parse-fast` (3.3× per-op gap, 9% contributor).
+4. **Findings doc addendum IV**: codify Finding II.2-bis + Finding VII.1 + standing rule 11.
+5. **JSF locale**: closed at (P2.d) per JSF-EXT 7; this probe round IS the locale's exit deliverable (the actual component breakdown).
+
+### Cumulative status at JSF-EXT 8 close
+
+LOC delta: ~95 (component-ab-probe.mjs fixture). Probe ran cleanly in <10s aggregate across both runtimes. Component breakdown empirically anchored.
+
+---
+
+*JSF-EXT 8 closes. The component A/B probe disambiguated the json_parse_transform cost: charCodeAt loop dominates at 77%; JSON.stringify is 3%. CRB-EXT 9's bottleneck-attribution was off by ~20×. Finding VII.1 (component A/B before pilot spawn) is now empirically anchored; standing rule 11 candidate. JSF locale's load-bearing contribution is this disambiguation + the Doc 739 cascade-revival demonstration + the correctness-improved JSON.stringify substrate.*
