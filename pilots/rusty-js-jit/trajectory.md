@@ -1802,3 +1802,64 @@ The LeJIT first-cut chapter at the parent pilot level is **closed at engagement-
 ---
 
 *JIT-EXT 31 closes. LeJIT-Φ landed; VTI revived as cascade; Doc 739 published. All four nested LeJIT-tier sub-pilots at (P2.a). Parent LeJIT trajectory's open rows (JIT-EXT 26/27/28/30) all close — three via direct default-on, one (JIT-EXT 27) via cascade.*
+
+---
+
+## JIT-EXT 32 — 2026-05-23 (raw-pointer-cache audit; standing rule 9 satisfied engagement-wide)
+
+### Headline
+
+Engagement-wide audit per Findings doc standing rule 9 (added at Addendum I after TB-EXT 7's segfault generalization). Enumerated every raw-pointer cache (`Cell<Option<NonNull>>` / equivalent) + every raw-pointer deref site across rusty-js-jit + rusty-js-runtime. **Only ONE cross-call raw-pointer cache exists engagement-wide**: TB's `tb_metadata_ptr` on ClosureInternals, already Box-wrap-protected post-TB-EXT 7. All other deref sites are SAFE-by-construction (heap-stable source), SAFE-by-scope (within-call use), or SAFE-by-dispatcher-invariant (TLS-managed). **No latent TB-EXT-7-class bugs identified.** Output: `pilots/rusty-js-jit/docs/raw-pointer-cache-audit.md` (~135 lines).
+
+### What the audit found
+
+Two grep classes ran:
+1. **Pointer-cache patterns**: `Cell<Option<NonNull / *const>>` + `RefCell<.*NonNull / *const>`
+2. **Pointer-deref sites**: `unsafe { &*` + `as *const` + `as *mut` + `NonNull::new` + `from_bits.*as *`
+
+Inventory of cross-call pointer caches:
+
+| field | location | source storage | status |
+|---|---|---|---|
+| `tb_metadata_ptr: Cell<Option<NonNull<()>>>` | ClosureInternals | Box<CompiledFn> | **SAFE** (TB-EXT 7) |
+| `ACTIVE_GETPROP_FN / IC_OBSERVE_FN / IC_FAST_GET_FN` | thread_local Cell | Rust fn-item static storage | **SAFE-by-construction** |
+| `LAST_DEOPT_FRAME: RefCell<Option<DeoptRecoveredState>>` | thread_local | by-value struct (no raw pointers) | N/A |
+| `CURRENT_DEOPT_SITES / RUNTIME / PROTO` | thread_local | dispatcher-scoped set+clear | **SAFE-by-scope** |
+
+Total cross-call raw-pointer cache sites: 1; protected.
+
+### Deref site categorization
+
+All raw-pointer deref sites in the engine fall into three categories:
+
+- **SAFE-by-construction**: source is heap-stable (Rc allocation; Box-wrapped; mmap'd module) OR static (fn item)
+- **SAFE-by-scope**: pointer used within a single call_function invocation; source held in caller's stack frame
+- **SAFE-by-dispatcher-invariant**: TLS-managed; set pre-JIT-call, cleared post-JIT-call
+
+Per-site enumeration in `docs/raw-pointer-cache-audit.md`. napi.rs sites (numerous) are out of scope (NAPI is an explicit unsafe-by-spec boundary).
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable.
+
+Per Doc 734 §V: growth (c) **positive-finding generalization preparatory** — establishes the audit as the engagement-wide rule-9 application baseline. Future rule-9 audits at new pilot design time become the discipline.
+
+Per Doc 735 §X.h.c three-probe-levels: design-tier audit + canonical fuzz (CMig-EXT 17) together close the bug-class surface.
+
+### Composition with prior corpus work
+
+- **Findings doc standing rule 9 (Addendum I)**: empirically validated; first engagement-wide application. No latent violations.
+- **TB-EXT 7 enhancements log entry**: the bug class generalization is empirically anchored as bounded — only one site existed; already protected.
+- **Findings doc IV.4 (canonical fuzz)**: design-tier audit + runtime canonical fuzz together close the surface.
+
+### Open scope at JIT-EXT 32 close
+
+No follow-up substrate work surfaces from this audit. The output is a clean bill of health, not a fix list. The audit's value is engagement-tier framework establishment, not pilot-specific perf improvement.
+
+### Cumulative status at JIT-EXT 32 close
+
+LOC delta: ~135 (audit doc only; no source changes). All gates remain GREEN from prior rounds. The audit closes Findings doc standing rule 9's engagement-wide application; the rule's discipline holds at this baseline.
+
+---
+
+*JIT-EXT 32 closes. Raw-pointer-cache audit: 1 cross-call cache (TB's tb_metadata_ptr); already Box-wrap-protected. No latent bugs. Standing rule 9 satisfied engagement-wide. The audit is the establishing baseline for future rule-9 applications at new pilot design time.*
