@@ -77,7 +77,7 @@ impl Runtime {
         let gen_proto = self.alloc_object(Object::new_ordinary());
         self.obj_mut(gen_proto).proto = Some(iter_proto);
         let gen_fn_proto = self.alloc_object(Object::new_ordinary());
-        self.obj_mut(gen_fn_proto).properties.insert(
+        self.obj_mut(gen_fn_proto).dict_mut().insert(
             "prototype".into(),
             crate::value::PropertyDescriptor {
                 value: Value::Object(gen_proto),
@@ -93,7 +93,7 @@ impl Runtime {
         let async_gen_proto = self.alloc_object(Object::new_ordinary());
         self.obj_mut(async_gen_proto).proto = Some(async_iter_proto);
         let async_gen_fn_proto = self.alloc_object(Object::new_ordinary());
-        self.obj_mut(async_gen_fn_proto).properties.insert(
+        self.obj_mut(async_gen_fn_proto).dict_mut().insert(
             "prototype".into(),
             crate::value::PropertyDescriptor {
                 value: Value::Object(async_gen_proto),
@@ -874,7 +874,7 @@ where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
         ..Default::default()
     };
     let fn_id = rt.alloc_object(fn_obj);
-    rt.obj_mut(host).properties.insert(crate::value::PropertyKey::String(name.to_string()), crate::value::PropertyDescriptor {
+    rt.obj_mut(host).dict_mut().insert(crate::value::PropertyKey::String(name.to_string()), crate::value::PropertyDescriptor {
         value: Value::Object(fn_id),
         writable: true, enumerable: false, configurable: true,
         getter: None, setter: None,

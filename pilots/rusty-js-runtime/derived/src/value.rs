@@ -277,6 +277,30 @@ impl Object {
         }
     }
 
+    /// CMig-EXT 1 (consumer-migration sub-workstream): explicit-Dictionary
+    /// Ordinary factory. Returns an `Ordinary`-kind Object guaranteed to
+    /// be in Dictionary storage form (`shape: None`). Used by container-
+    /// role allocation sites — Map/Set internal storage, listener lists,
+    /// forwarders — that iterate `.properties` directly and would break
+    /// under Shaped form.
+    ///
+    /// In the pre-CMig-EXT 8 regime where `new_ordinary()` also returns
+    /// Shape: None, this factory is operationally identical to
+    /// `new_ordinary`. Post-CMig-EXT 8 when `new_ordinary` defaults to
+    /// Shaped, this factory remains the explicit Dictionary-form escape.
+    /// Callers that pick `new_dictionary()` today are documenting their
+    /// dispatch intent for the future enrollment flip.
+    pub fn new_dictionary() -> Self {
+        Self {
+            proto: None,
+            extensible: true,
+            properties: IndexMap::new(),
+            internal_kind: InternalKind::Ordinary,
+            shape: None,
+            shape_values: Vec::new(),
+        }
+    }
+
     pub fn new_array() -> Self {
         // §10.4.2 Array exotic: length is non-configurable, non-enumerable.
         // cruftless v1 lazily synthesizes the descriptor in object_get +
@@ -320,6 +344,24 @@ impl Object {
         let shape = self.shape.as_ref()?;
         let slot = shape.slot_of(name)?;
         Some((std::rc::Rc::as_ptr(shape), slot))
+    }
+
+    /// CMig-EXT 2 helper: shape-aware mutable accessor for the legacy
+    /// `properties` IndexMap. Forces `migrate_to_dictionary()` first so
+    /// callers that go through this accessor see a Dictionary-form
+    /// object regardless of the receiver's pre-call state. Used by the
+    /// ~28 direct `properties.insert` / `properties.shift_remove` sites
+    /// that install accessor descriptors or non-default-attr properties
+    /// — all non-Shape-eligible per shapes seed §IV carve-out.
+    ///
+    /// In the pre-CMig-EXT 8 regime where `new_ordinary()` returns
+    /// `shape: None`, this is a no-op view; post-CMig-EXT 8 when
+    /// enrollment defaults to Shaped, the migration fires on first
+    /// access to ensure the legacy install paths land in Dictionary
+    /// form.
+    pub fn dict_mut(&mut self) -> &mut IndexMap<PropertyKey, PropertyDescriptor> {
+        self.migrate_to_dictionary();
+        &mut self.properties
     }
 
     /// Shape-EXT 4: migrate from Shaped to Dictionary form. Idempotent.

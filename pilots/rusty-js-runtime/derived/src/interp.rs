@@ -1736,7 +1736,7 @@ impl Runtime {
             let final_setter = if has_set_key {
                 if has_setter { Some(setter) } else { None }
             } else { existing_setter };
-            self.obj_mut(target).properties.insert(key_pk.clone(), crate::value::PropertyDescriptor {
+            self.obj_mut(target).dict_mut().insert(key_pk.clone(), crate::value::PropertyDescriptor {
                 value: Value::Undefined,
                 writable: false, enumerable: new_e, configurable: new_c,
                 getter: final_getter,
@@ -1780,7 +1780,7 @@ impl Runtime {
                                 "Cannot redefine non-configurable property '{}': enumerable would change", key)));
                         }
                     }
-                    self.obj_mut(target).properties.insert(key_pk.clone(), crate::value::PropertyDescriptor {
+                    self.obj_mut(target).dict_mut().insert(key_pk.clone(), crate::value::PropertyDescriptor {
                         value: prev.value,
                         writable: prev.writable,
                         enumerable: new_e,
@@ -1792,7 +1792,7 @@ impl Runtime {
                 }
                 // No existing property: install a data property with
                 // value=undefined and absent flags defaulting to false.
-                self.obj_mut(target).properties.insert(key_pk.clone(), crate::value::PropertyDescriptor {
+                self.obj_mut(target).dict_mut().insert(key_pk.clone(), crate::value::PropertyDescriptor {
                     value: Value::Undefined,
                     writable: false,
                     enumerable: enumerable.unwrap_or(false),
@@ -1849,7 +1849,7 @@ impl Runtime {
                         "Cannot redefine non-configurable non-writable property '{}'", key)));
                 }
             }
-            self.obj_mut(target).properties.insert(key_pk.clone(), crate::value::PropertyDescriptor {
+            self.obj_mut(target).dict_mut().insert(key_pk.clone(), crate::value::PropertyDescriptor {
                 value, writable: new_w, enumerable: new_e, configurable: new_c,
                 getter: None, setter: None,
             });
@@ -1923,7 +1923,7 @@ impl Runtime {
         };
         let len = match new_len_v { Value::Number(n) => *n, _ => 0.0 };
         let writable = matches!(writable_v, Value::Boolean(true));
-        self.obj_mut(id).properties.insert(
+        self.obj_mut(id).dict_mut().insert(
             crate::value::PropertyKey::String("length".into()),
             crate::value::PropertyDescriptor {
                 value: Value::Number(len),
@@ -2123,7 +2123,7 @@ impl Runtime {
                 let value = if has_value { self.read_property(did, "value")? } else { Value::Undefined };
                 let has_getter = matches!(getter_v, Value::Object(_));
                 let has_setter = matches!(setter_v, Value::Object(_));
-                self.obj_mut(id).properties.insert(crate::value::PropertyKey::String(k), crate::value::PropertyDescriptor {
+                self.obj_mut(id).dict_mut().insert(crate::value::PropertyKey::String(k), crate::value::PropertyDescriptor {
                     value, writable, enumerable, configurable,
                     getter: if has_getter { Some(getter_v) } else { None },
                     setter: if has_setter { Some(setter_v) } else { None },
@@ -2141,7 +2141,7 @@ impl Runtime {
             return Err(RuntimeError::TypeError("__defineGetter__: getter must be callable".into()));
         }
         let existing_setter = self.obj(this).get_own(&key).and_then(|d| d.setter.clone());
-        self.obj_mut(this).properties.insert(crate::value::PropertyKey::String(key), crate::value::PropertyDescriptor {
+        self.obj_mut(this).dict_mut().insert(crate::value::PropertyKey::String(key), crate::value::PropertyDescriptor {
             value: Value::Undefined,
             writable: false, enumerable: true, configurable: true,
             getter: Some(fn_v.clone()), setter: existing_setter,
@@ -2157,7 +2157,7 @@ impl Runtime {
             return Err(RuntimeError::TypeError("__defineSetter__: setter must be callable".into()));
         }
         let existing_getter = self.obj(this).get_own(&key).and_then(|d| d.getter.clone());
-        self.obj_mut(this).properties.insert(crate::value::PropertyKey::String(key), crate::value::PropertyDescriptor {
+        self.obj_mut(this).dict_mut().insert(crate::value::PropertyKey::String(key), crate::value::PropertyDescriptor {
             value: Value::Undefined,
             writable: false, enumerable: true, configurable: true,
             getter: existing_getter, setter: Some(fn_v.clone()),
@@ -6228,7 +6228,7 @@ impl Runtime {
             d.value = value;
             return;
         }
-        self.obj_mut(id).properties.insert(key, crate::value::PropertyDescriptor {
+        self.obj_mut(id).dict_mut().insert(key, crate::value::PropertyDescriptor {
             value, writable: true, enumerable: true, configurable: true,
             getter: None, setter: None,
         });
@@ -7488,13 +7488,13 @@ impl Runtime {
                                     self.apply_proxy_delete_invariant(target, &key, trap_deleted)?;
                                     trap_deleted
                                 } else {
-                                    self.obj_mut(target).properties.shift_remove(&key_pk).is_some()
+                                    self.obj_mut(target).dict_mut().shift_remove(&key_pk).is_some()
                                 }
                             } else {
                                 // Ω.5.P62.E10: §10.1.10 non-configurable guard.
                                 if let Some(d) = self.obj(id).properties.get(&key_pk) {
                                     if !d.configurable { false }
-                                    else { self.obj_mut(id).properties.shift_remove(&key_pk).is_some() }
+                                    else { self.obj_mut(id).dict_mut().shift_remove(&key_pk).is_some() }
                                 } else { true }
                             }
                         }
@@ -7780,7 +7780,7 @@ impl Runtime {
                         }
                         // Ω.5.P62.E7: user-function .prototype is per ECMA §10.2.4
                         // { writable:true, enumerable:false, configurable:false }.
-                        self.obj_mut(id).properties.insert("prototype".into(),
+                        self.obj_mut(id).dict_mut().insert("prototype".into(),
                             crate::value::PropertyDescriptor {
                                 value: Value::Object(proto_id),
                                 writable: true, enumerable: false, configurable: false,

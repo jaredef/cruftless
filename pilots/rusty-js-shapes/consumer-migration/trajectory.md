@@ -85,3 +85,99 @@ The consumer-site landscape is mapped. CMig-EXT 1 begins when keeper directs.
 ---
 
 *CMig-EXT 0 closes. The nested locale exists; the survey grounds the closure-round plan in measured site counts; CMig-EXT 1 carries the first code work.*
+
+---
+
+## CMig-EXT 1 — 2026-05-23 (Object::new_dictionary factory)
+
+### Headline
+
+First code round of the consumer-migration sub-workstream. Adds `Object::new_dictionary()` as the explicit-Dictionary Ordinary factory for container-role allocation sites (Map/Set storage, listener lists, forwarders). ~22 LOC (factory + doc comment) at `pilots/rusty-js-runtime/derived/src/value.rs:271+`.
+
+In the pre-CMig-EXT 8 regime where `new_ordinary()` also returns shape: None, this factory is operationally identical to `new_ordinary`. The factory is forward-looking: it documents the dispatch intent of container-role allocations so the CMig-EXT 8 enrollment flip (which makes `new_ordinary` default to Shaped) leaves the container-role sites correctly Dictionary.
+
+### Substrate delivered
+
+- `pilots/rusty-js-runtime/derived/src/value.rs:271-294` — `Object::new_dictionary()` factory with doc comment explaining the forward-looking intent.
+
+### Build + gate
+
+- `cargo build --release --bin cruft -p cruftless`: clean.
+- diff-prod: **42/42 PASS** unchanged.
+
+### §XVI / Doc 734 categorization
+
+Per Doc 730 §XVI: not applicable (no behavioral change in this regime).
+
+Per Doc 734 §V: growth mechanism (a) tier-relocation recursion — the factory names the dispatch-intent distinction (container-role vs ordinary-role) that the parent Shape-EXT 4 didn't articulate. CMig-EXT 3's Family A migration consumes this factory.
+
+### Open scope at CMig-EXT 1 close
+
+1. **CMig-EXT 2** — Family C migration (~20 sites; P2 migrate-on-access). Independent; can land in parallel with EXT 3.
+2. **CMig-EXT 3** — Family A migration (Map/Set storage; P3 migrate-on-construct using `new_dictionary`). Depends on this round.
+3. **CMig-EXTs 4-9** per the migration call-graph.
+
+### Cumulative status at CMig-EXT 1 close
+
+LOC delta: 22. diff-prod 42/42 unchanged. The Dictionary-form explicit factory is available for CMig-EXT 3+ consumers.
+
+---
+
+*CMig-EXT 1 closes. CMig-EXT 2 (Family C, P2 migrate-on-access) begins next.*
+
+---
+
+## CMig-EXT 2 — 2026-05-23 (Family C: P2 migrate-on-access)
+
+### Headline
+
+Migrates ~28 direct `.properties.insert` / `.properties.shift_remove` sites to be shape-aware via a new `Object::dict_mut()` accessor that forces `migrate_to_dictionary()` before exposing the IndexMap. Mechanical sed-style edit; one line per site changed (`properties.insert` → `dict_mut().insert`).
+
+In pre-CMig-EXT 8 regime: no-op (every receiver is already Dictionary). Post-CMig-EXT 8: load-bearing — ensures accessor / non-default-descriptor installs land in Dictionary form even when the receiver started Shaped.
+
+### Substrate landed
+
+- `pilots/rusty-js-runtime/derived/src/value.rs` — `Object::dict_mut(&mut self) -> &mut IndexMap<...>` accessor (~16 LOC) that calls `migrate_to_dictionary()` then returns a mutable view.
+- 28 sites updated across `interp.rs` (12) + `intrinsics.rs` (6) + `iterator.rs` (4) + `prototype.rs` (3) + `regexp.rs` (2) + `promise.rs` (1).
+
+### Build + gate
+
+- `cargo build --release --bin cruft -p cruftless`: clean.
+- diff-prod: **42/42 PASS** unchanged.
+
+### §XVI / Doc 734 categorization
+
+Per Doc 730 §XVI: not applicable (no behavioral change in current regime). Per Doc 734 §V: growth mechanism (a) tier-relocation — the `dict_mut` accessor names the dispatch-intent distinction (mutating-access-with-migration vs read-iteration) that the bare `.properties` field didn't.
+
+### Open scope at CMig-EXT 2 close
+
+CMig-EXT 3 (Family A Map/Set storage) ready to land.
+
+---
+
+## CMig-EXT 3 — 2026-05-23 (Family A: P3 migrate-on-construct)
+
+### Headline
+
+Swaps `Object::new_ordinary()` → `Object::new_dictionary()` at 8 container-role allocation sites in `intrinsics.rs`: AbortSignal listeners + forwarders, Map/Set/WeakMap/WeakSet internal storage, BroadcastChannel + structuredClone bags. These objects are dictionaries by role (consumers iterate `.properties` directly); allocating them via `new_dictionary` documents the intent and guarantees they remain Dictionary-form regardless of the post-CMig-EXT 8 enrollment default.
+
+### Substrate landed
+
+- `pilots/rusty-js-runtime/derived/src/intrinsics.rs` — 8 `new_ordinary` → `new_dictionary` swaps at `:2377, 2505, 2640, 2767, 3201, 3346, 5358, 5390`.
+
+### Build + gate
+
+- `cargo build --release --bin cruft -p cruftless`: clean.
+- diff-prod: **42/42 PASS** unchanged.
+
+### §XVI / Doc 734 categorization
+
+Same as CMig-EXT 2.
+
+### Open scope at CMig-EXT 3 close
+
+CMig-EXT 4 (Family B enumeration helpers) is next. Read paths that walk `o.properties.iter()` / `.keys()` need to chain shape iteration first so post-EXT 8 enrollment correctly enumerates shape-stored entries.
+
+---
+
+*Three CMig-EXTs landed in one session. Diff-prod 42/42 PASS held at each. The substrate is staged for CMig-EXT 4-7's read-path migrations + CMig-EXT 8's enrollment flip.*

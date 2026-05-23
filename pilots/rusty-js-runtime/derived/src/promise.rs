@@ -108,7 +108,7 @@ impl Runtime {
             // {writable:false, enumerable:false, configurable:true} — set_own_frozen
             // gives configurable:false (frozen), but the spec is c:true. Use a
             // hand-set descriptor.
-            self.obj_mut(proto).properties.insert("@@toStringTag".into(),
+            self.obj_mut(proto).dict_mut().insert("@@toStringTag".into(),
                 crate::value::PropertyDescriptor {
                     value: Value::String(Rc::new("Promise".into())),
                     writable: false, enumerable: false, configurable: true,

@@ -1054,7 +1054,7 @@ fn register_method<F>(rt: &mut Runtime, host: ObjectRef, name: &str, f: F)
 where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
     let fn_obj = make_native(name, f);
     let fn_id = rt.alloc_object(fn_obj);
-    rt.obj_mut(host).properties.insert(name.into(), PropertyDescriptor {
+    rt.obj_mut(host).dict_mut().insert(name.into(), PropertyDescriptor {
         value: Value::Object(fn_id),
         writable: true,
         enumerable: false,
@@ -1093,7 +1093,7 @@ fn install_regexp_proto_accessor(rt: &mut Runtime, host: ObjectRef, name: &'stat
             Ok(rt.object_get(this, name))
         });
     let getter_id = rt.alloc_object(getter_obj);
-    rt.obj_mut(host).properties.insert(name.into(), PropertyDescriptor {
+    rt.obj_mut(host).dict_mut().insert(name.into(), PropertyDescriptor {
         value: Value::Undefined,
         writable: false, enumerable: false, configurable: true,
         getter: Some(Value::Object(getter_id)), setter: None,

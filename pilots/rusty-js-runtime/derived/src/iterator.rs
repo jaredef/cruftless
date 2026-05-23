@@ -106,10 +106,10 @@ where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
 /// Build `{ value, done: false }`.
 pub fn iter_result_value(rt: &mut Runtime, v: Value) -> Value {
     let id = rt.alloc_object(Object::new_ordinary());
-    rt.obj_mut(id).properties.insert("value".into(), PropertyDescriptor {
+    rt.obj_mut(id).dict_mut().insert("value".into(), PropertyDescriptor {
         value: v, writable: true, enumerable: true, configurable: true, getter: None, setter: None,
     });
-    rt.obj_mut(id).properties.insert("done".into(), PropertyDescriptor {
+    rt.obj_mut(id).dict_mut().insert("done".into(), PropertyDescriptor {
         value: Value::Boolean(false), writable: true, enumerable: true, configurable: true, getter: None, setter: None,
     });
     Value::Object(id)
@@ -118,10 +118,10 @@ pub fn iter_result_value(rt: &mut Runtime, v: Value) -> Value {
 /// Build `{ value: undefined, done: true }`.
 pub fn iter_result_done(rt: &mut Runtime) -> Value {
     let id = rt.alloc_object(Object::new_ordinary());
-    rt.obj_mut(id).properties.insert("value".into(), PropertyDescriptor {
+    rt.obj_mut(id).dict_mut().insert("value".into(), PropertyDescriptor {
         value: Value::Undefined, writable: true, enumerable: true, configurable: true, getter: None, setter: None,
     });
-    rt.obj_mut(id).properties.insert("done".into(), PropertyDescriptor {
+    rt.obj_mut(id).dict_mut().insert("done".into(), PropertyDescriptor {
         value: Value::Boolean(true), writable: true, enumerable: true, configurable: true, getter: None, setter: None,
     });
     Value::Object(id)

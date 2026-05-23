@@ -2016,7 +2016,7 @@ impl Runtime {
             getter: Some(Value::Object(species_getter_id)),
             setter: None,
         };
-        self.obj_mut(arr_ctor).properties.insert(
+        self.obj_mut(arr_ctor).dict_mut().insert(
             crate::value::PropertyKey::String("@@species".into()),
             species_desc,
         );
@@ -2374,7 +2374,7 @@ impl Runtime {
             rt.object_set(sig, "aborted".into(), Value::Boolean(aborted));
             rt.object_set(sig, "reason".into(), reason);
             rt.object_set(sig, "onabort".into(), Value::Null);
-            let listeners = rt.alloc_object(Object::new_ordinary());
+            let listeners = rt.alloc_object(Object::new_dictionary());
             rt.obj_mut(listeners).set_own_internal("__count".into(), Value::Number(0.0));
             rt.obj_mut(sig).set_own_internal("__ac_listeners__".into(), Value::Object(listeners));
             sig
@@ -2502,7 +2502,7 @@ impl Runtime {
                         let fwds = if let Value::Object(id) = fwds_v {
                             id
                         } else {
-                            let new_fwds = rt.alloc_object(Object::new_ordinary());
+                            let new_fwds = rt.alloc_object(Object::new_dictionary());
                             rt.obj_mut(new_fwds).set_own_internal("__count".into(), Value::Number(0.0));
                             rt.obj_mut(s).set_own_internal("__ac_forwards__".into(), Value::Object(new_fwds));
                             new_fwds
@@ -2637,7 +2637,7 @@ impl Runtime {
             let mut inst = Object::new_ordinary();
             inst.proto = Some(headers_proto_for_closure);
             let id = rt.alloc_object(inst);
-            let bag = rt.alloc_object(Object::new_ordinary());
+            let bag = rt.alloc_object(Object::new_dictionary());
             rt.object_set(id, "__headers".into(), Value::Object(bag));
             // Init from arg 0: undefined / Object / Array / Headers-instance.
             if let Some(init) = args.first() {
@@ -2764,7 +2764,7 @@ impl Runtime {
                     let mut h_obj = Object::new_ordinary();
                     h_obj.proto = Some(headers_proto_for_closure);
                     let h_id = rt.alloc_object(h_obj);
-                    let bag = rt.alloc_object(Object::new_ordinary());
+                    let bag = rt.alloc_object(Object::new_dictionary());
                     rt.object_set(h_id, "__headers".into(), Value::Object(bag));
                     if let Value::Object(src) = headers_init {
                         let pairs: Vec<(String, Value)> = rt.obj(src).properties
@@ -3113,7 +3113,7 @@ impl Runtime {
                     getter: Some(Value::Object(size_getter_id)),
                     setter: None,
                 };
-                self.obj_mut(proto).properties.insert(
+                self.obj_mut(proto).dict_mut().insert(
                     crate::value::PropertyKey::String("size".into()),
                     size_desc,
                 );
@@ -3198,7 +3198,7 @@ impl Runtime {
                 let mut o = Object::new_ordinary();
                 o.proto = Some(proto_for_ctor);
                 let id = rt.alloc_object(o);
-                let storage = rt.alloc_object(Object::new_ordinary());
+                let storage = rt.alloc_object(Object::new_dictionary());
                 rt.object_set(id, "__map_data".into(), Value::Object(storage));
                 rt.object_set(id, "size".into(), Value::Number(0.0));
                 if is_weak {
@@ -3286,7 +3286,7 @@ impl Runtime {
                     getter: Some(Value::Object(size_getter_id)),
                     setter: None,
                 };
-                self.obj_mut(proto).properties.insert(
+                self.obj_mut(proto).dict_mut().insert(
                     crate::value::PropertyKey::String("size".into()),
                     size_desc,
                 );
@@ -3343,7 +3343,7 @@ impl Runtime {
                 let mut o = Object::new_ordinary();
                 o.proto = Some(proto_for_ctor);
                 let id = rt.alloc_object(o);
-                let storage = rt.alloc_object(Object::new_ordinary());
+                let storage = rt.alloc_object(Object::new_dictionary());
                 rt.object_set(id, "__set_data".into(), Value::Object(storage));
                 rt.object_set(id, "size".into(), Value::Number(0.0));
                 // Tier-Ω.5.rrr: populate from iterable arg. Per spec
@@ -3989,7 +3989,7 @@ impl Runtime {
         });
         let tag_getter_id = self.alloc_object(tag_getter);
         let ta_proto_proto = self.alloc_object(Object::new_ordinary());
-        self.obj_mut(ta_proto_proto).properties.insert(
+        self.obj_mut(ta_proto_proto).dict_mut().insert(
             "@@toStringTag".into(),
             crate::value::PropertyDescriptor {
                 value: Value::Undefined,
@@ -4674,7 +4674,7 @@ impl Runtime {
             }
         });
         let desc_id = self.alloc_object(desc_fn);
-        self.obj_mut(sym_proto).properties.insert("description".into(),
+        self.obj_mut(sym_proto).dict_mut().insert("description".into(),
             crate::value::PropertyDescriptor {
                 value: Value::Undefined,
                 writable: false, enumerable: false, configurable: true,
@@ -5355,7 +5355,7 @@ fn structured_clone_walk(
                     let mut o = Object::new_ordinary();
                     o.proto = proto;
                     let id = rt.alloc_object(o);
-                    let storage = rt.alloc_object(Object::new_ordinary());
+                    let storage = rt.alloc_object(Object::new_dictionary());
                     rt.object_set(id, "__map_data".into(), Value::Object(storage));
                     rt.object_set(id, "size".into(), Value::Number(0.0));
                     id
@@ -5387,7 +5387,7 @@ fn structured_clone_walk(
                     let mut o = Object::new_ordinary();
                     o.proto = proto;
                     let id = rt.alloc_object(o);
-                    let storage = rt.alloc_object(Object::new_ordinary());
+                    let storage = rt.alloc_object(Object::new_dictionary());
                     rt.object_set(id, "__set_data".into(), Value::Object(storage));
                     rt.object_set(id, "size".into(), Value::Number(0.0));
                     id
@@ -5595,7 +5595,7 @@ where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
     // Op::New + Reflect.construct throw TypeError on `new Math.abs()`.
     let fn_obj = make_native_non_ctor(name, length, f);
     let fn_id = rt.alloc_object(fn_obj);
-    rt.obj_mut(host).properties.insert(crate::value::PropertyKey::String(name.to_string()), crate::value::PropertyDescriptor {
+    rt.obj_mut(host).dict_mut().insert(crate::value::PropertyKey::String(name.to_string()), crate::value::PropertyDescriptor {
         value: Value::Object(fn_id),
         writable: true, enumerable: false, configurable: true,
         getter: None, setter: None,
