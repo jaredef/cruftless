@@ -575,6 +575,47 @@ This is the same pattern as TB-EXT 3b approach A (closure-side metadata cache, ~
 
 ---
 
+## 2026-05-23 — StubE-EXT 8: LEJIT_STUB default-on flip authorized + landed **[ANTICIPATED]**
+
+**Locale**: `pilots/rusty-js-jit/stub-emitter/trajectory.md` → StubE-EXT 8.
+
+**Substrate change**: `pilots/rusty-js-jit/derived/src/translator.rs:179-184` — `CRUFTLESS_LEJIT_STUB` flag default flipped from FALSE to TRUE; opt-out via `=0` or `=false`. ~8 LOC including comment.
+
+**Predicted-by**: StubE seed §III item 8 + Findings doc rule 5 (three probes before any default-on flip; all three were satisfied at StubE-EXT 7 close).
+
+**Measurement** (post-flip, N=5):
+
+| workload | pre-flip | post-flip | Δ |
+|---|---:|---:|---:|
+| bench_ic `none` | 197.9 ns | **144.4 ns** | **−27%** ← automatic |
+| bench_call_overhead `none` | 122.9 ns | 136.1 ns | +11% (STUB infra tax on no-property functions) |
+| CRB arith_tight_loop | 335 ms | 349 ms | +4% (within ±25ms variance) |
+| CRB json_parse_transform | 2434 ms | 2444 ms | +0.4% (noise) |
+| CRB string_url_sweep | 743 ms | 750 ms | +1% (noise) |
+
+All gates GREEN post-flip: 46/46 JIT lib + 35/35 runtime lib + diff-prod 42/42 + fuzz fixture 4/4 byte-identical.
+
+**Implication for forward work**:
+
+- **Default-cruft users now get ~27% bench_ic reclaim automatically.** The engagement-tier performance baseline shifts. Future LeJIT measurement claims should report against the new post-flip `none` baseline (bench_ic 144.4 ns) rather than the pre-flip baseline.
+
+- **The STUB infrastructure tax on pure-arith functions is ~13 ns/call** (visible at bench_call_overhead +11% and arith_tight_loop +4%). For functions with NO Op::GetPropOnObject in their bytecode, the STUB observer + fast-get machinery is pure overhead. Forward optimization: the translator can skip STUB infrastructure when bytecode has no GetProp ops (~10 LOC translator change). Bounded scope; not load-bearing; named as forward-derived candidate.
+
+- **Discipline empirically validated**: this is the third successful default-on flip in the engagement (after shape CMig-EXT 8 + 14). CMig-EXT 14 surfaced CMig-EXT 15's regression because the third probe was missing; this round's three-probe-levels gate explicitly closed the gap. Findings doc rule 5 is now applied prospectively rather than discovered retrospectively.
+
+- **TB still opt-in** pending TB-EXT 7 fuzz + TB-EXT 8 default-on flip. Composition with TB takes bench_ic from 144 ns (STUB default) to 81 ns (STUB+TB). The TB default-on flip would unlock that for default-cruft users.
+
+- **Honest scope of "first cut chapter closes" for STUB**: the pilot's seed §I.2 falsifier predictions HOLD empirically; engagement-tier perf anchored on the post-flip baseline; remaining work is forward optimization (skip STUB infra on no-property functions) + ecosystem propagation (TB default-on; VTI revival via 3c). Substantial pilot completion.
+
+**Provenance**:
+- Substrate: `pilots/rusty-js-jit/derived/src/translator.rs:179-184`
+- Trajectory: `pilots/rusty-js-jit/stub-emitter/trajectory.md` StubE-EXT 8 (close)
+- Composition matrix post-flip: `pilots/rusty-js-jit/tiny-baseline/docs/composition-matrix.md`
+- Authorization: keeper directive 2026-05-23 15:09-local "Authorized"
+- Cross-reference: StubE-EXT 5c entry (composition (P2.a)); StubE-EXT 7 entry (fuzz); Findings doc rule 5 + CMig-EXT 15 retrospective
+
+---
+
 ## Template — for future entries
 
 ### `<date>` — `<locale-tag>` `<round-id>`: `<one-line headline>` **[ANTICIPATED]**

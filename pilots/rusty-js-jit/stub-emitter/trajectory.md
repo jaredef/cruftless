@@ -646,3 +646,107 @@ The pilot is at the precipice of default-on. StubE-EXT 8 is queued for keeper au
 ---
 
 *StubE-EXT 7 closes. Fuzz probe complete; all four configurations (cruft default / STUB=1 / STUB=1+TB=1 / node) byte-identical across five-shape cache-state-machine workload. Pred-stub.5 (no (P2.c) illegal-speed) HOLDS. The three-probe-levels default-on-flip gate is satisfied; StubE-EXT 8 queued for explicit auth.*
+
+---
+
+## StubE-EXT 8 — 2026-05-23 (LEJIT_STUB default-on flip authorized + landed)
+
+### Headline
+
+Default-on flip authorized by keeper after StubE-EXT 7's three-probe-levels gate passed. **`CRUFTLESS_LEJIT_STUB` now defaults to TRUE; opt-out via `CRUFTLESS_LEJIT_STUB=0`.** Single-line substrate change in `translator.rs:179-184`. All gates GREEN post-flip: 46/46 JIT lib + 35/35 runtime lib + diff-prod 42/42 + fuzz fixture 4/4 configs byte-identical (now including the new default).
+
+### Substrate change (~8 LOC including comment)
+
+`pilots/rusty-js-jit/derived/src/translator.rs`:
+```rust
+// LeJIT-Σ StubE-EXT 8 (2026-05-23): default-on flip authorized by
+// keeper after three-probe-levels gate satisfied at StubE-EXT 7.
+// Opt out via CRUFTLESS_LEJIT_STUB=0.
+let lejit_stub = std::env::var("CRUFTLESS_LEJIT_STUB")
+    .map(|v| !(v == "0" || v.eq_ignore_ascii_case("false")))
+    .unwrap_or(true);
+```
+
+Semantics: flag unset → ON; `="0"` or `="false"` → OFF; any other value → ON.
+
+### Probes (post-flip)
+
+| probe | result |
+|---|---|
+| JIT lib tests | 46/46 PASS |
+| Runtime lib tests | 35/35 PASS |
+| diff-prod | 42/42 PASS |
+| fuzz-ic.mjs default (now STUB-on) | `acc=49900000` matches node |
+| fuzz-ic.mjs `STUB=0` opt-out | `acc=49900000` matches |
+
+Three-probe-levels per Doc 735 §X.h.c remain satisfied post-flip.
+
+### Composition matrix (post-flip, N=5)
+
+| config | bench_call_overhead | bench_ic |
+|---|---:|---:|
+| **none** (now STUB-on by default) | 136.1 | **144.4** |
+| TB (TB on; STUB on by default) | 71.3 | 81.7 |
+| STUB (explicit; same as default) | 124.1 | 143.7 |
+| VTI | 124.0 | 740.2 |
+| TB+STUB | 71.1 | 81.4 |
+| TB+VTI | 70.9 | 748.4 |
+| STUB+VTI | 124.1 | 763.9 |
+| TB+STUB+VTI | 71.4 | 791.3 |
+
+Pre-flip `none` bench_ic was 197.9 ns; post-flip `none` is 144.4 ns. **The default-on flip delivers ~27% bench_ic reclaim automatically without env flag.**
+
+### Pre/post-flip user-facing impact
+
+| workload type | pre-flip | post-flip | Δ | notes |
+|---|---:|---:|---:|---|
+| bench_ic (property-heavy) | 197.9 ns | **144.4 ns** | −27% | dominant win |
+| bench_call_overhead (no property) | 122.9 ns | 136.1 ns | +11% | STUB infrastructure tax |
+| arith_tight_loop (CRB, pure arith) | 335 ms | 349 ms | +4% (within ±25ms variance) | small or noise |
+| json_parse_transform (CRB) | 2434 ms | 2444 ms | +0.4% (noise) | neutral |
+| string_url_sweep (CRB) | 743 ms | 750 ms | +1% (noise) | neutral |
+
+**Honest reading**: the flip is net-positive on workloads with property access (which is essentially all realistic JS code). The STUB infrastructure tax (~13 ns/call on pure-arith) is bounded and only visible when the JIT-compiled function has NO GetProp ops. The tax could be eliminated as a follow-up optimization: the translator could skip STUB infrastructure when the bytecode has no `Op::GetPropOnObject`. Forward-derived; not load-bearing.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: Case-4 (implementation freedom). No spec-correctness call.
+
+Per Doc 734 §V: growth (c) **positive-finding generalization** — the substrate is mature enough at three-probe-levels (P2.a) to ship as default. The default-on flip is the engagement-tier consequence of the per-pilot work.
+
+Per Doc 735 §X.h.b: STUB at **(P2.a) at scale**, default-on. Substrate-tier categorization complete for this pilot's first cut.
+
+Per Doc 735 §X.h.c: all three probes satisfied at the flip (StubE-EXT 7 fuzz + StubE-EXT 5c bench + StubE-EXT 5b consumer-route via diff-prod).
+
+### Findings doc rule 5 satisfied
+
+Rule 5: "Three probes before any default-on flip." Met:
+- bench probe: StubE-EXT 5c composition matrix (TB+STUB 80.8 ns; Pred-tb.2 + Pred-stub.1 both HOLD)
+- consumer-route probe: diff-prod 42/42 under all flag combos
+- fuzz probe: StubE-EXT 7 fuzz-ic.mjs 4/4 configs byte-identical
+
+The rule's empirical anchor is now the third successful default-on flip (after shapes CMig-EXT 14 + this round; CMig-EXT 14 surfaced CMig-EXT 15's regression because the third probe was missing; this round's third probe explicitly closes that gap).
+
+### Composition with prior corpus work
+
+- **Findings doc rule 5**: empirically applied and satisfied; default-on flip is correct per the discipline.
+- **Findings doc rule 6** (surface-completeness audit for data-structure changes): not directly applicable — this flip doesn't change data structure layout; it changes a default-flag semantics. No additional audit required beyond the three-probe-levels gate.
+- **CMig-EXT 14 / 15 precedent**: the regression that surfaced from CMig-EXT 14's flip motivated the staged-validation + three-probe-levels discipline. This round's flip is the discipline's first prospective application; if a regression surfaces post-flip, it will not be from missing probe coverage.
+- **LeJIT seed §I.3 multiplicative composition**: shape (already default-on) + STUB (now default-on) compose at the engagement-tier without env flag. TB remains opt-in pending TB-EXT 7 fuzz + TB-EXT 8 default-on flip.
+
+### Open scope at StubE-EXT 8 close
+
+1. **TB-EXT 7** — TB pilot fuzz probe (analog to StubE-EXT 7). Required before TB default-on.
+2. **TB-EXT 8** — TB default-on flip (would compose with STUB-on default to deliver bench_ic at 81 ns automatically). Requires keeper auth + TB-EXT 7's gate.
+3. **Forward-derived optimization**: skip STUB infrastructure when JIT'd function has no GetPropOnObject ops. Eliminates the ~13 ns/call tax on pure-arith functions. Bounded scope (~10 LOC translator change). Not load-bearing.
+4. **CMig-EXT 16 + 17** (per Findings doc VI.6 HIGH priority): property-bypass audit + canonical fuzz harness. Both remain queued.
+
+### Cumulative status at StubE-EXT 8 close
+
+LOC delta: ~8 (flag-default flip). All gates GREEN post-flip. Default-cruft users now get ~27% bench_ic reclaim automatically. STUB pilot is **default-on at first-cut composition**. The engagement-tier performance baseline is shifted: future LeJIT measurement claims should report against the new post-flip `none` baseline (144.4 ns bench_ic, 136.1 ns bench_call_overhead) rather than the pre-flip baseline.
+
+The STUB pilot's first-cut chapter closes. Substantial substrate work over the session: StubE-EXT 5a/5b/5c/7/8 — apparatus, observer, fast-path, fuzz, default-on. The pilot's seed §I.2 falsifier Pred-stub.1 HOLDS empirically at 3.35×; Pred-stub.5 HOLDS empirically at the fuzz coverage; engagement-tier perf is now anchored on the post-flip baseline.
+
+---
+
+*StubE-EXT 8 closes. LEJIT_STUB default-on; opt-out via =0. bench_ic 197.9 → 144.4 ns automatically; opt-in TB takes it to 81 ns. The STUB pilot's first-cut chapter is closed at engagement-tier (P2.a) at scale.*

@@ -190,9 +190,15 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
     // ids at translate time costs ~1 µs per GetPropOnObject occurrence
     // and is harmless when the flag is unset (site_ids alloc but
     // dispatch path stays the existing extern).
+    // LeJIT-Σ StubE-EXT 8 (2026-05-23): default-on flip authorized by
+    // keeper after three-probe-levels gate satisfied at StubE-EXT 7
+    // (bench: TB+STUB 80.8 ns on bench_ic — Pred-tb.2 holds with
+    // margin; consumer-route: diff-prod 42/42 under all flag combos;
+    // fuzz: 4/4 runtime configs byte-identical on the cache state
+    // machine fuzz fixture). Opt out via CRUFTLESS_LEJIT_STUB=0.
     let lejit_stub = std::env::var("CRUFTLESS_LEJIT_STUB")
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false);
+        .map(|v| !(v == "0" || v.eq_ignore_ascii_case("false")))
+        .unwrap_or(true);
 
     // LeJIT-Ψ VTI-EXT 3b (payload-extract-only first cut): when
     // `CRUFTLESS_LEJIT_VTI=1`, the dispatcher passes args as raw
