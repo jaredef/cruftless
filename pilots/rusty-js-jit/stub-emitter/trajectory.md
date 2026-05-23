@@ -396,3 +396,77 @@ LOC delta: ~25 (env flag + site_id allocation + scoped doc comment). Stub_aarch6
 ---
 
 *StubE-EXT 5a closes. Env-flag plumbing + IC site allocation are in. No behavior change. EXT 5b lands the observer; EXT 5c lands the inline emission; EXT 6 measures.*
+
+---
+
+## StubE-EXT 5b — 2026-05-23 (observer extern + cross-crate TLS registration; cache populates from real workload)
+
+### Headline
+
+Observer extern wires the IC cache state machine into real workload dispatch. Cross-crate TLS function-pointer registration (same pattern as ACTIVE_GETPROP_FN). **Diff-prod 42/42 in both modes; bench measurements substantial:**
+
+| mode | per-iter |
+|---|---:|
+| pre-shape-enrollment baseline (StubE-EXT 1) | 271 ns |
+| **default (Shape enrolled, no LeJIT-Σ)** | **199 ns** (+26% vs baseline) |
+| **LEJIT_STUB=1 (Shape + observer wired)** | **237 ns** (observer overhead ~38 ns) |
+
+**Two findings worth recording**:
+1. **Shape enrollment alone gives a 26% per-iter speedup** on the IC hot loop. The shape-aware fast path in `object_get` (Shape-EXT 4 dispatcher modification) skips the IndexMap probe for hot string-keyed property accesses; the savings show at the bench scale. This is an UNANTICIPATED gain — the shapes pilot's seed §I telos was about IC cache key supply, not per-op read speedup; the read speedup is a side effect of the dispatch path.
+2. **Observer overhead is ~38 ns per call** (199 → 237). Expected: extra extern dispatch + TLS read + shape-pointer lookup + observe_at_site call. EXT 5c's inline emission lets the JIT-emitted code bypass the slow extern entirely (going directly from shape-compare to slot-load), reclaiming this 38 ns AND the ~50 ns of the existing extern call.
+
+### Substrate landed
+
+- `pilots/rusty-js-jit/derived/src/deopt.rs` (+~55 LOC):
+  - `IcObserveFn` type + `ACTIVE_IC_OBSERVE_FN` thread-local + `set_active_ic_observe_fn` / `clear_active_ic_observe_fn` setters (mirrors ACTIVE_GETPROP_FN pattern).
+  - `extern "C" fn jit_getprop_with_ic(site_id, recv_idx, prop_idx) -> i64` — wraps `jit_getprop_on_object`; calls registered observer with site_id.
+- `pilots/rusty-js-runtime/derived/src/interp.rs` (+~35 LOC):
+  - `extern "C" fn runtime_ic_observe(site_id, recv_idx, prop_name_idx)` — TLS-deref Runtime + Proto (same pattern as runtime_getprop_on_object); resolves prop_name; calls `obj.shape_get`-via `shape_ptr_and_slot_for`-style lookup; routes to `observe_at_site(site_id, Rc<Shape>, slot)` if Shaped or `observe_miss_no_shape_at_site(site_id)` if Dictionary.
+  - `install_jit_getprop_helper` augmented to also call `rusty_js_jit::deopt::set_active_ic_observe_fn(runtime_ic_observe)`.
+- `pilots/rusty-js-jit/derived/src/translator.rs` (+~20 LOC):
+  - When `lejit_stub`: pre-bind `jit_getprop_with_ic` symbol on JITBuilder; declare with 3-arg signature; emit 3-arg call at GetPropOnObject codegen site (passing `site_id` from `ic_site_ids[ic_site_cursor]` in parse order).
+
+### Build + gates
+
+- `cargo build --release -p rusty-js-jit`: clean.
+- `cargo build --release --bin cruft -p cruftless`: clean.
+- `cargo test --release -p rusty-js-jit --lib stub_aarch64`: 12/12 PASS.
+- diff-prod default: 42/42.
+- diff-prod LEJIT_STUB=1: 42/42 (the slow-path extern returns correct value; observer is side-effect-only).
+- bench_ic default (Shape enrolled): 199 ns/iter.
+- bench_ic LEJIT_STUB=1: 237 ns/iter (observer overhead 38 ns per call).
+
+### §XVI / Doc 734 categorization
+
+Per Doc 730 §XVI: Case-4 (implementation freedom) — the observer dispatch is an additive instrumentation, not a spec-relevant choice.
+
+Per Doc 734 §V: growth (a) tier-relocation — the observer's TLS function pointer is a new dispatch slot at the JIT-Runtime cross-crate boundary (mirrors the GETPROP_FN slot). Growth (c) positive-finding generalization — the bench measurement surfaced an UNANTICIPATED 26% speedup from shape enrollment alone, which is worth recording: the shapes pilot's bigger-than-named contribution.
+
+### Pred disposition
+
+- **Pred-stub.1** (≥3× per-hit speedup): partial measurement. From the 271 ns pre-shape-enrollment baseline: enrollment alone gives 26% (~1.36×); with observer adds overhead back. The 3× target (≤90.3 ns/iter) requires EXT 5c's inline emission to bypass the slow extern entirely. Pre-implementation budget (StubE-EXT 2 §8) projected ~180 ns under EXT 5c; actual will be measured at EXT 6.
+- **Pred-stub.2** (no use-after-free): the observer's `Rc::clone(shape_rc)` per-call is the pin-against-drop mechanism; cache state machine's `pinned_shape_holder` keeps it alive past observer return.
+- **Pred-stub.3** (cache convergence): the observer is the producer side of the convergence; cache state machine progresses correctly per the unit tests.
+- **Pred-stub.4** (Doc 738 §II conventions): preserved.
+- **Pred-stub.5** (Doc 731 §VII R1 single-tier): preserved — observer is a side-channel instrumentation, not a second JIT tier.
+
+### Composition with prior corpus work
+
+- **Doc 729 §A8.13 substrate-amortization**: EXT 5 split into a/b/c per the original plan; each lands focused. 5b is the consumer-side wire-up of the substrate; 5c is the codegen-side fast-path that consumes it.
+- **Doc 735 §X.h.c three-probe-levels**: bench probe (bench_ic measurements 199 vs 237) is the consumer-route probe for the observer overhead. Fuzz probe at EXT 7.
+
+### Open scope at StubE-EXT 5b close
+
+1. **StubE-EXT 5c** — Inline `emit_stub_pattern` at codegen + cap-preallocated cache + receiver-shape-field-offset extraction. The most careful round. Per EXT 5c spec: stable side-table address (requires cap-preallocated `ICStubCache.sites`); shape field offset on Object requires extern shape-extractor helper or a stable `#[repr(C)]` discipline.
+2. **StubE-EXT 6** — Re-measure post-EXT 5c; (P2) categorize per Doc 735 §X.h.b.
+3. **CMig-EXT 15** (deferred from shapes pilot) — close 4 long-tail residuals.
+
+### Cumulative status at StubE-EXT 5b close
+
+LOC delta: ~110 (observer extern + cross-crate registration + translator codegen branching).
+
+**The shape mechanism's per-op speedup is the first integration-tier corroboration of the substrate's value beyond IC cache key supply.** The 26% gain at the bench scale is a side effect of Shape-EXT 4's `object_get` shape-fast-path; it landed structurally but the measurement was deferred until today. Doc 729 §A8.13 substrate-amortization predicts substrate moves cascade through downstream consumers; this is the cascade arriving at the per-iter cost tier.
+
+---
+
+*StubE-EXT 5b closes. Observer is live; IC cache populates from real workload. Shape enrollment surfaces a 26% per-iter speedup as an unanticipated bonus. EXT 5c's inline emission reclaims the observer overhead AND the slow-extern cost. EXT 6 measures.*

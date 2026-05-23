@@ -6486,6 +6486,10 @@ impl Runtime {
     /// each JIT invocation via `set_current_runtime` / `set_current_proto`.
     pub fn install_jit_getprop_helper() {
         rusty_js_jit::set_active_getprop_fn(runtime_getprop_on_object);
+        // LeJIT-Σ StubE-EXT 5b: also register the IC observer so the
+        // cache state machine progresses when JIT-emitted code (under
+        // CRUFTLESS_LEJIT_STUB=1) calls jit_getprop_with_ic.
+        rusty_js_jit::deopt::set_active_ic_observe_fn(runtime_ic_observe);
     }
 
     pub fn resume_from_deopt_state(
@@ -9439,6 +9443,42 @@ extern "C" fn runtime_getprop_on_object(receiver_idx: i64, prop_name_idx: i64) -
             0
         }
     }
+}
+
+/// LeJIT-Σ StubE-EXT 5b: IC observer for shape-tier cache state
+/// machine. Called from `jit_getprop_with_ic` after every IC site
+/// dispatch. Reads the receiver's shape via the shape-aware
+/// `Object::shape_ptr_and_slot_for` API; calls `observe_at_site` if
+/// the receiver is Shaped (cache populates with the current shape +
+/// slot), else `observe_miss_no_shape_at_site` (Dictionary receiver;
+/// miss_count increments, eventually degrades per MISS_THRESHOLD).
+///
+/// Lives in the runtime crate because it needs Runtime + heap + Shape
+/// access; called via the TLS function-pointer slot the JIT crate
+/// exposes.
+extern "C" fn runtime_ic_observe(site_id: i64, receiver_idx: i64, prop_name_idx: i64) {
+    let rt_ptr = rusty_js_jit::get_current_runtime();
+    let proto_ptr = rusty_js_jit::get_current_proto();
+    if rt_ptr == 0 || proto_ptr == 0 { return; }
+    let rt: &Runtime = unsafe { &*(rt_ptr as *const Runtime) };
+    let proto: &rusty_js_bytecode::compiler::FunctionProto =
+        unsafe { &*(proto_ptr as *const rusty_js_bytecode::compiler::FunctionProto) };
+
+    let name: &str = match proto.constants.get(prop_name_idx as u16) {
+        Some(rusty_js_bytecode::constants::Constant::String(s)) => s.as_str(),
+        _ => return,
+    };
+
+    let obj_id = rusty_js_gc::ObjectId(receiver_idx as u32);
+    let o = rt.obj(obj_id);
+    let site_id_u32 = site_id as u32;
+    if let Some(shape_rc) = o.shape.as_ref() {
+        if let Some(slot) = shape_rc.slot_of(name) {
+            rusty_js_jit::stub_aarch64::observe_at_site(site_id_u32, std::rc::Rc::clone(shape_rc), slot);
+            return;
+        }
+    }
+    rusty_js_jit::stub_aarch64::observe_miss_no_shape_at_site(site_id_u32);
 }
 
 fn record_synthetic_deopt(ic_id: u32) {

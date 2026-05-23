@@ -180,9 +180,9 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
     // Allocate one IC site per Op::GetPropOnObject occurrence (StubE-EXT
-    // 3 site-id allocator + ICStubCache). Used by EXT 5b/c codegen
-    // branching. Allocation in parse-order so site ordering is stable.
-    let _ic_site_ids: Vec<crate::stub_aarch64::ICSiteId> = if lejit_stub {
+    // 3 site-id allocator + ICStubCache). EXT 5b consumes these at the
+    // codegen site by indexing in parse order via a counter.
+    let ic_site_ids: Vec<crate::stub_aarch64::ICSiteId> = if lejit_stub {
         parsed.iter()
             .filter(|(_, op)| matches!(op, ParsedOp::GetPropOnObject(_)))
             .map(|_| crate::stub_aarch64::alloc_ic_site())
@@ -190,6 +190,7 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
     } else {
         Vec::new()
     };
+    let mut ic_site_cursor: usize = 0;
 
     // JIT-EXT 20: detect GetPropOnObject in the parsed op list so we
     // can pre-bind the runtime helper. Pre-binding has no cost when
@@ -205,6 +206,12 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
     if has_getprop {
         jit_builder.symbol("jit_getprop_on_object",
             crate::deopt::jit_getprop_on_object as *const u8);
+        // LeJIT-Σ StubE-EXT 5b: also pre-bind the IC-aware variant
+        // when the flag is set.
+        if lejit_stub {
+            jit_builder.symbol("jit_getprop_with_ic",
+                crate::deopt::jit_getprop_with_ic as *const u8);
+        }
     }
     let mut module = JITModule::new(jit_builder);
 
@@ -220,15 +227,23 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
             .map_err(|e| format!("declare deopt_trip: {e}"))?)
     } else { None };
 
-    // JIT-EXT 20: declare the GetProp runtime helper if needed.
+    // JIT-EXT 20 + LeJIT-Σ StubE-EXT 5b: declare the GetProp runtime
+    // helper. When CRUFTLESS_LEJIT_STUB=1, declare the IC-aware variant
+    // (3-arg: site_id + receiver_idx + prop_name_idx) instead of the
+    // standard 2-arg variant. The codegen path passes the site_id as a
+    // Cranelift constant pulled from `_ic_site_ids` in parse order.
     let getprop_id_opt = if has_getprop {
         let mut sig = module.make_signature();
+        if lejit_stub {
+            sig.params.push(AbiParam::new(I64));  // site_id
+        }
         sig.params.push(AbiParam::new(I64));  // receiver_idx
         sig.params.push(AbiParam::new(I64));  // prop_name_idx
         sig.returns.push(AbiParam::new(I64));
+        let name = if lejit_stub { "jit_getprop_with_ic" } else { "jit_getprop_on_object" };
         Some(module
-            .declare_function("jit_getprop_on_object", Linkage::Import, &sig)
-            .map_err(|e| format!("declare jit_getprop_on_object: {e}"))?)
+            .declare_function(name, Linkage::Import, &sig)
+            .map_err(|e| format!("declare {name}: {e}"))?)
     } else { None };
 
     let mut ctx = module.make_context();
@@ -550,21 +565,27 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
                 ParsedOp::EqI64 => cmpop(&mut stack, &mut builder, IntCC::Equal)?,
                 ParsedOp::NeI64 => cmpop(&mut stack, &mut builder, IntCC::NotEqual)?,
                 ParsedOp::GetPropOnObject(prop_idx) => {
-                    // JIT-EXT 20: lower to a call into the runtime
-                    // helper. The receiver i64 (typed as ObjectRef
-                    // index by upstream) is popped from the stack; the
+                    // JIT-EXT 20: lower to a call into the runtime helper.
+                    // The receiver i64 (typed as ObjectRef index by
+                    // upstream) is popped from the stack; the
                     // prop_name_idx is emitted as a Cranelift constant.
-                    // The helper's return value (i64) is pushed back
-                    // onto the stack as the result.
                     //
-                    // At JIT-EXT 20 close the helper is a deterministic
-                    // stub (`(receiver << 8) ^ prop_idx`). The real
-                    // helper lands at JIT-EXT 21 alongside dispatcher
-                    // consume-recovered-state.
+                    // LeJIT-Σ StubE-EXT 5b: when lejit_stub is set, the
+                    // helper is jit_getprop_with_ic (3-arg: site_id +
+                    // receiver_idx + prop_name_idx). The IC cache
+                    // populates as a side effect via the runtime-
+                    // registered observer.
                     let gpref = getprop_ref.expect("getprop_ref must be set when ParsedOp::GetPropOnObject is present");
                     let receiver = stack.pop().ok_or("GetPropOnObject: stack underflow (receiver)")?;
                     let prop_v = builder.ins().iconst(I64, *prop_idx as i64);
-                    let call_inst = builder.ins().call(gpref, &[receiver, prop_v]);
+                    let call_inst = if lejit_stub {
+                        let site_id = ic_site_ids[ic_site_cursor];
+                        ic_site_cursor += 1;
+                        let site_v = builder.ins().iconst(I64, site_id as i64);
+                        builder.ins().call(gpref, &[site_v, receiver, prop_v])
+                    } else {
+                        builder.ins().call(gpref, &[receiver, prop_v])
+                    };
                     let result = builder.inst_results(call_inst)[0];
                     stack.push(result);
                 }

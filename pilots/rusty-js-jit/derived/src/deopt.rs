@@ -350,6 +350,54 @@ pub extern "C" fn jit_getprop_on_object(receiver_idx: i64, prop_name_idx: i64) -
     }
 }
 
+/// LeJIT-Σ StubE-EXT 5b: IC observer fn pointer registered by the
+/// runtime. Reads the receiver's shape pointer + slot via
+/// `Object::shape_ptr_and_slot_for` and calls `observe_at_site` or
+/// `observe_miss_no_shape_at_site` so the IC cache state machine
+/// progresses (Cold → WarmMono → ColdAfterMiss → Degraded). Lives in
+/// the runtime because it needs heap-deref + shape-field access; the
+/// JIT crate doesn't depend on the runtime, so the call indirects
+/// through this thread-local function pointer slot (same pattern as
+/// ACTIVE_GETPROP_FN).
+pub type IcObserveFn = extern "C" fn(site_id: i64, receiver_idx: i64, prop_name_idx: i64);
+
+thread_local! {
+    static ACTIVE_IC_OBSERVE_FN: std::cell::Cell<Option<IcObserveFn>> =
+        const { std::cell::Cell::new(None) };
+}
+
+pub fn set_active_ic_observe_fn(f: IcObserveFn) {
+    ACTIVE_IC_OBSERVE_FN.with(|c| c.set(Some(f)));
+}
+
+pub fn clear_active_ic_observe_fn() {
+    ACTIVE_IC_OBSERVE_FN.with(|c| c.set(None));
+}
+
+/// LeJIT-Σ StubE-EXT 5b: IC-aware variant of jit_getprop_on_object.
+/// Called from JIT-emitted code when the translator was invoked with
+/// `CRUFTLESS_LEJIT_STUB=1`. Same value semantics as the underlying
+/// helper; additionally invokes the registered IC observer with the
+/// site_id so the cache state machine progresses.
+///
+/// Pre-EXT 5c: the cache populates but isn't read inline at the IC
+/// site (the JIT-emitted code still calls this extern). Per-iter cost
+/// is the existing path + observer dispatch overhead (~few ns).
+/// EXT 5c adds the inline compare-branch-load fast path that consults
+/// the populated cache.
+#[no_mangle]
+pub extern "C" fn jit_getprop_with_ic(
+    site_id: i64,
+    receiver_idx: i64,
+    prop_name_idx: i64,
+) -> i64 {
+    let result = jit_getprop_on_object(receiver_idx, prop_name_idx);
+    if let Some(observe) = ACTIVE_IC_OBSERVE_FN.with(|c| c.get()) {
+        observe(site_id, receiver_idx, prop_name_idx);
+    }
+    result
+}
+
 /// Extern thunk callable from Cranelift-emitted code. Returns a
 /// sentinel i64 (0) to the JIT'd caller; the dispatcher detects the
 /// trip via `LAST_DEOPT_FRAME`.
