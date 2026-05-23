@@ -140,6 +140,35 @@ CRB-class composition target (3-15× off bun spectrum per CRB-EXT 9) remains as 
 
 The supporting reading for this section is at `pilots/rusty-js-jit/findings.md` + the per-pilot trajectory closes (`stub-emitter/trajectory.md` StubE-EXT 5c+7+8; `tiny-baseline/trajectory.md` TB-EXT 3b+7+8).
 
+### I.5 The f64 calling-convention architectural shift + VTI cascade-revival (2026-05-23 close)
+
+§I.4 named the first-cut composition target empirically met at engagement-tier default. The first-cut closure surfaced an unresolved (P2.d) at LeJIT-Ψ that resisted pilot-local substrate work. Pre-implementation analysis at VTI-EXT 3c queue time identified the i64-only calling convention as the upstream structural constraint that VTI was working around; LeJIT-Φ spawned to address it directly.
+
+**The architectural shift** (per Φ seed §I.1 + Φ-EXT 2+3 merged round close):
+
+- JIT calling convention shifted from i64-everywhere to f64-default at the value-domain interface
+- Dispatcher's `jit_compatible_arg` precheck collapses from "tag + integer-validity" to "tag-only" structurally (the helper `jit_compatible_arg_tag_only` is named; the dispatcher's precheck migration is a forward-optimization round)
+- JIT body operates on f64 natively via fadd/fsub/fmul; integer-only ops (Op::AddI64 etc.) reserved for Move 2 (typed-i64 promoted fast path via bytecode tier-1.5 IR per Doc 731 §XIII)
+- Pred-φ.4 (correctness on non-integer Numbers): empirically met. `function half(x) { return x / 2; }` now JIT-compiles + returns correct fractional value (was rejected pre-Φ)
+
+**The cascade-revival surprise**:
+
+Pre-Φ VTI on bench_ic was 728.3 ns ((P2.d)); post-Φ it is 92.6 ns ((P2.a)) **without any VTI-specific substrate move**. Mechanism: VTI's structural (P2.d) was a consequence of the upstream P2 constraint; closing the constraint via Φ collapsed the precheck VTI was working around; VTI's existing payload-extract-only inline code (per VTI-EXT 3b) became correct as-is because the JIT body now operates on loaded f64 directly.
+
+**Engagement-tier consequence**: the four nested LeJIT-tier sub-pilots are all at (P2.a) at engagement scale. LeJIT-Σ default-on, LeJIT-Τ default-on, LeJIT-Ψ revived via cascade (default-OFF env-flag-gated; composes constructively when opted in), LeJIT-Φ default (architectural, no flag). The LeJIT first-cut chapter is closed.
+
+**Corpus articulation** ([Doc 739](../../../corpus-master/corpus/739-constraint-closure-as-cascade-revival-when-lifting-an-upstream-structural-constraint-auto-resolves-stalled-sibling-pilots.md)) names the cascade-revival pattern in abstract form: when a constraint at one tier of a resolver-instance pipeline (per Doc 729 §IV) propagates downstream and forces sibling pilots into (P2.d), closing the upstream constraint cascade-revives the stalled pilots from (P2.d) to (P2.a) as a side effect, without sibling-pilot-local substrate work. The LeJIT-Φ → LeJIT-Ψ cascade is Doc 739's empirical anchor; the constraint-enumeration discipline (Pin-Art per Doc 581 + Φ seed §I.2) is the apparatus that identifies cascade-revival candidates.
+
+**Forward optimization queue at §I.5 close** (not load-bearing for any standing Pred):
+
+1. Move 2 — typed-i64 promoted fast path via bytecode tier-1.5 IR per Doc 731 §XIII. Re-enables the typed-i64 specialization disabled at Φ-EXT 3. Separate downstream pilot at the bytecode tier.
+2. Dispatcher precheck migration to `jit_compatible_arg_tag_only` (already named in interp.rs; activation deferred until composition-bench confirms no perf regression).
+3. Heap-vec-relocation safety audit per TB-EXT 7 standing rule 9 (StubE-EXT 9 + TB-EXT 9 candidate rounds).
+4. CMig-EXT 17 canonical 2000-fixture fuzz harness per Findings VI.6 HIGH priority (engagement-wide gap; would have caught TB-EXT 7 segfault faster).
+5. Forward-derived non-LeJIT pilots (Findings VI.1-VI.3): fast JSON, tight-inner-loop emitter, Array.filter/map fast-path.
+
+The LeJIT pilot's first-cut chapter at the parent level is **closed at engagement-tier (P2.a) for all four nested sub-pilots**. The forward queue is post-first-cut work; not load-bearing for the engagement's standing performance reading.
+
 ## II. Apparatus
 
 The JIT is **resolver-instance #N+1 below the bytecode tier** per Doc 730 §IV's vertical-recurrence reading. It composes with:

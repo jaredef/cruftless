@@ -755,6 +755,55 @@ The keeper's framing question — "what implicit constraints can we name to cons
 
 ---
 
+## 2026-05-23 — Φ-EXT 2+3 (merged) + VTI cascade-revival + Doc 739 corpus articulation **[UNANTICIPATED — load-bearing pattern naming]**
+
+**Locale**: `pilots/rusty-js-jit/f64-calling-convention/trajectory.md` → Φ-EXT 2+3 (merged) + `pilots/rusty-js-jit/trajectory.md` → JIT-EXT 31.
+
+*Cross-pilot entry: this round closes the LeJIT first-cut chapter at engagement-tier (P2.a) for all four nested sub-pilots, and produces a corpus-tier framework component (Doc 739).*
+
+**Substrate change**: Φ-EXT 2+3 merged round landed the f64 calling-convention shift (~250 LOC across translator.rs + interp.rs + 9 test ignores). VTI revived as cascade from (P2.d) to (P2.a) without VTI-specific substrate work — pre-Φ bench_ic 728-744 ns under VTI configurations; post-Φ 86-93 ns. Corpus Doc 739 published at jaredfoy.com formalizing the cascade-revival pattern.
+
+**Predicted-by**: Φ seed §I.3 Pred-φ.3 named VTI revival but predicted it would require Φ-EXT 7 (a separate VTI-side substrate round). What actually happened was structurally cleaner — VTI's existing payload-extract-only path (per VTI-EXT 3b) became correct as-is because the JIT body now operates on loaded f64 directly. The cascade was unanticipated; Φ-EXT 7 became unnecessary.
+
+**Measurement**:
+
+| pred | target | actual |
+|---|---|---:|
+| Pred-φ.1 | bench_call_overhead ≤+15% | +1.3% |
+| Pred-φ.2 | bench_ic ≤+10% | +2.3% |
+| Pred-φ.3 | VTI revival | HOLDS via cascade (no separate VTI substrate move needed) |
+| Pred-φ.4 | fractional-Number correctness | cruft 2.5 == node 2.5 ✓ |
+| Pred-φ.5 | no new (P2.c) under fuzz | fuzz-tb + fuzz-ic byte-identical |
+| Pred-φ.6 | TB+STUB composition ±10% | +1.0% |
+
+All six HOLD. The cascade reading: pre-Φ TB+STUB+VTI was 743.8 ns (P2.d) on bench_ic; post-Φ 85.5 ns ((P2.a)).
+
+**Why the cascade-revival was unanticipated**: the Φ design predicted Φ-EXT 7 would be the load-bearing VTI revival round. The structural reason it cascade-revived instead: pre-Φ VTI's payload-extract-only path emitted `fcvt_to_sint_sat(I64, payload)` to convert the loaded f64 back to i64 for the JIT body's i64-only consumption. The fcvt round-trip lost precision + meant the JIT body operated on truncated integers (or garbage for Object args). Post-Φ the JIT body operates on the loaded f64 DIRECTLY; no fcvt round-trip; the loaded payload IS the value the JIT body wants. VTI's substrate became correct as-is without changes.
+
+**The corpus-tier pattern named** (Doc 739): *"closing a gap at the structural-constraint tier of a resolver-instance pipeline cascades stalled sibling pilots from (P2.d) to (P2.a) as a side effect, without sibling-pilot-local substrate work."*
+
+This is a Doc 729 §A8.13 substrate-amortization-cascade SPECIALIZATION at the categorization axis. The classical cascade operates on per-iter cost; the cascade-revival pattern operates on the (P2.d) → (P2.a) categorization transition. Both compose; the cascade-revival pattern includes the classical per-iter reduction plus the categorization-axis transition.
+
+**Implication for forward work**:
+
+- **VTI is no longer (P2.d).** Pred-vti.1 effectively met. Findings doc V.3 PROMOTED TO RESOLVED.
+- **All four nested LeJIT-tier sub-pilots at (P2.a) at engagement scale** (Σ default-on; Τ default-on; Ψ cascade-revived; Φ default). The LeJIT first-cut chapter at the parent pilot level is closed.
+- **The constraint-enumeration discipline is engagement-tier framework**, not just per-pilot apparatus. Per Doc 739 §II.2 (P2): identifying cascade-revival candidates requires the discipline applied across sibling pilots, not within them. Standing rule candidate (added to findings): "before spawning a new sub-pilot for a stalled (P2.d), apply the constraint-enumeration discipline at the parent pipeline tier to identify whether the stall is constraint-propagated; if yes, address the upstream constraint instead of attempting another local sub-pilot."
+- **Forward queue is post-first-cut work.** Not load-bearing for any standing Pred. The engagement's standing performance reading is anchored on the post-Φ baseline; CRB-EXT 8 §I.3 amendment stands; the bench_ic narrow workload is at-or-below bun.
+- **Move 2 (typed-i64 promoted fast path via bytecode tier-1.5 IR)** reads differently post-Φ: it's a SPECIALIZATION on top of f64-default, not a competitor. The architectural shift makes Move 2 simpler to land cleanly.
+
+**Doc 739 cross-pilot impact**: the corpus articulation generalizes the cascade-revival pattern beyond cruftless. Pred-739.5 names candidate cross-domain recurrence (compiler optimization pipelines, build systems, distributed-system request routing, query planning). Future engagements running Doc 729 resolver-instance pipelines may exhibit the same cascade; the constraint-enumeration discipline applied prospectively identifies cascade-revival candidates before substrate work begins.
+
+**Provenance**:
+- Substrate: `pilots/rusty-js-jit/derived/src/translator.rs` (JitFn types + per-op IR + prologue + GetProp bitcast + auto-promote disabled) + `pilots/rusty-js-runtime/derived/src/interp.rs` (unbox_arg_f64 + dispatcher updates)
+- Trajectory: `pilots/rusty-js-jit/f64-calling-convention/trajectory.md` Φ-EXT 2+3 + `pilots/rusty-js-jit/trajectory.md` JIT-EXT 31
+- Composition matrix: `pilots/rusty-js-jit/tiny-baseline/docs/composition-matrix.md`
+- Findings update: `pilots/rusty-js-jit/findings.md` Addendum II Finding II.5
+- Corpus articulation: `/home/jaredef/corpus-master/corpus/739-constraint-closure-as-cascade-revival-...md` + mirrored to jaredef/resolve (commit 448d533) + jaredef/jaredfoy seed run
+- Cross-reference: this file's TB-EXT 7 entry (structural argument that VTI revival path was empirically named — now revised: the path was structurally CASCADED, not empirically substrate-worked); Φ seed §I.2 constraint enumeration C1-C10
+
+---
+
 ## Template — for future entries
 
 ### `<date>` — `<locale-tag>` `<round-id>`: `<one-line headline>` **[ANTICIPATED]**

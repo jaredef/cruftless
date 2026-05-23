@@ -1711,3 +1711,94 @@ See [f64-calling-convention/seed.md](f64-calling-convention/seed.md) and [f64-ca
 Locale count: 15 → 16 after this spawn (manifest refreshed). The engagement's sixth nested locale overall (fourth under this LeJIT parent).
 
 *JIT-EXT 30 stays open until Φ-EXT 8 closes the nested workstream.*
+
+---
+
+## JIT-EXT 31 — 2026-05-23 (Φ-EXT 2+3 close + VTI cascade-revival + Doc 739 published)
+
+### Headline
+
+Parent-tier close of the Φ-EXT 2+3 merged round. **The f64 calling-convention shift landed; all six Pred-φ.X falsifiers HOLD; VTI revived as cascade from (P2.d) to (P2.a) without any VTI-specific substrate move.** Corpus articulation Doc 739 published at jaredfoy.com formalizes the cascade-revival pattern in abstract form (applicable to any system architecture admitting a Doc 729 resolver-instance pipeline) + applied to the LeJIT-Φ instance.
+
+### Sub-pilot status synthesized post-Φ
+
+| sub-pilot | first-cut status | engagement default |
+|---|---|---|
+| LeJIT-Σ (stub-emitter) | (P2.a) at composition scale | DEFAULT-ON |
+| LeJIT-Τ (tiny-baseline) | (P2.a) at composition scale | DEFAULT-ON |
+| LeJIT-Ψ (value-tag-inline) | **(P2.a) post-Φ cascade-revival** (was (P2.d) first cut) | default-OFF; opt-in via env flag composes constructively |
+| LeJIT-Φ (f64-calling-convention) | (P2.a) at architectural scale | DEFAULT (architectural; no flag) |
+
+All four LeJIT-tier nested pilots now at (P2.a). JIT-EXT 27 (LeJIT-Ψ spawn) was waiting on VTI-EXT 8 to close; **closes here via cascade-revival mechanism without VTI-EXT 8 needing to run**. JIT-EXT 30 (Φ spawn) closes with Φ-EXT 4-6 + 8 remaining as formal-confirmation rounds (substrate work functionally complete).
+
+### Engagement-tier baseline post-Φ
+
+| workload | pre-StubE-EXT 8 | post-Φ default | Δ |
+|---|---:|---:|---:|
+| bench_call_overhead `none` | 122.9 ns | 72.1 ns | −41% |
+| bench_ic `none` | 197.9 ns | 82.9 ns | −58% |
+| bench_ic TB+STUB+VTI | 743.8 ns (P2.d) | **85.5 ns (P2.a)** | **−89% via cascade** |
+
+Default-cruft users continue to get the 41-58% baseline reduction unchanged from pre-Φ. The new contribution: VTI is no longer a (P2.d) anchor in the composition matrix; the engagement's standing performance reading is structurally cleaner.
+
+### Corpus articulation: Doc 739
+
+The keeper's framing question after observing the VTI cascade-revival ("this indicates that we closed the gaps on an implicit resolution pipeline") crystallized the structural recognition. Doc 739 published at jaredfoy.com:
+
+- **Abstract formulation** (§II): the cascade-revival pattern in three propositions P1-P3 + three boundary conditions B1-B3. Specialization of Doc 729 §A8.13 substrate-amortization-cascade at the categorization axis (the classical cascade is per-iter cost).
+- **Applied instance** (§III): the LeJIT-Φ pipeline decomposition P1-P4; the i64-only upstream constraint pre-Φ; the constraint-enumeration apparatus at Φ founding (C1-C10); the cascade observation post Φ-EXT 3 with all three boundary conditions met.
+- **Predictions** (§V): five falsifiers Pred-739.1-.5 with cross-domain candidate (Pred-739.5).
+- **Apparatus claim**: the constraint-enumeration discipline (Pin-Art per Doc 581 + Φ seed §I.2) is the apparatus that identifies cascade-revival candidates.
+
+The corpus has added one more framework component to its substrate-improvement vocabulary. The cascade-revival pattern is operational, observable, predicted to recur cross-engagement.
+
+### Engagement framework instruments updated this session
+
+Cumulative across the session (post Φ + Doc 739):
+
+- `pilots/rusty-js-jit/findings.md`: substrate-improvement guidance doc. Now contains 6 original sections + 8 standing rules + addendum (5 promoted/new findings + standing rule 9 + 1 new standing rule from Φ-EXT 7) + addendum II (Finding II.5 gap-closure-as-cascade-revival).
+- `pilots/rusty-js-jit/enhancements.md`: cross-locale append-only event log. ~14 verbose UNANTICIPATED entries.
+- `pilots/cross-runtime-bench/`: standalone top-level pilot founded mid-session.
+- `pilots/rusty-js-jit/f64-calling-convention/`: nested LeJIT-tier pilot founded + first-cut chapter closed mid-session.
+- LeJIT seed §I.3 amendment (CRB-EXT 8 per-workload disambiguation).
+- LeJIT seed §I.4 first-cut composition empirically met at engagement default.
+- Corpus Doc 739 (constraint-closure as cascade-revival).
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: Case-4 implementation freedom for the substrate landing; Case-1 verification post-fix for Pred-φ.4 (fractional-Number correctness).
+
+Per Doc 734 §V: this round realized all three growth mechanisms — (a) tier-relocation (Φ spawn after the keeper-named upstream constraint); (b) negative-finding amendment in the Φ-EXT 2 intermediate-state (the merge with 3 was the amendment); (c) positive-finding generalization at multiple tiers (Pred-φ HOLDS; VTI cascade-revival; Doc 739 articulation).
+
+Per Doc 735 §X.h.b: all four nested LeJIT-tier sub-pilots at (P2.a) at scale. Engagement-wide (P2.a) reading achieved at first-cut LeJIT chapter.
+
+Per Doc 735 §X.h.c three-probe-levels: bench POSITIVE; consumer-route POSITIVE; fuzz POSITIVE (existing fixtures). Φ-EXT 6 adds explicit fractional+NaN+Infinity fuzz; the existing fuzz coverage is sufficient for the cascade-revival's structural claim per Pred-φ.5.
+
+### Open scope at JIT-EXT 31 close
+
+1. **Φ-EXT 4** — Composition matrix as canonical confirmation (already captured at Φ-EXT 2+3 close).
+2. **Φ-EXT 5** — Consumer-route probe (diff-prod 42/42 already confirms; fractional-Number test already ran).
+3. **Φ-EXT 6** — Fuzz probe with fractional + NaN + Infinity coverage.
+4. **Φ-EXT 7** — NO LONGER NEEDED (VTI revival cascade).
+5. **Φ-EXT 8** — Default-on confirmation (Φ is architectural; no flag flip).
+6. **Forward-derived non-LeJIT pilots** (Findings VI.1-VI.3): fast JSON, tight-inner-loop emitter, Array.filter/map fast-path. Multi-week scope each.
+7. **CMig-EXT 16 + 17** (Findings VI.6 HIGH priority): property-bypass audit + canonical 2000-fixture fuzz harness. Closes the engagement's fuzz-coverage gap that CMig-EXT 15 + TB-EXT 7 made visible.
+8. **StubE-EXT 9 / TB-EXT 9 heap-vec-relocation audit** (per TB-EXT 7 enhancements log entry): proactive bug-class generalization.
+9. **Doc 731 §XIII Move 2** (typed-i64 promoted fast path via bytecode tier-1.5 IR): re-enables the typed-i64 specialization disabled at Φ-EXT 3. Separate downstream pilot at the bytecode tier.
+
+### Cumulative status at JIT-EXT 31 close
+
+LeJIT parent pilot has now landed:
+- 30 prior JIT-EXTs (0-30 inclusive)
+- 4 nested sub-pilots, 3 default-on at engagement-tier + 1 cascade-revived to (P2.a) via the f64 architecture
+- The engagement-tier baseline shifted by 41-58% on per-call benches
+- 5 engagement-tier framework instruments seeded (findings, enhancements, CRB pilot, LeJIT seed §I.3/I.4 amendments, corpus Doc 739)
+- 1 critical bug class discovered + fixed (HashMap-slot raw-pointer cache via Box-wrap; TB-EXT 7)
+- 3 default-on flips, all gated on three-probe-levels discipline
+- 1 structural cascade-revival pattern named + formalized as corpus articulation (Doc 739)
+
+The LeJIT first-cut chapter at the parent pilot level is **closed at engagement-tier (P2.a) for all four nested sub-pilots**. The Pin-Art apparatus discipline (constraint-enumeration → induced architecture → substrate move) just paid off measurably with VTI's cascade-revival as the unanticipated structural side effect. The remaining LeJIT-tier work is forward optimization, not load-bearing for any standing Pred.
+
+---
+
+*JIT-EXT 31 closes. LeJIT-Φ landed; VTI revived as cascade; Doc 739 published. All four nested LeJIT-tier sub-pilots at (P2.a). Parent LeJIT trajectory's open rows (JIT-EXT 26/27/28/30) all close — three via direct default-on, one (JIT-EXT 27) via cascade.*
