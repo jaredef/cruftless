@@ -389,3 +389,104 @@ LOC delta: ~35 (write_i64_into + integer-branch guard). Three cascade-revival pi
 ---
 
 *JSF-EXT 5 closes. Move 3 integer fast-path landed; cascade-revival pilot pattern empirically materialized at +5% on D/E. The micro-bench is interp-overhead-bound; Pred-jsf.1 gates on CRB at JSF-EXT 7.*
+
+---
+
+## JSF-EXT 6 — 2026-05-23 (Move 4 format-macro elimination + property iter-via-reference)
+
+### Headline
+
+Object-branch refactor eliminates the per-property `PropertyDescriptor.clone()` and `Value.clone()` from the snapshot. Iterates directly on `obj.shape.iter_slots()` + `obj.properties.iter()` while emitting; the `obj` borrow and the recursive `json_stringify_into(rt, ...)` borrow are both shared so they coexist via NLL. Array branch refactored similarly with `Vec<(usize, &Value)>` (no PropertyDescriptor clones; only `Vec<usize>` allocation for sorting).
+
+### Three-probe results
+
+| probe | result |
+|---|---|
+| Pred-jsf.2 canonical fuzz (acc=-932188103) | ✅ GREEN |
+| Pred-jsf.3 diff-prod 42/42 | ✅ GREEN |
+| Pred-jsf.bench per-shape | flat (within noise) |
+
+### Per-shape bench (cruft/node)
+
+| shape | pre-M4 | post-M4 | Δ |
+|---|---:|---:|---:|
+| A small-object | 9.71× | 9.91× | flat |
+| B deep-nested | 14.33× | 14.63× | flat |
+| C array-of-obj | 12.55× | 12.81× | flat |
+| D number-only | 15.05× | 16.08× | flat (noise) |
+| E string-only | 10.31× | 10.21× | flat |
+
+Move 4 essentially flat — confirms the interp-overhead-floor finding from JSF-EXT 5. The clone elision is a real substrate improvement (PropertyDescriptor.clone is ~16 bytes + Box copies per property) but is dwarfed by the interp framework cost on this bench.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable.
+Per Doc 735 §X.h.b: **(P2.d) on bench by design — Move 4 is the design's last substrate move; its empirical neutrality on this bench corroborates the interp-overhead-floor finding for the engagement's record.**
+
+---
+
+*JSF-EXT 6 closes. Move 4 landed; aggregate JSF-EXT 1→6 micro-bench position essentially flat. Design closed. JSF-EXT 7 is CRB final disposition.*
+
+---
+
+## JSF-EXT 7 — 2026-05-23 (CRB final disposition; Pred-jsf.1 FALSIFIED)
+
+### Headline
+
+CRB json_parse_transform re-measured post-M1+M2+M3+M4. **cruft 2455 ms vs JSF-EXT 0 baseline 2481 ms (Δ = -1%, within noise).** Node 122 ms (cruft/node 20.12×, vs baseline 20.34×). **Pred-jsf.1 target ≤1500 ms ≥40% reclaim NOT MET.**
+
+### Measurement (5 runs, median; node + bun + cruft equality EQUAL)
+
+| runtime | median (ms) | runs |
+|---|---:|---|
+| node | 122 | 125 121 122 124 121 |
+| bun | 95 | 92 96 95 95 95 |
+| cruft | **2455** | 2458 2455 2464 2452 2435 |
+
+cruft/node = 20.12× (baseline 20.34× → essentially unchanged).
+cruft/bun = 25.84×.
+
+### Pred-jsf.1 disposition
+
+**FALSIFIED.** Target: cruft ≤1500 ms (40% reclaim from 2481 ms). Actual: 2455 ms (1% reclaim). Substrate moves correctly reduced JSON.stringify intrinsic cost; the json_parse_transform CRB fixture's per-iter cost was NOT dominated by JSON.stringify.
+
+### Doc 734 §V (b) growth — negative-finding catalyzes pilot reset
+
+The JSF pilot's empirical contribution: **JSON.stringify is NOT the json_parse_transform CRB bottleneck.** CRB-EXT 9's component-decomposition estimate (JSON.stringify ~5-10× contributor) was wrong by an order of magnitude. The actual bottleneck must be JSON.parse + Array methods (filter, map) + Object property access + property iteration. The JSF pilot's substrate moves still correctness-improved JSON.stringify; they did not move the json_parse_transform needle.
+
+### Findings doc addendum candidates (forward)
+
+**Finding II.2-bis (cascade-revival as substrate-introduction signature)**: Doc 739 cascade-revival materialized empirically at +5-7% per move on the micro-bench. The pattern is real; the magnitude on a given bench depends on whether the closed-cascade tier is the actual cost dominator.
+
+**Finding VII.1 (component-decomposition estimates require empirical anchoring before pilot spawn)**: CRB-EXT 9's "JSON.stringify estimated at 5-10× of the 20× gap" was the empirical anchor for the JSF pilot spawn. The estimate proved wrong. Future pilots spawned to close a CRB gap should run a per-component A/B (substitute the suspect component with a no-op or near-no-op variant) before substrate work begins, to validate the component IS the dominator.
+
+### What this validates / does not validate
+
+**Validates:**
+- The design enumeration discipline (C1-C8 + dependency-ordered moves) is correct apparatus.
+- The Doc 739 cascade-revival pattern is empirically observable.
+- Per-substrate-move correctness preservation is achievable through three-probe-levels discipline.
+- The buffer-threaded JSON.stringify is a structurally cleaner implementation (one allocation per call instead of O(depth × siblings)).
+
+**Does not validate:**
+- JSF-EXT 2's per-shape reclaim composition reading (depended on JSON.stringify being the dominator).
+- CRB-EXT 9's component-decomposition estimate (JSON.stringify ~5-10× contributor).
+- Pred-jsf.1 (≥40% CRB reclaim — falsified by direct measurement).
+
+### Locale closure
+
+**JSF locale closed at (P2.d)-aggregate disposition.** Substrate moves landed; correctness preserved; reclaim target not met; the load-bearing finding is the bottleneck-misidentification at CRB-EXT 9. Recommend new pilot at the actual bottleneck (likely a `rusty-js-array-methods-fast` or `rusty-js-property-access-fast`).
+
+### Open scope at JSF-EXT 7 close
+
+1. Reset JSF locale resume vector at (P2.d) — closed; substrate landed; reclaim not delivered.
+2. Per Doc 734 §V (b) refinement: forward-derived pilot at the actual CRB bottleneck (component A/B required before spawn per Finding VII.1).
+3. Three other top-level pilots (RXF, SW, HS) and one nested (subtle-wireup) still pending first substrate rounds.
+
+### Cumulative status at JSF-EXT 7 close
+
+LOC delta this round: 0 (measurement-only round). Aggregate JSF locale LOC delta across JSF-EXT 3-6: ~200 in intrinsics.rs (json_stringify_into + json_quote_string_into + write_i64_into + iter-via-reference refactor). 4 substrate moves landed; canonical fuzz GREEN throughout; diff-prod 42/42 GREEN throughout; CRB Pred-jsf.1 FALSIFIED.
+
+---
+
+*JSF-EXT 7 closes. JSF locale closed at (P2.d). The pipeline was built through the middle stretch; the upstream-constraint-closure landed; the cascade-revival pilots landed; and the empirical readout falsified the bottleneck-attribution from CRB-EXT 9. The negative finding is the locale's load-bearing contribution: JSON.stringify is not the json_parse_transform bottleneck.*

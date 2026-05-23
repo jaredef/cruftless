@@ -5752,40 +5752,38 @@ pub(crate) fn json_stringify_into(rt: &Runtime, v: &Value, out: &mut String) {
             // descriptors with user-default {w:t, e:t, c:t}; emit them
             // as if they had a PropertyDescriptor. Dictionary entries
             // follow with their original descriptors.
-            let (is_array, props): (bool, Vec<(String, PropertyDescriptor)>) = {
-                let obj = rt.obj(*id);
-                let is_array = matches!(obj.internal_kind, InternalKind::Array);
-                let mut v: Vec<(String, PropertyDescriptor)> = Vec::new();
+            //
+            // JSF-EXT 6 (Move 4): iterate via reference; no per-property
+            // PropertyDescriptor.clone() or Value.clone(). The obj
+            // borrow + the recursive json_stringify_into's rt borrow
+            // are both shared (json_stringify_into takes &Runtime), so
+            // they coexist via NLL.
+            let obj = rt.obj(*id);
+            let is_array = matches!(obj.internal_kind, InternalKind::Array);
+            if is_array {
+                // Two-pass: gather (index, &Value) then sort numerically.
+                let mut entries: Vec<(usize, &Value)> = Vec::new();
                 if let Some(shape) = obj.shape.as_ref() {
                     for (name, slot) in shape.iter_slots() {
-                        let idx = slot as usize;
-                        if let Some(val) = obj.shape_values.get(idx) {
-                            v.push((name.to_string(), PropertyDescriptor {
-                                value: val.clone(),
-                                writable: true,
-                                enumerable: true,
-                                configurable: true,
-                                getter: None,
-                                setter: None,
-                            }));
+                        if let Ok(i) = name.parse::<usize>() {
+                            if let Some(val) = obj.shape_values.get(slot as usize) {
+                                entries.push((i, val));
+                            }
                         }
                     }
                 }
-                v.extend(obj.properties.iter()
-                    .map(|(k, d)| (k.to_string_content(), d.clone())));
-                (is_array, v)
-            };
-            if is_array {
-                let mut entries: Vec<(usize, &PropertyDescriptor)> = props.iter()
-                    .filter_map(|(k, d)| k.as_str().parse::<usize>().ok().map(|i| (i, d)))
-                    .collect();
+                for (k, d) in &obj.properties {
+                    if let Ok(i) = k.to_string_content().parse::<usize>() {
+                        entries.push((i, &d.value));
+                    }
+                }
                 entries.sort_by_key(|(i, _)| *i);
                 out.push('[');
                 let mut first = true;
-                for (_, d) in entries {
+                for (_, v) in &entries {
                     if !first { out.push(','); }
                     first = false;
-                    json_stringify_into(rt, &d.value, out);
+                    json_stringify_into(rt, v, out);
                 }
                 out.push(']');
             } else {
@@ -5795,14 +5793,27 @@ pub(crate) fn json_stringify_into(rt: &Runtime, v: &Value, out: &mut String) {
                 // serialized form is `"undefined"`.
                 out.push('{');
                 let mut first = true;
-                for (k, d) in props.iter().filter(|(k, d)| {
-                    d.enumerable
-                        && !k.as_str().starts_with("@@")
-                        && !matches!(d.value, Value::Undefined | Value::Symbol(_))
-                }) {
+                if let Some(shape) = obj.shape.as_ref() {
+                    for (name, slot) in shape.iter_slots() {
+                        if name.starts_with("@@") { continue; }
+                        if let Some(val) = obj.shape_values.get(slot as usize) {
+                            if matches!(val, Value::Undefined | Value::Symbol(_)) { continue; }
+                            if !first { out.push(','); }
+                            first = false;
+                            json_quote_string_into(name, out);
+                            out.push(':');
+                            json_stringify_into(rt, val, out);
+                        }
+                    }
+                }
+                for (k, d) in &obj.properties {
+                    if !d.enumerable { continue; }
+                    if matches!(d.value, Value::Undefined | Value::Symbol(_)) { continue; }
+                    let ks = k.to_string_content();
+                    if ks.starts_with("@@") { continue; }
                     if !first { out.push(','); }
                     first = false;
-                    json_quote_string_into(k, out);
+                    json_quote_string_into(&ks, out);
                     out.push(':');
                     json_stringify_into(rt, &d.value, out);
                 }
