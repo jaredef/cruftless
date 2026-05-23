@@ -16,14 +16,7 @@
 
 set -uo pipefail
 TOOLS="$(cd "$(dirname "$0")" && pwd)"
-# Post-move, host-rquickjs lives at legacy/host-rquickjs/. Walk three
-# levels up to reach the repo root (tools -> host-rquickjs -> legacy ->
-# repo). Pre-move callers (two levels up) still work via the existence
-# check fallback.
-ROOT="$(cd "$TOOLS/../../.." && pwd)"
-if [ ! -x "$ROOT/target/release/cruft" ] && [ -x "$(cd "$TOOLS/../.." && pwd)/target/release/cruft" ]; then
-    ROOT="$(cd "$TOOLS/../.." && pwd)"
-fi
+ROOT="$(cd "$TOOLS/../.." && pwd)"
 LIST="${1:-$TOOLS/parity-top100.txt}"
 OUT="${2:-$TOOLS/parity-results.json}"
 
