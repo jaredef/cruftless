@@ -5691,20 +5691,35 @@ where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
 // ──────────────── JSON.stringify (limited) ────────────────
 
 pub(crate) fn json_stringify(rt: &Runtime, v: &Value) -> String {
+    // JSF-EXT 3 (2026-05-23): thin wrapper around the buffer-threaded
+    // json_stringify_into. The 256-byte initial capacity is the default
+    // tuning per JSF-EXT 2 design §R2; revisit at JSF-EXT 5 measurement.
+    let mut out = String::with_capacity(256);
+    json_stringify_into(rt, v, &mut out);
+    out
+}
+
+pub(crate) fn json_stringify_into(rt: &Runtime, v: &Value, out: &mut String) {
     match v {
-        Value::Undefined => "undefined".into(),
-        Value::Null => "null".into(),
-        Value::Boolean(b) => b.to_string(),
+        Value::Undefined => out.push_str("undefined"),
+        Value::Null => out.push_str("null"),
+        Value::Boolean(b) => out.push_str(if *b { "true" } else { "false" }),
         Value::Number(n) => {
-            if n.is_finite() { abstract_ops::number_to_string(*n) } else { "null".into() }
+            if n.is_finite() {
+                // Move 3 (JSF-EXT 5) will replace this with a direct
+                // buffer-write integer fast path; for now we delegate.
+                out.push_str(&abstract_ops::number_to_string(*n));
+            } else {
+                out.push_str("null");
+            }
         }
-        Value::String(s) => json_quote_string(s.as_str()),
-        Value::BigInt(_) => "null".into(),
+        Value::String(s) => json_quote_string_into(s.as_str(), out),
+        Value::BigInt(_) => out.push_str("null"),
         // ECMA §25.5.2.4 SerializeJSONProperty: Symbol values serialize to
         // undefined and the enclosing object omits the key. We surface
         // "undefined" here; the caller's per-property filter at the object
         // branch elides keys whose serialized form is "undefined".
-        Value::Symbol(_) => "undefined".into(),
+        Value::Symbol(_) => out.push_str("undefined"),
         Value::Object(id) => {
             // §25.5.2.2 SerializeJSONProperty: if the value is a Number,
             // String, or Boolean Object wrapper, unwrap to its primitive
@@ -5713,18 +5728,13 @@ pub(crate) fn json_stringify(rt: &Runtime, v: &Value) -> String {
             if let Some(d) = rt.obj(*id).get_own("__primitive__") {
                 match &d.value {
                     Value::Number(_) | Value::String(_) | Value::Boolean(_) => {
-                        return json_stringify(rt, &d.value.clone());
+                        let unwrapped = d.value.clone();
+                        json_stringify_into(rt, &unwrapped, out);
+                        return;
                     }
                     _ => {}
                 }
             }
-            // §25.5.2.2 also: if the value has a callable toJSON method,
-            // invoke it and serialize the result. Limited to non-recursive
-            // dispatch in v1 (the toJSON return value goes back through the
-            // top-level branch). Skipped here because cruftless doesn't
-            // expose call_function through &Runtime (only &mut Runtime),
-            // and toJSON dispatch is rarer than wrapper unwrap.
-            // Snapshot the props (clones Value) to avoid recursive borrow.
             // CMig-EXT 16.bis (2026-05-23): shape-aware. Per shapes seed
             // §IV carve-out, shape-stored entries are plain-data
             // descriptors with user-default {w:t, e:t, c:t}; emit them
@@ -5754,23 +5764,37 @@ pub(crate) fn json_stringify(rt: &Runtime, v: &Value) -> String {
                 (is_array, v)
             };
             if is_array {
-                let mut entries: Vec<(usize, String)> = props.iter()
-                    .filter_map(|(k, d)| k.as_str().parse::<usize>().ok().map(|i| (i, json_stringify(rt, &d.value))))
+                let mut entries: Vec<(usize, &PropertyDescriptor)> = props.iter()
+                    .filter_map(|(k, d)| k.as_str().parse::<usize>().ok().map(|i| (i, d)))
                     .collect();
                 entries.sort_by_key(|(i, _)| *i);
-                let body: Vec<String> = entries.into_iter().map(|(_, s)| s).collect();
-                format!("[{}]", body.join(","))
+                out.push('[');
+                let mut first = true;
+                for (_, d) in entries {
+                    if !first { out.push(','); }
+                    first = false;
+                    json_stringify_into(rt, &d.value, out);
+                }
+                out.push(']');
             } else {
                 // Ω.5.P19.E1: JSON.stringify ignores Symbol-keyed properties
                 // per ECMA §25.5.2.4 (the `@@` prefix on both user symbols
                 // and well-known-symbol slots). Also skip values whose
-                // serialized form is `"undefined"` (covers Symbol values
-                // too — the upper-level Symbol match returns "undefined").
-                let entries: Vec<String> = props.iter()
-                    .filter(|(k, d)| d.enumerable && !k.as_str().starts_with("@@") && !matches!(d.value, Value::Undefined | Value::Symbol(_)))
-                    .map(|(k, d)| format!("{}:{}", json_quote_string(k), json_stringify(rt, &d.value)))
-                    .collect();
-                format!("{{{}}}", entries.join(","))
+                // serialized form is `"undefined"`.
+                out.push('{');
+                let mut first = true;
+                for (k, d) in props.iter().filter(|(k, d)| {
+                    d.enumerable
+                        && !k.as_str().starts_with("@@")
+                        && !matches!(d.value, Value::Undefined | Value::Symbol(_))
+                }) {
+                    if !first { out.push(','); }
+                    first = false;
+                    json_quote_string_into(k, out);
+                    out.push(':');
+                    json_stringify_into(rt, &d.value, out);
+                }
+                out.push('}');
             }
         }
     }
@@ -5780,6 +5804,14 @@ pub(crate) fn json_quote_string_pub(s: &str) -> String { json_quote_string(s) }
 
 fn json_quote_string(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
+    json_quote_string_into(s, &mut out);
+    out
+}
+
+/// JSF-EXT 3 (2026-05-23): buffer-threaded variant. Move 2 (JSF-EXT 4)
+/// will replace the per-char loop with a branchless ASCII fast-path
+/// that bulk-copies runs of safe bytes via push_str.
+fn json_quote_string_into(s: &str, out: &mut String) {
     out.push('"');
     for c in s.chars() {
         match c {
@@ -5793,7 +5825,6 @@ fn json_quote_string(s: &str) -> String {
         }
     }
     out.push('"');
-    out
 }
 
 // ──────────────── JSON.parse (limited recursive-descent) ────────────────
