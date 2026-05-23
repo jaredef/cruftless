@@ -83,6 +83,21 @@ The 26% per-iter speedup from shape enrollment alone was **unanticipated**: the 
 
 **Forward-reading for LeJIT-Σ at EXT 5c+6**: the measurement at EXT 6 should report against both baselines (271 ns pre-shape AND 199 ns post-shape) so the substrate-amortization-cascade contribution and the LeJIT-Σ contribution are separately attributable. Combined the engagement is heading toward a ~1.5-2× speedup from LeJIT alone (per §VIII bench precedent) on top of the 1.36× from shape enrollment, multiplicatively reaching the ~2-2.5× zone that matches Bun's per-op cost on the same workload.
 
+**Per-workload disambiguation (CRB-EXT 8 amendment, 2026-05-23).** The §I.3 prediction above (~2-2.5× cruft self-improvement reaching bun-parity) is **bench_ic-class scoped only** — narrow IC-cache microloop, single op repeated 1M times. The composition reading on realistic-mixed workloads is structurally different:
+
+CRB-EXT 1-7's N=30 canonical baseline (Pi, 2026-05-23) measures cruft at **14-26× off bun** on three realistic-mixed fixtures (json_parse_transform: 26.32× off bun; string_url_sweep: 14.75× off bun; crypto_sha256_batch: cruft FAILs — no SubtleCrypto). The gap decomposes multiplicatively across at least six cost components; LeJIT directly targets three (callback dispatch via LeJIT-Τ, per-call overhead via LeJIT-Τ, value-tag inline via LeJIT-Ψ); the other three (JSON.parse hand-coded primitives, JSON.stringify, Cranelift compile overhead at threshold=1) are out of LeJIT's scope and require separate substrate work.
+
+**Operational consequence**: a composed LeJIT first-cut closing all four nested sub-pilots (Σ + Ψ + Τ + future Σ' for x86_64) is empirically expected to bring cruft from 14-26× off bun on CRB fixtures down to **~5-15× off bun**. Single-digit cruft/bun on CRB requires substrate work *beyond LeJIT* (fast JSON.parse implementation, fast-path Array allocation, multi-tier JIT). Closing to par with bun on CRB-class workloads is a multi-pilot, multi-session telos that the §I.3 reading should NOT be read as predicting.
+
+The §I.3 "matches Bun's per-op cost" applies at bench_ic; not at CRB. Future LeJIT measurement claims should report against BOTH baselines (bench_ic + CRB) — single-baseline claims are structurally incomplete.
+
+Three independent empirical anchors converge on this amendment (all logged 2026-05-23 in `pilots/rusty-js-jit/enhancements.md`):
+- **VTI-EXT 3a** entry: flagged the 26% shape claim as "possibly variance-low; multi-run needed."
+- **CMig-EXT 15** entry: surfaced the narrow-vs-realistic split via the parallel-Claude out-of-band measurement.
+- **CRB-EXT 1-7**: the realistic-workload baseline itself, robust at N=30 (sd/median ≤3.5%).
+
+The supporting reading is at `pilots/cross-runtime-bench/docs/composition-reading-vs-lejit-i3.md`.
+
 ## II. Apparatus
 
 The JIT is **resolver-instance #N+1 below the bytecode tier** per Doc 730 §IV's vertical-recurrence reading. It composes with:

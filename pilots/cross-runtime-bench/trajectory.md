@@ -204,3 +204,64 @@ LOC delta: ~110 (variance doc) + N=30 results overwrite + N=10 preservation. Pre
 ---
 
 *CRB-EXT 7 closes. N=30 confirms N=10 within 1.5%. Variance bounded at sd/median 1.8-3.5% (cruft, node, bun). Pred-crb.4 holds. The engagement now has empirical confidence in sub-percent measurement claims at the cross-runtime bench tier.*
+
+---
+
+## CRB-EXT 8 — 2026-05-23 (composition reading vs LeJIT §I.3; amendment landed)
+
+### Headline
+
+Corpus-tier round. Composed the cross-runtime-bench empirical reading (CRB-EXT 1-7 N=30) against LeJIT seed §I.3's substrate-amortization-cascade prediction. **§I.3 amendment drafted + landed directly into `pilots/rusty-js-jit/seed.md`** — adds explicit bench_ic-class vs CRB-class per-workload disambiguation. The §I.3 prediction "2-2.5× cruft self-improvement reaching bun-parity" is bench_ic-scoped; the CRB realistic-workload reading is 14-26× off bun, structurally different and not the same number measured imprecisely.
+
+### Substrate landed
+
+- `pilots/cross-runtime-bench/docs/composition-reading-vs-lejit-i3.md` (~150 lines): full composition analysis. Names what §I.3 currently predicts, what CRB measures, the structural distinction between bench_ic-class and realistic-mixed workloads, the multiplicative decomposition hypothesis (6 cost components with LeJIT-targeted classification), the formal amendment text, the three-anchor convergence reading.
+- `pilots/rusty-js-jit/seed.md` §I.3: amendment landed directly under the existing prediction text. Marked as "CRB-EXT 8 amendment, 2026-05-23." Preserves the original prediction; adds parallel realistic-workload reading; names operational consequence (LeJIT first-cut composed expected to close 14-26× to ~5-15× off bun, not to par; par requires non-LeJIT substrate work).
+
+### The amendment in one paragraph
+
+LeJIT seed §I.3 now explicitly distinguishes two composition reads:
+- **bench_ic-class** (narrow IC-cache microloop, 1M iter of single op): existing prediction holds — LeJIT composed reaches bun-parity at ~70 ns/iter.
+- **CRB-class** (realistic-mixed workloads, JSON parse + Array iteration + URL handling): cruft sits at 14-26× off bun; LeJIT composed first-cut empirically expected to close to ~5-15× off bun, NOT to par. Par on CRB requires substrate work beyond LeJIT (fast JSON, multi-tier JIT, etc.).
+
+Future LeJIT measurement claims must report against BOTH baselines — single-baseline claims are structurally incomplete.
+
+### Three-anchor convergence (all logged 2026-05-23 in LeJIT enhancements.md)
+
+1. **VTI-EXT 3a entry**: variance reservation on the 26% shape claim ("possibly variance-low; multi-run needed")
+2. **CMig-EXT 15 entry**: narrow-vs-realistic split surfaced by parallel-Claude out-of-band measurement (5% / 1% on realistic vs 26% on bench_ic)
+3. **CRB-EXT 1-7**: empirical realistic-workload baseline, robust at N=30 (sd/median ≤3.5%)
+
+The three independent anchors converge: bench_ic and realistic-mixed are structurally distinct composition reads. The §I.3 amendment formalizes this as standing framework vocabulary.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable (corpus-tier round at the seed-tier scale; no substrate-correctness call).
+
+Per Doc 734 §V: growth (b) **negative-finding amendment**. The §I.3 prediction was structurally incomplete (left the seed open to being read as a cross-runtime competitiveness claim it does not make); the amendment closes the gap with explicit per-workload vocabulary. Per Doc 734 §V.b: "the framework grew by being used; the demonstrated distinction was the missing distinction the empirical work surfaced." Direct analog to Doc 735 §X.g's regime-distinction amendment.
+
+Per Doc 735 §X.h.c three-probe-levels: the amendment itself is the corpus-tier deliverable; the three empirical anchors are the three probe levels (variance reservation = bench probe; CMig-EXT 15 = consumer-route probe; CRB-EXT 1-7 = composition probe). The convergence pattern matches §X.h.c's discipline.
+
+### Composition with prior corpus work
+
+- **LeJIT seed §I.3**: directly amended. The seed's standing reading now disambiguates bench_ic-class from CRB-class predictions explicitly.
+- **CMig-EXT 15 enhancements log entry**: the amendment encodes CMig-EXT 15's "narrow-vs-realistic" framing as standing seed vocabulary, not just a per-entry observation.
+- **VTI-EXT 3a entry**: the amendment cites the variance-reservation reading as one of the three anchors.
+- **Doc 729 §A8.13 substrate-amortization-cascade**: the cascade pattern still holds at bench_ic; the amendment names that the cascade's per-workload yield is workload-dependent. Future §A8.13 references in pilot seeds should cite per-workload anchors.
+- **Doc 734 §V.b growth mechanism**: the amendment IS the negative-finding amendment — surfaced by realistic-workload measurement that the seed's bench_ic-scoped prediction did not anticipate.
+- **Doc 735 §X.g build-time-vs-runtime-init regime distinction**: structural parallel — §X.g distinguished three regimes the prose had collapsed; CRB-EXT 8 distinguishes two workload classes the prose had collapsed.
+
+### Open scope at CRB-EXT 8 close
+
+1. **CRB-EXT 9** — JIT-tight fixture (pure-arithmetic hot loop, no property access, no JSON, no callback dispatch) to test Pred-crb.5 (cruft's relative position improves under JIT-eligible workloads). Empirical anchor for what LeJIT's first-cut alone can buy.
+2. **CRB-EXT 10** — acorn_parse fixture. Real npm parser; representative of what Node-ecosystem code does heavily.
+3. **CRB-EXT 11** — SubtleCrypto wireup. Closes the crypto fixture's cruft FAIL.
+4. **Corpus-tier follow-on (deferred)**: "Per-workload performance composition reads must distinguish narrow-microloop from realistic-mixed" is a candidate corpus articulation at the Doc 729+ scale (bigger than LeJIT; applies at any pilot that reports composed performance). Reserved for the engagement's next corpus-tier round when keeper directs.
+
+### Cumulative status at CRB-EXT 8 close
+
+LOC delta: ~150 (composition reading doc) + ~25 (seed.md §I.3 amendment text). The corpus-tier framework has a new standing distinction; the LeJIT seed has a directly-applied amendment. CRB pilot's first-cut purpose (provide empirical anchor for §I.3 disambiguation) is met.
+
+---
+
+*CRB-EXT 8 closes. §I.3 amendment landed in `pilots/rusty-js-jit/seed.md` with full per-workload disambiguation. Three independent empirical anchors converge on the distinction. The framework's standing performance-composition vocabulary now distinguishes bench_ic-class from CRB-class explicitly.*

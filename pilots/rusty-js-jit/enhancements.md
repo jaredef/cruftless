@@ -329,6 +329,31 @@ Multiplicative composition: (1) × (2) × (3) × (4) × (5) ≈ realistic-worklo
 
 ---
 
+## 2026-05-23 — CRB-EXT 8: LeJIT seed §I.3 amendment landed (per-workload disambiguation) **[ANTICIPATED]**
+
+**Locale**: `pilots/cross-runtime-bench/trajectory.md` → CRB-EXT 8 (composition reading vs LeJIT §I.3; amendment landed).
+
+*Cross-pilot entry: this round's deliverable is a direct amendment to the parent LeJIT seed. The enhancements log records the amendment for cross-pilot visibility.*
+
+**Substrate change**: `pilots/rusty-js-jit/seed.md` §I.3 amended in-place with explicit per-workload composition disambiguation. Existing §I.3 prediction (2-2.5× cruft self-improvement reaching bun-parity at bench_ic) preserved unchanged; amendment adds parallel realistic-workload reading (cruft 14-26× off bun on CRB fixtures; LeJIT first-cut composed expected to close to ~5-15×, not to par; par requires non-LeJIT substrate work). Supporting reading at `pilots/cross-runtime-bench/docs/composition-reading-vs-lejit-i3.md` (~150 lines).
+
+**Predicted-by**: this enhancements log's prior three entries — VTI-EXT 3a (variance reservation on the 26% shape claim), CMig-EXT 15 (narrow-vs-realistic split surfaced out-of-band), CRB-EXT 1-7 (empirical realistic-workload baseline). All three flagged the pending §I.3 amendment as their downstream forward-work item; CRB-EXT 8 lands it.
+
+**Measurement**: not applicable (corpus-tier round; no substrate code, no per-call cost change). The amendment's empirical anchor is the three prior log entries.
+
+**Forward implication**:
+- Future LeJIT measurement claims (StubE-EXT 6 close, VTI-EXT 4 if pursued, TB-EXT 4 + 6) **must report against BOTH baselines** (bench_ic-class + CRB-class). Single-baseline claims are now structurally incomplete per the amended §I.3.
+- Future LeJIT-tier seeds and trajectories citing the "3× target" or "1.36× shape" should cite either the bench_ic anchor or the CRB anchor explicitly.
+- A candidate corpus-tier articulation is reserved: "Per-workload performance composition reads must distinguish narrow-microloop from realistic-mixed." This applies at any pilot reporting composed performance (not just LeJIT). The engagement's next corpus-tier round is the natural landing site.
+
+**Provenance**:
+- Amendment text: `pilots/rusty-js-jit/seed.md` §I.3 (additive; under existing text; marked "CRB-EXT 8 amendment, 2026-05-23")
+- Supporting reading: `pilots/cross-runtime-bench/docs/composition-reading-vs-lejit-i3.md`
+- Trajectory: `pilots/cross-runtime-bench/trajectory.md` CRB-EXT 8 (close)
+- Three converging anchors: this file's VTI-EXT 3a entry + CMig-EXT 15 entry + CRB-EXT 1-7 entry
+
+---
+
 ## Template — for future entries
 
 ### `<date>` — `<locale-tag>` `<round-id>`: `<one-line headline>` **[ANTICIPATED]**
