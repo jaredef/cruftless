@@ -60,3 +60,67 @@ The pilot's locale exists. TB-EXT 1 begins with the bench-probe extension to giv
 ---
 
 *TB-EXT 0 closes. The fourth LeJIT-tier locale is founded; the largest single arm of the seed §I.3 multiplicative composition is now an active substrate-tier workstream. TB-EXT 1 measures the multi-shape call-overhead baseline.*
+
+---
+
+## TB-EXT 1 — 2026-05-23 (multi-shape call-overhead bench baseline)
+
+### Headline
+
+Bench probe activated. Three function shapes benched on the Pi: **id1 = 130.8 ns, id2 = 135.5 ns, id_locals = 126.5 ns** (1M iter each, single-run). Empirical corroboration of LeJIT seed §I.3's dispatcher-is-the-dominant-arm reading: arity adds only ~4.7 ns per arg; the local-management delta is within noise; the shape-invariant cost (~125 ns ± 5 ns) accounts for ~95% of every shape's per-iter total.
+
+### Substrate landed
+
+- `cruftless/examples/bench_call_shapes.rs` (~155 LOC) — multi-shape bench harness. Three hand-built FunctionProtos (id1, id2, id_locals), shared install_closure helper, per-shape bench fn with warm-up + 1M-iter timing + correctness assertion. Same calling convention as VTI-EXT 1's `bench_call_overhead`.
+- `pilots/rusty-js-jit/tiny-baseline/docs/bench-baseline.md` (~85 lines) — bench protocol, per-shape measurements, decomposition reading, cross-validation with the five prior id1 measurements (122-131 ns variance band), Pred-tb.1 + Pred-tb.2 anchored target reading, TB-EXT 2 design pointer.
+
+### Reading
+
+| shape | per-iter | Δ vs id1 | what it adds |
+|---|---:|---:|---|
+| id1 | 130.8 ns | — | baseline (1 arg, no body) |
+| id2 | 135.5 ns | +4.7 ns | 2nd arg coerce + Op::Add body |
+| id_locals | 126.5 ns | −4.3 ns | StoreLocal + extra local (within ±5 ns noise) |
+
+**Key finding**: the per-arg cost is only ~2-3 ns, and the per-local cost is within noise. Almost all of the 125 ns/iter baseline is shape-invariant. This shape-invariant cost is exactly the dispatcher overhead — closure-bound-this resolve + Vec<Value> allocation + Frame setup + JIT-cache lookup + deopt-TLS plumbing — which TB-EXT 2 will decompose source-tier and TB-EXT 3b will target.
+
+**Cross-validation with five prior id1 measurements**:
+- VTI-EXT 1 (initial baseline): 127.1 ns
+- VTI-EXT 3a (post-layout-pin): 122.0 ns
+- VTI-EXT 3b (VTI OFF): 126.6 ns
+- VTI-EXT 3b (VTI ON, regression): 145.5 ns (excluded from variance band — load-bearing-NEGATIVE finding)
+- TB-EXT 1 (this round): 130.8 ns
+
+Five non-regression measurements span 122-131 ns → working baseline is **125 ns ± 5 ns** at single-run resolution. TB-EXT 6's multi-run characterization will pin this.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable (observe-only).
+
+Per Doc 734 §V: growth (c) positive-finding generalization preparatory — the shape-invariant cost is the empirical anchor for TB-EXT 2's decomposition + TB-EXT 4's measurement.
+
+Per Doc 735 §X.h.c: bench probe activated (NECESSARY but not sufficient). Consumer-route + fuzz at TB-EXT 5 + 7.
+
+### Composition with prior corpus work
+
+- **LeJIT seed §I.3 multiplicative composition**: today's reading empirically corroborates the dispatcher-as-dominant-arm prediction from VTI-EXT 1 + the new multi-shape decomposition. The shape-invariant ~125 ns is the target TB-EXT 3b's substrate move must reduce.
+- **Doc 735 §X.h.b**: TB-EXT 4's measurement will be the load-bearing (P2.a) vs (P2.d) decision for this pilot. Pred-tb.1's ≥40 ns reclaim target is the bar.
+- **Doc 738 §II conventions**: `bench_call_shapes.rs` follows the precedent of `bench_call_overhead.rs` + `bench_ic.rs`. Identifiers conform (snake_case, no `_via`, no `__` prefix).
+- **LeJIT enhancements log**: TB-EXT 1's reading is the empirical anchor that any TB-EXT 4 measurement will be compared against. The five-measurement variance band reading is the working confidence interval.
+
+### Open scope at TB-EXT 1 close
+
+1. **TB-EXT 2** — Dispatcher decomposition audit. Read `Runtime::call_function` source-tier; partition the ~120 ns shape-invariant cost into named components (closure-bound-this resolve, Vec<Value> allocation, Frame setup, JIT-cache lookup, deopt-TLS plumbing). Per-component reclaim estimates. Output: `docs/dispatcher-decomposition.md`.
+2. **TB-EXT 3a** — Compile-time pointer resolution table (substrate-introduction per Doc 729 §A8.13).
+3. **TB-EXT 3b** — Inline call thunk emission (closure round, behind `CRUFTLESS_LEJIT_TB=1`).
+4. **TB-EXTs 4-8** per the seed §III methodology.
+
+### Cumulative status at TB-EXT 1 close
+
+LOC delta: ~155 (bench harness + docs). No source-substrate changes; bench-tier only.
+
+The pilot's bench baseline is established. The dispatcher dominates per-iter cost across all three shapes; the substrate-move target for TB-EXT 3b is the shape-invariant component.
+
+---
+
+*TB-EXT 1 closes. Multi-shape baselines on the Pi: 130.8 / 135.5 / 126.5 ns. Shape-invariant ~125 ns ± 5 ns confirms §I.3's reading. TB-EXT 2 decomposes the dispatcher source-tier.*

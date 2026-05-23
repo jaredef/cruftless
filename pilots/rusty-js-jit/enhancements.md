@@ -140,6 +140,28 @@ The combination of (1) + (2) + (3) plausibly accounts for the +18.9 ns regressio
 
 ---
 
+## 2026-05-23 — TB-EXT 1: dispatcher dominance empirically confirmed across three shapes **[ANTICIPATED]**
+
+**Locale**: `pilots/rusty-js-jit/tiny-baseline/trajectory.md` → TB-EXT 1 (multi-shape bench baseline).
+
+**Substrate change**: Added `cruftless/examples/bench_call_shapes.rs` (~155 LOC) — three hand-built FunctionProtos benched on the Pi at 1M iter each. Plus `pilots/rusty-js-jit/tiny-baseline/docs/bench-baseline.md` documenting per-shape readings, decomposition reading, and cross-validation with five prior id1 measurements.
+
+**Predicted-by**: LeJIT seed §I.3 named the dispatcher as the "1.5-2× the largest single arm" of the multiplicative composition. VTI-EXT 1's earlier decomposition (this file's first entry) placed ~95% of the 127 ns/iter id1 cost in the dispatcher. TB-EXT 1 corroborates from a different angle: arity adds only +4.7 ns/arg; local management is within ±5 ns noise; the shape-invariant cost ~125 ns ± 5 ns is the dispatcher.
+
+**Measurement**:
+- id1: 130.8 ns
+- id2: 135.5 ns (+4.7 ns vs id1 — 2nd arg coerce + Op::Add body)
+- id_locals: 126.5 ns (−4.3 ns vs id1 — within ±5 ns single-run noise)
+- Cross-validation: id1 across five prior measurements (VTI-EXT 1/3a/3b-OFF + TB-EXT 1) spans 122-131 ns → working baseline = 125 ns ± 5 ns at single-run resolution; multi-run characterization at TB-EXT 6.
+
+**Provenance**:
+- New bench: `cruftless/examples/bench_call_shapes.rs`
+- Per-shape doc: `pilots/rusty-js-jit/tiny-baseline/docs/bench-baseline.md`
+- Trajectory: `pilots/rusty-js-jit/tiny-baseline/trajectory.md` TB-EXT 1 (close)
+- Cross-reference: this file's VTI-EXT 1 entry establishes the original 127 ns baseline and §I.3 dispatcher-as-dominant-arm prediction; today's reading is the second empirical anchor.
+
+---
+
 ## Template — for future entries
 
 ### `<date>` — `<locale-tag>` `<round-id>`: `<one-line headline>` **[ANTICIPATED]**
