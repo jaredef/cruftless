@@ -204,31 +204,146 @@ pub fn observe_miss_no_shape_at_site(id: ICSiteId) {
     IC_STUB_CACHE.with(|c| c.borrow_mut().entry_mut(id).observe_miss_no_shape());
 }
 
-/// Cranelift IR emission entrypoint per stub-design.md §10.
+/// StubE-EXT 4: Cranelift IR emission for the inline shape-check + slot-load
+/// pattern. Operates on flat i64 / pointer inputs for isolation from the
+/// Object / ICEntry struct layouts (which become load-bearing at
+/// StubE-EXT 5 when the translator wires this into Op::GetPropOnObject
+/// dispatch).
 ///
-/// StubE-EXT 3 scope: declared with placeholder body. The actual
-/// aarch64 IR emission (inline shape-check + slot-load + return) lands
-/// at StubE-EXT 4 alongside the synthetic shape-pointer integration
-/// test. The signature is the API contract the translator (StubE-EXT 5)
-/// consumes; locking it in now lets the translator scaffold against
-/// a stable surface.
+/// IR signature (lowered to aarch64 by Cranelift): `extern "C" fn(
+///   recv_shape: i64,        // *const Shape from the receiver Object
+///   cached_shape: i64,      // *const Shape from the ICEntry side-table
+///   cached_slot: i64,       // u32 slot from the ICEntry
+///   values_base: i64,       // *const Value start of receiver.shape_values
+///   slow_path_result: i64,  // pre-computed slow-path result (test-only;
+///                           //   StubE-EXT 5 replaces with extern call)
+/// ) -> i64`
 ///
-/// `site_id` is the IC site allocated via `alloc_ic_site()`. `receiver`
-/// is the unboxed ObjectRef value at the IC point. Returns the loaded
-/// property value (cache hit) OR falls through to the slow path (cache
-/// miss → call to `runtime_getprop_on_object` extern → patch → return).
+/// IR semantics:
+///   if recv_shape == cached_shape:
+///       return values_base[cached_slot * 8]      // hit: inline slot load
+///   else:
+///       return slow_path_result                   // miss: pre-computed
+pub fn emit_stub_pattern(
+    builder: &mut cranelift_frontend::FunctionBuilder,
+    recv_shape: cranelift_codegen::ir::Value,
+    cached_shape: cranelift_codegen::ir::Value,
+    cached_slot: cranelift_codegen::ir::Value,
+    values_base: cranelift_codegen::ir::Value,
+    slow_path_result: cranelift_codegen::ir::Value,
+) -> cranelift_codegen::ir::Value {
+    use cranelift_codegen::ir::{condcodes::IntCC, types::I64, InstBuilder, MemFlags};
+
+    let hit_block = builder.create_block();
+    let miss_block = builder.create_block();
+    let merge_block = builder.create_block();
+    builder.append_block_param(merge_block, I64);
+
+    // Compare receiver shape pointer against cached shape pointer.
+    let eq = builder.ins().icmp(IntCC::Equal, recv_shape, cached_shape);
+    builder.ins().brif(eq, hit_block, &[], miss_block, &[]);
+
+    // Hit block: load values_base[cached_slot * 8] and jump to merge with it.
+    builder.switch_to_block(hit_block);
+    builder.seal_block(hit_block);
+    let eight = builder.ins().iconst(I64, 8);
+    let offset = builder.ins().imul(cached_slot, eight);
+    let addr = builder.ins().iadd(values_base, offset);
+    let loaded = builder.ins().load(I64, MemFlags::trusted(), addr, 0);
+    builder.ins().jump(merge_block, &[loaded]);
+
+    // Miss block: jump to merge with the pre-computed slow-path result.
+    builder.switch_to_block(miss_block);
+    builder.seal_block(miss_block);
+    builder.ins().jump(merge_block, &[slow_path_result]);
+
+    // Merge block: return the chosen value.
+    builder.switch_to_block(merge_block);
+    builder.seal_block(merge_block);
+    builder.block_params(merge_block)[0]
+}
+
+/// StubE-EXT 4 integration helper: builds a complete JITModule containing
+/// one function that wraps `emit_stub_pattern` with the documented
+/// `extern "C" fn(i64, i64, i64, i64, i64) -> i64` signature. Returns
+/// the callable function pointer.
 ///
-/// Returns the Cranelift `Value` representing the loaded property.
+/// Used by the integration test below; available as a public helper for
+/// any future bench harness or fuzz probe that needs to exercise the
+/// pattern in isolation.
+pub fn build_stub_pattern_module(
+) -> Result<extern "C" fn(i64, i64, i64, i64, i64) -> i64, String> {
+    use cranelift_codegen::ir::{types::I64, AbiParam, Function, InstBuilder, Signature, UserFuncName};
+    use cranelift_codegen::isa::CallConv;
+    use cranelift_codegen::settings::{self, Configurable};
+    use cranelift_codegen::Context;
+    use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
+    use cranelift_jit::{JITBuilder, JITModule};
+    use cranelift_module::{Linkage, Module};
+
+    // Mirror the translator's ISA setup per pilots/rusty-js-jit/derived/
+    // src/translator.rs:140-147: disable colocated_libcalls + is_pic so
+    // the JITBuilder doesn't try to emit PLT entries (which aarch64
+    // doesn't support per cranelift-jit 0.118 backend.rs:297).
+    let mut flag_builder = settings::builder();
+    flag_builder.set("use_colocated_libcalls", "false")
+        .map_err(|e| format!("flag: {e:?}"))?;
+    flag_builder.set("is_pic", "false")
+        .map_err(|e| format!("flag: {e:?}"))?;
+    let isa_builder = cranelift_native::builder().map_err(|e| format!("isa: {e}"))?;
+    let isa = isa_builder.finish(settings::Flags::new(flag_builder))
+        .map_err(|e| format!("isa: {e:?}"))?;
+    let jit_builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+    let mut module = JITModule::new(jit_builder);
+
+    let mut sig = Signature::new(CallConv::SystemV);
+    for _ in 0..5 { sig.params.push(AbiParam::new(I64)); }
+    sig.returns.push(AbiParam::new(I64));
+
+    let func_id = module
+        .declare_function("stub_pattern", Linkage::Export, &sig)
+        .map_err(|e| format!("declare_function: {e}"))?;
+
+    let mut ctx = Context::new();
+    ctx.func = Function::with_name_signature(UserFuncName::user(0, 0), sig);
+
+    let mut fb_ctx = FunctionBuilderContext::new();
+    {
+        let mut builder = FunctionBuilder::new(&mut ctx.func, &mut fb_ctx);
+        let entry = builder.create_block();
+        builder.append_block_params_for_function_params(entry);
+        builder.switch_to_block(entry);
+        builder.seal_block(entry);
+        let params: Vec<_> = builder.block_params(entry).to_vec();
+        let result = emit_stub_pattern(
+            &mut builder,
+            params[0], params[1], params[2], params[3], params[4],
+        );
+        builder.ins().return_(&[result]);
+        builder.finalize();
+    }
+
+    module
+        .define_function(func_id, &mut ctx)
+        .map_err(|e| format!("define_function: {e}"))?;
+    module.finalize_definitions()
+        .map_err(|e| format!("finalize_definitions: {e}"))?;
+    let raw = module.get_finalized_function(func_id);
+    let f: extern "C" fn(i64, i64, i64, i64, i64) -> i64 =
+        unsafe { std::mem::transmute(raw) };
+    Ok(f)
+}
+
+/// Cranelift IR emission entrypoint per stub-design.md §10. Translator
+/// wiring (StubE-EXT 5) plugs the IC site's runtime side-table lookup
+/// in front of this and the extern slow-path call behind it; the inner
+/// compare-load pattern is `emit_stub_pattern` above.
+///
+/// StubE-EXT 3 scope: declared with placeholder body. StubE-EXT 4 lands
+/// the inner `emit_stub_pattern`; full surrounding translator-integration
+/// signature lands at StubE-EXT 5.
 #[allow(unused_variables)]
-pub fn emit_getprop_stub(
-    site_id: ICSiteId,
-    // Placeholder for Cranelift FunctionBuilder + Value types.
-    // The full signature lands at StubE-EXT 4 with the IR emission.
-) {
-    // StubE-EXT 4 body: emit inline shape-check + slot-load sequence per
-    // stub-design.md §2-§4. For now the function is a no-op placeholder
-    // so StubE-EXT 5 (translator wiring) and StubE-EXT 4 (IR emission)
-    // can land in either order.
+pub fn emit_getprop_stub(site_id: ICSiteId) {
     let _ = site_id;
 }
 
@@ -354,6 +469,44 @@ mod tests {
         let (cold, warm, cam, deg) = c.state_histogram();
         assert_eq!((cold, warm, cam, deg), (1, 1, 1, 1));
         let _ = id0;
+    }
+
+    /// StubE-EXT 4: Cranelift IR emission round-trip test. Builds the
+    /// stub_pattern JIT function, calls it with synthetic inputs, and
+    /// asserts both hit-path and miss-path produce correct values.
+    #[test]
+    fn stub_pattern_cache_hit_returns_slot_value() {
+        let f = build_stub_pattern_module().expect("build module");
+        // Synthetic Shape pointer: any non-null i64 works as a cache key.
+        // We use the address of a Rust-stack i64 for both recv and cached
+        // (forces equality → hit).
+        let synthetic_shape = 0xDEAD_BEEF_i64;
+        // Synthetic values_base: a Vec<i64> on the Rust stack acting as
+        // the receiver's shape_values storage.
+        let values: Vec<i64> = vec![10, 20, 30, 40, 50];
+        let base = values.as_ptr() as i64;
+        // Cache hit: recv_shape == cached_shape. Slot = 2. Expected = 30.
+        let result = f(synthetic_shape, synthetic_shape, 2, base, /*slow*/ 999);
+        assert_eq!(result, 30, "cache hit should load values_base[slot*8]");
+        // Cache hit at slot 0.
+        let result = f(synthetic_shape, synthetic_shape, 0, base, /*slow*/ 999);
+        assert_eq!(result, 10);
+        // Keep `values` alive past the JIT call.
+        drop(values);
+    }
+
+    #[test]
+    fn stub_pattern_cache_miss_returns_slow_path() {
+        let f = build_stub_pattern_module().expect("build module");
+        let recv_shape = 0xCAFE_BABE_i64;
+        let cached_shape = 0xDEAD_BEEF_i64;
+        let values: Vec<i64> = vec![10, 20, 30];
+        let base = values.as_ptr() as i64;
+        let slow_path = 0x12345_i64;
+        // recv != cached → miss → return slow_path.
+        let result = f(recv_shape, cached_shape, 0, base, slow_path);
+        assert_eq!(result, slow_path);
+        drop(values);
     }
 
     /// Pred-stub.4: source-tier identifiers fit Doc 738 §II's

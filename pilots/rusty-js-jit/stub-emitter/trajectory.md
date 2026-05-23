@@ -269,3 +269,71 @@ LOC delta: ~340 (stub_aarch64.rs 325 + Cargo.toml dep). 10/10 unit tests; diff-p
 ---
 
 *StubE-EXT 3 closes. The cache state machine compiles, tests, and is ready. StubE-EXT 4 emits the actual aarch64 IR against synthetic shape pointers.*
+
+---
+
+## StubE-EXT 4 — 2026-05-23 (Cranelift IR emission for the stub pattern)
+
+### Headline
+
+Lands the inline compare-branch-load IR pattern via `emit_stub_pattern` + the integration helper `build_stub_pattern_module` that builds a complete JITModule containing one stub function. **12/12 unit tests PASS** (10 state-machine from EXT 3 + 2 new Cranelift round-trip tests). The IR pattern compiles, runs on aarch64, and produces correct values on both hit and miss paths.
+
+Scope-narrowed from "full integration test against real Object / ICEntry layouts" to "stub pattern proven in isolation with flat i64 inputs." Real Object / ICEntry struct-layout integration happens at StubE-EXT 5 when the translator wires this into Op::GetPropOnObject dispatch. The narrowing matches Doc 729 §A8.13 substrate-amortization (substrate-introduction round is the IR pattern; closure round is the translator integration that consumes it).
+
+### Substrate landed
+
+- `pilots/rusty-js-jit/derived/src/stub_aarch64.rs` (+~125 LOC):
+  - `emit_stub_pattern(builder, recv_shape, cached_shape, cached_slot, values_base, slow_path_result) -> Value`:
+    - Creates hit / miss / merge blocks.
+    - Emits `icmp Equal recv_shape, cached_shape`.
+    - Hit block: `imul cached_slot, 8`, `iadd values_base + offset`, `load i64 [addr]`, jump merge with loaded value.
+    - Miss block: jump merge with slow_path_result.
+    - Merge block param IS the return value.
+  - `build_stub_pattern_module() -> extern "C" fn(i64, i64, i64, i64, i64) -> i64`:
+    - Mirrors translator.rs's JITBuilder setup (flag: use_colocated_libcalls=false, is_pic=false; cranelift_native::builder; finish to ISA).
+    - Declares + defines the `stub_pattern` function via the JITModule.
+    - Returns a callable function pointer via `get_finalized_function` + transmute.
+  - 2 new tests: `stub_pattern_cache_hit_returns_slot_value`, `stub_pattern_cache_miss_returns_slow_path`.
+
+### Build + gates
+
+- `cargo build --release -p rusty-js-jit`: clean.
+- `cargo test --release -p rusty-js-jit --lib stub_aarch64`: **12/12 PASS** (0.02s).
+- `cargo build --release --bin cruft -p cruftless`: clean.
+- diff-prod **42/42 PASS** unchanged.
+
+### Bug surfaced + fixed (preserved per Doc 729 §A8.16 / §A8.17 discipline)
+
+The first build of `build_stub_pattern_module` panicked at runtime with "PLT is currently only supported on x86_64" from `cranelift-jit 0.118 backend.rs:297`. Root cause: default `JITBuilder::new` enables PLT-based libcall thunks which aarch64 doesn't implement. The fix was to mirror `translator.rs:140-147`'s explicit ISA construction with `use_colocated_libcalls=false` + `is_pic=false`. Recorded inline in the helper's source comment so future-readers see the rationale at the load site.
+
+### §XVI / Doc 734 categorization
+
+Per Doc 730 §XVI: Case-4 (implementation freedom) at the (P2.a)-eligible cost-stratum dimension. The compare-branch-load pattern is the standard IC fast-path shape; no spec divergence; cruftless's narrow alphabet (per Doc 731) makes it tractable to emit in one helper function.
+
+Per Doc 734 §V: growth mechanism (a) tier-relocation — the IR emission helper is a new tier between the stub state machine (StubE-EXT 3) and the translator wiring (StubE-EXT 5). Growth mechanism (b) negative-finding amendment — the PLT panic surfaced a Cranelift configuration constraint on aarch64 that the design doc hadn't anticipated; the fix is recorded inline + here for the engagement's catalog.
+
+### Pred disposition
+
+- **Pred-stub.4** (Doc 738 §II conventions): `emit_stub_pattern` + `build_stub_pattern_module` are snake_case (per §II.b; no `_via` because not Runtime-dispatching); pillar-path conforms; new Cranelift-side identifiers reuse Cranelift's PascalCase types.
+- **Pred-stub.5** (Doc 731 §VII R1 single-tier): preserved by construction — the stub emitter is straight-line IR emission (no second JIT tier; no internal optimization passes beyond what Cranelift owns).
+- **Pred-stub.1/.2/.3** still wait for StubE-EXT 5+ integration and EXT 6+ measurements.
+
+### Composition with prior corpus work
+
+- **Doc 731 §VII R8** (no internal optimization passes): preserved — `emit_stub_pattern` is a single function emitting straight-line CLIF; no IR transformation passes; Cranelift handles all instruction selection / regalloc / scheduling.
+- **Doc 735 §X.h.b (P2) sub-cases**: today's measurement-blocking work (the integration round needs CMig-EXT 8 enrollment to produce real shaped Objects to cache) means EXT 4 is structurally before the (P2) categorization moment. Pred-stub.1 reads at EXT 6 against the EXT 1 baseline of 271 ns/iter.
+
+### Open scope at StubE-EXT 4 close
+
+1. **StubE-EXT 5** — Translator wiring. Op::GetPropOnObject codegen path branches under `CRUFTLESS_LEJIT_STUB=1` env flag: emit the inline stub via `emit_stub_pattern` against real ICStubCache side-table addresses + receiver Object struct field offsets. Cross-crate change: `runtime_getprop_on_object` signature extension to return `(value, *const Shape, u32 slot)` for the slow-path observer. **Gates on shapes CMig-EXT 8** for real shape-cache hits; pre-CMig-EXT 8 the env-flag path is testable for correctness (every receiver Dictionary → every IC miss → slow path runs every time → observe_miss_no_shape_at_site fires).
+2. **StubE-EXT 6** — Re-measure post-CMig-EXT 8; (P2) categorize.
+3. **StubE-EXT 7** — Fuzz probe (property-addition-history fuzz exercising shape transitions through the IC dispatch).
+4. **StubE-EXT 8** — Default-on flip.
+
+### Cumulative status at StubE-EXT 4 close
+
+LOC delta: ~125 (stub IR emission + integration helper + 2 tests). 12/12 unit tests; diff-prod 42/42 unchanged. The Cranelift IR pattern exists, compiles, runs, and produces correct values.
+
+---
+
+*StubE-EXT 4 closes. The inline compare-branch-load IR pattern is corroborated on aarch64; the substrate is ready for StubE-EXT 5's translator integration.*
