@@ -8412,19 +8412,25 @@ impl Runtime {
                             rusty_js_jit::set_current_deopt_sites(&cf.deopt_sites);
                             rusty_js_jit::set_current_runtime(rt_ptr);
                             rusty_js_jit::set_current_proto(proto_ptr);
+                            // Φ-EXT 2: JitFn signature is F64; pass f64
+                            // directly from Value::Number payload. Under
+                            // VTI=1 (env opt-in), pass *const Value
+                            // pointer reinterpreted as f64-bits via
+                            // f64::from_bits (the JIT prologue bitcasts
+                            // back to recover the pointer).
                             let r = match params {
                                 1 => {
                                     let a = if vti {
-                                        &args[0] as *const Value as i64
-                                    } else { unbox_arg(&args[0]) };
+                                        f64::from_bits(&args[0] as *const Value as u64)
+                                    } else { unbox_arg_f64(&args[0]) };
                                     cf.func.call1(a)
                                 }
                                 2 => {
                                     let (a, b) = if vti {
-                                        (&args[0] as *const Value as i64,
-                                         &args[1] as *const Value as i64)
+                                        (f64::from_bits(&args[0] as *const Value as u64),
+                                         f64::from_bits(&args[1] as *const Value as u64))
                                     } else {
-                                        (unbox_arg(&args[0]), unbox_arg(&args[1]))
+                                        (unbox_arg_f64(&args[0]), unbox_arg_f64(&args[1]))
                                     };
                                     cf.func.call2(a, b)
                                 }
@@ -8443,7 +8449,8 @@ impl Runtime {
                                 }
                                 None
                             } else {
-                                Some(Ok(Value::Number(r as f64)))
+                                // Φ-EXT 2: r is already f64.
+                                Some(Ok(Value::Number(r)))
                             }
                         } else { None }
                     } else { None }
@@ -8542,21 +8549,25 @@ impl Runtime {
                             // borrowed through this scope) so the pointer is
                             // valid for the call's duration.
                             let vti = jit_fn.vti_enabled;
+                            // Φ-EXT 2: F64 calling convention; pass f64
+                            // from Value::Number payload. VTI uses
+                            // f64::from_bits to encode the *const Value
+                            // pointer; JIT prologue bitcasts back.
                             let r = match params {
                                 1 => {
                                     let a = if vti {
-                                        &args[0] as *const Value as i64
+                                        f64::from_bits(&args[0] as *const Value as u64)
                                     } else {
-                                        unbox_arg(&args[0])
+                                        unbox_arg_f64(&args[0])
                                     };
                                     jit_fn.func.call1(a)
                                 }
                                 2 => {
                                     let (a, b) = if vti {
-                                        (&args[0] as *const Value as i64,
-                                         &args[1] as *const Value as i64)
+                                        (f64::from_bits(&args[0] as *const Value as u64),
+                                         f64::from_bits(&args[1] as *const Value as u64))
                                     } else {
-                                        (unbox_arg(&args[0]), unbox_arg(&args[1]))
+                                        (unbox_arg_f64(&args[0]), unbox_arg_f64(&args[1]))
                                     };
                                     jit_fn.func.call2(a, b)
                                 }
@@ -8587,7 +8598,8 @@ impl Runtime {
                                         }
                                     }
                                 }
-                                return Ok(Value::Number(r as f64));
+                                // Φ-EXT 2: r is already f64.
+                                return Ok(Value::Number(r));
                             }
                         }
                         // JIT compile failed (cached None), OR a deopt
@@ -9011,6 +9023,20 @@ pub fn unbox_arg(v: &Value) -> i64 {
         Value::Number(f) => *f as i64,
         Value::Object(id) => id.0 as i64,
         _ => 0,
+    }
+}
+
+/// LeJIT-Φ Φ-EXT 2: f64 calling-convention companion to unbox_arg.
+/// Returns the f64 directly from Value::Number (no truncation, no
+/// rebox). For Value::Object, encodes the ObjectId.0 as f64-bits via
+/// from_bits — the JIT's IC GetProp path interprets these bits back
+/// via to_bits() for the receiver-id slot. Caller must have validated
+/// arg-tag via jit_compatible_arg_tag_only first.
+pub fn unbox_arg_f64(v: &Value) -> f64 {
+    match v {
+        Value::Number(f) => *f,
+        Value::Object(id) => f64::from_bits(id.0 as u64),
+        _ => 0.0,
     }
 }
 

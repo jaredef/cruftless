@@ -1,17 +1,17 @@
 # TB-EXT 4 — composition matrix
 
-*N=5 per (bench × config); median ns/iter. Generated 2026-05-23T08:39:04-07:00.*
+*N=5 per (bench × config); median ns/iter. Generated 2026-05-23T09:41:59-07:00.*
 
 | config | bench_call_overhead | bench_ic |
 |---|---:|---:|
-| none | 71.2 | 81.0 |
-| TB | 71.0 | 81.1 |
-| STUB | 74.8 | 81.0 |
-| VTI | 70.5 | 728.3 |
-| TB+STUB | 70.7 | 81.7 |
-| TB+VTI | 70.9 | 733.6 |
-| STUB+VTI | 70.8 | 730.9 |
-| TB+STUB+VTI | 70.3 | 726.8 |
+| none | 72.1 | 82.9 |
+| TB | 71.8 | 82.5 |
+| STUB | 71.3 | 82.7 |
+| VTI | 74.6 | 92.6 |
+| TB+STUB | 71.5 | 82.2 |
+| TB+VTI | 70.3 | 85.9 |
+| STUB+VTI | 70.3 | 86.2 |
+| TB+STUB+VTI | 70.9 | 85.5 |
 
 ## Per-flag contribution (delta from `none`)
 
