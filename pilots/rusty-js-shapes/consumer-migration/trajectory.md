@@ -966,3 +966,24 @@ Total shape-enrollment chapter (CMig-EXT 1 through CMig-EXT 17.bis):
 ---
 
 *CMig-EXT 17.bis closes. 3 NEEDS-VERIFY sites all NEEDS-FIX on inspection; all fixed; canonical fuzz still byte-identical; GC Trace use-after-free dormant correctness gap closed. Finding IV.3 refinement queued (NEEDS-FIX-pending-verification framing).*
+
+---
+
+# Chapter Close — 2026-05-23
+
+**The consumer-migration sub-workstream's chapter is closed at engagement-wide canonical correctness gate.**
+
+Full chapter summary lives at seed.md §VIII (added 2026-05-23). The trajectory above records every per-round substrate move in time-order; the seed's §VIII synthesizes the cumulative landings + engagement-tier consequences + standing instruments seeded + composition with prior corpus work + post-chapter forward-looking maintenance candidates.
+
+**Locale status post-chapter**: STANDING (canonical fuzz instrument is engagement-tier framework; future default-on flips at any pilot run this locale's fixture per Findings rule 10).
+
+**Forward-derived work that builds on this locale** (named for future engagement direction):
+- CMig-EXT 17.ter or follow-on: extend canonical fuzz with Trace + module-export patterns
+- Findings doc IV.3 refinement to NEEDS-FIX-pending-verification framing
+- Engagement-wide audit retrospective: apply the audit-precision discipline (Finding IV.3) at future audits
+
+The chapter is closed; the standing instruments persist; the engagement proceeds with this locale as STANDING framework apparatus, not as an active substrate workstream.
+
+---
+
+*Chapter-close marker. Per Doc 727 §X basin-stability: this marker is append-only; the chapter does not reopen via edit. Future substrate work that touches this locale's substrate will be new rounds appended below this marker, with the chapter-close-state as their baseline.*

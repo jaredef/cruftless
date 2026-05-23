@@ -86,3 +86,52 @@ When this sub-workstream closes (CMig-EXT 9), the parent's Shape-EXT 5 closes si
 ---
 
 *Doc 581 standing instrument: this seed is the sub-workstream's stable kernel. Changes to telos / apparatus / carve-outs land here; per-family migrations land in trajectory.md.*
+
+---
+
+## VIII. Chapter close (2026-05-23 — post CMig-EXT 17.bis)
+
+The consumer-migration sub-workstream's chapter is closed at engagement-wide canonical correctness gate. Cumulative substrate landings:
+
+| round | substrate | category |
+|---|---|---|
+| CMig-EXT 0 | sub-workstream founding | apparatus |
+| CMig-EXT 1-4 | factory + Family A + Family B + Family C migrations | substrate-introduction |
+| CMig-EXT 5/5.bis | Family D mutating + enrollment flip behind env flag | substrate |
+| CMig-EXT 8 | env-flag enrollment flip (CRUFTLESS_SHAPE_ENROLL=1) | flip |
+| CMig-EXT 9/10 | close 5 residuals + default-on flip | flip |
+| CMig-EXT 11 | test262 regression caught; default-on REVERTED | (P2.c) recovery |
+| CMig-EXT 12 | Object.create shape-aware (91% of test262 regression closed) | substrate fix |
+| CMig-EXT 13/14 | Object.getOwnPropertyDescriptor shape-aware + DEFAULT-ON FLIP (second attempt, held) | substrate fix + flip |
+| CMig-EXT 15 | object-spread regression close (out-of-band catch) | substrate fix |
+| CMig-EXT 16 | property-bypass audit (~40 sites enumerated; 5 hypothesis NEEDS-FIX) | discipline |
+| CMig-EXT 16.bis | JSON.stringify + Proxy ownKeys shape-aware | substrate fix |
+| CMig-EXT 17 | canonical 2000-fixture fuzz harness (engagement-wide standing instrument) | infrastructure |
+| CMig-EXT 17.bis | NEEDS-VERIFY follow-up: GC Trace + module-export shape-aware | substrate fix |
+
+**Engagement-tier consequences captured at close**:
+- Shape substrate default-on at engagement-tier (`CRUFTLESS_SHAPE_ENROLL` defaults to 1)
+- 12+ consumer sites migrated to shape-aware iteration via the canonical pattern (shape-iter chain then properties-iter)
+- 1 canonical fuzz harness landed as engagement-wide standing instrument (per Findings doc IV.4)
+- 1 critical dormant GC use-after-free correctness bug fixed prospectively (Trace impl for Object)
+- 1 audit-precision discipline lesson formalized (Finding IV.3) + refined (CMig-EXT 17.bis: NEEDS-FIX-pending-verification framing)
+- (P2.c) regression rate at canonical scope: 0 across 8 configurations × 2000 fixtures × 8 patterns
+
+**Forward-looking framework instruments seeded by this pilot**:
+- `pilots/rusty-js-shapes/consumer-migration/fixtures/fuzz-canonical.mjs` — STANDING canonical fuzz; future default-on flips at any pilot run this per Finding rule 10
+- `pilots/rusty-js-shapes/consumer-migration/docs/property-bypass-audit.md` — discipline reference for future property-iteration audits
+- The shape-iter-chain-then-properties-iter pattern — standing engineering pattern for any future user-observable iteration site
+
+**Composition with prior corpus work at chapter close**:
+- Doc 729 §A8.13 substrate-amortization-cascade: this pilot's per-pilot cascade (shape → STUB → TB) empirically observed.
+- Doc 731 §VII R1-R8: preserved by construction throughout.
+- Doc 735 §X.h.b (P2) categorization: pilot reached (P2.a) at canonical scope.
+- Doc 735 §X.h.c three-probe-levels: discipline applied at every default-on flip; canonical fuzz instrument standing.
+- Doc 737 §IV nested locale: this pilot's existence validated as the apparatus discipline the keeper directed.
+- Doc 739 cascade-revival pattern: this pilot's instruments (canonical fuzz) are the standing apparatus that cross-pilot cascade-revivals depend on for correctness verification.
+
+**Post-chapter state**: subsequent rounds at this locale (if any) are post-first-cut maintenance, not load-bearing for the chapter close. Candidates: canonical-fuzz extension (add Trace + module-export patterns); Finding IV.3 refinement codification; new consumer sites discovered by future audits or out-of-band reports.
+
+---
+
+*Doc 581 standing instrument continues. The sub-workstream's chapter is closed; the standing instruments persist; the engagement's framework for future shape-related work is anchored.*
