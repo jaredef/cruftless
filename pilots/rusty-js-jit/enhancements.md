@@ -207,6 +207,27 @@ The combination of (1) + (2) + (3) plausibly accounts for the +18.9 ns regressio
 
 ---
 
+## 2026-05-23 — TB-EXT 3a: TinyBaselineMetadata apparatus, no per-call cost change **[ANTICIPATED]**
+
+**Locale**: `pilots/rusty-js-jit/tiny-baseline/trajectory.md` → TB-EXT 3a (substrate-introduction per Doc 729 §A8.13).
+
+**Substrate change**: New module `pilots/rusty-js-jit/derived/src/tiny_baseline.rs` (~145 LOC) with `TinyBaselineMetadata` struct, `lejit_tb_enabled()` helper, `TB_BYTECODE_LEN_THRESHOLD` const, 8 unit tests. `CompiledFn.tb_metadata: Option<TinyBaselineMetadata>` field populated at compile time when `CRUFTLESS_LEJIT_TB=1`. Dispatcher unchanged; metadata exists but is not yet read.
+
+**Predicted-by**: TB-EXT 2 decomposition doc §4 specified the metadata struct's fields and §7 named this round as the substrate-introduction step. The cascade pattern from shapes (Shape-EXT 4 substrate-introduction enabling N consumer-migration rounds) recurs here structurally — metadata is the compile-time-resolved facts the per-call thunk (TB-EXT 3b) will consume.
+
+**Measurement**: 8/8 new unit tests PASS. 46/46 JIT lib + 35/35 runtime lib regression GREEN. Bench under TB=1 vs TB=0 within noise band (125.9 vs 122.2 ns/iter, Δ +3.7 ns within the 122-131 ns variance band from cross-validation reading). Metadata-build cost is one-time per JIT-compile (warm-up phase), not per-call, so no per-iter cost change observed.
+
+**Cross-axis (Doc 738 §III) check**: new identifiers conform — `tiny_baseline.rs` (§II.e pillar-path), `TinyBaselineMetadata` (UpperCamelCase struct per §II.b), `lejit_tb_enabled` (snake_case fn, no `_via`, no `__` prefix), `TB_BYTECODE_LEN_THRESHOLD` (SCREAMING_SNAKE_CASE const), env flag `CRUFTLESS_LEJIT_TB` (mirrors STUB+VTI precedent).
+
+**Provenance**:
+- New module: `pilots/rusty-js-jit/derived/src/tiny_baseline.rs`
+- Re-exports: `pilots/rusty-js-jit/derived/src/lib.rs`
+- Compile-time hook: `pilots/rusty-js-jit/derived/src/translator.rs` (CompiledFn field + populate at compile_function exit)
+- Trajectory: `pilots/rusty-js-jit/tiny-baseline/trajectory.md` TB-EXT 3a (close)
+- TB-EXT 2 decomposition doc §4 (component classification) is the design-tier predictor; §7 (forward to 3a) named this round specifically.
+
+---
+
 ## Template — for future entries
 
 ### `<date>` — `<locale-tag>` `<round-id>`: `<one-line headline>` **[ANTICIPATED]**

@@ -190,3 +190,78 @@ The dispatcher is fully decomposed source-tier. TB-EXT 3b has a concrete named-c
 ---
 
 *TB-EXT 2 closes. 22-component decomposition + 60-86 ns gap-finding + 38-74 ns reclaim estimate. TB-EXT 3a begins the TinyBaselineMetadata substrate-introduction.*
+
+---
+
+## TB-EXT 3a — 2026-05-23 (TinyBaselineMetadata substrate-introduction)
+
+### Headline
+
+Substrate-introduction round per Doc 729 §A8.13. New module `pilots/rusty-js-jit/derived/src/tiny_baseline.rs` (~145 LOC with tests) holds the `TinyBaselineMetadata` struct + `lejit_tb_enabled` env-flag helper + `TB_BYTECODE_LEN_THRESHOLD` const + 8 unit tests. Wired into `CompiledFn` as `Option<TinyBaselineMetadata>` field; populated at `compile_function` time when `CRUFTLESS_LEJIT_TB=1`. No dispatcher route yet — pure apparatus. 46/46 JIT lib tests + 35/35 runtime lib tests + bench shows TB=1 within noise of TB=0 (125.9 vs 122.2 ns/iter).
+
+### Substrate landed
+
+- `pilots/rusty-js-jit/derived/src/tiny_baseline.rs` (~145 LOC):
+  - `pub struct TinyBaselineMetadata { jit_fn_ptr: usize, params: u16, bytecode_len: usize, tb_eligible: bool }`
+  - `pub const TB_BYTECODE_LEN_THRESHOLD: usize = 60` (per seed §IV ≤20-op carve-out; 60 bytes ≈ 20-30 ops upper bound)
+  - `impl TinyBaselineMetadata { pub fn build(...), pub fn eligible() -> bool }`
+  - `pub fn lejit_tb_enabled() -> bool` (mirrors LEJIT_STUB + LEJIT_VTI env-flag precedent)
+  - 8 unit tests: build, ineligible-by-size, ineligible-by-arity (0 + 3), boundary-at-threshold, two-arg-eligible, env-flag default-off + on-via-"1" + on-via-"TrUe"
+- `pilots/rusty-js-jit/derived/src/lib.rs`:
+  - `pub mod tiny_baseline;` + re-export of `TinyBaselineMetadata`, `lejit_tb_enabled`, `TB_BYTECODE_LEN_THRESHOLD`.
+- `pilots/rusty-js-jit/derived/src/translator.rs`:
+  - `CompiledFn.tb_metadata: Option<TinyBaselineMetadata>` field added with rustdoc.
+  - `compile_function` populates the field via `TinyBaselineMetadata::build(code_ptr as usize, proto.params, proto.bytecode.len())` when `lejit_tb_enabled()` returns true; `None` otherwise.
+
+### Probes
+
+- **Unit tests**: 8/8 new tiny_baseline tests PASS.
+- **JIT lib regression**: 46/46 PASS (was 38 pre-TB-EXT 3a; +8 from this round's new tests).
+- **Runtime lib regression**: 35/35 PASS.
+- **Bench under TB=1 (no dispatcher route)**: 125.9 ns/iter vs 122.2 ns OFF — Δ +3.7 ns within the 122-131 ns variance band. Metadata-build cost is one-time per JIT-compile (warm-up phase), not per-call. The dispatcher has not been modified for TB; per-call cost identical to OFF path.
+- **Multi-shape under TB=1**: id1=125.1, id2=132.6, id_locals=124.8 (all within noise of TB=0 readings from TB-EXT 1).
+
+### Doc 738 §II cross-axis consistency check
+
+The new identifiers conform to conventions:
+- `tiny_baseline.rs` — §II.e pillar-path (engine optimization tier under `pilots/rusty-js-jit/derived/src/`).
+- `TinyBaselineMetadata` — UpperCamelCase struct name; semantic substrate-position encoding per §II.b (this names a substrate-tier artifact, not an invocation surface).
+- `lejit_tb_enabled` — snake_case fn at module scope; no `_via` (not Runtime-dispatching); no `__` prefix (not engine-internal sentinel; called from translator-side Rust).
+- `TB_BYTECODE_LEN_THRESHOLD` — SCREAMING_SNAKE_CASE module-level const per Rust convention.
+- Env flag `CRUFTLESS_LEJIT_TB` — mirrors `CRUFTLESS_LEJIT_STUB` + `CRUFTLESS_LEJIT_VTI` precedent.
+
+No convention violations introduced.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: Case-4 (implementation freedom). Layout choice + struct fields are implementation detail.
+
+Per Doc 734 §V: growth (a) substrate-introduction move enabling (c) positive-finding generalization at TB-EXT 3b. The §A8.13 cascade pattern's first half — the substrate-introduction round — is now landed.
+
+Per Doc 735 §X.h.b: not applicable yet (no per-call cost change). TB-EXT 3b will be the (P2.a) vs (P2.d) call.
+
+Per Doc 735 §X.h.c three-probe-levels: unit tests are the bench-tier probe at the apparatus level; consumer-route (diff-prod under TB=1) deferred to TB-EXT 5 alongside thunk emission.
+
+### Composition with prior corpus work
+
+- **Doc 729 §A8.13 substrate-amortization-cascade**: this round is the substrate-introduction half (the metadata that 3b's thunk consumes). Same structural pattern as Shape-EXT 4 (substrate-introduction) + consumer-migration (closure rounds).
+- **Doc 731 §VII R1**: preserved by construction (metadata struct is per-JIT-function compile-time data, not a second tier).
+- **Doc 736 §IX.6 cap-dispatcher modes**: the metadata struct does NOT cache mode-dependent state (intentional — see decomposition doc §5). The thunk's mode-check at TB-EXT 3b will route to standard dispatcher under Mode > 0.
+- **Doc 737 §IV pre-filing → spawn → first substrate**: tiny-baseline locale is now contributing real source code (not just docs). The spawn → bench-probe → design → substrate-introduction cadence mirrors stub-emitter (StubE-EXT 0-3) and value-tag-inline (VTI-EXT 0-3a).
+- **Doc 738 §II conventions**: cross-axis check above. No violations.
+
+### Open scope at TB-EXT 3a close
+
+1. **TB-EXT 3b** — Closure round per Doc 729 §A8.13: inline call thunk emission. Under `CRUFTLESS_LEJIT_TB=1`, the dispatcher checks `jit_fn.tb_metadata.as_ref().map_or(false, |m| m.eligible())` and routes through the inline thunk for eligible calls. ~150-200 LOC. The largest single round of the pilot. Load-bearing (P2.a) vs (P2.d) decision.
+2. **TB-EXT 4** — Re-bench against TB-EXT 1 multi-shape baselines. (P2.a) decision per Doc 735 §X.h.b.
+3. **TB-EXTs 5-8** per seed §III methodology.
+
+### Cumulative status at TB-EXT 3a close
+
+LOC delta: ~145 (new module) + ~15 (lib.rs re-exports + translator.rs metadata-build hook). Total ~160 LOC.
+
+The apparatus is in place. The metadata struct holds the four compile-time-resolved facts the thunk needs. Test coverage validates the eligibility boundary (size threshold + arity constraint). TB-EXT 3b's thunk emission has a stable, tested foundation to build on.
+
+---
+
+*TB-EXT 3a closes. TinyBaselineMetadata + 8 unit tests landed; no per-call cost change (metadata built once per compile, dispatcher unchanged). TB-EXT 3b begins the inline call thunk emission against this substrate.*

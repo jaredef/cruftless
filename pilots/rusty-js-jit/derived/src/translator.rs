@@ -86,6 +86,12 @@ pub struct CompiledFn {
     /// pointers (the VTI calling convention). Set at compile time so
     /// the dispatcher's choice agrees with the prologue's expectation.
     pub vti_enabled: bool,
+    /// LeJIT-Τ TB-EXT 3a: Some(_) iff this function was compiled with
+    /// `CRUFTLESS_LEJIT_TB=1`. Holds the compile-time-resolved facts
+    /// the TB-EXT 3b inline call thunk reads once at thunk-build time
+    /// instead of re-deriving them at each call. None when TB is off
+    /// (default) — the dispatcher takes the historical path.
+    pub tb_metadata: Option<crate::tiny_baseline::TinyBaselineMetadata>,
 }
 
 impl std::fmt::Debug for CompiledFn {
@@ -680,7 +686,22 @@ fn compile_function_inner(proto: &FunctionProto) -> Result<CompiledFn, String> {
         }
     };
     let leaked = Box::leak(Box::new(module));
-    Ok(CompiledFn { func, _module: leaked, deopt_sites, vti_enabled: lejit_vti })
+
+    // LeJIT-Τ TB-EXT 3a: build TinyBaselineMetadata when the
+    // CRUFTLESS_LEJIT_TB env flag is set AND the function is
+    // param-eligible. Metadata is consumed by TB-EXT 3b's inline
+    // call thunk; in 3a the field exists but the dispatcher does
+    // not yet route through a thunk (no thunk emission).
+    let tb_metadata = if crate::tiny_baseline::lejit_tb_enabled() {
+        let jit_fn_ptr = code_ptr as usize;
+        Some(crate::tiny_baseline::TinyBaselineMetadata::build(
+            jit_fn_ptr,
+            proto.params,
+            proto.bytecode.len(),
+        ))
+    } else { None };
+
+    Ok(CompiledFn { func, _module: leaked, deopt_sites, vti_enabled: lejit_vti, tb_metadata })
 }
 
 fn binop<F>(stack: &mut Vec<ClValue>, builder: &mut FunctionBuilder, f: F) -> Result<(), String>
