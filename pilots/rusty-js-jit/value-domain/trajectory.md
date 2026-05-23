@@ -230,3 +230,70 @@ All 5 Pred-vd.* falsifiers held.
 ---
 
 *VD-EXT 3 closes. VD first cut closed at (P2.a). String encoding substrate available for downstream consumer pilots. Findings Addendum VI codified. Pilot's load-bearing contributions: String-receiver JIT-tier substrate + engagement-wide bit-pattern-scheme discipline + -∞-collision precedent. Pivot decision (TL revival vs hot-intrinsic-IC table vs other) pending keeper signal.*
+
+---
+
+## Session chapter close — 2026-05-23 (architectural-pivot session arc summary)
+
+Recorded here at the VD locale (the last active workstream of the session) per keeper directive 2026-05-23 22:31-local. Spans JSF chain + CharCode chain + TL pilot + VD pilot + 2 corpus docs (740 alongside the prior 739) + 3 findings addenda (IV, V, VI). The session's arc is the multi-tier-cascade-revival recognition applied iteratively across actual substrate work.
+
+### Session arc (commit-tag coordinate sequence)
+
+1. **JSF chain (M1-M4)**: substrate-introduction at JSON.stringify tier; flat per-shape bench at first cut; cumulative 1-8% per-shape micro-bench wins. Cumulative CRB: -1% (within noise). Pred-jsf.1 falsified at first cut. Commits db5c5833, 3a6fd70f, 33a86a5d, e1ce4a99.
+
+2. **JSF-EXT 8 component A/B probe**: per Finding VII.1 (rule 11). Identified actual dominator on json_parse_transform: charCodeAt loop at 77% (vs CRB-EXT 9's "JSON.stringify ~5-10× contributor" estimate, off by ~20×). Commit 92dfc87b.
+
+3. **CharCode-EXT 1+2**: substrate ASCII charCodeAt + interp-tier hot-intrinsic IC. Multi-tier cascade-revival empirically demonstrated: substrate-tier closure alone -3%; +interp IC closure -12% cumulative CRB; cruft/node 20.34× → 17.93×. **Pipeline connection point.** Commits b8560a89, 5fdc4998.
+
+4. **Findings Addendum IV + Doc 740 corpus articulation**: Finding II.2-bis (substrate-introduction (P2.d) signature), Finding VII.1 (component A/B before pilot spawn), Finding II.3 (multi-tier cascade-revival), standing rule 11, 2 new engagement instruments. Doc 740 corpus-master + resolve mirror + jaredfoy.com seed pipeline complete. Commits dadac18 (corpus-master), becdb4e (resolve), b27443ec (rusty-bun findings).
+
+5. **TL pilot (b-narrow)**: spawned for LeJIT top-level loop JIT (the 1480ms residual dispatch tier). Closed structurally at TL-EXT 3 (not TL-EXT 5 as designed). Findings TL.1 + TL.2 surfaced two new blockers (whole-body bail; value-domain encoding). Promoted to engagement-wide as Findings VII.2 + VII.3 + standing rule 11 multi-axis extension at Addendum V. Commits 4d0dc240... ecc12da0.
+
+6. **VD pilot (α architectural pivot)**: spawned for Φ-encoding extension. NaN-boxing for String receivers. First cut closed at (P2.a) at VD-EXT 3. Finding VIII.1 (-∞ tag=0 reservation) + standing rule 12 (adversarial special-value tests for bit-pattern schemes) at Addendum VI. Commits 7a067512, e62a280c, 073d6ddc.
+
+### Engagement-tier delta (cumulative across session)
+
+| dimension | start of session | end of session | delta |
+|---|---|---|---|
+| CRB json_parse_transform | 2481 ms | 2188 ms | **-12%** |
+| cruft/node ratio | 20.34× | 17.93× | **-12%** |
+| Corpus docs | 739 | 740 | **+1** (multi-tier-cascade-revival) |
+| Engagement findings | 9 in 4 addenda | 15 in 6 addenda | **+6** |
+| Standing rules | 10 | 12 | **+2** (rule 11 multi-axis + rule 12 adversarial-IEEE-754) |
+| Engagement instruments | 0 standing | 2 standing | **+2** (component-A/B probe + hot-intrinsic IC pattern) |
+| Active locales | 16 | 22 | **+6** (JSF-chain 4 spawns + TL + VD) |
+
+### Doc 740 multi-tier reading: empirical instantiation
+
+Doc 740's abstract pattern (closing one tier alone is insufficient when the hot path traverses multiple tiers) materialized THREE times in this session at different scales:
+
+- **JSF chain**: JSON.stringify substrate (M1-M4) at the wrong tier per Finding VII.1. R was {charCodeAt loop dispatch, charCodeAt algorithm}; JSON.stringify ∉ R.
+- **CharCode chain**: substrate-tier alone (CC-1, -3%) + dispatch-tier alone (would be -15% if measured alone) ; both together -12% cumulative. Multi-tier pipeline-connection materialized.
+- **TL + VD pilots**: R for the full TL-equivalent closure has 4 tiers — {value-domain coverage (VD closed), entry-mechanism (TL-EXT 3 closed), op-set coverage (open), IC fast-path body (open)}. Two of four closed in this session; full pipeline-connection requires the remaining two.
+
+### Apparatus refinement
+
+Standing rule 11 now multi-axis:
+- A/B probe before pilot spawn (Addendum IV)
+- Op-set coverage check before alphabet-pilot spawn (Addendum V Finding VII.2)
+- Value-domain coverage check before IC-pilot spawn (Addendum V Finding VII.3)
+
+Standing rule 12 added (Addendum VI): adversarial IEEE 754 special-value test gate for bit-pattern-tagging schemes.
+
+The apparatus self-applied at least 4 times within the session:
+- JSF-EXT 8 A/B probe (rule 11 retrospective application; would have prevented JSF mis-spawn)
+- TL-EXT 3 source-read enumeration (rule 11 op-set axis prospective application; would have re-scoped (b-narrow))
+- VD-EXT 1 design source-read (rule 11 value-domain axis prospective application; named scope correctly)
+- VD-EXT 2 -∞ unit-test catch (rule 12 retrospective demonstration; would-have-prevented-blame)
+
+### Session disposition + pivot
+
+**Session closes here per keeper directive 2026-05-23 22:31-local.** Substantial substrate-introduction value delivered + apparatus refinement + corpus articulation. Context budget conserved by closing without immediately launching next consumer-pilot rounds.
+
+**Pivot target identified**: (ii) OSR / loop-extraction pilot. Per Doc 740 §II.2 P4 multi-tier reading, OSR closes the op-set coverage tier (Finding VII.2) by reducing the enclosing scope from whole-module-body to the inner loop. Combined with VD's value-domain closure (this session) + TL's entry-mechanism closure (this session), the full multi-tier pipeline-connection on json_parse_transform becomes feasible at the OSR pilot's close.
+
+OSR pilot to be spawned next per the directive's "report before pivot to ii". Spawn details + scope decisions pending next session's first round.
+
+---
+
+*Session chapter closes at VD-EXT 3. Substrate-introduction work landed at 4 tiers (substrate algorithm via CC-1; interp dispatch via CC-2; entry-mechanism via TL-EXT 3; value-domain via VD-EXT 2). Two tiers remain open (op-set coverage; IC fast-path bodies) — OSR pilot is the (β) pivot target named in TL findings.md TL.1 + Addendum V Finding VII.2 as the structural closure path. -12% CRB cumulative reclaim demonstrates the multi-tier reading empirically. Pre-session-resume protocol: read Doc 740 + findings Addendum V+VI + TL findings.md + this session-close entry for full context.*
