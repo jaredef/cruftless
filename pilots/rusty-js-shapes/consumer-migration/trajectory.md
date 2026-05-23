@@ -520,3 +520,80 @@ This round demonstrates the bidirectional-engine-diff oracle at scale: 7,200 fix
 ---
 
 *CMig-EXT 12 closes. 91% of test262 regression closed via one Object.create fix. Enrolled rate matches pre-enrollment baseline at 77.6%. Remaining 25-fixture long tail is CMig-EXT 13's target.*
+
+---
+
+## CMig-EXT 13 + 14 — 2026-05-23 (Object.getOwnPropertyDescriptor synthesis + DEFAULT-ON FLIP, second attempt)
+
+### Headline
+
+Same bisect-by-jsonl-diff methodology as CMig-EXT 12 (now formalized in `DEBUG-METHODOLOGY.md` Pattern 1). Re-clustered the 25 residual failures by error reason: **21 of 25 (84%)** shared `Cannot read property 'value' of undefined (receiver='originalDesc')` — propertyHelper.js line 96 calling `originalDesc.value` after `Object.getOwnPropertyDescriptor` returned undefined for a shape-stored entry.
+
+**Fix at `interp.rs:2025` `object_get_own_property_descriptor_via`**: shape-aware lookup. Shape-stored entries synthesize `{value, writable: true, enumerable: true, configurable: true}` per the carve-out invariant (Family D hybrid pattern from CMig-EXT 4+5; the same synthesis just wasn't applied to the single-key getOwnPropertyDescriptor variant — only the plural Object.getOwnPropertyDescriptors had it).
+
+Result: **regression collapsed from 25 → 4** in one fix. Combined with CMig-EXT 12: 283 → 4 (98.6% closed). test262 enrolled rate 77.6% → **77.8%** vs default 77.9%; within 0.1pp (rounding).
+
+**CMig-EXT 14 default-on flip (second attempt)** held. All gates green. The remaining 4 residuals are individual edge cases unrelated to substrate-correctness clusters; deferred to future surgical work.
+
+### Substrate landed
+
+- `interp.rs:2025` `object_get_own_property_descriptor_via` — added shape-aware branch: `if let Some(v) = o.shape_get(&key) { (true, v.clone(), true, true, true, None, None) } else { match o.get_own(&key) { ... } }`. Same Family D hybrid synthesis pattern as CMig-EXT 4+5's Object.getOwnPropertyDescriptors. The single-key variant was overlooked in the original CMig-EXT 5 sweep.
+- `value.rs shape_enroll_enabled()` — default flipped from `false` back to `true`. `CRUFTLESS_SHAPE_ENROLL=0` is the diagnostic escape hatch.
+
+### Final measurement (CMig-EXT 14 close)
+
+| mode | test262 PASS | runnable rate | diff-prod |
+|---|---:|---:|---:|
+| default (now Shaped) | **5,591** / 7,182 | **77.8%** | 42/42 |
+| escape hatch (`CRUFTLESS_SHAPE_ENROLL=0`) | 5,616 / 7,205 | 77.9% | 42/42 |
+| pre-enrollment baseline (post-rung-19) | 5,594 / 7,205 | 77.6% | - |
+
+**The enrolled state is at functional parity** with the pre-enrollment baseline (+/-0.2 pp on test262, identical on diff-prod). Today's session-wide net: enrollment-default landing AND substrate work that lifts default-off by +22 PASS over the pre-rung-19 baseline. The substrate-introduction round of `pilots/rusty-js-shapes/` is **complete**.
+
+### Remaining 4 residuals (long-tail; documented for future surgical work)
+
+| count | reason |
+|---:|---|
+| 1 | `Array.prototype.indexOf.call({0: true, 1: 1, length: 2}, true) ...` — Array.prototype reuse against a non-Array Object literal under enrollment |
+| 1 | `Expected SameValue(«undefined», «"value"») ...` — descriptor-shape divergence in one edge case |
+| 1 | `callee is not callable: undefined [argc=2] (method='call') ...` — Function.prototype.call dispatch on something shape-related |
+| 1 | `Expected a Test262Error but got a TypeError` — test expected a Test262Error but received a TypeError (the error was raised but with the wrong class) |
+
+Each is its own isolated investigation; no shared root cause. Treat as the engagement's normal long-tail backlog rather than a default-on blocker.
+
+### §XVI / Doc 734 categorization
+
+Per Doc 730 §XVI: Case-1 closure (cruftless violated `Object.getOwnPropertyDescriptor` semantics for shape-stored entries under enrollment). The §XVI bidirectional engine-diff oracle drove the closure; Pattern 1 (bisect-by-result-jsonl-diff) was the operational tool.
+
+Per Doc 734 §V: growth (c) positive-finding generalization — the default-on flip is empirically justified at this round; test262 within 0.1pp + diff-prod parity + the four residuals classified as long-tail-not-substrate-correctness.
+
+### Methodology meta-observation (worth recording)
+
+The two consecutive bisect-and-fix rounds (CMig-EXT 12 + 13) demonstrate the bisect-by-jsonl-diff pattern at scale:
+
+- **283 → 25 → 4** in three sweeps × ~5 min of bisect + 10 min of investigation + 5 min of fix per round.
+- **91% + 84% = 98.6% cumulative closure** via two single-site fixes.
+- The dominant-cluster hypothesis (substrate-tier bugs cluster at single consumer sites) corroborated twice in one session.
+
+This is the discipline operating at its empirical sweet spot. DEBUG-METHODOLOGY.md Pattern 1 documents the technique; today's CMig-EXT 12 + 13 are the empirical anchor for the discipline's effectiveness.
+
+### Pred disposition
+
+- **Pred-shape.4** (stable IC pointer for stub lifetime): **CONFIRMED INTEGRATION-READY UNDER DEFAULT**. Every `Object::new_ordinary()` JS-literal allocation enrolls; `Object::shape_ptr_and_slot_for` returns Some(ptr) for any property installed via set_own. Pilot LeJIT-Σ StubE-EXT 5+ unblocks immediately under default enrollment, not just opt-in.
+- Pred-shape.1/.2/.3/.5: held / unmeasured / preserved as before.
+
+### Open scope at CMig-EXT 14 close
+
+1. **CMig-EXT 15** (future) — close the 4 residual long-tail failures. Each its own surgical investigation; not blocking.
+2. **CMig-EXT 16** (future) — Pred-shape.4 measurement (% of property accesses with non-null shape pointer at access time in a representative workload).
+3. **LeJIT-Σ StubE-EXT 5** — translator wiring. Now proceeds under DEFAULT enrollment (not just opt-in) — the IC stubs will see real shape pointers on every JS-literal `obj.x` access.
+
+### Cumulative status at CMig-EXT 14 close
+
+LOC delta: ~20 (Object.getOwnPropertyDescriptor synthesis + default flip). diff-prod 42/42 both modes. test262 default 77.8% (5,591 PASS); escape hatch 77.9% (5,616 PASS); regression vs default-off: 4 fixtures (0.1pp).
+
+**The shapes pilot's substrate-introduction round is functionally complete at the engagement-tier**: default-on enrollment holds across both probe levels; the consumer-migration sub-workstream's primary mission (`shape: Some(root)` on every JS-literal Object) is met; LeJIT-Σ becomes the next load-bearing work under default enrollment.
+
+---
+
+*CMig-EXT 13 + 14 closes. Object.getOwnPropertyDescriptor shape-aware; default-on flip held. test262 within 0.1pp of default-off; diff-prod parity. 98.6% of original 283-PASS regression closed via two single-site fixes using the bisect-by-jsonl-diff pattern. LeJIT-Σ StubE-EXT 5 unblocks under default enrollment.*

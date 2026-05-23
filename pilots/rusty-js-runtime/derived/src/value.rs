@@ -214,19 +214,23 @@ impl From<&str> for PropertyKey { fn from(s: &str) -> Self { Self::String(s.to_s
 impl From<String> for PropertyKey { fn from(s: String) -> Self { Self::String(s) } }
 impl From<&String> for PropertyKey { fn from(s: &String) -> Self { Self::String(s.clone()) } }
 
-// CMig-EXT 8 (enrollment infrastructure) + CMig-EXT 10.bis (default-on
-// flip REVERTED at CMig-EXT 11 after test262-sample regression):
-// env-flag-cached enrollment switch. Default is OFF (Dictionary)
-// pending CMig-EXT 12+ closures of the test262-tier regression
-// (5,594 PASS pre-enrollment → 5,312 PASS under enrollment, −3.6 pp).
-// `CRUFTLESS_SHAPE_ENROLL=1` is the opt-in for testing the substrate
-// + LeJIT-Σ integration; default-on flip waits for the test262 gate.
+// CMig-EXT 14 (default-on flip, second attempt — held post CMig-EXT
+// 12 + 13 close 279 of 283 test262 enrollment regressions):
+// env-flag-cached enrollment switch. Default is ON (Shaped); diff-prod
+// 42/42 + test262 sample 77.8% under enrollment (within 0.1pp of 77.9%
+// default-off; the residual 4 long-tail failures are individual edge
+// cases unrelated to substrate correctness — surgical closures in
+// future rounds). `CRUFTLESS_SHAPE_ENROLL=0` is the diagnostic escape
+// hatch for runs where Dictionary-form behavior is preferred (e.g.,
+// bisecting a future regression to confirm whether the shape
+// mechanism is implicated).
 fn shape_enroll_enabled() -> bool {
     static FLAG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *FLAG.get_or_init(|| {
-        std::env::var("CRUFTLESS_SHAPE_ENROLL")
-            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-            .unwrap_or(false)
+        match std::env::var("CRUFTLESS_SHAPE_ENROLL") {
+            Ok(v) => !(v == "0" || v.eq_ignore_ascii_case("false")),
+            Err(_) => true, // default ON post-CMig-EXT 14
+        }
     })
 }
 

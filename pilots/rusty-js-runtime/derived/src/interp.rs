@@ -2023,9 +2023,17 @@ impl Runtime {
             (true, len_v, true, false, false, None, None)
         } else {
             let o = self.obj(id);
-            match o.get_own(&key) {
-                Some(d) => (true, d.value.clone(), d.writable, d.enumerable, d.configurable, d.getter.clone(), d.setter.clone()),
-                None => (false, Value::Undefined, false, false, false, None, None),
+            // CMig-EXT 13: shape-aware lookup. Shape-stored entries are
+            // user-default {w:t, e:t, c:t} per carve-out invariant;
+            // synthesize the descriptor for them. Falls through to
+            // properties lookup for non-shape entries.
+            if let Some(v) = o.shape_get(&key) {
+                (true, v.clone(), true, true, true, None, None)
+            } else {
+                match o.get_own(&key) {
+                    Some(d) => (true, d.value.clone(), d.writable, d.enumerable, d.configurable, d.getter.clone(), d.setter.clone()),
+                    None => (false, Value::Undefined, false, false, false, None, None),
+                }
             }
         };
         if !has { return Ok(Value::Undefined); }
