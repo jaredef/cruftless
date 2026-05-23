@@ -162,3 +162,71 @@ LOC delta: ~140 (interp.rs: 4 constants + extended unbox_arg_f64 + 4 helpers + 4
 ---
 
 *VD-EXT 2 closes. NaN-boxing implementation landed; -∞ design correction in-round; Finding VD.1 generated. Substrate-introduction value at the value-domain tier delivered. Consumer-pilot revival becomes structurally possible. VD-EXT 3 formal close + potentially Findings Addendum VI.*
+
+---
+
+## VD-EXT 3 — 2026-05-23 (formal close + Findings Addendum VI codification)
+
+### Headline
+
+Final round of the VD pilot's first cut. Findings doc Addendum VI promotes Finding VD.1 to engagement-scope as Finding VIII.1 (NaN-boxing tag=0 reservation) + introduces standing rule 12 (adversarial special-value test discipline for bit-pattern schemes). No source changes this round; documentation + categorization only.
+
+### Engagement findings codified at Addendum VI
+
+- **Finding VIII.1**: NaN-boxing schemes using sign=1 + exp=all-1 mask MUST reserve tag=0 to preserve -∞ as Number. Future tag assignments (BigInt, Boolean, Symbol at VD-EXT 4+) MUST use tags ≥ 1.
+- **Standing rule 12**: any pilot introducing a bit-pattern-tagging scheme over a special-value-bearing type MUST include an adversarial unit-test pass covering ALL special values before design closure. For IEEE 754 doubles: ±0, ±∞, ±NaN (canonical + signaling + sign=1), MIN_POSITIVE, EPSILON, subnormals, MAX, π, e, common values.
+
+### VD locale disposition
+
+**VD first cut closed at (P2.a) (encoding substrate-introduction successful).** Pilot delivered:
+
+1. **String encoding substrate**: VD_BOXED_MASK + VD_TAG_STRING constants + extended unbox_arg_f64 + 4 decoder helpers. Consumable by any future JIT-tier pilot needing String-receiver identity.
+2. **Backwards compatibility**: Number + Object encoding preserved byte-identical (Pred-vd.2 + Pred-vd.5 GREEN; A/B probe 1515-1526 vs baseline 1480-1507, within ±2% noise).
+3. **Finding VIII.1**: engagement-wide structural property captured.
+4. **Standing rule 12**: engagement-wide process discipline added.
+5. **-∞ correction precedent**: documented in interp.rs near constants + in VD-EXT 2 trajectory entry; any sibling pilot considering NaN-boxing extension sees the precedent first.
+
+### Pred-vd.* falsifier disposition
+
+| falsifier | disposition |
+|---|---|
+| Pred-vd.1 String round-trip | ✅ HELD (4/4 unit tests) |
+| Pred-vd.2 canonical fuzz | ✅ HELD (acc=-932188103) |
+| Pred-vd.3 diff-prod | ✅ HELD (42/42) |
+| Pred-vd.4 scope discipline | ✅ HELD (String only at first cut; BigInt/Boolean/etc. deferred) |
+| Pred-vd.5 composition with defaults | ✅ HELD (within ±2% noise) |
+
+All 5 falsifiers hold. VD first cut is at (P2.a).
+
+### Open scope at VD locale close (first cut)
+
+1. **VD-EXT 4** — BigInt encoding extension (conditional; only land if a downstream consumer needs it; out of scope for first cut per Pred-vd.4)
+2. **VD-EXT 5** — Boolean / Null / Undefined encoding extension (conditional)
+3. **VD-EXT 6** — Symbol encoding extension (conditional)
+4. **VD-EXT 7** — default-on confirmation (the encoding is structural; the Pred-vd.5 composition check at VD-EXT 2 already validated coexistence with Σ/Τ/Ψ/Φ defaults; formal default-on round may be unnecessary)
+
+These are conditional follow-ons. The first cut's substrate-introduction value (String encoding) is consumable now.
+
+### Forward (post-VD locale close)
+
+Per Doc 740 §II.2 P4 multi-tier reading, the next consumer pilot is the natural revival of TL Moves 3+4 — now structurally possible because:
+
+- Value-domain coverage closed (this pilot, VD)
+- Entry-mechanism tier closed (TL-EXT 3)
+- Op-set coverage still open per Finding VII.2 (TL Move 3 + Move 4 add GetProp + CallMethod alphabet variants; the inner-loop alphabet closure)
+- IC fast-path body tier still open per design (Moves 3+4 implementation)
+
+The TL pilot revival is a sibling-pilot to VD; not part of this locale's scope. Spawn decision pending keeper signal.
+
+Alternative consumer-pilot: engagement-wide hot-intrinsic-IC table at JIT tier (consumes VD encoding for hot intrinsic methods across String / Array / etc.). Larger scope; also pending keeper signal.
+
+### Cumulative status at VD locale first-cut close
+
+LOC delta (VD-EXT 0-3): ~410 across seed + design + impl + trajectory entries + findings Addendum VI.
+Source LOC: ~140 in interp.rs (constants + extended unbox_arg_f64 + 4 helpers + 4 unit tests).
+Engagement findings: Addendum VI codified (Finding VIII.1 + standing rule 12).
+All 5 Pred-vd.* falsifiers held.
+
+---
+
+*VD-EXT 3 closes. VD first cut closed at (P2.a). String encoding substrate available for downstream consumer pilots. Findings Addendum VI codified. Pilot's load-bearing contributions: String-receiver JIT-tier substrate + engagement-wide bit-pattern-scheme discipline + -∞-collision precedent. Pivot decision (TL revival vs hot-intrinsic-IC table vs other) pending keeper signal.*
