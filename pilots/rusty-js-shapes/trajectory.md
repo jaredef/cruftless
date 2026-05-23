@@ -373,3 +373,19 @@ The shape data structure is now live on every Object. Pilot LeJIT-Σ can scaffol
 ---
 
 *Shape-EXT 4 closes. Infrastructure landed; enrollment deferred. The substrate-introduction-round discipline of Doc 729 §A8.13 held the round's blast radius even when the first attempt overreached.*
+
+---
+
+## Shape-EXT 5 — 2026-05-23 (open: spawns nested locale `consumer-migration`)
+
+Per Doc 737 §II promotion threshold + the keeper's "Continue + set up seeds at every fractal locale that requires it" directive (2026-05-23 01:37-local), Shape-EXT 5's consumer-migration substrate has multi-rung shape (one rung per consumer family × 5 families + an enrollment-flip rung + a measurement rung), so it earns its own nested locale rather than inline accumulation in this trajectory.
+
+**Spawned nested locale**: `pilots/rusty-js-shapes/consumer-migration/` (locale tag `L.rusty-js-shapes/consumer-migration`).
+
+The nested locale's seed + trajectory + survey landed at CMig-EXT 0 (its founding round). When the nested workstream reaches its CMig-EXT 9 closure (post-enrollment-flip + Pred-shape.4 measurement), this Shape-EXT 5 row gets updated with the closure summary; until then it points to the nested locale.
+
+See [consumer-migration/seed.md](consumer-migration/seed.md) and [consumer-migration/trajectory.md](consumer-migration/trajectory.md).
+
+This row IS the load-bearing record of Shape-EXT 5; the substantive substrate work happens at the nested coordinate. Per Doc 733 §III composition relations: parent row records child existence by commit hash + one-line recognition; child's internal structure stays inside the child.
+
+*Shape-EXT 5 stays open until CMig-EXT 9 closes the nested workstream.*
