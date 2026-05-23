@@ -9197,12 +9197,95 @@ pub fn unbox_arg(v: &Value) -> i64 {
 /// from_bits — the JIT's IC GetProp path interprets these bits back
 /// via to_bits() for the receiver-id slot. Caller must have validated
 /// arg-tag via jit_compatible_arg_tag_only first.
+// ─── VD-EXT 2 (2026-05-23): NaN-boxing scheme constants ───
+//
+// Encoding (per VD-EXT 1 docs/design.md §2):
+//
+//   encoded = VD_BOXED_MASK | (tag << VD_TAG_SHIFT) | (payload & VD_PAYLOAD_MASK)
+//
+// Sign bit = 1 distinguishes boxed values from real Numbers (arithmetic
+// NaN per IEEE 754 has sign=0 canonically; defensive canonicalization at
+// unbox closes the sign=1 hardware-NaN edge case). 4-bit tag at bits
+// 51-48; 48-bit payload below (Rc<String> raw ptr on aarch64).
+//
+// Backwards compat: Object encoding (f64::from_bits(id.0 as u64)) is
+// preserved byte-identical per VD seed C3. The latent unsoundness at
+// ObjectId.0 ≥ 2^52 is documented as R1 in the design doc — out of
+// scope per Pred-vd.4 first-cut. Number encoding preserved per C2 + NaN
+// canonicalization (invisible because real arithmetic NaN has sign=0).
+pub const VD_BOXED_MASK: u64    = 0xFFF0_0000_0000_0000;
+pub const VD_TAG_SHIFT: u32     = 48;
+pub const VD_PAYLOAD_MASK: u64  = 0x0000_FFFF_FFFF_FFFF;
+pub const VD_TAG_STRING: u64    = 2;
+// (VD_TAG_BIGINT=3, VD_TAG_SYMBOL=4, VD_TAG_BOOLEAN=5, VD_TAG_NULL=6,
+//  VD_TAG_UNDEFINED=7 — deferred to VD-EXT 4+ per scope discipline.)
+
 pub fn unbox_arg_f64(v: &Value) -> f64 {
     match v {
-        Value::Number(f) => *f,
+        Value::Number(n) => {
+            // VD-EXT 2: defensive NaN canonicalization. Real arithmetic
+            // NaN has sign=0 by construction (the canonical qNaN
+            // f64::NAN = 0x7FF8_0000_0000_0000); the boxed-NaN scheme
+            // requires sign=1. Canonicalize any NaN at unbox to ensure
+            // no Number flows into the JIT with the boxed-NaN bit
+            // pattern. Closes the hardware-produced-sign-1-NaN edge.
+            if n.is_nan() { f64::NAN } else { *n }
+        }
         Value::Object(id) => f64::from_bits(id.0 as u64),
-        _ => 0.0,
+        Value::String(s) => {
+            // VD-EXT 2: NaN-box the Rc<String> raw pointer. The pointer
+            // is borrowed, not owned; the source Value::String lives in
+            // the caller's stack frame for the JIT call's duration (same
+            // shape as Object's id-encoding). Per R3: downstream decoders
+            // use `&*ptr` for &String access, NOT Rc::from_raw (which
+            // would over-decrement on drop).
+            let ptr = Rc::as_ptr(s) as u64;
+            f64::from_bits(
+                VD_BOXED_MASK
+                | (VD_TAG_STRING << VD_TAG_SHIFT)
+                | (ptr & VD_PAYLOAD_MASK)
+            )
+        }
+        _ => 0.0,  // BigInt/Boolean/Null/Undefined/Symbol: VD-EXT 4+
     }
+}
+
+/// VD-EXT 2 (2026-05-23): tag-detection helpers for downstream consumer-
+/// pilots (TL Moves 3+4 revival; hot-intrinsic-IC table at JIT tier).
+/// Not used at this pilot itself.
+///
+/// **Tag=0 reserved as "Number escape"**: `f64::NEG_INFINITY` has bits
+/// 0xFFF0_0000_0000_0000 — exactly the boxed-NaN mask with tag=0,
+/// payload=0. To preserve -∞ as a Number per C2, the boxed detection
+/// requires both (a) high-12-bits match the mask AND (b) tag ≠ 0.
+/// Effective tag space shrinks from 16 to 15 (tags 1-15); no real
+/// information loss since first-cut uses only tag=2 and 6 more
+/// variants are queued for VD-EXT 4+.
+#[inline]
+pub fn is_boxed_value(f: f64) -> bool {
+    let bits = f.to_bits();
+    bits & VD_BOXED_MASK == VD_BOXED_MASK
+        && ((bits >> VD_TAG_SHIFT) & 0xF) != 0
+}
+
+#[inline]
+pub fn extract_boxed_tag(f: f64) -> u8 {
+    ((f.to_bits() >> VD_TAG_SHIFT) & 0xF) as u8
+}
+
+#[inline]
+pub fn extract_boxed_payload(f: f64) -> u64 {
+    f.to_bits() & VD_PAYLOAD_MASK
+}
+
+/// SAFETY: caller must ensure `f` was encoded from a `Value::String`
+/// whose `Rc<String>` source is still live (typically the caller's
+/// frame holds the source Value::String for the JIT call's duration).
+/// Per R3: returns `*const String` for `&*ptr` use; do NOT reconstruct
+/// the Rc via `Rc::from_raw` from this pointer (would over-decrement).
+#[inline]
+pub unsafe fn decode_string_ptr(f: f64) -> *const String {
+    extract_boxed_payload(f) as *const String
 }
 
 /// Doc 731 §XIV.d typed-i64 unbox: accept a Value::Number with
@@ -9882,4 +9965,79 @@ fn record_synthetic_deopt(ic_id: u32) {
         stack_values: Vec::new(),
     };
     rusty_js_jit::deopt::LAST_DEOPT_FRAME.with(|c| *c.borrow_mut() = Some(state));
+}
+
+#[cfg(test)]
+mod vd_tests {
+    //! VD-EXT 2 (2026-05-23): NaN-boxing round-trip + backwards-compat tests.
+
+    use super::*;
+
+    #[test]
+    fn vd_number_encoding_unchanged_per_c2() {
+        // Per C2: unbox_arg_f64(Value::Number(n)) === n preserved
+        // exactly for all non-NaN Numbers. NaN is canonicalized (still
+        // a valid NaN; behavior-preserving but bit-pattern-equal to
+        // f64::NAN).
+        for n in [0.0_f64, -0.0, 1.0, -1.0, 1e100, -1e100, f64::INFINITY, f64::NEG_INFINITY] {
+            let v = Value::Number(n);
+            let encoded = unbox_arg_f64(&v);
+            assert_eq!(encoded.to_bits(), n.to_bits(),
+                "Number {n} encoding changed; bits {:x} vs {:x}", encoded.to_bits(), n.to_bits());
+            assert!(!is_boxed_value(encoded), "Number {n} mis-detected as boxed");
+        }
+        // NaN is canonicalized but still a NaN; both ways must be
+        // detected as non-boxed.
+        let nan_encoded = unbox_arg_f64(&Value::Number(f64::NAN));
+        assert!(nan_encoded.is_nan(), "NaN canonicalization must produce a NaN");
+        assert!(!is_boxed_value(nan_encoded), "canonical NaN must not be detected as boxed");
+    }
+
+    #[test]
+    fn vd_object_encoding_unchanged_per_c3() {
+        // Per C3: unbox_arg_f64(Value::Object(id)) === f64::from_bits(id.0 as u64)
+        // preserved exactly. ObjectRef = rusty_js_gc::ObjectId(u32), so
+        // all ids are bounded well below 2^52 (R1 threshold doesn't apply).
+        for id in [0u32, 1, 42, 1000, 1_000_000, 1_000_000_000] {
+            let v = Value::Object(rusty_js_gc::ObjectId(id));
+            let encoded = unbox_arg_f64(&v);
+            assert_eq!(encoded.to_bits(), id as u64, "Object id={id} encoding changed");
+        }
+    }
+
+    #[test]
+    fn vd_string_encoding_round_trips_per_c5() {
+        // Per C5: encode + decode round-trip identity for String.
+        let s = Rc::new(String::from("hello, world"));
+        let v_in = Value::String(s.clone());
+        let encoded = unbox_arg_f64(&v_in);
+
+        assert!(is_boxed_value(encoded), "String encoding must be detected as boxed");
+        assert_eq!(extract_boxed_tag(encoded), VD_TAG_STRING as u8,
+            "String tag must match VD_TAG_STRING");
+
+        unsafe {
+            let ptr = decode_string_ptr(encoded);
+            // Per R3: &*ptr (not Rc::from_raw).
+            let decoded_s: &String = &*ptr;
+            assert_eq!(decoded_s.as_str(), "hello, world");
+        }
+        // Original Rc still live (held in v_in / s); no leak / no double-free.
+        // The Rc strong count was not modified by the encode path.
+        assert_eq!(Rc::strong_count(&s), 2, "Rc strong count: 2 (one for s, one for v_in)");
+    }
+
+    #[test]
+    fn vd_string_encoding_collision_free_with_numbers() {
+        // Adversarial: no Number bit pattern should be detected as boxed
+        // unless we deliberately constructed it via the boxed-NaN scheme.
+        for n in [0.0_f64, -0.0, 1.0, -1.0, 1e100, -1e100, f64::INFINITY,
+                  f64::NEG_INFINITY, f64::MIN_POSITIVE, f64::EPSILON,
+                  3.141592653589793] {
+            let v = Value::Number(n);
+            let encoded = unbox_arg_f64(&v);
+            assert!(!is_boxed_value(encoded),
+                "Number {n} (bits {:x}) mis-detected as boxed", encoded.to_bits());
+        }
+    }
 }

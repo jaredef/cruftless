@@ -95,3 +95,70 @@ LOC delta: ~250 (design doc). Encoding scheme + helpers + tests fully specified;
 ---
 
 *VD-EXT 1 closes. NaN-boxing design specified. VD-EXT 2 implements unbox_arg_f64 extension + helpers + unit tests.*
+
+---
+
+## VD-EXT 2 — 2026-05-23 (NaN-boxing implementation + design correction)
+
+### Headline
+
+NaN-boxing implementation landed in interp.rs (~140 LOC including 4 unit tests). String encoding via `unbox_arg_f64(Value::String(s)) = NaN-boxed (Rc::as_ptr(s) as u64) with VD_TAG_STRING=2`. Helpers: `is_boxed_value`, `extract_boxed_tag`, `extract_boxed_payload`, `decode_string_ptr`. All four probes GREEN.
+
+**Design correction surfaced via unit-test failure**: `f64::NEG_INFINITY` has bits exactly `0xFFF0_0000_0000_0000` — collides with the boxed-NaN mask + tag=0 + payload=0. The VD-EXT 1 design's `is_boxed_value` would have mis-detected -∞ as boxed.
+
+**Fix**: tag=0 reserved as "Number escape." is_boxed requires both (a) high-12-bits match mask AND (b) tag ≠ 0. Effective tag space shrinks from 16 to 15 (tags 1-15); no information loss (first-cut uses tag=2 only; 6 more variants queued for VD-EXT 4+).
+
+### Four-probe results
+
+| probe | result |
+|---|---|
+| Pred-vd.1 String round-trip | ✅ GREEN (4/4 unit tests pass) |
+| Pred-vd.2 canonical fuzz (acc=-932188103) | ✅ GREEN |
+| Pred-vd.3 diff-prod 42/42 | ✅ GREEN |
+| Pred-vd.5 composition (Σ/Τ/Ψ/Φ defaults) | ✅ GREEN — A/B probe 1515-1526 median vs baseline 1480-1507; within ±2% noise |
+| JIT lib tests | ✅ 38/38 (9 pre-existing ignored) |
+
+### Substrate moves landed
+
+1. Added constants: VD_BOXED_MASK (0xFFF0_..), VD_TAG_SHIFT (48), VD_PAYLOAD_MASK (0x..FFFF), VD_TAG_STRING (2).
+2. Extended unbox_arg_f64 with NaN canonicalization + String NaN-box encoding; preserved Number + Object paths byte-identical.
+3. Added 4 decoder helpers per design §3.3.
+4. Added 4 unit tests covering Number-preserve / Object-preserve / String round-trip / collision-free.
+5. **Design correction (in-round)**: is_boxed_value gated on tag ≠ 0 after -∞ collision surfaced.
+
+### Lesson generated (candidate Finding TL.3 / VD.1)
+
+**Finding VD.1 (NaN-boxing schemes that use sign=1 alone collide with -∞)**: any NaN-boxing scheme using mask `0xFFF0_0000_0000_0000` (sign=1 + exp=all-1) MUST exclude tag=0 to preserve -∞ as a Number. The design's "sign=1 distinguishes boxed from real Numbers" framing was incomplete; -∞ has sign=1 and the same exp pattern but is a valid Number. Tag=0 must be reserved as the "Number escape" value.
+
+**How to apply**: any future NaN-boxing extension (BigInt, Boolean, etc. at VD-EXT 4+) MUST use tags ≥ 1; tag=0 stays reserved for -∞ preservation. Documented in interp.rs near the constants.
+
+**Process lesson (engagement-tier)**: unit tests at substrate-introduction rounds catch design errors that the design-doc reasoning misses. The VD-EXT 1 design enumerated 6 risks; -∞ collision was NOT named (R5 came closest, on Cranelift bitcast semantics, but the -∞ shape is more fundamental). **Standing rule candidate**: NaN-boxing or similar bit-pattern schemes require an adversarial unit-test pass covering all IEEE 754 special values (±0, ±∞, ±NaN, subnormals, MIN_POSITIVE) before design closure. Promotion candidate at VD-EXT 3.
+
+### Composition with prior corpus / engagement work
+
+- **Doc 740 §II.2 value-domain coverage tier**: this round delivers the substrate at that tier.
+- **Finding VII.3 (Addendum V)**: this implementation is the apparatus closure for the value-domain-coverage check.
+- **Finding II.2-bis substrate-introduction signature**: this round's bench is flat as expected; downstream consumer-pilots deliver the cumulative reclaim.
+- **Φ §I.2 constraint enumeration discipline**: reused here; the in-round design correction (tag=0 escape) extends C2's "Number byte-identical" to include -∞.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable.
+Per Doc 734 §V: growth (a) positive-finding (NaN-boxing landing) + growth (b) negative-finding-catalyzes-refinement (-∞ correction + new Finding VD.1).
+Per Doc 735 §X.h.b: **(P2.d) bench at substrate-introduction round, expected per Finding II.2-bis. The encoding is now available to consumer pilots; pipeline-connection point is downstream.**
+
+### Open scope at VD-EXT 2 close
+
+1. **VD-EXT 3** — final composition probe + formal close of first-cut encoding work.
+2. **VD-EXT 4-7** — follow-on Value variants (BigInt, Boolean, Null, Undefined, Symbol) per scope discipline.
+3. **TL pilot revival** (post-VD substrate): TL Moves 3+4 can now structurally deliver fast paths consuming the String encoding.
+4. **Engagement-wide hot-intrinsic-IC table** at JIT tier: generalization candidate consuming the encoding.
+5. **Findings doc Addendum VI candidate**: Finding VD.1 (NaN-boxing tag=0 reservation) + standing rule for adversarial IEEE 754 special-value testing.
+
+### Cumulative status at VD-EXT 2 close
+
+LOC delta: ~140 (interp.rs: 4 constants + extended unbox_arg_f64 + 4 helpers + 4 unit tests + comment block). VD-EXT 0+1+2 cumulative: ~410 across the locale (seed + design + impl). All four probes GREEN.
+
+---
+
+*VD-EXT 2 closes. NaN-boxing implementation landed; -∞ design correction in-round; Finding VD.1 generated. Substrate-introduction value at the value-domain tier delivered. Consumer-pilot revival becomes structurally possible. VD-EXT 3 formal close + potentially Findings Addendum VI.*
