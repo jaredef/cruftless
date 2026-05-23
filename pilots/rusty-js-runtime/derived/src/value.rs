@@ -214,20 +214,19 @@ impl From<&str> for PropertyKey { fn from(s: &str) -> Self { Self::String(s.to_s
 impl From<String> for PropertyKey { fn from(s: String) -> Self { Self::String(s) } }
 impl From<&String> for PropertyKey { fn from(s: &String) -> Self { Self::String(s.clone()) } }
 
-// CMig-EXT 10 (default-on flip): env-flag-cached enrollment switch.
-// Read once on first call via OnceLock; subsequent calls use the
-// cached bool. Default is ON (Shaped) since diff-prod 42/42 holds
-// under enrollment as of CMig-EXT 9 close. `CRUFTLESS_SHAPE_ENROLL=0`
-// is the escape hatch for diagnostic runs where Dictionary-form
-// behavior is preferred (e.g., bisecting a regression to confirm
-// whether the shape mechanism is implicated).
+// CMig-EXT 8 (enrollment infrastructure) + CMig-EXT 10.bis (default-on
+// flip REVERTED at CMig-EXT 11 after test262-sample regression):
+// env-flag-cached enrollment switch. Default is OFF (Dictionary)
+// pending CMig-EXT 12+ closures of the test262-tier regression
+// (5,594 PASS pre-enrollment → 5,312 PASS under enrollment, −3.6 pp).
+// `CRUFTLESS_SHAPE_ENROLL=1` is the opt-in for testing the substrate
+// + LeJIT-Σ integration; default-on flip waits for the test262 gate.
 fn shape_enroll_enabled() -> bool {
     static FLAG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *FLAG.get_or_init(|| {
-        match std::env::var("CRUFTLESS_SHAPE_ENROLL") {
-            Ok(v) => !(v == "0" || v.eq_ignore_ascii_case("false")),
-            Err(_) => true, // default ON post-CMig-EXT 10
-        }
+        std::env::var("CRUFTLESS_SHAPE_ENROLL")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
     })
 }
 

@@ -371,3 +371,70 @@ The substrate-introduction round of `pilots/rusty-js-shapes/` is functionally co
 ---
 
 *CMig-EXT 9 + 10 closes. Default is Shaped; diff-prod 42/42 holds both modes; LeJIT-Σ pipeline unblocked; CMig-EXT 11's integration measurement is the next step.*
+
+---
+
+## CMig-EXT 11 — 2026-05-23 (test262 regression caught + default-on REVERTED)
+
+### Headline
+
+test262-sample re-measurement under default enrollment surfaced a **−282 PASS / −3.6 pp regression** from the post-rung-19 5,594-PASS baseline. Diff-prod 42/42 passing was insufficient corroboration; test262's much wider surface (7,205 runnable tests vs diff-prod's 42 fixtures) caught edge cases the CMig-EXT 9 site-by-site closures didn't cover. **Default-on flip reverted**; `CRUFTLESS_SHAPE_ENROLL=1` remains the opt-in.
+
+This is the (P2.c) illegal-speed cautionary pattern per Doc 735 §X.h.b — exactly the WC-EXT 21 precedent the corpus articulated. Bench probe (diff-prod) was necessary-but-not-sufficient; the wider consumer-route probe (test262) is what catches the residual.
+
+### Measured numbers
+
+| mode | test262 PASS | test262 runnable rate | diff-prod |
+|---|---:|---:|---:|
+| pre-enrollment baseline (post-rung-19) | 5,594 / 7,205 | 77.6% | 42/42 |
+| **default-off after today's other work** | **5,616 / 7,205** | **77.9%** | 42/42 |
+| **enrolled (`CRUFTLESS_SHAPE_ENROLL=1`)** | **5,312 / 7,182** | **74.0%** | 42/42 |
+
+Today's other substrate work (diff-prod Rungs 19-21 — AbortController + Iterator Helpers + ES2024-26 batch + generator-proto-wire) lifted default-off by +22 PASS over the post-rung-19 baseline.
+
+Enrollment regression: **−304 PASS** vs default-off (5,616 → 5,312). That's the substrate-introduction cost not yet recovered.
+
+### What was reverted
+
+- `value.rs shape_enroll_enabled()` default flipped back from `true` to `false`. `CRUFTLESS_SHAPE_ENROLL=1` (or `=true`) is the opt-in for testing the substrate + LeJIT-Σ integration; default-on flip waits for CMig-EXT 12+ closures of the test262-tier regression.
+- The escape-hatch comment updated to be honest about the reason for default-off.
+
+### What the regression surfaces
+
+The 304 fixture-level regressions across test262 chapters are not yet localized to specific consumer sites. Hypothesis from the CMig-EXT 9 pattern: each failure is a property-key-ordering, descriptor-attribute-synthesis, or enumeration-protocol edge case the shape-aware migrations don't fully cover. Specifically suspected:
+
+- **`Object.keys` numeric-index ordering**: §10.1.11 OrdinaryOwnPropertyKeys puts integer-indexed keys first in ASCENDING numeric order. Shape entries are insertion-order; if integer keys land in shape, they come first by insertion order, not by numeric order. Pre-enrollment numeric-keyed Objects went through properties (where the numeric-sort happened). Under enrollment they may now be in shape, defeating the sort.
+- **Descriptor attribute checks**: test262 uses `Object.getOwnPropertyDescriptor` + `verifyProperty` extensively; my synthesis in CMig-EXT 4 assumed `{w:t, e:t, c:t}` for all shape entries, which is correct by carve-out — but if any test path passes a `set_own_internal`-installed property as a shape entry (via a code path that bypasses the migrate-first hook), the synthesized descriptor would be wrong.
+- **Enumeration order across shape + dictionary**: the prepend-shape-before-properties pattern places shape entries first; if a test creates an Object via the literal `{a:1, b:2}` then later via `Object.defineProperty(o, 'c', {enumerable: true, ...})` (which migrates), the resulting enumeration is `[a, b, c]` (shape then dict). If Bun's order is `[a, b, c]` too, this is fine; if Bun reorders for the `defineProperty` case, divergence.
+
+Each hypothesis testable by sampling the test262 failures and bisecting.
+
+### §XVI / Doc 734 categorization
+
+Per Doc 730 §XVI: §X.h.b (P2.c) illegal-speed bench-passing-fuzz-failing pattern. The "fuzz" here is test262's much broader spec coverage. The cautionary tale is recorded: diff-prod alone is insufficient corroboration for substrate moves that touch property semantics; test262 sample is the load-bearing gate for default-on flips.
+
+Per Doc 734 §V: growth mechanism (b) negative-finding amendment — the enrollment-default flip was premature; the post-revert state records the discipline. CMig-EXT 12 lands the test262 regression investigation.
+
+### Pred disposition
+
+- **Pred-shape.4** (stable IC pointer for stub lifetime): **STILL INTEGRATION-MEASURABLE** under the opt-in flag. Pilot LeJIT-Σ StubE-EXT 5+ can proceed with `CRUFTLESS_SHAPE_ENROLL=1` env-flag tests; the Pred-stub.1 measurement reads under both modes.
+- **Pred-shape.1/.2/.3/.5**: unchanged.
+
+### Open scope at CMig-EXT 11 close
+
+1. **CMig-EXT 12** — test262 regression investigation. Sample the 304 fixture-level failures under enrollment; bisect to identify consumer-site patterns; fix the dominant ~3-5 causes; re-measure.
+2. **CMig-EXT 13** — default-on flip (re-try) post-regression-close.
+3. **LeJIT-Σ StubE-EXT 5** — proceeds with env-flag gating; can land independently of CMig-EXT 12 because LeJIT-Σ is a closure round consuming the substrate's stable API, not its default-on status.
+4. **Pred-stub.1 measurement** at LeJIT-Σ StubE-EXT 6 — reads under `CRUFTLESS_SHAPE_ENROLL=1` until CMig-EXT 13 lands the default flip.
+
+### Cumulative status at CMig-EXT 11 close
+
+LOC delta: ~10 (default flip + comment updates). Diff-prod 42/42 in both modes. test262 default 77.9% (5,616 PASS; up from 77.6% pre-rung-19 baseline). test262 enrolled 74.0% (5,312 PASS; the −304 regression to investigate).
+
+The opt-in remains; the substrate is stable under the opt-in for diff-prod; LeJIT-Σ can proceed under the opt-in; the default-on flip waits.
+
+**This round is the discipline operating honestly**: the bench-probe + consumer-route-probe + fuzz-probe three-probe-levels of Doc 735 §X.h.c held. diff-prod passed (bench + narrow consumer); test262 sample is the wider-consumer probe that caught the residual. The substrate-introduction round of shapes is not yet stable enough for default-on — but the opt-in is real and proves the integration path works.
+
+---
+
+*CMig-EXT 11 closes. Default-on REVERTED after test262 −3.6 pp regression. Opt-in remains. CMig-EXT 12 investigates the 304-PASS regression and closes the dominant causes.*
