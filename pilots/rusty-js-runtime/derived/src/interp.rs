@@ -1966,10 +1966,23 @@ impl Runtime {
         };
         let entries: Vec<(String, Value)> = {
             let o = self.obj(props);
-            o.properties.iter()
+            // CMig-EXT 4 Family B (P1 shape-iterate then properties-iterate):
+            // shape-stored entries are user-default {w:t, e:t, c:t} per
+            // shapes seed §IV — all enumerable, all string-keyed. Emit
+            // before the IndexMap entries in insertion order.
+            let mut out: Vec<(String, Value)> = Vec::new();
+            if let Some(shape) = o.shape.as_ref() {
+                for (name, slot) in shape.iter_slots() {
+                    let idx = slot as usize;
+                    if let Some(v) = o.shape_values.get(idx) {
+                        out.push((name.to_string(), v.clone()));
+                    }
+                }
+            }
+            out.extend(o.properties.iter()
                 .filter(|(_, d)| d.enumerable)
-                .map(|(k, d)| (k.to_string_content(), d.value.clone()))
-                .collect()
+                .map(|(k, d)| (k.to_string_content(), d.value.clone())));
+            out
         };
         for (k, dv) in entries {
             if matches!(dv, Value::Object(_)) {
@@ -2050,10 +2063,24 @@ impl Runtime {
         // property; filter it from the returned descriptors.
         let entries: Vec<(String, Value, bool, bool, bool, Option<Value>, Option<Value>)> = {
             let o = self.obj(id);
-            o.properties.iter()
+            // CMig-EXT 4 Family D (hybrid: synthesize default descriptor
+            // for shape-stored entries per shapes seed §IV). Shape entries
+            // are user-default {w:t, e:t, c:t} data descriptors by
+            // invariant; emit synthesized descriptors before the
+            // IndexMap entries.
+            let mut out: Vec<(String, Value, bool, bool, bool, Option<Value>, Option<Value>)> = Vec::new();
+            if let Some(shape) = o.shape.as_ref() {
+                for (name, slot) in shape.iter_slots() {
+                    let idx = slot as usize;
+                    if let Some(v) = o.shape_values.get(idx) {
+                        out.push((name.to_string(), v.clone(), true, true, true, None, None));
+                    }
+                }
+            }
+            out.extend(o.properties.iter()
                 .filter(|(k, _)| k.to_string_content() != "__primitive__")
-                .map(|(k, d)| (k.to_string_content(), d.value.clone(), d.writable, d.enumerable, d.configurable, d.getter.clone(), d.setter.clone()))
-                .collect()
+                .map(|(k, d)| (k.to_string_content(), d.value.clone(), d.writable, d.enumerable, d.configurable, d.getter.clone(), d.setter.clone())));
+            out
         };
         let out = self.alloc_object(crate::value::Object::new_ordinary());
         for (k, v, w, e, c, getter, setter) in entries {
@@ -4910,9 +4937,18 @@ impl Runtime {
                 out.push("length".into());
                 out
             } else {
-                o.properties.keys()
+                // CMig-EXT 4 Family B: shape entries first (insertion
+                // order), then non-shape string keys.
+                let mut out: Vec<String> = Vec::new();
+                if let Some(shape) = o.shape.as_ref() {
+                    for (name, _) in shape.iter_slots() {
+                        out.push(name.to_string());
+                    }
+                }
+                out.extend(o.properties.keys()
                     .filter(|k| k.is_string())
-                    .map(|k| k.as_str().to_string()).collect()
+                    .map(|k| k.as_str().to_string()));
+                out
             }
         };
         for (i, k) in keys.iter().enumerate() {
@@ -5297,16 +5333,29 @@ impl Runtime {
         // Reflect.ownKeys-then-defineProperty (runtypes' RuntypePrivate
         // slot, transitively breaking 14-package failure-cluster
         // entries that depend on runtypes' symbol-based dispatch).
-        let keys: Vec<Value> = self.obj(id).properties.keys().map(|k| match k {
-            crate::value::PropertyKey::String(s) => {
-                if s.as_str().starts_with("@@sym:") {
-                    Value::Symbol(std::rc::Rc::new(s.clone()))
-                } else {
-                    Value::String(std::rc::Rc::new(s.clone()))
+        // CMig-EXT 4 Family B: shape entries first (insertion order;
+        // shape entries are all string-keyed user-default per carve-out),
+        // then properties entries (which retain the prior dispatch).
+        let keys: Vec<Value> = {
+            let o = self.obj(id);
+            let mut out: Vec<Value> = Vec::new();
+            if let Some(shape) = o.shape.as_ref() {
+                for (name, _) in shape.iter_slots() {
+                    out.push(Value::String(std::rc::Rc::new(name.to_string())));
                 }
             }
-            crate::value::PropertyKey::Symbol(rc) => Value::Symbol(rc.clone()),
-        }).collect();
+            out.extend(o.properties.keys().map(|k| match k {
+                crate::value::PropertyKey::String(s) => {
+                    if s.as_str().starts_with("@@sym:") {
+                        Value::Symbol(std::rc::Rc::new(s.clone()))
+                    } else {
+                        Value::String(std::rc::Rc::new(s.clone()))
+                    }
+                }
+                crate::value::PropertyKey::Symbol(rc) => Value::Symbol(rc.clone()),
+            }));
+            out
+        };
         let arr = self.alloc_object(crate::value::Object::new_array());
         let len = keys.len();
         for (i, v) in keys.into_iter().enumerate() {

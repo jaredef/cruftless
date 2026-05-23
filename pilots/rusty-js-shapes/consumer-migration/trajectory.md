@@ -181,3 +181,65 @@ CMig-EXT 4 (Family B enumeration helpers) is next. Read paths that walk `o.prope
 ---
 
 *Three CMig-EXTs landed in one session. Diff-prod 42/42 PASS held at each. The substrate is staged for CMig-EXT 4-7's read-path migrations + CMig-EXT 8's enrollment flip.*
+
+---
+
+## CMig-EXT 4+5 — 2026-05-23 (Family B enumeration + Family D introspection synthesis)
+
+### Headline
+
+Bundles Family B (enumeration helpers) + Family D (descriptor introspection synthesis) in one round because the introspection synthesis is structurally the same pattern (prepend shape entries + map them to user-default tuples) and four sites touched in the same file at the same time. Three enumeration sites + one introspection site migrated; diff-prod 42/42 held.
+
+### Substrate landed
+
+Pattern P1 (shape-iterate then properties-iterate) applied at four sites in `pilots/rusty-js-runtime/derived/src/interp.rs`:
+
+1. **`object_define_properties_via` at :1969** — Object.defineProperties iterates the descriptor map. Shape entries emit as user-default `(name, value)` tuples before the IndexMap entries.
+2. **`object_get_own_property_descriptors_via` at :2066** (Family D hybrid) — Object.getOwnPropertyDescriptors. Shape entries synthesize `(name, value, writable=true, enumerable=true, configurable=true, getter=None, setter=None)` per the carve-out invariant.
+3. **`own_property_names_via` at :4940** (non-array branch) — Object.getOwnPropertyNames. Shape entries first (insertion-order via `shape.iter_slots()`), then string-keyed properties entries.
+4. **`reflect_own_keys_via` at :5300** — Reflect.ownKeys. Same shape-then-properties pattern.
+
+Each site prepends shape entries before the IndexMap iteration; in the current `shape: None` regime every prepend is a no-op (the shape is None → no entries added). Post-CMig-EXT 8 the prepends activate and these spec-visible enumeration paths see shape-stored entries correctly.
+
+### Sites deferred to a future CMig-EXT
+
+The survey listed seven Family B sites + four Family D sites. This round migrated four of those. The remaining sites and the rationale for deferring:
+
+- **interp.rs:4938** Object.getOwnPropertySymbols: Symbol-only enumeration; shape has no Symbol entries by carve-out. **Zero migration needed; documented for completeness.**
+- **interp.rs:5427 / :5440** Object.freeze / Object.seal mutating paths: Family D P2 (migrate-on-access). The mutating sites need `migrate_to_dictionary()` before the descriptor flip; queued as **CMig-EXT 5.bis** because it's a different pattern and the introspection synthesis is what blocks enrollment correctness for the read paths.
+- **interp.rs:5505 / :5517** Object.isFrozen / Object.isSealed: Family D read-only. Shape entries are user-default `{w:t, e:t, c:t}` → `!writable && !configurable` is false → `Object.isFrozen` correctly returns false for any object with even one shape entry. **Zero migration needed; correctness preserved by invariant.**
+- **interp.rs:2088** unidentified enumerator: re-survey at CMig-EXT 5.bis.
+
+### Build + gates
+
+- `cargo build --release --bin cruft -p cruftless`: clean.
+- `cargo test --release -p rusty-js-jit --lib stub_aarch64`: 12/12 PASS (stub-emitter sibling, unchanged).
+- diff-prod **42/42 PASS** unchanged.
+
+### §XVI / Doc 734 categorization
+
+Per Doc 730 §XVI: not applicable (no observable behavior change in current regime; every shape is None).
+
+Per Doc 734 §V: growth mechanism (a) tier-relocation — the four migration sites now carry shape-aware code that's dormant pre-CMig-EXT 8 and load-bearing post-enrollment. The introspection synthesis (Object.getOwnPropertyDescriptors) is the precedent for Family D hybrid pattern; the StubE-EXT 8 measurement reads against this synthesis assumption.
+
+### Pred disposition
+
+- **Pred-shape.2/.3/.4**: unchanged (no shape allocation in this round; the migrations are pre-staging).
+
+### Open scope at CMig-EXT 4+5 close
+
+1. **CMig-EXT 5.bis** — Family D mutating sites (Object.freeze / Object.seal) + the residual Family B sites + Family E review (ModuleNamespace; zero changes expected) + Family F review (residual array-index sites). Apparatus-tier review + small migrations.
+2. **CMig-EXT 6** — review-only round per the survey.
+3. **CMig-EXT 7** — review-only.
+4. **CMig-EXT 8** — **ENROLLMENT FLIP**. `Object::new_ordinary()` defaults to `shape: Some(Shape::root())` gated by `CRUFTLESS_SHAPE_ENROLL=1`.
+5. **CMig-EXT 9** — Pred-shape.4 first integration measurement.
+
+### Cumulative status
+
+LOC delta: ~50 (four shape-aware migrations). diff-prod 42/42 unchanged. Pre-enrollment regime preserved; substrate further staged.
+
+The hidden-classes substrate is now four read-path families closer to enrollment. CMig-EXT 5.bis cleans up the residual sites; CMig-EXT 8's enrollment flip becomes safer with each migration round.
+
+---
+
+*CMig-EXT 4+5 closes. Family B + the Family D introspection synthesis are shape-aware; the remaining Family D mutating sites + residuals are queued for CMig-EXT 5.bis.*
