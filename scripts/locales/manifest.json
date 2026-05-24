@@ -3,9 +3,9 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 23,
+    "locales": 24,
     "top_level": 13,
-    "nested": 10,
+    "nested": 11,
     "warnings": 0
   },
   "locales": [
@@ -89,6 +89,15 @@
       "depth": 2,
       "rung_count": 0,
       "status": "**WORKSTREAM FOUNDED (\u03a6-EXT 0)**. No code yet. Spawned per keeper directive 2026-05-23 16:02-local after pre-implementation analysis surfaced that VTI's structural (P2.d) traces to the JIT's i64-only calling convention. The architectural move induced by enumerating C1-C10 (substrate constraints; see \u00a7I.2) is: f64 default + bytecode-tier-driven typed-i64 promoted fast path."
+    },
+    {
+      "coord": "rusty-js-jit/hot-intrinsics",
+      "tag": "L.rusty-js-jit.hot-intrinsics",
+      "parent": "L.rusty-js-jit",
+      "scope": "hot-intrinsics",
+      "depth": 2,
+      "rung_count": 0,
+      "status": "**WORKSTREAM FOUNDED (HI-EXT 0)**. Engagement-wide instrument spawned per keeper directive 2026-05-23 02:39-local (continuation after the architectural-pivot session's pipeline-connection at OSR-EXT 6b). The instrument generalizes the OSR-EXT 6b + CharCode-EXT 2 hot-intrinsic-IC pattern (already validated on charCodeAt) into a multi-intrinsic TABLE \u2014 a reusable apparatus that future pilots extend with new intrinsics."
     },
     {
       "coord": "rusty-js-jit/osr",
