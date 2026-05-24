@@ -211,6 +211,14 @@ pub struct Runtime {
     pub intrinsic_string_trim_id: Option<rusty_js_gc::ObjectId>,
     /// IHI-EXT 5 (2026-05-24): cached ObjectId for String.prototype.indexOf.
     pub intrinsic_string_index_of_id: Option<rusty_js_gc::ObjectId>,
+    /// IHI-EXT 8 (2026-05-24, Finding IHI.1 closure path): Runtime-tier
+    /// IC dispatch cache. Keyed on (bytecode.as_ptr() as usize, site_pc)
+    /// to disambiguate same-pc-different-proto. Survives across ALL
+    /// Frame invocations of all functions (vs IHI-EXT 7's Frame-local
+    /// cache which reset per Frame). Per Doc 740 §IV.2: substrate-
+    /// introduction at the cache tier; deeper-layer closure required
+    /// to materialize the per-call dispatch-overhead reclaim.
+    pub ic_dispatch_cache: HashMap<(usize, usize), Option<&'static crate::interp_ic_table::IhiEntry>>,
     pub number_prototype: Option<rusty_js_gc::ObjectId>,
     pub bigint_prototype: Option<rusty_js_gc::ObjectId>,
     pub symbol_prototype: Option<rusty_js_gc::ObjectId>,
@@ -353,6 +361,7 @@ impl Runtime {
             intrinsic_string_to_lower_case_id: None,
             intrinsic_string_trim_id: None,
             intrinsic_string_index_of_id: None,
+            ic_dispatch_cache: HashMap::new(),
             number_prototype: None,
             bigint_prototype: None,
             symbol_prototype: None,
@@ -8269,16 +8278,26 @@ impl Runtime {
                     let chain_tag = if matches!(&method, Value::Undefined | Value::Null) {
                         method_name.as_deref().map(|mn| describe_proto_chain_for_key(self, &receiver, mn))
                     } else { None };
-                    // IHI-EXT 2 (2026-05-24): table-driven interp-tier IC
-                    // fast-path. IHI-EXT 7 attempt at per-call-site cache
-                    // was reverted (HashMap-per-Frame overhead exceeded
-                    // the linear-scan savings because the bench's fresh-
-                    // Frame-per-invocation shape gave the cache no time
-                    // to amortize; see trajectory IHI-EXT 7).
-                    let _ = site_pc;  // unused; reserved for future Runtime-keyed cache
-                    if let Some(method_name_str) = method_name.as_deref() {
-                        let kind = crate::interp_ic_table::receiver_kind_of(&receiver);
-                        if let Some(entry) = crate::interp_ic_table::lookup(method_name_str, kind, args.len() as u8) {
+                    // IHI-EXT 8 (2026-05-24, Finding IHI.1 deeper-layer
+                    // closure per Doc 740 §IV.2): Runtime-keyed cache
+                    // (bytecode_ptr, pc) survives across all Frame
+                    // invocations; replaces IHI-EXT 7's per-Frame cache
+                    // (which reset every fn() invocation in
+                    // closure-per-iter fixtures).
+                    let cache_key = (frame.bytecode.as_ptr() as usize, site_pc);
+                    let cached_entry: Option<&'static crate::interp_ic_table::IhiEntry> =
+                        if let Some(e) = self.ic_dispatch_cache.get(&cache_key) {
+                            *e
+                        } else {
+                            let result = if let Some(method_name_str) = method_name.as_deref() {
+                                let kind = crate::interp_ic_table::receiver_kind_of(&receiver);
+                                crate::interp_ic_table::lookup(method_name_str, kind, args.len() as u8)
+                            } else { None };
+                            self.ic_dispatch_cache.insert(cache_key, result);
+                            result
+                        };
+                    if let Some(entry) = cached_entry {
+                        {
                             if let Value::Object(method_id) = &method {
                                 // Lazy-populate the entry's cached intrinsic
                                 // ObjectId on first eligible call.

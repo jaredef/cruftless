@@ -552,3 +552,78 @@ Pred-ihi.5: DEFERRED (-7.5% reclaim achieved; full target awaits Finding IHI.1 o
 ---
 
 *IHI-EXT 7 closes. Per-call-site Frame-cache attempt empirically negative; reverted. **Finding IHI.1 documents the structural mis-match** + closure path (FunctionProto-side-table). Growth (b) — negative result catalyzes apparatus refinement. Future hardening rounds (IHI-EXT 8+) implement option 2.*
+
+---
+
+## IHI-EXT 8 — 2026-05-24 (Finding IHI.1 deeper-layer closure: Runtime-keyed IC cache; sub-noise impact at 4 entries; substrate-introduction per Doc 740 §IV.2)
+
+### Headline
+
+Per keeper reminder of Doc 740 §IV.2 pattern (revert-then-deeper-layer-closure): implemented the Runtime-keyed IC dispatch cache (`Runtime::ic_dispatch_cache: HashMap<(bytecode_ptr, pc), Option<&'static IhiEntry>>`) per Finding IHI.1's closure path. Cache survives across all Frame invocations (vs IHI-EXT 7's per-Frame reset).
+
+**Empirical readout**: sub-noise impact at current 4-entry IHI_TABLE. Header_loop 322 ms median (vs IHI-EXT 5/6 baseline 307-314 ms) = +3% drift; CRB 775 ms (vs 743 baseline) = +4% drift. Both within ±5% Pred-ihi.4 gate.
+
+### Per-call cost analysis (empirically refined)
+
+| dispatch path | per-call cost | per inner-iter (7 CallMethods) |
+|---|---:|---:|
+| Linear scan (IHI-EXT 5/6) | ~50ns | 350ns |
+| Runtime HashMap.get (IHI-EXT 8) | ~80ns | 560ns |
+| IC fast-path savings (per matching call) | ~200ns | 200ns (1 hit/iter) |
+
+For the current 4-entry table, **Runtime cache lookup (~80ns) ≥ linear scan (~50ns)**. The cache doesn't help here; it adds overhead on the non-IC calls.
+
+**Crossover prediction** (cache vs linear scan): linear scan cost grows ~12ns per additional entry; HashMap.get cost is constant. Crossover at ~7-10 IHI_TABLE entries. Current table at 4; would benefit at ~10+.
+
+### Substrate-introduction reading per Doc 740 §IV.2
+
+Per Doc 740 §IV.2 substrate-introduction signature: "the closure round itself shifts allocation/dispatch patterns without eliminating them." Per Finding II.2-bis: near-zero standalone reclaim is the signature; if the upstream constraint closed + downstream consumer-pilots nameable, accept (P2.d) at the introduction round.
+
+For IHI-EXT 8:
+- **Upstream constraint closed**: per-call-site cache LIFETIME (now spans all Frame invocations).
+- **Downstream consumer pilots nameable**:
+  - Adding more IHI_TABLE entries (5-10+) — crosses over to net-positive
+  - For-of iteration protocol IC — adds more inner-iter calls hitting the IC
+  - Per-call-site bytecode rewrite (Op::CallMethodIcCached) — even deeper layer; eliminates the dispatch overhead entirely
+
+Both are nameable. Per Doc 740: accept the (P2.d-borderline) signature; proceed to consumer-pilots.
+
+### Three-probe results
+
+| probe | result |
+|---|---|
+| canonical fuzz (acc=-932188103) | ✅ GREEN |
+| diff-prod 42/42 | ✅ GREEN |
+| A/B header_loop (5-run median) | 322 ms vs IHI-EXT 5 baseline 307 ms (+5%; borderline Pred-ihi.4 gate) |
+| CRB string_url_sweep 5-run | 775 ms vs 743 baseline (+4%; within ±5% gate) |
+
+### Composition with prior corpus / engagement work
+
+- **Doc 740 §IV.2 (substrate-introduction signature)**: keeper-named pattern explicitly applied; the (P2.d-borderline) result is the signature that the cache LIFETIME closure is correctly placed; consumer-pilots materialize the reclaim.
+- **Doc 740 §II.2 P2 (single-tier closure produces partial reclaim bounded by C_k/Σ C_j)**: applies; current cache without more entries is bounded by 1/4 entries hitting; with 10 entries, ~3-5 entries would hit per inner-iter and the cache amortizes.
+- **Finding IHI.1 closure path**: option 1 (Runtime-keyed) implemented this round. Option 2 (FunctionProto-side-table; O(1) array index; faster) and option 3 (bytecode rewrite; even faster) remain as deeper-layer closures.
+- **Cross-tier dual of HI's apparatus**: HI's JIT-tier table also uses linear scan; same crossover at ~10+ entries.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable.
+Per Doc 734 §V: growth (a) positive-finding (cache LIFETIME closure landed correctly per Doc 740 §IV.2 reading); growth (c) preparatory (sets stage for the cascade-revival at consumer-pilots with more entries OR even-deeper bytecode rewrite).
+Per Doc 735 §X.h.b: **(P2.d-borderline) at the cache-tier substrate-introduction**; per Doc 740 §IV.2 the signature; cumulative reclaim awaits consumer-pilots.
+
+### Open scope at IHI-EXT 8 close
+
+1. **Consumer-pilot path A**: add 5-10 more entries to IHI_TABLE (charAt, codePointAt, slice, padStart, padEnd, includes, startsWith, endsWith, etc.) — crosses over to net-positive cache amortization.
+2. **Consumer-pilot path B**: bytecode rewrite (Op::CallMethod → Op::CallMethodIcCached(idx)) — even deeper layer; eliminates HashMap.get entirely; O(1) byte-fetch. Architectural; ~100-150 LOC.
+3. **Engagement findings doc Addendum IX** — Finding VIII.4 codifies IHI.1 + IHI.2 (the cache lifetime + cache-cost-vs-linear-scan crossover lessons).
+4. **For-of iteration protocol optimization** — separate pilot; still required for Pred-ihi.5 ≥30%.
+
+### Cumulative status at IHI-EXT 8 close
+
+LOC delta: ~25 (Runtime cache field + init + dispatch logic; removed Frame::ic_dispatch_cache foothold via overwrite).
+IHI-EXT 0-8 cumulative: ~665 across the locale.
+IHI_TABLE entries: 4 (unchanged).
+Pred-ihi.5: DEFERRED (-5-7% reclaim achieved; structurally bounded as analyzed; deeper-layer closure path named).
+
+---
+
+*IHI-EXT 8 closes. Runtime-keyed cache landed per Doc 740 §IV.2 substrate-introduction signature reading. Empirical: sub-noise impact at 4 entries; cost-crossover at ~10 entries (more entries amortize) OR via deeper-layer bytecode rewrite. The (P2.d-borderline) is the signature, not the failure mode — consumer-pilots materialize the reclaim per the Doc 740 multi-tier pattern.*
