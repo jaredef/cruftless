@@ -2,7 +2,9 @@
 
 **Locale tag**: `L.test262-categorize` (top-level)
 
-**Status as of 2026-05-24**: **WORKSTREAM FOUNDED (T262C-EXT 0)**. Spawned per keeper directive on the ECMAScript-parity pivot following the TS-parity arc's 100% close. This locale is the **third instrument-tier locale** in the engagement (after TCC, TXC), built to support the ECMAScript-parity arc with the same corpus-driven inspect-then-iterate discipline that drove the TS-parity arc to closure.
+**Status as of 2026-05-24**: **CHAPTER CLOSED at T262C-EXT 1 (1 implementation round; standing rule 13 thirteenth corroboration)**. Categorize apparatus operational; baseline 77.6% (5576/7182). Top-15 cells = 25.5% (Pred-t262c.2 FALSIFIED on cross-product but top-10 pipelines alone = ~50% via the structure-axis marginal). Mid-round: surfaced + fixed an assert-global-shadow bug in cruftless that was masking ~511 real substrate gaps; fix unmasked them without changing the headline. **5 prioritized substrate sub-locales queued** per the matrix (strict-mode-destructuring-refs, parser-permissiveness, iterator-protocol-error-propagation, Object.defineProperty edge cases, Array.sort edge cases).
+
+**Historical status (founding)**: WORKSTREAM FOUNDED (T262C-EXT 0). Spawned per keeper directive on the ECMAScript-parity pivot following the TS-parity arc's 100% close. This locale is the **third instrument-tier locale** in the engagement (after TCC, TXC), built to support the ECMAScript-parity arc with the same corpus-driven inspect-then-iterate discipline that drove the TS-parity arc to closure.
 
 **Workstream**: build a categorization apparatus over `scripts/test262-sample/`'s per-test failure outputs that indexes failing tests by TWO orthogonal coordinates:
 
