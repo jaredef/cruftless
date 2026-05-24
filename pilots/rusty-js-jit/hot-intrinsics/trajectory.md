@@ -38,3 +38,65 @@ LOC delta: 0 (apparatus round only).
 ---
 
 *HI-EXT 0 closes. Engagement-wide instrument pilot founded. HI-EXT 1 designs the table apparatus; HI-EXT 2 implements infrastructure + migrates existing charCodeAt/length entries; HI-EXT 3-N adds starter-set entries per round.*
+
+---
+
+## HI-EXT 1 — 2026-05-24 (design doc: table apparatus + per-entry LOC budget)
+
+### Headline
+
+Design-tier round. `docs/design.md` (~280 lines) specifies the IcEntry struct + static IC_TABLE registry + parse-table dispatch + translate-time IR-lower dispatch + extern pre-bind + per-entry use detection + override-safety gate (first-cut deferred). 4 risks named.
+
+### Per-entry LOC breakdown
+
+| component | LOC |
+|---|---:|
+| extern fn (ASCII fast-path or property read) | 10-15 |
+| extern_sig builder | 3-5 |
+| lower IR fn (bitcast + mask + call + push) | 15-25 |
+| IcEntry literal in IC_TABLE | 5-7 |
+| **total per entry** | **30-50** |
+
+Closes Pred-hi.1 (≤50 LOC per entry).
+
+### ParsedOp encoding
+
+3 new variants replace OSR-EXT 6b's 3 ad-hoc variants:
+- `ParsedOp::IcPropertyGet(u8)` — index into IC_TABLE; for PropertyGet kind
+- `ParsedOp::IcMethodResolve(u8)` — GetProp side of MethodCall pair
+- `ParsedOp::IcMethodCall(u8)` — CallMethod side; lookback-paired with prior IcMethodResolve
+
+### Composition with OSR-EXT 6b
+
+HI-EXT 2 migrates OSR-EXT 6/6b's ad-hoc charCodeAt + length entries into the table. Migration is behavior-neutral (no observable change); -66% CRB reclaim preserved.
+
+### 4 named risks
+
+R1 override safety (first cut deferred — Finding HI.1 candidate); R2 receiver-kind mismatch (tag-check guard deferred); R3 parse-time lookback brittleness (source-read verifies cruft's bytecode shape); R4 fn-pointer lifetime (SAFE per rule 9).
+
+### Composition with prior corpus / engagement work
+
+- **Doc 741 §V.1**: the pattern generalizes; this design materializes the generalization as a registration apparatus
+- **OSR-EXT 6b empirical anchor**: charCodeAt + length entries preserved through migration
+- **Standing rule 11 (5-axis)**: each new entry's spawn gated by rule 11 (component A/B usually not needed since the entry's contribution is bounded to its intrinsic; op-set + value-domain + locals-marshaling + emission-shape axes checked per entry)
+- **Standing rule 9 (raw-pointer audit)**: applied; extern_ptr is fn-item static → SAFE
+- **Findings II.2-bis substrate-introduction signature**: HI-EXT 2 will be flat-bench (migration preserves behavior); HI-EXT 3+ per-entry rounds may show small wins on per-entry synthetic fixtures
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable (design-tier).
+Per Doc 734 §V: growth (c) preparatory — design's per-entry LOC budget anchors Pred-hi.1; the apparatus enables compounding engagement value beyond per-pilot ad-hoc work.
+Per Doc 735 §X.h.c: three-probe-levels per entry at HI-EXT 3+.
+
+### Open scope at HI-EXT 1 close
+
+1. **HI-EXT 2** — infrastructure round: IcEntry/IcEntryKind/ReceiverKind types + IC_TABLE static + 2-entry migration (charCodeAt + length) + parse/translate dispatch + extern pre-bind apparatus. ~200 LOC; net delta ~50 after removing ad-hoc OSR-EXT 6b code.
+2. **HI-EXT 3-N** — per-entry rounds (one or two entries per round).
+
+### Cumulative status at HI-EXT 1 close
+
+LOC delta: ~280 (design doc). HI-EXT 0-1 cumulative: ~400 across the locale.
+
+---
+
+*HI-EXT 1 closes. Table apparatus designed; per-entry LOC budget 30-50. HI-EXT 2 implements infrastructure + migrates charCodeAt + length.*
