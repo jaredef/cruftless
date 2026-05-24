@@ -28,6 +28,15 @@
       "status": "**TELOS A HIT + TELOS B (42/42)**. Forty-two fixtures (mix of L and F categories), all PASS. Three Rung-19/20/21 substrate clusters landed in one session: AbortController + AbortSignal full surface; ES2025 Iterator Helpers + generator-proto wiring; Map.groupBy + Promise.try + Error.isError. Thirty+ substrate fixes landed via diff-prod since founding. Top-500 measured at 77.4% raw / 82.1% incl-agreed after cumulative fix-set. Coverage now spans JSON, Buffer, strings, Map/Set, async/Promise/iteration, error-throws, RegExp (incl. advanced surface), generators, Proxy, structuredClone, BigInt, Reflect, Symbol, Object/Array/Math statics, node:fs/crypto/stream/events/path, AbortController + AbortSignal, ES2025 Iterator Helpers, ES2023-26 method batch."
     },
     {
+      "coord": "for-of-destructuring-assignment-semantics",
+      "tag": "L.for-of-destructuring-assignment-semantics",
+      "parent": null,
+      "scope": "for-of-destructuring-assignment-semantics",
+      "depth": 1,
+      "rung_count": 2,
+      "status": "**CLOSED at FODAS-EXT 1** (1 implementation round; standing rule 13 prospective application; Doc 740 multi-tier closure)."
+    },
+    {
       "coord": "interp-getprop-ic",
       "tag": "L.interp-getprop-ic",
       "parent": null,
@@ -224,15 +233,6 @@
       "depth": 2,
       "rung_count": 15,
       "status": "**FOUNDED (CMig-EXT 0)**. Sub-workstream of `pilots/rusty-js-shapes/` spawned per Shape-EXT 4's deferred-enrollment finding. The parent's Shape-EXT 4 round landed shape infrastructure on Object but kept `new_ordinary()` defaulting to `shape: None` because the first enrollment attempt regressed diff-prod 39\u219231/42 PASS. Root cause: ~41 sites across the runtime crate iterate `.properties` directly and bypass the shape mechanism. This sub-workstream migrates those sites family by family so enrollment can flip back on without regression."
-    },
-    {
-      "coord": "strict-mode-destructuring-refs",
-      "tag": "L.strict-mode-destructuring-refs",
-      "parent": null,
-      "scope": "strict-mode-destructuring-refs",
-      "depth": 1,
-      "rung_count": 1,
-      "status": "**WORKSTREAM FOUNDED (SMDR-EXT 0)**. First substrate-fix sub-locale downstream of T262C's first matrix measurement. Targets the second-highest cluster in T262C's failure matrix (43 tests)."
     },
     {
       "coord": "test262-categorize",

@@ -3875,7 +3875,11 @@ impl Compiler {
                                     encode_op(&mut self.bytecode, Op::StrictEq);
                                     let j_skip = self.emit_jump(Op::JumpIfFalse);
                                     encode_op(&mut self.bytecode, Op::Pop);
-                                    self.compile_expr(dv)?;
+                                    // §13.15.5.3 NamedEvaluation: anonymous default on an
+                                    // IdentifierReference target inherits the identifier's text
+                                    // as .name. Symmetric with emit_destructure's hint path.
+                                    let hint = if let Expr::Identifier { name, .. } = lt.as_ref() { Some(name.as_str()) } else { None };
+                                    if hint.is_some() { self.compile_expr_with_name_hint(dv, hint)?; } else { self.compile_expr(dv)?; }
                                     self.patch_jump(j_skip);
                                     self.assign_target_from_stack(lt)?;
                                     i += 1;
@@ -3946,7 +3950,9 @@ impl Compiler {
                                     encode_op(&mut self.bytecode, Op::StrictEq);
                                     let j_skip = self.emit_jump(Op::JumpIfFalse);
                                     encode_op(&mut self.bytecode, Op::Pop);
-                                    self.compile_expr(dv)?;
+                                    // §13.15.5.3 NamedEvaluation, symmetric with array path.
+                                    let hint = if let Expr::Identifier { name, .. } = lt.as_ref() { Some(name.as_str()) } else { None };
+                                    if hint.is_some() { self.compile_expr_with_name_hint(dv, hint)?; } else { self.compile_expr(dv)?; }
                                     self.patch_jump(j_skip);
                                     self.assign_target_from_stack(lt)?;
                                     continue;

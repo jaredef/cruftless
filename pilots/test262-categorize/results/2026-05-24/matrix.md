@@ -1,57 +1,57 @@
 # T262C failure matrix — 2026-05-24
 
-Source: `/home/jaredef/rusty-bun/results/test262-sample-2026-05-24/results.jsonl`. Total FAIL: **1606** (22.4% of runnable 7182).
+Source: `/home/jaredef/rusty-bun/results/test262-sample-2026-05-24/results.jsonl`. Total FAIL: **1616** (22.5% of runnable 7182).
 
 ## Ranked (pipeline × data-shape) cells
 
 | Rank | Pipeline (structure-axis) | Data-shape (data-axis) | Count | Example test |
 |---:|---|---|---:|---|
 | 1 | `language.expressions.arrow-function` | `feat:arrow-function;feat:destructuring-assignment;negative:SyntaxError;err:SyntaxError` | 45 | `language/expressions/arrow-function/dstr/syntax-error-ident-ref-break-escaped.js` |
-| 2 | `language.statements.for-of` | `feat:destructuring-binding;err:ReferenceError;expected-throw-missing` | 43 | `language/statements/for-of/dstr/array-elem-put-unresolvable-strict.js` |
-| 3 | `language.statements.for-of` | `feat:Symbol.iterator;feat:destructuring-binding;err:Test262Error;expected-throw-missing` | 40 | `language/statements/for-of/dstr/array-elem-iter-get-err.js` |
+| 2 | `language.statements.for-of` | `feat:Symbol.iterator;feat:destructuring-binding;err:Test262Error;expected-throw-missing` | 40 | `language/statements/for-of/dstr/array-elem-iter-get-err.js` |
+| 3 | `language.statements.for-of` | `feat:destructuring-binding;err:ReferenceError;expected-throw-missing` | 39 | `language/statements/for-of/dstr/const-ary-ptrn-elem-id-init-unresolvable.js` |
 | 4 | `Object.defineProperty` | `(no-feature-tag)` | 38 | `built-ins/Object/defineProperty/15.2.3.6-4-118.js` |
-| 5 | `Array.prototype.sort` | `(no-feature-tag)` | 29 | `built-ins/Array/prototype/sort/bug_596_1.js` |
-| 6 | `language.statements.for-of` | `feat:generators;feat:destructuring-binding` | 28 | `language/statements/for-of/dstr/array-elem-init-yield-expr.js` |
-| 7 | `language.statements.for-of` | `feat:destructuring-binding` | 27 | `language/statements/for-of/dstr/array-elem-init-yield-ident-valid.js` |
+| 5 | `language.statements.for-of` | `feat:destructuring-binding` | 34 | `language/statements/for-of/dstr/array-elem-init-fn-name-arrow.js` |
+| 6 | `language.statements.for-of` | `feat:generators;feat:destructuring-binding` | 31 | `language/statements/for-of/dstr/array-elem-init-fn-name-gen.js` |
+| 7 | `Array.prototype.sort` | `(no-feature-tag)` | 29 | `built-ins/Array/prototype/sort/bug_596_1.js` |
 | 8 | `language.statements.for-of` | `feat:destructuring-binding;negative:SyntaxError;err:SyntaxError` | 27 | `language/statements/for-of/dstr/array-elem-init-yield-ident-invalid.js` |
 | 9 | `language.statements.for-of` | `negative:SyntaxError;err:SyntaxError` | 24 | `language/statements/for-of/decl-cls.js` |
 | 10 | `String.prototype.trim` | `(no-feature-tag)` | 22 | `built-ins/String/prototype/trim/15.5.4.20-2-51.js` |
 | 11 | `language.expressions.arrow-function` | `negative:SyntaxError;err:SyntaxError` | 22 | `language/expressions/arrow-function/params-duplicate.js` |
-| 12 | `language.statements.for-in` | `negative:SyntaxError;err:SyntaxError` | 17 | `language/statements/for-in/decl-const.js` |
-| 13 | `Array.prototype.indexOf` | `(no-feature-tag)` | 16 | `built-ins/Array/prototype/indexOf/15.4.4.14-10-1.js` |
-| 14 | `Array.prototype.reduce` | `(no-feature-tag)` | 16 | `built-ins/Array/prototype/reduce/15.4.4.21-10-3.js` |
-| 15 | `language.statements.for-of` | `feat:destructuring-binding;err:TypeError;expected-throw-missing` | 16 | `language/statements/for-of/dstr/array-elision-val-bool.js` |
+| 12 | `language.statements.for-in` | `negative:SyntaxError;err:SyntaxError` | 17 | `language/statements/for-in/decl-cls.js` |
+| 13 | `Array.prototype.reduce` | `(no-feature-tag)` | 16 | `built-ins/Array/prototype/reduce/15.4.4.21-10-3.js` |
+| 14 | `language.statements.for-of` | `feat:destructuring-binding;err:TypeError;expected-throw-missing` | 16 | `language/statements/for-of/dstr/array-elision-val-bool.js` |
+| 15 | `Array.prototype.indexOf` | `(no-feature-tag)` | 16 | `built-ins/Array/prototype/indexOf/15.4.4.14-10-1.js` |
 | 16 | `language.statements.for-of` | `feat:Symbol.iterator;feat:destructuring-binding` | 15 | `language/statements/for-of/dstr/array-elem-iter-nrml-close.js` |
-| 17 | `language.statements.for-of` | `(no-feature-tag)` | 14 | `language/statements/for-of/arguments-mapped-aliasing.js` |
-| 18 | `Array.prototype.map` | `(no-feature-tag)` | 14 | `built-ins/Array/prototype/map/15.4.4.19-1-15.js` |
+| 17 | `Array.prototype.map` | `(no-feature-tag)` | 14 | `built-ins/Array/prototype/map/15.4.4.19-1-15.js` |
+| 18 | `language.statements.for-of` | `(no-feature-tag)` | 14 | `language/statements/for-of/arguments-mapped-aliasing.js` |
 | 19 | `RegExp.prototype.test` | `(no-feature-tag)` | 14 | `built-ins/RegExp/prototype/test/S15.10.6.3_A11.js` |
-| 20 | `language.expressions.arrow-function` | `feat:destructuring-binding;err:ReferenceError;expected-throw-missing` | 13 | `language/expressions/arrow-function/dstr/ary-ptrn-elem-id-init-unresolvable.js` |
-| 21 | `language.statements.for-in` | `(no-feature-tag)` | 13 | `language/statements/for-in/cptn-decl-abrupt-empty.js` |
-| 22 | `String.prototype.split` | `(no-feature-tag)` | 13 | `built-ins/String/prototype/split/arguments-are-new-reg-exp-and-hi-and-instance-is-string-hello.js` |
+| 20 | `String.prototype.split` | `(no-feature-tag)` | 13 | `built-ins/String/prototype/split/arguments-are-new-reg-exp-and-hi-and-instance-is-string-hello.js` |
+| 21 | `language.expressions.arrow-function` | `feat:destructuring-binding;err:ReferenceError;expected-throw-missing` | 13 | `language/expressions/arrow-function/dstr/ary-ptrn-elem-id-init-unresolvable.js` |
+| 22 | `language.statements.for-in` | `(no-feature-tag)` | 13 | `language/statements/for-in/cptn-decl-abrupt-empty.js` |
 | 23 | `language.expressions.arrow-function` | `feat:destructuring-binding;feat:default-parameters;err:ReferenceError;expected-throw-missing` | 13 | `language/expressions/arrow-function/dstr/dflt-ary-ptrn-elem-id-init-unresolvable.js` |
 | 24 | `language.statements.for-of` | `feat:object-rest;feat:destructuring-binding` | 12 | `language/statements/for-of/dstr/obj-rest-computed-property.js` |
-| 25 | `Promise` | `(no-feature-tag)` | 12 | `built-ins/Promise/exec-args.js` |
-| 26 | `language.statements.for-of` | `feat:generators` | 12 | `language/statements/for-of/generator-close-via-break.js` |
-| 27 | `JSON.stringify` | `(no-feature-tag)` | 10 | `built-ins/JSON/stringify/replacer-array-duplicates.js` |
-| 28 | `language.statements.for-of` | `feat:Symbol.iterator;feat:generators;feat:destructuring-binding` | 10 | `language/statements/for-of/dstr/array-elem-iter-rtrn-close.js` |
+| 25 | `language.statements.for-of` | `feat:generators` | 12 | `language/statements/for-of/generator-close-via-break.js` |
+| 26 | `Promise` | `(no-feature-tag)` | 12 | `built-ins/Promise/exec-args.js` |
+| 27 | `language.statements.for-of` | `feat:Symbol.iterator;feat:generators;feat:destructuring-binding` | 10 | `language/statements/for-of/dstr/array-elem-iter-rtrn-close.js` |
+| 28 | `JSON.stringify` | `(no-feature-tag)` | 10 | `built-ins/JSON/stringify/replacer-array-duplicates.js` |
 | 29 | `Array.prototype.filter` | `(no-feature-tag)` | 9 | `built-ins/Array/prototype/filter/15.4.4.20-1-15.js` |
 | 30 | `language.expressions.arrow-function` | `(no-feature-tag)` | 9 | `language/expressions/arrow-function/arrow/capturing-closure-variables-1.js` |
 | 31 | `language.statements.for-of` | `feat:generators;feat:destructuring-binding;err:Test262Error;expected-throw-missing` | 9 | `language/statements/for-of/dstr/const-ary-ptrn-elision-step-err.js` |
-| 32 | `language.statements.for-of` | `feat:Symbol.iterator;feat:destructuring-binding;err:TypeError;expected-throw-missing` | 8 | `language/statements/for-of/dstr/array-elem-iter-nrml-close-null.js` |
+| 32 | `Number` | `(no-feature-tag)` | 8 | `built-ins/Number/15.7.4-1.js` |
 | 33 | `RegExp.prototype.exec` | `(no-feature-tag)` | 8 | `built-ins/RegExp/prototype/exec/S15.10.6.2_A11.js` |
-| 34 | `Number` | `(no-feature-tag)` | 8 | `built-ins/Number/15.7.4-1.js` |
+| 34 | `language.statements.for-of` | `feat:Symbol.iterator;feat:destructuring-binding;err:TypeError;expected-throw-missing` | 8 | `language/statements/for-of/dstr/array-elem-iter-nrml-close-null.js` |
 | 35 | `Object.defineProperty` | `err:TypeError` | 8 | `built-ins/Object/defineProperty/15.2.3.6-4-218.js` |
-| 36 | `JSON.parse` | `feat:Proxy;err:Test262Error;expected-throw-missing` | 7 | `built-ins/JSON/parse/reviver-array-define-prop-err.js` |
-| 37 | `Array.prototype.push` | `err:TypeError;expected-throw-missing` | 7 | `built-ins/Array/prototype/push/length-near-integer-limit-set-failure.js` |
+| 36 | `String.prototype.replaceAll` | `feat:String.prototype.replaceAll;feat:Symbol.replace` | 7 | `built-ins/String/prototype/replaceAll/getSubstitution-0x0024-0x003C.js` |
+| 37 | `language.statements.for-of` | `feat:let;feat:destructuring-binding;err:ReferenceError;expected-throw-missing` | 7 | `language/statements/for-of/dstr/array-elem-init-let.js` |
 | 38 | `String.prototype.replace` | `(no-feature-tag)` | 7 | `built-ins/String/prototype/replace/length.js` |
-| 39 | `String.prototype.replaceAll` | `feat:String.prototype.replaceAll;feat:Symbol.replace` | 7 | `built-ins/String/prototype/replaceAll/getSubstitution-0x0024-0x003C.js` |
-| 40 | `language.statements.for-of` | `feat:let;feat:destructuring-binding;err:ReferenceError;expected-throw-missing` | 7 | `language/statements/for-of/dstr/array-elem-init-let.js` |
+| 39 | `Array.prototype.push` | `err:TypeError;expected-throw-missing` | 7 | `built-ins/Array/prototype/push/length-near-integer-limit-set-failure.js` |
+| 40 | `JSON.parse` | `feat:Proxy;err:Test262Error;expected-throw-missing` | 7 | `built-ins/JSON/parse/reviver-array-define-prop-err.js` |
 
 ## Structure-axis marginal (per-pipeline failure counts)
 
 | Pipeline | Failures |
 |---|---:|
-| `language.statements.for-of` | 346 |
+| `language.statements.for-of` | 356 |
 | `language.expressions.arrow-function` | 152 |
 | `Object.defineProperty` | 55 |
 | `language.statements.for-in` | 38 |
@@ -89,14 +89,14 @@ Source: `/home/jaredef/rusty-bun/results/test262-sample-2026-05-24/results.jsonl
 | `(no-feature-tag)` | 363 |
 | `negative:SyntaxError;err:SyntaxError` | 63 |
 | `err:TypeError;expected-throw-missing` | 62 |
-| `feat:destructuring-binding;err:ReferenceError;expected-throw-missing` | 56 |
+| `feat:destructuring-binding;err:ReferenceError;expected-throw-missing` | 52 |
 | `feat:arrow-function;feat:destructuring-assignment;negative:SyntaxError;err:SyntaxError` | 45 |
 | `feat:Symbol.iterator;feat:destructuring-binding;err:Test262Error;expected-throw-missing` | 44 |
+| `feat:generators;feat:destructuring-binding` | 35 |
+| `feat:destructuring-binding` | 34 |
 | `feat:set-methods;not-callable` | 34 |
-| `feat:generators;feat:destructuring-binding` | 32 |
 | `feat:resizable-arraybuffer` | 32 |
 | `feat:set-methods;err:TypeError;expected-throw-missing` | 28 |
-| `feat:destructuring-binding` | 27 |
 | `feat:destructuring-binding;negative:SyntaxError;err:SyntaxError` | 27 |
 | `err:TypeError` | 26 |
 | `feat:Symbol.species` | 24 |
