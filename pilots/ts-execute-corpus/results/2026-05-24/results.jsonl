@@ -1,4 +1,4 @@
-{"file":"ajv/lib/2019.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module './refs/data.json' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/ajv/lib/co"}
+{"file":"ajv/lib/2019.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module './schema.json' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/ajv/lib/refs/"}
 {"file":"ajv/lib/2020.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module './schema.json' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/ajv/lib/refs/"}
 {"file":"ajv/lib/ajv.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module './refs/json-schema-draft-07.json' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fix"}
 {"file":"ajv/lib/compile/codegen/code.ts","outcome":"MATCH","detail":""}
@@ -330,7 +330,7 @@
 {"file":"rxjs/src/internal/testing/SubscriptionLog.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/testing/SubscriptionLoggable.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/testing/TestMessage.ts","outcome":"MATCH","detail":""}
-{"file":"rxjs/src/internal/testing/TestScheduler.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `RParen` @byte16792 @url=file:///home/jaredef/rusty-bun/pilots/ts"}
+{"file":"rxjs/src/internal/testing/TestScheduler.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/types.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/umd.ts","outcome":"BUN_FAIL","detail":"1 | })"}
 {"file":"rxjs/src/internal/util/ArgumentOutOfRangeError.ts","outcome":"MATCH","detail":""}

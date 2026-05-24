@@ -119,7 +119,7 @@
 {"file": "pino/test/types/pino-top-export.test-d.ts", "outcome": "OK", "message": ""}
 {"file": "pino/test/types/pino-transport.test-d.ts", "outcome": "OK", "message": ""}
 {"file": "pino/test/types/pino-type-only.test-d.ts", "outcome": "OK", "message": ""}
-{"file": "pino/test/types/pino.test-d.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 658, end: 659 }, message: 'only identifier keys support shorthand' }"}
+{"file": "pino/test/types/pino.test-d.ts", "outcome": "OK", "message": ""}
 {"file": "pino/test/types/pino.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/ajax/index.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/fetch/index.ts", "outcome": "OK", "message": ""}
@@ -330,7 +330,7 @@
 {"file": "rxjs/src/internal/testing/SubscriptionLog.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/testing/SubscriptionLoggable.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/testing/TestMessage.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/testing/TestScheduler.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 16792, end: 16793 }, message: 'expected `RParen`' }"}
+{"file": "rxjs/src/internal/testing/TestScheduler.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/types.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/umd.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/util/ArgumentOutOfRangeError.ts", "outcome": "OK", "message": ""}

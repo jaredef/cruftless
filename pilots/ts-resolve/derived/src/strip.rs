@@ -169,11 +169,14 @@ struct Scanner<'src> {
     /// not a key:value separator).
     paren_depth: i32,
     /// Open ternary stack — each `?` operator (NOT `?:` optional or
-    /// `?.` chain) pushes the current paren_depth. The matching `:`
-    /// pops. Used by is_annotation_colon to reject a `:` whose top-
-    /// of-stack matches current paren_depth (it's a ternary's else
-    /// branch, not an annotation).
-    ternary_stack: Vec<i32>,
+    /// `?.` chain) pushes (paren_depth, brace_stack.len()). The
+    /// matching `:` pops only when BOTH paren_depth AND brace_stack
+    /// length match the push — this prevents cross-talk where a `?`
+    /// at one paren_depth/brace context is incorrectly matched by a
+    /// `:` at a different brace context that happens to be at the
+    /// same paren_depth (e.g. method-param annotation inside an
+    /// obj-lit nested in an unrelated outer ternary).
+    ternary_stack: Vec<(i32, usize)>,
     /// True after we've seen a `class` Ident at statement position,
     /// until the next `{` is processed (which is then classified as
     /// ClassBody and clears the flag). Allows the overload rule to
@@ -926,8 +929,8 @@ impl<'src> Scanner<'src> {
                     && matches!(self.brace_stack.last(),
                         Some((BraceCtx::ObjectLit, push_pd)) if *push_pd == self.paren_depth);
                 if !at_obj_key {
-                    if let Some(&top) = self.ternary_stack.last() {
-                        if top == self.paren_depth {
+                    if let Some(&(top_pd, top_brace_len)) = self.ternary_stack.last() {
+                        if top_pd == self.paren_depth && top_brace_len == self.brace_stack.len() {
                             self.ternary_stack.pop();
                             return Ok(i + 1);
                         }
@@ -983,7 +986,7 @@ impl<'src> Scanner<'src> {
                 let next_is_dot = i + 1 < self.toks.len()
                     && matches!(self.toks[i + 1].kind, TokenKind::Punct(Punct::Dot));
                 if !next_is_colon && !next_is_dot && i > 0 && self.is_expr_terminator(i - 1) {
-                    self.ternary_stack.push(self.paren_depth);
+                    self.ternary_stack.push((self.paren_depth, self.brace_stack.len()));
                 }
                 Ok(i + 1)
             }
@@ -1329,6 +1332,15 @@ impl<'src> Scanner<'src> {
         // `=`). Else bail — could be e.g. a block statement followed
         // by a labelled statement (rare but possible).
         if prev_is_close_brace || prev_is_close_brack {
+            // Computed property key `[expr]: value` in an obj-lit
+            // is NOT a destructured-param annotation. Bail when
+            // the enclosing brace context is an obj-lit at the
+            // current paren depth (we're at obj-lit's own level).
+            if matches!(self.brace_stack.last(),
+                Some((BraceCtx::ObjectLit, push_pd)) if *push_pd == self.paren_depth)
+            {
+                return false;
+            }
             let after = self.skip_type(i + 1);
             if after < self.toks.len() {
                 return matches!(self.toks[after].kind,
