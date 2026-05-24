@@ -376,6 +376,27 @@ impl Runtime {
     /// `this` for the active native call. Returns Undefined outside one.
     pub fn current_this(&self) -> Value { self.current_this.clone() }
 
+    /// IHI-EXT 2 (2026-05-24): table-indexed cached intrinsic-ObjectId
+    /// getter. Returns the cached id for the named field, or None if
+    /// not yet populated (first eligible call). The dispatcher uses
+    /// this to gate the IC fast-path's override-safety check.
+    pub fn ihi_get_cached(&self, field: crate::interp_ic_table::IhiCachedField) -> Option<rusty_js_gc::ObjectId> {
+        use crate::interp_ic_table::IhiCachedField as F;
+        match field {
+            F::StringCharCodeAt => self.intrinsic_string_charcodeat_id,
+        }
+    }
+
+    /// IHI-EXT 2 (2026-05-24): table-indexed cached intrinsic-ObjectId
+    /// setter. Called by the dispatcher on first eligible call to
+    /// populate the entry's cache.
+    pub fn ihi_set_cached(&mut self, field: crate::interp_ic_table::IhiCachedField, id: rusty_js_gc::ObjectId) {
+        use crate::interp_ic_table::IhiCachedField as F;
+        match field {
+            F::StringCharCodeAt => self.intrinsic_string_charcodeat_id = Some(id),
+        }
+    }
+
     /// Ω.5.P60.E4 + Ω.5.P61.E16: full ECMA §7.1.17 ToString with
     /// §7.1.1.1 OrdinaryToPrimitive('string') for Object values:
     /// (1) if obj[@@toPrimitive] is callable, call with hint 'string';
@@ -8229,61 +8250,35 @@ impl Runtime {
                     let chain_tag = if matches!(&method, Value::Undefined | Value::Null) {
                         method_name.as_deref().map(|mn| describe_proto_chain_for_key(self, &receiver, mn))
                     } else { None };
-                    // CharCode-EXT 2 (2026-05-23, JIT-EXT 33 interp-tier IC):
-                    // hot-intrinsic fast-path. For the exact shape
-                    // `s.charCodeAt(i)` with s a primitive String, the
-                    // resolved method == String.prototype.charCodeAt, and
-                    // one arg, bypass call_function entirely and emit the
-                    // ASCII-fast result inline. Eliminates per-call frame
-                    // setup, this-binding dispatch, and call_function
-                    // overhead. Same byte-for-byte result as the slow path
-                    // for the intercepted shapes; bails to slow path on
-                    // override / non-String receiver / wrong arity / NaN
-                    // arg / non-ASCII string + out-of-bounds index.
-                    if args.len() == 1
-                        && method_name.as_deref() == Some("charCodeAt")
-                    {
-                        if let (Value::String(s), Value::Object(method_id)) = (&receiver, &method) {
-                            // Verify method is the intrinsic. Lazy-populate
-                            // the cache on first eligible call by looking
-                            // up String.prototype.charCodeAt.
-                            if self.intrinsic_string_charcodeat_id.is_none() {
-                                if let Some(sp) = self.string_prototype {
-                                    if let Some(d) = self.obj(sp).get_own("charCodeAt") {
-                                        if let Value::Object(id) = d.value {
-                                            self.intrinsic_string_charcodeat_id = Some(id);
-                                        }
+                    // IHI-EXT 2 (2026-05-24): table-driven interp-tier IC
+                    // fast-path. Replaces CharCode-EXT 2's ad-hoc block.
+                    // Per-entry: lookup by (method_name, receiver-kind,
+                    // arity); verify resolved method's ObjectId matches
+                    // cached intrinsic id (lazy-populate); invoke fast fn;
+                    // on Some(v) push v + continue (skip call_function).
+                    if let Some(method_name_str) = method_name.as_deref() {
+                        let kind = crate::interp_ic_table::receiver_kind_of(&receiver);
+                        if let Some(entry) = crate::interp_ic_table::lookup(method_name_str, kind, args.len() as u8) {
+                            if let Value::Object(method_id) = &method {
+                                // Lazy-populate the entry's cached intrinsic
+                                // ObjectId on first eligible call.
+                                let cached = self.ihi_get_cached(entry.cached_id_field);
+                                let cached = if cached.is_none() {
+                                    if let Some(sp) = self.string_prototype {
+                                        if let Some(d) = self.obj(sp).get_own(entry.key) {
+                                            if let Value::Object(id) = d.value {
+                                                self.ihi_set_cached(entry.cached_id_field, id);
+                                                Some(id)
+                                            } else { None }
+                                        } else { None }
+                                    } else { None }
+                                } else { cached };
+                                if cached == Some(*method_id) {
+                                    if let Some(result) = (entry.fast)(&receiver, &args) {
+                                        frame.push(result);
+                                        continue;
                                     }
                                 }
-                            }
-                            if self.intrinsic_string_charcodeat_id == Some(*method_id) {
-                                let pos = &args[0];
-                                let i_n = match pos {
-                                    Value::Undefined => 0.0,
-                                    Value::Number(n) => *n,
-                                    _ => f64::NAN,
-                                };
-                                if i_n.is_finite() && i_n >= 0.0 {
-                                    let i = i_n as usize;
-                                    let bytes = s.as_bytes();
-                                    let result = if s.is_ascii() {
-                                        if i < bytes.len() {
-                                            Value::Number(bytes[i] as f64)
-                                        } else {
-                                            Value::Number(f64::NAN)
-                                        }
-                                    } else {
-                                        match s.chars().nth(i) {
-                                            Some(c) => Value::Number(c as u32 as f64),
-                                            None => Value::Number(f64::NAN),
-                                        }
-                                    };
-                                    frame.push(result);
-                                    continue;
-                                }
-                                // i_n NaN/negative: fall through to slow path
-                                // (spec says NaN return, but call_function
-                                // path is canonical for the edge case).
                             }
                         }
                     }

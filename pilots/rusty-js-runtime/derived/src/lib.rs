@@ -11,6 +11,7 @@ pub mod value;
 pub mod bigint;
 pub mod abstract_ops;
 pub mod interp;
+pub mod interp_ic_table;
 pub mod intrinsics;
 pub mod module;
 pub mod job_queue;

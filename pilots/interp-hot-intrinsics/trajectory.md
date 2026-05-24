@@ -115,3 +115,79 @@ LOC delta: ~280 (design doc). IHI-EXT 0-1 cumulative: ~415 across the locale.
 ---
 
 *IHI-EXT 1 closes. Per-entry budget 26-41 LOC (smaller than HI's JIT-tier 30-50 due to no IR scaffolding). Behavior-neutral CharCode-EXT 2 migration designed; per-entry rounds queued at validated budgets.*
+
+---
+
+## IHI-EXT 2 — 2026-05-24 (infrastructure + CharCode-EXT 2 migration; behavior-neutral)
+
+### Headline
+
+Apparatus landed at new `pilots/rusty-js-runtime/derived/src/interp_ic_table.rs`. CharCode-EXT 2's ad-hoc charCodeAt block at interp.rs:8232-8289 (~58 LOC) replaced by table-driven dispatch (~35 LOC) + IhiEntry literal (~25 LOC) + helpers (~25 LOC). Behavior-neutral: A/B median 1172 ms vs OSR-EXT 6b baseline 1176 ms — unchanged.
+
+### Substrate landed
+
+1. **New `interp_ic_table.rs`** (~125 LOC):
+   - `IhiEntry` struct (key + receiver + arity + cached_id_field + fast fn pointer)
+   - `IhiReceiverKind` (String | Array | Number)
+   - `IhiCachedField` (StringCharCodeAt; future entries extend)
+   - `IHI_TABLE: &[IhiEntry]` — 1 entry: charCodeAt
+   - `fast_string_char_code_at` (~22 LOC; ASCII fast-path + non-ASCII fallback)
+   - `lookup(key, receiver, arity)` helper
+   - `receiver_kind_of(value)` helper
+   - `unsafe impl Sync for IhiEntry`
+
+2. **lib.rs**: `pub mod interp_ic_table;` exposes module.
+
+3. **Runtime helpers** in interp.rs (~25 LOC):
+   - `ihi_get_cached(field) -> Option<ObjectId>` — match dispatch on IhiCachedField → cached field on Runtime
+   - `ihi_set_cached(field, id)` — match dispatch setter
+   - For StringCharCodeAt, reuses existing `intrinsic_string_charcodeat_id` field; no new Runtime field needed.
+
+4. **Op::CallMethod dispatch integration** (~30 LOC): replaces CharCode-EXT 2's ad-hoc block. New flow:
+   - Lookup IHI_TABLE by (method_name, receiver-kind, arity)
+   - On match: verify method's ObjectId == cached intrinsic id (lazy-populate)
+   - On cache match: invoke entry.fast(receiver, args); if Some(v) → push + continue
+   - Otherwise: fall through to existing call_function
+
+5. **Removed** (~58 LOC): CharCode-EXT 2 ad-hoc charCodeAt block.
+
+Net delta: ~155 LOC added, ~58 removed → ~95 net.
+
+### Three-probe results
+
+| probe | result |
+|---|---|
+| canonical fuzz (acc=-932188103) | ✅ GREEN |
+| diff-prod 42/42 | ✅ GREEN |
+| A/B json_parse_transform 3-run | 1160-1179 (median ~1172; baseline post-OSR-EXT 6b ~1176; within noise) |
+
+Behavior-neutral migration confirmed.
+
+### Composition with prior corpus / engagement work
+
+- **CharCode-EXT 2 → IHI table migration**: identical behavior; -66% CRB reclaim on json_parse_transform preserved (the IC still fires; just dispatched via table).
+- **HI design symmetry**: structural mirror of HI's IC_TABLE shape with interp-tier simplifications (no Cranelift IR; fast fn IS the body).
+- **Standing rule 9 raw-pointer audit**: applied; `IhiEntry` holds `fn` pointers (fn-item static); SAFE per rule 9; `unsafe impl Sync` documented.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable.
+Per Doc 734 §V: growth (a) positive-finding (apparatus operational; behavior-neutral migration verified).
+Per Doc 735 §X.h.b: substrate-introduction round at apparatus tier; (P2.d) bench expected; reclaim materialization at IHI-EXT 3+ per-entry rounds (especially toLowerCase + trim for string_url_sweep).
+
+### Open scope at IHI-EXT 2 close
+
+1. **IHI-EXT 3** — toLowerCase entry (highest priority per string_url_sweep)
+2. **IHI-EXT 4** — trim entry
+3. **IHI-EXT 5** — indexOf 1-arg entry
+4. **IHI-EXT 6** — composition probe + Pred-ihi.5 string_url_sweep re-measurement
+
+### Cumulative status at IHI-EXT 2 close
+
+LOC delta: ~95 net. IHI-EXT 0-2 cumulative: ~510 across the locale (apparatus + 1-entry migration).
+IHI_TABLE entries: 1 (charCodeAt; migrated from CharCode-EXT 2).
+Engagement-tier instrument operational + extensible (mirrors HI at the interp tier).
+
+---
+
+*IHI-EXT 2 closes. Apparatus operational; CharCode-EXT 2 migration behavior-neutral; IHI_TABLE at 1 entry. IHI-EXT 3 adds toLowerCase (highest string_url_sweep priority).*
