@@ -31,6 +31,7 @@ pub mod promote;
 pub mod deopt;
 pub mod stub_aarch64;
 pub mod tiny_baseline;
+pub mod ic_table;
 pub use translator::{compile_function, compile_function_osr, CompiledFn, JitFn};
 pub use tiny_baseline::{TinyBaselineMetadata, lejit_tb_enabled, TB_BYTECODE_LEN_THRESHOLD};
 pub use promote::promote_to_typed_i64;

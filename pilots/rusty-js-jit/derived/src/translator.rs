@@ -57,42 +57,10 @@ pub type JitFn2 = extern "C" fn(f64, f64) -> f64;
 /// coverage tier per Doc 740 §VIII.2 + Finding VIII.2.
 pub type JitFnOsr = extern "C" fn(*mut f64) -> f64;
 
-/// OSR-EXT 6 (2026-05-23): runtime helper for Op::GetProp+length-IC
-/// in OSR-compiled loop bodies. Caller passes the VD-encoding payload
-/// bits (low 48 bits of the boxed-NaN f64, decoded from the receiver);
-/// helper returns string.len() as f64.
-///
-/// SAFETY: caller (the JIT body) must ensure `payload` is a valid
-/// *const String — i.e., the receiver was VD-encoded String at
-/// marshal-in. Tag-check guard belongs at the JIT IR (deopt on
-/// tag mismatch); this helper trusts the contract.
-pub extern "C" fn osr_string_len(payload: i64) -> f64 {
-    let ptr = payload as *const String;
-    let s: &String = unsafe { &*ptr };
-    s.len() as f64
-}
-
-/// OSR-EXT 6b (2026-05-23): runtime helper for charCodeAt-IC in OSR-
-/// compiled loop bodies. Caller passes VD-decoded payload (String*) +
-/// integer index; helper returns the char code as f64 (or NaN if i
-/// out of range). ASCII fast-path mirrors CharCode-EXT 1's substrate
-/// fix. SAFETY: payload must be a live *const String per OSR marshal-
-/// in contract.
-pub extern "C" fn osr_string_char_code_at(payload: i64, i: i64) -> f64 {
-    let ptr = payload as *const String;
-    let s: &String = unsafe { &*ptr };
-    if i < 0 { return f64::NAN; }
-    let i = i as usize;
-    let bytes = s.as_bytes();
-    if s.is_ascii() {
-        if i < bytes.len() { bytes[i] as f64 } else { f64::NAN }
-    } else {
-        match s.chars().nth(i) {
-            Some(c) => c as u32 as f64,
-            None => f64::NAN,
-        }
-    }
-}
+// HI-EXT 2 (2026-05-23): osr_string_len + osr_string_char_code_at
+// relocated to crate::ic_table (as ic_string_len + ic_string_char_code_at).
+// Behavior-neutral migration; -66% CRB reclaim on json_parse_transform
+// preserved.
 
 pub enum JitFn {
     /// TL-EXT 3 (2026-05-23): 0-arg variant for module-body JIT entry.
@@ -359,12 +327,18 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
     // can pre-bind the runtime helper. Pre-binding has no cost when
     // the symbol isn't used.
     let has_getprop = parsed.iter().any(|(_, op)| matches!(op, ParsedOp::GetPropOnObject(_)));
-    // OSR-EXT 6 (2026-05-23): detect GetPropLength to pre-bind
-    // osr_string_len helper.
-    let has_getprop_length = parsed.iter().any(|(_, op)| matches!(op, ParsedOp::GetPropLength));
-    // OSR-EXT 6b (2026-05-23): detect CallMethodCharCodeAt to pre-bind
-    // osr_string_char_code_at helper.
-    let has_callmethod_charcodeat = parsed.iter().any(|(_, op)| matches!(op, ParsedOp::CallMethodCharCodeAt));
+    // HI-EXT 2 (2026-05-23): per-IC-table-entry use detection. Each
+    // entry that appears in the parsed list (via IcPropertyGet or
+    // IcMethodCall) is pre-bound + signature-declared.
+    let mut ic_entry_used: Vec<bool> = vec![false; crate::ic_table::IC_TABLE.len()];
+    for (_, op) in &parsed {
+        match op {
+            ParsedOp::IcPropertyGet(i) | ParsedOp::IcMethodCall(i) => {
+                ic_entry_used[*i as usize] = true;
+            }
+            _ => {}
+        }
+    }
 
     let mut jit_builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
     if any_guard {
@@ -382,11 +356,11 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
                 crate::deopt::jit_getprop_with_ic as *const u8);
         }
     }
-    if has_getprop_length {
-        jit_builder.symbol("osr_string_len", osr_string_len as *const u8);
-    }
-    if has_callmethod_charcodeat {
-        jit_builder.symbol("osr_string_char_code_at", osr_string_char_code_at as *const u8);
+    // HI-EXT 2 (2026-05-23): per-entry symbol pre-bind from IC_TABLE.
+    for (i, entry) in crate::ic_table::IC_TABLE.iter().enumerate() {
+        if ic_entry_used[i] {
+            jit_builder.symbol(entry.extern_name, entry.extern_ptr);
+        }
     }
     let mut module = JITModule::new(jit_builder);
 
@@ -421,29 +395,20 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
             .map_err(|e| format!("declare {name}: {e}"))?)
     } else { None };
 
-    // OSR-EXT 6 (2026-05-23): declare osr_string_len signature for
-    // length-IC. extern "C" fn(i64) -> f64; the i64 is the VD-decoded
-    // payload bits (low 48 bits of the boxed-NaN f64); return is the
-    // string length as f64.
-    let osr_string_len_id_opt = if has_getprop_length {
-        let mut sig = module.make_signature();
-        sig.params.push(AbiParam::new(I64));
-        sig.returns.push(AbiParam::new(F64));
-        Some(module
-            .declare_function("osr_string_len", Linkage::Import, &sig)
-            .map_err(|e| format!("declare osr_string_len: {e}"))?)
-    } else { None };
-    // OSR-EXT 6b (2026-05-23): declare osr_string_char_code_at sig.
-    // extern "C" fn(i64, i64) -> f64; payload + index → char code.
-    let osr_string_char_code_at_id_opt = if has_callmethod_charcodeat {
-        let mut sig = module.make_signature();
-        sig.params.push(AbiParam::new(I64));
-        sig.params.push(AbiParam::new(I64));
-        sig.returns.push(AbiParam::new(F64));
-        Some(module
-            .declare_function("osr_string_char_code_at", Linkage::Import, &sig)
-            .map_err(|e| format!("declare osr_string_char_code_at: {e}"))?)
-    } else { None };
+    // HI-EXT 2 (2026-05-23): per-entry signature declarations from
+    // IC_TABLE. Each used entry's extern_sig builder constructs the
+    // Cranelift signature; declare_function returns the FuncId.
+    let mut ic_entry_ids: Vec<Option<cranelift_module::FuncId>> = vec![None; crate::ic_table::IC_TABLE.len()];
+    for (i, entry) in crate::ic_table::IC_TABLE.iter().enumerate() {
+        if ic_entry_used[i] {
+            let mut sig = module.make_signature();
+            (entry.extern_sig)(&mut sig);
+            let id = module
+                .declare_function(entry.extern_name, Linkage::Import, &sig)
+                .map_err(|e| format!("declare {}: {e}", entry.extern_name))?;
+            ic_entry_ids[i] = Some(id);
+        }
+    }
 
     let mut ctx = module.make_context();
     let mut fb_ctx = FunctionBuilderContext::new();
@@ -478,10 +443,11 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
         let trip_ref = trip_id_opt.map(|id| module.declare_func_in_func(id, &mut builder.func));
         // JIT-EXT 20: same for the GetProp runtime helper.
         let getprop_ref = getprop_id_opt.map(|id| module.declare_func_in_func(id, &mut builder.func));
-        // OSR-EXT 6 (2026-05-23): declare osr_string_len FuncRef for IR.
-        let osr_string_len_ref = osr_string_len_id_opt.map(|id| module.declare_func_in_func(id, &mut builder.func));
-        // OSR-EXT 6b (2026-05-23): same for osr_string_char_code_at.
-        let osr_string_char_code_at_ref = osr_string_char_code_at_id_opt.map(|id| module.declare_func_in_func(id, &mut builder.func));
+        // HI-EXT 2 (2026-05-23): per-entry FuncRef declarations from
+        // IC_TABLE. Used by ParsedOp::Ic{PropertyGet,MethodCall} lower fns.
+        let ic_entry_refs: Vec<Option<cranelift_codegen::ir::FuncRef>> = ic_entry_ids.iter()
+            .map(|id_opt| id_opt.map(|id| module.declare_func_in_func(id, &mut builder.func)))
+            .collect();
 
         // Allocate a Cranelift Block per jump target.
         let mut blocks: HashMap<usize, Block> = HashMap::new();
@@ -744,39 +710,19 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
                     let v = builder.ins().f64const(*n);
                     stack.push(v);
                 }
-                ParsedOp::GetPropLength => {
-                    // OSR-EXT 6 (2026-05-23): String.length IC fast-path
-                    // in JIT IR. Pop receiver f64; bitcast → i64; mask
-                    // payload bits (low 48 bits of the VD-boxed
-                    // representation); call osr_string_len; push f64.
-                    //
-                    // First-cut conservative: no tag check (trusts that
-                    // the receiver was a Value::String at marshal-in;
-                    // OSR contract says local types don't change mid-
-                    // execution). Deopt-on-tag-mismatch deferred.
-                    let recv_f64 = stack.pop().ok_or("GetPropLength: stack underflow")?;
-                    let recv_bits = builder.ins().bitcast(I64, MemFlags::new(), recv_f64);
-                    let payload_mask = builder.ins().iconst(I64, 0x0000_FFFF_FFFF_FFFF_u64 as i64);
-                    let payload = builder.ins().band(recv_bits, payload_mask);
-                    let slref = osr_string_len_ref.expect("osr_string_len_ref must be set when ParsedOp::GetPropLength is present");
-                    let call_inst = builder.ins().call(slref, &[payload]);
-                    let result = builder.inst_results(call_inst)[0];
-                    stack.push(result);
+                ParsedOp::IcPropertyGet(idx) | ParsedOp::IcMethodCall(idx) => {
+                    // HI-EXT 2 (2026-05-23): table-driven IR dispatch.
+                    // The IcEntry's lower fn pops receiver (and args,
+                    // if MethodCall) from stack; pushes the result.
+                    let entry = &crate::ic_table::IC_TABLE[*idx as usize];
+                    let extern_ref = ic_entry_refs[*idx as usize]
+                        .expect("IC_TABLE entry FuncRef must be set when used");
+                    (entry.lower)(&mut builder, &mut stack, extern_ref)?;
                 }
-                ParsedOp::GetPropCharCodeAt => {
-                    // OSR-EXT 6b (2026-05-23): GetProp("charCodeAt") in
-                    // the method-resolve position. The bytecode pattern
-                    // is `LoadLocal receiver; Dup; GetProp "charCodeAt";
-                    // LoadLocal arg; CallMethod 1`. The Dup left a copy
-                    // of receiver beneath; GetProp pops the top (which
-                    // is the receiver copy) and pushes a method handle.
-                    // For the IC fast-path: pop the duplicated receiver
-                    // (discard) and push a sentinel f64 (0.0). The
-                    // subsequent CallMethodCharCodeAt consumes the
-                    // sentinel + the receiver beneath + the arg.
-                    let _ = stack.pop().ok_or("GetPropCharCodeAt: stack underflow")?;
-                    let sentinel = builder.ins().f64const(0.0);
-                    stack.push(sentinel);
+                ParsedOp::IcMethodResolve(_) => {
+                    // HI-EXT 2 (2026-05-23): GetProp side of method-call
+                    // pair; pop receiver, push sentinel for IcMethodCall.
+                    crate::ic_table::lower_ic_method_resolve(&mut builder, &mut stack)?;
                 }
                 ParsedOp::ResetLocalCellNop => { /* no-op; non-captured locals */ }
                 ParsedOp::BitOr => {
@@ -793,26 +739,8 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
                     let f = builder.ins().fcvt_from_sint(F64, sext);
                     stack.push(f);
                 }
-                ParsedOp::CallMethodCharCodeAt => {
-                    // OSR-EXT 6b (2026-05-23): charCodeAt IC inlined.
-                    // Pop arg + sentinel (from GetPropCharCodeAt) +
-                    // receiver. Decode receiver as VD-String payload.
-                    // Convert arg f64 → i64 for index. Call
-                    // osr_string_char_code_at extern (which handles
-                    // ASCII fast-path + bounds + non-ASCII fallback).
-                    // Push f64 result.
-                    let arg_f64 = stack.pop().ok_or("CallMethodCharCodeAt: stack underflow (arg)")?;
-                    let _sentinel = stack.pop().ok_or("CallMethodCharCodeAt: stack underflow (method sentinel)")?;
-                    let recv_f64 = stack.pop().ok_or("CallMethodCharCodeAt: stack underflow (receiver)")?;
-                    let recv_bits = builder.ins().bitcast(I64, MemFlags::new(), recv_f64);
-                    let payload_mask = builder.ins().iconst(I64, 0x0000_FFFF_FFFF_FFFF_u64 as i64);
-                    let payload = builder.ins().band(recv_bits, payload_mask);
-                    let arg_i64 = builder.ins().fcvt_to_sint_sat(I64, arg_f64);
-                    let ccref = osr_string_char_code_at_ref.expect("osr_string_char_code_at_ref must be set when ParsedOp::CallMethodCharCodeAt is present");
-                    let call_inst = builder.ins().call(ccref, &[payload, arg_i64]);
-                    let result = builder.inst_results(call_inst)[0];
-                    stack.push(result);
-                }
+                // HI-EXT 2: ParsedOp::CallMethodCharCodeAt removed;
+                // dispatched via IcMethodCall(idx) above.
                 ParsedOp::Add => {
                     // Φ-EXT 3: untyped Add lowers to fadd (no overflow
                     // semantics; f64 IEEE-754).
@@ -1345,25 +1273,18 @@ enum ParsedOp {
     /// to f64 at parse-time. Other Constant variants (String/BigInt/Regex/
     /// Function) cause parse_bytecode to bail per C8 bail-discipline.
     PushConst(f64),
-    /// OSR-EXT 6 (2026-05-23): Op::GetProp with key "length" on a
-    /// VD-encoded String receiver. First-cut alphabet addition per
-    /// Pred-osr.4 scope discipline; other GetProp keys bail at parse.
-    /// IR lowering: bitcast receiver f64 → i64; mask payload bits;
-    /// call osr_string_len(payload) extern; push f64 result.
-    GetPropLength,
-    /// OSR-EXT 6b (2026-05-23): Op::GetProp with key "charCodeAt"
-    /// (the receiver-method resolve preceding a CallMethod). IR pops
-    /// the receiver and pushes a sentinel f64 (0.0); the subsequent
-    /// CallMethodCharCodeAt consumes the sentinel + the original
-    /// receiver (still on stack from Dup) + the index arg. The
-    /// fast-path assumes user code hasn't overridden String.prototype.
-    /// charCodeAt (runtime check deferred to a hardening round).
-    GetPropCharCodeAt,
-    /// OSR-EXT 6b (2026-05-23): Op::CallMethod with arity=1, paired
-    /// with a preceding GetPropCharCodeAt. IR pops arg + sentinel
-    /// (method) + receiver; calls osr_string_char_code_at extern;
-    /// pushes f64 result. Other CallMethod arities bail at parse.
-    CallMethodCharCodeAt,
+    /// HI-EXT 2 (2026-05-23): table-indexed property get. The u8 is
+    /// the index into crate::ic_table::IC_TABLE. Replaces OSR-EXT 6's
+    /// ad-hoc GetPropLength variant.
+    IcPropertyGet(u8),
+    /// HI-EXT 2 (2026-05-23): table-indexed method-resolve (GetProp
+    /// side of a method-call pair). Replaces OSR-EXT 6b's
+    /// GetPropCharCodeAt variant.
+    IcMethodResolve(u8),
+    /// HI-EXT 2 (2026-05-23): table-indexed method-call (CallMethod
+    /// side of a method-call pair; parse-time lookback paired with
+    /// IcMethodResolve). Replaces OSR-EXT 6b's CallMethodCharCodeAt.
+    IcMethodCall(u8),
     /// OSR-EXT 6b (2026-05-23): Op::BitOr per ECMA-262 ToInt32 + bor +
     /// back to Number. Common in `x | 0` int32 coercion idiom.
     BitOr,
@@ -1422,30 +1343,52 @@ fn parse_bytecode(bc: &[u8], constants: &ConstantsPool) -> Result<Vec<(usize, Pa
                     None => return Err(format!("PushConst at pc={op_pc}: constant idx {idx} out of bounds")),
                 }
             }
-            // OSR-EXT 6 (2026-05-23): GetProp accepts "length"; OSR-EXT 6b
-            // (2026-05-23): also accepts "charCodeAt" (paired with a
-            // following CallMethod 1). Other keys bail.
+            // HI-EXT 2 (2026-05-23): GetProp consults the IC_TABLE.
+            // Per-entry kind determines whether to emit IcPropertyGet
+            // or IcMethodResolve. Keys not in the table bail.
             Op::GetProp => {
                 let idx = u16::from_le_bytes([bc[pc], bc[pc + 1]]);
                 pc += 2;
-                match constants.get(idx) {
-                    Some(Constant::String(s)) if s == "length" => ParsedOp::GetPropLength,
-                    Some(Constant::String(s)) if s == "charCodeAt" => ParsedOp::GetPropCharCodeAt,
-                    Some(Constant::String(s)) => return Err(format!("GetProp at pc={op_pc}: key '{s}' unsupported in JIT alphabet")),
+                let key = match constants.get(idx) {
+                    Some(Constant::String(s)) => s.as_str(),
                     Some(_) => return Err(format!("GetProp at pc={op_pc}: non-String key unsupported")),
                     None => return Err(format!("GetProp at pc={op_pc}: constant idx {idx} out of bounds")),
+                };
+                let entry_idx = crate::ic_table::lookup_by_key(key)
+                    .ok_or_else(|| format!("GetProp at pc={op_pc}: key '{key}' not in IC_TABLE"))?;
+                match crate::ic_table::IC_TABLE[entry_idx as usize].kind {
+                    crate::ic_table::IcEntryKind::PropertyGet => ParsedOp::IcPropertyGet(entry_idx),
+                    crate::ic_table::IcEntryKind::MethodCall { .. } => ParsedOp::IcMethodResolve(entry_idx),
                 }
             }
-            // OSR-EXT 6b (2026-05-23): CallMethod with arity=1 only at
-            // first cut. Paired with GetPropCharCodeAt for the charCodeAt
-            // IC fast-path.
+            // HI-EXT 2 (2026-05-23): CallMethod consults IC_TABLE by
+            // matching arity. First-cut discipline: each arity has at
+            // most one MethodCall entry; pair with the most-recent
+            // IcMethodResolve in the parsed list (within the current
+            // sub-region). Bytecode pattern: GetProp(key); LoadLocal
+            // arg; CallMethod(arity) — so the IcMethodResolve isn't
+            // immediately previous; scan backwards.
             Op::CallMethod => {
                 let n = bc[pc];
                 pc += 1;
-                if n != 1 {
-                    return Err(format!("CallMethod at pc={op_pc}: arity {n} unsupported (only 1 at first cut)"));
+                // Find the most-recent IcMethodResolve in the parsed
+                // list whose IC_TABLE entry has arity == n.
+                let prev_idx = out.iter().rev().find_map(|(_, op)| {
+                    if let ParsedOp::IcMethodResolve(i) = op {
+                        if let crate::ic_table::IcEntryKind::MethodCall { arity } =
+                            crate::ic_table::IC_TABLE[*i as usize].kind
+                        {
+                            if arity == n {
+                                return Some(*i);
+                            }
+                        }
+                    }
+                    None
+                });
+                match prev_idx {
+                    Some(i) => ParsedOp::IcMethodCall(i),
+                    None => return Err(format!("CallMethod at pc={op_pc}: arity {n} has no preceding IcMethodResolve match in IC_TABLE")),
                 }
-                ParsedOp::CallMethodCharCodeAt
             }
             Op::BitOr => ParsedOp::BitOr,
             // OSR-EXT 6b: ResetLocalCell is a no-op for non-captured
