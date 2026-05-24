@@ -34,6 +34,9 @@ indexmap = "2"
 # The PM is install-time only, but living in the same binary keeps the
 # CLI surface single.
 rusty-js-pm = { path = "../pilots/rusty-js-pm/derived" }
+# TSR-EXT 4: TypeScript source-language resolver. Dispatched by file
+# extension at script load (cruft foo.ts → strip + parse-as-JS).
+ts-resolve = { path = "../pilots/ts-resolve/derived" }
 
 [dev-dependencies]
 # JIT-EXT 21 test exercises Runtime::resume_from_deopt_state with a

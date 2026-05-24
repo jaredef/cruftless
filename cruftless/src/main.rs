@@ -188,6 +188,22 @@ fn main() -> ExitCode {
             return ExitCode::from(66); // EX_NOINPUT
         }
     };
+    // TSR-EXT 4 (2026-05-24): extension-based dispatch into the TS
+    // source-language resolver. `.ts` files are routed through the
+    // type-stripper before being handed to evaluate_module — the IR
+    // sees pure ECMAScript per Doc 729's resolver-instance purity
+    // (C3 in pilots/ts-resolve/seed.md §I.2).
+    let source = if path.ends_with(".ts") || path.ends_with(".mts") || path.ends_with(".cts") {
+        match ts_resolve::strip::strip_ts(&source) {
+            Ok((stripped, _witnesses)) => stripped,
+            Err(e) => {
+                eprintln!("cruft: ts strip error in {}: {}", path, e);
+                return ExitCode::from(65); // EX_DATAERR
+            }
+        }
+    } else {
+        source
+    };
 
     let mut rt = Runtime::new();
     rt.set_cap_mode(cap_mode);

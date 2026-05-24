@@ -147,6 +147,30 @@ fn witnesses_captured_for_let_annotation() {
 }
 
 #[test]
+fn function_decl_head_generics_stripped() {
+    assert!(shape_equiv(
+        "function id<T>(x: T): T { return x; }",
+        "function id(x) { return x; }"
+    ));
+}
+
+#[test]
+fn function_decl_multi_generics_stripped() {
+    assert!(shape_equiv(
+        "function pair<A, B>(a: A, b: B): [A, B] { return [a, b]; }",
+        "function pair(a, b) { return [a, b]; }"
+    ));
+}
+
+#[test]
+fn class_decl_head_generics_stripped() {
+    assert!(shape_equiv(
+        "class Box<T> { v: T; constructor(v: T) { this.v = v; } }",
+        "class Box { v; constructor(v) { this.v = v; } }"
+    ));
+}
+
+#[test]
 fn pure_js_via_ts_resolve_yields_same_body_length() {
     let src = "let x = 1; let y = 2; (x + y);";
     let direct = rusty_js_parser::parse_module(src).expect("ok");

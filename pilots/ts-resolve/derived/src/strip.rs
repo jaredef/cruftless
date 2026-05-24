@@ -75,17 +75,74 @@ struct ScanTok {
     preceded_by_line_terminator: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum BraceCtx {
+    /// `{` that opens a block / class body / function body / module
+    /// body — its contents are statements; `:` at top level is an
+    /// annotation (class field) or label.
+    Block,
+    /// `{` that opens an object literal — its `:` are object-key
+    /// separators, NOT annotations. Annotation-strip MUST bail here.
+    ObjectLit,
+    /// `{` that opens an object TYPE literal — annotation-strip is
+    /// already inside a stripped region; doesn't matter.
+    ObjectType,
+}
+
 struct Scanner<'src> {
     src: &'src str,
     toks: Vec<ScanTok>,
     /// Strip ranges (byte spans), accumulated as we walk.
     strips: Vec<(usize, usize)>,
     witnesses: Vec<TypeWitness>,
+    /// Brace context stack — mirrors token-stream nesting. The top
+    /// answers "what `{` am I currently inside" for is_annotation_colon
+    /// + skip_type disambiguation.
+    brace_stack: Vec<BraceCtx>,
 }
 
 impl<'src> Scanner<'src> {
     fn new(src: &'src str) -> Self {
-        Scanner { src, toks: Vec::new(), strips: Vec::new(), witnesses: Vec::new() }
+        Scanner {
+            src,
+            toks: Vec::new(),
+            strips: Vec::new(),
+            witnesses: Vec::new(),
+            brace_stack: Vec::new(),
+        }
+    }
+
+    /// Classify an `{` at token index `i` as Block vs ObjectLit by
+    /// inspecting the immediately-preceding token. Heuristic suitable
+    /// for the high-frequency real-world cases; edge cases (e.g. arrow
+    /// body returning an object via `=> ({ ... })`) are handled by the
+    /// `(` wrapper, not at the brace.
+    fn classify_brace(&self, i: usize) -> BraceCtx {
+        if i == 0 { return BraceCtx::Block; }
+        match &self.toks[i - 1].kind {
+            // Expression contexts → object literal.
+            TokenKind::Punct(Punct::Assign)
+            | TokenKind::Punct(Punct::LParen)
+            | TokenKind::Punct(Punct::LBracket)
+            | TokenKind::Punct(Punct::Comma)
+            | TokenKind::Punct(Punct::Colon)
+            | TokenKind::Punct(Punct::Question)
+            | TokenKind::Punct(Punct::Arrow)
+            | TokenKind::Punct(Punct::LogicalAnd)
+            | TokenKind::Punct(Punct::LogicalOr)
+            | TokenKind::Punct(Punct::NullishCoalesce)
+            | TokenKind::Punct(Punct::Spread) => BraceCtx::ObjectLit,
+            TokenKind::Ident(n) if n == "return"
+                || n == "yield"
+                || n == "throw"
+                || n == "in"
+                || n == "of"
+                || n == "typeof"
+                || n == "delete"
+                || n == "void"
+                || n == "new" => BraceCtx::ObjectLit,
+            _ => BraceCtx::Block,
+        }
     }
 
     fn lex_all(&mut self) -> Result<(), StripError> {
@@ -135,6 +192,26 @@ impl<'src> Scanner<'src> {
         let t = &self.toks[i];
         match &t.kind {
             TokenKind::Ident(name) => {
+                // TSR-EXT 4: decl-head generics. `function NAME<T,...>(`
+                // or `class NAME<T,...>` — strip the `<...>` between
+                // the name and the opening punctuator. Unambiguous
+                // because the contexts are syntactically distinct from
+                // the `<` operator.
+                if (name == "function" || name == "class") && self.next_is_ident(i + 1) {
+                    let after_name = i + 2;
+                    if after_name < self.toks.len()
+                        && matches!(self.toks[after_name].kind, TokenKind::Punct(Punct::Lt))
+                    {
+                        if let Some(close) = self.match_angle(after_name) {
+                            let start = self.toks[after_name].span.start;
+                            let end = self.toks[close].span.end;
+                            self.strips.push((start, end));
+                            // Don't return here; let normal stepping
+                            // continue past this token. The decl head
+                            // still has its own subsequent annotations.
+                        }
+                    }
+                }
                 // `interface NAME { ... }` — strip the entire decl.
                 if name == "interface" && self.next_is_ident(i + 1) {
                     if let Some(brace_open) = self.find_punct(i + 2, Punct::LBrace) {
@@ -237,6 +314,15 @@ impl<'src> Scanner<'src> {
                 }
                 Ok(i + 1)
             }
+            TokenKind::Punct(Punct::LBrace) => {
+                let ctx = self.classify_brace(i);
+                self.brace_stack.push(ctx);
+                Ok(i + 1)
+            }
+            TokenKind::Punct(Punct::RBrace) => {
+                self.brace_stack.pop();
+                Ok(i + 1)
+            }
             _ => Ok(i + 1),
         }
     }
@@ -263,6 +349,32 @@ impl<'src> Scanner<'src> {
         for j in from..self.toks.len() {
             if let TokenKind::Punct(pp) = &self.toks[j].kind {
                 if *pp == p { return Some(j); }
+            }
+        }
+        None
+    }
+
+    /// Match an opening `<` (at index `lt`) with its closing `>`.
+    /// Handles nesting + `>>` (Shr) as two closers. Bails on any
+    /// statement-terminator before finding a match (defensive: the
+    /// caller's `<` may not actually be a generic-args opener).
+    fn match_angle(&self, lt: usize) -> Option<usize> {
+        let mut depth = 0i32;
+        for j in lt..self.toks.len() {
+            match &self.toks[j].kind {
+                TokenKind::Punct(Punct::Lt) => depth += 1,
+                TokenKind::Punct(Punct::Gt) => {
+                    depth -= 1;
+                    if depth == 0 { return Some(j); }
+                }
+                TokenKind::Punct(Punct::Shr) => {
+                    depth -= 2;
+                    if depth <= 0 { return Some(j); }
+                }
+                TokenKind::Eof
+                | TokenKind::Punct(Punct::Semicolon)
+                | TokenKind::Punct(Punct::LBrace) => return None,
+                _ => {}
             }
         }
         None
@@ -364,6 +476,11 @@ impl<'src> Scanner<'src> {
     /// object-key / label / case).
     fn is_annotation_colon(&self, i: usize) -> bool {
         if i == 0 { return false; }
+        // Inside an object literal, `:` is always a key separator, not
+        // an annotation. Bail unconditionally.
+        if matches!(self.brace_stack.last(), Some(BraceCtx::ObjectLit)) {
+            return false;
+        }
         // Annotation contexts: after Ident or after `)` (return type),
         // BUT NOT inside a ternary (preceded by an expr starting with
         // `?` higher up — harder to detect) and NOT inside an object
@@ -411,7 +528,7 @@ impl<'src> Scanner<'src> {
                         | TokenKind::Punct(Punct::RParen)
                         | TokenKind::Punct(Punct::RBrace)
                         | TokenKind::Punct(Punct::Semicolon)
-                        | TokenKind::Punct(Punct::Eq)
+                        | TokenKind::Punct(Punct::Assign)
                         | TokenKind::Eof
                     );
                 }
@@ -441,7 +558,7 @@ impl<'src> Scanner<'src> {
                 // Stoppers at top level: `,`, `=`, `)`, `}`, `]`, `{` (body start)
                 match &self.toks[i].kind {
                     TokenKind::Punct(Punct::Comma)
-                    | TokenKind::Punct(Punct::Eq)
+                    | TokenKind::Punct(Punct::Assign)
                     | TokenKind::Punct(Punct::RParen)
                     | TokenKind::Punct(Punct::RBrace)
                     | TokenKind::Punct(Punct::RBracket) => break,

@@ -191,3 +191,56 @@ This means the TSR lexer is a thin re-export of `rusty_js_parser::Lexer` + a sma
 **Next round**: TSR-EXT 4 — enum lowering + ctor-param shorthand + class fields + CLI dispatch. End-to-end `cruft foo.ts` execution + Pred-tsr.2/.3/.4 booking. Estimated ~250 LOC.
 
 **Status**: TSR-EXT 3 LANDED. Tier-A core surface erases correctly; all 21 tests pass. 2 of 6 implementation rounds consumed (Pred-tsr.6 budget on track).
+
+---
+
+## TSR-EXT 4 — CLI dispatch + decl-head generics + brace-context disambig (2026-05-24)
+
+**Round shape**: ship end-to-end `cruft foo.ts` execution; cover the most-frequent remaining TS surface gaps (function/class decl-head generics, object-literal vs class-body disambig); land Pred-tsr.4 booking.
+
+**Edits**:
+
+1. **CLI dispatch** (`cruftless/Cargo.toml` + `cruftless/src/main.rs`):
+   - Added `ts-resolve` as dependency
+   - In `main`, after `read_to_string`, route `.ts` / `.mts` / `.cts` extensions through `ts_resolve::strip::strip_ts` before `evaluate_module`. The stripped source keeps byte-aligned positions, so error spans + line numbers remain accurate.
+
+2. **Decl-head generics** (`strip.rs` step + new `match_angle`):
+   - When Ident `function`/`class` is followed by Ident NAME + `<`, strip from `<` to its matching `>` via `match_angle` (handles nested generics + `>>` treated as two closers). Unambiguous because the contexts are syntactically distinct from the `<` operator.
+
+3. **Brace-context stack** (`BraceCtx::{Block, ObjectLit, ObjectType}` + `Scanner::brace_stack` + `classify_brace`):
+   - At each `{`, classify based on the immediately-preceding token: expression-context (`=` / `(` / `,` / `:` / `?` / `=>` / `&&` / `||` / `??` / `...` / `return` / `yield` / `throw` / etc.) → `ObjectLit`; otherwise `Block`.
+   - At each `}`, pop the stack.
+   - `is_annotation_colon` bails unconditionally when the top of `brace_stack` is `ObjectLit` — fixes the bug where object-literal `key: value` was misread as annotation.
+
+**Bugs caught + fixed mid-round**:
+- The first end-to-end run errored with `Cannot read property 'who' of undefined (receiver='g')`. Root cause: `const target: Greeting = { who: "world" }` was stripping `= ` along with the annotation because object-literal `who: "world"` was ALSO being mis-stripped as an annotation, cascading into broken bytecode. **Fix**: brace-context stack (above).
+- Second debugging pass discovered `Punct::Eq` (`==`) was being used where `Punct::Assign` (`=`) was meant — in three locations in `strip.rs` (classify_brace, skip_type top-stopper, is_annotation_colon safe-terminator set). **Fix**: replaced all three with `Punct::Assign`. The `next_is_postfix_context` use of `Eq`/`Ne` is correct (those are binops that can follow a stripped `!`).
+- Both bugs caught only at the end-to-end smoke test, not by the unit tests — direct evidence that **e2e gates uncover failure modes that unit tests miss**. Adding to standing-discipline awareness.
+
+**Gates**:
+- `cargo build --release --bin cruft -p cruftless`: ✅ clean
+- `cargo test --release -p ts-resolve`: ✅ **24/24 PASS** (3 passthrough + 21 strip including 3 new generics tests)
+- diff-prod 42/42 PASS ✅ (Pred-tsr.3 HELD; .js paths still byte-identical)
+- canonical fuzz acc=-932188103 byte-identical ✅ (Pred-tsr.2 HELD)
+- **End-to-end `cruft foo.ts`**: ✅ **WORKING**
+  - `01-end-to-end-hello.ts`: interface + annotated function + annotated const + method call → `hello, world`
+  - `02-generics-and-union.ts`: generic `function total<T extends Item>(items: T[])`: number + `for (const it of items)` + nested object literals → `6`
+- **Pred-tsr.4 (TS twin byte-identical to JS twin)**: ✅ **HELD** — `01-end-to-end-hello.ts` vs `01-end-to-end-hello.js` produce byte-identical stdout under cruft
+
+**LOC delta this round**: ~80 (CLI dispatch ~16 + brace-context machinery ~50 + decl-head generics ~14). Cumulative ts-resolve crate ≈ 780 LOC.
+
+**Capabilities post-TSR-EXT 4**:
+- End-to-end `.ts` execution by `cruft` for the high-frequency real-world surface (annotations, interfaces, type aliases, casts, non-null, optional, declare, generics on function/class heads, union, intersection, nested object types, function types)
+- Object-literal vs class-body disambig correct via brace-context stack
+- Pred-tsr.4 demonstrably HELD on first end-to-end fixture
+
+**Deferred to TSR-EXT 5** (chapter-close round):
+- Enum lowering (requires actual AST replacement — `enum E { A, B }` → `const E = Object.freeze({...})` with reverse-mapping)
+- `public/private/protected/readonly` ctor-param shorthand (ctor-body rewrite)
+- Generic call-sites `f<T>()` (angle-bracket disambig vs `<` operator — Pin-Art tractable but lower priority than the load-bearing sidecar probe)
+- **Annotation sidecar wiring + IPBR consumer probe** — the load-bearing Pred-tsr.5 work
+- Composition probe + final disposition + chapter close
+
+**Implementation rounds consumed**: 3 of 6 (TSR-EXT 2 lexer + TSR-EXT 3 stripper + TSR-EXT 4 CLI/disambig/generics). Pred-tsr.6 budget on track; final round (TSR-EXT 5) holds the load-bearing research-question probe.
+
+**Status**: TSR-EXT 4 LANDED. End-to-end `cruft foo.ts` operational. Three concrete bugs caught + fixed; brace-context disambig is the key correctness machinery for handling object literals vs class bodies vs function bodies in TS source. Standing observation: e2e smoke tests caught failure modes that 21 unit tests did not.

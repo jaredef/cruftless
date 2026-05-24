@@ -419,6 +419,7 @@ dependencies = [
  "rusty-js-parser",
  "rusty-js-pm",
  "rusty-js-runtime",
+ "ts-resolve",
 ]
 
 [[package]]
