@@ -248,3 +248,73 @@ IC_TABLE entries: 3 (length, charCodeAt, codePointAt).
 ---
 
 *HI-EXT 3 closes. Apparatus extensibility validated empirically: adding codePointAt entry required 39 LOC (within Pred-hi.1 ≤50 budget). Engagement-wide instrument operational; future entries follow the same 4-component template.*
+
+---
+
+## HI-EXT 4 — 2026-05-24 (formal close; first cut at (P2.a))
+
+### Headline
+
+Formal close round of the HI pilot's first cut. No new substrate code; books Pred-hi.* dispositions; documents the apparatus's standing-instrument status for future engagement work. Three entries operational (length + charCodeAt + codePointAt); apparatus extensibility empirically validated at 39 LOC for the codePointAt addition.
+
+### Pred-hi.* final disposition (first cut)
+
+| falsifier | target | actual | disposition |
+|---|---|---|---|
+| Pred-hi.1 | ≤50 LOC per entry | length=28, charCodeAt=38, codePointAt=39 | ✅ **HELD with margin** |
+| Pred-hi.2 | canonical fuzz byte-identical (acc=-932188103) | byte-identical | ✅ HELD |
+| Pred-hi.3 | diff-prod 42/42 | 42/42 | ✅ HELD |
+| Pred-hi.4 | composition with defaults ±5% | within ±5% per entry-landing | ✅ HELD |
+| Pred-hi.5 | per-entry synthetic speedup ≥5% (for entries that get a fixture) | not measured (HI-EXT 3 entry dormant on existing fixtures) | DEFERRED — next session's HI-EXT 5+ |
+
+### HI locale first-cut disposition
+
+**HI first cut closed at (P2.a) (apparatus-tier substrate-introduction successful).** Pilot delivered:
+
+1. **Engagement-tier instrument substrate**: `ic_table.rs` with IcEntry struct + registration + helpers
+2. **3 operational entries**: String.length (PropertyGet), String.charCodeAt (MethodCall arity 1), String.codePointAt (MethodCall arity 1)
+3. **Apparatus extensibility empirically validated**: HI-EXT 3's codePointAt addition = 39 LOC (matching the 30-50 LOC design budget per Pred-hi.1)
+4. **Behavior-neutral migration**: OSR-EXT 6b's -66% CRB reclaim on json_parse_transform preserved through the OSR-ad-hoc → table refactor
+5. **Composition with rule 11 5-axis discipline**: each entry's spawn is gated by the relevant axes; the table is the apparatus, not a substitute
+
+### Future per-entry work (deferred to future sessions)
+
+Remaining starter-set entries each have small design extensions before fitting the 4-component template:
+
+- **String.prototype.charAt** — needs single-char String allocation strategy (thread-local cache of ASCII 0-127 Rc<String>; allocate-and-leak fallback for non-ASCII; OR return -1 sentinel + deopt). Finding HI.2 candidate.
+- **String.prototype.indexOf** (arity 2) — first arity-2 entry; ~50-55 LOC. The arity-2 path is already supported by the apparatus; just needs an entry.
+- **Array.prototype.length** — needs Runtime TLS access in the extern (Object ID → array slots lookup). Adds a new extern shape.
+- **Array.prototype.push** (mutation) — needs GC/object-layout extern access; more invasive.
+
+Each future entry is a self-contained round; no new structural blockers expected.
+
+### Composition with prior corpus / engagement work
+
+- **Doc 741 §V.1**: the pattern is now operationalized as a standing engagement instrument; future JIT-tier IC work composes via the table.
+- **Findings Addendum IV (standing instrument list)**: "hot-intrinsic IC pattern" promoted from candidate to operational; the table is the materialization.
+- **Standing rule 11 5-axis**: each per-entry round gates via the relevant axes (op-set + value-domain + locals-marshaling + emission-shape; component A/B usually not applicable since entries are per-intrinsic-targeted not per-fixture-driven).
+- **OSR-EXT 6b empirical anchor**: charCodeAt + length entries' -66% CRB reclaim preserved; the table is a non-regressing refactor of the operational substrate.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable.
+Per Doc 734 §V: growth (a) positive-finding (apparatus operational + extensibility validated); growth (c) preparatory (future per-entry rounds enabled at bounded LOC).
+Per Doc 735 §X.h.b: **(P2.a) at apparatus tier; per-entry rounds (HI-EXT 5+) will deliver per-synthetic-fixture (P2.a) at the fixture-anchored tier**.
+
+### Open scope at HI-EXT 4 close
+
+1. **HI-EXT 5+** (future sessions) — additional per-entry rounds per the deferred starter set; each round 30-55 LOC + three-probe gate.
+2. **Finding HI.1 (override-safety)** — hardening round; not blocking but should land before broader entry coverage.
+3. **Finding HI.2 (String-allocation in extern)** — design for charAt + slice + substring; thread-local ASCII cache + non-ASCII fallback.
+4. **Per-entry synthetic fixtures** — for Pred-hi.5 empirical speedup measurement on entries that don't have natural-fixture coverage.
+
+### Cumulative status at HI-EXT 4 close
+
+LOC delta this round: 0 (formal close; no source changes).
+HI-EXT 0-4 cumulative: ~720 across the locale (apparatus + 3-entry first cut).
+IC_TABLE entries: 3 (length, charCodeAt, codePointAt).
+**Engagement-wide standing instrument: operational + extensible.**
+
+---
+
+*HI-EXT 4 closes. **HI first cut at (P2.a).** Apparatus-tier substrate-introduction successful; 3 operational entries; per-entry LOC budget verified at 39 LOC (codePointAt). The hot-intrinsic-IC table is the engagement's second standing instrument (alongside the component A/B probe). Future per-entry rounds add at bounded LOC; no new structural blockers expected.*
