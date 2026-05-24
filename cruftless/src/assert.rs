@@ -129,7 +129,18 @@ pub fn install(rt: &mut Runtime) {
     });
 
     set_constant(rt, assert, "default", Value::Object(assert));
-    rt.globals.insert("assert".into(), Value::Object(assert));
+    // 2026-05-24: do NOT register `assert` as a GLOBAL. Node itself
+    // does not expose `assert` globally; access is via require('assert')
+    // / import 'node:assert'. Registering it globally shadowed the
+    // test262 harness's own `assert` function-decl (which the harness's
+    // assert.js installs via top-level `function assert(...){...}` in
+    // indirect-eval), routing test262's `assert.throws(...)` to this
+    // node:assert stub's "not yet implemented" Err instead of the
+    // harness's correct implementation. Surfaced by T262C-EXT 1 matrix:
+    // top failure category was test262 destructuring tests using
+    // assert.throws — root cause was global shadowing, not destructuring
+    // substrate.
+    // rt.globals.insert("assert".into(), Value::Object(assert));
 }
 
 /// Call JSON.stringify(v) via the installed intrinsic. Avoids

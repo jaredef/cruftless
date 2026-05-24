@@ -1,0 +1,11 @@
+[package]
+name = "test262-categorize"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "t262c"
+path = "src/bin/categorize.rs"
+
+[dependencies]
+serde_json = { version = "1", features = ["preserve_order"] }
