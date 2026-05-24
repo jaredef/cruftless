@@ -15,7 +15,7 @@
       "parent": null,
       "scope": "cross-runtime-bench",
       "depth": 1,
-      "rung_count": 0,
+      "rung_count": 5,
       "status": "**WORKSTREAM FOUNDED (CRB-EXT 0)**. Spawned per keeper directive 2026-05-23 07:34-local. Cross-runtime speed benchmark for cruft, bun, and node executing realistic JS workloads. Independent of diff-prod (which tests semantic parity); this pilot tests *speed* on workloads representative of what real Node-ecosystem code does."
     },
     {
@@ -33,7 +33,7 @@
       "parent": null,
       "scope": "rusty-js-caps",
       "depth": 1,
-      "rung_count": 0,
+      "rung_count": 12,
       "status": "**PILOT \u03b1 FIRST-CUT CLOSED**. The capability-passing runtime substrate (Move 1) is operational. 9/9 synthetic-adversary probes refused under `--sealed`. Doc 736 \u00a7IV impossibility claim mechanically realized for the probe-covered surface. ~835 LOC across rusty-js-runtime + host-v2. PM-EXT 11+12 regression GREEN at every round. See \u00a7VIII below for the closure summary."
     },
     {
@@ -51,7 +51,7 @@
       "parent": "L.rusty-js-esm.deviations",
       "scope": "arktype",
       "depth": 3,
-      "rung_count": 0,
+      "rung_count": 9,
       "status": "**\u00a7XVI iter 2 LANDED** (ArraySpeciesCreate honors O.constructor, commit 533443e6). Original `rawIn-on-Array` crash signature gone; \u00a7XVII iter 3 queued for the downstream `generic.js:56 paramDefs of undefined` gap."
     },
     {
@@ -60,7 +60,7 @@
       "parent": null,
       "scope": "rusty-js-http-server",
       "depth": 1,
-      "rung_count": 0,
+      "rung_count": 1,
       "status": "**WORKSTREAM FOUNDED (HS-EXT 0)**. No code yet. Spawned per keeper directive 2026-05-23 18:12-local. Fourth of four spawns in this round."
     },
     {
@@ -69,7 +69,7 @@
       "parent": null,
       "scope": "rusty-js-ir",
       "depth": 1,
-      "rung_count": 0,
+      "rung_count": 31,
       "status": null
     },
     {
@@ -78,7 +78,7 @@
       "parent": null,
       "scope": "rusty-js-jit",
       "depth": 1,
-      "rung_count": 0,
+      "rung_count": 33,
       "status": "**DEOPT CHAPTER CLOSED + IC INFRASTRUCTURE COMPLETE (without shapes); TELOS SHARPENED to the hybrid Cranelift+hand-rolled-IC-stub stance per \u00a7I.2.** JIT-EXT 10-24 landed across the prior two sessions \u2014 arithmetic deopt machinery, ICShapeMismatch demonstrator, full GetPropOnObject lowering with real runtime helper, mixed-regime dispatcher, IC chain success+failure paths proven end-to-end. ~1.2k LOC across pilots/rusty-js-jit + pilots/rusty-js-runtime + pilots/rusty-js-bytecode + host-v2. PM-EXT 11+12 regression GREEN every round. See \u00a7VIII below for the closure summary. JIT-EXT 25 (this entry) sharpens the forward telos to name the next two pilots: IC stub emitter + hidden classes substrate."
     },
     {
@@ -87,7 +87,7 @@
       "parent": "L.rusty-js-jit",
       "scope": "f64-calling-convention",
       "depth": 2,
-      "rung_count": 0,
+      "rung_count": 3,
       "status": "**WORKSTREAM FOUNDED (\u03a6-EXT 0)**. No code yet. Spawned per keeper directive 2026-05-23 16:02-local after pre-implementation analysis surfaced that VTI's structural (P2.d) traces to the JIT's i64-only calling convention. The architectural move induced by enumerating C1-C10 (substrate constraints; see \u00a7I.2) is: f64 default + bytecode-tier-driven typed-i64 promoted fast path."
     },
     {
@@ -96,7 +96,7 @@
       "parent": "L.rusty-js-jit",
       "scope": "hot-intrinsics",
       "depth": 2,
-      "rung_count": 0,
+      "rung_count": 5,
       "status": "**WORKSTREAM FOUNDED (HI-EXT 0)**. Engagement-wide instrument spawned per keeper directive 2026-05-23 02:39-local (continuation after the architectural-pivot session's pipeline-connection at OSR-EXT 6b). The instrument generalizes the OSR-EXT 6b + CharCode-EXT 2 hot-intrinsic-IC pattern (already validated on charCodeAt) into a multi-intrinsic TABLE \u2014 a reusable apparatus that future pilots extend with new intrinsics."
     },
     {
@@ -105,7 +105,7 @@
       "parent": "L.rusty-js-jit",
       "scope": "osr",
       "depth": 2,
-      "rung_count": 0,
+      "rung_count": 13,
       "status": "**WORKSTREAM FOUNDED (OSR-EXT 0)**. Spawned per keeper directive 2026-05-23 22:37-local as the (ii) OSR / loop-extraction pivot from the session chapter close (VD locale trajectory). Architectural-tier pilot."
     },
     {
@@ -114,7 +114,7 @@
       "parent": "L.rusty-js-jit",
       "scope": "stub-emitter",
       "depth": 2,
-      "rung_count": 0,
+      "rung_count": 10,
       "status": "**WORKSTREAM FOUNDED (StubE-EXT 0)**. No code yet. Pre-filed at LeJIT seed \u00a7I.2 (JIT-EXT 25) as the closure round to the hidden-classes substrate (`pilots/rusty-js-shapes/`). Spawn triggered now to begin scaffolding against the stable IC consumer API contract `Object::shape_ptr_and_slot_for(name) -> Option<(*const Shape, u32)>` \u2014 the API is in place since Shape-EXT 4 and returns None for every Object pre-enrollment; the stub emitter can be designed, implemented, and tested against synthetic shape pointers in advance of the enrollment flip."
     },
     {
@@ -123,7 +123,7 @@
       "parent": "L.rusty-js-jit",
       "scope": "tiny-baseline",
       "depth": 2,
-      "rung_count": 0,
+      "rung_count": 9,
       "status": "**WORKSTREAM FOUNDED (TB-EXT 0)**. No code yet. Spawned per LeJIT seed \u00a7I.2 item 5 + Doc 735 \u00a7X.h.d saturation-as-escalation-signal triggered by VTI-EXT 3b's (P2.d) negative empirical finding, with keeper direction at 2026-05-23 06:35-local."
     },
     {
@@ -132,7 +132,7 @@
       "parent": "L.rusty-js-jit",
       "scope": "top-level",
       "depth": 2,
-      "rung_count": 0,
+      "rung_count": 4,
       "status": "**WORKSTREAM FOUNDED (TL-EXT 0)**. Spawned per keeper directive 2026-05-23 20:52-local as the (b-narrow) first cut from Doc 740's multi-tier reading. Addresses the json_parse_transform CRB residual after the JSF + CharCode chain landed (cumulative -12%; cruft/node 17.93\u00d7; residual checksum loop 1480 ms at 0.592 \u03bcs per charCodeAt call). The dispatch-tier IC closed the per-call cost floor; the remaining residual is interp loop dispatch + arithmetic + comparison overhead per iter. Top-level JIT closes that residual."
     },
     {
@@ -141,7 +141,7 @@
       "parent": "L.rusty-js-jit",
       "scope": "value-domain",
       "depth": 2,
-      "rung_count": 0,
+      "rung_count": 4,
       "status": "**WORKSTREAM FOUNDED (VD-EXT 0)**. Spawned per keeper directive 2026-05-23 21:51-local as the (\u03b1) \u03a6-encoding extension pivot from TL locale's chapter-close (Findings VII.2 + VII.3 + standing rule 11 multi-axis extension at engagement findings doc Addendum V). Architectural-tier pilot."
     },
     {
@@ -150,7 +150,7 @@
       "parent": "L.rusty-js-jit",
       "scope": "value-tag-inline",
       "depth": 2,
-      "rung_count": 0,
+      "rung_count": 5,
       "status": "**WORKSTREAM FOUNDED (VTI-EXT 0)**. No code yet. Spawned per LeJIT seed \u00a7I.2 item 4 + the keeper's pivot directive after LeJIT-\u03a3 StubE-EXT 5b's bench measurement surfaced that the shape-substrate cascade (Doc 729 \u00a7A8.13) had absorbed most of LeJIT-\u03a3's IC-only contribution (Pred-stub.1 target tightened from \u226490.3 \u2192 \u226466.3 ns/iter). The hybrid stance per LeJIT seed \u00a7I.2 anticipated this composition; LeJIT-\u03a3 + LeJIT-\u03a8 + the future dispatcher refactor land multiplicatively, not additively."
     },
     {
@@ -159,7 +159,7 @@
       "parent": null,
       "scope": "rusty-js-json-fast",
       "depth": 1,
-      "rung_count": 0,
+      "rung_count": 11,
       "status": "**WORKSTREAM FOUNDED (JSF-EXT 0)**. No code yet. Spawned per keeper directive 2026-05-23 18:12-local alongside three sibling spawns (rusty-js-regex-fast, web-crypto/subtle-wireup, rusty-js-http-server) addressing the engagement's named substrate gaps from CRB-EXT 9 reading."
     },
     {
@@ -168,7 +168,7 @@
       "parent": null,
       "scope": "rusty-js-pm",
       "depth": 1,
-      "rung_count": 0,
+      "rung_count": 9,
       "status": null
     },
     {
@@ -177,7 +177,7 @@
       "parent": null,
       "scope": "rusty-js-regex-fast",
       "depth": 1,
-      "rung_count": 0,
+      "rung_count": 1,
       "status": "**WORKSTREAM FOUNDED (RXF-EXT 0)**. No code yet. Spawned per keeper directive 2026-05-23 18:12-local. **Dual focus**: regex performance + memory leak. Per the engagement's pattern, related concerns at the same substrate live in one locale's trajectory with sub-rounds per concern."
     },
     {
@@ -186,7 +186,7 @@
       "parent": null,
       "scope": "rusty-js-shapes",
       "depth": 1,
-      "rung_count": 0,
+      "rung_count": 6,
       "status": "**WORKSTREAM FOUNDED (Shape-EXT 0)**. No substrate code yet. Pre-filed at the LeJIT seed \u00a7I.2 (JIT-EXT 25) as the substrate-introduction round per Doc 729 \u00a7A8.13 staging; spawn triggered by the JIT-EXT 25 telos sharpening and the keeper's \"Begin\" directive. The seed names the workstream; the first substrate move (Shape-EXT 1) surveys the current Object layout to anchor the contract surface."
     },
     {
@@ -195,7 +195,7 @@
       "parent": "L.rusty-js-shapes",
       "scope": "consumer-migration",
       "depth": 2,
-      "rung_count": 0,
+      "rung_count": 15,
       "status": "**FOUNDED (CMig-EXT 0)**. Sub-workstream of `pilots/rusty-js-shapes/` spawned per Shape-EXT 4's deferred-enrollment finding. The parent's Shape-EXT 4 round landed shape infrastructure on Object but kept `new_ordinary()` defaulting to `shape: None` because the first enrollment attempt regressed diff-prod 39\u219231/42 PASS. Root cause: ~41 sites across the runtime crate iterate `.properties` directly and bypass the shape mechanism. This sub-workstream migrates those sites family by family so enrollment can flip back on without regression."
     },
     {
@@ -204,7 +204,7 @@
       "parent": null,
       "scope": "tls",
       "depth": 1,
-      "rung_count": 0,
+      "rung_count": 10,
       "status": null
     },
     {
@@ -213,7 +213,7 @@
       "parent": null,
       "scope": "web-crypto",
       "depth": 1,
-      "rung_count": 0,
+      "rung_count": 25,
       "status": null
     },
     {
@@ -222,7 +222,7 @@
       "parent": "L.web-crypto",
       "scope": "subtle-wireup",
       "depth": 2,
-      "rung_count": 0,
+      "rung_count": 1,
       "status": "**WORKSTREAM FOUNDED (SW-EXT 0)**. No code yet. Spawned per keeper directive 2026-05-23 18:12-local. Nested under existing `pilots/web-crypto/` top-level locale."
     }
   ],

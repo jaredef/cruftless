@@ -57,13 +57,22 @@ def first_status_line(seed_path):
     return None
 
 def rung_count(trajectory_path):
-    """Count `## Rung-N` (or `## Move-N`, etc.) headers in trajectory.md."""
+    """Count rung headers in trajectory.md. Matches:
+       - `## Rung-N` / `## Move-N` / `## Round-N` / `## Stage-N`
+       - `## <PILOT>-EXT N` (the engagement's convention: HI-EXT, OSR-EXT,
+         VD-EXT, TL-EXT, Shape-EXT, JSF-EXT, CMig-EXT, CharCode-EXT, Φ-EXT,
+         etc.). Optional lowercase suffix on the number (e.g., 5b, 5c).
+         `\\w+` matches Unicode word chars (Φ/Ψ/Σ/Τ etc. for Greek pilots).
+       - `## §<roman>` (deviation-pipeline section headers per Doc 730 §XII-§XVII)."""
     if not os.path.isfile(trajectory_path):
         return 0
     try:
         with open(trajectory_path) as f:
             text = f.read()
-        return len(re.findall(r"^## (Rung|Move|Round|Stage)-\d", text, re.MULTILINE))
+        return len(re.findall(
+            r"^## (?:(?:Rung|Move|Round|Stage)-\d+|\w+-EXT[\s-]\d+[a-z]?|§[IVX]+\b)",
+            text, re.MULTILINE | re.UNICODE,
+        ))
     except Exception:
         return 0
 
