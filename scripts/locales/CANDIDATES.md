@@ -58,9 +58,10 @@ Living document; append-only at the bottom (newest at top within a section). Eac
 
 ## Tier C — discipline / methodology / corpus work
 
-### (h) `standing-rules-codification-pass` — ⚪ HYPOTHETICAL
+### (h) `standing-rules-codification-pass` — **FORMALIZED** 2026-05-24 as [`docs/standing-rule-13-prospective-application.md`](../../docs/standing-rule-13-prospective-application.md)
 **Telos**: review findings.md (20 findings; 13 standing rules) for consolidation. Standing rule 13's prospective application across IHI → GPI is a candidate Doc 7xx corpus publication (multi-tier-cascade-revival applied PROSPECTIVELY, not retrospectively).
 **Output**: 1 corpus doc (~150-200 lines); refresh findings.md Addendum X.
+**Status**: working draft landed in `docs/`; candidate for promotion to corpus Doc 742 after one additional empirical corroboration (e.g., `ihi-array-entries`) or keeper review of thesis at current anchor.
 
 ### (i) `crypto-sha256-batch-investigation` — ⚪ HYPOTHETICAL
 **Telos**: CRB crypto_sha256_batch FAIL is pre-existing (CRB-EXT 0-6 baseline bb212c3c). Investigate root cause; could be missing host stub or `Buffer` API gap.
