@@ -179,7 +179,51 @@ Achieving 1-5 lifts parse-success **69.3% → ~88%**.
 
 **Finding TRGC.8** (single-line-fix high-yield via missing op handling): a single missing match arm (`Shr` and `UShr` in overload scan's bracket-depth loop) was blocking 25 files. **The cost of a missed handler scales with the LOC behind the missing case** — a 2-LOC fix unblocked ~7% of the corpus. Discipline: when adding a depth-tracking loop, audit ALL the punctuators that could affect that depth at the time of writing.
 
-### Status: CHAPTER CLOSED at TRGC-EXT 4
+### Status: REOPENED for TRGC-EXT 5 follow-on
+
+---
+
+## TRGC-EXT 5 — intersection-type descent + import-type strip + ClassBody distinction (2026-05-24)
+
+**Trigger**: keeper "Continue iteration". Inspected remaining failures (89.3% → ?). Found three substrate gaps:
+
+1. **Intersection type with object-literal descent**: `Readonly<X> & { closed: true } = {...}` — skip_type broke at the inner `{` because it wasn't at type-start. Fix: also descend LBrace if preceded by `&` (BitAnd) or `|` (BitOr) type-continuation operator. +0.3 pp.
+
+2. **`import type X from '...'` and `export type {X} from '...'`** — TS-only pure-type imports/exports; bindings don't exist at runtime. New rule strips the entire statement, gated to distinguish from `export type ALIAS = ...;` (handled by existing type-alias rule). +3.7 pp (14 additional files).
+
+3. **`BraceCtx::ClassBody` distinction** — discovered the overload rule was firing inside FUNCTION bodies on `name(...): expr` ternary patterns because function bodies and class bodies were both `BraceCtx::Block`. Fix: new `ClassBody` variant + `pending_class_body` flag set when `class` Ident is seen at statement-start; cleared (and brace classified as ClassBody) at the next `{`. Overload rule restricted to `ClassBody | None` (module level). +0.8 pp.
+
+**Finding TRGC.9** (most-important-of-session): the overload rule was a **false-positive trap** — it fired on legitimate ternary expressions like:
+
+```js
+return cond
+    ? someValue
+    : otherFn(args)  // ← was being mis-stripped as method overload "otherFn(args);"
+    : finalFn()      // ← because BraceCtx was Block (indistinguishable from class body)
+;
+```
+
+Without ClassBody/Block distinction, ANY function body containing a ternary that "looks like" `name(args): expr;` triggers a false-positive overload strip. **Caught only because TCC re-measured after each fix** — the corpus is again the regression instrument that surfaces silent breakage. The fix preserves the substrate's strict-stripping discipline (Finding TRGC.5).
+
+**Gates**:
+- `cargo test --release -p ts-resolve`: ✅ 46/46 PASS
+- diff-prod 42/42 PASS ✅
+
+**TCC measurement (TRGC-EXT 5)**:
+
+| Stage | OK | Parse-success | Δ |
+|---|---:|---:|---:|
+| Pre-round (TRGC-EXT 4 close) | 334 | 89.3% | — |
+| After intersection-type descent | 335 | 89.6% | +0.3 pp |
+| After import/export type strip | 349 | 93.3% | +3.7 pp |
+| After ClassBody distinction | **352** | **94.1%** | **+0.8 pp** |
+| **Cumulative TRGC-EXT 5** | **+18 files** | **+4.8 pp** | — |
+
+### Status: CHAPTER CLOSED at TRGC-EXT 5
+
+Cumulative session parse-success: 37.7% → **94.1%** (+56.4 pp). **6 percentage points past the 87% milestone**.
+
+**Long-tail remaining** (all 1-4 files per category): uncategorized-unexpected-token (4), method-return-annotation (2), generic-call (2), as-const (1), several singletons. Total 22 failing files.
 
 Standing rule 13 corroboration count holds at 8 (TRGC-EXT 2/3/4 are follow-ons within same locale).
 

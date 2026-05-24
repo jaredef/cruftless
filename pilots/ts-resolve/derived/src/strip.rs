@@ -127,10 +127,13 @@ struct ScanTok {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum BraceCtx {
-    /// `{` that opens a block / class body / function body / module
-    /// body — its contents are statements; `:` at top level is an
-    /// annotation (class field) or label.
+    /// `{` that opens a block / function body — its contents are
+    /// statements but NOT class-member declarations. Method-overload
+    /// rule must NOT fire here.
     Block,
+    /// `{` that opens a CLASS body — its contents include class-
+    /// member declarations + TS method overload signatures.
+    ClassBody,
     /// `{` that opens an object literal — its `:` are object-key
     /// separators, NOT annotations. Annotation-strip MUST bail here.
     ObjectLit,
@@ -160,6 +163,13 @@ struct Scanner<'src> {
     /// of-stack matches current paren_depth (it's a ternary's else
     /// branch, not an annotation).
     ternary_stack: Vec<i32>,
+    /// True after we've seen a `class` Ident at statement position,
+    /// until the next `{` is processed (which is then classified as
+    /// ClassBody and clears the flag). Allows the overload rule to
+    /// distinguish class-body context (where method-overload
+    /// signatures are valid) from function-body context (where they
+    /// must NOT be stripped).
+    pending_class_body: bool,
 }
 
 impl<'src> Scanner<'src> {
@@ -172,6 +182,7 @@ impl<'src> Scanner<'src> {
             brace_stack: Vec::new(),
             paren_depth: 0,
             ternary_stack: Vec::new(),
+            pending_class_body: false,
         }
     }
 
@@ -362,6 +373,14 @@ impl<'src> Scanner<'src> {
                 // the name and the opening punctuator. Unambiguous
                 // because the contexts are syntactically distinct from
                 // the `<` operator.
+                // TRGC-EXT 5 (2026-05-24): class-body distinction.
+                // When we see `class` at statement-start, set a flag so
+                // the next `{` is classified as ClassBody. Also covers
+                // `class NAME extends ... implements ... {` since none
+                // of those tokens push a brace.
+                if name == "class" {
+                    self.pending_class_body = true;
+                }
                 if (name == "function" || name == "class") && self.next_is_ident(i + 1) {
                     let after_name = i + 2;
                     if after_name < self.toks.len()
@@ -464,8 +483,12 @@ impl<'src> Scanner<'src> {
                 // start (function overload at top level: `function
                 // NAME(...): T;`). brace_stack.last == None covers
                 // the latter; the prev-token check is the same.
+                // Method-overload signatures are only legal at class-
+                // body member-start or module top-level. NOT in plain
+                // function bodies (where `name(...): expr` is a
+                // ternary, not a method decl). Per Finding TRGC.9.
                 let in_block_or_module = matches!(self.brace_stack.last(),
-                    Some(BraceCtx::Block) | None);
+                    Some(BraceCtx::ClassBody) | None);
                 let stmt_start_prev = i == 0
                     || t.preceded_by_line_terminator
                     || matches!(self.toks[i - 1].kind,
@@ -565,6 +588,34 @@ impl<'src> Scanner<'src> {
                 // or first token) AND next token is an Ident.
                 if name == "type" && self.is_stmt_start(i) && self.next_is_ident(i + 1) {
                     if let Some(end_idx) = self.find_stmt_end(i + 2) {
+                        let start = t.span.start;
+                        let end = self.toks[end_idx].span.end;
+                        self.strips.push((start, end));
+                        return Ok(end_idx + 1);
+                    }
+                }
+                // TRGC-EXT 5 (2026-05-24): `import type` and `export
+                // type` — TS-only pure-type imports/exports; the
+                // imported name does not exist at runtime. Strip the
+                // entire statement.
+                if (name == "import" || name == "export")
+                    && self.is_stmt_start(i)
+                    && i + 1 < self.toks.len()
+                    && matches!(&self.toks[i + 1].kind, TokenKind::Ident(n) if n == "type")
+                    // Disambiguate from `export type` ALIAS (handled by
+                    // the type-alias rule above when seen at i+1 directly)
+                    // — for `import type`, always strip. For `export type`,
+                    // only strip if the NEXT-next token is `{` (re-export
+                    // list) or Ident immediately followed by `from` (re-
+                    // export single binding). Otherwise it's a type alias
+                    // (`export type X = ...;`) which is handled elsewhere.
+                    && (name == "import" || (i + 2 < self.toks.len()
+                        && (matches!(self.toks[i + 2].kind, TokenKind::Punct(Punct::LBrace))
+                            || (matches!(self.toks[i + 2].kind, TokenKind::Ident(_))
+                                && i + 3 < self.toks.len()
+                                && matches!(&self.toks[i + 3].kind, TokenKind::Ident(n) if n == "from")))))
+                {
+                    if let Some(end_idx) = self.find_stmt_end(i + 1) {
                         let start = t.span.start;
                         let end = self.toks[end_idx].span.end;
                         self.strips.push((start, end));
@@ -674,7 +725,12 @@ impl<'src> Scanner<'src> {
                 Ok(i + 1)
             }
             TokenKind::Punct(Punct::LBrace) => {
-                let ctx = self.classify_brace(i);
+                let ctx = if self.pending_class_body {
+                    self.pending_class_body = false;
+                    BraceCtx::ClassBody
+                } else {
+                    self.classify_brace(i)
+                };
                 self.brace_stack.push(ctx);
                 Ok(i + 1)
             }
@@ -1066,9 +1122,13 @@ impl<'src> Scanner<'src> {
                     TokenKind::Punct(Punct::LBrace) => {
                         // `{ x: T }` at the START of the type position
                         // is an object type literal — descend. After
-                        // we've consumed type tokens, a top-level `{`
-                        // is the function/initializer body — stop.
-                        if i == start {
+                        // a type-continuation operator (`&` / `|`) it
+                        // is also a type literal — descend. After
+                        // consumed type tokens otherwise, a top-level
+                        // `{` is the function/initializer body — stop.
+                        let prev_is_type_op = i > 0 && matches!(self.toks[i - 1].kind,
+                            TokenKind::Punct(Punct::BitAnd) | TokenKind::Punct(Punct::BitOr));
+                        if i == start || prev_is_type_op {
                             depth_brace += 1;
                         } else {
                             break;
