@@ -40,3 +40,20 @@ Append-only log of rounds. Most recent at bottom.
 5. Pred-gpi.* booking discipline
 
 **Status**: SCAFFOLDED. Founding artefacts written; GPI-EXT 1 next.
+
+---
+
+## GPI-EXT 1 — design doc (2026-05-24)
+
+Output: `docs/design.md`. Key decisions:
+
+- **Opcode**: `Op::GetPropSkipForMethod = 0xFD`, 2-byte operand (same as GetProp; permits in-place op-byte rewrite).
+- **Dispatch shape**: pop receiver, push `Value::Undefined` sentinel. Stack-shape-preserving relative to GetProp.
+- **Rewrite trigger**: at Op::CallMethod's IC-hit rewrite-branch (interp.rs:8367+), follow-on to the existing IHI rewrite. Walk back to the GetProp site via new `Frame::pending_method_getprop_pc` field.
+- **Bail-safety**: CallMethodIcCached's bail path detects Undefined-sentinel + re-resolves via `entry.key` lookup on string_prototype.
+- **LOC budget**: ~33 LOC total. Within Pred-gpi.1's ≤50 budget.
+- **Composition**: post-GPI a hot method-call site is `Dup; GetPropSkipForMethod(_); ...args; CallMethodIcCached(idx)`. Both ops are O(1) byte-fetches + sentinel pushes; descriptor walk fully eliminated on the hot path.
+
+Open risks documented R1-R3 (diagnostic enrichment, site-pc clearing across function boundary, bytecode-emission invariance).
+
+**Status**: DESIGN COMPLETE. Proceed to GPI-EXT 2 (implementation).
