@@ -1,0 +1,374 @@
+{"file":"ajv/lib/2019.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module './schema.json' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/ajv/lib/refs/"}
+{"file":"ajv/lib/2020.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module './schema.json' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/ajv/lib/refs/"}
+{"file":"ajv/lib/ajv.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module './refs/json-schema-draft-07.json' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fix"}
+{"file":"ajv/lib/compile/codegen/code.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected class member name @byte375 @url=file:///home/jaredef/rusty-bun/pi"}
+{"file":"ajv/lib/compile/codegen/index.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/compile/codegen/scope.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: './code' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer-corp"}
+{"file":"ajv/lib/compile/errors.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/compile/index.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/compile/jtd/parse.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/compile/jtd/serialize.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/compile/jtd/types.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../../types' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer"}
+{"file":"ajv/lib/compile/names.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/compile/ref_error.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/compile/resolve.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/compile/rules.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"compile: complex assignment target not yet supported\")"}
+{"file":"ajv/lib/compile/util.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/compile/validate/applicability.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `RParen` @byte198 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"ajv/lib/compile/validate/boolSchema.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/compile/validate/dataType.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/compile/validate/defaults.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/compile/validate/index.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/compile/validate/keyword.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/compile/validate/subschema.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/core.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module './refs/data.json' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/ajv/lib/co"}
+{"file":"ajv/lib/jtd.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module './refs/data.json' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/ajv/lib/co"}
+{"file":"ajv/lib/refs/json-schema-2019-09/index.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module './schema.json' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/ajv/lib/refs/"}
+{"file":"ajv/lib/refs/json-schema-2020-12/index.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module './schema.json' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/ajv/lib/refs/"}
+{"file":"ajv/lib/refs/jtd-schema.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../types' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer-co"}
+{"file":"ajv/lib/runtime/equal.ts","outcome":"BUN_FAIL","detail":"1 | // https://github.com/ajv-validator/ajv/issues/889"}
+{"file":"ajv/lib/runtime/parseJson.ts","outcome":"CRUFT_FAIL","detail":"cruft: ts strip error in /home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/ajv/lib/runtime/parseJson.ts: ts-str"}
+{"file":"ajv/lib/runtime/quote.ts","outcome":"CRUFT_FAIL","detail":"cruft: ts strip error in /home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/ajv/lib/runtime/quote.ts: ts-strip @"}
+{"file":"ajv/lib/runtime/re2.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module './build/Release/re2.node' from '/home/jaredef/.bun/install/cache/re2@1.24.1@@@1/re2.js'"}
+{"file":"ajv/lib/runtime/timestamp.ts","outcome":"CRUFT_FAIL","detail":"cruft: ts strip error in /home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/ajv/lib/runtime/timestamp.ts: ts-str"}
+{"file":"ajv/lib/runtime/ucs2length.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `RBrace` @byte629 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"ajv/lib/runtime/uri.ts","outcome":"BUN_FAIL","detail":"1 | import * as uri from \"fast-uri\""}
+{"file":"ajv/lib/runtime/validation_error.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected class member name @byte234 @url=file:///home/jaredef/rusty-bun/pi"}
+{"file":"ajv/lib/standalone/index.ts","outcome":"BUN_FAIL","detail":"92 |       names.set(name, state)"}
+{"file":"ajv/lib/standalone/instance.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module './refs/data.json' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/ajv/lib/co"}
+{"file":"ajv/lib/types/index.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `from` @byte7289 @url=file:///home/jaredef/rusty-bun/pilots/ts-co"}
+{"file":"ajv/lib/types/json-schema.ts","outcome":"MATCH","detail":""}
+{"file":"ajv/lib/types/jtd-schema.ts","outcome":"MATCH","detail":""}
+{"file":"ajv/lib/vocabularies/applicator/additionalItems.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/applicator/additionalProperties.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/applicator/allOf.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/applicator/anyOf.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/applicator/contains.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/applicator/dependencies.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/applicator/dependentSchemas.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/applicator/if.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/applicator/index.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/applicator/items.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/applicator/items2020.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/applicator/not.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/applicator/oneOf.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/applicator/patternProperties.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/applicator/prefixItems.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/applicator/properties.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/applicator/propertyNames.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/applicator/thenElse.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/code.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/core/id.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../../types' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer"}
+{"file":"ajv/lib/vocabularies/core/index.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/core/ref.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/discriminator/index.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/discriminator/types.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../../types' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer"}
+{"file":"ajv/lib/vocabularies/draft2020.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/draft7.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/dynamic/dynamicAnchor.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/dynamic/dynamicRef.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/dynamic/index.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/dynamic/recursiveAnchor.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/dynamic/recursiveRef.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/errors.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../compile/validate/dataType' (tried [\\\"/home/jaredef/rusty-bun/p"}
+{"file":"ajv/lib/vocabularies/format/format.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/format/index.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/jtd/discriminator.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/jtd/elements.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/jtd/enum.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/jtd/error.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/jtd/index.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/jtd/metadata.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/jtd/nullable.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/jtd/optionalProperties.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/jtd/properties.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/jtd/ref.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/jtd/type.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/jtd/union.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/jtd/values.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/metadata.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../types' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer-co"}
+{"file":"ajv/lib/vocabularies/next.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/unevaluated/index.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/unevaluated/unevaluatedItems.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/unevaluated/unevaluatedProperties.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/validation/const.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/validation/dependentRequired.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/validation/enum.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/validation/index.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/validation/limitContains.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/validation/limitItems.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/validation/limitLength.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/validation/limitNumber.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/validation/limitProperties.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/validation/multipleOf.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/validation/pattern.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/validation/required.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"ajv/lib/vocabularies/validation/uniqueItems.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"pino/test/fixtures/ts/to-file-transport-with-transform.ts","outcome":"MATCH","detail":""}
+{"file":"pino/test/fixtures/ts/to-file-transport.ts","outcome":"MATCH","detail":""}
+{"file":"pino/test/fixtures/ts/transport-exit-immediately-with-async-dest.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module '../../..' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/pino/test/fixtures"}
+{"file":"pino/test/fixtures/ts/transport-exit-immediately.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module '../../..' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/pino/test/fixtures"}
+{"file":"pino/test/fixtures/ts/transport-exit-on-ready.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module '../../..' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/pino/test/fixtures"}
+{"file":"pino/test/fixtures/ts/transport-main.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module '../../..' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/pino/test/fixtures"}
+{"file":"pino/test/fixtures/ts/transport-string-stdout.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module '../../..' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/pino/test/fixtures"}
+{"file":"pino/test/fixtures/ts/transport-worker.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: unexpected token in expression: Punct(RParen) @byte56 @url=file:///home/ja"}
+{"file":"pino/test/transport/core.test.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module '../helper' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/pino/test/transpo"}
+{"file":"pino/test/transport/core.transpiled.test.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module '../helper' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/pino/test/transpo"}
+{"file":"pino/test/types/pino-import.test-d.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module '../../pino' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/pino/test/types/"}
+{"file":"pino/test/types/pino-multistream.test-d.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module '../../pino' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/pino/test/types/"}
+{"file":"pino/test/types/pino-top-export.test-d.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module '../../pino' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/pino/test/types/"}
+{"file":"pino/test/types/pino-transport.test-d.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module '../../pino' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/pino/test/types/"}
+{"file":"pino/test/types/pino-type-only.test-d.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module '../../' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/pino/test/types/pino"}
+{"file":"pino/test/types/pino.test-d.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module '../../' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/pino/test/types/pino"}
+{"file":"pino/test/types/pino.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module '../../pino' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/pino/test/types/"}
+{"file":"rxjs/src/ajax/index.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"rxjs/src/fetch/index.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../internal/observable/dom/fetch' (tried [\\\"/home/jaredef/rusty-b"}
+{"file":"rxjs/src/index.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"rxjs/src/internal/AnyCatcher.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/AsyncSubject.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte298 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/BehaviorSubject.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte331 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/Notification.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte2146 @url=file:///home/jaredef/rusty-bun/pilots/ts-"}
+{"file":"rxjs/src/internal/NotificationFactories.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: './types' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer-cor"}
+{"file":"rxjs/src/internal/Observable.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte674 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/Operator.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: './Subscriber' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consume"}
+{"file":"rxjs/src/internal/ReplaySubject.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte1971 @url=file:///home/jaredef/rusty-bun/pilots/ts-"}
+{"file":"rxjs/src/internal/Scheduler.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte844 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/Subject.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte778 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/Subscriber.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte1046 @url=file:///home/jaredef/rusty-bun/pilots/ts-"}
+{"file":"rxjs/src/internal/Subscription.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte786 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/ajax/AjaxResponse.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `RParen` @byte2526 @url=file:///home/jaredef/rusty-bun/pilots/ts-"}
+{"file":"rxjs/src/internal/ajax/ajax.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: unexpected token in expression: Punct(Lt) @byte9085 @url=file:///home/jare"}
+{"file":"rxjs/src/internal/ajax/errors.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `RParen` @byte2790 @url=file:///home/jaredef/rusty-bun/pilots/ts-"}
+{"file":"rxjs/src/internal/ajax/getXHRResponse.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `Colon` @byte973 @url=file:///home/jaredef/rusty-bun/pilots/ts-co"}
+{"file":"rxjs/src/internal/ajax/types.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../types' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer-co"}
+{"file":"rxjs/src/internal/config.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: './Subscriber' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consume"}
+{"file":"rxjs/src/internal/firstValueFrom.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte312 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/lastValueFrom.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte262 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/observable/ConnectableObservable.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte729 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/observable/bindCallback.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte349 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/observable/bindCallbackInternals.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: unexpected token in expression: Punct(RParen) @byte1545 @url=file:///home/"}
+{"file":"rxjs/src/internal/observable/bindNodeCallback.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte353 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/observable/combineLatest.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte1342 @url=file:///home/jaredef/rusty-bun/pilots/ts-"}
+{"file":"rxjs/src/internal/observable/concat.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte353 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/observable/connectable.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: unexpected token in expression: Punct(RParen) @byte1078 @url=file:///home/"}
+{"file":"rxjs/src/internal/observable/defer.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../Observable' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consum"}
+{"file":"rxjs/src/internal/observable/dom/WebSocketSubject.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `RParen` @byte4985 @url=file:///home/jaredef/rusty-bun/pilots/ts-"}
+{"file":"rxjs/src/internal/observable/dom/animationFrames.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `Colon` @byte2882 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/observable/dom/fetch.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `RParen` @byte293 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/observable/dom/webSocket.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: './WebSocketSubject' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/observable/empty.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `Colon` @byte2071 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/observable/forkJoin.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte1117 @url=file:///home/jaredef/rusty-bun/pilots/ts-"}
+{"file":"rxjs/src/internal/observable/from.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte308 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/observable/fromEvent.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte2443 @url=file:///home/jaredef/rusty-bun/pilots/ts-"}
+{"file":"rxjs/src/internal/observable/fromEventPattern.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte411 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/observable/fromSubscribable.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../Observable' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consum"}
+{"file":"rxjs/src/internal/observable/generate.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte2815 @url=file:///home/jaredef/rusty-bun/pilots/ts-"}
+{"file":"rxjs/src/internal/observable/iif.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `Colon` @byte2535 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/observable/innerFrom.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte920 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/observable/interval.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../Observable' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consum"}
+{"file":"rxjs/src/internal/observable/merge.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte453 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/observable/never.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../Observable' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consum"}
+{"file":"rxjs/src/internal/observable/of.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte520 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/observable/onErrorResumeNext.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte461 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/observable/pairs.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte300 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/observable/partition.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte521 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/observable/race.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte488 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/observable/range.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte192 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/observable/throwError.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte2824 @url=file:///home/jaredef/rusty-bun/pilots/ts-"}
+{"file":"rxjs/src/internal/observable/timer.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte2982 @url=file:///home/jaredef/rusty-bun/pilots/ts-"}
+{"file":"rxjs/src/internal/observable/using.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../Observable' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consum"}
+{"file":"rxjs/src/internal/observable/zip.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte454 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/OperatorSubscriber.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte1386 @url=file:///home/jaredef/rusty-bun/pilots/ts-"}
+{"file":"rxjs/src/internal/operators/audit.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: unexpected token in expression: Punct(Colon) @byte2263 @url=file:///home/j"}
+{"file":"rxjs/src/internal/operators/auditTime.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../scheduler/async' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/buffer.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: unexpected token in expression: Punct(Colon) @byte1704 @url=file:///home/j"}
+{"file":"rxjs/src/internal/operators/bufferCount.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: unexpected token in expression: Punct(Colon) @byte2304 @url=file:///home/j"}
+{"file":"rxjs/src/internal/operators/bufferTime.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte561 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/bufferToggle.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: unexpected token in expression: Punct(Colon) @byte2149 @url=file:///home/j"}
+{"file":"rxjs/src/internal/operators/bufferWhen.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: unexpected token in expression: Punct(Colon) @byte1856 @url=file:///home/j"}
+{"file":"rxjs/src/internal/operators/catchError.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte528 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/combineAll.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: './combineLatestAll' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/combineLatest.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte650 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/combineLatestAll.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte259 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/combineLatestWith.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../types' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer-co"}
+{"file":"rxjs/src/internal/operators/concat.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte461 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/concatAll.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: './mergeAll' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer-"}
+{"file":"rxjs/src/internal/operators/concatMap.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte351 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/concatMapTo.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte394 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/concatWith.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../types' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer-co"}
+{"file":"rxjs/src/internal/operators/connect.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: unexpected token in expression: Punct(RParen) @byte766 @url=file:///home/j"}
+{"file":"rxjs/src/internal/operators/count.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../types' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer-co"}
+{"file":"rxjs/src/internal/operators/debounce.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: unexpected token in expression: Punct(Colon) @byte3143 @url=file:///home/j"}
+{"file":"rxjs/src/internal/operators/debounceTime.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: unexpected token in expression: Punct(Colon) @byte3076 @url=file:///home/j"}
+{"file":"rxjs/src/internal/operators/defaultIfEmpty.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../types' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer-co"}
+{"file":"rxjs/src/internal/operators/delay.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../scheduler/async' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/delayWhen.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte618 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/dematerialize.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../Notification' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-cons"}
+{"file":"rxjs/src/internal/operators/distinct.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../types' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer-co"}
+{"file":"rxjs/src/internal/operators/distinctUntilChanged.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte323 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/distinctUntilKeyChanged.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte239 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/elementAt.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `Colon` @byte2462 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/endWith.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte489 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/every.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte329 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/exhaust.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: './exhaustAll' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consume"}
+{"file":"rxjs/src/internal/operators/exhaustAll.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../types' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer-co"}
+{"file":"rxjs/src/internal/operators/exhaustMap.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte539 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/expand.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte422 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/filter.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte443 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/finalize.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../types' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer-co"}
+{"file":"rxjs/src/internal/operators/find.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte347 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/findIndex.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte285 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/first.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte458 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/flatMap.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: './mergeMap' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer-"}
+{"file":"rxjs/src/internal/operators/groupBy.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte853 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/ignoreElements.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../types' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer-co"}
+{"file":"rxjs/src/internal/operators/isEmpty.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../types' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer-co"}
+{"file":"rxjs/src/internal/operators/joinAllInternals.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `Colon` @byte1355 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/last.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte464 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/map.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte241 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/mapTo.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte224 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/materialize.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../Notification' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-cons"}
+{"file":"rxjs/src/internal/operators/max.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `Colon` @byte1373 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/merge.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte542 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/mergeAll.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: './mergeMap' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer-"}
+{"file":"rxjs/src/internal/operators/mergeInternals.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `Colon` @byte2291 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/mergeMap.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte507 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/mergeMapTo.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte421 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/mergeScan.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../types' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer-co"}
+{"file":"rxjs/src/internal/operators/mergeWith.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../types' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer-co"}
+{"file":"rxjs/src/internal/operators/min.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `Colon` @byte1374 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/multicast.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte1195 @url=file:///home/jaredef/rusty-bun/pilots/ts-"}
+{"file":"rxjs/src/internal/operators/observeOn.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../types' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer-co"}
+{"file":"rxjs/src/internal/operators/onErrorResumeNextWith.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte357 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/pairwise.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: unexpected token in expression: Punct(Colon) @byte1673 @url=file:///home/j"}
+{"file":"rxjs/src/internal/operators/partition.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../util/not' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer"}
+{"file":"rxjs/src/internal/operators/pluck.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte323 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/publish.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte1129 @url=file:///home/jaredef/rusty-bun/pilots/ts-"}
+{"file":"rxjs/src/internal/operators/publishBehavior.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../Observable' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consum"}
+{"file":"rxjs/src/internal/operators/publishLast.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: unexpected token in expression: Punct(RParen) @byte2883 @url=file:///home/"}
+{"file":"rxjs/src/internal/operators/publishReplay.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte1524 @url=file:///home/jaredef/rusty-bun/pilots/ts-"}
+{"file":"rxjs/src/internal/operators/race.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte371 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/raceWith.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `Colon` @byte1335 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/reduce.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte252 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/refCount.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: unexpected token in expression: Punct(Colon) @byte2780 @url=file:///home/j"}
+{"file":"rxjs/src/internal/operators/repeat.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `Colon` @byte4176 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/repeatWhen.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: unexpected token in expression: Punct(Colon) @byte1883 @url=file:///home/j"}
+{"file":"rxjs/src/internal/operators/retry.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte1411 @url=file:///home/jaredef/rusty-bun/pilots/ts-"}
+{"file":"rxjs/src/internal/operators/retryWhen.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: unexpected token in expression: Punct(Colon) @byte2418 @url=file:///home/j"}
+{"file":"rxjs/src/internal/operators/sample.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: unexpected token in expression: Punct(Colon) @byte1801 @url=file:///home/j"}
+{"file":"rxjs/src/internal/operators/sampleTime.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../scheduler/async' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/scan.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte250 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/scanInternals.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: unexpected token in expression: Punct(Colon) @byte1139 @url=file:///home/j"}
+{"file":"rxjs/src/internal/operators/sequenceEqual.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: unexpected token in expression: Punct(RParen) @byte2765 @url=file:///home/"}
+{"file":"rxjs/src/internal/operators/share.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte3300 @url=file:///home/jaredef/rusty-bun/pilots/ts-"}
+{"file":"rxjs/src/internal/operators/shareReplay.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte374 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/single.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte491 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/skip.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../types' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer-co"}
+{"file":"rxjs/src/internal/operators/skipLast.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `Colon` @byte2125 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/skipUntil.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../types' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer-co"}
+{"file":"rxjs/src/internal/operators/skipWhile.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte309 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/startWith.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte573 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/subscribeOn.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../types' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer-co"}
+{"file":"rxjs/src/internal/operators/switchAll.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../types' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer-co"}
+{"file":"rxjs/src/internal/operators/switchMap.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte465 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/switchMapTo.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte394 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/switchScan.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `RParen` @byte1570 @url=file:///home/jaredef/rusty-bun/pilots/ts-"}
+{"file":"rxjs/src/internal/operators/take.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `Colon` @byte1614 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/takeLast.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `Colon` @byte2004 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/takeUntil.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../types' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer-co"}
+{"file":"rxjs/src/internal/operators/takeWhile.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte297 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/tap.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte2942 @url=file:///home/jaredef/rusty-bun/pilots/ts-"}
+{"file":"rxjs/src/internal/operators/throttle.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: unexpected token in expression: Punct(Colon) @byte3494 @url=file:///home/j"}
+{"file":"rxjs/src/internal/operators/throttleTime.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../scheduler/async' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/throwIfEmpty.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../util/EmptyError' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/timeInterval.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `RParen` @byte2315 @url=file:///home/jaredef/rusty-bun/pilots/ts-"}
+{"file":"rxjs/src/internal/operators/timeout.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `RParen` @byte6020 @url=file:///home/jaredef/rusty-bun/pilots/ts-"}
+{"file":"rxjs/src/internal/operators/timeoutWith.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte551 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/timestamp.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../types' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer-co"}
+{"file":"rxjs/src/internal/operators/toArray.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: './reduce' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer-co"}
+{"file":"rxjs/src/internal/operators/window.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: unexpected token in expression: Punct(Colon) @byte2117 @url=file:///home/j"}
+{"file":"rxjs/src/internal/operators/windowCount.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `Colon` @byte2701 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/windowTime.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte626 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/windowToggle.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: unexpected token in expression: Punct(Colon) @byte2334 @url=file:///home/j"}
+{"file":"rxjs/src/internal/operators/windowWhen.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: unexpected token in expression: Punct(Colon) @byte2230 @url=file:///home/j"}
+{"file":"rxjs/src/internal/operators/withLatestFrom.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte485 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/zip.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte386 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/zipAll.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte466 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/zipWith.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../types' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer-co"}
+{"file":"rxjs/src/internal/scheduled/scheduleArray.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../Observable' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consum"}
+{"file":"rxjs/src/internal/scheduled/scheduleAsyncIterable.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../types' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer-co"}
+{"file":"rxjs/src/internal/scheduled/scheduleIterable.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: unexpected token in expression: Punct(Colon) @byte584 @url=file:///home/ja"}
+{"file":"rxjs/src/internal/scheduled/scheduleObservable.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../observable/innerFrom' (tried [\\\"/home/jaredef/rusty-bun/pilots"}
+{"file":"rxjs/src/internal/scheduled/schedulePromise.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../observable/innerFrom' (tried [\\\"/home/jaredef/rusty-bun/pilots"}
+{"file":"rxjs/src/internal/scheduled/scheduleReadableStreamLike.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../types' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer-co"}
+{"file":"rxjs/src/internal/scheduled/scheduled.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: './scheduleObservable' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts"}
+{"file":"rxjs/src/internal/scheduler/Action.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../Scheduler' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consume"}
+{"file":"rxjs/src/internal/scheduler/AnimationFrameAction.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte327 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/scheduler/AnimationFrameScheduler.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: unexpected token in expression: Punct(Colon) @byte956 @url=file:///home/ja"}
+{"file":"rxjs/src/internal/scheduler/AsapAction.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte287 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/scheduler/AsapScheduler.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: unexpected token in expression: Punct(Colon) @byte946 @url=file:///home/ja"}
+{"file":"rxjs/src/internal/scheduler/AsyncAction.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte368 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/scheduler/AsyncScheduler.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: unexpected token in expression: Punct(Colon) @byte991 @url=file:///home/ja"}
+{"file":"rxjs/src/internal/scheduler/QueueAction.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte281 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/scheduler/QueueScheduler.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: './AsyncScheduler' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-con"}
+{"file":"rxjs/src/internal/scheduler/VirtualTimeScheduler.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `RParen` @byte1480 @url=file:///home/jaredef/rusty-bun/pilots/ts-"}
+{"file":"rxjs/src/internal/scheduler/animationFrame.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: './AnimationFrameAction' (tried [\\\"/home/jaredef/rusty-bun/pilots/"}
+{"file":"rxjs/src/internal/scheduler/animationFrameProvider.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../Subscription' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-cons"}
+{"file":"rxjs/src/internal/scheduler/asap.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: './AsapAction' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consume"}
+{"file":"rxjs/src/internal/scheduler/async.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: './AsyncAction' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consum"}
+{"file":"rxjs/src/internal/scheduler/dateTimestampProvider.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../types' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer-co"}
+{"file":"rxjs/src/internal/scheduler/immediateProvider.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../util/Immediate' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-co"}
+{"file":"rxjs/src/internal/scheduler/intervalProvider.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `RParen` @byte672 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/scheduler/performanceTimestampProvider.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../types' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer-co"}
+{"file":"rxjs/src/internal/scheduler/queue.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: './QueueAction' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consum"}
+{"file":"rxjs/src/internal/scheduler/timeoutProvider.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `RParen` @byte658 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/scheduler/timerHandle.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/symbol/iterator.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/symbol/observable.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/testing/ColdObservable.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte495 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/testing/HotObservable.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte485 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/testing/SubscriptionLog.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `RParen` @byte52 @url=file:///home/jaredef/rusty-bun/pilots/ts-co"}
+{"file":"rxjs/src/internal/testing/SubscriptionLoggable.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../Scheduler' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consume"}
+{"file":"rxjs/src/internal/testing/TestMessage.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../types' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer-co"}
+{"file":"rxjs/src/internal/testing/TestScheduler.ts","outcome":"CRUFT_FAIL","detail":"cruft: ts strip error in /home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/rxjs/src/internal/testing/TestSchedu"}
+{"file":"rxjs/src/internal/types.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: './Observable' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consume"}
+{"file":"rxjs/src/internal/umd.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"rxjs/src/internal/util/ArgumentOutOfRangeError.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: './createErrorClass' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/util/EmptyError.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: './createErrorClass' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/util/Immediate.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `RParen` @byte671 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/util/NotFoundError.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: './createErrorClass' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/util/ObjectUnsubscribedError.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: './createErrorClass' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/util/SequenceError.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: './createErrorClass' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/util/UnsubscriptionError.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: './createErrorClass' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/util/applyMixins.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/util/args.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `Colon` @byte360 @url=file:///home/jaredef/rusty-bun/pilots/ts-co"}
+{"file":"rxjs/src/internal/util/argsArgArrayOrObject.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte504 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/util/argsOrArgArray.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `Colon` @byte293 @url=file:///home/jaredef/rusty-bun/pilots/ts-co"}
+{"file":"rxjs/src/internal/util/arrRemove.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/util/createErrorClass.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/util/createObject.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/util/errorContext.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: unexpected token in expression: Punct(RBrace) @byte85 @url=file:///home/ja"}
+{"file":"rxjs/src/internal/util/executeSchedule.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte264 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/util/identity.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/util/isArrayLike.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: unexpected token in expression: Punct(Lt) @byte28 @url=file:///home/jarede"}
+{"file":"rxjs/src/internal/util/isAsyncIterable.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: './isFunction' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consume"}
+{"file":"rxjs/src/internal/util/isDate.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/util/isFunction.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/util/isInteropObservable.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../types' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer-co"}
+{"file":"rxjs/src/internal/util/isIterable.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../symbol/iterator' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/util/isObservable.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../Observable' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consum"}
+{"file":"rxjs/src/internal/util/isPromise.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: './isFunction' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consume"}
+{"file":"rxjs/src/internal/util/isReadableStreamLike.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LParen` @byte148 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/util/isScheduler.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../types' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer-co"}
+{"file":"rxjs/src/internal/util/lift.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../Observable' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consum"}
+{"file":"rxjs/src/internal/util/mapOneOrManyArgs.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `Colon` @byte237 @url=file:///home/jaredef/rusty-bun/pilots/ts-co"}
+{"file":"rxjs/src/internal/util/noop.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/util/not.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/util/pipe.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte121 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/util/reportUnhandledError.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"module not found: '../config' (tried [\\\"/home/jaredef/rusty-bun/pilots/ts-consumer-c"}
+{"file":"rxjs/src/internal/util/subscribeToArray.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: unexpected token in expression: Punct(Lt) @byte189 @url=file:///home/jared"}
+{"file":"rxjs/src/internal/util/throwUnobservableError.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/util/workarounds.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/operators/index.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"rxjs/src/testing/index.ts","outcome":"BUN_FAIL","detail":"1 | })"}
+{"file":"rxjs/src/webSocket/index.ts","outcome":"BUN_FAIL","detail":"1 | })"}

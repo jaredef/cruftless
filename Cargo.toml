@@ -54,6 +54,8 @@ members = [
     "pilots/ts-resolve/derived",
     # TCC (TypeScript consumer-corpus measurement) — pilots/ts-consumer-corpus/seed.md
     "pilots/ts-consumer-corpus/derived",
+    # TXC (TypeScript execute-corpus measurement) — pilots/ts-execute-corpus/seed.md
+    "pilots/ts-execute-corpus/derived",
     "pilots/urlsearchparams/derived",
     "pilots/web-crypto/derived",
     "pilots/websocket/derived",

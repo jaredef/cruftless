@@ -1,0 +1,11 @@
+[package]
+name = "ts-execute-corpus"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "txc-measure"
+path = "src/bin/measure.rs"
+
+[dependencies]
+walkdir = "2"

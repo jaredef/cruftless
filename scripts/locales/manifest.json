@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 32,
-    "top_level": 21,
+    "locales": 33,
+    "top_level": 22,
     "nested": 11,
     "warnings": 0
   },
@@ -244,6 +244,15 @@
       "status": "**CHAPTER CLOSED at TCC-EXT 1 (1 implementation round; Pred-tcc.5 HELD)**. All five Pred-tcc.* HELD plus the discipline falsifier. Baseline parse-success = **37.7%** (141/374 files from rxjs + ajv + pino). Failure-frequency table operational; top-10 categories cover ~52% of corpus and set the sub-locale priority order. Substrate-bug priority finding (Finding TCC.3): TSR's strip step corrupts source inside string/template literals on ~11 files \u2014 highest-priority next sub-locale."
     },
     {
+      "coord": "ts-execute-corpus",
+      "tag": "L.ts-execute-corpus",
+      "parent": null,
+      "scope": "ts-execute-corpus",
+      "depth": 1,
+      "rung_count": 2,
+      "status": "**CHAPTER CLOSED at TXC-EXT 1 (1 implementation round; standing rule 13 ninth corroboration)**. Execute-parity baseline = **5.1%** vs parse-parity baseline = 95.2% (**90.1 pp gap**). 64% of the gap traces to ONE substrate gap: cruft's module loader is TS-unaware. Load-bearing next sub-locale: `ts-resolve-module-loader-extension/`."
+    },
+    {
       "coord": "ts-resolve",
       "tag": "L.ts-resolve",
       "parent": null,
@@ -267,7 +276,7 @@
       "parent": null,
       "scope": "ts-resolve-generics-calls",
       "depth": 1,
-      "rung_count": 2,
+      "rung_count": 7,
       "status": "**CHAPTER CLOSED at TRGC-EXT 1 (1 implementation round; standing rule 13's eighth corroboration)**. Parse-success **59.9% \u2192 69.3%** (+9.4 pp; 18% over Pred-trgc.3's \u22658 pp target). Three substrate improvements; mid-round ternary-tracking discovery delivered +7.0 pp on top of the planned +2.4 pp generic rules."
     },
     {
