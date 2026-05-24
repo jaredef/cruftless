@@ -137,7 +137,7 @@
 {"file": "rxjs/src/internal/Subscriber.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/Subscription.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/ajax/AjaxResponse.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/ajax/ajax.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 15755, end: 15756 }, message: 'expected template middle/tail after substitution' }"}
+{"file": "rxjs/src/internal/ajax/ajax.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/ajax/errors.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/ajax/getXHRResponse.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/ajax/types.ts", "outcome": "OK", "message": ""}
@@ -153,7 +153,7 @@
 {"file": "rxjs/src/internal/observable/connectable.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/observable/defer.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/observable/dom/WebSocketSubject.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/observable/dom/animationFrames.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 3161, end: 3162 }, message: 'expected `RBrace`' }"}
+{"file": "rxjs/src/internal/observable/dom/animationFrames.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/observable/dom/fetch.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/observable/dom/webSocket.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/observable/empty.ts", "outcome": "OK", "message": ""}
@@ -330,7 +330,7 @@
 {"file": "rxjs/src/internal/testing/SubscriptionLog.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/testing/SubscriptionLoggable.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/testing/TestMessage.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/testing/TestScheduler.ts", "outcome": "STRIP", "message": "strip: ts-strip @11905: lex: LexError { kind: UnterminatedRegex, span: Span { start: 11881, end: 11905 }, message: 'line terminator in regex' }"}
+{"file": "rxjs/src/internal/testing/TestScheduler.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 16792, end: 16793 }, message: 'expected `RParen`' }"}
 {"file": "rxjs/src/internal/types.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/umd.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/util/ArgumentOutOfRangeError.ts", "outcome": "OK", "message": ""}

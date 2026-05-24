@@ -292,6 +292,7 @@ impl<'src> Scanner<'src> {
         let mut tmpl_brace_depths: Vec<i32> = Vec::new();
         let mut brace_depth: i32 = 0;
         let mut prev_kind: Option<TokenKind> = None;
+        let mut prev_was_postfix_bang: bool = false;
         loop {
             // Goal selection:
             // - If we just emitted a Template{Head|Middle}, the lexer
@@ -300,12 +301,21 @@ impl<'src> Scanner<'src> {
             // - If we're at a `}` AND it would close a substitution
             //   (brace_depth matches the recorded substitution-entry
             //   depth), goal is TemplateTail.
+            // - If the previous emitted token was a postfix-`!` non-
+            //   null assertion (TS-only), the following `/` should
+            //   lex as Div (we're post-expression), not RegExp.
+            //   Without this, `name! / x` mis-lexes the `/` as a
+            //   regex opener.
             let goal = if let Some(&entry_depth) = tmpl_brace_depths.last() {
                 if brace_depth == entry_depth {
                     LexerGoal::TemplateTail
+                } else if prev_was_postfix_bang {
+                    LexerGoal::Div
                 } else {
                     expr_or_div_goal(prev_kind.as_ref())
                 }
+            } else if prev_was_postfix_bang {
+                LexerGoal::Div
             } else {
                 expr_or_div_goal(prev_kind.as_ref())
             };
@@ -342,7 +352,26 @@ impl<'src> Scanner<'src> {
                 }
                 _ => {}
             }
-            let _ = prev_kind; // reserved for future heuristics
+            // Track postfix-`!`: a LogicalNot whose previous token was
+            // an expr-terminator is a TS non-null assertion. The next
+            // token's goal must be Div (we're post-expression). Reset
+            // the flag after consuming the next token.
+            prev_was_postfix_bang = matches!(t.kind, TokenKind::Punct(Punct::LogicalNot))
+                && match prev_kind.as_ref() {
+                    Some(TokenKind::Ident(n)) => !matches!(n.as_str(),
+                        "return" | "yield" | "delete" | "typeof" | "void"
+                        | "throw" | "await" | "new" | "in" | "of" | "instanceof" | "case"),
+                    Some(TokenKind::Number(_, _))
+                    | Some(TokenKind::BigInt(_, _))
+                    | Some(TokenKind::String(_))
+                    | Some(TokenKind::Template { .. })
+                    | Some(TokenKind::Punct(Punct::RParen))
+                    | Some(TokenKind::Punct(Punct::RBracket))
+                    | Some(TokenKind::Punct(Punct::RBrace))
+                    | Some(TokenKind::Punct(Punct::Inc))
+                    | Some(TokenKind::Punct(Punct::Dec)) => true,
+                    _ => false,
+                };
             prev_kind = Some(t.kind.clone());
             let done = matches!(t.kind, TokenKind::Eof);
             self.toks.push(ScanTok {
@@ -1069,29 +1098,41 @@ impl<'src> Scanner<'src> {
     }
 
     /// Match an opening `<` (at index `lt`) with its closing `>`.
-    /// Handles nesting + `>>` (Shr) as two closers. Bails on any
-    /// statement-terminator before finding a match (defensive: the
-    /// caller's `<` may not actually be a generic-args opener).
+    /// Handles nesting + `>>` (Shr) as two closers + `>>>` (UShr) as
+    /// three closers. Also balances inner `{...}` (object type
+    /// literals like `Observable<{ k: number }>`), `(...)` (function
+    /// type literals like `Foo<(x: T) => U>`), and `[...]` (tuple
+    /// types like `Foo<[A, B]>`). Bails on statement-terminator or
+    /// unmatched top-level `{` (which would indicate body-start).
     fn match_angle(&self, lt: usize) -> Option<usize> {
         let mut depth = 0i32;
+        let mut depth_brace = 0i32;
+        let mut depth_paren = 0i32;
+        let mut depth_brack = 0i32;
         for j in lt..self.toks.len() {
             match &self.toks[j].kind {
-                TokenKind::Punct(Punct::Lt) => depth += 1,
-                TokenKind::Punct(Punct::Gt) => {
+                TokenKind::Punct(Punct::Lt) if depth_brace == 0 && depth_paren == 0 && depth_brack == 0 => depth += 1,
+                TokenKind::Punct(Punct::Gt) if depth_brace == 0 && depth_paren == 0 && depth_brack == 0 => {
                     depth -= 1;
                     if depth == 0 { return Some(j); }
                 }
-                TokenKind::Punct(Punct::Shr) => {
+                TokenKind::Punct(Punct::Shr) if depth_brace == 0 && depth_paren == 0 && depth_brack == 0 => {
                     depth -= 2;
                     if depth <= 0 { return Some(j); }
                 }
-                TokenKind::Punct(Punct::UShr) => {
+                TokenKind::Punct(Punct::UShr) if depth_brace == 0 && depth_paren == 0 && depth_brack == 0 => {
                     depth -= 3;
                     if depth <= 0 { return Some(j); }
                 }
-                TokenKind::Eof
-                | TokenKind::Punct(Punct::Semicolon)
-                | TokenKind::Punct(Punct::LBrace) => return None,
+                TokenKind::Punct(Punct::LBrace) => depth_brace += 1,
+                TokenKind::Punct(Punct::RBrace) if depth_brace > 0 => depth_brace -= 1,
+                TokenKind::Punct(Punct::RBrace) => return None,  // unmatched body-start
+                TokenKind::Punct(Punct::LParen) => depth_paren += 1,
+                TokenKind::Punct(Punct::RParen) if depth_paren > 0 => depth_paren -= 1,
+                TokenKind::Punct(Punct::LBracket) => depth_brack += 1,
+                TokenKind::Punct(Punct::RBracket) if depth_brack > 0 => depth_brack -= 1,
+                TokenKind::Eof => return None,
+                TokenKind::Punct(Punct::Semicolon) if depth_brace == 0 && depth_paren == 0 && depth_brack == 0 => return None,
                 _ => {}
             }
         }
@@ -1363,7 +1404,12 @@ impl<'src> Scanner<'src> {
             // Eof always stops. Semicolon only stops at top level —
             // inside `{...}` of an object type literal, `;` is a
             // property separator, NOT a statement terminator.
+            // Template tokens always stop — they're never part of a
+            // type expression. Important for `as T` inside template
+            // substitutions: skip_type must not consume the
+            // Template{Tail} that closes the substitution.
             if matches!(self.toks[i].kind, TokenKind::Eof) { break; }
+            if matches!(self.toks[i].kind, TokenKind::Template { .. }) { break; }
             if at_top && matches!(self.toks[i].kind, TokenKind::Punct(Punct::Semicolon)) { break; }
             if at_top {
                 // TRGC-EXT 2 follow-on: ASI-aware top-level break.
