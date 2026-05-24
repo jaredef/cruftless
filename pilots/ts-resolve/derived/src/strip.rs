@@ -1030,6 +1030,12 @@ impl<'src> Scanner<'src> {
             | TokenKind::Punct(Punct::RBrace)
             | TokenKind::Punct(Punct::Dot)
             | TokenKind::Punct(Punct::OptionalChain)
+            // `iterate!(args)` and `arr![i]` — `!` non-null assertion
+            // followed by call/index. Gated by prev-is-expr-terminator
+            // upstream (so `!(...)` prefix-not remains correctly NOT
+            // stripped).
+            | TokenKind::Punct(Punct::LParen)
+            | TokenKind::Punct(Punct::LBracket)
             | TokenKind::Punct(Punct::Plus) | TokenKind::Punct(Punct::Minus)
             | TokenKind::Punct(Punct::Star) | TokenKind::Punct(Punct::Slash)
             | TokenKind::Punct(Punct::Percent) | TokenKind::Punct(Punct::StarStar)
@@ -1083,6 +1089,29 @@ impl<'src> Scanner<'src> {
         if in_obj_lit && prev_is_ident && self.paren_depth == 0 {
             return false;
         }
+        // TRE-EXT 1 follow-on (2026-05-24): switch `case X:` /
+        // `default:` labels. Bail if the anchor itself is Ident
+        // `default` OR the token before the anchor is Ident `case`
+        // (anchor would be the case-expression value: String, Number,
+        // Ident-constant-name).
+        if prev_is_ident
+            && matches!(&prev.kind, TokenKind::Ident(n) if n == "default")
+        {
+            return false;
+        }
+        if anchor > 0 {
+            if let TokenKind::Ident(n) = &self.toks[anchor - 1].kind {
+                if n == "case" {
+                    return false;
+                }
+            }
+        }
+        // Also handle `case 'string':` where anchor is the String
+        // token (not Ident). The early prev-anchor check (line ~895)
+        // rejects String anchors already; this is just a safety
+        // assertion for case patterns where anchor IS Ident (e.g.
+        // `case CONST_NAME:`). Already handled by the `case` look-
+        // back above.
         // TRCAPS-EXT 1: destructured-pattern parameter annotation
         // `function f({a, b}: T)` or `function f([x, y]: T)`. When the
         // anchor is RBrace/RBracket, only accept as annotation if
