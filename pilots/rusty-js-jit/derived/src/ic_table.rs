@@ -173,6 +173,75 @@ fn lower_ic_string_code_point_at(
     Ok(())
 }
 
+// ─── ENTRY 3: String.prototype.indexOf (MethodCall arity 2; first arity-2 entry) ───
+//
+// HI-EXT 5 (2026-05-24): exercises the apparatus's arity-2 path. The
+// 2-arg form `s.indexOf(needle, fromIndex)` is the standard ECMA form.
+// Mirrors cruft's interp `string_proto_index_of_via` (interp.rs:4624):
+// char-index semantics for clamping the start position; byte-search
+// via str::find for ASCII or non-ASCII alike (works correctly since
+// substring search is byte-equivalent when both sides UTF-8-encoded).
+//
+// For ASCII strings (the common case) char-index == byte-index, so the
+// clamp is direct; for non-ASCII the start position converts via
+// char_indices.
+
+pub extern "C" fn ic_string_index_of(haystack: i64, needle: i64, from: i64) -> f64 {
+    let s: &String = unsafe { &*(haystack as *const String) };
+    let n: &String = unsafe { &*(needle as *const String) };
+    let start_char = if from < 0 { 0 } else { from as usize };
+    if s.is_ascii() && n.is_ascii() {
+        // Fast-path: byte-search; char-index == byte-index.
+        let s_bytes = s.as_bytes();
+        let n_bytes = n.as_bytes();
+        if start_char > s_bytes.len() { return -1.0; }
+        if n_bytes.is_empty() { return start_char as f64; }
+        if start_char + n_bytes.len() > s_bytes.len() { return -1.0; }
+        match s_bytes[start_char..].windows(n_bytes.len()).position(|w| w == n_bytes) {
+            Some(p) => (start_char + p) as f64,
+            None => -1.0,
+        }
+    } else {
+        // Non-ASCII: char-index clamp + str::find + byte→char re-index.
+        let char_count = s.chars().count();
+        let clamped = start_char.min(char_count);
+        let start_byte = s.char_indices().nth(clamped).map(|(b, _)| b).unwrap_or(s.len());
+        match s[start_byte..].find(n.as_str()) {
+            Some(rel_byte) => s[..start_byte + rel_byte].chars().count() as f64,
+            None => -1.0,
+        }
+    }
+}
+
+fn ic_string_index_of_sig(sig: &mut Signature) {
+    sig.params.push(AbiParam::new(I64));  // haystack payload
+    sig.params.push(AbiParam::new(I64));  // needle payload
+    sig.params.push(AbiParam::new(I64));  // from index
+    sig.returns.push(AbiParam::new(F64));
+}
+
+fn lower_ic_string_index_of(
+    builder: &mut FunctionBuilder,
+    stack: &mut Vec<ClValue>,
+    extern_ref: FuncRef,
+) -> Result<(), String> {
+    // Arity 2: stack from bottom is [receiver, sentinel, needle, from].
+    let from_f64 = stack.pop().ok_or("ic_string_index_of: stack underflow (from)")?;
+    let needle_f64 = stack.pop().ok_or("ic_string_index_of: stack underflow (needle)")?;
+    let _sentinel = stack.pop().ok_or("ic_string_index_of: stack underflow (sentinel)")?;
+    let recv_f64 = stack.pop().ok_or("ic_string_index_of: stack underflow (receiver)")?;
+    let recv_bits = builder.ins().bitcast(I64, MemFlags::new(), recv_f64);
+    let needle_bits = builder.ins().bitcast(I64, MemFlags::new(), needle_f64);
+    let payload_mask = builder.ins().iconst(I64, 0x0000_FFFF_FFFF_FFFF_u64 as i64);
+    let recv_payload = builder.ins().band(recv_bits, payload_mask);
+    let needle_payload = builder.ins().band(needle_bits, payload_mask);
+    let from_i64 = builder.ins().fcvt_to_sint_sat(I64, from_f64);
+    let call_inst = builder.ins().call(extern_ref, &[recv_payload, needle_payload, from_i64]);
+    let result = builder.inst_results(call_inst)[0];
+    stack.push(result);
+    Ok(())
+}
+
 // ─── IC_TABLE static registry ───
 //
 // Future entries register here. Each entry: key + kind + receiver +
@@ -206,6 +275,15 @@ pub static IC_TABLE: &[IcEntry] = &[
         extern_ptr: ic_string_code_point_at as *const u8,
         extern_sig: ic_string_code_point_at_sig,
         lower: lower_ic_string_code_point_at,
+    },
+    IcEntry {
+        key: "indexOf",
+        kind: IcEntryKind::MethodCall { arity: 2 },
+        receiver: ReceiverKind::String,
+        extern_name: "ic_string_index_of",
+        extern_ptr: ic_string_index_of as *const u8,
+        extern_sig: ic_string_index_of_sig,
+        lower: lower_ic_string_index_of,
     },
 ];
 

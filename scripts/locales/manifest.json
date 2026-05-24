@@ -96,7 +96,7 @@
       "parent": "L.rusty-js-jit",
       "scope": "hot-intrinsics",
       "depth": 2,
-      "rung_count": 5,
+      "rung_count": 6,
       "status": "**WORKSTREAM FOUNDED (HI-EXT 0)**. Engagement-wide instrument spawned per keeper directive 2026-05-23 02:39-local (continuation after the architectural-pivot session's pipeline-connection at OSR-EXT 6b). The instrument generalizes the OSR-EXT 6b + CharCode-EXT 2 hot-intrinsic-IC pattern (already validated on charCodeAt) into a multi-intrinsic TABLE \u2014 a reusable apparatus that future pilots extend with new intrinsics."
     },
     {

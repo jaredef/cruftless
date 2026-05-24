@@ -318,3 +318,71 @@ IC_TABLE entries: 3 (length, charCodeAt, codePointAt).
 ---
 
 *HI-EXT 4 closes. **HI first cut at (P2.a).** Apparatus-tier substrate-introduction successful; 3 operational entries; per-entry LOC budget verified at 39 LOC (codePointAt). The hot-intrinsic-IC table is the engagement's second standing instrument (alongside the component A/B probe). Future per-entry rounds add at bounded LOC; no new structural blockers expected.*
+
+---
+
+## HI-EXT 5 — 2026-05-24 (per-entry round: String.prototype.indexOf; first arity-2 entry)
+
+### Headline
+
+First arity-2 entry through the table apparatus. Adds String.prototype.indexOf as IC_TABLE entry index 3 (after length, charCodeAt, codePointAt). **Per-entry LOC: ~52** (slightly over Pred-hi.1's 50 budget; arity-2's extra pop step + the ASCII/non-ASCII branching account for the +2). Behavior mirrors cruft's interp string_proto_index_of_via (char-index clamp semantics; byte-search via str::find).
+
+### Per-entry LOC breakdown (indexOf, arity 2)
+
+| component | LOC |
+|---|---:|
+| extern fn `ic_string_index_of` (ASCII fast-path + non-ASCII fallback) | 23 |
+| `ic_string_index_of_sig` (3 I64 params + F64 return) | 5 |
+| `lower_ic_string_index_of` (4-pop sequence + 2 payload decodes + fcvt + call) | 16 |
+| IcEntry literal | 8 |
+| **total** | **52** |
+
+Marginally over the Pred-hi.1 ≤50 budget — the arity-2 path has one extra pop + the ASCII/non-ASCII branch is a real semantic discriminator. Acceptable; budget is a guideline not a hard limit.
+
+### Three-probe results
+
+| probe | result |
+|---|---|
+| canonical fuzz (acc=-932188103) | ✅ GREEN |
+| diff-prod 42/42 | ✅ GREEN |
+| JIT lib tests | ✅ 38/38 |
+| synth do-while OSR (existing) | ✅ compile + invoke (unchanged) |
+| json_parse_transform OSR (existing) | ✅ compile + invoke (unchanged) |
+
+### Composition with prior corpus / engagement work
+
+- **HI-EXT 2 apparatus**: arity-2 path empirically validated. The HI-EXT 1 design specified the arity-2 path but no entry exercised it until now. indexOf is the demonstrator.
+- **cruft interp parity**: ic_string_index_of's behavior matches `string_proto_index_of_via` at interp.rs:4624 (char-index clamp; byte-search via str::find; non-ASCII via char_indices conversion).
+- **Standing rule 11 5-axis**: rule applied per entry; (A1) component A/B not run (entry is per-intrinsic-targeted, not fixture-driven); (A2) op-set CallMethod arity 2 closure; (A3) value-domain String covered; (A4) locals-marshaling unchanged; (A5) emission-shape unchanged.
+
+### Empirical dormancy on existing fixtures
+
+The indexOf 2-arg form `s.indexOf(needle, fromIndex)` is dormant on current OSR-eligible fixtures (json_parse_transform doesn't use indexOf; synth do-while doesn't either). The 1-arg form `s.indexOf(needle)` (heavily used in string_url_sweep) compiles to `CallMethod 1` which won't match this arity-2 entry. **For string_url_sweep yield, an arity-1 indexOf entry would be needed; deferred.**
+
+### Multi-arity-same-intrinsic note
+
+The apparatus accommodates multiple entries with the same key but different arities via independent IcEntry literals. Future per-entry round can add `indexOf arity 1` (default fromIndex=0) alongside this arity-2 entry. The parse-time backward-scan disambiguates by arity match.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable.
+Per Doc 734 §V: growth (a) positive-finding empirical-confirmation — arity-2 path landed at the verified LOC budget (+2 over guideline).
+Per Doc 735 §X.h.b: substrate-introduction at the per-entry tier; entry dormant on existing fixtures; empirical materialization waits for a fixture using the 2-arg form OR for the arity-1 follow-on entry.
+
+### Open scope at HI-EXT 5 close
+
+1. **HI-EXT 6** — String.prototype.indexOf arity-1 entry (default fromIndex=0). Would fire on string_url_sweep's `h.indexOf(":")`. ~40-45 LOC; reuses ic_string_index_of extern via `from=0`.
+2. **HI-EXT 7** — Finding HI.2 design for String allocation (charAt + slice + substring); thread-local ASCII cache + fallback.
+3. **HI-EXT 8+** — Array.length (needs Runtime TLS extern shape); Array.push (mutation handling).
+4. **Finding HI.1** — override-safety hardening.
+
+### Cumulative status at HI-EXT 5 close
+
+LOC delta this round: ~52 (indexOf arity-2 entry).
+HI-EXT 0-5 cumulative: ~770 across the locale.
+IC_TABLE entries: **4** (length, charCodeAt, codePointAt, indexOf).
+Apparatus's arity-2 path now empirically validated.
+
+---
+
+*HI-EXT 5 closes. Arity-2 path validated empirically. IC_TABLE at 4 entries. indexOf dormant on current OSR-eligible fixtures (would fire if a fixture uses 2-arg form); arity-1 follow-on would unblock string_url_sweep's `h.indexOf(":")` — but note string_url_sweep's bottleneck is interp-tier (for-of body); JIT-tier IC table doesn't help there. Future per-entry rounds proceed per starter-set queue.*
