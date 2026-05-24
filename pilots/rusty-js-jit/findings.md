@@ -940,3 +940,51 @@ After Addendum X, the findings doc contains:
 Total: **26 findings** (6 original + 20 new across 10 addenda); **15 standing rules** (rules 11 multi-axis, 12 IEEE-754, 13 revert-then-deeper-layer, 14 conservative-strip, 15 chapter-close-inspect); 2 standing engagement instruments (TCC parse-parity, TXC execute-parity) + standing methodology patterns (Doc 740 §IV.2 via rule 13; corpus-as-instrument-and-regression via rule 14).
 
 **Outstanding corpus publication candidate**: Doc 7XX, "Resolver-instance dispatch downstream: TXC's empirical refinement of Doc 729" — when the TS-parity arc completes, write up the findings IX.4-IX.6 as a single corpus doc with the empirical 90.1 pp gap data as the load-bearing evidence.
+
+---
+
+## Addendum XI — TS-parity arc complete (2026-05-24)
+
+The TS-parity arc closed at **100.0% parse-parity (374/374)** on the real npm consumer corpus, +62.3 percentage points across 10 sub-locale rounds from the TCC-EXT 1 baseline of 37.7%. The arc's substrate-fix records are scattered across the TRSLS / TRCAPS / TRGC×6 / TRE / TRMLE / TROI locale trajectories; this addendum books the three engagement-tier findings that crystallized at the 100% milestone.
+
+### Finding IX.7 (cross-talk between depth-tracking stacks)
+
+**Source**: ternary-stack vs brace-stack collision at TestScheduler.ts byte 16792.
+
+A depth-tracking stack indexed by a single ambient counter (paren_depth, brace_depth, etc.) can be incorrectly matched by an unrelated downstream event at the same counter value. The TS-parity arc surfaced two instances:
+
+- **Ternary `?`/`:` vs method-shorthand `:`**: a `?` push at paren_depth=N inside an outer arrow body matched the `:` of a method-shorthand annotation inside a nested obj-lit at the same paren_depth=N. Fix: ternary_stack carries `(paren_depth, brace_stack_len)` and matches on BOTH coordinates.
+
+- **Ternary `?`/`:` vs obj-key `:`**: a `?` push from a value-position ternary nested in an object literal matched the obj-key separator `:`. Fix: bail the ternary pop when the `:` is at obj-key position (anchor=Ident inside obj-lit at own level).
+
+**Standing rule (new — #16)**: depth-tracking stacks (ternary, paren, brace) must be matched on TWO independent coordinates when used for cross-substrate-shape disambiguation. Single-coordinate matching is sufficient only when the substrate shapes can never produce the same coordinate by different paths.
+
+### Finding IX.8 (long-tail singletons are full-size SIPE-T instances)
+
+**Source**: TS-parity arc long-tail iterations (3 → 2 → 1 → 0 CRUFT_FAILs).
+
+Each long-tail singleton failure surfaced its own distinct sub-substrate-bug shape on inspection. None were "trivial cleanups." Each required its own choice-point selection, its own conditioning analysis (which corpus signal indicates the cause), its own discipline application (conservative-strip vs aggressive-fix), and its own prompt (the failure's structural-tag). The four-ingredient SIPE-T procedure recurred at every singleton — corroborating Doc 541 Appendix E's scale-invariance claim at the smallest scale of the failure distribution.
+
+**Standing observation**: long-tail close (last 1-5% of any parity arc) costs roughly the same number of substrate fixes as the next 10% of the head. The naive expectation that "diminishing returns" means smaller effort per fix is empirically wrong — each long-tail fix is full-size SIPE-T work. The expected-yield-per-fix shrinks, but the per-fix discipline cost is constant.
+
+### Finding IX.9 (parse-parity 100% achievable at corpus scale; execute-parity remains as separable research arc)
+
+**Source**: TCC final reading 374/374 (100.0%) vs TXC final reading 265/374 (70.9%).
+
+Parse-parity reached 100% in 10 sub-locale rounds across the 2026-05-24 session. Execute-parity remained at 70.9% — gap of 29.1 percentage points that is now attributable to (a) 108 BUN_FAIL files (un-runnable by oracle in this corpus configuration; not a TSR concern), (b) 1 CRUFT_FAIL file (genuine residual ESM cycle in rxjs).
+
+**Engagement-tier finding**: parse-parity and execute-parity are SEPARABLE research arcs at the consumer-corpus tier. The TSR substrate, when complete, achieves parse-parity at 100% without solving execute-parity. The remaining execute-parity gap is now genuinely runtime-substrate / corpus-runnability work, not resolver-instance work. This is the empirical confirmation of the §III parse/execute composition framing in Doc 742 — P, I, R are three independent components, and the resolver tier owns (P) + (R) but not (I).
+
+### Findings-doc cumulative status (post-Addendum XI)
+
+After Addendum XI:
+- 6 original finding sections (I-VI) + 8 original standing rules
+- Addenda I-X as previously listed
+- **Addendum XI (this)**: 3 new findings (IX.7 cross-talk between depth-tracking stacks; IX.8 long-tail-singletons-are-full-size; IX.9 parse-execute-separability) + 1 new standing rule (#16 two-coordinate-matching for depth stacks)
+
+Total: **29 findings** (6 original + 23 new across 11 addenda); **16 standing rules**; 2 standing engagement instruments (TCC parse-parity 100%, TXC execute-parity 70.9%); 2 corpus publications (Doc 541 Appendix E, Doc 742).
+
+**Corpus publication candidates from this addendum**:
+- IX.7 (depth-stack two-coordinate-matching) — generic finding applicable beyond TS; corpus-tier candidate as a substrate-discipline corpus doc.
+- IX.8 (long-tail-singletons-are-full-size) — adds to Doc 541 Appendix E's scale-invariance claim; could be added there as a supplementary observation.
+- IX.9 (parse-execute-separability) — already implicit in Doc 742 §III; could amend Doc 742 with the empirical 100% milestone data.

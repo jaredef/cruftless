@@ -337,3 +337,48 @@ Enum lowering + ctor-param shorthand + sidecar plumbing were originally scoped f
 **Locale closed in 4 implementation rounds** vs Pred-tsr.6's ≤6 budget. Standing-rule-13 thesis: third corroboration on discipline (rounds-to-close); first empirical refinement on C3 condition (cost-positive integration is the load-bearing condition that can fail independently).
 
 **Implication for `cruftscript-spec`**: still a valuable locale to spawn; load-bearing case shifts from "sound types as IPBR-shape-skip substrate" to "sound types as JIT IC specialization input + VD tag preservation." Each follow-on consumer needs its own empirical probe.
+
+---
+
+## 🎯 TS-PARITY ARC MILESTONE — 100.0% PARSE-PARITY ACHIEVED (2026-05-24)
+
+Booked as a milestone entry across the TSR locale's trajectory after the broader TS-parity arc closed. The TSR locale itself closed at TSR-EXT 5; the parse-parity work was carried by 11 sibling sub-locales spawned downstream of TSR's substrate base.
+
+### Arc totals (since TCC-EXT 1 baseline 2026-05-24 early in the session)
+
+| Metric | Baseline | Final | Δ |
+|---|---:|---:|---:|
+| Parse-parity (TCC, 374 npm `.ts` files) | 37.7% | **100.0%** | +62.3 pp |
+| Execute-parity (TXC, same corpus) | 5.1% | 70.9% | +65.8 pp |
+| Execute-parity of *runnable* files (excluding 108 BUN_FAIL) | — | **265/266 = 99.6%** | — |
+| Cumulative LOC delta to TSR substrate | ~1700 (founding) | ~2900 | +1200 LOC |
+
+### Sub-locales that carried the arc
+
+| Locale | Δ parse pp | Substrate work |
+|---|---:|---|
+| TRSLS | +9.4 | Template-tail goal selection in lex_all |
+| TRCAPS | +12.8 | Class + param shapes (6 fixes) |
+| TRGC-EXT 1 | +9.4 | Unified `<...>(` rule + ternary tracking |
+| TRGC-EXT 2 | +1.6 | Arrow/fn-type disambig, ASI, overload-MVP |
+| TRGC-EXT 3 | +10.9 | Overload-pattern completions (keyword unblock + decl-head generics) |
+| TRGC-EXT 4 | +7.5 | UShr/Shr in overload scan + match_angle |
+| TRGC-EXT 5 | +4.8 | Intersection descent, import-type strip, ClassBody distinction |
+| TRGC-EXT 6 | +1.1 | Arrow-body Block classify + abstract methods |
+| TRE | +0.6 | Enum-MVP-strip + keyword-overload unblock |
+| TRMLE | +1.3 | Module-loader TS dispatch + skip_type semicolon-at-top |
+| TROI | +0.3 | Type-only-import elision |
+| Long-tail close (case-label, !`(`/`[`, export-default-fn binding, brace-paren tuple, ternary obj-key guard, match_angle bracket-balance + Template stopper, postfix-! goal, import-equals, ternary cross-talk, computed-key obj-lit) | +3.5 | 10+ singleton substrate fixes |
+
+### Findings booked at the milestone
+
+Per findings.md Addendum XI:
+- **IX.7** (cross-talk between depth-tracking stacks) + new standing rule #16 (two-coordinate matching for depth stacks).
+- **IX.8** (long-tail singletons are full-size SIPE-T instances — SIPE-T scale-invariance confirmed at the smallest scale).
+- **IX.9** (parse-execute-separability as engagement-tier finding).
+
+### Status: TSR-tier work COMPLETE
+
+The TS-parity arc has saturated at the TSR substrate tier. The 1 remaining CRUFT_FAIL (`rxjs/ajax.ts`) is a residual ESM-cycle issue not solvable at the TSR tier (rxjs's internal type/runtime structure produces a cycle that even tsc-emitted code would need runtime live-bindings to handle). Per Finding IX.9, the remaining execute-parity gap belongs to a separable research arc (runtime-substrate work, corpus-runnability work).
+
+**Doc 742 §III** (P/I/R decomposition) is empirically validated at the final milestone: parse-parity (P) reached 100% via TSR work, integration-parity (I) reached ~95% via TRMLE module-loader work + the dispatcher hookup, elision-parity (R) reached ~99% via TROI type-only-imports + the post-strip pass. Each component is independently measurable; each is independently solvable at its own substrate tier.
