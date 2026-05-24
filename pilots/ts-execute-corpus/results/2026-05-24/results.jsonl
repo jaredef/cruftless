@@ -1,5 +1,5 @@
-{"file":"ajv/lib/2019.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module './refs/data.json' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/ajv/lib/co"}
-{"file":"ajv/lib/2020.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module './refs/data.json' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/ajv/lib/co"}
+{"file":"ajv/lib/2019.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module './schema.json' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/ajv/lib/refs/"}
+{"file":"ajv/lib/2020.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module './schema.json' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/ajv/lib/refs/"}
 {"file":"ajv/lib/ajv.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module './refs/json-schema-draft-07.json' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fix"}
 {"file":"ajv/lib/compile/codegen/code.ts","outcome":"MATCH","detail":""}
 {"file":"ajv/lib/compile/codegen/index.ts","outcome":"BUN_FAIL","detail":"1 | })"}
@@ -28,10 +28,10 @@
 {"file":"ajv/lib/refs/jtd-schema.ts","outcome":"MATCH","detail":""}
 {"file":"ajv/lib/runtime/equal.ts","outcome":"BUN_FAIL","detail":"1 | // https://github.com/ajv-validator/ajv/issues/889"}
 {"file":"ajv/lib/runtime/parseJson.ts","outcome":"MATCH","detail":""}
-{"file":"ajv/lib/runtime/quote.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"SetProp 'code' on non-object (undefined) (target='<global>quote') @file:///home/jare"}
+{"file":"ajv/lib/runtime/quote.ts","outcome":"MATCH","detail":""}
 {"file":"ajv/lib/runtime/re2.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module './build/Release/re2.node' from '/home/jaredef/.bun/install/cache/re2@1.24.1@@@1/re2.js'"}
-{"file":"ajv/lib/runtime/timestamp.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"SetProp 'code' on non-object (undefined) (target='<global>validTimestamp') @file:///"}
-{"file":"ajv/lib/runtime/ucs2length.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"SetProp 'code' on non-object (undefined) (target='<global>ucs2length') @file:///home"}
+{"file":"ajv/lib/runtime/timestamp.ts","outcome":"MATCH","detail":""}
+{"file":"ajv/lib/runtime/ucs2length.ts","outcome":"MATCH","detail":""}
 {"file":"ajv/lib/runtime/uri.ts","outcome":"BUN_FAIL","detail":"1 | import * as uri from \"fast-uri\""}
 {"file":"ajv/lib/runtime/validation_error.ts","outcome":"MATCH","detail":""}
 {"file":"ajv/lib/standalone/index.ts","outcome":"BUN_FAIL","detail":"92 |       names.set(name, state)"}
@@ -282,8 +282,8 @@
 {"file":"rxjs/src/internal/operators/throttleTime.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/throwIfEmpty.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/timeInterval.ts","outcome":"MATCH","detail":""}
-{"file":"rxjs/src/internal/operators/timeout.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `Colon` @byte12833 @url=file:///home/jaredef/rusty-bun/pilots/ts-"}
-{"file":"rxjs/src/internal/operators/timeoutWith.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `Colon` @byte12833 @url=file:///home/jaredef/rusty-bun/pilots/ts-"}
+{"file":"rxjs/src/internal/operators/timeout.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/operators/timeoutWith.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/timestamp.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/toArray.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/window.ts","outcome":"MATCH","detail":""}

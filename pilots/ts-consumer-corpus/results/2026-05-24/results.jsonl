@@ -282,7 +282,7 @@
 {"file": "rxjs/src/internal/operators/throttleTime.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/throwIfEmpty.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/timeInterval.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/operators/timeout.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 12833, end: 12834 }, message: 'expected `Colon`' }"}
+{"file": "rxjs/src/internal/operators/timeout.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/timeoutWith.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/timestamp.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/toArray.ts", "outcome": "OK", "message": ""}

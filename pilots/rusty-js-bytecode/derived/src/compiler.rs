@@ -920,6 +920,28 @@ impl Compiler {
                         encode_op(&mut self.bytecode, Op::MakeClosure);
                         encode_u16(&mut self.bytecode, idx);
                         emit_captures(&mut self.bytecode, &captures);
+                        // 2026-05-24: per ECMA-262 §16.2.3.6, `export
+                        // default function NAME(...) {...}` ALSO binds
+                        // NAME in the module's lexical environment, in
+                        // addition to making the function the default
+                        // export. Without this, subsequent module-scope
+                        // references like `NAME.prop = ...` see NAME as
+                        // undefined. Surfaced via TXC long-tail
+                        // (ajv/quote.ts: `quote.code = '...'`).
+                        if let Some(n) = name {
+                            let name_str = n.name.clone();
+                            let name_slot = if let Some(s) = self.resolve_local(&name_str) {
+                                s
+                            } else {
+                                self.alloc_local(LocalDescriptor {
+                                    name: name_str,
+                                    kind: VariableKind::Var, depth: 0,
+                                })
+                            };
+                            encode_op(&mut self.bytecode, Op::Dup);
+                            encode_op(&mut self.bytecode, Op::StoreLocal);
+                            encode_u16(&mut self.bytecode, name_slot);
+                        }
                     }
                     DefaultExportBody::Class { name, super_class, members } => {
                         // Tier-Ω.5.v: lower `export default class [Name?] ...`

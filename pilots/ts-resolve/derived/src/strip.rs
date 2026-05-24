@@ -157,8 +157,12 @@ struct Scanner<'src> {
     witnesses: Vec<TypeWitness>,
     /// Brace context stack — mirrors token-stream nesting. The top
     /// answers "what `{` am I currently inside" for is_annotation_colon
-    /// + skip_type disambiguation.
-    brace_stack: Vec<BraceCtx>,
+    /// + skip_type disambiguation. Each entry pairs the BraceCtx with
+    /// the paren_depth at the moment of `{` push — used to distinguish
+    /// "annotation inside obj-lit-enclosed `(...)`" (paren_depth > push
+    /// depth) from "key-value separator at obj-lit's own level"
+    /// (paren_depth == push depth).
+    brace_stack: Vec<(BraceCtx, i32)>,
     /// Paren depth — mirrors `(`/`)` nesting. Used to gate the
     /// object-literal-context bail in is_annotation_colon (a `:`
     /// inside an obj-lit-enclosed `()` is a method-param annotation,
@@ -626,7 +630,7 @@ impl<'src> Scanner<'src> {
                 // function bodies (where `name(...): expr` is a
                 // ternary, not a method decl). Per Finding TRGC.9.
                 let in_block_or_module = matches!(self.brace_stack.last(),
-                    Some(BraceCtx::ClassBody) | None);
+                    Some((BraceCtx::ClassBody, _)) | None);
                 let stmt_start_prev = i == 0
                     || t.preceded_by_line_terminator
                     || matches!(self.toks[i - 1].kind,
@@ -676,7 +680,7 @@ impl<'src> Scanner<'src> {
                                 let mut depth = 0i32;
                                 let mut found_overload = false;
                                 let in_class_body = matches!(self.brace_stack.last(),
-                                    Some(BraceCtx::ClassBody));
+                                    Some((BraceCtx::ClassBody, _)));
                                 while k < self.toks.len() {
                                     // TRGC-EXT 6 (2026-05-24): abstract
                                     // class method (no body, no ';',
@@ -863,10 +867,23 @@ impl<'src> Scanner<'src> {
                 // ternary stack matches current paren_depth, this `:`
                 // closes a ternary's else-branch — pop and skip
                 // annotation handling entirely.
-                if let Some(&top) = self.ternary_stack.last() {
-                    if top == self.paren_depth {
-                        self.ternary_stack.pop();
-                        return Ok(i + 1);
+                //
+                // EXCEPT when this `:` is at obj-key position inside
+                // an obj-lit nested in the ternary (e.g.
+                // `? { first: config } : ...` — the `first:` matches
+                // current paren_depth but is the obj-key, not the
+                // ternary's else-branch). Guard via obj-lit-at-own-
+                // level check.
+                let at_obj_key = i > 0
+                    && matches!(self.toks[i - 1].kind, TokenKind::Ident(_))
+                    && matches!(self.brace_stack.last(),
+                        Some((BraceCtx::ObjectLit, push_pd)) if *push_pd == self.paren_depth);
+                if !at_obj_key {
+                    if let Some(&top) = self.ternary_stack.last() {
+                        if top == self.paren_depth {
+                            self.ternary_stack.pop();
+                            return Ok(i + 1);
+                        }
                     }
                 }
                 // Annotation site: a `:` that follows an Ident in a
@@ -945,7 +962,7 @@ impl<'src> Scanner<'src> {
                 } else {
                     self.classify_brace(i)
                 };
-                self.brace_stack.push(ctx);
+                self.brace_stack.push((ctx, self.paren_depth));
                 Ok(i + 1)
             }
             TokenKind::Punct(Punct::RBrace) => {
@@ -1189,7 +1206,13 @@ impl<'src> Scanner<'src> {
         // type annotation (`{ method(): T { } }`), which IS an
         // annotation. Defer the bail decision until after anchor
         // resolution.
-        let in_obj_lit = matches!(self.brace_stack.last(), Some(BraceCtx::ObjectLit));
+        // Use BOTH (obj-lit context) AND (paren_depth == push depth).
+        // A `:` at paren_depth > the obj-lit's push depth is inside a
+        // `(...)` opened AFTER the `{` — method-shorthand param-list,
+        // NOT key-value separator.
+        let in_obj_lit_at_own_level = matches!(self.brace_stack.last(),
+            Some((BraceCtx::ObjectLit, push_pd)) if *push_pd == self.paren_depth);
+        let in_obj_lit = in_obj_lit_at_own_level;
         // Annotation contexts: after Ident or after `)` (return type),
         // BUT NOT inside a ternary (preceded by an expr starting with
         // `?` higher up — harder to detect) and NOT inside an object
@@ -1209,11 +1232,12 @@ impl<'src> Scanner<'src> {
             return false;
         }
         // Apply the object-literal bail only for Ident-anchored `:`s
-        // (the key:value case) AND only when we're at the obj-lit's
-        // own level (paren_depth == 0 at this brace depth). A `:`
-        // inside an `(...)` enclosed by an obj-lit is a function-param
-        // annotation, not a key:value separator.
-        if in_obj_lit && prev_is_ident && self.paren_depth == 0 {
+        // (the key:value case). `in_obj_lit` is defined above as
+        // "obj-lit at own level" (paren_depth matches push depth) —
+        // so this correctly distinguishes key-value (bail) from
+        // method-shorthand param-annotation (proceed) inside an
+        // obj-lit-enclosed `(...)`.
+        if in_obj_lit && prev_is_ident {
             return false;
         }
         // TRE-EXT 1 follow-on (2026-05-24): switch `case X:` /
