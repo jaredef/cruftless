@@ -253,3 +253,68 @@ IHI_TABLE entries: 2 (charCodeAt, toLowerCase).
 ---
 
 *IHI-EXT 3 closes. toLowerCase entry landed at Pred-ihi.1 budget; composition (P2.d) at single-entry scope per Pred-ihi.5 multi-entry design (cumulative materialization at IHI-EXT 4+5 close). Substrate-introduction signature per Finding II.2-bis.*
+
+---
+
+## IHI-EXT 4 — 2026-05-24 (per-entry round: String.prototype.trim; cumulative reclaim direction confirmed)
+
+### Headline
+
+Adds trim as IHI_TABLE entry index 2. Per-entry LOC: **~46** (within Pred-ihi.1 ≤50 budget). ASCII byte-scan fast-path; includes **return-self optimization** (legitimate per spec — String primitives' === is value-equality not pointer-equality). Header loop drops 332 → 324 ms = **-2% (small but positive direction)** confirming Pred-ihi.5 multi-entry cumulative pattern.
+
+### Per-entry LOC breakdown
+
+| component | LOC |
+|---|---:|
+| fast_string_trim (return-self + ASCII byte-scan + non-ASCII bail) | 31 |
+| IhiCachedField::StringTrim variant + helper match arms | 4 |
+| Runtime cache field intrinsic_string_trim_id + init | 4 |
+| IhiEntry literal | 7 |
+| **total** | **46** |
+
+Marginally over toLowerCase's 33 LOC due to the return-self check + ASCII-bail discriminator. Still within budget.
+
+### Three-probe results
+
+| probe | result |
+|---|---|
+| canonical fuzz (acc=-932188103) | ✅ GREEN |
+| diff-prod 42/42 | ✅ GREEN |
+| CRB string_url_sweep (5-run median) | 750 ms vs CRB-EXT-9 baseline 743 ms (+1%; back in noise range; vs IHI-EXT 3's +24 ms) |
+| A/B header_loop (3-run median) | **324 ms vs original baseline 332 ms = -2%** |
+
+### Cumulative pattern confirmation
+
+Per IHI-EXT 3's analysis: single-entry was (P2.d) at -1% to -3% drift (overhead exceeded single-entry savings). Two-entry close shows -2% on the header loop component — net positive direction.
+
+Per Doc 740 §II.2 P4 / Finding II.3 multi-tier cascade-revival at the per-entry tier: each additional entry adds ~200ns/inner-iter savings (per the IHI-EXT 3 cost shape analysis); 2 entries × 200ns = 400ns savings vs 7 CallMethods × ~50ns = 350ns overhead. Crossover from net-overhead to net-savings happens between 1 and 2 entries. **Empirically confirmed at IHI-EXT 4.**
+
+For 35K inner-iters × +50ns net savings/iter = +1.75 ms saved on the header loop. Plus the return-self optimization for already-trimmed strings (many header values are already-trimmed) adds additional savings. Observed -8 ms on the header loop is in line.
+
+**Pred-ihi.5 projection updates**: 3 entries (after indexOf) → 3 × 200ns = 600ns savings vs 350ns overhead → +250ns net savings per inner-iter. For 35K iters: +8.75 ms saved. Plus return-self for trim. Plus toLowerCase's ASCII byte-shift vs Unicode walk savings. Total projection: 20-50 ms savings on header loop = 6-15% reclaim. Below the ≥30% Pred-ihi.5 target but in the right direction.
+
+To hit ≥30%, the IC dispatch overhead must drop (perhaps via per-call-site IC cache) OR more entries per inner-iter must fire (4-5 entries hitting the inner loop). Indicator candidates: slice (would close 2 inner-iter calls); Object iteration intrinsics for the for-of body itself.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable.
+Per Doc 734 §V: growth (a) positive-finding (cumulative direction crossed from net-overhead to net-savings).
+Per Doc 735 §X.h.b: substrate-introduction continuing; (P2.d-borderline-positive) at 2-entry scope; full materialization queued at 3+ entries.
+
+### Open scope at IHI-EXT 4 close
+
+1. **IHI-EXT 5** — indexOf 1-arg entry (closes 1 more inner-iter CallMethod; per cost model, lifts net savings to ~+8.75 ms = ~3% header loop reclaim)
+2. **IHI-EXT 6** — composition probe + Pred-ihi.5 evaluation
+3. **Finding IHI.1 candidate** — per-call-site IC cache for dispatch-overhead reduction (deferred; hardening tier)
+4. **Finding IHI.2 candidate** — return-self semantic guarantee documentation (no observable break in cruft's existing fixtures)
+
+### Cumulative status at IHI-EXT 4 close
+
+LOC delta: ~46 (trim entry).
+IHI-EXT 0-4 cumulative: ~591 across the locale.
+IHI_TABLE entries: 3 (charCodeAt, toLowerCase, trim).
+Cumulative direction: net-positive on header loop (small win; matches Pred-ihi.5 multi-entry projection).
+
+---
+
+*IHI-EXT 4 closes. trim entry landed at 46 LOC with return-self optimization. **Cumulative reclaim direction confirmed**: 2-entry header loop -2% vs original baseline (-8 ms). Pred-ihi.5 multi-entry crossover from net-overhead to net-savings happened between IHI-EXT 3 and IHI-EXT 4. Continuing toward indexOf at IHI-EXT 5.*

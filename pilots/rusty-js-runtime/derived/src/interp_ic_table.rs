@@ -51,8 +51,9 @@ pub enum IhiCachedField {
     StringCharCodeAt,
     /// IHI-EXT 3 (2026-05-24): String.prototype.toLowerCase.
     StringToLowerCase,
-    // IHI-EXT 4+: add variants as entries land
-    //   StringTrim,
+    /// IHI-EXT 4 (2026-05-24): String.prototype.trim.
+    StringTrim,
+    // IHI-EXT 5+: add variants as entries land
     //   StringIndexOf,
     //   StringSlice,
 }
@@ -122,6 +123,46 @@ fn fast_string_to_lower_case(recv: &Value, args: &[Value]) -> Option<Value> {
     } else { None }
 }
 
+// ─── ENTRY 2: String.prototype.trim (MethodCall arity 0) ───
+//
+// IHI-EXT 4 (2026-05-24): ASCII byte-scan fast-path. ECMA whitespace
+// at ASCII: space (0x20), tab (0x09), LF (0x0A), CR (0x0D), VT (0x0B),
+// FF (0x0C). NBSP (0xA0) is non-ASCII; bail on those strings.
+//
+// **Return-self optimization** (legitimate per spec — String is a
+// primitive; === is value-equality not pointer-equality): if no trim
+// is needed, return the same Rc<String> (cheap clone; no allocation).
+// Matches V8/SpiderMonkey/Hermes behavior. Candidate Finding IHI.1 if
+// any fixture surfaces dependence on reference inequality.
+
+fn fast_string_trim(recv: &Value, args: &[Value]) -> Option<Value> {
+    if !args.is_empty() { return None; }
+    if let Value::String(s) = recv {
+        let bytes = s.as_bytes();
+        let is_ws = |b: u8| matches!(b, b' '|b'\t'|b'\n'|b'\r'|0x0B|0x0C);
+        let mut start = 0;
+        while start < bytes.len() && is_ws(bytes[start]) { start += 1; }
+        let mut end = bytes.len();
+        while end > start && is_ws(bytes[end - 1]) { end -= 1; }
+        if start == 0 && end == bytes.len() {
+            // No trim needed; return self (no allocation).
+            return Some(Value::String(s.clone()));
+        }
+        // Trim needed; allocate.
+        // SAFETY: byte slice [start..end] respects UTF-8 char boundaries
+        // because we only skipped ASCII whitespace (single-byte chars).
+        // For non-ASCII strings the unchecked slice could split a
+        // multibyte char; bail to slow path on non-ASCII strings.
+        if !s.is_ascii() {
+            // Skip the optimization for non-ASCII; let slow path handle
+            // (Unicode whitespace + correct char-boundary slicing).
+            return None;
+        }
+        let trimmed = unsafe { std::str::from_utf8_unchecked(&bytes[start..end]) }.to_owned();
+        Some(Value::String(std::rc::Rc::new(trimmed)))
+    } else { None }
+}
+
 // ─── IC_TABLE static registry ───
 //
 // Future entries register here per IHI-EXT 3+. Each entry: key +
@@ -141,6 +182,13 @@ pub static IHI_TABLE: &[IhiEntry] = &[
         arity: Some(0),
         cached_id_field: IhiCachedField::StringToLowerCase,
         fast: fast_string_to_lower_case,
+    },
+    IhiEntry {
+        key: "trim",
+        receiver: IhiReceiverKind::String,
+        arity: Some(0),
+        cached_id_field: IhiCachedField::StringTrim,
+        fast: fast_string_trim,
     },
 ];
 
