@@ -38,8 +38,11 @@ use rusty_js_parser::{Lexer, LexerGoal, Token, TokenKind, Punct, Span, TemplateP
 /// an annotation between them. Filtering by name avoids requiring
 /// expensive lookback to verify class-body vs control-flow context.
 fn is_overload_blocked_name(name: &str) -> bool {
+    // `do` is safe to NOT block — `do { ... } while ()` has `{` as
+    // immediate-next-token, which fails the next_punct_immediate(LParen)
+    // check naturally. `do(...)` as a method name is valid TS.
     matches!(name,
-        "if" | "for" | "while" | "switch" | "catch" | "with" | "do"
+        "if" | "for" | "while" | "switch" | "catch" | "with"
         | "return" | "yield" | "await" | "throw" | "new" | "typeof"
         | "delete" | "void" | "in" | "of" | "instanceof"
         | "let" | "const" | "var" | "function" | "class"
@@ -223,10 +226,16 @@ impl<'src> Scanner<'src> {
                 || n == "throw"
                 || n == "in"
                 || n == "of"
-                || n == "typeof"
                 || n == "delete"
-                || n == "void"
                 || n == "new" => BraceCtx::ObjectLit,
+            // NOTE: `void` and `typeof` excluded — these names appear
+            // very commonly as TS return-type or type-query annotations
+            // (e.g. `function f(): void {`). Including them caused the
+            // following function body `{` to mis-classify as ObjectLit,
+            // which broke annotation detection inside the body.
+            // The cost of exclusion is an obscure unary-on-object case
+            // like `void { x: 1 }` being treated as a block — extremely
+            // rare in real code.
             _ => BraceCtx::Block,
         }
     }
@@ -451,15 +460,31 @@ impl<'src> Scanner<'src> {
                 //   - brace_stack.last() == Block (in a class body)
                 //   - preceded_by_line_terminator OR prev is `{` or `;`
                 //     (statement-start position in the class body)
-                let at_class_member_start = matches!(self.brace_stack.last(), Some(BraceCtx::Block))
-                    && (
-                        t.preceded_by_line_terminator
-                        || i == 0
-                        || matches!(self.toks[i - 1].kind,
-                            TokenKind::Punct(Punct::LBrace) | TokenKind::Punct(Punct::Semicolon))
-                    );
+                // Class-body member-start OR module-level statement-
+                // start (function overload at top level: `function
+                // NAME(...): T;`). brace_stack.last == None covers
+                // the latter; the prev-token check is the same.
+                let in_block_or_module = matches!(self.brace_stack.last(),
+                    Some(BraceCtx::Block) | None);
+                let stmt_start_prev = i == 0
+                    || t.preceded_by_line_terminator
+                    || matches!(self.toks[i - 1].kind,
+                        TokenKind::Punct(Punct::LBrace)
+                        | TokenKind::Punct(Punct::Semicolon))
+                    || matches!(&self.toks[i - 1].kind,
+                        TokenKind::Ident(prev_name) if prev_name == "function");
+                let at_class_member_start = in_block_or_module && stmt_start_prev;
                 if at_class_member_start && !is_overload_blocked_name(name) {
-                    if let Some(lparen) = self.next_punct_immediate(i + 1, Punct::LParen) {
+                    // Allow generic-args `<T,...>` between name and `(`
+                    // for `function NAME<T>(...): R;` overloads.
+                    let lparen_search_pos = if i + 1 < self.toks.len()
+                        && matches!(self.toks[i + 1].kind, TokenKind::Punct(Punct::Lt))
+                    {
+                        if let Some(close) = self.match_angle(i + 1) {
+                            close + 1
+                        } else { i + 1 }
+                    } else { i + 1 };
+                    if let Some(lparen) = self.next_punct_immediate(lparen_search_pos, Punct::LParen) {
                         if let Some(rparen) = self.match_parens(lparen) {
                             // Tighten: the IMMEDIATE next token after
                             // `)` must be `:` (annotation), `;` (no-
@@ -502,7 +527,17 @@ impl<'src> Scanner<'src> {
                                     k += 1;
                                 }
                                 if found_overload {
-                                    let start = t.span.start;
+                                    // For module-level `function NAME(...)
+                                    // : T;` overloads, extend strip
+                                    // range backward to include the
+                                    // `function` keyword — otherwise a
+                                    // bare `function` keyword remains
+                                    // and the file fails to parse.
+                                    let start = if i > 0 && matches!(&self.toks[i - 1].kind,
+                                        TokenKind::Ident(n) if n == "function")
+                                    {
+                                        self.toks[i - 1].span.start
+                                    } else { t.span.start };
                                     let end = self.toks[k].span.end;
                                     self.strips.push((start, end));
                                     return Ok(k + 1);

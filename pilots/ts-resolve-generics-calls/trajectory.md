@@ -109,7 +109,50 @@ Achieving 1-5 lifts parse-success **69.3% → ~88%**.
 
 **Finding TRGC.5** (substrate-tier discipline-of-conservative-strip-rules): when a strip rule's heuristic is uncertain, prefer false-negatives (miss real cases) over false-positives (strip non-cases). Bail conditions should be conservative. Cost of a false-negative: TCC re-measurement shows the failure category remains, easy to iterate. Cost of a false-positive: silent regression of previously-OK files; hard to detect without an instrument.
 
-### Status: CHAPTER CLOSED at TRGC-EXT 2
+### Status: REOPENED for TRGC-EXT 3 follow-on
+
+---
+
+## TRGC-EXT 3 — overload-pattern completions (2026-05-24)
+
+**Trigger**: keeper directive "Yes" after TRGC-EXT 2 close. Continued inspect-then-iterate investigation on the remaining `method-return-annotation` row.
+
+**Four substrate improvements landed**:
+
+1. **`do` keyword unblocked** from `is_overload_blocked_name` — `do { } while ()` is naturally disambiguated by the next-is-LParen filter (do-while has `{` next, do-as-method has `(`). Enabled `do(...)` method names like rxjs's `Notification.do`.
+
+2. **`void` / `typeof` removed from `classify_brace`'s obj-lit-classify set** — the names appear far more commonly as TS return-type annotations (`): void {`) than as unary-on-object-literal expressions. Including them caused the function body `{` after `: void` to mis-classify as ObjectLit, breaking annotation detection INSIDE the body. Single-fix +1.6 pp.
+
+3. **Module-level function overload gating extended** — `at_class_member_start` now also accepts `brace_stack.last() == None` (module level) and `prev == Ident("function")`. Strip range extended backward to include the `function` keyword. Handles `function NAME(...): T;` at module scope. +1.0 pp.
+
+4. **Overload with generics on name** (`function NAME<T>(...): R;`) — when name is followed by `<`, `match_angle` past the generic-args to find `(`. **Single-fix +8.3 pp** — unlocked many overload-heavy files (rxjs, ajv) that use generic overloads pervasively.
+
+**Gates**:
+- `cargo test --release -p ts-resolve`: ✅ **46/46 PASS** (no new tests this round — fixes covered by existing regression + the TCC corpus itself)
+- diff-prod 42/42 PASS ✅
+
+**TCC measurement (TRGC-EXT 3 cumulative)**:
+
+| Stage | OK | Parse-success | Δ from TRGC-EXT 2 close |
+|---|---:|---:|---:|
+| Pre-round (TRGC-EXT 2 close) | 265 | 70.9% | — |
+| After `do` unblock | 265 | 70.9% | 0.0 pp (no example in corpus) |
+| After `void`/`typeof` classify-brace fix | 271 | 72.5% | +1.6 pp |
+| After module-level function overload | 275 | 73.5% | +1.0 pp |
+| After overload-with-generics | **306** | **81.8%** | **+8.3 pp** |
+| **Cumulative TRGC-EXT 3** | **+41 files** | **+10.9 pp** | — |
+
+### Findings
+
+**Finding TRGC.6** (single-substrate-fix high-yield surface): the overload-with-generics fix alone delivered +8.3 pp from ~15 LOC. **The largest single-fix yield observed in any sub-locale this session.** Substrate-bug discovery via TCC continues to pay outsized returns.
+
+**Finding TRGC.7** (inspect-then-iterate compound discovery, fourth reproduction): the pattern reproduces yet again. Each round's "what's left" inspection surfaces higher-impact substrate gaps than the planned scope. Standing observation: the corpus-driven inspect-then-iterate discipline has stronger predictive yield than spec-driven planning.
+
+### Status: CHAPTER CLOSED at TRGC-EXT 3
+
+Standing rule 13 corroboration count holds at 8. Substrate now handles `do(...)` method names, `void`/`typeof` annotation followers, module-level function overloads with generic args, AND `function NAME(...): T;` declarations at any context.
+
+**Cumulative session parse-success on real npm corpus**: 37.7% → 81.8% (+44.1 pp across all sub-locale rounds). Within striking distance of the original ~87% milestone for top-6 sub-locales.
 
 Standing rule 13 corroboration count holds at 8 (TRGC-EXT 2 is a follow-on within TRGC's locale, not a new locale). Substrate now handles arrow-vs-fn-type, class-field ASI, and TS method/function overload declarations.
 
