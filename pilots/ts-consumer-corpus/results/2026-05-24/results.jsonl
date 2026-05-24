@@ -35,7 +35,7 @@
 {"file": "ajv/lib/runtime/uri.ts", "outcome": "OK", "message": ""}
 {"file": "ajv/lib/runtime/validation_error.ts", "outcome": "OK", "message": ""}
 {"file": "ajv/lib/standalone/index.ts", "outcome": "OK", "message": ""}
-{"file": "ajv/lib/standalone/instance.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 202, end: 203 }, message: 'expected class member name' }"}
+{"file": "ajv/lib/standalone/instance.ts", "outcome": "OK", "message": ""}
 {"file": "ajv/lib/types/index.ts", "outcome": "OK", "message": ""}
 {"file": "ajv/lib/types/json-schema.ts", "outcome": "OK", "message": ""}
 {"file": "ajv/lib/types/jtd-schema.ts", "outcome": "OK", "message": ""}

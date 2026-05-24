@@ -350,6 +350,131 @@ impl<'src> Scanner<'src> {
         }
     }
 
+    /// TROI-EXT 1 (2026-05-24, ts-resolve-type-only-imports locale):
+    /// post-strip pass that elides imports whose bindings are never
+    /// used in surviving (non-stripped) Ident tokens. Mirrors
+    /// `tsc --verbatimModuleSyntax`'s elision rule. Eliminates ESM
+    /// cycles formed by type-only imports (e.g. rxjs's types.ts
+    /// importing Observable + Subscription purely for type position).
+    ///
+    /// MVP: only strips an import statement if ALL of its imported
+    /// binding names have ZERO usages outside the import statement
+    /// itself. Partial-strip (some used + some unused) deferred.
+    /// Side-effect-only imports (`import 'x'`) preserved.
+    fn elide_unused_imports(&mut self) {
+        // Pre-compute: for each token index, is it inside an already-
+        // strip range? Sparse Vec<bool> indexed by token idx.
+        let mut in_strip: Vec<bool> = vec![false; self.toks.len()];
+        for (start, end) in &self.strips {
+            for (idx, tok) in self.toks.iter().enumerate() {
+                if tok.span.start >= *start && tok.span.end <= *end {
+                    in_strip[idx] = true;
+                }
+            }
+        }
+        // Walk toks for top-level `import` statements.
+        let mut new_strips: Vec<(usize, usize)> = Vec::new();
+        let mut i = 0;
+        while i < self.toks.len() {
+            if in_strip[i] { i += 1; continue; }
+            let is_import_stmt = matches!(&self.toks[i].kind,
+                TokenKind::Ident(n) if n == "import")
+                && self.is_stmt_start(i);
+            if !is_import_stmt { i += 1; continue; }
+            // Find statement end (next top-level `;` or end-of-string-after-from).
+            let stmt_end_idx = match self.find_stmt_end(i + 1) {
+                Some(idx) => idx,
+                None => { i += 1; continue; }
+            };
+            // Detect side-effect-only: `import 'foo';` or `import "foo";`
+            // (no `{`/`*`/Ident between `import` and the String).
+            let mut name_idxs: Vec<usize> = Vec::new();
+            let mut j = i + 1;
+            let mut side_effect_only = true;
+            // Scan tokens between `import` and the source string for
+            // binding names.
+            while j <= stmt_end_idx {
+                match &self.toks[j].kind {
+                    TokenKind::Ident(name) if name == "from" => break,
+                    TokenKind::Ident(name) if name == "as" => {
+                        // `X as Y` — the binding is Y; remove the
+                        // previously-added X.
+                        name_idxs.pop();
+                        side_effect_only = false;
+                        j += 1;
+                        continue;
+                    }
+                    TokenKind::Ident(name) if name == "type" && j == i + 1 => {
+                        // `import type ...` — already handled by the
+                        // explicit import-type rule. Skip elision here.
+                        return; // not this statement; resume outer
+                                // (use return-bail; we just won't strip this one)
+                    }
+                    TokenKind::Ident(_) => {
+                        name_idxs.push(j);
+                        side_effect_only = false;
+                    }
+                    TokenKind::Punct(Punct::Star) => {
+                        side_effect_only = false;
+                    }
+                    TokenKind::Punct(Punct::LBrace) | TokenKind::Punct(Punct::RBrace)
+                    | TokenKind::Punct(Punct::Comma) | TokenKind::Punct(Punct::Colon) => {}
+                    TokenKind::String(_) => {
+                        // Should be the source path after `from`. Done.
+                        break;
+                    }
+                    _ => {}
+                }
+                j += 1;
+            }
+            if side_effect_only || name_idxs.is_empty() {
+                i = stmt_end_idx + 1;
+                continue;
+            }
+            // For each binding name, count surviving (non-strip) Ident
+            // occurrences in the WHOLE token stream EXCLUDING the
+            // import statement itself.
+            let mut all_unused = true;
+            for &nidx in &name_idxs {
+                let target_name = match &self.toks[nidx].kind {
+                    TokenKind::Ident(n) => n.clone(),
+                    _ => continue,
+                };
+                let mut count = 0usize;
+                for (idx, tok) in self.toks.iter().enumerate() {
+                    if idx >= i && idx <= stmt_end_idx { continue; }
+                    if in_strip[idx] { continue; }
+                    if let TokenKind::Ident(n) = &tok.kind {
+                        if n == &target_name { count += 1; }
+                    }
+                }
+                if count > 0 {
+                    all_unused = false;
+                    break;
+                }
+            }
+            if all_unused {
+                let start = self.toks[i].span.start;
+                let end = self.toks[stmt_end_idx].span.end;
+                new_strips.push((start, end));
+            }
+            i = stmt_end_idx + 1;
+        }
+        if !new_strips.is_empty() {
+            self.strips.extend(new_strips);
+            // Re-merge.
+            self.strips.sort_by_key(|r| r.0);
+            let mut merged: Vec<(usize, usize)> = Vec::with_capacity(self.strips.len());
+            for r in self.strips.drain(..) {
+                if let Some(last) = merged.last_mut() {
+                    if r.0 <= last.1 { last.1 = last.1.max(r.1); continue; }
+                }
+                merged.push(r);
+            }
+            self.strips = merged;
+        }
+    }
+
     fn run(&mut self) -> Result<(), StripError> {
         self.lex_all()?;
         let n = self.toks.len();
@@ -370,6 +495,8 @@ impl<'src> Scanner<'src> {
             merged.push(r);
         }
         self.strips = merged;
+        // TROI-EXT 1: post-strip elision of unused imports.
+        self.elide_unused_imports();
         Ok(())
     }
 

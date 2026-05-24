@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 35,
-    "top_level": 24,
+    "locales": 36,
+    "top_level": 25,
     "nested": 11,
     "warnings": 0
   },
@@ -305,6 +305,15 @@
       "depth": 1,
       "rung_count": 2,
       "status": "**CHAPTER CLOSED at TRSLS-EXT 1 (1 implementation round; Pred-trsls.5 HELD; sixth corroboration of standing rule 13)**. All five Pred-trsls.* HELD. Parse-success lifted 37.7% \u2192 **47.1%** (+9.4 pp; 3\u00d7 over the \u22653 pp target). 60 files transitioned out of STRIP-error category. Substrate bug eliminated. Post-fix failure-table now cleanly separates TS-feature gaps from TSR bugs."
+    },
+    {
+      "coord": "ts-resolve-type-only-imports",
+      "tag": "L.ts-resolve-type-only-imports",
+      "parent": null,
+      "scope": "ts-resolve-type-only-imports",
+      "depth": 1,
+      "rung_count": 2,
+      "status": "**CHAPTER CLOSED at TROI-EXT 1 (1 implementation round; standing rule 13 twelfth corroboration; LARGEST-YIELD substrate fix of the parity arc)**. Execute-parity **60.7% \u2192 69.0%** (+8.3 pp). CRUFT_FAIL count: 39 \u2192 8 (31 files unblocked by ONE 110-LOC post-strip pass). Pred-troi.3 + Pred-troi.4 HELD STRONGLY \u2014 failure-table top tag shifted from `prototype-undefined` (30 files, ESM cycle) to small unrelated singletons. **Finding TROI.2**: the rxjs ESM-cycle issue was diagnosed as a runtime-substrate concern but the actual fix was at the resolver tier (TSR elision). Substantive refinement of Doc 729 \u2014 the resolver-instance pattern is even more powerful than originally framed."
     },
     {
       "coord": "web-crypto",

@@ -1,5 +1,5 @@
 {"file":"ajv/lib/2019.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module './refs/data.json' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/ajv/lib/co"}
-{"file":"ajv/lib/2020.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module './schema.json' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/ajv/lib/refs/"}
+{"file":"ajv/lib/2020.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module './refs/data.json' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/ajv/lib/co"}
 {"file":"ajv/lib/ajv.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module './refs/json-schema-draft-07.json' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fix"}
 {"file":"ajv/lib/compile/codegen/code.ts","outcome":"MATCH","detail":""}
 {"file":"ajv/lib/compile/codegen/index.ts","outcome":"BUN_FAIL","detail":"1 | })"}
@@ -25,7 +25,7 @@
 {"file":"ajv/lib/jtd.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module './refs/data.json' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/ajv/lib/co"}
 {"file":"ajv/lib/refs/json-schema-2019-09/index.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module './schema.json' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/ajv/lib/refs/"}
 {"file":"ajv/lib/refs/json-schema-2020-12/index.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module './schema.json' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/ajv/lib/refs/"}
-{"file":"ajv/lib/refs/jtd-schema.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"bare specifier 'fast-uri' not found: walked up from '/home/jaredef/rusty-bun/pilots/"}
+{"file":"ajv/lib/refs/jtd-schema.ts","outcome":"MATCH","detail":""}
 {"file":"ajv/lib/runtime/equal.ts","outcome":"BUN_FAIL","detail":"1 | // https://github.com/ajv-validator/ajv/issues/889"}
 {"file":"ajv/lib/runtime/parseJson.ts","outcome":"MATCH","detail":""}
 {"file":"ajv/lib/runtime/quote.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"SetProp 'code' on non-object (undefined) (target='<global>quote') @file:///home/jare"}
@@ -36,7 +36,7 @@
 {"file":"ajv/lib/runtime/validation_error.ts","outcome":"MATCH","detail":""}
 {"file":"ajv/lib/standalone/index.ts","outcome":"BUN_FAIL","detail":"92 |       names.set(name, state)"}
 {"file":"ajv/lib/standalone/instance.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module './refs/data.json' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/ajv/lib/co"}
-{"file":"ajv/lib/types/index.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"bare specifier 'fast-uri' not found: walked up from '/home/jaredef/rusty-bun/pilots/"}
+{"file":"ajv/lib/types/index.ts","outcome":"MATCH","detail":""}
 {"file":"ajv/lib/types/json-schema.ts","outcome":"MATCH","detail":""}
 {"file":"ajv/lib/types/jtd-schema.ts","outcome":"MATCH","detail":""}
 {"file":"ajv/lib/vocabularies/applicator/additionalItems.ts","outcome":"BUN_FAIL","detail":"1 | })"}
@@ -132,10 +132,10 @@
 {"file":"rxjs/src/internal/Observable.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/Operator.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/ReplaySubject.ts","outcome":"MATCH","detail":""}
-{"file":"rxjs/src/internal/Scheduler.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"Cannot read property 'prototype' of undefined (receiver='<class$0.super.ctor:Subscri"}
+{"file":"rxjs/src/internal/Scheduler.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/Subject.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/Subscriber.ts","outcome":"MATCH","detail":""}
-{"file":"rxjs/src/internal/Subscription.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"Cannot read property 'prototype' of undefined (receiver='<class$0.super.ctor:Subscri"}
+{"file":"rxjs/src/internal/Subscription.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/ajax/AjaxResponse.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/ajax/ajax.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected template middle/tail after substitution @byte15755 @url=file:///h"}
 {"file":"rxjs/src/internal/ajax/errors.ts","outcome":"MATCH","detail":""}
@@ -180,11 +180,11 @@
 {"file":"rxjs/src/internal/observable/zip.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/OperatorSubscriber.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/audit.ts","outcome":"MATCH","detail":""}
-{"file":"rxjs/src/internal/operators/auditTime.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"Cannot read property 'prototype' of undefined (receiver='<class$0.super.ctor:Subscri"}
+{"file":"rxjs/src/internal/operators/auditTime.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/buffer.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/bufferCount.ts","outcome":"MATCH","detail":""}
-{"file":"rxjs/src/internal/operators/bufferTime.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"Cannot read property 'prototype' of undefined (receiver='<class$0.super.ctor:Subscri"}
-{"file":"rxjs/src/internal/operators/bufferToggle.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"Cannot read property 'prototype' of undefined (receiver='<class$0.super.ctor:Subscri"}
+{"file":"rxjs/src/internal/operators/bufferTime.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/operators/bufferToggle.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/bufferWhen.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/catchError.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/combineAll.ts","outcome":"MATCH","detail":""}
@@ -199,9 +199,9 @@
 {"file":"rxjs/src/internal/operators/connect.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/count.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/debounce.ts","outcome":"MATCH","detail":""}
-{"file":"rxjs/src/internal/operators/debounceTime.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"Cannot read property 'prototype' of undefined (receiver='<class$0.super.ctor:Subscri"}
+{"file":"rxjs/src/internal/operators/debounceTime.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/defaultIfEmpty.ts","outcome":"MATCH","detail":""}
-{"file":"rxjs/src/internal/operators/delay.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"Cannot read property 'prototype' of undefined (receiver='<class$0.super.ctor:Subscri"}
+{"file":"rxjs/src/internal/operators/delay.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/delayWhen.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/dematerialize.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/distinct.ts","outcome":"MATCH","detail":""}
@@ -251,12 +251,12 @@
 {"file":"rxjs/src/internal/operators/raceWith.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/reduce.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/refCount.ts","outcome":"MATCH","detail":""}
-{"file":"rxjs/src/internal/operators/repeat.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"Cannot read property 'prototype' of undefined (receiver='<class$0.super.ctor:Subscri"}
+{"file":"rxjs/src/internal/operators/repeat.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/repeatWhen.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/retry.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/retryWhen.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/sample.ts","outcome":"MATCH","detail":""}
-{"file":"rxjs/src/internal/operators/sampleTime.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"Cannot read property 'prototype' of undefined (receiver='<class$0.super.ctor:Subscri"}
+{"file":"rxjs/src/internal/operators/sampleTime.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/scan.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/scanInternals.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/sequenceEqual.ts","outcome":"MATCH","detail":""}
@@ -278,12 +278,12 @@
 {"file":"rxjs/src/internal/operators/takeUntil.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/takeWhile.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/tap.ts","outcome":"MATCH","detail":""}
-{"file":"rxjs/src/internal/operators/throttle.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"Cannot read property 'prototype' of undefined (receiver='<class$0.super.ctor:Subscri"}
-{"file":"rxjs/src/internal/operators/throttleTime.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"Cannot read property 'prototype' of undefined (receiver='<class$0.super.ctor:Subscri"}
+{"file":"rxjs/src/internal/operators/throttle.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/operators/throttleTime.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/throwIfEmpty.ts","outcome":"MATCH","detail":""}
-{"file":"rxjs/src/internal/operators/timeInterval.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"Cannot read property 'prototype' of undefined (receiver='<class$0.super.ctor:Subscri"}
+{"file":"rxjs/src/internal/operators/timeInterval.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/timeout.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `Colon` @byte12833 @url=file:///home/jaredef/rusty-bun/pilots/ts-"}
-{"file":"rxjs/src/internal/operators/timeoutWith.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"Cannot read property 'prototype' of undefined (receiver='<class$0.super.ctor:Subscri"}
+{"file":"rxjs/src/internal/operators/timeoutWith.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `Colon` @byte12833 @url=file:///home/jaredef/rusty-bun/pilots/ts-"}
 {"file":"rxjs/src/internal/operators/timestamp.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/toArray.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/window.ts","outcome":"MATCH","detail":""}
@@ -302,25 +302,25 @@
 {"file":"rxjs/src/internal/scheduled/schedulePromise.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/scheduled/scheduleReadableStreamLike.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/scheduled/scheduled.ts","outcome":"MATCH","detail":""}
-{"file":"rxjs/src/internal/scheduler/Action.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"Cannot read property 'prototype' of undefined (receiver='<class$0.super.ctor:Subscri"}
-{"file":"rxjs/src/internal/scheduler/AnimationFrameAction.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"Cannot read property 'prototype' of undefined (receiver='<class$0.super.ctor:Subscri"}
-{"file":"rxjs/src/internal/scheduler/AnimationFrameScheduler.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"Cannot read property 'prototype' of undefined (receiver='<class$0.super.ctor:Subscri"}
-{"file":"rxjs/src/internal/scheduler/AsapAction.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"Cannot read property 'prototype' of undefined (receiver='<class$0.super.ctor:Subscri"}
-{"file":"rxjs/src/internal/scheduler/AsapScheduler.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"Cannot read property 'prototype' of undefined (receiver='<class$0.super.ctor:Subscri"}
-{"file":"rxjs/src/internal/scheduler/AsyncAction.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"Cannot read property 'prototype' of undefined (receiver='<class$0.super.ctor:Subscri"}
-{"file":"rxjs/src/internal/scheduler/AsyncScheduler.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"Cannot read property 'prototype' of undefined (receiver='<class$0.super.ctor:Subscri"}
-{"file":"rxjs/src/internal/scheduler/QueueAction.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"Cannot read property 'prototype' of undefined (receiver='<class$0.super.ctor:Subscri"}
-{"file":"rxjs/src/internal/scheduler/QueueScheduler.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"Cannot read property 'prototype' of undefined (receiver='<class$0.super.ctor:Subscri"}
-{"file":"rxjs/src/internal/scheduler/VirtualTimeScheduler.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"Cannot read property 'prototype' of undefined (receiver='<class$0.super.ctor:Subscri"}
-{"file":"rxjs/src/internal/scheduler/animationFrame.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"Cannot read property 'prototype' of undefined (receiver='<class$0.super.ctor:Subscri"}
-{"file":"rxjs/src/internal/scheduler/animationFrameProvider.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"Cannot read property 'prototype' of undefined (receiver='<class$0.super.ctor:Subscri"}
-{"file":"rxjs/src/internal/scheduler/asap.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"Cannot read property 'prototype' of undefined (receiver='<class$0.super.ctor:Subscri"}
-{"file":"rxjs/src/internal/scheduler/async.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"Cannot read property 'prototype' of undefined (receiver='<class$0.super.ctor:Subscri"}
+{"file":"rxjs/src/internal/scheduler/Action.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/scheduler/AnimationFrameAction.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/scheduler/AnimationFrameScheduler.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/scheduler/AsapAction.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/scheduler/AsapScheduler.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/scheduler/AsyncAction.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/scheduler/AsyncScheduler.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/scheduler/QueueAction.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/scheduler/QueueScheduler.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/scheduler/VirtualTimeScheduler.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/scheduler/animationFrame.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/scheduler/animationFrameProvider.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/scheduler/asap.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/scheduler/async.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/scheduler/dateTimestampProvider.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/scheduler/immediateProvider.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/scheduler/intervalProvider.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/scheduler/performanceTimestampProvider.ts","outcome":"MATCH","detail":""}
-{"file":"rxjs/src/internal/scheduler/queue.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"Cannot read property 'prototype' of undefined (receiver='<class$0.super.ctor:Subscri"}
+{"file":"rxjs/src/internal/scheduler/queue.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/scheduler/timeoutProvider.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/scheduler/timerHandle.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/symbol/iterator.ts","outcome":"MATCH","detail":""}
@@ -328,7 +328,7 @@
 {"file":"rxjs/src/internal/testing/ColdObservable.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/testing/HotObservable.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/testing/SubscriptionLog.ts","outcome":"MATCH","detail":""}
-{"file":"rxjs/src/internal/testing/SubscriptionLoggable.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"Cannot read property 'prototype' of undefined (receiver='<class$0.super.ctor:Subscri"}
+{"file":"rxjs/src/internal/testing/SubscriptionLoggable.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/testing/TestMessage.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/testing/TestScheduler.ts","outcome":"CRUFT_FAIL","detail":"cruft: ts strip error in /home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/rxjs/src/internal/testing/TestSchedu"}
 {"file":"rxjs/src/internal/types.ts","outcome":"MATCH","detail":""}
@@ -348,7 +348,7 @@
 {"file":"rxjs/src/internal/util/createErrorClass.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/util/createObject.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/util/errorContext.ts","outcome":"MATCH","detail":""}
-{"file":"rxjs/src/internal/util/executeSchedule.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"Cannot read property 'prototype' of undefined (receiver='<class$0.super.ctor:Subscri"}
+{"file":"rxjs/src/internal/util/executeSchedule.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/util/identity.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/util/isArrayLike.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/util/isAsyncIterable.ts","outcome":"MATCH","detail":""}
