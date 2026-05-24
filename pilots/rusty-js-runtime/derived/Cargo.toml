@@ -21,6 +21,11 @@ rusty-js-jit = { path = "../../rusty-js-jit/derived" }
 # parallel shape slot for the modal storage form; on non-Shape-eligible
 # installs the Object migrates to the legacy IndexMap-only Dictionary form.
 rusty-js-shapes = { path = "../../rusty-js-shapes/derived" }
+# TRMLE-EXT 1 (2026-05-24): TS strip at module-load time. See
+# pilots/ts-resolve-module-loader-extension/seed.md. ts-resolve only
+# depends on rusty-js-ast + rusty-js-parser (both already in this
+# crate's tree), so no dependency cycle.
+ts-resolve = { path = "../../ts-resolve/derived" }
 regex = "1"
 serde_json = { version = "1", features = ["preserve_order"] }
 indexmap = "2"

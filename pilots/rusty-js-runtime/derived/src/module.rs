@@ -648,6 +648,24 @@ impl Runtime {
             let source = std::fs::read_to_string(stripped).map_err(|e| {
                 RuntimeError::TypeError(format!("module load: cannot read '{}': {}", stripped, e))
             })?;
+            // TRMLE-EXT 1 (2026-05-24, ts-resolve-module-loader-extension
+            // locale; Doc 729 refinement per Finding IX.5): dispatch
+            // through the TS resolver when the loaded file is .ts /
+            // .mts / .cts / .tsx. Without this, raw TS bytes reach
+            // the JS parser via the import path and fail with parse
+            // errors despite TSR's correct top-level handling.
+            let source = if stripped.ends_with(".ts")
+                || stripped.ends_with(".mts")
+                || stripped.ends_with(".cts")
+                || stripped.ends_with(".tsx")
+            {
+                match ts_resolve::strip::strip_ts(&source) {
+                    Ok((stripped_src, _witnesses)) => stripped_src,
+                    Err(_) => source,  // rule 14: bail to raw bytes; cruft's parser error is the diagnostic
+                }
+            } else {
+                source
+            };
             // Tier-Ω.5.ss: JSON module imports per ESM spec / import-attributes
             // (`import data from "./x.json" with {type:"json"}`). The default
             // export is the parsed JSON value. cli-spinners (ora) depends on
@@ -1889,6 +1907,15 @@ impl Object {
 fn probe_with_extensions(candidate: &std::path::Path, original: &str) -> Result<String, RuntimeError> {
     let mut attempts: Vec<std::path::PathBuf> = vec![
         candidate.to_path_buf(),
+        // TRMLE-EXT 1 (2026-05-24, ts-resolve-module-loader-extension
+        // locale, Doc 729 refinement per Finding IX.5): TS extensions
+        // tried BEFORE .js per TS-tooling convention. Both `.ts` and
+        // `.mts` precede their JS counterparts so a TS source resolves
+        // ahead of its compiled-JS sibling when both exist.
+        with_suffix(candidate, ".ts"),
+        with_suffix(candidate, ".mts"),
+        with_suffix(candidate, ".cts"),
+        with_suffix(candidate, ".tsx"),
         with_suffix(candidate, ".mjs"),
         with_suffix(candidate, ".cjs"),
         with_suffix(candidate, ".js"),
@@ -1922,6 +1949,11 @@ fn probe_with_extensions(candidate: &std::path::Path, original: &str) -> Result<
             }
         }
     }
+    // TRMLE-EXT 1: TS index fallbacks tried BEFORE JS counterparts.
+    attempts.push(candidate.join("index.ts"));
+    attempts.push(candidate.join("index.mts"));
+    attempts.push(candidate.join("index.cts"));
+    attempts.push(candidate.join("index.tsx"));
     attempts.push(candidate.join("index.mjs"));
     attempts.push(candidate.join("index.cjs"));
     attempts.push(candidate.join("index.js"));

@@ -900,6 +900,7 @@ dependencies = [
  "rusty-js-parser",
  "rusty-js-shapes",
  "serde_json",
+ "ts-resolve",
 ]
 
 [[package]]

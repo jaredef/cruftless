@@ -139,7 +139,7 @@
 {"file": "rxjs/src/internal/ajax/AjaxResponse.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/ajax/ajax.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 15755, end: 15756 }, message: 'expected template middle/tail after substitution' }"}
 {"file": "rxjs/src/internal/ajax/errors.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/ajax/getXHRResponse.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 973, end: 974 }, message: 'expected `Colon`' }"}
+{"file": "rxjs/src/internal/ajax/getXHRResponse.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 1087, end: 1088 }, message: 'expected `Colon`' }"}
 {"file": "rxjs/src/internal/ajax/types.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/config.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/firstValueFrom.ts", "outcome": "OK", "message": ""}
@@ -154,7 +154,7 @@
 {"file": "rxjs/src/internal/observable/defer.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/observable/dom/WebSocketSubject.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 9302, end: 9303 }, message: 'expected `Colon`' }"}
 {"file": "rxjs/src/internal/observable/dom/animationFrames.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 3161, end: 3162 }, message: 'expected `RBrace`' }"}
-{"file": "rxjs/src/internal/observable/dom/fetch.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 3827, end: 3828 }, message: 'expected `RParen`' }"}
+{"file": "rxjs/src/internal/observable/dom/fetch.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/observable/dom/webSocket.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/observable/empty.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/observable/forkJoin.ts", "outcome": "OK", "message": ""}
@@ -183,7 +183,7 @@
 {"file": "rxjs/src/internal/operators/auditTime.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/buffer.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/bufferCount.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/operators/bufferTime.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 3426, end: 3427 }, message: 'expected `RParen`' }"}
+{"file": "rxjs/src/internal/operators/bufferTime.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/bufferToggle.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/bufferWhen.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/catchError.ts", "outcome": "OK", "message": ""}
@@ -288,7 +288,7 @@
 {"file": "rxjs/src/internal/operators/toArray.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/window.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/windowCount.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/operators/windowTime.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 4868, end: 4869 }, message: 'expected `RParen`' }"}
+{"file": "rxjs/src/internal/operators/windowTime.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/windowToggle.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/windowWhen.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/withLatestFrom.ts", "outcome": "OK", "message": ""}
@@ -342,12 +342,12 @@
 {"file": "rxjs/src/internal/util/UnsubscriptionError.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/util/applyMixins.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/util/args.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/util/argsArgArrayOrObject.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 504, end: 505 }, message: 'expected `LBrace`' }"}
+{"file": "rxjs/src/internal/util/argsArgArrayOrObject.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/util/argsOrArgArray.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/util/arrRemove.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/util/createErrorClass.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/util/createObject.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/util/errorContext.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 85, end: 86 }, message: 'unexpected token in expression: Punct(RBrace)' }"}
+{"file": "rxjs/src/internal/util/errorContext.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/util/executeSchedule.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/util/identity.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/util/isArrayLike.ts", "outcome": "OK", "message": ""}

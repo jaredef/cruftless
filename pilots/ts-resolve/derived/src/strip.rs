@@ -1134,12 +1134,12 @@ impl<'src> Scanner<'src> {
         // position arrow that ends the annotation (e.g. `: T => body`).
         let mut prev_was_rparen_at_top = false;
         while i < self.toks.len() {
-            let stop = matches!(self.toks[i].kind,
-                TokenKind::Eof
-                | TokenKind::Punct(Punct::Semicolon)
-            );
-            if stop { break; }
             let at_top = depth_angle == 0 && depth_paren == 0 && depth_brace == 0 && depth_brack == 0;
+            // Eof always stops. Semicolon only stops at top level —
+            // inside `{...}` of an object type literal, `;` is a
+            // property separator, NOT a statement terminator.
+            if matches!(self.toks[i].kind, TokenKind::Eof) { break; }
+            if at_top && matches!(self.toks[i].kind, TokenKind::Punct(Punct::Semicolon)) { break; }
             if at_top {
                 // TRGC-EXT 2 follow-on: ASI-aware top-level break.
                 // Class-field annotations end at line-terminator before

@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 33,
-    "top_level": 22,
+    "locales": 34,
+    "top_level": 23,
     "nested": 11,
     "warnings": 0
   },
@@ -278,6 +278,15 @@
       "depth": 1,
       "rung_count": 7,
       "status": "**CHAPTER CLOSED at TRGC-EXT 1 (1 implementation round; standing rule 13's eighth corroboration)**. Parse-success **59.9% \u2192 69.3%** (+9.4 pp; 18% over Pred-trgc.3's \u22658 pp target). Three substrate improvements; mid-round ternary-tracking discovery delivered +7.0 pp on top of the planned +2.4 pp generic rules."
+    },
+    {
+      "coord": "ts-resolve-module-loader-extension",
+      "tag": "L.ts-resolve-module-loader-extension",
+      "parent": null,
+      "scope": "ts-resolve-module-loader-extension",
+      "depth": 1,
+      "rung_count": 2,
+      "status": "**CHAPTER CLOSED at TRMLE-EXT 1 (1 implementation round; standing rule 13 tenth corroboration)**. Execute-parity lifted **5.1% \u2192 52.7% (+47.6 pp)** \u2014 largest single-fix yield observed all session. Pred-trmle.3 HELD STRONGLY (target \u226540%); Pred-trmle.4 HELD STRONGLY (failure-table shifted from parse-errors to runtime-semantics). **Finding IX.5 Doc 729 refinement EMPIRICALLY CONFIRMED** via three independent data points."
     },
     {
       "coord": "ts-resolve-string-literal-safety",
