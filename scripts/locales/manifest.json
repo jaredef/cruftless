@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 28,
-    "top_level": 17,
+    "locales": 29,
+    "top_level": 18,
     "nested": 11,
     "warnings": 0
   },
@@ -235,13 +235,22 @@
       "status": null
     },
     {
+      "coord": "ts-consumer-corpus",
+      "tag": "L.ts-consumer-corpus",
+      "parent": null,
+      "scope": "ts-consumer-corpus",
+      "depth": 1,
+      "rung_count": 1,
+      "status": "**WORKSTREAM FOUNDED (TCC-EXT 0)**. Spawned per keeper directive (option B: consumer-corpus-driven scaling) over the alternative (spec-driven checklist chase). This locale is the **empirical measurement instrument** that drives the downstream sub-locale arc (`ts-resolve-enums/`, `ts-resolve-classes/`, `ts-resolve-generics-calls/`, `ts-resolve-decorators/`, etc.) \u2014 failures in the corpus surface what to build next, in priority order set by frequency."
+    },
+    {
       "coord": "ts-resolve",
       "tag": "L.ts-resolve",
       "parent": null,
       "scope": "ts-resolve",
       "depth": 1,
-      "rung_count": 1,
-      "status": "**WORKSTREAM FOUNDED (TSR-EXT 0)**. Spawned per keeper directive on the source-language-resolver pivot. First step in a two-locale arc: this locale (TS as a source-language resolver, type-erasure path, no soundness claim) is the empirical-first stage. The follow-on locale (`cruftscript-spec/`, deferred) is the design-first stage for sound static types as substrate input."
+      "rung_count": 6,
+      "status": "**CHAPTER CLOSED at TSR-EXT 5 (4 implementation rounds; Pred-tsr.6 HELD)**. Five of six predicates HELD; Pred-tsr.5 (\u226510% reclaim from annotation-driven IPBR shape skip) FALSIFIED at sub-noise effect \u2014 a high-information null result that materially refines the cruftscript-spec design space (load-bearing claim shifts from iter-protocol-shape-skip to JIT IC specialization + VD tag preservation). Native `.ts` execution by `cruft` operational for the high-frequency real-world TS surface. See trajectory.md TSR-EXT 5 entry for the empirical disposition + Finding TSR.1."
     },
     {
       "coord": "web-crypto",

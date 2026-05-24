@@ -58,6 +58,22 @@ Living document; append-only at the bottom (newest at top within a section). Eac
 
 ## Tier D — strategic / language-tier (new 2026-05-24)
 
+### (l) `ts-consumer-corpus` — **SPAWNED** 2026-05-24 as [`pilots/ts-consumer-corpus/`](../../pilots/ts-consumer-corpus/seed.md)
+**Telos**: empirical measurement instrument for TSR's coverage of real consumer `.ts` source on npm. Failure-table drives priority order for the downstream TSR sub-locale arc (enums, classes, generics-calls, decorators, namespaces, conditional-types, JSX).
+**Status**: SPAWNED. TCC-EXT 1 (corpus assembly) is the next round.
+
+### (m-s) `ts-resolve-*` sub-locales — ⚪ QUEUED PENDING TCC FAILURE-TABLE
+- `ts-resolve-enums/` — runtime-bearing; enum reverse-mapping + lowering
+- `ts-resolve-classes/` — ctor-param shorthand, abstract, accessor modifiers
+- `ts-resolve-generics-calls/` — f<T>() angle-bracket disambig vs `<` operator
+- `ts-resolve-decorators/` — Stage 3 decorators; runtime descriptors
+- `ts-resolve-namespaces/` — legacy but persistent in tooling code
+- `ts-resolve-conditional/` — cond + mapped + template-literal types (strip-only; combined)
+- `ts-resolve-jsx/` — separate locale; JSX/TSX
+**Disposition**: priority order will be set by TCC-EXT 2's failure-table. Each sub-locale targets ≤3 implementation rounds per standing-rule-13 thesis.
+
+
+
 ### (j) `ts-resolve` — **SPAWNED** 2026-05-24 as [`pilots/ts-resolve/`](../../pilots/ts-resolve/seed.md)
 **Telos**: native `.ts` execution by cruft via a TS source-language resolver upstream of rusty-js-ir. Empirical-first stage of a two-locale arc with `cruftscript-spec/`. Load-bearing research question: do erased TS annotations carry substrate-actionable signal for downstream IC/JIT/VD tiers?
 **Status**: SPAWNED. TSR-EXT 1 (design doc) is the next round.
