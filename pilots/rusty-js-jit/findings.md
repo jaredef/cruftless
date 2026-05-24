@@ -850,3 +850,93 @@ After Addendum IX, the findings doc contains:
 - Addendum IX (this): 3 new findings (VIII.4 cache-lifetime; VIII.5 cache-amortization-fixture-dependence; VIII.6 bytecode-rewrite-as-deeper-layer-closure) + 1 new standing rule (#13 revert-then-deeper-layer-closure)
 
 Total: **20 findings** (6 original + 14 new across 9 addenda); **13 standing rules** (rule 11 multi-axis 5 coverage axes; rule 12 IEEE-754 adversarial; rule 13 revert-then-deeper-layer); 2 standing engagement instruments + 1 standing methodology pattern (Doc 740 §IV.2 application via rule 13).
+
+---
+
+## Addendum X — TS-parity arc findings (2026-05-24)
+
+The TS-parity research arc (TSR → TCC → TRSLS → TRCAPS → TRGC × 6 follow-ons → TXC) ran across one continuous session and produced both substrate-tier findings and discipline-tier findings worth standing into the engagement record. The arc's headline numerical outcome was parse-success on real npm corpus 0% → 95.2% in 8 implementation rounds; cumulative substrate-completeness improvements: 15+ specific TSR strip rules / classification refinements. The findings below are the ones whose value extends beyond the immediate locale and applies forward at the engagement tier.
+
+### Finding IX.1 (corpus-as-regression-instrument)
+
+**Source**: TRGC-EXT 2 (mid-round regression caught by TCC re-measurement); TRGC.4 in TRGC trajectory.
+
+When a substrate-bug-fix pilot has an automated correctness-measurement instrument (here: TCC's per-file parse-success-rate), that instrument serves **dual roles**:
+1. **Priority instrument** — tells you which substrate bug to fix next (failure-frequency table).
+2. **Regression instrument** — catches silent breakage introduced by a fix.
+
+The dual role compounds: without the regression-detection role, conservative-strip discipline (Finding IX.2) would not be enforceable, because false-positive over-stripping would not surface until consumer-app breakage was observed later. With the dual role, mid-round regressions are caught and corrected within the same round (TRGC-EXT 2 caught a 70.1% → 67.4% regression and corrected to 70.9%).
+
+**Discipline implication**: instrument-tier locales (TCC, TXC, etc.) are not "support code" or "tooling" — they are **substrate-tier locales in their own right**, whose deliverable is the measurement-as-regression-detection capability. Pin-Art-fund them at the same priority as substrate-improvement locales.
+
+### Finding IX.2 (conservative-strip-rule discipline — cost asymmetry)
+
+**Source**: TRGC.5 in TRGC trajectory; informed by TRGC-EXT 2 regression-recovery.
+
+When a substrate strip rule's heuristic is uncertain about whether to fire, the cost of the two error modes is asymmetric:
+- **False-negative** (rule fails to fire when it should): the failure category remains visible in the corpus instrument; easy to iterate to a follow-on fix.
+- **False-positive** (rule fires when it shouldn't): silently regresses previously-OK files; hard to detect without the instrument; can cascade to breaking adjacent substrate rules.
+
+**Standing rule (new — #14)**: when adding a substrate strip / classification heuristic, **prefer false-negatives over false-positives by design**. Bail conditions should be conservative; require all positive evidence (multiple gating predicates) before firing. The instrument will surface the false-negatives at the next re-measurement; the false-positives may never surface without targeted regression testing.
+
+### Finding IX.3 (inspect-then-iterate compound discovery)
+
+**Source**: reproduced 6 times across the TS-parity arc (TRSLS, TRCAPS, TRGC-EXT 1, TRGC-EXT 2, TRGC-EXT 3, TRGC-EXT 5).
+
+When a sub-locale's planned scope is investigated post-fix via the instrument's failure table, **a higher-impact substrate gap than the planned scope is routinely discovered**. The pattern:
+1. Plan a sub-locale around tag-X (e.g., "method-return-annotation").
+2. Implement the planned rules; re-measure.
+3. Inspect the new top tag (often still tag-X or adjacent); discover the actual root cause is a different substrate gap.
+4. Add a fix for the discovered gap (typically smaller LOC, larger yield).
+
+The compound effect: planned scope delivered +1-2pp per sub-locale; discovered gaps delivered +5-10pp per sub-locale. **The 87% top-6-sub-locales target was reached at TRGC-EXT 3** (single locale with 3 follow-on rounds) instead of requiring 6 separate locales as originally planned — ~2× discipline efficiency.
+
+**Standing rule (new — #15)**: at every chapter-close, ALSO inspect the post-fix failure table top rows before declaring the locale fully closed. If the top tag's actual cause (per example inspection) is different from the planned scope, the round is not done.
+
+### Finding IX.4 (parse/execute parity gap is dominated by ONE substrate gap)
+
+**Source**: TXC.1 in TXC trajectory.
+
+When TSR's parse-parity reached 95.2%, the execute-parity baseline measured at 5.1% — a 90.1 percentage-point gap. Failure-cluster analysis showed that **~64% of the gap traces to a single substrate gap**: cruft's runtime module loader is TS-unaware (doesn't try `.ts`/`.mts`/`.cts` extensions during import resolution; doesn't apply TS-strip when loading those extensions).
+
+This is a substantive empirical finding about the structure of "parity": **the dominant parity gap was at the layer BETWEEN substrate tiers (resolver → runtime-module-loader), not within either substrate tier**. The TSR resolver tier was 95.2% complete; the runtime tier was complete-for-JS; the gap was at the integration point.
+
+### Finding IX.5 (Doc 729 resolver-instance pattern refinement)
+
+**Source**: TXC.2 in TXC trajectory; informed by Finding IX.4.
+
+Doc 729's resolver-instance pattern names each layer's resolver consuming directives that don't appear downstream. The empirical data from TXC refines this:
+
+> **Behavioral-erasure parity at the resolver-instance pattern requires downstream tiers to DISPATCH through the input resolver when loading dependent inputs.**
+
+The contract isn't "the input resolver consumes its directives, and downstream is clean" — it's "downstream tiers MUST also dispatch through the input resolver when loading dependent inputs." A TSR that perfectly strips its top-level input but whose downstream runtime can't apply the same dispatch to imported `.ts` files achieves parse-parity at the input tier but not execute-parity at the program tier.
+
+**Doc 729 refinement candidate** (for corpus publication when the parity arc completes):
+- Add §VI: "Resolver-instance dispatch must be applied at every input boundary in the downstream pipeline, not just at the top-level invocation."
+- Cite TXC's empirical 90.1 pp gap data + the 64% load-bearing-finding.
+
+### Finding IX.6 (multi-definition parity is itself the research deliverable)
+
+**Source**: TXC seed §VII strategic framing; TXC.4 in TXC trajectory.
+
+"Full parity" turned out to be under-defined at the framing tier. At least four candidate definitions exist:
+- (P) Parse parity — measurable by TCC.
+- (E) Execute parity — measurable by TXC (proxy for B).
+- (B) Behavioral-erasure parity — the Doc 729-implicated load-bearing definition.
+- (T) Type-check parity — a separate substrate (CruftScript's claim, not TSR's).
+
+The session's TS-parity arc DISCOVERED that the P→E gap exposes the load-bearing condition for (B), and that (B) requires the substrate refinement from Finding IX.5. **The discovery itself — that parity is multi-definitional and which definitions hold at which substrate tiers — is the research deliverable of the arc**, not the single-number 95.2% or 5.1% metric.
+
+**Standing engagement-tier observation**: when an arc is framed as "achieve full X parity," resist the urge to pick one definition prematurely. Build the instrument that surfaces multiple candidate definitions, measure each, let the data discover which definition is load-bearing.
+
+### Findings-doc cumulative status (post-Addendum X)
+
+After Addendum X, the findings doc contains:
+- 6 original finding sections (I-VI; per-category)
+- 8 original standing rules
+- Addenda I-IX: as listed before this addendum
+- **Addendum X (this)**: 6 new findings (IX.1 corpus-as-regression-instrument; IX.2 conservative-strip discipline; IX.3 inspect-then-iterate compound discovery; IX.4 parse/execute parity gap; IX.5 Doc 729 refinement; IX.6 multi-definition parity as research deliverable) + 2 new standing rules (#14 conservative-strip prefer false-negatives; #15 inspect-failure-table at chapter close)
+
+Total: **26 findings** (6 original + 20 new across 10 addenda); **15 standing rules** (rules 11 multi-axis, 12 IEEE-754, 13 revert-then-deeper-layer, 14 conservative-strip, 15 chapter-close-inspect); 2 standing engagement instruments (TCC parse-parity, TXC execute-parity) + standing methodology patterns (Doc 740 §IV.2 via rule 13; corpus-as-instrument-and-regression via rule 14).
+
+**Outstanding corpus publication candidate**: Doc 7XX, "Resolver-instance dispatch downstream: TXC's empirical refinement of Doc 729" — when the TS-parity arc completes, write up the findings IX.4-IX.6 as a single corpus doc with the empirical 90.1 pp gap data as the load-bearing evidence.
