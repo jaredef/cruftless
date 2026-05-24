@@ -686,3 +686,87 @@ The 5-tier R reading for JIT-invoke pilots could be a corpus articulation extend
 - New Doc 741 specializing Doc 740 to JIT-tier multi-coverage discipline (cleaner; matches the engagement's "one corpus doc per primary articulation" pattern, e.g., Doc 739 separate from Doc 729).
 
 Recommendation deferred pending keeper signal.
+
+---
+
+## Addendum VIII — 2026-05-23 (post OSR-EXT 6b pipeline-connection; emission-shape coverage as standing rule 11's 5th axis)
+
+This addendum codifies the final coverage axis surfaced by the OSR pilot's empirical journey, completing standing rule 11's multi-axis form (5 axes). The addendum also books the session's full multi-tier-cascade demonstration as the canonical empirical instance of Doc 740 §II.2 P4.
+
+### Promotion: OSR.2 + OSR.2-bis + OSR.2-ter → engagement-wide
+
+**Finding VIII.3 (Emission-shape coverage gates region-extraction pilots; the bytecode-compiler's emission shape is a structural prerequisite for any pilot that extracts a sub-region of bytecode for JIT compilation)** *[new, 2026-05-23 via OSR-EXT 5e empirical refinement, promoted from OSR.2 + OSR.2-bis + OSR.2-ter]*
+
+**Anchor**: the OSR pilot's first cut (b-narrow architectural path per Doc 740 §VIII multi-tier reading) targeted closing the op-set coverage gap by reducing the enclosing scope to the inner loop. Implementation surfaced THREE empirical refinements:
+
+- **OSR.2 (original)**: for-loop / while-loop bytecode has forward-exit jumps targeting pcs OUTSIDE the OSR-extracted slice → Cranelift allocates Blocks for OOB targets → unfilled → compile fails.
+- **OSR.2-bis (5e empirical)**: even do-while-shape loops require synthesized fallthrough block at end-of-slice because the back-edge JumpIfX is the LAST op; parsed[i+1..] is empty; find_next_block_pc fails.
+- **OSR.2-ter (5e empirical)**: in OSR loop extraction where loop_top coincides with entry pc, the function param cannot live on the loop_top block because brif back-edges target it without arg-pass; separate pre_entry block holds the param.
+
+All three refinements share a structural pattern: the bytecode-compiler's emission shape (where loops have forward-exit fallthroughs; where back-edges sit at end-of-region; where loop_top coincides with entry) is a STRUCTURAL PREREQUISITE that region-extraction pilots must address. Without addressing it, compile fails or produces invalid IR.
+
+**Substrate implication**: for any pilot extracting a sub-region of bytecode for JIT compilation (OSR; loop tiering; partial method JIT; etc.), the region-extraction substrate must include:
+
+1. **Boundary detection**: identify the sub-region's pc range.
+2. **Fallthrough synthesis**: ensure every op's fallthrough target is within the region (synthesize an exit block at region-end if not).
+3. **Entry-block separation**: if the region's first pc coincides with a back-edge target, separate the function-param-carrying entry block from the back-edge target block.
+4. **Translator handling of OOB targets**: forward jumps to OOB targets either get the synthesized exit (if target = region-end) or require boundary extension (option 1 per OSR.2).
+
+The cruftless engagement's OSR pilot closed (1)-(3) at OSR-EXT 3-5e + 6b; (4) is not yet needed for the json_parse_transform fixture (OSR-EXT 5e's synth covers it for the loop_exit = region-end case; further OOB cases deferred).
+
+### Extension of standing rule 11 (final 5-axis form)
+
+**Standing rule 11 (final 2026-05-23 form, 5 axes)**: before spawning any pilot whose telos is "close a CRB-measured gap":
+
+| axis (origin) | finding | applies to | check |
+|---|---|---|---|
+| component A/B (Addendum IV) | VII.1 | any CRB-driven pilot | run A/B probe; identify dominator empirically |
+| op-set coverage (V) | VII.2 | JIT-alphabet pilots | source-read FULL enclosing-scope bytecode |
+| value-domain coverage (V) | VII.3 | JIT-IC non-Number/Object receivers | verify calling convention encodes required Value variants |
+| locals-marshaling coverage (VII) | VIII.2 | JIT-invoke from non-arg state | verify calling convention populates locals from required source |
+| **emission-shape coverage (VIII)** | **VIII.3** | **region-extraction pilots (OSR; loop tiering; partial JIT; etc.)** | **verify boundary detection + fallthrough synthesis + entry-block separation + OOB-target handling** |
+
+If any applicable coverage check fails, the pilot's reclaim ceiling on that fixture is 0% via that pilot alone; the missing tier(s) must be addressed in dependency order (Doc 740 §II.2 P4) for cumulative reclaim to materialize.
+
+### Empirical materialization of Doc 740 §II.2 P4 (this session's canonical instance)
+
+The cruftless engagement's 2026-05-23 architectural-pivot session is the canonical empirical instance of Doc 740's multi-tier-cascade reading. The session's tier-closure sequence + cumulative reclaim:
+
+| stage | pilot/round | CRB (ms) | tier closed |
+|---|---|---:|---|
+| baseline | JSF-EXT 0 | 2481 | — |
+| substrate algorithm | CharCode-EXT 1 | 2372 | substrate-tier algorithm |
+| interp dispatch | CharCode-EXT 2 | 2188 | interp-tier dispatch |
+| entry mechanism | TL-EXT 3 | 2188 | (A1) entry tier |
+| value-domain | VD-EXT 2 | 2188 | (A3) value-domain |
+| locals-marshaling | OSR-EXT 5d | 2188 | (A4) locals-marshaling |
+| emission-shape | OSR-EXT 5e | 2188 | (A5) emission-shape (this addendum's new axis) |
+| op-set (1/2) | OSR-EXT 6 | 2188 | (A2) partial |
+| **op-set closure + pipeline-connection** | **OSR-EXT 6b** | **834** | **(A2) full + cumulative materialization** |
+
+**Δ vs baseline: -66% CRB; cruft/node 20.34× → 6.67×.**
+
+Per Doc 740 §II.2 P4: the cumulative reclaim materialized at the FINAL tier-closure round (OSR-EXT 6b). Earlier rounds were substrate-introduction per Finding II.2-bis. The chain spans 4 sibling pilots (CharCode + TL + VD + OSR) plus the JSF pilot at the wrong tier (Finding VII.1 misattribution corrected by the JSF-EXT 8 A/B probe).
+
+### Findings-doc cumulative status
+
+After Addendum VIII, the findings doc contains:
+- 6 original finding sections (I-VI; per-category)
+- 8 original standing rules
+- Addendum I-VII: cumulative 9 new findings + 3 new standing rules (#9, #10, #11)
+- Addendum VIII (this): 1 new finding (VIII.3 emission-shape coverage) + rule 11 final 5-axis form
+
+Total: **17 findings** (6 original + 11 new across 8 addenda); **12 standing rules** (rule 11 multi-axis with **5 coverage axes**); 2 standing engagement instruments.
+
+### Engagement-wide substrate value of the 2026-05-23 architectural-pivot session
+
+Delivered:
+- CRB json_parse_transform -66% (2481 → 834 ms); cruft/node 20.34× → 6.67×
+- 3 corpus docs (Doc 740 §VII.1 + §VIII amendment) — §IX or Doc 741 candidate from γ round
+- 11 new engagement findings (II.2-bis, VII.1-3, II.3, VIII.1-3, OSR.1-2 promoted)
+- 4 new standing rules / extensions (rule 11 4-axis → 5-axis; rule 12 IEEE-754 adversarial)
+- 2 standing engagement instruments (component A/B probe; hot-intrinsic IC pattern)
+- 6 new locales spawned (TL + VD + OSR + 3 JSF-spawned-but-not-OSR-related: RXF, SW, HS)
+- Doc 740 §II.2 P4 multi-tier reading empirically validated at session scope
+
+The session's load-bearing structural contribution: **standing rule 11 final 5-axis form** + the canonical Doc 740 instance demonstrating that all 5 axes can be closed in dependency order across multiple sibling pilots to materialize cumulative reclaim. Future CRB-driven pilots have a complete pre-spawn discipline.
