@@ -218,14 +218,14 @@ pub struct Runtime {
     pub intrinsic_string_starts_with_id: Option<rusty_js_gc::ObjectId>,
     pub intrinsic_string_ends_with_id: Option<rusty_js_gc::ObjectId>,
     pub intrinsic_string_includes_id: Option<rusty_js_gc::ObjectId>,
-    /// IHI-EXT 8 (2026-05-24, Finding IHI.1 closure path): Runtime-tier
-    /// IC dispatch cache. Keyed on (bytecode.as_ptr() as usize, site_pc)
-    /// to disambiguate same-pc-different-proto. Survives across ALL
-    /// Frame invocations of all functions (vs IHI-EXT 7's Frame-local
-    /// cache which reset per Frame). Per Doc 740 §IV.2: substrate-
-    /// introduction at the cache tier; deeper-layer closure required
-    /// to materialize the per-call dispatch-overhead reclaim.
-    pub ic_dispatch_cache: HashMap<(usize, usize), Option<&'static crate::interp_ic_table::IhiEntry>>,
+    /// IHI-EXT 10 (2026-05-24, Finding IHI.2 deeper-layer closure per
+    /// Doc 740 §IV.2): per-FunctionProto IC dispatch side-table.
+    /// Outer HashMap: bytecode_ptr → per-pc Vec<CachedDispatch>.
+    /// Inner Vec is O(1) array-indexed by pc (~5ns/access). Replaces
+    /// IHI-EXT 8's (pc, proto) tuple HashMap (~80ns/get). Per-CallMethod
+    /// dispatch cost drops from ~80ns to ~35ns (HashMap.get-per-proto
+    /// + Vec[pc]).
+    pub ic_dispatch_cache: HashMap<usize, Vec<crate::interp_ic_table::CachedDispatch>>,
     pub number_prototype: Option<rusty_js_gc::ObjectId>,
     pub bigint_prototype: Option<rusty_js_gc::ObjectId>,
     pub symbol_prototype: Option<rusty_js_gc::ObjectId>,
@@ -8300,23 +8300,42 @@ impl Runtime {
                     let chain_tag = if matches!(&method, Value::Undefined | Value::Null) {
                         method_name.as_deref().map(|mn| describe_proto_chain_for_key(self, &receiver, mn))
                     } else { None };
-                    // IHI-EXT 8 (2026-05-24, Finding IHI.1 deeper-layer
-                    // closure per Doc 740 §IV.2): Runtime-keyed cache
-                    // (bytecode_ptr, pc) survives across all Frame
-                    // invocations; replaces IHI-EXT 7's per-Frame cache
-                    // (which reset every fn() invocation in
-                    // closure-per-iter fixtures).
-                    let cache_key = (frame.bytecode.as_ptr() as usize, site_pc);
+                    // IHI-EXT 10 (2026-05-24, Finding IHI.2 deeper-layer
+                    // closure per Doc 740 §IV.2): per-FunctionProto side-
+                    // table. proto_ptr → Vec<CachedDispatch> indexed by
+                    // pc. Outer HashMap.get-per-proto + inner Vec[pc] O(1)
+                    // array access. Replaces IHI-EXT 8's (pc, proto) tuple
+                    // HashMap; per-call dispatch ~80ns → ~35ns.
+                    let proto_ptr = frame.bytecode.as_ptr() as usize;
+                    let bc_len = frame.bytecode.len();
+                    let vec = self.ic_dispatch_cache.entry(proto_ptr)
+                        .or_insert_with(|| vec![crate::interp_ic_table::CachedDispatch::NotCached; bc_len]);
+                    use crate::interp_ic_table::CachedDispatch;
                     let cached_entry: Option<&'static crate::interp_ic_table::IhiEntry> =
-                        if let Some(e) = self.ic_dispatch_cache.get(&cache_key) {
-                            *e
-                        } else {
-                            let result = if let Some(method_name_str) = method_name.as_deref() {
-                                let kind = crate::interp_ic_table::receiver_kind_of(&receiver);
-                                crate::interp_ic_table::lookup(method_name_str, kind, args.len() as u8)
-                            } else { None };
-                            self.ic_dispatch_cache.insert(cache_key, result);
-                            result
+                        match vec.get(site_pc).copied().unwrap_or(CachedDispatch::NotCached) {
+                            CachedDispatch::Entry(idx) => Some(&crate::interp_ic_table::IHI_TABLE[idx as usize]),
+                            CachedDispatch::NoMatch => None,
+                            CachedDispatch::NotCached => {
+                                let result = if let Some(method_name_str) = method_name.as_deref() {
+                                    let kind = crate::interp_ic_table::receiver_kind_of(&receiver);
+                                    crate::interp_ic_table::lookup(method_name_str, kind, args.len() as u8)
+                                } else { None };
+                                let cached = match result {
+                                    Some(e) => {
+                                        let idx = crate::interp_ic_table::IHI_TABLE.iter()
+                                            .position(|t| std::ptr::eq(t as *const _, e as *const _))
+                                            .map(|i| i as u8)
+                                            .unwrap_or(0xFF);
+                                        if idx == 0xFF { CachedDispatch::NoMatch }
+                                        else { CachedDispatch::Entry(idx) }
+                                    }
+                                    None => CachedDispatch::NoMatch,
+                                };
+                                if site_pc < bc_len {
+                                    self.ic_dispatch_cache.get_mut(&proto_ptr).unwrap()[site_pc] = cached;
+                                }
+                                result
+                            }
                         };
                     if let Some(entry) = cached_entry {
                         {

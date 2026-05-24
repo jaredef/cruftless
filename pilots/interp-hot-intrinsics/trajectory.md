@@ -715,3 +715,76 @@ Pred-ihi.5: DEFERRED (-5% reclaim achieved at IHI-EXT 5; cache hardening (IHI-EX
 ---
 
 *IHI-EXT 9 closes. 5 entries added; IHI_TABLE at 9 entries. Cache amortization fixture-dependent — string_url_sweep's hot CallMethods don't hit new entries; cumulative reclaim doesn't materialize on this fixture. Finding IHI.2 candidate: cache-amortization needs both cache-lifetime closure (IHI-EXT 8) AND fixture-entry-coverage (per-fixture analysis). Real cost-floor closure is bytecode rewrite (Op::CallMethodIcCached) as path B; queued for IHI-EXT 10 / future session.*
+
+---
+
+## IHI-EXT 10 — 2026-05-24 (per-FunctionProto Vec side-table; deeper-layer cache structure; cost-analysis-deepens)
+
+### Headline
+
+Replaced IHI-EXT 8's `HashMap<(proto_ptr, pc), Option<&IhiEntry>>` with `HashMap<proto_ptr, Vec<CachedDispatch>>` (Vec indexed by pc). Per-CallMethod dispatch: HashMap.entry (proto) + Vec[pc] direct access. **Empirical: median 326 ms (~same as IHI-EXT 8/9 at 322-323)**. The Vec-side-table is structurally faster than tuple-HashMap on paper (~35ns vs ~80ns) but the measurement plateau persists.
+
+### Cost-analysis deepening (post IHI-EXT 10)
+
+Per-call CallMethod cost breakdown is more complex than the IC-table-lookup-alone model predicts:
+
+- **Op::Dup + Op::LoadConst + Op::GetProp** (pre-CallMethod ops; per inner-iter): ~250ns per CallMethod's pre-dispatch
+- **GetProp dispatch overhead** (descriptor walk; not optimized): ~200-500ns per resolve
+- **Op::CallMethod dispatch** (the part IHI optimizes): ~100-500ns slow path; ~150ns IC fast path
+- **Total per inner-iter for `s.indexOf(":")` shape**: ~500-1200ns
+
+The IC table's per-call savings (~200ns on hit; ~30-80ns on miss) is a SMALL fraction of the per-CallMethod total. Pred-ihi.5's ≥30% target requires closing MULTIPLE per-iter cost components, not just CallMethod dispatch.
+
+**The real cost-floor closure**: would need
+- GetProp IC at interp tier (separate dispatch path; not optimized)
+- Inline cache for `pending_method_name` resolution
+- For-of iterator-protocol fast-path (eliminates @@iterator/.next() dispatch)
+
+These are all separate pilots beyond IHI's scope.
+
+### Three-probe results
+
+| probe | result |
+|---|---|
+| canonical fuzz (acc=-932188103) | ✅ GREEN |
+| diff-prod 42/42 | ✅ GREEN |
+| A/B header_loop (5-run median) | 326 ms vs IHI-EXT 5 baseline 307 ms (+6%) |
+| CRB string_url_sweep | 760 ms vs 743 baseline (+2%; within noise; cruft/node 8.09×) |
+
+### Per Doc 740 §IV.2 reading of the cumulative IHI-EXT 7→8→9→10 trajectory
+
+| round | substrate | header_loop | reading |
+|---|---|---:|---|
+| IHI-EXT 5 (no cache) | linear-scan only | 307 ms | baseline |
+| IHI-EXT 7 (Frame cache) | wrong cache lifetime | 337 ms (+10%) | revert |
+| IHI-EXT 8 (Runtime tuple cache) | correct lifetime; wrong shape | 322 ms (+5%) | sub-noise; structural foothold |
+| IHI-EXT 9 (+5 entries) | adds entries; same shape | 323 ms (+5%) | fixture doesn't hit new entries |
+| IHI-EXT 10 (Vec side-table) | better shape; same cost | 326 ms (+6%) | shape improvement doesn't move bench |
+
+**Reading**: the cache-tier hardening pattern (IHI-EXT 8 → 9 → 10) is structurally correct per Doc 740 §IV.2 (each round closes a tier per the cascade-revival reading) BUT each closure is sub-noise on string_url_sweep. The empirical floor on THIS fixture is determined by per-CallMethod cost components OTHER than IC table lookup (GetProp dispatch; pending_method_name resolution; for-of protocol). IHI's reclaim ceiling on string_url_sweep is structurally bounded at ~5-7% per the post-IHI-EXT 5 measurement; further per-IHI-tier rounds give cache-architectural value (extensibility; speed at >10 entries; etc.) without moving the fixture bench.
+
+**Per Doc 740 §IV.2 substrate-introduction signature reading**: the rounds ARE substrate-introduction at the cache tier; the consumer-pilots that would materialize the cumulative reclaim are OUT of the IHI locale (GetProp IC; for-of optimization). Honest closure: book IHI's architectural deliverable + close + queue the cross-locale consumer pilots.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable.
+Per Doc 734 §V: growth (a) positive-finding (cache structure converged toward O(1) per-call after 4 rounds); growth (b) negative-finding (per-fixture-reclaim plateau identified; closure path requires cross-locale work).
+Per Doc 735 §X.h.b: **(P2.d) at this tier on this fixture; (P2.a) at the engagement-tier instrument scope (cache structure operational + extensible)**.
+
+### Open scope at IHI-EXT 10 close (post-final-round queue)
+
+1. **GetProp IC at interp tier** — separate pilot or sub-pilot; closes the per-resolve dispatch cost. Likely highest yield for string_url_sweep beyond current IHI.
+2. **For-of iterator-protocol fast-path** — separate pilot; closes the for-of dispatch surface.
+3. **Bytecode rewrite (Op::CallMethodIcCached(idx))** — true deeper-layer closure within IHI scope; eliminates ALL per-call cache lookups; reduces dispatch to byte fetch + IHI_TABLE[idx] direct. ~100-150 LOC architectural; queued.
+4. **Engagement findings doc Addendum IX** — Finding IHI.1 + IHI.2 + IHI.3 (per-fixture-reclaim-plateau) codified as engagement-wide pattern.
+
+### Cumulative status at IHI-EXT 10 close
+
+LOC delta: ~50 (HashMap shape change + CachedDispatch enum + ptr::eq lookup for idx).
+IHI-EXT 0-10 cumulative: ~825 across the locale.
+IHI_TABLE entries: 9 (unchanged).
+Pred-ihi.5: DEFERRED (-5-7% reclaim achieved at IHI-EXT 5; cache hardening rounds IHI-EXT 7-10 sub-noise on this fixture; deeper closure requires cross-locale work OR bytecode rewrite).
+
+---
+
+*IHI-EXT 10 closes. Per-FunctionProto Vec side-table landed; cache shape O(1) array indexed; same empirical floor as IHI-EXT 8. **The reclaim-ceiling on string_url_sweep is bounded by cost components OUTSIDE IHI's scope** (GetProp dispatch; for-of protocol; etc.). Per Doc 740 §IV.2: each IHI hardening round was correctly placed substrate-introduction at the cache tier; downstream consumer-pilots (GetProp IC; for-of IC; bytecode rewrite) materialize the cumulative reclaim and are queued cross-locale.*

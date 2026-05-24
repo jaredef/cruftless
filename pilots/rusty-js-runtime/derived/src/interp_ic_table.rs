@@ -271,6 +271,15 @@ fn fast_string_includes(recv: &Value, args: &[Value]) -> Option<Value> {
 // Future entries register here per IHI-EXT 3+. Each entry: key +
 // receiver + arity + cached_id_field + fast fn.
 
+/// IHI-EXT 10 (2026-05-24): per-pc IC dispatch cache cell. Outer enum
+/// distinguishes "not yet attempted" vs "no match" vs "match at index".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CachedDispatch {
+    NotCached,
+    NoMatch,
+    Entry(u8),  // IHI_TABLE index
+}
+
 pub static IHI_TABLE: &[IhiEntry] = &[
     IhiEntry {
         key: "charCodeAt",
