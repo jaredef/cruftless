@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 24,
-    "top_level": 13,
+    "locales": 25,
+    "top_level": 14,
     "nested": 11,
     "warnings": 0
   },
@@ -26,6 +26,15 @@
       "depth": 1,
       "rung_count": 21,
       "status": "**TELOS A HIT + TELOS B (42/42)**. Forty-two fixtures (mix of L and F categories), all PASS. Three Rung-19/20/21 substrate clusters landed in one session: AbortController + AbortSignal full surface; ES2025 Iterator Helpers + generator-proto wiring; Map.groupBy + Promise.try + Error.isError. Thirty+ substrate fixes landed via diff-prod since founding. Top-500 measured at 77.4% raw / 82.1% incl-agreed after cumulative fix-set. Coverage now spans JSON, Buffer, strings, Map/Set, async/Promise/iteration, error-throws, RegExp (incl. advanced surface), generators, Proxy, structuredClone, BigInt, Reflect, Symbol, Object/Array/Math statics, node:fs/crypto/stream/events/path, AbortController + AbortSignal, ES2025 Iterator Helpers, ES2023-26 method batch."
+    },
+    {
+      "coord": "interp-hot-intrinsics",
+      "tag": "L.interp-hot-intrinsics",
+      "parent": null,
+      "scope": "interp-hot-intrinsics",
+      "depth": 1,
+      "rung_count": 1,
+      "status": "**WORKSTREAM FOUNDED (IHI-EXT 0)**. Cross-tier dual of `pilots/rusty-js-jit/hot-intrinsics/` (HI; closed at HI-EXT 5 with 4 entries). The interp-tier IC table bypasses call_function dispatch for hot intrinsic method calls regardless of JIT eligibility. Closes the structural gap that HI's JIT-tier table can't reach: interp-tier-bound hot loops (for-of bodies; non-OSR-eligible code; broad interp-tier dispatch sites)."
     },
     {
       "coord": "rusty-js-caps",
