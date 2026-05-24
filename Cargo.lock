@@ -1126,6 +1126,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ts-consumer-corpus"
+version = "0.1.0"
+dependencies = [
+ "ts-resolve",
+ "walkdir",
+]
+
+[[package]]
 name = "ts-resolve"
 version = "0.1.0"
 dependencies = [

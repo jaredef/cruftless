@@ -1,0 +1,22 @@
+{
+  "_comment": "ts-consumer-corpus TCC-EXT 1 starter manifest — packages KNOWN to ship .ts source in their npm tarball (not just .d.ts declarations). Selection criterion at first cut: high npm download count + verified .ts-source presence as of 2026-05-24. Top-200 expansion deferred to TCC-EXT 2 if the starter corpus is insufficient to populate Pred-tcc.4's actionable failure table.",
+  "version": 1,
+  "asof": "2026-05-24",
+  "packages": [
+    { "name": "typescript",       "version": "5.6.3",  "rationale": "TS compiler itself; ships entire src/ tree as .ts; ~600 files; largest single TS-source corpus on npm" },
+    { "name": "zod",              "version": "3.23.8", "rationale": "schema validation; pure-TS source under src/" },
+    { "name": "date-fns",         "version": "4.1.0",  "rationale": "popular date utility; .ts source in newer versions" },
+    { "name": "pino",             "version": "9.5.0",  "rationale": "JSON logger; some .ts source" },
+    { "name": "drizzle-orm",      "version": "0.36.0", "rationale": "type-safe ORM; .ts source heavy use of generics + conditional types" },
+    { "name": "ajv",              "version": "8.17.1", "rationale": "JSON schema validator; .ts source" },
+    { "name": "commander",        "version": "12.1.0", "rationale": "CLI parser; .ts source" },
+    { "name": "yargs",            "version": "17.7.2", "rationale": "CLI parser; mixed .ts/.cjs" },
+    { "name": "rxjs",             "version": "7.8.1",  "rationale": "reactive streams; entire src/ as .ts" },
+    { "name": "tslib",            "version": "2.7.0",  "rationale": "TS runtime helpers; small but core dependency of most TS projects" },
+    { "name": "yaml",             "version": "2.6.0",  "rationale": "YAML parser; .ts source" },
+    { "name": "execa",            "version": "9.5.1",  "rationale": "process exec; .ts source" },
+    { "name": "ws",               "version": "8.18.0", "rationale": "websocket; mostly .js but tests .ts; light corpus" },
+    { "name": "got",              "version": "14.4.5", "rationale": "http client; .ts source" },
+    { "name": "joi",              "version": "17.13.3","rationale": "schema validator" }
+  ]
+}

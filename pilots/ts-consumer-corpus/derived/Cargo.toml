@@ -1,0 +1,12 @@
+[package]
+name = "ts-consumer-corpus"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "tcc-measure"
+path = "src/bin/measure.rs"
+
+[dependencies]
+ts-resolve = { path = "../../ts-resolve/derived" }
+walkdir = "2"

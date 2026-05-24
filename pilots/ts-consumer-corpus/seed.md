@@ -2,7 +2,9 @@
 
 **Locale tag**: `L.ts-consumer-corpus` (top-level per Doc 737 §IV)
 
-**Status as of 2026-05-24**: **WORKSTREAM FOUNDED (TCC-EXT 0)**. Spawned per keeper directive (option B: consumer-corpus-driven scaling) over the alternative (spec-driven checklist chase). This locale is the **empirical measurement instrument** that drives the downstream sub-locale arc (`ts-resolve-enums/`, `ts-resolve-classes/`, `ts-resolve-generics-calls/`, `ts-resolve-decorators/`, etc.) — failures in the corpus surface what to build next, in priority order set by frequency.
+**Status as of 2026-05-24**: **CHAPTER CLOSED at TCC-EXT 1 (1 implementation round; Pred-tcc.5 HELD)**. All five Pred-tcc.* HELD plus the discipline falsifier. Baseline parse-success = **37.7%** (141/374 files from rxjs + ajv + pino). Failure-frequency table operational; top-10 categories cover ~52% of corpus and set the sub-locale priority order. Substrate-bug priority finding (Finding TCC.3): TSR's strip step corrupts source inside string/template literals on ~11 files — highest-priority next sub-locale.
+
+**Historical status (founding)**: WORKSTREAM FOUNDED (TCC-EXT 0). Spawned per keeper directive (option B: consumer-corpus-driven scaling) over the alternative (spec-driven checklist chase). This locale is the **empirical measurement instrument** that drives the downstream sub-locale arc (`ts-resolve-enums/`, `ts-resolve-classes/`, `ts-resolve-generics-calls/`, `ts-resolve-decorators/`, etc.) — failures in the corpus surface what to build next, in priority order set by frequency.
 
 **Workstream**: build a parse-success + execute-success harness over the top-N most-depended-on `.ts` packages on npm. Each measurement run produces:
 1. A success-rate baseline (TSR's current capability surface)
