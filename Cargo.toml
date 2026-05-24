@@ -50,6 +50,8 @@ members = [
     "pilots/structured-clone/derived",
     "pilots/textencoder/derived",
     "pilots/tls/derived",
+    # TSR (TypeScript source-language resolver) — pilots/ts-resolve/seed.md
+    "pilots/ts-resolve/derived",
     "pilots/urlsearchparams/derived",
     "pilots/web-crypto/derived",
     "pilots/websocket/derived",

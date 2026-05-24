@@ -78,3 +78,38 @@ Five open risks documented R1-R5 (contextual keywords; angle-bracket cast ambigu
 - TSR-EXT 5: sidecar + IPBR consumer probe (~150 LOC) — Pred-tsr.5 booking + chapter close
 
 **Status**: DESIGN COMPLETE. Multi-session implementation expected (TSR-EXT 2-5 ≈ 1500+ LOC across 4 rounds). Discipline target Pred-tsr.6: ≤6 implementation rounds.
+
+---
+
+## TSR-EXT 2 — lexer + crate scaffolding (2026-05-24)
+
+**Empirical finding at the lexer tier**: TypeScript adds **zero new token kinds** vs ECMAScript. All TS contextual keywords (`type`, `interface`, `keyof`, `as`, `is`, `readonly`, `unique`, `infer`, `satisfies`, `namespace`, `declare`, `abstract`, `override`, `public/private/protected`, `implements`, `out`, `asserts`, `global`) are valid identifier names at value position and are reserved only at type position — disambiguation belongs to the parser, not the lexer. The TS-only punctuation TSR cares about (`!` non-null postfix, `?` optional postfix, `<>` generic angle brackets, `=>` arrow-in-function-type) all exist in ECMAScript already.
+
+This means the TSR lexer is a thin re-export of `rusty_js_parser::Lexer` + a small contextual-keyword table. Pin-Art-consistent (no derivation work needed for tokens), and per Doc 731's alphabet-purity claim, keeping the lexer's alphabet identical between JS and TS preserves the substrate-tier alphabet boundary cleanly.
+
+**Crate scaffolding**:
+- `pilots/ts-resolve/derived/Cargo.toml` — depends on rusty-js-ast + rusty-js-parser
+- `pilots/ts-resolve/derived/src/lib.rs` — public API: `parse_and_erase` + `parse_with_witnesses`
+- `pilots/ts-resolve/derived/src/lexer.rs` — re-exports + `TS_CONTEXTUAL_KEYWORDS` + `is_ts_contextual_keyword`
+- `pilots/ts-resolve/derived/src/ts_ast.rs` — `TsTypeRef`, `TsObjectMember`, `TsFnParam`, `TsLiteralVal`, `TsAnnotation`, `TypeWitness`, `TypeWitnessKind`
+- `pilots/ts-resolve/derived/src/parser.rs` — `TsParser` scaffold (delegates to rusty-js-parser at this round; TSR-EXT 3 replaces with real type-position consumer)
+- `pilots/ts-resolve/derived/src/erase.rs` — `erase_module` (identity at this round; TSR-EXT 3+ adds real erasure)
+- `pilots/ts-resolve/derived/tests/passthrough.rs` — 3 smoke tests (all PASS)
+- `pilots/ts-resolve/fixtures/00-passthrough-valid-js.ts` — pure-JS-in-.ts smoke fixture
+- `Cargo.toml` workspace member registration
+
+**Round LOC**: ~210 (lib 38 + lexer 40 + ts_ast 92 + parser 50 + erase 18 + tests 30). Well under TSR-EXT 2's ~150 estimate when normalized to "lexer-tier work proper" (the ts_ast + parser/erase scaffolding is forward-loading TSR-EXT 3+ infrastructure).
+
+**Gates**:
+- `cargo build --release -p ts-resolve`: ✅ clean
+- `cargo test --release -p ts-resolve`: ✅ 3/3 PASS
+- diff-prod 42/42 PASS ✅ (Pred-tsr.3 still HELD; .js paths unaffected since cruftless doesn't yet depend on ts-resolve)
+
+**Capabilities post-TSR-EXT 2**:
+- A `.ts` file that uses ZERO TypeScript-specific syntax (i.e., is also valid JavaScript) round-trips through `ts_resolve::parse_and_erase` and yields the same `rusty_js_ast::Module` that `rusty_js_parser::parse_module` produces. Useful as a baseline + as the bail-safety fallthrough at TSR-EXT 3+.
+- Contextual-keyword detection helper ready for TSR-EXT 3's type-position consumer.
+- `TypeWitness` sidecar shape designed + types in place (empty vector emitted at this round; populated at TSR-EXT 5).
+
+**Next round**: TSR-EXT 3 — real TS parser. Tier-A features end-to-end (type annotations on let/const/function param/return, interface, type alias, `as` cast, `!` non-null, generics, enums). Estimated ~600-1080 LOC across one or two implementation rounds. The real Pin-Art derivation work begins here.
+
+**Status**: TSR-EXT 2 LANDED. Crate operational; passthrough verified; sidecar shape designed. TSR-EXT 3 next.

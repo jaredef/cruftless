@@ -1125,6 +1125,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ts-resolve"
+version = "0.1.0"
+dependencies = [
+ "rusty-js-ast",
+ "rusty-js-parser",
+]
+
+[[package]]
 name = "typenum"
 version = "1.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
