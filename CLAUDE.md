@@ -4,6 +4,8 @@ A hand-derived JavaScript runtime in Rust, targeting the Node.js package ecosyst
 
 This document orients an agent (Claude or otherwise) to the codebase's structure, disciplines, and standing artifacts.
 
+**Comprehensive apparatus reference**: see [`docs/repository-apparatus.md`](docs/repository-apparatus.md) for the full enumeration of the engagement's cybernetic discipline — measurement instruments (CRB, diff-prod, test262, canonical fuzz, TCC, TXC, component-A/B probes), discipline artifacts (findings.md, predictive-ruleset.md, standing-rule-13 doc, CANDIDATES.md, locale manifest), locale structure (Doc 581 / 733 / 737), substrate tiers (Doc 729 / 730), and the feedback paths between them. Companion docs: [`docs/predictive-ruleset.md`](docs/predictive-ruleset.md) (consolidated 15-rule predictive view) and [`docs/standing-rule-13-prospective-application.md`](docs/standing-rule-13-prospective-application.md) (revert-then-deeper-layer-closure thesis).
+
 ## Project identity
 
 - **Project**: Cruftless. Crate name `cruftless`; user-facing CLI binary `cruft`.
