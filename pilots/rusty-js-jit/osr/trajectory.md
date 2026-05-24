@@ -668,3 +668,103 @@ LOC delta: ~80 (osr_string_len extern + ParsedOp::GetPropLength variant + parse 
 ---
 
 *OSR-EXT 6 closes. GetProp+length-IC alphabet addition landed. Forward-exit (OSR.2) already handled by 5e. Next blocker on json_parse_transform: GetProp("charCodeAt") + CallMethod(charCodeAt) — OSR-EXT 6b's scope.*
+
+---
+
+## OSR-EXT 6b — 2026-05-23 (alphabet closure: GetProp("charCodeAt") + CallMethod-charCodeAt-IC + BitOr + ResetLocalCell; **PIPELINE CONNECTION ACHIEVED**)
+
+### Headline
+
+🎉 **The multi-tier pipeline connects. Pred-jsf.1 + Pred-tl.1 + Pred-osr.1 ALL MET with margin.**
+
+Final alphabet round of the (c+d) closure. Adds 4 ParsedOps + IR lowerings + 1 runtime extern + sigs/symbols. ~150 LOC delta. **json_parse_transform's checksum loop now OSR-compiles + invokes successfully.**
+
+**CRB json_parse_transform**: 2481 ms (JSF-EXT 0 baseline) → **834 ms (-66%)**. cruft/node ratio 20.34× → **6.67×**.
+
+### Cumulative session arc to pipeline-connection
+
+| stage | CRB (ms) | cruft/node | tier closed |
+|---|---:|---:|---|
+| JSF-EXT 0 baseline | 2481 | 20.34× | — |
+| JSF M1-M4 (JSON.stringify substrate) | 2455 | 20.12× | (wrong tier per Finding VII.1) |
+| CharCode-EXT 1 (substrate ASCII) | 2372 | 19.28× | substrate algorithm |
+| CharCode-EXT 2 (interp dispatch IC) | 2188 | 17.93× | interp dispatch |
+| TL-EXT 3 (module-body wrap) | 2188 | — | entry-mechanism |
+| VD-EXT 2 (NaN-boxing) | 2188 | — | value-domain coverage |
+| OSR-EXT 2-5d (counter + cache + invoke) | 2207 | — | locals-marshaling |
+| OSR-EXT 5e (synth fallthrough) | 2188 | — | (refines OSR.2) |
+| OSR-EXT 6 (GetProp+length-IC) | 2188 | — | (first half alphabet) |
+| **OSR-EXT 6b (GetProp+CallMethod-charCodeAt-IC + BitOr + ResetLocalCellNop)** | **834** | **6.67×** | **op-set coverage closure → pipeline connection** |
+
+### Three-probe results
+
+| probe | result |
+|---|---|
+| canonical fuzz (acc=-932188103) | ✅ GREEN |
+| diff-prod 42/42 | ✅ GREEN |
+| JIT lib tests | ✅ 38/38 |
+| Synth do-while (unchanged) | ✅ 10-11ms |
+| A/B checksum 5-run median | **1176 ms** (1139-1274; was 1480 pre-OSR; **-21%**) |
+| **CRB json_parse_transform 5-run median** | **834 ms** (was 2188 pre-OSR; was 2481 JSF-EXT 0; **-66% cumulative**) |
+| **cruft/node** | **6.67×** (was 17.93× pre-OSR; was 20.34× JSF-EXT 0; **-67% cumulative**) |
+
+### Substrate moves landed
+
+1. `pub extern "C" fn osr_string_char_code_at(payload, i) -> f64` in JIT crate (ASCII fast-path + non-ASCII fallback)
+2. `ParsedOp::GetPropCharCodeAt` variant + parse arm (accept "charCodeAt" key)
+3. `ParsedOp::CallMethodCharCodeAt` variant + parse arm (accept arity 1 only)
+4. `ParsedOp::BitOr` variant + parse arm + IR lowering (ToInt32-bor-back)
+5. `ParsedOp::ResetLocalCellNop` variant + parse arm + no-op IR (non-captured locals only)
+6. has_callmethod_charcodeat scan + JITBuilder symbol pre-bind + sig declaration + FuncRef declaration
+7. GetPropCharCodeAt IR: pop receiver, push sentinel 0.0
+8. CallMethodCharCodeAt IR: pop arg + sentinel + receiver; bitcast + mask + fcvt arg + extern call + push
+9. Added I32 type import for ireduce in BitOr lowering
+
+### Pred-osr.1 disposition
+
+**HELD WITH MARGIN.** Target: CRB ≤1500 ms (≥40% reclaim from 2481 baseline). Actual: **834 ms (-66% reclaim)**. Falsifier did not fire.
+
+### Pred-jsf.1 + Pred-tl.1 disposition (cross-pilot)
+
+Both targets (≤1500 ms ≥40% reclaim from 2481) MET. The multi-pilot chain (JSF substrate-introduction + CharCode substrate + dispatch + TL + VD + OSR) materialized the cumulative reclaim per Doc 740 §II.2 P4 multi-tier reading.
+
+### Doc 740 §VIII coverage axes — all closed for this fixture
+
+| axis | finding | status at OSR-EXT 6b close |
+|---|---|---|
+| component A/B (Addendum IV) | VII.1 | ✅ rule 11 satisfied at JSF-EXT 8 |
+| op-set coverage (V) | VII.2 | ✅ closed at OSR-EXT 6 + 6b for this fixture's loop body alphabet |
+| value-domain coverage (V) | VII.3 | ✅ VD pilot |
+| locals-marshaling (VII) | VIII.2 | ✅ OSR-EXT 5d |
+| emission-shape (Addendum VIII candidate) | OSR.2 | ✅ OSR-EXT 5e synth |
+
+### Composition with prior corpus / engagement work
+
+- **Doc 740 §II.2 P4 multi-tier cascade-revival**: empirically validated at session scope. The cumulative reclaim materialized at the FINAL tier-closure round (this round), confirming the prediction.
+- **Doc 739 single-tier cascade-revival**: each individual tier closure produced its expected reclaim (substrate algorithm -3%; dispatch IC -8%; alphabet+OSR -54%).
+- **Finding II.3 multi-tier cascade-revival**: empirical demonstration completes; the chain across 4 pilots (CharCode + TL + VD + OSR) is the canonical Doc 740 instance.
+- **Standing rule 11 multi-axis coverage**: all 5 axes (component A/B, op-set, value-domain, locals-marshaling, emission-shape) were closed in dependency order during this session.
+- **VD String encoding**: directly consumed in OSR-EXT 6 + 6b's IR (bitcast + payload mask); without VD, this round's substrate would have been impossible.
+- **CharCode-EXT 1 ASCII fast-path**: osr_string_char_code_at mirrors its semantics; the JIT-tier path now skips even the interp IC's call_function avoidance + reads bytes directly from the extern.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable.
+Per Doc 734 §V: growth (a) **positive-finding empirical materialization** — the full multi-tier pipeline-connection predicted by Doc 740 §II.2 P4 materialized empirically at -66% CRB reclaim.
+Per Doc 735 §X.h.b: **(P2.a) at fixture-anchored cumulative scope.** First end-to-end pipeline-connection materialization for the engagement on a CRB fixture.
+
+### Open scope at OSR-EXT 6b close
+
+1. **OSR-EXT 7** — formal close + composition matrix re-bench across all defaults + final disposition + Pred-osr.1 booking
+2. **Findings Addendum VIII** — codify OSR.2 + OSR.2-bis + OSR.2-ter (emission-shape coverage) + rule 11 5-axis form
+3. **Corpus doc candidate** — Doc 740 §VIII could note this empirical materialization, or a new Doc 741 articulating the session's full multi-tier-cascade demonstration
+4. **Engagement-wide instrument** — the OSR substrate + alphabet IC pattern generalizes; hot-intrinsic-IC table at JIT tier is the natural next sub-pilot
+
+### Cumulative status at OSR-EXT 6b close
+
+LOC delta: ~150 (OSR-EXT 6b alphabet additions). OSR-EXT 0-6b cumulative: ~1100 across the locale.
+Engagement-tier delta: CRB -66% on json_parse_transform; cruft/node 20.34× → 6.67×.
+
+---
+
+*OSR-EXT 6b closes. **Pipeline-connection achieved.** Pred-jsf.1 + Pred-tl.1 + Pred-osr.1 all met with margin (-66% CRB vs -40% target). Doc 740 §II.2 P4 empirically validated at session scope. The session's architectural-pivot arc (CharCode → TL → VD → OSR) closed at the final tier; cumulative reclaim materialized at the predicted moment.*

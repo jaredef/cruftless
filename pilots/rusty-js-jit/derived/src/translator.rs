@@ -25,7 +25,7 @@
 //! mem2reg / ssa-conversion handles the SSA promotion automatically.
 
 use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
-use cranelift_codegen::ir::types::{F64, I64, I8};
+use cranelift_codegen::ir::types::{F64, I32, I64, I8};
 use cranelift_codegen::ir::MemFlags;
 use cranelift_codegen::ir::{AbiParam, Block, InstBuilder, Value as ClValue};
 use cranelift_codegen::settings::{self, Configurable};
@@ -70,6 +70,28 @@ pub extern "C" fn osr_string_len(payload: i64) -> f64 {
     let ptr = payload as *const String;
     let s: &String = unsafe { &*ptr };
     s.len() as f64
+}
+
+/// OSR-EXT 6b (2026-05-23): runtime helper for charCodeAt-IC in OSR-
+/// compiled loop bodies. Caller passes VD-decoded payload (String*) +
+/// integer index; helper returns the char code as f64 (or NaN if i
+/// out of range). ASCII fast-path mirrors CharCode-EXT 1's substrate
+/// fix. SAFETY: payload must be a live *const String per OSR marshal-
+/// in contract.
+pub extern "C" fn osr_string_char_code_at(payload: i64, i: i64) -> f64 {
+    let ptr = payload as *const String;
+    let s: &String = unsafe { &*ptr };
+    if i < 0 { return f64::NAN; }
+    let i = i as usize;
+    let bytes = s.as_bytes();
+    if s.is_ascii() {
+        if i < bytes.len() { bytes[i] as f64 } else { f64::NAN }
+    } else {
+        match s.chars().nth(i) {
+            Some(c) => c as u32 as f64,
+            None => f64::NAN,
+        }
+    }
 }
 
 pub enum JitFn {
@@ -340,6 +362,9 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
     // OSR-EXT 6 (2026-05-23): detect GetPropLength to pre-bind
     // osr_string_len helper.
     let has_getprop_length = parsed.iter().any(|(_, op)| matches!(op, ParsedOp::GetPropLength));
+    // OSR-EXT 6b (2026-05-23): detect CallMethodCharCodeAt to pre-bind
+    // osr_string_char_code_at helper.
+    let has_callmethod_charcodeat = parsed.iter().any(|(_, op)| matches!(op, ParsedOp::CallMethodCharCodeAt));
 
     let mut jit_builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
     if any_guard {
@@ -359,6 +384,9 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
     }
     if has_getprop_length {
         jit_builder.symbol("osr_string_len", osr_string_len as *const u8);
+    }
+    if has_callmethod_charcodeat {
+        jit_builder.symbol("osr_string_char_code_at", osr_string_char_code_at as *const u8);
     }
     let mut module = JITModule::new(jit_builder);
 
@@ -405,6 +433,17 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
             .declare_function("osr_string_len", Linkage::Import, &sig)
             .map_err(|e| format!("declare osr_string_len: {e}"))?)
     } else { None };
+    // OSR-EXT 6b (2026-05-23): declare osr_string_char_code_at sig.
+    // extern "C" fn(i64, i64) -> f64; payload + index → char code.
+    let osr_string_char_code_at_id_opt = if has_callmethod_charcodeat {
+        let mut sig = module.make_signature();
+        sig.params.push(AbiParam::new(I64));
+        sig.params.push(AbiParam::new(I64));
+        sig.returns.push(AbiParam::new(F64));
+        Some(module
+            .declare_function("osr_string_char_code_at", Linkage::Import, &sig)
+            .map_err(|e| format!("declare osr_string_char_code_at: {e}"))?)
+    } else { None };
 
     let mut ctx = module.make_context();
     let mut fb_ctx = FunctionBuilderContext::new();
@@ -441,6 +480,8 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
         let getprop_ref = getprop_id_opt.map(|id| module.declare_func_in_func(id, &mut builder.func));
         // OSR-EXT 6 (2026-05-23): declare osr_string_len FuncRef for IR.
         let osr_string_len_ref = osr_string_len_id_opt.map(|id| module.declare_func_in_func(id, &mut builder.func));
+        // OSR-EXT 6b (2026-05-23): same for osr_string_char_code_at.
+        let osr_string_char_code_at_ref = osr_string_char_code_at_id_opt.map(|id| module.declare_func_in_func(id, &mut builder.func));
 
         // Allocate a Cranelift Block per jump target.
         let mut blocks: HashMap<usize, Block> = HashMap::new();
@@ -719,6 +760,56 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
                     let payload = builder.ins().band(recv_bits, payload_mask);
                     let slref = osr_string_len_ref.expect("osr_string_len_ref must be set when ParsedOp::GetPropLength is present");
                     let call_inst = builder.ins().call(slref, &[payload]);
+                    let result = builder.inst_results(call_inst)[0];
+                    stack.push(result);
+                }
+                ParsedOp::GetPropCharCodeAt => {
+                    // OSR-EXT 6b (2026-05-23): GetProp("charCodeAt") in
+                    // the method-resolve position. The bytecode pattern
+                    // is `LoadLocal receiver; Dup; GetProp "charCodeAt";
+                    // LoadLocal arg; CallMethod 1`. The Dup left a copy
+                    // of receiver beneath; GetProp pops the top (which
+                    // is the receiver copy) and pushes a method handle.
+                    // For the IC fast-path: pop the duplicated receiver
+                    // (discard) and push a sentinel f64 (0.0). The
+                    // subsequent CallMethodCharCodeAt consumes the
+                    // sentinel + the receiver beneath + the arg.
+                    let _ = stack.pop().ok_or("GetPropCharCodeAt: stack underflow")?;
+                    let sentinel = builder.ins().f64const(0.0);
+                    stack.push(sentinel);
+                }
+                ParsedOp::ResetLocalCellNop => { /* no-op; non-captured locals */ }
+                ParsedOp::BitOr => {
+                    // OSR-EXT 6b (2026-05-23): ECMA-262 ToInt32 + bor.
+                    // f64 → i64 (sat) → bor → i32 truncate (ToInt32
+                    // semantics) → sext → f64.
+                    let r_f64 = stack.pop().ok_or("BitOr: stack underflow (rhs)")?;
+                    let l_f64 = stack.pop().ok_or("BitOr: stack underflow (lhs)")?;
+                    let r_i64 = builder.ins().fcvt_to_sint_sat(I64, r_f64);
+                    let l_i64 = builder.ins().fcvt_to_sint_sat(I64, l_f64);
+                    let or = builder.ins().bor(l_i64, r_i64);
+                    let trunc = builder.ins().ireduce(I32, or);
+                    let sext = builder.ins().sextend(I64, trunc);
+                    let f = builder.ins().fcvt_from_sint(F64, sext);
+                    stack.push(f);
+                }
+                ParsedOp::CallMethodCharCodeAt => {
+                    // OSR-EXT 6b (2026-05-23): charCodeAt IC inlined.
+                    // Pop arg + sentinel (from GetPropCharCodeAt) +
+                    // receiver. Decode receiver as VD-String payload.
+                    // Convert arg f64 → i64 for index. Call
+                    // osr_string_char_code_at extern (which handles
+                    // ASCII fast-path + bounds + non-ASCII fallback).
+                    // Push f64 result.
+                    let arg_f64 = stack.pop().ok_or("CallMethodCharCodeAt: stack underflow (arg)")?;
+                    let _sentinel = stack.pop().ok_or("CallMethodCharCodeAt: stack underflow (method sentinel)")?;
+                    let recv_f64 = stack.pop().ok_or("CallMethodCharCodeAt: stack underflow (receiver)")?;
+                    let recv_bits = builder.ins().bitcast(I64, MemFlags::new(), recv_f64);
+                    let payload_mask = builder.ins().iconst(I64, 0x0000_FFFF_FFFF_FFFF_u64 as i64);
+                    let payload = builder.ins().band(recv_bits, payload_mask);
+                    let arg_i64 = builder.ins().fcvt_to_sint_sat(I64, arg_f64);
+                    let ccref = osr_string_char_code_at_ref.expect("osr_string_char_code_at_ref must be set when ParsedOp::CallMethodCharCodeAt is present");
+                    let call_inst = builder.ins().call(ccref, &[payload, arg_i64]);
                     let result = builder.inst_results(call_inst)[0];
                     stack.push(result);
                 }
@@ -1260,6 +1351,23 @@ enum ParsedOp {
     /// IR lowering: bitcast receiver f64 → i64; mask payload bits;
     /// call osr_string_len(payload) extern; push f64 result.
     GetPropLength,
+    /// OSR-EXT 6b (2026-05-23): Op::GetProp with key "charCodeAt"
+    /// (the receiver-method resolve preceding a CallMethod). IR pops
+    /// the receiver and pushes a sentinel f64 (0.0); the subsequent
+    /// CallMethodCharCodeAt consumes the sentinel + the original
+    /// receiver (still on stack from Dup) + the index arg. The
+    /// fast-path assumes user code hasn't overridden String.prototype.
+    /// charCodeAt (runtime check deferred to a hardening round).
+    GetPropCharCodeAt,
+    /// OSR-EXT 6b (2026-05-23): Op::CallMethod with arity=1, paired
+    /// with a preceding GetPropCharCodeAt. IR pops arg + sentinel
+    /// (method) + receiver; calls osr_string_char_code_at extern;
+    /// pushes f64 result. Other CallMethod arities bail at parse.
+    CallMethodCharCodeAt,
+    /// OSR-EXT 6b (2026-05-23): Op::BitOr per ECMA-262 ToInt32 + bor +
+    /// back to Number. Common in `x | 0` int32 coercion idiom.
+    BitOr,
+    ResetLocalCellNop,
     Add, Sub, Mul, Inc, Dec,
     Lt, Le, Gt, Ge, Eq, Ne, StrictEq, StrictNe,
     Dup, Pop,
@@ -1314,17 +1422,40 @@ fn parse_bytecode(bc: &[u8], constants: &ConstantsPool) -> Result<Vec<(usize, Pa
                     None => return Err(format!("PushConst at pc={op_pc}: constant idx {idx} out of bounds")),
                 }
             }
-            // OSR-EXT 6 (2026-05-23): GetProp with key "length" only at
-            // first cut (Pred-osr.4 scope discipline). Other keys bail.
+            // OSR-EXT 6 (2026-05-23): GetProp accepts "length"; OSR-EXT 6b
+            // (2026-05-23): also accepts "charCodeAt" (paired with a
+            // following CallMethod 1). Other keys bail.
             Op::GetProp => {
                 let idx = u16::from_le_bytes([bc[pc], bc[pc + 1]]);
                 pc += 2;
                 match constants.get(idx) {
                     Some(Constant::String(s)) if s == "length" => ParsedOp::GetPropLength,
-                    Some(Constant::String(s)) => return Err(format!("GetProp at pc={op_pc}: key '{s}' unsupported in JIT alphabet (only 'length' at first cut)")),
+                    Some(Constant::String(s)) if s == "charCodeAt" => ParsedOp::GetPropCharCodeAt,
+                    Some(Constant::String(s)) => return Err(format!("GetProp at pc={op_pc}: key '{s}' unsupported in JIT alphabet")),
                     Some(_) => return Err(format!("GetProp at pc={op_pc}: non-String key unsupported")),
                     None => return Err(format!("GetProp at pc={op_pc}: constant idx {idx} out of bounds")),
                 }
+            }
+            // OSR-EXT 6b (2026-05-23): CallMethod with arity=1 only at
+            // first cut. Paired with GetPropCharCodeAt for the charCodeAt
+            // IC fast-path.
+            Op::CallMethod => {
+                let n = bc[pc];
+                pc += 1;
+                if n != 1 {
+                    return Err(format!("CallMethod at pc={op_pc}: arity {n} unsupported (only 1 at first cut)"));
+                }
+                ParsedOp::CallMethodCharCodeAt
+            }
+            Op::BitOr => ParsedOp::BitOr,
+            // OSR-EXT 6b: ResetLocalCell is a no-op for non-captured
+            // locals (resets the cell to Undefined). In OSR loop bodies
+            // without closures captured-locals are absent, so this is
+            // safe to skip. Pop the slot u16 operand without acting.
+            Op::ResetLocalCell => {
+                let _slot = u16::from_le_bytes([bc[pc], bc[pc + 1]]);
+                pc += 2;
+                ParsedOp::ResetLocalCellNop
             }
             Op::Add => ParsedOp::Add,
             Op::Sub => ParsedOp::Sub,
