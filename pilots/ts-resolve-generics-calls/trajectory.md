@@ -71,6 +71,46 @@ Both unambiguous via the `match_angle` close → `(` look-ahead filter.
 
 Achieving 1-5 lifts parse-success **69.3% → ~88%**.
 
-### Status: CHAPTER CLOSED at TRGC-EXT 1
+### Status: REOPENED for TRGC-EXT 2 follow-on
+
+---
+
+## TRGC-EXT 2 — substrate-completeness follow-on (2026-05-24)
+
+**Trigger**: keeper directive "Continue" after TRGC-EXT 1 close. Per the inspect-then-iterate discipline, investigated the remaining `method-return-annotation` row (#1, 37 files) and discovered three additional substrate gaps NOT covered by the TRGC-EXT 1 close:
+
+1. **Arrow `=>` vs fn-type `=>` disambig in `skip_type`** — `: Writable => { body }` was consuming the value-position `=>` as a fn-type arrow. Fix: track `prev_was_rparen_at_top` in `skip_type`; only consume top-level `=>` when preceded by a balanced `(...)`.
+2. **ASI-aware `skip_type`** — class-field annotations like `readonly str: string\n constructor(...)` were consuming past newline into the next member. Fix: break at top-level on `preceded_by_line_terminator` after the first consumed token.
+3. **TS method-overload-no-body strip** — `subscribe(...): R;` overload declarations are valid TS but not valid JS. New rule strips the entire signature when at class-body member-start position AND immediately-after-`)` is `:`/`;`/`{` AND the next top-level `;` precedes any `{`.
+
+**Bugs caught + fixed mid-round (TRGC-EXT 2)**:
+- Initial overload-rule over-matched on expression-position calls like `or(...)` inside function bodies (since `in_class_body()` is a dummy that returns true). Symptom: regression to 67.4% parse-success. Fix: added strict gating — only fires at `brace_stack.last() == Block` AND `preceded_by_line_terminator || prev in {LBrace, Semicolon}` (member-start position) AND immediately-after-`)` is a method-decl-shape token.
+- Second overload-rule scan logic over-matched on `s.match(/foo/g)` style calls. Fix: tightened scan to require immediate-after-`)` to be `:`/`;`/`{`.
+
+**Gates**:
+- `cargo test --release -p ts-resolve`: ✅ **46/46 PASS** (+3 new: overload-strip, class-field-no-init, regex-call-not-overload negative)
+- diff-prod 42/42 PASS ✅
+- No regression of pre-TRGC OK files (regressed mid-round then corrected)
+
+**TCC measurement**:
+
+| Stage | OK | Parse-success | Δ from TRGC-EXT 1 close |
+|---|---:|---:|---:|
+| Pre-round (TRGC-EXT 1 close) | 259 | 69.3% | — |
+| After arrow-vs-fn-type fix (single-fix probe) | 262 | 70.1% | +0.8 pp |
+| After overload-strip first cut (REGRESSED) | 252 | 67.4% | -1.9 pp |
+| After overload-rule gating refinement | **265** | **70.9%** | **+1.6 pp** |
+
+**Final disposition**: substrate strictly more correct; +1.6 pp gain; +3 unit tests; substrate-completeness improvements that pay forward to all subsequent locales.
+
+### Findings
+
+**Finding TRGC.4** (regression-recovery discipline): mid-round regression caught by TCC re-measurement, traced to over-matched gating, fixed by tightening the immediate-after-`)` condition. **The corpus serves as a regression instrument, not just a feature-priority instrument**. Without TCC's automated baseline, the over-match would have shipped silently.
+
+**Finding TRGC.5** (substrate-tier discipline-of-conservative-strip-rules): when a strip rule's heuristic is uncertain, prefer false-negatives (miss real cases) over false-positives (strip non-cases). Bail conditions should be conservative. Cost of a false-negative: TCC re-measurement shows the failure category remains, easy to iterate. Cost of a false-positive: silent regression of previously-OK files; hard to detect without an instrument.
+
+### Status: CHAPTER CLOSED at TRGC-EXT 2
+
+Standing rule 13 corroboration count holds at 8 (TRGC-EXT 2 is a follow-on within TRGC's locale, not a new locale). Substrate now handles arrow-vs-fn-type, class-field ASI, and TS method/function overload declarations.
 
 Standing rule 13's eighth corroboration. Three substrate improvements landed; +9.4 pp parse-success lift; ternary-tracking discovery (item 2) materialized within the single-round close per the established inspect-then-iterate discipline.

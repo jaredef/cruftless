@@ -1,7 +1,7 @@
 {"file": "ajv/lib/2019.ts", "outcome": "OK", "message": ""}
 {"file": "ajv/lib/2020.ts", "outcome": "OK", "message": ""}
 {"file": "ajv/lib/ajv.ts", "outcome": "OK", "message": ""}
-{"file": "ajv/lib/compile/codegen/code.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 375, end: 376 }, message: 'expected class member name' }"}
+{"file": "ajv/lib/compile/codegen/code.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 193, end: 194 }, message: 'expected `LBrace`' }"}
 {"file": "ajv/lib/compile/codegen/index.ts", "outcome": "OK", "message": ""}
 {"file": "ajv/lib/compile/codegen/scope.ts", "outcome": "OK", "message": ""}
 {"file": "ajv/lib/compile/errors.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 2951, end: 2952 }, message: 'expected template middle/tail after substitution' }"}
@@ -10,13 +10,13 @@
 {"file": "ajv/lib/compile/jtd/serialize.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 12, end: 15 }, message: 'expected `from`' }"}
 {"file": "ajv/lib/compile/jtd/types.ts", "outcome": "OK", "message": ""}
 {"file": "ajv/lib/compile/names.ts", "outcome": "OK", "message": ""}
-{"file": "ajv/lib/compile/ref_error.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 303, end: 304 }, message: 'expected class member name' }"}
+{"file": "ajv/lib/compile/ref_error.ts", "outcome": "OK", "message": ""}
 {"file": "ajv/lib/compile/resolve.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 4674, end: 4674 }, message: 'expected `from`' }"}
 {"file": "ajv/lib/compile/rules.ts", "outcome": "OK", "message": ""}
 {"file": "ajv/lib/compile/util.ts", "outcome": "OK", "message": ""}
 {"file": "ajv/lib/compile/validate/applicability.ts", "outcome": "OK", "message": ""}
 {"file": "ajv/lib/compile/validate/boolSchema.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 1072, end: 1073 }, message: 'unexpected token in expression: Punct(Colon)' }"}
-{"file": "ajv/lib/compile/validate/dataType.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 5039, end: 5040 }, message: 'unexpected token in expression: Punct(Colon)' }"}
+{"file": "ajv/lib/compile/validate/dataType.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 5466, end: 5467 }, message: 'expected `Colon`' }"}
 {"file": "ajv/lib/compile/validate/defaults.ts", "outcome": "OK", "message": ""}
 {"file": "ajv/lib/compile/validate/index.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 7072, end: 7073 }, message: 'expected template middle/tail after substitution' }"}
 {"file": "ajv/lib/compile/validate/keyword.ts", "outcome": "OK", "message": ""}
@@ -31,9 +31,9 @@
 {"file": "ajv/lib/runtime/quote.ts", "outcome": "OK", "message": ""}
 {"file": "ajv/lib/runtime/re2.ts", "outcome": "OK", "message": ""}
 {"file": "ajv/lib/runtime/timestamp.ts", "outcome": "OK", "message": ""}
-{"file": "ajv/lib/runtime/ucs2length.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 629, end: 629 }, message: 'expected `RBrace`' }"}
+{"file": "ajv/lib/runtime/ucs2length.ts", "outcome": "OK", "message": ""}
 {"file": "ajv/lib/runtime/uri.ts", "outcome": "OK", "message": ""}
-{"file": "ajv/lib/runtime/validation_error.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 234, end: 235 }, message: 'expected class member name' }"}
+{"file": "ajv/lib/runtime/validation_error.ts", "outcome": "OK", "message": ""}
 {"file": "ajv/lib/standalone/index.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 12, end: 19 }, message: 'expected `from`' }"}
 {"file": "ajv/lib/standalone/instance.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 202, end: 203 }, message: 'expected class member name' }"}
 {"file": "ajv/lib/types/index.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 7289, end: 7289 }, message: 'expected `from`' }"}
@@ -111,7 +111,7 @@
 {"file": "pino/test/fixtures/ts/transport-exit-on-ready.ts", "outcome": "OK", "message": ""}
 {"file": "pino/test/fixtures/ts/transport-main.ts", "outcome": "OK", "message": ""}
 {"file": "pino/test/fixtures/ts/transport-string-stdout.ts", "outcome": "OK", "message": ""}
-{"file": "pino/test/fixtures/ts/transport-worker.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 56, end: 57 }, message: 'unexpected token in expression: Punct(RParen)' }"}
+{"file": "pino/test/fixtures/ts/transport-worker.ts", "outcome": "OK", "message": ""}
 {"file": "pino/test/transport/core.test.ts", "outcome": "OK", "message": ""}
 {"file": "pino/test/transport/core.transpiled.test.ts", "outcome": "OK", "message": ""}
 {"file": "pino/test/types/pino-import.test-d.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 178, end: 179 }, message: 'expected `from`' }"}
@@ -127,13 +127,13 @@
 {"file": "rxjs/src/internal/AnyCatcher.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/AsyncSubject.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/BehaviorSubject.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/Notification.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 2146, end: 2147 }, message: 'expected `LBrace`' }"}
+{"file": "rxjs/src/internal/Notification.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 3835, end: 3836 }, message: 'expected `LBrace`' }"}
 {"file": "rxjs/src/internal/NotificationFactories.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/Observable.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 3136, end: 3137 }, message: 'expected `LBrace`' }"}
+{"file": "rxjs/src/internal/Observable.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 14481, end: 14482 }, message: 'expected `LBrace`' }"}
 {"file": "rxjs/src/internal/Operator.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/ReplaySubject.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/Scheduler.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/Subject.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 1768, end: 1769 }, message: 'expected class member name' }"}
+{"file": "rxjs/src/internal/Subject.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/Subscriber.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 8949, end: 8950 }, message: 'unexpected token in expression: Punct(Assign)' }"}
 {"file": "rxjs/src/internal/Subscription.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 1888, end: 1889 }, message: 'unexpected token in expression: Punct(Colon)' }"}
 {"file": "rxjs/src/internal/ajax/AjaxResponse.ts", "outcome": "OK", "message": ""}
@@ -350,7 +350,7 @@
 {"file": "rxjs/src/internal/util/errorContext.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 85, end: 86 }, message: 'unexpected token in expression: Punct(RBrace)' }"}
 {"file": "rxjs/src/internal/util/executeSchedule.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 264, end: 265 }, message: 'expected `LBrace`' }"}
 {"file": "rxjs/src/internal/util/identity.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/util/isArrayLike.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 39, end: 40 }, message: 'expected `RParen`' }"}
+{"file": "rxjs/src/internal/util/isArrayLike.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/util/isAsyncIterable.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/util/isDate.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/util/isFunction.ts", "outcome": "OK", "message": ""}

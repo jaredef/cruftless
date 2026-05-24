@@ -32,6 +32,23 @@ use rusty_js_parser::{Lexer, LexerGoal, Token, TokenKind, Punct, Span, TemplateP
 /// when the previous token's right-hand context permits a regex
 /// literal (i.e., we're at an expression-start position), else `Div`.
 /// Mirrors the JS parser's standard goal-selection rule per ECMA-262.
+/// TRGC-EXT 2 follow-on: keywords that must NOT trigger the method-
+/// overload-no-body strip rule, because they introduce control-flow
+/// constructs that legitimately have `(...)` then `{...}` body without
+/// an annotation between them. Filtering by name avoids requiring
+/// expensive lookback to verify class-body vs control-flow context.
+fn is_overload_blocked_name(name: &str) -> bool {
+    matches!(name,
+        "if" | "for" | "while" | "switch" | "catch" | "with" | "do"
+        | "return" | "yield" | "await" | "throw" | "new" | "typeof"
+        | "delete" | "void" | "in" | "of" | "instanceof"
+        | "let" | "const" | "var" | "function" | "class"
+        | "import" | "export" | "default" | "from" | "as"
+        | "true" | "false" | "null" | "undefined" | "this"
+        | "super" | "async" | "static"
+    )
+}
+
 fn expr_or_div_goal(prev: Option<&TokenKind>) -> LexerGoal {
     let prev = match prev {
         Some(p) => p,
@@ -422,6 +439,78 @@ impl<'src> Scanner<'src> {
                         self.strips.push((t.span.start, t.span.end));
                     }
                 }
+                // TRGC-EXT 2 follow-on: TS method overload declarations
+                // have a signature but NO body, ending in `;`. JS
+                // doesn't allow this — strip the entire signature.
+                // Pattern: at class-body top level (brace_stack.last
+                // is Block AND we're at member-start position):
+                //   Ident NAME `(` ... `)` [`:` TYPE] `;`
+                //   (no `{` between `)` and `;`).
+                // Gated by:
+                //   - is_overload_blocked_name(name) negative
+                //   - brace_stack.last() == Block (in a class body)
+                //   - preceded_by_line_terminator OR prev is `{` or `;`
+                //     (statement-start position in the class body)
+                let at_class_member_start = matches!(self.brace_stack.last(), Some(BraceCtx::Block))
+                    && (
+                        t.preceded_by_line_terminator
+                        || i == 0
+                        || matches!(self.toks[i - 1].kind,
+                            TokenKind::Punct(Punct::LBrace) | TokenKind::Punct(Punct::Semicolon))
+                    );
+                if at_class_member_start && !is_overload_blocked_name(name) {
+                    if let Some(lparen) = self.next_punct_immediate(i + 1, Punct::LParen) {
+                        if let Some(rparen) = self.match_parens(lparen) {
+                            // Tighten: the IMMEDIATE next token after
+                            // `)` must be `:` (annotation), `;` (no-
+                            // body), or `{` (body). Anything else
+                            // (`.`, `[`, `(`, `,`, etc.) makes this a
+                            // call/expression, not a method-decl.
+                            let after_rparen = rparen + 1;
+                            let after_kind = self.toks.get(after_rparen).map(|t| &t.kind);
+                            let is_method_decl_shape = matches!(after_kind,
+                                Some(TokenKind::Punct(Punct::Colon))
+                                | Some(TokenKind::Punct(Punct::LBrace))
+                                | Some(TokenKind::Punct(Punct::Semicolon))
+                            );
+                            if !is_method_decl_shape {
+                                // Fall through to other rules.
+                            } else {
+                                // Scan from after rparen for `{` (body
+                                // — not an overload) or `;` (overload
+                                // signature) at the SAME depth, with no
+                                // intervening `{` for the body.
+                                let mut k = after_rparen;
+                                let mut depth = 0i32;
+                                let mut found_overload = false;
+                                while k < self.toks.len() {
+                                    match &self.toks[k].kind {
+                                        TokenKind::Punct(Punct::LBrace) if depth == 0 => break,
+                                        TokenKind::Punct(Punct::LParen)
+                                        | TokenKind::Punct(Punct::LBracket)
+                                        | TokenKind::Punct(Punct::Lt) => depth += 1,
+                                        TokenKind::Punct(Punct::RParen)
+                                        | TokenKind::Punct(Punct::RBracket)
+                                        | TokenKind::Punct(Punct::Gt) if depth > 0 => depth -= 1,
+                                        TokenKind::Punct(Punct::Semicolon) if depth == 0 => {
+                                            found_overload = true;
+                                            break;
+                                        }
+                                        TokenKind::Eof => break,
+                                        _ => {}
+                                    }
+                                    k += 1;
+                                }
+                                if found_overload {
+                                    let start = t.span.start;
+                                    let end = self.toks[k].span.end;
+                                    self.strips.push((start, end));
+                                    return Ok(k + 1);
+                                }
+                            }
+                        }
+                    }
+                }
                 // `interface NAME { ... }` — strip the entire decl.
                 if name == "interface" && self.next_is_ident(i + 1) {
                     if let Some(brace_open) = self.find_punct(i + 2, Punct::LBrace) {
@@ -610,6 +699,37 @@ impl<'src> Scanner<'src> {
             | TokenKind::Punct(Punct::LBrace)
             | TokenKind::Punct(Punct::RBrace)
         )
+    }
+
+    /// Return Some(j) if the token at `at` is exactly `p`; else None.
+    /// Used for the overload-detection pattern where we need the next
+    /// token to be `(` immediately (no intervening tokens allowed —
+    /// otherwise we'd be matching e.g. `name <generic>(`).
+    fn next_punct_immediate(&self, at: usize, p: Punct) -> Option<usize> {
+        if at < self.toks.len() {
+            if let TokenKind::Punct(pp) = &self.toks[at].kind {
+                if *pp == p { return Some(at); }
+            }
+        }
+        None
+    }
+
+    /// Given LParen index, return matching RParen index. Mirrors
+    /// match_braces; balances brace/bracket/paren nesting.
+    fn match_parens(&self, lparen: usize) -> Option<usize> {
+        let mut depth = 0i32;
+        for j in lparen..self.toks.len() {
+            match &self.toks[j].kind {
+                TokenKind::Punct(Punct::LParen) => depth += 1,
+                TokenKind::Punct(Punct::RParen) => {
+                    depth -= 1;
+                    if depth == 0 { return Some(j); }
+                }
+                TokenKind::Eof => return None,
+                _ => {}
+            }
+        }
+        None
     }
 
     /// Find the index of a specific punctuator starting from `from`,
@@ -868,6 +988,12 @@ impl<'src> Scanner<'src> {
         let mut depth_brace = 0i32;
         let mut depth_brack = 0i32;
         let start = i;
+        // TRGC-EXT 1 follow-on: track whether the last top-level token
+        // closed a balanced `(...)`. If true AND the next top-level
+        // token is `=>`, we're inside a function-type `(args) => ret`
+        // — consume the `=>`. Otherwise top-level `=>` is the value-
+        // position arrow that ends the annotation (e.g. `: T => body`).
+        let mut prev_was_rparen_at_top = false;
         while i < self.toks.len() {
             let stop = matches!(self.toks[i].kind,
                 TokenKind::Eof
@@ -876,13 +1002,26 @@ impl<'src> Scanner<'src> {
             if stop { break; }
             let at_top = depth_angle == 0 && depth_paren == 0 && depth_brace == 0 && depth_brack == 0;
             if at_top {
-                // Stoppers at top level: `,`, `=`, `)`, `}`, `]`, `{` (body start)
+                // TRGC-EXT 2 follow-on: ASI-aware top-level break.
+                // Class-field annotations end at line-terminator before
+                // the next member: `readonly x: T\n  y: U`. Without
+                // this break, skip_type consumes past `T` into `y`'s
+                // declaration.
+                if i > start && self.toks[i].preceded_by_line_terminator {
+                    break;
+                }
+                // Stoppers at top level: `,`, `=`, `)`, `}`, `]`, `{` (body start),
+                // `=>` (only when not after balanced `(...)`).
                 match &self.toks[i].kind {
                     TokenKind::Punct(Punct::Comma)
                     | TokenKind::Punct(Punct::Assign)
                     | TokenKind::Punct(Punct::RParen)
                     | TokenKind::Punct(Punct::RBrace)
                     | TokenKind::Punct(Punct::RBracket) => break,
+                    TokenKind::Punct(Punct::Arrow) => {
+                        if !prev_was_rparen_at_top { break; }
+                        // Else fall through; consume as fn-type arrow.
+                    }
                     TokenKind::Punct(Punct::LBrace) => {
                         // `{ x: T }` at the START of the type position
                         // is an object type literal — descend. After
@@ -909,6 +1048,11 @@ impl<'src> Scanner<'src> {
                 TokenKind::Punct(Punct::RBracket) if depth_brack > 0 => depth_brack -= 1,
                 _ => {}
             }
+            // Set prev_was_rparen_at_top AFTER bracket-depth updates,
+            // so a `)` that just popped to zero is recognized as a
+            // top-level RParen on the next iteration.
+            prev_was_rparen_at_top = matches!(self.toks[i].kind, TokenKind::Punct(Punct::RParen))
+                && depth_angle == 0 && depth_paren == 0 && depth_brace == 0 && depth_brack == 0;
             i += 1;
         }
         i

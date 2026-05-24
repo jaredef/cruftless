@@ -321,6 +321,51 @@ fn less_than_operator_not_mis_stripped() {
 }
 
 #[test]
+fn arrow_return_type_annotation_does_not_eat_fat_arrow() {
+    // The `: Writable => {...}` shape: type ends at `Writable`; the
+    // `=>` belongs to the arrow function, not the type. Regression
+    // for the post-TRGC follow-on substrate fix.
+    assert!(shape_equiv(
+        "export default (): Writable => { return 1; };",
+        "export default () => { return 1; };"
+    ));
+}
+
+#[test]
+fn fn_type_annotation_still_consumes_arrow() {
+    // The `: (x: T) => U` shape: type IS the fn-type; arrow + return
+    // type belong to the type. Both must be stripped together.
+    assert!(shape_equiv(
+        "let cb: (n: number) => string = String;",
+        "let cb = String;"
+    ));
+}
+
+#[test]
+fn class_method_overload_signature_stripped() {
+    assert!(shape_equiv(
+        "class C { method(x: A): R; method(x: B): R; method(x: A | B): R { return x as R; } }",
+        "class C { method(x) { return x; } }"
+    ));
+}
+
+#[test]
+fn class_field_annotation_no_init_stops_at_newline() {
+    assert!(shape_equiv(
+        "class C {\n  readonly str: string\n  constructor(s: string) { this.str = s; }\n}",
+        "class C {\n  str\n  constructor(s) { this.str = s; }\n}"
+    ));
+}
+
+#[test]
+fn regex_call_arg_not_mis_treated_as_overload() {
+    // Negative: `s.match(/foo/g);` is not an overload — the `match`
+    // Ident is at expression position (after `.`), not class-body
+    // member-start.
+    assert!(parses("const r = s.match(/foo/g);"));
+}
+
+#[test]
 fn pure_js_via_ts_resolve_yields_same_body_length() {
     let src = "let x = 1; let y = 2; (x + y);";
     let direct = rusty_js_parser::parse_module(src).expect("ok");
