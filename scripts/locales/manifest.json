@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 36,
-    "top_level": 25,
+    "locales": 37,
+    "top_level": 26,
     "nested": 11,
     "warnings": 0
   },
@@ -226,6 +226,15 @@
       "status": "**FOUNDED (CMig-EXT 0)**. Sub-workstream of `pilots/rusty-js-shapes/` spawned per Shape-EXT 4's deferred-enrollment finding. The parent's Shape-EXT 4 round landed shape infrastructure on Object but kept `new_ordinary()` defaulting to `shape: None` because the first enrollment attempt regressed diff-prod 39\u219231/42 PASS. Root cause: ~41 sites across the runtime crate iterate `.properties` directly and bypass the shape mechanism. This sub-workstream migrates those sites family by family so enrollment can flip back on without regression."
     },
     {
+      "coord": "test262-categorize",
+      "tag": "L.test262-categorize",
+      "parent": null,
+      "scope": "test262-categorize",
+      "depth": 1,
+      "rung_count": 1,
+      "status": "**WORKSTREAM FOUNDED (T262C-EXT 0)**. Spawned per keeper directive on the ECMAScript-parity pivot following the TS-parity arc's 100% close. This locale is the **third instrument-tier locale** in the engagement (after TCC, TXC), built to support the ECMAScript-parity arc with the same corpus-driven inspect-then-iterate discipline that drove the TS-parity arc to closure."
+    },
+    {
       "coord": "tls",
       "tag": "L.tls",
       "parent": null,
@@ -259,7 +268,7 @@
       "scope": "ts-resolve",
       "depth": 1,
       "rung_count": 6,
-      "status": "**CHAPTER CLOSED at TSR-EXT 5 (4 implementation rounds; Pred-tsr.6 HELD)**. Five of six predicates HELD; Pred-tsr.5 (\u226510% reclaim from annotation-driven IPBR shape skip) FALSIFIED at sub-noise effect \u2014 a high-information null result that materially refines the cruftscript-spec design space (load-bearing claim shifts from iter-protocol-shape-skip to JIT IC specialization + VD tag preservation). Native `.ts` execution by `cruft` operational for the high-frequency real-world TS surface. See trajectory.md TSR-EXT 5 entry for the empirical disposition + Finding TSR.1."
+      "status": "**\ud83c\udfaf PARSE-PARITY 100.0% on real npm corpus (374/374)**. Full TS-parity arc complete across 11 sub-locales (TRSLS / TRCAPS / TRGC\u00d76 follow-ons / TRMLE / TRE / TROI + long-tail closures) \u2014 see `pilots/ts-resolve-*/` siblings + findings.md Addenda X-XI. Execute-parity at 70.9% (TXC: 265 MATCH / 374 - 108 BUN_FAIL = 265/266 = 99.6% of runnable files). TSR-tier work is COMPLETE; remaining execute-parity gap is genuine runtime-substrate territory per Finding IX.9 (parse-execute-separability)."
     },
     {
       "coord": "ts-resolve-class-and-param-shapes",
