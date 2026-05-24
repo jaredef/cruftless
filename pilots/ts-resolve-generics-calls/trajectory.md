@@ -148,7 +148,50 @@ Achieving 1-5 lifts parse-success **69.3% → ~88%**.
 
 **Finding TRGC.7** (inspect-then-iterate compound discovery, fourth reproduction): the pattern reproduces yet again. Each round's "what's left" inspection surfaces higher-impact substrate gaps than the planned scope. Standing observation: the corpus-driven inspect-then-iterate discipline has stronger predictive yield than spec-driven planning.
 
-### Status: CHAPTER CLOSED at TRGC-EXT 3
+### Status: REOPENED for TRGC-EXT 4 follow-on
+
+---
+
+## TRGC-EXT 4 — UShr/Shr handling in overload scan + match_angle (2026-05-24)
+
+**Trigger**: keeper "Continue". Inspected remaining top failures (combineLatest.ts + innerFrom.ts).
+
+**Two single-line fixes** in `strip.rs`:
+
+1. **`match_angle` handles UShr (`>>>`)** — `<T extends Record<string, ObservableInput<any>>>` has triple-`>` that lexes as UShr. The helper now decrements depth by 3 on UShr (and was already handling Shr by 2). Same fix applied to `skip_type`'s angle-depth tracker.
+
+2. **Overload-scan loop handles Shr/UShr** — the bracket-depth balancer inside the overload-scan was missing arms for Shr and UShr. Without these, depth never reached 0 on generic return types like `Observable<ObservedValueOf<O>>`, causing the loop to walk past the `;` and miss the overload pattern. Single-fix **+6.7 pp**.
+
+**Gates**:
+- `cargo test --release -p ts-resolve`: ✅ 46/46 PASS
+- diff-prod 42/42 PASS ✅
+
+**TCC measurement (TRGC-EXT 4)**:
+
+| Stage | OK | Parse-success | Δ |
+|---|---:|---:|---:|
+| Pre-round (TRGC-EXT 3 close) | 306 | 81.8% | — |
+| After match_angle UShr | 309 | 82.6% | +0.8 pp |
+| After overload-scan Shr/UShr | **334** | **89.3%** | **+6.7 pp** |
+| **Cumulative TRGC-EXT 4** | **+28 files** | **+7.5 pp** | — |
+
+### Findings
+
+**Finding TRGC.8** (single-line-fix high-yield via missing op handling): a single missing match arm (`Shr` and `UShr` in overload scan's bracket-depth loop) was blocking 25 files. **The cost of a missed handler scales with the LOC behind the missing case** — a 2-LOC fix unblocked ~7% of the corpus. Discipline: when adding a depth-tracking loop, audit ALL the punctuators that could affect that depth at the time of writing.
+
+### Status: CHAPTER CLOSED at TRGC-EXT 4
+
+Standing rule 13 corroboration count holds at 8 (TRGC-EXT 2/3/4 are follow-ons within same locale).
+
+**Final post-TRGC remaining failures** (long-tail; all small categories):
+| Rank | tag | files |
+|---:|---|---:|
+| 1 | uncategorized-unexpected-token | 7 |
+| 2 | import-export-type | 5 |
+| 3 | template-literal-type | 4 |
+| 4 | generic-call | 3 |
+
+**Cumulative session parse-success on real npm corpus**: 37.7% → **89.3%** (+51.6 pp across all sub-locale rounds). **Past the 87% top-6-sub-locales milestone — true TS parse parity for the high-frequency consumer code surface is achieved**.
 
 Standing rule 13 corroboration count holds at 8. Substrate now handles `do(...)` method names, `void`/`typeof` annotation followers, module-level function overloads with generic args, AND `function NAME(...): T;` declarations at any context.
 

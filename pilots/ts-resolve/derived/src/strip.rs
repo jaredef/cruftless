@@ -517,6 +517,8 @@ impl<'src> Scanner<'src> {
                                         TokenKind::Punct(Punct::RParen)
                                         | TokenKind::Punct(Punct::RBracket)
                                         | TokenKind::Punct(Punct::Gt) if depth > 0 => depth -= 1,
+                                        TokenKind::Punct(Punct::Shr) if depth > 0 => depth = (depth - 2).max(0),
+                                        TokenKind::Punct(Punct::UShr) if depth > 0 => depth = (depth - 3).max(0),
                                         TokenKind::Punct(Punct::Semicolon) if depth == 0 => {
                                             found_overload = true;
                                             break;
@@ -794,6 +796,10 @@ impl<'src> Scanner<'src> {
                 }
                 TokenKind::Punct(Punct::Shr) => {
                     depth -= 2;
+                    if depth <= 0 { return Some(j); }
+                }
+                TokenKind::Punct(Punct::UShr) => {
+                    depth -= 3;
                     if depth <= 0 { return Some(j); }
                 }
                 TokenKind::Eof
@@ -1075,6 +1081,7 @@ impl<'src> Scanner<'src> {
                 TokenKind::Punct(Punct::Lt) => depth_angle += 1,
                 TokenKind::Punct(Punct::Gt) => depth_angle = (depth_angle - 1).max(0),
                 TokenKind::Punct(Punct::Shr) => depth_angle = (depth_angle - 2).max(0),
+                TokenKind::Punct(Punct::UShr) => depth_angle = (depth_angle - 3).max(0),
                 TokenKind::Punct(Punct::LParen) => depth_paren += 1,
                 TokenKind::Punct(Punct::RParen) if depth_paren > 0 => depth_paren -= 1,
                 TokenKind::Punct(Punct::LBrace) if !at_top => depth_brace += 1,

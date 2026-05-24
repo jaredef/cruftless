@@ -148,7 +148,7 @@
 {"file": "rxjs/src/internal/observable/bindCallback.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/observable/bindCallbackInternals.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/observable/bindNodeCallback.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/observable/combineLatest.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 3861, end: 3862 }, message: 'expected `LParen`' }"}
+{"file": "rxjs/src/internal/observable/combineLatest.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/observable/concat.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/observable/connectable.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/observable/defer.ts", "outcome": "OK", "message": ""}
@@ -157,21 +157,21 @@
 {"file": "rxjs/src/internal/observable/dom/fetch.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 3752, end: 3753 }, message: 'expected `RParen`' }"}
 {"file": "rxjs/src/internal/observable/dom/webSocket.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/observable/empty.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/observable/forkJoin.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 2343, end: 2344 }, message: 'expected `LParen`' }"}
+{"file": "rxjs/src/internal/observable/forkJoin.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/observable/from.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 308, end: 309 }, message: 'expected `LBrace`' }"}
 {"file": "rxjs/src/internal/observable/fromEvent.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/observable/fromEventPattern.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/observable/fromSubscribable.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/observable/generate.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 11874, end: 11875 }, message: 'expected `RParen`' }"}
 {"file": "rxjs/src/internal/observable/iif.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/observable/innerFrom.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 920, end: 921 }, message: 'expected `LBrace`' }"}
+{"file": "rxjs/src/internal/observable/innerFrom.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/observable/interval.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/observable/merge.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 4423, end: 4424 }, message: 'unexpected token in expression: Punct(RBrace)' }"}
 {"file": "rxjs/src/internal/observable/never.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/observable/of.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 520, end: 521 }, message: 'expected `LBrace`' }"}
 {"file": "rxjs/src/internal/observable/onErrorResumeNext.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/observable/pairs.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/observable/partition.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 521, end: 522 }, message: 'expected `LBrace`' }"}
+{"file": "rxjs/src/internal/observable/partition.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/observable/race.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 2779, end: 2780 }, message: 'unexpected token in expression: Punct(Colon)' }"}
 {"file": "rxjs/src/internal/observable/range.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/observable/throwError.ts", "outcome": "OK", "message": ""}
@@ -186,15 +186,15 @@
 {"file": "rxjs/src/internal/operators/bufferTime.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 3426, end: 3427 }, message: 'expected `RParen`' }"}
 {"file": "rxjs/src/internal/operators/bufferToggle.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/bufferWhen.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/operators/catchError.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 528, end: 529 }, message: 'expected `LBrace`' }"}
+{"file": "rxjs/src/internal/operators/catchError.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/combineAll.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/combineLatest.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/combineLatestAll.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/combineLatestWith.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/concat.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/concatAll.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/operators/concatMap.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 351, end: 352 }, message: 'expected `LBrace`' }"}
-{"file": "rxjs/src/internal/operators/concatMapTo.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 394, end: 395 }, message: 'expected `LBrace`' }"}
+{"file": "rxjs/src/internal/operators/concatMap.ts", "outcome": "OK", "message": ""}
+{"file": "rxjs/src/internal/operators/concatMapTo.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/concatWith.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/connect.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/count.ts", "outcome": "OK", "message": ""}
@@ -208,23 +208,23 @@
 {"file": "rxjs/src/internal/operators/distinctUntilChanged.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 6353, end: 6354 }, message: 'expected `RParen`' }"}
 {"file": "rxjs/src/internal/operators/distinctUntilKeyChanged.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/elementAt.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/operators/endWith.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 797, end: 798 }, message: 'expected `LBrace`' }"}
+{"file": "rxjs/src/internal/operators/endWith.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/every.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/exhaust.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/exhaustAll.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/operators/exhaustMap.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 539, end: 540 }, message: 'expected `LBrace`' }"}
-{"file": "rxjs/src/internal/operators/expand.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 422, end: 423 }, message: 'expected `LBrace`' }"}
-{"file": "rxjs/src/internal/operators/filter.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 656, end: 657 }, message: 'expected `LBrace`' }"}
+{"file": "rxjs/src/internal/operators/exhaustMap.ts", "outcome": "OK", "message": ""}
+{"file": "rxjs/src/internal/operators/expand.ts", "outcome": "OK", "message": ""}
+{"file": "rxjs/src/internal/operators/filter.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/finalize.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/operators/find.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 347, end: 348 }, message: 'expected `LBrace`' }"}
+{"file": "rxjs/src/internal/operators/find.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/findIndex.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/operators/first.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 554, end: 555 }, message: 'expected `LBrace`' }"}
+{"file": "rxjs/src/internal/operators/first.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/flatMap.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/operators/groupBy.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 853, end: 854 }, message: 'expected `LBrace`' }"}
+{"file": "rxjs/src/internal/operators/groupBy.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/ignoreElements.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/isEmpty.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/joinAllInternals.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/operators/last.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 464, end: 465 }, message: 'expected `LBrace`' }"}
+{"file": "rxjs/src/internal/operators/last.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/map.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/mapTo.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/materialize.ts", "outcome": "OK", "message": ""}
@@ -232,21 +232,21 @@
 {"file": "rxjs/src/internal/operators/merge.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/mergeAll.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/mergeInternals.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/operators/mergeMap.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 507, end: 508 }, message: 'expected `LBrace`' }"}
-{"file": "rxjs/src/internal/operators/mergeMapTo.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 421, end: 422 }, message: 'expected `LBrace`' }"}
+{"file": "rxjs/src/internal/operators/mergeMap.ts", "outcome": "OK", "message": ""}
+{"file": "rxjs/src/internal/operators/mergeMapTo.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/mergeScan.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/mergeWith.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/min.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/operators/multicast.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 1195, end: 1196 }, message: 'expected `LBrace`' }"}
+{"file": "rxjs/src/internal/operators/multicast.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/observeOn.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/onErrorResumeNextWith.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/pairwise.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/partition.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/pluck.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/operators/publish.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 1129, end: 1130 }, message: 'expected `LBrace`' }"}
+{"file": "rxjs/src/internal/operators/publish.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/publishBehavior.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/publishLast.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/operators/publishReplay.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 2861, end: 2862 }, message: 'expected `LBrace`' }"}
+{"file": "rxjs/src/internal/operators/publishReplay.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/race.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/raceWith.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/reduce.ts", "outcome": "OK", "message": ""}
@@ -262,37 +262,37 @@
 {"file": "rxjs/src/internal/operators/sequenceEqual.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/share.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 7415, end: 7416 }, message: 'unexpected token in expression: Punct(Colon)' }"}
 {"file": "rxjs/src/internal/operators/shareReplay.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/operators/single.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 491, end: 492 }, message: 'expected `LBrace`' }"}
+{"file": "rxjs/src/internal/operators/single.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/skip.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/skipLast.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/skipUntil.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/skipWhile.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/operators/startWith.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 977, end: 978 }, message: 'expected `LBrace`' }"}
+{"file": "rxjs/src/internal/operators/startWith.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/subscribeOn.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/switchAll.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/operators/switchMap.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 465, end: 466 }, message: 'expected `LBrace`' }"}
-{"file": "rxjs/src/internal/operators/switchMapTo.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 394, end: 395 }, message: 'expected `LBrace`' }"}
+{"file": "rxjs/src/internal/operators/switchMap.ts", "outcome": "OK", "message": ""}
+{"file": "rxjs/src/internal/operators/switchMapTo.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/switchScan.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/take.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/takeLast.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/takeUntil.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/operators/takeWhile.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 415, end: 416 }, message: 'expected `LBrace`' }"}
-{"file": "rxjs/src/internal/operators/tap.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 7543, end: 7544 }, message: 'expected `RBrace`' }"}
+{"file": "rxjs/src/internal/operators/takeWhile.ts", "outcome": "OK", "message": ""}
+{"file": "rxjs/src/internal/operators/tap.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/throttle.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/throttleTime.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/throwIfEmpty.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/timeInterval.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/operators/timeout.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 6020, end: 6021 }, message: 'expected `RParen`' }"}
+{"file": "rxjs/src/internal/operators/timeout.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 12833, end: 12834 }, message: 'expected `Colon`' }"}
 {"file": "rxjs/src/internal/operators/timeoutWith.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/timestamp.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/toArray.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/window.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/operators/windowCount.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 4725, end: 4726 }, message: 'unexpected token in expression: Punct(RBrace)' }"}
-{"file": "rxjs/src/internal/operators/windowTime.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 626, end: 627 }, message: 'expected `LBrace`' }"}
+{"file": "rxjs/src/internal/operators/windowCount.ts", "outcome": "OK", "message": ""}
+{"file": "rxjs/src/internal/operators/windowTime.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 4868, end: 4869 }, message: 'expected `RParen`' }"}
 {"file": "rxjs/src/internal/operators/windowToggle.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/windowWhen.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/withLatestFrom.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/operators/zip.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 386, end: 387 }, message: 'expected `LBrace`' }"}
+{"file": "rxjs/src/internal/operators/zip.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/zipAll.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/operators/zipWith.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/scheduled/scheduleArray.ts", "outcome": "OK", "message": ""}
