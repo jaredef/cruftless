@@ -2,7 +2,9 @@
 
 **Locale tag**: `L.iter-protocol-bytecode-rewrite` (top-level per Doc 737 §IV)
 
-**Status as of 2026-05-24**: **WORKSTREAM FOUNDED (IPBR-EXT 0)**. Spawned from `scripts/locales/CANDIDATES.md` tier-A entry (a) after GPI chapter close identified the for-of protocol envelope as the new per-iter dominator on `string_url_sweep` header_loop. First test case of standing rule 13's prospective-application thesis (per `docs/standing-rule-13-prospective-application.md`) at a second locale — the C1-C4 conditions all hold; design from the deeper-layer first.
+**Status as of 2026-05-24**: **CHAPTER CLOSED at IPBR-EXT 2 (P2.a at deeper-layer-first design tier)**. All six Pred-ipbr.* HELD including the Pred-ipbr.6 discipline falsifier (≤3 rounds). CRB string_url_sweep 685 → 584 ms (-14.7% additional; -21.4% cumulative vs 743 baseline); cruft/node 6.99x → 6.21x (first sub-6.5×); A/B header_loop -21.8% additional (median 197 ms vs GPI 252). Locale closed in 1 implementation round; standing-rule-13 prospective-application thesis gets its second empirical corroboration.
+
+**Historical status (founding)**: WORKSTREAM FOUNDED (IPBR-EXT 0). Spawned from `scripts/locales/CANDIDATES.md` tier-A entry (a) after GPI chapter close identified the for-of protocol envelope as the new per-iter dominator on `string_url_sweep` header_loop. First test case of standing rule 13's prospective-application thesis (per `docs/standing-rule-13-prospective-application.md`) at a second locale — the C1-C4 conditions all hold; design from the deeper-layer first.
 
 **Workstream**: bytecode-rewrite the for-of dispatch pattern for Array/String receivers where the iterator is the well-known intrinsic (not user-overridden). Introduces a new `Op::ForOfFastNext` opcode (or pair) that runs an index-based scan over the underlying Array elements / String code units, eliminating per-`.next()` synthetic iterator-result-object allocation + the GetProp("next") / GetProp("done") / GetProp("value") trio that today's compiler emits for every iteration.
 

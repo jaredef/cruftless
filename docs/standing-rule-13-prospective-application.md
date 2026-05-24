@@ -2,7 +2,7 @@
 
 **Locale**: `docs/` (formalization of CANDIDATES.md tier-C entry (h))
 **Author**: 2026-05-24 session
-**Status**: working draft; candidate for promotion to corpus Doc 742 (sibling of Doc 740 + Doc 741)
+**Status**: working draft; SECOND CORROBORATION LANDED 2026-05-24 at IPBR locale (`pilots/iter-protocol-bytecode-rewrite/`; closed at IPBR-EXT 2 in 1 implementation round; all six Pred-ipbr.* HELD including Pred-ipbr.6 discipline falsifier). Ready for promotion to corpus Doc 742 pending keeper review.
 **Composes with**:
 - [findings.md Addendum IX](../pilots/rusty-js-jit/findings.md) — codification of standing rule 13
 - [Doc 740 §IV.2](../../corpus-master/corpus/740-the-substrate-introduction-signature-of-revert-then-deeper-layer-closure-articulates-a-discipline-for-recognizing-when-a-substrate-move-is-actually-its-own-prefix.md) — the substrate-introduction signature reading
@@ -90,6 +90,8 @@ The prediction: subsequent IC-table locales (Array intrinsics per CANDIDATES.md 
 If candidate locale `pilots/ihi-array-entries/` (CANDIDATES.md tier-A (c)) is founded with standing rule 13 cited prospectively (skipping the cache-tier rounds; designing from bytecode-rewrite first) and **does not** close in ≤3 implementation rounds, the prospective-application thesis is partially falsified. Diagnostic: which of C1-C4 failed; revise the conditions or weaken the prediction.
 
 If the candidate closes in ≤3 rounds, the thesis is empirically corroborated at a second locale, and the cross-locale convergence property (Doc 737 §IV) extends to the discipline tier.
+
+**UPDATE 2026-05-24**: the actual second-corroboration locale was not `ihi-array-entries` but `iter-protocol-bytecode-rewrite` (IPBR), spawned in response to GPI-EXT 3's chapter-close report identifying the for-of envelope as the new per-iter dominator. Pred-ipbr.6 was set at locale-founding time as a direct test of this falsifier; the locale closed at IPBR-EXT 2 in 1 implementation round (3 total rounds) per IPBR's trajectory.md Finding IPBR.2. The thesis stands at second corroboration. Promotion to corpus Doc 742 pending keeper review.
 
 ## 6. Status
 

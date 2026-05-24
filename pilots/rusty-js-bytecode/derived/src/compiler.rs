@@ -1363,6 +1363,19 @@ impl Compiler {
                     continue_target: loop_start, continue_pending: false,
                     continue_patches: Vec::new(), break_patches: Vec::new(), is_switch: false, label: self.pending_label.take(),
                 });
+                // IPBR-EXT 2 (2026-05-24, iter-protocol-bytecode-rewrite
+                // locale): emit Op::ForOfFastNext as the first op of the
+                // loop body. Fast-paths Array-iterator instances inline;
+                // falls through to the slow-path emission below on shape
+                // mismatch. Two patch sites: done_offset (i32 at +4) and
+                // next_iter_offset (i16 at +8). Patched after the slow
+                // path + body are emitted.
+                let ipbr_op_off = self.bytecode.len();
+                encode_op(&mut self.bytecode, Op::ForOfFastNext);
+                encode_u16(&mut self.bytecode, iter_slot);
+                encode_u16(&mut self.bytecode, bind_slot);
+                encode_i32(&mut self.bytecode, 0);  // done_offset patch site
+                self.bytecode.extend_from_slice(&[0u8, 0u8]);  // next_iter_offset patch site (i16)
                 // result = iter.next()
                 encode_op(&mut self.bytecode, Op::LoadLocal);
                 encode_u16(&mut self.bytecode, iter_slot);
@@ -1407,6 +1420,15 @@ impl Compiler {
                 }
                 encode_op(&mut self.bytecode, Op::StoreLocal);
                 encode_u16(&mut self.bytecode, bind_slot);
+                // IPBR-EXT 2: patch ForOfFastNext's next_iter_offset to
+                // this point (after slow-path StoreLocal completes; body
+                // expects empty stack).
+                let next_iter_target = self.bytecode.len();
+                let ipbr_after_operand = ipbr_op_off + 11;
+                let next_disp = (next_iter_target as i32) - (ipbr_after_operand as i32);
+                let next_iter_disp_i16 = next_disp as i16;
+                self.bytecode[ipbr_op_off + 9..ipbr_op_off + 11]
+                    .copy_from_slice(&next_iter_disp_i16.to_le_bytes());
                 if let Some(pat) = &destr_pat {
                     self.emit_destructure(pat, bind_slot)?;
                 }
@@ -1415,6 +1437,13 @@ impl Compiler {
                 self.patch_jump(j_done);
                 // At the exit, the result object is on the stack — pop it.
                 encode_op(&mut self.bytecode, Op::Pop);
+                // IPBR-EXT 2: patch ForOfFastNext's done_offset to here
+                // (after the slow-path Pop; fast-path-done skips the Pop
+                // because it has nothing on the stack to discard).
+                let done_target = self.bytecode.len();
+                let done_disp = (done_target as i32) - (ipbr_after_operand as i32);
+                self.bytecode[ipbr_op_off + 5..ipbr_op_off + 9]
+                    .copy_from_slice(&done_disp.to_le_bytes());
                 let frame = self.loop_stack.pop().unwrap();
                 for site in frame.break_patches { self.patch_jump_at(site); }
                 self.block_depth -= 1;

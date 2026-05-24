@@ -8506,6 +8506,47 @@ impl Runtime {
                     let _receiver_discard = frame.pop()?;
                     frame.push(Value::Undefined);
                 }
+                Op::ForOfFastNext => {
+                    // IPBR-EXT 2 (2026-05-24, iter-protocol-bytecode-
+                    // rewrite locale): fused for-of fast-next opcode.
+                    // Probes iter_slot for the well-known intrinsic
+                    // ArrayIterator shape; if eligible runs one iteration
+                    // inline (no result-object alloc; no .next() dispatch);
+                    // else falls through to the slow-path emission that
+                    // immediately follows this op in the bytecode.
+                    let iter_slot = decode_u16(&frame.bytecode, frame.pc) as usize;
+                    let bind_slot = decode_u16(&frame.bytecode, frame.pc + 2) as usize;
+                    let done_offset = decode_i32(&frame.bytecode, frame.pc + 4);
+                    let next_iter_offset = i16::from_le_bytes([
+                        frame.bytecode[frame.pc + 8], frame.bytecode[frame.pc + 9]
+                    ]) as i32;
+                    frame.pc += 10;
+                    let after_operand_pc = frame.pc;
+                    let iter_val = frame.read_local(iter_slot);
+                    if let Value::Object(iter_id) = iter_val {
+                        // Array-iterator shape per iterator.rs:28-58:
+                        // _arr (source array), _i (index).
+                        let src_val = self.object_get(iter_id, "_arr");
+                        let idx_val = self.object_get(iter_id, "_i");
+                        if let (Value::Object(src_id), Value::Number(idx_n)) = (&src_val, &idx_val) {
+                            if matches!(self.obj(*src_id).internal_kind, crate::value::InternalKind::Array) {
+                                let idx = *idx_n as usize;
+                                let len = self.array_length(*src_id);
+                                if idx >= len {
+                                    frame.pc = (after_operand_pc as i64 + done_offset as i64) as usize;
+                                    continue;
+                                }
+                                let v = self.object_get(*src_id, &idx.to_string());
+                                self.object_set(iter_id, "_i".into(), Value::Number((idx + 1) as f64));
+                                frame.write_local(bind_slot, v);
+                                frame.pc = (after_operand_pc as i64 + next_iter_offset as i64) as usize;
+                                continue;
+                            }
+                        }
+                    }
+                    // Fall through to slow path; dispatch loop executes
+                    // the next op (LoadLocal iter_slot) unchanged.
+                }
                 Op::PushThis => {
                     // Prefer the cell when present — arrow created
                     // before super() may have updated the cell while

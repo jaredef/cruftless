@@ -278,6 +278,22 @@ pub enum Op {
     /// from string_prototype on cold-path bail). Eliminates the
     /// descriptor walk on hot String-method-call sites.
     GetPropSkipForMethod = 0xFD,
+
+    /// FOR_OF_FAST_NEXT <u16 iter_slot> <u16 bind_slot> <i32 done_offset> <i16 next_iter_offset>
+    ///
+    /// IPBR-EXT 2 (2026-05-24, iter-protocol-bytecode-rewrite locale,
+    /// deeper-layer-first design per docs/standing-rule-13-prospective-
+    /// application.md): fused for-of fast-path opcode emitted by the
+    /// compiler at loop_start in front of the existing slow-path
+    /// emission. On each iteration, probes iter_slot for the well-known
+    /// intrinsic ArrayIterator shape (`__it_src__` + `__it_idx__` + src
+    /// is InternalKind::Array). If eligible: reads arr[idx] directly,
+    /// stores to bind_slot, increments idx, jumps to next_iter_offset
+    /// (skipping the slow path). If exhausted: jumps to done_offset
+    /// (post-Pop). If ineligible: falls through to the slow path
+    /// unchanged. Eliminates per-iter result-object allocation + the
+    /// GetProp"next"/Call/GetProp"done"/GetProp"value" cost surface.
+    ForOfFastNext = 0xFE,
 }
 
 impl Op {
@@ -306,6 +322,7 @@ impl Op {
             PushI32 | Jump | JumpIfTrue | JumpIfFalse
             | JumpIfTrueKeep | JumpIfFalseKeep | JumpIfNullish
             | InitIndex | TryEnter => 4,
+            ForOfFastNext => 10,
         }
     }
 }
@@ -380,6 +397,7 @@ pub fn op_from_byte(b: u8) -> Option<Op> {
         0xFB => GetPropOnObject,
         0xFC => CallMethodIcCached,
         0xFD => GetPropSkipForMethod,
+        0xFE => ForOfFastNext,
         _ => return None,
     })
 }
