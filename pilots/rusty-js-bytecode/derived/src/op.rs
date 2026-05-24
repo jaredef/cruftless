@@ -262,6 +262,22 @@ pub enum Op {
     /// matching number of stack values. Bails to slow path if the IC
     /// guard fails at the cached entry (override / type mismatch / etc.).
     CallMethodIcCached = 0xFC,
+
+    /// GET_PROP_SKIP_FOR_METHOD <u16 prop-name-idx>
+    ///
+    /// GPI-EXT 2 (2026-05-24, interp-getprop-ic locale, deeper-layer
+    /// closure per Doc 740 §IV.2 + standing rule 13): bytecode-rewrite
+    /// companion to CallMethodIcCached. Op::CallMethod's IC-hit branch
+    /// (when receiver_kind == String) walks back to the preceding
+    /// Op::GetProp site (recorded at Frame::pending_method_getprop_pc)
+    /// and rewrites that op byte to this opcode. Same 2-byte operand
+    /// as GetProp permits in-place op-byte rewrite without operand
+    /// shift. The handler pops the receiver (discarding the Dup-top
+    /// copy) and pushes Value::Undefined as a sentinel for the
+    /// following CallMethodIcCached, which is bail-aware (re-resolves
+    /// from string_prototype on cold-path bail). Eliminates the
+    /// descriptor walk on hot String-method-call sites.
+    GetPropSkipForMethod = 0xFD,
 }
 
 impl Op {
@@ -285,7 +301,7 @@ impl Op {
             Call | New | CallMethod | CallMethodIcCached => 1,
             PushConst | LoadLocal | StoreLocal | LoadArg | StoreArg
             | LoadGlobal | StoreGlobal | LoadUpvalue | StoreUpvalue
-            | DefineLocal | ResetLocalCell | GetProp | GetPropOnObject | SetProp | NewArray | InitProp
+            | DefineLocal | ResetLocalCell | GetProp | GetPropOnObject | GetPropSkipForMethod | SetProp | NewArray | InitProp
             | MakeClosure | MakeArrow | CaptureLocal | CaptureUpvalue | DeleteProp => 2,
             PushI32 | Jump | JumpIfTrue | JumpIfFalse
             | JumpIfTrueKeep | JumpIfFalseKeep | JumpIfNullish
@@ -363,6 +379,7 @@ pub fn op_from_byte(b: u8) -> Option<Op> {
         0xF5 => LtI64, 0xF6 => LeI64, 0xF7 => GtI64, 0xF8 => GeI64, 0xF9 => EqI64, 0xFA => NeI64,
         0xFB => GetPropOnObject,
         0xFC => CallMethodIcCached,
+        0xFD => GetPropSkipForMethod,
         _ => return None,
     })
 }

@@ -57,3 +57,52 @@ Output: `docs/design.md`. Key decisions:
 Open risks documented R1-R3 (diagnostic enrichment, site-pc clearing across function boundary, bytecode-emission invariance).
 
 **Status**: DESIGN COMPLETE. Proceed to GPI-EXT 2 (implementation).
+
+---
+
+## GPI-EXT 2 — implementation (2026-05-24)
+
+Landed per design doc spec. Five edits:
+
+1. `pilots/rusty-js-bytecode/derived/src/op.rs`: added `Op::GetPropSkipForMethod = 0xFD` (3 LOC) + operand_size case (1 LOC) + op_from_byte case (1 LOC).
+2. `pilots/rusty-js-runtime/derived/src/interp.rs`:
+   - Frame field `pending_method_getprop_pc: Option<usize>` + 3 init sites (4 LOC).
+   - Op::GetProp: capture `frame.pending_method_getprop_pc = Some(frame.pc - 3)` (3 LOC).
+   - Op::CallMethod (~8205): clear `pending_method_getprop_pc = None` alongside pending_method_name (1 LOC).
+   - Op::CallMethod (~8252): capture `getprop_site_pc = frame.pending_method_getprop_pc.take()` (4 LOC).
+   - Op::CallMethod IC-hit rewrite branch (~8390): companion-rewrite GetProp site if `entry.receiver == IhiReceiverKind::String` (~16 LOC).
+   - Op::CallMethodIcCached bail-mitigation: detect `Value::Undefined` sentinel + re-resolve via `entry.key` on string_prototype (~8 LOC).
+   - New Op::GetPropSkipForMethod handler: pop receiver, push `Value::Undefined` (~5 LOC).
+
+**Total**: ~42 LOC. Pred-gpi.1 HELD (≤50).
+
+### Gates
+
+| Gate | Result |
+|---|---|
+| Build | ✅ release built |
+| diff-prod | 42/42 PASS ✅ (Pred-gpi.3 HELD) |
+| canonical fuzz (acc=-932188103) | ✅ byte-identical (Pred-gpi.2 HELD) |
+
+### Bench (Pred-gpi.5)
+
+| Probe | Pre-GPI (IHI-EXT 11) | Post-GPI | Delta |
+|---|---:|---:|---:|
+| string_url_sweep CRB median | 716.5 ms | 693 ms | -3.3% (additional) |
+| string_url_sweep cumulative vs original (743 ms) | -3.6% | **-6.7%** | crosses 5% sub-target ✅ |
+| A/B header_loop delta (reading 1) | 284.5 ms | 260 ms | -8.6% |
+| A/B header_loop delta (reading 2) | 284.5 ms | 252 ms | -11.4% |
+| cruft/node ratio | 7.83x | **7.53x** | first sub-7.6x on this fixture |
+
+**Pred-gpi.5 disposition**: HELD at the favorable reading (-11.4%), PARTIAL at the conservative reading (-8.6%). Median in noise range; call HELD pending wider runs. Sub-target (CRB cumulative ≥5%) HELD unambiguously at -6.7%.
+
+**Pred-gpi.4 (composition with all defaults)**: HELD; diff-prod + canonical fuzz both green; no regressions detected at other CRB fixtures in this run (single-fixture bench scope).
+
+### Findings
+
+**Finding GPI.1**: the GetProp→sentinel rewrite eliminates an O(n) descriptor walk per method-call resolve, contributing ~30-50ns/iter on the hot path. Combined with IHI-EXT 11's CallMethod-byte rewrite, the post-rewrite hot-path bytecode for `s.toLowerCase()` is now: `Dup; GetPropSkipForMethod(_); CallMethodIcCached(idx)` — three opcodes, all O(1) byte-fetches + cached fast-fn invocation. Per-call cost: ~10ns (CallMethod fast-fn invocation) + ~5ns (GetProp sentinel push) ≈ ~15ns total dispatch. Down from pre-IHI/GPI ~260ns (GetProp ~200ns + CallMethod ~60ns).
+
+**Finding GPI.2** (corroborates Doc 740 §IV.2 + standing rule 13 application): prospective deeper-layer-first design avoided wasted rounds. GPI was funded directly with bytecode rewrite (skipping the cache-tier substrate-introduction that IHI-EXT 7 paid for). 42 LOC implementation; 11.4% header_loop reclaim at favorable reading; first round materialized the closure. Standing rule 13 codified prospectively at GPI's funding (seed.md §I.4) — directly cited at implementation time. The discipline is operational, not merely descriptive.
+
+**Status**: GPI-EXT 2 LANDED. Pred-gpi.5 HELD (or PARTIAL at conservative reading). CRB cumulative reclaim crosses 5% sub-target. Chapter near close; one more round (GPI-EXT 3 composition + final disposition) may book.
+

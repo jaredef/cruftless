@@ -6722,6 +6722,7 @@ impl Runtime {
             upvalues: Vec::new(),
             last_property_lookup: None,
             pending_method_name: None,
+            pending_method_getprop_pc: None,
             import_meta: None,
             new_target: None,
             strict: proto.strict,
@@ -7563,6 +7564,10 @@ impl Runtime {
                     frame.last_property_lookup = Some(key.clone());
                     // Tier-Ω.5.yyyyy: pending_method survives arg loads.
                     frame.pending_method_name = Some(key);
+                    // GPI-EXT 2: capture op byte's pc so a later
+                    // Op::CallMethod IC-hit can rewrite this GetProp
+                    // site to Op::GetPropSkipForMethod.
+                    frame.pending_method_getprop_pc = Some(frame.pc - 3);
                     frame.push(v);
                 }
                 Op::SetProp => {
@@ -8198,6 +8203,7 @@ impl Runtime {
                     let callee = frame.pop()?;
                     let callee_hint = frame.last_property_lookup.clone();
                     frame.pending_method_name = None;
+                    frame.pending_method_getprop_pc = None;
                     // Tier-Ω.5.CCCCCCCC: also capture the callee's *value shape*
                     // before invoking. The 'callee is not callable' tag previously
                     // named the upstream local but not what it resolved to.
@@ -8245,6 +8251,10 @@ impl Runtime {
                     // have been overwritten by arg-load).
                     let method_name = frame.pending_method_name.take()
                         .or_else(|| frame.last_property_lookup.clone());
+                    // GPI-EXT 2: site_pc of the preceding Op::GetProp, for
+                    // companion-rewrite to Op::GetPropSkipForMethod on IC-
+                    // hit (String receiver_kind).
+                    let getprop_site_pc = frame.pending_method_getprop_pc.take();
                     // Ω.5.P54.E4/E5 (Axis-S + Axis-H probe population):
                     // when the resolved method is Undefined, record the
                     // miss against the appropriate trace. Symbol.X-keyed
@@ -8380,6 +8390,32 @@ impl Runtime {
                                                     ptr.add(site_pc).write(rusty_js_bytecode::op::Op::CallMethodIcCached as u8);
                                                     ptr.add(site_pc + 1).write(idx as u8);
                                                 }
+                                                // GPI-EXT 2 (2026-05-24,
+                                                // interp-getprop-ic locale,
+                                                // deeper-layer closure per
+                                                // Doc 740 §IV.2): companion
+                                                // rewrite of the preceding
+                                                // Op::GetProp site to
+                                                // Op::GetPropSkipForMethod.
+                                                // Only safe for String
+                                                // receivers (the bail path
+                                                // in CallMethodIcCached
+                                                // re-resolves via
+                                                // string_prototype on the
+                                                // Undefined sentinel).
+                                                if matches!(entry.receiver, crate::interp_ic_table::IhiReceiverKind::String) {
+                                                    if let Some(gp_pc) = getprop_site_pc {
+                                                        if gp_pc < frame.bytecode.len() {
+                                                            let cur = frame.bytecode[gp_pc];
+                                                            if cur == rusty_js_bytecode::op::Op::GetProp as u8 {
+                                                                unsafe {
+                                                                    let ptr = frame.bytecode.as_ptr() as *mut u8;
+                                                                    ptr.add(gp_pc).write(rusty_js_bytecode::op::Op::GetPropSkipForMethod as u8);
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
                                         frame.push(result);
@@ -8439,9 +8475,36 @@ impl Runtime {
                         // consistently bails (e.g., receiver-type
                         // polymorphism), that's a hardening concern;
                         // first-cut keeps the rewrite.
+                        //
+                        // GPI-EXT 2 bail-mitigation: if `method` is the
+                        // Undefined sentinel produced by an upstream
+                        // Op::GetPropSkipForMethod, re-resolve via the
+                        // IHI entry's key (String receivers only; the
+                        // companion rewrite is gated on receiver_kind ==
+                        // String).
+                        let method = if matches!(method, Value::Undefined) {
+                            if matches!(entry.receiver, crate::interp_ic_table::IhiReceiverKind::String) {
+                                if let Some(proto) = self.string_prototype {
+                                    self.object_get(proto, entry.key)
+                                } else { method }
+                            } else { method }
+                        } else { method };
                         let result = self.call_function(method, receiver, args)?;
                         frame.push(result);
                     }
+                }
+                Op::GetPropSkipForMethod => {
+                    // GPI-EXT 2 (2026-05-24): rewritten dispatch fast-path.
+                    // The op byte was rewritten by Op::CallMethod's IC-hit
+                    // branch (String receiver_kind only). Skip the
+                    // descriptor walk; pop the Dup-top receiver copy + push
+                    // Value::Undefined as a sentinel. The following
+                    // Op::CallMethodIcCached's hot-path ignores the popped
+                    // method; its bail-path re-resolves via entry.key.
+                    let _idx = decode_u16(&frame.bytecode, frame.pc);
+                    frame.pc += 2;
+                    let _receiver_discard = frame.pop()?;
+                    frame.push(Value::Undefined);
                 }
                 Op::PushThis => {
                     // Prefer the cell when present — arrow created
@@ -9212,6 +9275,7 @@ impl Runtime {
             upvalues,
             last_property_lookup: None,
             pending_method_name: None,
+            pending_method_getprop_pc: None,
             import_meta: None,
             new_target: nt_for_this_call.clone(),
             strict: proto.strict,
@@ -9629,6 +9693,12 @@ pub struct Frame<'a> {
     /// between GetProp and the call no longer overwrite it (the prior
     /// last_property_lookup was wrong for method-name diagnostics).
     pub pending_method_name: Option<String>,
+    /// GPI-EXT 2 (2026-05-24): site_pc of the Op::GetProp that produced
+    /// `pending_method_name`. Used by Op::CallMethod's IC-hit branch
+    /// (String receiver_kind) to walk back and rewrite the GetProp byte
+    /// to Op::GetPropSkipForMethod. Cleared at the same sites that clear
+    /// pending_method_name.
+    pub pending_method_getprop_pc: Option<usize>,
     /// Tier-Ω.5.r: synthetic `import.meta` object for this module frame.
     /// Populated by `evaluate_module` (ESM path) with `{ url, dir }` keys.
     /// Frames that didn't enter through the module loader (raw run_module
@@ -9871,6 +9941,7 @@ impl<'a> Frame<'a> {
             upvalues: Vec::new(),
             last_property_lookup: None,
             pending_method_name: None,
+            pending_method_getprop_pc: None,
             import_meta: None,
             new_target: None,
             strict: m.strict,
