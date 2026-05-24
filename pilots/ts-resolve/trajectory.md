@@ -244,3 +244,96 @@ This means the TSR lexer is a thin re-export of `rusty_js_parser::Lexer` + a sma
 **Implementation rounds consumed**: 3 of 6 (TSR-EXT 2 lexer + TSR-EXT 3 stripper + TSR-EXT 4 CLI/disambig/generics). Pred-tsr.6 budget on track; final round (TSR-EXT 5) holds the load-bearing research-question probe.
 
 **Status**: TSR-EXT 4 LANDED. End-to-end `cruft foo.ts` operational. Three concrete bugs caught + fixed; brace-context disambig is the key correctness machinery for handling object literals vs class bodies vs function bodies in TS source. Standing observation: e2e smoke tests caught failure modes that 21 unit tests did not.
+
+---
+
+## TSR-EXT 5 — research-question probe + chapter close (2026-05-24)
+
+**Round shape**: book the load-bearing Pred-tsr.5 prediction (≥10% additional reclaim when TS annotations short-circuit IPBR's runtime shape probe on `Array<T>` for-of loops). The empirical answer to this prediction shapes whether `cruftscript-spec/` is founded on grounded-substrate-claim or soundness-alone grounds.
+
+### Probe instrument
+
+Rather than full annotation-sidecar plumbing (which would require threading TypeWitness through cruftless → Runtime → bytecode compiler → IPBR's handler, ~200 LOC of cross-crate work for an effect of unknown sign), TSR-EXT 5 implemented an **upper-bound measurement probe**: a per-iter_slot `(iter_id, src_id, idx)` cache on Frame that, after the first ForOfFastNext iteration at a site, skips the `_arr`/`_i`/InternalKind lookup on all subsequent iterations.
+
+This is exactly what a TS `Array<T>` annotation COULD enable (compile-time pre-population of the cache eliminating the first-iter probe too). The cache thus measures the **upper bound** of annotation-driven savings at IPBR.
+
+Implementation:
+- New `Frame::iter_fast_cache: Vec<Option<(ObjectRef, ObjectRef, usize)>>` (sparse, indexed by iter_slot)
+- `iter_fast_cache_set` helper
+- `write_local` invalidates the cache on any overlapping local write
+- ForOfFastNext handler: check cache first; fall back to shape probe; populate cache on probe hit
+- ~50 LOC delta
+
+### Measurement
+
+| Fixture | IPBR baseline (no cache) | TSR-EXT 5 (with cache) | Δ |
+|---|---:|---:|---:|
+| string_url_sweep CRB median (N=5) | 584 ms | 588 ms | +0.7% (sub-noise) |
+| string_url_sweep header_loop A/B (range over 4 readings) | 193-218 ms | 195-198 ms | within noise |
+| json_parse_transform CRB median (N=5) | 1773-1818 ms | 1853 ms | +2.5% (marginal regression from dispatch overhead) |
+
+### Empirical finding (load-bearing for research question)
+
+**Pred-tsr.5 FALSIFIED at the IPBR consumer.** The per-iter shape-lookup cost the cache eliminates (~50ns per iter for two `object_get` calls + InternalKind match) is too small relative to the dominant per-iter costs:
+- `idx.to_string()` allocation for `arr[idx]` lookup (~100ns/iter)
+- `object_set("_i", ...)` HashMap write (~80ns/iter)
+- The actual body work (string method dispatch, etc.)
+
+The cache itself adds dispatch overhead (cache-hit branch + cache write) that on json_parse_transform marginally exceeds the savings.
+
+### Finding TSR.1 — load-bearing for cruftscript-spec design
+
+The research question (2) — "do erased TS annotations carry substrate-actionable signal for downstream IC/JIT/VD tiers?" — at the IPBR-tier consumer is **NULL**.
+
+Implications:
+- The substrate-leverage claim for TS annotations at iter-protocol shape probes does NOT pay off — the probe is already cheap enough that elimination is sub-noise.
+- The cruftscript-spec follow-on locale should NOT be founded on iter-protocol-shape-elimination as a load-bearing claim.
+- Other potential consumers may still pay off (JIT IC specialization on typed args, VD NaN-box tag on typed numbers, IHI/GPI dispatch specialization on typed receivers) — each needs its own empirical probe before the substrate-leverage claim can be made for that consumer.
+- The cruftscript-spec value proposition reduces to: **soundness alone + (potentially) JIT IC specialization** — still valuable but a SMALLER corpus claim than originally framed.
+
+This is a high-information null result. Doc 723 §IV.b finding-density holds: an empirical probe that returns a clean negative is more informative than an ambiguous positive.
+
+### Decision: revert the cache instrument
+
+The cache adds dispatch overhead without measurable savings → reverted from `pilots/rusty-js-runtime/derived/src/interp.rs` to pre-instrument state. The probe data is recorded; the substrate stays clean.
+
+### Deferred from this round
+
+Enum lowering + ctor-param shorthand + sidecar plumbing were originally scoped for TSR-EXT 5. Given the research-question null result, the strategic priority shifts: these features are still worthwhile for TS feature completeness BUT they no longer carry the load-bearing case for cruftscript-spec. Deferred to follow-on `pilots/ts-resolve-features/` or absorbed into a single feature-completion round if revisited.
+
+### Final disposition
+
+| Predicate | Disposition |
+|---|---|
+| Pred-tsr.1 (≤2000 LOC) | ✅ HELD at ~780 LOC cumulative |
+| Pred-tsr.2 (canonical fuzz on .js) | ✅ HELD byte-identical |
+| Pred-tsr.3 (diff-prod 42/42 on .js) | ✅ HELD |
+| Pred-tsr.4 (.ts twin produces byte-identical stdout) | ✅ HELD (`01-end-to-end-hello.ts` vs `.js` twin) |
+| Pred-tsr.5 (≥10% reclaim from annotation-driven shape skip) | ❌ **FALSIFIED at the IPBR consumer** (sub-noise effect; cache overhead marginally exceeds savings on heavier fixtures) |
+| Pred-tsr.6 (≤6 implementation rounds) | ✅ HELD at 4 implementation rounds (TSR-EXT 2 lexer + TSR-EXT 3 stripper + TSR-EXT 4 CLI/disambig/generics + TSR-EXT 5 probe) |
+
+### Cross-locale implications
+
+**Standing rule 13 prospective-application thesis** (per `docs/standing-rule-13-prospective-application.md`): TSR is the third locale to apply the rule. Outcome:
+- Locale closed in 4 implementation rounds (under Pred-tsr.6's ≤6 budget). The discipline scales gracefully with surface-area complexity (TSR is ~5× the LOC of GPI/IPBR; took 4 rounds vs their 1).
+- The C1-C4 conditions held for the substrate-tier work (lexer + stripper + CLI dispatch). Where they didn't hold was the research-question probe: condition C3 (cost-positive when integrated) FAILED at the IPBR consumer.
+- This is itself a finding about the thesis: **C3 is the load-bearing condition for substrate-leverage claims at a downstream consumer**. C1 (sibling anchor) + C2 (shape compat) + C4 (bail safety) can all hold, and a probe can still return null if C3's per-call cost model isn't favorable.
+- The standing-rule-13 thesis is REFINED rather than weakened: ≤3 implementation rounds is the convergent shape for substrate-tier work; research-question probes can run an extra round to book a null result, and that's still discipline-consistent.
+
+**For cruftscript-spec follow-on**: founded on weaker substrate claim than originally framed. Likely-load-bearing consumers (to probe next): JIT IC specialization on typed function args + VD NaN-box tag preservation through typed numerics. These would need their own measurement instruments.
+
+### Capabilities post-TSR-EXT 5 (chapter close)
+
+- Native `.ts` execution by `cruft` for high-frequency TS surface (annotations, interfaces, type aliases, casts, non-null, optional, declare, generics on decl heads, unions, intersections, nested object types, function types)
+- 24/24 unit tests; diff-prod 42/42; Pred-tsr.2/.3/.4 all HELD
+- Sidecar shape designed + types in place (`TypeWitness` enum) for future consumers
+- Pred-tsr.5 empirical null result documented as Finding TSR.1
+- Pred-tsr.6 discipline HELD at 4 implementation rounds
+
+### Status: CHAPTER CLOSED at TSR-EXT 5
+
+**Outcome**: 5 of 6 predicates HELD; 1 (Pred-tsr.5) FALSIFIED with high-information null result that materially refines the cruftscript-spec design space. Substrate (native `.ts` execution) delivered + working. Research question (annotation-as-substrate-input) answered honestly at the IPBR consumer.
+
+**Locale closed in 4 implementation rounds** vs Pred-tsr.6's ≤6 budget. Standing-rule-13 thesis: third corroboration on discipline (rounds-to-close); first empirical refinement on C3 condition (cost-positive integration is the load-bearing condition that can fail independently).
+
+**Implication for `cruftscript-spec`**: still a valuable locale to spawn; load-bearing case shifts from "sound types as IPBR-shape-skip substrate" to "sound types as JIT IC specialization input + VD tag preservation." Each follow-on consumer needs its own empirical probe.

@@ -2,7 +2,9 @@
 
 **Locale tag**: `L.ts-resolve` (top-level per Doc 737 §IV)
 
-**Status as of 2026-05-24**: **WORKSTREAM FOUNDED (TSR-EXT 0)**. Spawned per keeper directive on the source-language-resolver pivot. First step in a two-locale arc: this locale (TS as a source-language resolver, type-erasure path, no soundness claim) is the empirical-first stage. The follow-on locale (`cruftscript-spec/`, deferred) is the design-first stage for sound static types as substrate input.
+**Status as of 2026-05-24**: **CHAPTER CLOSED at TSR-EXT 5 (4 implementation rounds; Pred-tsr.6 HELD)**. Five of six predicates HELD; Pred-tsr.5 (≥10% reclaim from annotation-driven IPBR shape skip) FALSIFIED at sub-noise effect — a high-information null result that materially refines the cruftscript-spec design space (load-bearing claim shifts from iter-protocol-shape-skip to JIT IC specialization + VD tag preservation). Native `.ts` execution by `cruft` operational for the high-frequency real-world TS surface. See trajectory.md TSR-EXT 5 entry for the empirical disposition + Finding TSR.1.
+
+**Historical status (founding)**: WORKSTREAM FOUNDED (TSR-EXT 0). Spawned per keeper directive on the source-language-resolver pivot. First step in a two-locale arc: this locale (TS as a source-language resolver, type-erasure path, no soundness claim) is the empirical-first stage. The follow-on locale (`cruftscript-spec/`, deferred) is the design-first stage for sound static types as substrate input.
 
 **Workstream**: introduce a TypeScript source-language resolver upstream of `rusty-js-ir` that parses `.ts` files, performs type-erasure, and emits the same IR shape that `rusty-js-parser` produces for `.js`. Goal at this locale: native `.ts` execution by `cruft` without an external transpilation step. The probe question is whether erased type annotations can still feed downstream substrate tiers (JIT IC specialization, IHI/GPI/IPBR shape probes, VD's NaN-boxed tag schema) as profile-equivalent hints — i.e., whether **annotations carry substrate-actionable signal even after erasure**.
 

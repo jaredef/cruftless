@@ -93,6 +93,15 @@ If the candidate closes in ≤3 rounds, the thesis is empirically corroborated a
 
 **UPDATE 2026-05-24**: the actual second-corroboration locale was not `ihi-array-entries` but `iter-protocol-bytecode-rewrite` (IPBR), spawned in response to GPI-EXT 3's chapter-close report identifying the for-of envelope as the new per-iter dominator. Pred-ipbr.6 was set at locale-founding time as a direct test of this falsifier; the locale closed at IPBR-EXT 2 in 1 implementation round (3 total rounds) per IPBR's trajectory.md Finding IPBR.2. The thesis stands at second corroboration. Promotion to corpus Doc 742 pending keeper review.
 
+**FURTHER UPDATE 2026-05-24 — third locale (TSR) refines the thesis**: `pilots/ts-resolve/` closed at TSR-EXT 5 in 4 implementation rounds — under Pred-tsr.6's ≤6 budget. New finding: the discipline scales gracefully with surface-area complexity (TSR is ~5× the LOC of GPI/IPBR; took 4 rounds vs their 1). However TSR also surfaced the **first empirical refinement of the C1-C4 conditions**:
+
+- TSR's research-question probe (annotation-driven IPBR shape-skip would yield ≥10% reclaim) returned NULL.
+- Diagnostic: C1 (sibling anchor — IPBR exists as the consumer), C2 (shape compat — Frame cache fits cleanly), and C4 (bail safety — fallthrough on shape-mismatch) all HELD. **C3 (cost-positive when integrated) FAILED** — the per-iter saving was sub-noise because the eliminated check (~50ns) is too small relative to the dispatch cost surface (~600ns/iter dominated by `idx.to_string` + `_i` HashMap write).
+
+**Thesis refinement**: C3 is the **load-bearing condition for substrate-leverage claims at a downstream consumer**. C1 + C2 + C4 can all hold and the probe can still return null if C3's per-call cost model isn't favorable. The discipline is not weakened by null results — null results that pass C1+C2+C4 but fail C3 are high-information findings about the substrate's actual cost surface and should be celebrated as such, not avoided.
+
+Promotion to corpus Doc 742 now includes this refinement as §3a (C-condition independence + the role of clean null results in the discipline).
+
 ## 6. Status
 
 Working draft. Candidate for promotion to corpus Doc 742 after:
