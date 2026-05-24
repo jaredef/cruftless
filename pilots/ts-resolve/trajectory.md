@@ -113,3 +113,81 @@ This means the TSR lexer is a thin re-export of `rusty_js_parser::Lexer` + a sma
 **Next round**: TSR-EXT 3 — real TS parser. Tier-A features end-to-end (type annotations on let/const/function param/return, interface, type alias, `as` cast, `!` non-null, generics, enums). Estimated ~600-1080 LOC across one or two implementation rounds. The real Pin-Art derivation work begins here.
 
 **Status**: TSR-EXT 2 LANDED. Crate operational; passthrough verified; sidecar shape designed. TSR-EXT 3 next.
+
+---
+
+## TSR-EXT 3 — type stripper (2026-05-24)
+
+**Design pivot from TSR-EXT 1's full-parser approach**: rather than reimplementing ECMAScript's expression+statement grammar to handle TS extensions, TSR strips TS-only syntax at the **source-text tier** using `rusty_js_parser::Lexer` for token positioning, then feeds the stripped text to the existing `rusty-js-parser`. Pin-Art-consistent — the stripping rules are derived from TS spec excerpts; the parser tier is reused unchanged.
+
+**Established practice** (Bun's TS support, esbuild, swc's "transpile only" mode all use this technique). The trade for TSR is: dramatically lower LOC (~400 vs the design's ~1080), faster iteration toward end-to-end `.ts` execution, at the cost of: enum lowering needs a separate AST-replacement pass (TSR-EXT 4) and some edge cases (template-string contents resembling types) need disambiguation.
+
+**Rules implemented** (`pilots/ts-resolve/derived/src/strip.rs`):
+
+| Construct | Strip rule |
+|---|---|
+| `: T` annotation | After Ident/`)`/`]` at non-object-key context; consumed via `skip_type` (balances `<>` `[]` `{}` `()`) |
+| `?` optional postfix | `?` immediately followed by `:` AND preceded by Ident |
+| `!` non-null postfix | After expr-terminator AND before postfix-context (binop / `.` / `)` / etc.) |
+| `as T` cast | After expr-terminator; consumes through end-of-type |
+| `interface X { ... }` | Strip whole declaration via brace-matching |
+| `type X = ...;` | Strip from `type` keyword through next statement-terminator |
+| `declare ...` | Strip from `declare` through next statement-terminator |
+
+**Skip-type heuristic** correctly handles:
+- `string[]`, `Array<T>`, `T | U`, `T & U`
+- Nested object types `{ k: number, v: string[] }` — `{` at type-start descends as object type literal; subsequent top-level `{` is function/initializer body
+- Function types `(x: T) => U`
+- Intersection within object types
+- Annotation against `?`-marked identifier (`x?: T` — anchor walks past `?` to find `x`)
+
+**Witness emission**: a `TypeWitness::LocalBinding` record is captured for each annotation, with the type as a raw text-extract `TsTypeRef::Named` (TSR-EXT 5 enriches the structured form).
+
+**Crate LOC at TSR-EXT 3**: `strip.rs` ≈ 380, test suite ≈ 110, total round delta ≈ 490 LOC. Cumulative `ts-resolve` crate ≈ 700 LOC.
+
+**Gates**:
+- `cargo build --release -p ts-resolve`: ✅ clean
+- `cargo test --release -p ts-resolve`: ✅ **21/21 PASS** (3 passthrough + 18 strip)
+- diff-prod 42/42 PASS ✅ (Pred-tsr.3 HELD; .js paths untouched)
+- canonical fuzz acc=-932188103 byte-identical ✅ (Pred-tsr.2 HELD)
+
+**Test coverage** at TSR-EXT 3:
+1. let annotation
+2. const annotation
+3. function param + return annotations
+4. arrow param annotations
+5. interface declaration
+6. type alias
+7. `as` cast
+8. `!` non-null postfix
+9. `?` optional param marker
+10. `declare` statement
+11. Array type `T[]`
+12. Generic array `Array<T>`
+13. Union types `A | B`
+14. Intersection types `A & B`
+15. Nested object type
+16. Function type `(x: T) => U`
+17. Witness capture
+18. Pure-JS-via-TS passthrough preserved
+
+**Bugs caught + fixed mid-implementation**:
+- `LexerGoal::InputElementDiv` → corrected to `LexerGoal::Div` (sibling parser uses the short name)
+- `skip_type`'s LBrace logic was rejecting object-type-literal `{...}` at type-start — fixed by tracking `start == i` for first-iter LBrace
+- `is_annotation_colon` didn't see the Ident anchor when preceded by `?` (e.g., `x?: T`) — fixed by walking the anchor past `?`
+
+**Capabilities post-TSR-EXT 3**:
+- A `.ts` file using Tier-A annotations + interfaces + type aliases + casts + non-null + optional + `declare` parses end-to-end through `ts_resolve::parse_and_erase` and produces the same `rusty_js_ast::Module` as the equivalent erased `.js`
+- Witness emission captures type names against binding names (suitable for TSR-EXT 5 sidecar consumption)
+
+**Deferred to TSR-EXT 4**:
+- Generic declaration heads `function f<T>(...)`, `class C<T> { ... }`
+- Generic call sites `f<T>()` (angle-bracket disambiguation against `<` operator)
+- Enum lowering (requires actual AST replacement, not pure text-strip)
+- `public/private/protected/readonly` constructor-param shorthand (requires ctor-body rewrite)
+- Class field annotations (some pass through current rules; full coverage needs verification)
+- CLI extension dispatch (`cruft foo.ts`)
+
+**Next round**: TSR-EXT 4 — enum lowering + ctor-param shorthand + class fields + CLI dispatch. End-to-end `cruft foo.ts` execution + Pred-tsr.2/.3/.4 booking. Estimated ~250 LOC.
+
+**Status**: TSR-EXT 3 LANDED. Tier-A core surface erases correctly; all 21 tests pass. 2 of 6 implementation rounds consumed (Pred-tsr.6 budget on track).

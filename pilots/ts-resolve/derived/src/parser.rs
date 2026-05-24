@@ -40,11 +40,17 @@ impl<'src> TsParser<'src> {
         Ok(TsParser { src })
     }
 
-    /// Parse the module + collect any TS annotations as witnesses. At
-    /// TSR-EXT 2 the witness vector is always empty (no annotations
-    /// recognized yet). TSR-EXT 3+ populates it.
+    /// Parse the module + collect any TS annotations as witnesses.
+    ///
+    /// TSR-EXT 3 (2026-05-24): run the type-stripper to produce an
+    /// erased source string + a witness vector; then feed the stripped
+    /// source to rusty-js-parser. Pin-Art-consistent — stripping rules
+    /// are derived from TS spec excerpts at the source-text tier (see
+    /// `strip.rs`'s rule list).
     pub fn parse_module(&mut self) -> Result<(Module, Vec<TypeWitness>), TsParseError> {
-        let module = rusty_js_parser::parse_module(self.src)?;
-        Ok((module, Vec::new()))
+        let (stripped, witnesses) = crate::strip::strip_ts(self.src)
+            .map_err(|e| TsParseError { message: format!("strip: {}", e) })?;
+        let module = rusty_js_parser::parse_module(&stripped)?;
+        Ok((module, witnesses))
     }
 }

@@ -15,6 +15,7 @@ pub mod lexer;
 pub mod ts_ast;
 pub mod parser;
 pub mod erase;
+pub mod strip;
 
 pub use parser::{TsParser, TsParseError};
 pub use ts_ast::{TsTypeRef, TsLiteralVal, TsAnnotation};
