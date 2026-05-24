@@ -203,6 +203,10 @@ pub struct Runtime {
     /// verify the resolved method is the intrinsic (not a user
     /// override) before bypassing call_function.
     pub intrinsic_string_charcodeat_id: Option<rusty_js_gc::ObjectId>,
+    /// IHI-EXT 3 (2026-05-24): cached ObjectId for String.prototype.toLowerCase
+    /// per the interp-tier IC table's override-safety gate. Lazy-populated
+    /// at first eligible Op::CallMethod fast-path attempt.
+    pub intrinsic_string_to_lower_case_id: Option<rusty_js_gc::ObjectId>,
     pub number_prototype: Option<rusty_js_gc::ObjectId>,
     pub bigint_prototype: Option<rusty_js_gc::ObjectId>,
     pub symbol_prototype: Option<rusty_js_gc::ObjectId>,
@@ -342,6 +346,7 @@ impl Runtime {
             promise_prototype: None,
             string_prototype: None,
             intrinsic_string_charcodeat_id: None,
+            intrinsic_string_to_lower_case_id: None,
             number_prototype: None,
             bigint_prototype: None,
             symbol_prototype: None,
@@ -384,6 +389,7 @@ impl Runtime {
         use crate::interp_ic_table::IhiCachedField as F;
         match field {
             F::StringCharCodeAt => self.intrinsic_string_charcodeat_id,
+            F::StringToLowerCase => self.intrinsic_string_to_lower_case_id,
         }
     }
 
@@ -394,6 +400,7 @@ impl Runtime {
         use crate::interp_ic_table::IhiCachedField as F;
         match field {
             F::StringCharCodeAt => self.intrinsic_string_charcodeat_id = Some(id),
+            F::StringToLowerCase => self.intrinsic_string_to_lower_case_id = Some(id),
         }
     }
 

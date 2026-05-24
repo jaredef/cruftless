@@ -33,7 +33,7 @@
       "parent": null,
       "scope": "interp-hot-intrinsics",
       "depth": 1,
-      "rung_count": 3,
+      "rung_count": 4,
       "status": "**WORKSTREAM FOUNDED (IHI-EXT 0)**. Cross-tier dual of `pilots/rusty-js-jit/hot-intrinsics/` (HI; closed at HI-EXT 5 with 4 entries). The interp-tier IC table bypasses call_function dispatch for hot intrinsic method calls regardless of JIT eligibility. Closes the structural gap that HI's JIT-tier table can't reach: interp-tier-bound hot loops (for-of bodies; non-OSR-eligible code; broad interp-tier dispatch sites)."
     },
     {

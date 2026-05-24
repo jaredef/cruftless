@@ -49,9 +49,9 @@ pub enum IhiReceiverKind {
 #[derive(Debug, Clone, Copy)]
 pub enum IhiCachedField {
     StringCharCodeAt,
-    // IHI-EXT 3+: add variants as entries land
-    //   StringCodePointAt,
-    //   StringToLowerCase,
+    /// IHI-EXT 3 (2026-05-24): String.prototype.toLowerCase.
+    StringToLowerCase,
+    // IHI-EXT 4+: add variants as entries land
     //   StringTrim,
     //   StringIndexOf,
     //   StringSlice,
@@ -94,6 +94,34 @@ fn fast_string_char_code_at(recv: &Value, args: &[Value]) -> Option<Value> {
     } else { None }
 }
 
+// ─── ENTRY 1: String.prototype.toLowerCase (MethodCall arity 0) ───
+//
+// IHI-EXT 3 (2026-05-24): ASCII byte-lower fast-path. Bypasses
+// call_function + skips Unicode-aware s.to_lowercase() walk for the
+// ASCII case. First cut always allocates (matches cruft's interp
+// `string_proto_to_lower_case_via` semantics; preserves reference-
+// inequality observable). Future IHI-EXT 3b can add return-self for
+// already-lowercase input if measurements justify.
+
+fn fast_string_to_lower_case(recv: &Value, args: &[Value]) -> Option<Value> {
+    if !args.is_empty() { return None; }
+    if let Value::String(s) = recv {
+        if s.is_ascii() {
+            let bytes = s.as_bytes();
+            let mut out = Vec::with_capacity(bytes.len());
+            for &b in bytes {
+                out.push(if (b'A'..=b'Z').contains(&b) { b + 32 } else { b });
+            }
+            // SAFETY: out contains only ASCII (1-byte UTF-8 codepoints).
+            let lowered = unsafe { String::from_utf8_unchecked(out) };
+            return Some(Value::String(std::rc::Rc::new(lowered)));
+        }
+        // Non-ASCII: bail (s.to_lowercase() is Unicode-aware; complex; let
+        // slow path handle).
+        None
+    } else { None }
+}
+
 // ─── IC_TABLE static registry ───
 //
 // Future entries register here per IHI-EXT 3+. Each entry: key +
@@ -106,6 +134,13 @@ pub static IHI_TABLE: &[IhiEntry] = &[
         arity: Some(1),
         cached_id_field: IhiCachedField::StringCharCodeAt,
         fast: fast_string_char_code_at,
+    },
+    IhiEntry {
+        key: "toLowerCase",
+        receiver: IhiReceiverKind::String,
+        arity: Some(0),
+        cached_id_field: IhiCachedField::StringToLowerCase,
+        fast: fast_string_to_lower_case,
     },
 ];
 

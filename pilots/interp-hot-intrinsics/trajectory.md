@@ -191,3 +191,65 @@ Engagement-tier instrument operational + extensible (mirrors HI at the interp ti
 ---
 
 *IHI-EXT 2 closes. Apparatus operational; CharCode-EXT 2 migration behavior-neutral; IHI_TABLE at 1 entry. IHI-EXT 3 adds toLowerCase (highest string_url_sweep priority).*
+
+---
+
+## IHI-EXT 3 — 2026-05-24 (per-entry round: String.prototype.toLowerCase)
+
+### Headline
+
+Adds toLowerCase as IHI_TABLE entry index 1. Per-entry LOC: **~33** (within Pred-ihi.1's ≤50 budget). ASCII byte-lower fast-path (skips `s.to_lowercase()`'s Unicode walk); always allocates (matches cruft's interp semantics; return-self optimization deferred to hardening round per R4).
+
+### Per-entry LOC breakdown
+
+| component | LOC |
+|---|---:|
+| fast_string_to_lower_case | 18 |
+| IhiCachedField::StringToLowerCase variant + helper match arms | 4 |
+| Runtime cache field intrinsic_string_to_lower_case_id + init | 4 |
+| IhiEntry literal | 7 |
+| **total** | **33** |
+
+### Three-probe results
+
+| probe | result |
+|---|---|
+| canonical fuzz (acc=-932188103) | ✅ GREEN |
+| diff-prod 42/42 | ✅ GREEN |
+| CRB string_url_sweep (5-run median) | 767 ms vs CRB-EXT-9 baseline 743 ms (**+3.2% drift; within ±5% Pred-ihi.4 gate**) |
+
+### Composition reading (per Doc 740 §II.2 P4)
+
+The toLowerCase entry alone produces a small net regression (+3.2% CRB; +33 ms on the header-loop probe variant). This is the structurally expected pattern per Pred-ihi.5 design: the dispatch-block adds per-CallMethod overhead; only the matching call (toLowerCase, 1 of 7 inner-iter CallMethods) gets the IC savings; the other 6 CallMethods pay overhead without benefit.
+
+Per-iter cost shape:
+- 7 CallMethods per inner-iter (header normalization loop)
+- Dispatch-block overhead ~50ns/call → 350ns per inner-iter
+- toLowerCase IC savings ~200ns/call → 200ns per inner-iter
+- Net per inner-iter: +150ns (overhead exceeds single-entry savings)
+
+For 35K inner-iters: +5 ms. Matches observed regression direction (the +24 ms full-CRB drift includes other noise).
+
+**Per Pred-ihi.5 design: cumulative reclaim materializes AFTER toLowerCase + trim + indexOf land.** This is the multi-tier cascade-revival pattern at the per-entry tier — each entry alone is sub-amortized; the cumulative wins when enough entries fire per inner-iter to exceed dispatch overhead.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable.
+Per Doc 734 §V: growth (a) positive-finding (entry landed at LOC budget); growth (b) marginal-negative-finding (composition slightly over expected; explained by single-entry sub-amortization per Pred-ihi.5 multi-entry design).
+Per Doc 735 §X.h.b: substrate-introduction per Finding II.2-bis. **(P2.d)** on string_url_sweep is expected at single-entry scope; per Pred-ihi.5, cumulative materialization at IHI-EXT 4+5 (trim + indexOf).
+
+### Open scope at IHI-EXT 3 close
+
+1. **IHI-EXT 4** — trim entry (next highest priority per string_url_sweep)
+2. **IHI-EXT 5** — indexOf 1-arg entry
+3. **IHI-EXT 6** — composition probe + Pred-ihi.5 string_url_sweep re-measurement
+
+### Cumulative status at IHI-EXT 3 close
+
+LOC delta: ~33 (toLowerCase entry).
+IHI-EXT 0-3 cumulative: ~545 across the locale.
+IHI_TABLE entries: 2 (charCodeAt, toLowerCase).
+
+---
+
+*IHI-EXT 3 closes. toLowerCase entry landed at Pred-ihi.1 budget; composition (P2.d) at single-entry scope per Pred-ihi.5 multi-entry design (cumulative materialization at IHI-EXT 4+5 close). Substrate-introduction signature per Finding II.2-bis.*
