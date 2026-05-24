@@ -50,3 +50,25 @@ Append-only log of rounds. Most recent at bottom.
 6. Override-safety counter shape
 
 **Status**: SCAFFOLDED. Founding artefacts written; IPBR-EXT 1 next.
+
+---
+
+## IPBR-EXT 1 — design doc (2026-05-24)
+
+Output: `docs/design.md`. Key design pivot from seed:
+
+**Compile-time emission of fused fast-next opcode + existing slow-path emission unchanged as fallthrough**. No runtime bytecode rewrite needed; the opcode self-dispatches based on iter_slot's value shape every iteration.
+
+Simpler than the seed's runtime-rewrite scheme, equally effective at closing the cost. Standing rule 13 still applies — the "deeper layer" here is compile-time emission of a fused dispatch op rather than runtime rewrite of an existing op.
+
+**Bytecode**: `Op::ForOfFastNext = 0xFE`, 10-byte operand (u16 iter_slot + u16 bind_slot + i32 done_offset + i16 next_iter_offset).
+
+**Per-iter cost model**: ~545ns slow → ~50ns fast (≥11× reduction).
+
+**Bail-safety**: probes iter object's __it_src__/__it_idx__ shape every iteration; falls through to slow path on shape mismatch. User override of ArrayIterator.prototype.next bypassed at first cut (Finding IPBR.1 candidate; consumer-app surface rare).
+
+**LOC budget**: ~68. Within Pred-ipbr.1's ≤80.
+
+**Methodology**: implement at IPBR-EXT 2 (Array path), bench, possibly close. IPBR-EXT 3 reserved for String path + composition + Pred-ipbr.6 disposition.
+
+**Status**: DESIGN COMPLETE. Proceed to IPBR-EXT 2 (implementation).
