@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 26,
-    "top_level": 15,
+    "locales": 27,
+    "top_level": 16,
     "nested": 11,
     "warnings": 0
   },
@@ -33,8 +33,8 @@
       "parent": null,
       "scope": "interp-getprop-ic",
       "depth": 1,
-      "rung_count": 1,
-      "status": "**WORKSTREAM FOUNDED (GPI-EXT 0)**. Cross-locale follow-on from IHI's chapter close (IHI-EXT 11; CRB string_url_sweep -3.6%). Per the IHI-EXT 10/11 cost-analysis: the reclaim ceiling on string_url_sweep is structurally bounded by per-call cost components OUTSIDE IHI's scope \u2014 primarily Op::GetProp's descriptor-walk dispatch (~200-500ns per resolve; called once per method-call inner-iter). This pilot closes the GetProp interp-tier dispatch tier."
+      "rung_count": 4,
+      "status": "**CHAPTER CLOSED at GPI-EXT 3 (P2.a at deeper-layer closure tier)**. All five Pred-gpi.* HELD. CRB string_url_sweep 716.5 \u2192 685 ms (-4.4% additional; -7.8% cumulative vs 743 baseline); cruft/node 7.83x \u2192 6.99x (first sub-7\u00d7); A/B header_loop -11.4% at favorable reading. Standing rule 13 (deeper-layer-first) operationally vindicated: 42 LOC, first round materialized the closure, no Frame-cache mis-design tax paid."
     },
     {
       "coord": "interp-hot-intrinsics",
@@ -44,6 +44,15 @@
       "depth": 1,
       "rung_count": 12,
       "status": "**CHAPTER CLOSED at IHI-EXT 11 (P2.a at deeper-layer closure tier)**. Apparatus operational + extensible; 9 IHI_TABLE entries; bytecode rewrite path (Op::CallMethodIcCached) materializes the deeper-layer cache closure. CRB string_url_sweep -3.6% (743 \u2192 716.5 ms); cruft/node 8.21\u00d7 \u2192 7.83\u00d7 (first sub-8\u00d7 on this fixture); A/B header_loop -14% vs original (332 \u2192 284.5 ms). Doc 740 \u00a7IV.2 substrate-introduction signature reading empirically vindicated across the IHI-EXT 7\u219211 trajectory; the keeper-named revert-then-deeper-layer-closure pattern codified as standing rule 13 at findings.md Addendum IX."
+    },
+    {
+      "coord": "iter-protocol-bytecode-rewrite",
+      "tag": "L.iter-protocol-bytecode-rewrite",
+      "parent": null,
+      "scope": "iter-protocol-bytecode-rewrite",
+      "depth": 1,
+      "rung_count": 1,
+      "status": "**WORKSTREAM FOUNDED (IPBR-EXT 0)**. Spawned from `scripts/locales/CANDIDATES.md` tier-A entry (a) after GPI chapter close identified the for-of protocol envelope as the new per-iter dominator on `string_url_sweep` header_loop. First test case of standing rule 13's prospective-application thesis (per `docs/standing-rule-13-prospective-application.md`) at a second locale \u2014 the C1-C4 conditions all hold; design from the deeper-layer first."
     },
     {
       "coord": "rusty-js-caps",
