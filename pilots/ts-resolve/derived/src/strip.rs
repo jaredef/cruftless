@@ -803,6 +803,24 @@ impl<'src> Scanner<'src> {
                         return Ok(end_idx + 1);
                     }
                 }
+                // 2026-05-24 (TestScheduler / pino test-d.ts long
+                // tail): `import IDENT = QUALIFIED.PATH;` — TS-only
+                // import-equals declaration. Detect by `import` Ident
+                // at stmt-start followed by Ident, then `=` Assign
+                // (not `from`). Strip the entire statement.
+                if name == "import"
+                    && self.is_stmt_start(i)
+                    && i + 2 < self.toks.len()
+                    && matches!(&self.toks[i + 1].kind, TokenKind::Ident(_))
+                    && matches!(&self.toks[i + 2].kind, TokenKind::Punct(Punct::Assign))
+                {
+                    if let Some(end_idx) = self.find_stmt_end(i + 1) {
+                        let start = t.span.start;
+                        let end = self.toks[end_idx].span.end;
+                        self.strips.push((start, end));
+                        return Ok(end_idx + 1);
+                    }
+                }
                 // TRGC-EXT 5 (2026-05-24): `import type` and `export
                 // type` — TS-only pure-type imports/exports; the
                 // imported name does not exist at runtime. Strip the
