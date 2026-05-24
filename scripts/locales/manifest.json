@@ -34,7 +34,7 @@
       "scope": "interp-hot-intrinsics",
       "depth": 1,
       "rung_count": 12,
-      "status": "**WORKSTREAM FOUNDED (IHI-EXT 0)**. Cross-tier dual of `pilots/rusty-js-jit/hot-intrinsics/` (HI; closed at HI-EXT 5 with 4 entries). The interp-tier IC table bypasses call_function dispatch for hot intrinsic method calls regardless of JIT eligibility. Closes the structural gap that HI's JIT-tier table can't reach: interp-tier-bound hot loops (for-of bodies; non-OSR-eligible code; broad interp-tier dispatch sites)."
+      "status": "**CHAPTER CLOSED at IHI-EXT 11 (P2.a at deeper-layer closure tier)**. Apparatus operational + extensible; 9 IHI_TABLE entries; bytecode rewrite path (Op::CallMethodIcCached) materializes the deeper-layer cache closure. CRB string_url_sweep -3.6% (743 \u2192 716.5 ms); cruft/node 8.21\u00d7 \u2192 7.83\u00d7 (first sub-8\u00d7 on this fixture); A/B header_loop -14% vs original (332 \u2192 284.5 ms). Doc 740 \u00a7IV.2 substrate-introduction signature reading empirically vindicated across the IHI-EXT 7\u219211 trajectory; the keeper-named revert-then-deeper-layer-closure pattern codified as standing rule 13 at findings.md Addendum IX."
     },
     {
       "coord": "rusty-js-caps",

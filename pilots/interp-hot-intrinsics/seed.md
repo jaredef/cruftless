@@ -2,7 +2,9 @@
 
 **Locale tag**: `L.interp-hot-intrinsics` (top-level per Doc 737 §IV)
 
-**Status as of 2026-05-24**: **WORKSTREAM FOUNDED (IHI-EXT 0)**. Cross-tier dual of `pilots/rusty-js-jit/hot-intrinsics/` (HI; closed at HI-EXT 5 with 4 entries). The interp-tier IC table bypasses call_function dispatch for hot intrinsic method calls regardless of JIT eligibility. Closes the structural gap that HI's JIT-tier table can't reach: interp-tier-bound hot loops (for-of bodies; non-OSR-eligible code; broad interp-tier dispatch sites).
+**Status as of 2026-05-24**: **CHAPTER CLOSED at IHI-EXT 11 (P2.a at deeper-layer closure tier)**. Apparatus operational + extensible; 9 IHI_TABLE entries; bytecode rewrite path (Op::CallMethodIcCached) materializes the deeper-layer cache closure. CRB string_url_sweep -3.6% (743 → 716.5 ms); cruft/node 8.21× → 7.83× (first sub-8× on this fixture); A/B header_loop -14% vs original (332 → 284.5 ms). Doc 740 §IV.2 substrate-introduction signature reading empirically vindicated across the IHI-EXT 7→11 trajectory; the keeper-named revert-then-deeper-layer-closure pattern codified as standing rule 13 at findings.md Addendum IX.
+
+Cross-tier dual of `pilots/rusty-js-jit/hot-intrinsics/` (HI). The interp-tier IC table bypasses call_function dispatch for hot intrinsic method calls regardless of JIT eligibility. Closes the structural gap that HI's JIT-tier table can't reach: interp-tier-bound hot loops (for-of bodies; non-OSR-eligible code; broad interp-tier dispatch sites).
 
 Top-level locale (not nested under rusty-js-runtime/, which itself is not a Pin-Art locale). Spawned per keeper directive 2026-05-24 04:31-local as the (d) pivot from string_url_sweep's component A/B probe (header normalization loop = 77% of cruft's wall-clock; OSR doesn't fire on the for-of body's alphabet).
 

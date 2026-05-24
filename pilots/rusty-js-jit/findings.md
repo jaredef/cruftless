@@ -770,3 +770,83 @@ Delivered:
 - Doc 740 §II.2 P4 multi-tier reading empirically validated at session scope
 
 The session's load-bearing structural contribution: **standing rule 11 final 5-axis form** + the canonical Doc 740 instance demonstrating that all 5 axes can be closed in dependency order across multiple sibling pilots to materialize cumulative reclaim. Future CRB-driven pilots have a complete pre-spawn discipline.
+
+---
+
+## Addendum IX — 2026-05-24 (post IHI-EXT 11 deeper-layer closure empirical materialization; revert-then-deeper-layer pattern + cache-tier coverage axes)
+
+This addendum codifies four findings from the IHI locale's IHI-EXT 7→11 trajectory plus one new standing rule. The IHI chain empirically materialized the keeper-named "revert-then-deeper-layer-closure" pattern referenced from a prior session's recognition. Doc 740 §IV.2 substrate-introduction signature reading correctly predicted the trajectory shape.
+
+### Promotion: Finding IHI.1 → engagement-wide
+
+**Finding VIII.4 (Per-call-site IC dispatch caches require cache-lifetime ≥ the hot-path's call-site-revisit-per-cache-population threshold)** *[new, 2026-05-24 via IHI-EXT 7-8 empirical readout, promoted from IHI.1]*
+
+**Anchor**: IHI-EXT 7 implemented a per-call-site IC cache as `Frame::ic_dispatch_cache: HashMap<usize, Option<&IhiEntry>>`. Result: +7% regression. The bench fixture's `variant()` shape creates a fresh `Frame` per `fn(i)` call (550 invocations); each fresh Frame has empty cache; per-Frame ~6 cache hits don't amortize the per-Frame HashMap-allocation + per-call HashMap-get cost. IHI-EXT 8 fixed by moving cache to Runtime (lifetime spans all Frame invocations).
+
+**Substrate implication**: cache-lifetime sizing is a structural decision. Per-Frame caches amortize only when many call-site revisits per Frame; closure-per-iter fixtures (common in real workloads) need Runtime-tier OR proto-tier OR bytecode-tier cache lifetimes.
+
+**Generalization (engagement-wide)**: any per-call-site cache pilot must verify the cache-lifetime / per-revisit-amortization match against the target fixture's call-shape BEFORE committing the implementation. Bench probe runs at <10s and would have caught the IHI-EXT 7 mis-design pre-implementation.
+
+### Promotion: Finding IHI.2 → engagement-wide
+
+**Finding VIII.5 (Cache-amortization is fixture-dependent: cache-lifetime closure is necessary but not sufficient; the fixture's hot call sites must HIT the cached entries)** *[new, 2026-05-24 via IHI-EXT 9 empirical readout, promoted from IHI.2]*
+
+**Anchor**: IHI-EXT 9 added 5 new IHI_TABLE entries (codePointAt, toUpperCase, startsWith, endsWith, includes), expanding from 4 to 9 entries. Hypothesis: more entries crosses the cache-cost-crossover (linear scan O(N) vs HashMap.get O(1)) and amortizes. Result: sub-noise (same plateau as IHI-EXT 8). The string_url_sweep fixture's hot CallMethods (toLowerCase, trim, indexOf) match existing entries; the 5 added are dormant.
+
+**Substrate implication**: adding cache entries doesn't amortize the cache unless the fixture EXERCISES the new entries. Per Doc 740 §II.2 P4 multi-tier reading at the per-entry tier: cumulative reclaim materializes ONLY when entries fire per inner-iter.
+
+**Composition with Finding VII.1 (component A/B probe)**: rule 11's component A/B check should include per-entry coverage projection (does the fixture hit the new entries?). Adding entries without per-fixture coverage analysis is a pilot mis-attribution risk.
+
+### Promotion: Finding IHI.3 → engagement-wide
+
+**Finding VIII.6 (Bytecode rewrite as deeper-layer cache-tier closure: when per-call cache lookup itself is the bottleneck, burn the cache result into the bytecode)** *[new, 2026-05-24 via IHI-EXT 11 empirical materialization, promoted from IHI.3]*
+
+**Anchor**: IHI-EXT 8-10 placed structural cache substrate (Runtime-keyed, then Vec side-table) at progressively deeper tiers. Each round was substrate-introduction at the cache-shape tier; each delivered sub-noise empirically. IHI-EXT 11 closed the deeper layer: rewrote the bytecode op byte to `Op::CallMethodIcCached(idx)` on first IC hit, eliminating per-call cache lookup entirely. Per-call dispatch dropped from ~60ns to ~10ns. Cumulative reclaim materialized: -3.6% CRB string_url_sweep; -14% header_loop component; cruft/node 8.21× → 7.83× (first sub-8×).
+
+**Substrate implication**: when the per-call cache lookup IS the bottleneck (not the cache-miss case but the cache-hit case's per-call cost), the deeper-layer closure is to burn the cached result into the call-site itself. For interpreter bytecode: rewrite the op. For JIT-tier IC: same pattern via inline cache stub. For compile-time-knowable resolutions: compile-time specialization.
+
+The pattern generalizes Doc 740 §IV.2's substrate-introduction-signature reading: cache-tier substrate is correctly placed at the cache-LIFETIME closure; but when cache-LOOKUP cost itself dominates, the next-deeper closure is cache-INLINING via bytecode rewrite (or equivalent).
+
+### New standing rule
+
+**Standing rule 13 (added 2026-05-24): Revert-then-deeper-layer-closure discipline** *[new, codifying the keeper-named pattern + Doc 740 §IV.2 application across the IHI chain]*
+
+When a substrate-introduction round produces a NEGATIVE empirical (not just flat per Finding II.2-bis substrate-introduction signature):
+1. **Verify the negative**: re-measure; confirm not noise.
+2. **Diagnose structurally**: name WHY the round added cost without benefit. Is it design (wrong-lifetime cache; wrong-receiver-shape detection; wrong-cost-axis target)? Or implementation (HashMap when Vec would do; etc.)?
+3. **Revert** the negative round's code via git (keep the trajectory entry + diagnosis).
+4. **Identify the deeper-layer closure** that the negative round's design pointed toward but didn't reach. Often the negative is the substrate-introduction at the wrong layer; the deeper layer is the actual closure tier.
+5. **Implement the deeper-layer closure** as the next round. Per Doc 740 §IV.2 + §II.2 P4: cumulative reclaim materializes at the deeper-layer closure.
+
+**Cases observed**:
+- Prior session: JIT optimization reverted; later connected at deeper JIT-resolver layer (keeper-referenced precedent).
+- IHI-EXT 7 (Frame cache; reverted) → IHI-EXT 8 (Runtime cache) → IHI-EXT 11 (bytecode rewrite): cumulative materialization at the deeper layer.
+
+**Why this matters**: naive interpretation of a negative result is "the optimization doesn't work; abandon the substrate." The discipline reframes: the negative is often the SIGNATURE that the substrate is at the wrong LAYER, not that the substrate-class is wrong. The deeper-layer closure tests this hypothesis.
+
+**Cost of NOT applying the rule**: substrate-class abandonment after a single negative result, missing the cumulative-materialization opportunity at the deeper layer. For IHI: skipping IHI-EXT 8-11 would have left the bench at -7.5% reclaim instead of the achieved -3.6% CRB + -14% header_loop.
+
+### Empirical materialization of Doc 740 §IV.2 at engagement scope
+
+The 2026-05-23 architectural-pivot session demonstrated the multi-tier-cascade-revival pattern (Doc 740) at the JIT-tier (CharCode → TL → VD → OSR pipeline; -66% CRB). The 2026-05-24 IHI session demonstrates the SAME pattern at the interp-tier (CharCode-EXT 2 ad-hoc → IHI table → cache-tier hardening → bytecode rewrite; -3.6% CRB on the second-fixture target).
+
+**Both sessions** show the substrate-introduction signature working as Doc 740 §IV.2 predicts: each closure round produces near-zero or borderline-negative empirical alone; cumulative reclaim materializes at the FINAL deeper-layer closure round.
+
+**Standing rule 13** is the operational discipline extracted from the empirical pattern.
+
+### Findings-doc cumulative status
+
+After Addendum IX, the findings doc contains:
+- 6 original finding sections (I-VI; per-category)
+- 8 original standing rules
+- Addendum I: 5 findings + 1 new standing rule (#9)
+- Addendum II: 1 new finding (II.5)
+- Addendum III: 2 new findings (IV.3, IV.4) + 1 new standing rule (#10) + 2 promotions
+- Addendum IV: 3 new findings (II.2-bis, VII.1, II.3) + 1 new standing rule (#11) + 1 promotion + 2 new engagement instruments
+- Addendum V: 2 new findings (VII.2, VII.3) + rule 11 extension along 2 coverage axes
+- Addendum VI: 1 new finding (VIII.1) + 1 new standing rule (#12)
+- Addendum VII: 1 new finding (VIII.2) + rule 11 extension (3rd coverage axis)
+- Addendum VIII: 1 new finding (VIII.3) + rule 11 final 5-axis form
+- Addendum IX (this): 3 new findings (VIII.4 cache-lifetime; VIII.5 cache-amortization-fixture-dependence; VIII.6 bytecode-rewrite-as-deeper-layer-closure) + 1 new standing rule (#13 revert-then-deeper-layer-closure)
+
+Total: **20 findings** (6 original + 14 new across 9 addenda); **13 standing rules** (rule 11 multi-axis 5 coverage axes; rule 12 IEEE-754 adversarial; rule 13 revert-then-deeper-layer); 2 standing engagement instruments + 1 standing methodology pattern (Doc 740 §IV.2 application via rule 13).

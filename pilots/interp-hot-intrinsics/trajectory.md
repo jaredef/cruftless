@@ -881,3 +881,66 @@ IHI_TABLE entries: 9.
 ---
 
 *IHI-EXT 11 closes. **Deeper-layer closure landed; keeper's Doc 740 §IV.2 pattern empirically vindicated.** Bytecode rewrite delivers -3.6% CRB / -14% header_loop reclaim. The IHI-EXT 7→11 trajectory matches exactly the revert-then-deeper-layer-closure shape from the prior session's recognition. (P2.a) at the deeper-layer closure tier.*
+
+---
+
+## IHI chapter close — 2026-05-24
+
+### Headline
+
+IHI locale chapter closed at IHI-EXT 11 with (P2.a) at the deeper-layer closure tier. The pilot's substrate work (12 rounds; ~865 LOC) delivered the engagement's second cross-tier standing instrument + the empirical materialization of Doc 740 §IV.2 at the interp tier. Standing rule 13 (revert-then-deeper-layer-closure) codified at findings.md Addendum IX.
+
+### Pred-ihi.* final disposition
+
+| falsifier | target | actual | disposition |
+|---|---|---|---|
+| Pred-ihi.1 | ≤50 LOC per entry | 26-46 across all 9 entries | ✅ **HELD** |
+| Pred-ihi.2 | canonical fuzz byte-identical | byte-identical throughout 12 rounds | ✅ HELD |
+| Pred-ihi.3 | diff-prod 42/42 | 42/42 throughout | ✅ HELD |
+| Pred-ihi.4 | composition ±5% per landing | within ±5% per round (post-IHI-EXT 7 revert) | ✅ HELD |
+| Pred-ihi.5 | ≥30% header-loop reclaim | -14% header_loop achieved (-3.6% CRB; cruft/node 8.21× → 7.83×) | **PARTIAL — deeper-layer materialization confirms direction; full ≥30% requires cross-locale GetProp IC + for-of IC** |
+
+### Chapter deliverables (12 rounds; IHI-EXT 0-11)
+
+1. **Engagement instrument substrate**: `interp_ic_table.rs` apparatus (cross-tier dual of HI's JIT-tier table)
+2. **9 IHI_TABLE entries**: charCodeAt (CharCode-EXT 2 migrated), toLowerCase, trim, indexOf, codePointAt, toUpperCase, startsWith, endsWith, includes
+3. **Per-FunctionProto Vec side-table cache** (IHI-EXT 10)
+4. **Bytecode rewrite Op::CallMethodIcCached** (IHI-EXT 11; deeper-layer closure)
+5. **Empirical materialization of Doc 740 §IV.2** at the interp tier (the second canonical Doc 740 instance after the JIT-tier CharCode→TL→VD→OSR pipeline)
+6. **Standing rule 13** (revert-then-deeper-layer-closure) codified at engagement-wide findings Addendum IX
+7. **Findings VIII.4 + VIII.5 + VIII.6** promoted from IHI.1-3 to engagement-wide
+
+### Cumulative numerical delta (IHI locale's CRB-EXT-9 contribution)
+
+| fixture | pre-IHI | post-IHI-EXT 11 | Δ |
+|---|---:|---:|---:|
+| string_url_sweep CRB | 743 ms | 716.5 ms | **-3.6% (-26 ms)** |
+| string_url_sweep header_loop component | 332 ms | 284.5 ms | **-14% (-47.5 ms)** |
+| cruft/node ratio (string_url_sweep) | 8.21× | **7.83×** | first sub-8× on this fixture |
+
+### Composition with prior corpus / engagement work
+
+- **Doc 740 §IV.2 substrate-introduction signature reading**: empirically vindicated across the IHI-EXT 7→11 trajectory. Standing rule 13 codifies the discipline.
+- **Doc 741 §V.1 generalization**: the hot-intrinsic-IC pattern is now MATERIALIZED at BOTH tiers (JIT via HI; interp via IHI). Cross-tier dual operational.
+- **Doc 739 single-tier cascade-revival**: IHI-EXT 8 (cache lifetime closure) + IHI-EXT 11 (bytecode rewrite) form a Doc 739 cascade-revival pair.
+- **Standing rule 11 5-axis**: IHI work demonstrated the pattern's recurrence at the per-call dispatch tier (5th axis confirmed empirically).
+- **Engagement-wide IC pattern**: now 3 instances (CharCode-EXT 2 ad-hoc; HI table at JIT; IHI table at interp). Each successive instance more apparatus-mature.
+
+### Open scope at IHI chapter close
+
+1. **GetProp IC at interp tier** — the per-resolve cost (~200-500ns per call) is the next single-tier closure target for fixtures like string_url_sweep. Likely highest single-pilot yield.
+2. **For-of iterator-protocol fast-path** — separate pilot; closes the for-of dispatch surface across many fixtures.
+3. **HI / IHI cross-tier composition probe** — measure both tiers on a fixture exercising both OSR-eligible + non-OSR-eligible patterns.
+4. **IHI hardening (future)**: Op::CallMethodIcCached bail-revert (minor); receiver-shape polymorphic cache (broader entries beyond String); Array.length + Array.push (Object-receiver entries).
+
+### Cumulative status at IHI chapter close
+
+LOC delta across IHI-EXT 0-11: ~865 in the locale (apparatus + entries + caches + bytecode rewrite + trajectory + design + findings).
+Plus ~50 LOC in bytecode crate (Op::CallMethodIcCached + operand_size + op_from_byte).
+IHI_TABLE entries: 9 String intrinsics.
+Engagement findings: VIII.4 + VIII.5 + VIII.6 + standing rule 13 codified.
+Pipeline materialization: -3.6% CRB + -14% header_loop on string_url_sweep; (P2.a) at deeper-layer closure tier.
+
+---
+
+*IHI chapter closes. Cross-tier standing instrument operational at apparatus + 9 entries + bytecode-rewrite deeper-layer-closure. Doc 740 §IV.2 pattern empirically vindicated; standing rule 13 codified. Next engagement: cross-locale work (GetProp IC; for-of IC) per the Pred-ihi.5 closure path.*
