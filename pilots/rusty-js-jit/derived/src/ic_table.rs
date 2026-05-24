@@ -126,6 +126,53 @@ fn lower_ic_string_char_code_at(
     Ok(())
 }
 
+// ─── ENTRY 2: String.prototype.codePointAt (MethodCall arity 1) ───
+//
+// HI-EXT 3 (2026-05-24): per-entry round. Behavior matches cruft's
+// interp `string_proto_code_point_at_via` (which is non-spec for
+// non-BMP: uses chars().nth() char index, not UTF-16 code unit index).
+// ASCII fast-path mirrors ic_string_char_code_at.
+
+pub extern "C" fn ic_string_code_point_at(payload: i64, i: i64) -> f64 {
+    let ptr = payload as *const String;
+    let s: &String = unsafe { &*ptr };
+    if i < 0 { return f64::NAN; }
+    let i = i as usize;
+    let bytes = s.as_bytes();
+    if s.is_ascii() {
+        if i < bytes.len() { bytes[i] as f64 } else { f64::NAN }
+    } else {
+        match s.chars().nth(i) {
+            Some(c) => c as u32 as f64,
+            None => f64::NAN,
+        }
+    }
+}
+
+fn ic_string_code_point_at_sig(sig: &mut Signature) {
+    sig.params.push(AbiParam::new(I64));
+    sig.params.push(AbiParam::new(I64));
+    sig.returns.push(AbiParam::new(F64));
+}
+
+fn lower_ic_string_code_point_at(
+    builder: &mut FunctionBuilder,
+    stack: &mut Vec<ClValue>,
+    extern_ref: FuncRef,
+) -> Result<(), String> {
+    let arg_f64 = stack.pop().ok_or("ic_string_code_point_at: stack underflow (arg)")?;
+    let _sentinel = stack.pop().ok_or("ic_string_code_point_at: stack underflow (sentinel)")?;
+    let recv_f64 = stack.pop().ok_or("ic_string_code_point_at: stack underflow (receiver)")?;
+    let recv_bits = builder.ins().bitcast(I64, MemFlags::new(), recv_f64);
+    let payload_mask = builder.ins().iconst(I64, 0x0000_FFFF_FFFF_FFFF_u64 as i64);
+    let payload = builder.ins().band(recv_bits, payload_mask);
+    let arg_i64 = builder.ins().fcvt_to_sint_sat(I64, arg_f64);
+    let call_inst = builder.ins().call(extern_ref, &[payload, arg_i64]);
+    let result = builder.inst_results(call_inst)[0];
+    stack.push(result);
+    Ok(())
+}
+
 // ─── IC_TABLE static registry ───
 //
 // Future entries register here. Each entry: key + kind + receiver +
@@ -150,6 +197,15 @@ pub static IC_TABLE: &[IcEntry] = &[
         extern_ptr: ic_string_char_code_at as *const u8,
         extern_sig: ic_string_char_code_at_sig,
         lower: lower_ic_string_char_code_at,
+    },
+    IcEntry {
+        key: "codePointAt",
+        kind: IcEntryKind::MethodCall { arity: 1 },
+        receiver: ReceiverKind::String,
+        extern_name: "ic_string_code_point_at",
+        extern_ptr: ic_string_code_point_at as *const u8,
+        extern_sig: ic_string_code_point_at_sig,
+        lower: lower_ic_string_code_point_at,
     },
 ];
 

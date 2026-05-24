@@ -189,3 +189,62 @@ Engagement instrument now extensible.
 ---
 
 *HI-EXT 2 closes. Table apparatus landed; 2-entry migration behavior-neutral; per-entry LOC budget verified (28+38 ≤ 50 each). Pred-hi.1 closed. HI-EXT 3+ adds starter-set entries at bounded LOC.*
+
+---
+
+## HI-EXT 3 — 2026-05-24 (per-entry round: String.prototype.codePointAt; demonstrates apparatus extensibility)
+
+### Headline
+
+First per-entry round through the table apparatus. Adds String.prototype.codePointAt as IC_TABLE entry index 2. **Per-entry LOC: ~39** (within Pred-hi.1 ≤50 budget). Behavior matches cruft's interp (char-index, ASCII fast-path + chars().nth() fallback for non-ASCII; non-spec for non-BMP per cruft's existing interp behavior).
+
+### Per-entry LOC breakdown (codePointAt)
+
+| component | LOC |
+|---|---:|
+| extern fn `ic_string_code_point_at` | 14 |
+| `ic_string_code_point_at_sig` | 4 |
+| `lower_ic_string_code_point_at` | 13 |
+| IcEntry literal | 8 |
+| **total** | **39** |
+
+### Three-probe results
+
+| probe | result |
+|---|---|
+| canonical fuzz (acc=-932188103) | ✅ GREEN |
+| diff-prod 42/42 | ✅ GREEN |
+| JIT lib tests | ✅ 38/38 |
+| synth do-while OSR (existing) | ✅ compile + invoke (unchanged) |
+| json_parse_transform OSR (existing) | ✅ compile + invoke (unchanged) |
+
+The codePointAt entry doesn't fire on existing fixtures (none use codePointAt in a hot OSR loop); the entry is ready for any fixture that does. Per-entry synthetic fixture for empirical speedup measurement deferred (not in this round's scope).
+
+### Composition with prior corpus / engagement work
+
+- **HI-EXT 2 apparatus**: extension worked as designed; adding a new entry required only the per-entry 4 components.
+- **Multi-entry-same-arity safety**: codePointAt + charCodeAt both have arity=1 MethodCall on String. The parse-time backward-scan finds the most-recent IcMethodResolve; correctness depends on the source-bytecode invariant that GetProp + CallMethod always pair locally (the standard compiler emission shape). For json_parse_transform's loop body, only charCodeAt is referenced; codePointAt entry is dormant.
+- **cruft interp parity**: ic_string_code_point_at's behavior matches `string_proto_code_point_at_via` at interp.rs:4745+. Same non-spec deviation for non-BMP (chars().nth() char-index semantics). Correctness probe via canonical fuzz + diff-prod confirms parity.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable.
+Per Doc 734 §V: growth (a) positive-finding empirical-confirmation — the apparatus extension pattern works at the verified LOC budget.
+Per Doc 735 §X.h.b: substrate-introduction at the per-entry tier; flat bench on existing fixtures (codePointAt entry dormant); empirical materialization waits for a fixture that exercises codePointAt in an OSR-eligible hot loop.
+
+### Open scope at HI-EXT 3 close
+
+1. **HI-EXT 4** — additional per-entry rounds (charAt requires String allocation handling — needs design extension; Array.length requires Runtime access via TLS — needs new extern shape; Array.push requires mutation handling — needs design extension)
+2. **HI-EXT N+1** — composition probe + final disposition + Pred-hi.* booking
+3. **Finding HI.1 (override-safety)** — hardening round; ungated currently
+4. **Finding HI.2 candidate (String-allocation in extern)** — needed for charAt; out of HI-EXT 3 scope
+
+### Cumulative status at HI-EXT 3 close
+
+LOC delta: ~39 (codePointAt entry).
+HI-EXT 0-3 cumulative: ~720 across the locale.
+IC_TABLE entries: 3 (length, charCodeAt, codePointAt).
+
+---
+
+*HI-EXT 3 closes. Apparatus extensibility validated empirically: adding codePointAt entry required 39 LOC (within Pred-hi.1 ≤50 budget). Engagement-wide instrument operational; future entries follow the same 4-component template.*
