@@ -411,3 +411,78 @@ Empirical reclaim: -5% header loop; full CRB within noise.
 ---
 
 *IHI-EXT 5 closes. indexOf 1-arg entry landed at 38 LOC. Cumulative reclaim 18 ms (-5%) on header loop matches the multi-entry projection. Pred-ihi.5 ≥30% target structurally bounded by dispatch-overhead floor; reaching it needs per-call-site IC cache (Finding IHI.1 candidate). IHI-EXT 6 books Pred-ihi.* dispositions.*
+
+---
+
+## IHI-EXT 6 — 2026-05-24 (formal close; first cut at (P2.a-partial))
+
+### Headline
+
+Formal close round of the IHI pilot's first cut. No source changes; books Pred-ihi.* dispositions; documents the standing-instrument status alongside HI's JIT-tier dual.
+
+### Pred-ihi.* final disposition (first cut)
+
+| falsifier | target | actual | disposition |
+|---|---|---|---|
+| Pred-ihi.1 | ≤50 LOC per entry | charCodeAt=31 (migration), toLowerCase=33, trim=46, indexOf=38 | ✅ **HELD** across all 4 entries |
+| Pred-ihi.2 | canonical fuzz byte-identical (acc=-932188103) | byte-identical | ✅ HELD throughout |
+| Pred-ihi.3 | diff-prod 42/42 | 42/42 | ✅ HELD throughout |
+| Pred-ihi.4 | composition ±5% per landing | within ±5% per round | ✅ HELD throughout |
+| Pred-ihi.5 | ≥30% header-loop reclaim | -5% achieved (-18 ms) | **DEFERRED — partial reclaim; full target structurally bounded** |
+
+### IHI locale first-cut disposition
+
+**IHI first cut closed at (P2.a-partial)** — apparatus operational; cumulative reclaim direction validated; Pred-ihi.5 ≥30% target requires architectural extensions (Finding IHI.1 candidate + for-of iteration protocol optimization).
+
+Pilot delivered:
+
+1. **Engagement-tier instrument substrate** (cross-tier dual of HI): `interp_ic_table.rs` with IhiEntry struct + IhiCachedField + IHI_TABLE registry + Op::CallMethod dispatch integration + per-entry override-safety gate (cached intrinsic-ObjectId pattern from CharCode-EXT 2 precedent)
+2. **4 operational entries** at the table tier: String.charCodeAt (migrated from CharCode-EXT 2 ad-hoc), String.toLowerCase, String.trim (with return-self optimization), String.indexOf (arity 1)
+3. **Apparatus extensibility empirically validated**: per-entry LOC 31-46 (within Pred-ihi.1 ≤50 budget)
+4. **Cumulative direction empirically confirmed**: 5% header-loop reclaim at 3 entries; crossover from net-overhead to net-savings between IHI-EXT 3 (single-entry +3%) and IHI-EXT 4 (2-entry -2%); compounding to -5% at 3 entries
+5. **Structural ceiling identified**: dispatch-overhead floor caps per-entry approach at ~5-12% reclaim; reaching ≥30% requires per-call-site IC cache (eliminates per-call lookup) AND for-of iteration protocol optimization
+
+### Standing instrument status (post IHI-EXT 6)
+
+The engagement now has **2 cross-tier standing instruments** materialized at apparatus tier:
+
+| instrument | tier | LOC | operational entries |
+|---|---|---:|---:|
+| HI table (`pilots/rusty-js-jit/hot-intrinsics/`) | JIT-tier | ~720 | 4 (length, charCodeAt, codePointAt, indexOf) |
+| **IHI table (`pilots/interp-hot-intrinsics/`)** | **interp-tier** | **~670** | **4 (charCodeAt, toLowerCase, trim, indexOf)** |
+
+Plus the component A/B probe (Addendum IV) — engagement's first standing instrument.
+
+Both IC tables follow the same 4-component per-entry template; future entries at either tier add at bounded LOC per the verified budgets.
+
+### Composition with prior corpus / engagement work
+
+- **Doc 741 §V.1 generalization**: the hot-intrinsic-IC pattern is now operationalized at BOTH tiers (JIT + interp). Each tier covers what the other can't (JIT for OSR-eligible hot loops; interp for everything else).
+- **CharCode-EXT 2 precedent**: ad-hoc charCodeAt fast-path → migrated into IHI table; behavior-neutral; -66% CRB reclaim on json_parse_transform preserved (the charCodeAt IC still fires).
+- **Doc 740 §II.2 P4 multi-tier cascade-revival**: empirically observed at the per-entry tier within IHI (single-entry net-overhead → 2-entry crossover → 3-entry net-savings). Cross-scope materialization of the pattern.
+- **Standing rule 11 5-axis**: each per-entry round gated by applicable axes (typically component A/B for the target fixture; the entry's spawn was string_url_sweep-driven per the A/B probe).
+- **Finding II.2-bis substrate-introduction signature**: empirically observed at IHI-EXT 3 (single-entry +3%); resolved at IHI-EXT 4-5.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable.
+Per Doc 734 §V: growth (a) positive-finding (apparatus operational; cumulative direction validated); growth (b) negative-finding (Pred-ihi.5's ≥30% structurally bounded; closure path named).
+Per Doc 735 §X.h.b: **(P2.a-partial) at fixture-anchored cumulative scope.** Partial Pred-ihi.5 (5%) achieved; full target awaits architectural hardening rounds.
+
+### Open scope at IHI-EXT 6 close (future sessions)
+
+1. **Finding IHI.1 hardening** — per-call-site IC cache (eliminates dispatch overhead on non-IC calls). ~80-100 LOC architectural change. Estimated additional reclaim: +12-15 ms on string_url_sweep header loop.
+2. **For-of iteration protocol optimization** — separate substrate pilot at the iterator-protocol tier (likely a new locale; the iterator protocol cuts across many fixtures). Required for Pred-ihi.5's ≥30% reclaim.
+3. **IHI-EXT 7+** (future) — additional entries per natural priority: slice (for-of and string ops); padStart/padEnd; startsWith/endsWith; includes; concat.
+4. **HI-IHI cross-tier composition probe** — measure both tiers on a fixture that uses both OSR-eligible and non-OSR-eligible patterns.
+
+### Cumulative status at IHI-EXT 6 close
+
+LOC delta this round: 0 (formal close).
+IHI-EXT 0-6 cumulative: ~640 across the locale (apparatus + 4-entry first cut + design + close).
+IHI_TABLE entries: 4 (charCodeAt, toLowerCase, trim, indexOf).
+**Engagement-wide standing instrument: operational + extensible at interp tier.**
+
+---
+
+*IHI-EXT 6 closes. **IHI first cut at (P2.a-partial).** Apparatus-tier substrate-introduction successful; 4 operational entries; cumulative reclaim direction validated at -5% header loop; full Pred-ihi.5 (≥30%) requires architectural hardening (per-call-site IC cache + for-of iteration optimization). The hot-intrinsic-IC pattern is now materialized at BOTH JIT and interp tiers as the engagement's standing cross-tier instrument.*
