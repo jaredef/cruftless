@@ -271,6 +271,56 @@ fn division_after_ident_still_works() {
 }
 
 #[test]
+fn generic_arrow_with_single_type_param_stripped() {
+    assert!(shape_equiv(
+        "const f = <T>(x: T): T => x;",
+        "const f = (x) => x;"
+    ));
+}
+
+#[test]
+fn generic_arrow_assigned_to_class_static_field_stripped() {
+    assert!(shape_equiv(
+        "class C { static create = <T>(s?: (x: T) => void) => { return new C(); }; }",
+        "class C { static create = (s) => { return new C(); }; }"
+    ));
+}
+
+#[test]
+fn generic_instantiation_in_new_stripped() {
+    assert!(shape_equiv(
+        "const o = new Observable<T>(subscribe);",
+        "const o = new Observable(subscribe);"
+    ));
+}
+
+#[test]
+fn generic_method_decl_in_class_body_stripped() {
+    assert!(shape_equiv(
+        "class C { lift<R>(op?: Op<T, R>): Observable<R> { return this; } }",
+        "class C { lift(op) { return this; } }"
+    ));
+}
+
+#[test]
+fn generic_function_call_stripped() {
+    assert!(shape_equiv(
+        "const x = parse<MyType>(input);",
+        "const x = parse(input);"
+    ));
+}
+
+#[test]
+fn less_than_operator_not_mis_stripped() {
+    // Negative regression: `a < b` is comparison, NOT generic. Verify
+    // we don't strip a real `<` operator.
+    assert!(shape_equiv(
+        "const r = (a < b) && (c < d);",
+        "const r = (a < b) && (c < d);"
+    ));
+}
+
+#[test]
 fn pure_js_via_ts_resolve_yields_same_body_length() {
     let src = "let x = 1; let y = 2; (x + y);";
     let direct = rusty_js_parser::parse_module(src).expect("ok");

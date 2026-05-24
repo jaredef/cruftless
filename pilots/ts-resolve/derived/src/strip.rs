@@ -134,6 +134,12 @@ struct Scanner<'src> {
     /// inside an obj-lit-enclosed `()` is a method-param annotation,
     /// not a key:value separator).
     paren_depth: i32,
+    /// Open ternary stack — each `?` operator (NOT `?:` optional or
+    /// `?.` chain) pushes the current paren_depth. The matching `:`
+    /// pops. Used by is_annotation_colon to reject a `:` whose top-
+    /// of-stack matches current paren_depth (it's a ternary's else
+    /// branch, not an annotation).
+    ternary_stack: Vec<i32>,
 }
 
 impl<'src> Scanner<'src> {
@@ -145,6 +151,7 @@ impl<'src> Scanner<'src> {
             witnesses: Vec::new(),
             brace_stack: Vec::new(),
             paren_depth: 0,
+            ternary_stack: Vec::new(),
         }
     }
 
@@ -461,6 +468,16 @@ impl<'src> Scanner<'src> {
                 Ok(i + 1)
             }
             TokenKind::Punct(Punct::Colon) => {
+                // TRGC-EXT 1 ternary tracking: if the top of the
+                // ternary stack matches current paren_depth, this `:`
+                // closes a ternary's else-branch — pop and skip
+                // annotation handling entirely.
+                if let Some(&top) = self.ternary_stack.last() {
+                    if top == self.paren_depth {
+                        self.ternary_stack.pop();
+                        return Ok(i + 1);
+                    }
+                }
                 // Annotation site: a `:` that follows an Ident in a
                 // declaration/param/field/return position. Bail on
                 // ternaries / labels / object-literal-keys / case-labels.
@@ -500,6 +517,19 @@ impl<'src> Scanner<'src> {
                     self.strips.push((t.span.start, t.span.end));
                     return Ok(i + 1);
                 }
+                // TRGC-EXT 1 ternary tracking: a `?` that is NOT a
+                // `?:` (optional-prop) AND NOT `?.` (optional-chain)
+                // AND NOT preceded by another `?` (nullish coalesce
+                // already lexes as ?? Punct, so not seen here) is a
+                // ternary opener at expression position. Push current
+                // paren_depth so the matching `:` can pop.
+                let next_is_colon = i + 1 < self.toks.len()
+                    && matches!(self.toks[i + 1].kind, TokenKind::Punct(Punct::Colon));
+                let next_is_dot = i + 1 < self.toks.len()
+                    && matches!(self.toks[i + 1].kind, TokenKind::Punct(Punct::Dot));
+                if !next_is_colon && !next_is_dot && i > 0 && self.is_expr_terminator(i - 1) {
+                    self.ternary_stack.push(self.paren_depth);
+                }
                 Ok(i + 1)
             }
             TokenKind::Punct(Punct::LogicalNot) => {
@@ -532,6 +562,35 @@ impl<'src> Scanner<'src> {
             }
             TokenKind::Punct(Punct::RParen) => {
                 if self.paren_depth > 0 { self.paren_depth -= 1; }
+                Ok(i + 1)
+            }
+            TokenKind::Punct(Punct::Lt) => {
+                // TRGC-EXT 1 (2026-05-24, ts-resolve-generics-calls
+                // locale): generic arrow `<T>(...) =>` AND generic
+                // call/instantiation/method-decl `NAME<T>(...)`.
+                // Distinguish from `<` operator via match_angle + `(`
+                // look-ahead filter — operators never produce a
+                // balanced `<...>(` shape.
+                if let Some(close) = self.match_angle(i) {
+                    let after = close + 1;
+                    if after < self.toks.len()
+                        && matches!(self.toks[after].kind, TokenKind::Punct(Punct::LParen))
+                    {
+                        // Decide between generic-arrow and generic-call
+                        // based on prev-token context:
+                        // - Expr-start (no prev OR prev in the expr-start
+                        //   set) → generic-arrow; strip `<...>` only
+                        //   (the `(...)` is the arrow's param list).
+                        // - Ident / `)` / `]` prev → generic-call;
+                        //   strip `<...>` only (the `(...)` is the
+                        //   call's arg list).
+                        let prev_is_expr_terminator = i > 0 && self.is_expr_terminator(i - 1);
+                        let _ = prev_is_expr_terminator;  // both cases strip the same range
+                        let start = self.toks[i].span.start;
+                        let end = self.toks[close].span.end;
+                        self.strips.push((start, end));
+                    }
+                }
                 Ok(i + 1)
             }
             _ => Ok(i + 1),

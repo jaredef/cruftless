@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 31,
-    "top_level": 20,
+    "locales": 32,
+    "top_level": 21,
     "nested": 11,
     "warnings": 0
   },
@@ -260,6 +260,15 @@
       "depth": 1,
       "rung_count": 2,
       "status": "**CHAPTER CLOSED at TRCAPS-EXT 1 (1 implementation round; standing rule 13's seventh corroboration)**. Parse-success lifted 47.1% \u2192 **59.9%** (+12.8 pp; 28% over Pred-trcaps.3's \u226510 pp target). Six concrete substrate improvements landed; mid-round investigation surfaced three additional substrate bugs (regex goal, ternary disambig, method-shorthand paren-depth gating) beyond the seed's three planned rules."
+    },
+    {
+      "coord": "ts-resolve-generics-calls",
+      "tag": "L.ts-resolve-generics-calls",
+      "parent": null,
+      "scope": "ts-resolve-generics-calls",
+      "depth": 1,
+      "rung_count": 2,
+      "status": "**CHAPTER CLOSED at TRGC-EXT 1 (1 implementation round; standing rule 13's eighth corroboration)**. Parse-success **59.9% \u2192 69.3%** (+9.4 pp; 18% over Pred-trgc.3's \u22658 pp target). Three substrate improvements; mid-round ternary-tracking discovery delivered +7.0 pp on top of the planned +2.4 pp generic rules."
     },
     {
       "coord": "ts-resolve-string-literal-safety",
