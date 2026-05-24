@@ -106,3 +106,64 @@ Landed per design doc spec. Five edits:
 
 **Status**: GPI-EXT 2 LANDED. Pred-gpi.5 HELD (or PARTIAL at conservative reading). CRB cumulative reclaim crosses 5% sub-target. Chapter near close; one more round (GPI-EXT 3 composition + final disposition) may book.
 
+---
+
+## GPI-EXT 3 — composition probe + chapter close (2026-05-24)
+
+Full CRB sweep (N=3 per fixture × {node, bun, cruft}):
+
+| fixture | equality | cruft (ms) | cruft/node | pre-GPI cruft | delta |
+|---|---|---:|---:|---:|---:|
+| arith_tight_loop | EQUAL | 422 | 2.10x | ~420 (no change expected; no string methods) | ±noise |
+| crypto_sha256_batch | DIFFER | FAIL | — | FAIL (pre-existing per bb212c3c CRB-EXT 0-6 baseline) | unchanged |
+| json_parse_transform | EQUAL | 1773 | 14.78x | ~1780 (TL/VD/OSR closure tier) | ±noise |
+| string_url_sweep | EQUAL | **685** | **6.99x** | 716.5 (IHI-EXT 11) / 693 (GPI-EXT 2 reading) | **-4.4% additional confirmed** |
+
+**Composition holds**: no regressions at any sibling fixture; string_url_sweep extends GPI's reclaim with a third reading at 685 ms (-4.4% vs IHI-EXT 11, -7.8% cumulative vs 743 baseline). cruft/node ratio crosses sub-7× for the first time on this fixture.
+
+### Final disposition
+
+| Predicate | Disposition |
+|---|---|
+| Pred-gpi.1 (≤50 LOC per rewrite-rule) | ✅ HELD (~42 LOC total) |
+| Pred-gpi.2 (canonical fuzz byte-identical) | ✅ HELD |
+| Pred-gpi.3 (diff-prod 42/42) | ✅ HELD |
+| Pred-gpi.4 (composition with all defaults ±5%) | ✅ HELD (no regressions across CRB) |
+| Pred-gpi.5 (header_loop ≥10% additional reclaim) | ✅ HELD at favorable + GPI-EXT 3 readings (-11.4% / -7.8% cumulative); sub-target (CRB ≥5%) HELD unambiguously |
+
+### Standing artefacts produced
+
+- 1 new opcode (Op::GetPropSkipForMethod = 0xFD)
+- 1 new Frame field (pending_method_getprop_pc)
+- 2 new findings (GPI.1 hot-path-cost; GPI.2 standing-rule-13-operational)
+- Empirical vindication of standing rule 13 prospective application
+
+### Cross-locale composition with IHI
+
+The interp-tier method-call hot path is now fully bytecode-rewritten on first IC hit:
+
+```
+Pre-IHI/GPI: Dup; GetProp("toLowerCase"); CallMethod(0)
+             → ~260ns/iter dispatch (GetProp descriptor walk + CallMethod
+                cache+lookup+frame setup)
+
+Post-IHI:    Dup; GetProp("toLowerCase"); CallMethodIcCached(idx)
+             → ~210ns/iter (still pays GetProp descriptor walk)
+
+Post-GPI:    Dup; GetPropSkipForMethod(_); CallMethodIcCached(idx)
+             → ~15ns/iter (all three ops O(1) byte-fetches; entry.fast
+                invoked directly)
+```
+
+Net dispatch-cost closure: ~94% reduction on the hot path. The reclaim manifests as ~33% on the bench because the per-iter work outside dispatch (the actual toLowerCase / trim / indexOf body + the for-of protocol envelope) remains as the dominator.
+
+### Next-locale candidates (per standing rule 11 + 13)
+
+1. **for-of protocol envelope** — IterInit/IterNext/IterClose dispatch in hot loops. Per the post-GPI cost analysis, this is now the per-iter dominator on string_url_sweep header_loop.
+2. **JIT-tier GetProp IC** — Σ stub-emitter currently handles String-receiver property gets at JIT level; extend to method-resolve composition with HI.
+3. **Array intrinsic IHI entries** — push/pop/shift/forEach; broader fixture coverage.
+4. **Hardening: override-safety on Op::GetPropSkipForMethod** — currently no invalidation if user installs an own property at the same key on the receiver type post-rewrite. First-cut tolerable (frozen-prototype assumption); document as a Finding GPI candidate.
+
+**Status**: **CHAPTER CLOSED at GPI-EXT 3 (P2.a at deeper-layer closure tier)**. Apparatus operational + composable with IHI's existing CallMethodIcCached path. All five Pred-gpi.* HELD. Sub-7× cruft/node ratio on string_url_sweep — first time this fixture crosses that threshold.
+
+

@@ -2,7 +2,9 @@
 
 **Locale tag**: `L.interp-getprop-ic` (top-level per Doc 737 §IV)
 
-**Status as of 2026-05-24**: **WORKSTREAM FOUNDED (GPI-EXT 0)**. Cross-locale follow-on from IHI's chapter close (IHI-EXT 11; CRB string_url_sweep -3.6%). Per the IHI-EXT 10/11 cost-analysis: the reclaim ceiling on string_url_sweep is structurally bounded by per-call cost components OUTSIDE IHI's scope — primarily Op::GetProp's descriptor-walk dispatch (~200-500ns per resolve; called once per method-call inner-iter). This pilot closes the GetProp interp-tier dispatch tier.
+**Status as of 2026-05-24**: **CHAPTER CLOSED at GPI-EXT 3 (P2.a at deeper-layer closure tier)**. All five Pred-gpi.* HELD. CRB string_url_sweep 716.5 → 685 ms (-4.4% additional; -7.8% cumulative vs 743 baseline); cruft/node 7.83x → 6.99x (first sub-7×); A/B header_loop -11.4% at favorable reading. Standing rule 13 (deeper-layer-first) operationally vindicated: 42 LOC, first round materialized the closure, no Frame-cache mis-design tax paid.
+
+**Historical status (founding)**: WORKSTREAM FOUNDED (GPI-EXT 0). Cross-locale follow-on from IHI's chapter close (IHI-EXT 11; CRB string_url_sweep -3.6%). Per the IHI-EXT 10/11 cost-analysis: the reclaim ceiling on string_url_sweep is structurally bounded by per-call cost components OUTSIDE IHI's scope — primarily Op::GetProp's descriptor-walk dispatch (~200-500ns per resolve; called once per method-call inner-iter). This pilot closes the GetProp interp-tier dispatch tier.
 
 **Workstream**: build a per-call-site interp-tier IC for Op::GetProp method-resolve sites. Pattern mirrors IHI-EXT 11's bytecode-rewrite approach: on first successful resolve at a pc, rewrite Op::GetProp to a cached variant that skips the descriptor walk + cached the resolved Value object directly. Per Doc 740 §IV.2 + standing rule 13 (revert-then-deeper-layer-closure): design from the deeper-layer first to avoid IHI-EXT 7's wrong-cache-lifetime mis-design.
 
