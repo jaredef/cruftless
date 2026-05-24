@@ -527,3 +527,82 @@ LOC delta: ~90 (interp.rs try_osr_invoke + 5 handler restructures + cache hot-pa
 ---
 
 *OSR-EXT 5d closes. Option β three-round chain complete: 5b (JIT-side) + 5c (helper) + 5d (runtime wiring). Invoke is correctness-preserving + within composition gate; doesn't fire on json_parse_transform by construction (alphabet + structural extraction limits). OSR-EXT 6 + forward-exit handling are the remaining tiers to materialize CRB reclaim.*
+
+---
+
+## OSR-EXT 5e — 2026-05-23 (synthetic do-while validation + Finding OSR.2 refinement: fallthrough-block synthesis + pre-entry block separation)
+
+### Headline
+
+Per keeper (a)→(b) sequence. Synthetic do-while fixture `fixtures/synth-do-while.mjs` lands; empirical validation surfaces TWO structural gaps in OSR-EXT 5b's IR emission that the OSR.2 finding's three options didn't anticipate. Both fixed in this round (~15 LOC). **OSR substrate now fires empirically: cruft 10ms vs node 38ms on the synth fixture (4× faster).**
+
+### Empirical readout sequence
+
+1. First run: compile failed with `no fallthrough block after JumpIfX at pc=33`. The do-while loop's back-edge JumpIfTrue is the LAST op in the slice; the fallthrough pc (loop-exit) is past slice end; translator's find_next_block_pc returns Err because parsed[i+1..] is empty.
+
+2. First fix: in osr_mode, append synthetic `(bytecode.len(), ReturnUndef)` to the parsed list after parse_bytecode. Serves as the fallthrough block for JumpIfX exits + triggers existing OSR locals-store epilogue.
+
+3. Second run: compile reached Cranelift IR emission; **Cranelift verifier error**: `brif v13, block0, block1` — block0 (the entry block with function param) was the back-edge target; brif targets a param-bearing block without passing args. Verifier flagged.
+
+4. Second fix: in osr_mode, allocate a separate pre_entry block that holds the function param (the *mut f64 arr_ptr); the loop_top block (blocks[&0]) has no params; brif back-edges target loop_top without arg mismatch. pre_entry does the locals-load setup + unconditional jump to loop_top.
+
+5. Third run: **compile SUCCEEDED; invoke FIRED; correctness preserved.** Sum = 499999500000 = N*(N-1)/2 exactly.
+
+### Substrate moves landed
+
+1. `fixtures/synth-do-while.mjs` (N=1M; ALL JIT-alphabet ops in loop body; arithmetic + LoadLocal/StoreLocal + Lt + JumpIfTrue back-edge).
+2. `CRUFTLESS_OSR_TRACE=1` env flag for stderr logging at try_osr_compile + try_osr_invoke (telemetry; default off).
+3. In compile_function_inner, osr_mode: append synthetic (bytecode.len(), ReturnUndef) to parsed.
+4. In compile_function_inner, osr_mode: pre_entry block separation; function param attached to pre_entry; blocks[&0] (loop_top) has no params; pre_entry jumps to loop_top after setup.
+
+### Three-probe results
+
+| probe | result |
+|---|---|
+| canonical fuzz (acc=-932188103) | ✅ GREEN |
+| diff-prod 42/42 | ✅ GREEN |
+| JIT lib tests | ✅ 38/38 |
+| Synth fixture correctness | ✅ sum=499999500000 (exact) |
+| Synth fixture wall-clock | **cruft 10ms vs node 38ms (4× faster)** |
+| OSR trace | "try_osr_compile site=57 entry=24 end=62 OK; try_osr_invoke site=57 FIRED (set pc=62)" |
+
+### Finding OSR.2 refinement (local findings → engagement-wide candidate)
+
+OSR.2 enumerated three structural alternatives to close the forward-exit gap, with "option 1 boundary extension" recommended. The empirical readout refines the finding:
+
+**Refinement 1 (OSR.2-bis)**: even do-while-shape loops require synthesized fallthrough block at end-of-slice. The back-edge JumpIfX has no parsed[i+1] op when slice ends at the back-edge; find_next_block_pc fails without the synthesized exit. The fix (this round): append synthetic ReturnUndef at bytecode.len() in osr_mode.
+
+**Refinement 2 (OSR.2-ter)**: in OSR loop extraction, the loop_top IS the slice's entry pc (pc=0). The function param (arr_ptr) cannot live on the loop_top block because brif back-edges target loop_top without args. Fix: separate pre_entry block holds the param; loop_top has no params.
+
+Both refinements generalize beyond do-while: any OSR-extracted region needs (a) synthesized exit block at slice end + (b) pre_entry separation when the loop_top coincides with entry pc. These should fold into the engagement-wide promotion candidate at Addendum VIII.
+
+### Composition with prior corpus / engagement work
+
+- **Doc 740 §VIII.4 (emission-shape coverage candidate axis)**: refined empirically; the axis check now includes "fallthrough-block synthesis at end-of-slice" + "pre_entry separation when loop_top = entry."
+- **Finding OSR.1 + VIII.2 locals-marshaling**: closed at OSR-EXT 5d; this round verifies the locals load/store IR is correct end-to-end.
+- **VD encoding**: synthetic fixture uses only Number locals; VD encoding bypasses (no Boxed paths exercised); still valuable as composition probe (encoding doesn't break the OSR path on Numbers).
+- **Standing rule 9 + 12**: applied; no new pointer caches; no new bit-pattern schemes.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable.
+Per Doc 734 §V: growth (a) positive-finding (substrate works end-to-end with 4× speedup demonstrated); growth (b) negative-finding (OSR.2 incomplete; refinements OSR.2-bis + OSR.2-ter generated).
+Per Doc 735 §X.h.b: **(P2.a) at this round on the synthetic fixture — first end-to-end materialization of the OSR pipeline-connection at empirical scope.**
+
+### Open scope at OSR-EXT 5e close
+
+1. **OSR.2 finding update** in local findings.md to reflect OSR.2-bis + OSR.2-ter refinements
+2. **OSR-EXT 6** — alphabet extension for json_parse_transform's GetProp+length + CallMethod+charCodeAt
+3. **OSR-EXT 6b** — forward-exit (for/while) handling per OSR.2 option 1
+4. **OSR-EXT 7** — composition probe + CRB final disposition
+5. **Findings Addendum VIII candidate** — emission-shape coverage (with OSR.2 + OSR.2-bis + OSR.2-ter empirical anchor)
+
+### Cumulative status at OSR-EXT 5e close
+
+LOC delta: ~50 (translator.rs: synth ReturnUndef + pre_entry block + jump; interp.rs: telemetry env flag; fixture). OSR-EXT 0-5e cumulative: ~870 across the locale.
+
+**First empirical pipeline-connection of the OSR pilot.** Substrate validated on a structurally compatible fixture; for/while + json_parse_transform require OSR-EXT 6 + 6b.
+
+---
+
+*OSR-EXT 5e closes. **OSR substrate validated end-to-end on synthetic do-while fixture: cruft 10ms vs node 38ms (4× faster).** Compile + invoke + correctness all GREEN. Finding OSR.2 refined with two empirical-anchored subfindings (OSR.2-bis fallthrough synthesis; OSR.2-ter pre_entry separation). The OSR pilot's first empirical pipeline-connection. OSR-EXT 6 closes alphabet; 6b closes for/while forward-exit; 7 is CRB final disposition.*

@@ -206,7 +206,19 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
 
     // Pre-scan: parse bytecode into a structured op list with absolute
     // pcs; identify all jump targets so we can allocate blocks.
-    let parsed = parse_bytecode(&proto.bytecode, &proto.constants)?;
+    let mut parsed = parse_bytecode(&proto.bytecode, &proto.constants)?;
+    // OSR-EXT 5e (2026-05-23): under osr_mode, append a synthetic
+    // ReturnUndef at pc = bytecode.len() (one past last byte). This
+    // serves as the fallthrough block for back-edge JumpIfX ops whose
+    // condition is false (loop-exit case) AND for any forward-exit
+    // jumps whose target is at end-of-slice. The synthesized op
+    // triggers the existing OSR locals-store-back epilogue + return.
+    // Without this synthetic, find_next_block_pc fails on the last
+    // JumpIfX because parsed[i+1..] is empty. Closes the empirical
+    // refinement of Finding OSR.2 (do-while loops also need this).
+    if osr_mode {
+        parsed.push((proto.bytecode.len(), ParsedOp::ReturnUndef));
+    }
     let mut targets: Vec<usize> = parsed.iter()
         .filter_map(|(_, op)| op.jump_target())
         .collect();
@@ -400,10 +412,28 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
             blocks.insert(t, builder.create_block());
         }
 
-        // Entry block: append params, declare local variables, store args.
-        let entry = blocks[&0];
-        builder.append_block_params_for_function_params(entry);
-        builder.switch_to_block(entry);
+        // OSR-EXT 5e (2026-05-23): in osr_mode the loop_top is at pc=0
+        // (same as entry); back-edge JumpIfX targets blocks[&0]. The
+        // function param (*mut f64 arr_ptr) is attached to whichever
+        // block append_block_params_for_function_params runs on. If we
+        // attached it to blocks[&0], brif back to that block would need
+        // to pass arr_ptr explicitly — and the existing translator emits
+        // brif with no args. Fix: allocate a separate pre_entry block,
+        // attach the function param there, do the locals setup, then
+        // jump to blocks[&0]. blocks[&0] has no params; brif back to it
+        // from the loop's back-edge works as-is.
+        let (entry_for_setup, real_entry) = if osr_mode {
+            let pre = builder.create_block();
+            builder.append_block_params_for_function_params(pre);
+            builder.switch_to_block(pre);
+            (pre, blocks[&0])
+        } else {
+            let entry = blocks[&0];
+            builder.append_block_params_for_function_params(entry);
+            builder.switch_to_block(entry);
+            (entry, entry)
+        };
+        let entry = entry_for_setup;
 
         // Φ-EXT 3: locals are F64 (was I64). The JIT body operates on
         // f64-throughout per the f64 calling-convention closure round.
@@ -502,6 +532,16 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
                     }
                 }
             }
+        }
+
+        // OSR-EXT 5e (2026-05-23): in osr_mode, the setup ran on
+        // pre_entry; jump to the real entry (blocks[&0]) where the
+        // bytecode translation begins. brif-back-edges target the
+        // real entry without arg-pass mismatch.
+        if osr_mode {
+            builder.ins().jump(real_entry, &[]);
+            builder.seal_block(entry);
+            builder.switch_to_block(real_entry);
         }
 
         // JIT-EXT 17: optional shape-trip check at function entry.

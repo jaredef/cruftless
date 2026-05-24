@@ -9608,8 +9608,17 @@ fn try_osr_compile(frame: &mut Frame, site_pc: usize) {
     // an ArityOsr CompiledFn with proper locals load/store IR. The
     // compiled body's signature is extern "C" fn(*mut f64) -> f64;
     // OSR-EXT 5d wires the invoke via call_osr.
-    let compiled = rusty_js_jit::compile_function_osr(&synth).ok().map(Box::new);
-    frame.osr_cache.insert(site_pc, compiled);
+    let compiled = rusty_js_jit::compile_function_osr(&synth);
+    // OSR-EXT 5e (2026-05-23): telemetry for synthetic-fixture validation.
+    // Under CRUFTLESS_OSR_TRACE=1, log compile attempts + outcomes to
+    // stderr; defaults off (no perf impact).
+    if std::env::var("CRUFTLESS_OSR_TRACE").map(|v| v == "1").unwrap_or(false) {
+        match &compiled {
+            Ok(_) => eprintln!("[osr-trace] try_osr_compile site={site_pc} entry={entry_pc} end={end_pc} OK"),
+            Err(e) => eprintln!("[osr-trace] try_osr_compile site={site_pc} entry={entry_pc} end={end_pc} ERR: {e}"),
+        }
+    }
+    frame.osr_cache.insert(site_pc, compiled.ok().map(Box::new));
 }
 
 /// OSR-EXT 5d (2026-05-23): invoke a cached OSR CompiledFn on a back-
@@ -9668,6 +9677,10 @@ fn try_osr_invoke(frame: &mut Frame, site_pc: usize) -> bool {
     // Skip the normal back-edge jump; advance past the back-edge to
     // the post-loop pc.
     frame.pc = end_pc;
+    // OSR-EXT 5e telemetry: log invoke fire under CRUFTLESS_OSR_TRACE=1.
+    if std::env::var("CRUFTLESS_OSR_TRACE").map(|v| v == "1").unwrap_or(false) {
+        eprintln!("[osr-trace] try_osr_invoke site={site_pc} FIRED (set pc={end_pc})");
+    }
     true
 }
 
