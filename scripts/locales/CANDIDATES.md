@@ -56,6 +56,19 @@ Living document; append-only at the bottom (newest at top within a section). Eac
 
 ---
 
+## Tier D — strategic / language-tier (new 2026-05-24)
+
+### (j) `ts-resolve` — **SPAWNED** 2026-05-24 as [`pilots/ts-resolve/`](../../pilots/ts-resolve/seed.md)
+**Telos**: native `.ts` execution by cruft via a TS source-language resolver upstream of rusty-js-ir. Empirical-first stage of a two-locale arc with `cruftscript-spec/`. Load-bearing research question: do erased TS annotations carry substrate-actionable signal for downstream IC/JIT/VD tiers?
+**Status**: SPAWNED. TSR-EXT 1 (design doc) is the next round.
+
+### (k) `cruftscript-spec` — ⚪ DEFERRED PENDING TSR-EXT 5
+**Telos**: design and specify CruftScript — a sound statically-typed sibling language to TS, following the Typed Racket model (typed code internally sound; runtime contracts at typed/untyped FFI boundary). The key architectural lever: types as first-class substrate input (drives JIT IC specialization, IHI/GPI/IPBR shape probes, VD's NaN-boxed tag schema) rather than erased upstream as tsc and Typed Racket do.
+**Disposition**: deferred until TSR-EXT 5's annotation-sidecar probe data lands. Positive signal → cruftscript-spec founded on grounded substrate claims. Null signal → cruftscript-spec proceeds on soundness-alone grounds (still valuable but smaller corpus claim).
+**Anchor**: TSR's empirical data on annotation-as-substrate-hint will inform the language design's scope + grammar bounds.
+
+---
+
 ## Tier C — discipline / methodology / corpus work
 
 ### (h) `standing-rules-codification-pass` — **FORMALIZED** 2026-05-24 as [`docs/standing-rule-13-prospective-application.md`](../../docs/standing-rule-13-prospective-application.md)
