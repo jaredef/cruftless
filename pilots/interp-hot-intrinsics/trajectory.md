@@ -486,3 +486,69 @@ IHI_TABLE entries: 4 (charCodeAt, toLowerCase, trim, indexOf).
 ---
 
 *IHI-EXT 6 closes. **IHI first cut at (P2.a-partial).** Apparatus-tier substrate-introduction successful; 4 operational entries; cumulative reclaim direction validated at -5% header loop; full Pred-ihi.5 (≥30%) requires architectural hardening (per-call-site IC cache + for-of iteration optimization). The hot-intrinsic-IC pattern is now materialized at BOTH JIT and interp tiers as the engagement's standing cross-tier instrument.*
+
+---
+
+## IHI-EXT 7 — 2026-05-24 (Finding IHI.1 hardening attempt: per-call-site cache; NEGATIVE EMPIRICAL — reverted)
+
+### Headline
+
+Attempted per-call-site IC dispatch cache on Frame (`Frame::ic_dispatch_cache: HashMap<usize, Option<&'static IhiEntry>>`). Intent: eliminate per-CallMethod table-lookup overhead by caching the lookup result per bytecode pc. **Result: +7% regression on header loop** (337 ms vs 314 ms at IHI-EXT 5). Reverted; Finding IHI.1 documented with structural diagnosis + closure path.
+
+### Empirical readout
+
+| stage | header_loop (median ms) | Δ vs IHI-EXT 5 |
+|---|---:|---:|
+| IHI-EXT 5 (3 entries, no cache) | 314 | — |
+| IHI-EXT 7 (3 entries + Frame cache) | 337 | +7% (worse) |
+| **IHI-EXT 7 revert** | **307** | **-2% (matches IHI-EXT 5 with cleaner runs)** |
+
+### Diagnosis (Finding IHI.1)
+
+The bench fixture's `variant()` shape invokes a fresh closure `fn(i)` per iter (550 invocations total). Each `fn(i)` creates a fresh Frame with empty `ic_dispatch_cache`. Within fn()'s 7-CallMethod body: 1 cache miss + 6 cache hits. Per-Frame caches don't amortize when each Frame is fresh; HashMap overhead (~30-50ns/op) exceeds the linear-scan-bypass savings (~40-80ns).
+
+**Structural shape**: per-Frame caches amortize only when many CallMethods run within the SAME Frame's lifetime. For tight inner loops in a single Frame (JSF/CharCode chain pattern), the cache works (35K hits within 1 Frame). For closure-invocation-per-iter fixtures (the variant() shape; many real-world hot loops), the cache resets before it can amortize.
+
+**Closure path** (Finding IHI.1 §"Recommended next step"): option 2 — FunctionProto-side-table cache (Vec<Option<IcDispatchEntry>> indexed by pc). O(1) array lookup; persists across Frame invocations; cache-friendly. ~30-50 LOC.
+
+### Composition with prior findings
+
+- **Finding II.2-bis (substrate-introduction signature)**: NOT a substrate-introduction signature; this is a structural mis-match. Empirical fail; revert + redesign.
+- **Doc 740 §VIII coverage axes**: not a coverage gap; per-call dispatch-overhead tier optimization. Different axis.
+
+### Substrate landed
+
+1. Local `findings.md` created with Finding IHI.1 + diagnosis + 3 closure options.
+2. Code reverted to IHI-EXT 5 state (direct table lookup; no cache).
+3. `Frame::ic_dispatch_cache` field retained (init at all 3 sites) but currently unused. **Leaves architectural foothold for future option 2 implementation.**
+
+### Three-probe results
+
+| probe | result |
+|---|---|
+| canonical fuzz (acc=-932188103) | ✅ GREEN |
+| diff-prod 42/42 | ✅ GREEN |
+| A/B header_loop (3-run median) | 307 ms vs original baseline 332 (-7.5%; same as post-IHI-EXT 5) |
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable.
+Per Doc 734 §V: growth (b) negative-finding catalyzes Finding IHI.1 + the closure path identification. The negative result advances the apparatus discipline (per-call-site cache needs ≥Runtime-lifetime store for closure-per-iter workloads).
+Per Doc 735 §X.h.b: **the hardening attempt itself was (P2.c) illegal-speed (made things worse). Reverted; Pred-ihi.5 remains DEFERRED.**
+
+### Open scope at IHI-EXT 7 close
+
+1. **IHI-EXT 8** (future) — per-Finding IHI.1 option 2: FunctionProto-side-table cache. ~30-50 LOC; persists across Frame invocations; expected reclaim closes the dispatch-overhead floor.
+2. **Engagement findings doc Addendum IX candidate** — Finding VIII.4 (proposed) promoting IHI.1 to engagement-scope.
+3. **For-of iteration protocol optimization** (separate pilot) — still required for Pred-ihi.5 ≥30%.
+
+### Cumulative status at IHI-EXT 7 close
+
+LOC delta: 0 net (added cache field + dispatch logic, then reverted dispatch logic; field retained as architectural foothold).
+IHI-EXT 0-7 cumulative: ~640 across the locale.
+IHI_TABLE entries: 4 (unchanged).
+Pred-ihi.5: DEFERRED (-7.5% reclaim achieved; full target awaits Finding IHI.1 option 2 + for-of optimization).
+
+---
+
+*IHI-EXT 7 closes. Per-call-site Frame-cache attempt empirically negative; reverted. **Finding IHI.1 documents the structural mis-match** + closure path (FunctionProto-side-table). Growth (b) — negative result catalyzes apparatus refinement. Future hardening rounds (IHI-EXT 8+) implement option 2.*

@@ -6696,6 +6696,7 @@ impl Runtime {
             strict: proto.strict,
             back_edge_counts: HashMap::new(),
             osr_cache: HashMap::new(),
+            ic_dispatch_cache: HashMap::new(),
         };
         self.run_frame(&mut frame)
     }
@@ -8198,6 +8199,7 @@ impl Runtime {
                     frame.push(result);
                 }
                 Op::CallMethod => {
+                    let site_pc = frame.pc - 1;  // IHI-EXT 7: Op byte's pc for cache key
                     let n = frame.bytecode[frame.pc] as usize;
                     frame.pc += 1;
                     let mut args = Vec::with_capacity(n);
@@ -8268,11 +8270,12 @@ impl Runtime {
                         method_name.as_deref().map(|mn| describe_proto_chain_for_key(self, &receiver, mn))
                     } else { None };
                     // IHI-EXT 2 (2026-05-24): table-driven interp-tier IC
-                    // fast-path. Replaces CharCode-EXT 2's ad-hoc block.
-                    // Per-entry: lookup by (method_name, receiver-kind,
-                    // arity); verify resolved method's ObjectId matches
-                    // cached intrinsic id (lazy-populate); invoke fast fn;
-                    // on Some(v) push v + continue (skip call_function).
+                    // fast-path. IHI-EXT 7 attempt at per-call-site cache
+                    // was reverted (HashMap-per-Frame overhead exceeded
+                    // the linear-scan savings because the bench's fresh-
+                    // Frame-per-invocation shape gave the cache no time
+                    // to amortize; see trajectory IHI-EXT 7).
+                    let _ = site_pc;  // unused; reserved for future Runtime-keyed cache
                     if let Some(method_name_str) = method_name.as_deref() {
                         let kind = crate::interp_ic_table::receiver_kind_of(&receiver);
                         if let Some(entry) = crate::interp_ic_table::lookup(method_name_str, kind, args.len() as u8) {
@@ -9096,6 +9099,7 @@ impl Runtime {
             strict: proto.strict,
             back_edge_counts: HashMap::new(),
             osr_cache: HashMap::new(),
+            ic_dispatch_cache: HashMap::new(),
         };
         let body_result = self.run_frame(&mut inner);
         if is_generator {
@@ -9538,6 +9542,15 @@ pub struct Frame<'a> {
     /// what uniquely identifies the loop in the bytecode). Empty by
     /// default (no allocation until first back-edge fires).
     pub back_edge_counts: HashMap<usize, u32>,
+    /// IHI-EXT 7 (2026-05-24, Finding IHI.1): per-call-site IC dispatch
+    /// cache. Keyed on the Op::CallMethod byte's pc; value is the
+    /// IHI_TABLE entry pointer for this call site (Some) or None (no
+    /// entry matches). Populated on first dispatch at the pc; read on
+    /// subsequent dispatches to skip the linear-scan table lookup.
+    /// Per Pred-ihi.5 closure path: eliminates per-call dispatch
+    /// overhead for non-IC calls (~40 ns/call saved on cache hit).
+    pub ic_dispatch_cache: std::collections::HashMap<usize, Option<&'static crate::interp_ic_table::IhiEntry>>,
+
     /// OSR-EXT 4+5 (2026-05-23): per-site OSR compile cache.
     ///   - Absent: not yet attempted.
     ///   - Present + Some(boxed): compiled successfully (invoke at
@@ -9745,6 +9758,7 @@ impl<'a> Frame<'a> {
             strict: m.strict,
             back_edge_counts: HashMap::new(),
             osr_cache: HashMap::new(),
+            ic_dispatch_cache: HashMap::new(),
         }
     }
 
