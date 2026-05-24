@@ -158,7 +158,7 @@
 {"file": "rxjs/src/internal/observable/dom/webSocket.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/observable/empty.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/observable/forkJoin.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/observable/from.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 308, end: 309 }, message: 'expected `LBrace`' }"}
+{"file": "rxjs/src/internal/observable/from.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/observable/fromEvent.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/observable/fromEventPattern.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/observable/fromSubscribable.ts", "outcome": "OK", "message": ""}
@@ -168,7 +168,7 @@
 {"file": "rxjs/src/internal/observable/interval.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/observable/merge.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/observable/never.ts", "outcome": "OK", "message": ""}
-{"file": "rxjs/src/internal/observable/of.ts", "outcome": "PARSE", "message": "ParseError { span: Span { start: 520, end: 521 }, message: 'expected `LBrace`' }"}
+{"file": "rxjs/src/internal/observable/of.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/observable/onErrorResumeNext.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/observable/pairs.ts", "outcome": "OK", "message": ""}
 {"file": "rxjs/src/internal/observable/partition.ts", "outcome": "OK", "message": ""}

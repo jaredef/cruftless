@@ -1,5 +1,5 @@
-{"file":"ajv/lib/2019.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module './refs/data.json' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/ajv/lib/co"}
-{"file":"ajv/lib/2020.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module './schema.json' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/ajv/lib/refs/"}
+{"file":"ajv/lib/2019.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module './schema.json' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/ajv/lib/refs/"}
+{"file":"ajv/lib/2020.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module './refs/data.json' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fixtures/ajv/lib/co"}
 {"file":"ajv/lib/ajv.ts","outcome":"BUN_FAIL","detail":"error: Cannot find module './refs/json-schema-draft-07.json' from '/home/jaredef/rusty-bun/pilots/ts-consumer-corpus/fix"}
 {"file":"ajv/lib/compile/codegen/code.ts","outcome":"MATCH","detail":""}
 {"file":"ajv/lib/compile/codegen/index.ts","outcome":"BUN_FAIL","detail":"1 | })"}
@@ -127,7 +127,7 @@
 {"file":"rxjs/src/internal/AnyCatcher.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/AsyncSubject.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/BehaviorSubject.ts","outcome":"MATCH","detail":""}
-{"file":"rxjs/src/internal/Notification.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte520 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/Notification.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/NotificationFactories.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/Observable.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/Operator.ts","outcome":"MATCH","detail":""}
@@ -148,8 +148,8 @@
 {"file":"rxjs/src/internal/observable/bindCallback.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/observable/bindCallbackInternals.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/observable/bindNodeCallback.ts","outcome":"MATCH","detail":""}
-{"file":"rxjs/src/internal/observable/combineLatest.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte308 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
-{"file":"rxjs/src/internal/observable/concat.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte308 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/observable/combineLatest.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/observable/concat.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/observable/connectable.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/observable/defer.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/observable/dom/WebSocketSubject.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `Colon` @byte9302 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
@@ -158,7 +158,7 @@
 {"file":"rxjs/src/internal/observable/dom/webSocket.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `Colon` @byte9302 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
 {"file":"rxjs/src/internal/observable/empty.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/observable/forkJoin.ts","outcome":"MATCH","detail":""}
-{"file":"rxjs/src/internal/observable/from.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte308 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/observable/from.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/observable/fromEvent.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/observable/fromEventPattern.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/observable/fromSubscribable.ts","outcome":"MATCH","detail":""}
@@ -166,11 +166,11 @@
 {"file":"rxjs/src/internal/observable/iif.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/observable/innerFrom.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/observable/interval.ts","outcome":"MATCH","detail":""}
-{"file":"rxjs/src/internal/observable/merge.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte308 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/observable/merge.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/observable/never.ts","outcome":"MATCH","detail":""}
-{"file":"rxjs/src/internal/observable/of.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte520 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/observable/of.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/observable/onErrorResumeNext.ts","outcome":"MATCH","detail":""}
-{"file":"rxjs/src/internal/observable/pairs.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte308 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/observable/pairs.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/observable/partition.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/observable/race.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/observable/range.ts","outcome":"MATCH","detail":""}
@@ -187,28 +187,28 @@
 {"file":"rxjs/src/internal/operators/bufferToggle.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"Cannot read property 'prototype' of undefined (receiver='<class$0.super.ctor:Subscri"}
 {"file":"rxjs/src/internal/operators/bufferWhen.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/catchError.ts","outcome":"MATCH","detail":""}
-{"file":"rxjs/src/internal/operators/combineAll.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte308 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
-{"file":"rxjs/src/internal/operators/combineLatest.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte308 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
-{"file":"rxjs/src/internal/operators/combineLatestAll.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte308 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
-{"file":"rxjs/src/internal/operators/combineLatestWith.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte308 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
-{"file":"rxjs/src/internal/operators/concat.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte308 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/combineAll.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/operators/combineLatest.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/operators/combineLatestAll.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/operators/combineLatestWith.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/operators/concat.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/concatAll.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/concatMap.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/concatMapTo.ts","outcome":"MATCH","detail":""}
-{"file":"rxjs/src/internal/operators/concatWith.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte308 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/concatWith.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/connect.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/count.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/debounce.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/debounceTime.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"Cannot read property 'prototype' of undefined (receiver='<class$0.super.ctor:Subscri"}
 {"file":"rxjs/src/internal/operators/defaultIfEmpty.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/delay.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"Cannot read property 'prototype' of undefined (receiver='<class$0.super.ctor:Subscri"}
-{"file":"rxjs/src/internal/operators/delayWhen.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte308 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
-{"file":"rxjs/src/internal/operators/dematerialize.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte520 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/delayWhen.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/operators/dematerialize.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/distinct.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/distinctUntilChanged.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `RParen` @byte6353 @url=file:///home/jaredef/rusty-bun/pilots/ts-"}
 {"file":"rxjs/src/internal/operators/distinctUntilKeyChanged.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `RParen` @byte6353 @url=file:///home/jaredef/rusty-bun/pilots/ts-"}
 {"file":"rxjs/src/internal/operators/elementAt.ts","outcome":"MATCH","detail":""}
-{"file":"rxjs/src/internal/operators/endWith.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte308 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/endWith.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/every.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/exhaust.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/exhaustAll.ts","outcome":"MATCH","detail":""}
@@ -227,15 +227,15 @@
 {"file":"rxjs/src/internal/operators/last.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/map.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/mapTo.ts","outcome":"MATCH","detail":""}
-{"file":"rxjs/src/internal/operators/materialize.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte520 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/materialize.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/max.ts","outcome":"MATCH","detail":""}
-{"file":"rxjs/src/internal/operators/merge.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte308 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/merge.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/mergeAll.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/mergeInternals.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/mergeMap.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/mergeMapTo.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/mergeScan.ts","outcome":"MATCH","detail":""}
-{"file":"rxjs/src/internal/operators/mergeWith.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte308 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/mergeWith.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/min.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/multicast.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/observeOn.ts","outcome":"MATCH","detail":""}
@@ -267,7 +267,7 @@
 {"file":"rxjs/src/internal/operators/skipLast.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/skipUntil.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/skipWhile.ts","outcome":"MATCH","detail":""}
-{"file":"rxjs/src/internal/operators/startWith.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte308 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/operators/startWith.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/subscribeOn.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/switchAll.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/operators/switchMap.ts","outcome":"MATCH","detail":""}
@@ -325,8 +325,8 @@
 {"file":"rxjs/src/internal/scheduler/timerHandle.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/symbol/iterator.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/symbol/observable.ts","outcome":"MATCH","detail":""}
-{"file":"rxjs/src/internal/testing/ColdObservable.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte520 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
-{"file":"rxjs/src/internal/testing/HotObservable.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: CompileError(\"parse: expected `LBrace` @byte520 @url=file:///home/jaredef/rusty-bun/pilots/ts-c"}
+{"file":"rxjs/src/internal/testing/ColdObservable.ts","outcome":"MATCH","detail":""}
+{"file":"rxjs/src/internal/testing/HotObservable.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/testing/SubscriptionLog.ts","outcome":"MATCH","detail":""}
 {"file":"rxjs/src/internal/testing/SubscriptionLoggable.ts","outcome":"CRUFT_FAIL","detail":"cruft: evaluation error: TypeError(\"Cannot read property 'prototype' of undefined (receiver='<class$0.super.ctor:Subscri"}
 {"file":"rxjs/src/internal/testing/TestMessage.ts","outcome":"MATCH","detail":""}

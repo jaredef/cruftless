@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 34,
-    "top_level": 23,
+    "locales": 35,
+    "top_level": 24,
     "nested": 11,
     "warnings": 0
   },
@@ -269,6 +269,15 @@
       "depth": 1,
       "rung_count": 2,
       "status": "**CHAPTER CLOSED at TRCAPS-EXT 1 (1 implementation round; standing rule 13's seventh corroboration)**. Parse-success lifted 47.1% \u2192 **59.9%** (+12.8 pp; 28% over Pred-trcaps.3's \u226510 pp target). Six concrete substrate improvements landed; mid-round investigation surfaced three additional substrate bugs (regex goal, ternary disambig, method-shorthand paren-depth gating) beyond the seed's three planned rules."
+    },
+    {
+      "coord": "ts-resolve-enums",
+      "tag": "L.ts-resolve-enums",
+      "parent": null,
+      "scope": "ts-resolve-enums",
+      "depth": 1,
+      "rung_count": 2,
+      "status": "**CHAPTER CLOSED at TRE-EXT 1 (1 implementation round; standing rule 13 eleventh corroboration)**. Execute-parity 52.7% \u2192 **58.6%** (+5.9 pp). Two fixes landed: enum-MVP-strip + `from`/`as`/`of`/`in`/`instanceof`/`do` removed from `is_overload_blocked_name`. The planned-scope (enum-strip) was 0 pp alone; the load-bearing yield came from the mid-round discovery of the function-overload-keyword-collision bug \u2014 seventh reproduction of Finding IX.3 (inspect-then-iterate compound discovery)."
     },
     {
       "coord": "ts-resolve-generics-calls",

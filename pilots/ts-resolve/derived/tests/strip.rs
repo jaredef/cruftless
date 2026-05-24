@@ -366,6 +366,46 @@ fn regex_call_arg_not_mis_treated_as_overload() {
 }
 
 #[test]
+fn plain_enum_stripped() {
+    assert!(shape_equiv(
+        "enum K { A, B, C }\nlet a = 1;",
+        "let a = 1;"
+    ));
+}
+
+#[test]
+fn export_enum_stripped() {
+    assert!(shape_equiv(
+        "export enum K { A = 'a', B = 'b' }\nlet a = 1;",
+        "let a = 1;"
+    ));
+}
+
+#[test]
+fn const_enum_stripped() {
+    assert!(shape_equiv(
+        "const enum K { A, B }\nlet a = 1;",
+        "let a = 1;"
+    ));
+}
+
+#[test]
+fn export_const_enum_stripped() {
+    assert!(shape_equiv(
+        "export const enum K { A, B }\nlet a = 1;",
+        "let a = 1;"
+    ));
+}
+
+#[test]
+fn declare_enum_stripped() {
+    assert!(shape_equiv(
+        "declare enum K { A, B }\nlet a = 1;",
+        "let a = 1;"
+    ));
+}
+
+#[test]
 fn pure_js_via_ts_resolve_yields_same_body_length() {
     let src = "let x = 1; let y = 2; (x + y);";
     let direct = rusty_js_parser::parse_module(src).expect("ok");

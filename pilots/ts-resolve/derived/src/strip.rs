@@ -38,15 +38,22 @@ use rusty_js_parser::{Lexer, LexerGoal, Token, TokenKind, Punct, Span, TemplateP
 /// an annotation between them. Filtering by name avoids requiring
 /// expensive lookback to verify class-body vs control-flow context.
 fn is_overload_blocked_name(name: &str) -> bool {
-    // `do` is safe to NOT block — `do { ... } while ()` has `{` as
-    // immediate-next-token, which fails the next_punct_immediate(LParen)
-    // check naturally. `do(...)` as a method name is valid TS.
+    // `do`/`of`/`in`/`instanceof` are safe to NOT block — their JS-
+    // keyword forms (`do { ... } while ()`, `for (x of y)`, `x in y`,
+    // `x instanceof Y`) never have `(` as the next token, so the
+    // next_punct_immediate(LParen) check naturally rejects them. As
+    // method/function names (`function of(...)`, `arr.in(...)`), they
+    // need to be matched by the overload rule.
     matches!(name,
         "if" | "for" | "while" | "switch" | "catch" | "with"
         | "return" | "yield" | "await" | "throw" | "new" | "typeof"
-        | "delete" | "void" | "in" | "of" | "instanceof"
+        | "delete" | "void"
         | "let" | "const" | "var" | "function" | "class"
-        | "import" | "export" | "default" | "from" | "as"
+        | "import" | "export" | "default"
+        // NOTE: "from"/"as"/"of"/"in"/"instanceof"/"do" excluded.
+        // Their JS-keyword forms never have `(` immediately after, so
+        // next_punct_immediate(LParen) naturally rejects them. As
+        // function/method names they need to be matched by overload.
         | "true" | "false" | "null" | "undefined" | "this"
         | "super" | "async" | "static"
     )
@@ -664,13 +671,51 @@ impl<'src> Scanner<'src> {
                         return Ok(end_idx + 1);
                     }
                 }
-                // `declare ...` — strip entire statement.
+                // TRE-EXT 1 (2026-05-24, ts-resolve-enums locale, MVP
+                // strip): `enum NAME { ... }` and `const enum NAME
+                // { ... }` declarations. Strip the entire decl through
+                // the matching closing `}`. Runtime usages of enum
+                // members become undefined-property reads (deferred
+                // to TRE-EXT 2 lowering pass). Handles leading
+                // modifiers: `export`, `declare`, `const` (matched by
+                // the rules above; this rule fires on the actual
+                // `enum` keyword after they've been processed).
+                if name == "enum" && self.next_is_ident(i + 1) {
+                    if let Some(brace_open) = self.find_punct(i + 2, Punct::LBrace) {
+                        if let Some(brace_close) = self.match_braces(brace_open) {
+                            // Extend strip backward to include leading
+                            // `export`, `declare`, `const` keywords.
+                            let mut start_idx = i;
+                            while start_idx > 0 {
+                                if let TokenKind::Ident(n) = &self.toks[start_idx - 1].kind {
+                                    if n == "export" || n == "declare" || n == "const" || n == "default" {
+                                        start_idx -= 1;
+                                        continue;
+                                    }
+                                }
+                                break;
+                            }
+                            let start = self.toks[start_idx].span.start;
+                            let end = self.toks[brace_close].span.end;
+                            self.strips.push((start, end));
+                            return Ok(brace_close + 1);
+                        }
+                    }
+                }
+                // `declare ...` — strip entire statement. But NOT
+                // `declare enum ...` — that's handled by the enum
+                // rule below (which uses match_braces for the full
+                // body range).
                 if name == "declare" && self.is_stmt_start(i) {
-                    if let Some(end_idx) = self.find_stmt_end(i + 1) {
-                        let start = t.span.start;
-                        let end = self.toks[end_idx].span.end;
-                        self.strips.push((start, end));
-                        return Ok(end_idx + 1);
+                    let next_is_enum = matches!(self.toks.get(i + 1),
+                        Some(tk) if matches!(&tk.kind, TokenKind::Ident(n) if n == "enum"));
+                    if !next_is_enum {
+                        if let Some(end_idx) = self.find_stmt_end(i + 1) {
+                            let start = t.span.start;
+                            let end = self.toks[end_idx].span.end;
+                            self.strips.push((start, end));
+                            return Ok(end_idx + 1);
+                        }
                     }
                 }
                 // `as T` — strip from `as` through end-of-type. Only
