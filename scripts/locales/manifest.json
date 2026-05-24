@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 38,
-    "top_level": 27,
+    "locales": 39,
+    "top_level": 28,
     "nested": 11,
     "warnings": 0
   },
@@ -62,6 +62,15 @@
       "depth": 1,
       "rung_count": 3,
       "status": "**CHAPTER CLOSED at IPBR-EXT 2 (P2.a at deeper-layer-first design tier)**. All six Pred-ipbr.* HELD including the Pred-ipbr.6 discipline falsifier (\u22643 rounds). CRB string_url_sweep 685 \u2192 584 ms (-14.7% additional; -21.4% cumulative vs 743 baseline); cruft/node 6.99x \u2192 6.21x (first sub-6.5\u00d7); A/B header_loop -21.8% additional (median 197 ms vs GPI 252). Locale closed in 1 implementation round; standing-rule-13 prospective-application thesis gets its second empirical corroboration."
+    },
+    {
+      "coord": "parser-permissiveness-audit",
+      "tag": "L.parser-permissiveness-audit",
+      "parent": null,
+      "scope": "parser-permissiveness-audit",
+      "depth": 1,
+      "rung_count": 1,
+      "status": "**WORKSTREAM FOUNDED (PPA-EXT 0)**. Multi-round parser-tier locale spawned per T262C matrix cluster #1 (45-test arrow-function-dstr escaped-keyword) + cluster #9 (24-test for-of decl-cls negative-syntax) + cluster #11 (22-test arrow-function params-duplicate). Substrate gap: cruft's parser is systematically permissive at \"no-ReservedWord\" sites where ECMA-262 requires SyntaxError."
     },
     {
       "coord": "rusty-js-caps",
