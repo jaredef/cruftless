@@ -227,11 +227,15 @@ impl<'src> Scanner<'src> {
             | TokenKind::Punct(Punct::Comma)
             | TokenKind::Punct(Punct::Colon)
             | TokenKind::Punct(Punct::Question)
-            | TokenKind::Punct(Punct::Arrow)
             | TokenKind::Punct(Punct::LogicalAnd)
             | TokenKind::Punct(Punct::LogicalOr)
             | TokenKind::Punct(Punct::NullishCoalesce)
             | TokenKind::Punct(Punct::Spread) => BraceCtx::ObjectLit,
+            // NOTE: Punct::Arrow excluded. `=> { ... }` is always a
+            // block body — arrow-functions returning an object literal
+            // require explicit wrapping `=> ({...})`. Including Arrow
+            // mis-classified arrow function bodies as ObjectLit, which
+            // broke annotation detection inside the body.
             TokenKind::Ident(n) if n == "return"
                 || n == "yield"
                 || n == "throw"
@@ -495,7 +499,13 @@ impl<'src> Scanner<'src> {
                         TokenKind::Punct(Punct::LBrace)
                         | TokenKind::Punct(Punct::Semicolon))
                     || matches!(&self.toks[i - 1].kind,
-                        TokenKind::Ident(prev_name) if prev_name == "function");
+                        TokenKind::Ident(prev_name) if prev_name == "function"
+                            || prev_name == "abstract"
+                            || prev_name == "public"
+                            || prev_name == "private"
+                            || prev_name == "protected"
+                            || prev_name == "override"
+                            || prev_name == "static");
                 let at_class_member_start = in_block_or_module && stmt_start_prev;
                 if at_class_member_start && !is_overload_blocked_name(name) {
                     // Allow generic-args `<T,...>` between name and `(`
@@ -531,7 +541,33 @@ impl<'src> Scanner<'src> {
                                 let mut k = after_rparen;
                                 let mut depth = 0i32;
                                 let mut found_overload = false;
+                                let in_class_body = matches!(self.brace_stack.last(),
+                                    Some(BraceCtx::ClassBody));
                                 while k < self.toks.len() {
+                                    // TRGC-EXT 6 (2026-05-24): abstract
+                                    // class method (no body, no ';',
+                                    // ASI between members). At class
+                                    // body context, an Ident at top-
+                                    // level preceded by line terminator
+                                    // is the next member — treat
+                                    // current sig as overload.
+                                    if in_class_body && depth == 0
+                                        && k > after_rparen
+                                        && self.toks[k].preceded_by_line_terminator
+                                        && matches!(self.toks[k].kind,
+                                            TokenKind::Ident(_)
+                                            | TokenKind::Punct(Punct::RBrace))
+                                    {
+                                        found_overload = true;
+                                        // Don't include the next member
+                                        // in the strip range.
+                                        k = if k > 0 { k - 1 } else { k };
+                                        // Walk back over whitespace-only
+                                        // tokens... actually tokens are
+                                        // not whitespace; just stop at
+                                        // the prev token's end.
+                                        break;
+                                    }
                                     match &self.toks[k].kind {
                                         TokenKind::Punct(Punct::LBrace) if depth == 0 => break,
                                         TokenKind::Punct(Punct::LParen)
@@ -565,6 +601,12 @@ impl<'src> Scanner<'src> {
                                     } else { t.span.start };
                                     let end = self.toks[k].span.end;
                                     self.strips.push((start, end));
+                                    // Resume scan AT the next member's
+                                    // first token if we broke via the
+                                    // ASI-class-body path (k is end of
+                                    // prev member; next member starts
+                                    // at k+1 — but we backed k off by
+                                    // 1; safer to return k+1).
                                     return Ok(k + 1);
                                 }
                             }

@@ -219,7 +219,40 @@ Without ClassBody/Block distinction, ANY function body containing a ternary that
 | After ClassBody distinction | **352** | **94.1%** | **+0.8 pp** |
 | **Cumulative TRGC-EXT 5** | **+18 files** | **+4.8 pp** | — |
 
-### Status: CHAPTER CLOSED at TRGC-EXT 5
+### Status: REOPENED for TRGC-EXT 6 follow-on
+
+---
+
+## TRGC-EXT 6 — arrow-body Block classification + abstract-method strip (2026-05-24)
+
+**Trigger**: keeper "Continue" past 94.1%. Inspected remaining failures (race.ts, code.ts).
+
+**Three substrate improvements**:
+
+1. **Arrow `=>` removed from classify_brace's ObjectLit set** — `() => { ... }` is ALWAYS a block body (arrow-functions returning object literals require explicit wrapping `=> ({...})`). Including Arrow mis-classified arrow bodies as ObjectLit, breaking annotation detection inside. +0.8 pp.
+
+2. **at_class_member_start accepts TS-modifier prev tokens** — `abstract toString(): string` has prev=`abstract` (Ident). Without this extension, the overload-rule didn't trigger on members preceded by TS modifiers. Added prev-acceptance for `abstract`/`public`/`private`/`protected`/`override`/`static`. +0.3 pp (+1 file).
+
+3. **ASI-aware overload-scan in ClassBody context** — abstract class methods have NO body, NO `;` (rely on ASI between members). The overload scan now treats line-terminator-preceded Ident or RBrace at depth 0 as the next member boundary (when in ClassBody context). Cumulative effect via interactions with item 2.
+
+**Gates**:
+- `cargo test --release -p ts-resolve`: ✅ 46/46 PASS
+- diff-prod 42/42 PASS ✅
+
+**TCC measurement (TRGC-EXT 6)**:
+
+| Stage | OK | Parse-success | Δ |
+|---|---:|---:|---:|
+| Pre-round (TRGC-EXT 5 close) | 352 | 94.1% | — |
+| After Arrow excluded from ObjectLit | 355 | 94.9% | +0.8 pp |
+| After TS-modifier prev acceptance | **356** | **95.2%** | **+0.3 pp** |
+| **Cumulative TRGC-EXT 6** | **+4 files** | **+1.1 pp** | — |
+
+### 🎯 Status: CHAPTER CLOSED at TRGC-EXT 6 — 95% PARITY MILESTONE CROSSED
+
+**Cumulative session parse-success on real npm corpus**: 37.7% → **95.2%** (+57.5 pp). **8 percentage points past the originally-projected 87% top-6-sub-locales target.**
+
+**Remaining 18 failures** (all 1-2 per category): method-return-annotation (2), generic-call (2), as-const (1), several singletons. Long-tail past 95% is diminishing-returns territory; substrate is now production-shaped for the high-frequency real-world TS surface.
 
 Cumulative session parse-success: 37.7% → **94.1%** (+56.4 pp). **6 percentage points past the 87% milestone**.
 
