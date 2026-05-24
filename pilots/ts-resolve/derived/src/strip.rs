@@ -26,7 +26,7 @@
 //! `public/private/protected/readonly` ctor-param shorthand (requires
 //! body rewrite), namespaces.
 
-use rusty_js_parser::{Lexer, LexerGoal, Token, TokenKind, Punct, Span};
+use rusty_js_parser::{Lexer, LexerGoal, Token, TokenKind, Punct, Span, TemplatePart};
 use crate::ts_ast::{TypeWitness, TypeWitnessKind, TsTypeRef};
 
 #[derive(Debug)]
@@ -146,13 +146,83 @@ impl<'src> Scanner<'src> {
     }
 
     fn lex_all(&mut self) -> Result<(), StripError> {
+        // TRSLS-EXT 1 (2026-05-24, ts-resolve-string-literal-safety
+        // locale, Finding TCC.3 fix): goal-symbol selection per token.
+        //
+        // Template literals require `LexerGoal::TemplateTail` when the
+        // lexer is positioned at the `}` that closes a substitution
+        // (e.g. inside `` `${x}post` ``). Without the goal switch, the
+        // lexer treats the `}` as a punctuator and the rest of the
+        // template lexes as fresh tokens — the closing backtick becomes
+        // a stray punctuator and an UnterminatedString lex error fires
+        // somewhere downstream.
+        //
+        // Track template-substitution depth via a small stack: each
+        // Template{Head, Middle} token opens a substitution we're
+        // "outside of after this Template token returns"; each balanced
+        // `}` paired with the opening `${` (which the lexer has already
+        // consumed as part of the preceding Template token) closes one.
+        //
+        // Brace-depth tracking distinguishes substitution-closing `}`
+        // from ordinary block-closing `}`: when we enter a substitution
+        // (after Template::Head/Middle), record the brace depth at
+        // entry; the `}` at THAT depth closes the substitution.
         let mut lx = Lexer::new(self.src);
+        let mut tmpl_brace_depths: Vec<i32> = Vec::new();
+        let mut brace_depth: i32 = 0;
+        let mut prev_kind: Option<TokenKind> = None;
         loop {
-            let t = lx.next_token(LexerGoal::Div)
+            // Goal selection:
+            // - If we just emitted a Template{Head|Middle}, the lexer
+            //   is positioned at the start of the substitution; goal
+            //   is Div (standard expression goal).
+            // - If we're at a `}` AND it would close a substitution
+            //   (brace_depth matches the recorded substitution-entry
+            //   depth), goal is TemplateTail.
+            let goal = if let Some(&entry_depth) = tmpl_brace_depths.last() {
+                if brace_depth == entry_depth {
+                    LexerGoal::TemplateTail
+                } else {
+                    LexerGoal::Div
+                }
+            } else {
+                LexerGoal::Div
+            };
+            let t = lx.next_token(goal)
                 .map_err(|e| StripError {
                     message: format!("lex: {:?}", e),
                     pos: lx.pos(),
                 })?;
+            // Maintain brace_depth + template-substitution stack.
+            match &t.kind {
+                TokenKind::Punct(Punct::LBrace) => brace_depth += 1,
+                TokenKind::Punct(Punct::RBrace) => brace_depth -= 1,
+                TokenKind::Template { part, .. } => {
+                    match part {
+                        TemplatePart::Head => {
+                            // `pre${` — substitution opens; expression
+                            // contents begin at current brace_depth.
+                            tmpl_brace_depths.push(brace_depth);
+                        }
+                        TemplatePart::Middle => {
+                            // `}mid${` — the lexer consumed both the
+                            // closing `}` of the previous substitution
+                            // AND the opening `${` of the next one.
+                            // Stack stays the same (pop+push = no-op).
+                        }
+                        TemplatePart::Tail => {
+                            // `}tail`` — closing substitution; pop.
+                            tmpl_brace_depths.pop();
+                        }
+                        TemplatePart::NoSubstitution => {
+                            // `simple` — no substitution; no state change.
+                        }
+                    }
+                }
+                _ => {}
+            }
+            let _ = prev_kind; // reserved for future heuristics
+            prev_kind = Some(t.kind.clone());
             let done = matches!(t.kind, TokenKind::Eof);
             self.toks.push(ScanTok {
                 kind: t.kind,

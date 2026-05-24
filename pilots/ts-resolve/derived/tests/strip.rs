@@ -171,6 +171,31 @@ fn class_decl_head_generics_stripped() {
 }
 
 #[test]
+fn template_literal_with_substitution_then_tail_text_lexes() {
+    // TRSLS-EXT 1 regression: template-substitution goal switching.
+    // Pre-fix: the `}` closing ${b} would be lexed as plain Punct
+    // under LexerGoal::Div, then the `"` and `` ` `` after would
+    // mis-lex (UnterminatedString reported elsewhere).
+    let src = r#"function f(a, b) { return `${a.slice(0, -1)}${b}"`; }"#;
+    assert!(parses(src), "template with multiple substitutions + literal text should parse");
+}
+
+#[test]
+fn template_literal_no_substitution_unchanged() {
+    assert!(parses("const x = `simple template`;"));
+}
+
+#[test]
+fn template_literal_single_substitution() {
+    assert!(parses("const x = `pre${y}post`;"));
+}
+
+#[test]
+fn template_literal_nested_braces_inside_substitution() {
+    assert!(parses("const x = `${(() => { return y; })()}`;"));
+}
+
+#[test]
 fn pure_js_via_ts_resolve_yields_same_body_length() {
     let src = "let x = 1; let y = 2; (x + y);";
     let direct = rusty_js_parser::parse_module(src).expect("ok");

@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 29,
-    "top_level": 18,
+    "locales": 30,
+    "top_level": 19,
     "nested": 11,
     "warnings": 0
   },
@@ -240,8 +240,8 @@
       "parent": null,
       "scope": "ts-consumer-corpus",
       "depth": 1,
-      "rung_count": 1,
-      "status": "**WORKSTREAM FOUNDED (TCC-EXT 0)**. Spawned per keeper directive (option B: consumer-corpus-driven scaling) over the alternative (spec-driven checklist chase). This locale is the **empirical measurement instrument** that drives the downstream sub-locale arc (`ts-resolve-enums/`, `ts-resolve-classes/`, `ts-resolve-generics-calls/`, `ts-resolve-decorators/`, etc.) \u2014 failures in the corpus surface what to build next, in priority order set by frequency."
+      "rung_count": 2,
+      "status": "**CHAPTER CLOSED at TCC-EXT 1 (1 implementation round; Pred-tcc.5 HELD)**. All five Pred-tcc.* HELD plus the discipline falsifier. Baseline parse-success = **37.7%** (141/374 files from rxjs + ajv + pino). Failure-frequency table operational; top-10 categories cover ~52% of corpus and set the sub-locale priority order. Substrate-bug priority finding (Finding TCC.3): TSR's strip step corrupts source inside string/template literals on ~11 files \u2014 highest-priority next sub-locale."
     },
     {
       "coord": "ts-resolve",
@@ -251,6 +251,15 @@
       "depth": 1,
       "rung_count": 6,
       "status": "**CHAPTER CLOSED at TSR-EXT 5 (4 implementation rounds; Pred-tsr.6 HELD)**. Five of six predicates HELD; Pred-tsr.5 (\u226510% reclaim from annotation-driven IPBR shape skip) FALSIFIED at sub-noise effect \u2014 a high-information null result that materially refines the cruftscript-spec design space (load-bearing claim shifts from iter-protocol-shape-skip to JIT IC specialization + VD tag preservation). Native `.ts` execution by `cruft` operational for the high-frequency real-world TS surface. See trajectory.md TSR-EXT 5 entry for the empirical disposition + Finding TSR.1."
+    },
+    {
+      "coord": "ts-resolve-string-literal-safety",
+      "tag": "L.ts-resolve-string-literal-safety",
+      "parent": null,
+      "scope": "ts-resolve-string-literal-safety",
+      "depth": 1,
+      "rung_count": 2,
+      "status": "**CHAPTER CLOSED at TRSLS-EXT 1 (1 implementation round; Pred-trsls.5 HELD; sixth corroboration of standing rule 13)**. All five Pred-trsls.* HELD. Parse-success lifted 37.7% \u2192 **47.1%** (+9.4 pp; 3\u00d7 over the \u22653 pp target). 60 files transitioned out of STRIP-error category. Substrate bug eliminated. Post-fix failure-table now cleanly separates TS-feature gaps from TSR bugs."
     },
     {
       "coord": "web-crypto",
