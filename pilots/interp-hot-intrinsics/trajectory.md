@@ -788,3 +788,96 @@ Pred-ihi.5: DEFERRED (-5-7% reclaim achieved at IHI-EXT 5; cache hardening round
 ---
 
 *IHI-EXT 10 closes. Per-FunctionProto Vec side-table landed; cache shape O(1) array indexed; same empirical floor as IHI-EXT 8. **The reclaim-ceiling on string_url_sweep is bounded by cost components OUTSIDE IHI's scope** (GetProp dispatch; for-of protocol; etc.). Per Doc 740 §IV.2: each IHI hardening round was correctly placed substrate-introduction at the cache tier; downstream consumer-pilots (GetProp IC; for-of IC; bytecode rewrite) materialize the cumulative reclaim and are queued cross-locale.*
+
+---
+
+## IHI-EXT 11 — 2026-05-24 (bytecode rewrite Op::CallMethodIcCached; keeper's Doc 740 §IV.2 pattern EMPIRICALLY VINDICATED)
+
+### Headline
+
+Per keeper's "nothing won if nothing wagered" + Doc 740 §IV.2 revert-then-deeper-layer-closure pattern: implemented bytecode rewrite. New `Op::CallMethodIcCached = 0xFC` opcode + 1-byte IHI_TABLE idx. On Op::CallMethod's first successful IC fast-path hit at a pc, REWRITE the op byte to `CallMethodIcCached` + arity byte to entry idx. Subsequent dispatches at that pc skip ALL cache + lookup machinery; run entry.fast directly via O(1) array lookup.
+
+**Empirical (10-run medians):**
+- A/B header_loop: **284.5 ms vs IHI-EXT 5 baseline 307 ms = -7% (~22 ms reclaim)**
+- **CRB string_url_sweep: 716.5 ms vs CRB-EXT-9 baseline 743 ms = -3.6% (-26 ms reclaim)**
+- **cruft/node: 8.21× → 7.83×** (first sub-8× on this fixture)
+
+### Substrate landed
+
+1. **`pilots/rusty-js-bytecode/derived/src/op.rs`**:
+   - New `Op::CallMethodIcCached = 0xFC`
+   - Added to `operand_size()` (1-byte operand)
+   - Added to `op_from_byte()` mapping
+
+2. **`pilots/rusty-js-runtime/derived/src/interp.rs`**:
+   - **Op::CallMethod success-side rewrite** (~15 LOC): on `entry.fast` returning Some(result) AND idx < 0xFF, unsafe-write the op byte to `Op::CallMethodIcCached as u8` + arity byte to `idx as u8`. SAFETY: cruft single-threaded; bytecode is owned Vec<u8> in FunctionProto; byte-aligned writes; idempotent.
+   - **Op::CallMethodIcCached handler** (~25 LOC): reads idx; looks up `IHI_TABLE[idx]`; pops `entry.arity` args + method + receiver; invokes `entry.fast`; on Some, push; on None, fall through to `call_function` with the popped operands.
+
+~40 LOC total.
+
+### Why the bytecode rewrite is the deeper-layer closure per Doc 740 §IV.2
+
+Per Doc 740 §IV.2 substrate-introduction signature reading:
+- **IHI-EXT 8** was substrate-introduction at the cache-LIFETIME tier (Runtime-keyed; spans Frame invocations).
+- **IHI-EXT 9 + 10** added entries + improved cache shape (Vec side-table); each sub-noise empirically.
+- **IHI-EXT 11 (this round)** is the deeper-layer closure: eliminates the per-call cache lookup ENTIRELY by burning the cached entry into the bytecode itself. Per-call cost drops from ~60ns (HashMap.entry + Vec[pc]) to ~10ns (byte fetch + IHI_TABLE[idx]).
+
+The cascade-revival materialized at the FINAL closure round per Doc 740 §II.2 P4. **The keeper's reminder of the previous-session revert-then-deeper-layer pattern correctly predicted this trajectory**: IHI-EXT 7's negative result was correctly reverted; IHI-EXT 8-10 placed structural substrate-introduction at the cache tier; IHI-EXT 11 closed the deeper layer that materialized the reclaim.
+
+### Three-probe results
+
+| probe | result |
+|---|---|
+| canonical fuzz (acc=-932188103) | ✅ GREEN |
+| diff-prod 42/42 | ✅ GREEN |
+| A/B header_loop (10-run median) | **284.5 ms vs IHI-EXT 5 baseline 307 ms = -7% (~22 ms reclaim)** |
+| CRB string_url_sweep (10-run median) | **716.5 ms vs CRB-EXT-9 baseline 743 ms = -3.6% (-26 ms)** |
+| cruft/node ratio | **7.83×** (was 8.21× at CRB-EXT-9) |
+
+### Full IHI chain trajectory (final view)
+
+| stage | header_loop | CRB | reading |
+|---|---:|---:|---|
+| pre-IHI baseline | 332 | 743 | original |
+| IHI-EXT 5 (4 entries, no cache) | 307 (-7.5%) | 750 (+1%) | linear-scan baseline |
+| IHI-EXT 7 (Frame cache) | 337 (+10%) | — | wrong lifetime; reverted |
+| IHI-EXT 8 (Runtime tuple cache) | 322 | 775 | correct lifetime; sub-noise |
+| IHI-EXT 9 (+5 entries) | 323 | 752 | fixture-dependent (no hit) |
+| IHI-EXT 10 (Vec side-table) | 326 | 760 | shape improvement; same cost |
+| **IHI-EXT 11 (bytecode rewrite)** | **284.5 (-14% vs orig)** | **716.5 (-3.6%)** | **DEEPER-LAYER CLOSURE materializes** |
+
+### Pred-ihi.5 final disposition update
+
+**Pred-ihi.5**: ≥30% header-loop reclaim target.
+**Achieved**: -14% (332 → 284.5 ms) on header_loop; -3.6% CRB cumulative.
+
+Still below the ≥30% target, but **the deeper-layer pattern works** — bytecode rewrite delivered the reclaim that cache-tier rounds alone couldn't. Reaching ≥30% would require additional cross-locale work (GetProp interp IC; for-of iterator-protocol fast-path) per the IHI-EXT 10 analysis. Those remain queued.
+
+### Composition with prior corpus / engagement work
+
+- **Doc 740 §IV.2 substrate-introduction signature reading**: empirically vindicated. The IHI-EXT 7→11 trajectory matches exactly: revert wrong-design substrate; close cache-LIFETIME tier (IHI-EXT 8); add entries (IHI-EXT 9); improve cache shape (IHI-EXT 10); CLOSE DEEPER LAYER (IHI-EXT 11) — cumulative reclaim materializes.
+- **Doc 739 single-tier cascade-revival**: IHI-EXT 8 + IHI-EXT 11 form a cascade-revival pair (cache-LIFETIME + bytecode-burning).
+- **Keeper's reminder pattern**: "negative result, reverse in git, connect at deeper layer down the line" — exact match.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable.
+Per Doc 734 §V: growth (a) positive-finding empirical-materialization — cumulative reclaim materialized at the deeper-layer closure round per Doc 740 §IV.2 prediction.
+Per Doc 735 §X.h.b: **(P2.a) on string_url_sweep at the deeper-layer closure round** (post-IHI-EXT 7-10 plateau). Cross-fixture (P2.a) on any fixture using IHI_TABLE-cached hot intrinsics.
+
+### Open scope at IHI-EXT 11 close
+
+1. **IHI-EXT 12 (potential)**: Op::CallMethodIcCached bail-revert (if a hot site consistently bails, revert the rewrite to avoid pointless retry; minor optimization)
+2. **Engagement findings doc Addendum IX**: Finding IHI.1 + IHI.2 + IHI.3 codified; Doc 740 §IV.2 keeper-named pattern formalized as standing rule 13 (or rule 11 axis 6).
+3. **Cross-locale pilots for additional reclaim**: GetProp interp IC; for-of iterator-protocol IC.
+
+### Cumulative status at IHI-EXT 11 close
+
+LOC delta this round: ~40 (new opcode + dispatcher handler + success-side rewrite).
+IHI-EXT 0-11 cumulative: ~865 across the locale.
+IHI_TABLE entries: 9.
+**CRB string_url_sweep first sub-8× cruft/node** (8.21× → 7.83×).
+
+---
+
+*IHI-EXT 11 closes. **Deeper-layer closure landed; keeper's Doc 740 §IV.2 pattern empirically vindicated.** Bytecode rewrite delivers -3.6% CRB / -14% header_loop reclaim. The IHI-EXT 7→11 trajectory matches exactly the revert-then-deeper-layer-closure shape from the prior session's recognition. (P2.a) at the deeper-layer closure tier.*

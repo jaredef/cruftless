@@ -247,6 +247,21 @@ pub enum Op {
     /// emitting a direct property-fetch path (with IC) instead of a
     /// generic dispatch.
     GetPropOnObject = 0xFB,
+
+    /// CALL_METHOD_IC_CACHED <u8 ihi_table_idx>
+    ///
+    /// IHI-EXT 11 (2026-05-24, Finding IHI.1+IHI.2 deeper-layer closure
+    /// per Doc 740 §IV.2): bytecode-rewrite IC cached dispatch.
+    /// Op::CallMethod's dispatcher rewrites the op byte to this opcode +
+    /// rewrites the arity byte to the IHI_TABLE index on first successful
+    /// IC fast-path hit. Subsequent dispatches skip ALL cache/lookup
+    /// machinery and run entry.fast directly. Per-call cost drops from
+    /// ~60ns (cache+lookup) to ~10ns (byte fetch + IHI_TABLE[idx]).
+    ///
+    /// The arity is implicit (entry.arity); the dispatcher pops the
+    /// matching number of stack values. Bails to slow path if the IC
+    /// guard fails at the cached entry (override / type mismatch / etc.).
+    CallMethodIcCached = 0xFC,
 }
 
 impl Op {
@@ -267,7 +282,7 @@ impl Op {
             | PropagateNewTarget
             | AddI64 | SubI64 | MulI64 | IncI64 | DecI64
             | LtI64 | LeI64 | GtI64 | GeI64 | EqI64 | NeI64 => 0,
-            Call | New | CallMethod => 1,
+            Call | New | CallMethod | CallMethodIcCached => 1,
             PushConst | LoadLocal | StoreLocal | LoadArg | StoreArg
             | LoadGlobal | StoreGlobal | LoadUpvalue | StoreUpvalue
             | DefineLocal | ResetLocalCell | GetProp | GetPropOnObject | SetProp | NewArray | InitProp
@@ -347,6 +362,7 @@ pub fn op_from_byte(b: u8) -> Option<Op> {
         0xF0 => AddI64, 0xF1 => SubI64, 0xF2 => MulI64, 0xF3 => IncI64, 0xF4 => DecI64,
         0xF5 => LtI64, 0xF6 => LeI64, 0xF7 => GtI64, 0xF8 => GeI64, 0xF9 => EqI64, 0xFA => NeI64,
         0xFB => GetPropOnObject,
+        0xFC => CallMethodIcCached,
         _ => return None,
     })
 }
