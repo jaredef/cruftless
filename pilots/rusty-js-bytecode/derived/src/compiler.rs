@@ -1353,16 +1353,26 @@ impl Compiler {
                                 }
                             }
                             other => {
-                                // Standalone pattern in for-of head (no var/let/const).
-                                // Bound names assumed to already exist or are
-                                // freshly let-allocated here.
-                                for id in other.collect_names() {
-                                    if self.resolve_local(&id.name).is_none() {
-                                        self.alloc_local(LocalDescriptor {
-                                            name: id.name.clone(), kind: VariableKind::Let, depth: 0,
-                                        });
-                                    }
-                                }
+                                // SMDR-EXT 1 (2026-05-24, strict-mode-
+                                // destructuring-refs locale): standalone
+                                // pattern in for-of head (no var/let/const)
+                                // is an AssignmentPattern per ECMA-262
+                                // §13.7.5.5 + §13.15.2 — bound names are
+                                // assignment-target REFERENCES, not new
+                                // bindings. In strict mode, unresolvable
+                                // targets must throw ReferenceError per
+                                // §9.1.1.4.4 step 6. Pre-fix the compiler
+                                // pre-allocated each name as a let-local,
+                                // silently creating bindings.
+                                //
+                                // Fix: emit no pre-allocation; route the
+                                // destructure through emit_destructure_
+                                // assign (which uses emit_store_ident →
+                                // StoreGlobal → strict ReferenceError
+                                // check) at the body emission site below.
+                                // Signaled via the new tuple field
+                                // `destr_assign_pat` carrying the
+                                // BindingPattern-as-Expr conversion.
                                 let s = self.alloc_temp("<forof.src>");
                                 (s, Some(other.clone()), false)
                             }
@@ -1452,7 +1462,35 @@ impl Compiler {
                 self.bytecode[ipbr_op_off + 9..ipbr_op_off + 11]
                     .copy_from_slice(&next_iter_disp_i16.to_le_bytes());
                 if let Some(pat) = &destr_pat {
-                    self.emit_destructure(pat, bind_slot)?;
+                    // SMDR-EXT 1 (2026-05-24): if the for-of head was
+                    // a standalone pattern (ForBinding::Pattern, no
+                    // var/let/const), the pattern's bound names are
+                    // assignment-target REFERENCES per ECMA-262
+                    // §13.7.5.5 + §13.15.2 — route through
+                    // emit_destructure_assign (which uses StoreGlobal
+                    // for non-locals, triggering strict-mode
+                    // ReferenceError per §9.1.1.4.4). The decl-path
+                    // (var/let/const) continues to use emit_destructure
+                    // since pre-allocated locals are correct there.
+                    let is_assignment_pattern = matches!(left,
+                        rusty_js_ast::ForBinding::Pattern(rusty_js_ast::BindingPattern::Array(_))
+                        | rusty_js_ast::ForBinding::Pattern(rusty_js_ast::BindingPattern::Object(_)));
+                    if is_assignment_pattern {
+                        let target_expr = binding_pattern_to_assignment_expr(pat);
+                        match target_expr {
+                            Some(expr) => self.emit_destructure_assign(&expr, bind_slot)?,
+                            None => {
+                                // Conversion failed (rule 14 conservative
+                                // fallback): fall back to binding-pattern
+                                // emission. Will pre-allocate locals as
+                                // before; semantically lossy in strict
+                                // mode but parse-safe.
+                                self.emit_destructure(pat, bind_slot)?;
+                            }
+                        }
+                    } else {
+                        self.emit_destructure(pat, bind_slot)?;
+                    }
                 }
                 self.compile_stmt(body)?;
                 self.emit_back_jump(loop_start);
@@ -5224,5 +5262,89 @@ impl Compiler {
             encode_u8(&mut self.bytecode, n as u8);
         }
         Ok(())
+    }
+}
+
+/// SMDR-EXT 1 (2026-05-24, strict-mode-destructuring-refs locale):
+/// convert a `BindingPattern` to its equivalent assignment-target
+/// `Expr` form. The compiler uses this to route `ForBinding::Pattern`
+/// (standalone for-of head, no var/let/const) through the
+/// AssignmentPattern semantics (emit_destructure_assign) instead of
+/// the BindingPattern semantics (emit_destructure). Returns None when
+/// the conversion cannot be safely performed (e.g. nested defaults
+/// with rest — rule 14 conservative bail).
+fn binding_pattern_to_assignment_expr(pat: &rusty_js_ast::BindingPattern) -> Option<rusty_js_ast::Expr> {
+    use rusty_js_ast::*;
+    match pat {
+        BindingPattern::Identifier(id) => Some(Expr::Identifier {
+            name: id.name.clone(),
+            span: id.span,
+        }),
+        BindingPattern::Array(arr) => {
+            let mut elements: Vec<ArrayElement> = Vec::with_capacity(arr.elements.len());
+            for elem in &arr.elements {
+                match elem {
+                    None => elements.push(ArrayElement::Elision { span: arr.span }),
+                    Some(be) => {
+                        let leaf = binding_pattern_to_assignment_expr(&be.target)?;
+                        let expr = if let Some(default) = &be.default {
+                            Expr::Assign {
+                                target: Box::new(leaf),
+                                operator: AssignOp::Assign,
+                                value: Box::new(default.clone()),
+                                span: be.span,
+                            }
+                        } else { leaf };
+                        elements.push(ArrayElement::Expr(expr));
+                    }
+                }
+            }
+            if let Some(rest_pat) = &arr.rest {
+                let rest_expr = binding_pattern_to_assignment_expr(rest_pat)?;
+                elements.push(ArrayElement::Spread { expr: rest_expr, span: arr.span });
+            }
+            Some(Expr::Array { elements, span: arr.span })
+        }
+        BindingPattern::Object(obj) => {
+            let mut properties: Vec<ObjectProperty> = Vec::with_capacity(obj.properties.len());
+            for prop in &obj.properties {
+                let value_expr = binding_pattern_to_assignment_expr(&prop.value.target)?;
+                let value = if let Some(default) = &prop.value.default {
+                    Expr::Assign {
+                        target: Box::new(value_expr),
+                        operator: AssignOp::Assign,
+                        value: Box::new(default.clone()),
+                        span: prop.value.span,
+                    }
+                } else { value_expr };
+                let key = match &prop.key {
+                    PropertyKey::Identifier(id) => ObjectKey::Identifier {
+                        name: id.name.clone(), span: id.span,
+                    },
+                    PropertyKey::String(s) => ObjectKey::String {
+                        value: s.as_str().to_string(), span: prop.span,
+                    },
+                    PropertyKey::Number(n) => ObjectKey::Number { value: *n, span: prop.span },
+                    PropertyKey::Computed(expr) => ObjectKey::Computed {
+                        expr: expr.clone(), span: prop.span,
+                    },
+                };
+                properties.push(ObjectProperty::Property {
+                    key,
+                    value,
+                    shorthand: prop.shorthand,
+                    kind: ObjectPropertyKind::Init,
+                    span: prop.span,
+                });
+            }
+            if let Some(rest_id) = &obj.rest {
+                let rest_expr = Expr::Identifier {
+                    name: rest_id.name.clone(),
+                    span: rest_id.span,
+                };
+                properties.push(ObjectProperty::Spread { expr: rest_expr, span: obj.span });
+            }
+            Some(Expr::Object { properties, span: obj.span })
+        }
     }
 }
