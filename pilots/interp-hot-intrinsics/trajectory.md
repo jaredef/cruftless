@@ -627,3 +627,91 @@ Pred-ihi.5: DEFERRED (-5-7% reclaim achieved; structurally bounded as analyzed; 
 ---
 
 *IHI-EXT 8 closes. Runtime-keyed cache landed per Doc 740 §IV.2 substrate-introduction signature reading. Empirical: sub-noise impact at 4 entries; cost-crossover at ~10 entries (more entries amortize) OR via deeper-layer bytecode rewrite. The (P2.d-borderline) is the signature, not the failure mode — consumer-pilots materialize the reclaim per the Doc 740 multi-tier pattern.*
+
+---
+
+## IHI-EXT 9 — 2026-05-24 (consumer-pilot path A: +5 entries to test cache amortization; structurally informative result)
+
+### Headline
+
+Added 5 entries to IHI_TABLE per Doc 740 §IV.2 consumer-pilot direction: codePointAt (reuses charCodeAt's fast fn), toUpperCase (mirror of toLowerCase), startsWith, endsWith, includes. **IHI_TABLE now at 9 entries**, crossing the predicted cache-cost-crossover (~7-10 entries). ~100 LOC added across 5 entries.
+
+**Empirical readout**: header_loop median 323 ms (5-run; vs IHI-EXT 5 baseline 307 ms) — **same as IHI-EXT 8's 322 ms**. Cache amortization did NOT materialize from adding entries.
+
+### Structural reading
+
+The cache amortizes PER cache hit. Adding more IHI_TABLE entries only amortizes the cache IF the fixture's hot CallMethods USE the new entries. For string_url_sweep's header_loop:
+- Hot CallMethods: `indexOf`, `toLowerCase`, `trim`, `slice` (+ for-of iter calls; + the `headers.map()` from corpus setup)
+- IC table entries that match: indexOf ✓, toLowerCase ✓, trim ✓ (3 of the inner-iter CallMethods)
+- IC table entries that DON'T match: charCodeAt, codePointAt, toUpperCase, startsWith, endsWith, includes (none used in header_loop)
+
+Adding 5 entries that don't fire in this fixture doesn't change the cache-hit pattern. The cache stores ~7-10 entries (one per unique CallMethod site in the fixture); the lookup overhead is the same whether IHI_TABLE has 4 or 9 entries.
+
+**The empirical lesson**: Doc 740 §IV.2 multi-entry pattern is fixture-dependent. Cache amortization materializes when:
+- The fixture's hot CallMethod sites HIT new entries (not just when entries exist)
+- OR the dispatch overhead is reduced structurally (bytecode rewrite path B)
+
+### Three-probe results
+
+| probe | result |
+|---|---|
+| canonical fuzz (acc=-932188103) | ✅ GREEN |
+| diff-prod 42/42 | ✅ GREEN |
+| A/B header_loop (5-run median) | 323 ms vs IHI-EXT 5 baseline 307 ms (+5%; unchanged from IHI-EXT 8) |
+| CRB string_url_sweep (5-run) | 752 ms vs 743 baseline (+1%; within noise; same as IHI-EXT 5) |
+
+### Per-entry LOC
+
+| entry | total LOC |
+|---|---:|
+| codePointAt (reuses charCodeAt fast fn) | 8 |
+| toUpperCase | 26 |
+| startsWith | 19 |
+| endsWith | 21 |
+| includes | 21 |
+| **per round total** | **95** |
+
+Adding 5 cache fields + init + helper match arms: ~15 additional LOC. **Round total: ~110 LOC.**
+
+### Composition with Finding IHI.1 + Doc 740 §IV.2
+
+The keeper-named pattern (revert-then-deeper-layer-closure) applied at IHI-EXT 7 → 8. IHI-EXT 9 attempts the consumer-pilot path A (add more entries). Result: **fixture-dependent; the path A only materializes when the fixture HITS the new entries.**
+
+Per Doc 740 §IV.2: "name the upstream constraint being closed AND the downstream consumer-pilots that become cascade-revival candidates per the closure." Reading IHI-EXT 8 → 9:
+- Upstream closure (IHI-EXT 8): cache LIFETIME (spans all Frame invocations)
+- Downstream consumer (IHI-EXT 9): adds entries (cascade-revival candidates)
+
+For consumer-pilot's reclaim to materialize: the consumer's substrate (added entries) must be EXERCISED by the workload. For string_url_sweep workload, the new entries are dormant; cumulative reclaim doesn't materialize.
+
+**Structural implication (candidate Finding IHI.2)**: cache-amortization-via-more-entries is itself a multi-tier pattern: cache lifetime closure (axis 1) + fixture-entry-coverage (axis 2). Both must close for materialization.
+
+To close fixture-entry-coverage for string_url_sweep: would need entries for `for-of @@iterator + .next()`, `Array.prototype.map`, `slice`. The first two involve Array/iterator protocol surfaces; not in current IhiReceiverKind enum coverage. Slice involves String allocation per call.
+
+**The real cost-floor**: bytecode rewrite (Op::CallMethodIcCached(idx)) eliminates the dispatch-time lookup ENTIRELY. Per-CallMethod cost drops from ~50-80ns (linear scan or HashMap.get) to ~10ns (byte fetch + indirect call). That's the deeper-layer closure that would materialize Pred-ihi.5's ≥30% target.
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable.
+Per Doc 734 §V: growth (b) negative-finding catalyzes Finding IHI.2 candidate (cache-amortization fixture-dependence).
+Per Doc 735 §X.h.b: (P2.d) at the entries-addition tier on THIS fixture; would be (P2.a) on a fixture that exercises the new entries.
+
+### Open scope at IHI-EXT 9 close
+
+1. **IHI-EXT 10 (deeper-layer)**: bytecode rewrite path B. Op::CallMethodIcCached(idx) opcode + dispatcher recognition. ~100-150 LOC. **Eliminates per-call HashMap.get; reduces dispatch to byte fetch + indirect call.** Expected reclaim: closes the ~50-80ns/call dispatch-overhead floor; net header_loop reclaim ~10-15% beyond IHI-EXT 5 baseline.
+
+2. **Finding IHI.2 codification**: cache-amortization fixture-dependence promotion candidate.
+
+3. **For-of iteration protocol pilot** (separate locale): still required for Pred-ihi.5 ≥30%.
+
+4. **IHI-EXT 11+ entries**: array intrinsics (Array.length PropertyGet; Array.push MethodCall) — requires receiver_kind_of refinement (Object/Array discrimination) and Runtime TLS for length access.
+
+### Cumulative status at IHI-EXT 9 close
+
+LOC delta: ~110.
+IHI-EXT 0-9 cumulative: ~775 across the locale.
+IHI_TABLE entries: **9** (charCodeAt, toLowerCase, trim, indexOf, codePointAt, toUpperCase, startsWith, endsWith, includes).
+Pred-ihi.5: DEFERRED (-5% reclaim achieved at IHI-EXT 5; cache hardening (IHI-EXT 8) and additional entries (IHI-EXT 9) both fixture-dependent on the bench; bytecode rewrite path B is the next deeper-layer closure).
+
+---
+
+*IHI-EXT 9 closes. 5 entries added; IHI_TABLE at 9 entries. Cache amortization fixture-dependent — string_url_sweep's hot CallMethods don't hit new entries; cumulative reclaim doesn't materialize on this fixture. Finding IHI.2 candidate: cache-amortization needs both cache-lifetime closure (IHI-EXT 8) AND fixture-entry-coverage (per-fixture analysis). Real cost-floor closure is bytecode rewrite (Op::CallMethodIcCached) as path B; queued for IHI-EXT 10 / future session.*

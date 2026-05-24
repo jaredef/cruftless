@@ -211,6 +211,13 @@ pub struct Runtime {
     pub intrinsic_string_trim_id: Option<rusty_js_gc::ObjectId>,
     /// IHI-EXT 5 (2026-05-24): cached ObjectId for String.prototype.indexOf.
     pub intrinsic_string_index_of_id: Option<rusty_js_gc::ObjectId>,
+    /// IHI-EXT 9 (2026-05-24): String.prototype.{codePointAt, toUpperCase,
+    /// startsWith, endsWith, includes} intrinsic-ObjectId caches.
+    pub intrinsic_string_code_point_at_id: Option<rusty_js_gc::ObjectId>,
+    pub intrinsic_string_to_upper_case_id: Option<rusty_js_gc::ObjectId>,
+    pub intrinsic_string_starts_with_id: Option<rusty_js_gc::ObjectId>,
+    pub intrinsic_string_ends_with_id: Option<rusty_js_gc::ObjectId>,
+    pub intrinsic_string_includes_id: Option<rusty_js_gc::ObjectId>,
     /// IHI-EXT 8 (2026-05-24, Finding IHI.1 closure path): Runtime-tier
     /// IC dispatch cache. Keyed on (bytecode.as_ptr() as usize, site_pc)
     /// to disambiguate same-pc-different-proto. Survives across ALL
@@ -361,6 +368,11 @@ impl Runtime {
             intrinsic_string_to_lower_case_id: None,
             intrinsic_string_trim_id: None,
             intrinsic_string_index_of_id: None,
+            intrinsic_string_code_point_at_id: None,
+            intrinsic_string_to_upper_case_id: None,
+            intrinsic_string_starts_with_id: None,
+            intrinsic_string_ends_with_id: None,
+            intrinsic_string_includes_id: None,
             ic_dispatch_cache: HashMap::new(),
             number_prototype: None,
             bigint_prototype: None,
@@ -407,6 +419,11 @@ impl Runtime {
             F::StringToLowerCase => self.intrinsic_string_to_lower_case_id,
             F::StringTrim => self.intrinsic_string_trim_id,
             F::StringIndexOf => self.intrinsic_string_index_of_id,
+            F::StringCodePointAt => self.intrinsic_string_code_point_at_id,
+            F::StringToUpperCase => self.intrinsic_string_to_upper_case_id,
+            F::StringStartsWith => self.intrinsic_string_starts_with_id,
+            F::StringEndsWith => self.intrinsic_string_ends_with_id,
+            F::StringIncludes => self.intrinsic_string_includes_id,
         }
     }
 
@@ -420,6 +437,11 @@ impl Runtime {
             F::StringToLowerCase => self.intrinsic_string_to_lower_case_id = Some(id),
             F::StringTrim => self.intrinsic_string_trim_id = Some(id),
             F::StringIndexOf => self.intrinsic_string_index_of_id = Some(id),
+            F::StringCodePointAt => self.intrinsic_string_code_point_at_id = Some(id),
+            F::StringToUpperCase => self.intrinsic_string_to_upper_case_id = Some(id),
+            F::StringStartsWith => self.intrinsic_string_starts_with_id = Some(id),
+            F::StringEndsWith => self.intrinsic_string_ends_with_id = Some(id),
+            F::StringIncludes => self.intrinsic_string_includes_id = Some(id),
         }
     }
 

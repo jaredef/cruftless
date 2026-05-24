@@ -56,8 +56,16 @@ pub enum IhiCachedField {
     /// IHI-EXT 5 (2026-05-24): String.prototype.indexOf (arity 1 form;
     /// default fromIndex=0). Heavy in header-normalization loops.
     StringIndexOf,
-    // IHI-EXT 6+: add variants as entries land
-    //   StringSlice,
+    /// IHI-EXT 9 (2026-05-24): String.prototype.codePointAt (arity 1).
+    StringCodePointAt,
+    /// IHI-EXT 9: String.prototype.toUpperCase.
+    StringToUpperCase,
+    /// IHI-EXT 9: String.prototype.startsWith (arity 1).
+    StringStartsWith,
+    /// IHI-EXT 9: String.prototype.endsWith (arity 1).
+    StringEndsWith,
+    /// IHI-EXT 9: String.prototype.includes (arity 1).
+    StringIncludes,
 }
 
 // ─── ENTRY 0: String.prototype.charCodeAt (migration from CharCode-EXT 2) ───
@@ -192,6 +200,72 @@ fn fast_string_index_of_1(recv: &Value, args: &[Value]) -> Option<Value> {
     } else { None }
 }
 
+// ─── ENTRIES 4-8 (IHI-EXT 9): String prototype methods batch ───
+//
+// codePointAt: shape identical to charCodeAt per cruft interp; reuse
+// fast_string_char_code_at (char-index semantics; ASCII fast-path).
+
+// toUpperCase: ASCII byte upper-shift; mirror of toLowerCase.
+fn fast_string_to_upper_case(recv: &Value, args: &[Value]) -> Option<Value> {
+    if !args.is_empty() { return None; }
+    if let Value::String(s) = recv {
+        if s.is_ascii() {
+            let bytes = s.as_bytes();
+            let mut out = Vec::with_capacity(bytes.len());
+            for &b in bytes {
+                out.push(if (b'a'..=b'z').contains(&b) { b - 32 } else { b });
+            }
+            let upper = unsafe { String::from_utf8_unchecked(out) };
+            return Some(Value::String(std::rc::Rc::new(upper)));
+        }
+        None
+    } else { None }
+}
+
+// startsWith (1-arg): byte prefix check; ASCII-only fast-path.
+fn fast_string_starts_with(recv: &Value, args: &[Value]) -> Option<Value> {
+    if args.len() != 1 { return None; }
+    if let (Value::String(s), Value::String(prefix)) = (recv, &args[0]) {
+        if s.is_ascii() && prefix.is_ascii() {
+            let s_bytes = s.as_bytes();
+            let p_bytes = prefix.as_bytes();
+            if p_bytes.len() > s_bytes.len() { return Some(Value::Boolean(false)); }
+            return Some(Value::Boolean(&s_bytes[..p_bytes.len()] == p_bytes));
+        }
+        None
+    } else { None }
+}
+
+// endsWith (1-arg): byte suffix check; ASCII-only fast-path.
+fn fast_string_ends_with(recv: &Value, args: &[Value]) -> Option<Value> {
+    if args.len() != 1 { return None; }
+    if let (Value::String(s), Value::String(suffix)) = (recv, &args[0]) {
+        if s.is_ascii() && suffix.is_ascii() {
+            let s_bytes = s.as_bytes();
+            let f_bytes = suffix.as_bytes();
+            if f_bytes.len() > s_bytes.len() { return Some(Value::Boolean(false)); }
+            let off = s_bytes.len() - f_bytes.len();
+            return Some(Value::Boolean(&s_bytes[off..] == f_bytes));
+        }
+        None
+    } else { None }
+}
+
+// includes (1-arg): byte substring scan; ASCII-only fast-path.
+fn fast_string_includes(recv: &Value, args: &[Value]) -> Option<Value> {
+    if args.len() != 1 { return None; }
+    if let (Value::String(s), Value::String(needle)) = (recv, &args[0]) {
+        if s.is_ascii() && needle.is_ascii() {
+            let s_bytes = s.as_bytes();
+            let n_bytes = needle.as_bytes();
+            if n_bytes.is_empty() { return Some(Value::Boolean(true)); }
+            if n_bytes.len() > s_bytes.len() { return Some(Value::Boolean(false)); }
+            return Some(Value::Boolean(s_bytes.windows(n_bytes.len()).any(|w| w == n_bytes)));
+        }
+        None
+    } else { None }
+}
+
 // ─── IC_TABLE static registry ───
 //
 // Future entries register here per IHI-EXT 3+. Each entry: key +
@@ -225,6 +299,41 @@ pub static IHI_TABLE: &[IhiEntry] = &[
         arity: Some(1),
         cached_id_field: IhiCachedField::StringIndexOf,
         fast: fast_string_index_of_1,
+    },
+    IhiEntry {
+        key: "codePointAt",
+        receiver: IhiReceiverKind::String,
+        arity: Some(1),
+        cached_id_field: IhiCachedField::StringCodePointAt,
+        fast: fast_string_char_code_at,  // shape-identical per cruft interp
+    },
+    IhiEntry {
+        key: "toUpperCase",
+        receiver: IhiReceiverKind::String,
+        arity: Some(0),
+        cached_id_field: IhiCachedField::StringToUpperCase,
+        fast: fast_string_to_upper_case,
+    },
+    IhiEntry {
+        key: "startsWith",
+        receiver: IhiReceiverKind::String,
+        arity: Some(1),
+        cached_id_field: IhiCachedField::StringStartsWith,
+        fast: fast_string_starts_with,
+    },
+    IhiEntry {
+        key: "endsWith",
+        receiver: IhiReceiverKind::String,
+        arity: Some(1),
+        cached_id_field: IhiCachedField::StringEndsWith,
+        fast: fast_string_ends_with,
+    },
+    IhiEntry {
+        key: "includes",
+        receiver: IhiReceiverKind::String,
+        arity: Some(1),
+        cached_id_field: IhiCachedField::StringIncludes,
+        fast: fast_string_includes,
     },
 ];
 
