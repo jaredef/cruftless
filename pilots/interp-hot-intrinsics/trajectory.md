@@ -318,3 +318,96 @@ Cumulative direction: net-positive on header loop (small win; matches Pred-ihi.5
 ---
 
 *IHI-EXT 4 closes. trim entry landed at 46 LOC with return-self optimization. **Cumulative reclaim direction confirmed**: 2-entry header loop -2% vs original baseline (-8 ms). Pred-ihi.5 multi-entry crossover from net-overhead to net-savings happened between IHI-EXT 3 and IHI-EXT 4. Continuing toward indexOf at IHI-EXT 5.*
+
+---
+
+## IHI-EXT 5 — 2026-05-24 (per-entry round: String.prototype.indexOf arity-1; reclaim continues compounding)
+
+### Headline
+
+Adds indexOf 1-arg form as IHI_TABLE entry index 3. Per-entry LOC: **~38** (within Pred-ihi.1 ≤50 budget). ASCII byte-search via `Vec::windows().position()`. Header loop drops 332 → 314 ms = **-5% (~18 ms reclaim)**. CRB string_url_sweep 746 ms (vs 743 baseline; cruft/node 8.21× → 8.11×).
+
+### Per-entry LOC breakdown
+
+| component | LOC |
+|---|---:|
+| fast_string_index_of_1 (ASCII byte-search + non-ASCII bail) | 23 |
+| IhiCachedField::StringIndexOf variant + helper match arms | 4 |
+| Runtime cache field intrinsic_string_index_of_id + init | 4 |
+| IhiEntry literal | 7 |
+| **total** | **38** |
+
+### Cumulative reclaim trajectory
+
+| stage | entries | header loop ms | Δ vs baseline | CRB (ms) |
+|---|---:|---:|---:|---:|
+| pre-IHI baseline | 0 | 332 | — | 743 |
+| IHI-EXT 3 (toLowerCase) | 1 | ~365 | +10% (overhead exceeds savings) | 767 |
+| IHI-EXT 4 (+ trim) | 2 | 324 | -2% (crossover to net-positive) | 750 |
+| **IHI-EXT 5 (+ indexOf)** | **3** | **314** | **-5%** | **746** |
+
+### Per-iter cost model (empirically refined)
+
+7 CallMethods per inner-iter (header normalization loop):
+- Dispatch overhead per CallMethod: ~50 ns (table lookup + receiver kind + arity check)
+- Per-IC savings: ~200 ns (skipped call_function + skipped slow-path body)
+- Return-self bonus for trim (already-trimmed inputs): additional savings
+
+Per-iter math at 3 entries:
+- 7 × 50ns overhead = 350ns
+- 3 × 200ns savings = 600ns
+- Net per inner-iter: +250 ns saved
+- For 35K inner-iters: +8.75 ms
+- Plus return-self for trim (most headers are already-trimmed in this fixture): observed additional ~9 ms
+- **Total: ~18 ms reclaim observed; matches model**
+
+### Pred-ihi.5 disposition projection
+
+Target: ≥30% header-loop reclaim (≥100 ms on the 332 ms baseline).
+Current: 18 ms (-5%).
+Gap: 82 ms remaining.
+
+**Two paths to close the gap:**
+
+1. **Add more entries** that fire per inner-iter: slice (2 calls/iter) would close 2 more CallMethods. After slice: 5 IC entries × 200ns - 350ns overhead = 650ns/iter net savings → +22 ms. Total ~40 ms = ~12% reclaim. Still below 30%.
+
+2. **Per-call-site IC cache** (Finding IHI.1 candidate): eliminates dispatch overhead for non-IC calls. The 7 CallMethods that bail save 350ns/iter × 35K = 12 ms. Combined with current 3 entries: ~30 ms = ~9%.
+
+3. **Both 1 + 2**: ~50-60 ms = 15-18% reclaim. Still below 30%.
+
+4. **Optimize the for-of iteration protocol itself**: the `for (const h of entry.headers)` Array iterator is per-iter overhead beyond the per-header CallMethods. If for-of has its own dispatch overhead, optimizing it could close more.
+
+**Conclusion**: Pred-ihi.5's ≥30% target may require ALL of the above + the for-of optimization. The current IC pattern alone is structurally bounded at the dispatch-overhead floor. Hardening rounds (per-call-site cache; for-of inline) would close further.
+
+### Three-probe results
+
+| probe | result |
+|---|---|
+| canonical fuzz (acc=-932188103) | ✅ GREEN |
+| diff-prod 42/42 | ✅ GREEN |
+| CRB string_url_sweep 5-run median | 746 ms vs 743 baseline (+0.4%; within noise) |
+| A/B header_loop 3-run median | **314 ms vs 332 baseline = -5%** |
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable.
+Per Doc 734 §V: growth (a) positive-finding (cumulative reclaim continues compounding from 2- to 3-entry).
+Per Doc 735 §X.h.b: **(P2.d-to-(P2.a)) transition continuing**; partial CRB reclaim observed; full Pred-ihi.5 (≥30%) requires architectural extensions beyond the current per-entry table.
+
+### Open scope at IHI-EXT 5 close
+
+1. **IHI-EXT 6** — composition probe + final disposition + Pred-ihi.* booking. Likely book Pred-ihi.5 as DEFERRED (partial reclaim achieved; full target requires per-call-site IC cache architectural work).
+2. **Finding IHI.1 candidate** — per-call-site IC cache for dispatch-overhead elimination on non-IC calls (architectural; deferred).
+3. **IHI-EXT 7+** (post-Pred-ihi.5 disposition) — additional entries (slice, codePointAt, etc.) per natural priority.
+4. **Doc 741 §V composition note candidate** — the cumulative-direction empirical pattern at the per-entry tier as a cross-tier dual of Doc 740 §II.2 P4 multi-tier cascade.
+
+### Cumulative status at IHI-EXT 5 close
+
+LOC delta: ~38 (indexOf entry).
+IHI-EXT 0-5 cumulative: ~629 across the locale.
+IHI_TABLE entries: 4 (charCodeAt, toLowerCase, trim, indexOf).
+Empirical reclaim: -5% header loop; full CRB within noise.
+
+---
+
+*IHI-EXT 5 closes. indexOf 1-arg entry landed at 38 LOC. Cumulative reclaim 18 ms (-5%) on header loop matches the multi-entry projection. Pred-ihi.5 ≥30% target structurally bounded by dispatch-overhead floor; reaching it needs per-call-site IC cache (Finding IHI.1 candidate). IHI-EXT 6 books Pred-ihi.* dispositions.*

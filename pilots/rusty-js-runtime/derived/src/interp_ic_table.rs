@@ -53,8 +53,10 @@ pub enum IhiCachedField {
     StringToLowerCase,
     /// IHI-EXT 4 (2026-05-24): String.prototype.trim.
     StringTrim,
-    // IHI-EXT 5+: add variants as entries land
-    //   StringIndexOf,
+    /// IHI-EXT 5 (2026-05-24): String.prototype.indexOf (arity 1 form;
+    /// default fromIndex=0). Heavy in header-normalization loops.
+    StringIndexOf,
+    // IHI-EXT 6+: add variants as entries land
     //   StringSlice,
 }
 
@@ -163,6 +165,33 @@ fn fast_string_trim(recv: &Value, args: &[Value]) -> Option<Value> {
     } else { None }
 }
 
+// ─── ENTRY 3: String.prototype.indexOf (MethodCall arity 1) ───
+//
+// IHI-EXT 5 (2026-05-24): ASCII byte-search fast-path for the 1-arg
+// form `s.indexOf(needle)` (default fromIndex=0). For ASCII strings,
+// char-index == byte-index so byte-windows search returns the
+// spec-correct index. Bails to slow path on non-ASCII (needle or
+// haystack) where char-index ≠ byte-index.
+
+fn fast_string_index_of_1(recv: &Value, args: &[Value]) -> Option<Value> {
+    if args.len() != 1 { return None; }
+    if let (Value::String(s), Value::String(needle)) = (recv, &args[0]) {
+        if s.is_ascii() && needle.is_ascii() {
+            let s_bytes = s.as_bytes();
+            let n_bytes = needle.as_bytes();
+            if n_bytes.is_empty() { return Some(Value::Number(0.0)); }
+            if n_bytes.len() > s_bytes.len() { return Some(Value::Number(-1.0)); }
+            match s_bytes.windows(n_bytes.len()).position(|w| w == n_bytes) {
+                Some(p) => Some(Value::Number(p as f64)),
+                None => Some(Value::Number(-1.0)),
+            }
+        } else {
+            // Non-ASCII: bail; existing impl's char-index conversion is needed.
+            None
+        }
+    } else { None }
+}
+
 // ─── IC_TABLE static registry ───
 //
 // Future entries register here per IHI-EXT 3+. Each entry: key +
@@ -189,6 +218,13 @@ pub static IHI_TABLE: &[IhiEntry] = &[
         arity: Some(0),
         cached_id_field: IhiCachedField::StringTrim,
         fast: fast_string_trim,
+    },
+    IhiEntry {
+        key: "indexOf",
+        receiver: IhiReceiverKind::String,
+        arity: Some(1),
+        cached_id_field: IhiCachedField::StringIndexOf,
+        fast: fast_string_index_of_1,
     },
 ];
 
