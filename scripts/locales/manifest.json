@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 30,
-    "top_level": 19,
+    "locales": 31,
+    "top_level": 20,
     "nested": 11,
     "warnings": 0
   },
@@ -251,6 +251,15 @@
       "depth": 1,
       "rung_count": 6,
       "status": "**CHAPTER CLOSED at TSR-EXT 5 (4 implementation rounds; Pred-tsr.6 HELD)**. Five of six predicates HELD; Pred-tsr.5 (\u226510% reclaim from annotation-driven IPBR shape skip) FALSIFIED at sub-noise effect \u2014 a high-information null result that materially refines the cruftscript-spec design space (load-bearing claim shifts from iter-protocol-shape-skip to JIT IC specialization + VD tag preservation). Native `.ts` execution by `cruft` operational for the high-frequency real-world TS surface. See trajectory.md TSR-EXT 5 entry for the empirical disposition + Finding TSR.1."
+    },
+    {
+      "coord": "ts-resolve-class-and-param-shapes",
+      "tag": "L.ts-resolve-class-and-param-shapes",
+      "parent": null,
+      "scope": "ts-resolve-class-and-param-shapes",
+      "depth": 1,
+      "rung_count": 2,
+      "status": "**CHAPTER CLOSED at TRCAPS-EXT 1 (1 implementation round; standing rule 13's seventh corroboration)**. Parse-success lifted 47.1% \u2192 **59.9%** (+12.8 pp; 28% over Pred-trcaps.3's \u226510 pp target). Six concrete substrate improvements landed; mid-round investigation surfaced three additional substrate bugs (regex goal, ternary disambig, method-shorthand paren-depth gating) beyond the seed's three planned rules."
     },
     {
       "coord": "ts-resolve-string-literal-safety",

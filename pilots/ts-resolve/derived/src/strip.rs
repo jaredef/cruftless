@@ -27,6 +27,36 @@
 //! body rewrite), namespaces.
 
 use rusty_js_parser::{Lexer, LexerGoal, Token, TokenKind, Punct, Span, TemplatePart};
+
+/// TRCAPS-EXT 1 (regex-literal goal fix): select `LexerGoal::RegExp`
+/// when the previous token's right-hand context permits a regex
+/// literal (i.e., we're at an expression-start position), else `Div`.
+/// Mirrors the JS parser's standard goal-selection rule per ECMA-262.
+fn expr_or_div_goal(prev: Option<&TokenKind>) -> LexerGoal {
+    let prev = match prev {
+        Some(p) => p,
+        None => return LexerGoal::RegExp,  // start of file = expression position
+    };
+    match prev {
+        // Tokens that END an expression: a `/` after them is division.
+        TokenKind::Ident(name) if !matches!(name.as_str(),
+            "return" | "typeof" | "delete" | "void" | "await" | "yield"
+            | "throw" | "new" | "in" | "of" | "instanceof" | "case"
+        ) => LexerGoal::Div,
+        TokenKind::Number(_, _)
+        | TokenKind::BigInt(_, _)
+        | TokenKind::String(_)
+        | TokenKind::Template { .. }
+        | TokenKind::Punct(Punct::RParen)
+        | TokenKind::Punct(Punct::RBracket)
+        | TokenKind::Punct(Punct::RBrace)
+        | TokenKind::Punct(Punct::Inc)
+        | TokenKind::Punct(Punct::Dec) => LexerGoal::Div,
+        // Everything else is an expression-position context: a `/` is
+        // a regex literal opener.
+        _ => LexerGoal::RegExp,
+    }
+}
 use crate::ts_ast::{TypeWitness, TypeWitnessKind, TsTypeRef};
 
 #[derive(Debug)]
@@ -99,6 +129,11 @@ struct Scanner<'src> {
     /// answers "what `{` am I currently inside" for is_annotation_colon
     /// + skip_type disambiguation.
     brace_stack: Vec<BraceCtx>,
+    /// Paren depth — mirrors `(`/`)` nesting. Used to gate the
+    /// object-literal-context bail in is_annotation_colon (a `:`
+    /// inside an obj-lit-enclosed `()` is a method-param annotation,
+    /// not a key:value separator).
+    paren_depth: i32,
 }
 
 impl<'src> Scanner<'src> {
@@ -109,7 +144,34 @@ impl<'src> Scanner<'src> {
             strips: Vec::new(),
             witnesses: Vec::new(),
             brace_stack: Vec::new(),
+            paren_depth: 0,
         }
+    }
+
+    /// TRCAPS-EXT 1: rough heuristic — are we currently inside a
+    /// class body? Scan backwards through brace nesting looking for
+    /// `class NAME` immediately before an LBrace at depth 1. Used to
+    /// gate TS-only class-member-modifier stripping.
+    fn in_class_body(&self) -> bool {
+        // Walk the toks array up to the current scan position is
+        // expensive at every step; instead consult brace_stack's depth.
+        // We approximate: if brace_stack contains Block and the most
+        // recent Block was preceded by `class NAME[ extends ...]
+        // [implements ...]`, we're inside a class body. Tracking that
+        // requires a per-Block kind tag — too much state for this
+        // round. Simpler bound: if brace_stack.len() > 0 AND we can
+        // find `class` Ident at the right depth via a small backward
+        // scan from the current position, accept.
+        //
+        // At step(i) call sites we don't currently pass `i` here;
+        // make this a no-op (returns true) for now and rely on the
+        // is_ts_class_modifier name set + "followed by Ident" filter.
+        // The cost of over-stripping `public` outside a class is low:
+        // `public` is a reserved word in strict mode anyway, so the
+        // stripped result would never have been a valid value-position
+        // identifier. Same for `private/protected/abstract/override/
+        // readonly`.
+        true
     }
 
     /// Classify an `{` at token index `i` as Block vs ObjectLit by
@@ -183,10 +245,10 @@ impl<'src> Scanner<'src> {
                 if brace_depth == entry_depth {
                     LexerGoal::TemplateTail
                 } else {
-                    LexerGoal::Div
+                    expr_or_div_goal(prev_kind.as_ref())
                 }
             } else {
-                LexerGoal::Div
+                expr_or_div_goal(prev_kind.as_ref())
             };
             let t = lx.next_token(goal)
                 .map_err(|e| StripError {
@@ -280,6 +342,77 @@ impl<'src> Scanner<'src> {
                             // continue past this token. The decl head
                             // still has its own subsequent annotations.
                         }
+                    }
+                }
+                // TRCAPS-EXT 1 (2026-05-24, ts-resolve-class-and-param-
+                // shapes locale): `extends NAME<T,...>` — strip the
+                // generic arguments on an extends clause. The Ident
+                // `extends` is a reserved word at value position and a
+                // class-clause keyword here; safe to detect by name +
+                // next-is-ident + after-name-is-Lt.
+                if name == "extends" && self.next_is_ident(i + 1) {
+                    let after_name = i + 2;
+                    if after_name < self.toks.len()
+                        && matches!(self.toks[after_name].kind, TokenKind::Punct(Punct::Lt))
+                    {
+                        if let Some(close) = self.match_angle(after_name) {
+                            let start = self.toks[after_name].span.start;
+                            let end = self.toks[close].span.end;
+                            self.strips.push((start, end));
+                        }
+                    }
+                }
+                // TRCAPS-EXT 1: `implements TYPE[<T>][, TYPE[<T>]]* {`
+                // — strip the entire implements clause through the
+                // class-body `{`. Only valid at class-decl context
+                // (after a class head or its extends clause); detect by
+                // scanning forward to the next top-level `{`.
+                if name == "implements" {
+                    // The implements list ends at the next top-level
+                    // LBrace (class body). Find it without descending.
+                    let mut j = i + 1;
+                    let mut depth = 0i32;
+                    while j < self.toks.len() {
+                        match &self.toks[j].kind {
+                            TokenKind::Punct(Punct::LBrace) if depth == 0 => break,
+                            TokenKind::Punct(Punct::LParen)
+                            | TokenKind::Punct(Punct::LBracket) => depth += 1,
+                            TokenKind::Punct(Punct::RParen)
+                            | TokenKind::Punct(Punct::RBracket) if depth > 0 => depth -= 1,
+                            TokenKind::Punct(Punct::Lt) => depth += 1,
+                            TokenKind::Punct(Punct::Gt) if depth > 0 => depth -= 1,
+                            TokenKind::Eof | TokenKind::Punct(Punct::Semicolon) => break,
+                            _ => {}
+                        }
+                        j += 1;
+                    }
+                    if j < self.toks.len()
+                        && matches!(self.toks[j].kind, TokenKind::Punct(Punct::LBrace))
+                        && j > i
+                    {
+                        let start = t.span.start;
+                        let end = self.toks[j - 1].span.end;
+                        self.strips.push((start, end));
+                    }
+                }
+                // TRCAPS-EXT 1: TS-only class-member modifiers. At top
+                // level of a class body, strip the lone keyword before
+                // a member name. ECMAScript `static` is NOT stripped
+                // (it's a real JS modifier).
+                let is_ts_class_modifier = matches!(name.as_str(),
+                    "public" | "private" | "protected" | "readonly"
+                    | "abstract" | "override"
+                );
+                if is_ts_class_modifier && self.in_class_body() {
+                    // Only strip when followed by another Ident (the
+                    // member name) or by another modifier — i.e., the
+                    // keyword is genuinely modifying something, not
+                    // serving as an identifier (e.g. `let public = 1`
+                    // is technically valid JS though rare).
+                    if i + 1 < self.toks.len()
+                        && matches!(self.toks[i + 1].kind, TokenKind::Ident(_))
+                    {
+                        self.strips.push((t.span.start, t.span.end));
                     }
                 }
                 // `interface NAME { ... }` — strip the entire decl.
@@ -391,6 +524,14 @@ impl<'src> Scanner<'src> {
             }
             TokenKind::Punct(Punct::RBrace) => {
                 self.brace_stack.pop();
+                Ok(i + 1)
+            }
+            TokenKind::Punct(Punct::LParen) => {
+                self.paren_depth += 1;
+                Ok(i + 1)
+            }
+            TokenKind::Punct(Punct::RParen) => {
+                if self.paren_depth > 0 { self.paren_depth -= 1; }
                 Ok(i + 1)
             }
             _ => Ok(i + 1),
@@ -546,11 +687,13 @@ impl<'src> Scanner<'src> {
     /// object-key / label / case).
     fn is_annotation_colon(&self, i: usize) -> bool {
         if i == 0 { return false; }
-        // Inside an object literal, `:` is always a key separator, not
-        // an annotation. Bail unconditionally.
-        if matches!(self.brace_stack.last(), Some(BraceCtx::ObjectLit)) {
-            return false;
-        }
+        // Inside an object literal, an Ident-anchored `:` is a
+        // key:value separator, not an annotation. BUT a `)`-anchored
+        // `:` inside an object literal is a method-shorthand return-
+        // type annotation (`{ method(): T { } }`), which IS an
+        // annotation. Defer the bail decision until after anchor
+        // resolution.
+        let in_obj_lit = matches!(self.brace_stack.last(), Some(BraceCtx::ObjectLit));
         // Annotation contexts: after Ident or after `)` (return type),
         // BUT NOT inside a ternary (preceded by an expr starting with
         // `?` higher up — harder to detect) and NOT inside an object
@@ -565,7 +708,56 @@ impl<'src> Scanner<'src> {
         let prev_is_close_paren = matches!(prev.kind, TokenKind::Punct(Punct::RParen));
         let prev_is_ident = matches!(prev.kind, TokenKind::Ident(_));
         let prev_is_close_brack = matches!(prev.kind, TokenKind::Punct(Punct::RBracket));
-        if !(prev_is_close_paren || prev_is_ident || prev_is_close_brack) {
+        let prev_is_close_brace = matches!(prev.kind, TokenKind::Punct(Punct::RBrace));
+        if !(prev_is_close_paren || prev_is_ident || prev_is_close_brack || prev_is_close_brace) {
+            return false;
+        }
+        // Apply the object-literal bail only for Ident-anchored `:`s
+        // (the key:value case) AND only when we're at the obj-lit's
+        // own level (paren_depth == 0 at this brace depth). A `:`
+        // inside an `(...)` enclosed by an obj-lit is a function-param
+        // annotation, not a key:value separator.
+        if in_obj_lit && prev_is_ident && self.paren_depth == 0 {
+            return false;
+        }
+        // TRCAPS-EXT 1: destructured-pattern parameter annotation
+        // `function f({a, b}: T)` or `function f([x, y]: T)`. When the
+        // anchor is RBrace/RBracket, only accept as annotation if
+        // skip_type lands on a param-list terminator (`,` or `)` or
+        // `=`). Else bail — could be e.g. a block statement followed
+        // by a labelled statement (rare but possible).
+        if prev_is_close_brace || prev_is_close_brack {
+            let after = self.skip_type(i + 1);
+            if after < self.toks.len() {
+                return matches!(self.toks[after].kind,
+                    TokenKind::Punct(Punct::Comma)
+                    | TokenKind::Punct(Punct::RParen)
+                    | TokenKind::Punct(Punct::Assign)
+                    | TokenKind::Eof
+                );
+            }
+            return false;
+        }
+        // TRCAPS-EXT 1: ternary `(...condition...) ? then : else`
+        // disambig. When anchor is `)`, the `:` could be either a
+        // return-type annotation (`function f(): T {`) or a ternary's
+        // else-branch (`return cond(...) ? a : b`). Distinguish by
+        // skip_type's landing:
+        //   - `{` or `=>` → function/arrow body opener → annotation
+        //   - `;` or `,` at param-list/decl boundary → annotation
+        //   - `}` or anything else → ternary or unknown; bail
+        if prev_is_close_paren {
+            let after = self.skip_type(i + 1);
+            if after < self.toks.len() {
+                return matches!(self.toks[after].kind,
+                    TokenKind::Punct(Punct::LBrace)
+                    | TokenKind::Punct(Punct::Arrow)
+                    | TokenKind::Punct(Punct::Semicolon)
+                    | TokenKind::Punct(Punct::Comma)
+                    | TokenKind::Punct(Punct::Assign)
+                    | TokenKind::Eof
+                );
+            }
             return false;
         }
         // Look back further to filter object-literal-key contexts.

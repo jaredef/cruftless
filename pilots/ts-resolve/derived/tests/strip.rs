@@ -196,6 +196,81 @@ fn template_literal_nested_braces_inside_substitution() {
 }
 
 #[test]
+fn destructured_object_param_annotation_stripped() {
+    assert!(shape_equiv(
+        "function f({a, b}: T): void { return; }",
+        "function f({a, b}) { return; }"
+    ));
+}
+
+#[test]
+fn destructured_array_param_annotation_stripped() {
+    assert!(shape_equiv(
+        "function f([x, y]: [number, number]): void { return; }",
+        "function f([x, y]) { return; }"
+    ));
+}
+
+#[test]
+fn extends_clause_generics_stripped() {
+    assert!(shape_equiv(
+        "class Sub<T> extends Base<T> { }",
+        "class Sub extends Base { }"
+    ));
+}
+
+#[test]
+fn implements_clause_stripped() {
+    assert!(shape_equiv(
+        "class C extends Base implements I, J { x = 1; }",
+        "class C extends Base { x = 1; }"
+    ));
+}
+
+#[test]
+fn implements_clause_with_generics_stripped() {
+    assert!(shape_equiv(
+        "class C<T> extends B<T> implements I<T>, J { x = 1; }",
+        "class C extends B { x = 1; }"
+    ));
+}
+
+#[test]
+fn class_member_modifiers_stripped() {
+    assert!(shape_equiv(
+        "class C { public x = 1; private y = 2; readonly z = 3; protected w = 4; }",
+        "class C { x = 1; y = 2; z = 3; w = 4; }"
+    ));
+}
+
+#[test]
+fn class_member_modifiers_with_annotations_stripped() {
+    assert!(shape_equiv(
+        "class C { public x: number = 1; readonly y: string = 'a'; }",
+        "class C { x = 1; y = 'a'; }"
+    ));
+}
+
+#[test]
+fn regex_literal_at_var_init_position_parses() {
+    // TRCAPS-EXT 1 regex-goal regression: /pat/ at expression-start
+    // (after `=`) must lex as regex, not division.
+    assert!(parses("const TRAILING_SLASH_HASH = /#\\/?$/;"));
+}
+
+#[test]
+fn regex_literal_at_call_arg_position_parses() {
+    assert!(parses("s.match(/foo/g);"));
+}
+
+#[test]
+fn division_after_ident_still_works() {
+    // Negative: a `/` after an Ident (expression-terminator) is
+    // division, NOT a regex. Verify we didn't break basic arithmetic.
+    assert!(parses("const x = a / b;"));
+}
+
+#[test]
 fn pure_js_via_ts_resolve_yields_same_body_length() {
     let src = "let x = 1; let y = 2; (x + y);";
     let direct = rusty_js_parser::parse_module(src).expect("ok");
