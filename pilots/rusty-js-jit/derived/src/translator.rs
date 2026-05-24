@@ -57,6 +57,21 @@ pub type JitFn2 = extern "C" fn(f64, f64) -> f64;
 /// coverage tier per Doc 740 §VIII.2 + Finding VIII.2.
 pub type JitFnOsr = extern "C" fn(*mut f64) -> f64;
 
+/// OSR-EXT 6 (2026-05-23): runtime helper for Op::GetProp+length-IC
+/// in OSR-compiled loop bodies. Caller passes the VD-encoding payload
+/// bits (low 48 bits of the boxed-NaN f64, decoded from the receiver);
+/// helper returns string.len() as f64.
+///
+/// SAFETY: caller (the JIT body) must ensure `payload` is a valid
+/// *const String — i.e., the receiver was VD-encoded String at
+/// marshal-in. Tag-check guard belongs at the JIT IR (deopt on
+/// tag mismatch); this helper trusts the contract.
+pub extern "C" fn osr_string_len(payload: i64) -> f64 {
+    let ptr = payload as *const String;
+    let s: &String = unsafe { &*ptr };
+    s.len() as f64
+}
+
 pub enum JitFn {
     /// TL-EXT 3 (2026-05-23): 0-arg variant for module-body JIT entry.
     /// Top-level module bodies have no formal parameters; the dispatcher
@@ -322,6 +337,9 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
     // can pre-bind the runtime helper. Pre-binding has no cost when
     // the symbol isn't used.
     let has_getprop = parsed.iter().any(|(_, op)| matches!(op, ParsedOp::GetPropOnObject(_)));
+    // OSR-EXT 6 (2026-05-23): detect GetPropLength to pre-bind
+    // osr_string_len helper.
+    let has_getprop_length = parsed.iter().any(|(_, op)| matches!(op, ParsedOp::GetPropLength));
 
     let mut jit_builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
     if any_guard {
@@ -338,6 +356,9 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
             jit_builder.symbol("jit_getprop_with_ic",
                 crate::deopt::jit_getprop_with_ic as *const u8);
         }
+    }
+    if has_getprop_length {
+        jit_builder.symbol("osr_string_len", osr_string_len as *const u8);
     }
     let mut module = JITModule::new(jit_builder);
 
@@ -370,6 +391,19 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
         Some(module
             .declare_function(name, Linkage::Import, &sig)
             .map_err(|e| format!("declare {name}: {e}"))?)
+    } else { None };
+
+    // OSR-EXT 6 (2026-05-23): declare osr_string_len signature for
+    // length-IC. extern "C" fn(i64) -> f64; the i64 is the VD-decoded
+    // payload bits (low 48 bits of the boxed-NaN f64); return is the
+    // string length as f64.
+    let osr_string_len_id_opt = if has_getprop_length {
+        let mut sig = module.make_signature();
+        sig.params.push(AbiParam::new(I64));
+        sig.returns.push(AbiParam::new(F64));
+        Some(module
+            .declare_function("osr_string_len", Linkage::Import, &sig)
+            .map_err(|e| format!("declare osr_string_len: {e}"))?)
     } else { None };
 
     let mut ctx = module.make_context();
@@ -405,6 +439,8 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
         let trip_ref = trip_id_opt.map(|id| module.declare_func_in_func(id, &mut builder.func));
         // JIT-EXT 20: same for the GetProp runtime helper.
         let getprop_ref = getprop_id_opt.map(|id| module.declare_func_in_func(id, &mut builder.func));
+        // OSR-EXT 6 (2026-05-23): declare osr_string_len FuncRef for IR.
+        let osr_string_len_ref = osr_string_len_id_opt.map(|id| module.declare_func_in_func(id, &mut builder.func));
 
         // Allocate a Cranelift Block per jump target.
         let mut blocks: HashMap<usize, Block> = HashMap::new();
@@ -666,6 +702,25 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
                     // the f64 stack.
                     let v = builder.ins().f64const(*n);
                     stack.push(v);
+                }
+                ParsedOp::GetPropLength => {
+                    // OSR-EXT 6 (2026-05-23): String.length IC fast-path
+                    // in JIT IR. Pop receiver f64; bitcast → i64; mask
+                    // payload bits (low 48 bits of the VD-boxed
+                    // representation); call osr_string_len; push f64.
+                    //
+                    // First-cut conservative: no tag check (trusts that
+                    // the receiver was a Value::String at marshal-in;
+                    // OSR contract says local types don't change mid-
+                    // execution). Deopt-on-tag-mismatch deferred.
+                    let recv_f64 = stack.pop().ok_or("GetPropLength: stack underflow")?;
+                    let recv_bits = builder.ins().bitcast(I64, MemFlags::new(), recv_f64);
+                    let payload_mask = builder.ins().iconst(I64, 0x0000_FFFF_FFFF_FFFF_u64 as i64);
+                    let payload = builder.ins().band(recv_bits, payload_mask);
+                    let slref = osr_string_len_ref.expect("osr_string_len_ref must be set when ParsedOp::GetPropLength is present");
+                    let call_inst = builder.ins().call(slref, &[payload]);
+                    let result = builder.inst_results(call_inst)[0];
+                    stack.push(result);
                 }
                 ParsedOp::Add => {
                     // Φ-EXT 3: untyped Add lowers to fadd (no overflow
@@ -1199,6 +1254,12 @@ enum ParsedOp {
     /// to f64 at parse-time. Other Constant variants (String/BigInt/Regex/
     /// Function) cause parse_bytecode to bail per C8 bail-discipline.
     PushConst(f64),
+    /// OSR-EXT 6 (2026-05-23): Op::GetProp with key "length" on a
+    /// VD-encoded String receiver. First-cut alphabet addition per
+    /// Pred-osr.4 scope discipline; other GetProp keys bail at parse.
+    /// IR lowering: bitcast receiver f64 → i64; mask payload bits;
+    /// call osr_string_len(payload) extern; push f64 result.
+    GetPropLength,
     Add, Sub, Mul, Inc, Dec,
     Lt, Le, Gt, Ge, Eq, Ne, StrictEq, StrictNe,
     Dup, Pop,
@@ -1251,6 +1312,18 @@ fn parse_bytecode(bc: &[u8], constants: &ConstantsPool) -> Result<Vec<(usize, Pa
                     Some(Constant::Number(n)) => ParsedOp::PushConst(*n),
                     Some(_) => return Err(format!("PushConst at pc={op_pc}: non-Number constant unsupported in JIT alphabet")),
                     None => return Err(format!("PushConst at pc={op_pc}: constant idx {idx} out of bounds")),
+                }
+            }
+            // OSR-EXT 6 (2026-05-23): GetProp with key "length" only at
+            // first cut (Pred-osr.4 scope discipline). Other keys bail.
+            Op::GetProp => {
+                let idx = u16::from_le_bytes([bc[pc], bc[pc + 1]]);
+                pc += 2;
+                match constants.get(idx) {
+                    Some(Constant::String(s)) if s == "length" => ParsedOp::GetPropLength,
+                    Some(Constant::String(s)) => return Err(format!("GetProp at pc={op_pc}: key '{s}' unsupported in JIT alphabet (only 'length' at first cut)")),
+                    Some(_) => return Err(format!("GetProp at pc={op_pc}: non-String key unsupported")),
+                    None => return Err(format!("GetProp at pc={op_pc}: constant idx {idx} out of bounds")),
                 }
             }
             Op::Add => ParsedOp::Add,

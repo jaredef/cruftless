@@ -606,3 +606,65 @@ LOC delta: ~50 (translator.rs: synth ReturnUndef + pre_entry block + jump; inter
 ---
 
 *OSR-EXT 5e closes. **OSR substrate validated end-to-end on synthetic do-while fixture: cruft 10ms vs node 38ms (4× faster).** Compile + invoke + correctness all GREEN. Finding OSR.2 refined with two empirical-anchored subfindings (OSR.2-bis fallthrough synthesis; OSR.2-ter pre_entry separation). The OSR pilot's first empirical pipeline-connection. OSR-EXT 6 closes alphabet; 6b closes for/while forward-exit; 7 is CRB final disposition.*
+
+---
+
+## OSR-EXT 6 — 2026-05-23 (alphabet extension: GetProp+length-IC at JIT tier; first cut)
+
+### Headline
+
+First alphabet round of the combined (c+d) directive. Adds Op::GetProp with key "length" to JIT alphabet via ParsedOp::GetPropLength variant + runtime helper `osr_string_len(payload: i64) -> f64` + IR lowering (bitcast f64→i64, mask payload bits, extern call, push result). Pre-implementation empirical readout from OSR-EXT 5e showed forward-exit (OSR.2) is ALREADY handled by 5e's synth-ReturnUndef trick — no separate 6b round needed for that.
+
+**Scope split surfaced empirically**: json_parse_transform's loop body uses GetProp("charCodeAt") + CallMethod(charCodeAt) BEFORE the GetProp("length") for the loop condition. parse_bytecode fails at the charCodeAt GetProp now (which has the same Op::GetProp but a different key — parse arm rejects per scope discipline). **OSR-EXT 6b will add GetProp("charCodeAt") + CallMethod-charCodeAt-IC together.**
+
+~80 LOC delta.
+
+### Three-probe results
+
+| probe | result |
+|---|---|
+| canonical fuzz (acc=-932188103) | ✅ GREEN |
+| diff-prod 42/42 | ✅ GREEN |
+| JIT lib tests | ✅ 38/38 |
+| Synth fixture (do-while sum) | ✅ correctness preserved (sum exact); 10-11ms (unchanged from OSR-EXT 5e) |
+| A/B json_parse_transform (5-run median) | 1574 vs baseline 1480 (+6.3%; **slightly over ±5% Pred-osr.4 gate**) |
+
+### Drift note
+
+The A/B drift slightly exceeds the ±5% gate this round. Source: per-iter back-edge counter HashMap.entry() overhead (unchanged) + parse-bytecode iterating one op further before bailing on charCodeAt (since length is now accepted). Bounded; not regression-class.
+
+### Substrate moves landed
+
+1. `pub extern "C" fn osr_string_len(payload: i64) -> f64` in JIT crate's translator.rs.
+2. `ParsedOp::GetPropLength` variant.
+3. Parse arm for Op::GetProp: accepts Constant::String("length") only; other keys bail with diagnostic.
+4. `has_getprop_length` scan + JITBuilder::symbol("osr_string_len", ...) pre-bind.
+5. `osr_string_len_id_opt` signature declaration: (I64) -> F64.
+6. `osr_string_len_ref` declare_func_in_func in the builder scope.
+7. ParsedOp::GetPropLength translate arm: bitcast + mask + call + push.
+
+### Composition with prior corpus / engagement work
+
+- **Doc 740 §VIII (A2) op-set coverage**: this round closes the first JIT-alphabet extension consuming VD String encoding. OSR-EXT 6b adds CallMethod.
+- **VD encoding (Finding VIII.1, Addendum VI)**: the IR's `payload = recv_bits & 0x0000_FFFF_FFFF_FFFF` mask is the VD decode operation for the String payload bits. The first-cut skips tag-check (trust marshal-in contract); a future hardening round would add the boxed-NaN-mask + tag-check guard + deopt on mismatch.
+- **Finding OSR.2 refinement (OSR.2-bis + OSR.2-ter)**: composes correctly; for-loop bytecode shape compiles successfully past parse → into translation → fails on the charCodeAt blocker only.
+- **Standing rule 9 (raw-pointer audit)**: applied — osr_string_len takes raw i64 (the payload bits); SAFETY contract documented (caller is JIT body that ensures payload encodes a live Rc<String> via marshal-in lifetime).
+
+### §XVI / Doc 734 / Doc 735 §X.h categorization
+
+Per Doc 730 §XVI: not applicable.
+Per Doc 734 §V: growth (c) preparatory — first half of the alphabet closure for json_parse_transform's loop body.
+Per Doc 735 §X.h.b: substrate-intro round; A/B slightly over gate but bounded; reclaim materializes at OSR-EXT 6b + 7.
+
+### Open scope at OSR-EXT 6 close
+
+1. **OSR-EXT 6b** — Op::GetProp("charCodeAt") + Op::CallMethod(charCodeAt) with charCodeAt-IC inlined. Estimated ~150 LOC. CallMethod requires the cached intrinsic ObjectId check + ASCII byte fetch IR + bounds check. Closes the second half of alphabet for json_parse_transform.
+2. **OSR-EXT 7** — composition probe + CRB final disposition + Pred-osr.1 gate.
+
+### Cumulative status at OSR-EXT 6 close
+
+LOC delta: ~80 (osr_string_len extern + ParsedOp::GetPropLength variant + parse arm + extern wiring + IR lowering). OSR-EXT 0-6 cumulative: ~950 across the locale.
+
+---
+
+*OSR-EXT 6 closes. GetProp+length-IC alphabet addition landed. Forward-exit (OSR.2) already handled by 5e. Next blocker on json_parse_transform: GetProp("charCodeAt") + CallMethod(charCodeAt) — OSR-EXT 6b's scope.*
