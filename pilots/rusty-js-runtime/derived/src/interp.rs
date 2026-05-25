@@ -1429,11 +1429,11 @@ impl Runtime {
             _ => return Err(RuntimeError::TypeError(format!("Set.prototype.{}: this is not a Set object", who))),
         };
         // SPBC-EXT 2: reject WeakSet receiver (shares __set_data sentinel
-        // but is a different brand per RequireInternalSlot).
-        if matches!(self.object_get(this, "__is_weakset"), Value::Boolean(true)) {
-            return Err(RuntimeError::TypeError(format!(
-                "Set.prototype.{}: this is a WeakSet (does not have [[SetData]])", who)));
-        }
+        // SPBC-EXT 3 carve-back: WeakSet rejection moved to per-proto
+        // wrappers in intrinsics.rs to avoid breaking WeakSet's own
+        // basic methods (cruft shares set_proto_add_via et al. between
+        // Set.prototype and WeakSet.prototype registrations).
+        let _ = "weakset-rejection-relocated-to-per-proto-wrappers";
         Ok((this, storage))
     }
 

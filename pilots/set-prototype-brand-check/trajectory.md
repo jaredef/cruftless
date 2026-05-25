@@ -46,3 +46,22 @@
 - 1 sundry.
 
 **Status**: CLOSED at SPBC-EXT 2.
+
+## SPBC-EXT 3 — carve-back + per-proto wrappers (2026-05-25)
+
+**Trigger**: post-SPBC-EXT-2 sweep found 15 regressions in WeakSet/prototype/{add,delete,has}. Diagnosis: `set_this_and_storage` is shared between Set.prototype and WeakSet.prototype basic-method registrations; the WeakSet-rejection added at SPBC-EXT 2 broke WeakSet's own methods.
+
+**Edits** (~25 LOC):
+1. `interp.rs::set_this_and_storage`: remove the WeakSet rejection (relocate to per-proto wrappers per the same pattern Map adopted post-EXT-81).
+2. `intrinsics.rs` Set/WeakSet ctor: introduce `set_brand_chk` closure using captured `is_weak_proto`; wrap add/has/delete registrations per-proto. Set proto rejects WeakSet receivers; WeakSet proto rejects non-WeakSet receivers.
+
+**Verification**:
+- 15 WeakSet/prototype regressions: all recovered (15/15 now PASS again).
+- SPBC's prior gain (Set basic methods rejecting WeakSet receiver via Set.prototype.X.call(weakset)) preserved.
+- 0 net change on currently-passing.
+
+### Finding SPBC.4
+
+The shared-impl + per-proto-registration shape is a recurring pattern in cruft (Set/WeakSet sharing set_proto_*, Map/WeakMap sharing map_proto_*). Brand-check discipline requires the wrapper at registration, NOT in the impl (because the impl can't know which proto routed the call). Sibling pattern to MPBC; both stabilized this round.
+
+**Status**: CLOSED at SPBC-EXT 3.

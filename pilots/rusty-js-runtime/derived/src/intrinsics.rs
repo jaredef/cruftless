@@ -3204,11 +3204,30 @@ impl Runtime {
         for collection in &["Map", "WeakMap"] {
             let proto = self.alloc_object(Object::new_ordinary());
             let is_weak_proto = *collection == "WeakMap";
+            // SPBC-EXT 3 / MPBC sibling: brand-check wrappers per registered
+            // proto. Map.prototype.{get,set,has,delete} must reject WeakMap
+            // receivers (cross-proto call); WeakMap.prototype.{get,set,has,
+            // delete} must reject non-WeakMap receivers per spec
+            // RequireInternalSlot([[MapData]] / [[WeakMapData]]).
+            let brand_chk = move |rt: &mut Runtime, method: &str| -> Result<(), RuntimeError> {
+                let this_v = rt.current_this();
+                let this_id = match &this_v { Value::Object(id) => *id, _ => return Ok(()) };
+                let receiver_is_weak = matches!(rt.object_get(this_id, "__is_weakmap"), Value::Boolean(true));
+                if is_weak_proto && !receiver_is_weak {
+                    return Err(RuntimeError::TypeError(format!(
+                        "WeakMap.prototype.{}: this is not a WeakMap", method)));
+                }
+                if !is_weak_proto && receiver_is_weak {
+                    return Err(RuntimeError::TypeError(format!(
+                        "Map.prototype.{}: this is a WeakMap, not a Map", method)));
+                }
+                Ok(())
+            };
             // §24.1.3 / §24.3.3 spec arities (.length values).
-            register_intrinsic_method(self, proto, "get",     1, |rt, args| crate::generated::map_prototype_get(rt, rt.current_this(), args));
-            register_intrinsic_method(self, proto, "set",     2, |rt, args| crate::generated::map_prototype_set(rt, rt.current_this(), args));
-            register_intrinsic_method(self, proto, "has",     1, |rt, args| crate::generated::map_prototype_has(rt, rt.current_this(), args));
-            register_intrinsic_method(self, proto, "delete",  1, |rt, args| crate::generated::map_prototype_delete(rt, rt.current_this(), args));
+            register_intrinsic_method(self, proto, "get",     1, move |rt, args| { brand_chk(rt, "get")?; crate::generated::map_prototype_get(rt, rt.current_this(), args) });
+            register_intrinsic_method(self, proto, "set",     2, move |rt, args| { brand_chk(rt, "set")?; crate::generated::map_prototype_set(rt, rt.current_this(), args) });
+            register_intrinsic_method(self, proto, "has",     1, move |rt, args| { brand_chk(rt, "has")?; crate::generated::map_prototype_has(rt, rt.current_this(), args) });
+            register_intrinsic_method(self, proto, "delete",  1, move |rt, args| { brand_chk(rt, "delete")?; crate::generated::map_prototype_delete(rt, rt.current_this(), args) });
             // ECMA-262 sec 24.1.3.10 get Map.prototype.size: accessor on
             // the prototype, not a data property on instances. Pre-fix
             // cruftless stored a per-instance data 'size' that shadowed
@@ -3389,10 +3408,29 @@ impl Runtime {
         for collection in &["Set", "WeakSet"] {
             let proto = self.alloc_object(Object::new_ordinary());
             let is_weak_proto = *collection == "WeakSet";
+            // SPBC-EXT 3 / MPBC sibling: per-proto brand check at the
+            // registration closure. Set.prototype.add must reject WeakSet
+            // receivers (cross-proto call) and vice versa. Cruft's
+            // set_proto_add_via is shared between both protos, so the
+            // brand discrimination must live at registration.
+            let set_brand_chk = move |rt: &mut Runtime, method: &str| -> Result<(), RuntimeError> {
+                let this_v = rt.current_this();
+                let this_id = match &this_v { Value::Object(id) => *id, _ => return Ok(()) };
+                let receiver_is_weak = matches!(rt.object_get(this_id, "__is_weakset"), Value::Boolean(true));
+                if is_weak_proto && !receiver_is_weak {
+                    return Err(RuntimeError::TypeError(format!(
+                        "WeakSet.prototype.{}: this is not a WeakSet", method)));
+                }
+                if !is_weak_proto && receiver_is_weak {
+                    return Err(RuntimeError::TypeError(format!(
+                        "Set.prototype.{}: this is a WeakSet (does not have [[SetData]])", method)));
+                }
+                Ok(())
+            };
             // §24.2.3 spec arities.
-            register_intrinsic_method(self, proto, "add",     1, |rt, args| crate::generated::set_prototype_add(rt, rt.current_this(), args));
-            register_intrinsic_method(self, proto, "has",     1, |rt, args| crate::generated::set_prototype_has(rt, rt.current_this(), args));
-            register_intrinsic_method(self, proto, "delete",  1, |rt, args| crate::generated::set_prototype_delete(rt, rt.current_this(), args));
+            register_intrinsic_method(self, proto, "add",     1, move |rt, args| { set_brand_chk(rt, "add")?;     crate::generated::set_prototype_add(rt, rt.current_this(), args) });
+            register_intrinsic_method(self, proto, "has",     1, move |rt, args| { set_brand_chk(rt, "has")?;     crate::generated::set_prototype_has(rt, rt.current_this(), args) });
+            register_intrinsic_method(self, proto, "delete",  1, move |rt, args| { set_brand_chk(rt, "delete")?;  crate::generated::set_prototype_delete(rt, rt.current_this(), args) });
             // ECMA-262 sec 24.2.3.10 get Set.prototype.size: accessor on
             // the prototype, parallel to Map.prototype.size.
             if !is_weak_proto {
