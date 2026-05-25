@@ -864,7 +864,10 @@ impl<'src> Parser<'src> {
                 // continuing.
                 // Avoid eating reserved words like `var`/`let`/`const`
                 // (already handled by head_is_var) or `await`.
-                if !matches!(n.as_str(), "var" | "let" | "const" | "function" | "class") {
+                // FHLA-EXT 1: exclude `this`/`super` from the bare-ident
+                // fast-path; they are not valid SimpleAssignmentTargets
+                // (§13.15.1) and the expression-head path below rejects them.
+                if !matches!(n.as_str(), "var" | "let" | "const" | "function" | "class" | "this" | "super") {
                     self.bump()?;
                     if self.is_ident("in") || self.is_contextual_keyword("of") {
                         let is_of = self.is_contextual_keyword("of");
@@ -910,6 +913,20 @@ impl<'src> Parser<'src> {
                     // Pre-fix silently fell back to an empty BindingIdentifier;
                     // spec mandates SyntaxError at parse.
                     let is_pattern_literal = matches!(&e, Expr::Array { .. } | Expr::Object { .. });
+                    // FHLA-EXT 1: §13.15.1 IsValidSimpleAssignmentTarget —
+                    // `this` (and `super`) are not valid assignment targets;
+                    // reject explicitly at for-head LHS rather than falling
+                    // through to the opaque-name fallback.
+                    // Unwrap any parenthesized layers for the assignment-
+                    // target check, e.g. `for ((this) of …)`.
+                    let mut probe = &e;
+                    while let Expr::Parenthesized { expr, .. } = probe { probe = expr; }
+                    if matches!(probe, Expr::This { .. } | Expr::Super { .. }) {
+                        return Err(ParseError {
+                            span: e.span(),
+                            message: "Invalid left-hand side in for-in/for-of head".into(),
+                        });
+                    }
                     match expr_to_binding_pattern(e) {
                         Some(pat) => {
                             // SBAP-EXT 1: §13.15.1 + §13.2 — leaf binding-ids
