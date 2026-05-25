@@ -848,8 +848,12 @@ impl<'src> Parser<'src> {
                 (BindingElement { target, default, span: Span::new(elem_start, elem_end) }, false)
             } else {
                 // Shorthand: key is an Identifier; target is the same name.
+                // §13.1.1.1 SS:1 BindingIdentifier cannot be a ReservedWord.
                 let id = shorthand_ident
                     .ok_or_else(|| self.err_here("non-identifier key requires `: value`".into()))?;
+                if is_reserved_word(&id.name) {
+                    return Err(self.err_at(id.span, format!("`{}` is a reserved word and cannot be used as a binding identifier", id.name)));
+                }
                 let elem_start = id.span.start;
                 let target = BindingPattern::Identifier(id);
                 let default = if matches!(self.current_kind(), TokenKind::Punct(Punct::Assign)) {
@@ -949,6 +953,27 @@ impl<'src> Parser<'src> {
     fn err_at(&self, span: Span, message: String) -> ParseError {
         ParseError { span, message }
     }
+}
+
+/// ECMA-262 §11.6.2 ReservedWord set (Keyword + FutureReservedWord) plus the
+/// strict-mode additional reserved identifiers (§13.1.1.1 Static Semantics).
+/// Per §13.1.1 BindingIdentifier and IdentifierReference cannot be ReservedWord.
+/// Escaped-keyword identifiers (`break`) tokenize as IdentifierName and
+/// surface here with the same name string; the rejection is name-based, not
+/// token-shape based, so both forms are caught uniformly.
+pub(crate) fn is_reserved_word(name: &str) -> bool {
+    matches!(name,
+        // Keywords (§11.6.2.1)
+        "await" | "break" | "case" | "catch" | "class" | "const" | "continue"
+        | "debugger" | "default" | "delete" | "do" | "else" | "enum" | "export"
+        | "extends" | "false" | "finally" | "for" | "function" | "if" | "import"
+        | "in" | "instanceof" | "new" | "null" | "return" | "super" | "switch"
+        | "this" | "throw" | "true" | "try" | "typeof" | "var" | "void" | "while"
+        | "with" | "yield"
+        // Strict-mode additional FutureReservedWord (§13.1.1.1)
+        | "implements" | "interface" | "let" | "package" | "private"
+        | "protected" | "public" | "static"
+    )
 }
 
 /// Heuristic per the ECMA-262 goal-symbol grammar: did the token just consumed

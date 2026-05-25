@@ -1367,6 +1367,11 @@ impl Runtime {
             rt.current_this = saved_this;
             match r {
                 Ok(_) => Ok(Value::Undefined),
+                // §19.2.1.1 PerformEval step 5: if Script parsing fails,
+                // throw a SyntaxError. Surface parse-tier CompileError as
+                // a JS-catchable SyntaxError so test262 negative-phase-parse
+                // tests can observe the throw.
+                Err(RuntimeError::CompileError(msg)) => Err(RuntimeError::SyntaxError(msg)),
                 Err(e) => Err(e),
             }
         });
