@@ -5678,9 +5678,24 @@ pub(crate) fn make_set_values_iterator(rt: &mut Runtime, set_id: crate::value::O
 }
 
 pub(crate) fn collect_iterable(rt: &mut Runtime, src: Value) -> Result<Vec<Value>, RuntimeError> {
+    // IPTO-EXT 1: ECMA-262 §7.3.20 GetIterator(obj). Property access
+    // `obj[Symbol.iterator]` ToObject-wraps primitives implicitly; cruft's
+    // pre-fix non-Object short-circuit returned an empty Vec, silently
+    // dropping iteration on strings (e.g. [..."abc"] gave []). undefined
+    // and null still error per spec. Other primitives go through to_object
+    // (String -> StringWrapper which has @@iterator on String.prototype;
+    // Number/Boolean/BigInt/Symbol wrap to objects with no @@iterator and
+    // hit the existing "iterator is not an object" TypeError downstream).
     let id = match src {
         Value::Object(id) => id,
-        _ => return Ok(Vec::new()),
+        Value::Undefined | Value::Null => {
+            return Err(RuntimeError::TypeError(
+                "iterable: cannot iterate undefined or null".into()));
+        }
+        ref other => match rt.to_object(other)? {
+            Value::Object(id) => id,
+            _ => return Ok(Vec::new()),
+        },
     };
     let method = rt.object_get(id, "@@iterator");
     let iter = rt.call_function(method, Value::Object(id), Vec::new())?;
