@@ -43,3 +43,42 @@ Both use `has_own_str` against a key from static `abstract_ops::to_string`, whic
 VMA-EXT 1 fixed the first two methods; the remaining four (`__lookupGetter__`/`__lookupSetter__`/`__defineGetter__`/`__defineSetter__`) carry the same bug and are sibling-locale candidates.
 
 **Status**: VMA-EXT 1 CLOSED. cb-before-len audit exhausted; RPTC.7 audit closed 2 more sites with a 67/79 cluster pass; 4 sibling ToPropertyKey sites queued for a follow-on VMA-EXT 2.
+
+---
+
+## VMA-EXT 2 — Annex B `__defineGetter__`/`__defineSetter__`/`__lookupGetter__`/`__lookupSetter__` (2026-05-25)
+
+**Trigger**: VMA.3's queued sibling-locale closure. The four Annex-B-Object.prototype methods carry the same ToPropertyKey bug pattern hasOwnProperty had, plus two additional spec divergences surfaced during the fix:
+
+1. **Wrong callable check**: pre-fix used `matches!(fn_v, Value::Object(_))` which accepts any Object instead of spec's IsCallable (§B.2.2.{2,3} step 1). Misses the spec intent though doesn't break in practice since BoundFunction/Closure are Object-tagged.
+2. **Lookup was own-only**: `__lookupGetter__` / `__lookupSetter__` used `get_own(key)` but spec §B.2.2.{4,5} mandates a proto-chain walk for the accessor.
+
+**Edits** (~50 LOC across 4 methods):
+
+- All 4 methods: key coercion via `coerce_to_string` for non-Symbol args; Symbol args pass through. Use `property_key_of` to extract the spec PropertyKey.
+- `__defineGetter__` / `__defineSetter__`: switch callable check from `matches!(_, Object)` to `self.is_callable(fn_v)`. Store under the proper PropertyKey (Symbol bucket for Symbols).
+- `__lookupGetter__` / `__lookupSetter__`: walk proto chain (per spec); return undefined for accessor-with-undefined-getter/setter (per GOPD-EXT 1's accessor-with-undefined-field semantics).
+
+**Verification** (focused probes):
+
+| Probe | Result |
+|---|---|
+| Basic `o.__defineGetter__("a", fn); o.a` | 42 ✓ |
+| Object-key: `o.__defineGetter__({toString:()=>"b"}, fn); o.b` | 99 ✓ |
+| Symbol-key: `o.__defineGetter__(Symbol.for("k"), fn); o[s]` | "sym-val" ✓ |
+| BoundFunction via .bind(): `o.__defineGetter__("c", fn.bind(null)); o.c` | 1 ✓ |
+| Inherited lookup: `Object.create(p).__lookupGetter__("x")` where p has accessor | function ✓ (was undefined) |
+
+**test262 yield**: 0. The local test262 corpus has no `__defineGetter__` / `__lookupGetter__` tests (Annex-B browser-compat methods are not deeply probed by the test262 cuts cruft tracks). The fix benefits real-world consumer code that uses these legacy idioms.
+
+**Gates**:
+- diff-prod: **42/42 PASS, 0 FAIL**
+- Random 300 prev-PASS: **300/300, 0 regressions**
+
+**Findings**
+
+**Finding VMA.4 (test262 cluster size does not always predict bug-pattern reach)**: VMA-EXT 1 had a 67/79 test262 yield; VMA-EXT 2 had 0. Both fixes addressed the same bug class (ToPropertyKey) at the same surface (Object.prototype methods). The test262 cut focuses on spec-mandatory surface and under-samples Annex-B optional features. Standing recommendation: bug-pattern fixes whose architectural shape is consistent across siblings should land even when the test262 yield for some siblings is zero; the test262 cluster size is a sampling artifact, not a substrate-importance signal.
+
+**Finding VMA.5 (own vs proto for lookup methods is a separable spec divergence)**: `__lookupGetter__` / `__lookupSetter__`'s spec mandates proto-chain walk (Annex B step "Walk prototype chain"), while `__defineGetter__` operates only on the instance. The pre-fix path had `get_own` for both — wrong for lookup, right for define. Standing recommendation: when porting Annex-B methods, check spec for "own vs proto" semantics per method; the symmetry of the name pair (define/lookup) doesn't imply symmetry of the lookup site.
+
+**Status**: VMA-EXT 2 CLOSED. ToPropertyKey bug class on Object.prototype Annex-B + ES2015 surface closed (6 methods total across VMA-EXT 1+2).

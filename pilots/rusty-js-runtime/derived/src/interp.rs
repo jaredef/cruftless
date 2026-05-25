@@ -2440,12 +2440,18 @@ impl Runtime {
     /// IR-EXT 56 — Object.prototype.__defineGetter__ per Annex B.2.2.2.
     pub fn object_proto_define_getter_via(&mut self, this_v: &Value, key_v: &Value, fn_v: &Value) -> Result<Value, RuntimeError> {
         let this = match this_v { Value::Object(id) => *id, _ => return Ok(Value::Undefined) };
-        let key = crate::abstract_ops::to_string(key_v).as_str().to_string();
-        if !matches!(fn_v, Value::Object(_)) {
+        // VMA-EXT 2: spec §B.2.2.2 step 1 IsCallable; step 2 ToPropertyKey.
+        // Pre-fix used matches!(_, Object) (misses BoundFunction edge cases
+        // and is not the spec's IsCallable) + static abstract_ops::to_string
+        // (collapses Objects, stringifies Symbols to @@sym:N).
+        if !self.is_callable(fn_v) {
             return Err(RuntimeError::TypeError("__defineGetter__: getter must be callable".into()));
         }
-        let existing_setter = self.obj(this).get_own(&key).and_then(|d| d.setter.clone());
-        self.obj_mut(this).dict_mut().insert(crate::value::PropertyKey::String(key), crate::value::PropertyDescriptor {
+        let key_coerced = if matches!(key_v, Value::Symbol(_)) { key_v.clone() }
+                          else { Value::String(std::rc::Rc::new(self.coerce_to_string(key_v)?)) };
+        let pk = Self::property_key_of(&key_coerced);
+        let existing_setter = self.obj(this).properties.get(&pk).and_then(|d| d.setter.clone());
+        self.obj_mut(this).dict_mut().insert(pk, crate::value::PropertyDescriptor {
             value: Value::Undefined,
             writable: false, enumerable: true, configurable: true,
             getter: Some(fn_v.clone()), setter: existing_setter,
@@ -2456,12 +2462,15 @@ impl Runtime {
     /// IR-EXT 56 — Object.prototype.__defineSetter__ per Annex B.2.2.3.
     pub fn object_proto_define_setter_via(&mut self, this_v: &Value, key_v: &Value, fn_v: &Value) -> Result<Value, RuntimeError> {
         let this = match this_v { Value::Object(id) => *id, _ => return Ok(Value::Undefined) };
-        let key = crate::abstract_ops::to_string(key_v).as_str().to_string();
-        if !matches!(fn_v, Value::Object(_)) {
+        // VMA-EXT 2: spec §B.2.2.3 IsCallable + ToPropertyKey.
+        if !self.is_callable(fn_v) {
             return Err(RuntimeError::TypeError("__defineSetter__: setter must be callable".into()));
         }
-        let existing_getter = self.obj(this).get_own(&key).and_then(|d| d.getter.clone());
-        self.obj_mut(this).dict_mut().insert(crate::value::PropertyKey::String(key), crate::value::PropertyDescriptor {
+        let key_coerced = if matches!(key_v, Value::Symbol(_)) { key_v.clone() }
+                          else { Value::String(std::rc::Rc::new(self.coerce_to_string(key_v)?)) };
+        let pk = Self::property_key_of(&key_coerced);
+        let existing_getter = self.obj(this).properties.get(&pk).and_then(|d| d.getter.clone());
+        self.obj_mut(this).dict_mut().insert(pk, crate::value::PropertyDescriptor {
             value: Value::Undefined,
             writable: false, enumerable: true, configurable: true,
             getter: existing_getter, setter: Some(fn_v.clone()),
@@ -2472,15 +2481,42 @@ impl Runtime {
     /// IR-EXT 56 — Object.prototype.__lookupGetter__ per Annex B.2.2.4.
     pub fn object_proto_lookup_getter_via(&mut self, this_v: &Value, key_v: &Value) -> Result<Value, RuntimeError> {
         let this = match this_v { Value::Object(id) => *id, _ => return Ok(Value::Undefined) };
-        let key = crate::abstract_ops::to_string(key_v).as_str().to_string();
-        Ok(self.obj(this).get_own(&key).and_then(|d| d.getter.clone()).unwrap_or(Value::Undefined))
+        // VMA-EXT 2: spec §B.2.2.4 ToPropertyKey + proto-chain walk for
+        // accessor lookup. Pre-fix used static to_string + own-only lookup;
+        // spec actually says walk proto chain for an accessor with [[Get]].
+        let key_coerced = if matches!(key_v, Value::Symbol(_)) { key_v.clone() }
+                          else { Value::String(std::rc::Rc::new(self.coerce_to_string(key_v)?)) };
+        let pk = Self::property_key_of(&key_coerced);
+        let mut cur = Some(this);
+        while let Some(c) = cur {
+            if let Some(d) = self.obj(c).properties.get(&pk) {
+                if let Some(g) = &d.getter {
+                    if !matches!(g, Value::Undefined) { return Ok(g.clone()); }
+                }
+                return Ok(Value::Undefined);
+            }
+            cur = self.obj(c).proto;
+        }
+        Ok(Value::Undefined)
     }
 
     /// IR-EXT 56 — Object.prototype.__lookupSetter__ per Annex B.2.2.5.
     pub fn object_proto_lookup_setter_via(&mut self, this_v: &Value, key_v: &Value) -> Result<Value, RuntimeError> {
         let this = match this_v { Value::Object(id) => *id, _ => return Ok(Value::Undefined) };
-        let key = crate::abstract_ops::to_string(key_v).as_str().to_string();
-        Ok(self.obj(this).get_own(&key).and_then(|d| d.setter.clone()).unwrap_or(Value::Undefined))
+        let key_coerced = if matches!(key_v, Value::Symbol(_)) { key_v.clone() }
+                          else { Value::String(std::rc::Rc::new(self.coerce_to_string(key_v)?)) };
+        let pk = Self::property_key_of(&key_coerced);
+        let mut cur = Some(this);
+        while let Some(c) = cur {
+            if let Some(d) = self.obj(c).properties.get(&pk) {
+                if let Some(s) = &d.setter {
+                    if !matches!(s, Value::Undefined) { return Ok(s.clone()); }
+                }
+                return Ok(Value::Undefined);
+            }
+            cur = self.obj(c).proto;
+        }
+        Ok(Value::Undefined)
     }
 
     /// Ω.5.P63.E55 helper: assemble the {promise, resolve, reject} object
