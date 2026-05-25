@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 83,
-    "top_level": 72,
+    "locales": 84,
+    "top_level": 73,
     "nested": 11,
     "warnings": 0
   },
@@ -755,6 +755,15 @@
       "depth": 2,
       "rung_count": 1,
       "status": "**WORKSTREAM FOUNDED (SW-EXT 0)**. No code yet. Spawned per keeper directive 2026-05-23 18:12-local. Nested under existing `pilots/web-crypto/` top-level locale."
+    },
+    {
+      "coord": "yield-in-function-params",
+      "tag": "L.yield-in-function-params",
+      "parent": null,
+      "scope": "yield-in-function-params",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
     }
   ],
   "warnings": []

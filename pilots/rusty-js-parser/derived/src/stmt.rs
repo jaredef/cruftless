@@ -292,6 +292,17 @@ impl<'src> Parser<'src> {
 
     pub(crate) fn parse_function_parameters(&mut self) -> Result<Vec<rusty_js_ast::Parameter>, ParseError> {
         self.expect_punct(Punct::LParen)?;
+        // YIFP-EXT 1: enter param-list scope. Yield-branch checks this
+        // flag + in_generator to throw on YieldExpression in arrow /
+        // generator formal parameters per §15.3.1 / §15.5.1.
+        let prior_in_params = self.in_function_params;
+        self.in_function_params = true;
+        let result = self.parse_function_parameters_inner();
+        self.in_function_params = prior_in_params;
+        result
+    }
+
+    fn parse_function_parameters_inner(&mut self) -> Result<Vec<rusty_js_ast::Parameter>, ParseError> {
         let mut out = Vec::new();
         while !matches!(self.current_kind(), TokenKind::Punct(Punct::RParen)) {
             let p_start = self.lookahead_span().start;

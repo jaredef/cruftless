@@ -251,6 +251,18 @@ impl<'src> Parser<'src> {
                         message: "'yield' is a reserved word in strict mode and may not appear outside a generator function".into(),
                     });
                 }
+                // YIFP-EXT 1: §15.3.1 + §15.5.1 — YieldExpression is forbidden
+                // in formal parameter lists of arrow / generator functions.
+                // When we reach here in_generator is true (otherwise the
+                // yield-branch gate wouldn't have fired in sloppy mode); the
+                // additional check is whether we're currently inside a param
+                // list. Set by parse_function_parameters.
+                if self.in_function_params {
+                    return Err(ParseError {
+                        span: self.lookahead_span(),
+                        message: "YieldExpression is not allowed in formal parameters".into(),
+                    });
+                }
                 self.bump()?;
                 let delegate = matches!(self.current_kind(), TokenKind::Punct(Punct::Star));
                 if delegate { self.bump()?; }

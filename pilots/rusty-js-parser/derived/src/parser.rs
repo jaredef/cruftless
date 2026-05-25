@@ -57,13 +57,19 @@ pub struct Parser<'src> {
     /// word (SyntaxError at parse); in sloppy mode `yield` is an
     /// IdentifierReference.
     pub(crate) in_generator: bool,
+    /// YIFP-EXT 1: true while parsing a function/arrow formal parameter
+    /// list. Yield-branch rejects YieldExpression here when in_generator
+    /// is also true (per §15.3.1 ArrowFunction + §15.5.1 GeneratorDeclaration
+    /// early errors: it is a SyntaxError if ArrowParameters / FormalParameters
+    /// Contains YieldExpression is true).
+    pub(crate) in_function_params: bool,
 }
 
 impl<'src> Parser<'src> {
     pub fn new(src: &'src str) -> Result<Self, ParseError> {
         let mut lx = Lexer::new(src);
         let lookahead = lx.next_token(LexerGoal::RegExp).map_err(lex_to_parse)?;
-        Ok(Self { src, lx, lookahead, function_body_depth: 0, strict_mode: false, in_generator: false })
+        Ok(Self { src, lx, lookahead, function_body_depth: 0, strict_mode: false, in_generator: false, in_function_params: false })
     }
 
     pub fn parse_module(&mut self) -> Result<Module, ParseError> {
