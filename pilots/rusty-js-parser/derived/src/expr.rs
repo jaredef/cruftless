@@ -1272,18 +1272,28 @@ impl<'src> Parser<'src> {
                 return Err(self.err_here("expected arrow head".into()));
             };
         self.expect_punct(Punct::Arrow)?;
-        // PPAE-EXT 1: §15.2.1 Static Semantics:Early Errors — arrow
-        // function parameters cannot contain duplicate BindingIdentifier
-        // names (the arrow's body is treated as strict for this purpose).
-        // Collect simple-ident param names; if any duplicates, SyntaxError.
-        let mut seen: Vec<&str> = Vec::with_capacity(params.len());
+        // PPAE-EXT 1 + APDD-EXT 1: §15.2.1 Static Semantics:Early Errors —
+        // arrow function parameters BoundNames must be unique (the arrow's
+        // body is treated as strict for this purpose). Collect via
+        // BindingPattern.collect_names() so destructure-pattern leaves and
+        // rest-element binding names participate in the dup check too. The
+        // PPAE-EXT 1 simple-ident-only version missed (x, [x]) /
+        // (x, {x}) / ([x], x) / ([x], [x]) shapes.
+        let mut seen: Vec<(String, rusty_js_ast::Span)> = Vec::new();
         for p in &params {
-            if let rusty_js_ast::BindingPattern::Identifier(id) = &p.target {
-                if seen.iter().any(|s| *s == id.name.as_str()) {
+            for id in p.target.collect_names() {
+                if seen.iter().any(|(s, _)| s == &id.name) {
                     return Err(self.err_at(id.span, format!(
                         "arrow function has duplicate parameter name `{}`", id.name)));
                 }
-                seen.push(id.name.as_str());
+                seen.push((id.name.clone(), id.span));
+            }
+            if p.rest {
+                if let rusty_js_ast::BindingPattern::Identifier(id) = &p.target {
+                    // rest element's binding already collected by collect_names
+                    // above; the duplicate check above covers ([x], ...x).
+                    let _ = id;
+                }
             }
         }
         // SMPT-EXT 1: arrow expression body is also a function context per
