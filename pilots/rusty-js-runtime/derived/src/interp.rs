@@ -4906,21 +4906,21 @@ impl Runtime {
     pub fn string_proto_trim_via(&mut self, this: &Value) -> Result<Value, RuntimeError> {
         self.require_object_coercible(this)?;
         let s = self.to_string_strict(this)?;
-        Ok(Value::String(std::rc::Rc::new(s.trim().to_string())))
+        Ok(Value::String(std::rc::Rc::new(es_trim(s.as_str()))))
     }
 
     /// String.prototype.trimStart() per ECMA §22.1.3.34.
     pub fn string_proto_trim_start_via(&mut self, this: &Value) -> Result<Value, RuntimeError> {
         self.require_object_coercible(this)?;
         let s = self.to_string_strict(this)?;
-        Ok(Value::String(std::rc::Rc::new(s.trim_start().to_string())))
+        Ok(Value::String(std::rc::Rc::new(es_trim_start(s.as_str()).to_string())))
     }
 
     /// String.prototype.trimEnd() per ECMA §22.1.3.33.
     pub fn string_proto_trim_end_via(&mut self, this: &Value) -> Result<Value, RuntimeError> {
         self.require_object_coercible(this)?;
         let s = self.to_string_strict(this)?;
-        Ok(Value::String(std::rc::Rc::new(s.trim_end().to_string())))
+        Ok(Value::String(std::rc::Rc::new(es_trim_end(s.as_str()).to_string())))
     }
 
     /// String.prototype.toLowerCase() per ECMA §22.1.3.28.
@@ -10064,6 +10064,32 @@ pub fn unbox_int64(v: &Value) -> Result<i64, RuntimeError> {
         other => Err(RuntimeError::TypeError(format!(
             "typed-i64 op: operand is not a Number ({:?})", other))),
     }
+}
+
+/// SPTW-EXT 1: ECMA-262 §12.2 White Space + §12.3 Line Terminators —
+/// the character set String.prototype.trim/trimStart/trimEnd recognizes
+/// per §22.1.3.30.1 TrimString. Cruft previously delegated to Rust's
+/// `str::trim` (Unicode White_Space property), which omits U+FEFF
+/// (ZWNBSP, deprecated as space marker by Unicode but retained by the
+/// ES spec for backward compatibility) and surfaces 22 test262 failures.
+#[inline]
+fn is_es_whitespace_or_lineterm(c: char) -> bool {
+    matches!(c,
+        // §12.2 WhiteSpace
+        '\u{0009}' | '\u{000B}' | '\u{000C}' | '\u{0020}' | '\u{00A0}' | '\u{FEFF}'
+        // Unicode Zs (Other White_Space, the USP carve-out)
+        | '\u{1680}'
+        | '\u{2000}'..='\u{200A}'
+        | '\u{202F}' | '\u{205F}' | '\u{3000}'
+        // §12.3 LineTerminator
+        | '\u{000A}' | '\u{000D}' | '\u{2028}' | '\u{2029}'
+    )
+}
+
+fn es_trim_start(s: &str) -> &str { s.trim_start_matches(is_es_whitespace_or_lineterm) }
+fn es_trim_end(s: &str) -> &str { s.trim_end_matches(is_es_whitespace_or_lineterm) }
+fn es_trim(s: &str) -> String {
+    s.trim_matches(is_es_whitespace_or_lineterm).to_string()
 }
 
 pub fn property_key(v: &Value) -> crate::value::PropertyKey {

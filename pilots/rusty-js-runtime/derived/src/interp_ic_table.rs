@@ -150,6 +150,16 @@ fn fast_string_trim(recv: &Value, args: &[Value]) -> Option<Value> {
     if let Value::String(s) = recv {
         let bytes = s.as_bytes();
         let is_ws = |b: u8| matches!(b, b' '|b'\t'|b'\n'|b'\r'|0x0B|0x0C);
+        // SPTW-EXT 1 carve-back: bail to slow path on any non-ASCII byte
+        // BEFORE checking trim outcome, because non-ASCII strings may
+        // contain Unicode whitespace (NBSP U+00A0, BOM U+FEFF, USP set)
+        // that this fast path's narrow set doesn't recognize. Pre-fix
+        // the early-return "no trim needed" fired on non-ASCII strings
+        // whose first/last byte was a non-ASCII leading byte, leaving
+        // NBSP/BOM unstripped.
+        if !s.is_ascii() {
+            return None;
+        }
         let mut start = 0;
         while start < bytes.len() && is_ws(bytes[start]) { start += 1; }
         let mut end = bytes.len();
@@ -157,16 +167,6 @@ fn fast_string_trim(recv: &Value, args: &[Value]) -> Option<Value> {
         if start == 0 && end == bytes.len() {
             // No trim needed; return self (no allocation).
             return Some(Value::String(s.clone()));
-        }
-        // Trim needed; allocate.
-        // SAFETY: byte slice [start..end] respects UTF-8 char boundaries
-        // because we only skipped ASCII whitespace (single-byte chars).
-        // For non-ASCII strings the unchecked slice could split a
-        // multibyte char; bail to slow path on non-ASCII strings.
-        if !s.is_ascii() {
-            // Skip the optimization for non-ASCII; let slow path handle
-            // (Unicode whitespace + correct char-boundary slicing).
-            return None;
         }
         let trimmed = unsafe { std::str::from_utf8_unchecked(&bytes[start..end]) }.to_owned();
         Some(Value::String(std::rc::Rc::new(trimmed)))
