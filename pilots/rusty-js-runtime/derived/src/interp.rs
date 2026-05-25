@@ -3854,12 +3854,36 @@ impl Runtime {
 
     /// Object.prototype.hasOwnProperty(key) per ECMA §20.1.3.2.
     pub fn object_proto_has_own_property_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
-        let key = crate::abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined)).as_str().to_string();
+        // VMA-EXT 1: spec §20.1.3.2 step 1 is ToPropertyKey(V) which is
+        // ToPrimitive + Symbol-pass-through. Pre-fix used static
+        // abstract_ops::to_string which collapsed Objects to "[object
+        // Object]" and stringified Symbols to their @@sym:N form
+        // (mis-coercion). property_key + per-bucket lookup is the
+        // spec-aligned path.
+        let arg = args.first().cloned().unwrap_or(Value::Undefined);
+        let arg_coerced = if matches!(arg, Value::Symbol(_)) { arg.clone() }
+                          else { Value::String(std::rc::Rc::new(self.coerce_to_string(&arg)?)) };
+        let pk = Self::property_key_of(&arg_coerced);
         let owns = match self.current_this() {
-            Value::Object(id) => self.obj(id).has_own_str(&key),
+            Value::Object(id) => {
+                let o = self.obj(id);
+                match &pk {
+                    crate::value::PropertyKey::String(s) => o.has_own_str(s.as_str()),
+                    _ => o.properties.contains_key(&pk),
+                }
+            }
             _ => false,
         };
         Ok(Value::Boolean(owns))
+    }
+
+    fn property_key_of(v: &Value) -> crate::value::PropertyKey {
+        match v {
+            Value::Symbol(rc) => crate::value::PropertyKey::Symbol(rc.clone()),
+            Value::String(s) => crate::value::PropertyKey::String(s.as_str().to_string()),
+            Value::Number(n) => crate::value::PropertyKey::String(crate::abstract_ops::number_to_string(*n)),
+            _ => crate::value::PropertyKey::String(crate::abstract_ops::to_string(v).as_str().to_string()),
+        }
     }
 
     /// Object.prototype.valueOf() per ECMA §20.1.3.7.
@@ -3869,8 +3893,16 @@ impl Runtime {
 
     /// Object.prototype.propertyIsEnumerable(key) per ECMA §20.1.3.4.
     pub fn object_proto_property_is_enumerable_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
-        let key = crate::abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined))
-            .as_str().to_string();
+        // VMA-EXT 1: same spec §7.1.19 ToPropertyKey path as hasOwnProperty.
+        // Pre-fix's static abstract_ops::to_string collapsed Objects to
+        // "[object Object]" and stringified Symbols.
+        let arg = args.first().cloned().unwrap_or(Value::Undefined);
+        let arg_coerced = if matches!(arg, Value::Symbol(_)) { arg.clone() }
+                          else { Value::String(std::rc::Rc::new(self.coerce_to_string(&arg)?)) };
+        let key = match Self::property_key_of(&arg_coerced) {
+            crate::value::PropertyKey::String(s) => s,
+            crate::value::PropertyKey::Symbol(rc) => (*rc).clone(),
+        };
         // ODP-EXT 1: spec §20.1.3.4 step 4 — return desc.enumerable.
         // Pre-fix returned only `has_own_str`, accidentally correct for
         // Array.length when has_own_str was wrong. Now both halves are

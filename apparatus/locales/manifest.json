@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 79,
-    "top_level": 68,
+    "locales": 80,
+    "top_level": 69,
     "nested": 11,
     "warnings": 0
   },
@@ -222,7 +222,7 @@
       "parent": null,
       "scope": "length-of-array-like-propagate",
       "depth": 1,
-      "rung_count": 1,
+      "rung_count": 2,
       "status": null
     },
     {
@@ -375,8 +375,8 @@
       "parent": null,
       "scope": "rusty-js-http-server",
       "depth": 1,
-      "rung_count": 6,
-      "status": "**DIRECT MODE-0 PROBE PASSING at HS-EXT 5**. Originally founded at HS-EXT 0 (2026-05-23) as \"basic HTTP server.\" HS-EXT 1's transport survey and the subsequent Doc 736 / Compartment composition reading sharpened the telos; HS-EXT 3 translated that telos into the concrete API wireup plan; HS-EXT 4 decided the `Net` capability substrate can extend the existing dispatcher directly; HS-EXT 5 added the first live `node:http.createServer(...).listen(...)` path. HTTP server is the first runtime surface where Node-compatible network serving, capability authority, compartment realm dispatch, and PollIo event-loop integration must compose."
+      "rung_count": 13,
+      "status": "**EXPRESS PROBE BLOCKED at HS-EXT 8**. Originally founded at HS-EXT 0 (2026-05-23) as \"basic HTTP server.\" HS-EXT 1's transport survey and the subsequent Doc 736 / Compartment composition reading sharpened the telos; HS-EXT 3 translated that telos into the concrete API wireup plan; HS-EXT 4 decided the `Net` capability substrate can extend the existing dispatcher directly; HS-EXT 5 added the first live `node:http.createServer(...).listen(...)` path; HS-EXT 5a closed cross-agent hygiene feedback; HS-EXT 6 pinned audit, sealed denial, and loopback-granted sealed allow; HS-EXT 7a added minimal request EventEmitter wiring; HS-EXT 7 proved the internal loopback-only HTTP facade inside a Compartment; HS-EXT 8 added an opt-in Express fixture and found the next blocker before listen: `Router.use() requires a middleware function`. HTTP server is the first runtime surface where Node-compatible network serving, capability authority, compartment realm dispatch, and PollIo event-loop integration must compose."
     },
     {
       "coord": "rusty-js-ir",
@@ -692,6 +692,15 @@
       "depth": 1,
       "rung_count": 2,
       "status": "**CLOSED at VHTB-EXT 1** (1 implementation round)."
+    },
+    {
+      "coord": "via-method-audit",
+      "tag": "L.via-method-audit",
+      "parent": null,
+      "scope": "via-method-audit",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
     },
     {
       "coord": "weakmap-upsert-methods",
