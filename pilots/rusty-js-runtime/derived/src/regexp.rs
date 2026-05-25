@@ -650,7 +650,7 @@ fn byte_to_utf16(s: &str, byte_off: usize) -> usize {
 }
 
 pub fn regexp_exec(rt: &mut Runtime, this_id: ObjectRef, input: &str) -> Result<Value, RuntimeError> {
-    let (is_global, is_sticky, has_compiled) = {
+    let (is_global, is_sticky, has_indices, has_compiled) = {
         let o = rt.obj(this_id);
         let re = match &o.internal_kind {
             InternalKind::RegExp(r) => r,
@@ -659,7 +659,9 @@ pub fn regexp_exec(rt: &mut Runtime, this_id: ObjectRef, input: &str) -> Result<
         let is_sticky = re.flags.contains('y');
         // Both `g` and `y` honor lastIndex bookkeeping; only `y` anchors.
         let is_global = re.flags.contains('g') || is_sticky;
-        (is_global, is_sticky, re.compiled.is_some())
+        // RES-EXT 2: `d` flag enables .indices on the result (§22.2.7.2 step 31).
+        let has_indices = re.flags.contains('d');
+        (is_global, is_sticky, has_indices, re.compiled.is_some())
     };
     // ECMA-262 §22.2.7.2 RegExpBuiltinExec step 4: read lastIndex from
     // the JS property (user-settable) and ToLength-coerce. The coercion
@@ -756,20 +758,76 @@ pub fn regexp_exec(rt: &mut Runtime, this_id: ObjectRef, input: &str) -> Result<
             // are name → matched-substring (or undefined for non-
             // participating named groups). If the pattern has no named
             // groups, .groups is undefined.
-            match named {
-                Some(nlist) if !nlist.is_empty() => {
-                    let g_obj = rt.alloc_object_with_explicit_null_proto(Object::new_ordinary());
-                    for (name, idx) in nlist {
-                        let v = groups.get(idx).and_then(|g| g.clone())
-                            .map(|s| Value::String(Rc::new(s)))
-                            .unwrap_or(Value::Undefined);
-                        rt.object_set(g_obj, name, v);
+            let named_list = named.unwrap_or_default();
+            if !named_list.is_empty() {
+                let g_obj = rt.alloc_object_with_explicit_null_proto(Object::new_ordinary());
+                for (name, idx) in &named_list {
+                    let v = groups.get(*idx).and_then(|g| g.clone())
+                        .map(|s| Value::String(Rc::new(s)))
+                        .unwrap_or(Value::Undefined);
+                    rt.object_set(g_obj, name.clone(), v);
+                }
+                rt.object_set(arr, "groups".into(), Value::Object(g_obj));
+            } else {
+                rt.object_set(arr, "groups".into(), Value::Undefined);
+            }
+            // RES-EXT 2: build .indices when /d flag is set per
+            // ECMA-262 §22.2.7.7 MakeMatchIndicesArray. Each element is
+            // [start, end] in UTF-16 code units (or undefined for non-
+            // participating groups). Mirrors .groups by attaching a
+            // null-prototype .groups Object with name → [start,end] when
+            // there are named groups.
+            if has_indices {
+                // Re-acquire positions from the engine (we already had them
+                // implicitly via captures_at strings; capturing positions
+                // separately avoids changing the surrounding flow).
+                let positions = {
+                    let re = match &rt.obj(this_id).internal_kind {
+                        InternalKind::RegExp(r) => r,
+                        _ => unreachable!(),
+                    };
+                    let rx = re.compiled.as_ref().unwrap();
+                    rx.captures_positions_at(input, start)
+                };
+                let indices_arr = rt.alloc_object(Object::new_array());
+                if let Some((_, _, pos_caps)) = &positions {
+                    for (i, p) in pos_caps.iter().enumerate() {
+                        let v = match p {
+                            Some((s, e)) => {
+                                let pair = rt.alloc_object(Object::new_array());
+                                rt.object_set(pair, "0".into(), Value::Number(byte_to_utf16(input, *s) as f64));
+                                rt.object_set(pair, "1".into(), Value::Number(byte_to_utf16(input, *e) as f64));
+                                rt.object_set(pair, "length".into(), Value::Number(2.0));
+                                Value::Object(pair)
+                            }
+                            None => Value::Undefined,
+                        };
+                        rt.object_set(indices_arr, i.to_string(), v);
                     }
-                    rt.object_set(arr, "groups".into(), Value::Object(g_obj));
+                    rt.object_set(indices_arr, "length".into(),
+                        Value::Number(pos_caps.len() as f64));
+                    // .indices.groups mirrors .groups but with [start,end] pairs.
+                    if !named_list.is_empty() {
+                        let ig_obj = rt.alloc_object_with_explicit_null_proto(Object::new_ordinary());
+                        for (name, idx) in &named_list {
+                            let v = match pos_caps.get(*idx).and_then(|c| c.as_ref()) {
+                                Some((s, e)) => {
+                                    let pair = rt.alloc_object(Object::new_array());
+                                    rt.object_set(pair, "0".into(), Value::Number(byte_to_utf16(input, *s) as f64));
+                                    rt.object_set(pair, "1".into(), Value::Number(byte_to_utf16(input, *e) as f64));
+                                    rt.object_set(pair, "length".into(), Value::Number(2.0));
+                                    Value::Object(pair)
+                                }
+                                None => Value::Undefined,
+                            };
+                            rt.object_set(ig_obj, name.clone(), v);
+                        }
+                        rt.object_set(indices_arr, "groups".into(), Value::Object(ig_obj));
+                    } else {
+                        rt.object_set(indices_arr, "groups".into(), Value::Undefined);
+                    }
                 }
-                _ => {
-                    rt.object_set(arr, "groups".into(), Value::Undefined);
-                }
+                rt.object_set(arr, "indices".into(), Value::Object(indices_arr));
             }
             Ok(Value::Object(arr))
         }

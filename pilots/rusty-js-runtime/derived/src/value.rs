@@ -780,6 +780,26 @@ impl CompiledRegex {
             }),
         }
     }
+    /// RES-EXT 2: positions variant of captures_at. Returns
+    /// (match_byte_start, match_byte_end, Vec of per-group Option<(byte_start,
+    /// byte_end)>). Used to build the `.indices` Array on exec results when
+    /// the `d` flag is set, per ECMA-262 §22.2.7.7 MakeMatchIndicesArray.
+    pub fn captures_positions_at(&self, input: &str, start: usize)
+        -> Option<(usize, usize, Vec<Option<(usize, usize)>>)>
+    {
+        match self {
+            CompiledRegex::Rust(r) => r.captures_at(input, start).map(|caps| {
+                let m0 = caps.get(0).unwrap();
+                let groups: Vec<Option<(usize, usize)>> = (0..caps.len())
+                    .map(|i| caps.get(i).map(|m| (m.start(), m.end())))
+                    .collect();
+                (m0.start(), m0.end(), groups)
+            }),
+            CompiledRegex::Hand(h) => crate::regex_hand::find_at(h, input, start).map(|m| {
+                (m.start, m.end, m.captures.clone())
+            }),
+        }
+    }
     /// Iterate non-overlapping matches; each yields (byte_start, byte_end, matched_str).
     pub fn find_iter_owned(&self, input: &str) -> Vec<(usize, usize, String)> {
         match self {
