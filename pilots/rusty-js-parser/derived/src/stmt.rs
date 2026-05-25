@@ -249,6 +249,8 @@ impl<'src> Parser<'src> {
         loop {
             let d_start = self.lookahead_span().start;
             let target = self.parse_binding_target()?;
+            // LABNL-EXT 1: §13.3.1.1 — lexical decl cannot bind "let".
+            Self::check_no_let_bound_name(kind, &target)?;
             let init = if matches!(self.current_kind(), TokenKind::Punct(Punct::Assign)) {
                 self.bump()?;
                 Some(self.parse_assignment_expression()?)
@@ -357,6 +359,26 @@ impl<'src> Parser<'src> {
     /// a generator boundary per ECMA-262 §15.3 + §15.7).
     pub(crate) fn parse_function_body_g(&mut self, is_generator: Option<bool>) -> Result<Vec<Stmt>, ParseError> {
         self.parse_function_body_gs(is_generator, true)
+    }
+
+    /// LABNL-EXT 1: §13.3.1.1 — BoundNames of a LexicalDeclaration must
+    /// not contain "let". Universal (not strict-only). Walks the binding
+    /// pattern's leaf identifiers; throws on the first match. Var
+    /// declarations are exempt per spec.
+    pub(crate) fn check_no_let_bound_name(
+        kind: rusty_js_ast::VariableKind,
+        target: &rusty_js_ast::BindingPattern,
+    ) -> Result<(), ParseError> {
+        if matches!(kind, rusty_js_ast::VariableKind::Var) { return Ok(()); }
+        for id in target.collect_names() {
+            if id.name == "let" {
+                return Err(ParseError {
+                    span: id.span,
+                    message: "Lexical declaration may not bind the name 'let'".into(),
+                });
+            }
+        }
+        Ok(())
     }
 
     /// NSPS-EXT 1: IsSimpleParameterList per ECMA-262 §15.2.1.4. A param is
@@ -666,6 +688,8 @@ impl<'src> Parser<'src> {
             {
                 let pat_start = self.lookahead_span().start;
                 let target = self.parse_binding_target()?;
+                // LABNL-EXT 1: §13.3.1.1 lexical-decl-bound-name check.
+                Self::check_no_let_bound_name(kind, &target)?;
                 let pat_end = self.last_span_end();
                 if self.is_ident("in") || self.is_contextual_keyword("of") {
                     let is_of = self.is_contextual_keyword("of");
@@ -695,6 +719,7 @@ impl<'src> Parser<'src> {
                     self.bump()?;
                     let d_start = self.lookahead_span().start;
                     let dt = self.parse_binding_target()?;
+                    Self::check_no_let_bound_name(kind, &dt)?;
                     let di = if matches!(self.current_kind(), TokenKind::Punct(Punct::Assign)) {
                         self.bump()?;
                         Some(self.parse_assignment_expression()?)
@@ -730,6 +755,13 @@ impl<'src> Parser<'src> {
                         span: id_span,
                         message: format!(
                             "Binding identifier '{}' is not allowed in strict mode", n),
+                    });
+                }
+                // LABNL-EXT 1: §13.3.1.1 — lexical for-binding cannot be "let".
+                if !matches!(kind, VariableKind::Var) && n == "let" {
+                    return Err(ParseError {
+                        span: id_span,
+                        message: "Lexical declaration may not bind the name 'let'".into(),
                     });
                 }
                 self.bump()?;
