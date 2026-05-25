@@ -1271,6 +1271,20 @@ impl<'src> Parser<'src> {
                 return Err(self.err_here("expected arrow head".into()));
             };
         self.expect_punct(Punct::Arrow)?;
+        // PPAE-EXT 1: §15.2.1 Static Semantics:Early Errors — arrow
+        // function parameters cannot contain duplicate BindingIdentifier
+        // names (the arrow's body is treated as strict for this purpose).
+        // Collect simple-ident param names; if any duplicates, SyntaxError.
+        let mut seen: Vec<&str> = Vec::with_capacity(params.len());
+        for p in &params {
+            if let rusty_js_ast::BindingPattern::Identifier(id) = &p.target {
+                if seen.iter().any(|s| *s == id.name.as_str()) {
+                    return Err(self.err_at(id.span, format!(
+                        "arrow function has duplicate parameter name `{}`", id.name)));
+                }
+                seen.push(id.name.as_str());
+            }
+        }
         let body = if matches!(self.current_kind(), TokenKind::Punct(Punct::LBrace)) {
             ArrowBody::Block(self.parse_function_body()?)
         } else {

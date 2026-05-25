@@ -102,3 +102,31 @@ This is substantial substrate work, not the "smallest blast radius / pure additi
 | 3 | `pilots/host-method-prologue-discipline/` | #1 | ~150 | unprobed | queued |
 | (deferred) | `pilots/host-262-shim/` (realm-substrate) | #3 | ~38 | (createRealm = full realm subst.) | deferred |
 | ✅ closed | `pilots/iterator-close-on-abrupt/` | #4 | ~25 | 6 close-pure | +6 |
+
+---
+
+## EPSUA-EXT 2 — parser-permissiveness-audit-extensions (2026-05-25)
+
+**Sub-locale**: `pilots/parser-permissiveness-audit-extensions/` (PPAE-EXT 0+1; CLOSED).
+
+**Pre-scoping probe** (per strengthened EPSUA C4): sub-cluster sizes for constraint #5 — escaped-of:1, params-duplicate:2, head-bound-names:14, for-in-destr-head:7 (deferred). In-scope: 17 tests vs prospective ~50.
+
+**Edits**: ~70 LOC; 3 spec sites (§11.6.2 contextual unescaped, §15.2.1 arrow dup-params, §14.7.1.2 head-vs-body name conflict).
+
+**Cumulative-vs-projected**: 7 PASS vs 17 in-scope (41%); 0 regressions across 838 adjacent previously-passing. Cluster-projection ratio: 7/50 = 14%.
+
+**Finding EPSUA.4** (third constraint under-delivers): cumulative for EPSUA so far is 13 actual / ~113 projected = **12% of prospective amortization**. Pattern: matrix cell labels aggregate across distinct early-error sub-cases; the actionable scope per substrate fix is the per-filename sub-cluster, not the cell.
+
+**Implication for arc continuation**: Pred-epsua.4 (≥2 of 5 within projection) requires #2 OR #1 to deliver ≥80% of projection. The methodology pattern suggests they too will under-deliver on whole-cluster sizing but be precise on sub-cluster sizing.
+
+**Re-ordered queue** (post-PPAE):
+
+| Order | Sub-locale | Constraint | Prior projection | Status |
+|---:|---|---|---:|---|
+| 1 | `pilots/strict-mode-parser-tracking/` | #2 | ~80 (probe first) | next |
+| 2 | `pilots/host-method-prologue-discipline/` | #1 | ~150 (probe first) | queued |
+| (deferred) | `pilots/host-262-shim/` (realm-substrate) | #3 | (createRealm) | deferred |
+| (deferred) | `pilots/for-in-destr-head/` | #5-residual | ~7 | deferred |
+| (deferred) | `pilots/head-bound-names-{tdz,let,dup}/` | #5-residual | ~10 | deferred |
+| ✅ | `pilots/iterator-close-on-abrupt/` | #4 | ~25 | +6 |
+| ✅ | `pilots/parser-permissiveness-audit-extensions/` | #5 | ~50 | +7 |

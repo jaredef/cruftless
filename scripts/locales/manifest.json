@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 47,
-    "top_level": 36,
+    "locales": 48,
+    "top_level": 37,
     "nested": 11,
     "warnings": 0
   },
@@ -51,7 +51,7 @@
       "parent": null,
       "scope": "ecmascript-parity-shared-upstream-arc",
       "depth": 1,
-      "rung_count": 3,
+      "rung_count": 4,
       "status": "**WORKSTREAM FOUNDED (EPSUA-EXT 0)**. Successor arc to T262C's first ECMAScript-parity round. Carries the resume vector through the five shared-upstream substrates identified at T262C-EXT 2's prospective analysis. Each sub-locale closes one of the five named constraints."
     },
     {
@@ -116,6 +116,15 @@
       "depth": 1,
       "rung_count": 2,
       "status": "**WORKSTREAM FOUNDED (PPA-EXT 0)**. Multi-round parser-tier locale spawned per T262C matrix cluster #1 (45-test arrow-function-dstr escaped-keyword) + cluster #9 (24-test for-of decl-cls negative-syntax) + cluster #11 (22-test arrow-function params-duplicate). Substrate gap: cruft's parser is systematically permissive at \"no-ReservedWord\" sites where ECMA-262 requires SyntaxError."
+    },
+    {
+      "coord": "parser-permissiveness-audit-extensions",
+      "tag": "L.parser-permissiveness-audit-extensions",
+      "parent": null,
+      "scope": "parser-permissiveness-audit-extensions",
+      "depth": 1,
+      "rung_count": 1,
+      "status": "**CLOSED at PPAE-EXT 1**."
     },
     {
       "coord": "reference-error-on-unresolvable",

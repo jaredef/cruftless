@@ -1320,11 +1320,24 @@ impl Compiler {
                 }
             }
             Stmt::ForOf { left, right, body, await_, .. } => {
-                // Tier-Ω.5.cc: for-await-of lowers identically to for-of.
-                // The await on each iteration would suspend on the next-
-                // result's Promise; since await is no-op'd (Ω.5.x), the
-                // suspension is dropped. Iterator-protocol-with-async-
-                // iterators handling is queued for a substrate round.
+                // PPAE-EXT 1: §14.7.1.2 Static Semantics:Early Errors —
+                // BoundNames of ForDeclaration must not also occur in
+                // VarDeclaredNames of Statement. Reject at compile
+                // (surfaces as SyntaxError via eval's
+                // CompileError->SyntaxError mapping per PPA-EXT 1).
+                if let rusty_js_ast::ForBinding::Decl { kind, target, .. } = left {
+                    if matches!(kind, VariableKind::Let | VariableKind::Const) {
+                        let head_names: Vec<String> = target.collect_names().iter().map(|id| id.name.clone()).collect();
+                        let mut body_vars: Vec<(String, rusty_js_ast::VariableKind)> = Vec::new();
+                        collect_hoisted_var_names(body.as_ref(), &mut body_vars);
+                        for (vname, _) in &body_vars {
+                            if head_names.iter().any(|h| h == vname) {
+                                return Err(self.err(span, &format!(
+                                    "lexical binding `{}` in for-of head conflicts with `var {}` in body", vname, vname)));
+                            }
+                        }
+                    }
+                }
                 let _ = await_;
                 // Ω.5.P52.E4: scope the for-of binding (`for (const x of arr)`)
                 // to the for-statement, not the function. Snapshot + rename
@@ -1787,6 +1800,20 @@ impl Compiler {
                 for site in frame.break_patches { self.patch_jump_at(site); }
             }
             Stmt::ForIn { left, right, body, .. } => {
+                // PPAE-EXT 1: §14.7.1.2 Early Errors (same as for-of).
+                if let rusty_js_ast::ForBinding::Decl { kind, target, .. } = left {
+                    if matches!(kind, VariableKind::Let | VariableKind::Const) {
+                        let head_names: Vec<String> = target.collect_names().iter().map(|id| id.name.clone()).collect();
+                        let mut body_vars: Vec<(String, rusty_js_ast::VariableKind)> = Vec::new();
+                        collect_hoisted_var_names(body.as_ref(), &mut body_vars);
+                        for (vname, _) in &body_vars {
+                            if head_names.iter().any(|h| h == vname) {
+                                return Err(self.err(span, &format!(
+                                    "lexical binding `{}` in for-in head conflicts with `var {}` in body", vname, vname)));
+                            }
+                        }
+                    }
+                }
                 // Tier-Ω.5.m: for-in lowering. Spec deviations:
                 //  - Own enumerable string keys only (no proto-chain walk).
                 //  - No Symbol-key exclusion (we don't ship real Symbols).

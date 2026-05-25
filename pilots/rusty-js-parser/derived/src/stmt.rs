@@ -585,8 +585,8 @@ impl<'src> Parser<'src> {
                 let pat_start = self.lookahead_span().start;
                 let target = self.parse_binding_target()?;
                 let pat_end = self.last_span_end();
-                if self.is_ident("in") || self.is_ident("of") {
-                    let is_of = self.is_ident("of");
+                if self.is_ident("in") || self.is_contextual_keyword("of") {
+                    let is_of = self.is_contextual_keyword("of");
                     self.bump()?;
                     let right = self.parse_expression()?;
                     self.expect_punct(Punct::RParen)?;
@@ -641,8 +641,8 @@ impl<'src> Parser<'src> {
                 let id_span = self.lookahead_span();
                 self.bump()?;
                 // for-in / for-of head
-                if self.is_ident("in") || self.is_ident("of") {
-                    let is_of = self.is_ident("of");
+                if self.is_ident("in") || self.is_contextual_keyword("of") {
+                    let is_of = self.is_contextual_keyword("of");
                     self.bump()?;
                     let right = self.parse_expression()?;
                     self.expect_punct(Punct::RParen)?;
@@ -741,8 +741,8 @@ impl<'src> Parser<'src> {
                 // (already handled by head_is_var) or `await`.
                 if !matches!(n.as_str(), "var" | "let" | "const" | "function" | "class") {
                     self.bump()?;
-                    if self.is_ident("in") || self.is_ident("of") {
-                        let is_of = self.is_ident("of");
+                    if self.is_ident("in") || self.is_contextual_keyword("of") {
+                        let is_of = self.is_contextual_keyword("of");
                         self.bump()?;
                         let right = self.parse_expression()?;
                         self.expect_punct(Punct::RParen)?;
@@ -768,8 +768,8 @@ impl<'src> Parser<'src> {
         if !head_is_empty && !matches!(self.current_kind(), TokenKind::Punct(Punct::Semicolon)) {
             let e = self.parse_expression()?;
             // Check for `in`/`of` after a LeftHandSideExpression head.
-            if self.is_ident("in") || self.is_ident("of") {
-                let is_of = self.is_ident("of");
+            if self.is_ident("in") || self.is_contextual_keyword("of") {
+                let is_of = self.is_contextual_keyword("of");
                 self.bump()?;
                 let right = self.parse_expression()?;
                 self.expect_punct(Punct::RParen)?;

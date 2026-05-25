@@ -714,6 +714,21 @@ impl<'src> Parser<'src> {
         matches!(&self.lookahead.kind, TokenKind::Ident(n) if n == name)
     }
 
+    /// PPAE-EXT 1: contextual-keyword detection that ALSO requires the
+    /// source span to be the exact unescaped form. Per ECMA-262 §11.6.2,
+    /// contextual keywords (`of`, `as`, `from`, `async`, `let`-in-some-
+    /// contexts, etc.) must NOT contain escape sequences. cruft's
+    /// lookahead.kind decodes escapes into the same string as the plain
+    /// form, so a span-length check disambiguates.
+    pub(crate) fn is_contextual_keyword(&self, name: &str) -> bool {
+        if !matches!(&self.lookahead.kind, TokenKind::Ident(n) if n == name) {
+            return false;
+        }
+        let sp = self.lookahead.span;
+        let raw = &self.source()[sp.start..sp.end];
+        raw == name
+    }
+
     pub(crate) fn expect_punct(&mut self, p: Punct) -> Result<(), ParseError> {
         if self.is_punct(p) { self.bump_regexp()?; Ok(()) }
         else { Err(self.err_here(format!("expected `{:?}`", p))) }
@@ -950,7 +965,7 @@ impl<'src> Parser<'src> {
         ParseError { span: self.lookahead.span, message }
     }
 
-    fn err_at(&self, span: Span, message: String) -> ParseError {
+    pub(crate) fn err_at(&self, span: Span, message: String) -> ParseError {
         ParseError { span, message }
     }
 }
