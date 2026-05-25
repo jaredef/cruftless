@@ -964,6 +964,14 @@ impl Runtime {
     }
 
     /// CreateDataPropertyOrThrow per ECMA §7.3.6.
+    /// ACDPD-EXT 1: spec calls [[DefineOwnProperty]] with the default
+    /// data-property descriptor `{value, writable:true, enumerable:true,
+    /// configurable:true}`, which OVERRIDES any pre-existing descriptor.
+    /// Cruft's prior implementation called `object_set` which preserves
+    /// the existing descriptor's writable flag, breaking Array.prototype
+    /// methods that populate a custom-species output array with
+    /// non-writable properties. The fix routes through `insert_str` with
+    /// the spec-default descriptor.
     pub fn create_data_property_or_throw(
         &mut self,
         v: &Value,
@@ -975,9 +983,28 @@ impl Runtime {
             _ => return Err(RuntimeError::TypeError(
                 "CreateDataPropertyOrThrow: receiver must be an Object".into())),
         };
-        self.object_set(id, key.to_string(), val);
-        // On Array receivers, ensure length covers the new index per
-        // §10.4.2.4 ArraySetLength.
+        // Non-extensible target where key doesn't already exist → throw.
+        if !self.obj(id).has_own_str(key) && !self.obj(id).extensible {
+            return Err(RuntimeError::TypeError(format!(
+                "CreateDataPropertyOrThrow: cannot add property '{}': object is not extensible", key)));
+        }
+        // Non-configurable existing property → throw (spec
+        // ValidateAndApplyPropertyDescriptor returns false → throw).
+        if let Some(d) = self.obj(id).get_own(key) {
+            if !d.configurable {
+                return Err(RuntimeError::TypeError(format!(
+                    "CreateDataPropertyOrThrow: cannot redefine non-configurable property '{}'", key)));
+            }
+        }
+        let desc = crate::value::PropertyDescriptor {
+            value: val,
+            writable: true,
+            enumerable: true,
+            configurable: true,
+            getter: None,
+            setter: None,
+        };
+        self.obj_mut(id).insert_str(key.to_string(), desc);
         self.bump_array_length_if_needed(id, key);
         Ok(())
     }
@@ -3946,20 +3973,16 @@ impl Runtime {
         let clamp = |i: i64, l: i64| if i < 0 { (l + i).max(0) } else { i.min(l) };
         let start = clamp(start_arg, len);
         let end = clamp(end_arg, len);
-        // ASCD-EXT 1 carve-out: slice's ArraySpeciesCreate routing reverted —
-        // when species returns a pre-populated array with non-writable
-        // properties, the per-element write must use CreateDataPropertyOrThrow
-        // which overrides the descriptor (§23.1.3.28 step 10.c.ii). Cruft's
-        // object_set respects writable, so wiring slice through species
-        // regresses target-array-with-non-writable-property tests. Plain
-        // alloc preserved; species-wiring deferred to a sibling sub-locale
-        // that also fixes the per-element define path.
-        let out = self.alloc_object(crate::value::Object::new_array());
+        // ACDPD-EXT 1: lift the ASCD-EXT 1 carve-out. Per §23.1.3.28
+        // step 5 + step 10.c.ii: species + per-element CreateDataProperty.
+        let count = (end - start).max(0) as usize;
+        let out_v = self.array_species_create(&Value::Object(id), count)?;
+        let out = match out_v { Value::Object(oid) => oid, _ => unreachable!() };
         let mut j: i64 = 0;
         let mut i = start;
         while i < end {
             let v = self.object_get(id, &i.to_string());
-            self.object_set(out, j.to_string(), v);
+            self.create_data_property_or_throw(&Value::Object(out), &j.to_string(), v)?;
             j += 1;
             i += 1;
         }
@@ -3982,13 +4005,13 @@ impl Runtime {
             Some(v) => (self.coerce_to_number(&v)? as i64).max(0).min(len - start),
         };
         let items: Vec<Value> = args.iter().skip(2).cloned().collect();
-        // ASCD-EXT 1 carve-out (see slice): splice species-wiring deferred
-        // to a sibling sub-locale that also fixes the per-element define
-        // path. Plain alloc preserved.
-        let removed = self.alloc_object(crate::value::Object::new_array());
+        // ACDPD-EXT 1: lift the ASCD-EXT 1 carve-out per §23.1.3.32 step 9
+        // + step 13.b: species + per-element CreateDataProperty.
+        let removed_v = self.array_species_create(&Value::Object(id), delete_count as usize)?;
+        let removed = match removed_v { Value::Object(rid) => rid, _ => unreachable!() };
         for j in 0..delete_count {
             let v = self.object_get(id, &(start + j).to_string());
-            self.object_set(removed, j.to_string(), v);
+            self.create_data_property_or_throw(&Value::Object(removed), &j.to_string(), v)?;
         }
         self.object_set(removed, "length".into(), Value::Number(delete_count as f64));
         let new_len = len - delete_count + items.len() as i64;
