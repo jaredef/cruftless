@@ -30,13 +30,21 @@ pub struct Parser<'src> {
     lx: Lexer<'src>,
     /// One-token lookahead, replenished by `bump`.
     lookahead: Token,
+    /// SMPT-EXT 1: depth into function bodies. 0 = script/module top-level.
+    /// Used by the yield-expression branch in expression parsing to decide
+    /// whether `yield` is a YieldExpression (only valid inside a generator,
+    /// which can only appear inside a function) or an IdentifierReference
+    /// (the only valid reading at script top-level in sloppy mode).
+    /// Per ECMA-262 §13.2: yield is a Keyword only inside generator function
+    /// bodies + strict-mode code. Outside both, `yield` is IdentifierName.
+    pub(crate) function_body_depth: u32,
 }
 
 impl<'src> Parser<'src> {
     pub fn new(src: &'src str) -> Result<Self, ParseError> {
         let mut lx = Lexer::new(src);
         let lookahead = lx.next_token(LexerGoal::RegExp).map_err(lex_to_parse)?;
-        Ok(Self { src, lx, lookahead })
+        Ok(Self { src, lx, lookahead, function_body_depth: 0 })
     }
 
     pub fn parse_module(&mut self) -> Result<Module, ParseError> {

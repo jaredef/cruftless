@@ -317,11 +317,14 @@ impl<'src> Parser<'src> {
 
     pub(crate) fn parse_function_body(&mut self) -> Result<Vec<Stmt>, ParseError> {
         self.expect_punct(Punct::LBrace)?;
+        // SMPT-EXT 1: track function-body depth for yield-context disambiguation.
+        self.function_body_depth += 1;
         let mut out = Vec::new();
         while !matches!(self.current_kind(), TokenKind::Punct(Punct::RBrace)) && !self.at_eof_internal() {
             out.push(self.parse_statement()?);
         }
         self.expect_punct(Punct::RBrace)?;
+        self.function_body_depth = self.function_body_depth.saturating_sub(1);
         Ok(out)
     }
 

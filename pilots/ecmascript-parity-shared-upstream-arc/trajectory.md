@@ -130,3 +130,32 @@ This is substantial substrate work, not the "smallest blast radius / pure additi
 | (deferred) | `pilots/head-bound-names-{tdz,let,dup}/` | #5-residual | ~10 | deferred |
 | ✅ | `pilots/iterator-close-on-abrupt/` | #4 | ~25 | +6 |
 | ✅ | `pilots/parser-permissiveness-audit-extensions/` | #5 | ~50 | +7 |
+
+---
+
+## EPSUA-EXT 3 — strict-mode-parser-tracking (2026-05-25)
+
+**Sub-locale**: `pilots/strict-mode-parser-tracking/` (SMPT-EXT 0+1; CLOSED, partial).
+
+**Pre-scoping**: prospective ~80 → in-scope ~12 (top-level yield-as-identifier; deferred function-body strict + generator tracking + onlyStrict yield-as-reserved).
+
+**Edits**: ~20 LOC (Parser state + function_body_depth counter + yield-branch guard).
+
+**Cumulative-vs-projected**: 8 PASS vs 12 in-scope (67%); 0 regressions. Cluster-projection ratio: 8/80 = 10%.
+
+**Finding EPSUA.5**: cumulative EPSUA across 3 constraint sub-locales = 21 PASS / ~163 prospective = **13% of amortization**. The pattern is consistent: matrix cell labels uniformly aggregate across distinct sub-cases, and the prospective doc's projections were based on whole-cluster sizes. **Pred-epsua.4 (≥2 sub-locales within projection) is falsified across constraints #4, #5, #2.**
+
+**Implication for Finding T262C.4 promotion**: the shared-upstream vs mutually-exclusive discrimination *is* correctly empirically demonstrated (all 3 closed constraints WERE single substrate fixes that cascaded across multiple clusters). What was wrong was the *scale* of the per-cascade prediction. The discriminator promotes to corpus per Pred-epsua.6 (≥2 corroborated), with a Finding-T262C.4-refinement: cascade SIZE must be projected per-sub-cluster, not per-matrix-cell.
+
+**Updated arc state**:
+| Constraint | Cluster Projection | In-Scope Sub-cluster | Actual | Status |
+|---|---:|---:|---:|---|
+| #4 (ICOA) | ~25 | ~25 | +6 | CLOSED 24% |
+| #5 (PPAE) | ~50 | ~17 | +7 | CLOSED 41% (in-scope) |
+| #2 (SMPT) | ~80 | ~12 | +8 | CLOSED 67% (in-scope) |
+| #3 ($262/createRealm) | ~38 | — | — | deferred |
+| #1 (host-method prologue) | ~150 | (probe needed) | — | next |
+
+Note: in-scope-sub-cluster ratios are improving (#4 24%, #5 41%, #2 67%) as pre-scoping discipline tightens.
+
+Next: constraint #1 with mandatory per-sub-cluster pre-scoping probe.

@@ -238,12 +238,13 @@ impl<'src> Parser<'src> {
                 let span = Span::new(start, arg.span().end);
                 Ok(Expr::Unary { operator: UnaryOp::Delete, argument: Box::new(arg), span })
             }
-            TokenKind::Ident(s) if s == "yield" => {
-                // Tier-Ω.5.gggggg: yield / yield* as unary operators.
-                // Naive: accept anywhere (not gated on generator context).
-                // The compiler emits Op::Yield only when inside an
-                // is_generator function body; outside it would compile to
-                // a no-op-with-undefined-result via the same lowering.
+            TokenKind::Ident(s) if s == "yield" && self.function_body_depth > 0 => {
+                // SMPT-EXT 1: only parse `yield` as YieldExpression when
+                // inside a function body. At script/module top-level
+                // (depth == 0), `yield` is IdentifierReference per spec
+                // §13.2 (Keyword only inside generator + strict). The
+                // identifier-fallthrough below handles depth==0 by
+                // dispatching the default Ident handler.
                 self.bump()?;
                 let delegate = matches!(self.current_kind(), TokenKind::Punct(Punct::Star));
                 if delegate { self.bump()?; }
@@ -1285,10 +1286,16 @@ impl<'src> Parser<'src> {
                 seen.push(id.name.as_str());
             }
         }
+        // SMPT-EXT 1: arrow expression body is also a function context per
+        // spec; bump depth around expression-body parse too (parse_function_body
+        // handles the block-body case itself).
         let body = if matches!(self.current_kind(), TokenKind::Punct(Punct::LBrace)) {
             ArrowBody::Block(self.parse_function_body()?)
         } else {
-            ArrowBody::Expression(Box::new(self.parse_assignment_expression()?))
+            self.function_body_depth += 1;
+            let e = self.parse_assignment_expression()?;
+            self.function_body_depth = self.function_body_depth.saturating_sub(1);
+            ArrowBody::Expression(Box::new(e))
         };
         let end = self.last_span_end();
         Ok(Expr::Arrow { is_async, params, body, span: Span::new(start, end) })
