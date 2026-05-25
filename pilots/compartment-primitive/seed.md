@@ -9,8 +9,8 @@
 **Author**: 2026-05-25 session.
 **Parent**: none (top-level).
 **Composes with**:
-- [Doc 736 capability-passing-runtime](../../docs/736-the-architecturally-impossible-supply-chain-attack-capability-passing-closed-import-graphs-and-load-time-integrity-as-the-design-that-removes-ambient-authority.md) — Compartments are the JS-API expression of this discipline
-- [docs/prospective/compartments-as-primitive.md](../../docs/prospective/compartments-as-primitive.md) — strategic analysis informing this locale
+- [Doc 736 capability-passing-runtime](../../docs/corpus-ref/736-the-architecturally-impossible-supply-chain-attack-capability-passing-closed-import-graphs-and-load-time-integrity-as-the-design-that-removes-ambient-authority.md) — Compartments are the JS-API expression of this discipline
+- [docs/engagement/prospective/compartments-as-primitive.md](../../docs/engagement/prospective/compartments-as-primitive.md) — strategic analysis informing this locale
 - [realm-substrate locale](../realm-substrate/) — RS-EXT 2 minimum-realm substrate is the load-bearing dependency
 - [rusty-js-caps pilot](../rusty-js-caps/) — capability-handle pattern; endowments wire into this
 - TC39 proposal: https://github.com/tc39/proposal-compartments

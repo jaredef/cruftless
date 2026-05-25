@@ -80,7 +80,7 @@ Standing-rule-13 corroborations: 13. Inspect-then-iterate: 14 (this round counte
 
 ## T262C-EXT 2 — post-arc chapter close (2026-05-25)
 
-**Trigger**: completion of the first ECMAScript-parity-arc round through six sub-locales (FODAS, PPA-EXT 1, REOU, VHTB, IPEP, AEVPD, SDIBP, ASD) producing +297 PASS / 0 regressions / runnable rate 77.6% → 80.6%. Keeper directive to "discern if [clusters] are mutually exclusive from upstream IR implementation or if share constraints that are induced properties from other upstream constraints" produced the [prospective long-tail analysis doc](../../docs/prospective/test262-long-tail-shared-vs-mutually-exclusive.md).
+**Trigger**: completion of the first ECMAScript-parity-arc round through six sub-locales (FODAS, PPA-EXT 1, REOU, VHTB, IPEP, AEVPD, SDIBP, ASD) producing +297 PASS / 0 regressions / runnable rate 77.6% → 80.6%. Keeper directive to "discern if [clusters] are mutually exclusive from upstream IR implementation or if share constraints that are induced properties from other upstream constraints" produced the [prospective long-tail analysis doc](../../docs/engagement/prospective/test262-long-tail-shared-vs-mutually-exclusive.md).
 
 ### Arc-tier results booked at T262C-EXT 2
 

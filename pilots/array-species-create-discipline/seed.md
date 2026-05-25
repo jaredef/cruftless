@@ -13,8 +13,8 @@
 **Composes with**:
 - ECMA-262 §7.3.21 ArraySpeciesCreate; §7.3.23 ArrayCreate; §10.4.2 Array exotic
 - [EPSUA-EXT 4 chapter close](../ecmascript-parity-shared-upstream-arc/trajectory.md) — Finding EPSUA.6 refinement of T262C.4 discriminator
-- [docs/prospective/test262-long-tail-shared-vs-mutually-exclusive.md](../../docs/prospective/test262-long-tail-shared-vs-mutually-exclusive.md) — constraint #1 surface
-- [Doc 740](../../docs/740-multi-tier-cascade-revival-when-the-hot-path-traverses-multiple-tiers-closing-one-tier-alone-is-insufficient.md) — multi-tier closure default
+- [docs/engagement/prospective/test262-long-tail-shared-vs-mutually-exclusive.md](../../docs/engagement/prospective/test262-long-tail-shared-vs-mutually-exclusive.md) — constraint #1 surface
+- [Doc 740](../../docs/corpus-ref/740-multi-tier-cascade-revival-when-the-hot-path-traverses-multiple-tiers-closing-one-tier-alone-is-insufficient.md) — multi-tier closure default
 
 ## I. Telos
 

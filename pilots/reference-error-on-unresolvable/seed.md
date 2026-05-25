@@ -13,8 +13,8 @@
 - ECMA-262 §6.2.4.5 GetValue + §9.1.1.4.4 GetBindingValue (read throws on unresolvable)
 - §13.5.3 step 3.b.iii (typeof special-case: returns "undefined", does not throw)
 - §13.5.1.2 (delete of unresolvable: returns true in sloppy mode)
-- [Doc 740](../../docs/740-multi-tier-cascade-revival-when-the-hot-path-traverses-multiple-tiers-closing-one-tier-alone-is-insufficient.md) (P4) multi-tier closure
-- [Doc 742](../../docs/742-the-resolver-instance-pattern-at-full-strength-downstream-dispatch-and-upstream-elision-as-doc-729s-empirical-refinements-from-a-typescript-parity-research-arc.md) §V upstream-elision at runtime-tier
+- [Doc 740](../../docs/corpus-ref/740-multi-tier-cascade-revival-when-the-hot-path-traverses-multiple-tiers-closing-one-tier-alone-is-insufficient.md) (P4) multi-tier closure
+- [Doc 742](../../docs/corpus-ref/742-the-resolver-instance-pattern-at-full-strength-downstream-dispatch-and-upstream-elision-as-doc-729s-empirical-refinements-from-a-typescript-parity-research-arc.md) §V upstream-elision at runtime-tier
 - [FODAS trajectory](../for-of-destructuring-assignment-semantics/trajectory.md) Finding FODAS.2 (combined multi-tier closure pattern)
 - [PPA-EXT 1 trajectory](../parser-permissiveness-audit/trajectory.md) Finding PPA.1 (eval CompileError→SyntaxError cascade exemplar)
 

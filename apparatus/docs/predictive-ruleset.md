@@ -148,7 +148,7 @@ The ruleset compounds: rules higher-numbered build on prior rules + their predic
 
 **Predicts**: substrate-class abandonment after a single negative result misses the cumulative-materialization opportunity at the deeper layer. The opposite — applying rule 13 prospectively (designing from the deeper layer first when conditions hold) — produces ≤3-round closures per the prospective-application thesis.
 
-**Evidence**: IHI-EXT 7→11 trajectory (Addendum IX); subsequent prospective corroborations at GPI, IPBR, TRGC, TRMLE, TROI (cf. `docs/standing-rule-13-prospective-application.md`). **12 prospective-application corroborations as of 2026-05-24**.
+**Evidence**: IHI-EXT 7→11 trajectory (Addendum IX); subsequent prospective corroborations at GPI, IPBR, TRGC, TRMLE, TROI (cf. `apparatus/docs/standing-rule-13-prospective-application.md`). **12 prospective-application corroborations as of 2026-05-24**.
 
 ---
 
@@ -186,8 +186,8 @@ The ruleset is supported by standing instruments that rules 5, 10, 11, 14, 15 ex
 | TXC execute-parity corpus | `pilots/ts-execute-corpus/` | Rules 14, 15 (TS-tier) |
 | diff-prod | `scripts/diff-prod/` | Cross-cutting correctness gate (all rules) |
 | test262 sample | `scripts/test262-sample/` | Cross-cutting correctness gate |
-| Locale manifest | `scripts/locales/manifest.json` | Rule 11 spawn-discipline anchor |
-| Locale candidates queue | `scripts/locales/CANDIDATES.md` | Rule 15 prioritization anchor |
+| Locale manifest | `apparatus/locales/manifest.json` | Rule 11 spawn-discipline anchor |
+| Locale candidates queue | `apparatus/locales/CANDIDATES.md` | Rule 15 prioritization anchor |
 
 ---
 
@@ -211,7 +211,7 @@ Rules 14-15   substrate-heuristic discipline (TS-parity arc surfaced)
 
 Rules at higher levels compose with prior rules:
 - Rule 5 + Rule 10 — three-probe-levels at default-on; canonical fuzz is the standing instrument for the fuzz probe level.
-- Rule 11 + Rule 13 — A1 (component A/B) identifies the dominator; rule 13's prospective application designs the closure from the deeper layer first when C1-C4 hold (see `docs/standing-rule-13-prospective-application.md`).
+- Rule 11 + Rule 13 — A1 (component A/B) identifies the dominator; rule 13's prospective application designs the closure from the deeper layer first when C1-C4 hold (see `apparatus/docs/standing-rule-13-prospective-application.md`).
 - Rule 14 + Rule 15 — conservative-strip + chapter-close-inspect together produce the inspect-then-iterate compound-discovery pattern that Doc 541 Appendix E identifies as a SIPE-T instance.
 
 ---

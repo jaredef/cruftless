@@ -9,7 +9,7 @@
 **Workstream**: build a categorization apparatus over `scripts/test262-sample/`'s per-test failure outputs that indexes failing tests by TWO orthogonal coordinates:
 
 - **Structure axis** (per Doc 720 static pipeline DAG): which pipeline / static-DAG-edge does the failing test exercise at the divergence point?
-- **Data axis** (per the [keeper-named missing coordinate](../../docs/repository-apparatus.md) — input-conditioned realized-trace projection over Doc 720's static topology): what was the input value-shape at the divergence point?
+- **Data axis** (per the [keeper-named missing coordinate](../../apparatus/docs/repository-apparatus.md) — input-conditioned realized-trace projection over Doc 720's static topology): what was the input value-shape at the divergence point?
 
 The resulting failure-frequency table is indexed by `(pipeline-edge × data-shape)` pairs. Cells in this matrix become substrate-fix targets; closing a cell removes a coordinate from the realized-trace divergence distribution. The matrix is the empirical anchor for the ECMAScript-parity arc's prioritization.
 
@@ -17,9 +17,9 @@ The resulting failure-frequency table is indexed by `(pipeline-edge × data-shap
 **Parent**: none (top-level).
 **Siblings**: TCC, TXC (the engagement's other instrument-tier locales).
 **Composes with**:
-- [Doc 720](../../docs/720-the-rusty-bun-runtime-as-a-dag-of-interconnected-pipelines-sipe-t-topology-over-the-engine-substrate.md) — static pipeline DAG (the structure axis)
-- [Doc 728](../../docs/728-tag-on-the-dag-sequential-index-collision-as-protocol-signal-that-the-substrate-has-become-the-coordinate-system.md) — the precedent for "the substrate has an axis the representation doesn't"
-- [Doc 729 + 742](../../docs/742-the-resolver-instance-pattern-at-full-strength-downstream-dispatch-and-upstream-elision-as-doc-729s-empirical-refinements-from-a-typescript-parity-research-arc.md) — resolver-instance boundary contract; the structure-axis fixes route per (O1/O2/O3)
+- [Doc 720](../../docs/corpus-ref/720-the-rusty-bun-runtime-as-a-dag-of-interconnected-pipelines-sipe-t-topology-over-the-engine-substrate.md) — static pipeline DAG (the structure axis)
+- [Doc 728](../../docs/corpus-ref/728-tag-on-the-dag-sequential-index-collision-as-protocol-signal-that-the-substrate-has-become-the-coordinate-system.md) — the precedent for "the substrate has an axis the representation doesn't"
+- [Doc 729 + 742](../../docs/corpus-ref/742-the-resolver-instance-pattern-at-full-strength-downstream-dispatch-and-upstream-elision-as-doc-729s-empirical-refinements-from-a-typescript-parity-research-arc.md) — resolver-instance boundary contract; the structure-axis fixes route per (O1/O2/O3)
 - [Finding TSR.1 (TS-parity arc)](../ts-resolve/trajectory.md) — the empirical null on IPBR shape-witness; retrodiction by the data-axis framing (the witness was structure-axis; cost lives on data-axis)
 - [Finding IX.8](../rusty-js-jit/findings.md) — SIPE-T scale-invariance; each failing test is a full-size SIPE instance
 - Standing instrument `scripts/test262-sample/run-sample.sh` (existing) — produces per-test PASS/FAIL/SKIP outputs the categorizer consumes

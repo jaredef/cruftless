@@ -12,8 +12,8 @@
 **Parent**: none (top-level).
 **Siblings**: `ts-resolve/`, `ts-consumer-corpus/` (parse-parity instrument; this locale's structural twin at the execute tier).
 **Composes with**:
-- [Doc 729](../../docs/729-cruftless-a-primary-articulation-of-the-resolver-instance-pattern-as-the-comprehensive-design-toward-which-rusty-bun-morphs.md) — resolver-instance pattern; behavioral-erasure parity (B) is the load-bearing definition for the TS resolver tier
-- [docs/standing-rule-13-prospective-application.md](../../docs/standing-rule-13-prospective-application.md) — sixth prospective application; expected ≤3 implementation rounds
+- [Doc 729](../../docs/corpus-ref/729-cruftless-a-primary-articulation-of-the-resolver-instance-pattern-as-the-comprehensive-design-toward-which-rusty-bun-morphs.md) — resolver-instance pattern; behavioral-erasure parity (B) is the load-bearing definition for the TS resolver tier
+- [apparatus/docs/standing-rule-13-prospective-application.md](../../apparatus/docs/standing-rule-13-prospective-application.md) — sixth prospective application; expected ≤3 implementation rounds
 - [TCC seed + trajectory](../ts-consumer-corpus/) — structural precedent; this locale's MVP mirrors TCC's install + harness + table pattern
 - [TRGC chapter close (95.2% parse-parity)](../ts-resolve-generics-calls/trajectory.md) — the substrate this locale measures execute-parity over
 
@@ -49,7 +49,7 @@ C4. Categorization is structural (matches/diverges/fails) not
     semantic — divergence diagnosis is per-file inspection work.
 C5. The harness runs the full corpus in <300s on aarch64 release
     build (5× TCC's budget since each file invokes two interpreters).
-C6. Per docs/standing-rule-13-prospective-application.md §3:
+C6. Per apparatus/docs/standing-rule-13-prospective-application.md §3:
     sibling-anchor (TCC), shape-compat (same fixtures + manifest),
     cost-positive (instrument LOC ≤300), bail-safe (per-file
     isolation; no cross-contamination).
@@ -69,7 +69,7 @@ C7. C5 from TCC: this locale produces NO direct improvement to TSR.
 
 **Pred-txc.4**: comparison of TCC's parse-parity baseline (95.2%) vs TXC's execute-parity baseline answers the **research question of the session**: how much of "full parity" is parse-tier vs execute-tier? A small gap (e.g., 95.2% → 92%) means TSR's stripping ALREADY achieves close-to-full behavioral parity. A large gap (e.g., 95.2% → 30%) means runtime-bearing constructs dominate the parity surface — sub-locales for enums + ctor-shorthand + decorators are high-priority. Either result is high-information.
 
-**Pred-txc.5 (DISCIPLINE FALSIFIER per docs/standing-rule-13-prospective-application.md §5)**: closes in ≤3 implementation rounds.
+**Pred-txc.5 (DISCIPLINE FALSIFIER per apparatus/docs/standing-rule-13-prospective-application.md §5)**: closes in ≤3 implementation rounds.
 
 ## II. Apparatus
 

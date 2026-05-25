@@ -19,10 +19,10 @@
 - `rusty-js-jit/` — JIT tier (downstream consumer; profile-vs-annotation probe target)
 - `interp-hot-intrinsics/`, `interp-getprop-ic/`, `iter-protocol-bytecode-rewrite/` — IC layers (downstream consumers)
 **Composes with**:
-- [Doc 729](../../docs/729-cruftless-a-primary-articulation-of-the-resolver-instance-pattern-as-the-comprehensive-design-toward-which-rusty-bun-morphs.md) — resolver-instance pattern; this locale adds a parallel source-language resolver feeding the same IR
-- [Doc 730](../../docs/730-the-vertical-recurrence-of-the-lowering-compiler-closure-as-primitive-across-substrate-tiers.md) — lowering-compiler tier recurrence; TS-to-IR is one more recurrence
-- [Doc 731](../../docs/731-the-jit-as-a-lowering-compiler-tier-alphabet-purity-upstream-as-the-bound-on-jit-complexity.md) — alphabet purity upstream as bound on JIT complexity; erased TS annotations may **narrow the alphabet**, lowering JIT cost
-- [docs/standing-rule-13-prospective-application.md](../../docs/standing-rule-13-prospective-application.md) — discipline anchor; TSR is the third prospective test of the thesis
+- [Doc 729](../../docs/corpus-ref/729-cruftless-a-primary-articulation-of-the-resolver-instance-pattern-as-the-comprehensive-design-toward-which-rusty-bun-morphs.md) — resolver-instance pattern; this locale adds a parallel source-language resolver feeding the same IR
+- [Doc 730](../../docs/corpus-ref/730-the-vertical-recurrence-of-the-lowering-compiler-closure-as-primitive-across-substrate-tiers.md) — lowering-compiler tier recurrence; TS-to-IR is one more recurrence
+- [Doc 731](../../docs/corpus-ref/731-the-jit-as-a-lowering-compiler-tier-alphabet-purity-upstream-as-the-bound-on-jit-complexity.md) — alphabet purity upstream as bound on JIT complexity; erased TS annotations may **narrow the alphabet**, lowering JIT cost
+- [apparatus/docs/standing-rule-13-prospective-application.md](../../apparatus/docs/standing-rule-13-prospective-application.md) — discipline anchor; TSR is the third prospective test of the thesis
 - Planned sibling: `pilots/cruftscript-spec/` (not yet spawned) — sound-typed sibling language; TSR data informs the design
 
 ## I. Telos
@@ -73,7 +73,7 @@ C6. Rule 11 5-axis pre-spawn check:
     (A3) value-domain coverage: same as .js (erasure)
     (A4) locals-marshaling: same as .js
     (A5) emission-shape coverage: same as .js post-erasure
-C7. Per docs/standing-rule-13-prospective-application.md §3 conditions:
+C7. Per apparatus/docs/standing-rule-13-prospective-application.md §3 conditions:
     (C1.sibling-anchor) rusty-js-parser is the empirical anchor for
                         the "source-language → AST/IR" closure shape
     (C2.shape-compat)  TS parser output reuses rusty_js_ast types
@@ -94,7 +94,7 @@ C7. Per docs/standing-rule-13-prospective-application.md §3 conditions:
 
 **Pred-tsr.5** (the load-bearing research falsifier): on a benchmark fixture set written in both .ts (annotated) and .js (equivalent), the bytecode emitted is **identical at the IR level** modulo type-only constructs (enum lowering being the main expected difference). Falsifier: TS annotations are introducing IR shape that doesn't appear in JS equivalents — would indicate impurity in the resolver-instance design.
 
-**Pred-tsr.6 (DISCIPLINE FALSIFIER per docs/standing-rule-13-prospective-application.md §5)**: locale closes in ≤6 implementation rounds. (Higher than GPI's/IPBR's ≤3 because the surface area is genuinely larger; TS has ~50 syntactic forms beyond JS. If it takes >6 rounds, the standing-rule-13 thesis remains intact — the discipline scales with surface-area complexity — but C1-C4's predictive power weakens at larger surfaces; revise as Finding TSR.X.)
+**Pred-tsr.6 (DISCIPLINE FALSIFIER per apparatus/docs/standing-rule-13-prospective-application.md §5)**: locale closes in ≤6 implementation rounds. (Higher than GPI's/IPBR's ≤3 because the surface area is genuinely larger; TS has ~50 syntactic forms beyond JS. If it takes >6 rounds, the standing-rule-13 thesis remains intact — the discipline scales with surface-area complexity — but C1-C4's predictive power weakens at larger surfaces; revise as Finding TSR.X.)
 
 ## II. Apparatus
 
@@ -138,7 +138,7 @@ C7. Per docs/standing-rule-13-prospective-application.md §3 conditions:
 
 ## VI. Resume protocol
 
-Read this seed, then trajectory.md tail. Read Doc 729 + Doc 730 for the resolver-instance pattern that TSR materializes at the source-language tier. Read `docs/standing-rule-13-prospective-application.md` for the discipline this locale tests at larger surface-area scale. Inspect `pilots/rusty-js-parser/derived/src/parser.rs` for the dual JS parser's structure (TSR mirrors its shape; reuses its expression/statement code where surfaces overlap). The follow-on locale `pilots/cruftscript-spec/` is not yet spawned; TSR-EXT 5's outcome on research question (2) drives whether it gets spawned.
+Read this seed, then trajectory.md tail. Read Doc 729 + Doc 730 for the resolver-instance pattern that TSR materializes at the source-language tier. Read `apparatus/docs/standing-rule-13-prospective-application.md` for the discipline this locale tests at larger surface-area scale. Inspect `pilots/rusty-js-parser/derived/src/parser.rs` for the dual JS parser's structure (TSR mirrors its shape; reuses its expression/statement code where surfaces overlap). The follow-on locale `pilots/cruftscript-spec/` is not yet spawned; TSR-EXT 5's outcome on research question (2) drives whether it gets spawned.
 
 ## VII. Strategic framing
 

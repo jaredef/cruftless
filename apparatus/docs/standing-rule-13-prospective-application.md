@@ -108,4 +108,4 @@ Working draft. Candidate for promotion to corpus Doc 742 after:
 - (a) one additional empirical corroboration (ideally `ihi-array-entries`), or
 - (b) keeper review of the thesis at the current empirical anchor (GPI alone)
 
-Located at `docs/standing-rule-13-prospective-application.md` per CANDIDATES.md tier-C entry (h) formalization. Refresh findings.md Addendum X with a one-line pointer when the corpus version lands.
+Located at `apparatus/docs/standing-rule-13-prospective-application.md` per CANDIDATES.md tier-C entry (h) formalization. Refresh findings.md Addendum X with a one-line pointer when the corpus version lands.

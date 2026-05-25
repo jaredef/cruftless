@@ -20,7 +20,7 @@ The classic `a < b` operator vs `f<T>` generic-call ambiguity is resolved by the
 - [TCC failure-table 2026-05-24 (post-TRCAPS)](../ts-consumer-corpus/results/2026-05-24/failure-table.md) — row 2 `generic-call` at 40 files
 - TRCAPS-EXT 1 + TRSLS-EXT 1 — established strip extension patterns + the inspect-before-spec discipline
 - [TSR strip.rs](../ts-resolve/derived/src/strip.rs) — substrate to modify
-- [docs/standing-rule-13-prospective-application.md](../../docs/standing-rule-13-prospective-application.md) — seventh prospective application
+- [apparatus/docs/standing-rule-13-prospective-application.md](../../apparatus/docs/standing-rule-13-prospective-application.md) — seventh prospective application
 
 ## I. Telos
 
@@ -49,7 +49,7 @@ C3. TCC's currently-OK 224 files remain OK.
 C4. TCC parse-success lifts by ≥8 pp (target ≥67.9%).
 C5. Real `a < b` operators are NOT mis-stripped — verified by
     regression tests (`x < y && y < z`, `a<b?c:d`).
-C6. Per docs/standing-rule-13-prospective-application.md §3:
+C6. Per apparatus/docs/standing-rule-13-prospective-application.md §3:
     all four C-conditions hold.
 ```
 

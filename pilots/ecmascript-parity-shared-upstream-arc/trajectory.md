@@ -40,7 +40,7 @@ When founding the next sub-locale:
 1. `mkdir -p pilots/<name>/`
 2. Write `seed.md` with: telos, apparatus, methodology, falsifiers (5 + 1 discipline), carve-outs, composes-with (must include EPSUA, T262C, this trajectory, the relevant ECMA-262 §, Doc 740, Doc 742, standing-rule-13-prospective).
 3. Write `trajectory.md` with EXT 0 founding entry (rule 11 5-axis check + Pred-*).
-4. `bash scripts/locales/discover.sh` and commit the refreshed manifest with the seed+trajectory.
+4. `bash apparatus/locales/discover.sh` and commit the refreshed manifest with the seed+trajectory.
 5. Implement per the multi-tier R identified pre-implementation (Doc 740 + Finding T262C.5 default discipline).
 6. Exemplar-verify before full-sweep (C2). Include regression-probe on adjacent previously-passing tests (C3).
 7. Update this trajectory with the sub-locale's chapter-close summary (cumulative-vs-projected ratio per C5).

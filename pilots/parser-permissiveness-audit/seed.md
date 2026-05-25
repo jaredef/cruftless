@@ -11,8 +11,8 @@
 **Siblings**: TCC, TXC, T262C, FODAS.
 **Composes with**:
 - [T262C matrix](../test262-categorize/results/2026-05-24/matrix.md) — clusters #1, #9, #11 (91 tests total)
-- [Doc 742](../../docs/742-the-resolver-instance-pattern-at-full-strength-downstream-dispatch-and-upstream-elision-as-doc-729s-empirical-refinements-from-a-typescript-parity-research-arc.md) §V — upstream elision: parser-tier should reject what spec rejects, not defer to runtime
-- [Doc 740](../../docs/740-multi-tier-cascade-revival-when-the-hot-path-traverses-multiple-tiers-closing-one-tier-alone-is-insufficient.md) (P4) — likely multi-tier; each restriction site is a sub-axis
+- [Doc 742](../../docs/corpus-ref/742-the-resolver-instance-pattern-at-full-strength-downstream-dispatch-and-upstream-elision-as-doc-729s-empirical-refinements-from-a-typescript-parity-research-arc.md) §V — upstream elision: parser-tier should reject what spec rejects, not defer to runtime
+- [Doc 740](../../docs/corpus-ref/740-multi-tier-cascade-revival-when-the-hot-path-traverses-multiple-tiers-closing-one-tier-alone-is-insufficient.md) (P4) — likely multi-tier; each restriction site is a sub-axis
 - standing rule 14 mirror — adding restriction; false-positive risk dominant
 - ECMA-262 §11.6.2 (Keywords + ReservedWord taxonomy), §13.1.1 (Identifiers static semantics), §14.7.5.1 (for-of head Early Errors), §15.7.1 (Class Definitions Early Errors)
 

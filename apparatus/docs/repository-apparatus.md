@@ -6,6 +6,81 @@ The apparatus is comprehensive — every standing artifact this engagement uses 
 
 ---
 
+## 0. Canonical tier separation: `apparatus/` vs `docs/`
+
+The repository is partitioned into two top-level documentation-and-state surfaces, which differ in **who reads them, when, and for what purpose**. The distinction is load-bearing; conflating the two breaks the dyadic operating model.
+
+| Surface | Tier | Consumer | When read | Load-bearing on the loop |
+|---|---|---|---|---|
+| `apparatus/` | rung-1 (machine) | agent (LLM resolver) | every loop iteration; required reading on entry | yes, the closed-loop substrate |
+| `docs/` | rung-2 (keeper supplement) | keeper (human) | as the keeper thinks; agent reads only on explicit request | no, sidecar for development |
+
+### `apparatus/` — the closed-loop substrate
+
+`apparatus/` is the apparatus-tier tooling and output that **directly informs the cybernetic loop**. Every artifact here is read by the agent on each loop iteration as part of orienting to a locale, evaluating a move, or applying a discipline. The agent's operating context must include the relevant `apparatus/` content; absent it, the loop drifts.
+
+Layout:
+
+```
+apparatus/
+├── docs/                                            # apparatus-tier prose
+│   ├── repository-apparatus.md                      # this doc, the apparatus enumeration
+│   ├── predictive-ruleset.md                        # consolidated 15-rule predictive view
+│   ├── standing-rule-13-prospective-application.md  # rule 13 revert-then-deeper-layer thesis
+│   └── agent-feedback-schema.md                     # per-locale cross-resolver review schema
+│
+└── locales/                                         # locale-tier registry + tool
+    ├── manifest.json                                # enumerated locale instances
+    ├── CANDIDATES.md                                # next-spawn queue (Tier-A / hypothetical)
+    ├── discover.sh                                  # tool that maintains the manifest
+    └── README.md
+```
+
+`apparatus/docs/` is not "documentation in the colloquial sense." It is the agent's required pre-reading: the schemas the agent must follow when authoring (agent-feedback-schema.md), the rules the agent applies when evaluating moves (predictive-ruleset.md, standing-rule-13), and the enumeration the agent consults to understand the loop it is participating in (this doc).
+
+`apparatus/locales/` is the agent-readable registry of the locale-coordinate space (Doc 737). The manifest is consulted to find existing locales; CANDIDATES.md is consulted before founding a new one; discover.sh is run to refresh the manifest after a spawn.
+
+### `docs/` — the dyadic sidecar
+
+`docs/` is the **sidecar for development that the keeper utilizes in the cybernetic dyad**. It is the keeper's thinking surface: live engineering analyses, in-flight phase designs, and the read-only mirror of the published RESOLVE corpus that the keeper composes against. The agent reads from `docs/` only when the keeper explicitly directs it (e.g., "read Doc 736") or when the agent's task requires composing against a specific corpus articulation.
+
+Layout:
+
+```
+docs/
+├── corpus-ref/   # 81 RESOLVE corpus docs (Doc 123-741), the keeper's published reference
+└── engagement/   # this-engagement-specific keeper analyses, designs, and prospective drafts
+    ├── prospective/                                  # in-flight corpus-candidate drafts
+    ├── arktype-deep-trace.md                         # live trace working doc
+    ├── cluster-phase-design.md                       # phase-specific design
+    ├── derivation-inversion-on-bun-tests.md          # planning doc
+    ├── invert-phase-design.md                        # phase-specific design
+    ├── pipeline.md                                   # derive-constraints CLI orchestration
+    ├── porting-md-analysis.md                        # live engineering analysis
+    ├── seam-detection-design.md                      # specific tool design
+    └── xv-audit-bun-dual-class.md                    # §XV audit working doc
+```
+
+`docs/corpus-ref/` is a sidecar mirror of the published corpus at jaredfoy.com/resolve/. The corpus is the keeper's prior work; the mirror exists so the keeper can compose against specific docs without leaving the repo, and so the agent can be pointed at a specific Doc N when the keeper deems it necessary.
+
+`docs/engagement/` is the keeper's working surface for this engagement. Designs land here while the keeper is shaping them; promotions to corpus articulation, or to apparatus-tier discipline, happen as separate moves. The agent treats `docs/engagement/` as keeper context, not as agent-loop input.
+
+### Why the separation matters
+
+The cybernetic loop succeeds when every iteration reads from a stable, minimal, agent-consumable substrate (`apparatus/`). The loop degrades when agent reads expand to include keeper-tier prose, because keeper prose is intentionally exploratory and not yet crystallized into discipline. The dyadic ascent (Doc 711) requires rung-1 and rung-2 stay distinct: the agent operates the rung-1 substrate; the keeper supplements via the rung-2 sidecar; promotions of rung-2 content to rung-1 happen through explicit keeper directives that move artifacts from `docs/` into `apparatus/` (or into a locale's seed.md).
+
+### Promotion path
+
+Three canonical promotions move material from sidecar to substrate:
+
+1. `docs/engagement/<analysis>.md` ➜ `apparatus/docs/<schema-or-rule>.md` when an analysis crystallizes into a reusable schema or standing rule.
+2. `docs/engagement/prospective/<draft>.md` ➜ `docs/corpus-ref/NNN-<title>.md` when a draft is promoted to corpus publication (typically via the corpus publish pipeline).
+3. `docs/engagement/<phase-design>.md` ➜ inline content of `pilots/<locale>/seed.md` when a phase design crystallizes into a founded locale.
+
+Promotions are explicit keeper moves; the agent does not promote unilaterally.
+
+---
+
 ## I. The cybernetic loop
 
 ```
@@ -77,7 +152,7 @@ Every substrate move is observed by at least one instrument before it lands. Ins
 | Instrument | Path | Observes |
 |---|---|---|
 | **derive-constraints apparatus** | `derive-constraints/` | Extract → cluster → invert pipeline for spec-constraint discovery |
-| **locale manifest discoverer** | `scripts/locales/discover.sh` → `scripts/locales/manifest.json` | Filesystem walk of all `seed.md` files; produces coordinate manifest |
+| **locale manifest discoverer** | `apparatus/locales/discover.sh` → `apparatus/locales/manifest.json` | Filesystem walk of all `seed.md` files; produces coordinate manifest |
 
 ---
 
@@ -90,22 +165,22 @@ The discipline is recorded in artifacts that future substrate work must consult.
 | Artifact | Path | Role |
 |---|---|---|
 | **findings.md** | `pilots/rusty-js-jit/findings.md` | Canonical append-only ledger; 26 findings + 15 standing rules across 10 addenda |
-| **predictive-ruleset.md** | `docs/predictive-ruleset.md` | Consolidated derived view of the 15 standing rules as falsifiable predictions |
-| **standing-rule-13-prospective-application.md** | `docs/standing-rule-13-prospective-application.md` | The revert-then-deeper-layer-closure thesis with 12 prospective corroborations |
+| **predictive-ruleset.md** | `apparatus/docs/predictive-ruleset.md` | Consolidated derived view of the 15 standing rules as falsifiable predictions |
+| **standing-rule-13-prospective-application.md** | `apparatus/docs/standing-rule-13-prospective-application.md` | The revert-then-deeper-layer-closure thesis with 12 prospective corroborations |
 
 ### Locale-tier discipline
 
 | Artifact | Path | Role |
 |---|---|---|
-| **CANDIDATES.md** | `scripts/locales/CANDIDATES.md` | Tiered queue of prospective locales; spawn-protocol + status legend |
-| **locale manifest** | `scripts/locales/manifest.json` | Authoritative inventory; load-bearing record of the coordinate space per Doc 737 |
+| **CANDIDATES.md** | `apparatus/locales/CANDIDATES.md` | Tiered queue of prospective locales; spawn-protocol + status legend |
+| **locale manifest** | `apparatus/locales/manifest.json` | Authoritative inventory; load-bearing record of the coordinate space per Doc 737 |
 
 ### Orientation + policy
 
 | Artifact | Path | Role |
 |---|---|---|
 | **AGENTS.md / CLAUDE.md** | `AGENTS.md`, `CLAUDE.md` (identical) | Project identity + workspace layout + commit-and-authorization discipline + standing corpus references |
-| **THIS DOC (repository-apparatus.md)** | `docs/repository-apparatus.md` | Comprehensive enumeration of the apparatus + cybernetic-loop framing |
+| **THIS DOC (repository-apparatus.md)** | `apparatus/docs/repository-apparatus.md` | Comprehensive enumeration of the apparatus + cybernetic-loop framing |
 
 ### Per-locale discipline (recurrent)
 
@@ -139,14 +214,14 @@ pilots/
 
 ### Current locale count
 
-36 locales as of 2026-05-24 (25 top-level, 11 nested) — see `scripts/locales/manifest.json` for the authoritative list.
+36 locales as of 2026-05-24 (25 top-level, 11 nested) — see `apparatus/locales/manifest.json` for the authoritative list.
 
 ### Locale spawn protocol (per Doc 737 + standing rule 11)
 
 1. Confirm the workstream's multi-rung shape (Doc 737 §II promotion threshold).
 2. Run rule 11's 5-axis pre-spawn coverage check (A1 component A/B is load-bearing).
 3. Create `pilots/<name>/seed.md` with telos / constraints / falsifiers / methodology / carve-outs / composes-with.
-4. Run `scripts/locales/discover.sh`; commit the refreshed manifest in the same change as the seed.
+4. Run `apparatus/locales/discover.sh`; commit the refreshed manifest in the same change as the seed.
 5. Begin substrate work at round EXT 0 (founding) → EXT 1 (first substrate move) → EXT N (close).
 
 ### Locale resume protocol
@@ -212,7 +287,7 @@ The loop's self-improving property:
 
 ## VII. The apparatus's standing observation patterns
 
-These structural patterns recur across the apparatus's operation. They are codified as standing rules (see `docs/predictive-ruleset.md`) but worth surfacing here as apparatus-level observations:
+These structural patterns recur across the apparatus's operation. They are codified as standing rules (see `apparatus/docs/predictive-ruleset.md`) but worth surfacing here as apparatus-level observations:
 
 - **Corpus-as-regression-instrument** (Finding IX.1): instrument-tier locales (TCC, TXC) serve dual roles — priority instrument AND regression instrument. Without the dual role, conservative-strip discipline (rule 14) would not be enforceable.
 
@@ -256,7 +331,7 @@ This doc is a comprehensive enumeration; it must stay in sync with the apparatus
 
 1. **A new instrument is built** — add to §II with path + observes + oracle.
 2. **A new discipline artifact lands** — add to §III with path + role.
-3. **A new locale is founded** — increment §IV's locale count (`scripts/locales/discover.sh` reports the new count).
+3. **A new locale is founded** — increment §IV's locale count (`apparatus/locales/discover.sh` reports the new count).
 4. **A new substrate tier crate is added** — add to §V's tier table.
 5. **A new corpus doc lands that the apparatus implements** — add to §VIII.
 
@@ -268,12 +343,12 @@ Update protocol per Doc 727 §X: this doc is consolidated-view (not append-only)
 
 For navigating the apparatus by role:
 
-- **Want to spawn a new locale?** → `scripts/locales/CANDIDATES.md` (queue) + Doc 737 (theory) + §IV.spawn-protocol above.
-- **Want to land a substrate move?** → `docs/predictive-ruleset.md` (rules) + AGENTS.md commit discipline + locale's seed §Pred-* falsifiers.
+- **Want to spawn a new locale?** → `apparatus/locales/CANDIDATES.md` (queue) + Doc 737 (theory) + §IV.spawn-protocol above.
+- **Want to land a substrate move?** → `apparatus/docs/predictive-ruleset.md` (rules) + AGENTS.md commit discipline + locale's seed §Pred-* falsifiers.
 - **Want to add an instrument?** → §II above + Doc 581 (Pin-Art apparatus framing).
-- **Want to add a standing rule?** → `pilots/rusty-js-jit/findings.md` next Addendum + this doc's §III update + `docs/predictive-ruleset.md` consolidated update.
+- **Want to add a standing rule?** → `pilots/rusty-js-jit/findings.md` next Addendum + this doc's §III update + `apparatus/docs/predictive-ruleset.md` consolidated update.
 - **Want to publish corpus?** → use the corpus publish pipeline (write to `~/corpus-master/corpus/` → mirror to `~/resolve/corpus/` + push → `bun run seed` from `~/jaredfoy/`).
-- **Want to recover from a substrate-bug regression?** → Rule 13 + Rule 14 + Rule 15; see `docs/standing-rule-13-prospective-application.md`.
+- **Want to recover from a substrate-bug regression?** → Rule 13 + Rule 14 + Rule 15; see `apparatus/docs/standing-rule-13-prospective-application.md`.
 
 ---
 

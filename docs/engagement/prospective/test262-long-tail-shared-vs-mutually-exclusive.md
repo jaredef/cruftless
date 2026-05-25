@@ -4,8 +4,8 @@
 **Author**: 2026-05-25 session
 **Status**: prospective — informs ECMAScript-parity arc prioritization for the next N rounds
 **Composes with**:
-- [Doc 740](../../docs/740-multi-tier-cascade-revival-when-the-hot-path-traverses-multiple-tiers-closing-one-tier-alone-is-insufficient.md) §III.5 — JSF-pilot-reread shape ("cumulative measurement materializes a different magnitude than the per-cluster projection")
-- [Doc 742](../../docs/742-the-resolver-instance-pattern-at-full-strength-downstream-dispatch-and-upstream-elision-as-doc-729s-empirical-refinements-from-a-typescript-parity-research-arc.md) §V — upstream elision
+- [Doc 740](../../docs/corpus-ref/740-multi-tier-cascade-revival-when-the-hot-path-traverses-multiple-tiers-closing-one-tier-alone-is-insufficient.md) §III.5 — JSF-pilot-reread shape ("cumulative measurement materializes a different magnitude than the per-cluster projection")
+- [Doc 742](../../docs/corpus-ref/742-the-resolver-instance-pattern-at-full-strength-downstream-dispatch-and-upstream-elision-as-doc-729s-empirical-refinements-from-a-typescript-parity-research-arc.md) §V — upstream elision
 - [T262C](../../pilots/test262-categorize/seed.md) — the matrix instrument this analysis reads
 - [Finding AEVPD.2](../../pilots/array-exotic-virtual-property-discipline/trajectory.md) — cluster-level heterogeneity; matrix view over-aggregates when data-axis is heterogeneous within a cell
 

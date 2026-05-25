@@ -1,6 +1,6 @@
 # derive-constraints — Phase 1 (scan)
 
-Extracts behavioural constraints from a test corpus by AST-walking each test file. The first phase of the four-phase pipeline articulated in [`../docs/derivation-inversion-on-bun-tests.md`](../docs/derivation-inversion-on-bun-tests.md).
+Extracts behavioural constraints from a test corpus by AST-walking each test file. The first phase of the four-phase pipeline articulated in [`../docs/engagement/derivation-inversion-on-bun-tests.md`](../docs/engagement/derivation-inversion-on-bun-tests.md).
 
 > **Apparatus.** Per the corpus's tests-as-constraints frame ([Doc 159 / Doc 247](https://jaredfoy.com/resolve/doc/247-the-derivation-inversion)), an executable test suite is the most precise statement of behavioural constraints available. This tool extracts those constraints into a structured form. Cluster / invert / predict are the subsequent phases that consume the JSON this tool emits.
 

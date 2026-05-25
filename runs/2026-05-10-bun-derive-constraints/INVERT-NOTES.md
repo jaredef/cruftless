@@ -5,7 +5,7 @@ First run of the invert phase. Reads `bun-cluster-v2.json`; emits 99 `.constrain
 ## Inputs
 
 - **Source.** `bun-cluster-v2.json` (4.5 MB) — 4,838 properties from the Bun test corpus.
-- **Tool.** `derive-constraints invert` v0.1, sibling to `scan` and `cluster`. Implements [`docs/invert-phase-design.md §7 Phase 1`](../../docs/invert-phase-design.md): emit one `.constraints.md` per architectural surface plus a top-level `bun-runtime.constraints.md` index.
+- **Tool.** `derive-constraints invert` v0.1, sibling to `scan` and `cluster`. Implements [`docs/engagement/invert-phase-design.md §7 Phase 1`](../../docs/engagement/invert-phase-design.md): emit one `.constraints.md` per architectural surface plus a top-level `bun-runtime.constraints.md` index.
 - **Settings.** `MAX_CONSTRAINTS_PER_SURFACE = 80`; `MIN_BEHAVIORAL_CARDINALITY = 5`. Surface emitted if it contains any construction-style property OR has total witnessing ≥ 20 clauses OR a single property at cardinality ≥ 10.
 
 ## Output
@@ -90,7 +90,7 @@ The grammar follows the rederive sample format exactly (per `/home/jaredef/reder
 
 **The `bun-runtime.constraints.md` index is the entry point.** It composes the surfaces via `@imports` and provides a cardinality-ordered top-twenty for orientation. The substrate consuming this index sees the runtime's contract as a composition of named surface properties, each with its own derivation budget and verification suite.
 
-**Honest scope (per the design doc).** The MVP emits *draft prose stitched from antichain representatives*. The substrate at rederive's derive step ultimately interprets the prose into code, and the prose may need keeper-side editing before it derives well. Per [`docs/invert-phase-design.md §8`](../../docs/invert-phase-design.md): invert is a draft-author for the keeper, not a replacement for keeper authorship. The corpus's standing pattern is keeper-authored constraints + substrate-derived implementation; this MVP makes the keeper's authoring task massively easier (the corpus of test invariants is now structured prose ready for review and revision) without claiming to *be* keeper authorship.
+**Honest scope (per the design doc).** The MVP emits *draft prose stitched from antichain representatives*. The substrate at rederive's derive step ultimately interprets the prose into code, and the prose may need keeper-side editing before it derives well. Per [`docs/engagement/invert-phase-design.md §8`](../../docs/engagement/invert-phase-design.md): invert is a draft-author for the keeper, not a replacement for keeper authorship. The corpus's standing pattern is keeper-authored constraints + substrate-derived implementation; this MVP makes the keeper's authoring task massively easier (the corpus of test invariants is now structured prose ready for review and revision) without claiming to *be* keeper authorship.
 
 ## v0.2 refinements queued
 

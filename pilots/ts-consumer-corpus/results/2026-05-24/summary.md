@@ -5,6 +5,6 @@
 - STRIP errors: 0
 - PARSE errors: 0
 - PANICs: 0
-- elapsed: 48 ms (0.13 ms/file)
+- elapsed: 127 ms (0.34 ms/file)
 
 Per-file results: `results.jsonl`. Failure-frequency table: `failure-table.md`.

@@ -9,14 +9,14 @@
 **Author**: 2026-05-23 session, reformalized 2026-05-25.
 **Parent**: cruftless engagement. Standalone top-level pilot.
 **Composes with**:
-- [Doc 736](../../docs/736-the-architecturally-impossible-supply-chain-attack-capability-passing-closed-import-graphs-and-load-time-integrity-as-the-design-that-removes-ambient-authority.md) — capability-passing runtime. HTTP listen is a `Net` capability operation.
+- [Doc 736](../../docs/corpus-ref/736-the-architecturally-impossible-supply-chain-attack-capability-passing-closed-import-graphs-and-load-time-integrity-as-the-design-that-removes-ambient-authority.md) — capability-passing runtime. HTTP listen is a `Net` capability operation.
 - [compartment-primitive locale](../compartment-primitive/) — JS-visible `Compartment` API. Compartments are the application-facing way to endow a narrowed HTTP/network authority to untrusted code.
 - [rusty-js-caps pilot](../rusty-js-caps/) — four capability modes, dispatcher pattern, audit/sealed semantics.
 - [node-http pilot](../node-http/) — closed Node HTTP data-layer semantics.
 - [http-codec pilot](../http-codec/) — whole-message HTTP/1.1 parse/serialize substrate.
 - [sockets pilot](../sockets/) — TCP listener/stream substrate.
 - [Findings doc IV.4 standing fuzz](../rusty-js-jit/findings.md) — default-on / route-through changes preserve canonical fuzz.
-- [Doc 735 §X.h.b](../../docs/735-the-temporal-resolver-instance-stack-build-time-process-time-call-time-as-the-time-axis-dual-to-doc-729s-spatial-stack.md) — process-time / call-time authority boundary.
+- [Doc 735 §X.h.b](../../docs/corpus-ref/735-the-temporal-resolver-instance-stack-build-time-process-time-call-time-as-the-time-axis-dual-to-doc-729s-spatial-stack.md) — process-time / call-time authority boundary.
 
 ## I. Telos
 

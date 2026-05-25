@@ -17,7 +17,7 @@ This is the substrate dual of ASCD: ASCD wired the constructor-selection path; A
 **Composes with**:
 - ECMA-262 §7.3.6 CreateDataPropertyOrThrow; §10.1.6 [[DefineOwnProperty]]
 - [ASCD trajectory](../array-species-create-discipline/trajectory.md) — Finding ASCD.2 / ASCD.3 (the surfacing event + sub-sub-cluster decomposition)
-- [Doc 740](../../docs/740-multi-tier-cascade-revival-when-the-hot-path-traverses-multiple-tiers-closing-one-tier-alone-is-insufficient.md) — multi-tier closure default; ACDPD enables ASCD's deferred slice/splice species-wiring as a follow-on combined move
+- [Doc 740](../../docs/corpus-ref/740-multi-tier-cascade-revival-when-the-hot-path-traverses-multiple-tiers-closing-one-tier-alone-is-insufficient.md) — multi-tier closure default; ACDPD enables ASCD's deferred slice/splice species-wiring as a follow-on combined move
 
 ## I. Telos
 

@@ -13,9 +13,9 @@ This locale therefore inverts the prospective doc's Round-1-first approach. **Ro
 **Author**: 2026-05-25 session.
 **Parent**: none (top-level).
 **Composes with**:
-- [Doc 736](../../docs/736-the-architecturally-impossible-supply-chain-attack-capability-passing-closed-import-graphs-and-load-time-integrity-as-the-design-that-removes-ambient-authority.md) — the model this probe stress-tests
+- [Doc 736](../../docs/corpus-ref/736-the-architecturally-impossible-supply-chain-attack-capability-passing-closed-import-graphs-and-load-time-integrity-as-the-design-that-removes-ambient-authority.md) — the model this probe stress-tests
 - [rusty-js-caps pilot](../rusty-js-caps/) — the existing 9 probe set against ambient-authority attacks (fs/net/env/etc.); the new probe class extends the threat model to intrinsic-identity attacks
-- [docs/prospective/realm-substrate-architecture.md](../../docs/prospective/realm-substrate-architecture.md) — the FULL substrate decomposition (8 rounds); only relevant if this locale's probe answers YES
+- [docs/engagement/prospective/realm-substrate-architecture.md](../../docs/engagement/prospective/realm-substrate-architecture.md) — the FULL substrate decomposition (8 rounds); only relevant if this locale's probe answers YES
 - ECMA-262 §9.3 Realm Records
 
 ## I. Telos

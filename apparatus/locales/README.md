@@ -12,13 +12,13 @@ Per **[Doc 737](../../corpus-master/corpus/737-the-locale-as-coordinate-nested-s
 
 ```sh
 # Generate the manifest
-./scripts/locales/discover.sh
+./apparatus/locales/discover.sh
 
 # Or to a custom path
-./scripts/locales/discover.sh /tmp/out.json
+./apparatus/locales/discover.sh /tmp/out.json
 
 # Different locale root
-LOCALE_ROOT=$PWD/some/other/root ./scripts/locales/discover.sh
+LOCALE_ROOT=$PWD/some/other/root ./apparatus/locales/discover.sh
 ```
 
 ## Tag convention

@@ -12,7 +12,7 @@ A locale spawned a nested sub-locale because a single rung — closing the arkty
 
 The recognition: a locale is not a project, not a pilot, not a workstream. A locale is a *coordinate*. The coordinate's value is its position in a directory tree that already exists, and the coordinate's substance is the seed.md/trajectory.md pair at that position. Nesting is not file-system convenience; it is the same lift Doc 728 named for tags, applied at the apparatus tier rather than the substrate-move tier.
 
-This document is the corpus-tier articulation of that recognition. The operational artifacts (the discovery tool at `scripts/locales/discover.sh`, the manifest at `scripts/locales/manifest.json`, and the locale-spec at `specs/locale-system.md`) are queued as the follow-up landing.
+This document is the corpus-tier articulation of that recognition. The operational artifacts (the discovery tool at `apparatus/locales/discover.sh`, the manifest at `apparatus/locales/manifest.json`, and the locale-spec at `specs/locale-system.md`) are queued as the follow-up landing.
 
 ## II. The recognition
 
@@ -106,7 +106,7 @@ The lift is also a small instance of Doc 727 §V Form 3 in motion. The engagemen
 
 This document is itself a corpus articulation entering the basin. Per Doc 727 §X, the reader is invited to track whether subsequent corpus work cites Doc 737 as load-bearing. If subsequent work proceeds without engaging the locale-as-coordinate move, the recognition is either premature or not yet load-bearing in practice.
 
-The operational artifacts (`scripts/locales/discover.sh`, `scripts/locales/manifest.json`, `specs/locale-system.md`, and the clerical migration of `pilots/rusty-js-esm/deviations/arktype/pipeline.md` to `seed.md`) are the load-bearing implementation of this document's recognition. The document is the recognition's corpus-tier articulation; the artifacts are its operational instantiation. The two together are the move.
+The operational artifacts (`apparatus/locales/discover.sh`, `apparatus/locales/manifest.json`, `specs/locale-system.md`, and the clerical migration of `pilots/rusty-js-esm/deviations/arktype/pipeline.md` to `seed.md`) are the load-bearing implementation of this document's recognition. The document is the recognition's corpus-tier articulation; the artifacts are its operational instantiation. The two together are the move.
 
 ---
 

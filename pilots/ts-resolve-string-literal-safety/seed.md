@@ -16,7 +16,7 @@
 - [TCC failure-table](../ts-consumer-corpus/results/2026-05-24/failure-table.md) — quantification (rows 8-9)
 - [TSR-EXT 3 strip.rs](../ts-resolve/derived/src/strip.rs) — substrate to modify
 - [rusty-js-parser Lexer](../rusty-js-parser/derived/src/lexer.rs) — LexerGoal::TemplateTail semantics (line 22-24)
-- [docs/standing-rule-13-prospective-application.md](../../docs/standing-rule-13-prospective-application.md) — fifth prospective application; expected ≤3 rounds
+- [apparatus/docs/standing-rule-13-prospective-application.md](../../apparatus/docs/standing-rule-13-prospective-application.md) — fifth prospective application; expected ≤3 rounds
 
 ## I. Telos
 
@@ -44,7 +44,7 @@ C4. No new bytes added to strip ranges as a side effect; the fix
 C5. Per Doc 731 alphabet-purity claim: the JS/TS alphabet boundary
     is preserved — TSR still uses the JS parser's token alphabet,
     just selects the right goal-symbol per call.
-C6. Per docs/standing-rule-13-prospective-application.md §3 conditions:
+C6. Per apparatus/docs/standing-rule-13-prospective-application.md §3 conditions:
     (C1.sibling-anchor) rusty-js-parser's parser already does this
                         goal-switching correctly; precedent exists
     (C2.shape-compat)   Scanner is mine; can add state freely
@@ -63,7 +63,7 @@ C6. Per docs/standing-rule-13-prospective-application.md §3 conditions:
 
 **Pred-trsls.4**: TCC parse-success-rate **lifts by at least 3 percentage points** (from 37.7% to ≥40.7%) — i.e., at least 11 files become OK, even if some templates inside the corrected files reveal new downstream issues.
 
-**Pred-trsls.5 (DISCIPLINE FALSIFIER per docs/standing-rule-13-prospective-application.md §5)**: locale closes in ≤3 implementation rounds. Fifth prospective application; expected to close in 1 round since the root cause is pre-located.
+**Pred-trsls.5 (DISCIPLINE FALSIFIER per apparatus/docs/standing-rule-13-prospective-application.md §5)**: locale closes in ≤3 implementation rounds. Fifth prospective application; expected to close in 1 round since the root cause is pre-located.
 
 ## II. Apparatus
 

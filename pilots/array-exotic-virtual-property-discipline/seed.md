@@ -8,7 +8,7 @@
 
 **Composes with**:
 - ECMA-262 §10.4.2 Array exotic; §20.1.3.{2,3,4} Object.prototype shims
-- [Doc 740 §IV.2](../../docs/740-...) substrate-introduction signature (the propertyIsEnumerable sibling fix was surfaced by the has_own_str primary fix — same shape as REOU→VHTB)
+- [Doc 740 §IV.2](../../docs/corpus-ref/740-...) substrate-introduction signature (the propertyIsEnumerable sibling fix was surfaced by the has_own_str primary fix — same shape as REOU→VHTB)
 
 ## I. Telos
 

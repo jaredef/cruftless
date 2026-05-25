@@ -123,7 +123,7 @@ for dirpath, dirnames, filenames in os.walk(locale_root):
         })
 
 manifest = {
-    "generated_by": "scripts/locales/discover.sh",
+    "generated_by": "apparatus/locales/discover.sh",
     "doc_reference": "Doc 737 (The Locale as Coordinate)",
     "locale_root": locale_root,
     "totals": {

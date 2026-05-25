@@ -12,9 +12,9 @@
 **Parent**: none (top-level).
 **Siblings**: TCC, TXC, T262C.
 **Composes with**:
-- [Doc 740](../../docs/740-multi-tier-cascade-revival-when-the-hot-path-traverses-multiple-tiers-closing-one-tier-alone-is-insufficient.md) §II.2 P4 + §IV.2 — multi-tier closure framing
-- [Doc 739](../../docs/739-constraint-closure-as-cascade-revival-when-lifting-an-upstream-structural-constraint-auto-resolves-stalled-sibling-pilots.md) §II.4 (B1/B2/B3) — cascade-revival conditions hold for 15 fn-name tests under T_2 closure
-- [standing rule 13 prospective application](../../docs/standing-rule-13-prospective-application.md) — C1-C4 hold; thirteenth corroboration
+- [Doc 740](../../docs/corpus-ref/740-multi-tier-cascade-revival-when-the-hot-path-traverses-multiple-tiers-closing-one-tier-alone-is-insufficient.md) §II.2 P4 + §IV.2 — multi-tier closure framing
+- [Doc 739](../../docs/corpus-ref/739-constraint-closure-as-cascade-revival-when-lifting-an-upstream-structural-constraint-auto-resolves-stalled-sibling-pilots.md) §II.4 (B1/B2/B3) — cascade-revival conditions hold for 15 fn-name tests under T_2 closure
+- [standing rule 13 prospective application](../../apparatus/docs/standing-rule-13-prospective-application.md) — C1-C4 hold; thirteenth corroboration
 - [T262C trajectory](../test262-categorize/trajectory.md) Finding T262C.3 — destructuring concentration
 - ECMA-262 §13.7.5.5 (for-of), §13.15.2 (DestructuringAssignmentEvaluation), §13.15.5.3 (NamedEvaluation), §9.1.1.4.4 (strict ReferenceError)
 

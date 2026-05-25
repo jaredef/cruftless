@@ -4,7 +4,7 @@
 
 **Status as of 2026-05-24**: **CHAPTER CLOSED at IPBR-EXT 2 (P2.a at deeper-layer-first design tier)**. All six Pred-ipbr.* HELD including the Pred-ipbr.6 discipline falsifier (≤3 rounds). CRB string_url_sweep 685 → 584 ms (-14.7% additional; -21.4% cumulative vs 743 baseline); cruft/node 6.99x → 6.21x (first sub-6.5×); A/B header_loop -21.8% additional (median 197 ms vs GPI 252). Locale closed in 1 implementation round; standing-rule-13 prospective-application thesis gets its second empirical corroboration.
 
-**Historical status (founding)**: WORKSTREAM FOUNDED (IPBR-EXT 0). Spawned from `scripts/locales/CANDIDATES.md` tier-A entry (a) after GPI chapter close identified the for-of protocol envelope as the new per-iter dominator on `string_url_sweep` header_loop. First test case of standing rule 13's prospective-application thesis (per `docs/standing-rule-13-prospective-application.md`) at a second locale — the C1-C4 conditions all hold; design from the deeper-layer first.
+**Historical status (founding)**: WORKSTREAM FOUNDED (IPBR-EXT 0). Spawned from `apparatus/locales/CANDIDATES.md` tier-A entry (a) after GPI chapter close identified the for-of protocol envelope as the new per-iter dominator on `string_url_sweep` header_loop. First test case of standing rule 13's prospective-application thesis (per `apparatus/docs/standing-rule-13-prospective-application.md`) at a second locale — the C1-C4 conditions all hold; design from the deeper-layer first.
 
 **Workstream**: bytecode-rewrite the for-of dispatch pattern for Array/String receivers where the iterator is the well-known intrinsic (not user-overridden). Introduces a new `Op::ForOfFastNext` opcode (or pair) that runs an index-based scan over the underlying Array elements / String code units, eliminating per-`.next()` synthetic iterator-result-object allocation + the GetProp("next") / GetProp("done") / GetProp("value") trio that today's compiler emits for every iteration.
 
@@ -14,9 +14,9 @@
 - `interp-hot-intrinsics/` — IHI (cross-tier method-call IC; closed at IHI-EXT 11)
 - `interp-getprop-ic/` — GPI (companion bytecode rewrite to IHI; closed at GPI-EXT 3)
 **Composes with**:
-- [docs/standing-rule-13-prospective-application.md](../../docs/standing-rule-13-prospective-application.md) — IPBR is the first **prospective falsifier** for the thesis; must close in ≤3 implementation rounds for the conditions to hold
-- [Doc 741](../../docs/741-the-multi-tier-cascade-pipeline-connects-an-empirical-materialization-of-doc-740-across-four-sibling-pilots-on-a-cruftless-cross-runtime-bench-fixture.md) — multi-tier cascade pattern; IPBR extends the cascade to the iter-protocol tier
-- [Doc 740 §IV.2](../../docs/740-multi-tier-cascade-revival-when-the-hot-path-traverses-multiple-tiers-closing-one-tier-alone-is-insufficient.md) — substrate-introduction signature; the rule of design-from-deeper-layer applies
+- [apparatus/docs/standing-rule-13-prospective-application.md](../../apparatus/docs/standing-rule-13-prospective-application.md) — IPBR is the first **prospective falsifier** for the thesis; must close in ≤3 implementation rounds for the conditions to hold
+- [Doc 741](../../docs/corpus-ref/741-the-multi-tier-cascade-pipeline-connects-an-empirical-materialization-of-doc-740-across-four-sibling-pilots-on-a-cruftless-cross-runtime-bench-fixture.md) — multi-tier cascade pattern; IPBR extends the cascade to the iter-protocol tier
+- [Doc 740 §IV.2](../../docs/corpus-ref/740-multi-tier-cascade-revival-when-the-hot-path-traverses-multiple-tiers-closing-one-tier-alone-is-insufficient.md) — substrate-introduction signature; the rule of design-from-deeper-layer applies
 - [interp-getprop-ic chapter close](../interp-getprop-ic/trajectory.md) — empirical anchor: post-GPI the per-iter dominator is the iter envelope
 - [for-of compiler emission](../rusty-js-bytecode/derived/src/compiler.rs) at lines 1270-1427 — current emission shape; rewrite target
 - [string_url_sweep component A/B probe](../cross-runtime-bench/fixtures/string_url_sweep/component-ab-probe.mjs) — empirical anchor; header_loop A/B delta currently ~252 ms post-GPI
@@ -89,7 +89,7 @@ C5. Override-safety gate: bail to slow path if Array.prototype[Symbol.iterator]
     is more semantically rich).
 C6. Per standing rule 13 + Doc 740 §IV.2: design from deeper-layer
     first; skip the iter-cache substrate-introduction mis-design tier.
-C7. Per docs/standing-rule-13-prospective-application.md §3 conditions
+C7. Per apparatus/docs/standing-rule-13-prospective-application.md §3 conditions
     C1-C4 must all hold prospectively:
     (C1.sibling-anchor) IHI + GPI bytecode-rewrite-at-first-hit pattern
                         is the empirical anchor
@@ -120,7 +120,7 @@ C8. Rule 11 5-axis pre-spawn check:
 
 **Pred-ipbr.5**: string_url_sweep header_loop drops ≥15% additional beyond GPI's ~252 ms (target ≤214 ms). Sub-target: CRB string_url_sweep cumulative reclaim ≥15% vs 743 baseline (target ≤631 ms from 685 GPI).
 
-**Pred-ipbr.6 (DISCIPLINE FALSIFIER per docs/standing-rule-13-prospective-application.md §5)**: locale closes in ≤3 implementation rounds. If it takes more, prospective-application thesis is partially falsified; diagnose which of C1-C4 in §I.3 conditions failed.
+**Pred-ipbr.6 (DISCIPLINE FALSIFIER per apparatus/docs/standing-rule-13-prospective-application.md §5)**: locale closes in ≤3 implementation rounds. If it takes more, prospective-application thesis is partially falsified; diagnose which of C1-C4 in §I.3 conditions failed.
 
 ## II. Apparatus
 
@@ -156,4 +156,4 @@ C8. Rule 11 5-axis pre-spawn check:
 
 ## VI. Resume protocol
 
-Read this seed, then trajectory.md tail. Read GPI's chapter-close trajectory entries for the bytecode-rewrite + bail-mitigation precedent. Read docs/standing-rule-13-prospective-application.md §3 (the four C-conditions) and §5 (the falsifier this locale tests). Read compiler.rs:1270-1427 for the current for-of emission shape that the rewrite must compose with.
+Read this seed, then trajectory.md tail. Read GPI's chapter-close trajectory entries for the bytecode-rewrite + bail-mitigation precedent. Read apparatus/docs/standing-rule-13-prospective-application.md §3 (the four C-conditions) and §5 (the falsifier this locale tests). Read compiler.rs:1270-1427 for the current for-of emission shape that the rewrite must compose with.

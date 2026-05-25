@@ -314,7 +314,7 @@ Enum lowering + ctor-param shorthand + sidecar plumbing were originally scoped f
 
 ### Cross-locale implications
 
-**Standing rule 13 prospective-application thesis** (per `docs/standing-rule-13-prospective-application.md`): TSR is the third locale to apply the rule. Outcome:
+**Standing rule 13 prospective-application thesis** (per `apparatus/docs/standing-rule-13-prospective-application.md`): TSR is the third locale to apply the rule. Outcome:
 - Locale closed in 4 implementation rounds (under Pred-tsr.6's ≤6 budget). The discipline scales gracefully with surface-area complexity (TSR is ~5× the LOC of GPI/IPBR; took 4 rounds vs their 1).
 - The C1-C4 conditions held for the substrate-tier work (lexer + stripper + CLI dispatch). Where they didn't hold was the research-question probe: condition C3 (cost-positive when integrated) FAILED at the IPBR consumer.
 - This is itself a finding about the thesis: **C3 is the load-bearing condition for substrate-leverage claims at a downstream consumer**. C1 (sibling anchor) + C2 (shape compat) + C4 (bail safety) can all hold, and a probe can still return null if C3's per-call cost model isn't favorable.

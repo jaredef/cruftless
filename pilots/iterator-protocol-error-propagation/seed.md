@@ -11,7 +11,7 @@
 **Siblings**: TCC, TXC, T262C, FODAS, PPA, REOU, VHTB.
 **Composes with**:
 - ECMA-262 §13.15.5.3 (DAE), §14.4.2.4 (IBI), §7.4.1 (GetIterator)
-- [Doc 740](../../docs/740-multi-tier-cascade-revival-when-the-hot-path-traverses-multiple-tiers-closing-one-tier-alone-is-insufficient.md) (P4) multi-tier closure
+- [Doc 740](../../docs/corpus-ref/740-multi-tier-cascade-revival-when-the-hot-path-traverses-multiple-tiers-closing-one-tier-alone-is-insufficient.md) (P4) multi-tier closure
 - [T262C matrix](../test262-categorize/results/2026-05-25/matrix.md) cluster #1 post-VHTB
 
 ## I. Telos

@@ -4,8 +4,8 @@
 **Author**: 2026-05-25 session.
 **Status**: prospective — strategic analysis of TC39's Compartments proposal vs cruft's existing substrate.
 **Composes with**:
-- [Doc 736 capability-passing-runtime](../../docs/736-the-architecturally-impossible-supply-chain-attack-capability-passing-closed-import-graphs-and-load-time-integrity-as-the-design-that-removes-ambient-authority.md) — Compartments are the **user-visible JS expression** of Doc 736's discipline
-- [docs/prospective/realm-substrate-architecture.md](realm-substrate-architecture.md) — Realm substrate is the SUBSTRATE LAYER; Compartments are the JS-API LAYER atop it
+- [Doc 736 capability-passing-runtime](../../docs/corpus-ref/736-the-architecturally-impossible-supply-chain-attack-capability-passing-closed-import-graphs-and-load-time-integrity-as-the-design-that-removes-ambient-authority.md) — Compartments are the **user-visible JS expression** of Doc 736's discipline
+- [docs/engagement/prospective/realm-substrate-architecture.md](realm-substrate-architecture.md) — Realm substrate is the SUBSTRATE LAYER; Compartments are the JS-API LAYER atop it
 - [RS-EXT 2](../../pilots/realm-substrate/) — minimum-realm landed; intrinsic isolation primitive exists
 - [rusty-js-caps pilot](../../pilots/rusty-js-caps/) — capability handles are the endowment-passing mechanism
 

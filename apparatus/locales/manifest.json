@@ -1,5 +1,5 @@
 {
-  "generated_by": "scripts/locales/discover.sh",
+  "generated_by": "apparatus/locales/discover.sh",
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
@@ -339,8 +339,8 @@
       "parent": null,
       "scope": "rusty-js-http-server",
       "depth": 1,
-      "rung_count": 1,
-      "status": "**WORKSTREAM FOUNDED (HS-EXT 0)**. No code yet. Spawned per keeper directive 2026-05-23 18:12-local. Fourth of four spawns in this round."
+      "rung_count": 6,
+      "status": "**DIRECT MODE-0 PROBE PASSING at HS-EXT 5**. Originally founded at HS-EXT 0 (2026-05-23) as \"basic HTTP server.\" HS-EXT 1's transport survey and the subsequent Doc 736 / Compartment composition reading sharpened the telos; HS-EXT 3 translated that telos into the concrete API wireup plan; HS-EXT 4 decided the `Net` capability substrate can extend the existing dispatcher directly; HS-EXT 5 added the first live `node:http.createServer(...).listen(...)` path. HTTP server is the first runtime surface where Node-compatible network serving, capability authority, compartment realm dispatch, and PollIo event-loop integration must compose."
     },
     {
       "coord": "rusty-js-ir",

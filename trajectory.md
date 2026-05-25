@@ -2444,7 +2444,7 @@ Diagnosis-to-landed-fix cadence on clean cases: under 10 minutes. The for-in-nul
 
 ### Falsification residuals
 
-- **arktype itself did not load on top500.** Four sequential walls were closed; arktype's loading is gated on additional walls 5+ (`rawIn-on-Array` deep inside intersectNodesRoot, currently open). The trace document `docs/arktype-deep-trace.md` captures the live state. The §XVI methodology operating across multiple walls in series is itself a worked example for the corpus.
+- **arktype itself did not load on top500.** Four sequential walls were closed; arktype's loading is gated on additional walls 5+ (`rawIn-on-Array` deep inside intersectNodesRoot, currently open). The trace document `docs/engagement/arktype-deep-trace.md` captures the live state. The §XVI methodology operating across multiple walls in series is itself a worked example for the corpus.
 
 - **The 14-package "Cannot convert undefined or null to object" cluster recovered 5.** Not 14, because the signature collapsed multiple roots — for-in over undefined was one; the other 9 packages depend on different undefined-coercion patterns (Object.assign({}, undefined), prototype-walks on undefined receivers, etc.) that need their own §XVI probes. Doc 730 §XVI.a case-classification is empirically necessary because cluster signatures over-aggregate.
 
@@ -2474,7 +2474,7 @@ Unchanged at 31 PASS / 12 FAIL+TIMEOUT. None of the seven substrates moved the e
 
 ### Open scope at EXT 21 boundary
 
-1. **arktype wall 5+** (rawIn-on-Array deep inside intersectNodesRoot) and the rest of arktype's bootstrap. Continued §XVI probing per docs/arktype-deep-trace.md.
+1. **arktype wall 5+** (rawIn-on-Array deep inside intersectNodesRoot) and the rest of arktype's bootstrap. Continued §XVI probing per docs/engagement/arktype-deep-trace.md.
 2. **The 9 residual "Cannot convert undefined or null to object" packages** after the for-in fix. Each needs its own §XVI probe to identify the specific undefined-coercion path.
 3. **The 8-package "Function is not a constructor" cluster.** This is a clean §XIV target (EXT 90 already named the deviation; need to extend its enablement). Per §XV the protected_invariants must be enumerated before any consumer opts in.
 4. **The 47-package "both engines fail" bucket on top500.** Many are TypeScript-only packages with no runtime export, or packages with missing peer deps. Worth a one-pass audit to separate genuine engine gaps from packaging issues, and to refresh the install-skip filter.
@@ -2488,6 +2488,6 @@ Unchanged at 31 PASS / 12 FAIL+TIMEOUT. None of the seven substrates moved the e
 
 ### Resume protocol
 
-Read EXT 20 + EXT 21 + Doc 730 §XVI (corpus-master). The §XVI methodology is now an operational pattern with measurable cadence (~10 min diagnosis-to-landed-fix on clean spec-divergence cases). The four-case categorization is the load-bearing decision step before any substrate move; default to running the bun-vs-cruftless probe before naming a substrate. The arktype trace document (`docs/arktype-deep-trace.md`) is a live working document of the multi-wall application of the methodology and should be picked up cold by future sessions on arktype.
+Read EXT 20 + EXT 21 + Doc 730 §XVI (corpus-master). The §XVI methodology is now an operational pattern with measurable cadence (~10 min diagnosis-to-landed-fix on clean spec-divergence cases). The four-case categorization is the load-bearing decision step before any substrate move; default to running the bun-vs-cruftless probe before naming a substrate. The arktype trace document (`docs/engagement/arktype-deep-trace.md`) is a live working document of the multi-wall application of the methodology and should be picked up cold by future sessions on arktype.
 
 Pin-Art tag count: ~270 (EXT 20) + 7 (P03.E2.class-field-after-super, P03.E2.super-new-target, P04.E1.is-spec-object, P03.E2.class-method-non-enumerable, P05.L0.module-mjs-strict, P03.E2.super-get-this, P04.E1.for-in-nullish-skip) = ~277 substrate moves committed.

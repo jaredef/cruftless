@@ -66,7 +66,7 @@ Five EXTs collapsed into a single round given the bounded scope of each. **Canon
 - `pilots/cross-runtime-bench/fixtures/string_url_sweep/main.mjs` (~75 LOC): 5000 simulated HTTP request lines × URL parse + header normalize + regex sweep. EQUAL across all three. Required one adaptation: cruft has no `URLSearchParams.size`; substituted `u.search.length` as portable proxy (documented in fixture comments).
 - `pilots/cross-runtime-bench/fixtures/crypto_sha256_batch/main.mjs` (~55 LOC): 1000 × 200-byte SHA-256 via `crypto.subtle.digest`. Cruft FAILs (no SubtleCrypto); runner auto-SKIPs.
 - `pilots/cross-runtime-bench/results/2026-05-23/{summary.md, results.jsonl}`: N=10 canonical baseline.
-- `scripts/locales/manifest.json`: refreshed (15 locales).
+- `apparatus/locales/manifest.json`: refreshed (15 locales).
 
 ### Canonical baseline (N=10, Pi target, 2026-05-23)
 

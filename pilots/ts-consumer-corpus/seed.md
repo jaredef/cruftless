@@ -17,10 +17,10 @@ The corpus IS the constraint per Pin-Art discipline (Doc 738 source-identifier c
 **Parent**: none (top-level).
 **Siblings**: `ts-resolve/` (the TSR locale this corpus measures; closed at TSR-EXT 5).
 **Composes with**:
-- [Doc 581](../../docs/581-the-resume-vector.md) — Pin-Art derived-from-constraints; corpus IS the constraint
-- [Doc 723 §IV.b](../../docs/723-diagnostic-tags-as-semiotic-signs-layer-indexed-interpretation-in-pipeline-dag-topologies.md) — finding-density via clean null results; each corpus failure is a finding
-- [Doc 729](../../docs/729-cruftless-a-primary-articulation-of-the-resolver-instance-pattern-as-the-comprehensive-design-toward-which-rusty-bun-morphs.md) — resolver-instance pattern; TSR is one such instance, this corpus measures its coverage
-- [docs/standing-rule-13-prospective-application.md](../../docs/standing-rule-13-prospective-application.md) — TCC is the fourth prospective application of the thesis; expected ≤3 implementation rounds for instrument tier
+- [Doc 581](../../docs/corpus-ref/581-the-resume-vector.md) — Pin-Art derived-from-constraints; corpus IS the constraint
+- [Doc 723 §IV.b](../../docs/corpus-ref/723-diagnostic-tags-as-semiotic-signs-layer-indexed-interpretation-in-pipeline-dag-topologies.md) — finding-density via clean null results; each corpus failure is a finding
+- [Doc 729](../../docs/corpus-ref/729-cruftless-a-primary-articulation-of-the-resolver-instance-pattern-as-the-comprehensive-design-toward-which-rusty-bun-morphs.md) — resolver-instance pattern; TSR is one such instance, this corpus measures its coverage
+- [apparatus/docs/standing-rule-13-prospective-application.md](../../apparatus/docs/standing-rule-13-prospective-application.md) — TCC is the fourth prospective application of the thesis; expected ≤3 implementation rounds for instrument tier
 - [TSR chapter close](../ts-resolve/trajectory.md) — empirical anchor; TSR-EXT 5's Finding TSR.1 informs the corpus locale's scope (skip the substrate-leverage probe; focus on parse/execute coverage)
 
 ## I. Telos
@@ -66,7 +66,7 @@ C4. Harness runs in <60s on the full corpus (200 packages × ~50
 C5. The corpus locale produces NO direct improvement to TSR — its
     deliverable is the measurement + the backlog. Improvement
     happens via the downstream sub-locales it informs.
-C6. Per docs/standing-rule-13-prospective-application.md §3:
+C6. Per apparatus/docs/standing-rule-13-prospective-application.md §3:
     (C1.sibling-anchor) `ts-resolve` itself is the consumer; TCC is
                         the measurement of its current state
     (C2.shape-compat)  TSR's API (`parse_and_erase`) is stable;
@@ -87,7 +87,7 @@ C6. Per docs/standing-rule-13-prospective-application.md §3:
 
 **Pred-tcc.4**: the failure-table's top-15 rows are actionable — each names either (a) a specific TS feature missing from TSR, (b) a runtime-substrate bug in cruftless, or (c) a corpus-quality issue (e.g., a `.ts` file is actually `.d.ts` mislabeled). Vague "parse error at line N" rows are NOT actionable; the categorization must surface the structural cause.
 
-**Pred-tcc.5 (DISCIPLINE FALSIFIER per docs/standing-rule-13-prospective-application.md §5)**: locale closes in ≤3 implementation rounds. Per the fourth prospective application of the rule; if exceeded, diagnose which C-condition failed (C3 cost-positive is the load-bearing one per TSR-EXT 5's refinement).
+**Pred-tcc.5 (DISCIPLINE FALSIFIER per apparatus/docs/standing-rule-13-prospective-application.md §5)**: locale closes in ≤3 implementation rounds. Per the fourth prospective application of the rule; if exceeded, diagnose which C-condition failed (C3 cost-positive is the load-bearing one per TSR-EXT 5's refinement).
 
 ## II. Apparatus
 
@@ -128,7 +128,7 @@ C6. Per docs/standing-rule-13-prospective-application.md §3:
 
 ## VI. Resume protocol
 
-Read this seed, then trajectory.md tail. Read `pilots/ts-resolve/seed.md` + `trajectory.md` (TSR-EXT 5 chapter close) for the substrate this corpus measures. Read `docs/standing-rule-13-prospective-application.md` §3a (C-condition independence) — this locale is the fourth prospective application of the rule; expected ≤3 rounds. Read `scripts/locales/CANDIDATES.md` Tier-D (j-k) for the strategic-arc context — TCC is the empirical instrument that informs which Tier-D follow-on sub-locales to spawn next, in what priority.
+Read this seed, then trajectory.md tail. Read `pilots/ts-resolve/seed.md` + `trajectory.md` (TSR-EXT 5 chapter close) for the substrate this corpus measures. Read `apparatus/docs/standing-rule-13-prospective-application.md` §3a (C-condition independence) — this locale is the fourth prospective application of the rule; expected ≤3 rounds. Read `apparatus/locales/CANDIDATES.md` Tier-D (j-k) for the strategic-arc context — TCC is the empirical instrument that informs which Tier-D follow-on sub-locales to spawn next, in what priority.
 
 ## VII. Downstream arc this locale informs
 

@@ -13,7 +13,7 @@ Append-only log of rounds. Most recent at bottom.
 - Per-iter for-of envelope: ~620ns (GetProp"next" + Call + result-alloc + GetProp"done" + JumpIfTrue + GetProp"value" + StoreLocal)
 - Iter envelope is now the per-iter dominator by ≥40× over the post-rewrite method dispatch
 
-**Strategic framing** — first prospective falsifier for `docs/standing-rule-13-prospective-application.md`:
+**Strategic framing** — first prospective falsifier for `apparatus/docs/standing-rule-13-prospective-application.md`:
 - §3 conditions C1-C4 all hold (IHI+GPI sibling-anchor; shape-compatible; cost-positive; bail-safe via stash-original-bytes)
 - §5 falsifier: locale must close in ≤3 implementation rounds for the prospective-application thesis to gain second corroboration
 - Empirical outcome of this locale will determine whether the thesis is promoted to corpus Doc 742 with strengthened claim or weakened with caveat
@@ -138,7 +138,7 @@ Landed per design doc spec. Edits:
 
 **Finding IPBR.1**: per-iter for-of envelope on string_url_sweep header_loop drops from ~545ns (predicted) → effectively eliminated; the measured ~21.8% header_loop reduction translates to ~55ms / ~9K-iter-equivalent at the inner loop, validating the cost model in design doc §6.
 
-**Finding IPBR.2** (corroborates `docs/standing-rule-13-prospective-application.md` §3 thesis): standing rule 13's prospective application produced its **second empirical corroboration** at this locale. IPBR-EXT 0 founding + IPBR-EXT 1 design + IPBR-EXT 2 implementation = 3 total rounds (1 implementation round). The thesis is now supported by:
+**Finding IPBR.2** (corroborates `apparatus/docs/standing-rule-13-prospective-application.md` §3 thesis): standing rule 13's prospective application produced its **second empirical corroboration** at this locale. IPBR-EXT 0 founding + IPBR-EXT 1 design + IPBR-EXT 2 implementation = 3 total rounds (1 implementation round). The thesis is now supported by:
 - IHI (retrospective; 11 rounds; 9 substrate moves)
 - GPI (prospective; 3 rounds; 1 substrate move; first corroboration)
 - IPBR (prospective; 3 rounds; 1 substrate move; second corroboration)
@@ -165,5 +165,5 @@ Per iteration: ~65ns of dispatch overhead, down from the pre-IHI/GPI/IPBR ~860ns
 
 All five Pred-ipbr.* HELD plus the Pred-ipbr.6 discipline falsifier. Locale closed in 1 implementation round per the standing-rule-13 prospective-application thesis. No IPBR-EXT 3 needed (String fast-path deferred to a follow-on locale; would not change Pred-ipbr.5's outcome since header_loop receivers are Arrays via `.split('\n')`).
 
-**Promotion implication for `docs/standing-rule-13-prospective-application.md`**: thesis now has two empirical corroborations (GPI + IPBR). Per §5, ready for promotion to corpus Doc 742 pending keeper review.
+**Promotion implication for `apparatus/docs/standing-rule-13-prospective-application.md`**: thesis now has two empirical corroborations (GPI + IPBR). Per §5, ready for promotion to corpus Doc 742 pending keeper review.
 

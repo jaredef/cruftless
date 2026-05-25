@@ -2,7 +2,7 @@
 
 ## CP-EXT 0 — workstream founding (2026-05-25)
 
-**Trigger**: keeper directive "Authorize the pilot spawn locale" after the prospective analysis at `docs/prospective/compartments-as-primitive.md` landed.
+**Trigger**: keeper directive "Authorize the pilot spawn locale" after the prospective analysis at `docs/engagement/prospective/compartments-as-primitive.md` landed.
 
 **Strategic framing**: Compartments are the user-visible JS expression of Doc 736's capability-passing-runtime discipline. Three load-bearing substrate pieces already exist (RS-EXT 2 minimum-realm, rusty-js-caps capability handles, module loader); this locale layers a JS-API atop them so application authors can directly write the Doc 736 security property.
 

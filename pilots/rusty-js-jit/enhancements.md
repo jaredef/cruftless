@@ -134,7 +134,7 @@ The combination of (1) + (2) + (3) plausibly accounts for the +18.9 ns regressio
 
 **Provenance**:
 - New locale: `pilots/rusty-js-jit/tiny-baseline/`
-- Manifest: `scripts/locales/manifest.json` (refreshed; tiny-baseline at depth 2, parent L.rusty-js-jit, status WORKSTREAM FOUNDED)
+- Manifest: `apparatus/locales/manifest.json` (refreshed; tiny-baseline at depth 2, parent L.rusty-js-jit, status WORKSTREAM FOUNDED)
 - Empirical anchors: this file's VTI-EXT 1 entry (127 ns baseline) + VTI-EXT 3b entry (P2.d at +18.9 ns regression)
 - Keeper direction: 2026-05-23 06:35-local "go with b right now" (option (b) of the VTI-EXT 3b report: spawn tiny-baseline immediately, skip VTI-EXT 3c)
 

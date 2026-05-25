@@ -997,7 +997,7 @@ Books the engagement-tier findings from the 2026-05-25 shared-upstream cluster a
 
 ### Finding T262C.4 (shared-upstream vs mutually-exclusive cluster discriminator)
 
-**Source**: T262C matrix decomposition of the post-arc residual 1416 fails per `docs/prospective/test262-long-tail-shared-vs-mutually-exclusive.md`.
+**Source**: T262C matrix decomposition of the post-arc residual 1416 fails per `docs/engagement/prospective/test262-long-tail-shared-vs-mutually-exclusive.md`.
 
 A cluster is shared-upstream when its dominant failure-reason shape recurs across MULTIPLE pipelines with structural identity. It is mutually-exclusive when reasons WITHIN one cluster are heterogeneous AND don't recur in other clusters. The discriminator operates as a two-step probe: per-reason cross-cluster spread; per-cluster reason-heterogeneity.
 
@@ -1148,6 +1148,6 @@ After Addendum XIII:
 Total: **42 findings** (6 original + 36 new across 13 addenda); **22 standing rules**; standing engagement instruments + corpus publications unchanged + Doc 736 Appendix A.
 
 **Corpus publication candidates from this addendum**:
-- T262C.4 / T262C.5 / T262C.6 + EPSUA.6 / EPSUA.7 cluster: candidate for a single corpus doc on "shared-upstream vs mutually-exclusive cluster discriminator + per-reason-pattern segmentation as projection unit." Already drafted at docs/prospective/test262-long-tail-shared-vs-mutually-exclusive.md.
+- T262C.4 / T262C.5 / T262C.6 + EPSUA.6 / EPSUA.7 cluster: candidate for a single corpus doc on "shared-upstream vs mutually-exclusive cluster discriminator + per-reason-pattern segmentation as projection unit." Already drafted at docs/engagement/prospective/test262-long-tail-shared-vs-mutually-exclusive.md.
 - RS.1+RS.2 + CP.4 cluster: already published as Doc 736 Appendix A (the two-pillar amendment).
 - SPTW.2 + NACR.1: substrate-discipline-coherence pattern; candidate for a corpus doc on discipline-drift detection via cross-module reason-shape coherence.

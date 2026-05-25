@@ -88,7 +88,7 @@ Living document; append-only at the bottom (newest at top within a section). Eac
 
 ## Tier C — discipline / methodology / corpus work
 
-### (h) `standing-rules-codification-pass` — **FORMALIZED** 2026-05-24 as [`docs/standing-rule-13-prospective-application.md`](../../docs/standing-rule-13-prospective-application.md)
+### (h) `standing-rules-codification-pass` — **FORMALIZED** 2026-05-24 as [`apparatus/docs/standing-rule-13-prospective-application.md`](../../apparatus/docs/standing-rule-13-prospective-application.md)
 **Telos**: review findings.md (20 findings; 13 standing rules) for consolidation. Standing rule 13's prospective application across IHI → GPI is a candidate Doc 7xx corpus publication (multi-tier-cascade-revival applied PROSPECTIVELY, not retrospectively).
 **Output**: 1 corpus doc (~150-200 lines); refresh findings.md Addendum X.
 **Status**: working draft landed in `docs/`; candidate for promotion to corpus Doc 742 after one additional empirical corroboration (e.g., `ihi-array-entries`) or keeper review of thesis at current anchor.
@@ -104,7 +104,7 @@ Living document; append-only at the bottom (newest at top within a section). Eac
 1. Read this file + identify the candidate.
 2. Run rule 11 5-axis pre-spawn check (component A/B is the load-bearing one).
 3. If 🟢 RIPE: spawn `pilots/<name>/{seed.md,trajectory.md,docs/,fixtures/}` with the seed founding-pattern (telos, constraints, falsifiers, methodology, carve-outs, resume protocol).
-4. Refresh `scripts/locales/manifest.json` via `scripts/locales/discover.sh`.
+4. Refresh `apparatus/locales/manifest.json` via `apparatus/locales/discover.sh`.
 5. Commit founding + manifest in one change.
 6. Per standing rule 13: design the deeper-layer closure from the founding round if known.
 

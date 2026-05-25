@@ -23,7 +23,7 @@
 - [TCC failure-table 2026-05-24 (post-TRSLS)](../ts-consumer-corpus/results/2026-05-24/failure-table.md) — empirical anchor
 - [TRSLS-EXT 1 Finding TRSLS.2](../ts-resolve-string-literal-safety/trajectory.md) — categorization-validation discipline that drove inspection-before-spec
 - [TSR strip.rs](../ts-resolve/derived/src/strip.rs) — substrate to modify
-- [docs/standing-rule-13-prospective-application.md](../../docs/standing-rule-13-prospective-application.md) — sixth prospective application; ≤3 rounds
+- [apparatus/docs/standing-rule-13-prospective-application.md](../../apparatus/docs/standing-rule-13-prospective-application.md) — sixth prospective application; ≤3 rounds
 
 ## I. Telos
 
@@ -50,7 +50,7 @@ C1. Existing 25/25 ts-resolve unit tests continue to PASS.
 C2. Diff-prod 42/42 PASS.
 C3. TCC's currently-OK 176 files remain OK (no regression).
 C4. TCC parse-success lifts by ≥10 pp (target ≥57.1%).
-C5. Per docs/standing-rule-13-prospective-application.md §3: all
+C5. Per apparatus/docs/standing-rule-13-prospective-application.md §3: all
     four C-conditions hold for these rules — sibling anchor (existing
     strip rules), shape compat (same Scanner machinery), cost-positive
     (each rule is small; bench-impact via TCC re-measure expected
@@ -68,7 +68,7 @@ C5. Per docs/standing-rule-13-prospective-application.md §3: all
 
 **Pred-trcaps.4**: TCC currently-OK count (176) does not regress (zero false-strip).
 
-**Pred-trcaps.5 (DISCIPLINE FALSIFIER per docs/standing-rule-13-prospective-application.md §5)**: locale closes in ≤3 implementation rounds. Sixth prospective application; single-round target.
+**Pred-trcaps.5 (DISCIPLINE FALSIFIER per apparatus/docs/standing-rule-13-prospective-application.md §5)**: locale closes in ≤3 implementation rounds. Sixth prospective application; single-round target.
 
 ## II. Apparatus
 

@@ -116,4 +116,4 @@ Both are §XII coercion lifts at the engine substrate, identifiable by their §X
 
 ---
 
-*Doc 730 §XV audit, EXT 21 close. Companion to docs/arktype-deep-trace.md.*
+*Doc 730 §XV audit, EXT 21 close. Companion to docs/engagement/arktype-deep-trace.md.*
