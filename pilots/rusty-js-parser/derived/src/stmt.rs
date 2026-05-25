@@ -308,6 +308,16 @@ impl<'src> Parser<'src> {
                 target, default, rest, span: Span::new(p_start, p_end),
             });
             if matches!(self.current_kind(), TokenKind::Punct(Punct::Comma)) {
+                // RPTC-locale (rest-param-trailing-comma): ECMA-262 §15.1.1
+                // — a rest parameter may not be followed by a trailing comma
+                // (and per §15.1.1, a rest must also be the last parameter,
+                // so even a non-trailing comma after rest is a syntax error).
+                if rest {
+                    return Err(ParseError {
+                        span: self.lookahead_span(),
+                        message: "Rest parameter may not be followed by a trailing comma".into(),
+                    });
+                }
                 self.bump()?;
             } else { break; }
         }
