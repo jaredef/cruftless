@@ -36,3 +36,17 @@
 **Finding PPAE.4** (extension of Finding PPAE.2): per-test-variant segmentation surfaces at the destructure-vs-simple-ident axis. PPAE-EXT 1's 17 in-scope test estimate didn't include the destructure variants; another 9 close at the same substrate site with a one-line collect_names() extension.
 
 **Status**: PPAE-EXT 2 CLOSED.
+
+## PPAE-EXT 3 — for-in/of head BoundNames-dup check (2026-05-25)
+
+**Trigger**: matrix pre-scope per Standing Rule 17. `head-(const|let)-bound-names-dup.js` tests check that `for (const [x, x] of [])` is SyntaxError per §14.7.1.2 BoundNames-must-be-unique. cruft accepted.
+
+**Edit** (~12 LOC):
+- `compiler.rs::Stmt::ForOf` + `Stmt::ForIn`: insert a HashSet-based dup check on head's collect_names() result before the existing PPAE-EXT 1 head-vs-body conflict check.
+
+**Verification**:
+- Minimal probes: `for (const [x, x] of [])`, `for (let [x, x] of [])`, `for (const {x, y: {x}} of [])` all SyntaxError ✓
+- Exemplar (2 head-bound-names-dup fixtures): PASS 0 → 2
+- Regression on for-in/of previously-passing (603): 603/603 preserved
+
+**Status**: PPAE-EXT 3 CLOSED.

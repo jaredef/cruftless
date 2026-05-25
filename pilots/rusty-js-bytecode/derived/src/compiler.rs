@@ -1328,6 +1328,16 @@ impl Compiler {
                 if let rusty_js_ast::ForBinding::Decl { kind, target, .. } = left {
                     if matches!(kind, VariableKind::Let | VariableKind::Const) {
                         let head_names: Vec<String> = target.collect_names().iter().map(|id| id.name.clone()).collect();
+                        // PPAE-EXT 3 (§14.7.1.2): BoundNames of ForDeclaration
+                        // must not contain duplicates (the destructure-leaf-
+                        // duplicate variant — for (const [x, x] of [])).
+                        let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+                        for n in &head_names {
+                            if !seen.insert(n.as_str()) {
+                                return Err(self.err(span, &format!(
+                                    "duplicate lexical binding `{}` in for-of head", n)));
+                            }
+                        }
                         let mut body_vars: Vec<(String, rusty_js_ast::VariableKind)> = Vec::new();
                         collect_hoisted_var_names(body.as_ref(), &mut body_vars);
                         for (vname, _) in &body_vars {
@@ -1804,6 +1814,15 @@ impl Compiler {
                 if let rusty_js_ast::ForBinding::Decl { kind, target, .. } = left {
                     if matches!(kind, VariableKind::Let | VariableKind::Const) {
                         let head_names: Vec<String> = target.collect_names().iter().map(|id| id.name.clone()).collect();
+                        // PPAE-EXT 3 (§14.7.1.2): BoundNames-dup check (same
+                        // as for-of branch above; symmetric across head shapes).
+                        let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+                        for n in &head_names {
+                            if !seen.insert(n.as_str()) {
+                                return Err(self.err(span, &format!(
+                                    "duplicate lexical binding `{}` in for-in head", n)));
+                            }
+                        }
                         let mut body_vars: Vec<(String, rusty_js_ast::VariableKind)> = Vec::new();
                         collect_hoisted_var_names(body.as_ref(), &mut body_vars);
                         for (vname, _) in &body_vars {
