@@ -35,14 +35,14 @@ fn main() {
 
     // Warmup.
     for _ in 0..3 {
-        let _ = jit.func.call1(10_000);
+        let _ = jit.func.call1(10_000.0);
     }
 
     // Bench: sum(N) for N = 1_000_000.
-    let n: i64 = 1_000_000;
+    let n: f64 = 1_000_000.0;
     let iters = 10;
     let t_start = Instant::now();
-    let mut total: i64 = 0;
+    let mut total: f64 = 0.0;
     for _ in 0..iters {
         total = jit.func.call1(n);
     }
@@ -74,9 +74,9 @@ fn main() {
     let jit2 = compile_function(&typed_proto).expect("typed-i64 JIT compile failed");
     let jit_compile_ms2 = t_jit_compile_start2.elapsed().as_secs_f64() * 1000.0;
     println!("typed-i64 JIT compile time: {:.3}ms", jit_compile_ms2);
-    for _ in 0..3 { let _ = jit2.func.call1(10_000); }
+    for _ in 0..3 { let _ = jit2.func.call1(10_000.0); }
     let t_start2 = Instant::now();
-    let mut total2: i64 = 0;
+    let mut total2: f64 = 0.0;
     for _ in 0..iters {
         total2 = jit2.func.call1(n);
     }

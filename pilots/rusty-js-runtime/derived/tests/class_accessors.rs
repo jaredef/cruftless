@@ -1,13 +1,9 @@
 //! Tier-Omega.5.u — class-member getter / setter compiler coverage.
 //!
-//! v1 deviation: accessor-descriptor semantics are dropped. A class
-//! getter / setter is lowered as a plain function-valued property on
-//! the prototype (instance) or constructor (static). The accessor
-//! function is reachable by name; reading the property returns the
-//! function itself, not the result of invoking it. Real getter / setter
-//! behavior is queued for the substrate round that wires
-//! Object.defineProperty's get / set fields end-to-end. Mirrors the
-//! object-literal treatment landed in Ω.5.p.parse.
+//! Accessor descriptors are now wired through class lowering and the
+//! runtime property read/write paths: class getters run on read, setters
+//! run on assignment, and Object.getOwnPropertyDescriptor exposes the
+//! underlying accessor functions.
 
 use rusty_js_runtime::{run_module, Value};
 
@@ -15,26 +11,28 @@ fn run(src: &str) -> Value {
     run_module(src).unwrap_or_else(|e| panic!("run failed for {:?}: {:?}", src, e))
 }
 
-// 1. Class with getter parses + compiles. v1 deviation: `new C().foo`
-//    yields the getter *function*, not its return value.
+// 1. Class with getter parses + compiles. Reading `new C().foo`
+//    invokes the getter.
 #[test]
 fn t01_class_getter_compiles() {
     let src = r#"
         class C { get foo() { return 42; } }
-        return typeof new C().foo;
+        return new C().foo;
     "#;
-    assert_eq!(run(src), Value::String(std::rc::Rc::new("function".into())));
+    assert_eq!(run(src), Value::Number(42.0));
 }
 
-// 2. Class with setter parses + compiles. v1 deviation: `new C().bar`
-//    yields the setter function as a plain property.
+// 2. Class with setter parses + compiles. Assignment dispatches the
+//    setter with `this` bound to the receiver.
 #[test]
 fn t02_class_setter_compiles() {
     let src = r#"
         class C { set bar(v) { this.x = v; } }
-        return typeof new C().bar;
+        const c = new C();
+        c.bar = 7;
+        return c.x;
     "#;
-    assert_eq!(run(src), Value::String(std::rc::Rc::new("function".into())));
+    assert_eq!(run(src), Value::Number(7.0));
 }
 
 // 3. Disambiguation — `get` / `set` as method names (followed by `(`),
@@ -52,19 +50,17 @@ fn t03_get_set_as_method_names() {
     assert_eq!(run(src), Value::Number(4.0));
 }
 
-// 4. Static getter lands on the constructor. v1 deviation: `C.count`
-//    yields the getter function.
+// 4. Static getter lands on the constructor and runs on read.
 #[test]
 fn t04_static_getter() {
     let src = r#"
         class C { static get count() { return 5; } }
-        return typeof C.count;
+        return C.count;
     "#;
-    assert_eq!(run(src), Value::String(std::rc::Rc::new("function".into())));
+    assert_eq!(run(src), Value::Number(5.0));
 }
 
-// 5. Both getter and setter on the same key — both compile. v1
-//    deviation: they share a single prototype slot, last-write wins.
+// 5. Getter and setter on the same key share an accessor descriptor.
 #[test]
 fn t05_getter_and_setter_same_key() {
     let src = r#"
@@ -72,7 +68,8 @@ fn t05_getter_and_setter_same_key() {
             get x() { return 1; }
             set x(v) { return v; }
         }
-        return typeof new C().x;
+        const d = Object.getOwnPropertyDescriptor(C.prototype, "x");
+        return typeof d.get + "," + typeof d.set + "," + new C().x;
     "#;
-    assert_eq!(run(src), Value::String(std::rc::Rc::new("function".into())));
+    assert_eq!(run(src), Value::String(std::rc::Rc::new("function,function,1".into())));
 }

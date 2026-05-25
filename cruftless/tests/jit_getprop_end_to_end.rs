@@ -92,16 +92,18 @@ fn jit_compiled_getprop_deopts_on_non_number_result() {
         proto: proto_rc.clone(),
         upvalues: Vec::new(),
         bound_this: None,
+        bound_this_cell: None,
         is_arrow: false,
         call_count: std::cell::Cell::new(0),
         jit_disabled: std::cell::Cell::new(false),
-    tb_metadata_ptr: std::cell::Cell::new(None),
+        tb_metadata_ptr: std::cell::Cell::new(None),
     };
     let closure_obj = Object {
         proto: None,
         extensible: true,
         properties: indexmap::IndexMap::new(),
         internal_kind: InternalKind::Closure(closure_internals),
+        ..Default::default()
     };
     let closure_id = rt.alloc_object(closure_obj);
 
@@ -147,16 +149,18 @@ fn jit_compiled_getprop_returns_object_property_value() {
         proto: proto_rc.clone(),
         upvalues: Vec::new(),
         bound_this: None,
+        bound_this_cell: None,
         is_arrow: false,
         call_count: std::cell::Cell::new(0),
         jit_disabled: std::cell::Cell::new(false),
-    tb_metadata_ptr: std::cell::Cell::new(None),
+        tb_metadata_ptr: std::cell::Cell::new(None),
     };
     let closure_obj = Object {
         proto: None,
         extensible: true,
         properties: indexmap::IndexMap::new(),
         internal_kind: InternalKind::Closure(closure_internals),
+        ..Default::default()
     };
     let closure_id = rt.alloc_object(closure_obj);
 

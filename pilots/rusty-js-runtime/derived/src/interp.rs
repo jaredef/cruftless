@@ -530,8 +530,16 @@ impl Runtime {
     /// else numeric add. Pure-primitive case delegates to
     /// abstract_ops::op_add for the common fast path.
     pub fn op_add_rt(&mut self, l: &Value, r: &Value) -> Result<Value, RuntimeError> {
-        let lp = self.to_primitive(l, "default")?;
-        let rp = self.to_primitive(r, "default")?;
+        let lp = if matches!(l, Value::Object(_)) {
+            self.to_primitive(l, "default")?
+        } else {
+            l.clone()
+        };
+        let rp = if matches!(r, Value::Object(_)) {
+            self.to_primitive(r, "default")?
+        } else {
+            r.clone()
+        };
         // ECMA-262 §13.15.3 step 8 + §7.1.17 ToString: if either operand
         // primitive is a Symbol and the other is a String (forcing string-
         // concat path), throw TypeError. Without this, `"" + Symbol("s")`

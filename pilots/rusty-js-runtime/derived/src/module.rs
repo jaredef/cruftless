@@ -1687,33 +1687,49 @@ impl Runtime {
                         None => None,
                     }
                 } else { None };
-                let triples: Vec<(String, Value, Option<Value>)> = self
-                    .obj(*oid)
-                    .properties
-                    .iter()
-                    .filter(|(k, d)| {
-                        if k.as_str() == "__esModule" { return false; }
-                        if strip_fn_intrinsics && matches!(k.as_str(), "name" | "length" | "prototype") {
-                            return false;
-                        }
-                        if strip_prototype_only && k.as_str() == "prototype" {
-                            return false;
-                        }
-                        // Rung-7 enumerability filter (only when a
-                        // meaningful superclass prototype was found).
-                        if let Some(super_names) = &super_proto_names {
-                            if !d.enumerable {
-                                let kn = k.as_str();
-                                let is_fn_intrinsic = matches!(kn, "name" | "length" | "prototype");
-                                if !is_fn_intrinsic && !super_names.contains(kn) {
-                                    return false;
-                                }
+                let triples: Vec<(String, Value, Option<Value>)> = {
+                    let o = self.obj(*oid);
+                    let mut out: Vec<(String, Value, Option<Value>)> = Vec::new();
+                    if let Some(shape) = o.shape.as_ref() {
+                        for (name, slot) in shape.iter_slots() {
+                            if name == "__esModule" { continue; }
+                            if strip_fn_intrinsics && matches!(name, "name" | "length" | "prototype") {
+                                continue;
+                            }
+                            if strip_prototype_only && name == "prototype" {
+                                continue;
+                            }
+                            let idx = slot as usize;
+                            if let Some(v) = o.shape_values.get(idx) {
+                                out.push((name.to_string(), v.clone(), None));
                             }
                         }
-                        true
-                    })
-                    .map(|(k, d)| (k.to_string_content(), d.value.clone(), d.getter.clone()))
-                    .collect();
+                    }
+                    out.extend(o.properties.iter()
+                        .filter(|(k, d)| {
+                            if k.as_str() == "__esModule" { return false; }
+                            if strip_fn_intrinsics && matches!(k.as_str(), "name" | "length" | "prototype") {
+                                return false;
+                            }
+                            if strip_prototype_only && k.as_str() == "prototype" {
+                                return false;
+                            }
+                            // Rung-7 enumerability filter (only when a
+                            // meaningful superclass prototype was found).
+                            if let Some(super_names) = &super_proto_names {
+                                if !d.enumerable {
+                                    let kn = k.as_str();
+                                    let is_fn_intrinsic = matches!(kn, "name" | "length" | "prototype");
+                                    if !is_fn_intrinsic && !super_names.contains(kn) {
+                                        return false;
+                                    }
+                                }
+                            }
+                            true
+                        })
+                        .map(|(k, d)| (k.to_string_content(), d.value.clone(), d.getter.clone())));
+                    out
+                };
                 let mut pairs: Vec<(String, Value)> = Vec::with_capacity(triples.len());
                 for (k, v, getter) in triples {
                     let resolved = if let Some(g) = getter {
@@ -1735,9 +1751,8 @@ impl Runtime {
                 // exports do.
                 let exports_has_user_keys = self
                     .obj(*oid)
-                    .properties
-                    .iter()
-                    .any(|(k, _)| k.as_str() != "__esModule");
+                    .string_keys()
+                    .any(|k| k != "__esModule");
                 let has_explicit_default = !matches!(self.object_get(*oid, "default"), Value::Undefined);
                 // Ω.5.P53.E10: when the source flags itself as a
                 // transpiled ES module (__esModule===true) and explicitly

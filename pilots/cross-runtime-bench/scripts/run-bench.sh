@@ -15,13 +15,16 @@
 set -euo pipefail
 
 PILOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_ROOT="$(cd "$PILOT_DIR/../.." && pwd)"
+# shellcheck disable=SC1091
+. "$REPO_ROOT/scripts/env.sh"
 FIXTURES_DIR="$PILOT_DIR/fixtures"
-RESULTS_ROOT="$PILOT_DIR/results"
+RESULTS_ROOT="${CRUFTLESS_CROSS_RUNTIME_RESULTS_ROOT:-$PILOT_DIR/results}"
 
 # Binary locations.
-CRUFT_BIN="${CRUFT_BIN:-$HOME/bin/cruft}"
-BUN_BIN="${BUN_BIN:-$HOME/.bun/bin/bun}"
-NODE_BIN="${NODE_BIN:-/usr/bin/node}"
+CRUFT_BIN="${CRUFT_BIN:-$REPO_ROOT/target/release/cruft}"
+BUN_BIN="${BUN_BIN:-bun}"
+NODE_BIN="${NODE_BIN:-node}"
 
 RUNS=5
 PATTERN="*"

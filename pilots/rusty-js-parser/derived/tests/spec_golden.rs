@@ -217,10 +217,8 @@ fn string_line_continuation() {
 }
 
 #[test]
-fn string_octal_escape_rejected() {
-    let mut lx = Lexer::new(r#""\7""#);
-    let e = lx.next_token(LexerGoal::Div).unwrap_err();
-    assert_eq!(e.kind, LexErrorKind::InvalidEscape);
+fn string_octal_escape_cooked() {
+    assert_eq!(tokens(r#""\7""#), vec![TokenKind::String("\u{7}".into())]);
 }
 
 #[test]

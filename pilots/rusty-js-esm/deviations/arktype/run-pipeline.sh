@@ -8,14 +8,15 @@
 #   ./run-pipeline.sh diff <level>       — diff bun vs cruftless trace
 #
 # Env:
-#   PROBE_ROOT — directory containing node_modules/arktype (default /tmp/ak-probe)
-#   CRUFT_BIN     — cruftless binary (default $HOME/rusty-bun/target/release/cruftless)
+#   PROBE_ROOT — directory containing node_modules/arktype (default from env.local or /tmp)
+#   CRUFT_BIN  — cruftless binary (default from env.local or target/release/cruft)
 
 set -euo pipefail
 
-PROBE_ROOT="${PROBE_ROOT:-/tmp/ak-probe}"
-CRUFT_BIN="${CRUFT_BIN:-${RB_BIN:-$HOME/rusty-bun/target/release/cruft}}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$HERE/../../../.." && pwd)"
+# shellcheck disable=SC1091
+. "$REPO_ROOT/scripts/env.sh"
 
 case "${1:-}" in
   capture)
@@ -25,7 +26,7 @@ case "${1:-}" in
     out="$HERE/captures/${level}-result.json"
     cp "$probe" "$PROBE_ROOT/_pipeline_probe.mjs"
     cd "$PROBE_ROOT"
-    bun_out=$(bun "$PROBE_ROOT/_pipeline_probe.mjs" 2>&1 || true)
+    bun_out=$("$BUN_BIN" "$PROBE_ROOT/_pipeline_probe.mjs" 2>&1 || true)
     rb_out=$("$CRUFT_BIN" "$PROBE_ROOT/_pipeline_probe.mjs" 2>&1 || true)
     printf '{"level":"%s","bun":%s,"cruftless":%s}\n' \
       "$level" \
@@ -40,7 +41,7 @@ case "${1:-}" in
     [ -f "$probe" ] || { echo "missing $probe"; exit 1; }
     cp "$probe" "$PROBE_ROOT/_pipeline_probe.mjs"
     cd "$PROBE_ROOT"
-    bun "$PROBE_ROOT/_pipeline_probe.mjs" > "$HERE/traces/${level}-bun.jsonl" 2>&1 || true
+    "$BUN_BIN" "$PROBE_ROOT/_pipeline_probe.mjs" > "$HERE/traces/${level}-bun.jsonl" 2>&1 || true
     "$CRUFT_BIN" "$PROBE_ROOT/_pipeline_probe.mjs" > "$HERE/traces/${level}-cruftless.jsonl" 2>&1 || true
     echo "wrote traces/${level}-{bun,cruftless}.jsonl"
     ;;

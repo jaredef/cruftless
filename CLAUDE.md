@@ -108,18 +108,24 @@ The two probes triangulate: each substrate fix that flips a diff-prod fixture sh
 
 ## Operational quick-reference
 
+### Local script environment
+
+Repo scripts that need filesystem-local paths source `scripts/env.sh`. The loader reads `env.local` when present, then supplies portable repo-relative fallbacks. `env.example` is the documented contract for portable configuration; `env.local` is the machine-specific instantiation for this checkout.
+
+Use env variables for operational paths instead of baking workstation paths into scripts. Current variables include `CRUFTLESS_ROOT`, `CRUFT_BIN`, `BUN_BIN`, `NODE_BIN`, `T262_ROOT`, `PROD_SANDBOX`, `RESULTS_DIR`, `PROBE_ROOT`, `CRUFTLESS_CROSS_RUNTIME_RESULTS_ROOT`, and `LOCAL_CRUFT`. New scripts should compute their nearby root, source `scripts/env.sh`, and then derive any remaining paths from these variables or from repo-relative defaults.
+
 | Task | Command |
 |---|---|
 | Build cruft binary | `cargo build --release --bin cruft -p cruftless` |
-| Run diff-prod (all fixtures) | `CRUFT_BIN=~/bin/cruft scripts/diff-prod/run-all.sh` |
-| Run diff-prod (single fixture) | `CRUFT_BIN=~/bin/cruft scripts/diff-prod/run.sh <name>` |
+| Run diff-prod (all fixtures) | `scripts/diff-prod/run-all.sh` |
+| Run diff-prod (single fixture) | `scripts/diff-prod/run.sh <name>` |
 | Run test262 sample (cruft) | `scripts/test262-sample/run-sample.sh` |
 | Run test262 sample (bun baseline) | `scripts/test262-sample/run-sample-bun.sh` |
 | Refresh locale manifest | `apparatus/locales/discover.sh` |
 | Workspace test (all pilots) | `cargo test --release --workspace` |
 | Per-pilot test | `cargo test --release -p <crate-name>` |
 
-`CRUFT_BIN` defaults to `~/bin/cruft` per the `run-sample.sh` auto-copy convention (the build target lives on USB-attached storage; the binary executes from local SD to avoid USB exec-path stalls under parallel fan-out).
+`CRUFT_BIN` is supplied by `env.local` on this machine. The `run-sample.sh` auto-copy convention still supports `LOCAL_CRUFT` for hosts that want to execute from a local binary cache instead of directly from `target/`.
 
 ## Standing corpus references
 

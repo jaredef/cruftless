@@ -6,12 +6,7 @@
 //!   1. invoking `cruftless --audit fixture.mjs` with --audit-log set
 //!   2. asserting the binary still exits 0 (PM-EXT-style smoke under
 //!      Mode 1)
-//!   3. asserting the audit log file exists and is empty-of-records
-//!      (zero records is correct since no effectful method routes yet)
-//!
-//! When CAPS-EXT 6+ routes fs.readFileSync through the dispatcher,
-//! the same test fixture will start producing records and a follow-on
-//! test will assert their shape.
+//!   3. asserting the audit log records the routed stdio effect.
 
 use std::process::Command;
 
@@ -46,17 +41,9 @@ fn audit_mode_smoke_compat_behavior() {
         "--audit run should exit 0 (Mode 1 == Mode 0 + logging)\nstdout: {stdout}\nstderr: {stderr}");
     assert!(stdout.contains("hello"), "expected 'hello' in stdout; got: {stdout}");
 
-    // The log file may or may not exist depending on whether any record
-    // was emitted. Until CAPS-EXT 6+ routes the effectful surface, no
-    // record is emitted, so the log file is *not* created (drain_audit
-    // returns early on empty records). This is the documented
-    // intermediate state.
-    if log.exists() {
-        let body = std::fs::read_to_string(&log).unwrap();
-        // If a record exists, it must be well-formed.
-        assert!(body.contains("# cruftless audit log"),
-            "log file present but malformed: {body}");
-    }
+    let body = std::fs::read_to_string(&log).expect("audit log should be written");
+    assert!(body.contains("# cruft audit log"), "log file malformed: {body}");
+    assert!(body.contains("\tstdio\twrite(stdout)\t"), "expected stdout audit record: {body}");
 
     let _ = std::fs::remove_file(&src);
     let _ = std::fs::remove_file(&log);
@@ -65,20 +52,18 @@ fn audit_mode_smoke_compat_behavior() {
 #[test]
 fn mode_flag_parsed_does_not_affect_compat_run() {
     // Sealed mode without any effectful calls should behave identically
-    // to Compat. Until CAPS-EXT 6+ routes the surface through the
-    // dispatcher, even Mode 3 is a no-op.
+    // to Compat. Console output is now routed through stdio and denied
+    // under Mode 3, so keep this fixture genuinely effect-free.
     let src = tmp_path("seal-src.mjs");
-    std::fs::write(&src, b"console.log('sealed-noop');\n").unwrap();
+    std::fs::write(&src, b"const sealedNoop = 1 + 1;\n").unwrap();
 
     let out = Command::new(bin())
         .arg("--sealed")
         .arg(&src)
         .output()
         .expect("run cruftless --sealed");
-    let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(out.status.success(),
         "Mode 3 on a no-effectful-call program should still exit 0; got {:?}", out.status);
-    assert!(stdout.contains("sealed-noop"));
 
     let _ = std::fs::remove_file(&src);
 }

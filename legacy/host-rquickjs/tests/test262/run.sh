@@ -19,7 +19,9 @@
 
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-ROOT="$(cd "$HERE/../../.." && pwd)"
+ROOT="$(cd "$HERE/../../../.." && pwd)"
+# shellcheck disable=SC1091
+. "$ROOT/scripts/env.sh"
 CRUFT="${CRUFT_BIN:-${RB_BIN:-$ROOT/target/release/cruft}}"
 RUNNER="$HERE/runner.mjs"
 # Ω.5.P61.E2: support running against the upstream test262 tree by

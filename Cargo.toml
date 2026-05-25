@@ -65,7 +65,4 @@ members = [
     # JS host integration (trajectory Tier-H, seed §VII Sub-criterion 4)
     # Primary substrate: cruftless host on rusty-js-runtime.
     "cruftless",
-    # Legacy reference: rquickjs-based host (renamed from host/; retained
-    # as the parity ceiling reference per Doc 717 §VIII).
-    "legacy/host-rquickjs",
 ]

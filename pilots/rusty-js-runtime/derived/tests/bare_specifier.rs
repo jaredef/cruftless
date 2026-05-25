@@ -278,7 +278,10 @@ fn t10_cjs_require_bare_via_require_condition() {
         &entry_url(&entry),
     ).unwrap();
     let result = rt.object_get(ns, "result");
-    assert!(matches!(result, Value::Number(n) if (n - 33.0).abs() < 1e-9));
+    assert!(
+        matches!(result, Value::Number(n) if (n - 33.0).abs() < 1e-9),
+        "expected result=33, got {result:?}"
+    );
 }
 
 // ─── 11. ESM importing CJS bare package ─────────────────────────────

@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 # Run every fixture under scripts/diff-prod/fixtures/*. Emits per-fixture
 # PASS/FAIL plus an aggregate summary. Runs everything `nicely` and uses
-# the T7 mounted drive for sandbox + results by default.
+# env.local-configured sandbox + results dirs by default.
 
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-
-PROD_SANDBOX="${PROD_SANDBOX:-/media/jaredef/T7/rusty-bun/diff-prod-sandbox}"
-RESULTS_DIR="${RESULTS_DIR:-/media/jaredef/T7/rusty-bun/diff-prod-results}"
+# shellcheck disable=SC1091
+. "$HERE/../env.sh"
 export PROD_SANDBOX RESULTS_DIR
 
 mkdir -p "$PROD_SANDBOX" "$RESULTS_DIR"

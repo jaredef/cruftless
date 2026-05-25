@@ -1455,12 +1455,21 @@ impl Compiler {
                 // mismatch. Two patch sites: done_offset (i32 at +4) and
                 // next_iter_offset (i16 at +8). Patched after the slow
                 // path + body are emitted.
-                let ipbr_op_off = self.bytecode.len();
-                encode_op(&mut self.bytecode, Op::ForOfFastNext);
-                encode_u16(&mut self.bytecode, iter_slot);
-                encode_u16(&mut self.bytecode, bind_slot);
-                encode_i32(&mut self.bytecode, 0);  // done_offset patch site
-                self.bytecode.extend_from_slice(&[0u8, 0u8]);  // next_iter_offset patch site (i16)
+                let ipbr_op_off = if per_iter_fresh {
+                    // The fused fast path writes the loop binding and jumps
+                    // directly to the body. Lexical for-of heads need the
+                    // ResetLocalCell prologue below so closures capture a
+                    // fresh per-iteration cell; keep them on the slow path.
+                    None
+                } else {
+                    let off = self.bytecode.len();
+                    encode_op(&mut self.bytecode, Op::ForOfFastNext);
+                    encode_u16(&mut self.bytecode, iter_slot);
+                    encode_u16(&mut self.bytecode, bind_slot);
+                    encode_i32(&mut self.bytecode, 0);  // done_offset patch site
+                    self.bytecode.extend_from_slice(&[0u8, 0u8]);  // next_iter_offset patch site (i16)
+                    Some(off)
+                };
                 // result = iter.next()
                 encode_op(&mut self.bytecode, Op::LoadLocal);
                 encode_u16(&mut self.bytecode, iter_slot);
@@ -1508,12 +1517,14 @@ impl Compiler {
                 // IPBR-EXT 2: patch ForOfFastNext's next_iter_offset to
                 // this point (after slow-path StoreLocal completes; body
                 // expects empty stack).
-                let next_iter_target = self.bytecode.len();
-                let ipbr_after_operand = ipbr_op_off + 11;
-                let next_disp = (next_iter_target as i32) - (ipbr_after_operand as i32);
-                let next_iter_disp_i16 = next_disp as i16;
-                self.bytecode[ipbr_op_off + 9..ipbr_op_off + 11]
-                    .copy_from_slice(&next_iter_disp_i16.to_le_bytes());
+                if let Some(ipbr_op_off) = ipbr_op_off {
+                    let next_iter_target = self.bytecode.len();
+                    let ipbr_after_operand = ipbr_op_off + 11;
+                    let next_disp = (next_iter_target as i32) - (ipbr_after_operand as i32);
+                    let next_iter_disp_i16 = next_disp as i16;
+                    self.bytecode[ipbr_op_off + 9..ipbr_op_off + 11]
+                        .copy_from_slice(&next_iter_disp_i16.to_le_bytes());
+                }
                 if let Some(pat) = &destr_pat {
                     // SMDR-EXT 1 (2026-05-24): if the for-of head was
                     // a standalone pattern (ForBinding::Pattern, no
@@ -1553,10 +1564,13 @@ impl Compiler {
                 // IPBR-EXT 2: patch ForOfFastNext's done_offset to here
                 // (after the slow-path Pop; fast-path-done skips the Pop
                 // because it has nothing on the stack to discard).
-                let done_target = self.bytecode.len();
-                let done_disp = (done_target as i32) - (ipbr_after_operand as i32);
-                self.bytecode[ipbr_op_off + 5..ipbr_op_off + 9]
-                    .copy_from_slice(&done_disp.to_le_bytes());
+                if let Some(ipbr_op_off) = ipbr_op_off {
+                    let done_target = self.bytecode.len();
+                    let ipbr_after_operand = ipbr_op_off + 11;
+                    let done_disp = (done_target as i32) - (ipbr_after_operand as i32);
+                    self.bytecode[ipbr_op_off + 5..ipbr_op_off + 9]
+                        .copy_from_slice(&done_disp.to_le_bytes());
+                }
                 let frame = self.loop_stack.pop().unwrap();
                 for site in frame.break_patches { self.patch_jump_at(site); }
                 self.block_depth -= 1;

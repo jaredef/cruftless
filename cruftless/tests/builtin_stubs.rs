@@ -57,9 +57,18 @@ fn t03_crypto_random_uuid_returns_string() {
         stdout.contains("uuid typeof: string"),
         "expected randomUUID to return a string; stdout: {stdout}"
     );
+    let uuid = stdout
+        .lines()
+        .find_map(|line| line.strip_prefix("uuid sample: "))
+        .expect("uuid sample line");
+    assert_eq!(uuid.len(), 36, "expected UUID length; stdout: {stdout}");
+    assert_eq!(uuid.as_bytes()[14], b'4', "expected UUID v4 marker; stdout: {stdout}");
     assert!(
-        stdout.contains("uuid sample: 00000000-0000-0000-0000-000000000000"),
-        "expected placeholder uuid sample; stdout: {stdout}"
+        uuid.chars().enumerate().all(|(i, c)| {
+            matches!(i, 8 | 13 | 18 | 23) && c == '-'
+                || !matches!(i, 8 | 13 | 18 | 23) && c.is_ascii_hexdigit()
+        }),
+        "expected UUID-shaped sample; stdout: {stdout}"
     );
 }
 

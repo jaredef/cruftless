@@ -5,7 +5,9 @@
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
-T262="${T262_ROOT:-/home/jaredef/test262}"
+# shellcheck disable=SC1091
+. "$ROOT/scripts/env.sh"
+T262="${T262_ROOT:?set T262_ROOT in env.local or export it before running}"
 PARALLEL="${PARALLEL:-2}"
 RUNNER="$ROOT/legacy/host-rquickjs/tests/test262/runner.mjs"
 HARNESS="$T262/harness"
@@ -27,7 +29,7 @@ echo "Sample size: $COUNT tests; parallelism: $PARALLEL (bun)"
 run_one() {
   local p="$1"
   T262_TEST_PATH="$p" T262_HARNESS_DIR="$HARNESS" \
-    timeout 10s bun "$RUNNER" 2>/dev/null \
+    timeout 10s "$BUN_BIN" "$RUNNER" 2>/dev/null \
     | head -1
 }
 export -f run_one
@@ -45,7 +47,7 @@ RUNNABLE=$((PASS + FAIL))
 PCT=$(awk -v p="$PASS" -v r="$RUNNABLE" 'BEGIN{printf "%.1f", r>0?100*p/r:0}')
 {
   echo "test262 representative sample (bun) — $DATE"
-  echo "bun version: $(bun --version)"
+  echo "bun version: $($BUN_BIN --version)"
   echo "Sample size:    $COUNT"
   echo "Results emitted: $TOTAL"
   echo "PASS:           $PASS"

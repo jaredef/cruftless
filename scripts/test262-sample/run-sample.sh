@@ -14,20 +14,21 @@
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
+# shellcheck disable=SC1091
+. "$ROOT/scripts/env.sh"
 # Default cruft to a local SD-card copy at ~/bin/cruft. The build target/
 # is a symlink onto the USB-attached T7 (exfat); execing the binary ~7600
 # times from there is what most plausibly hung the Pi on 2026-05-22 (USB
 # bridge D-state under parallel exec/mmap fan-out). Keep the build on T7,
 # run the binary from SD. Auto-refresh the local copy when the built one
 # is newer.
-LOCAL_CRUFT="${LOCAL_CRUFT:-$HOME/bin/cruft}"
 BUILT_CRUFT="$ROOT/target/release/cruft"
 if [ -x "$BUILT_CRUFT" ] && { [ ! -x "$LOCAL_CRUFT" ] || [ "$BUILT_CRUFT" -nt "$LOCAL_CRUFT" ]; }; then
   mkdir -p "$(dirname "$LOCAL_CRUFT")"
   cp "$BUILT_CRUFT" "$LOCAL_CRUFT"
 fi
 CRUFT="${CRUFT_BIN:-${RB_BIN:-$LOCAL_CRUFT}}"
-T262="${T262_ROOT:-/home/jaredef/test262}"
+T262="${T262_ROOT:?set T262_ROOT in env.local or export it before running}"
 # PARALLEL default lowered from 4 → 2 on the Pi. Four concurrent cruft
 # children pushed the box into a hang on 2026-05-22; 2 leaves headroom on
 # the 8 GB / 2 GB-zram-swap setup. Override with PARALLEL=N for big hosts.

@@ -6,24 +6,21 @@
 # Usage:
 #   ./run.sh <fixture-name>
 # Env:
-#   PROD_SANDBOX   — install root (default /media/jaredef/T7/rusty-bun/diff-prod-sandbox)
-#   CRUFT_BIN         — cruftless binary (default $HOME/rusty-bun/target/release/cruftless)
-#   RESULTS_DIR    — per-run results (default /media/jaredef/T7/rusty-bun/diff-prod-results)
+#   PROD_SANDBOX   — install root (default from env.local or /tmp)
+#   CRUFT_BIN      — cruftless binary (default from env.local or target/release/cruft)
+#   RESULTS_DIR    — per-run results (default from env.local or results/diff-prod)
 #
 # Runs all heavy work behind `nice -n 19 ionice -c3` so the harness can
-# run alongside a workstation session without disrupting it. Sandbox +
-# results default to the T7 mounted drive to keep system disk lean.
+# run alongside a workstation session without disrupting it.
 
 set -uo pipefail
 
 NAME="${1:?usage: $0 <fixture-name>}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck disable=SC1091
+. "$HERE/../env.sh"
 FIX="$HERE/fixtures/$NAME"
 [ -d "$FIX" ] || { echo "no such fixture: $FIX" >&2; exit 2; }
-
-PROD_SANDBOX="${PROD_SANDBOX:-/media/jaredef/T7/rusty-bun/diff-prod-sandbox}"
-CRUFT_BIN="${CRUFT_BIN:-${RB_BIN:-$HOME/rusty-bun/target/release/cruft}}"
-RESULTS_DIR="${RESULTS_DIR:-/media/jaredef/T7/rusty-bun/diff-prod-results}"
 
 # Nice/ionice wrapper. If ionice isn't installed, fall back to nice-only.
 if command -v ionice >/dev/null 2>&1; then
