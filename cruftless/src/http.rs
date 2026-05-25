@@ -21,16 +21,16 @@ use std::time::{Duration, Instant};
 const SERVER_SLOT: &str = "__cruftless_http_server_id";
 const BODY_SLOT: &str = "__cruftless_http_body";
 const HEADERS_SLOT: &str = "__cruftless_http_headers";
+const REQUEST_LISTENERS_SLOT: &str = "__cruftless_http_request_listeners";
+const REQUEST_ONCE_SLOT: &str = "__cruftless_http_once";
 const MAX_REQUEST_BYTES: usize = 1024 * 1024;
 
 #[derive(Clone)]
 struct ActiveHttpServer {
     listener_handle: u64,
     bound_addr: String,
-    handler: Value,
     handler_realm: usize,
     server_object: ObjectRef,
-    closing: bool,
 }
 
 thread_local! {
@@ -54,25 +54,53 @@ fn get_server(id: usize) -> Option<ActiveHttpServer> {
     HTTP_SERVERS.with(|servers| servers.borrow().get(id).and_then(|s| s.clone()))
 }
 
-fn update_server<F>(id: usize, f: F)
-where F: FnOnce(&mut ActiveHttpServer) {
-    HTTP_SERVERS.with(|servers| {
-        if let Some(Some(server)) = servers.borrow_mut().get_mut(id) {
-            f(server);
-        }
-    });
-}
-
 fn remove_server(id: usize) -> Option<ActiveHttpServer> {
     HTTP_SERVERS.with(|servers| servers.borrow_mut().get_mut(id).and_then(|s| s.take()))
 }
 
-fn value_to_string(v: &Value) -> String {
-    rusty_js_runtime::abstract_ops::to_string(v).as_str().to_string()
+fn set_internal_slot(rt: &mut Runtime, obj: ObjectRef, name: &str, value: Value) {
+    rt.obj_mut(obj).set_own_internal(name.into(), value);
 }
 
-fn value_to_bytes(v: &Value) -> Vec<u8> {
-    value_to_string(v).into_bytes()
+fn value_to_string(rt: &mut Runtime, v: &Value) -> Result<String, RuntimeError> {
+    rt.coerce_to_string(v)
+}
+
+fn value_to_bytes(rt: &mut Runtime, v: &Value) -> Result<Vec<u8>, RuntimeError> {
+    Ok(value_to_string(rt, v)?.into_bytes())
+}
+
+fn make_listener_record(rt: &mut Runtime, listener: Value, once: bool) -> ObjectRef {
+    let record = new_object(rt);
+    set_internal_slot(rt, record, "listener", listener);
+    set_internal_slot(rt, record, REQUEST_ONCE_SLOT, Value::Boolean(once));
+    record
+}
+
+fn request_listeners(rt: &mut Runtime, server: ObjectRef) -> ObjectRef {
+    match rt.object_get(server, REQUEST_LISTENERS_SLOT) {
+        Value::Object(id) => id,
+        _ => {
+            let arr = rt.alloc_object(rusty_js_runtime::Object::new_array());
+            rt.object_set(arr, "length".into(), Value::Number(0.0));
+            set_internal_slot(rt, server, REQUEST_LISTENERS_SLOT, Value::Object(arr));
+            arr
+        }
+    }
+}
+
+fn add_request_listener(rt: &mut Runtime, server: ObjectRef, listener: Value, once: bool) -> Result<(), RuntimeError> {
+    if !rt.is_callable(&listener) {
+        return Err(RuntimeError::TypeError(
+            "server.on: listener must be callable".into(),
+        ));
+    }
+    let arr = request_listeners(rt, server);
+    let len = rt.array_length(arr);
+    let record = make_listener_record(rt, listener, once);
+    rt.object_set(arr, len.to_string(), Value::Object(record));
+    rt.object_set(arr, "length".into(), Value::Number((len + 1) as f64));
+    Ok(())
 }
 
 fn current_server_id(rt: &mut Runtime) -> Result<usize, RuntimeError> {
@@ -86,11 +114,17 @@ fn current_server_id(rt: &mut Runtime) -> Result<usize, RuntimeError> {
     }
 }
 
-fn make_server_object(rt: &mut Runtime, handler: Value) -> Result<ObjectRef, RuntimeError> {
+fn make_server_object(rt: &mut Runtime, handler: Value, net_cap: caps::Net) -> Result<ObjectRef, RuntimeError> {
     let server = new_object(rt);
     rt.object_set(server, "listening".into(), Value::Boolean(false));
+    let listeners = rt.alloc_object(rusty_js_runtime::Object::new_array());
+    rt.object_set(listeners, "length".into(), Value::Number(0.0));
+    set_internal_slot(rt, server, REQUEST_LISTENERS_SLOT, Value::Object(listeners));
+    if rt.is_callable(&handler) {
+        add_request_listener(rt, server, handler.clone(), false)?;
+    }
 
-    register_method(rt, server, "listen", |rt, args| {
+    register_method(rt, server, "listen", move |rt, args| {
         let this_id = match rt.current_this() {
             Value::Object(id) => id,
             _ => return Err(RuntimeError::TypeError("server.listen: invalid receiver".into())),
@@ -111,21 +145,18 @@ fn make_server_object(rt: &mut Runtime, handler: Value) -> Result<ObjectRef, Run
         let callback = args.iter().find(|v| matches!(v, Value::Object(_))).cloned();
 
         rt.caps.require_net(
-            &caps::Net::none(),
+            &net_cap,
             caps::NetOp::Listen { host: host.clone(), port },
             &ModuleId::builtin("node:http"),
         ).map_err(|e| RuntimeError::TypeError(e.to_string()))?;
 
         let (listener_handle, bound_addr) = rusty_sockets::listener_bind_async(&format!("{host}:{port}"))
             .map_err(|e| RuntimeError::TypeError(format!("server.listen: {e:?}")))?;
-        let handler = rt.object_get(this_id, "__cruftless_http_handler");
         let server_id = next_server_id(ActiveHttpServer {
             listener_handle,
             bound_addr: bound_addr.clone(),
-            handler,
             handler_realm: rt.current_realm,
             server_object: this_id,
-            closing: false,
         });
         // ESNE-EXT 1: __X engine sentinels installed non-enumerable.
         rt.set_engine_sentinel(this_id, SERVER_SLOT, Value::Number(server_id as f64));
@@ -160,8 +191,41 @@ fn make_server_object(rt: &mut Runtime, handler: Value) -> Result<ObjectRef, Run
         Ok(rt.current_this())
     });
 
-    register_method(rt, server, "on", |_rt, _args| Ok(Value::Undefined));
-    register_method(rt, server, "once", |_rt, _args| Ok(Value::Undefined));
+    register_method(rt, server, "on", |rt, args| {
+        let this_id = match rt.current_this() {
+            Value::Object(id) => id,
+            _ => return Err(RuntimeError::TypeError("server.on: invalid receiver".into())),
+        };
+        let event = match args.first() {
+            Some(v) => value_to_string(rt, v)?,
+            None => String::new(),
+        };
+        if event == "request" {
+            add_request_listener(rt, this_id, args.get(1).cloned().unwrap_or(Value::Undefined), false)?;
+        }
+        Ok(Value::Object(this_id))
+    });
+    register_method(rt, server, "addListener", |rt, args| {
+        let on = rt.object_get(match rt.current_this() {
+            Value::Object(id) => id,
+            _ => return Err(RuntimeError::TypeError("server.addListener: invalid receiver".into())),
+        }, "on");
+        rt.call_function(on, rt.current_this(), args.to_vec())
+    });
+    register_method(rt, server, "once", |rt, args| {
+        let this_id = match rt.current_this() {
+            Value::Object(id) => id,
+            _ => return Err(RuntimeError::TypeError("server.once: invalid receiver".into())),
+        };
+        let event = match args.first() {
+            Some(v) => value_to_string(rt, v)?,
+            None => String::new(),
+        };
+        if event == "request" {
+            add_request_listener(rt, this_id, args.get(1).cloned().unwrap_or(Value::Undefined), true)?;
+        }
+        Ok(Value::Object(this_id))
+    });
 
     rt.set_engine_sentinel(server, "__cruftless_http_handler", handler);
     Ok(server)
@@ -200,21 +264,33 @@ fn make_response_object(rt: &mut Runtime) -> ObjectRef {
     register_method(rt, obj, "setHeader", |rt, args| {
         let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
         let headers = match rt.object_get(this, HEADERS_SLOT) { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
-        let name = args.first().map(value_to_string).unwrap_or_default().to_ascii_lowercase();
-        let value = args.get(1).map(value_to_string).unwrap_or_default();
+        let name = match args.first() {
+            Some(v) => value_to_string(rt, v)?,
+            None => String::new(),
+        }.to_ascii_lowercase();
+        let value = match args.get(1) {
+            Some(v) => value_to_string(rt, v)?,
+            None => String::new(),
+        };
         rt.object_set(headers, name, Value::String(Rc::new(value)));
         Ok(rt.current_this())
     });
     register_method(rt, obj, "getHeader", |rt, args| {
         let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
         let headers = match rt.object_get(this, HEADERS_SLOT) { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
-        let name = args.first().map(value_to_string).unwrap_or_default().to_ascii_lowercase();
+        let name = match args.first() {
+            Some(v) => value_to_string(rt, v)?,
+            None => String::new(),
+        }.to_ascii_lowercase();
         Ok(rt.object_get(headers, &name))
     });
     register_method(rt, obj, "removeHeader", |rt, args| {
         let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
         let headers = match rt.object_get(this, HEADERS_SLOT) { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
-        let name = args.first().map(value_to_string).unwrap_or_default().to_ascii_lowercase();
+        let name = match args.first() {
+            Some(v) => value_to_string(rt, v)?,
+            None => String::new(),
+        }.to_ascii_lowercase();
         rt.object_set(headers, name, Value::Undefined);
         Ok(rt.current_this())
     });
@@ -232,7 +308,7 @@ fn make_response_object(rt: &mut Runtime) -> ObjectRef {
         if let Some(Value::Object(hid)) = header_arg {
             let headers = match rt.object_get(this, HEADERS_SLOT) { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
             for key in rt.ordinary_own_enumerable_string_keys(hid) {
-                let value = value_to_string(&rt.object_get(hid, &key));
+                let value = value_to_string(rt, &rt.object_get(hid, &key))?;
                 rt.object_set(headers, key.to_ascii_lowercase(), Value::String(Rc::new(value)));
             }
         }
@@ -245,9 +321,9 @@ fn make_response_object(rt: &mut Runtime) -> ObjectRef {
             _ => String::new(),
         };
         if let Some(chunk) = args.first() {
-            body.push_str(&value_to_string(chunk));
+            body.push_str(&value_to_string(rt, chunk)?);
         }
-        rt.object_set(this, BODY_SLOT.into(), Value::String(Rc::new(body)));
+        set_internal_slot(rt, this, BODY_SLOT, Value::String(Rc::new(body)));
         Ok(Value::Boolean(true))
     });
     register_method(rt, obj, "end", |rt, args| {
@@ -257,8 +333,8 @@ fn make_response_object(rt: &mut Runtime) -> ObjectRef {
                 Value::String(s) => s.as_str().to_string(),
                 _ => String::new(),
             };
-            body.push_str(&value_to_string(chunk));
-            rt.object_set(this, BODY_SLOT.into(), Value::String(Rc::new(body)));
+            body.push_str(&value_to_string(rt, chunk)?);
+            set_internal_slot(rt, this, BODY_SLOT, Value::String(Rc::new(body)));
         }
         rt.set_engine_sentinel(this, "__cruftless_http_ended", Value::Boolean(true));
         Ok(Value::Undefined)
@@ -267,7 +343,7 @@ fn make_response_object(rt: &mut Runtime) -> ObjectRef {
     obj
 }
 
-fn response_to_wire(rt: &mut Runtime, res: ObjectRef) -> Vec<u8> {
+fn response_to_wire(rt: &mut Runtime, res: ObjectRef) -> Result<Vec<u8>, RuntimeError> {
     let status = match rt.object_get(res, "statusCode") {
         Value::Number(n) => n as u16,
         _ => 200,
@@ -278,19 +354,19 @@ fn response_to_wire(rt: &mut Runtime, res: ObjectRef) -> Vec<u8> {
     };
     let body = match rt.object_get(res, BODY_SLOT) {
         Value::String(s) => s.as_bytes().to_vec(),
-        v => value_to_bytes(&v),
+        v => value_to_bytes(rt, &v)?,
     };
     let mut headers = Vec::new();
     if let Value::Object(hid) = rt.object_get(res, HEADERS_SLOT) {
         for key in rt.ordinary_own_enumerable_string_keys(hid) {
             if matches!(rt.object_get(hid, &key), Value::Undefined) { continue; }
-            headers.push((key.clone(), value_to_string(&rt.object_get(hid, &key))));
+            headers.push((key.clone(), value_to_string(rt, &rt.object_get(hid, &key))?));
         }
     }
     if !headers.iter().any(|(n, _)| n.eq_ignore_ascii_case("connection")) {
         headers.push(("connection".into(), "close".into()));
     }
-    rusty_http_codec::serialize_response(status, &reason, &headers, &body)
+    Ok(rusty_http_codec::serialize_response(status, &reason, &headers, &body))
 }
 
 fn read_request(stream_id: u64) -> Result<Vec<u8>, String> {
@@ -334,7 +410,7 @@ fn find_header_end(buf: &[u8]) -> Option<usize> {
 pub fn poll_io(rt: &mut Runtime) -> Result<bool, RuntimeError> {
     let ids: Vec<(usize, u64)> = HTTP_SERVERS.with(|servers| {
         servers.borrow().iter().enumerate()
-            .filter_map(|(idx, s)| s.as_ref().filter(|srv| !srv.closing).map(|srv| (idx, srv.listener_handle)))
+            .filter_map(|(idx, s)| s.as_ref().map(|srv| (idx, srv.listener_handle)))
             .collect()
     });
     let has_active = !ids.is_empty();
@@ -348,9 +424,12 @@ pub fn poll_io(rt: &mut Runtime) -> Result<bool, RuntimeError> {
                 return Ok(true);
             }
             Ok(Some(rusty_sockets::AsyncEvent::Closed)) => {
-                update_server(server_id, |srv| srv.closing = true);
+                let _ = remove_server(server_id);
             }
-            Ok(Some(rusty_sockets::AsyncEvent::Error(_))) | Ok(None) => {}
+            Ok(Some(rusty_sockets::AsyncEvent::Error(_))) => {
+                let _ = remove_server(server_id);
+            }
+            Ok(None) => {}
             Err(e) => return Err(RuntimeError::TypeError(format!("http poll_io: {e:?}"))),
         }
     }
@@ -369,16 +448,14 @@ fn handle_connection(rt: &mut Runtime, server_id: usize, stream_id: u64) {
             let req = make_request_object(rt, &parsed);
             let res = make_response_object(rt);
             let prior = rt.enter_realm(server.handler_realm);
-            let call_result = rt.call_function(
-                server.handler.clone(),
-                Value::Object(server.server_object),
-                vec![Value::Object(req), Value::Object(res)],
-            );
+            let call_result = dispatch_request(rt, server.server_object, req, res);
             rt.exit_realm(prior);
             if call_result.is_err() {
                 rusty_http_codec::serialize_response(500, "Internal Server Error", &[("connection".into(), "close".into())], b"")
             } else {
-                response_to_wire(rt, res)
+                response_to_wire(rt, res).unwrap_or_else(|_| {
+                    rusty_http_codec::serialize_response(500, "Internal Server Error", &[("connection".into(), "close".into())], b"")
+                })
             }
         }
         Err(_) => rusty_http_codec::serialize_response(400, "Bad Request", &[("connection".into(), "close".into())], b""),
@@ -387,7 +464,40 @@ fn handle_connection(rt: &mut Runtime, server_id: usize, stream_id: u64) {
     let _ = rusty_sockets::handle_close(stream_id);
 }
 
-pub fn install(rt: &mut Runtime) {
+fn dispatch_request(rt: &mut Runtime, server_object: ObjectRef, req: ObjectRef, res: ObjectRef) -> Result<(), RuntimeError> {
+    let arr = request_listeners(rt, server_object);
+    let len = rt.array_length(arr);
+    let mut calls = Vec::new();
+    let mut keep = Vec::new();
+    for i in 0..len {
+        let item = rt.object_get(arr, &i.to_string());
+        let Value::Object(record) = item else { continue; };
+        let listener = rt.object_get(record, "listener");
+        if !rt.is_callable(&listener) { continue; }
+        let once = matches!(rt.object_get(record, REQUEST_ONCE_SLOT), Value::Boolean(true));
+        calls.push(listener);
+        if !once {
+            keep.push(Value::Object(record));
+        }
+    }
+    for (i, v) in keep.iter().enumerate() {
+        rt.object_set(arr, i.to_string(), v.clone());
+    }
+    for i in keep.len()..(len as usize) {
+        rt.object_set(arr, i.to_string(), Value::Undefined);
+    }
+    rt.object_set(arr, "length".into(), Value::Number(keep.len() as f64));
+    for listener in calls {
+        rt.call_function(
+            listener,
+            Value::Object(server_object),
+            vec![Value::Object(req), Value::Object(res)],
+        )?;
+    }
+    Ok(())
+}
+
+fn make_http_namespace(rt: &mut Runtime, net_cap: caps::Net) -> ObjectRef {
     let http = new_object(rt);
 
     register_method(rt, http, "request", |_rt, _args| {
@@ -400,17 +510,13 @@ pub fn install(rt: &mut Runtime) {
             "node:http http.get: not yet implemented (Tier-Ω.5.r stub)".into(),
         ))
     });
-    register_method(rt, http, "createServer", |rt, args| {
+    register_method(rt, http, "createServer", move |rt, args| {
         let handler = match args {
-            [Value::Object(_)] => args[0].clone(),
-            [_, Value::Object(_), ..] => args[1].clone(),
-            _ => {
-                return Err(RuntimeError::TypeError(
-                    "node:http createServer: handler must be callable".into(),
-                ));
-            }
+            [first, ..] if rt.is_callable(first) => first.clone(),
+            [_, second, ..] if rt.is_callable(second) => second.clone(),
+            _ => Value::Undefined,
         };
-        let server = make_server_object(rt, handler)?;
+        let server = make_server_object(rt, handler, net_cap.clone())?;
         Ok(Value::Object(server))
     });
     // Ω.5.P49.E4: parallel to https.Agent — benign at module-init.
@@ -500,5 +606,17 @@ pub fn install(rt: &mut Runtime) {
     // `http.default === http` round-trip honest for callers that probe.
     set_constant(rt, http, "default", Value::Object(http));
 
+    http
+}
+
+pub fn install(rt: &mut Runtime) {
+    let http = make_http_namespace(rt, caps::Net::none());
+    register_method(rt, http, "__cruftless_makeLoopbackFacade", |rt, _args| {
+        Ok(Value::Object(make_http_namespace(rt, caps::Net::loopback_server())))
+    });
+    let facade_factory = crate::register::make_callable(rt, "__cruftless_makeHttpFacade", |rt, _args| {
+        Ok(Value::Object(make_http_namespace(rt, caps::Net::loopback_server())))
+    });
+    rt.globals.insert("__cruftless_makeHttpFacade".into(), Value::Object(facade_factory));
     rt.globals.insert("http".into(), Value::Object(http));
 }

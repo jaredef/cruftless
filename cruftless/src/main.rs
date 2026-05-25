@@ -68,11 +68,13 @@ fn run_install_subcommand() -> ExitCode {
 ///   --sealed-deps   → CapMode::SealedDeps (Mode 2)
 ///   --sealed        → CapMode::Sealed (Mode 3)
 /// Default: CapMode::Compat (Mode 0). Returns (mode, audit_log_path,
-/// remaining_args) where remaining_args is argv with the flag(s) consumed.
-fn parse_cap_flags(args: Vec<String>) -> (rusty_js_runtime::caps::CapMode, Option<String>, Vec<String>) {
+/// allow_net_loopback, remaining_args) where remaining_args is argv with
+/// the flag(s) consumed.
+fn parse_cap_flags(args: Vec<String>) -> (rusty_js_runtime::caps::CapMode, Option<String>, bool, Vec<String>) {
     use rusty_js_runtime::caps::CapMode;
     let mut mode = CapMode::Compat;
     let mut audit_path: Option<String> = None;
+    let mut allow_net_loopback = false;
     let mut out: Vec<String> = Vec::with_capacity(args.len());
     let mut it = args.into_iter();
     while let Some(a) = it.next() {
@@ -83,6 +85,7 @@ fn parse_cap_flags(args: Vec<String>) -> (rusty_js_runtime::caps::CapMode, Optio
             "--audit-log" => {
                 if let Some(p) = it.next() { audit_path = Some(p); }
             }
+            "--allow-net-loopback" => allow_net_loopback = true,
             _ => out.push(a),
         }
     }
@@ -95,7 +98,13 @@ fn parse_cap_flags(args: Vec<String>) -> (rusty_js_runtime::caps::CapMode, Optio
             if let Some(m) = CapMode::from_str(&s) { mode = m; }
         }
     }
-    (mode, audit_path, out)
+    if !allow_net_loopback {
+        allow_net_loopback = std::env::var("CRUFT_ALLOW_NET_LOOPBACK")
+            .or_else(|_| std::env::var("CRUFTLESS_ALLOW_NET_LOOPBACK"))
+            .map(|v| matches!(v.as_str(), "1" | "true" | "yes"))
+            .unwrap_or(false);
+    }
+    (mode, audit_path, allow_net_loopback, out)
 }
 
 fn drain_audit_log(rt: &rusty_js_runtime::Runtime, dest: Option<&str>) {
@@ -140,6 +149,7 @@ fn print_help() {
     eprintln!("    --sealed-deps        Treat node_modules as sealed (no new I/O)");
     eprintln!("    --sealed             Seal everything (project + deps)");
     eprintln!("    --audit-log <path>   Write audit records to <path> (default: stderr)");
+    eprintln!("    --allow-net-loopback Grant loopback listen authority in sealed modes");
     eprintln!("    -h, --help           Print help");
     eprintln!("    -V, --version        Print version");
     eprintln!();
@@ -152,7 +162,7 @@ fn print_version() {
 
 fn main() -> ExitCode {
     let raw_args: Vec<String> = std::env::args().collect();
-    let (cap_mode, audit_log_path, args) = parse_cap_flags(raw_args);
+    let (cap_mode, audit_log_path, allow_net_loopback, args) = parse_cap_flags(raw_args);
 
     // Global flags handled before subcommand dispatch.
     if args.iter().skip(1).any(|a| a == "-h" || a == "--help" || a == "help") {
@@ -207,6 +217,12 @@ fn main() -> ExitCode {
 
     let mut rt = Runtime::new();
     rt.set_cap_mode(cap_mode);
+    if allow_net_loopback {
+        rt.caps = std::sync::Arc::new(
+            rusty_js_runtime::caps::CapDispatcher::new(cap_mode)
+                .with_net_grant(rusty_js_runtime::caps::Net::loopback_server())
+        );
+    }
     rt.install_intrinsics();
     install_bun_host(&mut rt, args);
 

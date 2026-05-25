@@ -3676,7 +3676,7 @@ impl Compiler {
         };
         let mut pre_slots: std::collections::HashMap<String, u16> = std::collections::HashMap::new();
         for (n, kind) in &pre_alloc_names {
-            if !pre_slots.contains_key(n) {
+            if !pre_slots.contains_key(n) && sub.resolve_local(n).is_none() {
                 let slot = sub.alloc_local(LocalDescriptor {
                     name: n.clone(), kind: *kind, depth: 0,
                 });

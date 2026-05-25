@@ -509,6 +509,21 @@ fn call_function_with_args() {
 }
 
 #[test]
+fn var_redeclaration_reuses_parameter_binding() {
+    let s = r#"
+        function probe(fn) {
+            var before = typeof fn + ':' + typeof arguments[0];
+            var fn = 1;
+            return before + ':' + fn;
+        }
+        return probe(function middleware() {});
+    "#;
+    if let Value::String(s) = run(s) {
+        assert_eq!(s.as_str(), "function:function:1");
+    } else { panic!(); }
+}
+
+#[test]
 fn arrow_function_call() {
     let s = r#"
         let sq = (x) => x * x;

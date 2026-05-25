@@ -591,6 +591,7 @@ impl AuditLog {
 pub struct CapDispatcher {
     pub mode: CapMode,
     pub ambient: AmbientCaps,
+    pub net_grant: Net,
     pub audit: Mutex<AuditLog>,
 }
 
@@ -599,8 +600,14 @@ impl CapDispatcher {
         Self {
             mode,
             ambient: AmbientCaps::full(),
+            net_grant: Net::none(),
             audit: Mutex::new(AuditLog::default()),
         }
+    }
+
+    pub fn with_net_grant(mut self, net: Net) -> Self {
+        self.net_grant = net;
+        self
     }
 
     /// Default constructor — Mode 0 with full ambient. Identical to
@@ -826,7 +833,7 @@ impl CapDispatcher {
             CapMode::Compat | CapMode::Audit => Ok(()),
             CapMode::SealedDeps if caller.provenance.is_application() => Ok(()),
             CapMode::SealedDeps | CapMode::Sealed => {
-                if op.allows(cap) {
+                if op.allows(cap) || op.allows(&self.net_grant) {
                     Ok(())
                 } else {
                     Err(CapabilityError {

@@ -287,3 +287,400 @@ net.listen(127.0.0.1:0): no net capability granted to module 'node:http' (mode: 
 ---
 
 *HS-EXT 5 closes. The direct HTTP server path is live and probe-backed; the next work is authority hardening and Compartment facade composition.*
+
+---
+
+## HS-EXT 5a — 2026-05-25 (agent-feedback hygiene closure)
+
+Code-bearing hygiene round. This round applied the first `agent-feedback.md` review before expanding the authority and Compartment surface.
+
+### Trigger
+
+The cross-resolver review of HS-EXT 5 identified three small substrate-discipline gaps that should close before HS-EXT 6: enumerable engine sentinels, static string coercion at user-argument boundaries, and partial active-server lifecycle cleanup.
+
+### Substrate landed
+
+- `cruftless/src/http.rs`
+  - Added `set_internal_slot(...)` and moved `__cruftless_http_*` server / response sentinels through non-enumerable `set_own_internal`.
+  - Replaced HTTP response header/body `abstract_ops::to_string` coercion with `Runtime::coerce_to_string`, preserving object `toString` / `valueOf` dispatch.
+  - Removed the write-only `closing` flag and `update_server`; `AsyncEvent::Closed` and `AsyncEvent::Error` now reclaim active-server registry slots via `remove_server`.
+- `pilots/rusty-js-http-server/fixtures/hygiene-node-http.mjs`
+  - Probe fixture for sentinel non-enumeration and object-valued response header/body coercion.
+- `cruftless/tests/http_server.rs`
+  - End-to-end binary test that starts the hygiene fixture, connects over loopback, and asserts the wire response.
+
+### Probe result
+
+```text
+cargo test -p cruftless --test http_server --release -- --nocapture
+1 passed
+```
+
+Compile lane:
+
+```text
+cargo check -p cruftless
+PASS
+```
+
+### Findings
+
+1. **Agent-feedback concerns 1-3 are closed.** `Object.keys(server)` no longer surfaces `__cruftless_http_*` slots, object-valued header names/values and body chunks use runtime ToString, and abnormal listener close/error paths no longer leave a deliberately retained slot.
+2. **The live Mode-0 path remains intact.** The hygiene probe exercises the same `createServer(...).listen(0, "127.0.0.1")` path and receives `HTTP/1.1 200 OK`.
+3. **EventEmitter remains the next compatibility blocker.** `server.on` / `server.once` are still placeholders; Express remains out of scope until that shape lands.
+
+### Next scope
+
+1. **HS-EXT 6**: authority probes: audit log assertion, sealed denial fixture, and capability-backed loopback allow path.
+2. **HS-EXT 7a**: EventEmitter request listener shape on `server`, before Express.
+3. **HS-EXT 7/8**: Compartment facade and Express minimal probe after the authority and EventEmitter gates hold.
+
+---
+
+*HS-EXT 5a closes. The HTTP server substrate is cleaner; the next coherent move is authority hardening without carrying the feedback hygiene debt forward.*
+
+---
+
+## HS-EXT 6 — 2026-05-25 (authority probes: audit, sealed denial, loopback allow)
+
+Code-bearing authority round. This round hardened the Doc 736 authority seam that HS-EXT 5 made live: `createServer` remains shape construction, while `listen` is the capability-bearing operation.
+
+### Trigger
+
+The seed's next scope after HS-EXT 5a was authority hardening: Mode 1 audit assertion, Mode 3 sealed denial, and a capability-backed allow path narrow enough to demonstrate the facade shape without reopening ambient network authority.
+
+### Substrate landed
+
+- `pilots/rusty-js-runtime/derived/src/caps.rs`
+  - Added a `net_grant` field to `CapDispatcher`.
+  - Added `CapDispatcher::with_net_grant(...)`.
+  - Updated `require_net` so sealed modes accept either the call-site capability argument or the host-granted `net_grant`.
+- `cruftless/src/main.rs`
+  - Added `--allow-net-loopback`, plus `CRUFT_ALLOW_NET_LOOPBACK` / `CRUFTLESS_ALLOW_NET_LOOPBACK` env aliases.
+  - The grant installs `Net::loopback_server()` only; it does not grant public-interface listen or outbound connect.
+- `pilots/rusty-js-http-server/fixtures/authority-fixed-node-http.mjs`
+  - Fixed-port no-stdout fixture for sealed allow, avoiding any dependency on stdio authority.
+- `cruftless/tests/http_server.rs`
+  - Extended the HTTP-server integration test:
+    - `--audit --audit-log` records `net listen(127.0.0.1:0)`.
+    - bare `--sealed` denies ambient `node:http` listen before bind.
+    - `--sealed --allow-net-loopback` serves `authority-ok` on loopback.
+
+### Probe result
+
+```text
+cargo test -p cruftless --test http_server --release -- --nocapture
+2 passed
+```
+
+Focused capability unit lane:
+
+```text
+cargo test -p rusty-js-runtime --lib caps::tests::net --release -- --nocapture
+4 passed
+```
+
+Compile lane:
+
+```text
+cargo check -p cruftless
+PASS
+```
+
+### Findings
+
+1. **Pred-hs.4 is pinned.** Bare sealed mode rejects `node:http` listen before the socket binds.
+2. **Pred-hs.5 is pinned.** Audit mode records the `net` capability event for HTTP listen.
+3. **The loopback allow path is narrow.** `--allow-net-loopback` grants `NetListenPolicy::LoopbackAnyPort` through the dispatcher, enough to prove the capability-backed allow shape without restoring ambient network authority.
+4. **The next compatibility blocker is EventEmitter, not authority.** Express remains blocked by `server.on("request", ...)` semantics rather than by `Net`.
+
+### Next scope
+
+1. **HS-EXT 7a**: implement minimal EventEmitter request listener support on `server.on` / `server.once`.
+2. **HS-EXT 7**: Compartment probes: no ambient HTTP, endowed facade works, handler realm preservation.
+3. **HS-EXT 8**: Express minimal probe after EventEmitter and Compartment gates hold.
+
+---
+
+*HS-EXT 6 closes. The HTTP listen authority seam is now probe-backed in audit, sealed-deny, and loopback-granted allow modes.*
+
+---
+
+## HS-EXT 7a — 2026-05-25 (minimal request EventEmitter wiring)
+
+Compatibility round for the next HTTP blocker. Express and many Node HTTP callers do not always pass the request handler directly to `createServer`; they register it through the server's EventEmitter surface. This round implements the bounded `request` listener path without claiming full `EventEmitter` parity for HTTP server instances.
+
+### Trigger
+
+Agent feedback concern (4) named `server.on` / `server.once` as the blocker between the direct HTTP probe and the Express probe. HS-EXT 6 showed authority was no longer the blocker, so the next coherent move was the listener-registration shape.
+
+### Substrate landed
+
+- `cruftless/src/http.rs`
+  - Added a non-enumerable request-listener slot on server objects.
+  - Added `server.on("request", fn)`, `server.addListener("request", fn)`, and `server.once("request", fn)`.
+  - Relaxed `http.createServer()` so a server may be constructed without an initial handler and wired afterward through the request event.
+  - Dispatch now walks the server's request-listener list; `once` listeners are removed before invocation so a recursive or follow-on dispatch cannot observe them as still live.
+- `pilots/rusty-js-http-server/fixtures/eventemitter-node-http.mjs`
+  - Probe fixture for `http.createServer()` followed by `server.once("request", ...)`.
+- `cruftless/tests/http_server.rs`
+  - Added the EventEmitter request probe beside the hygiene and authority probes.
+
+### Probe result
+
+```text
+cargo test -p cruftless --test http_server --release -- --nocapture
+3 passed
+```
+
+### Findings
+
+1. **The immediate Express blocker is reduced.** Request handlers can now be registered after server construction through the Node-shaped EventEmitter methods.
+2. **The move is intentionally bounded.** Only the HTTP `request` event has live semantics; unrelated events are no-ops in this HTTP surface, and broader EventEmitter parity remains outside this rung.
+3. **The authority seam is unchanged.** `server.listen(...)` still routes through the `Net` capability check; request listener registration remains pure shape setup.
+
+### Next scope
+
+1. **HS-EXT 7**: Compartment probes: no ambient HTTP, endowed HTTP facade works, handler realm preservation.
+2. **HS-EXT 8**: Express minimal probe now that `.on("request", ...)` has a live path.
+3. **HS-EXT 9**: composition gates after Compartment and Express probes land.
+
+---
+
+*HS-EXT 7a closes. The request-listener compatibility path now exists without widening the network authority model.*
+
+---
+
+## HS-EXT 7b — 2026-05-25 (telos sharpening after request-listener closure)
+
+Apparatus round, not a code-bearing round. HS-EXT 7a removed the immediate EventEmitter blocker, so this round re-sharpens the locale against its original Doc 736 / Compartment telos before the next implementation move.
+
+### Trigger
+
+After request listeners landed, the tempting next move would be to chase Express directly. That would answer a compatibility question, but it would not answer the locale's load-bearing architectural question: can Node-compatible HTTP serving be exposed to untrusted JS only by object-reference authority, with closed ambient discovery and realm-preserving dispatch?
+
+### Sharpened Reading
+
+1. **The target is capability reachability, not process flags.** `--allow-net-loopback` is a useful sealed-mode bridge, but Doc 736's strict property wants code to hold a specific object reference that carries narrowed network authority. A CLI flag proves the dispatcher can deny/allow; a facade proves the reference graph.
+2. **The HTTP facade is the capability surface.** `new Compartment({ globals: { http } })` should receive a narrowed namespace object. That object may look like `node:http`, but its returned servers must close over the endowed `Net` policy and pass that policy to the same internal listen path as ambient `node:http`.
+3. **No ambient discovery is the first Compartment assertion.** A compartment with no endowed `http` and no module-map entry for `node:http` must not be able to reach the ambient namespace by global lookup, import, or require-shaped fallback.
+4. **`listen` remains the only network effect.** `createServer`, `on`, `once`, and `addListener` are shape-building operations. They may retain callbacks and realm identity, but they must not consume network authority.
+5. **Request dispatch is part of the authority story.** A handler created in a compartment must run under the compartment's realm when a later PollIo macrotask fires. Otherwise the code was loaded in a closed graph but executed in an ambient world, which would violate the telos at call time.
+6. **Express is downstream evidence.** Express should be attempted only after the no-ambient / endowed-facade / realm-preservation probes pass, because otherwise an Express pass could conceal an architectural shortcut.
+
+### HS-EXT 7 Acceptance Shape
+
+Minimum probes for the next code-bearing round:
+
+1. **No ambient HTTP**: compartment code evaluating `typeof http` sees absence unless `http` is endowed.
+2. **No builtin escape**: compartment code cannot import or require `node:http` unless the compartment module map or globals explicitly provides the facade.
+3. **Endowed facade allows loopback**: a compartment endowed with a loopback HTTP facade serves `127.0.0.1:0`.
+4. **Endowed facade denies wider bind**: the same facade denies `0.0.0.0:0`.
+5. **Realm preservation**: a request handler installed inside the compartment observes the compartment's `globalThis` / endowed sentinel, not the outer host realm.
+
+### Implementation Implication
+
+The current HTTP server machinery is close but not done:
+
+- `server.listen` currently calls `require_net(&Net::none(), ...)`; HS-EXT 7 needs a per-server stored `Net` authority so ambient namespace and facade namespace share the same bind path with different capabilities.
+- The request listener registry introduced in HS-EXT 7a must carry the realm of each listener or otherwise preserve the server/facade creation realm. A single `handler_realm` per active server may be enough for first cut if all request listeners are registered from the endowed compartment before `listen`.
+- Facade construction can remain host-internal for the probe. It does not need a public JS API yet; it only needs to demonstrate that the object passed into `Compartment({ globals })` is the authority-bearing reference.
+
+### Next Scope
+
+1. **HS-EXT 7**: implement the internal HTTP facade and Compartment probes above.
+2. **HS-EXT 8**: attempt Express only after HS-EXT 7 proves object-reference authority and request-time realm preservation.
+3. **HS-EXT 9**: run composition gates and decide whether the facade API should become public or remain an internal test harness until the broader capability-handle surface lands.
+
+---
+
+*HS-EXT 7b closes as apparatus. The next code should prove the capability graph, not merely broaden HTTP compatibility.*
+
+---
+
+## HS-EXT 7 — 2026-05-25 (Compartment HTTP facade: object-reference authority)
+
+Code-bearing Compartment round. This round turns the HS-EXT 7b telos sharpening into probes: no ambient HTTP in an endowment-less compartment, a loopback-only endowed HTTP facade that works under sealed mode, wider binds denied by that same facade, and request dispatch observing a compartment endowment.
+
+### Trigger
+
+HS-EXT 7b established that Express should not be attempted until the object-reference authority story is probe-backed. The existing Compartment primitive already had `evaluate`, globals endowments, modules/import, and cap endowment probes, so the HTTP locale only needed a narrowed facade path over the existing server machinery.
+
+### Substrate landed
+
+- `cruftless/src/http.rs`
+  - Factored HTTP namespace construction through `make_http_namespace(rt, net_cap)`.
+  - Ambient `node:http` still installs with `Net::none()`, preserving Mode 0 behavior and sealed denial unless another grant path applies.
+  - Added an internal probe factory, `__cruftless_makeHttpFacade`, that returns the same HTTP namespace shape closed over `Net::loopback_server()`.
+  - `server.listen(...)` now uses the namespace/facade's captured `Net` policy when routing through `rt.caps.require_net(...)`.
+- `pilots/rusty-js-http-server/fixtures/compartment-no-ambient-http.mjs`
+  - Verifies an endowment-less compartment sees `typeof http === "undefined"` and `typeof require === "undefined"`.
+- `pilots/rusty-js-http-server/fixtures/compartment-facade-loopback-fixed.mjs`
+  - Sealed-mode fixed-port fixture: host creates the internal facade, endows it into a compartment, the compartment serves loopback, and the request callback returns an endowed marker.
+- `pilots/rusty-js-http-server/fixtures/compartment-facade-deny-wide.mjs`
+  - Sealed-mode denial fixture: the same loopback facade attempts `0.0.0.0:0` and is rejected before bind.
+- `cruftless/tests/http_server.rs`
+  - Added `http_server_compartment_facade_authority` covering the three fixtures above.
+
+### Probe result
+
+```text
+cargo test -p cruftless --test http_server --release -- --nocapture
+4 passed
+```
+
+### Findings
+
+1. **Pred-hs.6 is pinned for the internal facade shape.** A compartment without an endowed HTTP object has no ambient HTTP surface; a compartment with the loopback facade can bind loopback under sealed mode.
+2. **Pred-hs.8 is pinned.** The loopback facade denies `0.0.0.0:0`, proving the facade carries a narrowed `Net` policy rather than reopening ambient `net`.
+3. **Pred-hs.7 is partially pinned through endowment observation.** The request callback returns the compartment-endowed `marker`, proving request-time dispatch sees the compartment environment. The current Compartment substrate did not expose the same marker via `globalThis.marker`, so the probe uses direct endowed binding observation.
+4. **The public API is intentionally deferred.** `__cruftless_makeHttpFacade` is an internal harness proving the reference-graph shape; a public facade constructor should land with the broader capability-handle API, not as an HTTP-only user API.
+
+### Next scope
+
+1. **HS-EXT 8**: Express minimal probe, now that direct HTTP, authority modes, request listener shape, and Compartment facade authority are all probe-backed.
+2. **HS-EXT 9**: composition gates: focused capability lane, compile lane, and any locale-standard regression sample.
+3. **Later**: replace fixed-port sealed fixtures with dynamic-port authority handoff once stdout/stdio capability handles are available for sealed probes.
+
+---
+
+*HS-EXT 7 closes. HTTP serving can now be endowed into a Compartment as object-reference authority rather than discovered ambiently.*
+
+---
+
+## HS-EXT 8 — 2026-05-25 (Express minimal probe: blocked before listen)
+
+Compatibility probe round. This round attempted the first real Express serving fixture after the HTTP substrate, authority gates, request EventEmitter path, and Compartment facade were all probe-backed.
+
+### Trigger
+
+HS-EXT 7 closed the architectural authority gate. The next trajectory target was therefore Express minimal: prove that a real Express app can sit on top of the live `node:http` server path without changing the authority model.
+
+### Substrate landed
+
+- `pilots/rusty-js-http-server/fixtures/express-minimal/package.json`
+  - Minimal package manifest for Express 4.
+- `pilots/rusty-js-http-server/fixtures/express-minimal/express-minimal.mjs`
+  - Minimal route fixture:
+    - `import express from "express"`
+    - `const app = express()`
+    - `app.get("/", (req, res) => res.status(200).set("x-from", "express").send("hello express"))`
+    - `http.createServer(app).listen(39733, "127.0.0.1")`
+- `cruftless/tests/http_server.rs`
+  - Added an opt-in Express probe. It skips unless `node_modules/express` exists in the fixture root.
+  - `CRUFTLESS_EXPRESS_FIXTURE_ROOT=/tmp/cruftless-hs-express-minimal` can point the test at a disposable installed fixture.
+
+### Probe result
+
+Baseline HTTP lane without Express deps:
+
+```text
+cargo test -p cruftless --test http_server --release -- --nocapture
+5 passed
+```
+
+The Express probe skipped in that lane because no in-repo `node_modules/express` is committed.
+
+Disposable dependency materialization:
+
+```text
+npm install --prefix /tmp/cruftless-hs-express-minimal
+PASS
+```
+
+Focused Express probe:
+
+```text
+CRUFTLESS_EXPRESS_FIXTURE_ROOT=/tmp/cruftless-hs-express-minimal \
+  cargo test -p cruftless --test http_server http_server_express_minimal_probe --release -- --nocapture
+FAIL: connection refused
+```
+
+Direct fixture execution showed the real pre-listen blocker:
+
+```text
+cruftless /tmp/cruftless-hs-express-minimal/express-minimal.mjs
+cruft: evaluation error: Thrown: TypeError: Router.use() requires a middleware function
+```
+
+The same error occurred even after trimming the fixture to a single `app.get("/")` route, so the failure is in Express router/middleware registration during route setup rather than in HTTP listener bind, request dispatch, or response serialization.
+
+### Findings
+
+1. **Express remains blocked, but not by HTTP authority or listen.** The process exits before `server.listen(...)`, so the current blocker is upstream of the HTTP server.
+2. **The likely next locus is Express's router/middleware shape.** Express 4 reports `Router.use() requires a middleware function`, which suggests an argument/callability/prototype/rest-argument mismatch around router registration.
+3. **The fixture is intentionally opt-in.** We do not commit `node_modules`; the test skips unless a current fixture root has dependencies installed. This avoids reintroducing dependence on legacy fixture paths.
+4. **HTTP substrate gates still hold.** The ordinary HTTP integration lane passes with direct, hygiene, authority, EventEmitter, and Compartment facade probes.
+
+### Next scope
+
+1. **HS-EXT 8a**: debug Express router registration with a narrow fixture that imports Express and exercises `express().get("/", fn)` without starting a server.
+2. Inspect Express 4's `application.get`, `Router`, and `Route` call path under Cruftless to identify whether the bad value is the route callback, a generated router function, or an array/rest wrapper.
+3. Only after route registration succeeds, re-enable the serving probe as a passing HS-EXT 8 closure.
+
+---
+
+*HS-EXT 8 did not close Express serving by itself. It usefully moved the blocker upstream: Express route registration, not HTTP listen authority.*
+
+---
+
+## HS-EXT 8a — 2026-05-25 (Upstream Express blocker resolved: var/parameter aliasing)
+
+This round zoomed into the upstream Express failure instead of widening the HTTP server surface.
+
+### Finding
+
+Express 4.22.2's `Router.use` is shaped like:
+
+```js
+proto.use = function use(fn) {
+  if (typeof fn !== "function") { ... }
+  var callbacks = flatten(slice.call(arguments, offset));
+  ...
+  for (...) {
+    var fn = callbacks[i];
+    ...
+  }
+}
+```
+
+The `arguments` object was intact, but the formal parameter `fn` read as `undefined` before the loop. The compiler had allocated a second function-scoped `var fn` local even though ECMAScript `var` redeclaration of a parameter must reuse the parameter binding. Express therefore misclassified the middleware function as a path, set `offset = 1`, sliced away the only argument, and threw `Router.use() requires a middleware function`.
+
+### Substrate change
+
+- `pilots/rusty-js-bytecode/derived/src/compiler.rs`
+  - Function-body hoist preallocation now skips a `var` name when an existing local already resolves that name, preserving parameter/var aliasing.
+- `pilots/rusty-js-runtime/derived/tests/run_golden.rs`
+  - Added `var_redeclaration_reuses_parameter_binding` so the Express-shaped rule stays pinned.
+
+### Probe result
+
+```text
+cargo test -p rusty-js-runtime var_redeclaration_reuses_parameter_binding -- --nocapture
+1 passed
+```
+
+```text
+CRUFTLESS_EXPRESS_FIXTURE_ROOT=/tmp/cruftless-hs-express-minimal \
+  cargo test -p cruftless --test http_server http_server_express_minimal_probe --release -- --nocapture
+1 passed
+```
+
+Baseline no-deps HTTP lane remains green; Express skips there unless dependencies are installed:
+
+```text
+cargo test -p cruftless --test http_server --release -- --nocapture
+5 passed
+```
+
+### Closure
+
+Express minimal now composes over the existing apparatus:
+
+- no ambient listen authority is introduced;
+- the opt-in fixture uses the same live `node:http` server path;
+- the fix is a general JS semantics correction, not an Express shim.
+
+---
+
+*HS-EXT 8a closes the upstream Express router-registration blocker. The next coherent move is broader Express behavior, still under sealed authority and Compartment discipline.*

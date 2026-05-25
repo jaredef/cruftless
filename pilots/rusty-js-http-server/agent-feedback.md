@@ -6,10 +6,13 @@ Cross-agent review notes. Read on every locale entry. Append (do not overwrite) 
 
 ## Running summary for the next agent entering this locale
 
-1. **Hygiene cleanup partially closed.** The `__cruftless_http_*` enumeration leak on server / response objects is closed by ESNE-EXT 1 (`pilots/engine-sentinel-non-enumerable/`) which canonicalized the install-time `{w:t,e:f,c:f}` convention via `Runtime::set_engine_sentinel` and converted the http.rs install sites. The user-arg `abstract_ops::to_string` sites in setHeader/getHeader/removeHeader/writeHead/write/end remain queued for a follow-on HS-EXT 5a rung (RPTC.7 pattern).
-2. **Lifecycle is partial.** Active-server registry slot reuse works at `close` but not on listener failure or `AsyncEvent::Closed`; `update_server` and the `closing` flag are write-only. Slot leaks under abnormal termination.
-3. **Express is named as HS-EXT 8 but blocked by EventEmitter.** `server.on` / `server.once` are silent no-ops; Express registers handlers via `.on('request', ...)`. Real EventEmitter wiring must land before the Express probe is meaningful.
-4. **Pre-existing test gate.** `cargo test -p rusty-js-runtime` trips a pre-HS `module_golden.rs` compile error in the integration-test target. Focused `--lib caps::tests::net` lane passes (4 tests). The trajectory documents this honestly; do not waste time chasing it as an HS regression.
+1. **HS-EXT 5a closed the hygiene feedback.** Engine sentinels now use the canonical non-enumerable `Runtime::set_engine_sentinel` path; HTTP header/body user coercion routes through `Runtime::coerce_to_string`; listener `Closed` / `Error` events reclaim active-server registry slots. The hygiene probe pins sentinel non-enumeration and object-argument `toString`.
+2. **HS-EXT 6 closed the authority probes.** `--audit` records `net listen(...)`; bare `--sealed` denies ambient `node:http` listen before bind; `--sealed --allow-net-loopback` grants only loopback listen and serves the fixed-port probe.
+3. **HS-EXT 7a closed the immediate EventEmitter blocker.** `server.on("request", fn)`, `server.addListener("request", fn)`, and `server.once("request", fn)` now register request listeners; `http.createServer()` without an initial handler can serve once a request listener is added. The focused fixture pins the `.once("request")` path.
+4. **HS-EXT 7 closed the Compartment facade gate.** Endowment-less compartments see no ambient `http` / `require`; an internal `__cruftless_makeHttpFacade()` creates a loopback-only HTTP namespace that serves from a sealed compartment; the same facade denies `0.0.0.0`; request dispatch observes the compartment endowment.
+5. **HS-EXT 8a resolved the upstream Express blocker.** Express 4's `Router.use` redeclares its `fn` parameter with `var fn` later in the function; Cruftless incorrectly allocated a second local for that `var`, so the parameter read as `undefined` and Express sliced away its middleware argument. The bytecode compiler now reuses existing parameter bindings for function-scoped `var` hoists, and the opt-in Express minimal HTTP probe passes when pointed at an installed fixture root.
+6. **Binary bodies and slow/chunked reads remain later-scope gaps.** Response body accumulation is still string-backed, and `read_request` remains bounded whole-request polling. These are not EventEmitter or Compartment blockers.
+7. **Pre-existing test gate.** `cargo test -p rusty-js-runtime` previously tripped a pre-HS `module_golden.rs` compile error in the integration-test target. Focused `--lib caps::tests::net` lane passed (4 tests). The trajectory documents this honestly; do not waste time chasing it as an HS regression without first rechecking current `main`.
 
 ---
 
@@ -53,6 +56,11 @@ Cross-agent review notes. Read on every locale entry. Append (do not overwrite) 
 
 - The trajectory's HS-EXT 5 entry is honest about test gates (focused `caps::tests::net` lane passes; broad `cargo test` trips pre-existing `module_golden.rs` compile errors). Future agents should not chase the broad-test failure as an HS regression.
 - This locale's discipline of multiple apparatus-tier reformalization rounds before code (HS-EXT 1–4) should be preserved. It is the right pattern for substrate composition locales where the architectural seam matters more than the LOC count.
+
+### Supersession note
+
+- HS-EXT 5a closes concerns (1), (2), and (3) from this review. Concern (4), EventEmitter shape for Express, remains open.
+- HS-EXT 7a closes the minimal concern (4) blocker for request listeners. Broader EventEmitter parity remains intentionally bounded to later Express hardening.
 
 ---
 

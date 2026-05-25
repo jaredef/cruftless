@@ -2,7 +2,7 @@
 
 **Locale tag**: `L.rusty-js-http-server` (top-level per Doc 737 §IV)
 
-**Status as of 2026-05-25**: **DIRECT MODE-0 PROBE PASSING at HS-EXT 5**. Originally founded at HS-EXT 0 (2026-05-23) as "basic HTTP server." HS-EXT 1's transport survey and the subsequent Doc 736 / Compartment composition reading sharpened the telos; HS-EXT 3 translated that telos into the concrete API wireup plan; HS-EXT 4 decided the `Net` capability substrate can extend the existing dispatcher directly; HS-EXT 5 added the first live `node:http.createServer(...).listen(...)` path. HTTP server is the first runtime surface where Node-compatible network serving, capability authority, compartment realm dispatch, and PollIo event-loop integration must compose.
+**Status as of 2026-05-25**: **EXPRESS PROBE BLOCKED at HS-EXT 8**. Originally founded at HS-EXT 0 (2026-05-23) as "basic HTTP server." HS-EXT 1's transport survey and the subsequent Doc 736 / Compartment composition reading sharpened the telos; HS-EXT 3 translated that telos into the concrete API wireup plan; HS-EXT 4 decided the `Net` capability substrate can extend the existing dispatcher directly; HS-EXT 5 added the first live `node:http.createServer(...).listen(...)` path; HS-EXT 5a closed cross-agent hygiene feedback; HS-EXT 6 pinned audit, sealed denial, and loopback-granted sealed allow; HS-EXT 7a added minimal request EventEmitter wiring; HS-EXT 7 proved the internal loopback-only HTTP facade inside a Compartment; HS-EXT 8 added an opt-in Express fixture and found the next blocker before listen: `Router.use() requires a middleware function`. HTTP server is the first runtime surface where Node-compatible network serving, capability authority, compartment realm dispatch, and PollIo event-loop integration must compose.
 
 **Workstream**: implement an actual HTTP server surface for cruft, but with the authority boundary made explicit. `http.createServer(handler)` is API shape; `server.listen(...)` is the effectful network authority. In Mode 0 it remains Node-compatible. In sealed modes and inside Compartments it must be reachable only through an explicit `Net` capability or a capability-backed `http` facade.
 
@@ -31,6 +31,17 @@ The locale's load-bearing observation:
 - In sealed capability modes, binding a listener must require `Net` authority.
 
 The first compatibility target remains Node-style HTTP serving. The sharpened telos is that compatibility must not introduce ambient network authority that bypasses Doc 736 or Compartment endowment discipline.
+
+### I.0 Telos Sharpening After HS-EXT 7a
+
+HS-EXT 5 through HS-EXT 7a proved the Node-shaped serving path in Mode 0, the authority check in audit/sealed modes, and the immediate request-listener compatibility shape. The next work must now re-center on the locale's actual telos:
+
+- **Express is an evidence target, not the design target.** Express should prove that the Node-compatible surface is useful, but it must not drive a widening of ambient authority or a shortcut around Compartment endowments.
+- **`node:http` remains ambient only in compatibility modes.** The strict Doc 736 property is obtained when a compartment cannot discover `node:http` by name and can only receive an endowed facade object.
+- **The facade is the capability handle.** A compartment-endowed `http` object is not a policy exception; it is the JS-visible object reference that carries narrowed `Net` authority into `server.listen`.
+- **Listener registration stays pure.** `createServer`, `server.on("request", ...)`, and `server.once("request", ...)` may construct shape and retain callbacks, but only `listen` may consume `Net` authority.
+- **Request dispatch is a second-time capability test.** It is not enough to bind under the right authority at load time; the eventual request handler must run in the handler's originating realm, under the compartment's global environment.
+- **The current `--allow-net-loopback` CLI grant is a bridge.** It is useful for sealed process-level proving, but the telos wants object-reference authority: a narrowed facade or handle passed into code that otherwise has no network surface.
 
 ### I.1 First-cut scope
 
@@ -68,7 +79,9 @@ Falsifier: local TCP client cannot receive a valid `HTTP/1.1 200 OK` response wi
 
 **Pred-hs.7 (realm preservation)**: a handler created inside a compartment runs with that compartment's realm/globalThis and cannot observe host ambient globals during request dispatch. Falsifier: request callback dispatch escapes to the outer realm or sees denied ambient bindings.
 
-**Pred-hs.8 (regression gates)**: canonical fuzz remains byte-identical, and diff-prod remains at its current all-pass baseline after each implementation round. Falsifier: unrelated runtime-semantics regression.
+**Pred-hs.8 (facade boundedness)**: a compartment endowed with a loopback-only HTTP facade can bind `127.0.0.1:0` but cannot bind `0.0.0.0:0` or any non-loopback interface. Falsifier: the facade grants broader listen authority than its `Net` policy.
+
+**Pred-hs.9 (regression gates)**: canonical fuzz remains byte-identical, and diff-prod remains at its current all-pass baseline after each implementation round. Falsifier: unrelated runtime-semantics regression.
 
 ## II. Apparatus
 
@@ -104,11 +117,13 @@ The design should prefer a small runtime-owned active-server registry over ad ho
 4. **HS-EXT 3** — `docs/api-wireup-design.md`. Specified active-server registry, object slots, authority check flow, realm-preserving handler dispatch, and PollIo/macrotask behavior.
 5. **HS-EXT 4** — `docs/net-capability-design.md`. Decided no nested locale is needed for the first `Net` cut; extend the existing cap dispatcher directly.
 6. **HS-EXT 5** — code-bearing first round: added `Net` to `caps.rs`, routed HTTP listen through `require_net`, and implemented direct Node HTTP probe: create/listen/respond over localhost in Mode 0.
-7. **HS-EXT 6** — authority probes: Mode 1 audit, Mode 3 sealed denial, capability-backed allow.
-8. **HS-EXT 7** — Compartment probes: no ambient HTTP, endowed HTTP facade works, realm preservation on request callback.
-9. **HS-EXT 8** — Express minimal probe.
-10. **HS-EXT 9** — composition gates: canonical fuzz, diff-prod, targeted regression around Compartment probes and caps probes.
-11. **HS-EXT 10** — default-on disposition. The API is opt-in by calling `createServer`; no flag needed for Mode 0. Sealed behavior follows the existing capability mode flags.
+7. **HS-EXT 6** — authority probes: Mode 1 audit, Mode 3 sealed denial, capability-backed loopback allow via `--allow-net-loopback`.
+8. **HS-EXT 7a** — minimal request EventEmitter wiring: `server.on` / `addListener` / `once("request", fn)` feed the HTTP dispatch listener list.
+9. **HS-EXT 7** — Compartment probes: no ambient HTTP, endowed loopback-only HTTP facade works under sealed mode, wider bind denied, request callback observes compartment endowment.
+10. **HS-EXT 8** — Express minimal probe introduced and initially moved the blocker upstream to router middleware registration.
+11. **HS-EXT 8a** — upstream blocker resolved by fixing compiler var/parameter aliasing; Express minimal passes when the opt-in fixture has dependencies installed.
+12. **HS-EXT 9** — composition gates: canonical fuzz, diff-prod, targeted regression around Compartment probes and caps probes.
+13. **HS-EXT 10** — default-on disposition. The API is opt-in by calling `createServer`; no flag needed for Mode 0. Sealed behavior follows the existing capability mode flags.
 
 ## IV. Carve-outs and bounded scope
 
@@ -132,4 +147,4 @@ The design should prefer a small runtime-owned active-server registry over ad ho
 
 ## VI. Resume Protocol
 
-Read this seed, then the tail of `trajectory.md`, then `docs/transport-survey.md`, `docs/api-wireup-design.md`, and `docs/net-capability-design.md`. Do not start from parser or data-layer work: those substrates already exist. The direct Mode-0 probe now passes. The next coherent move is HS-EXT 6: harden the authority probes (`--audit`, `--sealed`, loopback capability facade shape) and begin Compartment-facing facade work without regressing the direct probe.
+Read this seed, then the tail of `trajectory.md`, then `agent-feedback.md`, then `docs/transport-survey.md`, `docs/api-wireup-design.md`, and `docs/net-capability-design.md`. Do not start from parser or data-layer work: those substrates already exist. The direct Mode-0, authority, minimal request EventEmitter, internal Compartment facade, and opt-in Express minimal probes now pass. The Express fixture remains opt-in because it needs npm dependencies; point `CRUFTLESS_EXPRESS_FIXTURE_ROOT` at an installed fixture root to run it. The next coherent move is broader Express behavior under the same capability/Compartment constraints, without widening ambient HTTP authority.
