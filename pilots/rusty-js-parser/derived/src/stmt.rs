@@ -911,7 +911,13 @@ impl<'src> Parser<'src> {
                     // spec mandates SyntaxError at parse.
                     let is_pattern_literal = matches!(&e, Expr::Array { .. } | Expr::Object { .. });
                     match expr_to_binding_pattern(e) {
-                        Some(pat) => ForBinding::Pattern(pat),
+                        Some(pat) => {
+                            // SBAP-EXT 1: §13.15.1 + §13.2 — leaf binding-ids
+                            // in the AssignmentPattern must obey strict-mode
+                            // (eval/arguments) and generator (yield) rules.
+                            self.check_pattern_binding_ids(&pat, span_fallback)?;
+                            ForBinding::Pattern(pat)
+                        }
                         None if is_pattern_literal => {
                             return Err(ParseError {
                                 span: span_fallback,
@@ -1107,5 +1113,49 @@ impl<'src> Parser<'src> {
 
     fn parse_block_statement_public(&mut self) -> Result<Stmt, ParseError> {
         self.parse_block_statement()
+    }
+
+    /// SBAP-EXT 1: walk a BindingPattern's leaf binding-identifiers and
+    /// reject names disallowed by the current parser context per §13.2 +
+    /// §13.15.1: `eval`/`arguments` in strict, `yield` in generator/strict.
+    pub(crate) fn check_pattern_binding_ids(&self, pat: &BindingPattern, span: Span) -> Result<(), ParseError> {
+        match pat {
+            BindingPattern::Identifier(id) => {
+                let n = &id.name;
+                if self.strict_mode && (n == "eval" || n == "arguments") {
+                    return Err(ParseError { span: id.span, message: format!("`{}` is not a valid binding in strict mode", n) });
+                }
+                if (self.in_generator || self.strict_mode) && n == "yield" {
+                    return Err(ParseError { span: id.span, message: "`yield` is not a valid binding in this context".into() });
+                }
+                Ok(())
+            }
+            BindingPattern::Array(ap) => {
+                for el in &ap.elements {
+                    if let Some(be) = el {
+                        self.check_pattern_binding_ids(&be.target, span)?;
+                    }
+                }
+                if let Some(r) = &ap.rest {
+                    self.check_pattern_binding_ids(r, span)?;
+                }
+                Ok(())
+            }
+            BindingPattern::Object(op) => {
+                for prop in &op.properties {
+                    self.check_pattern_binding_ids(&prop.value.target, span)?;
+                }
+                if let Some(r) = &op.rest {
+                    let n = &r.name;
+                    if self.strict_mode && (n == "eval" || n == "arguments") {
+                        return Err(ParseError { span: r.span, message: format!("`{}` is not a valid binding in strict mode", n) });
+                    }
+                    if (self.in_generator || self.strict_mode) && n == "yield" {
+                        return Err(ParseError { span: r.span, message: "`yield` is not a valid binding in this context".into() });
+                    }
+                }
+                Ok(())
+            }
+        }
     }
 }
