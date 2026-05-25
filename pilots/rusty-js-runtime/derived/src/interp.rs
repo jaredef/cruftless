@@ -3639,11 +3639,27 @@ impl Runtime {
     pub fn object_proto_property_is_enumerable_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let key = crate::abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined))
             .as_str().to_string();
-        let owns = match self.current_this() {
-            Value::Object(id) => self.obj(id).has_own_str(&key),
+        // ODP-EXT 1: spec §20.1.3.4 step 4 — return desc.enumerable.
+        // Pre-fix returned only `has_own_str`, accidentally correct for
+        // Array.length when has_own_str was wrong. Now both halves are
+        // checked.
+        let result = match self.current_this() {
+            Value::Object(id) => {
+                if !self.obj(id).has_own_str(&key) {
+                    false
+                } else if let Some(d) = self.obj(id).get_own(&key) {
+                    d.enumerable
+                } else if key == "length" && matches!(self.obj(id).internal_kind, crate::value::InternalKind::Array) {
+                    false  // Array.length is non-enumerable per §10.4.2
+                } else {
+                    // Shape-stored own property: defaults to user-default
+                    // {w:t,e:t,c:t} per CMig-EXT 9 carve-out.
+                    true
+                }
+            }
             _ => false,
         };
-        Ok(Value::Boolean(owns))
+        Ok(Value::Boolean(result))
     }
 
     /// Object.prototype.isPrototypeOf(target) per ECMA §20.1.3.3.
@@ -7834,6 +7850,17 @@ impl Runtime {
                                     self.obj_mut(target).remove_str(&key).is_some()
                                 }
                             } else {
+                                // ODP-EXT 1: Array exotic .length is
+                                // [[Configurable]]:false per §10.4.2; delete
+                                // must refuse (return false in sloppy, throw
+                                // in strict). The internal-kind check guards
+                                // the virtual length not stored as an own
+                                // data property.
+                                if key == "length"
+                                    && matches!(self.obj(id).internal_kind, crate::value::InternalKind::Array) {
+                                    frame.push(Value::Boolean(false));
+                                    continue;
+                                }
                                 // Ω.5.P62.E10: ECMA §10.1.10 OrdinaryDelete —
                                 // own data property with configurable:false is
                                 // not deletable. Return false (sloppy mode);

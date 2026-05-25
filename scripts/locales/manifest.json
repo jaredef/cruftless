@@ -3,12 +3,21 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 42,
-    "top_level": 31,
+    "locales": 43,
+    "top_level": 32,
     "nested": 11,
     "warnings": 0
   },
   "locales": [
+    {
+      "coord": "array-exotic-virtual-property-discipline",
+      "tag": "L.array-exotic-virtual-property-discipline",
+      "parent": null,
+      "scope": "array-exotic-virtual-property-discipline",
+      "depth": 1,
+      "rung_count": 1,
+      "status": "**CLOSED at AEVPD-EXT 1** (1 implementation round; multi-tier closure across three substrate truths)."
+    },
     {
       "coord": "cross-runtime-bench",
       "tag": "L.cross-runtime-bench",

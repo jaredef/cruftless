@@ -511,11 +511,16 @@ impl Object {
 
     /// String-key membership test (migration shim).
     /// Shape-EXT 4: shape-aware; checks shape slots before properties.
+    /// ODP-EXT 1: Array exotic exposes "length" as a virtual own property
+    /// per §10.4.2; the virtual length is not stored in shape/properties
+    /// but membership tests must still observe it.
     pub fn has_own_str(&self, key: &str) -> bool {
         if let Some(shape) = self.shape.as_ref() {
             if shape.slot_of(key).is_some() { return true; }
         }
-        self.properties.contains_key(&PropertyKey::String(key.to_string()))
+        if self.properties.contains_key(&PropertyKey::String(key.to_string())) { return true; }
+        if key == "length" && matches!(self.internal_kind, InternalKind::Array) { return true; }
+        false
     }
 
     /// String-key delete (migration shim).
