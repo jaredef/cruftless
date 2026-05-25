@@ -3473,12 +3473,19 @@ impl Runtime {
             // (legacy hand-written set-op implementations removed; all routed through IR above.)
             let proto_for_ctor = proto;
             let name = (*collection).to_string();
+            let is_weak_ctor = is_weak_proto;
             let ctor_obj = make_native(&name, move |rt, args| {
                 let mut o = Object::new_ordinary();
                 o.proto = Some(proto_for_ctor);
                 let id = rt.alloc_object(o);
                 let storage = rt.alloc_object(Object::new_dictionary());
                 rt.object_set(id, "__set_data".into(), Value::Object(storage));
+                // SPBC-EXT 2: brand mark for WeakSet (parallel to __is_weakmap).
+                // Allows require_set_brand to reject WeakSet instances passed
+                // to Set.prototype methods per RequireInternalSlot([[SetData]]).
+                if is_weak_ctor {
+                    rt.object_set(id, "__is_weakset".into(), Value::Boolean(true));
+                }
                 rt.object_set(id, "size".into(), Value::Number(0.0));
                 // Tier-Ω.5.rrr: populate from iterable arg. Per spec
                 // `new Set(iterable)` calls .add for each yielded value.

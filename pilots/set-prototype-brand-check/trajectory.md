@@ -22,3 +22,27 @@
 - Set-like-class with inherited __set_data (~14, needs stricter brand)
 
 **Status**: CLOSED at SPBC-EXT 1.
+
+## SPBC-EXT 2 — WeakSet brand discrimination (2026-05-25)
+
+**Trigger**: keeper "Continue as coherent". Same workstream (Set.prototype brand-check) at the next sub-sub-cluster: 7 tests where the receiver is a WeakSet (which shares cruftless's `__set_data` sentinel but is a different spec brand).
+
+**Edits** (~15 LOC):
+1. `intrinsics.rs` Set/WeakSet ctor: when `is_weak_proto`, mark instance with `__is_weakset = true` (parallel to existing __is_weakmap).
+2. `interp.rs::require_set_brand`: reject if `__is_weakset` is true.
+3. `interp.rs::set_this_and_storage`: same WeakSet rejection for basic Set methods (add/has/delete/clear/forEach).
+
+**Verification**:
+- SPBC-targeted (28 in-scope brand-check tests): PASS 14 → **19** (+5)
+- Regression on Set/prototype (256 previously-passing): 0
+
+### Findings
+
+**Finding SPBC.3**: WeakSet shares `__set_data` sentinel with Set in cruftless's storage design; the brand discrimination requires an explicit __is_weakset marker. Pattern mirrors __is_weakmap from a prior round.
+
+**Remaining 9 fails** in-scope:
+- 6 set-methods called-with-object: the OTHER arg validation (Set-like protocol on the arg, not the receiver) — different upstream.
+- 2 entries/values WeakSet receiver: registered via inline closures (not set_this_and_storage); separate fix.
+- 1 sundry.
+
+**Status**: CLOSED at SPBC-EXT 2.

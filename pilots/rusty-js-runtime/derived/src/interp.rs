@@ -1283,6 +1283,12 @@ impl Runtime {
             return Err(RuntimeError::TypeError(format!(
                 "Set.prototype.{}: this does not have [[SetData]]", method)));
         }
+        // SPBC-EXT 2: WeakSet shares __set_data sentinel with Set in cruftless
+        // but is a different brand. RequireInternalSlot([[SetData]]) rejects.
+        if matches!(self.object_get(id, "__is_weakset"), Value::Boolean(true)) {
+            return Err(RuntimeError::TypeError(format!(
+                "Set.prototype.{}: this is a WeakSet (does not have [[SetData]])", method)));
+        }
         Ok(id)
     }
 
@@ -1422,6 +1428,12 @@ impl Runtime {
             Value::Object(id) => id,
             _ => return Err(RuntimeError::TypeError(format!("Set.prototype.{}: this is not a Set object", who))),
         };
+        // SPBC-EXT 2: reject WeakSet receiver (shares __set_data sentinel
+        // but is a different brand per RequireInternalSlot).
+        if matches!(self.object_get(this, "__is_weakset"), Value::Boolean(true)) {
+            return Err(RuntimeError::TypeError(format!(
+                "Set.prototype.{}: this is a WeakSet (does not have [[SetData]])", who)));
+        }
         Ok((this, storage))
     }
 
