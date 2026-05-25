@@ -85,3 +85,59 @@ All subsequent `rt.object_set(id, "size", n)` increment/decrement sites unchange
 **Finding ESNE.5 (carve-back was sized right)**: ESNE.2 originally was tagged "separable next rung" because it looked like it would require refactoring every increment site. The actual fix was 6 LOC because cruft's update-preserves-attrs semantics meant only first-install sites needed conversion. Standing recommendation: when a carve-out is tagged "separable" on size grounds, re-check whether the substrate has invariants that collapse the scope (update-preserves-attrs is the canonical example).
 
 **Status**: ESNE-EXT 2 CLOSED. Map/Set/WeakMap/WeakSet/Date instances now have empty `Object.keys` (matching Node behavior modulo TypedArray indexed-property differences).
+
+---
+
+## ESNE-EXT 3 — hide iterator + generator instance state and methods (2026-05-25)
+
+**Trigger**: probe-for-more-sentinel-leak-sites round identified the iterator family as the dominant residual leak. Pre-fix `Object.keys` on Array/String/Map iterators returned `["_arr","_i","@@toStringTag","@@iterator","next"]`; on Set iterators `["__vals","__idx"]`; on generators `["__gen_arr__","__gen_idx__","next","return","throw"]`. State + methods all enumerable on the instance.
+
+Also caught a convention drift: Array/String/Map iterators used `_arr` / `_i` (single underscore), violating CLAUDE.md's `__X` engine-sentinel naming convention.
+
+**Edits** (~20 LOC across 3 files):
+
+- `iterator.rs::make_array_iterator`: rename `_arr` → `__arr`, `_i` → `__i` to follow the `__X` convention. Switch state installs + `@@toStringTag` install via `set_engine_sentinel` (non-enumerable). The internal `install_self_returning_iterator` + `install_next` helpers also switched to set_engine_sentinel for the `@@iterator` + `next` installs.
+- `iterator.rs::make_string_iterator`: post-construction, override `@@toStringTag` to `"String Iterator"` (was inheriting Array Iterator's label from make_array_iterator).
+- `intrinsics.rs` Set iterator (set values()/keys()/entries() path): switch `__vals` / `__idx` installs to set_engine_sentinel. The `next` method is already installed via `register_intrinsic_method` (non-enumerable per existing convention) so untouched.
+- `interp.rs` generator-construction path: switch `__gen_arr__` / `__gen_idx__` state + `next` / `return` / `throw` / `@@iterator` method installs to set_engine_sentinel.
+- `interp.rs` Op::IterInit fast-path (line ~9173): update three reads/writes from `_arr` / `_i` to `__arr` / `__i` to match the rename.
+
+**Verification**:
+
+| Probe | Before | After |
+|---|---|---|
+| `Object.keys([1,2].values())` | `["_arr","_i","@@toStringTag","@@iterator","next"]` | `[]` |
+| `Object.keys([1,2].keys())` | same | `[]` |
+| `Object.keys([1,2].entries())` | same | `[]` |
+| `Object.keys("abc"[Symbol.iterator]())` | same | `[]` |
+| `Object.keys(new Map([['a',1]]).entries())` | same | `[]` |
+| `Object.keys(new Set([1]).values())` | `["__vals","__idx"]` | `[]` |
+| `Object.keys(gen())` (function* gen) | `["__gen_arr__","__gen_idx__","next","return","throw"]` | `[]` |
+
+Iterator + generator behavior preserved:
+- Array .values()/.keys()/.entries() returned via Array.from: correct values
+- for-of on Array, String, Set, Map: works
+- Generator .next()/.return()/.throw(): works; for-of on generator works
+- Map iterator: Array.from(map) returns [[k,v],...]
+
+**Gates**:
+- diff-prod: **42/42 PASS, 0 FAIL**
+- Random 300 prev-PASS: **300/300, 0 regressions**
+
+**Pre-existing bug surfaced (not regression)**: `[..."abc"]` returns `[]` because `__array_extend` → `collect_iterable` requires `Value::Object` and rejects `Value::String`. for-of on string and `Array.from("abc")` work (they go through different paths that ToObject-wrap the string first). Out of scope for this rung; flag for a future locale.
+
+**Findings**
+
+**Finding ESNE.6 (convention drift was load-bearing)**: Array/String/Map iterators used `_arr` / `_i` (single underscore) — a different convention from `__X`. The drift mattered: CLIF-EXT 1's formatter filter (`!k.starts_with("__")`) wouldn't have caught `_arr` had it remained, and any audit grep for `__X` sentinel sites would have missed them. Standing recommendation: at locale entry, when a substrate carries multiple sentinel-naming conventions, the audit move is to converge first (rename to canonical `__X`) before applying the apparatus-tier fix; without convergence the same fix has to be re-applied per-convention.
+
+**Finding ESNE.7 (instance-vs-prototype shape is the next axis)**: iterator instances carry `next` / `@@iterator` / `@@toStringTag` as own properties. Real spec puts them on `%ArrayIteratorPrototype%` / `%StringIteratorPrototype%` / etc., with only state on the instance. Hiding the instance copies non-enumerable (this rung) closes the `Object.keys` leak but leaves a separate spec-shape gap: `Object.getOwnPropertyDescriptor(iter, "next")` returns a desc, but real Node returns undefined (since `next` lives on the prototype). The architectural fix is to introduce `%ArrayIteratorPrototype%` and similar, install methods there, point iterator instances at it via `.proto`. ~150-250 LOC across iterator.rs + intrinsics.rs; separate locale candidate `iterator-prototype-routing`.
+
+**Finding ESNE.8 (probe-for-more found 6 distinct sentinel-source modules)**: the iterator + generator paths spread across 3 files (iterator.rs, intrinsics.rs Set/Map iterator, interp.rs generator). Cumulative locale-scope ~20 LOC. The remaining leak sources identified by probe-for-more are TypedArray / ArrayBuffer / DataView accessor-shadow (parallel to RIAS-EXT 1's RegExp work), AbortController / AbortSignal accessor-shadow, and URL accessor-shadow. Each is a separable sibling locale; each shares the shape of "instance carries own data properties that spec mandates as prototype accessors" (per RIAS-EXT 1's pattern).
+
+**Status**: ESNE-EXT 3 CLOSED. Iterator + generator leak family closed; locale at three rungs covering Map/Set/WeakMap/WeakSet/Date instances + all iterator families + the http-server agent-feedback follow-on.
+
+**Next-rung candidates** (per ESNE.7 + ESNE.8):
+
+1. `iterator-prototype-routing` (~150-250 LOC) — move iterator methods to dedicated prototypes; matches real spec shape.
+2. `typedarray-buffer-view-accessor-shadow` — TypedArray + ArrayBuffer + DataView length/byteLength/byteOffset/buffer as prototype accessors (same shape as RIAS-EXT 1).
+3. `abort-and-url-accessor-shadow` — AbortController/AbortSignal/URL property surface as prototype accessors.

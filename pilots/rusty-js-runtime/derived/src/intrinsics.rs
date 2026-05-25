@@ -5648,8 +5648,9 @@ pub(crate) fn make_set_values_iterator(rt: &mut Runtime, set_id: crate::value::O
         rt.object_set(vals_arr, i.to_string(), v.clone());
     }
     rt.object_set(vals_arr, "length".into(), Value::Number(values.len() as f64));
-    rt.object_set(iter, "__vals".into(), Value::Object(vals_arr));
-    rt.object_set(iter, "__idx".into(), Value::Number(0.0));
+    // ESNE-EXT 3: hide engine sentinels per CLAUDE.md __X convention.
+    rt.set_engine_sentinel(iter, "__vals", Value::Object(vals_arr));
+    rt.set_engine_sentinel(iter, "__idx", Value::Number(0.0));
     register_intrinsic_method(rt, iter, "next", 1, |rt, _args| {
         let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
         let idx = match rt.object_get(this, "__idx") {

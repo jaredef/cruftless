@@ -21,16 +21,22 @@ use crate::value::{
 use std::collections::HashMap;
 use std::rc::Rc;
 
-/// Make an Array iterator object — `{ next: () => {value, done}, _arr, _i }`.
+/// Make an Array iterator object — `{ next: () => {value, done}, __arr, __i }`.
 /// The iterator carries its source array id and a current-index cursor
-/// stored as a regular property `_i` (v1 — a real engine would intern in
-/// internal slots).
+/// stored as engine-internal sentinels `__arr` / `__i` (v1 — a real engine
+/// would intern in internal slots).
+///
+/// ESNE-EXT 3: all installed props are non-enumerable. CLAUDE.md's source-
+/// identifier coordinate convention requires `__X` sentinels to be hidden;
+/// `next`/`@@iterator`/`@@toStringTag` are spec-non-enumerable on built-in
+/// instances. Pre-fix every install used rt.object_set's default
+/// {w:t,e:t,c:t}, leaking 5 own keys per iterator instance.
 pub fn make_array_iterator(rt: &mut Runtime, src: ObjectRef) -> ObjectRef {
     let iter = rt.alloc_object(Object::new_ordinary());
-    rt.object_set(iter, "_arr".into(), Value::Object(src));
-    rt.object_set(iter, "_i".into(), Value::Number(0.0));
+    rt.set_engine_sentinel(iter, "__arr", Value::Object(src));
+    rt.set_engine_sentinel(iter, "__i", Value::Number(0.0));
     // §23.1.5.2 %ArrayIteratorPrototype%[@@toStringTag] = "Array Iterator".
-    rt.object_set(iter, "@@toStringTag".into(), Value::String(Rc::new("Array Iterator".into())));
+    rt.set_engine_sentinel(iter, "@@toStringTag", Value::String(Rc::new("Array Iterator".into())));
     // §23.1.5.2.2 the iterator IS itself iterable — [@@iterator]() returns this.
     install_self_returning_iterator(rt, iter);
     install_next(rt, iter, |rt, _args| {
@@ -38,11 +44,11 @@ pub fn make_array_iterator(rt: &mut Runtime, src: ObjectRef) -> ObjectRef {
             Value::Object(id) => id,
             _ => return Err(RuntimeError::TypeError("array iterator next: this is not an iterator".into())),
         };
-        let src_id = match rt.object_get(it, "_arr") {
+        let src_id = match rt.object_get(it, "__arr") {
             Value::Object(id) => id,
             _ => return Ok(iter_result_done(rt)),
         };
-        let i = match rt.object_get(it, "_i") {
+        let i = match rt.object_get(it, "__i") {
             Value::Number(n) => n as usize,
             _ => 0,
         };
@@ -51,7 +57,7 @@ pub fn make_array_iterator(rt: &mut Runtime, src: ObjectRef) -> ObjectRef {
             return Ok(iter_result_done(rt));
         }
         let v = rt.object_get(src_id, &i.to_string());
-        rt.object_set(it, "_i".into(), Value::Number((i + 1) as f64));
+        rt.object_set(it, "__i".into(), Value::Number((i + 1) as f64));
         Ok(iter_result_value(rt, v))
     });
     iter
@@ -67,7 +73,10 @@ pub fn make_string_iterator(rt: &mut Runtime, s: String) -> ObjectRef {
         rt.object_set(arr, i.to_string(), Value::String(Rc::new(c.to_string())));
     }
     rt.object_set(arr, "length".into(), Value::Number(chars.len() as f64));
-    make_array_iterator(rt, arr)
+    let it = make_array_iterator(rt, arr);
+    // String iterator's @@toStringTag overrides Array Iterator label.
+    rt.set_engine_sentinel(it, "@@toStringTag", Value::String(Rc::new("String Iterator".into())));
+    it
 }
 
 fn install_self_returning_iterator(rt: &mut Runtime, host: ObjectRef) {
@@ -83,7 +92,10 @@ fn install_self_returning_iterator(rt: &mut Runtime, host: ObjectRef) {
         ..Default::default()
     };
     let fn_id = rt.alloc_object(fn_obj);
-    rt.object_set(host, "@@iterator".into(), Value::Object(fn_id));
+    // ESNE-EXT 3: install @@iterator non-enumerable per §23.1.5.2.2's
+    // prototype-method placement (we install on instance pending real
+    // ArrayIteratorPrototype; non-enumerable matches built-in convention).
+    rt.set_engine_sentinel(host, "@@iterator", Value::Object(fn_id));
 }
 
 fn install_next<F>(rt: &mut Runtime, host: ObjectRef, f: F)
@@ -96,11 +108,12 @@ where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
         extensible: true,
         properties,
         internal_kind: InternalKind::Function(FunctionInternals { name: "next".into(), length: 0, native, is_constructor: true }),
-    
+
         ..Default::default()
     };
     let fn_id = rt.alloc_object(fn_obj);
-    rt.object_set(host, "next".into(), Value::Object(fn_id));
+    // ESNE-EXT 3: next() is a prototype method on real spec; hide on instance.
+    rt.set_engine_sentinel(host, "next", Value::Object(fn_id));
 }
 
 /// Build `{ value, done: false }`.

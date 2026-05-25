@@ -9169,9 +9169,11 @@ impl Runtime {
                     let iter_val = frame.read_local(iter_slot);
                     if let Value::Object(iter_id) = iter_val {
                         // Array-iterator shape per iterator.rs:28-58:
-                        // _arr (source array), _i (index).
-                        let src_val = self.object_get(iter_id, "_arr");
-                        let idx_val = self.object_get(iter_id, "_i");
+                        // __arr (source array), __i (index). ESNE-EXT 3
+                        // renamed from _arr/_i to follow CLAUDE.md's __X
+                        // engine-sentinel convention.
+                        let src_val = self.object_get(iter_id, "__arr");
+                        let idx_val = self.object_get(iter_id, "__i");
                         if let (Value::Object(src_id), Value::Number(idx_n)) = (&src_val, &idx_val) {
                             if matches!(self.obj(*src_id).internal_kind, crate::value::InternalKind::Array) {
                                 let idx = *idx_n as usize;
@@ -9181,7 +9183,7 @@ impl Runtime {
                                     continue;
                                 }
                                 let v = self.object_get(*src_id, &idx.to_string());
-                                self.object_set(iter_id, "_i".into(), Value::Number((idx + 1) as f64));
+                                self.object_set(iter_id, "__i".into(), Value::Number((idx + 1) as f64));
                                 frame.write_local(bind_slot, v);
                                 frame.pc = (after_operand_pc as i64 + next_iter_offset as i64) as usize;
                                 continue;
@@ -9986,8 +9988,13 @@ impl Runtime {
             let mut iter = Object::new_ordinary();
             iter.proto = self.generator_prototype;
             let it_id = self.alloc_object(iter);
-            self.object_set(it_id, "__gen_arr__".into(), Value::Object(yields_id));
-            self.object_set(it_id, "__gen_idx__".into(), Value::Number(0.0));
+            // ESNE-EXT 3: hide engine sentinels + iterator methods. State
+            // (__gen_*) via set_engine_sentinel; methods (next/return/throw/
+            // @@iterator) likewise (real spec has them on
+            // %GeneratorPrototype%, we install on instance pending
+            // prototype-routing refactor).
+            self.set_engine_sentinel(it_id, "__gen_arr__", Value::Object(yields_id));
+            self.set_engine_sentinel(it_id, "__gen_idx__", Value::Number(0.0));
             let next_fn = crate::intrinsics::make_native("next", |rt, _args| {
                 let this_id = match rt.current_this() { Value::Object(o) => o, _ => return Ok(Value::Undefined) };
                 let arr = match rt.object_get(this_id, "__gen_arr__") { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
@@ -10006,7 +10013,7 @@ impl Runtime {
                 Ok(Value::Object(rt.alloc_object(o)))
             });
             let next_id = self.alloc_object(next_fn);
-            self.object_set(it_id, "next".into(), Value::Object(next_id));
+            self.set_engine_sentinel(it_id, "next", Value::Object(next_id));
             let return_fn = crate::intrinsics::make_native("return", |rt, args| {
                 let this_id = match rt.current_this() { Value::Object(o) => o, _ => return Ok(Value::Undefined) };
                 // Mark the iterator as exhausted so subsequent next()
@@ -10024,7 +10031,7 @@ impl Runtime {
                 Ok(Value::Object(rt.alloc_object(o)))
             });
             let return_id = self.alloc_object(return_fn);
-            self.object_set(it_id, "return".into(), Value::Object(return_id));
+            self.set_engine_sentinel(it_id, "return", Value::Object(return_id));
             // ECMA §27.5.1.4 Generator.prototype.throw: re-throws the
             // arg from inside the generator at its current suspension
             // point. v1 generators are eager-collected (the body runs to
@@ -10037,13 +10044,13 @@ impl Runtime {
                 Err(RuntimeError::Thrown(v))
             });
             let throw_id = self.alloc_object(throw_fn);
-            self.object_set(it_id, "throw".into(), Value::Object(throw_id));
+            self.set_engine_sentinel(it_id, "throw", Value::Object(throw_id));
             let self_iter = it_id;
             let iter_fn = crate::intrinsics::make_native("@@iterator", move |_rt, _args| {
                 Ok(Value::Object(self_iter))
             });
             let iter_fn_id = self.alloc_object(iter_fn);
-            self.object_set(it_id, "@@iterator".into(), Value::Object(iter_fn_id));
+            self.set_engine_sentinel(it_id, "@@iterator", Value::Object(iter_fn_id));
             return Ok(Value::Object(it_id));
         }
         let body_result_v = body_result;
