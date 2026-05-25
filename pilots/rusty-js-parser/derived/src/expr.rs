@@ -714,7 +714,7 @@ impl<'src> Parser<'src> {
                 self.bump()?; // consume `*`
                 let key = self.parse_object_key()?;
                 let params = self.parse_function_parameters()?;
-                let body = self.parse_function_body_g(Some(true))?;
+                let body = self.parse_function_body_gs(Some(true), Self::is_simple_param_list(&params))?;
                 let end = self.last_span_end();
                 let func = Expr::Function {
                     name: None,
@@ -744,7 +744,7 @@ impl<'src> Parser<'src> {
                 } else { false };
                 let key = self.parse_object_key()?;
                 let params = self.parse_function_parameters()?;
-                let body = self.parse_function_body_g(Some(is_generator))?;
+                let body = self.parse_function_body_gs(Some(is_generator), Self::is_simple_param_list(&params))?;
                 let end = self.last_span_end();
                 let func = Expr::Function {
                     name: None,
@@ -773,7 +773,7 @@ impl<'src> Parser<'src> {
                 self.bump()?; // consume `get` or `set`
                 let key = self.parse_object_key()?;
                 let params = self.parse_function_parameters()?;
-                let body = self.parse_function_body_g(Some(false))?;
+                let body = self.parse_function_body_gs(Some(false), Self::is_simple_param_list(&params))?;
                 let end = self.last_span_end();
                 let func = Expr::Function {
                     name: None,
@@ -804,7 +804,7 @@ impl<'src> Parser<'src> {
                     // an anonymous name (the method name is the property key,
                     // not the function's [[Name]] in v1).
                     let params = self.parse_function_parameters()?;
-                    let body = self.parse_function_body_g(Some(false))?;
+                    let body = self.parse_function_body_gs(Some(false), Self::is_simple_param_list(&params))?;
                     let end = self.last_span_end();
                     let func = Expr::Function {
                         name: None,
@@ -1185,7 +1185,7 @@ impl<'src> Parser<'src> {
             } else { None }
         } else { None };
         let params = self.parse_function_parameters()?;
-        let body = self.parse_function_body_g(Some(is_generator))?;
+        let body = self.parse_function_body_gs(Some(is_generator), Self::is_simple_param_list(&params))?;
         let end = self.last_span_end();
         Ok(Expr::Function {
             name, is_async, is_generator, params, body,
@@ -1319,7 +1319,7 @@ impl<'src> Parser<'src> {
         // function ConciseBody is not [Yield]-parameterized). Force
         // in_generator=false for the body's duration.
         let body = if matches!(self.current_kind(), TokenKind::Punct(Punct::LBrace)) {
-            ArrowBody::Block(self.parse_function_body_g(Some(false))?)
+            ArrowBody::Block(self.parse_function_body_gs(Some(false), Self::is_simple_param_list(&params))?)
         } else {
             self.function_body_depth += 1;
             let prior_gen = self.in_generator;

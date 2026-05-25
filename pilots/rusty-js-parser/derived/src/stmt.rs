@@ -282,7 +282,7 @@ impl<'src> Parser<'src> {
             Some(BindingIdentifier { name: n, span })
         } else { None };
         let params = self.parse_function_parameters()?;
-        let body = self.parse_function_body_g(Some(is_generator))?;
+        let body = self.parse_function_body_gs(Some(is_generator), Self::is_simple_param_list(&params))?;
         let end = self.last_span_end();
         Ok(Stmt::FunctionDecl {
             name, is_async, is_generator, params, body,
@@ -325,14 +325,39 @@ impl<'src> Parser<'src> {
     /// preserves enclosing (arrow body, static block — neither introduces
     /// a generator boundary per ECMA-262 §15.3 + §15.7).
     pub(crate) fn parse_function_body_g(&mut self, is_generator: Option<bool>) -> Result<Vec<Stmt>, ParseError> {
+        self.parse_function_body_gs(is_generator, true)
+    }
+
+    /// NSPS-EXT 1: IsSimpleParameterList per ECMA-262 §15.2.1.4. A param is
+    /// simple iff it is a plain BindingPattern::Identifier with no default
+    /// initializer and is not rest. List is simple iff every param is.
+    pub(crate) fn is_simple_param_list(params: &[rusty_js_ast::Parameter]) -> bool {
+        params.iter().all(|p| {
+            matches!(p.target, rusty_js_ast::BindingPattern::Identifier(_))
+                && p.default.is_none()
+                && !p.rest
+        })
+    }
+
+    /// NSPS-EXT 1: parse_function_body with both generator-context AND
+    /// is-simple-parameter-list overrides. is_simple=false enforces the
+    /// ECMA-262 §15.2.1 / §15.3.1 early error: when ContainsUseStrict(body)
+    /// is true AND IsSimpleParameterList(params) is false, throw SyntaxError.
+    pub(crate) fn parse_function_body_gs(&mut self, is_generator: Option<bool>, is_simple: bool) -> Result<Vec<Stmt>, ParseError> {
+        let body_start = self.lookahead_span();
         self.expect_punct(Punct::LBrace)?;
         // SMPT-EXT 1: track function-body depth for yield-context disambiguation.
         self.function_body_depth += 1;
-        // SMPT-EXT 2: §16.1.1 DirectivePrologues — function body that
-        // begins with "use strict" promotes to strict mode for the body's
-        // duration. Inner functions inherit; restored on exit.
+        // SMPT-EXT 2 + NSPS-EXT 1: §16.1.1 DirectivePrologues + §15.2.1/§15.3.1
+        // non-simple-params early error.
         let prior_strict = self.strict_mode;
         if self.peek_use_strict_directive() {
+            if !is_simple {
+                return Err(ParseError {
+                    span: body_start,
+                    message: "Illegal 'use strict' directive in function with non-simple parameter list".into(),
+                });
+            }
             self.strict_mode = true;
         }
         // SMPT-EXT 3: generator-context propagation.
@@ -449,7 +474,7 @@ impl<'src> Parser<'src> {
             // Field or method?
             if matches!(self.current_kind(), TokenKind::Punct(Punct::LParen)) {
                 let params = self.parse_function_parameters()?;
-                let body = self.parse_function_body_g(Some(is_generator))?;
+                let body = self.parse_function_body_gs(Some(is_generator), Self::is_simple_param_list(&params))?;
                 let end = self.last_span_end();
                 // Constructor detection (only when not static and name is `constructor`).
                 let method_kind = if !is_static && kind == MethodKind::Method {

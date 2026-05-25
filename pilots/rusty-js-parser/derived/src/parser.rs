@@ -359,7 +359,7 @@ impl<'src> Parser<'src> {
             Some(self.parse_binding_identifier()?)
         } else { None };
         let params = self.parse_function_parameters()?;
-        let body = self.parse_function_body_g(Some(is_generator))?;
+        let body = self.parse_function_body_gs(Some(is_generator), Self::is_simple_param_list(&params))?;
         Ok(DefaultExportBody::HoistableFunction {
             name, params, body, is_async, is_generator,
         })
