@@ -112,7 +112,9 @@ The two probes triangulate: each substrate fix that flips a diff-prod fixture sh
 
 Repo scripts that need filesystem-local paths source `scripts/env.sh`. The loader reads `env.local` when present, then supplies portable repo-relative fallbacks. `env.example` is the documented contract for portable configuration; `env.local` is the machine-specific instantiation for this checkout.
 
-Use env variables for operational paths instead of baking workstation paths into scripts. Current variables include `CRUFTLESS_ROOT`, `CRUFT_BIN`, `BUN_BIN`, `NODE_BIN`, `T262_ROOT`, `PROD_SANDBOX`, `RESULTS_DIR`, `PROBE_ROOT`, `CRUFTLESS_CROSS_RUNTIME_RESULTS_ROOT`, and `LOCAL_CRUFT`. New scripts should compute their nearby root, source `scripts/env.sh`, and then derive any remaining paths from these variables or from repo-relative defaults.
+Use env variables for operational paths instead of baking workstation paths into scripts. Current variables include `CRUFTLESS_ROOT`, `CRUFT_BIN`, `BUN_BIN`, `NODE_BIN`, `T262_ROOT`, `CRUFTLESS_SIDECAR`, `TEST_ARTIFACTS_DIR`, `PROD_SANDBOX`, `RESULTS_DIR`, `PROBE_ROOT`, `CRUFTLESS_TEST262_RESULTS_ROOT`, `CRUFTLESS_CROSS_RUNTIME_RESULTS_ROOT`, and `LOCAL_CRUFT`. New scripts should compute their nearby root, source `scripts/env.sh`, and then derive any remaining paths from these variables or from repo-relative defaults.
+
+Generated test and benchmark artifacts live in the external sidecar, not in the repository. On this machine `env.local` sets `CRUFTLESS_SIDECAR=/home/jaredef/Developer/cruftless-sidecar` and `TEST_ARTIFACTS_DIR=/home/jaredef/Developer/cruftless-sidecar/results`; test262 samples, diff-prod output, and cross-runtime benchmark output should write there unless a caller explicitly overrides the relevant env var. Do not introduce new repo-local `results/` writers.
 
 | Task | Command |
 |---|---|

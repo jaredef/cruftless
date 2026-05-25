@@ -1,8 +1,0 @@
-test262 representative sample (bun) — 2026-05-22
-bun version: 1.3.11
-Sample size:    7750
-Results emitted: 7709
-PASS:           7269
-FAIL:           56
-SKIP:           384
-Runnable pass rate: %  (7269 / 7325)

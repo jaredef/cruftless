@@ -15,7 +15,7 @@ scripts/diff-prod/
     <name>/exec.mjs
     <name>/setup.mjs       (optional)
     <name>/cassette.json   (optional, S-category)
-  results/<name>/         (gitignored — re-emitted per run)
+  $RESULTS_DIR/<name>/    (external sidecar by default, re-emitted per run)
     bun.json
     cruftless.json
     result.json
@@ -38,7 +38,8 @@ cargo build --release -p cruftless
 
 All heavy work runs behind `nice -n 19 ionice -c3` so the harness can
 share a workstation without disrupting interactive use. The sandbox and
-results default to the **T7 mounted drive** (`/media/jaredef/T7/rusty-bun/diff-prod-{sandbox,results}/`)
+results default to the external cruftless sidecar via `scripts/env.sh`
+(`$CRUFTLESS_SIDECAR/results/diff-prod`)
 to keep system disk lean — same convention as the parity-measure harness.
 
 Override via env if needed:

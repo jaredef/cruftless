@@ -12,9 +12,9 @@ This document accumulates engagement-tested debug techniques. Each pattern names
 
 1. Run both modes; save each mode's per-test result.jsonl into a stable path (the standard runner overwrites by date, so copy explicitly):
    ```bash
-   cp results/test262-sample-$DATE/results.jsonl /tmp/test262-default.jsonl
+   cp "$CRUFTLESS_TEST262_RESULTS_ROOT/test262-sample-$DATE/results.jsonl" /tmp/test262-default.jsonl
    CRUFTLESS_SHAPE_ENROLL=1 ./scripts/test262-sample/run-sample.sh
-   cp results/test262-sample-$DATE/results.jsonl /tmp/test262-enrolled.jsonl
+   cp "$CRUFTLESS_TEST262_RESULTS_ROOT/test262-sample-$DATE/results.jsonl" /tmp/test262-enrolled.jsonl
    ```
 2. Cluster the regressions by directory prefix:
    ```python

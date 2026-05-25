@@ -13,7 +13,7 @@ RUNNER="$ROOT/legacy/host-rquickjs/tests/test262/runner.mjs"
 HARNESS="$T262/harness"
 
 DATE="$(date +%Y-%m-%d)"
-OUT="$ROOT/results/test262-sample-$DATE-bun"
+OUT="$CRUFTLESS_TEST262_RESULTS_ROOT/test262-sample-$DATE-bun"
 mkdir -p "$OUT"
 RESULTS="$OUT/results.jsonl"
 SUMMARY="$OUT/summary.txt"

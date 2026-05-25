@@ -12,7 +12,9 @@
 
 use crate::abstract_ops;
 use crate::interp::{Runtime, RuntimeError};
-use crate::value::{FunctionInternals, InternalKind, NativeFn, Object, ObjectRef, PropertyDescriptor, Value};
+use crate::value::{
+    FunctionInternals, InternalKind, NativeFn, Object, ObjectRef, PropertyDescriptor, Value,
+};
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -30,7 +32,8 @@ fn check_stdio(rt: &Runtime, op: crate::caps::StdioOp) -> Result<(), RuntimeErro
         crate::caps::ModuleProvenance::Application
     };
     let caller = crate::caps::ModuleId { url, provenance };
-    rt.caps.require_stdio(&crate::caps::Stdio::none(), op, &caller)
+    rt.caps
+        .require_stdio(&crate::caps::Stdio::none(), op, &caller)
         .map_err(|e| RuntimeError::TypeError(e.to_string()))
 }
 
@@ -80,7 +83,8 @@ impl Runtime {
         // it. Relative specifiers in dynamic imports would need real caller-
         // frame plumbing; deferred until a consumer needs it.
         register_engine_helper(self, "__dynamic_import", |rt, args| {
-            let spec = args.first()
+            let spec = args
+                .first()
                 .map(|v| crate::abstract_ops::to_string(v).as_str().to_string())
                 .unwrap_or_else(|| "<unknown>".into());
             let p = crate::promise::new_promise(rt);
@@ -101,21 +105,22 @@ impl Runtime {
                     .unwrap_or_else(|| "/".to_string());
                 format!("file://{}/__dynamic_import__", cwd)
             };
-            let resolved = match rt.resolve_module_full(&parent, &spec, crate::module::ModuleKind::ESM) {
-                Ok(r) => r,
-                Err(e) => {
-                    // Ω.5.P58.E5: same Error-instance reject as the load-failed
-                    // branch below.
-                    let message = format!("dynamic import('{}') resolve failed: {:?}", spec, e);
-                    let err_id = make_error_instance(rt, "TypeError", &message);
-                    let reason = match err_id {
-                        Some(id) => Value::Object(id),
-                        None => Value::String(Rc::new(format!("TypeError: {}", message))),
-                    };
-                    crate::promise::reject_promise(rt, p, reason);
-                    return Ok(Value::Object(p));
-                }
-            };
+            let resolved =
+                match rt.resolve_module_full(&parent, &spec, crate::module::ModuleKind::ESM) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        // Ω.5.P58.E5: same Error-instance reject as the load-failed
+                        // branch below.
+                        let message = format!("dynamic import('{}') resolve failed: {:?}", spec, e);
+                        let err_id = make_error_instance(rt, "TypeError", &message);
+                        let reason = match err_id {
+                            Some(id) => Value::Object(id),
+                            None => Value::String(Rc::new(format!("TypeError: {}", message))),
+                        };
+                        crate::promise::reject_promise(rt, p, reason);
+                        return Ok(Value::Object(p));
+                    }
+                };
             let ns_result = if resolved.starts_with("node:") {
                 rt.resolve_builtin_namespace(&resolved)
             } else {
@@ -141,10 +146,7 @@ impl Runtime {
                     // global TypeError ctor's prototype and assembling an
                     // ordinary object with the spec-mandated {name, message,
                     // stack} surface.
-                    let message = format!(
-                        "dynamic import('{}') load failed: {}",
-                        spec, detail
-                    );
+                    let message = format!("dynamic import('{}') load failed: {}", spec, detail);
                     let err_id = make_error_instance(rt, "TypeError", &message);
                     let reason = match err_id {
                         Some(id) => Value::Object(id),
@@ -276,7 +278,11 @@ impl Runtime {
                 if let InternalKind::Promise(ps) = &o.internal_kind {
                     (true, ps.status, ps.value.clone())
                 } else {
-                    (false, crate::value::PromiseStatus::Pending, Value::Undefined)
+                    (
+                        false,
+                        crate::value::PromiseStatus::Pending,
+                        Value::Undefined,
+                    )
                 }
             };
             if !is_promise {
@@ -309,7 +315,8 @@ impl Runtime {
                                 (ps.status, ps.value.clone())
                             } else {
                                 return Err(RuntimeError::TypeError(
-                                    "await: lost-track on Promise during pump".into()));
+                                    "await: lost-track on Promise during pump".into(),
+                                ));
                             }
                         };
                         match status {
@@ -329,10 +336,13 @@ impl Runtime {
                                 let p = poll(rt)?;
                                 rt.host_hooks.poll_io = Some(poll);
                                 p
-                            } else { false };
+                            } else {
+                                false
+                            };
                             if !progressed {
                                 return Err(RuntimeError::TypeError(
-                                    "await: Promise never settled (event loop idle)".into()));
+                                    "await: Promise never settled (event loop idle)".into(),
+                                ));
                             }
                         }
                         pumps += 1;
@@ -359,16 +369,25 @@ impl Runtime {
         };
         register_method(self, wasm, "compile", move |rt, _args| {
             let p = crate::promise::new_promise(rt);
-            crate::promise::reject_promise(rt, p, Value::String(Rc::new(
-                "TypeError: WebAssembly.compile not implemented (Tier-Ω.5.P26.E1 stub)".into()
-            )));
+            crate::promise::reject_promise(
+                rt,
+                p,
+                Value::String(Rc::new(
+                    "TypeError: WebAssembly.compile not implemented (Tier-Ω.5.P26.E1 stub)".into(),
+                )),
+            );
             Ok(Value::Object(p))
         });
         register_method(self, wasm, "instantiate", move |rt, _args| {
             let p = crate::promise::new_promise(rt);
-            crate::promise::reject_promise(rt, p, Value::String(Rc::new(
-                "TypeError: WebAssembly.instantiate not implemented (Tier-Ω.5.P26.E1 stub)".into()
-            )));
+            crate::promise::reject_promise(
+                rt,
+                p,
+                Value::String(Rc::new(
+                    "TypeError: WebAssembly.instantiate not implemented (Tier-Ω.5.P26.E1 stub)"
+                        .into(),
+                )),
+            );
             Ok(Value::Object(p))
         });
         register_method(self, wasm, "compileStreaming", move |rt, _args| {
@@ -385,11 +404,15 @@ impl Runtime {
             )));
             Ok(Value::Object(p))
         });
-        register_method(self, wasm, "validate", |_rt, _args| Ok(Value::Boolean(false)));
+        register_method(self, wasm, "validate", |_rt, _args| {
+            Ok(Value::Boolean(false))
+        });
         // Constructor stubs — packages probe `typeof WebAssembly.Module` etc.
         // to decide on a code path; returning a callable that throws on
         // construction is more disciplined than leaving them undefined.
-        for ctor_name in &["Module", "Instance", "Memory", "Table", "Global", "Tag", "Function"] {
+        for ctor_name in &[
+            "Module", "Instance", "Memory", "Table", "Global", "Tag", "Function",
+        ] {
             let name = (*ctor_name).to_string();
             let stub = make_native(&name, move |_rt, _args| Err(unsupported()));
             let stub_id = self.alloc_object(stub);
@@ -402,7 +425,8 @@ impl Runtime {
             let stub = make_native(&name, move |_rt, args| {
                 let o = Object::new_ordinary();
                 let id = _rt.alloc_object(o);
-                let msg = args.first()
+                let msg = args
+                    .first()
                     .map(|v| crate::abstract_ops::to_string(v).as_str().to_string())
                     .unwrap_or_default();
                 _rt.object_set(id, "message".into(), Value::String(Rc::new(msg)));
@@ -411,7 +435,8 @@ impl Runtime {
             let stub_id = self.alloc_object(stub);
             self.object_set(wasm, name, Value::Object(stub_id));
         }
-        self.globals.insert("WebAssembly".into(), Value::Object(wasm));
+        self.globals
+            .insert("WebAssembly".into(), Value::Object(wasm));
 
         self.install_iterator_helpers_and_recent_methods();
         self.install_global_this();
@@ -428,11 +453,15 @@ impl Runtime {
     /// Hosts that add globals after install_intrinsics should call
     /// `install_global_this_refresh` once their wiring is complete so the
     /// snapshot picks up host-added bindings.
-    pub fn install_global_this_refresh(&mut self) { self.install_global_this(); }
+    pub fn install_global_this_refresh(&mut self) {
+        self.install_global_this();
+    }
 
     fn install_global_this(&mut self) {
         let gt = self.alloc_object(Object::new_ordinary());
-        let entries: Vec<(String, Value)> = self.globals.iter()
+        let entries: Vec<(String, Value)> = self
+            .globals
+            .iter()
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
         // GBNE-EXT 1: ECMA-262 §17 baseline — standard built-in properties
@@ -446,8 +475,11 @@ impl Runtime {
                 crate::value::PropertyKey::String(k),
                 crate::value::PropertyDescriptor {
                     value: v,
-                    writable: true, enumerable: false, configurable: true,
-                    getter: None, setter: None,
+                    writable: true,
+                    enumerable: false,
+                    configurable: true,
+                    getter: None,
+                    setter: None,
                 },
             );
         }
@@ -458,8 +490,11 @@ impl Runtime {
                 crate::value::PropertyKey::String((*k).to_string()),
                 crate::value::PropertyDescriptor {
                     value: Value::Object(gt),
-                    writable: true, enumerable: false, configurable: true,
-                    getter: None, setter: None,
+                    writable: true,
+                    enumerable: false,
+                    configurable: true,
+                    getter: None,
+                    setter: None,
                 },
             );
         }
@@ -470,7 +505,17 @@ impl Runtime {
         // that survive shape probes and method existence checks. Lifts
         // packages that gate on `typeof Intl.X === 'function'`.
         let intl = self.alloc_object(Object::new_ordinary());
-        for ctor_name in &["DateTimeFormat", "NumberFormat", "Collator", "PluralRules", "RelativeTimeFormat", "ListFormat", "Segmenter", "DisplayNames", "Locale"] {
+        for ctor_name in &[
+            "DateTimeFormat",
+            "NumberFormat",
+            "Collator",
+            "PluralRules",
+            "RelativeTimeFormat",
+            "ListFormat",
+            "Segmenter",
+            "DisplayNames",
+            "Locale",
+        ] {
             let name = (*ctor_name).to_string();
             // Ω.5.P52.E2: Intl-instance constructor now captures locale + options
             // on the instance and exposes resolvedOptions() returning the merged
@@ -499,20 +544,37 @@ impl Runtime {
                 Ok(Value::Object(id))
             });
             let stub_id = self.alloc_object(stub);
-            self.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(stub_id));
+            self.obj_mut(proto)
+                .set_own_internal("constructor".into(), Value::Object(stub_id));
             register_intrinsic_method(self, proto, "format", 1, |_rt, args| {
                 Ok(Value::String(std::rc::Rc::new(
-                    crate::abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined)).as_str().to_string()
+                    crate::abstract_ops::to_string(
+                        &args.first().cloned().unwrap_or(Value::Undefined),
+                    )
+                    .as_str()
+                    .to_string(),
                 )))
             });
             register_intrinsic_method(self, proto, "formatToParts", 1, |rt, args| {
                 let arr = Object::new_array();
                 let aid = rt.alloc_object(arr);
                 let part = rt.alloc_object(Object::new_ordinary());
-                rt.object_set(part, "type".into(), Value::String(std::rc::Rc::new("literal".into())));
-                rt.object_set(part, "value".into(), Value::String(std::rc::Rc::new(
-                    crate::abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined)).as_str().to_string()
-                )));
+                rt.object_set(
+                    part,
+                    "type".into(),
+                    Value::String(std::rc::Rc::new("literal".into())),
+                );
+                rt.object_set(
+                    part,
+                    "value".into(),
+                    Value::String(std::rc::Rc::new(
+                        crate::abstract_ops::to_string(
+                            &args.first().cloned().unwrap_or(Value::Undefined),
+                        )
+                        .as_str()
+                        .to_string(),
+                    )),
+                );
                 rt.object_set(aid, "0".into(), Value::Object(part));
                 rt.object_set(aid, "length".into(), Value::Number(1.0));
                 Ok(Value::Object(aid))
@@ -529,20 +591,41 @@ impl Runtime {
                     Value::String(s) => (**s).clone(),
                     _ => "en-US".to_string(),
                 };
-                rt.object_set(res, "locale".into(), Value::String(std::rc::Rc::new(locale_str)));
-                rt.object_set(res, "calendar".into(), Value::String(std::rc::Rc::new("iso8601".into())));
-                rt.object_set(res, "numberingSystem".into(), Value::String(std::rc::Rc::new("latn".into())));
-                rt.object_set(res, "timeZone".into(), Value::String(std::rc::Rc::new("UTC".into())));
+                rt.object_set(
+                    res,
+                    "locale".into(),
+                    Value::String(std::rc::Rc::new(locale_str)),
+                );
+                rt.object_set(
+                    res,
+                    "calendar".into(),
+                    Value::String(std::rc::Rc::new("iso8601".into())),
+                );
+                rt.object_set(
+                    res,
+                    "numberingSystem".into(),
+                    Value::String(std::rc::Rc::new("latn".into())),
+                );
+                rt.object_set(
+                    res,
+                    "timeZone".into(),
+                    Value::String(std::rc::Rc::new("UTC".into())),
+                );
                 if let Value::Object(opts_id) = opts {
-                    let pairs: Vec<(String, Value)> = rt.obj(opts_id).properties
-                        .iter().map(|(k, d)| (k.to_string_content(), d.value.clone())).collect();
+                    let pairs: Vec<(String, Value)> = rt
+                        .obj(opts_id)
+                        .properties
+                        .iter()
+                        .map(|(k, d)| (k.to_string_content(), d.value.clone()))
+                        .collect();
                     for (k, v) in pairs {
                         rt.object_set(res, k, v);
                     }
                 }
                 Ok(Value::Object(res))
             });
-            self.obj_mut(stub_id).set_own_frozen("prototype".into(), Value::Object(proto));
+            self.obj_mut(stub_id)
+                .set_own_frozen("prototype".into(), Value::Object(proto));
             // Static method on the ctor itself.
             register_intrinsic_method(self, stub_id, "supportedLocalesOf", 1, |_rt, _args| {
                 let o = Object::new_array();
@@ -567,7 +650,10 @@ impl Runtime {
         // get-stream / many crypto + stream-using packages.
         let te = make_native("TextEncoder", |rt, _args| {
             let mut o = Object::new_ordinary();
-            o.set_own("encoding".into(), Value::String(Rc::new("utf-8".to_string())));
+            o.set_own(
+                "encoding".into(),
+                Value::String(Rc::new("utf-8".to_string())),
+            );
             let id = rt.alloc_object(o);
             register_intrinsic_method(rt, id, "encode", 1, |rt, args| {
                 let s = match args.first() {
@@ -604,8 +690,10 @@ impl Runtime {
             }
             Ok(Value::Object(rt.alloc_object(out)))
         });
-        self.obj_mut(te_id).set_own_frozen("prototype".into(), Value::Object(te_proto));
-        self.globals.insert("TextEncoder".into(), Value::Object(te_id));
+        self.obj_mut(te_id)
+            .set_own_frozen("prototype".into(), Value::Object(te_proto));
+        self.globals
+            .insert("TextEncoder".into(), Value::Object(te_id));
         let td = make_native("TextDecoder", |rt, args| {
             let encoding = match args.first() {
                 Some(Value::String(s)) => s.as_str().to_string(),
@@ -648,8 +736,10 @@ impl Runtime {
             let s = String::from_utf8_lossy(&bytes).to_string();
             Ok(Value::String(Rc::new(s)))
         });
-        self.obj_mut(td_id).set_own_frozen("prototype".into(), Value::Object(td_proto));
-        self.globals.insert("TextDecoder".into(), Value::Object(td_id));
+        self.obj_mut(td_id)
+            .set_own_frozen("prototype".into(), Value::Object(td_proto));
+        self.globals
+            .insert("TextDecoder".into(), Value::Object(td_id));
     }
 
     /// Tier-Ω.5.k: helpers the compiler emits LoadGlobal+Call into for
@@ -667,22 +757,40 @@ impl Runtime {
         // Installs an accessor property descriptor on target. Class
         // getters / setters lower to this call.
         register_engine_helper(self, "__install_accessor__", |rt, args| {
-            let target = match args.first() { Some(Value::Object(id)) => *id, _ => return Ok(Value::Undefined) };
-            let key: String = match args.get(1) { Some(Value::String(s)) => (**s).clone(), _ => return Ok(Value::Undefined) };
-            let kind: String = match args.get(2) { Some(Value::String(s)) => (**s).clone(), _ => return Ok(Value::Undefined) };
+            let target = match args.first() {
+                Some(Value::Object(id)) => *id,
+                _ => return Ok(Value::Undefined),
+            };
+            let key: String = match args.get(1) {
+                Some(Value::String(s)) => (**s).clone(),
+                _ => return Ok(Value::Undefined),
+            };
+            let kind: String = match args.get(2) {
+                Some(Value::String(s)) => (**s).clone(),
+                _ => return Ok(Value::Undefined),
+            };
             let fn_v = args.get(3).cloned().unwrap_or(Value::Undefined);
             let o = rt.obj_mut(target);
             // Class accessors install as enumerable:false per ECMA-262 sec
             // 15.7 MethodDefinitionEvaluation. Object-literal accessors
             // use a separate helper (__install_accessor_obj__) below to
             // get enumerable:true per sec 13.2.5.5 PropertyDefinitionEvaluation.
-            let desc = o.properties.entry(crate::value::PropertyKey::String(key)).or_insert_with(|| crate::value::PropertyDescriptor {
-                value: Value::Undefined,
-                writable: false, enumerable: false, configurable: true,
-                getter: None, setter: None,
-            });
-            if kind == "get" { desc.getter = Some(fn_v); }
-            else if kind == "set" { desc.setter = Some(fn_v); }
+            let desc = o
+                .properties
+                .entry(crate::value::PropertyKey::String(key))
+                .or_insert_with(|| crate::value::PropertyDescriptor {
+                    value: Value::Undefined,
+                    writable: false,
+                    enumerable: false,
+                    configurable: true,
+                    getter: None,
+                    setter: None,
+                });
+            if kind == "get" {
+                desc.getter = Some(fn_v);
+            } else if kind == "set" {
+                desc.setter = Some(fn_v);
+            }
             Ok(Value::Undefined)
         });
         // Object-literal accessors variant. ECMA-262 sec 13.2.5.5
@@ -694,22 +802,40 @@ impl Runtime {
         // spread - the latter surfaced as the dstr obj-ptrn-rest-getter
         // cluster (4 tests in the sample).
         register_engine_helper(self, "__install_accessor_obj__", |rt, args| {
-            let target = match args.first() { Some(Value::Object(id)) => *id, _ => return Ok(Value::Undefined) };
-            let key: String = match args.get(1) { Some(Value::String(s)) => (**s).clone(), _ => return Ok(Value::Undefined) };
-            let kind: String = match args.get(2) { Some(Value::String(s)) => (**s).clone(), _ => return Ok(Value::Undefined) };
+            let target = match args.first() {
+                Some(Value::Object(id)) => *id,
+                _ => return Ok(Value::Undefined),
+            };
+            let key: String = match args.get(1) {
+                Some(Value::String(s)) => (**s).clone(),
+                _ => return Ok(Value::Undefined),
+            };
+            let kind: String = match args.get(2) {
+                Some(Value::String(s)) => (**s).clone(),
+                _ => return Ok(Value::Undefined),
+            };
             let fn_v = args.get(3).cloned().unwrap_or(Value::Undefined);
             let o = rt.obj_mut(target);
-            let desc = o.properties.entry(crate::value::PropertyKey::String(key)).or_insert_with(|| crate::value::PropertyDescriptor {
-                value: Value::Undefined,
-                writable: false, enumerable: true, configurable: true,
-                getter: None, setter: None,
-            });
+            let desc = o
+                .properties
+                .entry(crate::value::PropertyKey::String(key))
+                .or_insert_with(|| crate::value::PropertyDescriptor {
+                    value: Value::Undefined,
+                    writable: false,
+                    enumerable: true,
+                    configurable: true,
+                    getter: None,
+                    setter: None,
+                });
             // If the property already existed (e.g. installed by a
             // sibling getter/setter half of the pair), force enumerable
             // back to true in case the prior install used the class form.
             desc.enumerable = true;
-            if kind == "get" { desc.getter = Some(fn_v); }
-            else if kind == "set" { desc.setter = Some(fn_v); }
+            if kind == "get" {
+                desc.getter = Some(fn_v);
+            } else if kind == "set" {
+                desc.setter = Some(fn_v);
+            }
             Ok(Value::Undefined)
         });
         // Ω.5.P03.E2.class-method-non-enumerable: __install_method__(
@@ -723,7 +849,10 @@ impl Runtime {
         //   values / Object.entries / for-in picked up methods that the
         //   spec says it should not.
         register_engine_helper(self, "__install_method__", |rt, args| {
-            let target = match args.first() { Some(Value::Object(id)) => *id, _ => return Ok(Value::Undefined) };
+            let target = match args.first() {
+                Some(Value::Object(id)) => *id,
+                _ => return Ok(Value::Undefined),
+            };
             // Ω.5.P03.E2.class-method-non-enumerable post-fix: accept
             // Symbol-keyed method names too. Computed class members
             // can use Symbol values as keys (`class C { [Symbol.X]() {} }`);
@@ -734,7 +863,13 @@ impl Runtime {
             let key: String = match args.get(1) {
                 Some(Value::String(s)) => (**s).clone(),
                 Some(Value::Symbol(s)) => (**s).clone(),
-                Some(Value::Number(n)) => if n.fract() == 0.0 { format!("{}", *n as i64) } else { format!("{}", n) },
+                Some(Value::Number(n)) => {
+                    if n.fract() == 0.0 {
+                        format!("{}", *n as i64)
+                    } else {
+                        format!("{}", n)
+                    }
+                }
                 _ => return Ok(Value::Undefined),
             };
             let fn_v = args.get(2).cloned().unwrap_or(Value::Undefined);
@@ -764,10 +899,19 @@ impl Runtime {
             let super_base = args.get(1).cloned().unwrap_or(Value::Undefined);
             let key: String = match args.get(2) {
                 Some(Value::String(s)) => (**s).clone(),
-                Some(Value::Number(n)) => if n.fract() == 0.0 { format!("{}", *n as i64) } else { format!("{}", n) },
+                Some(Value::Number(n)) => {
+                    if n.fract() == 0.0 {
+                        format!("{}", *n as i64)
+                    } else {
+                        format!("{}", n)
+                    }
+                }
                 _ => return Ok(Value::Undefined),
             };
-            let base_id = match super_base { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
+            let base_id = match super_base {
+                Value::Object(id) => id,
+                _ => return Ok(Value::Undefined),
+            };
             // Walk super_base.[[Prototype]] chain (i.e. start at super_base
             // itself, since super.X looks up X on super_base which is the
             // parent prototype). Find the property descriptor.
@@ -835,19 +979,29 @@ impl Runtime {
                 // skipped. own_enum is already added above; add non-enumerable
                 // own names from the full property bag.
                 let o = rt.obj(c);
-                let extra_keys: Vec<String> = o.properties.iter()
-                    .filter(|(k, d)| !d.enumerable
-                                     && k.is_string()
-                                     && k.as_str() != "__primitive__"
-                                     && !k.as_str().starts_with("@@"))
+                let extra_keys: Vec<String> = o
+                    .properties
+                    .iter()
+                    .filter(|(k, d)| {
+                        !d.enumerable
+                            && k.is_string()
+                            && k.as_str() != "__primitive__"
+                            && !k.as_str().starts_with("@@")
+                    })
                     .map(|(k, _)| k.as_str().to_string())
                     .collect();
-                for k in extra_keys { seen.insert(k); }
+                for k in extra_keys {
+                    seen.insert(k);
+                }
                 cur = o.proto;
             }
             let arr = rt.alloc_object(crate::value::Object::new_array());
             for (i, k) in visible.iter().enumerate() {
-                rt.object_set(arr, i.to_string(), Value::String(std::rc::Rc::new(k.clone())));
+                rt.object_set(
+                    arr,
+                    i.to_string(),
+                    Value::String(std::rc::Rc::new(k.clone())),
+                );
             }
             rt.object_set(arr, "length".into(), Value::Number(visible.len() as f64));
             Ok(Value::Object(arr))
@@ -862,7 +1016,10 @@ impl Runtime {
             Ok(Value::Undefined)
         });
         register_engine_helper(self, "__yield_delegate__", |rt, args| {
-            let target_arr = match rt.gen_yields_stack.last().copied() { Some(a) => a, None => return Ok(Value::Undefined) };
+            let target_arr = match rt.gen_yields_stack.last().copied() {
+                Some(a) => a,
+                None => return Ok(Value::Undefined),
+            };
             let it_arg = args.first().cloned().unwrap_or(Value::Undefined);
             // Iterate via Symbol.iterator / @@iterator / array length.
             let it_obj = match &it_arg {
@@ -877,16 +1034,28 @@ impl Runtime {
                     Ok(Value::Object(id)) => Some(id),
                     _ => None,
                 }
-            } else { None };
+            } else {
+                None
+            };
             if let Some(iter_id) = iter_obj {
                 let next = rt.object_get(iter_id, "next");
                 if matches!(next, Value::Object(_)) {
                     loop {
-                        let step = match rt.call_function(next.clone(), Value::Object(iter_id), Vec::new()) {
-                            Ok(v) => v, Err(_) => break,
+                        let step = match rt.call_function(
+                            next.clone(),
+                            Value::Object(iter_id),
+                            Vec::new(),
+                        ) {
+                            Ok(v) => v,
+                            Err(_) => break,
                         };
-                        let step_id = match step { Value::Object(id) => id, _ => break };
-                        if matches!(rt.object_get(step_id, "done"), Value::Boolean(true)) { break; }
+                        let step_id = match step {
+                            Value::Object(id) => id,
+                            _ => break,
+                        };
+                        if matches!(rt.object_get(step_id, "done"), Value::Boolean(true)) {
+                            break;
+                        }
                         let v = rt.object_get(step_id, "value");
                         let len = rt.array_length(target_arr);
                         rt.object_set(target_arr, len.to_string(), v);
@@ -908,8 +1077,11 @@ impl Runtime {
         register_engine_helper(self, "__object_spread", |rt, args| {
             let target = match args.first() {
                 Some(Value::Object(id)) => *id,
-                _ => return Err(RuntimeError::TypeError(
-                    "__object_spread: target must be an object".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "__object_spread: target must be an object".into(),
+                    ))
+                }
             };
             if let Some(Value::Object(sid)) = args.get(1) {
                 // Tier-Ω.5.bbbbb: dispatch accessor getters during spread.
@@ -954,8 +1126,11 @@ impl Runtime {
         register_engine_helper(self, "__array_push_single", |rt, args| {
             let arr = match args.first() {
                 Some(Value::Object(id)) => *id,
-                _ => return Err(RuntimeError::TypeError(
-                    "__array_push_single: target must be an array".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "__array_push_single: target must be an array".into(),
+                    ))
+                }
             };
             let v = args.get(1).cloned().unwrap_or(Value::Undefined);
             let len = rt.array_length(arr);
@@ -968,8 +1143,11 @@ impl Runtime {
         register_engine_helper(self, "__array_extend", |rt, args| {
             let arr = match args.first() {
                 Some(Value::Object(id)) => *id,
-                _ => return Err(RuntimeError::TypeError(
-                    "__array_extend: target must be an array".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "__array_extend: target must be an array".into(),
+                    ))
+                }
             };
             let src = args.get(1).cloned().unwrap_or(Value::Undefined);
             let values = collect_iterable(rt, src)?;
@@ -1039,9 +1217,13 @@ impl Runtime {
                     Value::Object(pid) => Some(pid),
                     _ => None,
                 }
-            } else { None };
+            } else {
+                None
+            };
             let mut ordinary = Object::new_ordinary();
-            if proto_override.is_some() { ordinary.proto = proto_override; }
+            if proto_override.is_some() {
+                ordinary.proto = proto_override;
+            }
             let this_id = rt.alloc_object(ordinary);
             let this_obj = Value::Object(this_id);
             // Tier-Ω.5.s: __construct mirrors Op::New — mark new.target.
@@ -1089,7 +1271,11 @@ impl Runtime {
         register_intrinsic_method(self, proto, "evaluate", 1, |rt, args| {
             let this_id = match rt.current_this() {
                 Value::Object(id) => id,
-                _ => return Err(RuntimeError::TypeError("Compartment.prototype.evaluate: this is not a Compartment".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Compartment.prototype.evaluate: this is not a Compartment".into(),
+                    ))
+                }
             };
             let realm_idx = match rt.object_get(this_id, "__compartment_realm") {
                 Value::Number(n) => n as usize,
@@ -1097,7 +1283,11 @@ impl Runtime {
             };
             let source = match args.first() {
                 Some(Value::String(s)) => s.as_str().to_string(),
-                _ => return Err(RuntimeError::TypeError("Compartment.prototype.evaluate: source must be a string".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Compartment.prototype.evaluate: source must be a string".into(),
+                    ))
+                }
             };
             // Wrap in indirect-eval form to capture the last expression's
             // value into a stash global, mirroring eval()'s pattern.
@@ -1110,7 +1300,11 @@ impl Runtime {
             let prior = rt.enter_realm(realm_idx);
             let expr_ok = rt.evaluate_module(&expr_source, &url).is_ok();
             let result = if expr_ok {
-                let r = rt.globals.get(&stash_key).cloned().unwrap_or(Value::Undefined);
+                let r = rt
+                    .globals
+                    .get(&stash_key)
+                    .cloned()
+                    .unwrap_or(Value::Undefined);
                 rt.globals.remove(&stash_key);
                 r
             } else {
@@ -1121,7 +1315,10 @@ impl Runtime {
                         rt.exit_realm(prior);
                         return Err(RuntimeError::SyntaxError(msg));
                     }
-                    Err(e) => { rt.exit_realm(prior); return Err(e); }
+                    Err(e) => {
+                        rt.exit_realm(prior);
+                        return Err(e);
+                    }
                 }
             };
             rt.exit_realm(prior);
@@ -1138,23 +1335,39 @@ impl Runtime {
         register_intrinsic_method(self, proto, "import", 1, |rt, args| {
             let this_id = match rt.current_this() {
                 Value::Object(id) => id,
-                _ => return Err(RuntimeError::TypeError("Compartment.prototype.import: this is not a Compartment".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Compartment.prototype.import: this is not a Compartment".into(),
+                    ))
+                }
             };
             let realm_idx = match rt.object_get(this_id, "__compartment_realm") {
                 Value::Number(n) => n as usize,
-                _ => return Err(RuntimeError::TypeError("Compartment.prototype.import: missing realm slot".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Compartment.prototype.import: missing realm slot".into(),
+                    ))
+                }
             };
             let modules_id = match rt.object_get(this_id, "__compartment_modules") {
                 Value::Object(id) => id,
                 _ => {
                     let p = crate::promise::new_promise(rt);
-                    crate::promise::reject_promise(rt, p, Value::String(Rc::new("Compartment has no modules map".into())));
+                    crate::promise::reject_promise(
+                        rt,
+                        p,
+                        Value::String(Rc::new("Compartment has no modules map".into())),
+                    );
                     return Ok(Value::Object(p));
                 }
             };
             let spec = match args.first() {
                 Some(Value::String(s)) => (**s).clone(),
-                _ => return Err(RuntimeError::TypeError("Compartment.prototype.import: specifier must be a string".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Compartment.prototype.import: specifier must be a string".into(),
+                    ))
+                }
             };
             let source_v = rt.object_get(modules_id, &spec);
             let source = match source_v {
@@ -1163,9 +1376,19 @@ impl Runtime {
                     // Specifier not in map — per proposal, rejected Promise.
                     let p = crate::promise::new_promise(rt);
                     let err = rt.alloc_object(Object::new_ordinary());
-                    rt.object_set(err, "message".into(),
-                        Value::String(Rc::new(format!("Module '{}' not found in compartment", spec))));
-                    rt.object_set(err, "name".into(), Value::String(Rc::new("TypeError".into())));
+                    rt.object_set(
+                        err,
+                        "message".into(),
+                        Value::String(Rc::new(format!(
+                            "Module '{}' not found in compartment",
+                            spec
+                        ))),
+                    );
+                    rt.object_set(
+                        err,
+                        "name".into(),
+                        Value::String(Rc::new("TypeError".into())),
+                    );
                     crate::promise::reject_promise(rt, p, Value::Object(err));
                     return Ok(Value::Object(p));
                 }
@@ -1180,7 +1403,11 @@ impl Runtime {
                 Err(RuntimeError::CompileError(msg)) => {
                     let err = rt.alloc_object(Object::new_ordinary());
                     rt.object_set(err, "message".into(), Value::String(Rc::new(msg)));
-                    rt.object_set(err, "name".into(), Value::String(Rc::new("SyntaxError".into())));
+                    rt.object_set(
+                        err,
+                        "name".into(),
+                        Value::String(Rc::new("SyntaxError".into())),
+                    );
                     crate::promise::reject_promise(rt, p, Value::Object(err));
                 }
                 Err(e) => {
@@ -1201,7 +1428,11 @@ impl Runtime {
         register_intrinsic_method(self, proto, "globalThis", 0, |rt, _args| {
             let this_id = match rt.current_this() {
                 Value::Object(id) => id,
-                _ => return Err(RuntimeError::TypeError("Compartment.prototype.globalThis: this is not a Compartment".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Compartment.prototype.globalThis: this is not a Compartment".into(),
+                    ))
+                }
             };
             Ok(rt.object_get(this_id, "__compartment_globalthis"))
         });
@@ -1211,7 +1442,8 @@ impl Runtime {
         let ctor_obj = make_native_with_length("Compartment", 1, move |rt, args| {
             // Parse options: { globals?: Object, modules?: Object }.
             let opts = args.first().cloned().unwrap_or(Value::Undefined);
-            let mut endowments: std::collections::HashMap<String, Value> = std::collections::HashMap::new();
+            let mut endowments: std::collections::HashMap<String, Value> =
+                std::collections::HashMap::new();
             if let Value::Object(opts_id) = &opts {
                 let globals_v = rt.object_get(*opts_id, "globals");
                 if let Value::Object(globals_id) = globals_v {
@@ -1252,22 +1484,40 @@ impl Runtime {
             let inst_obj = Object::new_ordinary();
             let inst = rt.alloc_object(inst_obj);
             rt.obj_mut(inst).proto = Some(proto_for_ctor);
-            rt.object_set(inst, "__compartment_realm".into(), Value::Number(realm_idx as f64));
+            rt.object_set(
+                inst,
+                "__compartment_realm".into(),
+                Value::Number(realm_idx as f64),
+            );
             rt.object_set(inst, "__compartment_globalthis".into(), Value::Object(gt));
-            rt.object_set(inst, "__compartment_modules".into(), Value::Object(modules_slot));
+            rt.object_set(
+                inst,
+                "__compartment_modules".into(),
+                Value::Object(modules_slot),
+            );
             Ok(Value::Object(inst))
         });
         let ctor = self.alloc_object(ctor_obj);
-        self.obj_mut(ctor).set_own_frozen("prototype".into(), Value::Object(proto));
-        self.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(ctor));
-        self.globals.insert("Compartment".to_string(), Value::Object(ctor));
+        self.obj_mut(ctor)
+            .set_own_frozen("prototype".into(), Value::Object(proto));
+        self.obj_mut(proto)
+            .set_own_internal("constructor".into(), Value::Object(ctor));
+        self.globals
+            .insert("Compartment".to_string(), Value::Object(ctor));
     }
 
     fn install_destructure_iter_helpers(&mut self) {
         register_engine_helper(self, "__destr_iter_open", |rt, args| {
             let v = args.first().cloned().unwrap_or(Value::Undefined);
             if matches!(v, Value::Null | Value::Undefined) {
-                return Err(RuntimeError::TypeError(format!("cannot destructure {}", if matches!(v, Value::Null) { "null" } else { "undefined" })));
+                return Err(RuntimeError::TypeError(format!(
+                    "cannot destructure {}",
+                    if matches!(v, Value::Null) {
+                        "null"
+                    } else {
+                        "undefined"
+                    }
+                )));
             }
             // For string sources, build the string-iterator object the
             // existing helper supplies (matches what `for (c of "abc")` does).
@@ -1281,12 +1531,16 @@ impl Runtime {
             };
             let iter_fn = rt.object_get(v_obj, "@@iterator");
             if !matches!(iter_fn, Value::Object(_)) {
-                return Err(RuntimeError::TypeError("value is not iterable (no @@iterator)".into()));
+                return Err(RuntimeError::TypeError(
+                    "value is not iterable (no @@iterator)".into(),
+                ));
             }
             let iter = rt.call_function(iter_fn, Value::Object(v_obj), Vec::new())?;
             match iter {
                 Value::Object(_) => Ok(iter),
-                _ => Err(RuntimeError::TypeError("[Symbol.iterator]() returned non-object".into())),
+                _ => Err(RuntimeError::TypeError(
+                    "[Symbol.iterator]() returned non-object".into(),
+                )),
             }
         });
         register_engine_helper(self, "__destr_iter_step", |rt, args| {
@@ -1330,13 +1584,27 @@ impl Runtime {
             let next_fn = rt.object_get(iter_obj, "next");
             let mut write_idx: usize = 0;
             loop {
-                let result = rt.call_function(next_fn.clone(), Value::Object(iter_obj), Vec::new())?;
-                let r_obj = match result { Value::Object(id) => id, _ => return Err(RuntimeError::TypeError("iter.next() returned non-object".into())) };
+                let result =
+                    rt.call_function(next_fn.clone(), Value::Object(iter_obj), Vec::new())?;
+                let r_obj = match result {
+                    Value::Object(id) => id,
+                    _ => {
+                        return Err(RuntimeError::TypeError(
+                            "iter.next() returned non-object".into(),
+                        ))
+                    }
+                };
                 let done = rt.object_get(r_obj, "done");
-                if abstract_ops::to_boolean(&done) { break; }
+                if abstract_ops::to_boolean(&done) {
+                    break;
+                }
                 let v = rt.object_get(r_obj, "value");
                 rt.object_set(out_id, write_idx.to_string(), v);
-                rt.object_set(out_id, "length".into(), Value::Number((write_idx + 1) as f64));
+                rt.object_set(
+                    out_id,
+                    "length".into(),
+                    Value::Number((write_idx + 1) as f64),
+                );
                 write_idx += 1;
             }
             Ok(Value::Object(out_id))
@@ -1391,7 +1659,9 @@ impl Runtime {
             // match every other own-enumerable-keys site.
             let keys = rt.ordinary_own_enumerable_string_keys(src_id);
             for k in keys {
-                if excluded_keys.iter().any(|e| e == &k) { continue; }
+                if excluded_keys.iter().any(|e| e == &k) {
+                    continue;
+                }
                 let v = rt.read_property(src_id, &k)?;
                 rt.object_set(out_id, k, v);
             }
@@ -1427,9 +1697,12 @@ impl Runtime {
             };
             // Standard base64 with padding tolerance.
             let cleaned: String = s.chars().filter(|c| !c.is_ascii_whitespace()).collect();
-            let decoded = base64_decode(&cleaned).map_err(|e| RuntimeError::Thrown(
-                Value::String(Rc::new(format!("InvalidCharacterError: {}", e)))
-            ))?;
+            let decoded = base64_decode(&cleaned).map_err(|e| {
+                RuntimeError::Thrown(Value::String(Rc::new(format!(
+                    "InvalidCharacterError: {}",
+                    e
+                ))))
+            })?;
             // Per spec atob returns a binary string (one byte per char).
             let out: String = decoded.iter().map(|&b| b as char).collect();
             Ok(Value::String(Rc::new(out)))
@@ -1442,8 +1715,12 @@ impl Runtime {
             let bytes: Vec<u8> = s.chars().map(|c| c as u8).collect();
             Ok(Value::String(Rc::new(base64_encode(&bytes))))
         });
-        register_global_fn(self, "parseInt",   |rt, args| crate::generated::parse_int(rt, rt.current_this(), args));
-        register_global_fn(self, "parseFloat", |rt, args| crate::generated::parse_float(rt, rt.current_this(), args));
+        register_global_fn(self, "parseInt", |rt, args| {
+            crate::generated::parse_int(rt, rt.current_this(), args)
+        });
+        register_global_fn(self, "parseFloat", |rt, args| {
+            crate::generated::parse_float(rt, rt.current_this(), args)
+        });
         // ECMA-262 §19.2.6 URI handling. v1 uses Rust's percent-encoding
         // standard library mappings; the unreserved-character sets match
         // RFC 3986. encodeURI keeps reserved chars (`/`, `?`, `:`, `@`,
@@ -1468,7 +1745,8 @@ impl Runtime {
                 Some(v) => crate::abstract_ops::to_string(v).as_str().to_string(),
                 None => "undefined".to_string(),
             };
-            uri_percent_decode(&s).map(|d| Value::String(Rc::new(d)))
+            uri_percent_decode(&s)
+                .map(|d| Value::String(Rc::new(d)))
                 .ok_or_else(|| RuntimeError::TypeError("decodeURIComponent: malformed URI".into()))
         });
         register_global_fn(self, "decodeURI", |_rt, args| {
@@ -1476,16 +1754,17 @@ impl Runtime {
                 Some(v) => crate::abstract_ops::to_string(v).as_str().to_string(),
                 None => "undefined".to_string(),
             };
-            uri_percent_decode(&s).map(|d| Value::String(Rc::new(d)))
+            uri_percent_decode(&s)
+                .map(|d| Value::String(Rc::new(d)))
                 .ok_or_else(|| RuntimeError::TypeError("decodeURI: malformed URI".into()))
         });
         // Ω.5.P63.E9: global isNaN / isFinite routed through IR-lowered
         // generated::global_is_*. Differ from Number.isNaN / Number.isFinite
         // by coercing the arg via ToNumber.
-        register_global_fn(self, "isNaN", |rt, args|{
+        register_global_fn(self, "isNaN", |rt, args| {
             crate::generated::global_is_nan(rt, Value::Undefined, args)
         });
-        register_global_fn(self, "isFinite", |rt, args|{
+        register_global_fn(self, "isFinite", |rt, args| {
             crate::generated::global_is_finite(rt, Value::Undefined, args)
         });
         // Tier-Ω.5.j.proto: Function global as a non-constructible stub.
@@ -1528,16 +1807,25 @@ impl Runtime {
             };
             let body_trim = body.trim();
             if body_trim == "return this" || body_trim == "return this;" {
-                let global_obj = rt.globals.get("globalThis").cloned().unwrap_or(Value::Undefined);
-                let f_obj = make_native("<Function('return this')>", move |_rt, _args| Ok(global_obj.clone()));
+                let global_obj = rt
+                    .globals
+                    .get("globalThis")
+                    .cloned()
+                    .unwrap_or(Value::Undefined);
+                let f_obj = make_native("<Function('return this')>", move |_rt, _args| {
+                    Ok(global_obj.clone())
+                });
                 return Ok(Value::Object(rt.alloc_object(f_obj)));
             }
             // Param list: all args except the last (which is the body).
             let params: Vec<String> = if args.len() > 1 {
-                args[..args.len() - 1].iter()
+                args[..args.len() - 1]
+                    .iter()
                     .map(|v| crate::abstract_ops::to_string(v).as_str().to_string())
                     .collect()
-            } else { Vec::new() };
+            } else {
+                Vec::new()
+            };
             // Pick a per-call URL so the source map / line:col diagnostics
             // are distinct across multiple Function() calls.
             use std::sync::atomic::{AtomicUsize, Ordering};
@@ -1551,11 +1839,17 @@ impl Runtime {
             // instead of touching the globals map.
             let source = format!(
                 "{} = function anonymous({}) {{\n{}\n}};",
-                stash_key, params.join(","), body
+                stash_key,
+                params.join(","),
+                body
             );
             match rt.evaluate_module(&source, &url) {
                 Ok(_ns) => {
-                    let result = rt.globals.get(&stash_key).cloned().unwrap_or(Value::Undefined);
+                    let result = rt
+                        .globals
+                        .get(&stash_key)
+                        .cloned()
+                        .unwrap_or(Value::Undefined);
                     // Clean up the stash key — it was a side-channel,
                     // not a JS-visible global.
                     rt.globals.remove(&stash_key);
@@ -1571,7 +1865,8 @@ impl Runtime {
         // the F-fixture's probe checks threw-true rather than ctor).
         register_global_fn(self, "structuredClone", |rt, args| {
             let v = args.first().cloned().unwrap_or(Value::Undefined);
-            let mut seen: std::collections::HashMap<u32, ObjectRef> = std::collections::HashMap::new();
+            let mut seen: std::collections::HashMap<u32, ObjectRef> =
+                std::collections::HashMap::new();
             structured_clone_walk(rt, &v, &mut seen)
         });
         // Ω.5.P59.E4: indirect eval per ECMA §19.2.1.2 PerformEval (case
@@ -1622,8 +1917,11 @@ impl Runtime {
         register_global_fn(self, "__cruftless_tolerate", |rt, args| {
             let name = match args.first() {
                 Some(Value::String(s)) => s.as_str().to_string(),
-                _ => return Err(RuntimeError::TypeError(
-                    "__cruftless_tolerate: expected string deviation name".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "__cruftless_tolerate: expected string deviation name".into(),
+                    ))
+                }
             };
             // Deviation registry. Each entry: (name, [protected_invariants]).
             // Each protected_invariant is "C:<spec_primitive>" (Comprehended)
@@ -1686,8 +1984,12 @@ impl Runtime {
             };
             let (canon, protected): (&'static str, &[&'static str]) = match known {
                 Some(p) => p,
-                None => return Err(RuntimeError::RangeError(format!(
-                    "__cruftless_tolerate: unknown deviation '{}'", name))),
+                None => {
+                    return Err(RuntimeError::RangeError(format!(
+                        "__cruftless_tolerate: unknown deviation '{}'",
+                        name
+                    )))
+                }
             };
             // §XV.c: refuse to opt in if any protected invariant carries
             // an Unknown marker ("U:..."). Comprehended (C:) and Waived
@@ -1726,12 +2028,19 @@ impl Runtime {
             // assigned to globalThis inside a sloppy function.
             let saved_this = std::mem::replace(
                 &mut rt.current_this,
-                rt.globals.get("globalThis").cloned().unwrap_or(Value::Undefined),
+                rt.globals
+                    .get("globalThis")
+                    .cloned()
+                    .unwrap_or(Value::Undefined),
             );
             let expr_ok = rt.evaluate_module(&expr_source, &url).is_ok();
             if expr_ok {
                 rt.current_this = saved_this;
-                let result = rt.globals.get(&stash_key).cloned().unwrap_or(Value::Undefined);
+                let result = rt
+                    .globals
+                    .get(&stash_key)
+                    .cloned()
+                    .unwrap_or(Value::Undefined);
                 rt.globals.remove(&stash_key);
                 return Ok(result);
             }
@@ -1757,8 +2066,10 @@ impl Runtime {
         // hash, immer-style native-function detection) resolve.
         if let Some(fp) = self.function_prototype {
             if let Some(Value::Object(fn_global)) = self.globals.get("Function").cloned() {
-                self.obj_mut(fn_global).set_own_frozen("prototype".into(), Value::Object(fp));
-                self.obj_mut(fp).set_own_internal("constructor".into(), Value::Object(fn_global));
+                self.obj_mut(fn_global)
+                    .set_own_frozen("prototype".into(), Value::Object(fp));
+                self.obj_mut(fp)
+                    .set_own_internal("constructor".into(), Value::Object(fn_global));
             }
         }
     }
@@ -1766,47 +2077,103 @@ impl Runtime {
     fn install_math(&mut self) {
         let math = self.alloc_object(Object::new_ordinary());
         // Ω.5.P63.E10: Math unary one-liners routed through IR.
-        register_intrinsic_method(self, math, "abs", 1, |rt, args| crate::generated::math_abs(rt, Value::Undefined, args));
-        register_intrinsic_method(self, math, "floor", 1, |rt, args| crate::generated::math_floor(rt, Value::Undefined, args));
-        register_intrinsic_method(self, math, "ceil", 1, |rt, args| crate::generated::math_ceil(rt, Value::Undefined, args));
-        register_intrinsic_method(self, math, "round", 1, |rt, args| crate::generated::math_round(rt, Value::Undefined, args));
-        register_intrinsic_method(self, math, "trunc", 1, |rt, args| crate::generated::math_trunc(rt, Value::Undefined, args));
-        register_intrinsic_method(self, math, "sqrt", 1, |rt, args| crate::generated::math_sqrt(rt, Value::Undefined, args));
-        register_intrinsic_method(self, math, "cbrt", 1, |rt, args| crate::generated::math_cbrt(rt, Value::Undefined, args));
+        register_intrinsic_method(self, math, "abs", 1, |rt, args| {
+            crate::generated::math_abs(rt, Value::Undefined, args)
+        });
+        register_intrinsic_method(self, math, "floor", 1, |rt, args| {
+            crate::generated::math_floor(rt, Value::Undefined, args)
+        });
+        register_intrinsic_method(self, math, "ceil", 1, |rt, args| {
+            crate::generated::math_ceil(rt, Value::Undefined, args)
+        });
+        register_intrinsic_method(self, math, "round", 1, |rt, args| {
+            crate::generated::math_round(rt, Value::Undefined, args)
+        });
+        register_intrinsic_method(self, math, "trunc", 1, |rt, args| {
+            crate::generated::math_trunc(rt, Value::Undefined, args)
+        });
+        register_intrinsic_method(self, math, "sqrt", 1, |rt, args| {
+            crate::generated::math_sqrt(rt, Value::Undefined, args)
+        });
+        register_intrinsic_method(self, math, "cbrt", 1, |rt, args| {
+            crate::generated::math_cbrt(rt, Value::Undefined, args)
+        });
         // Ω.5.P63.E14: pow / max / min routed through IR.
-        register_intrinsic_method(self, math, "pow", 2, |rt, args| crate::generated::math_pow(rt, Value::Undefined, args));
-        register_intrinsic_method(self, math, "max", 2, |rt, args| crate::generated::math_max(rt, Value::Undefined, args));
-        register_intrinsic_method(self, math, "min", 2, |rt, args| crate::generated::math_min(rt, Value::Undefined, args));
+        register_intrinsic_method(self, math, "pow", 2, |rt, args| {
+            crate::generated::math_pow(rt, Value::Undefined, args)
+        });
+        register_intrinsic_method(self, math, "max", 2, |rt, args| {
+            crate::generated::math_max(rt, Value::Undefined, args)
+        });
+        register_intrinsic_method(self, math, "min", 2, |rt, args| {
+            crate::generated::math_min(rt, Value::Undefined, args)
+        });
         // Ω.5.P63.E10: Math.sign routed through IR. (Duplicate
         // installation at line ~1094 below is harmless: register order
         // overwrites and both paths produce identical results.)
-        register_intrinsic_method(self, math, "sign", 1, |rt, args| crate::generated::math_sign(rt, Value::Undefined, args));
+        register_intrinsic_method(self, math, "sign", 1, |rt, args| {
+            crate::generated::math_sign(rt, Value::Undefined, args)
+        });
         // Ω.5.P63.E11: Math exp/log/trig family routed through IR.
-        register_intrinsic_method(self, math, "exp", 1, |rt, args| crate::generated::math_exp(rt, Value::Undefined, args));
-        register_intrinsic_method(self, math, "log", 1, |rt, args| crate::generated::math_log(rt, Value::Undefined, args));
-        register_intrinsic_method(self, math, "log2", 1, |rt, args| crate::generated::math_log2(rt, Value::Undefined, args));
-        register_intrinsic_method(self, math, "log10", 1, |rt, args| crate::generated::math_log10(rt, Value::Undefined, args));
-        register_intrinsic_method(self, math, "sin", 1, |rt, args| crate::generated::math_sin(rt, Value::Undefined, args));
-        register_intrinsic_method(self, math, "cos", 1, |rt, args| crate::generated::math_cos(rt, Value::Undefined, args));
-        register_intrinsic_method(self, math, "tan", 1, |rt, args| crate::generated::math_tan(rt, Value::Undefined, args));
-        register_intrinsic_method(self, math, "atan", 1, |rt, args| crate::generated::math_atan(rt, Value::Undefined, args));
+        register_intrinsic_method(self, math, "exp", 1, |rt, args| {
+            crate::generated::math_exp(rt, Value::Undefined, args)
+        });
+        register_intrinsic_method(self, math, "log", 1, |rt, args| {
+            crate::generated::math_log(rt, Value::Undefined, args)
+        });
+        register_intrinsic_method(self, math, "log2", 1, |rt, args| {
+            crate::generated::math_log2(rt, Value::Undefined, args)
+        });
+        register_intrinsic_method(self, math, "log10", 1, |rt, args| {
+            crate::generated::math_log10(rt, Value::Undefined, args)
+        });
+        register_intrinsic_method(self, math, "sin", 1, |rt, args| {
+            crate::generated::math_sin(rt, Value::Undefined, args)
+        });
+        register_intrinsic_method(self, math, "cos", 1, |rt, args| {
+            crate::generated::math_cos(rt, Value::Undefined, args)
+        });
+        register_intrinsic_method(self, math, "tan", 1, |rt, args| {
+            crate::generated::math_tan(rt, Value::Undefined, args)
+        });
+        register_intrinsic_method(self, math, "atan", 1, |rt, args| {
+            crate::generated::math_atan(rt, Value::Undefined, args)
+        });
         // Ω.5.P63.E11: asin / acos newly installed via IR (were missing from cruftless).
-        register_intrinsic_method(self, math, "asin", 1, |rt, args| crate::generated::math_asin(rt, Value::Undefined, args));
-        register_intrinsic_method(self, math, "acos", 1, |rt, args| crate::generated::math_acos(rt, Value::Undefined, args));
+        register_intrinsic_method(self, math, "asin", 1, |rt, args| {
+            crate::generated::math_asin(rt, Value::Undefined, args)
+        });
+        register_intrinsic_method(self, math, "acos", 1, |rt, args| {
+            crate::generated::math_acos(rt, Value::Undefined, args)
+        });
         // Ω.5.P63.E14: atan2 routed through IR.
-        register_intrinsic_method(self, math, "atan2", 2, |rt, args| crate::generated::math_atan2(rt, Value::Undefined, args));
-        register_intrinsic_method(self, math, "random", 0, |rt, args| crate::generated::math_random(rt, rt.current_this(), args));
+        register_intrinsic_method(self, math, "atan2", 2, |rt, args| {
+            crate::generated::math_atan2(rt, Value::Undefined, args)
+        });
+        register_intrinsic_method(self, math, "random", 0, |rt, args| {
+            crate::generated::math_random(rt, rt.current_this(), args)
+        });
         // Ω.5.P62.E3: Math constants per ECMA §21.3.1 — all
         // { writable:false, enumerable:false, configurable:false }.
-        self.obj_mut(math).set_own_frozen("PI".into(), Value::Number(std::f64::consts::PI));
-        self.obj_mut(math).set_own_frozen("E".into(), Value::Number(std::f64::consts::E));
-        self.obj_mut(math).set_own_frozen("LN2".into(), Value::Number(std::f64::consts::LN_2));
-        self.obj_mut(math).set_own_frozen("LN10".into(), Value::Number(std::f64::consts::LN_10));
-        self.obj_mut(math).set_own_frozen("LOG2E".into(), Value::Number(std::f64::consts::LOG2_E));
-        self.obj_mut(math).set_own_frozen("LOG10E".into(), Value::Number(std::f64::consts::LOG10_E));
-        self.obj_mut(math).set_own_frozen("SQRT2".into(), Value::Number(std::f64::consts::SQRT_2));
+        self.obj_mut(math)
+            .set_own_frozen("PI".into(), Value::Number(std::f64::consts::PI));
+        self.obj_mut(math)
+            .set_own_frozen("E".into(), Value::Number(std::f64::consts::E));
+        self.obj_mut(math)
+            .set_own_frozen("LN2".into(), Value::Number(std::f64::consts::LN_2));
+        self.obj_mut(math)
+            .set_own_frozen("LN10".into(), Value::Number(std::f64::consts::LN_10));
+        self.obj_mut(math)
+            .set_own_frozen("LOG2E".into(), Value::Number(std::f64::consts::LOG2_E));
+        self.obj_mut(math)
+            .set_own_frozen("LOG10E".into(), Value::Number(std::f64::consts::LOG10_E));
+        self.obj_mut(math)
+            .set_own_frozen("SQRT2".into(), Value::Number(std::f64::consts::SQRT_2));
         // SQRT1_2 absent pre-E3.
-        self.obj_mut(math).set_own_frozen("SQRT1_2".into(), Value::Number(std::f64::consts::FRAC_1_SQRT_2));
+        self.obj_mut(math).set_own_frozen(
+            "SQRT1_2".into(),
+            Value::Number(std::f64::consts::FRAC_1_SQRT_2),
+        );
 
         // Tier-Ω.5.JJJJJJJJ: Math.imul / Math.fround / Math.clz32 / Math.sign /
         // Math.expm1 / Math.log1p / Math.log2 / Math.log10 / Math.cbrt /
@@ -1830,47 +2197,84 @@ impl Runtime {
             crate::generated::math_clz32(rt, rt.current_this(), args)
         });
         register_intrinsic_method(self, math, "sign", 1, |_rt, args| {
-            let n = args.first().map(abstract_ops::to_number).unwrap_or(f64::NAN);
-            if n.is_nan() { Ok(Value::Number(f64::NAN)) }
-            else if n > 0.0 { Ok(Value::Number(1.0)) }
-            else if n < 0.0 { Ok(Value::Number(-1.0)) }
-            else { Ok(Value::Number(n)) } // preserves +0/-0
+            let n = args
+                .first()
+                .map(abstract_ops::to_number)
+                .unwrap_or(f64::NAN);
+            if n.is_nan() {
+                Ok(Value::Number(f64::NAN))
+            } else if n > 0.0 {
+                Ok(Value::Number(1.0))
+            } else if n < 0.0 {
+                Ok(Value::Number(-1.0))
+            } else {
+                Ok(Value::Number(n))
+            } // preserves +0/-0
         });
         // Ω.5.P63.E11: expm1/log1p routed through IR.
         // (log2/log10 already routed above; this block previously
         // installed duplicates — preserve only the unique ones here.)
-        register_intrinsic_method(self, math, "expm1", 1, |rt, args| crate::generated::math_expm1(rt, Value::Undefined, args));
-        register_intrinsic_method(self, math, "log1p", 1, |rt, args| crate::generated::math_log1p(rt, Value::Undefined, args));
+        register_intrinsic_method(self, math, "expm1", 1, |rt, args| {
+            crate::generated::math_expm1(rt, Value::Undefined, args)
+        });
+        register_intrinsic_method(self, math, "log1p", 1, |rt, args| {
+            crate::generated::math_log1p(rt, Value::Undefined, args)
+        });
         register_intrinsic_method(self, math, "cbrt", 1, |_rt, args| {
-            let n = args.first().map(abstract_ops::to_number).unwrap_or(f64::NAN);
+            let n = args
+                .first()
+                .map(abstract_ops::to_number)
+                .unwrap_or(f64::NAN);
             Ok(Value::Number(n.cbrt()))
         });
         // Ω.5.P63.E14: hypot routed through IR (variadic via Expr::AllArgs).
-        register_intrinsic_method(self, math, "hypot", 2, |rt, args| crate::generated::math_hypot(rt, Value::Undefined, args));
+        register_intrinsic_method(self, math, "hypot", 2, |rt, args| {
+            crate::generated::math_hypot(rt, Value::Undefined, args)
+        });
         // Ω.5.P63.E11: hyperbolic family routed through IR.
-        register_intrinsic_method(self, math, "sinh", 1, |rt, args| crate::generated::math_sinh(rt, Value::Undefined, args));
-        register_intrinsic_method(self, math, "cosh", 1, |rt, args| crate::generated::math_cosh(rt, Value::Undefined, args));
-        register_intrinsic_method(self, math, "tanh", 1, |rt, args| crate::generated::math_tanh(rt, Value::Undefined, args));
-        register_intrinsic_method(self, math, "asinh", 1, |rt, args| crate::generated::math_asinh(rt, Value::Undefined, args));
-        register_intrinsic_method(self, math, "acosh", 1, |rt, args| crate::generated::math_acosh(rt, Value::Undefined, args));
-        register_intrinsic_method(self, math, "atanh", 1, |rt, args| crate::generated::math_atanh(rt, Value::Undefined, args));
+        register_intrinsic_method(self, math, "sinh", 1, |rt, args| {
+            crate::generated::math_sinh(rt, Value::Undefined, args)
+        });
+        register_intrinsic_method(self, math, "cosh", 1, |rt, args| {
+            crate::generated::math_cosh(rt, Value::Undefined, args)
+        });
+        register_intrinsic_method(self, math, "tanh", 1, |rt, args| {
+            crate::generated::math_tanh(rt, Value::Undefined, args)
+        });
+        register_intrinsic_method(self, math, "asinh", 1, |rt, args| {
+            crate::generated::math_asinh(rt, Value::Undefined, args)
+        });
+        register_intrinsic_method(self, math, "acosh", 1, |rt, args| {
+            crate::generated::math_acosh(rt, Value::Undefined, args)
+        });
+        register_intrinsic_method(self, math, "atanh", 1, |rt, args| {
+            crate::generated::math_atanh(rt, Value::Undefined, args)
+        });
 
         // Ω.5.P62.E4: Math[Symbol.toStringTag] === "Math" per ECMA §21.3.1.9.
         // Drives Object.prototype.toString.call(Math) → "[object Math]"
         // (test262 Array.prototype.map-1-10 + many ducktyping libs rely
         // on this).
-        self.obj_mut(math).set_own_frozen("@@toStringTag".into(),
-            Value::String(Rc::new("Math".into())));
+        self.obj_mut(math).set_own_frozen(
+            "@@toStringTag".into(),
+            Value::String(Rc::new("Math".into())),
+        );
         self.globals.insert("Math".into(), Value::Object(math));
     }
 
     fn install_json(&mut self) {
         let json = self.alloc_object(Object::new_ordinary());
-        register_intrinsic_method(self, json, "stringify", 3, |rt, args| crate::generated::json_stringify(rt, rt.current_this(), args));
-        register_intrinsic_method(self, json, "parse",     2, |rt, args| crate::generated::json_parse(rt, rt.current_this(), args));
+        register_intrinsic_method(self, json, "stringify", 3, |rt, args| {
+            crate::generated::json_stringify(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, json, "parse", 2, |rt, args| {
+            crate::generated::json_parse(rt, rt.current_this(), args)
+        });
         // Ω.5.P62.E4: JSON[Symbol.toStringTag] === "JSON" per §25.5.1.5.
-        self.obj_mut(json).set_own_frozen("@@toStringTag".into(),
-            Value::String(Rc::new("JSON".into())));
+        self.obj_mut(json).set_own_frozen(
+            "@@toStringTag".into(),
+            Value::String(Rc::new("JSON".into())),
+        );
         self.globals.insert("JSON".into(), Value::Object(json));
     }
 
@@ -1929,9 +2333,14 @@ impl Runtime {
                     if !matches!(trap, Value::Undefined) {
                         if !rt.is_callable(&trap) {
                             return Err(RuntimeError::TypeError(
-                                "Proxy 'ownKeys' trap is not callable".into()));
+                                "Proxy 'ownKeys' trap is not callable".into(),
+                            ));
                         }
-                        let result = rt.call_function(trap, Value::Object(handler), vec![Value::Object(tgt)])?;
+                        let result = rt.call_function(
+                            trap,
+                            Value::Object(handler),
+                            vec![Value::Object(tgt)],
+                        )?;
                         let trap_keys = rt.apply_proxy_own_keys_invariants(&result, tgt)?;
                         let out = rt.alloc_object(Object::new_array());
                         let mut j = 0;
@@ -1994,12 +2403,18 @@ impl Runtime {
                     if !matches!(trap, Value::Undefined) {
                         if !rt.is_callable(&trap) {
                             return Err(RuntimeError::TypeError(
-                                "Proxy 'preventExtensions' trap is not callable".into()));
+                                "Proxy 'preventExtensions' trap is not callable".into(),
+                            ));
                         }
-                        let r2 = rt.call_function(trap, Value::Object(handler), vec![Value::Object(tgt)])?;
+                        let r2 = rt.call_function(
+                            trap,
+                            Value::Object(handler),
+                            vec![Value::Object(tgt)],
+                        )?;
                         if !crate::abstract_ops::to_boolean(&r2) {
                             return Err(RuntimeError::TypeError(
-                                "Proxy 'preventExtensions' trap returned falsy".into()));
+                                "Proxy 'preventExtensions' trap returned falsy".into(),
+                            ));
                         }
                         // EXT 87 / Pass C: §10.5.4 step 7 — if trap
                         // returned true but target is still extensible,
@@ -2014,7 +2429,11 @@ impl Runtime {
                     }
                     let mut new_args = args.to_vec();
                     new_args[0] = Value::Object(tgt);
-                    return crate::generated::object_prevent_extensions(rt, Value::Undefined, &new_args);
+                    return crate::generated::object_prevent_extensions(
+                        rt,
+                        Value::Undefined,
+                        &new_args,
+                    );
                 }
             }
             crate::generated::object_prevent_extensions(rt, Value::Undefined, args)
@@ -2026,9 +2445,14 @@ impl Runtime {
                     if !matches!(trap, Value::Undefined) {
                         if !rt.is_callable(&trap) {
                             return Err(RuntimeError::TypeError(
-                                "Proxy 'isExtensible' trap is not callable".into()));
+                                "Proxy 'isExtensible' trap is not callable".into(),
+                            ));
                         }
-                        let r2 = rt.call_function(trap, Value::Object(handler), vec![Value::Object(tgt)])?;
+                        let r2 = rt.call_function(
+                            trap,
+                            Value::Object(handler),
+                            vec![Value::Object(tgt)],
+                        )?;
                         let trap_ext = crate::abstract_ops::to_boolean(&r2);
                         // EXT 87 / Pass C: §10.5.3 step 8 — trap result
                         // must SameValue(target.[[IsExtensible]]).
@@ -2045,7 +2469,9 @@ impl Runtime {
             }
             crate::generated::object_is_extensible(rt, Value::Undefined, args)
         });
-        register_intrinsic_method(self, obj_ctor, "groupBy", 2, |rt, args| crate::generated::object_group_by(rt, rt.current_this(), args));
+        register_intrinsic_method(self, obj_ctor, "groupBy", 2, |rt, args| {
+            crate::generated::object_group_by(rt, rt.current_this(), args)
+        });
         // Ω.5.P63.E17: Object.fromEntries routed through IR.
         register_intrinsic_method(self, obj_ctor, "fromEntries", 1, |rt, args| {
             crate::generated::object_from_entries(rt, Value::Undefined, args)
@@ -2071,16 +2497,20 @@ impl Runtime {
                     if !matches!(trap, Value::Undefined) {
                         if !rt.is_callable(&trap) {
                             return Err(RuntimeError::TypeError(
-                                "Proxy 'defineProperty' trap is not callable".into()));
+                                "Proxy 'defineProperty' trap is not callable".into(),
+                            ));
                         }
                         let key = args.get(1).cloned().unwrap_or(Value::Undefined);
                         let desc = args.get(2).cloned().unwrap_or(Value::Undefined);
-                        let r2 = rt.call_function(trap, Value::Object(handler), vec![
-                            Value::Object(tgt), key.clone(), desc.clone(),
-                        ])?;
+                        let r2 = rt.call_function(
+                            trap,
+                            Value::Object(handler),
+                            vec![Value::Object(tgt), key.clone(), desc.clone()],
+                        )?;
                         if !crate::abstract_ops::to_boolean(&r2) {
                             return Err(RuntimeError::TypeError(
-                                "Proxy 'defineProperty' trap returned falsy".into()));
+                                "Proxy 'defineProperty' trap returned falsy".into(),
+                            ));
                         }
                         // EXT 89 / Pass C: §10.5.6 invariants.
                         let key_str = crate::abstract_ops::to_string(&key).as_str().to_string();
@@ -2089,7 +2519,11 @@ impl Runtime {
                     }
                     let mut new_args = args.to_vec();
                     new_args[0] = Value::Object(tgt);
-                    return crate::generated::object_define_property(rt, Value::Undefined, &new_args);
+                    return crate::generated::object_define_property(
+                        rt,
+                        Value::Undefined,
+                        &new_args,
+                    );
                 }
             }
             crate::generated::object_define_property(rt, Value::Undefined, args)
@@ -2104,28 +2538,45 @@ impl Runtime {
                     if !matches!(trap, Value::Undefined) {
                         if !rt.is_callable(&trap) {
                             return Err(RuntimeError::TypeError(
-                                "Proxy 'getOwnPropertyDescriptor' trap is not callable".into()));
+                                "Proxy 'getOwnPropertyDescriptor' trap is not callable".into(),
+                            ));
                         }
                         let key = args.get(1).cloned().unwrap_or(Value::Undefined);
-                        let trap_result = rt.call_function(trap, Value::Object(handler), vec![
-                            Value::Object(tgt), key.clone(),
-                        ])?;
+                        let trap_result = rt.call_function(
+                            trap,
+                            Value::Object(handler),
+                            vec![Value::Object(tgt), key.clone()],
+                        )?;
                         // EXT 89 / Pass C: §10.5.5 invariants (undefined-leg + non-Object check).
                         let key_str = crate::abstract_ops::to_string(&key).as_str().to_string();
-                        rt.apply_proxy_get_own_property_descriptor_invariant(tgt, &key_str, &trap_result)?;
+                        rt.apply_proxy_get_own_property_descriptor_invariant(
+                            tgt,
+                            &key_str,
+                            &trap_result,
+                        )?;
                         return Ok(trap_result);
                     }
                     let mut new_args = args.to_vec();
                     new_args[0] = Value::Object(tgt);
-                    return crate::generated::object_get_own_property_descriptor(rt, Value::Undefined, &new_args);
+                    return crate::generated::object_get_own_property_descriptor(
+                        rt,
+                        Value::Undefined,
+                        &new_args,
+                    );
                 }
             }
             crate::generated::object_get_own_property_descriptor(rt, Value::Undefined, args)
         });
         // Tier-Ω.5.rrrrrr: Object.getOwnPropertyDescriptors per §20.1.2.10.
-        register_intrinsic_method(self, obj_ctor, "getOwnPropertyDescriptors", 1, |rt, args| {
-            crate::generated::object_get_own_property_descriptors(rt, Value::Undefined, args)
-        });
+        register_intrinsic_method(
+            self,
+            obj_ctor,
+            "getOwnPropertyDescriptors",
+            1,
+            |rt, args| {
+                crate::generated::object_get_own_property_descriptors(rt, Value::Undefined, args)
+            },
+        );
         // Ω.5.P63.E15: getOwnPropertyNames routed through IR.
         // EXT 84d / EXT 86: Object.getOwnPropertyNames dispatches
         // Proxy.ownKeys trap and applies §10.5.11 invariants
@@ -2138,9 +2589,14 @@ impl Runtime {
                     if !matches!(trap, Value::Undefined) {
                         if !rt.is_callable(&trap) {
                             return Err(RuntimeError::TypeError(
-                                "Proxy 'ownKeys' trap is not callable".into()));
+                                "Proxy 'ownKeys' trap is not callable".into(),
+                            ));
                         }
-                        let result = rt.call_function(trap, Value::Object(handler), vec![Value::Object(tgt)])?;
+                        let result = rt.call_function(
+                            trap,
+                            Value::Object(handler),
+                            vec![Value::Object(tgt)],
+                        )?;
                         let trap_keys = rt.apply_proxy_own_keys_invariants(&result, tgt)?;
                         let out = rt.alloc_object(Object::new_array());
                         let mut j = 0;
@@ -2155,7 +2611,11 @@ impl Runtime {
                     }
                     let mut new_args = args.to_vec();
                     new_args[0] = Value::Object(tgt);
-                    return crate::generated::object_get_own_property_names(rt, Value::Undefined, &new_args);
+                    return crate::generated::object_get_own_property_names(
+                        rt,
+                        Value::Undefined,
+                        &new_args,
+                    );
                 }
             }
             crate::generated::object_get_own_property_names(rt, Value::Undefined, args)
@@ -2176,9 +2636,14 @@ impl Runtime {
                     if !matches!(trap, Value::Undefined) {
                         if !rt.is_callable(&trap) {
                             return Err(RuntimeError::TypeError(
-                                "Proxy 'ownKeys' trap is not callable".into()));
+                                "Proxy 'ownKeys' trap is not callable".into(),
+                            ));
                         }
-                        let result = rt.call_function(trap, Value::Object(handler), vec![Value::Object(tgt)])?;
+                        let result = rt.call_function(
+                            trap,
+                            Value::Object(handler),
+                            vec![Value::Object(tgt)],
+                        )?;
                         let trap_keys = rt.apply_proxy_own_keys_invariants(&result, tgt)?;
                         let out = rt.alloc_object(Object::new_array());
                         let mut j = 0;
@@ -2193,7 +2658,11 @@ impl Runtime {
                     }
                     let mut new_args = args.to_vec();
                     new_args[0] = Value::Object(tgt);
-                    return crate::generated::object_get_own_property_symbols(rt, Value::Undefined, &new_args);
+                    return crate::generated::object_get_own_property_symbols(
+                        rt,
+                        Value::Undefined,
+                        &new_args,
+                    );
                 }
             }
             crate::generated::object_get_own_property_symbols(rt, Value::Undefined, args)
@@ -2239,23 +2708,32 @@ impl Runtime {
                     if !matches!(trap, Value::Undefined) {
                         if !rt.is_callable(&trap) {
                             return Err(RuntimeError::TypeError(
-                                "Proxy 'getPrototypeOf' trap is not callable".into()));
+                                "Proxy 'getPrototypeOf' trap is not callable".into(),
+                            ));
                         }
-                        let handler_proto = rt.call_function(trap, Value::Object(handler), vec![Value::Object(tgt)])?;
+                        let handler_proto = rt.call_function(
+                            trap,
+                            Value::Object(handler),
+                            vec![Value::Object(tgt)],
+                        )?;
                         // EXT 87 / Pass C: §10.5.1 step 8 — trap return
                         // must be Object or Null. step 9 — if target is
                         // non-extensible, trap return must SameValue
                         // target.[[GetPrototypeOf]]().
                         if !matches!(handler_proto, Value::Object(_) | Value::Null) {
                             return Err(RuntimeError::TypeError(
-                                "Proxy 'getPrototypeOf' trap returned non-Object non-Null".into()));
+                                "Proxy 'getPrototypeOf' trap returned non-Object non-Null".into(),
+                            ));
                         }
                         if !rt.obj(tgt).extensible {
                             let target_proto = match rt.obj(tgt).proto {
                                 Some(p) => Value::Object(p),
                                 None => Value::Null,
                             };
-                            if !crate::abstract_ops::is_strictly_equal(&handler_proto, &target_proto) {
+                            if !crate::abstract_ops::is_strictly_equal(
+                                &handler_proto,
+                                &target_proto,
+                            ) {
                                 return Err(RuntimeError::TypeError(
                                     "Proxy 'getPrototypeOf' trap returned proto inconsistent with non-extensible target".into()));
                             }
@@ -2264,7 +2742,11 @@ impl Runtime {
                     }
                     let mut new_args = args.to_vec();
                     new_args[0] = Value::Object(tgt);
-                    return crate::generated::object_get_prototype_of(rt, Value::Undefined, &new_args);
+                    return crate::generated::object_get_prototype_of(
+                        rt,
+                        Value::Undefined,
+                        &new_args,
+                    );
                 }
             }
             crate::generated::object_get_prototype_of(rt, Value::Undefined, args)
@@ -2276,15 +2758,19 @@ impl Runtime {
                     if !matches!(trap, Value::Undefined) {
                         if !rt.is_callable(&trap) {
                             return Err(RuntimeError::TypeError(
-                                "Proxy 'setPrototypeOf' trap is not callable".into()));
+                                "Proxy 'setPrototypeOf' trap is not callable".into(),
+                            ));
                         }
                         let proto = args.get(1).cloned().unwrap_or(Value::Undefined);
-                        let r2 = rt.call_function(trap, Value::Object(handler), vec![
-                            Value::Object(tgt), proto.clone(),
-                        ])?;
+                        let r2 = rt.call_function(
+                            trap,
+                            Value::Object(handler),
+                            vec![Value::Object(tgt), proto.clone()],
+                        )?;
                         if !crate::abstract_ops::to_boolean(&r2) {
                             return Err(RuntimeError::TypeError(
-                                "Proxy 'setPrototypeOf' trap returned falsy".into()));
+                                "Proxy 'setPrototypeOf' trap returned falsy".into(),
+                            ));
                         }
                         // EXT 87 / Pass C: §10.5.2 step 9-10 — if target
                         // is non-extensible and trap returned true, V must
@@ -2303,7 +2789,11 @@ impl Runtime {
                     }
                     let mut new_args = args.to_vec();
                     new_args[0] = Value::Object(tgt);
-                    return crate::generated::object_set_prototype_of(rt, Value::Undefined, &new_args);
+                    return crate::generated::object_set_prototype_of(
+                        rt,
+                        Value::Undefined,
+                        &new_args,
+                    );
                 }
             }
             crate::generated::object_set_prototype_of(rt, Value::Undefined, args)
@@ -2321,16 +2811,19 @@ impl Runtime {
         // dequal/acorn/fast-equals idiom) errors "Cannot read property
         // 'hasOwnProperty' of undefined".
         if let Some(proto) = self.object_prototype {
-            self.obj_mut(obj_ctor).set_own_frozen("prototype".into(), Value::Object(proto));
+            self.obj_mut(obj_ctor)
+                .set_own_frozen("prototype".into(), Value::Object(proto));
             // Tier-Ω.5.lll: Object.prototype.constructor = Object. Per
             // ECMA-262 §20.1.3.1. Without this, plain-object `.constructor`
             // returns undefined, breaking type-tag idioms like dequal's
             // `(ctor=foo.constructor) === bar.constructor` followed by
             // `ctor === Date` / `ctor === RegExp` / `ctor === Array`
             // dispatch.
-            self.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(obj_ctor));
+            self.obj_mut(proto)
+                .set_own_internal("constructor".into(), Value::Object(obj_ctor));
         }
-        self.globals.insert("Object".into(), Value::Object(obj_ctor));
+        self.globals
+            .insert("Object".into(), Value::Object(obj_ctor));
     }
 
     fn install_array_static(&mut self) {
@@ -2352,7 +2845,9 @@ impl Runtime {
             // leaving the resulting instance with `this.fill` undefined.
             // Mirrors the Ω.5.ffff fix for Error.
             let receiver_id = match rt.current_this() {
-                Value::Object(id) if matches!(rt.obj(id).internal_kind, InternalKind::Array) => Some(id),
+                Value::Object(id) if matches!(rt.obj(id).internal_kind, InternalKind::Array) => {
+                    Some(id)
+                }
                 _ => None,
             };
             let id = match receiver_id {
@@ -2367,8 +2862,7 @@ impl Runtime {
                     // this, `new Array(-1)` silently constructed an array
                     // of length 0 (lossy usize cast) instead of throwing.
                     if !n.is_finite() || *n < 0.0 || *n > 4294967295.0 || n.fract() != 0.0 {
-                        return Err(RuntimeError::RangeError(
-                            "Invalid array length".into()));
+                        return Err(RuntimeError::RangeError("Invalid array length".into()));
                     }
                     let len = *n as usize;
                     rt.object_set(id, "length".into(), Value::Number(len as f64));
@@ -2395,9 +2889,11 @@ impl Runtime {
             crate::generated::array_from(rt, rt.current_this(), args)
         });
         if let Some(proto) = self.array_prototype {
-            self.obj_mut(arr_ctor).set_own_frozen("prototype".into(), Value::Object(proto));
+            self.obj_mut(arr_ctor)
+                .set_own_frozen("prototype".into(), Value::Object(proto));
             // Ω.5.P58.E4: Array.prototype.constructor = Array per ECMA §10.2.12.
-            self.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(arr_ctor));
+            self.obj_mut(proto)
+                .set_own_internal("constructor".into(), Value::Object(arr_ctor));
         }
         // ECMA-262 sec 23.1.5.2 get %Array%[@@species]: accessor whose
         // getter returns `this`. ArraySpeciesCreate (sec 23.1.3.1) reads
@@ -2439,7 +2935,11 @@ impl Runtime {
             // toString dispatch + Symbol → TypeError + Object-with-Object-returning-coercers
             // throws TypeError per §7.1.4.
             let v = args.first().cloned().unwrap_or(Value::Undefined);
-            let n = if args.is_empty() { 0.0 } else { rt.coerce_to_number(&v)? };
+            let n = if args.is_empty() {
+                0.0
+            } else {
+                rt.coerce_to_number(&v)?
+            };
             if rt.current_new_target.is_some() {
                 let mut obj = crate::value::Object::new_ordinary();
                 obj.set_own_internal("__primitive__".into(), Value::Number(n));
@@ -2448,11 +2948,14 @@ impl Runtime {
                 obj.internal_kind = crate::value::InternalKind::NumberWrapper(Value::Number(n));
                 let proto = match rt.globals.get("Number").cloned() {
                     Some(Value::Object(id)) => match rt.object_get(id, "prototype") {
-                        Value::Object(p) => Some(p), _ => None,
+                        Value::Object(p) => Some(p),
+                        _ => None,
                     },
                     _ => None,
                 };
-                if let Some(p) = proto { obj.proto = Some(p); }
+                if let Some(p) = proto {
+                    obj.proto = Some(p);
+                }
                 let id = rt.alloc_object(obj);
                 return Ok(Value::Object(id));
             }
@@ -2462,20 +2965,31 @@ impl Runtime {
         // Constants per ECMA-262 §21.1.2.
         // Ω.5.P62.E3: Number namespace constants per ECMA §21.1.2 — all
         // { writable:false, enumerable:false, configurable:false }.
-        self.obj_mut(num).set_own_frozen("MAX_SAFE_INTEGER".into(), Value::Number(9007199254740991.0));
-        self.obj_mut(num).set_own_frozen("MIN_SAFE_INTEGER".into(), Value::Number(-9007199254740991.0));
-        self.obj_mut(num).set_own_frozen("MAX_VALUE".into(), Value::Number(f64::MAX));
-        self.obj_mut(num).set_own_frozen("MIN_VALUE".into(), Value::Number(5e-324));
-        self.obj_mut(num).set_own_frozen("EPSILON".into(), Value::Number(f64::EPSILON));
-        self.obj_mut(num).set_own_frozen("POSITIVE_INFINITY".into(), Value::Number(f64::INFINITY));
-        self.obj_mut(num).set_own_frozen("NEGATIVE_INFINITY".into(), Value::Number(f64::NEG_INFINITY));
-        self.obj_mut(num).set_own_frozen("NaN".into(), Value::Number(f64::NAN));
+        self.obj_mut(num)
+            .set_own_frozen("MAX_SAFE_INTEGER".into(), Value::Number(9007199254740991.0));
+        self.obj_mut(num).set_own_frozen(
+            "MIN_SAFE_INTEGER".into(),
+            Value::Number(-9007199254740991.0),
+        );
+        self.obj_mut(num)
+            .set_own_frozen("MAX_VALUE".into(), Value::Number(f64::MAX));
+        self.obj_mut(num)
+            .set_own_frozen("MIN_VALUE".into(), Value::Number(5e-324));
+        self.obj_mut(num)
+            .set_own_frozen("EPSILON".into(), Value::Number(f64::EPSILON));
+        self.obj_mut(num)
+            .set_own_frozen("POSITIVE_INFINITY".into(), Value::Number(f64::INFINITY));
+        self.obj_mut(num)
+            .set_own_frozen("NEGATIVE_INFINITY".into(), Value::Number(f64::NEG_INFINITY));
+        self.obj_mut(num)
+            .set_own_frozen("NaN".into(), Value::Number(f64::NAN));
         // Tier-Ω.5.ggggg: global Infinity / NaN / undefined per ECMA-262
         // §19.1. acorn's tokenizer uses `Infinity` as a sentinel in
         // `for (var i=0, e=Infinity; i<e; ...)`; without the global,
         // i<undefined is false, the loop never runs, every numeric literal
         // fails to tokenize.
-        self.globals.insert("Infinity".into(), Value::Number(f64::INFINITY));
+        self.globals
+            .insert("Infinity".into(), Value::Number(f64::INFINITY));
         self.globals.insert("NaN".into(), Value::Number(f64::NAN));
         self.globals.insert("undefined".into(), Value::Undefined);
         // Predicates. Note: Number.isX (capital-N) differs from global
@@ -2502,14 +3016,17 @@ impl Runtime {
             self.object_set(num, "parseFloat".into(), pf);
         }
         if let Some(proto) = self.number_prototype {
-            self.obj_mut(num).set_own_frozen("prototype".into(), Value::Object(proto));
+            self.obj_mut(num)
+                .set_own_frozen("prototype".into(), Value::Object(proto));
             // Ω.5.P58.E4: Number.prototype.constructor = Number per ECMA §10.2.12.
-            self.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(num));
+            self.obj_mut(proto)
+                .set_own_internal("constructor".into(), Value::Object(num));
             // Ω.5.P62.E19: Number.prototype is a Number exotic with
             // [[NumberData]] = +0 per §21.1.4. Brand-checked methods
             // (toString/toFixed/valueOf) must accept Number.prototype
             // directly (Number.prototype.toString() returns "0").
-            self.obj_mut(proto).set_own_internal("__primitive__".into(), Value::Number(0.0));
+            self.obj_mut(proto)
+                .set_own_internal("__primitive__".into(), Value::Number(0.0));
         }
         self.globals.insert("Number".into(), Value::Object(num));
         self.install_string_global();
@@ -2532,7 +3049,8 @@ impl Runtime {
             } else if let Value::Symbol(_) = &v {
                 if rt.current_new_target.is_some() {
                     return Err(RuntimeError::TypeError(
-                        "Cannot convert a Symbol value to a string".into()));
+                        "Cannot convert a Symbol value to a string".into(),
+                    ));
                 }
                 Rc::new(abstract_ops::to_string(&v).as_str().to_string())
             } else {
@@ -2542,7 +3060,8 @@ impl Runtime {
                 let mut obj = crate::value::Object::new_ordinary();
                 obj.set_own_internal("__primitive__".into(), Value::String(s_rc.clone()));
                 // EXT 83: tag [[StringData]] for Object.prototype.toString brand.
-                obj.internal_kind = crate::value::InternalKind::StringWrapper(Value::String(s_rc.clone()));
+                obj.internal_kind =
+                    crate::value::InternalKind::StringWrapper(Value::String(s_rc.clone()));
                 // Index-access compatibility: install per-char own props +
                 // length so `new String("ab")[0]` reads "a" and "length"
                 // is the codepoint count. Spec models these as exotic
@@ -2553,11 +3072,14 @@ impl Runtime {
                 obj.set_own_frozen("length".into(), Value::Number(s_rc.chars().count() as f64));
                 let proto = match rt.globals.get("String").cloned() {
                     Some(Value::Object(id)) => match rt.object_get(id, "prototype") {
-                        Value::Object(p) => Some(p), _ => None,
+                        Value::Object(p) => Some(p),
+                        _ => None,
                     },
                     _ => None,
                 };
-                if let Some(p) = proto { obj.proto = Some(p); }
+                if let Some(p) = proto {
+                    obj.proto = Some(p);
+                }
                 let id = rt.alloc_object(obj);
                 return Ok(Value::Object(id));
             }
@@ -2579,7 +3101,8 @@ impl Runtime {
             crate::generated::string_raw(rt, rt.current_this(), args)
         });
         if let Some(proto) = self.string_prototype {
-            self.obj_mut(str_id).set_own_frozen("prototype".into(), Value::Object(proto));
+            self.obj_mut(str_id)
+                .set_own_frozen("prototype".into(), Value::Object(proto));
             // Ω.5.P58.E4: Constructor.prototype.constructor === Constructor
             // per ECMA-262 §10.2.12. ast-types' Type.from uses indexOf on
             // builtInCtorFns (which holds `"x".constructor`, `(123).constructor`,
@@ -2587,11 +3110,14 @@ impl Runtime {
             // String.prototype.constructor was a separate Object (named
             // "Object"), so `"x".constructor === String` returned false and
             // the ast-types lookup fell through to the `missing name` throw.
-            self.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(str_id));
+            self.obj_mut(proto)
+                .set_own_internal("constructor".into(), Value::Object(str_id));
             // Ω.5.P62.E19: String.prototype is a String exotic with
             // [[StringData]] = "" per §22.1.4.
-            self.obj_mut(proto).set_own_internal("__primitive__".into(),
-                Value::String(Rc::new(String::new())));
+            self.obj_mut(proto).set_own_internal(
+                "__primitive__".into(),
+                Value::String(Rc::new(String::new())),
+            );
         }
         self.globals.insert("String".into(), Value::Object(str_id));
     }
@@ -2660,11 +3186,11 @@ impl Runtime {
             let mut rest: &str = &full;
             let (protocol, after_scheme) = if let Some(i) = rest.find("://") {
                 let p = format!("{}:", &rest[..i]);
-                rest = &rest[i+3..];
+                rest = &rest[i + 3..];
                 (p, true)
             } else if let Some(i) = rest.find(':') {
                 let p = format!("{}:", &rest[..i]);
-                rest = &rest[i+1..];
+                rest = &rest[i + 1..];
                 (p, false)
             } else {
                 ("".to_string(), false)
@@ -2685,24 +3211,28 @@ impl Runtime {
             } else {
                 ("", rest3)
             };
-            let path_s = if path.is_empty() && after_scheme { "/".to_string() } else { path.to_string() };
+            let path_s = if path.is_empty() && after_scheme {
+                "/".to_string()
+            } else {
+                path.to_string()
+            };
             let (userinfo, hostport) = match authority.rfind('@') {
-                Some(i) => (&authority[..i], &authority[i+1..]),
+                Some(i) => (&authority[..i], &authority[i + 1..]),
                 None => ("", authority),
             };
             let (username, password) = match userinfo.find(':') {
-                Some(i) => (&userinfo[..i], &userinfo[i+1..]),
+                Some(i) => (&userinfo[..i], &userinfo[i + 1..]),
                 None => (userinfo, ""),
             };
             let (hostname, port) = if hostport.starts_with('[') {
                 // IPv6 literal.
                 match hostport.find("]:") {
-                    Some(i) => (&hostport[..=i], &hostport[i+2..]),
+                    Some(i) => (&hostport[..=i], &hostport[i + 2..]),
                     None => (hostport, ""),
                 }
             } else {
                 match hostport.rfind(':') {
-                    Some(i) => (&hostport[..i], &hostport[i+1..]),
+                    Some(i) => (&hostport[..i], &hostport[i + 1..]),
                     None => (hostport, ""),
                 }
             };
@@ -2735,19 +3265,37 @@ impl Runtime {
             rt.set_engine_sentinel(url_obj, "hash", Value::String(Rc::new(hash)));
             rt.set_engine_sentinel(url_obj, "origin", Value::String(Rc::new(origin)));
             register_method(rt, url_obj, "toString", |rt, _args| {
-                Ok(rt.object_get(match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::String(Rc::new(String::new()))) }, "href"))
+                Ok(rt.object_get(
+                    match rt.current_this() {
+                        Value::Object(id) => id,
+                        _ => return Ok(Value::String(Rc::new(String::new()))),
+                    },
+                    "href",
+                ))
             });
             register_method(rt, url_obj, "toJSON", |rt, _args| {
-                Ok(rt.object_get(match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::String(Rc::new(String::new()))) }, "href"))
+                Ok(rt.object_get(
+                    match rt.current_this() {
+                        Value::Object(id) => id,
+                        _ => return Ok(Value::String(Rc::new(String::new()))),
+                    },
+                    "href",
+                ))
             });
             Ok(Value::Object(url_obj))
         });
         let url_id = self.alloc_object(url_ctor);
         let url_proto = self.alloc_object(Object::new_ordinary());
-        self.obj_mut(url_id).set_own_frozen("prototype".into(), Value::Object(url_proto));
+        self.obj_mut(url_id)
+            .set_own_frozen("prototype".into(), Value::Object(url_proto));
         register_method(self, url_id, "canParse", |_rt, args| {
-            let s = match args.first() { Some(Value::String(s)) => s.as_str().to_string(), _ => return Ok(Value::Boolean(false)) };
-            Ok(Value::Boolean(s.contains("://") || s.starts_with("file:") || s.starts_with("data:")))
+            let s = match args.first() {
+                Some(Value::String(s)) => s.as_str().to_string(),
+                _ => return Ok(Value::Boolean(false)),
+            };
+            Ok(Value::Boolean(
+                s.contains("://") || s.starts_with("file:") || s.starts_with("data:"),
+            ))
         });
         self.globals.insert("URL".into(), Value::Object(url_id));
 
@@ -2769,11 +3317,18 @@ impl Runtime {
             ))
         });
         let abort_signal_id = self.alloc_object(abort_signal_ctor);
-        self.obj_mut(abort_signal_id).set_own_frozen("prototype".into(), Value::Object(abort_signal_proto));
-        self.obj_mut(abort_signal_proto).set_own_internal("constructor".into(), Value::Object(abort_signal_id));
+        self.obj_mut(abort_signal_id)
+            .set_own_frozen("prototype".into(), Value::Object(abort_signal_proto));
+        self.obj_mut(abort_signal_proto)
+            .set_own_internal("constructor".into(), Value::Object(abort_signal_id));
 
         // Helper: build a fresh signal instance proto-chained to AbortSignal.prototype.
-        fn alloc_abort_signal(rt: &mut Runtime, proto: ObjectRef, aborted: bool, reason: Value) -> ObjectRef {
+        fn alloc_abort_signal(
+            rt: &mut Runtime,
+            proto: ObjectRef,
+            aborted: bool,
+            reason: Value,
+        ) -> ObjectRef {
             let mut o = Object::new_ordinary();
             o.proto = Some(proto);
             let sig = rt.alloc_object(o);
@@ -2787,8 +3342,10 @@ impl Runtime {
             rt.set_engine_sentinel(sig, "reason", reason);
             rt.set_engine_sentinel(sig, "onabort", Value::Null);
             let listeners = rt.alloc_object(Object::new_dictionary());
-            rt.obj_mut(listeners).set_own_internal("__count".into(), Value::Number(0.0));
-            rt.obj_mut(sig).set_own_internal("__ac_listeners__".into(), Value::Object(listeners));
+            rt.obj_mut(listeners)
+                .set_own_internal("__count".into(), Value::Number(0.0));
+            rt.obj_mut(sig)
+                .set_own_internal("__ac_listeners__".into(), Value::Object(listeners));
             sig
         }
 
@@ -2798,26 +3355,41 @@ impl Runtime {
         // pattern-matches on (`e && e.name === 'AbortError'`).
         fn default_abort_reason(rt: &mut Runtime) -> Value {
             let e = rt.alloc_object(Object::new_ordinary());
-            rt.object_set(e, "name".into(), Value::String(Rc::new("AbortError".into())));
-            rt.object_set(e, "message".into(), Value::String(Rc::new("The operation was aborted.".into())));
+            rt.object_set(
+                e,
+                "name".into(),
+                Value::String(Rc::new("AbortError".into())),
+            );
+            rt.object_set(
+                e,
+                "message".into(),
+                Value::String(Rc::new("The operation was aborted.".into())),
+            );
             Value::Object(e)
         }
 
         // Helper: fire abort on a signal. Idempotent; second call is a no-op.
         fn fire_abort(rt: &mut Runtime, sig: ObjectRef, reason: Value) {
-            if let Value::Boolean(true) = rt.object_get(sig, "aborted") { return; }
+            if let Value::Boolean(true) = rt.object_get(sig, "aborted") {
+                return;
+            }
             rt.object_set(sig, "aborted".into(), Value::Boolean(true));
             rt.object_set(sig, "reason".into(), reason);
             // Drain listeners. Snapshot first so a listener that mutates the
             // list doesn't break iteration.
             let listeners_v = rt.object_get(sig, "__ac_listeners__");
             if let Value::Object(listeners) = listeners_v {
-                let count = match rt.object_get(listeners, "__count") { Value::Number(n) => n as usize, _ => 0 };
+                let count = match rt.object_get(listeners, "__count") {
+                    Value::Number(n) => n as usize,
+                    _ => 0,
+                };
                 let mut callbacks: Vec<Value> = Vec::with_capacity(count);
                 for i in 0..count {
                     let key = format!("__l{}", i);
                     let v = rt.object_get(listeners, &key);
-                    if !matches!(v, Value::Undefined) { callbacks.push(v); }
+                    if !matches!(v, Value::Undefined) {
+                        callbacks.push(v);
+                    }
                 }
                 for cb in callbacks {
                     let _ = rt.call_function(cb, Value::Object(sig), Vec::new());
@@ -2847,23 +3419,39 @@ impl Runtime {
         // but never fire (no real EventTarget). removeEventListener is a no-op
         // stub for surface presence.
         register_method(self, abort_signal_proto, "addEventListener", |rt, args| {
-            let ty = match args.first() { Some(Value::String(s)) => (**s).clone(), _ => String::new() };
+            let ty = match args.first() {
+                Some(Value::String(s)) => (**s).clone(),
+                _ => String::new(),
+            };
             let cb = args.get(1).cloned().unwrap_or(Value::Undefined);
-            if ty != "abort" { return Ok(Value::Undefined); }
+            if ty != "abort" {
+                return Ok(Value::Undefined);
+            }
             let this = rt.current_this();
             if let Value::Object(sig) = this {
                 let listeners_v = rt.object_get(sig, "__ac_listeners__");
                 if let Value::Object(listeners) = listeners_v {
-                    let count = match rt.object_get(listeners, "__count") { Value::Number(n) => n as usize, _ => 0 };
+                    let count = match rt.object_get(listeners, "__count") {
+                        Value::Number(n) => n as usize,
+                        _ => 0,
+                    };
                     let key = format!("__l{}", count);
                     rt.obj_mut(listeners).set_own_internal(key.into(), cb);
-                    rt.obj_mut(listeners).set_own_internal("__count".into(), Value::Number((count + 1) as f64));
+                    rt.obj_mut(listeners)
+                        .set_own_internal("__count".into(), Value::Number((count + 1) as f64));
                 }
             }
             Ok(Value::Undefined)
         });
-        register_method(self, abort_signal_proto, "removeEventListener", |_rt, _args| Ok(Value::Undefined));
-        register_method(self, abort_signal_proto, "dispatchEvent", |_rt, _args| Ok(Value::Boolean(false)));
+        register_method(
+            self,
+            abort_signal_proto,
+            "removeEventListener",
+            |_rt, _args| Ok(Value::Undefined),
+        );
+        register_method(self, abort_signal_proto, "dispatchEvent", |_rt, _args| {
+            Ok(Value::Boolean(false))
+        });
 
         // AbortSignal.abort(reason) — §3.1.3.1. Returns a pre-aborted signal.
         let asp_for_static = abort_signal_proto;
@@ -2886,9 +3474,22 @@ impl Runtime {
         // aborts when any input aborts. If any input is already aborted, the
         // returned signal is pre-aborted with that input's reason.
         register_method(self, abort_signal_id, "any", move |rt, args| {
-            let arr = match args.first() { Some(Value::Object(id)) => *id, _ => return Ok(Value::Object(alloc_abort_signal(rt, asp_for_static, false, Value::Undefined))) };
+            let arr = match args.first() {
+                Some(Value::Object(id)) => *id,
+                _ => {
+                    return Ok(Value::Object(alloc_abort_signal(
+                        rt,
+                        asp_for_static,
+                        false,
+                        Value::Undefined,
+                    )))
+                }
+            };
             // Iterate array-like.
-            let len = match rt.object_get(arr, "length") { Value::Number(n) => n as usize, _ => 0 };
+            let len = match rt.object_get(arr, "length") {
+                Value::Number(n) => n as usize,
+                _ => 0,
+            };
             // First, check for an already-aborted input.
             for i in 0..len {
                 let v = rt.object_get(arr, &i.to_string());
@@ -2915,14 +3516,23 @@ impl Runtime {
                             id
                         } else {
                             let new_fwds = rt.alloc_object(Object::new_dictionary());
-                            rt.obj_mut(new_fwds).set_own_internal("__count".into(), Value::Number(0.0));
-                            rt.obj_mut(s).set_own_internal("__ac_forwards__".into(), Value::Object(new_fwds));
+                            rt.obj_mut(new_fwds)
+                                .set_own_internal("__count".into(), Value::Number(0.0));
+                            rt.obj_mut(s).set_own_internal(
+                                "__ac_forwards__".into(),
+                                Value::Object(new_fwds),
+                            );
                             new_fwds
                         };
-                        let count = match rt.object_get(fwds, "__count") { Value::Number(n) => n as usize, _ => 0 };
+                        let count = match rt.object_get(fwds, "__count") {
+                            Value::Number(n) => n as usize,
+                            _ => 0,
+                        };
                         let key = format!("__f{}", count);
-                        rt.obj_mut(fwds).set_own_internal(key.into(), Value::Object(composite));
-                        rt.obj_mut(fwds).set_own_internal("__count".into(), Value::Number((count + 1) as f64));
+                        rt.obj_mut(fwds)
+                            .set_own_internal(key.into(), Value::Object(composite));
+                        rt.obj_mut(fwds)
+                            .set_own_internal("__count".into(), Value::Number((count + 1) as f64));
                         let _ = listeners; // listeners list already exists; forwarders are a parallel channel
                     }
                 }
@@ -2930,7 +3540,8 @@ impl Runtime {
             Ok(Value::Object(composite))
         });
 
-        self.globals.insert("AbortSignal".into(), Value::Object(abort_signal_id));
+        self.globals
+            .insert("AbortSignal".into(), Value::Object(abort_signal_id));
 
         let abort_controller_proto = self.alloc_object(Object::new_ordinary());
         let asp_for_ctor = abort_signal_proto;
@@ -2946,8 +3557,10 @@ impl Runtime {
             Ok(Value::Object(inst))
         });
         let abort_controller_id = self.alloc_object(abort_controller_ctor);
-        self.obj_mut(abort_controller_id).set_own_frozen("prototype".into(), Value::Object(abort_controller_proto));
-        self.obj_mut(abort_controller_proto).set_own_internal("constructor".into(), Value::Object(abort_controller_id));
+        self.obj_mut(abort_controller_id)
+            .set_own_frozen("prototype".into(), Value::Object(abort_controller_proto));
+        self.obj_mut(abort_controller_proto)
+            .set_own_internal("constructor".into(), Value::Object(abort_controller_id));
 
         // AbortController.prototype.abort(reason) — §3.2.4.1. Fires abort on
         // this.signal, idempotent. Also drains any composite forwarders so
@@ -2966,10 +3579,15 @@ impl Runtime {
                     let fwds_v = rt.object_get(sig, "__ac_forwards__");
                     let mut fwd_composites: Vec<ObjectRef> = Vec::new();
                     if let Value::Object(fwds) = fwds_v {
-                        let count = match rt.object_get(fwds, "__count") { Value::Number(n) => n as usize, _ => 0 };
+                        let count = match rt.object_get(fwds, "__count") {
+                            Value::Number(n) => n as usize,
+                            _ => 0,
+                        };
                         for i in 0..count {
                             let key = format!("__f{}", i);
-                            if let Value::Object(c) = rt.object_get(fwds, &key) { fwd_composites.push(c); }
+                            if let Value::Object(c) = rt.object_get(fwds, &key) {
+                                fwd_composites.push(c);
+                            }
                         }
                     }
                     fire_abort(rt, sig, reason.clone());
@@ -2980,7 +3598,8 @@ impl Runtime {
             }
             Ok(Value::Undefined)
         });
-        self.globals.insert("AbortController".into(), Value::Object(abort_controller_id));
+        self.globals
+            .insert("AbortController".into(), Value::Object(abort_controller_id));
 
         // Tier-Ω.5.xxxxxx: URLSearchParams as a callable global Function with
         // .prototype. node-fetch's headers.js does `class Headers extends
@@ -2997,9 +3616,12 @@ impl Runtime {
         });
         let usp_id = self.alloc_object(usp_ctor);
         let usp_proto = self.alloc_object(Object::new_ordinary());
-        self.obj_mut(usp_id).set_own_frozen("prototype".into(), Value::Object(usp_proto));
-        self.obj_mut(usp_proto).set_own_internal("constructor".into(), Value::Object(usp_id));
-        self.globals.insert("URLSearchParams".into(), Value::Object(usp_id));
+        self.obj_mut(usp_id)
+            .set_own_frozen("prototype".into(), Value::Object(usp_proto));
+        self.obj_mut(usp_proto)
+            .set_own_internal("constructor".into(), Value::Object(usp_id));
+        self.globals
+            .insert("URLSearchParams".into(), Value::Object(usp_id));
 
         // Ω.5.P49.E3: Fetch-API constructor stubs as callable globals.
         // playwright-core's coreBundle aliases the global `Request` as
@@ -3015,14 +3637,24 @@ impl Runtime {
         // instance; method calls on the returned value still fail
         // downstream — only the construction gate is open.
         for name in &[
-            "Response", "FormData", "Blob", "File",
-            "ReadableStream", "WritableStream", "TransformStream",
-            "ReadableStreamDefaultReader", "ReadableStreamBYOBReader",
-            "ReadableStreamDefaultController", "ReadableByteStreamController",
-            "WritableStreamDefaultWriter", "WritableStreamDefaultController",
+            "Response",
+            "FormData",
+            "Blob",
+            "File",
+            "ReadableStream",
+            "WritableStream",
+            "TransformStream",
+            "ReadableStreamDefaultReader",
+            "ReadableStreamBYOBReader",
+            "ReadableStreamDefaultController",
+            "ReadableByteStreamController",
+            "WritableStreamDefaultWriter",
+            "WritableStreamDefaultController",
             "TransformStreamDefaultController",
-            "ByteLengthQueuingStrategy", "CountQueuingStrategy",
-            "TextEncoderStream", "TextDecoderStream",
+            "ByteLengthQueuingStrategy",
+            "CountQueuingStrategy",
+            "TextEncoderStream",
+            "TextDecoderStream",
         ] {
             let proto = self.alloc_object(Object::new_ordinary());
             let proto_for_closure = proto;
@@ -3033,8 +3665,10 @@ impl Runtime {
                 Ok(Value::Object(id))
             });
             let id = self.alloc_object(ctor);
-            self.obj_mut(id).set_own_frozen("prototype".into(), Value::Object(proto));
-            self.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(id));
+            self.obj_mut(id)
+                .set_own_frozen("prototype".into(), Value::Object(proto));
+            self.obj_mut(proto)
+                .set_own_internal("constructor".into(), Value::Object(id));
             self.globals.insert((*name).into(), Value::Object(id));
         }
 
@@ -3065,16 +3699,21 @@ impl Runtime {
                         let mut out: Vec<(String, Value)> = Vec::new();
                         if let Some(shape) = s.shape.as_ref() {
                             for (name, slot) in shape.iter_slots() {
-                                if name == "__headers" { continue; }
+                                if name == "__headers" {
+                                    continue;
+                                }
                                 let idx = slot as usize;
                                 if let Some(v) = s.shape_values.get(idx) {
                                     out.push((name.to_string(), v.clone()));
                                 }
                             }
                         }
-                        out.extend(s.properties.iter()
-                            .filter(|(k, d)| d.enumerable && k.as_str() != "__headers")
-                            .map(|(k, d)| (k.to_string_content(), d.value.clone())));
+                        out.extend(
+                            s.properties
+                                .iter()
+                                .filter(|(k, d)| d.enumerable && k.as_str() != "__headers")
+                                .map(|(k, d)| (k.to_string_content(), d.value.clone())),
+                        );
                         out
                     };
                     for (k, v) in pairs {
@@ -3084,8 +3723,12 @@ impl Runtime {
                     }
                     // If the src is itself a Headers instance, fold in its __headers too.
                     if let Value::Object(src_bag) = rt.object_get(*src, "__headers") {
-                        let inner: Vec<(String, Value)> = rt.obj(src_bag).properties
-                            .iter().map(|(k, d)| (k.to_string_content(), d.value.clone())).collect();
+                        let inner: Vec<(String, Value)> = rt
+                            .obj(src_bag)
+                            .properties
+                            .iter()
+                            .map(|(k, d)| (k.to_string_content(), d.value.clone()))
+                            .collect();
                         for (k, v) in inner {
                             rt.object_set(bag, k, v);
                         }
@@ -3095,42 +3738,77 @@ impl Runtime {
             Ok(Value::Object(id))
         });
         let headers_ctor_id = self.alloc_object(headers_ctor_fn);
-        self.obj_mut(headers_ctor_id).set_own_frozen("prototype".into(), Value::Object(headers_proto));
-        self.obj_mut(headers_proto).set_own_internal("constructor".into(), Value::Object(headers_ctor_id));
+        self.obj_mut(headers_ctor_id)
+            .set_own_frozen("prototype".into(), Value::Object(headers_proto));
+        self.obj_mut(headers_proto)
+            .set_own_internal("constructor".into(), Value::Object(headers_ctor_id));
         register_method(self, headers_proto, "has", |rt, args| {
-            let this_id = match rt.current_this() { Value::Object(o) => o, _ => return Ok(Value::Boolean(false)) };
-            let bag = match rt.object_get(this_id, "__headers") { Value::Object(b) => b, _ => return Ok(Value::Boolean(false)) };
+            let this_id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Ok(Value::Boolean(false)),
+            };
+            let bag = match rt.object_get(this_id, "__headers") {
+                Value::Object(b) => b,
+                _ => return Ok(Value::Boolean(false)),
+            };
             let name = abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined))
-                .as_str().to_ascii_lowercase();
-            Ok(Value::Boolean(!matches!(rt.object_get(bag, &name), Value::Undefined)))
+                .as_str()
+                .to_ascii_lowercase();
+            Ok(Value::Boolean(!matches!(
+                rt.object_get(bag, &name),
+                Value::Undefined
+            )))
         });
         register_method(self, headers_proto, "get", |rt, args| {
-            let this_id = match rt.current_this() { Value::Object(o) => o, _ => return Ok(Value::Null) };
-            let bag = match rt.object_get(this_id, "__headers") { Value::Object(b) => b, _ => return Ok(Value::Null) };
+            let this_id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Ok(Value::Null),
+            };
+            let bag = match rt.object_get(this_id, "__headers") {
+                Value::Object(b) => b,
+                _ => return Ok(Value::Null),
+            };
             let name = abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined))
-                .as_str().to_ascii_lowercase();
+                .as_str()
+                .to_ascii_lowercase();
             match rt.object_get(bag, &name) {
                 Value::Undefined => Ok(Value::Null),
                 v => Ok(v),
             }
         });
         register_method(self, headers_proto, "set", |rt, args| {
-            let this_id = match rt.current_this() { Value::Object(o) => o, _ => return Ok(Value::Undefined) };
-            let bag = match rt.object_get(this_id, "__headers") { Value::Object(b) => b, _ => return Ok(Value::Undefined) };
+            let this_id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Ok(Value::Undefined),
+            };
+            let bag = match rt.object_get(this_id, "__headers") {
+                Value::Object(b) => b,
+                _ => return Ok(Value::Undefined),
+            };
             let name = abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined))
-                .as_str().to_ascii_lowercase();
+                .as_str()
+                .to_ascii_lowercase();
             let value = abstract_ops::to_string(&args.get(1).cloned().unwrap_or(Value::Undefined))
-                .as_str().to_string();
+                .as_str()
+                .to_string();
             rt.object_set(bag, name, Value::String(Rc::new(value)));
             Ok(Value::Undefined)
         });
         register_method(self, headers_proto, "append", |rt, args| {
-            let this_id = match rt.current_this() { Value::Object(o) => o, _ => return Ok(Value::Undefined) };
-            let bag = match rt.object_get(this_id, "__headers") { Value::Object(b) => b, _ => return Ok(Value::Undefined) };
+            let this_id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Ok(Value::Undefined),
+            };
+            let bag = match rt.object_get(this_id, "__headers") {
+                Value::Object(b) => b,
+                _ => return Ok(Value::Undefined),
+            };
             let name = abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined))
-                .as_str().to_ascii_lowercase();
+                .as_str()
+                .to_ascii_lowercase();
             let value = abstract_ops::to_string(&args.get(1).cloned().unwrap_or(Value::Undefined))
-                .as_str().to_string();
+                .as_str()
+                .to_string();
             let existing = rt.object_get(bag, &name);
             let combined = match existing {
                 Value::String(s) => format!("{}, {}", s, value),
@@ -3140,26 +3818,47 @@ impl Runtime {
             Ok(Value::Undefined)
         });
         register_method(self, headers_proto, "delete", |rt, args| {
-            let this_id = match rt.current_this() { Value::Object(o) => o, _ => return Ok(Value::Undefined) };
-            let bag = match rt.object_get(this_id, "__headers") { Value::Object(b) => b, _ => return Ok(Value::Undefined) };
+            let this_id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Ok(Value::Undefined),
+            };
+            let bag = match rt.object_get(this_id, "__headers") {
+                Value::Object(b) => b,
+                _ => return Ok(Value::Undefined),
+            };
             let name = abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined))
-                .as_str().to_ascii_lowercase();
+                .as_str()
+                .to_ascii_lowercase();
             rt.object_set(bag, name, Value::Undefined);
             Ok(Value::Undefined)
         });
         register_method(self, headers_proto, "forEach", |rt, args| {
-            let this_id = match rt.current_this() { Value::Object(o) => o, _ => return Ok(Value::Undefined) };
-            let bag = match rt.object_get(this_id, "__headers") { Value::Object(b) => b, _ => return Ok(Value::Undefined) };
+            let this_id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Ok(Value::Undefined),
+            };
+            let bag = match rt.object_get(this_id, "__headers") {
+                Value::Object(b) => b,
+                _ => return Ok(Value::Undefined),
+            };
             let cb = args.first().cloned().unwrap_or(Value::Undefined);
-            let pairs: Vec<(String, Value)> = rt.obj(bag).properties
-                .iter().map(|(k, d)| (k.to_string_content(), d.value.clone())).collect();
+            let pairs: Vec<(String, Value)> = rt
+                .obj(bag)
+                .properties
+                .iter()
+                .map(|(k, d)| (k.to_string_content(), d.value.clone()))
+                .collect();
             for (k, v) in pairs {
-                rt.call_function(cb.clone(), Value::Undefined,
-                    vec![v, Value::String(Rc::new(k)), Value::Object(this_id)])?;
+                rt.call_function(
+                    cb.clone(),
+                    Value::Undefined,
+                    vec![v, Value::String(Rc::new(k)), Value::Object(this_id)],
+                )?;
             }
             Ok(Value::Undefined)
         });
-        self.globals.insert("Headers".into(), Value::Object(headers_ctor_id));
+        self.globals
+            .insert("Headers".into(), Value::Object(headers_ctor_id));
 
         // Ω.5.P53.E4: Request ctor populates .headers from opts.headers, plus
         // .url, .method, .body. Empty-instance pre-fix tripped consumers that
@@ -3171,7 +3870,10 @@ impl Runtime {
             let mut inst = Object::new_ordinary();
             inst.proto = Some(request_proto_for_closure);
             let id = rt.alloc_object(inst);
-            let url = args.first().cloned().unwrap_or(Value::String(Rc::new(String::new())));
+            let url = args
+                .first()
+                .cloned()
+                .unwrap_or(Value::String(Rc::new(String::new())));
             rt.object_set(id, "url".into(), url);
             let opts = args.get(1).cloned().unwrap_or(Value::Undefined);
             let (method, body, headers_init) = if let Value::Object(opts_id) = &opts {
@@ -3179,7 +3881,9 @@ impl Runtime {
                 let b = rt.object_get(*opts_id, "body");
                 let h = rt.object_get(*opts_id, "headers");
                 (m, b, h)
-            } else { (Value::Undefined, Value::Undefined, Value::Undefined) };
+            } else {
+                (Value::Undefined, Value::Undefined, Value::Undefined)
+            };
             let method_s = match method {
                 Value::String(s) => (*s).clone(),
                 _ => "GET".to_string(),
@@ -3196,7 +3900,9 @@ impl Runtime {
                     let bag = rt.alloc_object(Object::new_dictionary());
                     rt.object_set(h_id, "__headers".into(), Value::Object(bag));
                     if let Value::Object(src) = headers_init {
-                        let pairs: Vec<(String, Value)> = rt.obj(src).properties
+                        let pairs: Vec<(String, Value)> = rt
+                            .obj(src)
+                            .properties
                             .iter()
                             .filter(|(k, d)| d.enumerable && k.as_str() != "__headers")
                             .map(|(k, d)| (k.to_string_content(), d.value.clone()))
@@ -3207,8 +3913,12 @@ impl Runtime {
                             rt.object_set(bag, lk, Value::String(Rc::new(s)));
                         }
                         if let Value::Object(src_bag) = rt.object_get(src, "__headers") {
-                            let inner: Vec<(String, Value)> = rt.obj(src_bag).properties
-                                .iter().map(|(k, d)| (k.to_string_content(), d.value.clone())).collect();
+                            let inner: Vec<(String, Value)> = rt
+                                .obj(src_bag)
+                                .properties
+                                .iter()
+                                .map(|(k, d)| (k.to_string_content(), d.value.clone()))
+                                .collect();
                             for (k, v) in inner {
                                 rt.object_set(bag, k, v);
                             }
@@ -3222,9 +3932,12 @@ impl Runtime {
             Ok(Value::Object(id))
         });
         let request_ctor_id = self.alloc_object(request_ctor_fn);
-        self.obj_mut(request_ctor_id).set_own_frozen("prototype".into(), Value::Object(request_proto));
-        self.obj_mut(request_proto).set_own_internal("constructor".into(), Value::Object(request_ctor_id));
-        self.globals.insert("Request".into(), Value::Object(request_ctor_id));
+        self.obj_mut(request_ctor_id)
+            .set_own_frozen("prototype".into(), Value::Object(request_proto));
+        self.obj_mut(request_proto)
+            .set_own_internal("constructor".into(), Value::Object(request_ctor_id));
+        self.globals
+            .insert("Request".into(), Value::Object(request_ctor_id));
         // fetch() as a callable global that returns a rejected-Promise-shaped
         // value (host-v2 lacks real Promise scheduling for fetch; the call
         // surface exists for module-init read-shape probes).
@@ -3265,18 +3978,24 @@ impl Runtime {
             match rt.current_this() {
                 Value::BigInt(b) => Ok(Value::BigInt(b)),
                 Value::Object(id) => {
-                    if let crate::value::InternalKind::BigIntWrapper(v) = &rt.obj(id).internal_kind {
+                    if let crate::value::InternalKind::BigIntWrapper(v) = &rt.obj(id).internal_kind
+                    {
                         return Ok(v.clone());
                     }
-                    Err(RuntimeError::TypeError("BigInt.prototype.valueOf: this is not a BigInt".into()))
+                    Err(RuntimeError::TypeError(
+                        "BigInt.prototype.valueOf: this is not a BigInt".into(),
+                    ))
                 }
-                _ => Err(RuntimeError::TypeError("BigInt.prototype.valueOf: this is not a BigInt".into())),
+                _ => Err(RuntimeError::TypeError(
+                    "BigInt.prototype.valueOf: this is not a BigInt".into(),
+                )),
             }
         });
         register_intrinsic_method(self, bi_proto, "toString", 0, |rt, args| {
             crate::generated::bigint_prototype_to_string(rt, rt.current_this(), args)
         });
-        self.obj_mut(bi_id).set_own_frozen("prototype".into(), Value::Object(bi_proto));
+        self.obj_mut(bi_id)
+            .set_own_frozen("prototype".into(), Value::Object(bi_proto));
         self.bigint_prototype = Some(bi_proto);
         self.globals.insert("BigInt".into(), Value::Object(bi_id));
         // Boolean ctor with prototype.valueOf.
@@ -3293,11 +4012,14 @@ impl Runtime {
                 obj.internal_kind = crate::value::InternalKind::BooleanWrapper(Value::Boolean(b));
                 let proto = match rt.globals.get("Boolean").cloned() {
                     Some(Value::Object(id)) => match rt.object_get(id, "prototype") {
-                        Value::Object(p) => Some(p), _ => None,
+                        Value::Object(p) => Some(p),
+                        _ => None,
                     },
                     _ => None,
                 };
-                if let Some(p) = proto { obj.proto = Some(p); }
+                if let Some(p) = proto {
+                    obj.proto = Some(p);
+                }
                 let id = rt.alloc_object(obj);
                 return Ok(Value::Object(id));
             }
@@ -3314,31 +4036,51 @@ impl Runtime {
             let this = rt.current_this();
             crate::generated::boolean_prototype_to_string(rt, this, &[])
         });
-        self.obj_mut(bool_id).set_own_frozen("prototype".into(), Value::Object(bool_proto));
+        self.obj_mut(bool_id)
+            .set_own_frozen("prototype".into(), Value::Object(bool_proto));
         // Ω.5.P58.E4: Boolean.prototype.constructor = Boolean per ECMA §10.2.12.
-        self.obj_mut(bool_proto).set_own_internal("constructor".into(), Value::Object(bool_id));
+        self.obj_mut(bool_proto)
+            .set_own_internal("constructor".into(), Value::Object(bool_id));
         // Ω.5.P62.E19: Boolean.prototype is a Boolean exotic with
         // [[BooleanData]] = false per §20.3.4.
-        self.obj_mut(bool_proto).set_own_internal("__primitive__".into(), Value::Boolean(false));
-        self.globals.insert("Boolean".into(), Value::Object(bool_id));
+        self.obj_mut(bool_proto)
+            .set_own_internal("__primitive__".into(), Value::Boolean(false));
+        self.globals
+            .insert("Boolean".into(), Value::Object(bool_id));
         // Tier-Ω.5.tttttt: EventTarget + Event + CustomEvent global stubs
         // (chai / web-platform-ish libs). v1: ordinary objects with the
         // standard surface; no actual dispatch.
         let et = make_native("EventTarget", |rt, _args| {
             let mut o = Object::new_ordinary();
-            o.set_own_internal("__listeners__".into(), Value::Object(rt.alloc_object(Object::new_ordinary())));
+            o.set_own_internal(
+                "__listeners__".into(),
+                Value::Object(rt.alloc_object(Object::new_ordinary())),
+            );
             Ok(Value::Object(rt.alloc_object(o)))
         });
         let et_id = self.alloc_object(et);
         let et_proto = self.alloc_object(Object::new_ordinary());
-        register_intrinsic_method(self, et_proto, "addEventListener", 1, |rt, _args| { let _=rt; Ok(Value::Undefined) });
-        register_intrinsic_method(self, et_proto, "removeEventListener", 1, |rt, _args| { let _=rt; Ok(Value::Undefined) });
-        register_intrinsic_method(self, et_proto, "dispatchEvent", 1, |_rt, _args| Ok(Value::Boolean(false)));
-        self.obj_mut(et_id).set_own_frozen("prototype".into(), Value::Object(et_proto));
-        self.globals.insert("EventTarget".into(), Value::Object(et_id));
+        register_intrinsic_method(self, et_proto, "addEventListener", 1, |rt, _args| {
+            let _ = rt;
+            Ok(Value::Undefined)
+        });
+        register_intrinsic_method(self, et_proto, "removeEventListener", 1, |rt, _args| {
+            let _ = rt;
+            Ok(Value::Undefined)
+        });
+        register_intrinsic_method(self, et_proto, "dispatchEvent", 1, |_rt, _args| {
+            Ok(Value::Boolean(false))
+        });
+        self.obj_mut(et_id)
+            .set_own_frozen("prototype".into(), Value::Object(et_proto));
+        self.globals
+            .insert("EventTarget".into(), Value::Object(et_id));
         let ev = make_native("Event", |rt, args| {
             let mut o = Object::new_ordinary();
-            let ty = match args.first() { Some(Value::String(s)) => (**s).clone(), _ => String::new() };
+            let ty = match args.first() {
+                Some(Value::String(s)) => (**s).clone(),
+                _ => String::new(),
+            };
             o.set_own("type".into(), Value::String(Rc::new(ty)));
             o.set_own("bubbles".into(), Value::Boolean(false));
             o.set_own("cancelable".into(), Value::Boolean(false));
@@ -3347,11 +4089,15 @@ impl Runtime {
         });
         let ev_id = self.alloc_object(ev);
         let ev_proto = self.alloc_object(Object::new_ordinary());
-        self.obj_mut(ev_id).set_own_frozen("prototype".into(), Value::Object(ev_proto));
+        self.obj_mut(ev_id)
+            .set_own_frozen("prototype".into(), Value::Object(ev_proto));
         self.globals.insert("Event".into(), Value::Object(ev_id));
         let ce = make_native("CustomEvent", |rt, args| {
             let mut o = Object::new_ordinary();
-            let ty = match args.first() { Some(Value::String(s)) => (**s).clone(), _ => String::new() };
+            let ty = match args.first() {
+                Some(Value::String(s)) => (**s).clone(),
+                _ => String::new(),
+            };
             o.set_own("type".into(), Value::String(Rc::new(ty)));
             let detail = match args.get(1) {
                 Some(Value::Object(id)) => rt.object_get(*id, "detail"),
@@ -3362,8 +4108,10 @@ impl Runtime {
         });
         let ce_id = self.alloc_object(ce);
         let ce_proto = self.alloc_object(Object::new_ordinary());
-        self.obj_mut(ce_id).set_own_frozen("prototype".into(), Value::Object(ce_proto));
-        self.globals.insert("CustomEvent".into(), Value::Object(ce_id));
+        self.obj_mut(ce_id)
+            .set_own_frozen("prototype".into(), Value::Object(ce_proto));
+        self.globals
+            .insert("CustomEvent".into(), Value::Object(ce_id));
         // Ω.5.P58.E8: MessageEvent, ErrorEvent, CloseEvent, ProgressEvent,
         // BeforeUnloadEvent stubs. @mswjs/data does
         // `class X extends MessageEvent` at module-init; many web-ish
@@ -3375,7 +4123,10 @@ impl Runtime {
         // at module-init (msw / @mswjs/data instance pattern).
         let bc = make_native("BroadcastChannel", |rt, args| {
             let mut o = Object::new_ordinary();
-            let name = match args.first() { Some(Value::String(s)) => (**s).clone(), _ => String::new() };
+            let name = match args.first() {
+                Some(Value::String(s)) => (**s).clone(),
+                _ => String::new(),
+            };
             o.set_own("name".into(), Value::String(Rc::new(name)));
             let id = rt.alloc_object(o);
             // Install no-op methods on the instance.
@@ -3392,14 +4143,27 @@ impl Runtime {
         });
         let bc_id = self.alloc_object(bc);
         let bc_proto = self.alloc_object(Object::new_ordinary());
-        self.obj_mut(bc_id).set_own_frozen("prototype".into(), Value::Object(bc_proto));
-        self.obj_mut(bc_proto).set_own_internal("constructor".into(), Value::Object(bc_id));
-        self.globals.insert("BroadcastChannel".into(), Value::Object(bc_id));
-        for name in &["MessageEvent", "ErrorEvent", "CloseEvent", "ProgressEvent", "BeforeUnloadEvent", "FocusEvent"] {
+        self.obj_mut(bc_id)
+            .set_own_frozen("prototype".into(), Value::Object(bc_proto));
+        self.obj_mut(bc_proto)
+            .set_own_internal("constructor".into(), Value::Object(bc_id));
+        self.globals
+            .insert("BroadcastChannel".into(), Value::Object(bc_id));
+        for name in &[
+            "MessageEvent",
+            "ErrorEvent",
+            "CloseEvent",
+            "ProgressEvent",
+            "BeforeUnloadEvent",
+            "FocusEvent",
+        ] {
             let ctor_name = *name;
             let nm = make_native(ctor_name, move |rt, args| {
                 let mut o = Object::new_ordinary();
-                let ty = match args.first() { Some(Value::String(s)) => (**s).clone(), _ => String::new() };
+                let ty = match args.first() {
+                    Some(Value::String(s)) => (**s).clone(),
+                    _ => String::new(),
+                };
                 o.set_own("type".into(), Value::String(Rc::new(ty)));
                 if let Some(Value::Object(init_id)) = args.get(1) {
                     let data = rt.object_get(*init_id, "data");
@@ -3409,8 +4173,10 @@ impl Runtime {
             });
             let nm_id = self.alloc_object(nm);
             let nm_proto = self.alloc_object(Object::new_ordinary());
-            self.obj_mut(nm_id).set_own_frozen("prototype".into(), Value::Object(nm_proto));
-            self.obj_mut(nm_proto).set_own_internal("constructor".into(), Value::Object(nm_id));
+            self.obj_mut(nm_id)
+                .set_own_frozen("prototype".into(), Value::Object(nm_proto));
+            self.obj_mut(nm_proto)
+                .set_own_internal("constructor".into(), Value::Object(nm_id));
             self.globals.insert((*name).into(), Value::Object(nm_id));
         }
         self.install_error_globals();
@@ -3438,15 +4204,25 @@ impl Runtime {
         let proxy_obj = make_native("Proxy", |rt, args| {
             let target = match args.first() {
                 Some(Value::Object(id)) => *id,
-                _ => return Err(RuntimeError::TypeError("Proxy: target must be an object".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Proxy: target must be an object".into(),
+                    ))
+                }
             };
             let handler = match args.get(1) {
                 Some(Value::Object(id)) => *id,
-                _ => return Err(RuntimeError::TypeError("Proxy: handler must be an object".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Proxy: handler must be an object".into(),
+                    ))
+                }
             };
             let mut o = Object::new_ordinary();
-            o.internal_kind = InternalKind::Proxy(crate::value::ProxyInternals { revoked: false,
-                target, handler,
+            o.internal_kind = InternalKind::Proxy(crate::value::ProxyInternals {
+                revoked: false,
+                target,
+                handler,
             });
             // Proxy's [[Prototype]] is the target's prototype so that
             // `instanceof` and prototype-chain walks see the same chain.
@@ -3458,15 +4234,25 @@ impl Runtime {
         register_intrinsic_method(self, pid, "revocable", 1, |rt, args| {
             let target = match args.first() {
                 Some(Value::Object(id)) => *id,
-                _ => return Err(RuntimeError::TypeError("Proxy.revocable: target must be an object".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Proxy.revocable: target must be an object".into(),
+                    ))
+                }
             };
             let handler = match args.get(1) {
                 Some(Value::Object(id)) => *id,
-                _ => return Err(RuntimeError::TypeError("Proxy.revocable: handler must be an object".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Proxy.revocable: handler must be an object".into(),
+                    ))
+                }
             };
             let mut o = Object::new_ordinary();
-            o.internal_kind = InternalKind::Proxy(crate::value::ProxyInternals { revoked: false,
-                target, handler,
+            o.internal_kind = InternalKind::Proxy(crate::value::ProxyInternals {
+                revoked: false,
+                target,
+                handler,
             });
             o.proto = rt.obj(target).proto;
             let proxy_id = rt.alloc_object(o);
@@ -3476,7 +4262,9 @@ impl Runtime {
             // ProxyInternals.revoked flag on first call. Subsequent
             // operations on the proxy throw TypeError per spec.
             let revoke = make_native("revoke", move |rt, _args| {
-                if let crate::value::InternalKind::Proxy(p) = &mut rt.obj_mut(proxy_id).internal_kind {
+                if let crate::value::InternalKind::Proxy(p) =
+                    &mut rt.obj_mut(proxy_id).internal_kind
+                {
                     p.revoked = true;
                 }
                 Ok(Value::Undefined)
@@ -3506,23 +4294,43 @@ impl Runtime {
             // RequireInternalSlot([[MapData]] / [[WeakMapData]]).
             let brand_chk = move |rt: &mut Runtime, method: &str| -> Result<(), RuntimeError> {
                 let this_v = rt.current_this();
-                let this_id = match &this_v { Value::Object(id) => *id, _ => return Ok(()) };
-                let receiver_is_weak = matches!(rt.object_get(this_id, "__is_weakmap"), Value::Boolean(true));
+                let this_id = match &this_v {
+                    Value::Object(id) => *id,
+                    _ => return Ok(()),
+                };
+                let receiver_is_weak =
+                    matches!(rt.object_get(this_id, "__is_weakmap"), Value::Boolean(true));
                 if is_weak_proto && !receiver_is_weak {
                     return Err(RuntimeError::TypeError(format!(
-                        "WeakMap.prototype.{}: this is not a WeakMap", method)));
+                        "WeakMap.prototype.{}: this is not a WeakMap",
+                        method
+                    )));
                 }
                 if !is_weak_proto && receiver_is_weak {
                     return Err(RuntimeError::TypeError(format!(
-                        "Map.prototype.{}: this is a WeakMap, not a Map", method)));
+                        "Map.prototype.{}: this is a WeakMap, not a Map",
+                        method
+                    )));
                 }
                 Ok(())
             };
             // §24.1.3 / §24.3.3 spec arities (.length values).
-            register_intrinsic_method(self, proto, "get",     1, move |rt, args| { brand_chk(rt, "get")?; crate::generated::map_prototype_get(rt, rt.current_this(), args) });
-            register_intrinsic_method(self, proto, "set",     2, move |rt, args| { brand_chk(rt, "set")?; crate::generated::map_prototype_set(rt, rt.current_this(), args) });
-            register_intrinsic_method(self, proto, "has",     1, move |rt, args| { brand_chk(rt, "has")?; crate::generated::map_prototype_has(rt, rt.current_this(), args) });
-            register_intrinsic_method(self, proto, "delete",  1, move |rt, args| { brand_chk(rt, "delete")?; crate::generated::map_prototype_delete(rt, rt.current_this(), args) });
+            register_intrinsic_method(self, proto, "get", 1, move |rt, args| {
+                brand_chk(rt, "get")?;
+                crate::generated::map_prototype_get(rt, rt.current_this(), args)
+            });
+            register_intrinsic_method(self, proto, "set", 2, move |rt, args| {
+                brand_chk(rt, "set")?;
+                crate::generated::map_prototype_set(rt, rt.current_this(), args)
+            });
+            register_intrinsic_method(self, proto, "has", 1, move |rt, args| {
+                brand_chk(rt, "has")?;
+                crate::generated::map_prototype_has(rt, rt.current_this(), args)
+            });
+            register_intrinsic_method(self, proto, "delete", 1, move |rt, args| {
+                brand_chk(rt, "delete")?;
+                crate::generated::map_prototype_delete(rt, rt.current_this(), args)
+            });
             // MGOI-EXT 1: Map.prototype.getOrInsert / getOrInsertComputed
             // per TC39 upsert proposal. Same brand-check discipline as
             // the basic methods. Registered on Map proto only (WeakMap
@@ -3534,8 +4342,14 @@ impl Runtime {
             // storage regardless of __is_weakmap flag; brand_chk in the install
             // loop is per-proto so the WeakMap installation rejects Map receivers
             // and vice versa.
-            register_intrinsic_method(self, proto, "getOrInsert", 2, move |rt, args| { brand_chk(rt, "getOrInsert")?; rt.map_proto_get_or_insert_via(args) });
-            register_intrinsic_method(self, proto, "getOrInsertComputed", 2, move |rt, args| { brand_chk(rt, "getOrInsertComputed")?; rt.map_proto_get_or_insert_computed_via(args) });
+            register_intrinsic_method(self, proto, "getOrInsert", 2, move |rt, args| {
+                brand_chk(rt, "getOrInsert")?;
+                rt.map_proto_get_or_insert_via(args)
+            });
+            register_intrinsic_method(self, proto, "getOrInsertComputed", 2, move |rt, args| {
+                brand_chk(rt, "getOrInsertComputed")?;
+                rt.map_proto_get_or_insert_computed_via(args)
+            });
             // ECMA-262 sec 24.1.3.10 get Map.prototype.size: accessor on
             // the prototype, not a data property on instances. Pre-fix
             // cruftless stored a per-instance data 'size' that shadowed
@@ -3550,7 +4364,11 @@ impl Runtime {
                 let size_getter = make_native("get size", |rt, _args| {
                     let this = match rt.current_this() {
                         Value::Object(id) => id,
-                        _ => return Err(RuntimeError::TypeError("Map.prototype.size: this is not a Map".into())),
+                        _ => {
+                            return Err(RuntimeError::TypeError(
+                                "Map.prototype.size: this is not a Map".into(),
+                            ))
+                        }
                     };
                     // If the instance carries an own 'size' data property
                     // (initialized by the Map constructor), return it.
@@ -3564,20 +4382,22 @@ impl Runtime {
                             Ok(Value::Number(n as f64))
                         }
                         _ => Err(RuntimeError::TypeError(
-                            "Map.prototype.size: this is not a Map (no __map_data)".into())),
+                            "Map.prototype.size: this is not a Map (no __map_data)".into(),
+                        )),
                     }
                 });
                 let size_getter_id = self.alloc_object(size_getter);
                 let size_desc = crate::value::PropertyDescriptor {
                     value: Value::Undefined,
-                    writable: false, enumerable: false, configurable: true,
+                    writable: false,
+                    enumerable: false,
+                    configurable: true,
                     getter: Some(Value::Object(size_getter_id)),
                     setter: None,
                 };
-                self.obj_mut(proto).dict_mut().insert(
-                    crate::value::PropertyKey::String("size".into()),
-                    size_desc,
-                );
+                self.obj_mut(proto)
+                    .dict_mut()
+                    .insert(crate::value::PropertyKey::String("size".into()), size_desc);
             }
             // EXT 81: per ECMA §24.3.3, WeakMap.prototype has only
             // {get, set, has, delete} — not clear / forEach / entries /
@@ -3586,66 +4406,87 @@ impl Runtime {
             // Map.prototype.clear.call(wm) hit the __is_weakmap brand
             // check in map_this_and_storage and throw TypeError.
             if !is_weak_proto {
-            register_intrinsic_method(self, proto, "clear",   0, |rt, args| crate::generated::map_prototype_clear(rt, rt.current_this(), args));
-            register_intrinsic_method(self, proto, "forEach", 1, |rt, args| crate::generated::map_prototype_for_each(rt, rt.current_this(), args));
-            // Tier-Ω.5.KKKKKKK: Map.prototype.values / keys / entries per ECMA
-            // §24.1.3.3 / .4 / .5. Returns an array (eager-collect — full
-            // iterator-protocol support is queued downstream). wrap-ansi /
-            // log-update / mime / many spread the map's values into a Set
-            // via `new Set(m.values())` which exercises Symbol.iterator on
-            // the returned object; an Array satisfies both the iterator
-            // (via @@iterator on Array.prototype) and the spread protocol.
-            register_intrinsic_method(self, proto, "values",  0, |rt, args| crate::generated::map_prototype_values(rt, rt.current_this(), args));
-            register_intrinsic_method(self, proto, "keys",    0, |rt, args| crate::generated::map_prototype_keys(rt, rt.current_this(), args));
-            register_intrinsic_method(self, proto, "entries", 0, |rt, args| crate::generated::map_prototype_entries(rt, rt.current_this(), args));
-            // Tier-Ω.5.MMMMMMM: Map.prototype[@@iterator] aliases entries
-            // per ECMA §24.1.3.12. Surfaced by Step-6 route-(b) escalation:
-            // adding receiver-shape tags to the CallMethod undef-fault
-            // surfaced 'receiver=Object keys=[__map_data,size]' on the
-            // cli-truncate/fast-xml-parser/log-update cluster, naming Map
-            // as the iterated receiver. for-of and spread reach for
-            // [Symbol.iterator], which on Map is Map.prototype.entries.
-            register_intrinsic_method(self, proto, "@@iterator", 1, |rt, _args| {
-                let this = match rt.current_this() { Value::Object(id) => id, _ => return Err(RuntimeError::TypeError("Map.prototype method: this is not a Map object".into())) };
-                let storage = match rt.object_get(this, "__map_data") {
-                    Value::Object(id) => id,
-                    _ => return Ok(Value::Object(rt.alloc_object(Object::new_array()))),
-                };
-                // Same key-decoding discipline as map_proto_entries_via:
-                // route storage-key strings through the __map_orig_keys
-                // side channel so non-string original keys (Number, Object,
-                // Symbol, Boolean, null, undefined) round-trip as their
-                // original type. Without this, `for (const [k,v] of map)`
-                // yielded string keys for what was set via Number.
-                let pairs: Vec<(String, Value)> = rt.obj(storage).properties.iter()
-                    .map(|(k, d)| (k.to_string_content(), d.value.clone())).collect();
-                let arr = rt.alloc_object(Object::new_array());
-                for (i, (k, v)) in pairs.into_iter().enumerate() {
-                    let key_v = {
-                        // Inline of map_decode_key — that helper is private
-                        // to interp::Runtime; replicate the lookup here.
-                        let orig = rt.object_get(this, "__map_orig_keys");
-                        if let Value::Object(orig_id) = orig {
-                            let candidate = rt.object_get(orig_id, &k);
-                            if !matches!(candidate, Value::Undefined) {
-                                candidate
+                register_intrinsic_method(self, proto, "clear", 0, |rt, args| {
+                    crate::generated::map_prototype_clear(rt, rt.current_this(), args)
+                });
+                register_intrinsic_method(self, proto, "forEach", 1, |rt, args| {
+                    crate::generated::map_prototype_for_each(rt, rt.current_this(), args)
+                });
+                // Tier-Ω.5.KKKKKKK: Map.prototype.values / keys / entries per ECMA
+                // §24.1.3.3 / .4 / .5. Returns an array (eager-collect — full
+                // iterator-protocol support is queued downstream). wrap-ansi /
+                // log-update / mime / many spread the map's values into a Set
+                // via `new Set(m.values())` which exercises Symbol.iterator on
+                // the returned object; an Array satisfies both the iterator
+                // (via @@iterator on Array.prototype) and the spread protocol.
+                register_intrinsic_method(self, proto, "values", 0, |rt, args| {
+                    crate::generated::map_prototype_values(rt, rt.current_this(), args)
+                });
+                register_intrinsic_method(self, proto, "keys", 0, |rt, args| {
+                    crate::generated::map_prototype_keys(rt, rt.current_this(), args)
+                });
+                register_intrinsic_method(self, proto, "entries", 0, |rt, args| {
+                    crate::generated::map_prototype_entries(rt, rt.current_this(), args)
+                });
+                // Tier-Ω.5.MMMMMMM: Map.prototype[@@iterator] aliases entries
+                // per ECMA §24.1.3.12. Surfaced by Step-6 route-(b) escalation:
+                // adding receiver-shape tags to the CallMethod undef-fault
+                // surfaced 'receiver=Object keys=[__map_data,size]' on the
+                // cli-truncate/fast-xml-parser/log-update cluster, naming Map
+                // as the iterated receiver. for-of and spread reach for
+                // [Symbol.iterator], which on Map is Map.prototype.entries.
+                register_intrinsic_method(self, proto, "@@iterator", 1, |rt, _args| {
+                    let this = match rt.current_this() {
+                        Value::Object(id) => id,
+                        _ => {
+                            return Err(RuntimeError::TypeError(
+                                "Map.prototype method: this is not a Map object".into(),
+                            ))
+                        }
+                    };
+                    let storage = match rt.object_get(this, "__map_data") {
+                        Value::Object(id) => id,
+                        _ => return Ok(Value::Object(rt.alloc_object(Object::new_array()))),
+                    };
+                    // Same key-decoding discipline as map_proto_entries_via:
+                    // route storage-key strings through the __map_orig_keys
+                    // side channel so non-string original keys (Number, Object,
+                    // Symbol, Boolean, null, undefined) round-trip as their
+                    // original type. Without this, `for (const [k,v] of map)`
+                    // yielded string keys for what was set via Number.
+                    let pairs: Vec<(String, Value)> = rt
+                        .obj(storage)
+                        .properties
+                        .iter()
+                        .map(|(k, d)| (k.to_string_content(), d.value.clone()))
+                        .collect();
+                    let arr = rt.alloc_object(Object::new_array());
+                    for (i, (k, v)) in pairs.into_iter().enumerate() {
+                        let key_v = {
+                            // Inline of map_decode_key — that helper is private
+                            // to interp::Runtime; replicate the lookup here.
+                            let orig = rt.object_get(this, "__map_orig_keys");
+                            if let Value::Object(orig_id) = orig {
+                                let candidate = rt.object_get(orig_id, &k);
+                                if !matches!(candidate, Value::Undefined) {
+                                    candidate
+                                } else {
+                                    Value::String(Rc::new(k.clone()))
+                                }
                             } else {
                                 Value::String(Rc::new(k.clone()))
                             }
-                        } else {
-                            Value::String(Rc::new(k.clone()))
-                        }
-                    };
-                    let pair = rt.alloc_object(Object::new_array());
-                    rt.object_set(pair, "0".into(), key_v);
-                    rt.object_set(pair, "1".into(), v);
-                    rt.object_set(pair, "length".into(), Value::Number(2.0));
-                    rt.object_set(arr, i.to_string(), Value::Object(pair));
-                }
-                let len = rt.array_length(arr);
-                rt.object_set(arr, "length".into(), Value::Number(len as f64));
-                Ok(Value::Object(crate::iterator::make_array_iterator(rt, arr)))
-            });
+                        };
+                        let pair = rt.alloc_object(Object::new_array());
+                        rt.object_set(pair, "0".into(), key_v);
+                        rt.object_set(pair, "1".into(), v);
+                        rt.object_set(pair, "length".into(), Value::Number(2.0));
+                        rt.object_set(arr, i.to_string(), Value::Object(pair));
+                    }
+                    let len = rt.array_length(arr);
+                    rt.object_set(arr, "length".into(), Value::Number(len as f64));
+                    Ok(Value::Object(crate::iterator::make_array_iterator(rt, arr)))
+                });
             } // end !is_weak_proto guard for Map-only methods
             let proto_for_ctor = proto;
             let name = (*collection).to_string();
@@ -3687,7 +4528,10 @@ impl Runtime {
                             _ => None,
                         };
                         if let Some(sid) = src_storage {
-                            let pairs: Vec<(String, Value)> = rt.obj(sid).properties.iter()
+                            let pairs: Vec<(String, Value)> = rt
+                                .obj(sid)
+                                .properties
+                                .iter()
                                 .map(|(k, d)| (k.to_string_content(), d.value.clone()))
                                 .collect();
                             for (k, v) in pairs {
@@ -3712,9 +4556,12 @@ impl Runtime {
                 Ok(Value::Object(id))
             });
             let ctor = self.alloc_object(ctor_obj);
-            self.obj_mut(ctor).set_own_frozen("prototype".into(), Value::Object(proto));
-            self.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(ctor));
-            self.globals.insert((*collection).to_string(), Value::Object(ctor));
+            self.obj_mut(ctor)
+                .set_own_frozen("prototype".into(), Value::Object(proto));
+            self.obj_mut(proto)
+                .set_own_internal("constructor".into(), Value::Object(ctor));
+            self.globals
+                .insert((*collection).to_string(), Value::Object(ctor));
         }
         for collection in &["Set", "WeakSet"] {
             let proto = self.alloc_object(Object::new_ordinary());
@@ -3726,15 +4573,23 @@ impl Runtime {
             // brand discrimination must live at registration.
             let set_brand_chk = move |rt: &mut Runtime, method: &str| -> Result<(), RuntimeError> {
                 let this_v = rt.current_this();
-                let this_id = match &this_v { Value::Object(id) => *id, _ => return Ok(()) };
-                let receiver_is_weak = matches!(rt.object_get(this_id, "__is_weakset"), Value::Boolean(true));
+                let this_id = match &this_v {
+                    Value::Object(id) => *id,
+                    _ => return Ok(()),
+                };
+                let receiver_is_weak =
+                    matches!(rt.object_get(this_id, "__is_weakset"), Value::Boolean(true));
                 if is_weak_proto && !receiver_is_weak {
                     return Err(RuntimeError::TypeError(format!(
-                        "WeakSet.prototype.{}: this is not a WeakSet", method)));
+                        "WeakSet.prototype.{}: this is not a WeakSet",
+                        method
+                    )));
                 }
                 if !is_weak_proto && receiver_is_weak {
                     return Err(RuntimeError::TypeError(format!(
-                        "Set.prototype.{}: this is a WeakSet (does not have [[SetData]])", method)));
+                        "Set.prototype.{}: this is a WeakSet (does not have [[SetData]])",
+                        method
+                    )));
                 }
                 Ok(())
             };
@@ -3743,26 +4598,37 @@ impl Runtime {
             // value arg can be held weakly (Object or Symbol per
             // CanBeHeldWeakly). Primitives (string/number/bigint/bool/
             // null/undef) throw TypeError per 24.4.3.1 step 4.
-            register_intrinsic_method(self, proto, "add",     1, move |rt, args| {
+            register_intrinsic_method(self, proto, "add", 1, move |rt, args| {
                 set_brand_chk(rt, "add")?;
                 if is_weak_proto {
                     let v = args.first().cloned().unwrap_or(Value::Undefined);
                     if !matches!(v, Value::Object(_) | Value::Symbol(_)) {
                         return Err(RuntimeError::TypeError(
-                            "WeakSet.prototype.add: value cannot be held weakly".into()));
+                            "WeakSet.prototype.add: value cannot be held weakly".into(),
+                        ));
                     }
                 }
                 crate::generated::set_prototype_add(rt, rt.current_this(), args)
             });
-            register_intrinsic_method(self, proto, "has",     1, move |rt, args| { set_brand_chk(rt, "has")?;     crate::generated::set_prototype_has(rt, rt.current_this(), args) });
-            register_intrinsic_method(self, proto, "delete",  1, move |rt, args| { set_brand_chk(rt, "delete")?;  crate::generated::set_prototype_delete(rt, rt.current_this(), args) });
+            register_intrinsic_method(self, proto, "has", 1, move |rt, args| {
+                set_brand_chk(rt, "has")?;
+                crate::generated::set_prototype_has(rt, rt.current_this(), args)
+            });
+            register_intrinsic_method(self, proto, "delete", 1, move |rt, args| {
+                set_brand_chk(rt, "delete")?;
+                crate::generated::set_prototype_delete(rt, rt.current_this(), args)
+            });
             // ECMA-262 sec 24.2.3.10 get Set.prototype.size: accessor on
             // the prototype, parallel to Map.prototype.size.
             if !is_weak_proto {
                 let size_getter = make_native("get size", |rt, _args| {
                     let this = match rt.current_this() {
                         Value::Object(id) => id,
-                        _ => return Err(RuntimeError::TypeError("Set.prototype.size: this is not a Set".into())),
+                        _ => {
+                            return Err(RuntimeError::TypeError(
+                                "Set.prototype.size: this is not a Set".into(),
+                            ))
+                        }
                     };
                     if let Some(d) = rt.obj(this).get_own("size") {
                         return Ok(d.value.clone());
@@ -3773,50 +4639,95 @@ impl Runtime {
                             Ok(Value::Number(n as f64))
                         }
                         _ => Err(RuntimeError::TypeError(
-                            "Set.prototype.size: this is not a Set (no __set_data)".into())),
+                            "Set.prototype.size: this is not a Set (no __set_data)".into(),
+                        )),
                     }
                 });
                 let size_getter_id = self.alloc_object(size_getter);
                 let size_desc = crate::value::PropertyDescriptor {
                     value: Value::Undefined,
-                    writable: false, enumerable: false, configurable: true,
+                    writable: false,
+                    enumerable: false,
+                    configurable: true,
                     getter: Some(Value::Object(size_getter_id)),
                     setter: None,
                 };
-                self.obj_mut(proto).dict_mut().insert(
-                    crate::value::PropertyKey::String("size".into()),
-                    size_desc,
-                );
+                self.obj_mut(proto)
+                    .dict_mut()
+                    .insert(crate::value::PropertyKey::String("size".into()), size_desc);
             }
             // SPBC-EXT 4: wrap clear/forEach with set_brand_chk too (per
             // sweep regression where Set.prototype.clear.call(weakset)
             // and Set.prototype.forEach.call(weakset) failed to throw).
-            register_intrinsic_method(self, proto, "clear",   0, move |rt, args| { set_brand_chk(rt, "clear")?;   crate::generated::set_prototype_clear(rt, rt.current_this(), args) });
-            register_intrinsic_method(self, proto, "forEach", 1, move |rt, args| { set_brand_chk(rt, "forEach")?; crate::generated::set_prototype_for_each(rt, rt.current_this(), args) });
+            register_intrinsic_method(self, proto, "clear", 0, move |rt, args| {
+                set_brand_chk(rt, "clear")?;
+                crate::generated::set_prototype_clear(rt, rt.current_this(), args)
+            });
+            register_intrinsic_method(self, proto, "forEach", 1, move |rt, args| {
+                set_brand_chk(rt, "forEach")?;
+                crate::generated::set_prototype_for_each(rt, rt.current_this(), args)
+            });
             // Tier-Ω.5.rrr: @@iterator returns a values-iterator. Per
             // spec Set.prototype[Symbol.iterator] === Set.prototype.values.
             // Required for `[...new Set(arr)]` to spread.
             register_intrinsic_method(self, proto, "@@iterator", 1, |rt, _args| {
-                let this = match rt.current_this() { Value::Object(id) => id, _ => return Err(RuntimeError::TypeError("Set.prototype method: this is not a Set object".into())) };
+                let this = match rt.current_this() {
+                    Value::Object(id) => id,
+                    _ => {
+                        return Err(RuntimeError::TypeError(
+                            "Set.prototype method: this is not a Set object".into(),
+                        ))
+                    }
+                };
                 make_set_values_iterator(rt, this)
             });
             register_intrinsic_method(self, proto, "values", 1, |rt, _args| {
-                let this = match rt.current_this() { Value::Object(id) => id, _ => return Err(RuntimeError::TypeError("Set.prototype method: this is not a Set object".into())) };
+                let this = match rt.current_this() {
+                    Value::Object(id) => id,
+                    _ => {
+                        return Err(RuntimeError::TypeError(
+                            "Set.prototype method: this is not a Set object".into(),
+                        ))
+                    }
+                };
                 make_set_values_iterator(rt, this)
             });
             // Ω.5.P61.E11: Set.prototype.keys is alias for values per ECMA §24.2.4.
             register_intrinsic_method(self, proto, "keys", 0, |rt, _args| {
-                let this = match rt.current_this() { Value::Object(id) => id, _ => return Err(RuntimeError::TypeError("Set.prototype method: this is not a Set object".into())) };
+                let this = match rt.current_this() {
+                    Value::Object(id) => id,
+                    _ => {
+                        return Err(RuntimeError::TypeError(
+                            "Set.prototype method: this is not a Set object".into(),
+                        ))
+                    }
+                };
                 make_set_values_iterator(rt, this)
             });
             // Set.prototype.entries returns iterator of [v, v] pairs.
             register_intrinsic_method(self, proto, "entries", 0, |rt, _args| {
-                let this = match rt.current_this() { Value::Object(id) => id, _ => return Err(RuntimeError::TypeError("Set.prototype method: this is not a Set object".into())) };
-                let storage = match rt.object_get(this, "__set_data") {
-                    Value::Object(id) => id, _ => return Err(RuntimeError::TypeError("Set.prototype method: this is not a Set object".into())),
+                let this = match rt.current_this() {
+                    Value::Object(id) => id,
+                    _ => {
+                        return Err(RuntimeError::TypeError(
+                            "Set.prototype method: this is not a Set object".into(),
+                        ))
+                    }
                 };
-                let vals: Vec<Value> = rt.obj(storage).properties.values()
-                    .map(|d| d.value.clone()).collect();
+                let storage = match rt.object_get(this, "__set_data") {
+                    Value::Object(id) => id,
+                    _ => {
+                        return Err(RuntimeError::TypeError(
+                            "Set.prototype method: this is not a Set object".into(),
+                        ))
+                    }
+                };
+                let vals: Vec<Value> = rt
+                    .obj(storage)
+                    .properties
+                    .values()
+                    .map(|d| d.value.clone())
+                    .collect();
                 let arr = rt.alloc_object(Object::new_array());
                 for (i, v) in vals.iter().enumerate() {
                     let pair = rt.alloc_object(Object::new_array());
@@ -3829,13 +4740,27 @@ impl Runtime {
                 // Return an iterator over the pairs.
                 Ok(Value::Object(crate::iterator::make_array_iterator(rt, arr)))
             });
-            register_intrinsic_method(self, proto, "union",               1, |rt, args| crate::generated::set_prototype_union(rt, rt.current_this(), args));
-            register_intrinsic_method(self, proto, "intersection",        1, |rt, args| crate::generated::set_prototype_intersection(rt, rt.current_this(), args));
-            register_intrinsic_method(self, proto, "difference",          1, |rt, args| crate::generated::set_prototype_difference(rt, rt.current_this(), args));
-            register_intrinsic_method(self, proto, "symmetricDifference", 1, |rt, args| crate::generated::set_prototype_symmetric_difference(rt, rt.current_this(), args));
-            register_intrinsic_method(self, proto, "isSubsetOf",          1, |rt, args| crate::generated::set_prototype_is_subset_of(rt, rt.current_this(), args));
-            register_intrinsic_method(self, proto, "isSupersetOf",        1, |rt, args| crate::generated::set_prototype_is_superset_of(rt, rt.current_this(), args));
-            register_intrinsic_method(self, proto, "isDisjointFrom",      1, |rt, args| crate::generated::set_prototype_is_disjoint_from(rt, rt.current_this(), args));
+            register_intrinsic_method(self, proto, "union", 1, |rt, args| {
+                crate::generated::set_prototype_union(rt, rt.current_this(), args)
+            });
+            register_intrinsic_method(self, proto, "intersection", 1, |rt, args| {
+                crate::generated::set_prototype_intersection(rt, rt.current_this(), args)
+            });
+            register_intrinsic_method(self, proto, "difference", 1, |rt, args| {
+                crate::generated::set_prototype_difference(rt, rt.current_this(), args)
+            });
+            register_intrinsic_method(self, proto, "symmetricDifference", 1, |rt, args| {
+                crate::generated::set_prototype_symmetric_difference(rt, rt.current_this(), args)
+            });
+            register_intrinsic_method(self, proto, "isSubsetOf", 1, |rt, args| {
+                crate::generated::set_prototype_is_subset_of(rt, rt.current_this(), args)
+            });
+            register_intrinsic_method(self, proto, "isSupersetOf", 1, |rt, args| {
+                crate::generated::set_prototype_is_superset_of(rt, rt.current_this(), args)
+            });
+            register_intrinsic_method(self, proto, "isDisjointFrom", 1, |rt, args| {
+                crate::generated::set_prototype_is_disjoint_from(rt, rt.current_this(), args)
+            });
             // (legacy hand-written set-op implementations removed; all routed through IR above.)
             let proto_for_ctor = proto;
             let name = (*collection).to_string();
@@ -3871,9 +4796,12 @@ impl Runtime {
                 Ok(Value::Object(id))
             });
             let ctor = self.alloc_object(ctor_obj);
-            self.obj_mut(ctor).set_own_frozen("prototype".into(), Value::Object(proto));
-            self.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(ctor));
-            self.globals.insert((*collection).to_string(), Value::Object(ctor));
+            self.obj_mut(ctor)
+                .set_own_frozen("prototype".into(), Value::Object(proto));
+            self.obj_mut(proto)
+                .set_own_internal("constructor".into(), Value::Object(ctor));
+            self.globals
+                .insert((*collection).to_string(), Value::Object(ctor));
         }
     }
 
@@ -3888,15 +4816,33 @@ impl Runtime {
         register_intrinsic_method(self, proto, "valueOf", 0, |rt, args| {
             crate::generated::date_prototype_value_of(rt, rt.current_this(), args)
         });
-        register_intrinsic_method(self, proto, "getFullYear", 1, |rt, args| crate::generated::date_prototype_get_full_year(rt, rt.current_this(), args));
-        register_intrinsic_method(self, proto, "getMonth",        1, |rt, args| crate::generated::date_prototype_get_month(rt, rt.current_this(), args));
-        register_intrinsic_method(self, proto, "getDate",         1, |rt, args| crate::generated::date_prototype_get_date(rt, rt.current_this(), args));
-        register_intrinsic_method(self, proto, "getDay",          1, |rt, args| crate::generated::date_prototype_get_day(rt, rt.current_this(), args));
-        register_intrinsic_method(self, proto, "getHours",        1, |rt, args| crate::generated::date_prototype_get_hours(rt, rt.current_this(), args));
-        register_intrinsic_method(self, proto, "getMinutes",      1, |rt, args| crate::generated::date_prototype_get_minutes(rt, rt.current_this(), args));
-        register_intrinsic_method(self, proto, "getSeconds",      1, |rt, args| crate::generated::date_prototype_get_seconds(rt, rt.current_this(), args));
-        register_intrinsic_method(self, proto, "getMilliseconds", 1, |rt, args| crate::generated::date_prototype_get_milliseconds(rt, rt.current_this(), args));
-        register_intrinsic_method(self, proto, "getTimezoneOffset", 1, |rt, args| crate::generated::date_prototype_get_timezone_offset(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "getFullYear", 1, |rt, args| {
+            crate::generated::date_prototype_get_full_year(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, proto, "getMonth", 1, |rt, args| {
+            crate::generated::date_prototype_get_month(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, proto, "getDate", 1, |rt, args| {
+            crate::generated::date_prototype_get_date(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, proto, "getDay", 1, |rt, args| {
+            crate::generated::date_prototype_get_day(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, proto, "getHours", 1, |rt, args| {
+            crate::generated::date_prototype_get_hours(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, proto, "getMinutes", 1, |rt, args| {
+            crate::generated::date_prototype_get_minutes(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, proto, "getSeconds", 1, |rt, args| {
+            crate::generated::date_prototype_get_seconds(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, proto, "getMilliseconds", 1, |rt, args| {
+            crate::generated::date_prototype_get_milliseconds(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, proto, "getTimezoneOffset", 1, |rt, args| {
+            crate::generated::date_prototype_get_timezone_offset(rt, rt.current_this(), args)
+        });
         // Tier-Ω.5.P31.E1.date-utc-getters-setters: getUTC* mirror the
         // non-UTC getters (we treat __date_ms as UTC throughout — no
         // local-time conversion). setUTC* mutate the date by replacing
@@ -3905,75 +4851,173 @@ impl Runtime {
         // a fake-Date-shaped object with no Date.prototype in its chain).
         // E42: UTC getters route to the same IR helpers as the non-UTC variants
         // (cruftless treats __date_ms as UTC throughout, so the values are identical).
-        register_intrinsic_method(self, proto, "getUTCFullYear",     1, |rt, args| crate::generated::date_prototype_get_full_year(rt, rt.current_this(), args));
-        register_intrinsic_method(self, proto, "getUTCMonth",        1, |rt, args| crate::generated::date_prototype_get_month(rt, rt.current_this(), args));
-        register_intrinsic_method(self, proto, "getUTCDate",         1, |rt, args| crate::generated::date_prototype_get_date(rt, rt.current_this(), args));
-        register_intrinsic_method(self, proto, "getUTCDay",          1, |rt, args| crate::generated::date_prototype_get_day(rt, rt.current_this(), args));
-        register_intrinsic_method(self, proto, "getUTCHours",        1, |rt, args| crate::generated::date_prototype_get_hours(rt, rt.current_this(), args));
-        register_intrinsic_method(self, proto, "getUTCMinutes",      1, |rt, args| crate::generated::date_prototype_get_minutes(rt, rt.current_this(), args));
-        register_intrinsic_method(self, proto, "getUTCSeconds",      1, |rt, args| crate::generated::date_prototype_get_seconds(rt, rt.current_this(), args));
-        register_intrinsic_method(self, proto, "getUTCMilliseconds", 1, |rt, args| crate::generated::date_prototype_get_milliseconds(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "getUTCFullYear", 1, |rt, args| {
+            crate::generated::date_prototype_get_full_year(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, proto, "getUTCMonth", 1, |rt, args| {
+            crate::generated::date_prototype_get_month(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, proto, "getUTCDate", 1, |rt, args| {
+            crate::generated::date_prototype_get_date(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, proto, "getUTCDay", 1, |rt, args| {
+            crate::generated::date_prototype_get_day(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, proto, "getUTCHours", 1, |rt, args| {
+            crate::generated::date_prototype_get_hours(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, proto, "getUTCMinutes", 1, |rt, args| {
+            crate::generated::date_prototype_get_minutes(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, proto, "getUTCSeconds", 1, |rt, args| {
+            crate::generated::date_prototype_get_seconds(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, proto, "getUTCMilliseconds", 1, |rt, args| {
+            crate::generated::date_prototype_get_milliseconds(rt, rt.current_this(), args)
+        });
         // setUTC* family. Each replaces the named component(s) in the
         // current ms and returns the new ms per ECMA §21.4.4.x.
         // E43: setUTC* + set* family routed through IR (cruftless treats __date_ms as UTC).
-        register_intrinsic_method(self, proto, "setTime",            1, |rt, args| crate::generated::date_prototype_set_time(rt, rt.current_this(), args));
-        register_intrinsic_method(self, proto, "setUTCHours",        1, |rt, args| crate::generated::date_prototype_set_hours(rt, rt.current_this(), args));
-        register_intrinsic_method(self, proto, "setUTCMinutes",      1, |rt, args| crate::generated::date_prototype_set_minutes(rt, rt.current_this(), args));
-        register_intrinsic_method(self, proto, "setUTCSeconds",      1, |rt, args| crate::generated::date_prototype_set_seconds(rt, rt.current_this(), args));
-        register_intrinsic_method(self, proto, "setUTCMilliseconds", 1, |rt, args| crate::generated::date_prototype_set_milliseconds(rt, rt.current_this(), args));
-        register_intrinsic_method(self, proto, "setUTCDate",         1, |rt, args| crate::generated::date_prototype_set_date(rt, rt.current_this(), args));
-        register_intrinsic_method(self, proto, "setUTCMonth",        1, |rt, args| crate::generated::date_prototype_set_month(rt, rt.current_this(), args));
-        register_intrinsic_method(self, proto, "setUTCFullYear",     1, |rt, args| crate::generated::date_prototype_set_full_year(rt, rt.current_this(), args));
-        register_intrinsic_method(self, proto, "setHours",        1, |rt, args| crate::generated::date_prototype_set_hours(rt, rt.current_this(), args));
-        register_intrinsic_method(self, proto, "setMinutes",      1, |rt, args| crate::generated::date_prototype_set_minutes(rt, rt.current_this(), args));
-        register_intrinsic_method(self, proto, "setSeconds",      1, |rt, args| crate::generated::date_prototype_set_seconds(rt, rt.current_this(), args));
-        register_intrinsic_method(self, proto, "setMilliseconds", 1, |rt, args| crate::generated::date_prototype_set_milliseconds(rt, rt.current_this(), args));
-        register_intrinsic_method(self, proto, "setDate",         1, |rt, args| crate::generated::date_prototype_set_date(rt, rt.current_this(), args));
-        register_intrinsic_method(self, proto, "setMonth",        1, |rt, args| crate::generated::date_prototype_set_month(rt, rt.current_this(), args));
-        register_intrinsic_method(self, proto, "setFullYear",     1, |rt, args| crate::generated::date_prototype_set_full_year(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "setTime", 1, |rt, args| {
+            crate::generated::date_prototype_set_time(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, proto, "setUTCHours", 1, |rt, args| {
+            crate::generated::date_prototype_set_hours(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, proto, "setUTCMinutes", 1, |rt, args| {
+            crate::generated::date_prototype_set_minutes(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, proto, "setUTCSeconds", 1, |rt, args| {
+            crate::generated::date_prototype_set_seconds(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, proto, "setUTCMilliseconds", 1, |rt, args| {
+            crate::generated::date_prototype_set_milliseconds(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, proto, "setUTCDate", 1, |rt, args| {
+            crate::generated::date_prototype_set_date(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, proto, "setUTCMonth", 1, |rt, args| {
+            crate::generated::date_prototype_set_month(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, proto, "setUTCFullYear", 1, |rt, args| {
+            crate::generated::date_prototype_set_full_year(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, proto, "setHours", 1, |rt, args| {
+            crate::generated::date_prototype_set_hours(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, proto, "setMinutes", 1, |rt, args| {
+            crate::generated::date_prototype_set_minutes(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, proto, "setSeconds", 1, |rt, args| {
+            crate::generated::date_prototype_set_seconds(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, proto, "setMilliseconds", 1, |rt, args| {
+            crate::generated::date_prototype_set_milliseconds(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, proto, "setDate", 1, |rt, args| {
+            crate::generated::date_prototype_set_date(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, proto, "setMonth", 1, |rt, args| {
+            crate::generated::date_prototype_set_month(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, proto, "setFullYear", 1, |rt, args| {
+            crate::generated::date_prototype_set_full_year(rt, rt.current_this(), args)
+        });
         register_intrinsic_method(self, proto, "toISOString", 1, |rt, args| {
             crate::generated::date_prototype_to_iso_string(rt, rt.current_this(), args)
         });
-        register_intrinsic_method(self, proto, "toJSON",   1, |rt, args| crate::generated::date_prototype_to_json(rt, rt.current_this(), args));
-        register_intrinsic_method(self, proto, "toString", 0, |rt, args| crate::generated::date_prototype_to_string(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "toJSON", 1, |rt, args| {
+            crate::generated::date_prototype_to_json(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, proto, "toString", 0, |rt, args| {
+            crate::generated::date_prototype_to_string(rt, rt.current_this(), args)
+        });
         // Ω.5.P61.E12: Date.prototype additional format + legacy methods
         // per ECMA §21.4.4. v1 deviates from locale-sensitive output;
         // returns the ISO-like form (sufficient for module-init presence
         // probes; consumer-locale-display gaps not yet surfaced).
         let date_fmt_date = |rt: &mut Runtime, _args: &[Value]| -> Result<Value, RuntimeError> {
-            let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::String(Rc::new(String::new()))) };
-            let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::String(Rc::new("Invalid Date".into()))) };
+            let this_id = match rt.current_this() {
+                Value::Object(id) => id,
+                _ => return Ok(Value::String(Rc::new(String::new()))),
+            };
+            let ms = match rt.object_get(this_id, "__date_ms") {
+                Value::Number(n) => n,
+                _ => return Ok(Value::String(Rc::new("Invalid Date".into()))),
+            };
             let (y, mo, d) = date_components(ms);
-            Ok(Value::String(Rc::new(format!("{:04}-{:02}-{:02}", y, mo + 1, d))))
+            Ok(Value::String(Rc::new(format!(
+                "{:04}-{:02}-{:02}",
+                y,
+                mo + 1,
+                d
+            ))))
         };
         let date_fmt_time = |rt: &mut Runtime, _args: &[Value]| -> Result<Value, RuntimeError> {
-            let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::String(Rc::new(String::new()))) };
-            let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::String(Rc::new("Invalid Date".into()))) };
+            let this_id = match rt.current_this() {
+                Value::Object(id) => id,
+                _ => return Ok(Value::String(Rc::new(String::new()))),
+            };
+            let ms = match rt.object_get(this_id, "__date_ms") {
+                Value::Number(n) => n,
+                _ => return Ok(Value::String(Rc::new("Invalid Date".into()))),
+            };
             let h = (ms / 3_600_000.0).floor() as i64 % 24;
             let mi = (ms / 60_000.0).floor() as i64 % 60;
             let se = (ms / 1000.0).floor() as i64 % 60;
-            Ok(Value::String(Rc::new(format!("{:02}:{:02}:{:02}", h, mi, se))))
+            Ok(Value::String(Rc::new(format!(
+                "{:02}:{:02}:{:02}",
+                h, mi, se
+            ))))
         };
         let date_fmt_utc = |rt: &mut Runtime, _args: &[Value]| -> Result<Value, RuntimeError> {
-            let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::String(Rc::new(String::new()))) };
-            let ms = match rt.object_get(this_id, "__date_ms") { Value::Number(n) => n, _ => return Ok(Value::String(Rc::new("Invalid Date".into()))) };
+            let this_id = match rt.current_this() {
+                Value::Object(id) => id,
+                _ => return Ok(Value::String(Rc::new(String::new()))),
+            };
+            let ms = match rt.object_get(this_id, "__date_ms") {
+                Value::Number(n) => n,
+                _ => return Ok(Value::String(Rc::new("Invalid Date".into()))),
+            };
             let (y, mo, d) = date_components(ms);
             let h = (ms / 3_600_000.0).floor() as i64 % 24;
             let mi = (ms / 60_000.0).floor() as i64 % 60;
             let se = (ms / 1000.0).floor() as i64 % 60;
-            Ok(Value::String(Rc::new(format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02} GMT", y, mo + 1, d, h, mi, se))))
+            Ok(Value::String(Rc::new(format!(
+                "{:04}-{:02}-{:02} {:02}:{:02}:{:02} GMT",
+                y,
+                mo + 1,
+                d,
+                h,
+                mi,
+                se
+            ))))
         };
         let _ = (date_fmt_date, date_fmt_time, date_fmt_utc);
-        register_intrinsic_method(self, proto, "toDateString",       0, |rt, args| crate::generated::date_prototype_to_date_string(rt, rt.current_this(), args));
-        register_intrinsic_method(self, proto, "toLocaleDateString", 0, |rt, args| crate::generated::date_prototype_to_date_string(rt, rt.current_this(), args));
-        register_intrinsic_method(self, proto, "toTimeString",       0, |rt, args| crate::generated::date_prototype_to_time_string(rt, rt.current_this(), args));
-        register_intrinsic_method(self, proto, "toLocaleTimeString", 0, |rt, args| crate::generated::date_prototype_to_time_string(rt, rt.current_this(), args));
-        register_intrinsic_method(self, proto, "toUTCString",        0, |rt, args| crate::generated::date_prototype_to_utc_string(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "toDateString", 0, |rt, args| {
+            crate::generated::date_prototype_to_date_string(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, proto, "toLocaleDateString", 0, |rt, args| {
+            crate::generated::date_prototype_to_date_string(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, proto, "toTimeString", 0, |rt, args| {
+            crate::generated::date_prototype_to_time_string(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, proto, "toLocaleTimeString", 0, |rt, args| {
+            crate::generated::date_prototype_to_time_string(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, proto, "toUTCString", 0, |rt, args| {
+            crate::generated::date_prototype_to_utc_string(rt, rt.current_this(), args)
+        });
         // getYear / setYear per Annex B.2.4 (legacy). getYear returns
         // year - 1900; setYear sets full year, with two-digit values
         // mapped to 1900s for 0-99.
-        register_intrinsic_method(self, proto, "getYear", 0, |rt, args| crate::generated::date_prototype_get_year(rt, rt.current_this(), args));
-        register_intrinsic_method(self, proto, "setYear", 1, |rt, args| crate::generated::date_prototype_set_year(rt, rt.current_this(), args));
+        register_intrinsic_method(self, proto, "getYear", 0, |rt, args| {
+            crate::generated::date_prototype_get_year(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, proto, "setYear", 1, |rt, args| {
+            crate::generated::date_prototype_set_year(rt, rt.current_this(), args)
+        });
         let proto_for_ctor = proto;
         let ctor_obj = make_native("Date", move |rt, args| {
             // Tier-Ω.5.iiiii: Date(y, mo, d, h, m, s, ms) multi-arg ctor
@@ -4010,15 +5054,33 @@ impl Runtime {
                 // args as 0, yielding year 0000.
                 let y = crate::abstract_ops::to_number(&args[0]) as i64;
                 let mo = crate::abstract_ops::to_number(&args[1]) as i64;
-                let d = args.get(2).map(crate::abstract_ops::to_number).unwrap_or(1.0) as i64;
-                let h = args.get(3).map(crate::abstract_ops::to_number).unwrap_or(0.0) as i64;
-                let mi = args.get(4).map(crate::abstract_ops::to_number).unwrap_or(0.0) as i64;
-                let se = args.get(5).map(crate::abstract_ops::to_number).unwrap_or(0.0) as i64;
-                let mss = args.get(6).map(crate::abstract_ops::to_number).unwrap_or(0.0) as i64;
+                let d = args
+                    .get(2)
+                    .map(crate::abstract_ops::to_number)
+                    .unwrap_or(1.0) as i64;
+                let h = args
+                    .get(3)
+                    .map(crate::abstract_ops::to_number)
+                    .unwrap_or(0.0) as i64;
+                let mi = args
+                    .get(4)
+                    .map(crate::abstract_ops::to_number)
+                    .unwrap_or(0.0) as i64;
+                let se = args
+                    .get(5)
+                    .map(crate::abstract_ops::to_number)
+                    .unwrap_or(0.0) as i64;
+                let mss = args
+                    .get(6)
+                    .map(crate::abstract_ops::to_number)
+                    .unwrap_or(0.0) as i64;
                 (ymd_to_ms(y, mo, d) + h * 3_600_000 + mi * 60_000 + se * 1000 + mss) as f64
             } else {
                 use std::time::{SystemTime, UNIX_EPOCH};
-                SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as f64).unwrap_or(0.0)
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map(|d| d.as_millis() as f64)
+                    .unwrap_or(0.0)
             };
             let mut o = Object::new_ordinary();
             o.proto = Some(proto_for_ctor);
@@ -4027,11 +5089,19 @@ impl Runtime {
             Ok(Value::Object(id))
         });
         let ctor = self.alloc_object(ctor_obj);
-        register_intrinsic_method(self, ctor, "now",   0, |rt, args| crate::generated::date_now(rt, rt.current_this(), args));
-        register_intrinsic_method(self, ctor, "parse", 2, |rt, args| crate::generated::date_parse(rt, rt.current_this(), args));
-        register_intrinsic_method(self, ctor, "UTC",   1, |rt, args| crate::generated::date_utc(rt, rt.current_this(), args));
-        self.obj_mut(ctor).set_own_frozen("prototype".into(), Value::Object(proto));
-        self.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(ctor));
+        register_intrinsic_method(self, ctor, "now", 0, |rt, args| {
+            crate::generated::date_now(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, ctor, "parse", 2, |rt, args| {
+            crate::generated::date_parse(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, ctor, "UTC", 1, |rt, args| {
+            crate::generated::date_utc(rt, rt.current_this(), args)
+        });
+        self.obj_mut(ctor)
+            .set_own_frozen("prototype".into(), Value::Object(proto));
+        self.obj_mut(proto)
+            .set_own_internal("constructor".into(), Value::Object(ctor));
         self.globals.insert("Date".into(), Value::Object(ctor));
     }
 
@@ -4048,17 +5118,53 @@ impl Runtime {
         register_method(self, ta_proto, "subarray", |rt, args| {
             let this_id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("subarray: this must be a TypedArray".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "subarray: this must be a TypedArray".into(),
+                    ))
+                }
             };
             let len = match rt.object_get(this_id, "length") {
-                Value::Number(n) => n as usize, _ => 0,
+                Value::Number(n) => n as usize,
+                _ => 0,
             };
-            let start = args.first().and_then(|v| if let Value::Number(n) = v { Some(*n as i64) } else { None }).unwrap_or(0);
-            let end = args.get(1).and_then(|v| if let Value::Number(n) = v { Some(*n as i64) } else { None }).unwrap_or(len as i64);
-            let start = (if start < 0 { (len as i64 + start).max(0) } else { start }).min(len as i64) as usize;
-            let end = (if end < 0 { (len as i64 + end).max(0) } else { end }).min(len as i64) as usize;
+            let start = args
+                .first()
+                .and_then(|v| {
+                    if let Value::Number(n) = v {
+                        Some(*n as i64)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(0);
+            let end = args
+                .get(1)
+                .and_then(|v| {
+                    if let Value::Number(n) = v {
+                        Some(*n as i64)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(len as i64);
+            let start = (if start < 0 {
+                (len as i64 + start).max(0)
+            } else {
+                start
+            })
+            .min(len as i64) as usize;
+            let end = (if end < 0 {
+                (len as i64 + end).max(0)
+            } else {
+                end
+            })
+            .min(len as i64) as usize;
             let slice_len = end.saturating_sub(start);
-            let kind = match rt.object_get(this_id, "__kind") { Value::String(s) => (*s).clone(), _ => "Uint8Array".into() };
+            let kind = match rt.object_get(this_id, "__kind") {
+                Value::String(s) => (*s).clone(),
+                _ => "Uint8Array".into(),
+            };
             let mut o = Object::new_ordinary();
             o.set_own("length".into(), Value::Number(slice_len as f64));
             o.set_own_internal("__kind".into(), Value::String(Rc::new(kind)));
@@ -4075,14 +5181,30 @@ impl Runtime {
         register_method(self, ta_proto, "set", |rt, args| {
             let this_id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("set: this must be a TypedArray".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "set: this must be a TypedArray".into(),
+                    ))
+                }
             };
             let src = match args.first() {
                 Some(Value::Object(id)) => *id,
                 _ => return Ok(Value::Undefined),
             };
-            let offset = args.get(1).and_then(|v| if let Value::Number(n) = v { Some(*n as usize) } else { None }).unwrap_or(0);
-            let src_len = match rt.object_get(src, "length") { Value::Number(n) => n as usize, _ => 0 };
+            let offset = args
+                .get(1)
+                .and_then(|v| {
+                    if let Value::Number(n) = v {
+                        Some(*n as usize)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(0);
+            let src_len = match rt.object_get(src, "length") {
+                Value::Number(n) => n as usize,
+                _ => 0,
+            };
             for i in 0..src_len {
                 let v = rt.object_get(src, &i.to_string());
                 rt.object_set(this_id, (offset + i).to_string(), v);
@@ -4092,23 +5214,67 @@ impl Runtime {
         register_method(self, ta_proto, "fill", |rt, args| {
             let this_id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("fill: this must be a TypedArray".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "fill: this must be a TypedArray".into(),
+                    ))
+                }
             };
             let v = args.first().cloned().unwrap_or(Value::Number(0.0));
-            let len = match rt.object_get(this_id, "length") { Value::Number(n) => n as usize, _ => 0 };
-            for i in 0..len { rt.object_set(this_id, i.to_string(), v.clone()); }
+            let len = match rt.object_get(this_id, "length") {
+                Value::Number(n) => n as usize,
+                _ => 0,
+            };
+            for i in 0..len {
+                rt.object_set(this_id, i.to_string(), v.clone());
+            }
             Ok(Value::Object(this_id))
         });
         register_method(self, ta_proto, "slice", |rt, args| {
             let this_id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("slice: this must be a TypedArray".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "slice: this must be a TypedArray".into(),
+                    ))
+                }
             };
-            let len = match rt.object_get(this_id, "length") { Value::Number(n) => n as usize, _ => 0 };
-            let start = args.first().and_then(|v| if let Value::Number(n) = v { Some(*n as i64) } else { None }).unwrap_or(0);
-            let end = args.get(1).and_then(|v| if let Value::Number(n) = v { Some(*n as i64) } else { None }).unwrap_or(len as i64);
-            let start = (if start < 0 { (len as i64 + start).max(0) } else { start }).min(len as i64) as usize;
-            let end = (if end < 0 { (len as i64 + end).max(0) } else { end }).min(len as i64) as usize;
+            let len = match rt.object_get(this_id, "length") {
+                Value::Number(n) => n as usize,
+                _ => 0,
+            };
+            let start = args
+                .first()
+                .and_then(|v| {
+                    if let Value::Number(n) = v {
+                        Some(*n as i64)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(0);
+            let end = args
+                .get(1)
+                .and_then(|v| {
+                    if let Value::Number(n) = v {
+                        Some(*n as i64)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(len as i64);
+            let start = (if start < 0 {
+                (len as i64 + start).max(0)
+            } else {
+                start
+            })
+            .min(len as i64) as usize;
+            let end = (if end < 0 {
+                (len as i64 + end).max(0)
+            } else {
+                end
+            })
+            .min(len as i64) as usize;
             let slice_len = end.saturating_sub(start);
             let mut o = Object::new_ordinary();
             o.set_own("length".into(), Value::Number(slice_len as f64));
@@ -4132,7 +5298,11 @@ impl Runtime {
         register_method(self, ta_proto, "values", |rt, _args| {
             let src_id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("values: this must be TypedArray".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "values: this must be TypedArray".into(),
+                    ))
+                }
             };
             let mut o = Object::new_ordinary();
             o.set_own_internal("__it_src__".into(), Value::Object(src_id));
@@ -4140,13 +5310,23 @@ impl Runtime {
             o.set_own_internal("__it_mode__".into(), Value::String(Rc::new("value".into())));
             let it_id = rt.alloc_object(o);
             register_intrinsic_method(rt, it_id, "next", 1, |rt, _args| ta_iter_next(rt));
-            register_intrinsic_method(rt, it_id, "@@iterator", 0, |rt, _args| Ok(rt.current_this()));
+            register_intrinsic_method(
+                rt,
+                it_id,
+                "@@iterator",
+                0,
+                |rt, _args| Ok(rt.current_this()),
+            );
             Ok(Value::Object(it_id))
         });
         register_method(self, ta_proto, "keys", |rt, _args| {
             let src_id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("keys: this must be TypedArray".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "keys: this must be TypedArray".into(),
+                    ))
+                }
             };
             let mut o = Object::new_ordinary();
             o.set_own_internal("__it_src__".into(), Value::Object(src_id));
@@ -4154,13 +5334,23 @@ impl Runtime {
             o.set_own_internal("__it_mode__".into(), Value::String(Rc::new("key".into())));
             let it_id = rt.alloc_object(o);
             register_intrinsic_method(rt, it_id, "next", 1, |rt, _args| ta_iter_next(rt));
-            register_intrinsic_method(rt, it_id, "@@iterator", 0, |rt, _args| Ok(rt.current_this()));
+            register_intrinsic_method(
+                rt,
+                it_id,
+                "@@iterator",
+                0,
+                |rt, _args| Ok(rt.current_this()),
+            );
             Ok(Value::Object(it_id))
         });
         register_method(self, ta_proto, "entries", |rt, _args| {
             let src_id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("entries: this must be TypedArray".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "entries: this must be TypedArray".into(),
+                    ))
+                }
             };
             let mut o = Object::new_ordinary();
             o.set_own_internal("__it_src__".into(), Value::Object(src_id));
@@ -4168,30 +5358,61 @@ impl Runtime {
             o.set_own_internal("__it_mode__".into(), Value::String(Rc::new("entry".into())));
             let it_id = rt.alloc_object(o);
             register_intrinsic_method(rt, it_id, "next", 1, |rt, _args| ta_iter_next(rt));
-            register_intrinsic_method(rt, it_id, "@@iterator", 0, |rt, _args| Ok(rt.current_this()));
+            register_intrinsic_method(
+                rt,
+                it_id,
+                "@@iterator",
+                0,
+                |rt, _args| Ok(rt.current_this()),
+            );
             Ok(Value::Object(it_id))
         });
         register_method(self, ta_proto, "@@iterator", |rt, _args| {
             let src_id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("@@iterator: this must be TypedArray".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "@@iterator: this must be TypedArray".into(),
+                    ))
+                }
             };
             let mut o = Object::new_ordinary();
             o.set_own_internal("__it_src__".into(), Value::Object(src_id));
             o.set_own_internal("__it_idx__".into(), Value::Number(0.0));
             let it_id = rt.alloc_object(o);
             register_intrinsic_method(rt, it_id, "next", 1, |rt, _args| {
-                let this_id = match rt.current_this() { Value::Object(o) => o, _ => return Ok(Value::Undefined) };
-                let src = match rt.object_get(this_id, "__it_src__") { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
-                let idx = match rt.object_get(this_id, "__it_idx__") { Value::Number(n) => n as usize, _ => 0 };
-                let len = match rt.object_get(src, "length") { Value::Number(n) => n as usize, _ => 0 };
+                let this_id = match rt.current_this() {
+                    Value::Object(o) => o,
+                    _ => return Ok(Value::Undefined),
+                };
+                let src = match rt.object_get(this_id, "__it_src__") {
+                    Value::Object(id) => id,
+                    _ => return Ok(Value::Undefined),
+                };
+                let idx = match rt.object_get(this_id, "__it_idx__") {
+                    Value::Number(n) => n as usize,
+                    _ => 0,
+                };
+                if rt.typed_array_view_out_of_bounds(src) {
+                    return Err(RuntimeError::TypeError(
+                        "TypedArray iterator receiver is out of bounds".into(),
+                    ));
+                }
+                let len = match rt.object_get(src, "length") {
+                    Value::Number(n) => n as usize,
+                    _ => 0,
+                };
                 let mut o = Object::new_ordinary();
                 if idx >= len {
                     o.set_own("value".into(), Value::Undefined);
                     o.set_own("done".into(), Value::Boolean(true));
                 } else {
                     let v = rt.object_get(src, &idx.to_string());
-                    rt.object_set(this_id, "__it_idx__".into(), Value::Number((idx + 1) as f64));
+                    rt.object_set(
+                        this_id,
+                        "__it_idx__".into(),
+                        Value::Number((idx + 1) as f64),
+                    );
                     o.set_own("value".into(), v);
                     o.set_own("done".into(), Value::Boolean(false));
                 }
@@ -4210,9 +5431,16 @@ impl Runtime {
         register_method(self, ta_proto, "reverse", |rt, _args| {
             let this_id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("reverse: this must be a TypedArray".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "reverse: this must be a TypedArray".into(),
+                    ))
+                }
             };
-            let len = match rt.object_get(this_id, "length") { Value::Number(n) => n as usize, _ => 0 };
+            let len = match rt.object_get(this_id, "length") {
+                Value::Number(n) => n as usize,
+                _ => 0,
+            };
             let mid = len / 2;
             for i in 0..mid {
                 let j = len - 1 - i;
@@ -4229,7 +5457,10 @@ impl Runtime {
                 _ => return Ok(Value::Number(-1.0)),
             };
             let needle = args.first().cloned().unwrap_or(Value::Undefined);
-            let len = match rt.object_get(this_id, "length") { Value::Number(n) => n as usize, _ => 0 };
+            let len = match rt.object_get(this_id, "length") {
+                Value::Number(n) => n as usize,
+                _ => 0,
+            };
             for i in 0..len {
                 let v = rt.object_get(this_id, &i.to_string());
                 if crate::abstract_ops::is_strictly_equal(&v, &needle) {
@@ -4244,7 +5475,10 @@ impl Runtime {
                 _ => return Ok(Value::Boolean(false)),
             };
             let needle = args.first().cloned().unwrap_or(Value::Undefined);
-            let len = match rt.object_get(this_id, "length") { Value::Number(n) => n as usize, _ => 0 };
+            let len = match rt.object_get(this_id, "length") {
+                Value::Number(n) => n as usize,
+                _ => 0,
+            };
             for i in 0..len {
                 let v = rt.object_get(this_id, &i.to_string());
                 if crate::abstract_ops::is_strictly_equal(&v, &needle) {
@@ -4258,13 +5492,21 @@ impl Runtime {
                 Value::Object(o) => o,
                 _ => return Ok(Value::Undefined),
             };
-            let cb = args.first().cloned().ok_or_else(||
-                RuntimeError::TypeError("forEach: callback required".into()))?;
-            let len = match rt.object_get(this_id, "length") { Value::Number(n) => n as usize, _ => 0 };
+            let cb = args
+                .first()
+                .cloned()
+                .ok_or_else(|| RuntimeError::TypeError("forEach: callback required".into()))?;
+            let len = match rt.object_get(this_id, "length") {
+                Value::Number(n) => n as usize,
+                _ => 0,
+            };
             for i in 0..len {
                 let v = rt.object_get(this_id, &i.to_string());
-                rt.call_function(cb.clone(), Value::Undefined,
-                    vec![v, Value::Number(i as f64), Value::Object(this_id)])?;
+                rt.call_function(
+                    cb.clone(),
+                    Value::Undefined,
+                    vec![v, Value::Number(i as f64), Value::Object(this_id)],
+                )?;
             }
             Ok(Value::Undefined)
         });
@@ -4273,14 +5515,24 @@ impl Runtime {
                 Value::Object(o) => o,
                 _ => return Ok(Value::Undefined),
             };
-            let cb = args.first().cloned().ok_or_else(||
-                RuntimeError::TypeError("find: callback required".into()))?;
-            let len = match rt.object_get(this_id, "length") { Value::Number(n) => n as usize, _ => 0 };
+            let cb = args
+                .first()
+                .cloned()
+                .ok_or_else(|| RuntimeError::TypeError("find: callback required".into()))?;
+            let len = match rt.object_get(this_id, "length") {
+                Value::Number(n) => n as usize,
+                _ => 0,
+            };
             for i in 0..len {
                 let v = rt.object_get(this_id, &i.to_string());
-                let r = rt.call_function(cb.clone(), Value::Undefined,
-                    vec![v.clone(), Value::Number(i as f64), Value::Object(this_id)])?;
-                if abstract_ops::to_boolean(&r) { return Ok(v); }
+                let r = rt.call_function(
+                    cb.clone(),
+                    Value::Undefined,
+                    vec![v.clone(), Value::Number(i as f64), Value::Object(this_id)],
+                )?;
+                if abstract_ops::to_boolean(&r) {
+                    return Ok(v);
+                }
             }
             Ok(Value::Undefined)
         });
@@ -4289,14 +5541,24 @@ impl Runtime {
                 Value::Object(o) => o,
                 _ => return Ok(Value::Number(-1.0)),
             };
-            let cb = args.first().cloned().ok_or_else(||
-                RuntimeError::TypeError("findIndex: callback required".into()))?;
-            let len = match rt.object_get(this_id, "length") { Value::Number(n) => n as usize, _ => 0 };
+            let cb = args
+                .first()
+                .cloned()
+                .ok_or_else(|| RuntimeError::TypeError("findIndex: callback required".into()))?;
+            let len = match rt.object_get(this_id, "length") {
+                Value::Number(n) => n as usize,
+                _ => 0,
+            };
             for i in 0..len {
                 let v = rt.object_get(this_id, &i.to_string());
-                let r = rt.call_function(cb.clone(), Value::Undefined,
-                    vec![v, Value::Number(i as f64), Value::Object(this_id)])?;
-                if abstract_ops::to_boolean(&r) { return Ok(Value::Number(i as f64)); }
+                let r = rt.call_function(
+                    cb.clone(),
+                    Value::Undefined,
+                    vec![v, Value::Number(i as f64), Value::Object(this_id)],
+                )?;
+                if abstract_ops::to_boolean(&r) {
+                    return Ok(Value::Number(i as f64));
+                }
             }
             Ok(Value::Number(-1.0))
         });
@@ -4305,14 +5567,24 @@ impl Runtime {
                 Value::Object(o) => o,
                 _ => return Ok(Value::Boolean(true)),
             };
-            let cb = args.first().cloned().ok_or_else(||
-                RuntimeError::TypeError("every: callback required".into()))?;
-            let len = match rt.object_get(this_id, "length") { Value::Number(n) => n as usize, _ => 0 };
+            let cb = args
+                .first()
+                .cloned()
+                .ok_or_else(|| RuntimeError::TypeError("every: callback required".into()))?;
+            let len = match rt.object_get(this_id, "length") {
+                Value::Number(n) => n as usize,
+                _ => 0,
+            };
             for i in 0..len {
                 let v = rt.object_get(this_id, &i.to_string());
-                let r = rt.call_function(cb.clone(), Value::Undefined,
-                    vec![v, Value::Number(i as f64), Value::Object(this_id)])?;
-                if !abstract_ops::to_boolean(&r) { return Ok(Value::Boolean(false)); }
+                let r = rt.call_function(
+                    cb.clone(),
+                    Value::Undefined,
+                    vec![v, Value::Number(i as f64), Value::Object(this_id)],
+                )?;
+                if !abstract_ops::to_boolean(&r) {
+                    return Ok(Value::Boolean(false));
+                }
             }
             Ok(Value::Boolean(true))
         });
@@ -4321,14 +5593,24 @@ impl Runtime {
                 Value::Object(o) => o,
                 _ => return Ok(Value::Boolean(false)),
             };
-            let cb = args.first().cloned().ok_or_else(||
-                RuntimeError::TypeError("some: callback required".into()))?;
-            let len = match rt.object_get(this_id, "length") { Value::Number(n) => n as usize, _ => 0 };
+            let cb = args
+                .first()
+                .cloned()
+                .ok_or_else(|| RuntimeError::TypeError("some: callback required".into()))?;
+            let len = match rt.object_get(this_id, "length") {
+                Value::Number(n) => n as usize,
+                _ => 0,
+            };
             for i in 0..len {
                 let v = rt.object_get(this_id, &i.to_string());
-                let r = rt.call_function(cb.clone(), Value::Undefined,
-                    vec![v, Value::Number(i as f64), Value::Object(this_id)])?;
-                if abstract_ops::to_boolean(&r) { return Ok(Value::Boolean(true)); }
+                let r = rt.call_function(
+                    cb.clone(),
+                    Value::Undefined,
+                    vec![v, Value::Number(i as f64), Value::Object(this_id)],
+                )?;
+                if abstract_ops::to_boolean(&r) {
+                    return Ok(Value::Boolean(true));
+                }
             }
             Ok(Value::Boolean(false))
         });
@@ -4341,10 +5623,15 @@ impl Runtime {
                 Some(v) => abstract_ops::to_string(v).as_str().to_string(),
                 None => ",".into(),
             };
-            let len = match rt.object_get(this_id, "length") { Value::Number(n) => n as usize, _ => 0 };
+            let len = match rt.object_get(this_id, "length") {
+                Value::Number(n) => n as usize,
+                _ => 0,
+            };
             let mut out = String::new();
             for i in 0..len {
-                if i > 0 { out.push_str(&sep); }
+                if i > 0 {
+                    out.push_str(&sep);
+                }
                 let v = rt.object_get(this_id, &i.to_string());
                 let s = abstract_ops::to_string(&v);
                 out.push_str(s.as_str());
@@ -4365,17 +5652,32 @@ impl Runtime {
         register_method(self, ta_proto, "map", |rt, args| {
             let this_id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("TypedArray.prototype.map: this must be a TypedArray".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "TypedArray.prototype.map: this must be a TypedArray".into(),
+                    ))
+                }
             };
             let f = match args.first() {
                 Some(v @ Value::Object(_)) => v.clone(),
-                _ => return Err(RuntimeError::TypeError("TypedArray.prototype.map: callback must be a function".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "TypedArray.prototype.map: callback must be a function".into(),
+                    ))
+                }
             };
-            let len = match rt.object_get(this_id, "length") { Value::Number(n) => n as usize, _ => 0 };
+            let len = match rt.object_get(this_id, "length") {
+                Value::Number(n) => n as usize,
+                _ => 0,
+            };
             let out = make_typed_array_like(rt, this_id, len);
             for i in 0..len {
                 let v = rt.object_get(this_id, &i.to_string());
-                let r = rt.call_function(f.clone(), Value::Undefined, vec![v, Value::Number(i as f64), Value::Object(this_id)])?;
+                let r = rt.call_function(
+                    f.clone(),
+                    Value::Undefined,
+                    vec![v, Value::Number(i as f64), Value::Object(this_id)],
+                )?;
                 rt.object_set(out, i.to_string(), r);
             }
             Ok(Value::Object(out))
@@ -4383,18 +5685,33 @@ impl Runtime {
         register_method(self, ta_proto, "filter", |rt, args| {
             let this_id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("TypedArray.prototype.filter: this must be a TypedArray".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "TypedArray.prototype.filter: this must be a TypedArray".into(),
+                    ))
+                }
             };
             let f = match args.first() {
                 Some(v @ Value::Object(_)) => v.clone(),
-                _ => return Err(RuntimeError::TypeError("TypedArray.prototype.filter: callback must be a function".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "TypedArray.prototype.filter: callback must be a function".into(),
+                    ))
+                }
             };
-            let len = match rt.object_get(this_id, "length") { Value::Number(n) => n as usize, _ => 0 };
+            let len = match rt.object_get(this_id, "length") {
+                Value::Number(n) => n as usize,
+                _ => 0,
+            };
             // Two-pass: first collect matches, then alloc with right length.
             let mut keeps: Vec<Value> = Vec::with_capacity(len);
             for i in 0..len {
                 let v = rt.object_get(this_id, &i.to_string());
-                let pred = rt.call_function(f.clone(), Value::Undefined, vec![v.clone(), Value::Number(i as f64), Value::Object(this_id)])?;
+                let pred = rt.call_function(
+                    f.clone(),
+                    Value::Undefined,
+                    vec![v.clone(), Value::Number(i as f64), Value::Object(this_id)],
+                )?;
                 if abstract_ops::to_boolean(&pred) {
                     keeps.push(v);
                 }
@@ -4408,51 +5725,88 @@ impl Runtime {
         register_method(self, ta_proto, "reduce", |rt, args| {
             let this_id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("TypedArray.prototype.reduce: this must be a TypedArray".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "TypedArray.prototype.reduce: this must be a TypedArray".into(),
+                    ))
+                }
             };
             let f = match args.first() {
                 Some(v @ Value::Object(_)) => v.clone(),
-                _ => return Err(RuntimeError::TypeError("TypedArray.prototype.reduce: callback must be a function".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "TypedArray.prototype.reduce: callback must be a function".into(),
+                    ))
+                }
             };
-            let len = match rt.object_get(this_id, "length") { Value::Number(n) => n as usize, _ => 0 };
+            let len = match rt.object_get(this_id, "length") {
+                Value::Number(n) => n as usize,
+                _ => 0,
+            };
             let (mut acc, start) = match args.get(1) {
                 Some(v) => (v.clone(), 0),
                 None => {
                     if len == 0 {
-                        return Err(RuntimeError::TypeError("TypedArray.prototype.reduce: empty with no initial".into()));
+                        return Err(RuntimeError::TypeError(
+                            "TypedArray.prototype.reduce: empty with no initial".into(),
+                        ));
                     }
                     (rt.object_get(this_id, "0"), 1)
                 }
             };
             for i in start..len {
                 let v = rt.object_get(this_id, &i.to_string());
-                acc = rt.call_function(f.clone(), Value::Undefined, vec![acc, v, Value::Number(i as f64), Value::Object(this_id)])?;
+                acc = rt.call_function(
+                    f.clone(),
+                    Value::Undefined,
+                    vec![acc, v, Value::Number(i as f64), Value::Object(this_id)],
+                )?;
             }
             Ok(acc)
         });
         register_method(self, ta_proto, "reduceRight", |rt, args| {
             let this_id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("TypedArray.prototype.reduceRight: this must be a TypedArray".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "TypedArray.prototype.reduceRight: this must be a TypedArray".into(),
+                    ))
+                }
             };
             let f = match args.first() {
                 Some(v @ Value::Object(_)) => v.clone(),
-                _ => return Err(RuntimeError::TypeError("TypedArray.prototype.reduceRight: callback must be a function".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "TypedArray.prototype.reduceRight: callback must be a function".into(),
+                    ))
+                }
             };
-            let len = match rt.object_get(this_id, "length") { Value::Number(n) => n as usize, _ => 0 };
+            let len = match rt.object_get(this_id, "length") {
+                Value::Number(n) => n as usize,
+                _ => 0,
+            };
             let (mut acc, start_back) = match args.get(1) {
                 Some(v) => (v.clone(), len as i64 - 1),
                 None => {
                     if len == 0 {
-                        return Err(RuntimeError::TypeError("TypedArray.prototype.reduceRight: empty with no initial".into()));
+                        return Err(RuntimeError::TypeError(
+                            "TypedArray.prototype.reduceRight: empty with no initial".into(),
+                        ));
                     }
-                    (rt.object_get(this_id, &(len - 1).to_string()), len as i64 - 2)
+                    (
+                        rt.object_get(this_id, &(len - 1).to_string()),
+                        len as i64 - 2,
+                    )
                 }
             };
             let mut i = start_back;
             while i >= 0 {
                 let v = rt.object_get(this_id, &i.to_string());
-                acc = rt.call_function(f.clone(), Value::Undefined, vec![acc, v, Value::Number(i as f64), Value::Object(this_id)])?;
+                acc = rt.call_function(
+                    f.clone(),
+                    Value::Undefined,
+                    vec![acc, v, Value::Number(i as f64), Value::Object(this_id)],
+                )?;
                 i -= 1;
             }
             Ok(acc)
@@ -4462,10 +5816,15 @@ impl Runtime {
                 Value::Object(o) => o,
                 _ => return Ok(Value::String(Rc::new(String::new()))),
             };
-            let len = match rt.object_get(this_id, "length") { Value::Number(n) => n as usize, _ => 0 };
+            let len = match rt.object_get(this_id, "length") {
+                Value::Number(n) => n as usize,
+                _ => 0,
+            };
             let mut out = String::new();
             for i in 0..len {
-                if i > 0 { out.push(','); }
+                if i > 0 {
+                    out.push(',');
+                }
                 let v = rt.object_get(this_id, &i.to_string());
                 let s = abstract_ops::to_string(&v);
                 out.push_str(s.as_str());
@@ -4485,14 +5844,12 @@ impl Runtime {
         // slice/@@iterator) whose [[Prototype]] is a fresh %TypedArray%
         // prototype-stub that carries the toStringTag accessor. Both walks
         // (1 or 2 levels) now reach an object with the accessor at level 2.
-        let tag_getter = make_native("get @@toStringTag", |rt, _args| {
-            match rt.current_this() {
-                Value::Object(id) => match rt.object_get(id, "__ta_kind") {
-                    v @ Value::String(_) => Ok(v),
-                    _ => Ok(Value::Undefined),
-                },
+        let tag_getter = make_native("get @@toStringTag", |rt, _args| match rt.current_this() {
+            Value::Object(id) => match rt.object_get(id, "__ta_kind") {
+                v @ Value::String(_) => Ok(v),
                 _ => Ok(Value::Undefined),
-            }
+            },
+            _ => Ok(Value::Undefined),
         });
         let tag_getter_id = self.alloc_object(tag_getter);
         let ta_proto_proto = self.alloc_object(Object::new_ordinary());
@@ -4500,22 +5857,132 @@ impl Runtime {
             "@@toStringTag".into(),
             crate::value::PropertyDescriptor {
                 value: Value::Undefined,
-                writable: false, enumerable: false, configurable: true,
+                writable: false,
+                enumerable: false,
+                configurable: true,
                 getter: Some(Value::Object(tag_getter_id)),
                 setter: None,
             },
         );
         self.obj_mut(ta_proto).proto = Some(ta_proto_proto);
 
+        let array_buffer_proto = self.alloc_object(Object::new_ordinary());
+        register_method(self, array_buffer_proto, "resize", |rt, args| {
+            let this_id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "ArrayBuffer.prototype.resize: this must be an ArrayBuffer".into(),
+                    ))
+                }
+            };
+            let new_len = match args.first() {
+                Some(Value::Number(n)) if *n >= 0.0 => *n as usize,
+                Some(v) => rt.coerce_to_number(v)? as usize,
+                None => 0,
+            };
+            rt.resize_array_buffer(this_id, new_len)?;
+            Ok(Value::Undefined)
+        });
+        let ab_proto_for_ctor = array_buffer_proto;
+        let array_buffer_ctor = make_native("ArrayBuffer", move |rt, args| {
+            let byte_length = match args.first() {
+                Some(Value::Number(n)) if *n >= 0.0 => *n as usize,
+                Some(v) => rt.coerce_to_number(v)? as usize,
+                None => 0,
+            };
+            let mut max_byte_length = byte_length;
+            if let Some(Value::Object(opts)) = args.get(1) {
+                if let Value::Number(n) = rt.object_get(*opts, "maxByteLength") {
+                    if n >= 0.0 {
+                        max_byte_length = n as usize;
+                    }
+                }
+            }
+            let mut o = Object::new_ordinary();
+            o.set_own_internal(
+                "__kind".into(),
+                Value::String(Rc::new("ArrayBuffer".into())),
+            );
+            o.proto = Some(ab_proto_for_ctor);
+            let id = rt.alloc_object(o);
+            rt.array_buffers.insert(
+                id,
+                crate::interp::ArrayBufferRecord {
+                    byte_length,
+                    max_byte_length,
+                    data: vec![Value::Number(0.0); byte_length],
+                },
+            );
+            Ok(Value::Object(id))
+        });
+        let ab_id = self.alloc_object(array_buffer_ctor);
+        self.obj_mut(ab_id)
+            .set_own_frozen("prototype".into(), Value::Object(array_buffer_proto));
+        self.globals
+            .insert("ArrayBuffer".into(), Value::Object(ab_id));
+
         for name in &[
-            "ArrayBuffer", "SharedArrayBuffer", "DataView",
-            "Uint8Array", "Uint8ClampedArray", "Int8Array",
-            "Uint16Array", "Int16Array", "Uint32Array", "Int32Array",
-            "Float32Array", "Float64Array", "BigInt64Array", "BigUint64Array",
+            "SharedArrayBuffer",
+            "DataView",
+            "Uint8Array",
+            "Uint8ClampedArray",
+            "Int8Array",
+            "Uint16Array",
+            "Int16Array",
+            "Uint32Array",
+            "Int32Array",
+            "Float32Array",
+            "Float64Array",
+            "BigInt64Array",
+            "BigUint64Array",
         ] {
             let n = (*name).to_string();
             let proto_id = ta_proto;
             let ctor_obj = make_native(name, move |rt, args| {
+                // Ω.5.P59.E6 byteLength correctness: bytes-per-element
+                // per typed-array kind. Pre-P59.E6 cruftless hardcoded
+                // `len * 4.0` which was wrong for every element type
+                // except 32-bit ones. Bun's Uint8Array(4).byteLength === 4.
+                let bpe: usize = match n.as_str() {
+                    "Int8Array" | "Uint8Array" | "Uint8ClampedArray" => 1,
+                    "Int16Array" | "Uint16Array" => 2,
+                    "Int32Array" | "Uint32Array" | "Float32Array" => 4,
+                    "Float64Array" | "BigInt64Array" | "BigUint64Array" => 8,
+                    _ => 4,
+                };
+                if let Some(Value::Object(buf)) = args.first() {
+                    if rt.array_buffers.contains_key(buf)
+                        && n != "DataView"
+                        && n != "SharedArrayBuffer"
+                    {
+                        let byte_offset = match args.get(1) {
+                            Some(Value::Number(n)) if *n >= 0.0 => *n as usize,
+                            Some(v) => rt.coerce_to_number(v)? as usize,
+                            None => 0,
+                        };
+                        let fixed_length = match args.get(2) {
+                            Some(Value::Number(n)) if *n >= 0.0 => Some(*n as usize),
+                            Some(v) => Some(rt.coerce_to_number(v)? as usize),
+                            None => None,
+                        };
+                        let mut o = Object::new_ordinary();
+                        o.set_own_internal("__kind".into(), Value::String(Rc::new(n.clone())));
+                        o.set_own_internal("__ta_kind".into(), Value::String(Rc::new(n.clone())));
+                        o.proto = Some(proto_id);
+                        let id = rt.alloc_object(o);
+                        rt.typed_array_views.insert(
+                            id,
+                            crate::interp::TypedArrayViewRecord {
+                                buffer: *buf,
+                                byte_offset,
+                                fixed_length,
+                                bytes_per_element: bpe,
+                            },
+                        );
+                        return Ok(Value::Object(id));
+                    }
+                }
                 let len = match args.first() {
                     Some(Value::Number(n)) => *n,
                     Some(Value::Object(arr)) => {
@@ -4527,21 +5994,11 @@ impl Runtime {
                     }
                     _ => 0.0,
                 };
-                // Ω.5.P59.E6 byteLength correctness: bytes-per-element
-                // per typed-array kind. Pre-P59.E6 cruftless hardcoded
-                // `len * 4.0` which was wrong for every element type
-                // except 32-bit ones. Bun's Uint8Array(4).byteLength === 4.
-                let bpe: f64 = match n.as_str() {
-                    "Int8Array" | "Uint8Array" | "Uint8ClampedArray" => 1.0,
-                    "Int16Array" | "Uint16Array" => 2.0,
-                    "Int32Array" | "Uint32Array" | "Float32Array" => 4.0,
-                    "Float64Array" | "BigInt64Array" | "BigUint64Array" => 8.0,
-                    _ => 4.0,
-                };
                 let mut o = Object::new_ordinary();
                 o.set_own("length".into(), Value::Number(len));
-                o.set_own("byteLength".into(), Value::Number(len * bpe));
+                o.set_own("byteLength".into(), Value::Number(len * bpe as f64));
                 o.set_own_internal("__kind".into(), Value::String(Rc::new(n.clone())));
+                o.set_own_internal("__ta_kind".into(), Value::String(Rc::new(n.clone())));
                 o.proto = Some(proto_id);
                 let id = rt.alloc_object(o);
                 // Copy from source if first arg was an object.
@@ -4561,7 +6018,18 @@ impl Runtime {
                 Ok(Value::Object(id))
             });
             let id = self.alloc_object(ctor_obj);
-            register_intrinsic_method(self, id, "isView", 1, |_rt, _args| Ok(Value::Boolean(false)));
+            let bpe = match *name {
+                "Int8Array" | "Uint8Array" | "Uint8ClampedArray" => 1.0,
+                "Int16Array" | "Uint16Array" => 2.0,
+                "Int32Array" | "Uint32Array" | "Float32Array" => 4.0,
+                "Float64Array" | "BigInt64Array" | "BigUint64Array" => 8.0,
+                _ => 1.0,
+            };
+            self.obj_mut(id)
+                .set_own_frozen("BYTES_PER_ELEMENT".into(), Value::Number(bpe));
+            register_intrinsic_method(self, id, "isView", 1, |_rt, _args| {
+                Ok(Value::Boolean(false))
+            });
             let from_proto = ta_proto;
             let of_proto = ta_proto;
             register_intrinsic_method(self, id, "of", 0, move |rt, args| {
@@ -4595,7 +6063,8 @@ impl Runtime {
                 }
                 Ok(Value::Object(new_id))
             });
-            self.obj_mut(id).set_own_frozen("prototype".into(), Value::Object(ta_proto));
+            self.obj_mut(id)
+                .set_own_frozen("prototype".into(), Value::Object(ta_proto));
             self.globals.insert((*name).to_string(), Value::Object(id));
         }
     }
@@ -4606,7 +6075,10 @@ impl Runtime {
     fn install_weak_ref_globals(&mut self) {
         let weakref_proto = self.alloc_object(Object::new_ordinary());
         register_method(self, weakref_proto, "deref", |rt, _args| {
-            let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
+            let this = match rt.current_this() {
+                Value::Object(id) => id,
+                _ => return Ok(Value::Undefined),
+            };
             Ok(rt.object_get(this, "__ref"))
         });
         let proto_for_ctor = weakref_proto;
@@ -4619,13 +6091,19 @@ impl Runtime {
             Ok(Value::Object(id))
         });
         let wr = self.alloc_object(weakref_ctor);
-        self.obj_mut(wr).set_own_frozen("prototype".into(), Value::Object(weakref_proto));
-        self.obj_mut(weakref_proto).set_own_internal("constructor".into(), Value::Object(wr));
+        self.obj_mut(wr)
+            .set_own_frozen("prototype".into(), Value::Object(weakref_proto));
+        self.obj_mut(weakref_proto)
+            .set_own_internal("constructor".into(), Value::Object(wr));
         self.globals.insert("WeakRef".into(), Value::Object(wr));
 
         let fr_proto = self.alloc_object(Object::new_ordinary());
-        register_intrinsic_method(self, fr_proto, "register", 1, |_rt, _args| Ok(Value::Undefined));
-        register_intrinsic_method(self, fr_proto, "unregister", 1, |_rt, _args| Ok(Value::Boolean(true)));
+        register_intrinsic_method(self, fr_proto, "register", 1, |_rt, _args| {
+            Ok(Value::Undefined)
+        });
+        register_intrinsic_method(self, fr_proto, "unregister", 1, |_rt, _args| {
+            Ok(Value::Boolean(true))
+        });
         let fr_proto_for_ctor = fr_proto;
         let fr_ctor = make_native("FinalizationRegistry", move |rt, _args| {
             let mut o = Object::new_ordinary();
@@ -4633,9 +6111,12 @@ impl Runtime {
             Ok(Value::Object(rt.alloc_object(o)))
         });
         let fr = self.alloc_object(fr_ctor);
-        self.obj_mut(fr).set_own_frozen("prototype".into(), Value::Object(fr_proto));
-        self.obj_mut(fr_proto).set_own_internal("constructor".into(), Value::Object(fr));
-        self.globals.insert("FinalizationRegistry".into(), Value::Object(fr));
+        self.obj_mut(fr)
+            .set_own_frozen("prototype".into(), Value::Object(fr_proto));
+        self.obj_mut(fr_proto)
+            .set_own_internal("constructor".into(), Value::Object(fr));
+        self.globals
+            .insert("FinalizationRegistry".into(), Value::Object(fr));
     }
 
     /// Tier-Ω.5.cc: Reflect global — most methods route to existing Object
@@ -4671,7 +6152,11 @@ impl Runtime {
                         // invariants, then re-pack the validated key list
                         // into a fresh Array (preserves trap order, drops
                         // any non-key entries the invariants caught).
-                        let result = rt.call_function(trap, Value::Object(handler), vec![Value::Object(tgt)])?;
+                        let result = rt.call_function(
+                            trap,
+                            Value::Object(handler),
+                            vec![Value::Object(tgt)],
+                        )?;
                         let trap_keys = rt.apply_proxy_own_keys_invariants(&result, tgt)?;
                         let out = rt.alloc_object(Object::new_array());
                         for (i, k) in trap_keys.iter().enumerate() {
@@ -4680,7 +6165,11 @@ impl Runtime {
                         rt.object_set(out, "length".into(), Value::Number(trap_keys.len() as f64));
                         return Ok(Value::Object(out));
                     }
-                    return crate::generated::reflect_own_keys(rt, Value::Undefined, &[Value::Object(tgt)]);
+                    return crate::generated::reflect_own_keys(
+                        rt,
+                        Value::Undefined,
+                        &[Value::Object(tgt)],
+                    );
                 }
             }
             crate::generated::reflect_own_keys(rt, Value::Undefined, args)
@@ -4690,9 +6179,17 @@ impl Runtime {
                 if let Some((tgt, handler)) = rt.proxy_target_handler_checked(*id)? {
                     let trap = rt.object_get(handler, "getPrototypeOf");
                     if matches!(trap, Value::Object(_)) {
-                        return rt.call_function(trap, Value::Object(handler), vec![Value::Object(tgt)]);
+                        return rt.call_function(
+                            trap,
+                            Value::Object(handler),
+                            vec![Value::Object(tgt)],
+                        );
                     }
-                    return crate::generated::reflect_get_prototype_of(rt, Value::Undefined, &[Value::Object(tgt)]);
+                    return crate::generated::reflect_get_prototype_of(
+                        rt,
+                        Value::Undefined,
+                        &[Value::Object(tgt)],
+                    );
                 }
             }
             crate::generated::reflect_get_prototype_of(rt, Value::Undefined, args)
@@ -4713,27 +6210,41 @@ impl Runtime {
                     if matches!(trap, Value::Object(_)) {
                         let key = args.get(1).cloned().unwrap_or(Value::Undefined);
                         let desc = args.get(2).cloned().unwrap_or(Value::Undefined);
-                        let r2 = rt.call_function(trap, Value::Object(handler), vec![
-                            Value::Object(tgt), key, desc,
-                        ])?;
+                        let r2 = rt.call_function(
+                            trap,
+                            Value::Object(handler),
+                            vec![Value::Object(tgt), key, desc],
+                        )?;
                         return Ok(Value::Boolean(crate::abstract_ops::to_boolean(&r2)));
                     }
                     let mut new_args = args.to_vec();
                     new_args[0] = Value::Object(tgt);
-                    return match crate::generated::object_define_property(rt, Value::Undefined, &new_args) {
+                    return match crate::generated::object_define_property(
+                        rt,
+                        Value::Undefined,
+                        &new_args,
+                    ) {
                         Ok(_) => Ok(Value::Boolean(true)),
-                        Err(RuntimeError::TypeError(msg)) if msg.contains("Cannot redefine")
-                            || msg.contains("Cannot add property")
-                            || msg.contains("not extensible") => Ok(Value::Boolean(false)),
+                        Err(RuntimeError::TypeError(msg))
+                            if msg.contains("Cannot redefine")
+                                || msg.contains("Cannot add property")
+                                || msg.contains("not extensible") =>
+                        {
+                            Ok(Value::Boolean(false))
+                        }
                         Err(e) => Err(e),
                     };
                 }
             }
             match crate::generated::object_define_property(rt, Value::Undefined, args) {
                 Ok(_) => Ok(Value::Boolean(true)),
-                Err(RuntimeError::TypeError(msg)) if msg.contains("Cannot redefine")
-                    || msg.contains("Cannot add property")
-                    || msg.contains("not extensible") => Ok(Value::Boolean(false)),
+                Err(RuntimeError::TypeError(msg))
+                    if msg.contains("Cannot redefine")
+                        || msg.contains("Cannot add property")
+                        || msg.contains("not extensible") =>
+                {
+                    Ok(Value::Boolean(false))
+                }
                 Err(e) => Err(e),
             }
         });
@@ -4743,17 +6254,27 @@ impl Runtime {
                     let trap = rt.object_get(handler, "getOwnPropertyDescriptor");
                     if matches!(trap, Value::Object(_)) {
                         let key = args.get(1).cloned().unwrap_or(Value::Undefined);
-                        let trap_result = rt.call_function(trap, Value::Object(handler), vec![
-                            Value::Object(tgt), key.clone(),
-                        ])?;
+                        let trap_result = rt.call_function(
+                            trap,
+                            Value::Object(handler),
+                            vec![Value::Object(tgt), key.clone()],
+                        )?;
                         // EXT 89 / Pass C: §10.5.5 invariants (undefined-leg + non-Object check).
                         let key_str = crate::abstract_ops::to_string(&key).as_str().to_string();
-                        rt.apply_proxy_get_own_property_descriptor_invariant(tgt, &key_str, &trap_result)?;
+                        rt.apply_proxy_get_own_property_descriptor_invariant(
+                            tgt,
+                            &key_str,
+                            &trap_result,
+                        )?;
                         return Ok(trap_result);
                     }
                     let mut new_args = args.to_vec();
                     new_args[0] = Value::Object(tgt);
-                    return crate::generated::object_get_own_property_descriptor(rt, Value::Undefined, &new_args);
+                    return crate::generated::object_get_own_property_descriptor(
+                        rt,
+                        Value::Undefined,
+                        &new_args,
+                    );
                 }
             }
             crate::generated::object_get_own_property_descriptor(rt, Value::Undefined, args)
@@ -4765,14 +6286,20 @@ impl Runtime {
                     let trap = rt.object_get(handler, "setPrototypeOf");
                     if matches!(trap, Value::Object(_)) {
                         let proto = args.get(1).cloned().unwrap_or(Value::Undefined);
-                        let r2 = rt.call_function(trap, Value::Object(handler), vec![
-                            Value::Object(tgt), proto,
-                        ])?;
+                        let r2 = rt.call_function(
+                            trap,
+                            Value::Object(handler),
+                            vec![Value::Object(tgt), proto],
+                        )?;
                         return Ok(Value::Boolean(crate::abstract_ops::to_boolean(&r2)));
                     }
                     let mut new_args = args.to_vec();
                     new_args[0] = Value::Object(tgt);
-                    return crate::generated::reflect_set_prototype_of(rt, Value::Undefined, &new_args);
+                    return crate::generated::reflect_set_prototype_of(
+                        rt,
+                        Value::Undefined,
+                        &new_args,
+                    );
                 }
             }
             crate::generated::reflect_set_prototype_of(rt, Value::Undefined, args)
@@ -4799,8 +6326,11 @@ impl Runtime {
                     }
                     v
                 }
-                _ => return Err(RuntimeError::TypeError(
-                    "Reflect.apply: argumentsList must be an Object".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Reflect.apply: argumentsList must be an Object".into(),
+                    ))
+                }
             };
             rt.call_function(target, this_arg, arg_list)
         });
@@ -4814,18 +6344,18 @@ impl Runtime {
             let new_target = args.get(2).cloned().unwrap_or(target.clone());
             for v in [&target, &new_target] {
                 if let Value::Object(id) = v {
-                    if let crate::value::InternalKind::Function(fi) =
-                        &rt.obj(*id).internal_kind
-                    {
+                    if let crate::value::InternalKind::Function(fi) = &rt.obj(*id).internal_kind {
                         if !fi.is_constructor {
                             return Err(RuntimeError::TypeError(format!(
-                                "Reflect.construct: {} is not a constructor", fi.name
+                                "Reflect.construct: {} is not a constructor",
+                                fi.name
                             )));
                         }
                     }
                 } else {
                     return Err(RuntimeError::TypeError(
-                        "Reflect.construct: target/newTarget must be a constructor".into()));
+                        "Reflect.construct: target/newTarget must be a constructor".into(),
+                    ));
                 }
             }
             // EXT 79c: Reflect.construct's argumentsList uses the same
@@ -4842,8 +6372,11 @@ impl Runtime {
                     }
                     v
                 }
-                _ => return Err(RuntimeError::TypeError(
-                    "Reflect.construct: argumentsList must be an Object".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Reflect.construct: argumentsList must be an Object".into(),
+                    ))
+                }
             };
             // Use Op::New-equivalent via call_function with a fresh this.
             let proto_id = match &target {
@@ -4859,7 +6392,10 @@ impl Runtime {
             let this_obj = Value::Object(this_id);
             rt.pending_new_target = Some(new_target);
             let ret = rt.call_function(target, this_obj.clone(), arg_list)?;
-            Ok(match ret { Value::Object(_) => ret, _ => this_obj })
+            Ok(match ret {
+                Value::Object(_) => ret,
+                _ => this_obj,
+            })
         });
         // EXT 79d (cont.): isExtensible / preventExtensions Proxy traps.
         register_intrinsic_method(self, r, "isExtensible", 1, |rt, args| {
@@ -4867,10 +6403,18 @@ impl Runtime {
                 if let Some((tgt, handler)) = rt.proxy_target_handler_checked(*id)? {
                     let trap = rt.object_get(handler, "isExtensible");
                     if matches!(trap, Value::Object(_)) {
-                        let r2 = rt.call_function(trap, Value::Object(handler), vec![Value::Object(tgt)])?;
+                        let r2 = rt.call_function(
+                            trap,
+                            Value::Object(handler),
+                            vec![Value::Object(tgt)],
+                        )?;
                         return Ok(Value::Boolean(crate::abstract_ops::to_boolean(&r2)));
                     }
-                    return crate::generated::reflect_is_extensible(rt, Value::Undefined, &[Value::Object(tgt)]);
+                    return crate::generated::reflect_is_extensible(
+                        rt,
+                        Value::Undefined,
+                        &[Value::Object(tgt)],
+                    );
                 }
             }
             crate::generated::reflect_is_extensible(rt, Value::Undefined, args)
@@ -4880,10 +6424,18 @@ impl Runtime {
                 if let Some((tgt, handler)) = rt.proxy_target_handler_checked(*id)? {
                     let trap = rt.object_get(handler, "preventExtensions");
                     if matches!(trap, Value::Object(_)) {
-                        let r2 = rt.call_function(trap, Value::Object(handler), vec![Value::Object(tgt)])?;
+                        let r2 = rt.call_function(
+                            trap,
+                            Value::Object(handler),
+                            vec![Value::Object(tgt)],
+                        )?;
                         return Ok(Value::Boolean(crate::abstract_ops::to_boolean(&r2)));
                     }
-                    return crate::generated::reflect_prevent_extensions(rt, Value::Undefined, &[Value::Object(tgt)]);
+                    return crate::generated::reflect_prevent_extensions(
+                        rt,
+                        Value::Undefined,
+                        &[Value::Object(tgt)],
+                    );
                 }
             }
             crate::generated::reflect_prevent_extensions(rt, Value::Undefined, args)
@@ -4910,10 +6462,12 @@ impl Runtime {
         ] {
             let proto_id = self.alloc_object(Object::new_ordinary());
             // §20.5.6.{1,2}: Error.prototype.{name, message} are non-enumerable.
-            self.obj_mut(proto_id).set_own_internal("name".into(),
-                Value::String(Rc::new((*default_name).to_string())));
-            self.obj_mut(proto_id).set_own_internal("message".into(),
-                Value::String(Rc::new("".to_string())));
+            self.obj_mut(proto_id).set_own_internal(
+                "name".into(),
+                Value::String(Rc::new((*default_name).to_string())),
+            );
+            self.obj_mut(proto_id)
+                .set_own_internal("message".into(), Value::String(Rc::new("".to_string())));
             register_intrinsic_method(self, proto_id, "toString", 0, |rt, args| {
                 crate::generated::error_prototype_to_string(rt, rt.current_this(), args)
             });
@@ -4958,16 +6512,20 @@ impl Runtime {
                 // c:t}. `name` lives on Error.prototype via set_own_internal
                 // (already non-enumerable); do NOT install per-instance —
                 // the prototype entry serves all instances.
-                let install_non_enum = |rt: &mut Runtime, id: crate::value::ObjectRef, k: &str, v: Value| {
-                    rt.obj_mut(id).dict_mut().insert(
-                        crate::value::PropertyKey::String(k.to_string()),
-                        crate::value::PropertyDescriptor {
-                            value: v,
-                            writable: true, enumerable: false, configurable: true,
-                            getter: None, setter: None,
-                        },
-                    );
-                };
+                let install_non_enum =
+                    |rt: &mut Runtime, id: crate::value::ObjectRef, k: &str, v: Value| {
+                        rt.obj_mut(id).dict_mut().insert(
+                            crate::value::PropertyKey::String(k.to_string()),
+                            crate::value::PropertyDescriptor {
+                                value: v,
+                                writable: true,
+                                enumerable: false,
+                                configurable: true,
+                                getter: None,
+                                setter: None,
+                            },
+                        );
+                    };
                 if let Some(msg) = args.first() {
                     if !matches!(msg, Value::Undefined) {
                         let m = rt.coerce_to_string(msg)?;
@@ -4988,9 +6546,11 @@ impl Runtime {
                 Ok(Value::Object(id))
             });
             let ctor_id = self.alloc_object(ctor_obj);
-            self.obj_mut(ctor_id).set_own_frozen("prototype".into(), Value::Object(proto_id));
+            self.obj_mut(ctor_id)
+                .set_own_frozen("prototype".into(), Value::Object(proto_id));
             // proto.constructor = ctor (per spec).
-            self.obj_mut(proto_id).set_own_internal("constructor".into(), Value::Object(ctor_id));
+            self.obj_mut(proto_id)
+                .set_own_internal("constructor".into(), Value::Object(ctor_id));
             // Tier-Ω.5.JJJJJJJ: Error.captureStackTrace(target, ctorOpt) per V8
             // convention. http-errors / koa / serve-static (via depd) call it
             // at module-init to attach a `stack` string to a fresh error-like
@@ -5013,15 +6573,25 @@ impl Runtime {
                     let prepare = rt
                         .globals
                         .get("Error")
-                        .and_then(|v| if let Value::Object(eid) = v { Some(*eid) } else { None })
+                        .and_then(|v| {
+                            if let Value::Object(eid) = v {
+                                Some(*eid)
+                            } else {
+                                None
+                            }
+                        })
                         .map(|eid| rt.object_get(eid, "prepareStackTrace"));
                     if let Some(Value::Object(_)) = &prepare {
                         let call_site = rt.alloc_object(crate::value::Object::new_ordinary());
                         register_method(rt, call_site, "getFileName", |_rt, _a| {
                             Ok(Value::String(Rc::new("<native>".into())))
                         });
-                        register_method(rt, call_site, "getLineNumber", |_rt, _a| Ok(Value::Number(0.0)));
-                        register_method(rt, call_site, "getColumnNumber", |_rt, _a| Ok(Value::Number(0.0)));
+                        register_method(rt, call_site, "getLineNumber", |_rt, _a| {
+                            Ok(Value::Number(0.0))
+                        });
+                        register_method(rt, call_site, "getColumnNumber", |_rt, _a| {
+                            Ok(Value::Number(0.0))
+                        });
                         register_method(rt, call_site, "getFunctionName", |_rt, _a| {
                             Ok(Value::String(Rc::new("<anonymous>".into())))
                         });
@@ -5029,10 +6599,18 @@ impl Runtime {
                         register_method(rt, call_site, "getTypeName", |_rt, _a| {
                             Ok(Value::String(Rc::new("<anonymous>".into())))
                         });
-                        register_method(rt, call_site, "isNative", |_rt, _a| Ok(Value::Boolean(true)));
-                        register_method(rt, call_site, "isConstructor", |_rt, _a| Ok(Value::Boolean(false)));
-                        register_method(rt, call_site, "isToplevel", |_rt, _a| Ok(Value::Boolean(true)));
-                        register_method(rt, call_site, "isEval", |_rt, _a| Ok(Value::Boolean(false)));
+                        register_method(rt, call_site, "isNative", |_rt, _a| {
+                            Ok(Value::Boolean(true))
+                        });
+                        register_method(rt, call_site, "isConstructor", |_rt, _a| {
+                            Ok(Value::Boolean(false))
+                        });
+                        register_method(rt, call_site, "isToplevel", |_rt, _a| {
+                            Ok(Value::Boolean(true))
+                        });
+                        register_method(rt, call_site, "isEval", |_rt, _a| {
+                            Ok(Value::Boolean(false))
+                        });
                         // Build a small stack of stub frames so consumers
                         // doing `callSites.slice(1)[0]` (depd / err-stack)
                         // still find a defined CallSite.
@@ -5056,7 +6634,8 @@ impl Runtime {
             // Error.stackTraceLimit — Node default is 10; consumers occasionally
             // probe `Error.stackTraceLimit = Infinity` then set back.
             self.object_set(ctor_id, "stackTraceLimit".into(), Value::Number(10.0));
-            self.globals.insert((*name).to_string(), Value::Object(ctor_id));
+            self.globals
+                .insert((*name).to_string(), Value::Object(ctor_id));
         }
         // Chain Error-subclass prototypes through Error.prototype per
         // ECMA-262 §20.5.6 (each NativeError.prototype's [[Prototype]]
@@ -5064,13 +6643,21 @@ impl Runtime {
         // false even when e is a TypeError / RangeError / etc.
         let err_proto_id = match self.globals.get("Error").cloned() {
             Some(Value::Object(eid)) => match self.object_get(eid, "prototype") {
-                Value::Object(pid) => Some(pid), _ => None,
+                Value::Object(pid) => Some(pid),
+                _ => None,
             },
             _ => None,
         };
         if let Some(epid) = err_proto_id {
-            for sub_name in &["TypeError", "RangeError", "SyntaxError", "ReferenceError",
-                              "URIError", "EvalError", "AggregateError"] {
+            for sub_name in &[
+                "TypeError",
+                "RangeError",
+                "SyntaxError",
+                "ReferenceError",
+                "URIError",
+                "EvalError",
+                "AggregateError",
+            ] {
                 if let Some(Value::Object(sid)) = self.globals.get(*sub_name).cloned() {
                     if let Value::Object(spid) = self.object_get(sid, "prototype") {
                         self.obj_mut(spid).proto = Some(epid);
@@ -5095,7 +6682,8 @@ impl Runtime {
         let sym_obj = make_native("Symbol", |rt, args| {
             if rt.current_new_target.is_some() {
                 return Err(RuntimeError::TypeError(
-                    "Symbol is not a constructor".into()));
+                    "Symbol is not a constructor".into(),
+                ));
             }
             use std::sync::atomic::{AtomicUsize, Ordering};
             static COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -5152,11 +6740,15 @@ impl Runtime {
         // Ω.5.P63.E51: well-known symbols are frozen ({w:false, e:false,
         // c:false}) per §20.4.2 — closes 15-test prop-desc cluster.
         for &(name, sym_str) in well_known {
-            self.obj_mut(sym).set_own_frozen(name.into(),
-                Value::Symbol(Rc::new(sym_str.to_string())));
+            self.obj_mut(sym)
+                .set_own_frozen(name.into(), Value::Symbol(Rc::new(sym_str.to_string())));
         }
-        register_intrinsic_method(self, sym, "for",    1, |rt, args| crate::generated::symbol_for(rt, rt.current_this(), args));
-        register_intrinsic_method(self, sym, "keyFor", 1, |rt, args| crate::generated::symbol_key_for(rt, rt.current_this(), args));
+        register_intrinsic_method(self, sym, "for", 1, |rt, args| {
+            crate::generated::symbol_for(rt, rt.current_this(), args)
+        });
+        register_intrinsic_method(self, sym, "keyFor", 1, |rt, args| {
+            crate::generated::symbol_key_for(rt, rt.current_this(), args)
+        });
         // Tier-Ω.5.wwww: Symbol.prototype with a toString that returns the
         // description. yup captures Symbol.prototype.toString at module init.
         let sym_proto = self.alloc_object(Object::new_ordinary());
@@ -5170,7 +6762,8 @@ impl Runtime {
             match t {
                 Value::Symbol(s) => Ok(Value::Symbol(s)),
                 _ => Err(RuntimeError::TypeError(
-                    "Symbol.prototype.valueOf: this is not a Symbol".into())),
+                    "Symbol.prototype.valueOf: this is not a Symbol".into(),
+                )),
             }
         });
         // Symbol.prototype.description getter (data property in v1 — most
@@ -5179,15 +6772,22 @@ impl Runtime {
             let t = rt.unwrap_primitive(&rt.current_this());
             let s = match t {
                 Value::Symbol(s) => s,
-                _ => return Err(RuntimeError::TypeError(
-                    "Symbol.prototype.description: this is not a Symbol".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Symbol.prototype.description: this is not a Symbol".into(),
+                    ))
+                }
             };
             // Encoded forms:
             //   "@@sym:<n>"          → no description (returns undefined)
             //   "@@sym:<n>:<desc>"   → description = <desc>
             //   "@@sym:<key>"        → registry symbol (Symbol.for); description = <key>
             let body = s.strip_prefix("@@sym:").unwrap_or(&s);
-            let starts_with_digit = body.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false);
+            let starts_with_digit = body
+                .chars()
+                .next()
+                .map(|c| c.is_ascii_digit())
+                .unwrap_or(false);
             if starts_with_digit {
                 match body.split_once(':') {
                     Some((_, d)) => Ok(Value::String(Rc::new(d.to_string()))),
@@ -5198,12 +6798,17 @@ impl Runtime {
             }
         });
         let desc_id = self.alloc_object(desc_fn);
-        self.obj_mut(sym_proto).dict_mut().insert("description".into(),
+        self.obj_mut(sym_proto).dict_mut().insert(
+            "description".into(),
             crate::value::PropertyDescriptor {
                 value: Value::Undefined,
-                writable: false, enumerable: false, configurable: true,
-                getter: Some(Value::Object(desc_id)), setter: None,
-            });
+                writable: false,
+                enumerable: false,
+                configurable: true,
+                getter: Some(Value::Object(desc_id)),
+                setter: None,
+            },
+        );
         // Symbol.prototype[@@toPrimitive] per §20.4.3.5 — ignore hint, return
         // [[SymbolData]] (unwrap primitive). Installed under the well-known
         // string key "@@toPrimitive"; brand-check rejects non-Symbol receivers.
@@ -5212,22 +6817,27 @@ impl Runtime {
             match t {
                 Value::Symbol(s) => Ok(Value::Symbol(s)),
                 _ => Err(RuntimeError::TypeError(
-                    "Symbol.prototype[@@toPrimitive]: this is not a Symbol".into())),
+                    "Symbol.prototype[@@toPrimitive]: this is not a Symbol".into(),
+                )),
             }
         });
         // Symbol.prototype[@@toStringTag] = "Symbol" per §20.4.3.6.
-        self.obj_mut(sym_proto).set_own_frozen("@@toStringTag".into(),
-            Value::String(Rc::new("Symbol".into())));
-        self.obj_mut(sym).set_own_frozen("prototype".into(), Value::Object(sym_proto));
+        self.obj_mut(sym_proto).set_own_frozen(
+            "@@toStringTag".into(),
+            Value::String(Rc::new("Symbol".into())),
+        );
+        self.obj_mut(sym)
+            .set_own_frozen("prototype".into(), Value::Object(sym_proto));
         // Symbol.prototype.constructor = Symbol.
-        self.obj_mut(sym_proto).set_own_internal("constructor".into(), Value::Object(sym));
+        self.obj_mut(sym_proto)
+            .set_own_internal("constructor".into(), Value::Object(sym));
         self.globals.insert("Symbol".into(), Value::Object(sym));
         self.symbol_prototype = Some(sym_proto);
     }
 
     fn install_console(&mut self) {
         let console = self.alloc_object(Object::new_ordinary());
-        register_method(self, console, "log", |rt, args|{
+        register_method(self, console, "log", |rt, args| {
             let out = console_format(rt, args);
             check_stdio(rt, crate::caps::StdioOp::Stdout(out.as_bytes().to_vec()))?;
             println!("{}", out);
@@ -5237,17 +6847,18 @@ impl Runtime {
         // which remains ungated this round. stderr is the probe-harness
         // escape valve for LOSES sentinels under --sealed; gating it
         // here would block the harness from observing capability errors.
-        register_method(self, console,"error", |rt, args|{
+        register_method(self, console, "error", |rt, args| {
             let out = console_format(rt, args);
             eprintln!("{}", out);
             Ok(Value::Undefined)
         });
-        register_method(self, console,"warn", |rt, args|{
+        register_method(self, console, "warn", |rt, args| {
             let out = console_format(rt, args);
             eprintln!("{}", out);
             Ok(Value::Undefined)
         });
-        self.globals.insert("console".into(), Value::Object(console));
+        self.globals
+            .insert("console".into(), Value::Object(console));
     }
 
     // diff-prod Rung-19 continuation: Iterator Helpers (ES2025) +
@@ -5270,29 +6881,43 @@ impl Runtime {
         fn drain_iterator(rt: &mut Runtime, this: Value) -> Result<Vec<Value>, RuntimeError> {
             let it = match this {
                 Value::Object(id) => id,
-                _ => return Err(RuntimeError::TypeError(
-                    "Iterator helper: receiver is not an iterator".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Iterator helper: receiver is not an iterator".into(),
+                    ))
+                }
             };
             let next = rt.object_get(it, "next");
             if !rt.is_callable(&next) {
                 return Err(RuntimeError::TypeError(
-                    "Iterator helper: receiver has no callable 'next' method".into()));
+                    "Iterator helper: receiver has no callable 'next' method".into(),
+                ));
             }
             let mut out = Vec::new();
             loop {
                 let step = rt.call_function(next.clone(), Value::Object(it), Vec::new())?;
-                let step_id = match step { Value::Object(id) => id, _ => break };
-                if matches!(rt.object_get(step_id, "done"), Value::Boolean(true)) { break; }
+                let step_id = match step {
+                    Value::Object(id) => id,
+                    _ => break,
+                };
+                if matches!(rt.object_get(step_id, "done"), Value::Boolean(true)) {
+                    break;
+                }
                 out.push(rt.object_get(step_id, "value"));
                 if out.len() > 10_000_000 {
                     return Err(RuntimeError::RangeError(
-                        "Iterator helper: result exceeds 10M elements".into()));
+                        "Iterator helper: result exceeds 10M elements".into(),
+                    ));
                 }
             }
             Ok(out)
         }
 
-        fn make_array_iterator(rt: &mut Runtime, iter_proto: ObjectRef, items: Vec<Value>) -> ObjectRef {
+        fn make_array_iterator(
+            rt: &mut Runtime,
+            iter_proto: ObjectRef,
+            items: Vec<Value>,
+        ) -> ObjectRef {
             let mut o = Object::new_ordinary();
             o.proto = Some(iter_proto);
             let it = rt.alloc_object(o);
@@ -5303,21 +6928,27 @@ impl Runtime {
                 rt.object_set(arr, i.to_string(), v);
             }
             rt.object_set(arr, "length".into(), Value::Number(n as f64));
-            rt.obj_mut(it).set_own_internal("__ai_data".into(), Value::Object(arr));
-            rt.obj_mut(it).set_own_internal("__ai_idx".into(), Value::Number(0.0));
+            rt.obj_mut(it)
+                .set_own_internal("__ai_data".into(), Value::Object(arr));
+            rt.obj_mut(it)
+                .set_own_internal("__ai_idx".into(), Value::Number(0.0));
             // Install own `next` method dispatching against __ai_data/__ai_idx.
             let next_fn = make_native("next", |rt, _args| {
                 let this_id = match rt.current_this() {
-                    Value::Object(o) => o, _ => return Ok(Value::Undefined),
+                    Value::Object(o) => o,
+                    _ => return Ok(Value::Undefined),
                 };
                 let arr = match rt.object_get(this_id, "__ai_data") {
-                    Value::Object(id) => id, _ => return Ok(Value::Undefined),
+                    Value::Object(id) => id,
+                    _ => return Ok(Value::Undefined),
                 };
                 let idx = match rt.object_get(this_id, "__ai_idx") {
-                    Value::Number(n) => n as usize, _ => 0,
+                    Value::Number(n) => n as usize,
+                    _ => 0,
                 };
                 let len = match rt.object_get(arr, "length") {
-                    Value::Number(n) => n as usize, _ => 0,
+                    Value::Number(n) => n as usize,
+                    _ => 0,
                 };
                 let mut o = Object::new_ordinary();
                 if idx >= len {
@@ -5325,8 +6956,8 @@ impl Runtime {
                     o.set_own("done".into(), Value::Boolean(true));
                 } else {
                     let v = rt.object_get(arr, &idx.to_string());
-                    rt.obj_mut(this_id).set_own_internal(
-                        "__ai_idx".into(), Value::Number((idx + 1) as f64));
+                    rt.obj_mut(this_id)
+                        .set_own_internal("__ai_idx".into(), Value::Number((idx + 1) as f64));
                     o.set_own("value".into(), v);
                     o.set_own("done".into(), Value::Boolean(false));
                 }
@@ -5343,7 +6974,8 @@ impl Runtime {
             let fn_v = args.first().cloned().unwrap_or(Value::Undefined);
             if !rt.is_callable(&fn_v) {
                 return Err(RuntimeError::TypeError(
-                    "Iterator.prototype.map: callback is not callable".into()));
+                    "Iterator.prototype.map: callback is not callable".into(),
+                ));
             }
             let items = drain_iterator(rt, rt.current_this())?;
             let mut out = Vec::with_capacity(items.len());
@@ -5356,13 +6988,16 @@ impl Runtime {
             let fn_v = args.first().cloned().unwrap_or(Value::Undefined);
             if !rt.is_callable(&fn_v) {
                 return Err(RuntimeError::TypeError(
-                    "Iterator.prototype.filter: callback is not callable".into()));
+                    "Iterator.prototype.filter: callback is not callable".into(),
+                ));
             }
             let items = drain_iterator(rt, rt.current_this())?;
             let mut out = Vec::new();
             for v in items {
                 let keep = rt.call_function(fn_v.clone(), Value::Undefined, vec![v.clone()])?;
-                if abstract_ops::to_boolean(&keep) { out.push(v); }
+                if abstract_ops::to_boolean(&keep) {
+                    out.push(v);
+                }
             }
             Ok(Value::Object(make_array_iterator(rt, ip_for_helpers, out)))
         });
@@ -5388,7 +7023,8 @@ impl Runtime {
             let fn_v = args.first().cloned().unwrap_or(Value::Undefined);
             if !rt.is_callable(&fn_v) {
                 return Err(RuntimeError::TypeError(
-                    "Iterator.prototype.flatMap: callback is not callable".into()));
+                    "Iterator.prototype.flatMap: callback is not callable".into(),
+                ));
             }
             let items = drain_iterator(rt, rt.current_this())?;
             let mut out = Vec::new();
@@ -5399,7 +7035,9 @@ impl Runtime {
                     // Array-shape: walk length.
                     let len = rt.array_length(id);
                     if len > 0 || matches!(rt.object_get(id, "length"), Value::Number(_)) {
-                        for i in 0..len { out.push(rt.object_get(id, &i.to_string())); }
+                        for i in 0..len {
+                            out.push(rt.object_get(id, &i.to_string()));
+                        }
                     } else {
                         // Iterator-shape: drain via .next().
                         out.extend(drain_iterator(rt, Value::Object(id))?);
@@ -5423,7 +7061,8 @@ impl Runtime {
             let fn_v = args.first().cloned().unwrap_or(Value::Undefined);
             if !rt.is_callable(&fn_v) {
                 return Err(RuntimeError::TypeError(
-                    "Iterator.prototype.reduce: callback is not callable".into()));
+                    "Iterator.prototype.reduce: callback is not callable".into(),
+                ));
             }
             let items = drain_iterator(rt, rt.current_this())?;
             let (start_idx, mut acc) = if args.len() >= 2 {
@@ -5432,7 +7071,8 @@ impl Runtime {
                 (1usize, items[0].clone())
             } else {
                 return Err(RuntimeError::TypeError(
-                    "Iterator.prototype.reduce: empty iterator with no initial value".into()));
+                    "Iterator.prototype.reduce: empty iterator with no initial value".into(),
+                ));
             };
             for v in items.into_iter().skip(start_idx) {
                 acc = rt.call_function(fn_v.clone(), Value::Undefined, vec![acc, v])?;
@@ -5443,7 +7083,8 @@ impl Runtime {
             let fn_v = args.first().cloned().unwrap_or(Value::Undefined);
             if !rt.is_callable(&fn_v) {
                 return Err(RuntimeError::TypeError(
-                    "Iterator.prototype.forEach: callback is not callable".into()));
+                    "Iterator.prototype.forEach: callback is not callable".into(),
+                ));
             }
             let items = drain_iterator(rt, rt.current_this())?;
             for v in items {
@@ -5455,12 +7096,15 @@ impl Runtime {
             let fn_v = args.first().cloned().unwrap_or(Value::Undefined);
             if !rt.is_callable(&fn_v) {
                 return Err(RuntimeError::TypeError(
-                    "Iterator.prototype.some: callback is not callable".into()));
+                    "Iterator.prototype.some: callback is not callable".into(),
+                ));
             }
             let items = drain_iterator(rt, rt.current_this())?;
             for v in items {
                 let r = rt.call_function(fn_v.clone(), Value::Undefined, vec![v])?;
-                if abstract_ops::to_boolean(&r) { return Ok(Value::Boolean(true)); }
+                if abstract_ops::to_boolean(&r) {
+                    return Ok(Value::Boolean(true));
+                }
             }
             Ok(Value::Boolean(false))
         });
@@ -5468,12 +7112,15 @@ impl Runtime {
             let fn_v = args.first().cloned().unwrap_or(Value::Undefined);
             if !rt.is_callable(&fn_v) {
                 return Err(RuntimeError::TypeError(
-                    "Iterator.prototype.every: callback is not callable".into()));
+                    "Iterator.prototype.every: callback is not callable".into(),
+                ));
             }
             let items = drain_iterator(rt, rt.current_this())?;
             for v in items {
                 let r = rt.call_function(fn_v.clone(), Value::Undefined, vec![v])?;
-                if !abstract_ops::to_boolean(&r) { return Ok(Value::Boolean(false)); }
+                if !abstract_ops::to_boolean(&r) {
+                    return Ok(Value::Boolean(false));
+                }
             }
             Ok(Value::Boolean(true))
         });
@@ -5481,12 +7128,15 @@ impl Runtime {
             let fn_v = args.first().cloned().unwrap_or(Value::Undefined);
             if !rt.is_callable(&fn_v) {
                 return Err(RuntimeError::TypeError(
-                    "Iterator.prototype.find: callback is not callable".into()));
+                    "Iterator.prototype.find: callback is not callable".into(),
+                ));
             }
             let items = drain_iterator(rt, rt.current_this())?;
             for v in items {
                 let r = rt.call_function(fn_v.clone(), Value::Undefined, vec![v.clone()])?;
-                if abstract_ops::to_boolean(&r) { return Ok(v); }
+                if abstract_ops::to_boolean(&r) {
+                    return Ok(v);
+                }
             }
             Ok(Value::Undefined)
         });
@@ -5494,18 +7144,24 @@ impl Runtime {
         // Iterator global with .from static.
         let iter_ctor = make_native("Iterator", |_rt, _args| {
             Err(RuntimeError::TypeError(
-                "Iterator constructor is abstract; use Iterator.from(iterable)".into()))
+                "Iterator constructor is abstract; use Iterator.from(iterable)".into(),
+            ))
         });
         let iter_id = self.alloc_object(iter_ctor);
-        self.obj_mut(iter_id).set_own_frozen("prototype".into(), Value::Object(iter_proto));
-        self.obj_mut(iter_proto).set_own_internal("constructor".into(), Value::Object(iter_id));
+        self.obj_mut(iter_id)
+            .set_own_frozen("prototype".into(), Value::Object(iter_proto));
+        self.obj_mut(iter_proto)
+            .set_own_internal("constructor".into(), Value::Object(iter_id));
         let ip_for_from = iter_proto;
         register_method(self, iter_id, "from", move |rt, args| {
             let arg = args.first().cloned().unwrap_or(Value::Undefined);
             let obj = match arg {
                 Value::Object(id) => id,
-                _ => return Err(RuntimeError::TypeError(
-                    "Iterator.from: argument is not iterable".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Iterator.from: argument is not iterable".into(),
+                    ))
+                }
             };
             // If obj is itself an iterator (has callable .next), drain directly.
             let next_v = rt.object_get(obj, "next");
@@ -5516,18 +7172,23 @@ impl Runtime {
                 let it_method = rt.object_get(obj, "@@iterator");
                 if !rt.is_callable(&it_method) {
                     return Err(RuntimeError::TypeError(
-                        "Iterator.from: argument is not iterable (no @@iterator)".into()));
+                        "Iterator.from: argument is not iterable (no @@iterator)".into(),
+                    ));
                 }
                 match rt.call_function(it_method, Value::Object(obj), Vec::new())? {
                     Value::Object(id) => id,
-                    _ => return Err(RuntimeError::TypeError(
-                        "Iterator.from: @@iterator did not return an object".into())),
+                    _ => {
+                        return Err(RuntimeError::TypeError(
+                            "Iterator.from: @@iterator did not return an object".into(),
+                        ))
+                    }
                 }
             };
             let items = drain_iterator(rt, Value::Object(inner))?;
             Ok(Value::Object(make_array_iterator(rt, ip_for_from, items)))
         });
-        self.globals.insert("Iterator".into(), Value::Object(iter_id));
+        self.globals
+            .insert("Iterator".into(), Value::Object(iter_id));
 
         // ── Map.groupBy ───────────────────────────────────────────────────
         // §24.1.2.2: like Object.groupBy but returns a Map. Iterate items,
@@ -5542,14 +7203,17 @@ impl Runtime {
                 let cb = args.get(1).cloned().unwrap_or(Value::Undefined);
                 if !rt.is_callable(&cb) {
                     return Err(RuntimeError::TypeError(
-                        "Map.groupBy: callback is not callable".into()));
+                        "Map.groupBy: callback is not callable".into(),
+                    ));
                 }
                 // Drain the iterable. Array-shape primary, iterator-shape fallback.
                 let items: Vec<Value> = match iterable {
                     Value::Object(id) => {
                         let len = rt.array_length(id);
                         if len > 0 || matches!(rt.object_get(id, "length"), Value::Number(_)) {
-                            (0..len).map(|i| rt.object_get(id, &i.to_string())).collect()
+                            (0..len)
+                                .map(|i| rt.object_get(id, &i.to_string()))
+                                .collect()
                         } else {
                             let it_m = rt.object_get(id, "@@iterator");
                             if rt.is_callable(&it_m) {
@@ -5557,18 +7221,27 @@ impl Runtime {
                                 drain_iterator(rt, it)?
                             } else {
                                 return Err(RuntimeError::TypeError(
-                                    "Map.groupBy: argument is not iterable".into()));
+                                    "Map.groupBy: argument is not iterable".into(),
+                                ));
                             }
                         }
                     }
-                    _ => return Err(RuntimeError::TypeError(
-                        "Map.groupBy: argument is not iterable".into())),
+                    _ => {
+                        return Err(RuntimeError::TypeError(
+                            "Map.groupBy: argument is not iterable".into(),
+                        ))
+                    }
                 };
                 // Construct a new Map via the ctor so it's properly wired.
-                let new_map = rt.call_function(Value::Object(map_ctor), Value::Undefined, Vec::new())?;
-                let map_id = match new_map { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
+                let new_map =
+                    rt.call_function(Value::Object(map_ctor), Value::Undefined, Vec::new())?;
+                let map_id = match new_map {
+                    Value::Object(id) => id,
+                    _ => return Ok(Value::Undefined),
+                };
                 let storage = match rt.object_get(map_id, "__map_data") {
-                    Value::Object(id) => id, _ => return Ok(Value::Object(map_id)),
+                    Value::Object(id) => id,
+                    _ => return Ok(Value::Object(map_id)),
                 };
                 // Group items by ToString(cb(item)). Within each bucket, append.
                 for v in items {
@@ -5605,7 +7278,8 @@ impl Runtime {
                 let fn_v = args.first().cloned().unwrap_or(Value::Undefined);
                 if !rt.is_callable(&fn_v) {
                     return Err(RuntimeError::TypeError(
-                        "Promise.try: callback is not callable".into()));
+                        "Promise.try: callback is not callable".into(),
+                    ));
                 }
                 let rest: Vec<Value> = args.iter().skip(1).cloned().collect();
                 match rt.call_function(fn_v, Value::Undefined, rest) {
@@ -5624,15 +7298,27 @@ impl Runtime {
         // return false per spec.
         if let Some(Value::Object(error_ctor)) = self.globals.get("Error").cloned() {
             let err_proto_v = self.object_get(error_ctor, "prototype");
-            let err_proto = if let Value::Object(id) = err_proto_v { Some(id) } else { None };
+            let err_proto = if let Value::Object(id) = err_proto_v {
+                Some(id)
+            } else {
+                None
+            };
             register_intrinsic_method(self, error_ctor, "isError", 1, move |rt, args| {
                 let v = args.first().cloned().unwrap_or(Value::Undefined);
-                let id = match v { Value::Object(id) => id, _ => return Ok(Value::Boolean(false)) };
+                let id = match v {
+                    Value::Object(id) => id,
+                    _ => return Ok(Value::Boolean(false)),
+                };
                 // Walk the proto chain looking for Error.prototype.
-                let target = match err_proto { Some(p) => p, None => return Ok(Value::Boolean(false)) };
+                let target = match err_proto {
+                    Some(p) => p,
+                    None => return Ok(Value::Boolean(false)),
+                };
                 let mut cur = rt.obj(id).proto;
                 while let Some(p) = cur {
-                    if p == target { return Ok(Value::Boolean(true)); }
+                    if p == target {
+                        return Ok(Value::Boolean(true));
+                    }
                     cur = rt.obj(p).proto;
                 }
                 Ok(Value::Boolean(false))
@@ -5647,13 +7333,22 @@ impl Runtime {
 /// snapshots the Set's current values into a private array and exposes a
 /// next() that yields each in turn. Sufficient for `[...new Set(arr)]`
 /// spread.
-pub(crate) fn make_set_values_iterator(rt: &mut Runtime, set_id: crate::value::ObjectRef) -> Result<Value, RuntimeError> {
+pub(crate) fn make_set_values_iterator(
+    rt: &mut Runtime,
+    set_id: crate::value::ObjectRef,
+) -> Result<Value, RuntimeError> {
     let values: Vec<Value> = match rt.object_get(set_id, "__set_data") {
-        Value::Object(storage) => {
-            rt.obj(storage).properties.values().map(|d| d.value.clone()).collect()
+        Value::Object(storage) => rt
+            .obj(storage)
+            .properties
+            .values()
+            .map(|d| d.value.clone())
+            .collect(),
+        _ => {
+            return Err(RuntimeError::TypeError(
+                "Set.prototype method: this is not a Set object".into(),
+            ))
         }
-        _ => return Err(RuntimeError::TypeError(
-            "Set.prototype method: this is not a Set object".into())),
     };
     // Build an iterator object: { __idx: 0, __vals: [v0,v1,...], next() }
     let iter = rt.alloc_object(Object::new_ordinary());
@@ -5661,12 +7356,19 @@ pub(crate) fn make_set_values_iterator(rt: &mut Runtime, set_id: crate::value::O
     for (i, v) in values.iter().enumerate() {
         rt.object_set(vals_arr, i.to_string(), v.clone());
     }
-    rt.object_set(vals_arr, "length".into(), Value::Number(values.len() as f64));
+    rt.object_set(
+        vals_arr,
+        "length".into(),
+        Value::Number(values.len() as f64),
+    );
     // ESNE-EXT 3: hide engine sentinels per CLAUDE.md __X convention.
     rt.set_engine_sentinel(iter, "__vals", Value::Object(vals_arr));
     rt.set_engine_sentinel(iter, "__idx", Value::Number(0.0));
     register_intrinsic_method(rt, iter, "next", 1, |rt, _args| {
-        let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
+        let this = match rt.current_this() {
+            Value::Object(id) => id,
+            _ => return Ok(Value::Undefined),
+        };
         let idx = match rt.object_get(this, "__idx") {
             Value::Number(n) => n as usize,
             _ => 0,
@@ -5704,7 +7406,8 @@ pub(crate) fn collect_iterable(rt: &mut Runtime, src: Value) -> Result<Vec<Value
         Value::Object(id) => id,
         Value::Undefined | Value::Null => {
             return Err(RuntimeError::TypeError(
-                "iterable: cannot iterate undefined or null".into()));
+                "iterable: cannot iterate undefined or null".into(),
+            ));
         }
         ref other => match rt.to_object(other)? {
             Value::Object(id) => id,
@@ -5723,24 +7426,47 @@ pub(crate) fn collect_iterable(rt: &mut Runtime, src: Value) -> Result<Vec<Value
         let result = rt.call_function(next.clone(), Value::Object(iter_id), Vec::new())?;
         let rid = match result {
             Value::Object(id) => id,
-            _ => return Err(RuntimeError::TypeError("iterator next did not return an object".into())),
+            _ => {
+                return Err(RuntimeError::TypeError(
+                    "iterator next did not return an object".into(),
+                ))
+            }
         };
         let done = abstract_ops::to_boolean(&rt.object_get(rid, "done"));
-        if done { break; }
+        if done {
+            break;
+        }
         out.push(rt.object_get(rid, "value"));
     }
     Ok(out)
 }
 
 fn ta_iter_next(rt: &mut Runtime) -> Result<Value, RuntimeError> {
-    let this_id = match rt.current_this() { Value::Object(o) => o, _ => return Ok(Value::Undefined) };
-    let src = match rt.object_get(this_id, "__it_src__") { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
-    let idx = match rt.object_get(this_id, "__it_idx__") { Value::Number(n) => n as usize, _ => 0 };
+    let this_id = match rt.current_this() {
+        Value::Object(o) => o,
+        _ => return Ok(Value::Undefined),
+    };
+    let src = match rt.object_get(this_id, "__it_src__") {
+        Value::Object(id) => id,
+        _ => return Ok(Value::Undefined),
+    };
+    let idx = match rt.object_get(this_id, "__it_idx__") {
+        Value::Number(n) => n as usize,
+        _ => 0,
+    };
     let mode = match rt.object_get(this_id, "__it_mode__") {
         Value::String(s) => s.as_str().to_string(),
         _ => "value".to_string(),
     };
-    let len = match rt.object_get(src, "length") { Value::Number(n) => n as usize, _ => 0 };
+    if rt.typed_array_view_out_of_bounds(src) {
+        return Err(RuntimeError::TypeError(
+            "TypedArray iterator receiver is out of bounds".into(),
+        ));
+    }
+    let len = match rt.object_get(src, "length") {
+        Value::Number(n) => n as usize,
+        _ => 0,
+    };
     let mut o = Object::new_ordinary();
     if idx >= len {
         o.set_own("value".into(), Value::Undefined);
@@ -5758,7 +7484,11 @@ fn ta_iter_next(rt: &mut Runtime) -> Result<Value, RuntimeError> {
             }
             _ => v,
         };
-        rt.object_set(this_id, "__it_idx__".into(), Value::Number((idx + 1) as f64));
+        rt.object_set(
+            this_id,
+            "__it_idx__".into(),
+            Value::Number((idx + 1) as f64),
+        );
         o.set_own("value".into(), yielded);
         o.set_own("done".into(), Value::Boolean(false));
     }
@@ -5779,7 +7509,11 @@ fn num_arg(args: &[Value], i: usize) -> f64 {
 /// the named constructor isn't installed yet (early-bootstrap edge).
 /// Used by the dynamic-import reject path so promise rejections carry
 /// real Error-instance shape rather than a raw string.
-pub(crate) fn make_error_instance(rt: &mut Runtime, ctor_name: &str, message: &str) -> Option<rusty_js_gc::ObjectId> {
+pub(crate) fn make_error_instance(
+    rt: &mut Runtime,
+    ctor_name: &str,
+    message: &str,
+) -> Option<rusty_js_gc::ObjectId> {
     let ctor_id = match rt.globals.get(ctor_name).cloned() {
         Some(Value::Object(id)) => id,
         _ => return None,
@@ -5791,7 +7525,10 @@ pub(crate) fn make_error_instance(rt: &mut Runtime, ctor_name: &str, message: &s
     let mut o = Object::new_ordinary();
     o.proto = proto;
     o.set_own("name".into(), Value::String(Rc::new(ctor_name.to_string())));
-    o.set_own("message".into(), Value::String(Rc::new(message.to_string())));
+    o.set_own(
+        "message".into(),
+        Value::String(Rc::new(message.to_string())),
+    );
     o.set_own("stack".into(), Value::String(Rc::new(String::new())));
     Some(rt.alloc_object(o))
 }
@@ -5800,7 +7537,11 @@ pub(crate) fn make_error_instance(rt: &mut Runtime, ctor_name: &str, message: &s
 /// source TypedArray, used by .map / .filter to satisfy ECMA §23.2.3.21
 /// TypedArraySpeciesCreate semantics at the shape level (length +
 /// byteLength + __kind sentinel + proto inheritance from source).
-fn make_typed_array_like(rt: &mut Runtime, src: rusty_js_gc::ObjectId, len: usize) -> rusty_js_gc::ObjectId {
+fn make_typed_array_like(
+    rt: &mut Runtime,
+    src: rusty_js_gc::ObjectId,
+    len: usize,
+) -> rusty_js_gc::ObjectId {
     let src_kind = match rt.object_get(src, "__kind") {
         Value::String(s) | Value::Symbol(s) => (*s).clone(),
         _ => "Uint8Array".into(),
@@ -5814,8 +7555,15 @@ fn make_typed_array_like(rt: &mut Runtime, src: rusty_js_gc::ObjectId, len: usiz
         Value::Number(n) => n,
         _ => 0.0,
     };
-    let src_len = match rt.object_get(src, "length") { Value::Number(n) => n, _ => 1.0 };
-    let bpe = if src_len > 0.0 { src_byte_len / src_len } else { 1.0 };
+    let src_len = match rt.object_get(src, "length") {
+        Value::Number(n) => n,
+        _ => 1.0,
+    };
+    let bpe = if src_len > 0.0 {
+        src_byte_len / src_len
+    } else {
+        1.0
+    };
     o.set_own("byteLength".into(), Value::Number(len as f64 * bpe));
     o.set_own_internal("__kind".into(), Value::String(Rc::new(src_kind)));
     rt.alloc_object(o)
@@ -5855,26 +7603,36 @@ fn structured_clone_walk(
     seen: &mut std::collections::HashMap<u32, ObjectRef>,
 ) -> Result<Value, RuntimeError> {
     match v {
-        Value::Undefined | Value::Null | Value::Boolean(_) | Value::Number(_)
-        | Value::String(_) | Value::BigInt(_) => Ok(v.clone()),
+        Value::Undefined
+        | Value::Null
+        | Value::Boolean(_)
+        | Value::Number(_)
+        | Value::String(_)
+        | Value::BigInt(_) => Ok(v.clone()),
         Value::Symbol(_) => Err(RuntimeError::TypeError(
-            "structuredClone: Symbol values are not cloneable".into())),
+            "structuredClone: Symbol values are not cloneable".into(),
+        )),
         Value::Object(oid) => {
             if let Some(dst) = seen.get(&oid.0) {
                 return Ok(Value::Object(*dst));
             }
             // Function check.
-            if matches!(rt.obj(*oid).internal_kind,
-                InternalKind::Function(_) | InternalKind::Closure(_) | InternalKind::BoundFunction(_))
-            {
+            if matches!(
+                rt.obj(*oid).internal_kind,
+                InternalKind::Function(_)
+                    | InternalKind::Closure(_)
+                    | InternalKind::BoundFunction(_)
+            ) {
                 return Err(RuntimeError::TypeError(
-                    "structuredClone: function values are not cloneable".into()));
+                    "structuredClone: function values are not cloneable".into(),
+                ));
             }
             // Special-case Map.
             if !matches!(rt.object_get(*oid, "__map_data"), Value::Undefined) {
                 let dst_id = if let Some(Value::Object(ctor)) = rt.globals.get("Map").cloned() {
                     let proto = match rt.object_get(ctor, "prototype") {
-                        Value::Object(pid) => Some(pid), _ => None,
+                        Value::Object(pid) => Some(pid),
+                        _ => None,
                     };
                     let mut o = Object::new_ordinary();
                     o.proto = proto;
@@ -5883,15 +7641,23 @@ fn structured_clone_walk(
                     rt.set_engine_sentinel(id, "__map_data", Value::Object(storage));
                     rt.set_engine_sentinel(id, "size", Value::Number(0.0));
                     id
-                } else { rt.alloc_object(Object::new_ordinary()) };
+                } else {
+                    rt.alloc_object(Object::new_ordinary())
+                };
                 seen.insert(oid.0, dst_id);
                 let src_storage = match rt.object_get(*oid, "__map_data") {
-                    Value::Object(s) => s, _ => return Ok(Value::Object(dst_id)),
+                    Value::Object(s) => s,
+                    _ => return Ok(Value::Object(dst_id)),
                 };
-                let pairs: Vec<(String, Value)> = rt.obj(src_storage).properties.iter()
-                    .map(|(k, d)| (k.to_string_content(), d.value.clone())).collect();
+                let pairs: Vec<(String, Value)> = rt
+                    .obj(src_storage)
+                    .properties
+                    .iter()
+                    .map(|(k, d)| (k.to_string_content(), d.value.clone()))
+                    .collect();
                 let dst_storage = match rt.object_get(dst_id, "__map_data") {
-                    Value::Object(s) => s, _ => return Ok(Value::Object(dst_id)),
+                    Value::Object(s) => s,
+                    _ => return Ok(Value::Object(dst_id)),
                 };
                 let mut size = 0;
                 for (k, v) in pairs {
@@ -5906,7 +7672,8 @@ fn structured_clone_walk(
             if !matches!(rt.object_get(*oid, "__set_data"), Value::Undefined) {
                 let dst_id = if let Some(Value::Object(ctor)) = rt.globals.get("Set").cloned() {
                     let proto = match rt.object_get(ctor, "prototype") {
-                        Value::Object(pid) => Some(pid), _ => None,
+                        Value::Object(pid) => Some(pid),
+                        _ => None,
                     };
                     let mut o = Object::new_ordinary();
                     o.proto = proto;
@@ -5915,15 +7682,23 @@ fn structured_clone_walk(
                     rt.set_engine_sentinel(id, "__set_data", Value::Object(storage));
                     rt.set_engine_sentinel(id, "size", Value::Number(0.0));
                     id
-                } else { rt.alloc_object(Object::new_ordinary()) };
+                } else {
+                    rt.alloc_object(Object::new_ordinary())
+                };
                 seen.insert(oid.0, dst_id);
                 let src_storage = match rt.object_get(*oid, "__set_data") {
-                    Value::Object(s) => s, _ => return Ok(Value::Object(dst_id)),
+                    Value::Object(s) => s,
+                    _ => return Ok(Value::Object(dst_id)),
                 };
-                let entries: Vec<(String, Value)> = rt.obj(src_storage).properties.iter()
-                    .map(|(k, d)| (k.to_string_content(), d.value.clone())).collect();
+                let entries: Vec<(String, Value)> = rt
+                    .obj(src_storage)
+                    .properties
+                    .iter()
+                    .map(|(k, d)| (k.to_string_content(), d.value.clone()))
+                    .collect();
                 let dst_storage = match rt.object_get(dst_id, "__set_data") {
-                    Value::Object(s) => s, _ => return Ok(Value::Object(dst_id)),
+                    Value::Object(s) => s,
+                    _ => return Ok(Value::Object(dst_id)),
                 };
                 let mut size = 0;
                 for (k, v) in entries {
@@ -5955,7 +7730,8 @@ fn structured_clone_walk(
                 if let Some(Value::Object(ctor)) = rt.globals.get("RegExp").cloned() {
                     let prev = rt.pending_new_target.take();
                     rt.pending_new_target = Some(Value::Object(ctor));
-                    let r = rt.call_function(Value::Object(ctor), Value::Undefined, vec![src, flags]);
+                    let r =
+                        rt.call_function(Value::Object(ctor), Value::Undefined, vec![src, flags]);
                     rt.pending_new_target = prev;
                     if let Ok(v) = r {
                         if let Value::Object(dst_id) = &v {
@@ -5988,9 +7764,12 @@ fn structured_clone_walk(
                         }
                     }
                 }
-                out.extend(src.properties.iter()
-                    .filter(|(k, _)| !k.as_str().starts_with("@@"))
-                    .map(|(k, d)| (k.to_string_content(), d.value.clone())));
+                out.extend(
+                    src.properties
+                        .iter()
+                        .filter(|(k, _)| !k.as_str().starts_with("@@"))
+                        .map(|(k, d)| (k.to_string_content(), d.value.clone())),
+                );
                 out
             };
             for (k, v) in pairs {
@@ -6010,9 +7789,15 @@ fn uri_percent_encode(s: &str, keep_reserved: bool) -> String {
     let mut out = String::with_capacity(s.len());
     for byte in s.bytes() {
         let keep = (byte as char).is_ascii_alphanumeric()
-            || matches!(byte, b'-' | b'_' | b'.' | b'!' | b'~' | b'*' | b'\'' | b'(' | b')')
-            || (keep_reserved && matches!(byte,
-                b';' | b',' | b'/' | b'?' | b':' | b'@' | b'&' | b'=' | b'+' | b'$' | b'#'));
+            || matches!(
+                byte,
+                b'-' | b'_' | b'.' | b'!' | b'~' | b'*' | b'\'' | b'(' | b')'
+            )
+            || (keep_reserved
+                && matches!(
+                    byte,
+                    b';' | b',' | b'/' | b'?' | b':' | b'@' | b'&' | b'=' | b'+' | b'$' | b'#'
+                ));
         if keep {
             out.push(byte as char);
         } else {
@@ -6028,7 +7813,9 @@ fn uri_percent_decode(s: &str) -> Option<String> {
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'%' {
-            if i + 2 >= bytes.len() { return None; }
+            if i + 2 >= bytes.len() {
+                return None;
+            }
             let h1 = (bytes[i + 1] as char).to_digit(16)?;
             let h2 = (bytes[i + 2] as char).to_digit(16)?;
             out.push(((h1 << 4) | h2) as u8);
@@ -6055,7 +7842,9 @@ const INSPECT_MAX_DEPTH: u32 = 2;
 fn console_format(rt: &Runtime, args: &[Value]) -> String {
     let mut out = String::new();
     for (i, a) in args.iter().enumerate() {
-        if i > 0 { out.push(' '); }
+        if i > 0 {
+            out.push(' ');
+        }
         match a {
             Value::String(s) => out.push_str(s.as_str()),
             _ => out.push_str(&inspect_value(rt, a)),
@@ -6086,17 +7875,33 @@ fn inspect_inner(
         Value::BigInt(b) => format!("{}n", b.to_decimal()),
         Value::Symbol(s) => format!("Symbol({})", s.as_str().trim_start_matches("@@sym:")),
         Value::String(s) => {
-            if in_container { format!("'{}'", s.as_str().replace('\\', "\\\\").replace('\'', "\\'")) }
-            else { s.as_str().to_string() }
+            if in_container {
+                format!(
+                    "'{}'",
+                    s.as_str().replace('\\', "\\\\").replace('\'', "\\'")
+                )
+            } else {
+                s.as_str().to_string()
+            }
         }
         Value::Object(id) => inspect_object(rt, *id, depth, visited),
     }
 }
 
 fn format_number(n: f64) -> String {
-    if n.is_nan() { return "NaN".into(); }
-    if n.is_infinite() { return if n > 0.0 { "Infinity".into() } else { "-Infinity".into() }; }
-    if n == 0.0 && n.is_sign_negative() { return "-0".into(); }
+    if n.is_nan() {
+        return "NaN".into();
+    }
+    if n.is_infinite() {
+        return if n > 0.0 {
+            "Infinity".into()
+        } else {
+            "-Infinity".into()
+        };
+    }
+    if n == 0.0 && n.is_sign_negative() {
+        return "-0".into();
+    }
     crate::abstract_ops::number_to_string(n)
 }
 
@@ -6115,14 +7920,20 @@ fn inspect_object(
     let result = match &rt.obj(id).internal_kind {
         InternalKind::Function(fi) => {
             visited.remove(&key);
-            if fi.name.is_empty() { "[Function (anonymous)]".into() }
-            else { format!("[Function: {}]", fi.name) }
+            if fi.name.is_empty() {
+                "[Function (anonymous)]".into()
+            } else {
+                format!("[Function: {}]", fi.name)
+            }
         }
         InternalKind::Closure(ci) => {
             visited.remove(&key);
             let n = ci.proto.display_name.as_str();
-            if n.is_empty() { "[Function (anonymous)]".into() }
-            else { format!("[Function: {}]", n) }
+            if n.is_empty() {
+                "[Function (anonymous)]".into()
+            } else {
+                format!("[Function: {}]", n)
+            }
         }
         InternalKind::BoundFunction(_) => {
             visited.remove(&key);
@@ -6142,7 +7953,11 @@ fn inspect_object(
                 _ => "Error".into(),
             };
             visited.remove(&key);
-            if msg.is_empty() { name } else { format!("{}: {}", name, msg) }
+            if msg.is_empty() {
+                name
+            } else {
+                format!("{}: {}", name, msg)
+            }
         }
         InternalKind::Array => {
             let r = inspect_array(rt, id, depth, visited);
@@ -6170,8 +7985,12 @@ fn inspect_array(
         Value::Number(n) if n >= 0.0 && n.is_finite() => n as usize,
         _ => 0,
     };
-    if len == 0 { return "[]".into(); }
-    if depth >= INSPECT_MAX_DEPTH { return "[Array]".into(); }
+    if len == 0 {
+        return "[]".into();
+    }
+    if depth >= INSPECT_MAX_DEPTH {
+        return "[Array]".into();
+    }
     let mut parts: Vec<String> = Vec::with_capacity(len);
     for i in 0..len {
         let v = rt.object_get(id, &i.to_string());
@@ -6192,39 +8011,73 @@ fn inspect_plain_object(
     let has_set_data = rt.obj(id).has_own_str("__set_data");
     let has_map_data = rt.obj(id).has_own_str("__map_data");
     let has_weak = matches!(rt.object_get(id, "__is_weakmap"), Value::Boolean(true))
-                || matches!(rt.object_get(id, "__is_weakset"), Value::Boolean(true));
+        || matches!(rt.object_get(id, "__is_weakset"), Value::Boolean(true));
     if has_set_data {
         let storage = match rt.object_get(id, "__set_data") {
-            Value::Object(sid) => Some(sid), _ => None,
+            Value::Object(sid) => Some(sid),
+            _ => None,
         };
-        return inspect_set_like(rt, id, storage, depth, visited, if has_weak { "WeakSet" } else { "Set" });
+        return inspect_set_like(
+            rt,
+            id,
+            storage,
+            depth,
+            visited,
+            if has_weak { "WeakSet" } else { "Set" },
+        );
     }
     if has_map_data {
         let storage = match rt.object_get(id, "__map_data") {
-            Value::Object(sid) => Some(sid), _ => None,
+            Value::Object(sid) => Some(sid),
+            _ => None,
         };
-        return inspect_map_like(rt, id, storage, depth, visited, if has_weak { "WeakMap" } else { "Map" });
+        return inspect_map_like(
+            rt,
+            id,
+            storage,
+            depth,
+            visited,
+            if has_weak { "WeakMap" } else { "Map" },
+        );
     }
     if let Some(err_name) = detect_error_class(rt, id) {
         let msg = match rt.object_get(id, "message") {
             Value::String(s) => s.as_str().to_string(),
             _ => String::new(),
         };
-        return if msg.is_empty() { err_name } else { format!("{}: {}", err_name, msg) };
+        return if msg.is_empty() {
+            err_name
+        } else {
+            format!("{}: {}", err_name, msg)
+        };
     }
-    let keys: Vec<String> = rt.ordinary_own_enumerable_string_keys(id).into_iter()
+    let keys: Vec<String> = rt
+        .ordinary_own_enumerable_string_keys(id)
+        .into_iter()
         // Filter engine-internal sentinels (__-prefixed and @@-prefixed); they
         // should never reach observable output. EIPD/GBNE work made many of
         // these non-enumerable, but a residual layer still leaks.
         .filter(|k| !k.starts_with("__") && !k.starts_with("@@"))
         .collect();
-    if keys.is_empty() { return "{}".into(); }
-    if depth >= INSPECT_MAX_DEPTH { return "[Object]".into(); }
+    if keys.is_empty() {
+        return "{}".into();
+    }
+    if depth >= INSPECT_MAX_DEPTH {
+        return "[Object]".into();
+    }
     let mut parts: Vec<String> = Vec::with_capacity(keys.len());
     for k in &keys {
         let v = rt.object_get(id, k);
-        let key_str = if is_valid_identifier(k) { k.clone() } else { format!("'{}'", k) };
-        parts.push(format!("{}: {}", key_str, inspect_inner(rt, &v, depth + 1, visited, true)));
+        let key_str = if is_valid_identifier(k) {
+            k.clone()
+        } else {
+            format!("'{}'", k)
+        };
+        parts.push(format!(
+            "{}: {}",
+            key_str,
+            inspect_inner(rt, &v, depth + 1, visited, true)
+        ));
     }
     format!("{{ {} }}", parts.join(", "))
 }
@@ -6238,10 +8091,15 @@ fn inspect_set_like(
     label: &str,
 ) -> String {
     let size = match rt.object_get(instance, "size") {
-        Value::Number(n) if n >= 0.0 => n as usize, _ => 0,
+        Value::Number(n) if n >= 0.0 => n as usize,
+        _ => 0,
     };
-    if size == 0 { return format!("{}(0) {{}}", label); }
-    if depth >= INSPECT_MAX_DEPTH { return format!("[{}]", label); }
+    if size == 0 {
+        return format!("{}(0) {{}}", label);
+    }
+    if depth >= INSPECT_MAX_DEPTH {
+        return format!("[{}]", label);
+    }
     let mut parts = Vec::new();
     if let Some(sid) = storage {
         for (_, d) in rt.obj(sid).properties.iter() {
@@ -6260,16 +8118,29 @@ fn inspect_map_like(
     label: &str,
 ) -> String {
     let size = match rt.object_get(instance, "size") {
-        Value::Number(n) if n >= 0.0 => n as usize, _ => 0,
+        Value::Number(n) if n >= 0.0 => n as usize,
+        _ => 0,
     };
-    if size == 0 { return format!("{}(0) {{}}", label); }
-    if depth >= INSPECT_MAX_DEPTH { return format!("[{}]", label); }
+    if size == 0 {
+        return format!("{}(0) {{}}", label);
+    }
+    if depth >= INSPECT_MAX_DEPTH {
+        return format!("[{}]", label);
+    }
     let mut parts = Vec::new();
     if let Some(sid) = storage {
         for (k, d) in rt.obj(sid).properties.iter() {
             let k_str = k.as_str().to_string();
-            let k_render = if is_valid_identifier(&k_str) { k_str } else { format!("'{}'", k_str) };
-            parts.push(format!("{} => {}", k_render, inspect_inner(rt, &d.value, depth + 1, visited, true)));
+            let k_render = if is_valid_identifier(&k_str) {
+                k_str
+            } else {
+                format!("'{}'", k_str)
+            };
+            parts.push(format!(
+                "{} => {}",
+                k_render,
+                inspect_inner(rt, &d.value, depth + 1, visited, true)
+            ));
         }
     }
     format!("{}({}) {{ {} }}", label, size, parts.join(", "))
@@ -6280,13 +8151,21 @@ fn inspect_map_like(
 /// per-prototype set_own_internal). Returns the class name when found.
 fn detect_error_class(rt: &Runtime, id: crate::value::ObjectRef) -> Option<String> {
     const NAMES: &[&str] = &[
-        "Error", "TypeError", "RangeError", "SyntaxError",
-        "ReferenceError", "URIError", "EvalError", "AggregateError",
+        "Error",
+        "TypeError",
+        "RangeError",
+        "SyntaxError",
+        "ReferenceError",
+        "URIError",
+        "EvalError",
+        "AggregateError",
     ];
     let mut cur = rt.obj(id).proto;
     let mut hops = 0;
     while let Some(c) = cur {
-        if hops > 5 { break; }
+        if hops > 5 {
+            break;
+        }
         if let Some(d) = rt.obj(c).get_own("name") {
             if let Value::String(s) = &d.value {
                 if NAMES.iter().any(|n| n == &s.as_str()) {
@@ -6310,7 +8189,10 @@ fn is_valid_identifier(s: &str) -> bool {
     chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
 }
 
-pub(crate) fn make_native(name: &str, f: impl Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static) -> Object {
+pub(crate) fn make_native(
+    name: &str,
+    f: impl Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static,
+) -> Object {
     make_native_with_length(name, 0, f)
 }
 
@@ -6336,7 +8218,7 @@ pub(crate) fn make_native_with_length(
             native,
             is_constructor: true,
         }),
-    
+
         ..Default::default()
     }
 }
@@ -6363,13 +8245,15 @@ pub(crate) fn make_native_non_ctor(
             native,
             is_constructor: false,
         }),
-    
+
         ..Default::default()
     }
 }
 
 fn register_method<F>(rt: &mut Runtime, host: ObjectRef, name: &str, f: F)
-where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
+where
+    F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static,
+{
     // Ω.5.P62.E2: built-in methods installed via register_method are
     // intrinsics per ECMA §10.2.x — non-enumerable + non-constructor.
     // Only register_method's length/arity stays at 0 (callers that need
@@ -6380,7 +8264,8 @@ where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
     // across most built-in protos exposed by Object.gOPD test262 slice.
     let fn_obj = make_native_non_ctor(name, 0, f);
     let fn_id = rt.alloc_object(fn_obj);
-    rt.obj_mut(host).set_own_internal(name.into(), Value::Object(fn_id));
+    rt.obj_mut(host)
+        .set_own_internal(name.into(), Value::Object(fn_id));
 }
 
 /// Ω.5.P61.E3: install an intrinsic method (Math.abs, Object.keys, etc.)
@@ -6393,8 +8278,15 @@ where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
 /// Use at intrinsic-install sites; user-code property assignment
 /// continues to use `register_method` (enumerable per spec for
 /// CreateDataPropertyOrThrow defaults).
-pub(crate) fn register_intrinsic_method<F>(rt: &mut Runtime, host: ObjectRef, name: &str, length: u32, f: F)
-where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
+pub(crate) fn register_intrinsic_method<F>(
+    rt: &mut Runtime,
+    host: ObjectRef,
+    name: &str,
+    length: u32,
+    f: F,
+) where
+    F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static,
+{
     // Ω.5.P61.E4: intrinsic methods are non-constructors per ECMA §21.3
     // (and the same applies to every built-in not identified as a
     // constructor — Object.keys, String.prototype.includes, Array.
@@ -6402,24 +8294,34 @@ where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
     // Op::New + Reflect.construct throw TypeError on `new Math.abs()`.
     let fn_obj = make_native_non_ctor(name, length, f);
     let fn_id = rt.alloc_object(fn_obj);
-    rt.obj_mut(host).dict_mut().insert(crate::value::PropertyKey::String(name.to_string()), crate::value::PropertyDescriptor {
-        value: Value::Object(fn_id),
-        writable: true, enumerable: false, configurable: true,
-        getter: None, setter: None,
-    });
+    rt.obj_mut(host).dict_mut().insert(
+        crate::value::PropertyKey::String(name.to_string()),
+        crate::value::PropertyDescriptor {
+            value: Value::Object(fn_id),
+            writable: true,
+            enumerable: false,
+            configurable: true,
+            getter: None,
+            setter: None,
+        },
+    );
 }
 
 /// Register a global as a constructor-callable native. Use for §20.2.1
 /// Function and any other intrinsic that the spec marks `[[Construct]]`.
 fn register_global_ctor<F>(rt: &mut Runtime, name: &str, f: F)
-where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
+where
+    F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static,
+{
     let fn_obj = make_native(name, f);
     let fn_id = rt.alloc_object(fn_obj);
     rt.globals.insert(name.into(), Value::Object(fn_id));
 }
 
 fn register_global_fn<F>(rt: &mut Runtime, name: &str, f: F)
-where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
+where
+    F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static,
+{
     // §19.2.{1..6} parseInt, parseFloat, isNaN, isFinite, decodeURI,
     // decodeURIComponent, encodeURI, encodeURIComponent — all are functions,
     // not constructors. Use make_native_non_ctor so `new parseInt(...)`
@@ -6435,7 +8337,9 @@ where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
 /// appear in `globals`, so `globalThis.__X` reads as `undefined` and
 /// `Object.keys(globalThis)` does not enumerate it.
 fn register_engine_helper<F>(rt: &mut Runtime, name: &str, f: F)
-where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
+where
+    F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static,
+{
     let fn_obj = make_native(name, f);
     let fn_id = rt.alloc_object(fn_obj);
     rt.engine_helpers.insert(name.into(), Value::Object(fn_id));
@@ -6468,8 +8372,11 @@ pub(crate) fn json_stringify_into(rt: &Runtime, v: &Value, out: &mut String) {
                 let n = *n;
                 if n == 0.0 {
                     out.push('0');
-                } else if n.is_finite() && n.fract() == 0.0
-                    && n >= i64::MIN as f64 && n <= i64::MAX as f64 {
+                } else if n.is_finite()
+                    && n.fract() == 0.0
+                    && n >= i64::MIN as f64
+                    && n <= i64::MAX as f64
+                {
                     write_i64_into(n as i64, out);
                 } else {
                     out.push_str(&abstract_ops::number_to_string(n));
@@ -6534,7 +8441,9 @@ pub(crate) fn json_stringify_into(rt: &Runtime, v: &Value, out: &mut String) {
                 out.push('[');
                 let mut first = true;
                 for (_, v) in &entries {
-                    if !first { out.push(','); }
+                    if !first {
+                        out.push(',');
+                    }
                     first = false;
                     json_stringify_into(rt, v, out);
                 }
@@ -6548,10 +8457,16 @@ pub(crate) fn json_stringify_into(rt: &Runtime, v: &Value, out: &mut String) {
                 let mut first = true;
                 if let Some(shape) = obj.shape.as_ref() {
                     for (name, slot) in shape.iter_slots() {
-                        if name.starts_with("@@") { continue; }
+                        if name.starts_with("@@") {
+                            continue;
+                        }
                         if let Some(val) = obj.shape_values.get(slot as usize) {
-                            if matches!(val, Value::Undefined | Value::Symbol(_)) { continue; }
-                            if !first { out.push(','); }
+                            if matches!(val, Value::Undefined | Value::Symbol(_)) {
+                                continue;
+                            }
+                            if !first {
+                                out.push(',');
+                            }
                             first = false;
                             json_quote_string_into(name, out);
                             out.push(':');
@@ -6560,11 +8475,19 @@ pub(crate) fn json_stringify_into(rt: &Runtime, v: &Value, out: &mut String) {
                     }
                 }
                 for (k, d) in &obj.properties {
-                    if !d.enumerable { continue; }
-                    if matches!(d.value, Value::Undefined | Value::Symbol(_)) { continue; }
+                    if !d.enumerable {
+                        continue;
+                    }
+                    if matches!(d.value, Value::Undefined | Value::Symbol(_)) {
+                        continue;
+                    }
                     let ks = k.to_string_content();
-                    if ks.starts_with("@@") { continue; }
-                    if !first { out.push(','); }
+                    if ks.starts_with("@@") {
+                        continue;
+                    }
+                    if !first {
+                        out.push(',');
+                    }
                     first = false;
                     json_quote_string_into(&ks, out);
                     out.push(':');
@@ -6588,19 +8511,27 @@ fn write_i64_into(n: i64, out: &mut String) {
     }
     let neg = n < 0;
     let mut m: u64 = if neg { (-n) as u64 } else { n as u64 };
-    if neg { out.push('-'); }
+    if neg {
+        out.push('-');
+    }
     let start = out.len();
     while m > 0 {
         // SAFETY: digit byte 0x30..=0x39 is valid UTF-8 (ASCII).
-        unsafe { out.as_mut_vec().push(b'0' + (m % 10) as u8); }
+        unsafe {
+            out.as_mut_vec().push(b'0' + (m % 10) as u8);
+        }
         m /= 10;
     }
     // SAFETY: only ASCII digits were pushed at [start..]; byte-level
     // reverse preserves UTF-8 validity.
-    unsafe { out.as_mut_vec()[start..].reverse(); }
+    unsafe {
+        out.as_mut_vec()[start..].reverse();
+    }
 }
 
-pub(crate) fn json_quote_string_pub(s: &str) -> String { json_quote_string(s) }
+pub(crate) fn json_quote_string_pub(s: &str) -> String {
+    json_quote_string(s)
+}
 
 fn json_quote_string(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
@@ -6623,7 +8554,9 @@ fn json_quote_string_into(s: &str, out: &mut String) {
         let start = i;
         while i < bytes.len() {
             let b = bytes[i];
-            if b == b'"' || b == b'\\' || b < 0x20 { break; }
+            if b == b'"' || b == b'\\' || b < 0x20 {
+                break;
+            }
             i += 1;
         }
         if i > start {
@@ -6636,19 +8569,27 @@ fn json_quote_string_into(s: &str, out: &mut String) {
         if i < bytes.len() {
             let b = bytes[i];
             match b {
-                b'"'    => out.push_str("\\\""),
-                b'\\'   => out.push_str("\\\\"),
-                b'\n'   => out.push_str("\\n"),
-                b'\r'   => out.push_str("\\r"),
-                b'\t'   => out.push_str("\\t"),
+                b'"' => out.push_str("\\\""),
+                b'\\' => out.push_str("\\\\"),
+                b'\n' => out.push_str("\\n"),
+                b'\r' => out.push_str("\\r"),
+                b'\t' => out.push_str("\\t"),
                 b'\x08' => out.push_str("\\b"),
                 b'\x0c' => out.push_str("\\f"),
                 c => {
                     let hi = (c >> 4) & 0xF;
                     let lo = c & 0xF;
                     out.push_str("\\u00");
-                    out.push(if hi < 10 { (b'0' + hi) as char } else { (b'a' + hi - 10) as char });
-                    out.push(if lo < 10 { (b'0' + lo) as char } else { (b'a' + lo - 10) as char });
+                    out.push(if hi < 10 {
+                        (b'0' + hi) as char
+                    } else {
+                        (b'a' + hi - 10) as char
+                    });
+                    out.push(if lo < 10 {
+                        (b'0' + lo) as char
+                    } else {
+                        (b'a' + lo - 10) as char
+                    });
                 }
             }
             i += 1;
@@ -6666,27 +8607,47 @@ pub fn json_parse(rt: &mut Runtime, s: &str) -> Result<Value, RuntimeError> {
     let v = json_parse_value(rt, bytes, &mut p)?;
     skip_ws(bytes, &mut p);
     if p != bytes.len() {
-        return Err(RuntimeError::SyntaxError("JSON.parse: trailing characters".into()));
+        return Err(RuntimeError::SyntaxError(
+            "JSON.parse: trailing characters".into(),
+        ));
     }
     Ok(v)
 }
 
 fn skip_ws(b: &[u8], p: &mut usize) {
-    while *p < b.len() && matches!(b[*p], b' ' | b'\t' | b'\n' | b'\r') { *p += 1; }
+    while *p < b.len() && matches!(b[*p], b' ' | b'\t' | b'\n' | b'\r') {
+        *p += 1;
+    }
 }
 
 fn json_parse_value(rt: &mut Runtime, b: &[u8], p: &mut usize) -> Result<Value, RuntimeError> {
     skip_ws(b, p);
-    if *p >= b.len() { return Err(RuntimeError::SyntaxError("JSON.parse: unexpected end".into())); }
+    if *p >= b.len() {
+        return Err(RuntimeError::SyntaxError(
+            "JSON.parse: unexpected end".into(),
+        ));
+    }
     match b[*p] {
         b'{' => json_parse_object(rt, b, p),
         b'[' => json_parse_array(rt, b, p),
         b'"' => json_parse_string(b, p).map(|s| Value::String(Rc::new(s))),
-        b't' if b[*p..].starts_with(b"true") => { *p += 4; Ok(Value::Boolean(true)) }
-        b'f' if b[*p..].starts_with(b"false") => { *p += 5; Ok(Value::Boolean(false)) }
-        b'n' if b[*p..].starts_with(b"null") => { *p += 4; Ok(Value::Null) }
+        b't' if b[*p..].starts_with(b"true") => {
+            *p += 4;
+            Ok(Value::Boolean(true))
+        }
+        b'f' if b[*p..].starts_with(b"false") => {
+            *p += 5;
+            Ok(Value::Boolean(false))
+        }
+        b'n' if b[*p..].starts_with(b"null") => {
+            *p += 4;
+            Ok(Value::Null)
+        }
         b'-' | b'0'..=b'9' => json_parse_number(b, p),
-        _ => Err(RuntimeError::SyntaxError(format!("JSON.parse: unexpected character at offset {}", p))),
+        _ => Err(RuntimeError::SyntaxError(format!(
+            "JSON.parse: unexpected character at offset {}",
+            p
+        ))),
     }
 }
 
@@ -6694,20 +8655,35 @@ fn json_parse_object(rt: &mut Runtime, b: &[u8], p: &mut usize) -> Result<Value,
     *p += 1; // consume '{'
     let obj = rt.alloc_object(Object::new_ordinary());
     skip_ws(b, p);
-    if *p < b.len() && b[*p] == b'}' { *p += 1; return Ok(Value::Object(obj)); }
+    if *p < b.len() && b[*p] == b'}' {
+        *p += 1;
+        return Ok(Value::Object(obj));
+    }
     loop {
         skip_ws(b, p);
         let key = json_parse_string(b, p)?;
         skip_ws(b, p);
-        if *p >= b.len() || b[*p] != b':' { return Err(RuntimeError::SyntaxError("JSON.parse: expected ':'".into())); }
+        if *p >= b.len() || b[*p] != b':' {
+            return Err(RuntimeError::SyntaxError("JSON.parse: expected ':'".into()));
+        }
         *p += 1;
         let value = json_parse_value(rt, b, p)?;
         rt.object_set(obj, key, value);
         skip_ws(b, p);
         match b.get(*p) {
-            Some(&b',') => { *p += 1; continue; }
-            Some(&b'}') => { *p += 1; return Ok(Value::Object(obj)); }
-            _ => return Err(RuntimeError::SyntaxError("JSON.parse: expected ',' or '}'".into())),
+            Some(&b',') => {
+                *p += 1;
+                continue;
+            }
+            Some(&b'}') => {
+                *p += 1;
+                return Ok(Value::Object(obj));
+            }
+            _ => {
+                return Err(RuntimeError::SyntaxError(
+                    "JSON.parse: expected ',' or '}'".into(),
+                ))
+            }
         }
     }
 }
@@ -6716,7 +8692,10 @@ fn json_parse_array(rt: &mut Runtime, b: &[u8], p: &mut usize) -> Result<Value, 
     *p += 1; // consume '['
     let arr = rt.alloc_object(Object::new_array());
     skip_ws(b, p);
-    if *p < b.len() && b[*p] == b']' { *p += 1; return Ok(Value::Object(arr)); }
+    if *p < b.len() && b[*p] == b']' {
+        *p += 1;
+        return Ok(Value::Object(arr));
+    }
     let mut i = 0u32;
     loop {
         let value = json_parse_value(rt, b, p)?;
@@ -6724,16 +8703,28 @@ fn json_parse_array(rt: &mut Runtime, b: &[u8], p: &mut usize) -> Result<Value, 
         i += 1;
         skip_ws(b, p);
         match b.get(*p) {
-            Some(&b',') => { *p += 1; continue; }
-            Some(&b']') => { *p += 1; return Ok(Value::Object(arr)); }
-            _ => return Err(RuntimeError::SyntaxError("JSON.parse: expected ',' or ']'".into())),
+            Some(&b',') => {
+                *p += 1;
+                continue;
+            }
+            Some(&b']') => {
+                *p += 1;
+                return Ok(Value::Object(arr));
+            }
+            _ => {
+                return Err(RuntimeError::SyntaxError(
+                    "JSON.parse: expected ',' or ']'".into(),
+                ))
+            }
         }
     }
 }
 
 fn json_parse_string(b: &[u8], p: &mut usize) -> Result<String, RuntimeError> {
     if *p >= b.len() || b[*p] != b'"' {
-        return Err(RuntimeError::SyntaxError("JSON.parse: expected string".into()));
+        return Err(RuntimeError::SyntaxError(
+            "JSON.parse: expected string".into(),
+        ));
     }
     *p += 1;
     // Collect bytes (not chars). Non-ASCII UTF-8 byte sequences pass
@@ -6750,7 +8741,9 @@ fn json_parse_string(b: &[u8], p: &mut usize) -> Result<String, RuntimeError> {
         }
         if c == b'\\' {
             *p += 1;
-            if *p >= b.len() { return Err(RuntimeError::SyntaxError("JSON.parse: dangling \\".into())); }
+            if *p >= b.len() {
+                return Err(RuntimeError::SyntaxError("JSON.parse: dangling \\".into()));
+            }
             match b[*p] {
                 b'"' => bytes.push(b'"'),
                 b'\\' => bytes.push(b'\\'),
@@ -6761,8 +8754,10 @@ fn json_parse_string(b: &[u8], p: &mut usize) -> Result<String, RuntimeError> {
                 b'b' => bytes.push(0x08),
                 b'f' => bytes.push(0x0C),
                 b'u' if *p + 4 < b.len() => {
-                    let hex = std::str::from_utf8(&b[*p+1..*p+5]).map_err(|_|RuntimeError::SyntaxError("JSON.parse: bad \\u".into()))?;
-                    let cp = u32::from_str_radix(hex, 16).map_err(|_|RuntimeError::SyntaxError("JSON.parse: bad \\u".into()))?;
+                    let hex = std::str::from_utf8(&b[*p + 1..*p + 5])
+                        .map_err(|_| RuntimeError::SyntaxError("JSON.parse: bad \\u".into()))?;
+                    let cp = u32::from_str_radix(hex, 16)
+                        .map_err(|_| RuntimeError::SyntaxError("JSON.parse: bad \\u".into()))?;
                     if let Some(ch) = char::from_u32(cp) {
                         let mut buf = [0u8; 4];
                         let s = ch.encode_utf8(&mut buf);
@@ -6778,30 +8773,46 @@ fn json_parse_string(b: &[u8], p: &mut usize) -> Result<String, RuntimeError> {
             // U+0000 through U+001F; control chars must be escaped.
             if c < 0x20 {
                 return Err(RuntimeError::SyntaxError(
-                    "JSON.parse: invalid control character in string".into()));
+                    "JSON.parse: invalid control character in string".into(),
+                ));
             }
             bytes.push(c);
             *p += 1;
         }
     }
-    Err(RuntimeError::SyntaxError("JSON.parse: unterminated string".into()))
+    Err(RuntimeError::SyntaxError(
+        "JSON.parse: unterminated string".into(),
+    ))
 }
 
 fn json_parse_number(b: &[u8], p: &mut usize) -> Result<Value, RuntimeError> {
     let start = *p;
-    if b[*p] == b'-' { *p += 1; }
-    while *p < b.len() && b[*p].is_ascii_digit() { *p += 1; }
+    if b[*p] == b'-' {
+        *p += 1;
+    }
+    while *p < b.len() && b[*p].is_ascii_digit() {
+        *p += 1;
+    }
     if *p < b.len() && b[*p] == b'.' {
         *p += 1;
-        while *p < b.len() && b[*p].is_ascii_digit() { *p += 1; }
+        while *p < b.len() && b[*p].is_ascii_digit() {
+            *p += 1;
+        }
     }
     if *p < b.len() && (b[*p] == b'e' || b[*p] == b'E') {
         *p += 1;
-        if *p < b.len() && (b[*p] == b'+' || b[*p] == b'-') { *p += 1; }
-        while *p < b.len() && b[*p].is_ascii_digit() { *p += 1; }
+        if *p < b.len() && (b[*p] == b'+' || b[*p] == b'-') {
+            *p += 1;
+        }
+        while *p < b.len() && b[*p].is_ascii_digit() {
+            *p += 1;
+        }
     }
-    let s = std::str::from_utf8(&b[start..*p]).map_err(|_|RuntimeError::SyntaxError("JSON.parse: bad number".into()))?;
-    let n = s.parse::<f64>().map_err(|_|RuntimeError::SyntaxError("JSON.parse: bad number".into()))?;
+    let s = std::str::from_utf8(&b[start..*p])
+        .map_err(|_| RuntimeError::SyntaxError("JSON.parse: bad number".into()))?;
+    let n = s
+        .parse::<f64>()
+        .map_err(|_| RuntimeError::SyntaxError("JSON.parse: bad number".into()))?;
     Ok(Value::Number(n))
 }
 
@@ -6813,10 +8824,18 @@ const B64_ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwx
 /// its ToUint32. Practically: a non-empty all-digit string with no
 /// leading zeros (except "0" itself) and value ≤ 2^32-2.
 pub(crate) fn is_integer_index(s: &str) -> bool {
-    if s.is_empty() { return false; }
-    if s == "0" { return true; }
-    if s.starts_with('0') { return false; }
-    if !s.chars().all(|c| c.is_ascii_digit()) { return false; }
+    if s.is_empty() {
+        return false;
+    }
+    if s == "0" {
+        return true;
+    }
+    if s.starts_with('0') {
+        return false;
+    }
+    if !s.chars().all(|c| c.is_ascii_digit()) {
+        return false;
+    }
     match s.parse::<u64>() {
         Ok(n) if n < ((1u64 << 32) - 1) => true,
         _ => false,
@@ -6827,7 +8846,7 @@ fn base64_encode(input: &[u8]) -> String {
     let mut out = String::with_capacity((input.len() + 2) / 3 * 4);
     let mut i = 0;
     while i + 3 <= input.len() {
-        let n = ((input[i] as u32) << 16) | ((input[i+1] as u32) << 8) | (input[i+2] as u32);
+        let n = ((input[i] as u32) << 16) | ((input[i + 1] as u32) << 8) | (input[i + 2] as u32);
         out.push(B64_ALPHABET[((n >> 18) & 0x3F) as usize] as char);
         out.push(B64_ALPHABET[((n >> 12) & 0x3F) as usize] as char);
         out.push(B64_ALPHABET[((n >> 6) & 0x3F) as usize] as char);
@@ -6842,7 +8861,7 @@ fn base64_encode(input: &[u8]) -> String {
         out.push('=');
         out.push('=');
     } else if rem == 2 {
-        let n = ((input[i] as u32) << 16) | ((input[i+1] as u32) << 8);
+        let n = ((input[i] as u32) << 16) | ((input[i + 1] as u32) << 8);
         out.push(B64_ALPHABET[((n >> 18) & 0x3F) as usize] as char);
         out.push(B64_ALPHABET[((n >> 12) & 0x3F) as usize] as char);
         out.push(B64_ALPHABET[((n >> 6) & 0x3F) as usize] as char);
@@ -6852,13 +8871,22 @@ fn base64_encode(input: &[u8]) -> String {
 }
 fn base64_decode(s: &str) -> Result<Vec<u8>, &'static str> {
     let mut lut = [255u8; 256];
-    for (i, &c) in B64_ALPHABET.iter().enumerate() { lut[c as usize] = i as u8; }
+    for (i, &c) in B64_ALPHABET.iter().enumerate() {
+        lut[c as usize] = i as u8;
+    }
     let bytes: Vec<u8> = s.bytes().filter(|&b| b != b'=').collect();
     let mut out = Vec::with_capacity(bytes.len() * 3 / 4);
     let mut i = 0;
     while i + 4 <= bytes.len() {
-        let (a, b, c, d) = (lut[bytes[i] as usize], lut[bytes[i+1] as usize], lut[bytes[i+2] as usize], lut[bytes[i+3] as usize]);
-        if (a | b | c | d) == 255 { return Err("invalid base64 character"); }
+        let (a, b, c, d) = (
+            lut[bytes[i] as usize],
+            lut[bytes[i + 1] as usize],
+            lut[bytes[i + 2] as usize],
+            lut[bytes[i + 3] as usize],
+        );
+        if (a | b | c | d) == 255 {
+            return Err("invalid base64 character");
+        }
         let n = ((a as u32) << 18) | ((b as u32) << 12) | ((c as u32) << 6) | (d as u32);
         out.push(((n >> 16) & 0xFF) as u8);
         out.push(((n >> 8) & 0xFF) as u8);
@@ -6867,13 +8895,21 @@ fn base64_decode(s: &str) -> Result<Vec<u8>, &'static str> {
     }
     let rem = bytes.len() - i;
     if rem == 2 {
-        let (a, b) = (lut[bytes[i] as usize], lut[bytes[i+1] as usize]);
-        if (a | b) == 255 { return Err("invalid base64 character"); }
+        let (a, b) = (lut[bytes[i] as usize], lut[bytes[i + 1] as usize]);
+        if (a | b) == 255 {
+            return Err("invalid base64 character");
+        }
         let n = ((a as u32) << 18) | ((b as u32) << 12);
         out.push(((n >> 16) & 0xFF) as u8);
     } else if rem == 3 {
-        let (a, b, c) = (lut[bytes[i] as usize], lut[bytes[i+1] as usize], lut[bytes[i+2] as usize]);
-        if (a | b | c) == 255 { return Err("invalid base64 character"); }
+        let (a, b, c) = (
+            lut[bytes[i] as usize],
+            lut[bytes[i + 1] as usize],
+            lut[bytes[i + 2] as usize],
+        );
+        if (a | b | c) == 255 {
+            return Err("invalid base64 character");
+        }
         let n = ((a as u32) << 18) | ((b as u32) << 12) | ((c as u32) << 6);
         out.push(((n >> 16) & 0xFF) as u8);
         out.push(((n >> 8) & 0xFF) as u8);
@@ -6897,9 +8933,9 @@ pub(crate) fn date_components(ms: f64) -> (i64, i64, i64) {
     let mut z = days + 719468;
     let era = if z >= 0 { z } else { z - 146096 } / 146097;
     let doe = z - era * 146097;
-    let yoe = (doe - doe/1460 + doe/36524 - doe/146096) / 365;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
     let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe/4 - yoe/100);
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
     let mp = (5 * doy + 2) / 153;
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
@@ -6912,7 +8948,11 @@ pub(crate) fn date_components(ms: f64) -> (i64, i64, i64) {
 /// Build epoch-ms from (year, month-0-based, day-1-based).
 pub(crate) fn ymd_to_ms(year: i64, month: i64, day: i64) -> i64 {
     let y = if month < 2 { year - 1 } else { year };
-    let m = if month < 2 { (month + 9) as i64 } else { (month - 2) as i64 };
+    let m = if month < 2 {
+        (month + 9) as i64
+    } else {
+        (month - 2) as i64
+    };
     let era = if y >= 0 { y } else { y - 399 } / 400;
     let yoe = y - era * 400;
     let doy = (153 * m + 2) / 5 + day - 1;
@@ -6924,7 +8964,9 @@ pub(crate) fn ymd_to_ms(year: i64, month: i64, day: i64) -> i64 {
 /// Parse a Date string. Delegates to interp's parse_iso8601_to_epoch_ms
 /// for consistent behavior with Date.parse(). Returns NaN on failure.
 fn parse_date_string(s: &str) -> f64 {
-    if let Some(v) = crate::interp::parse_iso8601_to_epoch_ms_public(s) { return v; }
+    if let Some(v) = crate::interp::parse_iso8601_to_epoch_ms_public(s) {
+        return v;
+    }
     // Fall through to the legacy hand-rolled parser for shapes the new
     // parser doesn't recognize.
     parse_date_string_legacy(s)
@@ -6932,12 +8974,27 @@ fn parse_date_string(s: &str) -> f64 {
 
 fn parse_date_string_legacy(s: &str) -> f64 {
     let s = s.trim();
-    if s.len() < 10 { return f64::NAN; }
-    let y: i64 = match s[0..4].parse() { Ok(v) => v, Err(_) => return f64::NAN };
-    if s.as_bytes()[4] != b'-' { return f64::NAN; }
-    let mo: i64 = match s[5..7].parse() { Ok(v) => v, Err(_) => return f64::NAN };
-    if s.as_bytes()[7] != b'-' { return f64::NAN; }
-    let d: i64 = match s[8..10].parse() { Ok(v) => v, Err(_) => return f64::NAN };
+    if s.len() < 10 {
+        return f64::NAN;
+    }
+    let y: i64 = match s[0..4].parse() {
+        Ok(v) => v,
+        Err(_) => return f64::NAN,
+    };
+    if s.as_bytes()[4] != b'-' {
+        return f64::NAN;
+    }
+    let mo: i64 = match s[5..7].parse() {
+        Ok(v) => v,
+        Err(_) => return f64::NAN,
+    };
+    if s.as_bytes()[7] != b'-' {
+        return f64::NAN;
+    }
+    let d: i64 = match s[8..10].parse() {
+        Ok(v) => v,
+        Err(_) => return f64::NAN,
+    };
     let mut ms = ymd_to_ms(y, mo - 1, d);
     if s.len() >= 19 && s.as_bytes()[10] == b'T' {
         let h: i64 = s[11..13].parse().unwrap_or(0);

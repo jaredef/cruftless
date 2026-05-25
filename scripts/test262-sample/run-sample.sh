@@ -10,7 +10,7 @@
 #
 # Per-test cap: 10s. Parallelism: 4 (override with PARALLEL=N).
 #
-# Output: results/test262-sample-<DATE>/{results.jsonl,summary.txt}
+# Output: $CRUFTLESS_TEST262_RESULTS_ROOT/test262-sample-<DATE>/{results.jsonl,summary.txt}
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
@@ -37,7 +37,7 @@ RUNNER="$ROOT/legacy/host-rquickjs/tests/test262/runner.mjs"
 HARNESS="$T262/harness"
 
 DATE="$(date +%Y-%m-%d)"
-OUT="$ROOT/results/test262-sample-$DATE"
+OUT="$CRUFTLESS_TEST262_RESULTS_ROOT/test262-sample-$DATE"
 mkdir -p "$OUT"
 RESULTS="$OUT/results.jsonl"
 SUMMARY="$OUT/summary.txt"

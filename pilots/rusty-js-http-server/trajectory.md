@@ -684,3 +684,60 @@ Express minimal now composes over the existing apparatus:
 ---
 
 *HS-EXT 8a closes the upstream Express router-registration blocker. The next coherent move is broader Express behavior, still under sealed authority and Compartment discipline.*
+
+---
+
+## HS-EXT 8b — 2026-05-25 (Express middleware/params/query probe)
+
+Compatibility probe round. This round widened Express evidence without changing the HTTP authority path: middleware registration, route params, query parsing, response headers, and `status(...).send(...)` now sit under the same live `node:http` server surface.
+
+### Trigger
+
+After HS-EXT 8a resolved the upstream Express route-registration blocker, the next coherent move was a slightly broader Express fixture that still exercises the same `http.createServer(app).listen(...)` path. The test remains opt-in on installed Express dependencies and does not commit `node_modules`.
+
+### Substrate landed
+
+- `pilots/rusty-js-http-server/fixtures/express-minimal/express-middleware.mjs`
+  - Adds `app.use((req, res, next) => ...)` middleware.
+  - Adds `app.get("/user/:id", ...)` route params.
+  - Reads `req.query.q`.
+  - Writes middleware and route headers.
+  - Responds through `res.status(201).set(...).send(...)`.
+- `cruftless/tests/http_server.rs`
+  - Adds `read_http_path(...)` so probes can request non-root paths.
+  - Adds `http_server_express_middleware_probe`.
+
+### Probe result
+
+Disposable installed fixture root:
+
+```text
+CRUFTLESS_EXPRESS_FIXTURE_ROOT=/tmp/cruftless-hs-express-minimal \
+  cargo test -p cruftless --test http_server http_server_express_middleware_probe --release -- --nocapture
+1 passed
+```
+
+Full HTTP-server lane with installed Express deps:
+
+```text
+CRUFTLESS_EXPRESS_FIXTURE_ROOT=/tmp/cruftless-hs-express-minimal \
+  cargo test -p cruftless --test http_server --release -- --nocapture
+6 passed
+```
+
+### Findings
+
+1. **Express middleware composition works for the first chained case.** A middleware can set response headers, attach request state, call `next()`, and the later route sees the request mutation.
+2. **Route params and query parsing are live enough for the fixture.** `/user/42?q=abc` reaches `req.params.id === "42"` and `req.query.q === "abc"`.
+3. **The authority story is unchanged.** The fixture still reaches network only through `http.createServer(app).listen(...)`; no ambient Compartment or sealed-mode bypass is introduced.
+4. **The fixture remains dependency-opt-in.** The tracked repo contains source fixtures only; tests skip unless `CRUFTLESS_EXPRESS_FIXTURE_ROOT` points at a root with `node_modules/express`.
+
+### Next scope
+
+1. Add a sealed/facade Express probe once dynamic port handoff and stdio authority are less awkward, proving the same Express app can be endowed rather than ambiently imported.
+2. Exercise error middleware / 404 fallthrough as the next Express behavior edge.
+3. Keep binary/streaming response bodies and slow/chunked request reads as later HTTP substrate work, not Express-specific blockers.
+
+---
+
+*HS-EXT 8b closes a broader Express compatibility rung while preserving the Doc 736 authority model.*
