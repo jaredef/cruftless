@@ -4383,12 +4383,13 @@ impl Runtime {
     /// Array.prototype.reduceRight(callbackfn, initialValue) per ECMA §23.1.3.25.
     pub fn array_proto_reduce_right_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;
+        // Spec order: length BEFORE callable check (§23.1.3.27).
+        let len = self.try_array_length(id)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("reduceRight: callback required".into()))?;
         if !self.is_callable(&cb) {
             return Err(RuntimeError::TypeError("Array.prototype.reduceRight: callback is not callable".into()));
         }
-        let len = self.try_array_length(id)?;
         let has_init = args.len() >= 2;
         let mut i: i64 = (len as i64) - 1;
         let mut acc = if has_init { args[1].clone() } else {
@@ -4472,13 +4473,14 @@ impl Runtime {
     /// Array.prototype.flatMap(callback, thisArg) per ECMA §23.1.3.11.
     pub fn array_proto_flat_map_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;
+        // Spec order: length BEFORE callable check (§23.1.3.12).
+        let len = self.try_array_length(id)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("Array.prototype.flatMap: callback required".into()))?;
         if !self.is_callable(&cb) {
             return Err(RuntimeError::TypeError("Array.prototype.flatMap: callback is not callable".into()));
         }
         let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
-        let len = self.try_array_length(id)?;
         let out = self.alloc_object(crate::value::Object::new_array());
         let mut out_idx = 0usize;
         for i in 0..len {
@@ -4639,13 +4641,14 @@ impl Runtime {
     /// Array.prototype.findLast(predicate, thisArg) per ECMA §23.1.3.10.
     pub fn array_proto_find_last_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;
+        // Spec order: length BEFORE callable check (§23.1.3.10).
+        let len = self.try_array_length(id)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("findLast: callback required".into()))?;
         if !self.is_callable(&cb) {
             return Err(RuntimeError::TypeError("Array.prototype.findLast: callback is not callable".into()));
         }
         let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
-        let len = self.try_array_length(id)?;
         for i in (0..len).rev() {
             let v = self.object_get(id, &i.to_string());
             let r = self.call_function(cb.clone(), this_arg.clone(),
@@ -4658,13 +4661,14 @@ impl Runtime {
     /// Array.prototype.findLastIndex(predicate, thisArg) per ECMA §23.1.3.11.
     pub fn array_proto_find_last_index_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;
+        // Spec order: length BEFORE callable check (§23.1.3.11).
+        let len = self.try_array_length(id)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("findLastIndex: callback required".into()))?;
         if !self.is_callable(&cb) {
             return Err(RuntimeError::TypeError("Array.prototype.findLastIndex: callback is not callable".into()));
         }
         let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
-        let len = self.try_array_length(id)?;
         for i in (0..len).rev() {
             let v = self.object_get(id, &i.to_string());
             let r = self.call_function(cb.clone(), this_arg.clone(),
@@ -4677,12 +4681,17 @@ impl Runtime {
     /// Array.prototype.reduce(callbackfn, initialValue) per ECMA §23.1.3.24.
     pub fn array_proto_reduce_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;
+        // ECMA-262 §23.1.3.25 step 2 reads length BEFORE step 3's IsCallable
+        // check. test262 4-10/4-11 probe the order via a throwing length
+        // getter (Test262Error) + undefined callback; spec says the length
+        // getter's throw must reach the test, not the substrate's
+        // callback-not-callable TypeError.
+        let len = self.try_array_length(id)?;
         let cb = args.first().cloned().ok_or_else(||
             RuntimeError::TypeError("Array.prototype.reduce: callback required".into()))?;
         if !self.is_callable(&cb) {
             return Err(RuntimeError::TypeError("Array.prototype.reduce: callback is not callable".into()));
         }
-        let len = self.try_array_length(id)?;
         let has_init = args.len() >= 2;
         let mut i = 0usize;
         let mut acc = if has_init {
