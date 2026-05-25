@@ -1920,14 +1920,16 @@ impl Runtime {
                     }
                 }
             }
-            // Final getter/setter values: when descriptor key is absent, keep
-            // existing. When present-and-undefined, set to None (not callable).
-            let final_getter = if has_get_key {
-                if has_getter { Some(getter) } else { None }
-            } else { existing_getter };
-            let final_setter = if has_set_key {
-                if has_setter { Some(setter) } else { None }
-            } else { existing_setter };
+            // GOPD-EXT 1: Option<Value> on PropertyDescriptor now carries
+            // the spec discriminator "is field present in the descriptor":
+            // Some(Value::Undefined) means "accessor with explicit undefined
+            // getter/setter field" (per ECMA-262 §6.2.5 IsAccessorDescriptor);
+            // None means "field absent" (data descriptor). Pre-fix conflated
+            // Some(callable) with "is accessor"; lost the explicit-undefined
+            // case so Object.getOwnPropertyDescriptor returned data-shape.
+            let final_getter = if has_get_key { Some(getter) } else { existing_getter };
+            let final_setter = if has_set_key { Some(setter) } else { existing_setter };
+            let _ = has_getter; let _ = has_setter;
             self.obj_mut(target).dict_mut().insert(key_pk.clone(), crate::value::PropertyDescriptor {
                 value: Value::Undefined,
                 writable: false, enumerable: new_e, configurable: new_c,
@@ -2494,8 +2496,12 @@ impl Runtime {
                 while let Some(c) = cur {
                     if let Some(d) = self.obj(c).get_own("then") {
                         found = d.value.clone();
+                        // GOPD-EXT 1: only invoke callable getters; Some(Undefined)
+                        // means accessor-with-undefined-getter (returns undefined).
                         if let Some(g) = d.getter.clone() {
-                            found = self.call_function(g, source.clone(), Vec::new())?;
+                            if self.is_callable(&g) {
+                                found = self.call_function(g, source.clone(), Vec::new())?;
+                            }
                         }
                         break;
                     }
@@ -5575,6 +5581,11 @@ impl Runtime {
             self.call_function(setter, Value::Object(id), vec![value.clone()])?;
             return Ok(Value::Boolean(true));
         }
+        // GOPD-EXT 1: Reflect.set returns false for accessor with no setter
+        // per §10.1.9.4 step 2.b (no throw — Reflect returns the boolean).
+        if self.is_accessor_at_pk(id, &key_pk) {
+            return Ok(Value::Boolean(false));
+        }
         self.object_set(id, key_s, value.clone());
         Ok(Value::Boolean(true))
     }
@@ -6709,11 +6720,18 @@ impl Runtime {
         }
     }
     pub fn find_getter(&self, id: ObjectRef, key: &str) -> Option<Value> {
+        // GOPD-EXT 1: invocation path. Skip Some(Value::Undefined)
+        // (accessor with explicit-undefined getter); only return callable
+        // values. gOPD reads d.getter directly to distinguish accessor-
+        // shape from data-shape descriptors.
         let mut cur = Some(id);
         while let Some(c) = cur {
             let o = self.obj(c);
             if let Some(d) = o.get_own(key) {
-                return d.getter.clone();
+                if let Some(g) = &d.getter {
+                    if !matches!(g, Value::Undefined) { return Some(g.clone()); }
+                }
+                return None;
             }
             cur = o.proto;
         }
@@ -6725,11 +6743,17 @@ impl Runtime {
         while let Some(c) = cur {
             let o = self.obj(c);
             if let Some(d) = o.properties.get(key) {
-                if d.getter.is_some() { return d.getter.clone(); }
+                if let Some(g) = &d.getter {
+                    if !matches!(g, Value::Undefined) { return Some(g.clone()); }
+                    return None;
+                }
             }
             if let crate::value::PropertyKey::Symbol(rc) = key {
                 if let Some(d) = o.get_own(rc.as_str()) {
-                    if d.getter.is_some() { return d.getter.clone(); }
+                    if let Some(g) = &d.getter {
+                        if !matches!(g, Value::Undefined) { return Some(g.clone()); }
+                        return None;
+                    }
                 }
             }
             cur = o.proto;
@@ -6739,23 +6763,58 @@ impl Runtime {
     /// Tier-Ω.5.nnn: walk the prototype chain looking for an accessor
     /// setter at `key`. Returns the setter function if found.
     pub fn find_setter(&self, id: ObjectRef, key: &str) -> Option<Value> {
+        // GOPD-EXT 1: same semantics as find_getter.
         let mut cur = Some(id);
         while let Some(c) = cur {
             let o = self.obj(c);
             if let Some(d) = o.get_own(key) {
-                return d.setter.clone();
+                if let Some(s) = &d.setter {
+                    if !matches!(s, Value::Undefined) { return Some(s.clone()); }
+                }
+                return None;
             }
             cur = o.proto;
         }
         None
     }
     /// PropertyKey-aware setter lookup along the proto chain.
-    pub fn find_setter_pk(&self, id: ObjectRef, key: &crate::value::PropertyKey) -> Option<Value> {
+    /// GOPD-EXT 1 helper: does the property at `key` resolve (own or
+    /// inherited) to an accessor descriptor? Returns true for any
+    /// accessor regardless of whether the getter/setter is callable.
+    /// Used at write sites to distinguish "set on data property" from
+    /// "set on accessor with no callable setter" (silent no-op sloppy,
+    /// TypeError strict) per §10.1.9.4 step 2.b.
+    pub fn is_accessor_at(&self, id: ObjectRef, key: &str) -> bool {
+        let mut cur = Some(id);
+        while let Some(c) = cur {
+            if let Some(d) = self.obj(c).get_own(key) {
+                return d.getter.is_some() || d.setter.is_some();
+            }
+            cur = self.obj(c).proto;
+        }
+        false
+    }
+    pub fn is_accessor_at_pk(&self, id: ObjectRef, key: &crate::value::PropertyKey) -> bool {
         let mut cur = Some(id);
         while let Some(c) = cur {
             let o = self.obj(c);
             if let Some(d) = o.properties.get(key) {
-                return d.setter.clone();
+                return d.getter.is_some() || d.setter.is_some();
+            }
+            cur = o.proto;
+        }
+        false
+    }
+    pub fn find_setter_pk(&self, id: ObjectRef, key: &crate::value::PropertyKey) -> Option<Value> {
+        // GOPD-EXT 1: same semantics as find_getter_pk.
+        let mut cur = Some(id);
+        while let Some(c) = cur {
+            let o = self.obj(c);
+            if let Some(d) = o.properties.get(key) {
+                if let Some(s) = &d.setter {
+                    if !matches!(s, Value::Undefined) { return Some(s.clone()); }
+                    return None;
+                }
             }
             cur = o.proto;
         }
@@ -7951,7 +8010,12 @@ impl Runtime {
                                 let mut found = false;
                                 while let Some(c) = cur {
                                     if let Some(d) = self.obj(c).get_own(&key) {
-                                        if d.getter.is_some() { found = true; }
+                                        // GOPD-EXT 1: only count callable getters
+                                        // (Some(Undefined) means accessor-with-no-
+                                        // getter; OrdinaryGet returns undefined).
+                                        if let Some(g) = &d.getter {
+                                            if !matches!(g, Value::Undefined) { found = true; }
+                                        }
                                         break;
                                     }
                                     cur = self.obj(c).proto;
@@ -8078,15 +8142,17 @@ impl Runtime {
                         // keyed writes.
                         if let Some(setter) = self.find_setter(*id, &key) {
                             self.call_function(setter, Value::Object(*id), vec![value.clone()])?;
+                        } else if self.is_accessor_at(*id, &key) {
+                            // GOPD-EXT 1: accessor descriptor with no
+                            // callable setter — write is silent no-op
+                            // (sloppy) or TypeError (strict) per
+                            // §10.1.9.4 step 2.b / §13.15.4 step 1.f.iv.
+                            if frame.strict {
+                                return Err(RuntimeError::TypeError(
+                                    format!("Cannot set property '{}' of object which has only a getter", key)));
+                            }
                         } else {
-                            // Ω.5.P04.E2.strict-write-to-non-writable: in
-                            // strict mode, writing to a non-writable own
-                            // data property throws TypeError per ECMA
-                            // §10.1.9.4 OrdinarySetWithOwnDescriptor step
-                            // 4 + §13.15.4 SimpleAssignmentExpression
-                            // step 1.f.iv. object_set's pre-substrate
-                            // sloppy fallback (silent no-op) is preserved
-                            // for non-strict frames; strict frames raise.
+                            // Ω.5.P04.E2.strict-write-to-non-writable.
                             if frame.strict {
                                 if let Some(d) = self.obj(*id).get_own(&key) {
                                     if !d.writable && d.getter.is_none() && d.setter.is_none() {
@@ -8517,10 +8583,14 @@ impl Runtime {
                         // overwrite the descriptor's getter with a data slot.
                         if let Some(setter) = self.find_setter_pk(*id, &key_pk) {
                             self.call_function(setter, Value::Object(*id), vec![value.clone()])?;
+                        } else if self.is_accessor_at_pk(*id, &key_pk) {
+                            // GOPD-EXT 1: accessor with no callable setter —
+                            // silent no-op (sloppy) / TypeError (strict).
+                            if frame.strict {
+                                return Err(RuntimeError::TypeError(
+                                    format!("Cannot set property '{}' of object which has only a getter", key)));
+                            }
                         } else {
-                            // Ω.5.P04.E2.strict-write-to-non-writable: see
-                            // matching guard in Op::SetProp for the rationale.
-                            // Same shape, computed-key variant.
                             if frame.strict {
                                 if let Some(d) = self.obj(*id).get_own(&key) {
                                     if !d.writable && d.getter.is_none() && d.setter.is_none() {
