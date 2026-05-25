@@ -10,6 +10,27 @@ use rusty_js_bytecode::{
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
+/// RS-EXT 2a: ECMA-262 §9.3 RealmRecord scaffold.
+///
+/// Each entry is a Realm Record holding the realm-scoped intrinsic-
+/// prototype ObjectIds + globals. The primordial Realm (realm 0) is
+/// allocated at Runtime init; additional realms can be allocated via
+/// `Runtime::allocate_realm` (forthcoming).
+///
+/// This commit is BEHAVIOR-PRESERVING: realm 0's fields mirror the
+/// Runtime's existing intrinsic-prototype fields. Later commits flip
+/// the dispatch direction so that Runtime's fields are reads-from-current-
+/// realm rather than the canonical source. Capability-passing realm
+/// isolation per Doc 736 lands at the realm-level intrinsic-table swap.
+#[derive(Debug, Default, Clone)]
+pub struct RealmRecord {
+    pub object_prototype: Option<rusty_js_gc::ObjectId>,
+    pub array_prototype: Option<rusty_js_gc::ObjectId>,
+    pub function_prototype: Option<rusty_js_gc::ObjectId>,
+    pub promise_prototype: Option<rusty_js_gc::ObjectId>,
+    pub string_prototype: Option<rusty_js_gc::ObjectId>,
+}
+
 #[derive(Debug, Clone)]
 pub enum RuntimeError {
     CompileError(String),
@@ -197,6 +218,16 @@ pub struct Runtime {
     pub function_prototype: Option<rusty_js_gc::ObjectId>,
     pub promise_prototype: Option<rusty_js_gc::ObjectId>,
     pub string_prototype: Option<rusty_js_gc::ObjectId>,
+    /// RS-EXT 2a: realm substrate scaffold per ECMA-262 §9.3 RealmRecord.
+    /// Each entry is a RealmRecord; current_realm indexes into realms.
+    /// Behavior-preserving in this commit: realm 0 is the primordial realm
+    /// and its intrinsic-prototype fields mirror the Runtime's. Later
+    /// commits will (a) populate realms[k>0] from `allocate_realm`, (b)
+    /// swap Runtime's intrinsic-prototype fields on enter_realm/exit_realm,
+    /// (c) add `__cruftless_eval_realm` to expose the API to the
+    /// realm-pollution probe. See pilots/realm-substrate/seed.md §I.3.
+    pub realms: Vec<RealmRecord>,
+    pub current_realm: usize,
     /// CharCode-EXT 2 (2026-05-23, JIT-EXT 33 interp-tier IC): cached
     /// ObjectId of String.prototype.charCodeAt. Populated lazily at the
     /// first Op::CallMethod fast-path eligibility check; used to
@@ -364,6 +395,10 @@ impl Runtime {
             function_prototype: None,
             promise_prototype: None,
             string_prototype: None,
+            // RS-EXT 2a: primordial realm (realm 0); fields will be
+            // mirror-populated as the install_* methods fire during init.
+            realms: vec![RealmRecord::default()],
+            current_realm: 0,
             intrinsic_string_charcodeat_id: None,
             intrinsic_string_to_lower_case_id: None,
             intrinsic_string_trim_id: None,

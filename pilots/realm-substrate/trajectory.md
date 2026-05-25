@@ -60,3 +60,37 @@ The probe-first methodology was load-bearing for surfacing this efficiently: I a
 ### Status
 
 RS-EXT 1 closed with the empirical finding RS.1. RS-EXT 2 implementation is GATED on keeper choice between (a/b/c).
+
+## RS-EXT 2a — RealmRecord struct scaffold (2026-05-25; behavior-preserving)
+
+**Trigger**: keeper directive "A" — authorize Round 1+4 combined as minimum-realm pilot.
+
+**Scope**: incremental first commit of the prospective doc's Round 1. Smallest possible structural addition; ZERO behavior change. Lays the scaffolding for subsequent commits to flip dispatch direction.
+
+**Edits** (~30 LOC):
+- `interp.rs`: new `pub struct RealmRecord { object_prototype, array_prototype, function_prototype, promise_prototype, string_prototype: Option<ObjectId> }` with `Default` impl.
+- `Runtime`: add `pub realms: Vec<RealmRecord>` initialized with one empty RealmRecord (realm 0) and `pub current_realm: usize` initialized to 0.
+
+**Behavior preservation gates**:
+- cargo build GREEN
+- Probe `prototype_pollution.mjs`: still ATTACK_SUCCEEDED (no logic flipped yet — Round 4 work pending)
+- canonical fuzz acc=−932188103 byte-identical
+- Targeted test262 case still PASS
+
+**Doc 740 substrate-introduction-prefix shape**: adds structure without yet flipping any dispatch. The behavior change ("Array.prototype reads consult current realm, not global") lands in subsequent commits. This commit alone produces no observable change — by design.
+
+### Pending sub-commits (the rest of Round 1+4)
+
+| Sub-commit | Scope | Est. LOC |
+|---|---|---:|
+| RS-EXT 2b | Mirror existing intrinsic_prototype field-init into realm 0's RealmRecord at install time | ~40 |
+| RS-EXT 2c | Refactor `self.array_prototype` etc. reads at `alloc_object` to consult `self.realms[self.current_realm]` | ~30 |
+| RS-EXT 2d | Add `allocate_realm` API that deep-clones intrinsic prototypes (Array/Object/Function.prototype + their property bags) into a fresh realm | ~200 |
+| RS-EXT 2e | Add `enter_realm(idx) / exit_realm(saved)` API that swaps current_realm; install `__cruftless_eval_realm` engine helper | ~80 |
+| RS-EXT 2f | Rewrite probe to use `__cruftless_eval_realm`; confirm ATTACK_BLOCKED; commit Pred-rs.2 holding | ~10 |
+
+**Cumulative Round 1+4 estimate**: 30 + 40 + 30 + 200 + 80 + 10 = ~390 LOC across 6 commits. Lower than prospective doc's combined-Round-1+4 ~700-800 LOC projection because the minimum-substrate scope (per-call-via-helper isolation) is bounded compared to the full per-module/Function-realm-slot approach. The full slot/instanceof/etc. work remains in prospective Rounds 2-8.
+
+### Status
+
+RS-EXT 2a CLOSED at scaffold commit. RS-EXT 2b-2f queued; each landed incrementally with behavior-preservation gates.
