@@ -999,6 +999,23 @@ pub(crate) fn is_reserved_word(name: &str) -> bool {
     )
 }
 
+/// APRW-EXT 1: ECMA-262 §11.6.2 unconditional ReservedWord set (Keywords
+/// + FutureReservedWord enum) EXCLUDING the strict-mode-only / context-
+/// only reserveds (yield, let, static, implements, interface, package,
+/// private, protected, public, await). These are valid identifiers in
+/// sloppy non-generator non-module contexts; the unconditional set is
+/// what an arrow function parameter MUST never be, regardless of mode.
+pub(crate) fn is_unconditional_reserved_word(name: &str) -> bool {
+    matches!(name,
+        "break" | "case" | "catch" | "class" | "const" | "continue"
+        | "debugger" | "default" | "delete" | "do" | "else" | "enum" | "export"
+        | "extends" | "false" | "finally" | "for" | "function" | "if" | "import"
+        | "in" | "instanceof" | "new" | "null" | "return" | "super" | "switch"
+        | "this" | "throw" | "true" | "try" | "typeof" | "var" | "void" | "while"
+        | "with"
+    )
+}
+
 /// Heuristic per the ECMA-262 goal-symbol grammar: did the token just consumed
 /// complete an expression context such that the next `/` should lex as
 /// DivPunctuator (not RegularExpressionLiteral)?

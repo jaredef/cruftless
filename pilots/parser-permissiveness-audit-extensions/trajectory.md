@@ -50,3 +50,21 @@
 - Regression on for-in/of previously-passing (603): 603/603 preserved
 
 **Status**: PPAE-EXT 3 CLOSED.
+
+## PPAE-EXT 4 — arrow-param ReservedWord check + is_unconditional_reserved_word split (2026-05-25)
+
+**Trigger**: post-PPAE-EXT 3 matrix scan; `arrowparameters-bindingidentifier-identifier-futurereservedword.js` (`var af = enum => 1`) should be SyntaxError per §11.6.2 (enum is unconditional FutureReservedWord). cruft accepted. Initial attempt using broad `is_reserved_word` regressed the noStrict `(yield) => 1` test because is_reserved_word folded strict-only reserveds into the always-reserved set.
+
+**Edits** (~22 LOC):
+- `parser.rs`: new `is_unconditional_reserved_word(name)` covering ECMA-262 §11.6.2 Keyword set EXCLUDING the strict-mode-only / context-only reserveds (yield, let, static, implements, interface, package, private, protected, public, await). The broad `is_reserved_word` retained for sites that want both sets (object-binding shorthand, etc.).
+- `expr.rs::parse_arrow_function`: switch from is_reserved_word to is_unconditional_reserved_word. Mode-gated reserveds (yield/let/await) defer to SMPT-EXT 1's deferred strict-mode tracking.
+
+**Verification**:
+- `var af = enum => 1` → SyntaxError ✓
+- `var af = (yield) => 1; af(1)` → 1 (noStrict valid) ✓
+- Regression on arrow-function previously-passing (271): 271/271 preserved
+- In-scope futurereservedword: 1/2 pass (the unconditional-enum case; the strict-only-yield case needs SMPT-EXT 2 strict-mode tracking)
+
+**Finding PPAE.5**: the is_reserved_word / is_unconditional_reserved_word split is the substrate-level surfacing of the strict-mode vs unconditional distinction. Per Standing Rule 18 (brand-check at the registration wrapper, not in shared impl), the predicate's two halves correspond to two distinct contexts; checks at each call site must use the right half. SMPT-EXT 2 (full strict-mode parser tracking) would unify these contexts.
+
+**Status**: PPAE-EXT 4 CLOSED.

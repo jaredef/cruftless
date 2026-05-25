@@ -1286,14 +1286,17 @@ impl<'src> Parser<'src> {
                     return Err(self.err_at(id.span, format!(
                         "arrow function has duplicate parameter name `{}`", id.name)));
                 }
-                seen.push((id.name.clone(), id.span));
-            }
-            if p.rest {
-                if let rusty_js_ast::BindingPattern::Identifier(id) = &p.target {
-                    // rest element's binding already collected by collect_names
-                    // above; the duplicate check above covers ([x], ...x).
-                    let _ = id;
+                // APRW-EXT 1: §11.6.2 unconditional ReservedWord — arrow
+                // function parameters cannot be Keyword (enum / class /
+                // const / etc.). Strict-mode-only reserveds (yield / let /
+                // static / etc.) are valid identifiers in sloppy non-
+                // generator contexts; gating those requires strict-mode
+                // tracking deferred per SMPT-EXT 1.
+                if crate::parser::is_unconditional_reserved_word(&id.name) {
+                    return Err(self.err_at(id.span, format!(
+                        "arrow function parameter `{}` is a reserved word", id.name)));
                 }
+                seen.push((id.name.clone(), id.span));
             }
         }
         // SMPT-EXT 1: arrow expression body is also a function context per
