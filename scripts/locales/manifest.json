@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 55,
-    "top_level": 44,
+    "locales": 56,
+    "top_level": 45,
     "nested": 11,
     "warnings": 0
   },
@@ -44,6 +44,15 @@
       "depth": 1,
       "rung_count": 2,
       "status": "**WORKSTREAM FOUNDED (ASCD-EXT 0)**. Spawned per keeper directive after EPSUA arc closed; carries the largest clean sub-cluster of the former constraint #1 (~23 tests)."
+    },
+    {
+      "coord": "compartment-primitive",
+      "tag": "L.compartment-primitive",
+      "parent": null,
+      "scope": "compartment-primitive",
+      "depth": 1,
+      "rung_count": 1,
+      "status": "**WORKSTREAM FOUNDED (CP-EXT 0)**."
     },
     {
       "coord": "cross-runtime-bench",
@@ -159,7 +168,7 @@
       "parent": null,
       "scope": "realm-substrate",
       "depth": 1,
-      "rung_count": 2,
+      "rung_count": 4,
       "status": "**WORKSTREAM FOUNDED (RS-EXT 0)**. Spawned per keeper directive \u2014 but with a sharp constraint that overrides the prospective doc's 8-round scope:"
     },
     {
