@@ -902,8 +902,22 @@ impl<'src> Parser<'src> {
                 let end = self.last_span_end();
                 let left = {
                     let span_fallback = e.span();
+                    // FHAPV-EXT 1: §14.7.5.1 — when the for-in/for-of head
+                    // is an Array/Object literal, it must be a valid
+                    // AssignmentPattern. expr_to_binding_pattern returns
+                    // None for invalid shapes (rest-not-last, rest-with-
+                    // init, nested invalid LHS, object-rest-not-last).
+                    // Pre-fix silently fell back to an empty BindingIdentifier;
+                    // spec mandates SyntaxError at parse.
+                    let is_pattern_literal = matches!(&e, Expr::Array { .. } | Expr::Object { .. });
                     match expr_to_binding_pattern(e) {
                         Some(pat) => ForBinding::Pattern(pat),
+                        None if is_pattern_literal => {
+                            return Err(ParseError {
+                                span: span_fallback,
+                                message: "Invalid destructuring assignment target in for-in/for-of head".into(),
+                            });
+                        }
                         None => ForBinding::Pattern(BindingPattern::Identifier(
                             BindingIdentifier { name: String::new(), span: span_fallback })),
                     }
