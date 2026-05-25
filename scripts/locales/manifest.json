@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 60,
-    "top_level": 49,
+    "locales": 61,
+    "top_level": 50,
     "nested": 11,
     "warnings": 0
   },
@@ -188,6 +188,15 @@
       "depth": 1,
       "rung_count": 4,
       "status": "**CLOSED at PPAE-EXT 1**."
+    },
+    {
+      "coord": "promise-executor-functions-meta",
+      "tag": "L.promise-executor-functions-meta",
+      "parent": null,
+      "scope": "promise-executor-functions-meta",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
     },
     {
       "coord": "realm-substrate",
@@ -411,7 +420,7 @@
       "parent": null,
       "scope": "strict-mode-parser-tracking",
       "depth": 1,
-      "rung_count": 2,
+      "rung_count": 3,
       "status": "**CLOSED at SMPT-EXT 1** (partial \u2014 only the function-body-depth axis; strict-mode + generator-context axes deferred)."
     },
     {

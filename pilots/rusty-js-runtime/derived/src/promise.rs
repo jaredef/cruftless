@@ -37,12 +37,16 @@ impl Runtime {
             let p = new_promise(rt);
             let p_for_resolve = p;
             let p_for_reject = p;
-            let resolve_fn = crate::intrinsics::make_native("<promise-resolve>", move |rt, args| {
+            // PEFM-EXT 1: per ECMA-262 §27.2.1.3.1/§27.2.1.3.2 the
+            // Promise resolve/reject functions have name="" and length=1.
+            // Previously named "<promise-resolve>"/"<promise-reject>" with
+            // length=0 — visible to consumer code via fn.name/fn.length.
+            let resolve_fn = crate::intrinsics::make_native_with_length("", 1, move |rt, args| {
                 let v = args.first().cloned().unwrap_or(Value::Undefined);
                 resolve_promise(rt, p_for_resolve, v);
                 Ok(Value::Undefined)
             });
-            let reject_fn = crate::intrinsics::make_native("<promise-reject>", move |rt, args| {
+            let reject_fn = crate::intrinsics::make_native_with_length("", 1, move |rt, args| {
                 let v = args.first().cloned().unwrap_or(Value::Undefined);
                 reject_promise(rt, p_for_reject, v);
                 Ok(Value::Undefined)
