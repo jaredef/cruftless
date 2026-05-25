@@ -108,3 +108,62 @@ The Promise return shape uses cruft's existing `new_promise` / `resolve_promise`
 - **Module re-export across compartments**: a compartment's module that re-exports from another compartment is not supported; cross-compartment module identity would need extra plumbing.
 
 **Status**: CP-EXT 4 CLOSED. CP-EXT 5 (cap-handle endowment validation per Doc 736) next — the Pred-cp.3 closure.
+
+## CP-EXT 5 — capability-handle endowment validation per Doc 736 (2026-05-25)
+
+**Edits** (~85 LOC; ~55 more than ~30 projection — most of the extra is the ambient-deny substrate that's load-bearing for the Doc 736 claim, and the clone_intrinsic_proto fix to preserve internal_kind so cloned constructors remain typeof-"function"):
+
+- `interp.rs::clone_intrinsic_proto`: preserve `internal_kind` (manual match over relevant variants; FunctionInternals deep-cloned by field). Without this fix, cloned Array/Object/Function constructors appeared as `typeof Array === "object"` inside compartments — broke spec contract for intrinsics.
+- `interp.rs::RealmRecord`: add `ambient_denied: bool` flag + `primordial_full_snapshot: Option<HashMap>` field.
+- `interp.rs::intrinsic_name_allowlist`: static set of ECMAScript-spec intrinsic names + engine-internal helpers that must remain reachable for compiled bytecode.
+- `interp.rs::enter_realm`: when `ambient_denied`, snapshot full globals + retain only allowlisted names + apply endowments.
+- `interp.rs::exit_realm`: restore full snapshot.
+- `interp.rs::allocate_compartment_realm`: flip `ambient_denied = true` for the new realm.
+
+**Probe** (`cp_cap_endowment.mjs`, 5 checks): **CP_EXT_5_OK** ✓
+1. Endowed cap invokable (`fs.readSafePath("/tmp/safe/data.json")` returns `"cap-served:..."`)
+2. Cap discipline enforced inside compartment (path outside cap scope throws "outside cap scope")
+3. Ambient host globals denied: `typeof process === "undefined"`, `typeof require === "undefined"`, `typeof console === "undefined"`
+4. Intrinsic constructors visible: `typeof Array === "function"`, `JSON.stringify({a:1}) === '{"a":1}'`, `typeof Math === "object"`
+5. Ambient privileged op (`process.exit(0)`) throws TypeError/ReferenceError
+6. Audit log on cap captures all invocations
+
+**Regression**: canonical fuzz byte-identical; random 200 previously-passing test262: 200/200 pass / 0 regressed. All prior probes (prototype_pollution_realm, cp_evaluate_globals_globalthis, cp_import) still pass.
+
+**All Pred-cp.* dispositions**:
+| Predicate | Disposition |
+|---|---|
+| Pred-cp.1 (≤1 round/sub-locale) | ✅ HELD |
+| Pred-cp.2 (cumulative ≤350 LOC) | ✅ HELD (~330 actual) |
+| Pred-cp.3 (Doc 736 cap-pass at JS-API) | ✅ HELD — `cp_cap_endowment.mjs` demonstrates the architectural property in user-runnable JS |
+| Pred-cp.4 (zero PASS→FAIL) | ✅ HELD (200/200 across all rounds) |
+| Pred-cp.5 (Rule 13 prospective) | ✅ HELD (no substrate-introduction prefixes; each round delivered a probe-confirmable property) |
+
+### Finding CP.3 (the Doc 736 architectural property is now JS-API-expressible)
+
+Application authors can directly write:
+
+```js
+const fsCap = { readSafePath(p) { /* ... */ } };
+const dep = new Compartment({ globals: { fs: fsCap } });
+dep.evaluate('fs.readSafePath("/safe/data.json")');  // works
+dep.evaluate('process.exit(0)');                     // ReferenceError (process not endowed)
+```
+
+This is the JS-API expression of Doc 736's "ambient authority denied; capability handle required" property. The substrate is RS-EXT 2 (intrinsic isolation) + this round's ambient-deny + endowment passing.
+
+### Finding CP.4 (substrate-bound vs spec-claim)
+
+The minimum substrate to deliver the Doc 736 claim at JS-API level is bounded. Cumulative since RS-EXT 2: ~190 (RS) + ~150 (CP 1+2+3) + ~95 (CP 4) + ~85 (CP 5) = ~520 LOC. Compared to the prospective-doc's 700-800 for full realm substrate, the architecturally-load-bearing subset is ~520 — the rest (per-Function [[Realm]] slot, cross-realm instanceof, $262.createRealm) is reserved for downstream consumers but NOT required for the Doc 736 claim.
+
+**Status**: CP-EXT 5 CLOSED. **CP arc complete.**
+
+The locale delivered:
+- A working `Compartment` JS class matching the TC39 proposal's core semantics
+- The Doc 736 architectural property at JS-API level
+- Module loading via `Compartment.prototype.import` with explicit module map
+- Endowment-based capability passing
+
+Deferred to separate prospective items (per keeper directive "Let's keep the separate"):
+- Hooks (importHook/loadHook/resolveHook) — CP-EXT 6 candidate
+- Module Source records — CP-EXT 7 candidate

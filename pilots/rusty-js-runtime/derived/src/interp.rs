@@ -38,6 +38,16 @@ pub struct RealmRecord {
     /// shadowed key, captured at enter_realm and restored at exit_realm.
     /// Stored on the realm so nested enter/exit pairs compose.
     pub primordial_snapshot: std::collections::HashMap<String, Value>,
+    /// CP-EXT 5: when true, enter_realm clears non-allowlist host globals
+    /// from the active globals; only ECMAScript intrinsics +
+    /// `globals_overrides` (endowments) remain visible inside. exit_realm
+    /// restores the full primordial via `primordial_full_snapshot`. This
+    /// is the substrate that earns Doc 736's "ambient authority denied
+    /// by default" property at the JS-API level.
+    pub ambient_denied: bool,
+    /// CP-EXT 5: snapshot of the FULL primordial globals captured at
+    /// enter_realm when ambient_denied is true. Restored on exit_realm.
+    pub primordial_full_snapshot: Option<std::collections::HashMap<String, Value>>,
 }
 
 #[derive(Debug, Clone)]
@@ -6367,6 +6377,27 @@ impl Runtime {
             out.properties = src.properties.clone();
             out.shape = src.shape.clone();
             out.shape_values = src.shape_values.clone();
+            // CP-EXT 5: preserve internal_kind so cloned constructors
+            // remain typeof-"function" / callable. The native fn pointer
+            // (in FunctionInternals) is shared by Rc; not cloned, just
+            // referenced — that's correct: a cloned Array constructor
+            // invokes the same Rust impl as the primordial. Manual clone
+            // since InternalKind doesn't derive Clone (some variants
+            // hold non-Clone state).
+            use crate::value::InternalKind as IK;
+            out.internal_kind = match &src.internal_kind {
+                IK::Function(fi) => IK::Function(crate::value::FunctionInternals {
+                    name: fi.name.clone(),
+                    length: fi.length,
+                    native: fi.native.clone(),
+                    is_constructor: fi.is_constructor,
+                }),
+                IK::Ordinary => IK::Ordinary,
+                IK::Array => IK::Array,
+                IK::Error => IK::Error,
+                _ => IK::Ordinary, // other variants fall back to Ordinary;
+                                   // not load-bearing for prototype/ctor clones
+            };
             out
         };
         self.alloc_object(cloned)
@@ -6382,6 +6413,10 @@ impl Runtime {
         for (k, v) in endowments {
             self.realms[idx].globals_overrides.insert(k, v);
         }
+        // CP-EXT 5: compartment realms default-deny ambient host globals.
+        // Plain Realms (RS-EXT 2) keep ambient_denied=false; only the
+        // Compartment ctor flips this flag via allocate_compartment_realm.
+        self.realms[idx].ambient_denied = true;
         idx
     }
 
@@ -6423,8 +6458,53 @@ impl Runtime {
             string_prototype: string_p,
             globals_overrides: overrides,
             primordial_snapshot: std::collections::HashMap::new(),
+            ambient_denied: false,
+            primordial_full_snapshot: None,
         });
         self.realms.len() - 1
+    }
+
+    /// CP-EXT 5: default-deny ambient globals at compartment entry.
+    /// Returns the name set the compartment retains by default — just
+    /// the ECMAScript intrinsics + a few engine-internal helpers that
+    /// must remain reachable for compiled bytecode to run. Host-tier
+    /// globals (process, console, require, fs, ...) are NOT in this
+    /// set; they're available only when explicitly endowed via the
+    /// compartment's globals option per Doc 736.
+    fn intrinsic_name_allowlist() -> &'static [&'static str] {
+        &[
+            // §19 Fundamental Objects
+            "Object", "Function", "Boolean", "Symbol", "Error", "EvalError",
+            "RangeError", "ReferenceError", "SyntaxError", "TypeError", "URIError",
+            // §20 Numbers, Dates, Math, JSON
+            "Number", "BigInt", "Math", "Date", "JSON",
+            // §21 Indexed Collections + §22 Text Processing
+            "Array", "TypedArray", "String", "RegExp",
+            "Int8Array", "Uint8Array", "Uint8ClampedArray", "Int16Array",
+            "Uint16Array", "Int32Array", "Uint32Array", "Float32Array",
+            "Float64Array", "BigInt64Array", "BigUint64Array",
+            "ArrayBuffer", "DataView", "SharedArrayBuffer", "Atomics",
+            // §23 Keyed Collections + §24 Structured Data
+            "Map", "Set", "WeakMap", "WeakSet",
+            // §25 Reflection
+            "Proxy", "Reflect",
+            // §26 Promises
+            "Promise",
+            // §27 Iteration
+            "Iterator", "AsyncIterator",
+            // §19.4 Global Property Values + functions
+            "globalThis", "undefined", "NaN", "Infinity",
+            "parseInt", "parseFloat", "isNaN", "isFinite",
+            "encodeURI", "encodeURIComponent", "decodeURI", "decodeURIComponent",
+            // Engine-internal helpers compiled bytecode emits LoadGlobal for;
+            // these MUST remain reachable or the realm crashes immediately.
+            "__destr_array_rest", "__destr_object_rest",
+            "__destr_iter_open", "__destr_iter_step", "__destr_iter_rest",
+            "__destr_iter_close",
+            "__array_extend", "__await", "__yield_push__", "__yield_delegate__",
+            "__install_method__", "__install_accessor__", "__install_accessor_obj__",
+            "__cruftless_tolerate", "__post_eval_trace",
+        ]
     }
 
     /// RS-EXT 2e+2g: enter a realm. Returns the prior realm index so the
@@ -6437,6 +6517,16 @@ impl Runtime {
     /// 3. current_realm index updates.
     pub fn enter_realm(&mut self, idx: usize) -> usize {
         let prior = self.current_realm;
+        let ambient_denied = self.realms[idx].ambient_denied;
+        // CP-EXT 5: when ambient_denied is set, snapshot the full primordial
+        // globals and replace with intrinsic-only-plus-endowments view.
+        if ambient_denied {
+            let full = self.globals.clone();
+            self.realms[idx].primordial_full_snapshot = Some(full.clone());
+            let allow: std::collections::HashSet<&'static str> =
+                Self::intrinsic_name_allowlist().iter().copied().collect();
+            self.globals.retain(|k, _| allow.contains(k.as_str()));
+        }
         let (over_keys, over_values): (Vec<String>, Vec<Value>) = {
             let r = &self.realms[idx];
             (r.globals_overrides.keys().cloned().collect(),
@@ -6458,12 +6548,20 @@ impl Runtime {
         prior
     }
 
-    /// RS-EXT 2e+2g: exit a realm, restoring the prior one.
+    /// RS-EXT 2e+2g + CP-EXT 5: exit a realm, restoring the prior one.
     pub fn exit_realm(&mut self, prior: usize) {
         let cur = self.current_realm;
-        let snapshot = std::mem::take(&mut self.realms[cur].primordial_snapshot);
-        for (k, v) in snapshot {
-            self.globals.insert(k, v);
+        // CP-EXT 5: restore the full primordial globals if this realm
+        // suppressed ambient (overwriting any intra-realm mutations to
+        // primordial-host bindings — those would have been on snapshots,
+        // not the live primordial map).
+        if let Some(full) = self.realms[cur].primordial_full_snapshot.take() {
+            self.globals = full;
+        } else {
+            let snapshot = std::mem::take(&mut self.realms[cur].primordial_snapshot);
+            for (k, v) in snapshot {
+                self.globals.insert(k, v);
+            }
         }
         self.current_realm = prior;
         let r = &self.realms[prior];
