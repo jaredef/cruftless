@@ -319,12 +319,20 @@ impl<'src> Parser<'src> {
         self.expect_punct(Punct::LBrace)?;
         // SMPT-EXT 1: track function-body depth for yield-context disambiguation.
         self.function_body_depth += 1;
+        // SMPT-EXT 2: §16.1.1 DirectivePrologues — function body that
+        // begins with "use strict" promotes to strict mode for the body's
+        // duration. Inner functions inherit; restored on exit.
+        let prior_strict = self.strict_mode;
+        if self.peek_use_strict_directive() {
+            self.strict_mode = true;
+        }
         let mut out = Vec::new();
         while !matches!(self.current_kind(), TokenKind::Punct(Punct::RBrace)) && !self.at_eof_internal() {
             out.push(self.parse_statement()?);
         }
         self.expect_punct(Punct::RBrace)?;
         self.function_body_depth = self.function_body_depth.saturating_sub(1);
+        self.strict_mode = prior_strict;
         Ok(out)
     }
 

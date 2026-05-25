@@ -38,13 +38,23 @@ pub struct Parser<'src> {
     /// Per ECMA-262 §13.2: yield is a Keyword only inside generator function
     /// bodies + strict-mode code. Outside both, `yield` is IdentifierName.
     pub(crate) function_body_depth: u32,
+    /// SMPT-EXT 2: ECMAScript strict-mode flag tracking. Set true at:
+    /// - parse_module() entry (modules are always strict per §16.2.1.5).
+    /// - parse_function_body() entry, if the body starts with a
+    ///   "use strict" directive prologue (per §16.1.1 DirectivePrologues).
+    /// Inherits from parent (inner functions inherit parent strict).
+    /// Restored on function-body exit.
+    /// Class bodies are also strict per §15.7.1 but the class-body parse
+    /// path is opaque-bodied in cruft; class-body strict propagation
+    /// happens at the inner-function-body parse instead.
+    pub(crate) strict_mode: bool,
 }
 
 impl<'src> Parser<'src> {
     pub fn new(src: &'src str) -> Result<Self, ParseError> {
         let mut lx = Lexer::new(src);
         let lookahead = lx.next_token(LexerGoal::RegExp).map_err(lex_to_parse)?;
-        Ok(Self { src, lx, lookahead, function_body_depth: 0 })
+        Ok(Self { src, lx, lookahead, function_body_depth: 0, strict_mode: false })
     }
 
     pub fn parse_module(&mut self) -> Result<Module, ParseError> {
@@ -54,6 +64,16 @@ impl<'src> Parser<'src> {
         let mut local_export_entries: Vec<ExportEntry> = Vec::new();
         let mut indirect_export_entries: Vec<ExportEntry> = Vec::new();
         let mut star_export_entries: Vec<ExportEntry> = Vec::new();
+
+        // SMPT-EXT 2: §16.1.1 DirectivePrologues — detect leading
+        // "use strict" directive in script source. Modules are always
+        // strict per §16.2.1.5; this parse entry is shared between script
+        // and module parsing (cruft doesn't distinguish at this layer),
+        // so we use the script-rule baseline (sloppy unless prologue).
+        // The import/export branches below promote to strict when seen.
+        if self.peek_use_strict_directive() {
+            self.strict_mode = true;
+        }
 
         while !self.at_eof() {
             // Skip hashbang and other trivia surfaces that the lexer may emit.
@@ -720,6 +740,27 @@ impl<'src> Parser<'src> {
 
     pub(crate) fn is_ident(&self, name: &str) -> bool {
         matches!(&self.lookahead.kind, TokenKind::Ident(n) if n == name)
+    }
+
+    /// SMPT-EXT 2: peek the current lookahead + the bytes that follow to
+    /// detect a leading "use strict" / 'use strict' DirectivePrologue. Per
+    /// §16.1.1 a directive is an ExpressionStatement whose expression is a
+    /// StringLiteral that does not contain escape sequences. The detection
+    /// does NOT consume any tokens; it inspects the source slice from the
+    /// current lookahead's start. Called at parse_module entry and at
+    /// parse_function_body entry to decide strict-mode propagation.
+    pub(crate) fn peek_use_strict_directive(&self) -> bool {
+        let start = self.lookahead.span.start;
+        let bytes = self.src.as_bytes();
+        if start >= bytes.len() { return false; }
+        // Skip any contiguous whitespace at the start (lookahead already
+        // points past prior trivia; this guard is defensive).
+        let mut i = start;
+        while i < bytes.len() && (bytes[i] == b' ' || bytes[i] == b'\t' || bytes[i] == b'\n' || bytes[i] == b'\r') { i += 1; }
+        if i + 12 > bytes.len() { return false; }
+        // Accept "use strict" or 'use strict' — both quote forms.
+        let slice = &bytes[i..i + 12];
+        slice == b"\"use strict\"" || slice == b"'use strict'"
     }
 
     /// PPAE-EXT 1: contextual-keyword detection that ALSO requires the

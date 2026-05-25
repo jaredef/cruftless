@@ -238,13 +238,12 @@ impl<'src> Parser<'src> {
                 let span = Span::new(start, arg.span().end);
                 Ok(Expr::Unary { operator: UnaryOp::Delete, argument: Box::new(arg), span })
             }
-            TokenKind::Ident(s) if s == "yield" && self.function_body_depth > 0 => {
-                // SMPT-EXT 1: only parse `yield` as YieldExpression when
-                // inside a function body. At script/module top-level
-                // (depth == 0), `yield` is IdentifierReference per spec
-                // §13.2 (Keyword only inside generator + strict). The
-                // identifier-fallthrough below handles depth==0 by
-                // dispatching the default Ident handler.
+            TokenKind::Ident(s) if s == "yield" && (self.function_body_depth > 0 || self.strict_mode) => {
+                // SMPT-EXT 1+2: yield is YieldExpression when inside a
+                // function body OR when strict-mode (strict-mode yield is
+                // unconditionally reserved per §13.2). At script/module
+                // top-level sloppy (depth == 0 && !strict), `yield` is
+                // IdentifierReference and falls through to default Ident.
                 self.bump()?;
                 let delegate = matches!(self.current_kind(), TokenKind::Punct(Punct::Star));
                 if delegate { self.bump()?; }
@@ -1286,15 +1285,22 @@ impl<'src> Parser<'src> {
                     return Err(self.err_at(id.span, format!(
                         "arrow function has duplicate parameter name `{}`", id.name)));
                 }
-                // APRW-EXT 1: §11.6.2 unconditional ReservedWord — arrow
-                // function parameters cannot be Keyword (enum / class /
-                // const / etc.). Strict-mode-only reserveds (yield / let /
-                // static / etc.) are valid identifiers in sloppy non-
-                // generator contexts; gating those requires strict-mode
-                // tracking deferred per SMPT-EXT 1.
-                if crate::parser::is_unconditional_reserved_word(&id.name) {
+                // APRW-EXT 1 + SMPT-EXT 2: §11.6.2 ReservedWord — arrow
+                // function parameters cannot be Keyword unconditionally
+                // (enum / class / etc.). In strict mode, additionally
+                // cannot be yield / let / static / implements / interface
+                // / package / private / protected / public / eval /
+                // arguments per §13.1.1.1.
+                let mode_gate = if self.strict_mode {
+                    crate::parser::is_reserved_word(&id.name)
+                        || id.name == "eval" || id.name == "arguments"
+                } else {
+                    crate::parser::is_unconditional_reserved_word(&id.name)
+                };
+                if mode_gate {
                     return Err(self.err_at(id.span, format!(
-                        "arrow function parameter `{}` is a reserved word", id.name)));
+                        "arrow function parameter `{}` is a reserved word{}",
+                        id.name, if self.strict_mode { " in strict mode" } else { "" })));
                 }
                 seen.push((id.name.clone(), id.span));
             }
