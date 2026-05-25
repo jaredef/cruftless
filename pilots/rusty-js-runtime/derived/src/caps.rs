@@ -386,6 +386,129 @@ pub enum EnvOp {
     SystemInfo(&'static str),  // e.g. "cpus", "hostname", "homedir"
 }
 
+// ------------------------------------------------------------ Net capability
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NetEndpoint {
+    pub host: String,
+    pub port: u16,
+}
+
+impl NetEndpoint {
+    pub fn new(host: impl Into<String>, port: u16) -> Self {
+        Self { host: host.into(), port }
+    }
+
+    fn matches(&self, host: &str, port: u16) -> bool {
+        self.host == host && self.port == port
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum NetListenPolicy {
+    None,
+    Any,
+    LoopbackAnyPort,
+    Exact(Vec<NetEndpoint>),
+}
+
+impl NetListenPolicy {
+    fn allows(&self, host: &str, port: u16) -> bool {
+        match self {
+            Self::None => false,
+            Self::Any => true,
+            Self::LoopbackAnyPort => is_loopback_host(host),
+            Self::Exact(endpoints) => endpoints.iter().any(|ep| ep.matches(host, port)),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum NetConnectPolicy {
+    None,
+    Any,
+    Hosts(Vec<String>),
+    Exact(Vec<NetEndpoint>),
+}
+
+impl NetConnectPolicy {
+    fn allows(&self, host: &str, port: u16) -> bool {
+        match self {
+            Self::None => false,
+            Self::Any => true,
+            Self::Hosts(hosts) => hosts.iter().any(|h| h == host),
+            Self::Exact(endpoints) => endpoints.iter().any(|ep| ep.matches(host, port)),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Net {
+    pub listen: NetListenPolicy,
+    pub connect: NetConnectPolicy,
+}
+
+impl Net {
+    pub fn full() -> Self {
+        Self { listen: NetListenPolicy::Any, connect: NetConnectPolicy::Any }
+    }
+
+    pub fn none() -> Self {
+        Self { listen: NetListenPolicy::None, connect: NetConnectPolicy::None }
+    }
+
+    pub fn loopback_server() -> Self {
+        Self { listen: NetListenPolicy::LoopbackAnyPort, connect: NetConnectPolicy::None }
+    }
+
+    pub fn listen_exact(host: impl Into<String>, port: u16) -> Self {
+        Self {
+            listen: NetListenPolicy::Exact(vec![NetEndpoint::new(host, port)]),
+            connect: NetConnectPolicy::None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum NetOp {
+    Listen { host: String, port: u16 },
+    Connect { host: String, port: u16 },
+}
+
+impl NetOp {
+    fn describe(&self) -> String {
+        match self {
+            Self::Listen { host, port } => format!("listen({host}:{port})"),
+            Self::Connect { host, port } => format!("connect({host}:{port})"),
+        }
+    }
+
+    fn allows(&self, cap: &Net) -> bool {
+        match self {
+            Self::Listen { host, port } => cap.listen.allows(host, *port),
+            Self::Connect { host, port } => cap.connect.allows(host, *port),
+        }
+    }
+
+    fn hint(&self) -> String {
+        match self {
+            Self::Listen { host, port } if is_loopback_host(host) => {
+                format!("add to caps in package.json: {{ net: {{ listen: ['{host}:{port}', 'loopback:*'] }} }}")
+            }
+            Self::Listen { host, port } => {
+                format!("add to caps in package.json: {{ net: {{ listen: ['{host}:{port}'] }} }}")
+            }
+            Self::Connect { host, port } => {
+                format!("add to caps in package.json: {{ net: {{ connect: ['{host}:{port}'] }} }}")
+            }
+        }
+    }
+}
+
+fn is_loopback_host(host: &str) -> bool {
+    matches!(host, "127.0.0.1" | "localhost" | "::1" | "[::1]")
+}
+
 // ----------------------------------------------------------- AmbientCaps
 
 /// The full-authority capability set the host holds. Mode 0 / Mode 1
@@ -400,6 +523,7 @@ pub struct AmbientCaps {
     pub scheduler: Scheduler,
     pub process: Process,
     pub env: Env,
+    pub net: Net,
 }
 
 impl AmbientCaps {
@@ -411,6 +535,7 @@ impl AmbientCaps {
             scheduler: Scheduler::full(),
             process: Process::full(),
             env: Env::full(),
+            net: Net::full(),
         }
     }
 }
@@ -688,6 +813,33 @@ impl CapDispatcher {
             }
         }
     }
+
+    pub fn require_net(
+        &self,
+        cap: &Net,
+        op: NetOp,
+        caller: &ModuleId,
+    ) -> Result<(), CapabilityError> {
+        let op_desc = op.describe();
+        self.record_audit(caller, "net", &op_desc);
+        match self.mode {
+            CapMode::Compat | CapMode::Audit => Ok(()),
+            CapMode::SealedDeps if caller.provenance.is_application() => Ok(()),
+            CapMode::SealedDeps | CapMode::Sealed => {
+                if op.allows(cap) {
+                    Ok(())
+                } else {
+                    Err(CapabilityError {
+                        capability: "net",
+                        operation: op_desc,
+                        calling_module: caller.url.clone(),
+                        mode: self.mode,
+                        hint: Some(op.hint()),
+                    })
+                }
+            }
+        }
+    }
 }
 
 impl Default for CapDispatcher {
@@ -838,6 +990,43 @@ mod tests {
         assert!(d.require_env(&cap, EnvOp::ReadVar("LANG".into()), &dep_caller()).is_ok());
         assert!(d.require_env(&cap, EnvOp::ReadVar("AWS_KEY".into()), &dep_caller()).is_err());
         assert!(d.require_env(&cap, EnvOp::SystemInfo("cpus"), &dep_caller()).is_err());
+    }
+
+    #[test]
+    fn net_loopback_listen_policy() {
+        let d = CapDispatcher::new(CapMode::Sealed);
+        let cap = Net::loopback_server();
+        assert!(d.require_net(&cap, NetOp::Listen { host: "127.0.0.1".into(), port: 0 }, &dep_caller()).is_ok());
+        assert!(d.require_net(&cap, NetOp::Listen { host: "localhost".into(), port: 3000 }, &dep_caller()).is_ok());
+        assert!(d.require_net(&cap, NetOp::Listen { host: "0.0.0.0".into(), port: 0 }, &dep_caller()).is_err());
+    }
+
+    #[test]
+    fn net_exact_listen_policy() {
+        let d = CapDispatcher::new(CapMode::Sealed);
+        let cap = Net::listen_exact("127.0.0.1", 8080);
+        assert!(d.require_net(&cap, NetOp::Listen { host: "127.0.0.1".into(), port: 8080 }, &dep_caller()).is_ok());
+        assert!(d.require_net(&cap, NetOp::Listen { host: "127.0.0.1".into(), port: 8081 }, &dep_caller()).is_err());
+    }
+
+    #[test]
+    fn net_audit_records_listen() {
+        let d = CapDispatcher::audit_mode();
+        let cap = Net::none();
+        let r = d.require_net(&cap, NetOp::Listen { host: "127.0.0.1".into(), port: 0 }, &dep_caller());
+        assert!(r.is_ok());
+        let records = d.drain_audit();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].capability, "net");
+        assert_eq!(records[0].operation, "listen(127.0.0.1:0)");
+    }
+
+    #[test]
+    fn net_sealed_deps_app_passes() {
+        let d = CapDispatcher::new(CapMode::SealedDeps);
+        let cap = Net::none();
+        assert!(d.require_net(&cap, NetOp::Listen { host: "0.0.0.0".into(), port: 0 }, &app_caller()).is_ok());
+        assert!(d.require_net(&cap, NetOp::Listen { host: "0.0.0.0".into(), port: 0 }, &dep_caller()).is_err());
     }
 
     #[test]

@@ -413,12 +413,14 @@ name = "cruftless"
 version = "0.1.0"
 dependencies = [
  "indexmap",
+ "rusty-http-codec",
  "rusty-js-ast",
  "rusty-js-bytecode",
  "rusty-js-jit",
  "rusty-js-parser",
  "rusty-js-pm",
  "rusty-js-runtime",
+ "rusty-sockets",
  "ts-resolve",
 ]
 

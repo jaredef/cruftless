@@ -284,6 +284,9 @@ pub fn install_poll_io(rt: &mut Runtime) {
                 sleep_until_next_event();
                 return Ok(true);
             }
+            if crate::http::poll_io(rt)? {
+                return Ok(true);
+            }
             return Ok(false);
         }
         for entry in entries {

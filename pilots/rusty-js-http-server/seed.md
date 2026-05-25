@@ -2,85 +2,134 @@
 
 **Locale tag**: `L.rusty-js-http-server` (top-level per Doc 737 §IV)
 
-**Status as of 2026-05-23**: **WORKSTREAM FOUNDED (HS-EXT 0)**. No code yet. Spawned per keeper directive 2026-05-23 18:12-local. Fourth of four spawns in this round.
+**Status as of 2026-05-25**: **DIRECT MODE-0 PROBE PASSING at HS-EXT 5**. Originally founded at HS-EXT 0 (2026-05-23) as "basic HTTP server." HS-EXT 1's transport survey and the subsequent Doc 736 / Compartment composition reading sharpened the telos; HS-EXT 3 translated that telos into the concrete API wireup plan; HS-EXT 4 decided the `Net` capability substrate can extend the existing dispatcher directly; HS-EXT 5 added the first live `node:http.createServer(...).listen(...)` path. HTTP server is the first runtime surface where Node-compatible network serving, capability authority, compartment realm dispatch, and PollIo event-loop integration must compose.
 
-**Workstream**: implement an actual HTTP server surface for cruft. Per keeper observation: HTTP server APIs (`bun:serve`, Node `http.createServer`) are currently stubbed. Real Node packages (express, fastify, koa, etc.) cannot run without a real HTTP server.
+**Workstream**: implement an actual HTTP server surface for cruft, but with the authority boundary made explicit. `http.createServer(handler)` is API shape; `server.listen(...)` is the effectful network authority. In Mode 0 it remains Node-compatible. In sealed modes and inside Compartments it must be reachable only through an explicit `Net` capability or a capability-backed `http` facade.
 
-**Author**: 2026-05-23 session.
-**Parent**: cruftless engagement (`/home/jaredef/rusty-bun`). Standalone top-level pilot.
+**Author**: 2026-05-23 session, reformalized 2026-05-25.
+**Parent**: cruftless engagement. Standalone top-level pilot.
 **Composes with**:
-- [Findings doc IV.4 standing fuzz](../rusty-js-jit/findings.md) — any default-on flip uses canonical fuzz per rule 10
-- [Doc 736 §IX](../../../corpus-master/corpus/736-the-architecturally-impossible-supply-chain-attack-capability-passing-closed-import-graphs-and-load-time-integrity-as-the-design-that-removes-ambient-authority.md) — cap-passing modes: HTTP server is a NET capability per the design; gated under Mode 2+ sealed
-- [Doc 735 §X.h.b](../../../corpus-master/corpus/735-the-temporal-resolver-instance-stack-build-time-process-time-call-time-as-the-time-axis-dual-to-doc-729s-spatial-stack.md) — (P2) categorization
-- [Doc 731 §VII R1](../../../corpus-master/corpus/731-the-jit-as-a-lowering-compiler-tier-alphabet-purity-upstream-as-the-bound-on-jit-complexity.md) — preserved (HTTP server is a runtime surface, not JIT)
+- [Doc 736](../../docs/736-the-architecturally-impossible-supply-chain-attack-capability-passing-closed-import-graphs-and-load-time-integrity-as-the-design-that-removes-ambient-authority.md) — capability-passing runtime. HTTP listen is a `Net` capability operation.
+- [compartment-primitive locale](../compartment-primitive/) — JS-visible `Compartment` API. Compartments are the application-facing way to endow a narrowed HTTP/network authority to untrusted code.
+- [rusty-js-caps pilot](../rusty-js-caps/) — four capability modes, dispatcher pattern, audit/sealed semantics.
+- [node-http pilot](../node-http/) — closed Node HTTP data-layer semantics.
+- [http-codec pilot](../http-codec/) — whole-message HTTP/1.1 parse/serialize substrate.
+- [sockets pilot](../sockets/) — TCP listener/stream substrate.
+- [Findings doc IV.4 standing fuzz](../rusty-js-jit/findings.md) — default-on / route-through changes preserve canonical fuzz.
+- [Doc 735 §X.h.b](../../docs/735-the-temporal-resolver-instance-stack-build-time-process-time-call-time-as-the-time-axis-dual-to-doc-729s-spatial-stack.md) — process-time / call-time authority boundary.
 
 ## I. Telos
 
-**Empirical answer to**: can cruft serve a basic HTTP/1.1 request-response cycle compatible with Node's `http.createServer` API?
+**Empirical answer to**: can Cruftless serve HTTP/1.1 through a Node-compatible `http.createServer` surface while preserving Doc 736's capability-passing architectural property and executing compartment-created handlers inside their originating compartment realm?
 
-This is a substantial multi-session substrate workstream. First cut: minimal viable HTTP/1.1 server that accepts a request, dispatches to a JS-side handler, writes a response. Body streaming + keep-alive + chunked encoding follow in subsequent rounds.
+The locale's load-bearing observation:
+
+- `http.createServer(handler)` is mostly pure object construction.
+- `server.listen(host, port)` is the authority-bearing operation.
+- A server created inside a `Compartment` carries both the handler and the compartment realm identity.
+- `PollIo` request dispatch must enter that stored realm before invoking the handler and exit it afterward.
+- In sealed capability modes, binding a listener must require `Net` authority.
+
+The first compatibility target remains Node-style HTTP serving. The sharpened telos is that compatibility must not introduce ambient network authority that bypasses Doc 736 or Compartment endowment discipline.
 
 ### I.1 First-cut scope
 
-- **Node `http.createServer(handler)` API surface** (vs Bun-specific `Bun.serve` which is the same shape under different name)
-- **HTTP/1.1 only** (no HTTP/2; no HTTP/3)
-- **Request: method + URL + headers + body** parsed and exposed as IncomingMessage-shape
-- **Response: writeHead + write + end** exposed as ServerResponse-shape
-- **Single-connection at a time** (no concurrent request handling at first cut; tokio runtime addition is forward work)
-- **Mode 0 cap-passing** (sealed-mode integration per Doc 736 §IX.6 is HS-EXT 8+)
+- **Node `http.createServer(handler)` API surface**.
+- **HTTP/1.1 only**.
+- **Request shape**: method, URL, headers, HTTP version, buffered body.
+- **Response shape**: statusCode/statusMessage, setHeader/getHeader, writeHead, write, end, headersSent.
+- **TCP listener via existing sockets substrate**.
+- **Foreground handler invocation**: accepted requests enqueue runtime work and call JS via `rt.call_function` on the runtime thread, never directly from a background listener thread.
+- **Realm-preserving dispatch**: handlers created in a compartment are invoked under that compartment's realm/global environment.
+- **Authority seam**: `server.listen` routes through a `Net` capability check in sealed/audit modes, with Mode 0 preserving Node-equivalent compatibility.
+- **Capability-backed HTTP facade**: design must support a compartment-endowed `http` object closed over a `Net` capability, even if the first implementation exposes only the ambient Mode-0 namespace.
 
-Out of scope: WebSocket upgrade; HTTPS; HTTP/2; keep-alive; chunked encoding; pipelining; body streaming (request body buffered fully first); concurrent connections.
+Out of scope for first cut: HTTPS/server-side TLS, HTTP/2, HTTP/3, WebSocket upgrade, keep-alive, pipelining, streaming request bodies, chunked request streaming, multiple concurrent request handlers, full TC39 Compartment hooks, Module Source records.
 
 ### I.2 Falsifiers
 
-**Pred-hs.1**: cruft can serve a minimal Express app (`app.get('/', (req, res) => res.send('hello'))`). Falsifier: Express doesn't run.
+**Pred-hs.1 (Node direct)**: Cruftless can serve a direct Node-style app:
 
-**Pred-hs.2**: HTTP/1.1 round-trip wire-equal to node's response on simple cases (HTTP version + status line + standard headers + body match). Falsifier: divergence in wire format.
+```js
+http.createServer((req, res) => res.end("hello")).listen(0, "127.0.0.1")
+```
 
-**Pred-hs.3**: canonical fuzz remains byte-identical post-implementation (no shape-correctness regression from HTTP server wireup).
+Falsifier: local TCP client cannot receive a valid `HTTP/1.1 200 OK` response with body `hello`.
 
-**Pred-hs.4**: diff-prod 42/42 holds.
+**Pred-hs.2 (Express minimal)**: Cruftless can serve a minimal Express app (`app.get("/", (req, res) => res.send("hello"))`). Falsifier: Express does not run or cannot write a response after the direct Node probe succeeds.
 
-**Pred-hs.5**: cap-passing modes preserved (Doc 736 §IX). Under Mode 3 (sealed), HTTP server requires explicit `caps: { net: [...] }` per the application's caps declaration.
+**Pred-hs.3 (wire floor)**: simple HTTP/1.1 responses match Node/Bun on status line, Content-Length/body bytes, and close behavior after dynamic/header-order normalization. Falsifier: semantic wire divergence on the direct probe.
+
+**Pred-hs.4 (capability authority)**: under Mode 3 sealed, `server.listen` without a `Net` capability throws `CapabilityError` before binding a socket. Falsifier: a sealed program binds a listener through ambient `node:http`.
+
+**Pred-hs.5 (audit authority)**: under Mode 1 audit, successful `server.listen` records a `net.listen(host, port)`-class event with caller/module provenance. Falsifier: network binding occurs without an audit record.
+
+**Pred-hs.6 (compartment authority)**: a `Compartment` without an endowed HTTP/Net capability cannot bind a server; the same compartment with a capability-backed HTTP facade can bind only within that capability's host/port scope. Falsifier: compartment code reaches ambient `node:http` or binds outside the endowed authority.
+
+**Pred-hs.7 (realm preservation)**: a handler created inside a compartment runs with that compartment's realm/globalThis and cannot observe host ambient globals during request dispatch. Falsifier: request callback dispatch escapes to the outer realm or sees denied ambient bindings.
+
+**Pred-hs.8 (regression gates)**: canonical fuzz remains byte-identical, and diff-prod remains at its current all-pass baseline after each implementation round. Falsifier: unrelated runtime-semantics regression.
 
 ## II. Apparatus
 
-Substantial new substrate at the rusty-js-runtime tier + likely a new sub-crate or module. Composes with:
-- **Existing socket / TCP substrate** (cruft has a `tls` pilot per the manifest; may have or need a basic-tcp substrate)
-- **Canonical fuzz** (standing): correctness gate
-- **Cap-passing dispatcher** (per Doc 736 §IX.6)
+This locale is a composition locale over existing substrates:
 
-Per Doc 738 §II.e: implementation likely lands at `pilots/rusty-js-runtime/derived/src/http_server.rs` (new module) or a new sub-crate `pilots/rusty-js-http-server/derived/` if scope grows.
+- **Data semantics**: `pilots/node-http/derived/`
+- **Wire codec**: `pilots/http-codec/derived/`
+- **TCP transport**: `pilots/sockets/derived/`
+- **Event loop**: `HostHook::PollIo` + runtime macrotask queue
+- **Capability authority**: `Runtime.caps` dispatcher from `rusty-js-caps`
+- **Compartment realm isolation**: `Compartment` + `allocate_compartment_realm` from `compartment-primitive`
+
+Implementation likely lands in:
+
+- `cruftless/src/http.rs` for the live `node:http` namespace and JS-visible server/request/response objects.
+- `pilots/rusty-js-runtime/derived/src/` if new runtime-level server registry, realm dispatch, or PollIo/macrotask support is needed.
+- `pilots/rusty-js-runtime/derived/src/caps.rs` if a `Net` capability class/op is not already present or needs extension.
+
+The design should prefer a small runtime-owned active-server registry over ad hoc JS-side state. Each active server record should carry at least:
+
+- listener handle
+- handler `Value`
+- creating realm id / compartment realm id where applicable
+- authority source (`Ambient`, `Audit`, `NetCapability`)
+- bound address
+- open/closed state
 
 ## III. Methodology
 
-1. **HS-EXT 0** — workstream founding (this seed + trajectory + scaffold).
-2. **HS-EXT 1** — survey existing TCP/socket substrate; identify what's available + the gap.
-3. **HS-EXT 2** — minimal HTTP/1.1 parser. Output: `docs/http-parser-design.md`.
-4. **HS-EXT 3** — Server / Request / Response object surface design. Output: `docs/api-design.md`.
-5. **HS-EXT 4** — `http.createServer` + `server.listen` API binding to rusty-js-runtime.
-6. **HS-EXT 5** — minimal request-handler dispatch (single-connection, synchronous handler).
-7. **HS-EXT 6** — Express compatibility probe: build a minimal Express-style app; verify cruft serves it.
-8. **HS-EXT 7** — composition probes (canonical fuzz; diff-prod).
-9. **HS-EXT 8** — cap-passing integration (Mode 2+ sealed).
-10. **HS-EXT 9** — default-on (substrate is opt-in via createServer API call; no flag).
+1. **HS-EXT 0** — original workstream founding.
+2. **HS-EXT 1** — transport survey. Identified HTTP server as composition locale over `node-http`, `http-codec`, `sockets`, `PollIo`, caps, and Compartments.
+3. **HS-EXT 2** — this reformalization. Seed/trajectory rewritten so capability + Compartment semantics are load-bearing rather than late garnish.
+4. **HS-EXT 3** — `docs/api-wireup-design.md`. Specified active-server registry, object slots, authority check flow, realm-preserving handler dispatch, and PollIo/macrotask behavior.
+5. **HS-EXT 4** — `docs/net-capability-design.md`. Decided no nested locale is needed for the first `Net` cut; extend the existing cap dispatcher directly.
+6. **HS-EXT 5** — code-bearing first round: added `Net` to `caps.rs`, routed HTTP listen through `require_net`, and implemented direct Node HTTP probe: create/listen/respond over localhost in Mode 0.
+7. **HS-EXT 6** — authority probes: Mode 1 audit, Mode 3 sealed denial, capability-backed allow.
+8. **HS-EXT 7** — Compartment probes: no ambient HTTP, endowed HTTP facade works, realm preservation on request callback.
+9. **HS-EXT 8** — Express minimal probe.
+10. **HS-EXT 9** — composition gates: canonical fuzz, diff-prod, targeted regression around Compartment probes and caps probes.
+11. **HS-EXT 10** — default-on disposition. The API is opt-in by calling `createServer`; no flag needed for Mode 0. Sealed behavior follows the existing capability mode flags.
 
 ## IV. Carve-outs and bounded scope
 
-- HTTP/1.1 only; HTTP/2 + HTTPS + HTTP/3 deferred
-- Single-connection at first cut; concurrent connections deferred
-- Buffered request body; streaming deferred
-- Node `http.createServer` API only; Bun.serve compatibility is a follow-on
-- WebSocket upgrade deferred
-- Per Findings rule 5 + standing rule 10: canonical fuzz at default-on flip
+- Plain HTTP/1.1 only; HTTPS/server-side TLS deferred.
+- One request per connection; keep-alive and pipelining deferred.
+- Buffered request body; streaming deferred.
+- Single-process runtime-thread JS dispatch; concurrent request handlers deferred.
+- Node `http.createServer` first; `Bun.serve` live wireup follows after the authority model is proven.
+- WebSocket upgrade deferred.
+- Full TC39 Compartment hooks and Module Source records deferred to their own Compartment follow-on locales.
+- Capability-backed facade can initially be a Cruftless-internal construction path rather than public API, as long as the seam is explicit and probed.
 
-## V. Standing artefacts
+## V. Standing Artefacts
 
-- `pilots/rusty-js-http-server/seed.md`, `trajectory.md`
-- `pilots/rusty-js-http-server/docs/` for http-parser-design + api-design
-- `pilots/rusty-js-http-server/fixtures/` for HTTP-specific test cases
-- Implementation lands in `pilots/rusty-js-runtime/derived/src/http_server.rs` (or new sub-crate if scope grows)
+- `pilots/rusty-js-http-server/seed.md`
+- `pilots/rusty-js-http-server/trajectory.md`
+- `pilots/rusty-js-http-server/docs/transport-survey.md`
+- `pilots/rusty-js-http-server/docs/api-wireup-design.md`
+- `pilots/rusty-js-http-server/docs/net-capability-design.md`
+- `pilots/rusty-js-http-server/fixtures/` for direct HTTP, authority, compartment, and Express probes
 
-## VI. Resume protocol
+## VI. Resume Protocol
 
-Read this seed, then trajectory.md tail. Multi-session pilot; substantive substrate work follows the survey + design rounds.
+Read this seed, then the tail of `trajectory.md`, then `docs/transport-survey.md`, `docs/api-wireup-design.md`, and `docs/net-capability-design.md`. Do not start from parser or data-layer work: those substrates already exist. The direct Mode-0 probe now passes. The next coherent move is HS-EXT 6: harden the authority probes (`--audit`, `--sealed`, loopback capability facade shape) and begin Compartment-facing facade work without regressing the direct probe.
