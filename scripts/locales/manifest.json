@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 41,
-    "top_level": 30,
+    "locales": 42,
+    "top_level": 31,
     "nested": 11,
     "warnings": 0
   },
@@ -62,6 +62,15 @@
       "depth": 1,
       "rung_count": 3,
       "status": "**CHAPTER CLOSED at IPBR-EXT 2 (P2.a at deeper-layer-first design tier)**. All six Pred-ipbr.* HELD including the Pred-ipbr.6 discipline falsifier (\u22643 rounds). CRB string_url_sweep 685 \u2192 584 ms (-14.7% additional; -21.4% cumulative vs 743 baseline); cruft/node 6.99x \u2192 6.21x (first sub-6.5\u00d7); A/B header_loop -21.8% additional (median 197 ms vs GPI 252). Locale closed in 1 implementation round; standing-rule-13 prospective-application thesis gets its second empirical corroboration."
+    },
+    {
+      "coord": "iterator-protocol-error-propagation",
+      "tag": "L.iterator-protocol-error-propagation",
+      "parent": null,
+      "scope": "iterator-protocol-error-propagation",
+      "depth": 1,
+      "rung_count": 2,
+      "status": "**CLOSED at IPEP-EXT 1** (1 implementation round; Doc 740 multi-tier closure)."
     },
     {
       "coord": "parser-permissiveness-audit",

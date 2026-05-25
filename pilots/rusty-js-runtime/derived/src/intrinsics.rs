@@ -64,6 +64,7 @@ impl Runtime {
         self.install_regexp();
         self.install_test_record();
         self.install_destructure_helpers();
+        self.install_destructure_iter_helpers();
         self.install_spread_helpers();
         // Tier-Ω.5.P17.E2: dynamic import() walks the real module resolver
         // (was: returned an unconditionally-rejected Promise per Ω.5.CCCCCCC
@@ -966,6 +967,76 @@ impl Runtime {
                 Value::Object(_) => ret,
                 _ => this_obj,
             })
+        });
+    }
+
+    /// IPEP-EXT 1: ECMA-262 §13.15.5.3 RS:DestructuringAssignmentEvaluation
+    /// and §14.4.2.4 IteratorBindingInitialization require Array-pattern
+    /// destructure to operate on an IteratorRecord opened from the source
+    /// via GetIterator(value). Three engine helpers cooperate with
+    /// inline-emitted iterator-protocol bytecode:
+    ///   - __destr_iter_open(value) → iterator (throws if @@iterator getter
+    ///     throws; throws TypeError if value is null/undefined or @@iterator
+    ///     returns a non-object).
+    ///   - __destr_iter_step(iter) → IteratorResult `{value, done}`.
+    ///   - __destr_iter_rest(iter) → array of remaining values.
+    /// Compiler emits these into both emit_destructure (binding) and
+    /// emit_destructure_assign (assignment) Array paths.
+    fn install_destructure_iter_helpers(&mut self) {
+        register_engine_helper(self, "__destr_iter_open", |rt, args| {
+            let v = args.first().cloned().unwrap_or(Value::Undefined);
+            if matches!(v, Value::Null | Value::Undefined) {
+                return Err(RuntimeError::TypeError(format!("cannot destructure {}", if matches!(v, Value::Null) { "null" } else { "undefined" })));
+            }
+            // For string sources, build the string-iterator object the
+            // existing helper supplies (matches what `for (c of "abc")` does).
+            if let Value::String(s) = &v {
+                let iter = crate::iterator::make_string_iterator(rt, (**s).clone());
+                return Ok(Value::Object(iter));
+            }
+            let v_obj = match &v {
+                Value::Object(id) => *id,
+                _ => return Err(RuntimeError::TypeError("value is not iterable".into())),
+            };
+            let iter_fn = rt.object_get(v_obj, "@@iterator");
+            if !matches!(iter_fn, Value::Object(_)) {
+                return Err(RuntimeError::TypeError("value is not iterable (no @@iterator)".into()));
+            }
+            let iter = rt.call_function(iter_fn, Value::Object(v_obj), Vec::new())?;
+            match iter {
+                Value::Object(_) => Ok(iter),
+                _ => Err(RuntimeError::TypeError("[Symbol.iterator]() returned non-object".into())),
+            }
+        });
+        register_engine_helper(self, "__destr_iter_step", |rt, args| {
+            let iter = args.first().cloned().unwrap_or(Value::Undefined);
+            let iter_obj = match iter {
+                Value::Object(id) => id,
+                _ => return Err(RuntimeError::TypeError("iterator is not an object".into())),
+            };
+            let next_fn = rt.object_get(iter_obj, "next");
+            rt.call_function(next_fn, Value::Object(iter_obj), Vec::new())
+        });
+        register_engine_helper(self, "__destr_iter_rest", |rt, args| {
+            let iter = args.first().cloned().unwrap_or(Value::Undefined);
+            let iter_obj = match iter {
+                Value::Object(id) => id,
+                _ => return Err(RuntimeError::TypeError("iterator is not an object".into())),
+            };
+            let out_id = rt.alloc_object(Object::new_array());
+            let next_fn = rt.object_get(iter_obj, "next");
+            let mut write_idx: usize = 0;
+            loop {
+                let result = rt.call_function(next_fn.clone(), Value::Object(iter_obj), Vec::new())?;
+                let r_obj = match result { Value::Object(id) => id, _ => return Err(RuntimeError::TypeError("iter.next() returned non-object".into())) };
+                let done = rt.object_get(r_obj, "done");
+                if abstract_ops::to_boolean(&done) { break; }
+                let v = rt.object_get(r_obj, "value");
+                rt.object_set(out_id, write_idx.to_string(), v);
+                rt.object_set(out_id, "length".into(), Value::Number((write_idx + 1) as f64));
+                write_idx += 1;
+            }
+            Ok(Value::Object(out_id))
         });
     }
 

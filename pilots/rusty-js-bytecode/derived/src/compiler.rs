@@ -1996,28 +1996,39 @@ impl Compiler {
                 encode_u16(&mut self.bytecode, slot);
             }
             rusty_js_ast::BindingPattern::Array(arr) => {
-                for (i, slot_opt) in arr.elements.iter().enumerate() {
-                    let Some(elem) = slot_opt else { continue; };
-                    // value = src[i]
-                    encode_op(&mut self.bytecode, Op::LoadLocal);
-                    encode_u16(&mut self.bytecode, src_slot);
-                    encode_op(&mut self.bytecode, Op::PushI32);
-                    encode_i32(&mut self.bytecode, i as i32);
-                    encode_op(&mut self.bytecode, Op::GetIndex);
-                    self.emit_element_with_default(&elem.target, elem.default.as_ref())?;
+                // IPEP-EXT 1 (2026-05-25): ECMA-262 §14.4.2.4
+                // IteratorBindingInitialization opens an IteratorRecord
+                // from the source via GetIterator(value) and reads each
+                // element through iterator.next(). Previously the Array
+                // path shortcut to GetIndex, bypassing @@iterator entirely
+                // — iterables whose @@iterator getter threw, or whose
+                // next() threw, never propagated the throw. The 40-test
+                // for-of-dstr iterator-protocol cluster traces here.
+                let iter_slot = self.alloc_temp("<destr.iter>");
+                let open_idx = self.constants.intern(Constant::String("__destr_iter_open".into()));
+                encode_op(&mut self.bytecode, Op::LoadGlobal);
+                encode_u16(&mut self.bytecode, open_idx);
+                encode_op(&mut self.bytecode, Op::LoadLocal);
+                encode_u16(&mut self.bytecode, src_slot);
+                encode_op(&mut self.bytecode, Op::Call);
+                encode_u8(&mut self.bytecode, 1);
+                encode_op(&mut self.bytecode, Op::StoreLocal);
+                encode_u16(&mut self.bytecode, iter_slot);
+                for slot_opt in arr.elements.iter() {
+                    self.emit_iter_step_value(iter_slot)?;
+                    match slot_opt {
+                        Some(elem) => self.emit_element_with_default(&elem.target, elem.default.as_ref())?,
+                        None => { encode_op(&mut self.bytecode, Op::Pop); } // elision: advance iter, discard
+                    }
                 }
                 if let Some(rest_pat) = &arr.rest {
-                    // value = __destr_array_rest(src, start)
-                    let name_idx = self.constants.intern(Constant::String("__destr_array_rest".into()));
+                    let rest_idx = self.constants.intern(Constant::String("__destr_iter_rest".into()));
                     encode_op(&mut self.bytecode, Op::LoadGlobal);
-                    encode_u16(&mut self.bytecode, name_idx);
+                    encode_u16(&mut self.bytecode, rest_idx);
                     encode_op(&mut self.bytecode, Op::LoadLocal);
-                    encode_u16(&mut self.bytecode, src_slot);
-                    encode_op(&mut self.bytecode, Op::PushI32);
-                    encode_i32(&mut self.bytecode, arr.elements.len() as i32);
+                    encode_u16(&mut self.bytecode, iter_slot);
                     encode_op(&mut self.bytecode, Op::Call);
-                    encode_u8(&mut self.bytecode, 2);
-                    // No default for rest.
+                    encode_u8(&mut self.bytecode, 1);
                     self.emit_element_with_default(rest_pat, None)?;
                 }
             }
@@ -2083,6 +2094,36 @@ impl Compiler {
                 }
             }
         }
+        Ok(())
+    }
+
+    /// IPEP-EXT 1: emit one iterator-step + done-check sequence; leaves
+    /// either the .value or Undefined on the operand stack. Used by both
+    /// emit_destructure and emit_destructure_assign Array paths.
+    fn emit_iter_step_value(&mut self, iter_slot: u16) -> Result<(), CompileError> {
+        let step_idx = self.constants.intern(Constant::String("__destr_iter_step".into()));
+        encode_op(&mut self.bytecode, Op::LoadGlobal);
+        encode_u16(&mut self.bytecode, step_idx);
+        encode_op(&mut self.bytecode, Op::LoadLocal);
+        encode_u16(&mut self.bytecode, iter_slot);
+        encode_op(&mut self.bytecode, Op::Call);
+        encode_u8(&mut self.bytecode, 1);
+        // [r]
+        encode_op(&mut self.bytecode, Op::Dup);
+        let done_key = self.constants.intern(Constant::String("done".into()));
+        encode_op(&mut self.bytecode, Op::GetProp);
+        encode_u16(&mut self.bytecode, done_key);
+        let j_done = self.emit_jump(Op::JumpIfTrue);
+        // not-done: [r] → get value
+        let value_key = self.constants.intern(Constant::String("value".into()));
+        encode_op(&mut self.bytecode, Op::GetProp);
+        encode_u16(&mut self.bytecode, value_key);
+        let j_end = self.emit_jump(Op::Jump);
+        // done: [r] → pop + push undef
+        self.patch_jump(j_done);
+        encode_op(&mut self.bytecode, Op::Pop);
+        encode_op(&mut self.bytecode, Op::PushUndef);
+        self.patch_jump(j_end);
         Ok(())
     }
 
@@ -3900,57 +3941,52 @@ impl Compiler {
             }
             Expr::Array { elements, .. } => {
                 use rusty_js_ast::ArrayElement;
-                let mut i: i32 = 0;
-                let n = elements.len();
-                for (idx, el) in elements.iter().enumerate() {
+                // IPEP-EXT 1: open iterator from src via __destr_iter_open;
+                // per element use __destr_iter_step (symmetric with
+                // emit_destructure Array path). §13.15.5.3 RS:DAE.
+                let iter_slot = self.alloc_temp("<destr-assign.iter>");
+                let open_idx = self.constants.intern(Constant::String("__destr_iter_open".into()));
+                encode_op(&mut self.bytecode, Op::LoadGlobal);
+                encode_u16(&mut self.bytecode, open_idx);
+                encode_op(&mut self.bytecode, Op::LoadLocal);
+                encode_u16(&mut self.bytecode, src_slot);
+                encode_op(&mut self.bytecode, Op::Call);
+                encode_u8(&mut self.bytecode, 1);
+                encode_op(&mut self.bytecode, Op::StoreLocal);
+                encode_u16(&mut self.bytecode, iter_slot);
+                for el in elements.iter() {
                     match el {
-                        ArrayElement::Elision { .. } => { i += 1; }
+                        ArrayElement::Elision { .. } => {
+                            self.emit_iter_step_value(iter_slot)?;
+                            encode_op(&mut self.bytecode, Op::Pop);
+                        }
                         ArrayElement::Expr(leaf) => {
-                            // value = src[i]
-                            encode_op(&mut self.bytecode, Op::LoadLocal);
-                            encode_u16(&mut self.bytecode, src_slot);
-                            encode_op(&mut self.bytecode, Op::PushI32);
-                            encode_i32(&mut self.bytecode, i);
-                            encode_op(&mut self.bytecode, Op::GetIndex);
-                            // For destructuring-assignment we don't have
-                            // default-value syntax wired here (would appear
-                            // as Expr::Assign on the leaf); fall through to
-                            // direct leaf store.
+                            self.emit_iter_step_value(iter_slot)?;
                             if let Expr::Assign { target: lt, value: dv, operator, .. } = leaf {
                                 if matches!(operator, AssignOp::Assign) {
-                                    // Apply default-if-undefined.
                                     encode_op(&mut self.bytecode, Op::Dup);
                                     encode_op(&mut self.bytecode, Op::PushUndef);
                                     encode_op(&mut self.bytecode, Op::StrictEq);
                                     let j_skip = self.emit_jump(Op::JumpIfFalse);
                                     encode_op(&mut self.bytecode, Op::Pop);
-                                    // §13.15.5.3 NamedEvaluation: anonymous default on an
-                                    // IdentifierReference target inherits the identifier's text
-                                    // as .name. Symmetric with emit_destructure's hint path.
+                                    // §13.15.5.3 NamedEvaluation hint.
                                     let hint = if let Expr::Identifier { name, .. } = lt.as_ref() { Some(name.as_str()) } else { None };
                                     if hint.is_some() { self.compile_expr_with_name_hint(dv, hint)?; } else { self.compile_expr(dv)?; }
                                     self.patch_jump(j_skip);
                                     self.assign_target_from_stack(lt)?;
-                                    i += 1;
                                     continue;
                                 }
                             }
                             self.assign_target_from_stack(leaf)?;
-                            i += 1;
                         }
                         ArrayElement::Spread { expr: rest_target, .. } => {
-                            // rest = __destr_array_rest(src, i)
-                            // Only valid as the last element.
-                            let _ = (idx, n);
-                            let name_idx = self.constants.intern(Constant::String("__destr_array_rest".into()));
+                            let rest_idx = self.constants.intern(Constant::String("__destr_iter_rest".into()));
                             encode_op(&mut self.bytecode, Op::LoadGlobal);
-                            encode_u16(&mut self.bytecode, name_idx);
+                            encode_u16(&mut self.bytecode, rest_idx);
                             encode_op(&mut self.bytecode, Op::LoadLocal);
-                            encode_u16(&mut self.bytecode, src_slot);
-                            encode_op(&mut self.bytecode, Op::PushI32);
-                            encode_i32(&mut self.bytecode, i);
+                            encode_u16(&mut self.bytecode, iter_slot);
                             encode_op(&mut self.bytecode, Op::Call);
-                            encode_u8(&mut self.bytecode, 2);
+                            encode_u8(&mut self.bytecode, 1);
                             self.assign_target_from_stack(rest_target)?;
                         }
                     }
