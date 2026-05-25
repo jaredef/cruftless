@@ -783,14 +783,19 @@ fn install_string_regex_methods(rt: &mut Runtime) {
         }
     });
 
-    register_method(rt, host, "replace", |rt, args| {
+    // SPML-EXT 1: ECMA-262 §22.1.3.{17,18,21} mandate length=2 for
+    // String.prototype.{replace,replaceAll,split}. The regexp module
+    // installs them last (overriding prototype.rs's arity-2 stubs),
+    // and previously used register_method which forces length=0,
+    // observable via __split.length test262 fixtures.
+    crate::intrinsics::register_intrinsic_method(rt, host, "replace", 2, |rt, args| {
         let s = rt.to_string_strict(&rt.current_this())?;
         let pat_arg = args.first().cloned().unwrap_or(Value::Undefined);
         let repl = args.get(1).cloned().unwrap_or(Value::Undefined);
         string_replace_impl(rt, &s, pat_arg, repl, false)
     });
 
-    register_method(rt, host, "replaceAll", |rt, args| {
+    crate::intrinsics::register_intrinsic_method(rt, host, "replaceAll", 2, |rt, args| {
         let s = rt.to_string_strict(&rt.current_this())?;
         let pat_arg = args.first().cloned().unwrap_or(Value::Undefined);
         if let Value::Object(id) = &pat_arg {
@@ -805,12 +810,27 @@ fn install_string_regex_methods(rt: &mut Runtime) {
         string_replace_impl(rt, &s, pat_arg, repl, true)
     });
 
-    register_method(rt, host, "split", |rt, args| {
+    crate::intrinsics::register_intrinsic_method(rt, host, "split", 2, |rt, args| {
         let s = rt.to_string_strict(&rt.current_this())?;
-        let limit = args.get(1).map(|v| {
-            let n = abstract_ops::to_number(v);
-            if n.is_finite() && n >= 0.0 { Some(n as usize) } else { None }
-        }).flatten();
+        // SPML-EXT 2: ECMA-262 §22.1.3.21 step 6/7 — limit = (limit === undefined)
+        // ? 2^32 - 1 : ToUint32(limit). NaN/non-finite collapse to 0 (NaN→+0→
+        // ToUint32→0). Previously NaN went to None (treated as "no limit"),
+        // so split("hello", /l/, "hi") returned ["he","","o"] instead of [].
+        let limit: usize = match args.get(1) {
+            None | Some(Value::Undefined) => u32::MAX as usize,
+            Some(v) => {
+                let n = abstract_ops::to_number(v);
+                if !n.is_finite() { 0 } else {
+                    let f = n.trunc();
+                    f.rem_euclid(4294967296.0) as u32 as usize
+                }
+            }
+        };
+        if limit == 0 {
+            let out = rt.alloc_object(Object::new_array());
+            rt.object_set(out, "length".into(), Value::Number(0.0));
+            return Ok(Value::Object(out));
+        }
         let parts: Vec<String> = match args.first() {
             None | Some(Value::Undefined) => vec![s.clone()],
             Some(Value::Object(id)) if matches!(rt.obj(*id).internal_kind, InternalKind::RegExp(_)) => {
@@ -834,10 +854,7 @@ fn install_string_regex_methods(rt: &mut Runtime) {
                 }
             }
         };
-        let truncated: Vec<String> = match limit {
-            Some(l) => parts.into_iter().take(l).collect(),
-            None => parts,
-        };
+        let truncated: Vec<String> = parts.into_iter().take(limit).collect();
         let out = rt.alloc_object(Object::new_array());
         for (i, p) in truncated.iter().enumerate() {
             rt.object_set(out, i.to_string(), Value::String(Rc::new(p.clone())));
