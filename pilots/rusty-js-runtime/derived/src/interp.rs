@@ -1268,12 +1268,27 @@ impl Runtime {
         (new_set, storage)
     }
 
+    /// SPBC-EXT 1: brand-check helper for Set.prototype.{union,
+    /// intersection, difference, symmetricDifference, isSubsetOf,
+    /// isSupersetOf, isDisjointFrom}. Per ECMA-262 set-method
+    /// requirements: this must be a Set (have [[SetData]] internal
+    /// slot, modeled in cruftless as the `__set_data` engine sentinel).
+    fn require_set_brand(&self, this: Value, method: &str) -> Result<ObjectRef, RuntimeError> {
+        let id = match this {
+            Value::Object(id) => id,
+            _ => return Err(RuntimeError::TypeError(format!(
+                "Set.prototype.{}: this is not a Set object", method))),
+        };
+        if !matches!(self.object_get(id, "__set_data"), Value::Object(_)) {
+            return Err(RuntimeError::TypeError(format!(
+                "Set.prototype.{}: this does not have [[SetData]]", method)));
+        }
+        Ok(id)
+    }
+
     /// Set.prototype.union(other).
     pub fn set_proto_union_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
-        let this = match self.current_this() {
-            Value::Object(id) => id,
-            _ => return Err(RuntimeError::TypeError("Set.prototype.union: this is not a Set object".into())),
-        };
+        let this = self.require_set_brand(self.current_this(), "union")?;
         let other = args.first().cloned().unwrap_or(Value::Undefined);
         let other_vals = crate::intrinsics::collect_iterable(self, other)?;
         let (new_set, storage) = self.new_empty_set();
@@ -1294,10 +1309,7 @@ impl Runtime {
 
     /// Set.prototype.intersection(other).
     pub fn set_proto_intersection_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
-        let this = match self.current_this() {
-            Value::Object(id) => id,
-            _ => return Err(RuntimeError::TypeError("Set.prototype.intersection: this is not a Set object".into())),
-        };
+        let this = self.require_set_brand(self.current_this(), "intersection")?;
         let other = args.first().cloned().unwrap_or(Value::Undefined);
         let other_vals = crate::intrinsics::collect_iterable(self, other)?;
         let other_keys: std::collections::HashSet<String> = other_vals.iter()
@@ -1316,10 +1328,7 @@ impl Runtime {
 
     /// Set.prototype.difference(other).
     pub fn set_proto_difference_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
-        let this = match self.current_this() {
-            Value::Object(id) => id,
-            _ => return Err(RuntimeError::TypeError("Set.prototype.difference: this is not a Set object".into())),
-        };
+        let this = self.require_set_brand(self.current_this(), "difference")?;
         let other = args.first().cloned().unwrap_or(Value::Undefined);
         let other_vals = crate::intrinsics::collect_iterable(self, other)?;
         let other_keys: std::collections::HashSet<String> = other_vals.iter()
@@ -1338,10 +1347,7 @@ impl Runtime {
 
     /// Set.prototype.symmetricDifference(other).
     pub fn set_proto_symmetric_difference_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
-        let this = match self.current_this() {
-            Value::Object(id) => id,
-            _ => return Err(RuntimeError::TypeError("Set.prototype.symmetricDifference: this is not a Set object".into())),
-        };
+        let this = self.require_set_brand(self.current_this(), "symmetricDifference")?;
         let other = args.first().cloned().unwrap_or(Value::Undefined);
         let other_vals = crate::intrinsics::collect_iterable(self, other)?;
         let other_keys: std::collections::HashSet<String> = other_vals.iter()
@@ -1366,10 +1372,7 @@ impl Runtime {
 
     /// Set.prototype.isSubsetOf(other).
     pub fn set_proto_is_subset_of_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
-        let this = match self.current_this() {
-            Value::Object(id) => id,
-            _ => return Err(RuntimeError::TypeError("Set.prototype.isSubsetOf: this is not a Set object".into())),
-        };
+        let this = self.require_set_brand(self.current_this(), "isSubsetOf")?;
         let other = args.first().cloned().unwrap_or(Value::Undefined);
         let other_vals = crate::intrinsics::collect_iterable(self, other)?;
         let other_keys: std::collections::HashSet<String> = other_vals.iter()
@@ -1384,10 +1387,7 @@ impl Runtime {
 
     /// Set.prototype.isSupersetOf(other).
     pub fn set_proto_is_superset_of_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
-        let this = match self.current_this() {
-            Value::Object(id) => id,
-            _ => return Err(RuntimeError::TypeError("Set.prototype.isSupersetOf: this is not a Set object".into())),
-        };
+        let this = self.require_set_brand(self.current_this(), "isSupersetOf")?;
         let other = args.first().cloned().unwrap_or(Value::Undefined);
         let other_vals = crate::intrinsics::collect_iterable(self, other)?;
         let this_storage = match self.object_get(this, "__set_data") { Value::Object(id) => Some(id), _ => None };
@@ -1401,7 +1401,7 @@ impl Runtime {
 
     /// Set.prototype.isDisjointFrom(other).
     pub fn set_proto_is_disjoint_from_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
-        let this = match self.current_this() { Value::Object(id) => id, _ => return Ok(Value::Boolean(true)) };
+        let this = self.require_set_brand(self.current_this(), "isDisjointFrom")?;
         let other = args.first().cloned().unwrap_or(Value::Undefined);
         let other_vals = crate::intrinsics::collect_iterable(self, other)?;
         let this_storage = match self.object_get(this, "__set_data") { Value::Object(id) => Some(id), _ => None };

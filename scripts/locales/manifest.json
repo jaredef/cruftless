@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 52,
-    "top_level": 41,
+    "locales": 53,
+    "top_level": 42,
     "nested": 11,
     "warnings": 0
   },
@@ -159,7 +159,7 @@
       "parent": null,
       "scope": "revoked-proxy-trap-propagation",
       "depth": 1,
-      "rung_count": 1,
+      "rung_count": 2,
       "status": "**CLOSED at RPTP-EXT 1**."
     },
     {
@@ -332,6 +332,15 @@
       "depth": 2,
       "rung_count": 15,
       "status": "**FOUNDED (CMig-EXT 0)**. Sub-workstream of `pilots/rusty-js-shapes/` spawned per Shape-EXT 4's deferred-enrollment finding. The parent's Shape-EXT 4 round landed shape infrastructure on Object but kept `new_ordinary()` defaulting to `shape: None` because the first enrollment attempt regressed diff-prod 39\u219231/42 PASS. Root cause: ~41 sites across the runtime crate iterate `.properties` directly and bypass the shape mechanism. This sub-workstream migrates those sites family by family so enrollment can flip back on without regression."
+    },
+    {
+      "coord": "set-prototype-brand-check",
+      "tag": "L.set-prototype-brand-check",
+      "parent": null,
+      "scope": "set-prototype-brand-check",
+      "depth": 1,
+      "rung_count": 1,
+      "status": "**CLOSED at SPBC-EXT 1**."
     },
     {
       "coord": "statement-declaration-in-body-position",
