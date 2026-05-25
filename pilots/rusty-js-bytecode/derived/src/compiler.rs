@@ -2371,6 +2371,25 @@ impl Compiler {
                         }
                     }
                 }
+                // REOU-EXT 1: `typeof <Ident>` and `delete <Ident>` take
+                // the silent-undef path per §13.5.3 step 3.b.iii (typeof
+                // of unresolvable reference returns "undefined") and
+                // §13.5.1.2 (delete of unresolvable reference returns
+                // true in sloppy mode). Emit Op::LoadGlobalOrUndef in
+                // place of the throwing Op::LoadGlobal that Identifier
+                // compilation produces by default.
+                if matches!(operator, UnaryOp::Typeof | UnaryOp::Delete) {
+                    if let Expr::Identifier { name, .. } = argument.as_ref() {
+                        if self.resolve_local(name).is_none() && self.resolve_upvalue(name).is_none() {
+                            let name_idx = self.constants.intern(Constant::String(name.clone()));
+                            encode_op(&mut self.bytecode, Op::LoadGlobalOrUndef);
+                            encode_u16(&mut self.bytecode, name_idx);
+                            let op = if matches!(operator, UnaryOp::Typeof) { Op::Typeof } else { Op::Delete };
+                            encode_op(&mut self.bytecode, op);
+                            return Ok(());
+                        }
+                    }
+                }
                 // Tier-Ω.5.P17.E1: `await expr` lowers to `__await(expr)` —
                 // a global intrinsic that synchronously unwraps already-settled
                 // Promises (resolved → value; rejected → throw) and passes

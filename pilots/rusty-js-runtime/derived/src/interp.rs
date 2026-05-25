@@ -6882,6 +6882,23 @@ impl Runtime {
                     // Ω.5.P55.E1: JS-visible globals first; engine_helpers
                     // is the unshadowed fallback for compiler-emitted
                     // lowerings (Doc 729 §VII.B).
+                    // REOU-EXT 1: per ECMA-262 §9.1.1.4.4 GetBindingValue +
+                    // §6.2.4.5 GetValue, an unresolvable reference at read
+                    // throws ReferenceError. typeof/delete sites take the
+                    // silent-undef path via Op::LoadGlobalOrUndef.
+                    let v = self.globals.get(&name).cloned()
+                        .or_else(|| self.engine_helpers.get(&name).cloned());
+                    let v = match v {
+                        Some(val) => val,
+                        None => return Err(RuntimeError::ReferenceError(format!("{} is not defined", name))),
+                    };
+                    frame.last_property_lookup = Some(format!("<global>{}", name));
+                    frame.push(v);
+                }
+                Op::LoadGlobalOrUndef => {
+                    let idx = decode_u16(&frame.bytecode, frame.pc);
+                    frame.pc += 2;
+                    let name = self.constant_name(frame, idx)?;
                     let v = self.globals.get(&name).cloned()
                         .or_else(|| self.engine_helpers.get(&name).cloned())
                         .unwrap_or(Value::Undefined);

@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 39,
-    "top_level": 28,
+    "locales": 40,
+    "top_level": 29,
     "nested": 11,
     "warnings": 0
   },
@@ -69,8 +69,17 @@
       "parent": null,
       "scope": "parser-permissiveness-audit",
       "depth": 1,
-      "rung_count": 1,
+      "rung_count": 2,
       "status": "**WORKSTREAM FOUNDED (PPA-EXT 0)**. Multi-round parser-tier locale spawned per T262C matrix cluster #1 (45-test arrow-function-dstr escaped-keyword) + cluster #9 (24-test for-of decl-cls negative-syntax) + cluster #11 (22-test arrow-function params-duplicate). Substrate gap: cruft's parser is systematically permissive at \"no-ReservedWord\" sites where ECMA-262 requires SyntaxError."
+    },
+    {
+      "coord": "reference-error-on-unresolvable",
+      "tag": "L.reference-error-on-unresolvable",
+      "parent": null,
+      "scope": "reference-error-on-unresolvable",
+      "depth": 1,
+      "rung_count": 2,
+      "status": "**CLOSED at REOU-EXT 1** (1 implementation round; Doc 740 multi-tier closure across R = {opcode-split, runtime-handler, compiler-typeof, compiler-delete})."
     },
     {
       "coord": "rusty-js-caps",

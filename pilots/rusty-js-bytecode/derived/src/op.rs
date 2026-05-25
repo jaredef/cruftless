@@ -294,6 +294,15 @@ pub enum Op {
     /// unchanged. Eliminates per-iter result-object allocation + the
     /// GetProp"next"/Call/GetProp"done"/GetProp"value" cost surface.
     ForOfFastNext = 0xFE,
+
+    /// REOU-EXT 1: silent-undef variant of LoadGlobal. Returns Undefined
+    /// when the name is not bound (instead of throwing ReferenceError per
+    /// ECMA-262 §9.1.1.4.4). Used by compiler at `typeof <Ident>` and
+    /// `delete <Ident>` sites only, where §13.5.3 step 3.b.iii (typeof)
+    /// and §13.5.1.2 (delete of unresolvable returns true) require the
+    /// silent path. All other identifier reads go through Op::LoadGlobal
+    /// which throws.
+    LoadGlobalOrUndef = 0xFF,
 }
 
 impl Op {
@@ -316,7 +325,7 @@ impl Op {
             | LtI64 | LeI64 | GtI64 | GeI64 | EqI64 | NeI64 => 0,
             Call | New | CallMethod | CallMethodIcCached => 1,
             PushConst | LoadLocal | StoreLocal | LoadArg | StoreArg
-            | LoadGlobal | StoreGlobal | LoadUpvalue | StoreUpvalue
+            | LoadGlobal | LoadGlobalOrUndef | StoreGlobal | LoadUpvalue | StoreUpvalue
             | DefineLocal | ResetLocalCell | GetProp | GetPropOnObject | GetPropSkipForMethod | SetProp | NewArray | InitProp
             | MakeClosure | MakeArrow | CaptureLocal | CaptureUpvalue | DeleteProp => 2,
             PushI32 | Jump | JumpIfTrue | JumpIfFalse
@@ -398,6 +407,7 @@ pub fn op_from_byte(b: u8) -> Option<Op> {
         0xFC => CallMethodIcCached,
         0xFD => GetPropSkipForMethod,
         0xFE => ForOfFastNext,
+        0xFF => LoadGlobalOrUndef,
         _ => return None,
     })
 }
