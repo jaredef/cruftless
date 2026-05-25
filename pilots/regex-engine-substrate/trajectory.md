@@ -87,3 +87,49 @@
 **Finding RES.6 (RPTC.7 bug pattern persists across review-passes)**: this rung found TWO more instances of `abstract_ops::to_string(&X)` in regexp.rs that survived the RPTC-EXT 4 sweep (replacer return-value, coerce_regexp pattern arg). Standing recommendation hardens: a periodic grep-sweep is necessary; ad-hoc per-rung audits miss sites. Candidate for tooling: a CI check that flags new `abstract_ops::to_string(&args...)` introductions.
 
 **Status**: RES-EXT 3 CLOSED. Locale at 13/36 named-groups + 11/14 match-indices + replacer-callback support.
+
+## RES-EXT Audit-2 — bridge-audit reconnaissance (2026-05-25)
+
+**Trigger**: keeper "do one more bridge audit and then we will spawn locales based on our findings". No edits this rung — pure reconnaissance to enumerate the remaining bridge-shape gaps so each can be spawned as its own locale (per Standing Rule 21, sized + scoped before commitment).
+
+**Probes** (verified at `~/bin/cruft`, post RES-EXT 3):
+
+| # | Probe | Observed | Spec | Verdict |
+|---|---|---|---|---|
+| 1 | `matchAll` with named groups | `groups` populated ✓ | — | OK (routes through regexp_exec) |
+| 2 | `matchAll` with `/d` | `.indices` populated ✓ | — | OK |
+| 3 | `"a1b2c3".split(/(\d)/)` | `["a","b","c",""]` | `["a","1","b","2","c","3",""]` | **GAP A** — capture groups dropped |
+| 4 | `Object.getOwnPropertyDescriptor(r, 'global')` | `{value:true, writable:true, enumerable:true, configurable:true}` (own data prop on instance) | should be undefined on instance; accessor on RegExp.prototype | **GAP B** — instance shadows prototype accessor |
+| 5 | `Object.keys(/x/g)` | 10 keys (source, flags, global, ignoreCase, multiline, sticky, unicode, dotAll, hasIndices, lastIndex) | should be empty (or `["lastIndex"]` only, depending on enumerability) | **GAP C** — accessor-as-own enumeration |
+| 6 | `Object.getOwnPropertyDescriptor(r, 'lastIndex')` | `{value:0, writable:true, enumerable:true, configurable:true}` | `{value:0, writable:true, enumerable:false, configurable:false}` per §22.2.5.1 | **GAP D** — wrong descriptor flags |
+| 7 | `"abc".matchAll(/a/)` (no `/g`) | succeeds | TypeError per §22.1.3.13 step 4 | **GAP E** — matchAll missing global-flag check |
+| 8 | `"abc".match(/z/)` (no match) | `null` ✓ | — | OK |
+| 9 | `"abc".search(/b/)` | `1` ✓ | — | OK |
+| 10 | `String.raw({raw:["a","b","c"]}, "1", "2")` | `"a1b2c"` ✓ | — | OK |
+
+**Findings**
+
+**Finding RES.7 (bridge audit converges on five focal gaps)**: of 10 probes, 5 are correct (matchAll-named, matchAll-indices, match-null, search, String.raw — all already route through enriched paths) and 5 reveal bridge-shape gaps. Each gap is bounded and substrate-only (no engine work needed):
+
+- **Gap A (split-with-capture)**: spec §22.2.5.13 RegExp.prototype[@@split] requires interleaving captures into the result Array. Our `split` implementation drops them. Locale candidate: `regexp-split-captures-bridge`. Estimated 30-50 LOC.
+
+- **Gap B+C (regexp instance owns its accessor shadows)**: per §22.2.5.{2,3,...} the source/flags/global/... properties are accessor getters defined on RegExp.prototype. Pre-fix `new_regexp` installs them as own data properties on the instance, shadowing the accessors and breaking observable-shape tests (Object.keys, Object.getOwnPropertyDescriptor). Single fix: delete the instance installations; rely on prototype accessors (already installed at line 489 via `install_regexp_proto_accessor`). Locale candidate: `regexp-instance-accessor-shadow`. Estimated 10-20 LOC.
+
+- **Gap D (lastIndex descriptor flags)**: §22.2.5.1 mandates `{writable:true, enumerable:false, configurable:false}`. `new_regexp` uses `rt.object_set` (default `{w:t, e:t, c:t}`). Locale candidate: include in `regexp-instance-accessor-shadow` (same call site). 5 LOC.
+
+- **Gap E (matchAll global-flag check)**: §22.1.3.13 String.prototype.matchAll throws TypeError when first arg is a RegExp without /g. Locale candidate: `string-matchall-global-required`. 5 LOC.
+
+**Finding RES.8 (audit yield rate stabilizes)**: this is the third bridge-audit-then-fix cycle in the regex arc. Yield rates:
+- RES-EXT 1 audit: identified 1 gap; closed 10 tests.
+- RES-EXT 2 prediction (from RES.2): 1 gap; closed 11 tests.
+- RES-EXT 3 prediction (from RES.4): 1 gap; closed 3 cluster + collateral.
+- Audit-2: 4 gaps identified across 5 surfaces (matchAll-no-global is a runtime-validation gap, not bridge-shape).
+
+The audit-driven model produces ~1 bounded substrate move per session; the prediction-driven (RES.N+1 candidate listings) model anticipates next moves. Combination is the canonical workflow for this locale.
+
+**Recommended locale spawns** (awaiting keeper authorization):
+1. `regexp-split-captures-bridge` (Gap A) — 30-50 LOC, closes the cluster of split-with-regex-capture tests in test262 String.prototype.split (subset of the 11 split residuals we left open).
+2. `regexp-instance-accessor-shadow` (Gaps B+C+D) — 15-25 LOC at `new_regexp`, closes Object.keys/Object.getOwnPropertyDescriptor cluster on RegExp instances. Bridge-shape: engine state already correct; substrate just over-installs.
+3. `string-matchall-global-required` (Gap E) — 5 LOC at matchAll entry; closes 1+ tests of matchAll-global-required shape.
+
+**Status**: Audit complete. No code edits this rung. Three locale candidates surfaced; awaiting authorization to spawn.
