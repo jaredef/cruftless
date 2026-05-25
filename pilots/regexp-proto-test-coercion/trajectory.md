@@ -76,3 +76,30 @@ Both are ~5-15 LOC. Each closes a small cluster (1-2 tests each here, ~10+ acros
 **Finding RPTC.6 (cumulative-yield from one closure)**: RPTC-EXT 1 (12 LOC at .test) + RPTC-EXT 2 (8 LOC at regexp_exec) + RPTC-EXT 3 (30 LOC at regexp_exec) = 50 LOC total. Closed 13/13 .test cluster + 5/11 .exec cluster + 2 collateral String.prototype.search/match wins (pending sweep). The closure-centric substrate-filter approach has compounding returns; the alternative (per-test fixes at each surface method) would have been an order of magnitude more code.
 
 **Status**: RPTC-EXT 3 CLOSED. Locale at 13/13 .test + 5/11 .exec + collateral.
+
+## RPTC-EXT 4 — promote remaining user-arg coercions to dispatching path (2026-05-25)
+
+**Trigger**: "continue as coherent" — RPTC.1's helper-divergence finding predicts a grep-detectable bug pattern: `abstract_ops::to_string(&args.first()...)` at user-argument coercion boundaries.
+
+**Targets identified by grep**:
+- `regexp.rs:44/47` — `__createRegExp` (engine-internal, args already primitive — defer)
+- `regexp.rs:58-91` — RegExp constructor pattern + flags ToString
+- `regexp.rs:994` — String.prototype.replace needle ToString
+- `regexp.rs:1008` — String.prototype.replace replacement ToString
+
+**Edits** (~15 LOC):
+- RegExp constructor: full re-factor; pattern + flags both via `rt.coerce_to_string(?)`. Preserved the spec carve-outs (undefined-flags → empty string per §22.2.4.1; RegExp-first-arg short-circuit copies source).
+- string_replace_impl needle + replacement: both via `rt.coerce_to_string(?)`.
+
+**Verification**:
+- Probe: `new RegExp({toString(){return "foo"}}, {toString(){return "i"}})` → `/foo/i`, `.test("FOO")` = true ✓
+- Probe: `"hello".replace({toString(){return "ll"}}, {toString(){return "XX"}})` = `"heXXo"` ✓
+- Broad regex/string-prototype sweep (89 prev-failing): **44 newly pass** (cumulative across RPTC-EXT 1-4)
+- Random 300 prev-PASS: **300/300, 0 regressions**
+- diff-prod: **42/42**
+
+**Findings**
+
+**Finding RPTC.7 (grep-detectable bug pattern compounds)**: RPTC.1's bug pattern `abstract_ops::to_string(&args.first()...)` was grep-detectable in 4 sites across regexp.rs alone. Each conversion is mechanical (5 LOC at most). Cumulative yield from this pattern across the closure-centric regexp arc is 44 newly-passing tests across .test/.exec/.replace/.match/.search/.split/RegExp-ctor surfaces — substantially more than per-test debugging would have produced. The grep-detectable nature means the substrate-discipline-drift can be audited mechanically.
+
+**Status**: RPTC-EXT 4 CLOSED. Locale at .test 13/13 + .exec 5/11 + broad-sweep 44 prev-fails newly passing.

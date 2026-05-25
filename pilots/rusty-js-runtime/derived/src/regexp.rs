@@ -56,36 +56,42 @@ impl Runtime {
         // both routed through this. If `p` is itself a RegExp the spec
         // says to return a fresh copy; v1 just rebuilds from its source.
         register_global_native(self, "RegExp", |rt, args| {
-            let (pattern, flags) = match args.first() {
-                Some(Value::Object(id)) => {
+            // RPTC-EXT 4: ECMA-262 §22.2.4.1 RegExp(pattern, flags) coerces
+            // both args via spec ToString (§7.1.17 — dispatches @@toPrimitive
+            // / toString / valueOf for Object inputs). Pre-fix used static
+            // abstract_ops::to_string which yields "[object Object]" for any
+            // Object, breaking `new RegExp({toString(){return 'foo'}})`.
+            let first = args.first().cloned().unwrap_or(Value::Undefined);
+            let (pattern, flags) = match &first {
+                Value::Object(id) => {
                     if let InternalKind::RegExp(re) = &rt.obj(*id).internal_kind {
                         let src = (*re.source).clone();
                         let f = match args.get(1) {
                             Some(Value::Undefined) | None => (*re.flags).clone(),
-                            Some(v) => abstract_ops::to_string(v).as_str().to_string(),
+                            Some(v) => rt.coerce_to_string(v)?,
                         };
                         (src, f)
                     } else {
-                        let p = abstract_ops::to_string(&args[0]).as_str().to_string();
-                        let f = abstract_ops::to_string(
-                            &args.get(1).cloned().unwrap_or(Value::Undefined)
-                        ).as_str().to_string();
+                        let p = rt.coerce_to_string(&first)?;
+                        let f = match args.get(1).cloned().unwrap_or(Value::Undefined) {
+                            Value::Undefined | Value::Null => String::new(),
+                            v => rt.coerce_to_string(&v)?,
+                        };
                         (p, f)
                     }
                 }
-                Some(v) => {
-                    let p = abstract_ops::to_string(v).as_str().to_string();
-                    // Tier-Ω.5.eeee: undefined flags arg → no flags
-                    // (ECMA-262 §22.2.4.1). Earlier we coerced via
-                    // to_string which produced literal "undefined" and
-                    // failed flag validation on each char.
+                Value::Undefined => match args.get(1).cloned().unwrap_or(Value::Undefined) {
+                    Value::Undefined | Value::Null => (String::new(), String::new()),
+                    v => (String::new(), rt.coerce_to_string(&v)?),
+                },
+                v => {
+                    let p = rt.coerce_to_string(v)?;
                     let f = match args.get(1).cloned().unwrap_or(Value::Undefined) {
                         Value::Undefined | Value::Null => String::new(),
-                        v => abstract_ops::to_string(&v).as_str().to_string(),
+                        v => rt.coerce_to_string(&v)?,
                     };
                     (p, f)
                 }
-                None => (String::new(), String::new()),
             };
             Ok(Value::Object(new_regexp(rt, &pattern, &flags)?))
         });
@@ -991,7 +997,7 @@ fn string_replace_impl(
             // String needle — escape to a literal regex so we share the
             // same replacement plumbing. Cheaper than maintaining a
             // separate code path.
-            let needle = abstract_ops::to_string(&pat).as_str().to_string();
+            let needle = rt.coerce_to_string(&pat)?;
             let escaped = regex::escape(&needle);
             let rx = regex::Regex::new(&escaped).map_err(|e| RuntimeError::TypeError(format!("{}", e)))?;
             (CompiledRegex::Rust(rx), force_global)
@@ -1005,7 +1011,7 @@ fn string_replace_impl(
     });
 
     if !is_callable {
-        let repl_s = abstract_ops::to_string(&repl).as_str().to_string();
+        let repl_s = rt.coerce_to_string(&repl)?;
         // ECMA-262 §22.1.3.18 step 11 GetSubstitution — honor $$, $&,
         // $`, $', $N (capture groups), ${name} (named groups). Loop per
         // match so substitutions see the right before/after context.
