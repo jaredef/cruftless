@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 73,
-    "top_level": 62,
+    "locales": 74,
+    "top_level": 63,
     "nested": 11,
     "warnings": 0
   },
@@ -32,6 +32,15 @@
       "tag": "L.array-length-setter-truncation",
       "parent": null,
       "scope": "array-length-setter-truncation",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
+    },
+    {
+      "coord": "array-search-arg-strict-coerce",
+      "tag": "L.array-search-arg-strict-coerce",
+      "parent": null,
+      "scope": "array-search-arg-strict-coerce",
       "depth": 1,
       "rung_count": 1,
       "status": null

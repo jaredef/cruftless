@@ -4258,7 +4258,12 @@ impl Runtime {
     pub fn array_proto_at_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;
         let len = self.try_array_length(id)? as i64;
-        let i = args.first().map(crate::abstract_ops::to_number).unwrap_or(0.0) as i64;
+        // ASAS-EXT 1: dispatching coerce — throws on Symbol (§7.1.4),
+        // dispatches @@toPrimitive/valueOf/toString for Objects.
+        let i = match args.first() {
+            Some(v) => self.coerce_to_number(v)? as i64,
+            None => 0,
+        };
         let idx = if i < 0 { len + i } else { i };
         if idx < 0 || idx >= len { return Ok(Value::Undefined); }
         Ok(self.object_get(id, &idx.to_string()))
@@ -4294,9 +4299,10 @@ impl Runtime {
         let id = crate::prototype::to_array_this(self)?;
         let needle = args.first().cloned().unwrap_or(Value::Undefined);
         let len = self.try_array_length(id)? as i64;
+        // ASAS-EXT 1: dispatching coerce on fromIndex.
         let from = match args.get(1) {
             Some(v) if !matches!(v, Value::Undefined) => {
-                let n = crate::abstract_ops::to_number(v) as i64;
+                let n = self.coerce_to_number(v)? as i64;
                 if n < 0 { (len + n).max(-1) } else { (n.min(len - 1)).max(-1) }
             }
             _ => (len - 1).max(-1),
@@ -4514,9 +4520,10 @@ impl Runtime {
         let id = crate::prototype::to_array_this(self)?;
         let needle = args.first().cloned().unwrap_or(Value::Undefined);
         let len = self.try_array_length(id)? as i64;
+        // ASAS-EXT 1: dispatching coerce on fromIndex.
         let from = match args.get(1) {
             Some(v) if !matches!(v, Value::Undefined) => {
-                let n = crate::abstract_ops::to_number(v) as i64;
+                let n = self.coerce_to_number(v)? as i64;
                 if n < 0 { (len + n).max(0) } else { n.min(len) }
             }
             _ => 0,
@@ -4539,8 +4546,22 @@ impl Runtime {
     pub fn array_proto_includes_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;
         let needle = args.first().cloned().unwrap_or(Value::Undefined);
-        let len = self.try_array_length(id)?;
-        for i in 0..len {
+        let len = self.try_array_length(id)? as i64;
+        // §23.1.3.14 step 3: if len is 0, return false. Spec mandates this
+        // BEFORE ToIntegerOrInfinity(fromIndex) — test262
+        // length-zero-returns-false probes the order via a valueOf-counting
+        // fromIndex.
+        if len == 0 { return Ok(Value::Boolean(false)); }
+        // ASAS-EXT 1: fromIndex support per §23.1.3.14 step 4-5. Was missing
+        // entirely; iteration always started at 0.
+        let from = match args.get(1) {
+            Some(v) if !matches!(v, Value::Undefined) => {
+                let n = self.coerce_to_number(v)? as i64;
+                if n < 0 { (len + n).max(0) } else { n.min(len) }
+            }
+            _ => 0,
+        };
+        for i in from..len {
             let key = i.to_string();
             let v = if self.has_property(id, &key) {
                 self.read_property(id, &key)?
