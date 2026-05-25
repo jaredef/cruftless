@@ -3647,8 +3647,10 @@ impl Runtime {
                 let id = rt.alloc_object(o);
                 let storage = rt.alloc_object(Object::new_dictionary());
                 // ESNE-EXT 1: install engine sentinels non-enumerable.
+                // ESNE-EXT 2: size on Map/WeakMap installed hidden too;
+                // subsequent updates via object_set preserve attrs.
                 rt.set_engine_sentinel(id, "__map_data", Value::Object(storage));
-                rt.object_set(id, "size".into(), Value::Number(0.0));
+                rt.set_engine_sentinel(id, "size", Value::Number(0.0));
                 if is_weak {
                     rt.set_engine_sentinel(id, "__is_weakmap", Value::Boolean(true));
                 }
@@ -3830,12 +3832,13 @@ impl Runtime {
                 let id = rt.alloc_object(o);
                 let storage = rt.alloc_object(Object::new_dictionary());
                 // ESNE-EXT 1: install engine sentinels non-enumerable.
+                // ESNE-EXT 2: size on Set/WeakSet installed hidden too.
                 rt.set_engine_sentinel(id, "__set_data", Value::Object(storage));
                 // SPBC-EXT 2: brand mark for WeakSet (parallel to __is_weakmap).
                 if is_weak_ctor {
                     rt.set_engine_sentinel(id, "__is_weakset", Value::Boolean(true));
                 }
-                rt.object_set(id, "size".into(), Value::Number(0.0));
+                rt.set_engine_sentinel(id, "size", Value::Number(0.0));
                 // Tier-Ω.5.rrr: populate from iterable arg. Per spec
                 // `new Set(iterable)` calls .add for each yielded value.
                 if let Some(arg) = args.first() {
@@ -5848,7 +5851,7 @@ fn structured_clone_walk(
                     let id = rt.alloc_object(o);
                     let storage = rt.alloc_object(Object::new_dictionary());
                     rt.set_engine_sentinel(id, "__map_data", Value::Object(storage));
-                    rt.object_set(id, "size".into(), Value::Number(0.0));
+                    rt.set_engine_sentinel(id, "size", Value::Number(0.0));
                     id
                 } else { rt.alloc_object(Object::new_ordinary()) };
                 seen.insert(oid.0, dst_id);
@@ -5880,7 +5883,7 @@ fn structured_clone_walk(
                     let id = rt.alloc_object(o);
                     let storage = rt.alloc_object(Object::new_dictionary());
                     rt.set_engine_sentinel(id, "__set_data", Value::Object(storage));
-                    rt.object_set(id, "size".into(), Value::Number(0.0));
+                    rt.set_engine_sentinel(id, "size", Value::Number(0.0));
                     id
                 } else { rt.alloc_object(Object::new_ordinary()) };
                 seen.insert(oid.0, dst_id);

@@ -45,3 +45,43 @@ All Map/Set/Date/WeakMap methods still functional (`set`/`get`/`has`/`delete`/`c
 **Status**: ESNE-EXT 1 CLOSED.
 
 **Closes follow-on**: `pilots/rusty-js-http-server/agent-feedback.md` Review 1 concern (1) (engine-sentinel enumeration leak on HTTP server / response objects). The running summary at the head of that file should be updated to reflect closure on next entry.
+
+---
+
+## ESNE-EXT 2 — hide `size` on Map/Set/WeakMap/WeakSet instances (2026-05-25)
+
+**Trigger**: ESNE.2 from the prior rung named `size` as the only remaining enumerated leak. Spec wants size as a prototype accessor reading from a hidden slot; substrate currently increments it as an own data property. Minimum-substrate move per Standing Rule 21: hide the own data property via the existing `set_engine_sentinel` helper. The prototype accessor (installed at install_map_and_weakmap) was always falling back to counting `__map_data` properties when no own size existed; with own size still present but non-enumerable, `m.size` reads the own data (matches spec value) while `Object.keys(m)` no longer surfaces it.
+
+**Edits** (~6 LOC):
+
+- `interp.rs::new_empty_set`: install `size` via `set_engine_sentinel(new_set, "size", Value::Number(0.0))` so callers (Set ops) inherit a hidden size.
+- `intrinsics.rs` Map/WeakMap ctor: switch ctor `size` install to `set_engine_sentinel`.
+- `intrinsics.rs` Set/WeakSet ctor: same.
+- `intrinsics.rs::structured_clone_walk` Map + Set wrappers: same.
+
+All subsequent `rt.object_set(id, "size", n)` increment/decrement sites unchanged — the `object_set` update branch preserves attrs (per ESNE.1).
+
+**Verification**:
+
+| Probe | Before | After |
+|---|---|---|
+| `Object.keys(new Map([["a",1]]))` | `["size"]` | `[]` |
+| `Object.keys(new Set([1,2]))` | `["size"]` | `[]` |
+| `Object.keys(new WeakMap())` | `["size"]` | `[]` |
+| `Object.keys(new WeakSet())` | `["size"]` | `[]` |
+| `new Map([["a",1]]).size` | 1 | 1 |
+| `new Set([1,2,3]).size` | 3 | 3 |
+| `console.log(new Map([["a",1],["b",2]]))` | `Map(2) { a => 1, b => 2 }` | `Map(2) { a => 1, b => 2 }` |
+| Set/Map iteration, add/set/delete/clear | works | works |
+
+**Gates**:
+- diff-prod: **42/42 PASS, 0 FAIL**
+- Random 300 prev-PASS: **300/300, 0 regressions**
+
+**Findings**
+
+**Finding ESNE.4 (the existing fallback accessor was always dead code)**: the prototype size accessor at line 3536 was written to fall back to counting `__map_data` storage properties when no own `size` existed. In practice, the own `size` data property was always installed at ctor, so the fallback never fired. The accessor served only as a spec-compliance placeholder for `Object.getOwnPropertyDescriptor(Map.prototype, "size")` — a real concern but separable from the enumeration leak fix. The hidden-data approach this rung uses preserves the existing dead-code path intact; a future rung that wants spec-strict `Object.getOwnPropertyDescriptor(map_instance, "size") === undefined` would need to delete the own data property AND fix every increment site to update via the storage count or through a hidden slot.
+
+**Finding ESNE.5 (carve-back was sized right)**: ESNE.2 originally was tagged "separable next rung" because it looked like it would require refactoring every increment site. The actual fix was 6 LOC because cruft's update-preserves-attrs semantics meant only first-install sites needed conversion. Standing recommendation: when a carve-out is tagged "separable" on size grounds, re-check whether the substrate has invariants that collapse the scope (update-preserves-attrs is the canonical example).
+
+**Status**: ESNE-EXT 2 CLOSED. Map/Set/WeakMap/WeakSet/Date instances now have empty `Object.keys` (matching Node behavior modulo TypedArray indexed-property differences).

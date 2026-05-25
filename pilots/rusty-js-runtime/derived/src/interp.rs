@@ -1327,6 +1327,9 @@ impl Runtime {
         // via .properties); explicit Dictionary per shapes seed §IV P3.
         let storage = self.alloc_object(crate::value::Object::new_dictionary());
         self.set_engine_sentinel(new_set, "__set_data", Value::Object(storage));
+        // ESNE-EXT 2: install size hidden too; subsequent object_set updates
+        // preserve attrs so the in-place increment/decrement code keeps working.
+        self.set_engine_sentinel(new_set, "size", Value::Number(0.0));
         (new_set, storage)
     }
 
