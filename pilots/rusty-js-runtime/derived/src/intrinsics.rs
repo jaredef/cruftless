@@ -4870,24 +4870,37 @@ impl Runtime {
                         rt.alloc_object(o)
                     }
                 };
+                // EIPD-EXT 1: §20.5.7.1 ErrorConstructor + §20.5.6.1
+                // InstallErrorCause. message / cause / stack are installed
+                // via CreateNonEnumerableDataPropertyOrThrow → {w:t, e:f,
+                // c:t}. `name` lives on Error.prototype via set_own_internal
+                // (already non-enumerable); do NOT install per-instance —
+                // the prototype entry serves all instances.
+                let install_non_enum = |rt: &mut Runtime, id: crate::value::ObjectRef, k: &str, v: Value| {
+                    rt.obj_mut(id).dict_mut().insert(
+                        crate::value::PropertyKey::String(k.to_string()),
+                        crate::value::PropertyDescriptor {
+                            value: v,
+                            writable: true, enumerable: false, configurable: true,
+                            getter: None, setter: None,
+                        },
+                    );
+                };
                 if let Some(msg) = args.first() {
-                    let m = abstract_ops::to_string(msg).as_str().to_string();
-                    rt.object_set(id, "message".into(), Value::String(Rc::new(m)));
+                    if !matches!(msg, Value::Undefined) {
+                        let m = rt.coerce_to_string(msg)?;
+                        install_non_enum(rt, id, "message", Value::String(Rc::new(m)));
+                    }
                 }
-                rt.object_set(id, "name".into(), Value::String(Rc::new(default_name.clone())));
-                rt.object_set(id, "stack".into(), Value::String(Rc::new("".into())));
+                install_non_enum(rt, id, "stack", Value::String(Rc::new("".into())));
                 // ES2022 (§20.5.7.1 step 4) — InstallErrorCause: if the
                 // second argument is an Object with a `cause` own key,
                 // install error.cause as a non-enumerable property.
                 if let Some(Value::Object(opts_id)) = args.get(1) {
-                    // CMig-EXT 8: shape-aware own-property check.
-                    // get_own returns None for shape-stored entries
-                    // (Shape-EXT 4 design); use has_own_str which is
-                    // shape-aware. object_get is also shape-aware.
                     let has_cause = rt.obj(*opts_id).has_own_str("cause");
                     if has_cause {
                         let cause = rt.object_get(*opts_id, "cause");
-                        rt.object_set(id, "cause".into(), cause);
+                        install_non_enum(rt, id, "cause", cause);
                     }
                 }
                 Ok(Value::Object(id))

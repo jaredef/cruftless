@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 67,
-    "top_level": 56,
+    "locales": 68,
+    "top_level": 57,
     "nested": 11,
     "warnings": 0
   },
@@ -89,6 +89,15 @@
       "depth": 1,
       "rung_count": 6,
       "status": "**WORKSTREAM FOUNDED (EPSUA-EXT 0)**. Successor arc to T262C's first ECMAScript-parity round. Carries the resume vector through the five shared-upstream substrates identified at T262C-EXT 2's prospective analysis. Each sub-locale closes one of the five named constraints."
+    },
+    {
+      "coord": "error-instance-property-descriptors",
+      "tag": "L.error-instance-property-descriptors",
+      "parent": null,
+      "scope": "error-instance-property-descriptors",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
     },
     {
       "coord": "for-of-destructuring-assignment-semantics",
