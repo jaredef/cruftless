@@ -23,3 +23,27 @@
 **Finding RPTC.2 (algorithm-via-shared-closure beats divergent re-implementation)**: routing test through regexp_exec rather than reimplementing match-detection inline closes the cluster's sticky/global lastIndex-bookkeeping consistency for free — Standing Rule 13 (revert-then-deeper-layer-closure) instantiation. The 2 remaining y-flag failures are inside regexp_exec, not at the test entry; one substrate fix at the deeper layer closes both.
 
 **Status**: RPTC-EXT 1 CLOSED.
+
+## RPTC-EXT 2 — deeper-layer: sticky-anchor enforcement in regexp_exec (2026-05-25)
+
+**Trigger**: keeper "Go to deeper substrate layer for fix" after RPTC-EXT 1 left 2 y-flag residuals. RPTC.2 predicted both fail inside `regexp_exec`, not at .test.
+
+**Edits** (~8 LOC) at `regexp.rs::regexp_exec`:
+- Hoist sticky flag into the (is_global, is_sticky, has_compiled) destructure.
+- Post-`captures_at`: if `is_sticky && mstart != start`, treat as failure (None). Spec §22.2.7.2 step 23.a — sticky anchors the match at lastIndex; the engine's scanning search must be filtered.
+
+**Verification**:
+- Probe: `/c/y` lastIndex=1, `.test('abc')` → false, lastIndex reset to 0 ✓
+- Probe: `/b/y.test('ab')` → false ✓; `/a/y.test('ab')` → true ✓
+- Exemplar (13 RegExp.prototype.test no-feature-tag): PASS 11 → **13** (closes 2 residuals)
+- Collateral on RegExp.prototype.exec sticky/y-flag tests: +2 (3 in scope, 2 newly pass)
+- Random 300 prev-PASS: **300/300, 0 regressions**
+- diff-prod: **42/42**
+
+**Findings**
+
+**Finding RPTC.3 (deeper-layer prediction held)**: RPTC.2 predicted the residual lived in `regexp_exec`; RPTC-EXT 2's 8-LOC fix at that single deeper-layer site closed both .test residuals AND 2 collateral .exec failures. Standing Rule 13 instantiation: when a method routes through a shared closure, residual surface-method failures often live in the closure itself, with surface-fix collateral.
+
+**Finding RPTC.4 (engine-vs-spec scoping responsibility)**: the regex engine (rust regex crate / hand-rolled NFA) returns scanning-search results; sticky anchoring is a SPEC-level responsibility, not an engine-level one. The substrate's job at `regexp_exec` is to filter engine output against the spec's match-position invariant. Conflating these would require either a sticky-aware regex engine (large cost) or per-call substring prefixing (slow). The post-filter approach lives at the spec layer and costs ~8 LOC.
+
+**Status**: RPTC-EXT 2 CLOSED. Locale at 13/13 in-scope + 2 collateral.

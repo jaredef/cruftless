@@ -619,14 +619,16 @@ fn install_regexp_proto(rt: &mut Runtime, host: ObjectRef) {
 /// else an Array with [match, ...groups] plus .index / .input properties.
 /// Honors the 'g' flag via lastIndex.
 pub fn regexp_exec(rt: &mut Runtime, this_id: ObjectRef, input: &str) -> Result<Value, RuntimeError> {
-    let (is_global, has_compiled) = {
+    let (is_global, is_sticky, has_compiled) = {
         let o = rt.obj(this_id);
         let re = match &o.internal_kind {
             InternalKind::RegExp(r) => r,
             _ => return Err(RuntimeError::TypeError("RegExp.prototype.exec: this is not a RegExp".into())),
         };
-        let is_global = re.flags.contains('g') || re.flags.contains('y');
-        (is_global, re.compiled.is_some())
+        let is_sticky = re.flags.contains('y');
+        // Both `g` and `y` honor lastIndex bookkeeping; only `y` anchors.
+        let is_global = re.flags.contains('g') || is_sticky;
+        (is_global, is_sticky, re.compiled.is_some())
     };
     // ECMA-262 §22.2.7.2 RegExpBuiltinExec step 4: read lastIndex from
     // the JS property (user-settable) and ToLength-coerce. The coercion
@@ -670,6 +672,13 @@ pub fn regexp_exec(rt: &mut Runtime, this_id: ObjectRef, input: &str) -> Result<
         rx.captures_at(input, start)
     };
 
+    // RPTC-EXT 2: ECMA-262 §22.2.7.2 step 23.a — sticky flag anchors the
+    // match at lastIndex. If the engine's scanning search returns a match
+    // that doesn't start at `start`, treat as failure under sticky.
+    let captures_opt = match captures_opt {
+        Some((ms, _, _)) if is_sticky && ms != start => None,
+        other => other,
+    };
     match captures_opt {
         None => {
             if is_global {
