@@ -1358,7 +1358,7 @@ impl Runtime {
             for (k, v) in kvs { self.object_set(storage, k, v); size += 1.0; }
         }
         for v in other_vals {
-            let k = crate::abstract_ops::to_string(&v).as_str().to_string();
+            let k = Self::map_storage_key(&v);
             if !self.obj(storage).has_own_str(&k) {
                 self.object_set(storage, k, v); size += 1.0;
             }
@@ -1373,7 +1373,7 @@ impl Runtime {
         let other = args.first().cloned().unwrap_or(Value::Undefined);
         let other_vals = crate::intrinsics::collect_iterable(self, other)?;
         let other_keys: std::collections::HashSet<String> = other_vals.iter()
-            .map(|v| crate::abstract_ops::to_string(v).as_str().to_string()).collect();
+            .map(|v| Self::map_storage_key(v)).collect();
         let (new_set, storage) = self.new_empty_set();
         let mut size = 0.0;
         if let Value::Object(s) = self.object_get(this, "__set_data") {
@@ -1392,7 +1392,7 @@ impl Runtime {
         let other = args.first().cloned().unwrap_or(Value::Undefined);
         let other_vals = crate::intrinsics::collect_iterable(self, other)?;
         let other_keys: std::collections::HashSet<String> = other_vals.iter()
-            .map(|v| crate::abstract_ops::to_string(v).as_str().to_string()).collect();
+            .map(|v| Self::map_storage_key(v)).collect();
         let (new_set, storage) = self.new_empty_set();
         let mut size = 0.0;
         if let Value::Object(s) = self.object_get(this, "__set_data") {
@@ -1411,7 +1411,7 @@ impl Runtime {
         let other = args.first().cloned().unwrap_or(Value::Undefined);
         let other_vals = crate::intrinsics::collect_iterable(self, other)?;
         let other_keys: std::collections::HashSet<String> = other_vals.iter()
-            .map(|v| crate::abstract_ops::to_string(v).as_str().to_string()).collect();
+            .map(|v| Self::map_storage_key(v)).collect();
         let (new_set, storage) = self.new_empty_set();
         let mut size = 0.0;
         if let Value::Object(s) = self.object_get(this, "__set_data") {
@@ -1422,7 +1422,7 @@ impl Runtime {
         }
         let this_storage = match self.object_get(this, "__set_data") { Value::Object(id) => Some(id), _ => None };
         for v in other_vals {
-            let k = crate::abstract_ops::to_string(&v).as_str().to_string();
+            let k = Self::map_storage_key(&v);
             let in_this = this_storage.map(|s| self.obj(s).has_own_str(&k)).unwrap_or(false);
             if !in_this { self.object_set(storage, k, v); size += 1.0; }
         }
@@ -1436,7 +1436,7 @@ impl Runtime {
         let other = args.first().cloned().unwrap_or(Value::Undefined);
         let other_vals = crate::intrinsics::collect_iterable(self, other)?;
         let other_keys: std::collections::HashSet<String> = other_vals.iter()
-            .map(|v| crate::abstract_ops::to_string(v).as_str().to_string()).collect();
+            .map(|v| Self::map_storage_key(v)).collect();
         if let Value::Object(s) = self.object_get(this, "__set_data") {
             for k in self.obj(s).properties.keys() {
                 if !other_keys.contains(k.as_str()) { return Ok(Value::Boolean(false)); }
@@ -1452,7 +1452,7 @@ impl Runtime {
         let other_vals = crate::intrinsics::collect_iterable(self, other)?;
         let this_storage = match self.object_get(this, "__set_data") { Value::Object(id) => Some(id), _ => None };
         for v in other_vals {
-            let k = crate::abstract_ops::to_string(&v).as_str().to_string();
+            let k = Self::map_storage_key(&v);
             let in_this = this_storage.map(|s| self.obj(s).has_own_str(&k)).unwrap_or(false);
             if !in_this { return Ok(Value::Boolean(false)); }
         }
@@ -1466,7 +1466,7 @@ impl Runtime {
         let other_vals = crate::intrinsics::collect_iterable(self, other)?;
         let this_storage = match self.object_get(this, "__set_data") { Value::Object(id) => Some(id), _ => None };
         for v in other_vals {
-            let k = crate::abstract_ops::to_string(&v).as_str().to_string();
+            let k = Self::map_storage_key(&v);
             let in_this = this_storage.map(|s| self.obj(s).has_own_str(&k)).unwrap_or(false);
             if in_this { return Ok(Value::Boolean(false)); }
         }
@@ -3419,7 +3419,7 @@ impl Runtime {
     pub fn date_parse_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let s = match args.first() {
             Some(Value::String(s)) => s.as_str().to_string(),
-            Some(v) => crate::abstract_ops::to_string(v).as_str().to_string(),
+            Some(v) => self.coerce_to_string(v)?,
             None => return Ok(Value::Number(f64::NAN)),
         };
         Ok(parse_iso8601_to_epoch_ms(&s).map(Value::Number).unwrap_or(Value::Number(f64::NAN)))
@@ -4239,7 +4239,7 @@ impl Runtime {
         let id = crate::prototype::to_array_this(self)?;
         let sep = match args.first() {
             Some(Value::Undefined) | None => ",".to_string(),
-            Some(v) => crate::abstract_ops::to_string(v).as_str().to_string(),
+            Some(v) => self.coerce_to_string(v)?,
         };
         let len = self.try_array_length(id)?;
         let mut parts = Vec::with_capacity(len);
