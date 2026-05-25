@@ -34,3 +34,44 @@ cruft's yield-branch fires when `in_generator || strict_mode`. Inside `g()`, `in
 **Finding YIFP.2 (generator's own params is a separate setup)**: `function* g(x = yield) {}` at top level fails differently — in_generator is false during the gen's own param parse because parse_function_body_gs sets it only for the body. The minimum-scope fix for this case requires also setting `in_generator=true` around the generator's param parse. That's a small follow-on rung (~5 LOC at the 3-4 generator function-decl/expr sites) but separate from YIFP-EXT 1's check.
 
 **Status**: YIFP-EXT 1 CLOSED. test262 target test passes; cluster 8/45 → 9/45.
+
+---
+
+## YIFP-EXT 2 — generator's own params: in_generator=true around param parse (2026-05-25)
+
+**Trigger**: YIFP.2 named the parallel `function* g(x = yield) {}` case as a small follow-on. Top-level generator parse: enclosing `in_generator` is false; the yield-branch's gate (`in_generator || strict_mode`) doesn't fire; yield parses as identifier. Spec §15.5.1 mandates SyntaxError ("FormalParameters Contains YieldExpression is true" is an early error for GeneratorDeclaration).
+
+**Edits** (~15 LOC):
+
+- `stmt.rs`: `parse_function_parameters` becomes thin wrapper over new `parse_function_parameters_g(is_generator)`. The `_g` variant additionally saves/sets `in_generator=true` for the param-parse duration when its arg is true.
+- 5 generator-eligible call sites updated to pass the local `is_generator`:
+  - `stmt.rs::parse_function_decl` (line 284) — function decl
+  - `stmt.rs::parse_class_body` class-method site (line 507) — class methods (including `*name()`)
+  - `parser.rs::parse_default_function` (line 367) — `export default function*`
+  - `expr.rs` generator-method shorthand (line 728) — `{ *name(){} }`
+  - `expr.rs` async-method shorthand (line 758) — `{ async *? name(){} }`
+  - `expr.rs::parse_function_expression` (line 1199)
+- Non-generator-eligible sites (getter/setter at 787, plain method at 818, single-arrow-ident path) call `parse_function_parameters()` (=`_g(false)`) unchanged.
+
+**Verification**:
+
+| Probe | Before | After |
+|---|---|---|
+| `function* g(x = yield) {}` at top level | accepted | SyntaxError ✓ |
+| `function* g() { yield 1; }` (yield in body) | works | works |
+| Sloppy `function f(x = yield) {}` (non-generator) | accepted (yield=ident) | accepted (unchanged) |
+| `var f = function*(x = yield) {}` (generator expression) | accepted | SyntaxError ✓ |
+| `class C { *m(x = yield) {} }` (generator method) | accepted | SyntaxError ✓ |
+
+**Gates**:
+- diff-prod: **42/42 PASS, 0 FAIL**
+- Random 300 prev-PASS: **300/300, 0 regressions**
+- test262 SyntaxError cluster: 9/45 (unchanged — this shape isn't represented in the sample's residuals)
+
+**Findings**
+
+**Finding YIFP.3 (substrate-gap closure ≠ test-cluster movement)**: YIFP-EXT 2 closed a real spec gap (verified by probe across 5 generator forms) without moving the test262 cluster. The sample doesn't probe this shape directly. Standing recommendation: don't gate substrate fixes on cluster-movement signal alone; the test262 cluster is one observation among many, and spec-completeness on a bounded position is its own validation.
+
+**Finding YIFP.4 (parse-time mode propagation is a recurring pattern)**: the substrate now has three parser-flag pairs that propagate over a parse region — `strict_mode`, `in_generator`, `in_function_params` (this rung). Each follows the same save/set/restore convention. A future refactor could factor a `ParserModeGuard` RAII helper to enforce the pattern uniformly; until then, the convention is documented per-flag.
+
+**Status**: YIFP-EXT 2 CLOSED. Spec gap closed across all 5 generator-eligible param-parse sites.

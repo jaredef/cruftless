@@ -364,7 +364,7 @@ impl<'src> Parser<'src> {
         let name = if matches!(self.lookahead.kind, TokenKind::Ident(_)) && !self.is_punct(Punct::LParen) {
             Some(self.parse_binding_identifier()?)
         } else { None };
-        let params = self.parse_function_parameters()?;
+        let params = self.parse_function_parameters_g(is_generator)?;
         let body = self.parse_function_body_gs(Some(is_generator), Self::is_simple_param_list(&params))?;
         Ok(DefaultExportBody::HoistableFunction {
             name, params, body, is_async, is_generator,

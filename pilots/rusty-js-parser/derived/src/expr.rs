@@ -725,7 +725,7 @@ impl<'src> Parser<'src> {
                 let prop_start = self.lookahead_span().start;
                 self.bump()?; // consume `*`
                 let key = self.parse_object_key()?;
-                let params = self.parse_function_parameters()?;
+                let params = self.parse_function_parameters_g(true)?;
                 let body = self.parse_function_body_gs(Some(true), Self::is_simple_param_list(&params))?;
                 let end = self.last_span_end();
                 let func = Expr::Function {
@@ -755,7 +755,7 @@ impl<'src> Parser<'src> {
                     true
                 } else { false };
                 let key = self.parse_object_key()?;
-                let params = self.parse_function_parameters()?;
+                let params = self.parse_function_parameters_g(is_generator)?;
                 let body = self.parse_function_body_gs(Some(is_generator), Self::is_simple_param_list(&params))?;
                 let end = self.last_span_end();
                 let func = Expr::Function {
@@ -1196,7 +1196,7 @@ impl<'src> Parser<'src> {
                 Some(rusty_js_ast::BindingIdentifier { name: n, span })
             } else { None }
         } else { None };
-        let params = self.parse_function_parameters()?;
+        let params = self.parse_function_parameters_g(is_generator)?;
         let body = self.parse_function_body_gs(Some(is_generator), Self::is_simple_param_list(&params))?;
         let end = self.last_span_end();
         Ok(Expr::Function {

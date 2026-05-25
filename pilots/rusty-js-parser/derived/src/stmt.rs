@@ -281,7 +281,7 @@ impl<'src> Parser<'src> {
             self.bump()?;
             Some(BindingIdentifier { name: n, span })
         } else { None };
-        let params = self.parse_function_parameters()?;
+        let params = self.parse_function_parameters_g(is_generator)?;
         let body = self.parse_function_body_gs(Some(is_generator), Self::is_simple_param_list(&params))?;
         let end = self.last_span_end();
         Ok(Stmt::FunctionDecl {
@@ -291,14 +291,24 @@ impl<'src> Parser<'src> {
     }
 
     pub(crate) fn parse_function_parameters(&mut self) -> Result<Vec<rusty_js_ast::Parameter>, ParseError> {
+        self.parse_function_parameters_g(false)
+    }
+
+    /// YIFP-EXT 2 follow-on: parse a function's formal parameters with an
+    /// explicit `is_generator` override. When parsing a generator function's
+    /// OWN params, in_generator must be true so the yield-branch fires on
+    /// `function* g(x = yield)` per §15.5.1 (FormalParameters Contains
+    /// YieldExpression is a SyntaxError). For non-generator callers the
+    /// flag defaults to inheriting the enclosing in_generator value.
+    pub(crate) fn parse_function_parameters_g(&mut self, is_generator: bool) -> Result<Vec<rusty_js_ast::Parameter>, ParseError> {
         self.expect_punct(Punct::LParen)?;
-        // YIFP-EXT 1: enter param-list scope. Yield-branch checks this
-        // flag + in_generator to throw on YieldExpression in arrow /
-        // generator formal parameters per §15.3.1 / §15.5.1.
         let prior_in_params = self.in_function_params;
+        let prior_in_generator = self.in_generator;
         self.in_function_params = true;
+        if is_generator { self.in_generator = true; }
         let result = self.parse_function_parameters_inner();
         self.in_function_params = prior_in_params;
+        self.in_generator = prior_in_generator;
         result
     }
 
@@ -494,7 +504,7 @@ impl<'src> Parser<'src> {
 
             // Field or method?
             if matches!(self.current_kind(), TokenKind::Punct(Punct::LParen)) {
-                let params = self.parse_function_parameters()?;
+                let params = self.parse_function_parameters_g(is_generator)?;
                 let body = self.parse_function_body_gs(Some(is_generator), Self::is_simple_param_list(&params))?;
                 let end = self.last_span_end();
                 // Constructor detection (only when not static and name is `constructor`).
