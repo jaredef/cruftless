@@ -127,8 +127,9 @@ fn make_server_object(rt: &mut Runtime, handler: Value) -> Result<ObjectRef, Run
             server_object: this_id,
             closing: false,
         });
-        rt.object_set(this_id, SERVER_SLOT.into(), Value::Number(server_id as f64));
-        rt.object_set(this_id, "__cruftless_http_bound_addr".into(), Value::String(Rc::new(bound_addr)));
+        // ESNE-EXT 1: __X engine sentinels installed non-enumerable.
+        rt.set_engine_sentinel(this_id, SERVER_SLOT, Value::Number(server_id as f64));
+        rt.set_engine_sentinel(this_id, "__cruftless_http_bound_addr", Value::String(Rc::new(bound_addr)));
         rt.object_set(this_id, "listening".into(), Value::Boolean(true));
         if let Some(cb) = callback {
             let _ = rt.call_function(cb, Value::Object(this_id), Vec::new())?;
@@ -162,7 +163,7 @@ fn make_server_object(rt: &mut Runtime, handler: Value) -> Result<ObjectRef, Run
     register_method(rt, server, "on", |_rt, _args| Ok(Value::Undefined));
     register_method(rt, server, "once", |_rt, _args| Ok(Value::Undefined));
 
-    rt.object_set(server, "__cruftless_http_handler".into(), handler);
+    rt.set_engine_sentinel(server, "__cruftless_http_handler", handler);
     Ok(server)
 }
 
@@ -192,8 +193,9 @@ fn make_response_object(rt: &mut Runtime) -> ObjectRef {
     rt.object_set(obj, "statusCode".into(), Value::Number(200.0));
     rt.object_set(obj, "statusMessage".into(), Value::String(Rc::new("OK".into())));
     rt.object_set(obj, "headersSent".into(), Value::Boolean(false));
-    rt.object_set(obj, HEADERS_SLOT.into(), Value::Object(headers));
-    rt.object_set(obj, BODY_SLOT.into(), Value::String(Rc::new(String::new())));
+    // ESNE-EXT 1: __X engine sentinels installed non-enumerable.
+    rt.set_engine_sentinel(obj, HEADERS_SLOT, Value::Object(headers));
+    rt.set_engine_sentinel(obj, BODY_SLOT, Value::String(Rc::new(String::new())));
 
     register_method(rt, obj, "setHeader", |rt, args| {
         let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
@@ -258,7 +260,7 @@ fn make_response_object(rt: &mut Runtime) -> ObjectRef {
             body.push_str(&value_to_string(chunk));
             rt.object_set(this, BODY_SLOT.into(), Value::String(Rc::new(body)));
         }
-        rt.object_set(this, "__cruftless_http_ended".into(), Value::Boolean(true));
+        rt.set_engine_sentinel(this, "__cruftless_http_ended", Value::Boolean(true));
         Ok(Value::Undefined)
     });
 

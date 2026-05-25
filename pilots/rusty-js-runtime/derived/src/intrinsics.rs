@@ -3646,10 +3646,11 @@ impl Runtime {
                 o.proto = Some(proto_for_ctor);
                 let id = rt.alloc_object(o);
                 let storage = rt.alloc_object(Object::new_dictionary());
-                rt.object_set(id, "__map_data".into(), Value::Object(storage));
+                // ESNE-EXT 1: install engine sentinels non-enumerable.
+                rt.set_engine_sentinel(id, "__map_data", Value::Object(storage));
                 rt.object_set(id, "size".into(), Value::Number(0.0));
                 if is_weak {
-                    rt.object_set(id, "__is_weakmap".into(), Value::Boolean(true));
+                    rt.set_engine_sentinel(id, "__is_weakmap", Value::Boolean(true));
                 }
                 // Tier-Ω.5.LLLLLLL: iterable-arg processing per ECMA §24.1.1.1.
                 // `new Map(iterable)` iterates each entry (array-like with [k,v])
@@ -3828,12 +3829,11 @@ impl Runtime {
                 o.proto = Some(proto_for_ctor);
                 let id = rt.alloc_object(o);
                 let storage = rt.alloc_object(Object::new_dictionary());
-                rt.object_set(id, "__set_data".into(), Value::Object(storage));
+                // ESNE-EXT 1: install engine sentinels non-enumerable.
+                rt.set_engine_sentinel(id, "__set_data", Value::Object(storage));
                 // SPBC-EXT 2: brand mark for WeakSet (parallel to __is_weakmap).
-                // Allows require_set_brand to reject WeakSet instances passed
-                // to Set.prototype methods per RequireInternalSlot([[SetData]]).
                 if is_weak_ctor {
-                    rt.object_set(id, "__is_weakset".into(), Value::Boolean(true));
+                    rt.set_engine_sentinel(id, "__is_weakset", Value::Boolean(true));
                 }
                 rt.object_set(id, "size".into(), Value::Number(0.0));
                 // Tier-Ω.5.rrr: populate from iterable arg. Per spec
@@ -3976,7 +3976,7 @@ impl Runtime {
                             let mut o = Object::new_ordinary();
                             o.proto = Some(proto_for_ctor);
                             let new_id = rt.alloc_object(o);
-                            rt.object_set(new_id, "__date_ms".into(), Value::Number(n));
+                            rt.set_engine_sentinel(new_id, "__date_ms", Value::Number(n));
                             return Ok(Value::Object(new_id));
                         }
                     }
@@ -4006,7 +4006,7 @@ impl Runtime {
             let mut o = Object::new_ordinary();
             o.proto = Some(proto_for_ctor);
             let id = rt.alloc_object(o);
-            rt.object_set(id, "__date_ms".into(), Value::Number(ms));
+            rt.set_engine_sentinel(id, "__date_ms", Value::Number(ms));
             Ok(Value::Object(id))
         });
         let ctor = self.alloc_object(ctor_obj);
@@ -5847,7 +5847,7 @@ fn structured_clone_walk(
                     o.proto = proto;
                     let id = rt.alloc_object(o);
                     let storage = rt.alloc_object(Object::new_dictionary());
-                    rt.object_set(id, "__map_data".into(), Value::Object(storage));
+                    rt.set_engine_sentinel(id, "__map_data", Value::Object(storage));
                     rt.object_set(id, "size".into(), Value::Number(0.0));
                     id
                 } else { rt.alloc_object(Object::new_ordinary()) };
@@ -5879,7 +5879,7 @@ fn structured_clone_walk(
                     o.proto = proto;
                     let id = rt.alloc_object(o);
                     let storage = rt.alloc_object(Object::new_dictionary());
-                    rt.object_set(id, "__set_data".into(), Value::Object(storage));
+                    rt.set_engine_sentinel(id, "__set_data", Value::Object(storage));
                     rt.object_set(id, "size".into(), Value::Number(0.0));
                     id
                 } else { rt.alloc_object(Object::new_ordinary()) };

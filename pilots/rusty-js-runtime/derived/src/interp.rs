@@ -1326,7 +1326,7 @@ impl Runtime {
         // CMig-EXT 9: storage is container-role (Set methods iterate it
         // via .properties); explicit Dictionary per shapes seed §IV P3.
         let storage = self.alloc_object(crate::value::Object::new_dictionary());
-        self.object_set(new_set, "__set_data".into(), Value::Object(storage));
+        self.set_engine_sentinel(new_set, "__set_data", Value::Object(storage));
         (new_set, storage)
     }
 
@@ -6971,6 +6971,21 @@ impl Runtime {
     ///   - String-keyed sets on Shaped objects route through set_own
     ///     (shape transition or in-place mutate).
     ///   - Symbol-keyed sets always migrate to Dictionary first.
+    /// ESNE-EXT 1: install an engine-internal `__name` sentinel with the
+    /// canonical descriptor `{w:t, e:f, c:f}` per CLAUDE.md's source-identifier
+    /// coordinate convention. Subsequent `object_set` updates of the same key
+    /// preserve these attrs (the update branch only mutates value).
+    pub fn set_engine_sentinel(&mut self, id: ObjectRef, name: &str, value: Value) {
+        self.obj_mut(id).dict_mut().insert(
+            crate::value::PropertyKey::String(name.to_string()),
+            crate::value::PropertyDescriptor {
+                value,
+                writable: true, enumerable: false, configurable: false,
+                getter: None, setter: None,
+            },
+        );
+    }
+
     pub fn object_set_pk(&mut self, id: ObjectRef, key: crate::value::PropertyKey, value: Value) {
         // ALST-EXT 1: route `arr.length = N` through §10.4.2.1 ArraySetLength
         // so that decreasing length truncates the backing storage. Without
