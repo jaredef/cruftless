@@ -3946,6 +3946,14 @@ impl Runtime {
         let clamp = |i: i64, l: i64| if i < 0 { (l + i).max(0) } else { i.min(l) };
         let start = clamp(start_arg, len);
         let end = clamp(end_arg, len);
+        // ASCD-EXT 1 carve-out: slice's ArraySpeciesCreate routing reverted —
+        // when species returns a pre-populated array with non-writable
+        // properties, the per-element write must use CreateDataPropertyOrThrow
+        // which overrides the descriptor (§23.1.3.28 step 10.c.ii). Cruft's
+        // object_set respects writable, so wiring slice through species
+        // regresses target-array-with-non-writable-property tests. Plain
+        // alloc preserved; species-wiring deferred to a sibling sub-locale
+        // that also fixes the per-element define path.
         let out = self.alloc_object(crate::value::Object::new_array());
         let mut j: i64 = 0;
         let mut i = start;
@@ -3974,6 +3982,9 @@ impl Runtime {
             Some(v) => (self.coerce_to_number(&v)? as i64).max(0).min(len - start),
         };
         let items: Vec<Value> = args.iter().skip(2).cloned().collect();
+        // ASCD-EXT 1 carve-out (see slice): splice species-wiring deferred
+        // to a sibling sub-locale that also fixes the per-element define
+        // path. Plain alloc preserved.
         let removed = self.alloc_object(crate::value::Object::new_array());
         for j in 0..delete_count {
             let v = self.object_get(id, &(start + j).to_string());
@@ -5975,13 +5986,18 @@ impl Runtime {
                     _ => return Err(RuntimeError::TypeError(
                         "Array @@species is not a constructor".into())),
                 };
-                let is_fn = matches!(
-                    self.obj(cid).internal_kind,
-                    crate::value::InternalKind::Function(_)
-                    | crate::value::InternalKind::Closure(_)
-                    | crate::value::InternalKind::BoundFunction(_)
-                );
-                if !is_fn {
+                // ASCD-EXT 1: IsConstructor per §10.1.14. Function/Closure
+                // are constructors only when their FunctionInternals say so
+                // (built-in non-constructor functions like parseInt have
+                // is_constructor=false). BoundFunction inherits the target's
+                // constructable-ness; closures default to true.
+                let is_constructor = match &self.obj(cid).internal_kind {
+                    crate::value::InternalKind::Function(fi) => fi.is_constructor,
+                    crate::value::InternalKind::Closure(_) => true,
+                    crate::value::InternalKind::BoundFunction(_) => true,
+                    _ => false,
+                };
+                if !is_constructor {
                     return Err(RuntimeError::TypeError(
                         "Array @@species is not a constructor".into()));
                 }
