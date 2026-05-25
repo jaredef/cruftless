@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 78,
-    "top_level": 67,
+    "locales": 79,
+    "top_level": 68,
     "nested": 11,
     "warnings": 0
   },
@@ -114,7 +114,7 @@
       "parent": null,
       "scope": "engine-sentinel-non-enumerable",
       "depth": 1,
-      "rung_count": 3,
+      "rung_count": 4,
       "status": null
     },
     {
@@ -215,6 +215,15 @@
       "depth": 1,
       "rung_count": 2,
       "status": "**CLOSED at IPEP-EXT 1** (1 implementation round; Doc 740 multi-tier closure)."
+    },
+    {
+      "coord": "length-of-array-like-propagate",
+      "tag": "L.length-of-array-like-propagate",
+      "parent": null,
+      "scope": "length-of-array-like-propagate",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
     },
     {
       "coord": "map-getorinsert-upsert",

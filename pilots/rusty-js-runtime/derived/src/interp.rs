@@ -671,7 +671,18 @@ impl Runtime {
             _ => return Err(RuntimeError::TypeError(
                 "LengthOfArrayLike: receiver must be an Object".into())),
         };
-        Ok(self.array_length(id))
+        // LOAL-EXT 1: propagate errors from the length getter per
+        // ECMA-262 §7.3.19 LengthOfArrayLike (calls ToLength(? Get(O,
+        // "length")); the ? means "abrupt-propagating"). Pre-fix routed
+        // through array_length which unwrap_or(0)'d any throw from the
+        // length accessor or ToNumber coercion, silently dropping
+        // Test262Error throws + masking them as no-op or downstream
+        // TypeError. Caller-side comment on try_array_length already
+        // identified Array.prototype.{every,filter,find,forEach,map,
+        // some,reduce,etc.} as the test262-probed surface; routing
+        // length_of_array_like through try_array_length applies the fix
+        // at the shared closure rather than per-method.
+        self.try_array_length(id)
     }
 
     /// HasProperty per ECMA §7.3.10 — walks the proto chain.
