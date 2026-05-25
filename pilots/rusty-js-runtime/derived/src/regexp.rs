@@ -1052,7 +1052,12 @@ fn coerce_regexp(rt: &mut Runtime, v: Value) -> Result<ObjectRef, RuntimeError> 
 
 fn register_method<F>(rt: &mut Runtime, host: ObjectRef, name: &str, f: F)
 where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
-    let fn_obj = make_native(name, f);
+    // NACR-EXT 1: built-in prototype methods are non-constructors per
+    // ECMA-262 §21.3. Mirrors the intrinsics.rs::register_method discipline.
+    // Pre-fix RegExp.prototype.{replace, exec, test, ...} registered here
+    // had is_constructor=true so `new (/x/).test()` did not throw and
+    // `isConstructor(RegExp.prototype.test)` returned true.
+    let fn_obj = crate::intrinsics::make_native_non_ctor(name, 0, f);
     let fn_id = rt.alloc_object(fn_obj);
     rt.obj_mut(host).dict_mut().insert(name.into(), PropertyDescriptor {
         value: Value::Object(fn_id),

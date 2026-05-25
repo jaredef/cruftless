@@ -241,7 +241,9 @@ where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
         proto: None,
         extensible: true,
         properties,
-        internal_kind: InternalKind::Function(FunctionInternals { name: name.to_string(), length: 0, native, is_constructor: true }),
+        // NACR-EXT 1: Promise.prototype.{then, catch, finally} are
+        // non-constructors per ECMA-262 §27.2.5. Pre-fix is_constructor=true.
+        internal_kind: InternalKind::Function(FunctionInternals { name: name.to_string(), length: 0, native, is_constructor: false }),
     
         ..Default::default()
     };
