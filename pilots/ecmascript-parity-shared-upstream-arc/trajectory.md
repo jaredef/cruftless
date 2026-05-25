@@ -48,3 +48,33 @@ When founding the next sub-locale:
 ### Status
 
 EPSUA-EXT 0 CLOSED at founding. Next: keeper authorization to spawn EPSUA-EXT 1 (`host-262-shim`).
+
+---
+
+## EPSUA-EXT 0.5 — pre-scoping probe falsifies constraint #3 projection (2026-05-25)
+
+**Trigger**: keeper "Continue" to spawn EPSUA-EXT 1 (`host-262-shim`). Per Finding T262C.6 carry-forward (C4): probe per-cluster failure-reason heterogeneity before scoping the fix.
+
+**Probe result**: all 38 `$262` failures use a SINGLE API — `$262.createRealm`. Cluster is homogeneous (passes the discriminator's homogeneity test), BUT the substrate cost is high, not low as the prospective doc projected.
+
+**Why projection was wrong**: the prospective doc estimated based on the plausible-typical $262 surface (detachArrayBuffer, evalScript, global, gc — any of which are stub-able). Empirical probe shows ALL fixtures in the sample exercise createRealm, which requires:
+- A fresh Runtime instance (or fresh globalThis view), AND
+- Distinct constructor identities (Array, Object, Function, etc.) for cross-realm tests where `array instanceof OtherRealm.Array` is the discriminator.
+
+This is substantial substrate work, not the "smallest blast radius / pure additive" the doc named.
+
+**Pred-epsua.3 falsified for constraint #3 specifically**: cumulative-vs-projected ratio for #3 alone is the wrong shape (substrate cost ≠ test-cascade ratio). The doc's aggregate prediction (~340 across 5) may still hold if other constraints compensate.
+
+**Finding EPSUA.1**: pre-scoping probe per Finding T262C.6 catches projection drift cheaply. Without the probe, EPSUA-EXT 1 would have been founded against the wrong substrate cost; the round would have stalled mid-implementation when createRealm's true cost surfaced.
+
+**Discipline preserved**: pivoting per EPSUA C5 to constraint #4 (`iterator-close-on-abrupt`, ~25 cascade, well-bounded substrate cost) rather than committing to a high-cost surface. Constraint #3 deferred to a later round where the realm-tier substrate cost can be properly budgeted.
+
+**Re-ordered sub-locale queue** (post-probe):
+
+| Order | Sub-locale dir | Constraint | Projected cascade | Status |
+|---:|---|---|---:|---|
+| 1 | `pilots/iterator-close-on-abrupt/` | #4 | ~25 | queued ← next |
+| 2 | `pilots/parser-permissiveness-audit-extensions/` | #5 | ~50 | queued |
+| 3 | `pilots/strict-mode-parser-tracking/` | #2 | ~80 | queued |
+| 4 | `pilots/host-method-prologue-discipline/` | #1 | ~150 | queued |
+| (deferred) | `pilots/host-262-shim/` (or `realm-substrate`) | #3 | ~38 | deferred pending realm-substrate budget decision |
