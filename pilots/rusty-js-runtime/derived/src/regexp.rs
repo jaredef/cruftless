@@ -1143,6 +1143,11 @@ fn string_replace_impl(
     // wrapper's captures_at returns (start, end, captures_as_strings)
     // where captures[0] is the whole match and captures[1..] are the
     // groups.
+    // RES-EXT 3: per ECMA-262 §22.1.3.18 step 11.a.iii, when the regex
+    // has named groups, the replacer callback receives a final `groups`
+    // argument after the input string: (match, ...captures, offset,
+    // input, groups). Cache the name-map outside the loop.
+    let named = rx.named_groups();
     let mut out = String::new();
     let mut cursor = 0usize;
     let mut search_start = 0usize;
@@ -1167,8 +1172,22 @@ fn string_replace_impl(
         call_args.push(Value::Number(mstart as f64));
         // full input string
         call_args.push(Value::String(Rc::new(s.to_string())));
+        // RES-EXT 3: groups arg (only when named groups exist, per spec
+        // — passing undefined when absent would change callback arity).
+        if !named.is_empty() {
+            let g_obj = rt.alloc_object_with_explicit_null_proto(Object::new_ordinary());
+            for (name, idx) in &named {
+                let v = groups.get(*idx).and_then(|g| g.clone())
+                    .map(|s| Value::String(Rc::new(s)))
+                    .unwrap_or(Value::Undefined);
+                rt.object_set(g_obj, name.clone(), v);
+            }
+            call_args.push(Value::Object(g_obj));
+        }
         let r = rt.call_function(repl.clone(), Value::Undefined, call_args)?;
-        let r_s = abstract_ops::to_string(&r).as_str().to_string();
+        // RPTC.7 bug pattern: was static abstract_ops::to_string; replacer
+        // may return an Object with toString() / @@toPrimitive.
+        let r_s = rt.coerce_to_string(&r)?;
         out.push_str(&r_s);
         cursor = mend;
         // Advance search_start. Avoid zero-width infinite loop.
@@ -1188,7 +1207,7 @@ fn coerce_regexp(rt: &mut Runtime, v: Value) -> Result<ObjectRef, RuntimeError> 
             return Ok(*id);
         }
     }
-    let pattern = abstract_ops::to_string(&v).as_str().to_string();
+    let pattern = rt.coerce_to_string(&v)?;
     new_regexp(rt, &pattern, "")
 }
 

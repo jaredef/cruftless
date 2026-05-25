@@ -59,3 +59,31 @@
 - The replacer-callback named-args bridge — String.prototype.replace with a function replacer must pass `.groups` as the last positional arg when the regex has named groups. Same bridge-shape as RES.1/RES.2.
 
 **Status**: RES-EXT 2 CLOSED. Locale at 11/14 match-indices + 10/36 named-groups + collateral.
+
+## RES-EXT 3 — replacer-callback named-args bridge (2026-05-25)
+
+**Trigger**: RES.4 predicted the String.prototype.replace function-replacer was the same bridge-shape — engine has named-group info, substrate wasn't passing it to user callback per §22.1.3.18 step 11.a.iii.
+
+**Edits** (~15 LOC at `regexp.rs::string_replace_impl`):
+- Cache `rx.named_groups()` outside the match loop.
+- After (match, ...captures, offset, input), push a final `groups` Object arg ONLY when named groups exist (passing undefined would change callback arity; spec says omit).
+- Bug-pattern cleanup (RPTC.7): `abstract_ops::to_string(&r)` → `rt.coerce_to_string(&r)?` for replacer return-value coercion (replacer may return an Object with toString/@@toPrimitive).
+- Bug-pattern cleanup (RPTC.7): same fix in `coerce_regexp` for the v→pattern coercion path.
+
+**Verification**:
+- Probe: `"2026-05-25".replace(/(?<y>\d{4})-(?<m>\d{2})-(?<d>\d{2})/, function(m,y,mo,d,off,s,groups){return "Y="+groups.y})` → `Y=2026` ✓
+- Probe: replacer with no named groups → 7th arg is `undefined` (omitted) ✓
+- Probe: replacer returning `{toString(){return "Y"}}` → `"Y"` (was `[object Object]`) ✓
+- test262 `built-ins/RegExp/named-groups/`: 10 → **13** (+3 from replacer-callback shape)
+- test262 `built-ins/RegExp/match-indices/`: 11 → **11** (no regression)
+- String.prototype.replace+match prev-fails (43 in sample): **16 newly pass** cumulatively across the RES arc + RPTC arc
+- Random 300 prev-PASS: **300/300, 0 regressions**
+- diff-prod: **42/42**
+
+**Findings**
+
+**Finding RES.5 (bridge-audit triangle)**: three replicated bridge-rungs (RES-EXT 1 .groups, RES-EXT 2 .indices+.indices.groups, RES-EXT 3 replacer-callback groups arg) all surface the same engine output (named-group name→index map) into three different consumer surfaces. The map is computed once at compile, surfaced via one CompiledRegex method, and consumed three places. Pattern: cache the cheap computation once; surface broadly. Cumulative LOC across the three rungs: ~130; cumulative test-yield: 24 in cluster + 16 cumulative in collateral surfaces.
+
+**Finding RES.6 (RPTC.7 bug pattern persists across review-passes)**: this rung found TWO more instances of `abstract_ops::to_string(&X)` in regexp.rs that survived the RPTC-EXT 4 sweep (replacer return-value, coerce_regexp pattern arg). Standing recommendation hardens: a periodic grep-sweep is necessary; ad-hoc per-rung audits miss sites. Candidate for tooling: a CI check that flags new `abstract_ops::to_string(&args...)` introductions.
+
+**Status**: RES-EXT 3 CLOSED. Locale at 13/36 named-groups + 11/14 match-indices + replacer-callback support.
