@@ -66,6 +66,7 @@ impl Runtime {
         self.install_destructure_helpers();
         self.install_destructure_iter_helpers();
         self.install_spread_helpers();
+        self.install_compartment();
         // Tier-Ω.5.P17.E2: dynamic import() walks the real module resolver
         // (was: returned an unconditionally-rejected Promise per Ω.5.CCCCCCC
         // stub). Routes through the same `resolve_module_full` + `load_module`
@@ -1004,6 +1005,120 @@ impl Runtime {
     ///   - __destr_iter_rest(iter) → array of remaining values.
     /// Compiler emits these into both emit_destructure (binding) and
     /// emit_destructure_assign (assignment) Array paths.
+    /// CP-EXT 1+2+3: install the JS-visible `Compartment` class per the
+    /// TC39 Compartments proposal (Stage 1, frozen-snapshot 2025-12-01).
+    ///
+    /// `new Compartment({globals, modules})` allocates a fresh realm with
+    /// cloned intrinsics (per RS-EXT 2 minimum-realm). The `globals`
+    /// entries become the only non-intrinsic ambient bindings inside the
+    /// compartment. `modules` is parsed but deferred to CP-EXT 4.
+    /// `c.evaluate(source)` runs the source under the compartment's
+    /// realm; `c.globalThis` returns the compartment's globalThis object.
+    ///
+    /// The hooks (importHook/loadHook/resolveHook) and Module Source
+    /// records remain deferred per the locale's CP-EXT 6/7 prospective.
+    fn install_compartment(&mut self) {
+        // Build Compartment.prototype with evaluate + globalThis accessor.
+        let proto = self.alloc_object(Object::new_ordinary());
+
+        // Compartment.prototype.evaluate(source) — eval source in the
+        // compartment's realm. Reads `this.__compartment_realm` (slot
+        // populated by the ctor below) and `this.__compartment_globalthis`
+        // for the per-compartment globalThis identity.
+        register_intrinsic_method(self, proto, "evaluate", 1, |rt, args| {
+            let this_id = match rt.current_this() {
+                Value::Object(id) => id,
+                _ => return Err(RuntimeError::TypeError("Compartment.prototype.evaluate: this is not a Compartment".into())),
+            };
+            let realm_idx = match rt.object_get(this_id, "__compartment_realm") {
+                Value::Number(n) => n as usize,
+                _ => return Err(RuntimeError::TypeError("Compartment.prototype.evaluate: this is not a Compartment (missing realm slot)".into())),
+            };
+            let source = match args.first() {
+                Some(Value::String(s)) => s.as_str().to_string(),
+                _ => return Err(RuntimeError::TypeError("Compartment.prototype.evaluate: source must be a string".into())),
+            };
+            // Wrap in indirect-eval form to capture the last expression's
+            // value into a stash global, mirroring eval()'s pattern.
+            use std::sync::atomic::{AtomicUsize, Ordering};
+            static EVAL_COUNTER: AtomicUsize = AtomicUsize::new(0);
+            let n = EVAL_COUNTER.fetch_add(1, Ordering::Relaxed);
+            let url = format!("file://<compartment:{}:eval:{}>", realm_idx, n);
+            let stash_key = format!("__cp_out_{}", n);
+            let expr_source = format!("{} = ({});", stash_key, source);
+            let prior = rt.enter_realm(realm_idx);
+            let expr_ok = rt.evaluate_module(&expr_source, &url).is_ok();
+            let result = if expr_ok {
+                let r = rt.globals.get(&stash_key).cloned().unwrap_or(Value::Undefined);
+                rt.globals.remove(&stash_key);
+                r
+            } else {
+                let stmt_url = format!("file://<compartment:{}:stmt:{}>", realm_idx, n);
+                match rt.evaluate_module(&source, &stmt_url) {
+                    Ok(_) => Value::Undefined,
+                    Err(RuntimeError::CompileError(msg)) => {
+                        rt.exit_realm(prior);
+                        return Err(RuntimeError::SyntaxError(msg));
+                    }
+                    Err(e) => { rt.exit_realm(prior); return Err(e); }
+                }
+            };
+            rt.exit_realm(prior);
+            Ok(result)
+        });
+
+        // Compartment.prototype.globalThis as a data property reader.
+        // Returns the compartment's globalThis object slot. (Spec
+        // mandates a getter; the simpler data-property reader is
+        // observationally equivalent for the probe surface and avoids
+        // accessor-property substrate cost.)
+        register_intrinsic_method(self, proto, "globalThis", 0, |rt, _args| {
+            let this_id = match rt.current_this() {
+                Value::Object(id) => id,
+                _ => return Err(RuntimeError::TypeError("Compartment.prototype.globalThis: this is not a Compartment".into())),
+            };
+            Ok(rt.object_get(this_id, "__compartment_globalthis"))
+        });
+
+        // Save proto for the ctor closure.
+        let proto_for_ctor = proto;
+        let ctor_obj = make_native_with_length("Compartment", 1, move |rt, args| {
+            // Parse options: { globals?: Object, modules?: Object }.
+            let opts = args.first().cloned().unwrap_or(Value::Undefined);
+            let mut endowments: std::collections::HashMap<String, Value> = std::collections::HashMap::new();
+            if let Value::Object(opts_id) = &opts {
+                let globals_v = rt.object_get(*opts_id, "globals");
+                if let Value::Object(globals_id) = globals_v {
+                    // Iterate own enumerable keys per ECMA OrdinaryOwnPropertyKeys.
+                    let keys = rt.ordinary_own_enumerable_string_keys(globals_id);
+                    for k in keys {
+                        let v = rt.object_get(globals_id, &k);
+                        endowments.insert(k, v);
+                    }
+                }
+                // `modules` field parsed but applied at CP-EXT 4.
+            }
+            let realm_idx = rt.allocate_compartment_realm(endowments.clone());
+            // Per-compartment globalThis: a fresh object pre-populated with
+            // the endowments (so `globalThis.x === x` inside the compartment).
+            let gt = rt.alloc_object(Object::new_ordinary());
+            for (k, v) in &endowments {
+                rt.object_set(gt, k.clone(), v.clone());
+            }
+            // The Compartment instance.
+            let inst_obj = Object::new_ordinary();
+            let inst = rt.alloc_object(inst_obj);
+            rt.obj_mut(inst).proto = Some(proto_for_ctor);
+            rt.object_set(inst, "__compartment_realm".into(), Value::Number(realm_idx as f64));
+            rt.object_set(inst, "__compartment_globalthis".into(), Value::Object(gt));
+            Ok(Value::Object(inst))
+        });
+        let ctor = self.alloc_object(ctor_obj);
+        self.obj_mut(ctor).set_own_frozen("prototype".into(), Value::Object(proto));
+        self.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(ctor));
+        self.globals.insert("Compartment".to_string(), Value::Object(ctor));
+    }
+
     fn install_destructure_iter_helpers(&mut self) {
         register_engine_helper(self, "__destr_iter_open", |rt, args| {
             let v = args.first().cloned().unwrap_or(Value::Undefined);

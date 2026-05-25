@@ -6372,6 +6372,19 @@ impl Runtime {
         self.alloc_object(cloned)
     }
 
+    /// CP-EXT 1: wrapper that allocates a realm and additionally seeds
+    /// the realm's globals_overrides with caller-supplied endowments.
+    /// Compartment's ctor uses this; the endowments become the only
+    /// non-intrinsic-prototype global bindings visible inside the
+    /// compartment's evaluate calls.
+    pub fn allocate_compartment_realm(&mut self, endowments: std::collections::HashMap<String, Value>) -> usize {
+        let idx = self.allocate_realm();
+        for (k, v) in endowments {
+            self.realms[idx].globals_overrides.insert(k, v);
+        }
+        idx
+    }
+
     /// RS-EXT 2d+2g: allocate a fresh realm with cloned intrinsic
     /// prototypes AND cloned constructors. The constructor clones carry
     /// .prototype pointing at the cloned prototype, so user code's
