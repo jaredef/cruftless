@@ -795,6 +795,36 @@ impl Compiler {
             }
         }
 
+        // VHTB-EXT 1: per ECMA-262 §15.2.10 VarScopedDeclarations, `var`
+        // declarations hoist to the enclosing function/script scope across
+        // every non-function syntactic boundary (try/catch/finally, if,
+        // for, for-in, for-of, while, do-while, switch, block, labelled).
+        // The phase-A.6 walk above only covers TOP-LEVEL Stmt::Variable;
+        // a `var` inside `try { for(...){ var x = ... } } catch{}` was
+        // not pre-allocated, so post-loop reads of `x` (which §13.3.2
+        // requires to be resolvable as Undefined) resolved as
+        // unresolvable. REOU-EXT 1 made that path throw ReferenceError,
+        // which surfaced the bug at 2 test262 fixtures
+        // (for-in/S12.6.4_A{1,2}). Recursive walker fixes it at the
+        // hoisting tier (the right tier per spec).
+        let mut nested_var_names: Vec<(String, rusty_js_ast::VariableKind)> = Vec::new();
+        for item in &m.body {
+            match item {
+                ModuleItem::Statement(s) => collect_hoisted_var_names(s, &mut nested_var_names),
+                ModuleItem::Export(ExportDeclaration::Declaration { decl_stmt: Some(stmt), .. }) =>
+                    collect_hoisted_var_names(stmt.as_ref(), &mut nested_var_names),
+                _ => {}
+            }
+        }
+        for (name, kind) in nested_var_names {
+            if !self.pre_allocated_slots.contains_key(&name) && self.resolve_local(&name).is_none() {
+                let slot = self.alloc_local(LocalDescriptor {
+                    name: name.clone(), kind, depth: 0,
+                });
+                self.pre_allocated_slots.insert(name, slot);
+            }
+        }
+
         // Phase B: walk the body in order. Imports already lowered.
         // Statements compile normally. Exports are recorded for phase C
         // (default-export expressions are lowered inline into a synthetic
@@ -5371,5 +5401,58 @@ fn binding_pattern_to_assignment_expr(pat: &rusty_js_ast::BindingPattern) -> Opt
             }
             Some(Expr::Object { properties, span: obj.span })
         }
+    }
+}
+
+/// VHTB-EXT 1: collect `var` declarators that hoist to the enclosing
+/// function/script scope per ECMA-262 §15.2.10 VarScopedDeclarations.
+/// Recurses through every non-function syntactic boundary. Skips
+/// FunctionDecl + class bodies (those start fresh hoisting scopes) and
+/// `let`/`const` (block-scoped, not hoisted).
+fn collect_hoisted_var_names(stmt: &rusty_js_ast::Stmt, out: &mut Vec<(String, rusty_js_ast::VariableKind)>) {
+    use rusty_js_ast::{Stmt, ForInit, ForBinding, VariableKind};
+    match stmt {
+        Stmt::Variable(v) if matches!(v.kind, VariableKind::Var) => {
+            for d in &v.declarators {
+                for id in d.target.collect_names() {
+                    out.push((id.name.clone(), v.kind));
+                }
+            }
+        }
+        Stmt::Variable(_) => { /* let/const are block-scoped */ }
+        Stmt::Block { body, .. } => { for s in body { collect_hoisted_var_names(s, out); } }
+        Stmt::If { consequent, alternate, .. } => {
+            collect_hoisted_var_names(consequent, out);
+            if let Some(a) = alternate { collect_hoisted_var_names(a, out); }
+        }
+        Stmt::For { init, body, .. } => {
+            if let Some(ForInit::Variable(v)) = init {
+                if matches!(v.kind, VariableKind::Var) {
+                    for d in &v.declarators {
+                        for id in d.target.collect_names() { out.push((id.name.clone(), v.kind)); }
+                    }
+                }
+            }
+            collect_hoisted_var_names(body, out);
+        }
+        Stmt::ForIn { left, body, .. } | Stmt::ForOf { left, body, .. } => {
+            if let ForBinding::Decl { kind: VariableKind::Var, target, .. } = left {
+                for id in target.collect_names() { out.push((id.name.clone(), VariableKind::Var)); }
+            }
+            collect_hoisted_var_names(body, out);
+        }
+        Stmt::While { body, .. } | Stmt::DoWhile { body, .. } => collect_hoisted_var_names(body, out),
+        Stmt::Switch { cases, .. } => {
+            for c in cases { for s in &c.consequent { collect_hoisted_var_names(s, out); } }
+        }
+        Stmt::Try { block, handler, finalizer, .. } => {
+            collect_hoisted_var_names(block, out);
+            if let Some(h) = handler { collect_hoisted_var_names(&h.body, out); }
+            if let Some(f) = finalizer { collect_hoisted_var_names(f, out); }
+        }
+        Stmt::Labelled { body, .. } => collect_hoisted_var_names(body, out),
+        // FunctionDecl + ClassDecl start fresh hoisting scopes; do not recurse.
+        // Other leaf statements have no nested vars.
+        _ => {}
     }
 }

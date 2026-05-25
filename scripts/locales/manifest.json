@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 40,
-    "top_level": 29,
+    "locales": 41,
+    "top_level": 30,
     "nested": 11,
     "warnings": 0
   },
@@ -350,6 +350,15 @@
       "depth": 1,
       "rung_count": 2,
       "status": "**CHAPTER CLOSED at TROI-EXT 1 (1 implementation round; standing rule 13 twelfth corroboration; LARGEST-YIELD substrate fix of the parity arc)**. Execute-parity **60.7% \u2192 69.0%** (+8.3 pp). CRUFT_FAIL count: 39 \u2192 8 (31 files unblocked by ONE 110-LOC post-strip pass). Pred-troi.3 + Pred-troi.4 HELD STRONGLY \u2014 failure-table top tag shifted from `prototype-undefined` (30 files, ESM cycle) to small unrelated singletons. **Finding TROI.2**: the rxjs ESM-cycle issue was diagnosed as a runtime-substrate concern but the actual fix was at the resolver tier (TSR elision). Substantive refinement of Doc 729 \u2014 the resolver-instance pattern is even more powerful than originally framed."
+    },
+    {
+      "coord": "var-hoisting-through-try-block",
+      "tag": "L.var-hoisting-through-try-block",
+      "parent": null,
+      "scope": "var-hoisting-through-try-block",
+      "depth": 1,
+      "rung_count": 2,
+      "status": "**CLOSED at VHTB-EXT 1** (1 implementation round)."
     },
     {
       "coord": "web-crypto",
