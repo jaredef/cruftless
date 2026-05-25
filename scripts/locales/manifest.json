@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 72,
-    "top_level": 61,
+    "locales": 73,
+    "top_level": 62,
     "nested": 11,
     "warnings": 0
   },
@@ -638,6 +638,15 @@
       "depth": 1,
       "rung_count": 2,
       "status": "**CLOSED at VHTB-EXT 1** (1 implementation round)."
+    },
+    {
+      "coord": "weakmap-upsert-methods",
+      "tag": "L.weakmap-upsert-methods",
+      "parent": null,
+      "scope": "weakmap-upsert-methods",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
     },
     {
       "coord": "web-crypto",

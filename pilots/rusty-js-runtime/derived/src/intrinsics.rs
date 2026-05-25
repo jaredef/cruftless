@@ -3514,10 +3514,14 @@ impl Runtime {
             // the basic methods. Registered on Map proto only (WeakMap
             // gets its own variant when needed; WeakMap version handles
             // weak-ref keys differently).
-            if !is_weak_proto {
-                register_intrinsic_method(self, proto, "getOrInsert", 2, move |rt, args| { brand_chk(rt, "getOrInsert")?; rt.map_proto_get_or_insert_via(args) });
-                register_intrinsic_method(self, proto, "getOrInsertComputed", 2, move |rt, args| { brand_chk(rt, "getOrInsertComputed")?; rt.map_proto_get_or_insert_computed_via(args) });
-            }
+            // MGOI / WMGOI: TC39 upsert proposal — getOrInsert + getOrInsertComputed
+            // exist on both Map.prototype and WeakMap.prototype. The underlying
+            // impl (map_proto_get_or_insert_via) works on the shared __map_data
+            // storage regardless of __is_weakmap flag; brand_chk in the install
+            // loop is per-proto so the WeakMap installation rejects Map receivers
+            // and vice versa.
+            register_intrinsic_method(self, proto, "getOrInsert", 2, move |rt, args| { brand_chk(rt, "getOrInsert")?; rt.map_proto_get_or_insert_via(args) });
+            register_intrinsic_method(self, proto, "getOrInsertComputed", 2, move |rt, args| { brand_chk(rt, "getOrInsertComputed")?; rt.map_proto_get_or_insert_computed_via(args) });
             // ECMA-262 sec 24.1.3.10 get Map.prototype.size: accessor on
             // the prototype, not a data property on instances. Pre-fix
             // cruftless stored a per-instance data 'size' that shadowed
