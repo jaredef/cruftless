@@ -5502,7 +5502,7 @@ fn binding_pattern_to_assignment_expr(pat: &rusty_js_ast::BindingPattern) -> Opt
                 let rest_expr = binding_pattern_to_assignment_expr(rest_pat)?;
                 elements.push(ArrayElement::Spread { expr: rest_expr, span: arr.span });
             }
-            Some(Expr::Array { elements, span: arr.span })
+            Some(Expr::Array { elements, trailing_comma_after_spread: false, span: arr.span })
         }
         BindingPattern::Object(obj) => {
             let mut properties: Vec<ObjectProperty> = Vec::with_capacity(obj.properties.len());

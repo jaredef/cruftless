@@ -25,7 +25,11 @@ fn expr_to_binding_pattern(e: Expr) -> Option<BindingPattern> {
         Expr::Identifier { name, span } => {
             Some(BindingPattern::Identifier(BindingIdentifier { name, span }))
         }
-        Expr::Array { elements, span } => {
+        Expr::Array { elements, trailing_comma_after_spread, span } => {
+            // ARTC-EXT 1: §13.3.3 — AssignmentRestElement is the last
+            // element of an AssignmentElementList and is not followed by
+            // a comma. The parser preserved this flag from source text.
+            if trailing_comma_after_spread { return None; }
             let mut out: Vec<Option<BindingElement>> = Vec::with_capacity(elements.len());
             let mut rest: Option<Box<BindingPattern>> = None;
             let n = elements.len();

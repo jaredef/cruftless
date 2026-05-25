@@ -681,14 +681,20 @@ impl<'src> Parser<'src> {
         let start = self.lookahead_span().start;
         self.expect_punct(Punct::LBracket)?;
         let mut elements = Vec::new();
+        // ARTC-EXT 1: track whether the last pushed element was a Spread
+        // whose comma has been bumped; if RBracket follows, the source
+        // had `...x ,]` — legal in ArrayLiteral, illegal in AssignmentPattern.
+        let mut trailing_comma_after_spread = false;
         while !matches!(self.current_kind(), TokenKind::Punct(Punct::RBracket)) {
             if matches!(self.current_kind(), TokenKind::Punct(Punct::Comma)) {
                 let span = self.lookahead_span();
                 elements.push(ArrayElement::Elision { span });
                 self.bump()?;
+                trailing_comma_after_spread = false;
                 continue;
             }
-            if matches!(self.current_kind(), TokenKind::Punct(Punct::Spread)) {
+            let was_spread = matches!(self.current_kind(), TokenKind::Punct(Punct::Spread));
+            if was_spread {
                 let sp_start = self.lookahead_span().start;
                 self.bump()?;
                 let expr = self.parse_assignment_expression()?;
@@ -699,11 +705,15 @@ impl<'src> Parser<'src> {
             }
             if matches!(self.current_kind(), TokenKind::Punct(Punct::Comma)) {
                 self.bump()?;
-            } else { break; }
+                trailing_comma_after_spread = was_spread;
+            } else {
+                trailing_comma_after_spread = false;
+                break;
+            }
         }
         self.expect_punct(Punct::RBracket)?;
         let end = self.last_span_end();
-        Ok(Expr::Array { elements, span: Span::new(start, end) })
+        Ok(Expr::Array { elements, trailing_comma_after_spread, span: Span::new(start, end) })
     }
 
     fn parse_object_literal(&mut self) -> Result<Expr, ParseError> {
@@ -954,6 +964,7 @@ impl<'src> Parser<'src> {
                 value: (**q).clone(),
                 span: Span::new(start, end),
             })).collect(),
+            trailing_comma_after_spread: false,
             span: Span::new(start, end),
         };
         let mut arguments: Vec<Argument> = vec![Argument::Expr(strings_arr)];

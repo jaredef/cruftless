@@ -1,10 +1,10 @@
 {
   "generated_by": "apparatus/locales/discover.sh",
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
-  "locale_root": "/home/jaredef/Developer/cruftless/pilots",
+  "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 93,
-    "top_level": 82,
+    "locales": 94,
+    "top_level": 83,
     "nested": 11,
     "warnings": 0
   },
@@ -41,6 +41,15 @@
       "tag": "L.array-literal-elision-length",
       "parent": null,
       "scope": "array-literal-elision-length",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
+    },
+    {
+      "coord": "array-pattern-rest-trailing-comma",
+      "tag": "L.array-pattern-rest-trailing-comma",
+      "parent": null,
+      "scope": "array-pattern-rest-trailing-comma",
       "depth": 1,
       "rung_count": 1,
       "status": null

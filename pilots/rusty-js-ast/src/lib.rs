@@ -38,7 +38,7 @@ pub enum Expr {
     This { span: Span },
     Super { span: Span },
     MetaProperty { meta: String, property: String, span: Span },
-    Array { elements: Vec<ArrayElement>, span: Span },
+    Array { elements: Vec<ArrayElement>, trailing_comma_after_spread: bool, span: Span },
     Object { properties: Vec<ObjectProperty>, span: Span },
     Parenthesized { expr: Box<Expr>, span: Span },
     Member { object: Box<Expr>, property: Box<MemberProperty>, optional: bool, span: Span },
