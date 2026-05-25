@@ -871,6 +871,15 @@ impl<'src> Parser<'src> {
                     self.bump()?;
                     if self.is_ident("in") || self.is_contextual_keyword("of") {
                         let is_of = self.is_contextual_keyword("of");
+                        // FAOF-EXT 1: §14.7.5 grammar lookahead — the token
+                        // sequence `async of` is forbidden as a for-of head
+                        // (disambiguates from `for await … of …`).
+                        if is_of && n == "async" {
+                            return Err(ParseError {
+                                span: id_span,
+                                message: "`async` cannot be the for-of LHS (grammar lookahead restriction)".into(),
+                            });
+                        }
                         self.bump()?;
                         let right = if is_of { self.parse_assignment_expression()? } else { self.parse_expression()? };
                         self.expect_punct(Punct::RParen)?;
