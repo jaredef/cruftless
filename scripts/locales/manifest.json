@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 64,
-    "top_level": 53,
+    "locales": 67,
+    "top_level": 56,
     "nested": 11,
     "warnings": 0
   },
@@ -222,6 +222,15 @@
       "parent": null,
       "scope": "regex-engine-substrate",
       "depth": 1,
+      "rung_count": 3,
+      "status": null
+    },
+    {
+      "coord": "regexp-instance-accessor-shadow",
+      "tag": "L.regexp-instance-accessor-shadow",
+      "parent": null,
+      "scope": "regexp-instance-accessor-shadow",
+      "depth": 1,
       "rung_count": 1,
       "status": null
     },
@@ -232,6 +241,15 @@
       "scope": "regexp-proto-test-coercion",
       "depth": 1,
       "rung_count": 4,
+      "status": null
+    },
+    {
+      "coord": "regexp-split-captures-bridge",
+      "tag": "L.regexp-split-captures-bridge",
+      "parent": null,
+      "scope": "regexp-split-captures-bridge",
+      "depth": 1,
+      "rung_count": 1,
       "status": null
     },
     {
@@ -440,6 +458,15 @@
       "depth": 1,
       "rung_count": 3,
       "status": "**CLOSED at SMPT-EXT 1** (partial \u2014 only the function-body-depth axis; strict-mode + generator-context axes deferred)."
+    },
+    {
+      "coord": "string-matchall-global-required",
+      "tag": "L.string-matchall-global-required",
+      "parent": null,
+      "scope": "string-matchall-global-required",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
     },
     {
       "coord": "string-proto-method-length-and-split-limit",

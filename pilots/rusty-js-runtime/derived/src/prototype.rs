@@ -505,8 +505,16 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
         let regex_v = args.first().cloned().unwrap_or(Value::Undefined);
         let regex_id = match &regex_v {
             Value::Object(id) => *id,
-            _ => return Err(RuntimeError::TypeError("matchAll requires a regex".into())),
+            _ => return Err(crate::interp::RuntimeError::TypeError("matchAll requires a regex".into())),
         };
+        // SMGR-EXT 1: ECMA-262 §22.1.3.13 step 4 — TypeError when first
+        // argument is a RegExp without the global (`/g`) flag.
+        if let crate::value::InternalKind::RegExp(re) = &rt.obj(regex_id).internal_kind {
+            if !re.flags.contains('g') {
+                return Err(crate::interp::RuntimeError::TypeError(
+                    "String.prototype.matchAll called with a non-global RegExp argument".into()));
+            }
+        }
         let out = rt.alloc_object(Object::new_array());
         // Iterate via repeated regex.exec, advancing lastIndex.
         rt.object_set(regex_id, "lastIndex".into(), Value::Number(0.0));

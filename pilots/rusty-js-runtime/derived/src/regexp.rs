@@ -127,18 +127,20 @@ pub fn new_regexp(rt: &mut Runtime, pattern: &str, flags: &str) -> Result<Object
         ..Default::default()
     };
     let id = rt.alloc_object(obj);
-    // Plain own-properties for the accessor surface — v1 stand-in for
-    // real getter/setter accessor descriptors (deferred).
-    rt.object_set(id, "source".into(), Value::String(Rc::new(pattern.to_string())));
-    rt.object_set(id, "flags".into(), Value::String(Rc::new(flags.to_string())));
-    rt.object_set(id, "global".into(),     Value::Boolean(flags.contains('g')));
-    rt.object_set(id, "ignoreCase".into(), Value::Boolean(flags.contains('i')));
-    rt.object_set(id, "multiline".into(),  Value::Boolean(flags.contains('m')));
-    rt.object_set(id, "sticky".into(),     Value::Boolean(flags.contains('y')));
-    rt.object_set(id, "unicode".into(),    Value::Boolean(flags.contains('u')));
-    rt.object_set(id, "dotAll".into(),     Value::Boolean(flags.contains('s')));
-    rt.object_set(id, "hasIndices".into(), Value::Boolean(flags.contains('d')));
-    rt.object_set(id, "lastIndex".into(),  Value::Number(0.0));
+    // RIAS-EXT 1: pre-fix, new_regexp installed source/flags/global/...
+    // as own data properties on each instance, shadowing the prototype
+    // accessor getters (§22.2.6.{2..10}). The prototype accessors now
+    // read directly from InternalKind::RegExp(internals), so instances
+    // need no own data shadows. Only lastIndex remains as an own data
+    // property (§22.2.5.1) with the spec descriptor {w:t, e:f, c:f}.
+    rt.obj_mut(id).dict_mut().insert(
+        crate::value::PropertyKey::String("lastIndex".to_string()),
+        PropertyDescriptor {
+            value: Value::Number(0.0),
+            writable: true, enumerable: false, configurable: false,
+            getter: None, setter: None,
+        },
+    );
     Ok(id)
 }
 
@@ -958,8 +960,13 @@ fn install_string_regex_methods(rt: &mut Runtime) {
             rt.object_set(out, "length".into(), Value::Number(0.0));
             return Ok(Value::Object(out));
         }
-        let parts: Vec<String> = match args.first() {
-            None | Some(Value::Undefined) => vec![s.clone()],
+        // RSCB-EXT 1: regex separator with captures must interleave captured
+        // strings (or undefined for non-participating) between chunks per
+        // ECMA-262 §22.2.5.13 RegExp.prototype[@@split]. Hand the
+        // (chunk-or-capture) sequence into the result via Value so undefined
+        // captures survive (Vec<String> would force lossy "undefined" text).
+        let parts: Vec<Value> = match args.first() {
+            None | Some(Value::Undefined) => vec![Value::String(Rc::new(s.clone()))],
             Some(Value::Object(id)) if matches!(rt.obj(*id).internal_kind, InternalKind::RegExp(_)) => {
                 let rx = match &rt.obj(*id).internal_kind {
                     InternalKind::RegExp(r) => r.compiled.clone(),
@@ -970,21 +977,56 @@ fn install_string_regex_methods(rt: &mut Runtime) {
                     None => return Err(RuntimeError::TypeError(
                         "String.prototype.split: regex pattern unsupported".into())),
                 };
-                rx.split_str(&s)
+                let mut out: Vec<Value> = Vec::new();
+                let mut cursor: usize = 0;
+                loop {
+                    if cursor > s.len() { break; }
+                    let caps = rx.captures_at(&s, cursor);
+                    match caps {
+                        None => {
+                            out.push(Value::String(Rc::new(s[cursor..].to_string())));
+                            break;
+                        }
+                        Some((mstart, mend, groups)) => {
+                            if mend == cursor {
+                                // Zero-width / empty match at cursor: advance
+                                // one char to avoid infinite loop; spec
+                                // §22.2.5.13 AdvanceStringIndex.
+                                if cursor >= s.len() {
+                                    out.push(Value::String(Rc::new(s[cursor..].to_string())));
+                                    break;
+                                }
+                                let ch_len = s[cursor..].chars().next().map(|c| c.len_utf8()).unwrap_or(1);
+                                cursor += ch_len;
+                                continue;
+                            }
+                            out.push(Value::String(Rc::new(s[cursor..mstart].to_string())));
+                            // Capture groups (skip [0] = whole match).
+                            for g in groups.iter().skip(1) {
+                                out.push(match g {
+                                    Some(s2) => Value::String(Rc::new(s2.clone())),
+                                    None => Value::Undefined,
+                                });
+                            }
+                            cursor = mend;
+                        }
+                    }
+                }
+                out
             }
             Some(sep_v) => {
                 let sep = rt.to_string_strict(sep_v)?;
                 if sep.is_empty() {
-                    s.chars().map(|c| c.to_string()).collect()
+                    s.chars().map(|c| Value::String(Rc::new(c.to_string()))).collect()
                 } else {
-                    s.split(&sep).map(|p| p.to_string()).collect()
+                    s.split(&sep).map(|p| Value::String(Rc::new(p.to_string()))).collect()
                 }
             }
         };
-        let truncated: Vec<String> = parts.into_iter().take(limit).collect();
+        let truncated: Vec<Value> = parts.into_iter().take(limit).collect();
         let out = rt.alloc_object(Object::new_array());
-        for (i, p) in truncated.iter().enumerate() {
-            rt.object_set(out, i.to_string(), Value::String(Rc::new(p.clone())));
+        for (i, v) in truncated.iter().enumerate() {
+            rt.object_set(out, i.to_string(), v.clone());
         }
         rt.object_set(out, "length".into(), Value::Number(truncated.len() as f64));
         Ok(Value::Object(out))
@@ -1245,20 +1287,28 @@ fn install_regexp_proto_accessor(rt: &mut Runtime, host: ObjectRef, name: &'stat
                 _ => return Err(RuntimeError::TypeError(format!(
                     "get {}: this is not an Object", name))),
             };
-            // Brand-check via [[RegExpData]] internal slot.
-            if !matches!(rt.obj(this).internal_kind, InternalKind::RegExp(_)) {
-                // §22.2.6.{...}: when called on RegExp.prototype directly,
-                // some accessors return a default and others throw. Spec
-                // chose throw for source/flags; for the boolean flags it
-                // returns undefined when called on %RegExp.prototype%
-                // specifically. v1 throws uniformly — test262 mostly
-                // probes the accessor's existence, not its prototype-only
-                // invocation behavior.
-                return Err(RuntimeError::TypeError(format!(
-                    "RegExp.prototype.{}: this is not a RegExp", name)));
-            }
-            // Read the per-instance data property (stored at init time).
-            Ok(rt.object_get(this, name))
+            // Brand-check via [[RegExpData]] internal slot per §22.2.6.{2..10}.
+            let re = match &rt.obj(this).internal_kind {
+                InternalKind::RegExp(r) => r,
+                _ => return Err(RuntimeError::TypeError(format!(
+                    "RegExp.prototype.{}: this is not a RegExp", name))),
+            };
+            // RIAS-EXT 1: read directly from InternalKind::RegExp(internals)
+            // rather than rt.object_get(this, name). The latter would now
+            // find the prototype accessor itself (post-shadow-removal) and
+            // either infinite-recurse or return undefined.
+            Ok(match name {
+                "source" => Value::String(re.source.clone()),
+                "flags"  => Value::String(re.flags.clone()),
+                "global"     => Value::Boolean(re.flags.contains('g')),
+                "ignoreCase" => Value::Boolean(re.flags.contains('i')),
+                "multiline"  => Value::Boolean(re.flags.contains('m')),
+                "sticky"     => Value::Boolean(re.flags.contains('y')),
+                "unicode"    => Value::Boolean(re.flags.contains('u')),
+                "dotAll"     => Value::Boolean(re.flags.contains('s')),
+                "hasIndices" => Value::Boolean(re.flags.contains('d')),
+                _ => Value::Undefined,
+            })
         });
     let getter_id = rt.alloc_object(getter_obj);
     rt.obj_mut(host).dict_mut().insert(name.into(), PropertyDescriptor {

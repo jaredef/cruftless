@@ -5849,14 +5849,14 @@ fn structured_clone_walk(
                 seen.insert(oid.0, dst_id);
                 return Ok(Value::Object(dst_id));
             }
-            // RegExp: clone via source/flags if recognizable.
-            if !matches!(rt.object_get(*oid, "source"), Value::Undefined)
-                && !matches!(rt.object_get(*oid, "flags"), Value::Undefined)
-                && matches!(rt.obj(*oid).proto, Some(_))
-            {
-                // Defer to a fresh RegExp construction via the global ctor.
-                let src = rt.object_get(*oid, "source");
-                let flags = rt.object_get(*oid, "flags");
+            // RegExp: clone via source/flags. RIAS-EXT 1 follow-up — detect
+            // via internal_kind, not by source/flags property probes. Post-
+            // shadow-removal, source/flags live behind prototype accessors;
+            // probing returns Undefined and fails the branch. Read from
+            // InternalKind::RegExp directly.
+            if let InternalKind::RegExp(re) = &rt.obj(*oid).internal_kind {
+                let src = Value::String(re.source.clone());
+                let flags = Value::String(re.flags.clone());
                 if let Some(Value::Object(ctor)) = rt.globals.get("RegExp").cloned() {
                     let prev = rt.pending_new_target.take();
                     rt.pending_new_target = Some(Value::Object(ctor));
