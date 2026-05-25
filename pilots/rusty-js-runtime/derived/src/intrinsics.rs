@@ -805,12 +805,52 @@ impl Runtime {
                 let arr = rt.alloc_object(crate::value::Object::new_array());
                 return Ok(Value::Object(arr));
             }
-            // Delegate to the IR-lowered Object.keys path (generated::
-            // object_keys) so the enumeration order matches the engine's
-            // canonical own-keys semantics (§7.3.22). Avoids duplicating
-            // the enumeration logic and keeps Object.keys + for-in in
-            // lock-step.
-            crate::generated::object_keys(rt, Value::Undefined, &[v])
+            // FIPC-EXT 1: ECMA-262 §14.7.5.6 EnumerateObjectProperties —
+            // walk the prototype chain. At each level, yield own enumerable
+            // string keys (in §7.3.22 canonical order). Shadowing: a name
+            // first seen as an own property at a closer level (enumerable or
+            // not) is excluded from later levels.
+            let id = match &v {
+                Value::Object(id) => *id,
+                _ => match rt.to_object(&v)? {
+                    Value::Object(id) => id,
+                    _ => {
+                        let arr = rt.alloc_object(crate::value::Object::new_array());
+                        return Ok(Value::Object(arr));
+                    }
+                },
+            };
+            let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+            let mut visible: Vec<String> = Vec::new();
+            let mut cur = Some(id);
+            while let Some(c) = cur {
+                let own_enum = rt.ordinary_own_enumerable_string_keys(c);
+                for k in &own_enum {
+                    if seen.insert(k.clone()) {
+                        visible.push(k.clone());
+                    }
+                }
+                // Shadow record: add own non-enumerable (and own enumerable)
+                // names to seen so deeper-proto entries with same name are
+                // skipped. own_enum is already added above; add non-enumerable
+                // own names from the full property bag.
+                let o = rt.obj(c);
+                let extra_keys: Vec<String> = o.properties.iter()
+                    .filter(|(k, d)| !d.enumerable
+                                     && k.is_string()
+                                     && k.as_str() != "__primitive__"
+                                     && !k.as_str().starts_with("@@"))
+                    .map(|(k, _)| k.as_str().to_string())
+                    .collect();
+                for k in extra_keys { seen.insert(k); }
+                cur = o.proto;
+            }
+            let arr = rt.alloc_object(crate::value::Object::new_array());
+            for (i, k) in visible.iter().enumerate() {
+                rt.object_set(arr, i.to_string(), Value::String(std::rc::Rc::new(k.clone())));
+            }
+            rt.object_set(arr, "length".into(), Value::Number(visible.len() as f64));
+            Ok(Value::Object(arr))
         });
         register_engine_helper(self, "__yield_push__", |rt, args| {
             if let Some(&arr) = rt.gen_yields_stack.last() {
