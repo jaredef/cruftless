@@ -435,13 +435,34 @@ impl Runtime {
         let entries: Vec<(String, Value)> = self.globals.iter()
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
+        // GBNE-EXT 1: ECMA-262 §17 baseline — standard built-in properties
+        // on the global object are {w:t, e:f, c:t}. Use dict_mut().insert
+        // with explicit PropertyDescriptor instead of self.object_set
+        // (which silently installs enumerable). User-installed globals
+        // via Op::SetProperty continue to land enumerable per default
+        // CreateDataPropertyOrThrow.
         for (k, v) in entries {
-            self.object_set(gt, k, v);
+            self.obj_mut(gt).dict_mut().insert(
+                crate::value::PropertyKey::String(k),
+                crate::value::PropertyDescriptor {
+                    value: v,
+                    writable: true, enumerable: false, configurable: true,
+                    getter: None, setter: None,
+                },
+            );
         }
-        self.object_set(gt, "globalThis".into(), Value::Object(gt));
-        // Tier-Ω.5.bbbb: `global` is a Node-side alias for globalThis;
-        // many CJS packages do `global.foo = ...` or `global.process`.
-        self.object_set(gt, "global".into(), Value::Object(gt));
+        // globalThis self-reference: §19.1.1 — {w:t, e:f, c:t}.
+        // `global` (Node alias): same convention.
+        for k in &["globalThis", "global"] {
+            self.obj_mut(gt).dict_mut().insert(
+                crate::value::PropertyKey::String((*k).to_string()),
+                crate::value::PropertyDescriptor {
+                    value: Value::Object(gt),
+                    writable: true, enumerable: false, configurable: true,
+                    getter: None, setter: None,
+                },
+            );
+        }
         self.globals.insert("globalThis".into(), Value::Object(gt));
         self.globals.insert("global".into(), Value::Object(gt));
         // Tier-Ω.5.bbbb: Intl namespace with stub constructors. Real

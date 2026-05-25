@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 68,
-    "top_level": 57,
+    "locales": 69,
+    "top_level": 58,
     "nested": 11,
     "warnings": 0
   },
@@ -107,6 +107,15 @@
       "depth": 1,
       "rung_count": 2,
       "status": "**CLOSED at FODAS-EXT 1** (1 implementation round; standing rule 13 prospective application; Doc 740 multi-tier closure)."
+    },
+    {
+      "coord": "global-builtins-non-enumerable",
+      "tag": "L.global-builtins-non-enumerable",
+      "parent": null,
+      "scope": "global-builtins-non-enumerable",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
     },
     {
       "coord": "interp-getprop-ic",
