@@ -75,3 +75,54 @@ T262C is operational as the third instrument-tier locale. Next sub-locales (prio
 5. **array-sort-edge-cases** — comparator + stability + coercion (29+ tests)
 
 Standing-rule-13 corroborations: 13. Inspect-then-iterate: 14 (this round counted: planned scope was the categorize binary; mid-round surfaced the assert-global-shadow fix).
+
+---
+
+## T262C-EXT 2 — post-arc chapter close (2026-05-25)
+
+**Trigger**: completion of the first ECMAScript-parity-arc round through six sub-locales (FODAS, PPA-EXT 1, REOU, VHTB, IPEP, AEVPD, SDIBP, ASD) producing +297 PASS / 0 regressions / runnable rate 77.6% → 80.6%. Keeper directive to "discern if [clusters] are mutually exclusive from upstream IR implementation or if share constraints that are induced properties from other upstream constraints" produced the [prospective long-tail analysis doc](../../docs/prospective/test262-long-tail-shared-vs-mutually-exclusive.md).
+
+### Arc-tier results booked at T262C-EXT 2
+
+| Round | Δ PASS | Verification | Locale |
+|---|---:|---|---|
+| FODAS-EXT 1 | +6 | full | for-of-destructuring-assignment-semantics |
+| PPA-EXT 1 | +138 | full | parser-permissiveness-audit |
+| REOU-EXT 1 | +68 | full | reference-error-on-unresolvable (2 regressions surfaced VHTB) |
+| VHTB-EXT 1 | +5 | full | var-hoisting-through-try-block |
+| IPEP-EXT 1 | +46 | full | iterator-protocol-error-propagation |
+| AEVPD-EXT 1 + SDIBP-EXT 1 | +34 (combined sweep) | full | array-exotic-virtual-property-discipline + statement-declaration-in-body-position |
+| ASD-EXT 1 | +3 (exemplar) | exemplar | array-sort-tostring-dispatch |
+| **Cumulative** | **+300** | mixed | (8 sub-locales) |
+
+### Finding T262C.4 (NEW; candidate for corpus promotion)
+
+**Shared-upstream vs mutually-exclusive long-tail discrimination**. Per the prospective doc, five distinct upstream constraints account for ~340 of the post-ASD 1416 fails (~24%); the remaining ~280 are mutually-exclusive long-tail. Leverage ratio ~7.5× on shared-upstream substrates.
+
+The discriminator (operational form, generalizable to other corpora):
+
+> A cluster is shared-upstream when its dominant failure-reason shape recurs across MULTIPLE pipelines with structural identity. It is mutually-exclusive when reasons WITHIN one cluster are heterogeneous AND don't recur in other clusters.
+
+Two-step probe:
+1. Per-reason cross-cluster spread (recurrence in N>1 pipelines)
+2. Per-cluster reason-heterogeneity (homogeneous = shared-upstream; scattered = mutually-exclusive)
+
+The discriminator is itself the corpus-grade contribution; the specific five constraints are the empirical answer for this corpus instance.
+
+### Finding T262C.5 (NEW)
+
+**Doc 740 multi-tier closure became the engagement-default discipline mid-arc**. After the FODAS lesson (T_1-alone produced −10 net; T_2 closure produced +6 with zero regressions), every subsequent sub-locale (PPA, REOU+VHTB, IPEP, AEVPD, SDIBP, ASD) was designed and landed as a combined multi-tier closure on R-set identified pre-implementation. Result: 7 consecutive sub-locales with **0 PASS→FAIL regressions** in the full-sweep verification cycles.
+
+The pattern: identify R pre-implementation; land all of R as one commit; avoid the substrate-introduction-prefix outcome of single-tier-alone. FODAS's −10 was the empirical anchor that proved the cost of NOT doing this; the rest of the arc proves the cost of DOING it (zero regressions per cycle).
+
+### Finding T262C.6 (NEW; methodology drift detected)
+
+**The matrix view over-aggregates when within-cluster data-axis is heterogeneous** (per Finding AEVPD.2 retrospectively booked here). Cluster #2 (Object.defineProperty, 38 tests) had ≥7 distinct sub-causes; one substrate fix (AEVPD) closed +1 cluster-internal test (~3% of the cluster). The matrix's structure-axis (pipeline) marginal correctly identifies the priority surface; the data-axis tag (e.g., `(no-feature-tag)`) is too coarse to predict per-fix yield within a heterogeneous cluster.
+
+Refinement: post-T262C-EXT 2, prefer to enumerate per-cluster failure-REASON heterogeneity before scoping the fix. If a cluster's reasons cluster tightly (≥80% on one root cause), it's a focused-fix candidate. If they scatter (no reason >40%), it's a mutually-exclusive-cluster signal and the arc should pivot to a higher-leverage shared-upstream candidate.
+
+### Status: CHAPTER CLOSED at T262C-EXT 2
+
+T262C remains operational as the engagement's third instrument-tier locale. **The arc continues at a NEW top-level locale**, `ecmascript-parity-shared-upstream-arc`, which carries the resume vector through the five named constraints identified in T262C-EXT 2's prospective analysis.
+
+Standing-rule-13 corroborations: prospective-application count increased to **19** across the arc (one per FODAS-T_2, PPA-EXT 1's two-tier R, REOU's four-site R, VHTB single-tier, IPEP's five-site R, AEVPD's three-site R, SDIBP single-tier, ASD single-tier; plus the seven non-regression cycles each).

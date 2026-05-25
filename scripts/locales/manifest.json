@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 45,
-    "top_level": 34,
+    "locales": 46,
+    "top_level": 35,
     "nested": 11,
     "warnings": 0
   },
@@ -44,6 +44,15 @@
       "depth": 1,
       "rung_count": 21,
       "status": "**TELOS A HIT + TELOS B (42/42)**. Forty-two fixtures (mix of L and F categories), all PASS. Three Rung-19/20/21 substrate clusters landed in one session: AbortController + AbortSignal full surface; ES2025 Iterator Helpers + generator-proto wiring; Map.groupBy + Promise.try + Error.isError. Thirty+ substrate fixes landed via diff-prod since founding. Top-500 measured at 77.4% raw / 82.1% incl-agreed after cumulative fix-set. Coverage now spans JSON, Buffer, strings, Map/Set, async/Promise/iteration, error-throws, RegExp (incl. advanced surface), generators, Proxy, structuredClone, BigInt, Reflect, Symbol, Object/Array/Math statics, node:fs/crypto/stream/events/path, AbortController + AbortSignal, ES2025 Iterator Helpers, ES2023-26 method batch."
+    },
+    {
+      "coord": "ecmascript-parity-shared-upstream-arc",
+      "tag": "L.ecmascript-parity-shared-upstream-arc",
+      "parent": null,
+      "scope": "ecmascript-parity-shared-upstream-arc",
+      "depth": 1,
+      "rung_count": 1,
+      "status": "**WORKSTREAM FOUNDED (EPSUA-EXT 0)**. Successor arc to T262C's first ECMAScript-parity round. Carries the resume vector through the five shared-upstream substrates identified at T262C-EXT 2's prospective analysis. Each sub-locale closes one of the five named constraints."
     },
     {
       "coord": "for-of-destructuring-assignment-semantics",
@@ -294,7 +303,7 @@
       "parent": null,
       "scope": "test262-categorize",
       "depth": 1,
-      "rung_count": 2,
+      "rung_count": 3,
       "status": "**CHAPTER CLOSED at T262C-EXT 1 (1 implementation round; standing rule 13 thirteenth corroboration)**. Categorize apparatus operational; baseline 77.6% (5576/7182). Top-15 cells = 25.5% (Pred-t262c.2 FALSIFIED on cross-product but top-10 pipelines alone = ~50% via the structure-axis marginal). Mid-round: surfaced + fixed an assert-global-shadow bug in cruftless that was masking ~511 real substrate gaps; fix unmasked them without changing the headline. **5 prioritized substrate sub-locales queued** per the matrix (strict-mode-destructuring-refs, parser-permissiveness, iterator-protocol-error-propagation, Object.defineProperty edge cases, Array.sort edge cases)."
     },
     {
