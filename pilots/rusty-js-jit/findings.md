@@ -988,3 +988,127 @@ Total: **29 findings** (6 original + 23 new across 11 addenda); **16 standing ru
 - IX.7 (depth-stack two-coordinate-matching) — generic finding applicable beyond TS; corpus-tier candidate as a substrate-discipline corpus doc.
 - IX.8 (long-tail-singletons-are-full-size) — adds to Doc 541 Appendix E's scale-invariance claim; could be added there as a supplementary observation.
 - IX.9 (parse-execute-separability) — already implicit in Doc 742 §III; could amend Doc 742 with the empirical 100% milestone data.
+
+---
+
+## Addendum XII — Shared-upstream arc + realm/compartment substrate (2026-05-25)
+
+Books the engagement-tier findings from the 2026-05-25 shared-upstream cluster arc (T262C-EXT 2 close + EPSUA + ASCD/ACDPD/RPTP/SPBC/MPBC + RS/CP + SPTW/NACR). The arc closed approximately a dozen sub-locales, landed the realm + Compartment primitive substrate, and produced four new standing rules.
+
+### Finding T262C.4 (shared-upstream vs mutually-exclusive cluster discriminator)
+
+**Source**: T262C matrix decomposition of the post-arc residual 1416 fails per `docs/prospective/test262-long-tail-shared-vs-mutually-exclusive.md`.
+
+A cluster is shared-upstream when its dominant failure-reason shape recurs across MULTIPLE pipelines with structural identity. It is mutually-exclusive when reasons WITHIN one cluster are heterogeneous AND don't recur in other clusters. The discriminator operates as a two-step probe: per-reason cross-cluster spread; per-cluster reason-heterogeneity.
+
+Five shared-upstream constraints identified for the post-ASD T262C residual; ~340 of 1416 fails (~24%) trace to those five; leverage ratio ~7.5× vs the mutually-exclusive long-tail's ~9 PASS/fix.
+
+Promotion to corpus: candidate.
+
+### Finding T262C.5 (Doc 740 multi-tier closure as engagement default)
+
+**Source**: 7 consecutive sub-locales (FODAS through SPBC) landed combined-multi-tier per Doc 740 §IV.2 with zero PASS→FAIL regressions per full-sweep verification cycle.
+
+After the FODAS lesson (T_1-alone produced −10 net; T_2 closure produced +6 with zero regressions), every subsequent sub-locale was designed and landed as a combined multi-tier closure on R-set identified pre-implementation. Result: 7 consecutive sub-locales with **0 PASS→FAIL regressions** in their full-sweep verification cycles. The pattern (identify R pre-implementation, land all of R as one commit, avoid the substrate-introduction-prefix outcome) is now the engagement's default discipline.
+
+### Finding T262C.6 (matrix view over-aggregates when within-cluster data-axis is heterogeneous)
+
+**Source**: AEVPD-EXT 1's +1 cluster-internal gain on Cluster #2's 38 fixtures (Object.defineProperty; ≥7 distinct sub-causes per inspection).
+
+The matrix's structure-axis (pipeline) marginal correctly identifies priority surface; the data-axis tag (`(no-feature-tag)`) is too coarse to predict per-fix yield within a heterogeneous cluster. Refinement: enumerate per-cluster failure-REASON heterogeneity before scoping the fix. If reasons cluster tightly (≥80% on one root cause), it's a focused-fix candidate. If they scatter (no reason >40%), it's a mutually-exclusive-cluster signal — pivot to a higher-leverage shared-upstream candidate.
+
+### Finding EPSUA.6 (T262C.4 refinement — reason-text recurrence necessary but not sufficient)
+
+**Source**: EPSUA-EXT 4 chapter-close analysis of constraint #1 (host-method prologue discipline).
+
+A failure-reason text shape is necessary but NOT SUFFICIENT evidence of shared-upstream. The reason TEXT may recur across pipelines while the *upstream causes* remain distinct. The 226 "Expected a TypeError, none thrown" cluster demonstrates: same wording, ~6 distinct upstream causes (Symbol-coerce / ArraySpeciesCreate / revoked-proxy / non-extensible / spreadable-broken-length / heterogeneous tail). The discriminator must verify upstream cause is common — not just reason wording.
+
+This refines T262C.4's discriminator: reason-text recurrence is the cheap first-cut probe; upstream-cause verification is the load-bearing test.
+
+### Finding EPSUA.7 (in-scope-sub-cluster projection vs cluster projection)
+
+**Source**: EPSUA arc disposition: 21 actual / 54 in-scope sub-cluster projections (39%); 21 actual / 163 cluster projections (13%).
+
+Cluster-projection over-counts by ~3×; sub-cluster-projection (post per-reason-pattern segmentation) is the correct unit for Doc 740 leverage prediction. The discriminator structure (shared-upstream vs mutually-exclusive) is empirically demonstrated: all three closed constraints WERE single substrate fixes that cascaded across multiple pipelines. The arc validates the methodology while refuting its projection magnitudes.
+
+### Finding RS.1+RS.2 (probe-first methodology for substrate-cost scoping)
+
+**Source**: RS-EXT 1 (baseline probe) + RS-EXT 2 (minimum-realm substrate).
+
+The probe-first methodology answered the load-bearing question (does realm-scoping defeat an adversary probe the cap-handle model fails?) at bounded substrate cost (~190 LOC), correcting the prospective doc's pessimistic projection (~700-800 LOC).
+
+The pattern: (1) confirm threat model real via baseline probe; (2) bound the minimum substrate that flips the probe; (3) commit only that minimum, deferring full-architecture cost until empirical justification arrives. The corpus expression is Doc 736 Appendix A's two-pillar design (capability-passing + realm-scoped intrinsics).
+
+### Finding CP.4 (substrate cost for Doc 736 at JS-API level)
+
+**Source**: Compartment-primitive arc (CP-EXT 1-5).
+
+Cumulative substrate cost across RS-EXT 2 + CP-EXT 1-5 is ~520 LOC: the architecturally-load-bearing subset of full Realm substrate. Function `[[Realm]]` slot semantics, cross-realm `instanceof`, $262.createRealm, and Module Source records would push another ~200-300 LOC but are NOT required for the Doc 736 claim. Compartments expose Doc 736's discipline at the JS-API level, making it usable directly by application authors via `new Compartment({globals, modules})`.
+
+### Finding SPTW.2 (fast-path / slow-path coherence requirement)
+
+**Source**: String.prototype.trim slow-path fix shadowed by IC fast-path early-return for non-ASCII strings.
+
+Substrate fixes that change slow-path semantics must verify the corresponding IC fast path doesn't shadow them. The fast path's "no trim needed" early-return was a Doc 740 substrate-introduction-prefix: optimized for ASCII strings while accidentally short-circuiting non-ASCII strings. The carve-back (bail-to-slow-on-non-ASCII first) is the deeper-layer closure.
+
+Generalizes: any IC entry that pre-screens by receiver type / argument shape must bail to slow path EARLIER than its optimistic-success path, so that slow-path semantics changes are observable.
+
+### Finding NACR.1 (substrate-discipline coherence drift across parallel helpers)
+
+**Source**: three `register_method` helpers in `intrinsics.rs`, `regexp.rs`, `promise.rs` — only one had the correct `is_constructor: false` discipline. The discipline-defining doc comment lived only in the canonical version.
+
+Multiple test failures with the same reason-shape across distinct modules (`isConstructor(RegExp.prototype.test) === true`, `isConstructor(String.prototype.replace) === true`, etc.) pointed at a substrate-discipline gap, not per-module per-bug. Per Finding T262C.6, the corpus-as-regression-instrument property catches discipline drift via cross-module reason-shape coherence.
+
+### Standing rule 17 — pre-scoping per-reason-pattern segmentation
+
+**Statement**: before scoping a sub-locale targeting a failure cluster, enumerate the failure-REASON distribution within the candidate cluster AND identify which sub-cluster the candidate substrate fix targets. Projected cascade = the sub-cluster size, not the whole cluster size.
+
+**Predicts**: sub-locales scoped against whole-cluster size will under-deliver by ~3-7× vs sub-cluster-scoped projection.
+
+**Evidence**: EPSUA arc — three constraints in a row delivered 24%/41%/67% of cluster projection; 100%/100%/67% of in-scope-sub-cluster projection.
+
+### Standing rule 18 — brand-check at registration wrapper, not in shared impl
+
+**Statement**: when a substrate impl is shared across multiple registrations (e.g., Set.prototype.add and WeakSet.prototype.add both call set_proto_add_via), brand-check discipline must live at the registration wrapper using captured proto-identity, NOT in the impl. The impl cannot know which proto routed the call; only the registration knows.
+
+**Predicts**: brand-check additions to shared impls will either over-reject (breaking the OTHER proto's valid calls) or under-reject (failing the spec contract).
+
+**Evidence**: SPBC-EXT 2's helper-level WeakSet rejection broke 15 WeakSet basic method tests; SPBC-EXT 3 carve-back + MPBC per-proto wrappers recovered all 15 and added Map brand-check cleanly.
+
+### Standing rule 19 — IC fast-path coherence verification
+
+**Statement**: substrate fixes that change slow-path semantics must verify the corresponding IC fast path doesn't shadow them. IC entries that pre-screen by receiver type / arg shape must bail to slow path EARLIER than their optimistic-success path.
+
+**Predicts**: slow-path substrate fixes that don't verify the IC fast path will appear to "do nothing" for the inputs the IC pre-screens; tests will fail with unchanged-behavior shapes.
+
+**Evidence**: SPTW-EXT 1's slow-path es_trim fix did nothing for non-ASCII strings because fast_string_trim's early-return "no trim needed" fired before the slow path could see the input. Carve-back bail-to-slow-on-non-ASCII closed the gap.
+
+### Standing rule 20 — substrate-discipline coherence drift surfaces as cross-module reason-shape coherence
+
+**Statement**: when multiple parallel helpers in different modules implement the same discipline (registration of native functions, brand-check at method entry, etc.), drift between them will surface as a homogeneous-reason cross-module test cluster. Per Finding T262C.6's corpus-as-regression-instrument shape: if the same reason-shape recurs across distinct module surfaces, look for substrate-discipline drift before per-module per-bug fixes.
+
+**Predicts**: cross-module reason-shape coherence is a higher-leverage diagnosis than per-module surface fixes.
+
+**Evidence**: NACR-EXT 1's three-register_method-helpers fix; SPBC-EXT 3's shared-impl-with-per-proto-discipline-drift recovery.
+
+### Standing rule 21 — probe-first scoping for substrate cost
+
+**Statement**: before committing to a substrate refactor whose cost is uncertain or contested, build the minimum probe that empirically answers the load-bearing question (does this substrate change deliver this property?). If the probe answers yes at bounded cost, commit only that minimum and defer further architectural cost until a downstream consumer justifies it.
+
+**Predicts**: prospective substrate cost projections without probe-first verification will systematically overestimate by 2-5× (architects project the FULL architectural property; probes reveal the MINIMUM property-defeating substrate).
+
+**Evidence**: RS-EXT 1+2 — prospective ~700-800 LOC for Round 1+4 of full Realm substrate; minimum probe-defeating substrate landed at ~190 LOC. Compartment arc total ~520 LOC for the Doc 736 JS-API expression vs an estimated ~1000+ for full Realm + Compartments combined.
+
+### Findings-doc cumulative status (post-Addendum XII)
+
+After Addendum XII:
+- 6 original finding sections (I-VI) + 8 original standing rules
+- Addenda I-XI as previously listed
+- **Addendum XII (this)**: 9 new findings (T262C.4, T262C.5, T262C.6, EPSUA.6, EPSUA.7, RS.1+RS.2, CP.4, SPTW.2, NACR.1) + 5 new standing rules (#17 pre-scoping per-reason-pattern, #18 brand-check-at-registration, #19 IC-fast-path-coherence, #20 substrate-discipline-drift-surfaces-cross-module, #21 probe-first-scoping)
+
+Total: **38 findings** (6 original + 32 new across 12 addenda); **21 standing rules**; standing engagement instruments + corpus publications unchanged from prior addendum + Doc 736 Appendix A (added 2026-05-25).
+
+**Corpus publication candidates from this addendum**:
+- T262C.4 / T262C.5 / T262C.6 + EPSUA.6 / EPSUA.7 cluster: candidate for a single corpus doc on "shared-upstream vs mutually-exclusive cluster discriminator + per-reason-pattern segmentation as projection unit." Already drafted at docs/prospective/test262-long-tail-shared-vs-mutually-exclusive.md.
+- RS.1+RS.2 + CP.4 cluster: already published as Doc 736 Appendix A (the two-pillar amendment).
+- SPTW.2 + NACR.1: substrate-discipline-coherence pattern; candidate for a corpus doc on discipline-drift detection via cross-module reason-shape coherence.
