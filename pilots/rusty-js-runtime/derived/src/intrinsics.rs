@@ -1067,6 +1067,71 @@ impl Runtime {
             Ok(result)
         });
 
+        // CP-EXT 4: Compartment.prototype.import(specifier) — Promise of
+        // module namespace. Looks up the specifier in the compartment's
+        // modules map (populated at ctor time); evaluates the source as
+        // an ESM module under the compartment's realm; returns a
+        // Promise.resolved with the namespace. Specifiers absent from
+        // the map return a Promise.rejected with TypeError per the
+        // proposal's closed-import-graph semantics.
+        register_intrinsic_method(self, proto, "import", 1, |rt, args| {
+            let this_id = match rt.current_this() {
+                Value::Object(id) => id,
+                _ => return Err(RuntimeError::TypeError("Compartment.prototype.import: this is not a Compartment".into())),
+            };
+            let realm_idx = match rt.object_get(this_id, "__compartment_realm") {
+                Value::Number(n) => n as usize,
+                _ => return Err(RuntimeError::TypeError("Compartment.prototype.import: missing realm slot".into())),
+            };
+            let modules_id = match rt.object_get(this_id, "__compartment_modules") {
+                Value::Object(id) => id,
+                _ => {
+                    let p = crate::promise::new_promise(rt);
+                    crate::promise::reject_promise(rt, p, Value::String(Rc::new("Compartment has no modules map".into())));
+                    return Ok(Value::Object(p));
+                }
+            };
+            let spec = match args.first() {
+                Some(Value::String(s)) => (**s).clone(),
+                _ => return Err(RuntimeError::TypeError("Compartment.prototype.import: specifier must be a string".into())),
+            };
+            let source_v = rt.object_get(modules_id, &spec);
+            let source = match source_v {
+                Value::String(s) => s.as_str().to_string(),
+                _ => {
+                    // Specifier not in map — per proposal, rejected Promise.
+                    let p = crate::promise::new_promise(rt);
+                    let err = rt.alloc_object(Object::new_ordinary());
+                    rt.object_set(err, "message".into(),
+                        Value::String(Rc::new(format!("Module '{}' not found in compartment", spec))));
+                    rt.object_set(err, "name".into(), Value::String(Rc::new("TypeError".into())));
+                    crate::promise::reject_promise(rt, p, Value::Object(err));
+                    return Ok(Value::Object(p));
+                }
+            };
+            let url = format!("file://<compartment:{}:module:{}>", realm_idx, spec);
+            let prior = rt.enter_realm(realm_idx);
+            let result = rt.evaluate_module(&source, &url);
+            rt.exit_realm(prior);
+            let p = crate::promise::new_promise(rt);
+            match result {
+                Ok(ns) => crate::promise::resolve_promise(rt, p, Value::Object(ns)),
+                Err(RuntimeError::CompileError(msg)) => {
+                    let err = rt.alloc_object(Object::new_ordinary());
+                    rt.object_set(err, "message".into(), Value::String(Rc::new(msg)));
+                    rt.object_set(err, "name".into(), Value::String(Rc::new("SyntaxError".into())));
+                    crate::promise::reject_promise(rt, p, Value::Object(err));
+                }
+                Err(e) => {
+                    let msg = format!("{:?}", e);
+                    let err = rt.alloc_object(Object::new_ordinary());
+                    rt.object_set(err, "message".into(), Value::String(Rc::new(msg)));
+                    crate::promise::reject_promise(rt, p, Value::Object(err));
+                }
+            }
+            Ok(Value::Object(p))
+        });
+
         // Compartment.prototype.globalThis as a data property reader.
         // Returns the compartment's globalThis object slot. (Spec
         // mandates a getter; the simpler data-property reader is
@@ -1096,7 +1161,24 @@ impl Runtime {
                         endowments.insert(k, v);
                     }
                 }
-                // `modules` field parsed but applied at CP-EXT 4.
+                // `modules` field stored as a slot for CP-EXT 4 import().
+            }
+            // Compartment-instance modules slot: clone {spec: source} pairs
+            // into a fresh internal object; import(spec) looks up there.
+            let modules_slot = rt.alloc_object(Object::new_ordinary());
+            if let Value::Object(opts_id) = &opts {
+                let mods_v = rt.object_get(*opts_id, "modules");
+                if let Value::Object(mods_id) = mods_v {
+                    let keys = rt.ordinary_own_enumerable_string_keys(mods_id);
+                    for k in keys {
+                        let v = rt.object_get(mods_id, &k);
+                        if let Value::String(_) = v {
+                            rt.object_set(modules_slot, k, v);
+                        }
+                        // Non-string entries silently skipped at this round;
+                        // Module Source records would be the typed alternative.
+                    }
+                }
             }
             let realm_idx = rt.allocate_compartment_realm(endowments.clone());
             // Per-compartment globalThis: a fresh object pre-populated with
@@ -1111,6 +1193,7 @@ impl Runtime {
             rt.obj_mut(inst).proto = Some(proto_for_ctor);
             rt.object_set(inst, "__compartment_realm".into(), Value::Number(realm_idx as f64));
             rt.object_set(inst, "__compartment_globalthis".into(), Value::Object(gt));
+            rt.object_set(inst, "__compartment_modules".into(), Value::Object(modules_slot));
             Ok(Value::Object(inst))
         });
         let ctor = self.alloc_object(ctor_obj);
