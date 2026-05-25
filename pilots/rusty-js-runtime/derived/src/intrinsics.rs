@@ -5211,12 +5211,7 @@ impl Runtime {
     fn install_console(&mut self) {
         let console = self.alloc_object(Object::new_ordinary());
         register_method(self, console, "log", |rt, args|{
-            let mut out = String::new();
-            for (i, a) in args.iter().enumerate() {
-                if i > 0 { out.push(' '); }
-                out.push_str(&abstract_ops::to_string(a));
-            }
-            // CAPS-EXT 10: gate stdout writes through the dispatcher.
+            let out = console_format(rt, args);
             check_stdio(rt, crate::caps::StdioOp::Stdout(out.as_bytes().to_vec()))?;
             println!("{}", out);
             Ok(Value::Undefined)
@@ -5225,24 +5220,13 @@ impl Runtime {
         // which remains ungated this round. stderr is the probe-harness
         // escape valve for LOSES sentinels under --sealed; gating it
         // here would block the harness from observing capability errors.
-        // A future EXT can split the Stdio capability into per-stream
-        // policy or gate stderr separately once a richer probe protocol
-        // (exit code, file markers) is in place.
-        register_method(self, console,"error", |_rt, args|{
-            let mut out = String::new();
-            for (i, a) in args.iter().enumerate() {
-                if i > 0 { out.push(' '); }
-                out.push_str(&abstract_ops::to_string(a));
-            }
+        register_method(self, console,"error", |rt, args|{
+            let out = console_format(rt, args);
             eprintln!("{}", out);
             Ok(Value::Undefined)
         });
-        register_method(self, console,"warn", |_rt, args|{
-            let mut out = String::new();
-            for (i, a) in args.iter().enumerate() {
-                if i > 0 { out.push(' '); }
-                out.push_str(&abstract_ops::to_string(a));
-            }
+        register_method(self, console,"warn", |rt, args|{
+            let out = console_format(rt, args);
             eprintln!("{}", out);
             Ok(Value::Undefined)
         });
@@ -6022,6 +6006,275 @@ fn uri_percent_decode(s: &str) -> Option<String> {
         }
     }
     String::from_utf8(out).ok()
+}
+
+// ──────────────── console.log inspect formatter (CLIF-EXT 1) ────────────────
+//
+// Mirrors Node's util.inspect closely enough that console.log(arr) prints
+// `[ 1, 2, 3 ]` instead of `[object Object]`. Top-level strings are
+// unquoted (Node behavior); nested strings are quoted. Recursion is capped
+// at INSPECT_MAX_DEPTH; cycles are short-circuited via a visited set.
+
+const INSPECT_MAX_DEPTH: u32 = 2;
+
+/// Format a list of console.log arguments per Node semantics: space-joined,
+/// top-level strings unquoted, everything else through inspect_value.
+fn console_format(rt: &Runtime, args: &[Value]) -> String {
+    let mut out = String::new();
+    for (i, a) in args.iter().enumerate() {
+        if i > 0 { out.push(' '); }
+        match a {
+            Value::String(s) => out.push_str(s.as_str()),
+            _ => out.push_str(&inspect_value(rt, a)),
+        }
+    }
+    out
+}
+
+/// Format a Value for console.log inspection. Top-level entry; allocates
+/// the visited-set used to break cycles.
+pub(crate) fn inspect_value(rt: &Runtime, v: &Value) -> String {
+    let mut visited = std::collections::HashSet::new();
+    inspect_inner(rt, v, 0, &mut visited, false)
+}
+
+fn inspect_inner(
+    rt: &Runtime,
+    v: &Value,
+    depth: u32,
+    visited: &mut std::collections::HashSet<u32>,
+    in_container: bool,
+) -> String {
+    match v {
+        Value::Undefined => "undefined".into(),
+        Value::Null => "null".into(),
+        Value::Boolean(b) => b.to_string(),
+        Value::Number(n) => format_number(*n),
+        Value::BigInt(b) => format!("{}n", b.to_decimal()),
+        Value::Symbol(s) => format!("Symbol({})", s.as_str().trim_start_matches("@@sym:")),
+        Value::String(s) => {
+            if in_container { format!("'{}'", s.as_str().replace('\\', "\\\\").replace('\'', "\\'")) }
+            else { s.as_str().to_string() }
+        }
+        Value::Object(id) => inspect_object(rt, *id, depth, visited),
+    }
+}
+
+fn format_number(n: f64) -> String {
+    if n.is_nan() { return "NaN".into(); }
+    if n.is_infinite() { return if n > 0.0 { "Infinity".into() } else { "-Infinity".into() }; }
+    if n == 0.0 && n.is_sign_negative() { return "-0".into(); }
+    crate::abstract_ops::number_to_string(n)
+}
+
+fn inspect_object(
+    rt: &Runtime,
+    id: crate::value::ObjectRef,
+    depth: u32,
+    visited: &mut std::collections::HashSet<u32>,
+) -> String {
+    use crate::value::InternalKind;
+    let key = id.0;
+    if !visited.insert(key) {
+        // Cycle: short-circuit per Node's '<ref *1>' behavior, simplified.
+        return "[Circular]".into();
+    }
+    let result = match &rt.obj(id).internal_kind {
+        InternalKind::Function(fi) => {
+            visited.remove(&key);
+            if fi.name.is_empty() { "[Function (anonymous)]".into() }
+            else { format!("[Function: {}]", fi.name) }
+        }
+        InternalKind::Closure(ci) => {
+            visited.remove(&key);
+            let n = ci.proto.display_name.as_str();
+            if n.is_empty() { "[Function (anonymous)]".into() }
+            else { format!("[Function: {}]", n) }
+        }
+        InternalKind::BoundFunction(_) => {
+            visited.remove(&key);
+            "[Function]".into()
+        }
+        InternalKind::RegExp(r) => {
+            visited.remove(&key);
+            format!("/{}/{}", r.source, r.flags)
+        }
+        InternalKind::Error => {
+            let msg = match rt.object_get(id, "message") {
+                Value::String(s) => s.as_str().to_string(),
+                _ => String::new(),
+            };
+            let name = match rt.object_get(id, "name") {
+                Value::String(s) => s.as_str().to_string(),
+                _ => "Error".into(),
+            };
+            visited.remove(&key);
+            if msg.is_empty() { name } else { format!("{}: {}", name, msg) }
+        }
+        InternalKind::Array => {
+            let r = inspect_array(rt, id, depth, visited);
+            visited.remove(&key);
+            r
+        }
+        _ => {
+            let r = inspect_plain_object(rt, id, depth, visited);
+            visited.remove(&key);
+            r
+        }
+    };
+    result
+}
+
+fn inspect_array(
+    rt: &Runtime,
+    id: crate::value::ObjectRef,
+    depth: u32,
+    visited: &mut std::collections::HashSet<u32>,
+) -> String {
+    // object_get(id, "length") handles Arrays via &self (its special branch
+    // synthesizes length from max numeric index when no own length is set).
+    let len = match rt.object_get(id, "length") {
+        Value::Number(n) if n >= 0.0 && n.is_finite() => n as usize,
+        _ => 0,
+    };
+    if len == 0 { return "[]".into(); }
+    if depth >= INSPECT_MAX_DEPTH { return "[Array]".into(); }
+    let mut parts: Vec<String> = Vec::with_capacity(len);
+    for i in 0..len {
+        let v = rt.object_get(id, &i.to_string());
+        parts.push(inspect_inner(rt, &v, depth + 1, visited, true));
+    }
+    format!("[ {} ]", parts.join(", "))
+}
+
+fn inspect_plain_object(
+    rt: &Runtime,
+    id: crate::value::ObjectRef,
+    depth: u32,
+    visited: &mut std::collections::HashSet<u32>,
+) -> String {
+    // CLIF-EXT 1: detect Set/Map/Error via cruft's sentinel + proto conventions
+    // (cruft stores these as Ordinary objects with engine-internal sentinels
+    // plus wired prototypes, not as dedicated InternalKind variants).
+    let has_set_data = rt.obj(id).has_own_str("__set_data");
+    let has_map_data = rt.obj(id).has_own_str("__map_data");
+    let has_weak = matches!(rt.object_get(id, "__is_weakmap"), Value::Boolean(true))
+                || matches!(rt.object_get(id, "__is_weakset"), Value::Boolean(true));
+    if has_set_data {
+        let storage = match rt.object_get(id, "__set_data") {
+            Value::Object(sid) => Some(sid), _ => None,
+        };
+        return inspect_set_like(rt, id, storage, depth, visited, if has_weak { "WeakSet" } else { "Set" });
+    }
+    if has_map_data {
+        let storage = match rt.object_get(id, "__map_data") {
+            Value::Object(sid) => Some(sid), _ => None,
+        };
+        return inspect_map_like(rt, id, storage, depth, visited, if has_weak { "WeakMap" } else { "Map" });
+    }
+    if let Some(err_name) = detect_error_class(rt, id) {
+        let msg = match rt.object_get(id, "message") {
+            Value::String(s) => s.as_str().to_string(),
+            _ => String::new(),
+        };
+        return if msg.is_empty() { err_name } else { format!("{}: {}", err_name, msg) };
+    }
+    let keys: Vec<String> = rt.ordinary_own_enumerable_string_keys(id).into_iter()
+        // Filter engine-internal sentinels (__-prefixed and @@-prefixed); they
+        // should never reach observable output. EIPD/GBNE work made many of
+        // these non-enumerable, but a residual layer still leaks.
+        .filter(|k| !k.starts_with("__") && !k.starts_with("@@"))
+        .collect();
+    if keys.is_empty() { return "{}".into(); }
+    if depth >= INSPECT_MAX_DEPTH { return "[Object]".into(); }
+    let mut parts: Vec<String> = Vec::with_capacity(keys.len());
+    for k in &keys {
+        let v = rt.object_get(id, k);
+        let key_str = if is_valid_identifier(k) { k.clone() } else { format!("'{}'", k) };
+        parts.push(format!("{}: {}", key_str, inspect_inner(rt, &v, depth + 1, visited, true)));
+    }
+    format!("{{ {} }}", parts.join(", "))
+}
+
+fn inspect_set_like(
+    rt: &Runtime,
+    instance: crate::value::ObjectRef,
+    storage: Option<crate::value::ObjectRef>,
+    depth: u32,
+    visited: &mut std::collections::HashSet<u32>,
+    label: &str,
+) -> String {
+    let size = match rt.object_get(instance, "size") {
+        Value::Number(n) if n >= 0.0 => n as usize, _ => 0,
+    };
+    if size == 0 { return format!("{}(0) {{}}", label); }
+    if depth >= INSPECT_MAX_DEPTH { return format!("[{}]", label); }
+    let mut parts = Vec::new();
+    if let Some(sid) = storage {
+        for (_, d) in rt.obj(sid).properties.iter() {
+            parts.push(inspect_inner(rt, &d.value, depth + 1, visited, true));
+        }
+    }
+    format!("{}({}) {{ {} }}", label, size, parts.join(", "))
+}
+
+fn inspect_map_like(
+    rt: &Runtime,
+    instance: crate::value::ObjectRef,
+    storage: Option<crate::value::ObjectRef>,
+    depth: u32,
+    visited: &mut std::collections::HashSet<u32>,
+    label: &str,
+) -> String {
+    let size = match rt.object_get(instance, "size") {
+        Value::Number(n) if n >= 0.0 => n as usize, _ => 0,
+    };
+    if size == 0 { return format!("{}(0) {{}}", label); }
+    if depth >= INSPECT_MAX_DEPTH { return format!("[{}]", label); }
+    let mut parts = Vec::new();
+    if let Some(sid) = storage {
+        for (k, d) in rt.obj(sid).properties.iter() {
+            let k_str = k.as_str().to_string();
+            let k_render = if is_valid_identifier(&k_str) { k_str } else { format!("'{}'", k_str) };
+            parts.push(format!("{} => {}", k_render, inspect_inner(rt, &d.value, depth + 1, visited, true)));
+        }
+    }
+    format!("{}({}) {{ {} }}", label, size, parts.join(", "))
+}
+
+/// Walk the proto chain looking for an Error.prototype-shaped object
+/// (carries "name" set to "Error"/"TypeError"/etc. per EIPD-EXT 1's
+/// per-prototype set_own_internal). Returns the class name when found.
+fn detect_error_class(rt: &Runtime, id: crate::value::ObjectRef) -> Option<String> {
+    const NAMES: &[&str] = &[
+        "Error", "TypeError", "RangeError", "SyntaxError",
+        "ReferenceError", "URIError", "EvalError", "AggregateError",
+    ];
+    let mut cur = rt.obj(id).proto;
+    let mut hops = 0;
+    while let Some(c) = cur {
+        if hops > 5 { break; }
+        if let Some(d) = rt.obj(c).get_own("name") {
+            if let Value::String(s) = &d.value {
+                if NAMES.iter().any(|n| n == &s.as_str()) {
+                    return Some(s.as_str().to_string());
+                }
+            }
+        }
+        cur = rt.obj(c).proto;
+        hops += 1;
+    }
+    None
+}
+
+fn is_valid_identifier(s: &str) -> bool {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => return false,
+        Some(c) if !c.is_ascii_alphabetic() && c != '_' && c != '$' => return false,
+        _ => {}
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
 }
 
 pub(crate) fn make_native(name: &str, f: impl Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static) -> Object {

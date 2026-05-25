@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 75,
-    "top_level": 64,
+    "locales": 76,
+    "top_level": 65,
     "nested": 11,
     "warnings": 0
   },
@@ -71,6 +71,15 @@
       "depth": 1,
       "rung_count": 4,
       "status": "**WORKSTREAM FOUNDED (CP-EXT 0)**."
+    },
+    {
+      "coord": "console-log-inspect-formatter",
+      "tag": "L.console-log-inspect-formatter",
+      "parent": null,
+      "scope": "console-log-inspect-formatter",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
     },
     {
       "coord": "cross-runtime-bench",
