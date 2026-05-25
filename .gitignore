@@ -47,3 +47,6 @@ phase-b-scratch/
 LOCAL-SETUP.md
 scripts/diff-prod/results/
 env.local
+
+# Local benchmark/test run outputs
+/results/
