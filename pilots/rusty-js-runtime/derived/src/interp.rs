@@ -5938,6 +5938,18 @@ impl Runtime {
     /// %Array.prototype% and length pre-populated. Full @@species
     /// dispatch is queued for Tier 2.
     pub fn array_species_create(&mut self, o: &Value, len: usize) -> Result<Value, RuntimeError> {
+        // RPTP-EXT 1: revoked-proxy check. ArraySpeciesCreate's first
+        // step (§22.1.3.17 step 3) is `Get(O, 'constructor')` which per
+        // §10.5.5 [[Get]] throws TypeError when O's [[ProxyHandler]] is
+        // null (revoked). Catches the bulk of revoked-proxy
+        // Array.prototype.{concat,filter,map,slice,splice} tests since
+        // every species-routed method touches this early.
+        if let Value::Object(id) = o {
+            if self.proxy_is_revoked(*id) {
+                return Err(RuntimeError::TypeError(
+                    "Cannot perform operation on a revoked Proxy".into()));
+            }
+        }
         // ECMA-262 §22.1.3.17 ArraySpeciesCreate. Honor the subclass when O
         // is an Array-subclass instance whose constructor is a function:
         // construct via `new C(length)` so the result's proto chain matches

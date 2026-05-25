@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 51,
-    "top_level": 40,
+    "locales": 52,
+    "top_level": 41,
     "nested": 11,
     "warnings": 0
   },
@@ -152,6 +152,15 @@
       "depth": 1,
       "rung_count": 2,
       "status": "**CLOSED at REOU-EXT 1** (1 implementation round; Doc 740 multi-tier closure across R = {opcode-split, runtime-handler, compiler-typeof, compiler-delete})."
+    },
+    {
+      "coord": "revoked-proxy-trap-propagation",
+      "tag": "L.revoked-proxy-trap-propagation",
+      "parent": null,
+      "scope": "revoked-proxy-trap-propagation",
+      "depth": 1,
+      "rung_count": 1,
+      "status": "**CLOSED at RPTP-EXT 1**."
     },
     {
       "coord": "rusty-js-caps",
