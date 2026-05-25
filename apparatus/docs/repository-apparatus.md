@@ -25,6 +25,7 @@ Layout:
 apparatus/
 ├── docs/                                            # apparatus-tier prose
 │   ├── repository-apparatus.md                      # this doc, the apparatus enumeration
+│   ├── ecma-conformance-parity-as-exhaustive-language-behavior-dag.md # parity -> decision basis -> computable inference
 │   ├── predictive-ruleset.md                        # consolidated 15-rule predictive view
 │   ├── standing-rule-13-prospective-application.md  # rule 13 revert-then-deeper-layer thesis
 │   └── agent-feedback-schema.md                     # per-locale cross-resolver review schema
@@ -36,7 +37,7 @@ apparatus/
     └── README.md
 ```
 
-`apparatus/docs/` is not "documentation in the colloquial sense." It is the agent's required pre-reading: the schemas the agent must follow when authoring (agent-feedback-schema.md), the rules the agent applies when evaluating moves (predictive-ruleset.md, standing-rule-13), and the enumeration the agent consults to understand the loop it is participating in (this doc).
+`apparatus/docs/` is not "documentation in the colloquial sense." It is the agent's required pre-reading: the primary articulation that states what the apparatus is for (ecma-conformance-parity-as-exhaustive-language-behavior-dag.md), the schemas the agent must follow when authoring (agent-feedback-schema.md), the rules the agent applies when evaluating moves (predictive-ruleset.md, standing-rule-13), and the enumeration the agent consults to understand the loop it is participating in (this doc).
 
 `apparatus/locales/` is the agent-readable registry of the locale-coordinate space (Doc 737). The manifest is consulted to find existing locales; CANDIDATES.md is consulted before founding a new one; discover.sh is run to refresh the manifest after a spawn.
 
@@ -180,6 +181,7 @@ The discipline is recorded in artifacts that future substrate work must consult.
 | Artifact | Path | Role |
 |---|---|---|
 | **AGENTS.md / CLAUDE.md** | `AGENTS.md`, `CLAUDE.md` (identical) | Project identity + workspace layout + commit-and-authorization discipline + standing corpus references |
+| **ecma-conformance-parity-as-exhaustive-language-behavior-dag.md** | `apparatus/docs/ecma-conformance-parity-as-exhaustive-language-behavior-dag.md` | Primary telos: conformance pressure extracts a closed decision basis that can become spec-corresponded computable inference |
 | **THIS DOC (repository-apparatus.md)** | `apparatus/docs/repository-apparatus.md` | Comprehensive enumeration of the apparatus + cybernetic-loop framing |
 
 ### Per-locale discipline (recurrent)
@@ -299,6 +301,8 @@ These structural patterns recur across the apparatus's operation. They are codif
 
 - **SIPE-T scale-invariance** (Doc 541 Appendix E): the apparatus's choice-points + conditioning + discipline + prompt structure recurs self-similarly across head and tail of the failure-table distribution.
 
+- **Conformance-as-decision-basis extraction** (`apparatus/docs/ecma-conformance-parity-as-exhaustive-language-behavior-dag.md`): full parity is not only a pass metric; it is the empirical closure condition that forces the ECMAScript implementation decision basis into explicit coordinates. Spec correspondence and computable traversal lift that basis into a guide for future standards implementation.
+
 ---
 
 ## VIII. Standing corpus references
@@ -345,6 +349,7 @@ For navigating the apparatus by role:
 
 - **Want to spawn a new locale?** → `apparatus/locales/CANDIDATES.md` (queue) + Doc 737 (theory) + §IV.spawn-protocol above.
 - **Want to land a substrate move?** → `apparatus/docs/predictive-ruleset.md` (rules) + AGENTS.md commit discipline + locale's seed §Pred-* falsifiers.
+- **Want to understand the apparatus telos?** → `apparatus/docs/ecma-conformance-parity-as-exhaustive-language-behavior-dag.md` (parity -> decision basis -> spec correspondence -> computable inference).
 - **Want to add an instrument?** → §II above + Doc 581 (Pin-Art apparatus framing).
 - **Want to add a standing rule?** → `pilots/rusty-js-jit/findings.md` next Addendum + this doc's §III update + `apparatus/docs/predictive-ruleset.md` consolidated update.
 - **Want to publish corpus?** → use the corpus publish pipeline (write to `~/corpus-master/corpus/` → mirror to `~/resolve/corpus/` + push → `bun run seed` from `~/jaredfoy/`).
