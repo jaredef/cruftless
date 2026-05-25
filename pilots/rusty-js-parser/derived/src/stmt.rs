@@ -326,6 +326,14 @@ impl<'src> Parser<'src> {
                 self.bump()?;
                 Some(self.parse_assignment_expression()?)
             } else { None };
+            // RPDF-EXT 1: §15.1.1 / §14.1 — a BindingRestElement cannot
+            // have an Initializer. `(...x = []) => {}` is a SyntaxError.
+            if rest && default.is_some() {
+                return Err(ParseError {
+                    span: Span::new(p_start, self.last_span_end()),
+                    message: "Rest parameter may not have a default initializer".into(),
+                });
+            }
             let p_end = self.last_span_end();
             out.push(rusty_js_ast::Parameter {
                 target, default, rest, span: Span::new(p_start, p_end),

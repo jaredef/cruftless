@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 90,
-    "top_level": 79,
+    "locales": 91,
+    "top_level": 80,
     "nested": 11,
     "warnings": 0
   },
@@ -62,6 +62,15 @@
       "depth": 1,
       "rung_count": 2,
       "status": "**WORKSTREAM FOUNDED (ASCD-EXT 0)**. Spawned per keeper directive after EPSUA arc closed; carries the largest clean sub-cluster of the former constraint #1 (~23 tests)."
+    },
+    {
+      "coord": "arrow-misc-early-errors",
+      "tag": "L.arrow-misc-early-errors",
+      "parent": null,
+      "scope": "arrow-misc-early-errors",
+      "depth": 1,
+      "rung_count": 0,
+      "status": null
     },
     {
       "coord": "compartment-primitive",

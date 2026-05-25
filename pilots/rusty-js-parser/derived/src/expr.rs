@@ -1289,6 +1289,14 @@ impl<'src> Parser<'src> {
             } else {
                 return Err(self.err_here("expected arrow head".into()));
             };
+        // ALTA-EXT 1: §15.3.1 — NoLineTerminator between ArrowParameters
+        // and `=>`. `() \n => {}` is a SyntaxError.
+        if matches!(self.current_kind(), TokenKind::Punct(Punct::Arrow))
+            && self.lookahead_preceded_by_lt()
+        {
+            return Err(self.err_here(
+                "No line terminator allowed before `=>` in arrow function".into()));
+        }
         self.expect_punct(Punct::Arrow)?;
         // PPAE-EXT 1 + APDD-EXT 1: §15.2.1 Static Semantics:Early Errors —
         // arrow function parameters BoundNames must be unique (the arrow's
