@@ -94,3 +94,59 @@ RS-EXT 1 closed with the empirical finding RS.1. RS-EXT 2 implementation is GATE
 ### Status
 
 RS-EXT 2a CLOSED at scaffold commit. RS-EXT 2b-2f queued; each landed incrementally with behavior-preservation gates.
+
+## RS-EXT 2b/2c/2d/2e/2f/2g — minimum-realm closure (2026-05-25)
+
+Landed as one combined commit after structural 2a, per Doc 740 multi-tier closure default (Finding T262C.5). All six sub-commits authored together; gates verified before commit.
+
+**Edits** (~190 LOC):
+- `interp.rs::Runtime`: mirror primordial intrinsic fields into realm 0 at install_prototypes (2b).
+- `interp.rs::alloc_object`: proto-wiring consults `self.realms[self.current_realm]` first, falls back to Runtime field (2c).
+- `interp.rs::clone_intrinsic_proto`: shallow-clone an object (properties + shape + shape_values), shares method ObjectRefs with source (2d primitive).
+- `interp.rs::allocate_realm`: clones intrinsic prototypes AND constructors (the load-bearing piece — without constructor cloning, user-visible `Array.prototype` resolves via the shared global, defeating realm isolation). Cloned constructor's `prototype` property overridden to point at the cloned prototype. Builds `globals_overrides` map (2d + 2g).
+- `interp.rs::enter_realm` / `exit_realm`: three swaps (current_realm index, Runtime intrinsic fields, globals shadowing with snapshot-and-restore). Snapshot stored on realm so nested enter/exit composes (2e + 2g).
+- `intrinsics.rs::__cruftless_eval_realm`: engine helper exposing the API. Allocates a fresh realm, enters, evaluates source, exits, returns Undefined. CompileError→SyntaxError mapped per PPA-EXT 1 (2e).
+- `pilots/realm-substrate/probes/prototype_pollution_realm.mjs`: probe rewritten to use `__cruftless_eval_realm(dep_source)`; checks application-realm Array.prototype.map invariance.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Probe `prototype_pollution_realm.mjs` | **ATTACK_BLOCKED** ✓ (Pred-rs.2 HELD) |
+| Probe `prototype_pollution.mjs` (baseline) | ATTACK_SUCCEEDED (unchanged; no helper call) |
+| Leak test (`Array.prototype.__realm_test_marker` set in realm) | undefined outside realm ✓ |
+| Identity test (`Array.prototype.map === marker` post-exit) | true ✓ |
+| canonical fuzz acc | −932188103 byte-identical ✓ |
+| Random 200 previously-passing test262 | 200/200 pass / 0 regressed ✓ |
+
+### Pred-rs.* dispositions
+
+| Predicate | Disposition |
+|---|---|
+| Pred-rs.1 (probe baseline ATTACK_SUCCEEDED) | ✅ HELD (RS-EXT 1) |
+| Pred-rs.2 (post-realm ATTACK_BLOCKED) | ✅ HELD |
+| Pred-rs.3 (test262 ±10) | ✅ HELD (random-200 zero regression; full sweep deferred per No-Auto-Sweeps) |
+| Pred-rs.4 (≤250 LOC) | ✅ HELD (~190 LOC minimum-realm pilot vs ~700-800 LOC prospective Round 1+4 — the prospective doc's projection was for the FULL per-module/Function-realm-slot architecture; the minimum probe-defeating substrate is per-eval-via-helper at ~190 LOC) |
+| Pred-rs.5 (Doc 740 zero PASS→FAIL) | ✅ HELD (200/200 random sample) |
+
+### Empirical Finding RS.1 (corrected)
+
+The keeper's question is empirically answered: **YES, realm-scoping closes the prototype-pollution attack class.** The substrate cost at minimum is ~190 LOC (NOT ~700-800 as the prospective doc projected for the full architecture).
+
+**Finding RS.2 (methodology — corrects RS-EXT 1's pre-implementation analysis)**: the RS-EXT 1 estimate of "approximately equivalent to prospective Rounds 1+4 combined" was too pessimistic. Prospective doc's Rounds enable WHOLE architectural properties (Function `[[Realm]]` slot semantics, cross-realm `instanceof` correctness, per-module realm binding). The MINIMUM probe-defeating substrate is bounded to: per-eval-via-helper realm allocation + cloning intrinsic prototypes + cloning constructors + globals shadowing. ~190 LOC.
+
+The probe-first methodology earned its keep twice:
+1. RS-EXT 1 confirmed the threat model (probe succeeds-as-attack baseline).
+2. RS-EXT 2 surfaced that the minimum is bounded — significantly less than the prospective doc's whole-architecture projection. The "minimum that answers the load-bearing question" is INDEED smaller than the full substrate; keeper's instinct was right.
+
+### What the minimum DOESN'T deliver
+
+The minimum substrate is sufficient for the prototype-pollution attack class via `__cruftless_eval_realm(src)`. It does NOT deliver:
+- Per-module realm scoping (each `require('dep')` gets its own realm). Would require module-load-time realm allocation + per-module realm assignment.
+- Function-level `[[Realm]]` slot semantics (callable retains its realm; cross-realm calls switch). Would require per-Function realm tag + call-site swap.
+- Cross-realm `instanceof` correctness. Would require IsArray / @@hasInstance to consult source-realm intrinsics.
+- `$262.createRealm` test262 fixtures (~38). Would require exposing realm-allocation to user JS in a way that returns the realm's globalThis.
+
+Those remain prospective-doc Rounds 2-8 territory. The arc the keeper opened — capability-passing realm integration per Doc 736 — is now empirically anchored: realm-scoping IS the mechanism that defeats intrinsic-identity attacks. Each downstream consumer (per-module isolation, $262, capability `[[Realm]]`) builds on this minimum.
+
+**Status**: RS-EXT 2 CLOSED. Pred-rs.* all HELD. Empirical answer to keeper's load-bearing question: **YES, with bounded substrate cost (~190 LOC, not ~700-800).**

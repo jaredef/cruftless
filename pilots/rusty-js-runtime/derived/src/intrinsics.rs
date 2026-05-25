@@ -242,6 +242,28 @@ impl Runtime {
         register_global_fn(self, "__operator_trace_size", |rt, _args| {
             Ok(Value::Number(rt.operator_lowering_trace.len() as f64))
         });
+        // RS-EXT 2e: realm-isolated eval. Allocates a fresh realm,
+        // enters it, evaluates the source, exits, returns the result.
+        // The fresh realm has its own cloned Array.prototype / Object.
+        // prototype / Function.prototype, so mutations inside the source
+        // don't leak to the primordial realm. Used by the realm-substrate
+        // prototype-pollution probe per Pred-rs.2.
+        register_engine_helper(self, "__cruftless_eval_realm", |rt, args| {
+            let source = match args.first() {
+                Some(Value::String(s)) => s.as_str().to_string(),
+                _ => return Ok(Value::Undefined),
+            };
+            let new_realm = rt.allocate_realm();
+            let prior = rt.enter_realm(new_realm);
+            let url = format!("file://<realm-eval:{}>", new_realm);
+            let result = rt.evaluate_module(&source, &url);
+            rt.exit_realm(prior);
+            match result {
+                Ok(_) => Ok(Value::Undefined),
+                Err(RuntimeError::CompileError(msg)) => Err(RuntimeError::SyntaxError(msg)),
+                Err(e) => Err(e),
+            }
+        });
         register_engine_helper(self, "__await", |rt, args| {
             let v = args.first().cloned().unwrap_or(Value::Undefined);
             let id = match v {

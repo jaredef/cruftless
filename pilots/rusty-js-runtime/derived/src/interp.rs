@@ -29,6 +29,15 @@ pub struct RealmRecord {
     pub function_prototype: Option<rusty_js_gc::ObjectId>,
     pub promise_prototype: Option<rusty_js_gc::ObjectId>,
     pub string_prototype: Option<rusty_js_gc::ObjectId>,
+    /// RS-EXT 2g: realm-scoped globals overrides. enter_realm shadows
+    /// the primordial globals (Array, Object, Function, ...) with the
+    /// realm's cloned constructors. exit_realm restores. Empty for
+    /// realm 0 (the primordial uses Runtime.globals directly).
+    pub globals_overrides: std::collections::HashMap<String, Value>,
+    /// RS-EXT 2g: snapshot of primordial globals' values for each
+    /// shadowed key, captured at enter_realm and restored at exit_realm.
+    /// Stored on the realm so nested enter/exit pairs compose.
+    pub primordial_snapshot: std::collections::HashMap<String, Value>,
 }
 
 #[derive(Debug, Clone)]
@@ -6342,16 +6351,135 @@ impl Runtime {
     /// the proto is wired automatically. This is the seam through which
     /// prototype-chain method dispatch works without retrofitting every
     /// alloc call-site.
+    /// RS-EXT 2d: shallow-clone an intrinsic-prototype object into a fresh
+    /// ObjectRef. The clone shares method ObjectRefs with the source (so
+    /// `arr.map(...)` in the cloned realm still calls the same compiled
+    /// map function) but property-bag mutations (`Array.prototype.map = ...`)
+    /// land on the clone's own entries and don't leak to the source realm.
+    /// This is the load-bearing isolation primitive for the prototype-
+    /// pollution probe per pilots/realm-substrate/seed.md §I.3.
+    fn clone_intrinsic_proto(&mut self, source: rusty_js_gc::ObjectId) -> rusty_js_gc::ObjectId {
+        let cloned = {
+            let src = self.obj(source);
+            let mut out = crate::value::Object::new_ordinary();
+            out.proto = src.proto;
+            out.extensible = src.extensible;
+            out.properties = src.properties.clone();
+            out.shape = src.shape.clone();
+            out.shape_values = src.shape_values.clone();
+            out
+        };
+        self.alloc_object(cloned)
+    }
+
+    /// RS-EXT 2d+2g: allocate a fresh realm with cloned intrinsic
+    /// prototypes AND cloned constructors. The constructor clones carry
+    /// .prototype pointing at the cloned prototype, so user code's
+    /// `Array.prototype.X = ...` (which dereferences via the Array
+    /// global → .prototype) lands on the cloned prototype, not the
+    /// primordial one. Without the constructor clones, user-visible
+    /// `Array.prototype` would resolve to the primordial via the
+    /// shared global, defeating realm isolation.
+    pub fn allocate_realm(&mut self) -> usize {
+        let array_p = self.array_prototype.map(|id| self.clone_intrinsic_proto(id));
+        let object_p = self.object_prototype.map(|id| self.clone_intrinsic_proto(id));
+        let function_p = self.function_prototype.map(|id| self.clone_intrinsic_proto(id));
+        let promise_p = self.promise_prototype.map(|id| self.clone_intrinsic_proto(id));
+        let string_p = self.string_prototype.map(|id| self.clone_intrinsic_proto(id));
+        let mut overrides = std::collections::HashMap::new();
+        for (name, new_proto) in [
+            ("Array", array_p),
+            ("Object", object_p),
+            ("Function", function_p),
+            ("Promise", promise_p),
+            ("String", string_p),
+        ] {
+            if let (Some(global_ctor), Some(new_proto)) = (self.globals.get(name).cloned(), new_proto) {
+                if let Value::Object(orig_ctor_id) = global_ctor {
+                    let cloned_ctor = self.clone_intrinsic_proto(orig_ctor_id);
+                    self.obj_mut(cloned_ctor).set_own_frozen("prototype".into(), Value::Object(new_proto));
+                    overrides.insert(name.to_string(), Value::Object(cloned_ctor));
+                }
+            }
+        }
+        self.realms.push(RealmRecord {
+            object_prototype: object_p,
+            array_prototype: array_p,
+            function_prototype: function_p,
+            promise_prototype: promise_p,
+            string_prototype: string_p,
+            globals_overrides: overrides,
+            primordial_snapshot: std::collections::HashMap::new(),
+        });
+        self.realms.len() - 1
+    }
+
+    /// RS-EXT 2e+2g: enter a realm. Returns the prior realm index so the
+    /// caller can restore on exit. Three swaps occur:
+    /// 1. Runtime intrinsic-prototype fields swap to realm's clones
+    ///    (covers field-level alloc-site reads).
+    /// 2. globals_overrides shadow the primordial globals (Array,
+    ///    Object, Function, ...) — the prior values are snapshotted
+    ///    onto the realm so exit_realm can restore.
+    /// 3. current_realm index updates.
+    pub fn enter_realm(&mut self, idx: usize) -> usize {
+        let prior = self.current_realm;
+        let (over_keys, over_values): (Vec<String>, Vec<Value>) = {
+            let r = &self.realms[idx];
+            (r.globals_overrides.keys().cloned().collect(),
+             r.globals_overrides.values().cloned().collect())
+        };
+        let mut snapshot = std::collections::HashMap::new();
+        for (k, v) in over_keys.iter().zip(over_values.into_iter()) {
+            if let Some(prev) = self.globals.get(k).cloned() { snapshot.insert(k.clone(), prev); }
+            self.globals.insert(k.clone(), v);
+        }
+        self.realms[idx].primordial_snapshot = snapshot;
+        self.current_realm = idx;
+        let r = &self.realms[idx];
+        self.array_prototype = r.array_prototype;
+        self.object_prototype = r.object_prototype;
+        self.function_prototype = r.function_prototype;
+        self.promise_prototype = r.promise_prototype;
+        self.string_prototype = r.string_prototype;
+        prior
+    }
+
+    /// RS-EXT 2e+2g: exit a realm, restoring the prior one.
+    pub fn exit_realm(&mut self, prior: usize) {
+        let cur = self.current_realm;
+        let snapshot = std::mem::take(&mut self.realms[cur].primordial_snapshot);
+        for (k, v) in snapshot {
+            self.globals.insert(k, v);
+        }
+        self.current_realm = prior;
+        let r = &self.realms[prior];
+        self.array_prototype = r.array_prototype;
+        self.object_prototype = r.object_prototype;
+        self.function_prototype = r.function_prototype;
+        self.promise_prototype = r.promise_prototype;
+        self.string_prototype = r.string_prototype;
+    }
+
     pub fn alloc_object(&mut self, mut obj: crate::value::Object) -> rusty_js_gc::ObjectId {
         if obj.proto.is_none() {
+            // RS-EXT 2c: proto-wiring consults the current realm's
+            // intrinsic table. Realm 0 mirrors the Runtime fields
+            // (post-RS-EXT 2b), so this is behavior-preserving in the
+            // single-realm baseline. Once enter_realm (RS-EXT 2e) swaps
+            // current_realm to a fresh realm with cloned prototypes,
+            // alloc_object naturally picks up the realm-scoped prototype
+            // — array literals allocated under a non-zero realm get that
+            // realm's Array.prototype, isolating mutations.
+            let realm = &self.realms[self.current_realm];
             obj.proto = match &obj.internal_kind {
-                crate::value::InternalKind::Ordinary => self.object_prototype,
-                crate::value::InternalKind::Array => self.array_prototype,
-                crate::value::InternalKind::Promise(_) => self.promise_prototype,
+                crate::value::InternalKind::Ordinary => realm.object_prototype.or(self.object_prototype),
+                crate::value::InternalKind::Array => realm.array_prototype.or(self.array_prototype),
+                crate::value::InternalKind::Promise(_) => realm.promise_prototype.or(self.promise_prototype),
                 crate::value::InternalKind::RegExp(_) => self.regexp_prototype,
                 crate::value::InternalKind::Function(_)
                 | crate::value::InternalKind::Closure(_)
-                | crate::value::InternalKind::BoundFunction(_) => self.function_prototype,
+                | crate::value::InternalKind::BoundFunction(_) => realm.function_prototype.or(self.function_prototype),
                 _ => None,
             };
         }

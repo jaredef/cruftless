@@ -51,6 +51,18 @@ impl Runtime {
         self.string_prototype   = Some(string_proto);
         self.number_prototype   = Some(number_proto);
 
+        // RS-EXT 2b: mirror into realm 0 (the primordial RealmRecord).
+        // Later commits will flip the dispatch direction so that the
+        // Runtime's intrinsic-prototype fields are reads-from-current-
+        // realm, but for now both views are kept in sync; the realm-
+        // record is the canonical source-of-truth once enter_realm /
+        // exit_realm swap them in RS-EXT 2e.
+        self.realms[0].object_prototype   = Some(object_proto);
+        self.realms[0].array_prototype    = Some(array_proto);
+        self.realms[0].function_prototype = Some(function_proto);
+        self.realms[0].promise_prototype  = Some(promise_proto);
+        self.realms[0].string_prototype   = Some(string_proto);
+
         install_object_proto(self, object_proto);
         install_array_proto(self, array_proto);
         install_string_proto(self, string_proto);
