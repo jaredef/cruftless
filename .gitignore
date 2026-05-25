@@ -46,3 +46,4 @@ phase-b-scratch/
 # Per-host setup notes (paths, mounts, throttling — machine-specific)
 LOCAL-SETUP.md
 scripts/diff-prod/results/
+env.local
