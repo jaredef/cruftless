@@ -1,0 +1,15 @@
+{"fixture":"json_parse_transform","runtime":"node","run":1,"ms":"122"}
+{"fixture":"json_parse_transform","runtime":"node","run":2,"ms":"121"}
+{"fixture":"json_parse_transform","runtime":"node","run":3,"ms":"125"}
+{"fixture":"json_parse_transform","runtime":"node","run":4,"ms":"124"}
+{"fixture":"json_parse_transform","runtime":"node","run":5,"ms":"122"}
+{"fixture":"json_parse_transform","runtime":"bun","run":1,"ms":"93"}
+{"fixture":"json_parse_transform","runtime":"bun","run":2,"ms":"94"}
+{"fixture":"json_parse_transform","runtime":"bun","run":3,"ms":"94"}
+{"fixture":"json_parse_transform","runtime":"bun","run":4,"ms":"99"}
+{"fixture":"json_parse_transform","runtime":"bun","run":5,"ms":"95"}
+{"fixture":"json_parse_transform","runtime":"cruft","run":1,"ms":"1853"}
+{"fixture":"json_parse_transform","runtime":"cruft","run":2,"ms":"1882"}
+{"fixture":"json_parse_transform","runtime":"cruft","run":3,"ms":"1890"}
+{"fixture":"json_parse_transform","runtime":"cruft","run":4,"ms":"1805"}
+{"fixture":"json_parse_transform","runtime":"cruft","run":5,"ms":"1822"}
