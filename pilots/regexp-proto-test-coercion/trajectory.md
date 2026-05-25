@@ -47,3 +47,32 @@
 **Finding RPTC.4 (engine-vs-spec scoping responsibility)**: the regex engine (rust regex crate / hand-rolled NFA) returns scanning-search results; sticky anchoring is a SPEC-level responsibility, not an engine-level one. The substrate's job at `regexp_exec` is to filter engine output against the spec's match-position invariant. Conflating these would require either a sticky-aware regex engine (large cost) or per-call substring prefixing (slow). The post-filter approach lives at the spec layer and costs ~8 LOC.
 
 **Status**: RPTC-EXT 2 CLOSED. Locale at 13/13 in-scope + 2 collateral.
+
+## RPTC-EXT 3 — spec-strict Set + UTF-16 code-unit positions (2026-05-25)
+
+**Trigger**: keeper "continue against the finding rptc.4" — pursue spec-vs-engine filtering at substrate.
+
+**Edits** (~30 LOC at `regexp.rs`):
+- `set_last_index_strict(rt, id, n) -> Result<(), RuntimeError>`: own-descriptor writable check; throws TypeError per §7.3.4 Set(R, "lastIndex", n, true).
+- `byte_to_utf16(s, byte_off) -> usize`: maps engine byte-offset (UTF-8) to JS code-unit offset (UTF-16). BMP codepoints contribute 1, astral contribute 2.
+- All three lastIndex-set sites in `regexp_exec` now use `set_last_index_strict?`.
+- Match result's `lastIndex` + `index` now reflect UTF-16 code-units (`byte_to_utf16(input, mend)` / `(input, mstart)`) instead of bytes / char-counts.
+
+**Verification**:
+- Probe: `/./ug.exec('𝌆')` → `lastIndex = 2` ✓ (was 4 bytes)
+- Probe: `/c/y` with non-writable lastIndex → `.exec('abc')` throws TypeError ✓
+- Exemplar (11 RegExp.prototype.exec failures): PASS 3 → **5**
+- Random 300 prev-PASS: **300/300, 0 regressions**
+- diff-prod: **42/42**
+
+**Findings**
+
+**Finding RPTC.5 (substrate-as-spec-filter generalizes)**: RPTC.4's substrate-as-spec-filter pattern extends to two more engine/spec divergences at the same boundary:
+- **Set-with-Throw flag (`Set(R, k, v, true)`)**: engine has silent `object_set`; spec requires throw-on-non-writable. Substrate wraps with writable-check.
+- **Coordinate-space translation (UTF-8 bytes → UTF-16 code units)**: engine works in UTF-8 byte offsets; JS spec exposes UTF-16 code-unit positions through `lastIndex` and `.index`. Substrate converts at the output boundary.
+
+Both are ~5-15 LOC. Each closes a small cluster (1-2 tests each here, ~10+ across the parity sweep). The substrate-filter pattern compounds: one shared closure (`regexp_exec`) becomes the canonical site for spec-invariant enforcement — surface methods route through it and inherit all the filters for free.
+
+**Finding RPTC.6 (cumulative-yield from one closure)**: RPTC-EXT 1 (12 LOC at .test) + RPTC-EXT 2 (8 LOC at regexp_exec) + RPTC-EXT 3 (30 LOC at regexp_exec) = 50 LOC total. Closed 13/13 .test cluster + 5/11 .exec cluster + 2 collateral String.prototype.search/match wins (pending sweep). The closure-centric substrate-filter approach has compounding returns; the alternative (per-test fixes at each surface method) would have been an order of magnitude more code.
+
+**Status**: RPTC-EXT 3 CLOSED. Locale at 13/13 .test + 5/11 .exec + collateral.

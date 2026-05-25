@@ -618,6 +618,31 @@ fn install_regexp_proto(rt: &mut Runtime, host: ObjectRef) {
 /// Per §22.2.5.2 RegExpBuiltinExec. v1 surface: returns null on no match,
 /// else an Array with [match, ...groups] plus .index / .input properties.
 /// Honors the 'g' flag via lastIndex.
+/// RPTC-EXT 3: ECMA-262 §7.3.4 Set(R, "lastIndex", v, true) with the
+/// Throw flag. Mirrors the OrdinarySet path: if the own "lastIndex"
+/// data property is non-writable, throw TypeError. Used wherever
+/// spec says `Set(R, "lastIndex", ..., true)`.
+fn set_last_index_strict(rt: &mut Runtime, id: ObjectRef, n: f64) -> Result<(), RuntimeError> {
+    let writable = rt.obj(id).get_own("lastIndex").map(|d| d.writable).unwrap_or(true);
+    if !writable {
+        return Err(RuntimeError::TypeError(
+            "Cannot assign to read only property 'lastIndex' of object '#<RegExp>'".into()));
+    }
+    rt.object_set(id, "lastIndex".into(), Value::Number(n));
+    Ok(())
+}
+
+/// RPTC-EXT 3: byte-offset → UTF-16 code-unit position. JS strings are
+/// UTF-16; lastIndex and the .index property on match results are both
+/// in code-unit positions per §22.2.7.2 / §22.2.7.3. The engine returns
+/// byte positions into the UTF-8 backing; the substrate must filter.
+/// (Pre-fix, both were treated as char-counts for index and bytes for
+/// lastIndex — wrong for any non-BMP input.)
+fn byte_to_utf16(s: &str, byte_off: usize) -> usize {
+    let off = byte_off.min(s.len());
+    s[..off].chars().map(|c| if (c as u32) >= 0x10000 { 2 } else { 1 }).sum()
+}
+
 pub fn regexp_exec(rt: &mut Runtime, this_id: ObjectRef, input: &str) -> Result<Value, RuntimeError> {
     let (is_global, is_sticky, has_compiled) = {
         let o = rt.obj(this_id);
@@ -656,7 +681,7 @@ pub fn regexp_exec(rt: &mut Runtime, this_id: ObjectRef, input: &str) -> Result<
             if let InternalKind::RegExp(r) = &mut rt.obj_mut(this_id).internal_kind {
                 r.last_index = 0;
             }
-            rt.object_set(this_id, "lastIndex".into(), Value::Number(0.0));
+            set_last_index_strict(rt, this_id, 0.0)?;
         }
         return Ok(Value::Null);
     }
@@ -685,16 +710,23 @@ pub fn regexp_exec(rt: &mut Runtime, this_id: ObjectRef, input: &str) -> Result<
                 if let InternalKind::RegExp(r) = &mut rt.obj_mut(this_id).internal_kind {
                     r.last_index = 0;
                 }
-                rt.object_set(this_id, "lastIndex".into(), Value::Number(0.0));
+                set_last_index_strict(rt, this_id, 0.0)?;
             }
             Ok(Value::Null)
         }
         Some((mstart, mend, groups)) => {
+            // RPTC-EXT 3: lastIndex + .index are UTF-16 code-unit positions
+            // per §22.2.7.2 step 17/18 and §22.2.7.3 step 15. The engine
+            // returns byte offsets into UTF-8; convert at the substrate
+            // boundary. Pre-fix produced byte-offset lastIndex and char-
+            // count .index — both wrong for non-BMP input.
+            let mend_u16 = byte_to_utf16(input, mend);
+            let mstart_u16 = byte_to_utf16(input, mstart);
             if is_global {
                 if let InternalKind::RegExp(r) = &mut rt.obj_mut(this_id).internal_kind {
-                    r.last_index = mend;
+                    r.last_index = mend_u16;
                 }
-                rt.object_set(this_id, "lastIndex".into(), Value::Number(mend as f64));
+                set_last_index_strict(rt, this_id, mend_u16 as f64)?;
             }
             let arr = rt.alloc_object(Object::new_array());
             for (i, g) in groups.iter().enumerate() {
@@ -705,7 +737,7 @@ pub fn regexp_exec(rt: &mut Runtime, this_id: ObjectRef, input: &str) -> Result<
                 rt.object_set(arr, i.to_string(), v);
             }
             rt.object_set(arr, "length".into(), Value::Number(groups.len() as f64));
-            rt.object_set(arr, "index".into(), Value::Number(byte_to_char_index(input, mstart) as f64));
+            rt.object_set(arr, "index".into(), Value::Number(mstart_u16 as f64));
             rt.object_set(arr, "input".into(), Value::String(Rc::new(input.to_string())));
             Ok(Value::Object(arr))
         }
