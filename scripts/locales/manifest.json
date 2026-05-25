@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 62,
-    "top_level": 51,
+    "locales": 63,
+    "top_level": 52,
     "nested": 11,
     "warnings": 0
   },
@@ -215,6 +215,15 @@
       "depth": 1,
       "rung_count": 2,
       "status": "**CLOSED at REOU-EXT 1** (1 implementation round; Doc 740 multi-tier closure across R = {opcode-split, runtime-handler, compiler-typeof, compiler-delete})."
+    },
+    {
+      "coord": "regexp-proto-test-coercion",
+      "tag": "L.regexp-proto-test-coercion",
+      "parent": null,
+      "scope": "regexp-proto-test-coercion",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
     },
     {
       "coord": "revoked-proxy-trap-propagation",

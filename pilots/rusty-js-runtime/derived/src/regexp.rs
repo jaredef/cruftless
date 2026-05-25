@@ -490,26 +490,22 @@ fn install_regexp_proto(rt: &mut Runtime, host: ObjectRef) {
     register_method(rt, host, "compile", |rt, _args| {
         Ok(rt.current_this())
     });
-    register_method(rt, host, "test", |rt, args| {
+    // RPTC-EXT 1: ECMA-262 §22.2.5.5 — RegExp.prototype.test( S )
+    // 1. R = this; 2. S = ToString(S); 3. match = RegExpExec(R, S);
+    // 4. return match !== null.
+    // Length is 1 per §22.2.5.5. Coerce via rt.coerce_to_string (which
+    // dispatches @@toPrimitive / toString / valueOf per §7.1.17).
+    // Route through regexp_exec so sticky/global lastIndex bookkeeping
+    // matches the .exec path exactly.
+    crate::intrinsics::register_intrinsic_method(rt, host, "test", 1, |rt, args| {
         let this_id = current_regexp_this(rt, "RegExp.prototype.test")?;
-        let input = abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined))
-            .as_str().to_string();
-        let result = {
-            let re = match &rt.obj(this_id).internal_kind {
-                InternalKind::RegExp(r) => r,
-                _ => unreachable!(),
-            };
-            match &re.compiled {
-                Some(rx) => Ok(rx.is_match(&input)),
-                None => Err(RuntimeError::TypeError(format!(
-                    "RegExp pattern uses features unsupported by the v1 regex engine: /{}/{}",
-                    re.source, re.flags))),
-            }
-        }?;
-        Ok(Value::Boolean(result))
+        let arg = args.first().cloned().unwrap_or(Value::Undefined);
+        let input = rt.coerce_to_string(&arg)?;
+        let r = regexp_exec(rt, this_id, &input)?;
+        Ok(Value::Boolean(!matches!(r, Value::Null)))
     });
 
-    register_method(rt, host, "exec", |rt, args| {
+    crate::intrinsics::register_intrinsic_method(rt, host, "exec", 1, |rt, args| {
         let this_id = current_regexp_this(rt, "RegExp.prototype.exec")?;
         // Ω.5.P60.E4: full ECMA §7.1.17 ToString on the argument — for
         // Object inputs this dispatches @@toPrimitive('string') first, then
