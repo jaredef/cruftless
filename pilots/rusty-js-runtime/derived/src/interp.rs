@@ -3711,11 +3711,22 @@ impl Runtime {
         let mut err: Option<RuntimeError> = None;
         match comparator {
             None => {
-                items.sort_by(|a, b| {
-                    let sa = crate::abstract_ops::to_string(a);
-                    let sb = crate::abstract_ops::to_string(b);
-                    sa.as_str().cmp(sb.as_str())
-                });
+                // ASD-EXT 1: spec SortCompare (§23.1.3.30.1 step 4) requires
+                // ToString dispatch on each pair via ToPrimitive(hint=string),
+                // which calls user-defined toString/valueOf. Cruft's
+                // abstract_ops::to_string takes the low-level path that
+                // returns "[object Object]" for any Object without dispatch.
+                // Materialize each element's spec-correct string once before
+                // sort_by to keep dispatch out of the comparator and to avoid
+                // re-borrowing self inside the closure.
+                let mut keys: Vec<String> = Vec::with_capacity(items.len());
+                for v in &items {
+                    let prim = self.to_primitive(v, "string")?;
+                    keys.push(crate::abstract_ops::to_string(&prim).as_str().to_string());
+                }
+                let mut idx: Vec<usize> = (0..items.len()).collect();
+                idx.sort_by(|&a, &b| keys[a].cmp(&keys[b]));
+                items = idx.into_iter().map(|i| items[i].clone()).collect();
             }
             Some(cb) => {
                 items.sort_by(|a, b| {
