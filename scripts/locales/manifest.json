@@ -3,12 +3,21 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 50,
-    "top_level": 39,
+    "locales": 51,
+    "top_level": 40,
     "nested": 11,
     "warnings": 0
   },
   "locales": [
+    {
+      "coord": "array-create-data-property-discipline",
+      "tag": "L.array-create-data-property-discipline",
+      "parent": null,
+      "scope": "array-create-data-property-discipline",
+      "depth": 1,
+      "rung_count": 1,
+      "status": "**WORKSTREAM FOUNDED (ACDPD-EXT 0)**. Spawned per keeper directive after ASCD-EXT 1 surfaced this as the sibling sub-locale (Finding ASCD.2 + Finding ASCD.3)."
+    },
     {
       "coord": "array-exotic-virtual-property-discipline",
       "tag": "L.array-exotic-virtual-property-discipline",
