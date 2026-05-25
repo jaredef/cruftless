@@ -6847,6 +6847,30 @@ impl Runtime {
     ///     (shape transition or in-place mutate).
     ///   - Symbol-keyed sets always migrate to Dictionary first.
     pub fn object_set_pk(&mut self, id: ObjectRef, key: crate::value::PropertyKey, value: Value) {
+        // ALST-EXT 1: route `arr.length = N` through §10.4.2.1 ArraySetLength
+        // so that decreasing length truncates the backing storage. Without
+        // this, the assignment-path stored length-as-data-property without
+        // deleting indices ≥ N, breaking forEach/map/filter/reduce length-
+        // mutation-during-iteration tests. The defineProperty path already
+        // routes through array_set_length; this promotes the assignment path
+        // to the same deeper-layer closure.
+        if let crate::value::PropertyKey::String(s) = &key {
+            if s.as_str() == "length"
+                && matches!(self.obj(id).internal_kind, crate::value::InternalKind::Array)
+            {
+                let desc_id = self.alloc_object(crate::value::Object::default());
+                self.obj_mut(desc_id).dict_mut().insert(
+                    crate::value::PropertyKey::String("value".to_string()),
+                    crate::value::PropertyDescriptor {
+                        value, writable: true, enumerable: true, configurable: true,
+                        getter: None, setter: None,
+                    },
+                );
+                let _ = crate::generated::array_set_length(self, Value::Undefined,
+                    &[Value::Object(id), Value::Object(desc_id)]);
+                return;
+            }
+        }
         match &key {
             crate::value::PropertyKey::String(s) => {
                 if s.starts_with("__") {

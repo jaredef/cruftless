@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 59,
-    "top_level": 48,
+    "locales": 60,
+    "top_level": 49,
     "nested": 11,
     "warnings": 0
   },
@@ -26,6 +26,15 @@
       "depth": 1,
       "rung_count": 1,
       "status": "**CLOSED at AEVPD-EXT 1** (1 implementation round; multi-tier closure across three substrate truths)."
+    },
+    {
+      "coord": "array-length-setter-truncation",
+      "tag": "L.array-length-setter-truncation",
+      "parent": null,
+      "scope": "array-length-setter-truncation",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
     },
     {
       "coord": "array-sort-tostring-dispatch",
@@ -177,7 +186,7 @@
       "parent": null,
       "scope": "parser-permissiveness-audit-extensions",
       "depth": 1,
-      "rung_count": 1,
+      "rung_count": 4,
       "status": "**CLOSED at PPAE-EXT 1**."
     },
     {
@@ -402,7 +411,7 @@
       "parent": null,
       "scope": "strict-mode-parser-tracking",
       "depth": 1,
-      "rung_count": 1,
+      "rung_count": 2,
       "status": "**CLOSED at SMPT-EXT 1** (partial \u2014 only the function-body-depth axis; strict-mode + generator-context axes deferred)."
     },
     {
