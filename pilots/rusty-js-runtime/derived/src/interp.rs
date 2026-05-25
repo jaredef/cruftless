@@ -2986,6 +2986,14 @@ impl Runtime {
             _ => return Err(RuntimeError::TypeError(
                 "json_serialize_compound: value must be an Object".into())),
         };
+        // RPTP-EXT 2: ECMA-262 §25.5.2.5 step 1 + §10.5.{12,13}: traversing
+        // a Proxy whose [[ProxyHandler]] is null (revoked) must throw
+        // TypeError. JSON.stringify on a revoked proxy (or a tree containing
+        // one) hits this at each compound-traversal entry.
+        if self.proxy_is_revoked(id) {
+            return Err(RuntimeError::TypeError(
+                "Cannot perform operation on a revoked Proxy".into()));
+        }
         let is_array = matches!(self.obj(id).internal_kind, crate::value::InternalKind::Array);
         if is_array {
             let len = self.try_array_length(id)?;
