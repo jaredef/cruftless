@@ -2717,17 +2717,23 @@ impl Runtime {
                 Value::Object(id) => id,
                 _ => rt.alloc_object(Object::new_ordinary()),
             };
-            rt.object_set(url_obj, "href".into(), Value::String(Rc::new(href)));
-            rt.object_set(url_obj, "protocol".into(), Value::String(Rc::new(protocol)));
-            rt.object_set(url_obj, "username".into(), Value::String(Rc::new(username.into())));
-            rt.object_set(url_obj, "password".into(), Value::String(Rc::new(password.into())));
-            rt.object_set(url_obj, "host".into(), Value::String(Rc::new(hostport.into())));
-            rt.object_set(url_obj, "hostname".into(), Value::String(Rc::new(hostname.into())));
-            rt.object_set(url_obj, "port".into(), Value::String(Rc::new(port.into())));
-            rt.object_set(url_obj, "pathname".into(), Value::String(Rc::new(path_s)));
-            rt.object_set(url_obj, "search".into(), Value::String(Rc::new(search)));
-            rt.object_set(url_obj, "hash".into(), Value::String(Rc::new(hash)));
-            rt.object_set(url_obj, "origin".into(), Value::String(Rc::new(origin)));
+            // ESNE-EXT 4: URL's 11 fields are accessors on URL.prototype per
+            // WHATWG URL §4.4. Min-scope: hide as non-enumerable via
+            // set_engine_sentinel. Subsequent setter writes (e.g.
+            // url.protocol = 'https:') preserve attrs through object_set's
+            // update path. Spec-strict accessor-with-reparse semantics are
+            // a separate locale candidate.
+            rt.set_engine_sentinel(url_obj, "href", Value::String(Rc::new(href)));
+            rt.set_engine_sentinel(url_obj, "protocol", Value::String(Rc::new(protocol)));
+            rt.set_engine_sentinel(url_obj, "username", Value::String(Rc::new(username.into())));
+            rt.set_engine_sentinel(url_obj, "password", Value::String(Rc::new(password.into())));
+            rt.set_engine_sentinel(url_obj, "host", Value::String(Rc::new(hostport.into())));
+            rt.set_engine_sentinel(url_obj, "hostname", Value::String(Rc::new(hostname.into())));
+            rt.set_engine_sentinel(url_obj, "port", Value::String(Rc::new(port.into())));
+            rt.set_engine_sentinel(url_obj, "pathname", Value::String(Rc::new(path_s)));
+            rt.set_engine_sentinel(url_obj, "search", Value::String(Rc::new(search)));
+            rt.set_engine_sentinel(url_obj, "hash", Value::String(Rc::new(hash)));
+            rt.set_engine_sentinel(url_obj, "origin", Value::String(Rc::new(origin)));
             register_method(rt, url_obj, "toString", |rt, _args| {
                 Ok(rt.object_get(match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::String(Rc::new(String::new()))) }, "href"))
             });
@@ -2771,9 +2777,15 @@ impl Runtime {
             let mut o = Object::new_ordinary();
             o.proto = Some(proto);
             let sig = rt.alloc_object(o);
-            rt.object_set(sig, "aborted".into(), Value::Boolean(aborted));
-            rt.object_set(sig, "reason".into(), reason);
-            rt.object_set(sig, "onabort".into(), Value::Null);
+            // ESNE-EXT 4: hide as non-enumerable. Spec (WHATWG DOM §3.1) puts
+            // aborted/reason as accessors on AbortSignal.prototype; onabort is
+            // an event-handler attribute (also accessor). Min-scope mirrors
+            // ESNE-EXT 2 (size on Map/Set): close Object.keys leak via
+            // set_engine_sentinel; subsequent fire_abort updates preserve
+            // attrs through the object_set update path.
+            rt.set_engine_sentinel(sig, "aborted", Value::Boolean(aborted));
+            rt.set_engine_sentinel(sig, "reason", reason);
+            rt.set_engine_sentinel(sig, "onabort", Value::Null);
             let listeners = rt.alloc_object(Object::new_dictionary());
             rt.obj_mut(listeners).set_own_internal("__count".into(), Value::Number(0.0));
             rt.obj_mut(sig).set_own_internal("__ac_listeners__".into(), Value::Object(listeners));
@@ -2928,7 +2940,9 @@ impl Runtime {
             o.proto = Some(acp_for_ctor);
             let inst = rt.alloc_object(o);
             let sig = alloc_abort_signal(rt, asp_for_ctor, false, Value::Undefined);
-            rt.object_set(inst, "signal".into(), Value::Object(sig));
+            // ESNE-EXT 4: AbortController.signal is an accessor on the proto
+            // per spec; minimum-scope hide via set_engine_sentinel.
+            rt.set_engine_sentinel(inst, "signal", Value::Object(sig));
             Ok(Value::Object(inst))
         });
         let abort_controller_id = self.alloc_object(abort_controller_ctor);

@@ -141,3 +141,39 @@ Iterator + generator behavior preserved:
 1. `iterator-prototype-routing` (~150-250 LOC) — move iterator methods to dedicated prototypes; matches real spec shape.
 2. `typedarray-buffer-view-accessor-shadow` — TypedArray + ArrayBuffer + DataView length/byteLength/byteOffset/buffer as prototype accessors (same shape as RIAS-EXT 1).
 3. `abort-and-url-accessor-shadow` — AbortController/AbortSignal/URL property surface as prototype accessors.
+
+---
+
+## ESNE-EXT 4 — hide AbortSignal/AbortController/URL instance data (2026-05-25)
+
+**Trigger**: ESNE.8 candidate (3). TypedArray was probed first and found wider-scope than expected (prototype accessors don't exist; would require introducing them — full rung not minimum scope). AbortSignal/AbortController/URL store their property surface as own data on instances; spec wants accessors on prototype, but minimum-scope hide-as-non-enumerable mirrors ESNE-EXT 2's size fix and closes the `Object.keys` leak without spec-perfect accessor refactor.
+
+**Edits** (~15 LOC at `intrinsics.rs`):
+
+- `alloc_abort_signal`: install `aborted`/`reason`/`onabort` via `set_engine_sentinel`.
+- AbortController ctor: install `signal` via `set_engine_sentinel`.
+- URL ctor: install 11 fields (`href`/`protocol`/`username`/`password`/`host`/`hostname`/`port`/`pathname`/`search`/`hash`/`origin`) via `set_engine_sentinel`.
+
+Subsequent updates (fire_abort sets `aborted=true` + `reason`, URL setters write protocol/pathname/etc.) preserve attrs through the `object_set` update path per ESNE.1.
+
+**Verification**:
+
+| Probe | Before | After |
+|---|---|---|
+| `Object.keys(new AbortController())` | `["signal"]` | `[]` |
+| `Object.keys(new AbortController().signal)` | `["aborted","reason","onabort"]` | `[]` |
+| `Object.keys(new URL("http://x"))` | 11 keys | `[]` |
+| AbortController.abort + signal.aborted | works | works |
+| URL field reads + setter writes | works | works |
+
+**Gates**:
+- diff-prod: **42/42 PASS, 0 FAIL**
+- Random 300 prev-PASS: **300/300, 0 regressions**
+
+**Findings**
+
+**Finding ESNE.9 (probe-first saves scope blow-up)**: TypedArray/ArrayBuffer/DataView was queued as a same-shape sibling locale, but probe-first verification found `proto.length: undefined` and `u.byteOffset: undefined` — the accessors don't exist at all. Adding them is a much larger rung than RIAS-EXT 1's unshadow-existing-accessors work. Standing Rule 21 (probe-first scoping) prevented committing to a substantial scope on a wrong-shape estimate. AbortController/URL turned out to BE the cleaner minimum-scope candidate even though it was queued third.
+
+**Finding ESNE.10 (the locale's leak surface is now empty)**: post-ESNE-EXT 4, every probed instance in the earlier wide-probe round either has `Object.keys` = `[]` or has spec-mandated own keys (TypedArray indexed access, Array indexed access, String wrapper indexed access). The only outstanding leak is TypedArray/ArrayBuffer/DataView `length`/`byteLength` which requires the larger prototype-accessor-introduction rung. The minimum-scope sentinel-hide work this locale targeted is complete.
+
+**Status**: ESNE-EXT 4 CLOSED. The locale's three-rung sentinel-hide arc (Map/Set/WeakMap/WeakSet/Date instances + iterator/generator family + AbortController/AbortSignal/URL) is at maximum coverage for the minimum-scope approach. Further rungs would require accessor introduction (ESNE.7's iterator-prototype-routing or a typedarray-accessor-introduction locale), which is architectural-tier work better spawned as separate locales rather than additional ESNE rungs.
