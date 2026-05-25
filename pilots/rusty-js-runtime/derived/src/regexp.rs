@@ -734,6 +734,12 @@ pub fn regexp_exec(rt: &mut Runtime, this_id: ObjectRef, input: &str) -> Result<
                 }
                 set_last_index_strict(rt, this_id, mend_u16 as f64)?;
             }
+            // RES-EXT 1: collect named groups before the result array
+            // is built; the borrow on internal_kind ends here.
+            let named = match &rt.obj(this_id).internal_kind {
+                InternalKind::RegExp(r) => r.compiled.as_ref().map(|c| c.named_groups()),
+                _ => None,
+            };
             let arr = rt.alloc_object(Object::new_array());
             for (i, g) in groups.iter().enumerate() {
                 let v = match g {
@@ -745,6 +751,26 @@ pub fn regexp_exec(rt: &mut Runtime, this_id: ObjectRef, input: &str) -> Result<
             rt.object_set(arr, "length".into(), Value::Number(groups.len() as f64));
             rt.object_set(arr, "index".into(), Value::Number(mstart_u16 as f64));
             rt.object_set(arr, "input".into(), Value::String(Rc::new(input.to_string())));
+            // RES-EXT 1: build .groups per ECMA-262 §22.2.7.2 step 33.
+            // Spec mandates a null-prototype Object whose own properties
+            // are name → matched-substring (or undefined for non-
+            // participating named groups). If the pattern has no named
+            // groups, .groups is undefined.
+            match named {
+                Some(nlist) if !nlist.is_empty() => {
+                    let g_obj = rt.alloc_object_with_explicit_null_proto(Object::new_ordinary());
+                    for (name, idx) in nlist {
+                        let v = groups.get(idx).and_then(|g| g.clone())
+                            .map(|s| Value::String(Rc::new(s)))
+                            .unwrap_or(Value::Undefined);
+                        rt.object_set(g_obj, name, v);
+                    }
+                    rt.object_set(arr, "groups".into(), Value::Object(g_obj));
+                }
+                _ => {
+                    rt.object_set(arr, "groups".into(), Value::Undefined);
+                }
+            }
             Ok(Value::Object(arr))
         }
     }

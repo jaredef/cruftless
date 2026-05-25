@@ -112,6 +112,10 @@ pub struct HandRolledRegex {
     pub flags: Flags,
     pub ast: Node,
     pub group_count: usize,
+    /// RES-EXT 1: name → 1-based group index. Populated by the parser
+    /// when it encounters `(?<name>...)`. Exposed for the substrate-bridge
+    /// layer to build the .groups property on match results.
+    pub named_groups: std::collections::HashMap<String, usize>,
 }
 
 pub struct HandMatch {
@@ -148,11 +152,13 @@ pub fn compile(pattern: &str, flag_str: &str) -> Result<HandRolledRegex, String>
     if p.pos < p.chars.len() {
         return Err(format!("unexpected '{}' at position {}", p.chars[p.pos], p.pos));
     }
+    let named_groups = p.named_groups.clone();
     Ok(HandRolledRegex {
         source: Rc::new(pattern.to_string()),
         flags,
         ast,
         group_count: p.group_count,
+        named_groups,
     })
 }
 

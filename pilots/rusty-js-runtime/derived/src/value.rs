@@ -743,6 +743,20 @@ impl Clone for CompiledRegex {
 }
 
 impl CompiledRegex {
+    /// RES-EXT 1: unified name → 1-based group-index map. The Rust regex
+    /// crate exposes capture_names() (Option<&str> per group, including
+    /// the unnamed slot 0); the hand engine carries its own HashMap.
+    /// Substrate-bridge consumers build the .groups Object from this.
+    pub fn named_groups(&self) -> Vec<(String, usize)> {
+        match self {
+            CompiledRegex::Rust(r) => r.capture_names().enumerate()
+                .filter_map(|(i, n)| n.map(|s| (s.to_string(), i)))
+                .collect(),
+            CompiledRegex::Hand(h) => h.named_groups.iter()
+                .map(|(k, v)| (k.clone(), *v))
+                .collect(),
+        }
+    }
     pub fn is_match(&self, input: &str) -> bool {
         match self {
             CompiledRegex::Rust(r) => r.is_match(input),
