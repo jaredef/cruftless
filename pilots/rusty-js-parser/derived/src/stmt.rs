@@ -700,6 +700,17 @@ impl<'src> Parser<'src> {
             }
             if let TokenKind::Ident(n) = self.current_kind().clone() {
                 let id_span = self.lookahead_span();
+                // SBEA-EXT 1: §13.2 strict-mode binding-id check at the
+                // for-(var|let|const) plain-identifier head — this path
+                // bypasses parse_binding_target and parse_binding_identifier
+                // by constructing the BindingIdentifier inline.
+                if self.strict_mode && (n == "eval" || n == "arguments") {
+                    return Err(ParseError {
+                        span: id_span,
+                        message: format!(
+                            "Binding identifier '{}' is not allowed in strict mode", n),
+                    });
+                }
                 self.bump()?;
                 // for-in / for-of head
                 if self.is_ident("in") || self.is_contextual_keyword("of") {

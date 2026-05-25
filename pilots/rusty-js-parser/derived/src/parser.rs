@@ -409,9 +409,19 @@ impl<'src> Parser<'src> {
     fn parse_binding_identifier(&mut self) -> Result<BindingIdentifier, ParseError> {
         let tok = self.lookahead.clone();
         if let TokenKind::Ident(name) = &tok.kind {
-            // v1: do not reject reserved-word bindings here. The parser's
-            // strict-mode reserved-word handling is in the expression grammar
-            // sub-round.
+            // SBEA-EXT 1: ECMA-262 §13.2 — in strict mode, `eval` and
+            // `arguments` are reserved as binding identifiers. Covers
+            // `var arguments`, `let eval`, `function eval() {}`, etc. in
+            // strict bodies. Param-name promotion (params parsed in non-
+            // strict then body's "use strict" promotes) is a sibling
+            // locale, not handled here.
+            if self.strict_mode && (name == "eval" || name == "arguments") {
+                return Err(ParseError {
+                    span: tok.span,
+                    message: format!(
+                        "Binding identifier '{}' is not allowed in strict mode", name),
+                });
+            }
             self.bump_regexp()?;
             Ok(BindingIdentifier { name: name.clone(), span: tok.span })
         } else {
@@ -1002,6 +1012,18 @@ impl<'src> Parser<'src> {
         match self.current_kind().clone() {
             TokenKind::Ident(n) => {
                 let span = self.lookahead_span();
+                // SBEA-EXT 1: §13.2 strict-mode binding-id check at the
+                // pattern-target site too (parse_binding_identifier covers
+                // function names, imports, etc.; this covers var/let/const
+                // bindings + destructuring-leaf-identifier + for-(var|let|
+                // const) head bindings).
+                if self.strict_mode && (n == "eval" || n == "arguments") {
+                    return Err(ParseError {
+                        span,
+                        message: format!(
+                            "Binding identifier '{}' is not allowed in strict mode", n),
+                    });
+                }
                 self.bump()?;
                 Ok(BindingPattern::Identifier(BindingIdentifier { name: n, span }))
             }
