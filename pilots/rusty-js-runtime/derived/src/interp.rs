@@ -2800,6 +2800,72 @@ impl Runtime {
         Ok(Value::Object(this))
     }
 
+    /// MGOI-EXT 1: Map.prototype.getOrInsert(key, value) per TC39 upsert
+    /// proposal. If the map already has key, returns its value. Otherwise
+    /// inserts (key, value) and returns value.
+    pub fn map_proto_get_or_insert_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let (this, storage) = self.map_this_and_storage("getOrInsert")?;
+        let key = args.first().cloned().unwrap_or(Value::Undefined);
+        let val = args.get(1).cloned().unwrap_or(Value::Undefined);
+        let key_s = Self::map_storage_key(&key);
+        if self.obj(storage).has_own_str(&key_s) {
+            return Ok(self.object_get(storage, &key_s));
+        }
+        self.object_set(storage, key_s.clone(), val.clone());
+        if !matches!(&key, Value::String(_)) {
+            let orig_id = match self.object_get(this, "__map_orig_keys") {
+                Value::Object(id) => id,
+                _ => {
+                    let id = self.alloc_object(crate::value::Object::new_ordinary());
+                    self.object_set(this, "__map_orig_keys".into(), Value::Object(id));
+                    id
+                }
+            };
+            self.object_set(orig_id, key_s, key);
+        }
+        let prev = match self.object_get(this, "size") { Value::Number(n) => n, _ => 0.0 };
+        self.object_set(this, "size".into(), Value::Number(prev + 1.0));
+        Ok(val)
+    }
+
+    /// MGOI-EXT 1: Map.prototype.getOrInsertComputed(key, callbackfn) per
+    /// TC39 upsert proposal. If has(key), return its value. Else call
+    /// callbackfn(key), insert (key, result), return result. The callback
+    /// is called BEFORE the insert; if it throws, no insert happens.
+    pub fn map_proto_get_or_insert_computed_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let (this, storage) = self.map_this_and_storage("getOrInsertComputed")?;
+        let key = args.first().cloned().unwrap_or(Value::Undefined);
+        let cb = args.get(1).cloned().unwrap_or(Value::Undefined);
+        if !self.is_callable(&cb) {
+            return Err(RuntimeError::TypeError(
+                "Map.prototype.getOrInsertComputed: callbackfn is not callable".into()));
+        }
+        let key_s = Self::map_storage_key(&key);
+        if self.obj(storage).has_own_str(&key_s) {
+            return Ok(self.object_get(storage, &key_s));
+        }
+        let val = self.call_function(cb, Value::Undefined, vec![key.clone()])?;
+        // Per spec, check again after callback (callback may have inserted).
+        if self.obj(storage).has_own_str(&key_s) {
+            return Ok(self.object_get(storage, &key_s));
+        }
+        self.object_set(storage, key_s.clone(), val.clone());
+        if !matches!(&key, Value::String(_)) {
+            let orig_id = match self.object_get(this, "__map_orig_keys") {
+                Value::Object(id) => id,
+                _ => {
+                    let id = self.alloc_object(crate::value::Object::new_ordinary());
+                    self.object_set(this, "__map_orig_keys".into(), Value::Object(id));
+                    id
+                }
+            };
+            self.object_set(orig_id, key_s, key);
+        }
+        let prev = match self.object_get(this, "size") { Value::Number(n) => n, _ => 0.0 };
+        self.object_set(this, "size".into(), Value::Number(prev + 1.0));
+        Ok(val)
+    }
+
     /// Map.prototype.has(key).
     pub fn map_proto_has_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let (_this, storage) = self.map_this_and_storage("has")?;

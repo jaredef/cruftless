@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 58,
-    "top_level": 47,
+    "locales": 59,
+    "top_level": 48,
     "nested": 11,
     "warnings": 0
   },
@@ -134,6 +134,15 @@
       "depth": 1,
       "rung_count": 2,
       "status": "**CLOSED at IPEP-EXT 1** (1 implementation round; Doc 740 multi-tier closure)."
+    },
+    {
+      "coord": "map-getorinsert-upsert",
+      "tag": "L.map-getorinsert-upsert",
+      "parent": null,
+      "scope": "map-getorinsert-upsert",
+      "depth": 1,
+      "rung_count": 2,
+      "status": "**CLOSED at MGOI-EXT 1** (pending sweep-completion deploy + exemplar verification)."
     },
     {
       "coord": "map-prototype-brand-check",

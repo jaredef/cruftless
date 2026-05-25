@@ -3448,6 +3448,15 @@ impl Runtime {
             register_intrinsic_method(self, proto, "set",     2, move |rt, args| { brand_chk(rt, "set")?; crate::generated::map_prototype_set(rt, rt.current_this(), args) });
             register_intrinsic_method(self, proto, "has",     1, move |rt, args| { brand_chk(rt, "has")?; crate::generated::map_prototype_has(rt, rt.current_this(), args) });
             register_intrinsic_method(self, proto, "delete",  1, move |rt, args| { brand_chk(rt, "delete")?; crate::generated::map_prototype_delete(rt, rt.current_this(), args) });
+            // MGOI-EXT 1: Map.prototype.getOrInsert / getOrInsertComputed
+            // per TC39 upsert proposal. Same brand-check discipline as
+            // the basic methods. Registered on Map proto only (WeakMap
+            // gets its own variant when needed; WeakMap version handles
+            // weak-ref keys differently).
+            if !is_weak_proto {
+                register_intrinsic_method(self, proto, "getOrInsert", 2, move |rt, args| { brand_chk(rt, "getOrInsert")?; rt.map_proto_get_or_insert_via(args) });
+                register_intrinsic_method(self, proto, "getOrInsertComputed", 2, move |rt, args| { brand_chk(rt, "getOrInsertComputed")?; rt.map_proto_get_or_insert_computed_via(args) });
+            }
             // ECMA-262 sec 24.1.3.10 get Map.prototype.size: accessor on
             // the prototype, not a data property on instances. Pre-fix
             // cruftless stored a per-instance data 'size' that shadowed
@@ -3648,7 +3657,21 @@ impl Runtime {
                 Ok(())
             };
             // §24.2.3 spec arities.
-            register_intrinsic_method(self, proto, "add",     1, move |rt, args| { set_brand_chk(rt, "add")?;     crate::generated::set_prototype_add(rt, rt.current_this(), args) });
+            // SPBC-EXT 4: WeakSet.prototype.add additionally checks the
+            // value arg can be held weakly (Object or Symbol per
+            // CanBeHeldWeakly). Primitives (string/number/bigint/bool/
+            // null/undef) throw TypeError per 24.4.3.1 step 4.
+            register_intrinsic_method(self, proto, "add",     1, move |rt, args| {
+                set_brand_chk(rt, "add")?;
+                if is_weak_proto {
+                    let v = args.first().cloned().unwrap_or(Value::Undefined);
+                    if !matches!(v, Value::Object(_) | Value::Symbol(_)) {
+                        return Err(RuntimeError::TypeError(
+                            "WeakSet.prototype.add: value cannot be held weakly".into()));
+                    }
+                }
+                crate::generated::set_prototype_add(rt, rt.current_this(), args)
+            });
             register_intrinsic_method(self, proto, "has",     1, move |rt, args| { set_brand_chk(rt, "has")?;     crate::generated::set_prototype_has(rt, rt.current_this(), args) });
             register_intrinsic_method(self, proto, "delete",  1, move |rt, args| { set_brand_chk(rt, "delete")?;  crate::generated::set_prototype_delete(rt, rt.current_this(), args) });
             // ECMA-262 sec 24.2.3.10 get Set.prototype.size: accessor on
@@ -3683,8 +3706,11 @@ impl Runtime {
                     size_desc,
                 );
             }
-            register_intrinsic_method(self, proto, "clear",   0, |rt, args| crate::generated::set_prototype_clear(rt, rt.current_this(), args));
-            register_intrinsic_method(self, proto, "forEach", 1, |rt, args| crate::generated::set_prototype_for_each(rt, rt.current_this(), args));
+            // SPBC-EXT 4: wrap clear/forEach with set_brand_chk too (per
+            // sweep regression where Set.prototype.clear.call(weakset)
+            // and Set.prototype.forEach.call(weakset) failed to throw).
+            register_intrinsic_method(self, proto, "clear",   0, move |rt, args| { set_brand_chk(rt, "clear")?;   crate::generated::set_prototype_clear(rt, rt.current_this(), args) });
+            register_intrinsic_method(self, proto, "forEach", 1, move |rt, args| { set_brand_chk(rt, "forEach")?; crate::generated::set_prototype_for_each(rt, rt.current_this(), args) });
             // Tier-Ω.5.rrr: @@iterator returns a values-iterator. Per
             // spec Set.prototype[Symbol.iterator] === Set.prototype.values.
             // Required for `[...new Set(arr)]` to spread.
