@@ -94,6 +94,59 @@ fn expr_to_binding_pattern(e: Expr) -> Option<BindingPattern> {
 }
 
 impl<'src> Parser<'src> {
+    /// SDIBP-EXT 1: parse a Statement in a position where Declaration is
+    /// forbidden (the body of for / for-in / for-of / if / else / while /
+    /// do-while / with / labelled). Per ECMA-262 §13.1 Statement grammar,
+    /// HoistableDeclaration, ClassDeclaration, and LexicalDeclaration are
+    /// NOT Statements. Cruft's parse_statement accepts all of them; this
+    /// substatement-checked entry rejects the obvious Declaration tokens
+    /// before delegating.
+    pub fn parse_substatement(&mut self) -> Result<Stmt, ParseError> {
+        // Forbid lexical declarations: let / const.
+        // (let-followed-by-ident-or-bracket distinguishes from member-access
+        // on identifier `let`; for this position we conservatively reject
+        // bare `let` followed by anything that could begin a binding.)
+        if self.is_ident("const") {
+            return Err(self.err_here("LexicalDeclaration `const` is not allowed as Statement body".into()));
+        }
+        if self.is_ident("let") {
+            // `let [` or `let {` or `let <ident>` is LexicalDeclaration.
+            let pos = self.lookahead_span().end;
+            let bytes = self.source().as_bytes();
+            let mut p = pos;
+            while p < bytes.len() && (bytes[p].is_ascii_whitespace()) { p += 1; }
+            if p < bytes.len() {
+                let b = bytes[p];
+                if b == b'[' || b == b'{' || b.is_ascii_alphabetic() || b == b'_' || b == b'$' {
+                    return Err(self.err_here("LexicalDeclaration `let` is not allowed as Statement body".into()));
+                }
+            }
+        }
+        // ClassDeclaration.
+        if self.is_ident("class") {
+            return Err(self.err_here("ClassDeclaration is not allowed as Statement body".into()));
+        }
+        // FunctionDeclaration / GeneratorDeclaration / AsyncFunctionDeclaration /
+        // AsyncGeneratorDeclaration. Annex B B.3.2 carves out some narrow
+        // cases (if-then, if-then-else with sloppy non-strict-mode plain
+        // function); for-loop bodies are NOT in the Annex B carve-out, so
+        // reject all four flavors. Per spec strictly, this should also reject
+        // sloppy plain-function in for body — we follow spec.
+        if self.is_ident("function") {
+            return Err(self.err_here("HoistableDeclaration is not allowed as Statement body".into()));
+        }
+        if self.is_ident("async") {
+            let pos = self.lookahead_span().end;
+            let bytes = self.source().as_bytes();
+            let mut p = pos;
+            while p < bytes.len() && bytes[p].is_ascii_whitespace() { p += 1; }
+            if bytes[p..].starts_with(b"function") {
+                return Err(self.err_here("AsyncFunctionDeclaration is not allowed as Statement body".into()));
+            }
+        }
+        self.parse_statement()
+    }
+
     pub fn parse_statement(&mut self) -> Result<Stmt, ParseError> {
         let start = self.lookahead_span().start;
 
@@ -167,7 +220,7 @@ impl<'src> Parser<'src> {
                 let label_span = self.lookahead_span();
                 self.bump()?; // consume label
                 self.expect_punct(Punct::Colon)?;
-                let body = self.parse_statement()?;
+                let body = self.parse_substatement()?;
                 let end = body.span().start.max(self.last_span_end());
                 return Ok(Stmt::Labelled {
                     label: BindingIdentifier { name, span: label_span },
@@ -491,10 +544,10 @@ impl<'src> Parser<'src> {
         self.expect_punct(Punct::LParen)?;
         let test = self.parse_expression()?;
         self.expect_punct(Punct::RParen)?;
-        let consequent = self.parse_statement()?;
+        let consequent = self.parse_substatement()?;
         let alternate = if self.is_ident("else") {
             self.bump()?;
-            Some(Box::new(self.parse_statement()?))
+            Some(Box::new(self.parse_substatement()?))
         } else { None };
         let end = self.last_span_end();
         Ok(Stmt::If { test, consequent: Box::new(consequent), alternate, span: Span::new(start, end) })
@@ -537,7 +590,7 @@ impl<'src> Parser<'src> {
                     self.bump()?;
                     let right = self.parse_expression()?;
                     self.expect_punct(Punct::RParen)?;
-                    let body = self.parse_statement()?;
+                    let body = self.parse_substatement()?;
                     let end = self.last_span_end();
                     let left = ForBinding::Decl {
                         kind, target, span: Span::new(pat_start, pat_end),
@@ -577,7 +630,7 @@ impl<'src> Parser<'src> {
                     Some(self.parse_expression()?)
                 } else { None };
                 self.expect_punct(Punct::RParen)?;
-                let body = self.parse_statement()?;
+                let body = self.parse_substatement()?;
                 let end = self.last_span_end();
                 let init_st = ForInit::Variable(VariableStatement {
                     kind, declarators, span: Span::new(kw_span.start, kw_span.end),
@@ -593,7 +646,7 @@ impl<'src> Parser<'src> {
                     self.bump()?;
                     let right = self.parse_expression()?;
                     self.expect_punct(Punct::RParen)?;
-                    let body = self.parse_statement()?;
+                    let body = self.parse_substatement()?;
                     let end = self.last_span_end();
                     let left = ForBinding::Decl {
                         kind,
@@ -652,7 +705,7 @@ impl<'src> Parser<'src> {
                     Some(self.parse_expression()?)
                 } else { None };
                 self.expect_punct(Punct::RParen)?;
-                let body = self.parse_statement()?;
+                let body = self.parse_substatement()?;
                 let end = self.last_span_end();
                 let init = ForInit::Variable(VariableStatement {
                     kind, declarators, span: Span::new(kw_span.start, kw_span.end),
@@ -693,7 +746,7 @@ impl<'src> Parser<'src> {
                         self.bump()?;
                         let right = self.parse_expression()?;
                         self.expect_punct(Punct::RParen)?;
-                        let body = self.parse_statement()?;
+                        let body = self.parse_substatement()?;
                         let end = self.last_span_end();
                         let left = ForBinding::Pattern(BindingPattern::Identifier(
                             BindingIdentifier { name: n, span: id_span }
@@ -720,7 +773,7 @@ impl<'src> Parser<'src> {
                 self.bump()?;
                 let right = self.parse_expression()?;
                 self.expect_punct(Punct::RParen)?;
-                let body = self.parse_statement()?;
+                let body = self.parse_substatement()?;
                 let end = self.last_span_end();
                 let left = {
                     let span_fallback = e.span();
@@ -749,7 +802,7 @@ impl<'src> Parser<'src> {
             Some(self.parse_expression()?)
         } else { None };
         self.expect_punct(Punct::RParen)?;
-        let body = self.parse_statement()?;
+        let body = self.parse_substatement()?;
         let end = self.last_span_end();
         let init = init_expr.map(ForInit::Expression);
         Ok(Stmt::For { init, test, update, body: Box::new(body), span: Span::new(start, end) })
@@ -761,7 +814,7 @@ impl<'src> Parser<'src> {
         self.expect_punct(Punct::LParen)?;
         let test = self.parse_expression()?;
         self.expect_punct(Punct::RParen)?;
-        let body = self.parse_statement()?;
+        let body = self.parse_substatement()?;
         let end = self.last_span_end();
         Ok(Stmt::While { test, body: Box::new(body), span: Span::new(start, end) })
     }
@@ -769,7 +822,7 @@ impl<'src> Parser<'src> {
     fn parse_do_while_statement(&mut self) -> Result<Stmt, ParseError> {
         let start = self.lookahead_span().start;
         self.expect_keyword("do")?;
-        let body = self.parse_statement()?;
+        let body = self.parse_substatement()?;
         self.expect_keyword("while")?;
         self.expect_punct(Punct::LParen)?;
         let test = self.parse_expression()?;
