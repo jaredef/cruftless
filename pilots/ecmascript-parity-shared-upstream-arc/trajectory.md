@@ -159,3 +159,53 @@ This is substantial substrate work, not the "smallest blast radius / pure additi
 Note: in-scope-sub-cluster ratios are improving (#4 24%, #5 41%, #2 67%) as pre-scoping discipline tightens.
 
 Next: constraint #1 with mandatory per-sub-cluster pre-scoping probe.
+
+---
+
+## EPSUA-EXT 4 — chapter close (2026-05-25)
+
+**Trigger**: keeper directive "Do c and close this chapter, then spawn the sub locale". After pre-scoping probe on constraint #1 surfaced that the 226-test TypeError-not-thrown cluster fragments into ~6 distinct upstream causes (Symbol-coerce / ArraySpeciesCreate / revoked-proxy / non-extensible / heterogeneous tail), confirming that constraint #1 was misdiagnosed in the prospective doc as a single shared-upstream — same pattern observed across constraints #4, #5, #2 at smaller scale.
+
+### Arc-tier results
+
+| Constraint | Cluster Projection | In-Scope Sub-cluster | Actual Cascade | In-Scope Ratio |
+|---|---:|---:|---:|---:|
+| #4 (ICOA) | ~25 | ~25 | +6 | 24% |
+| #5 (PPAE) | ~50 | ~17 | +7 | 41% |
+| #2 (SMPT) | ~80 | ~12 | +8 | 67% |
+| #3 ($262/createRealm) | ~38 | (full realm subst.) | — | deferred |
+| #1 (host-method prologue) | ~150 | (probe surfaced fragmentation) | — | not entered |
+| **Total** | ~343 | ~54 | **+21** | **39% of in-scope** |
+
+**Cumulative**: +21 PASS / 0 PASS→FAIL regressions across 3 closed constraint sub-locales.
+
+### Five Pred-epsua.* dispositions
+
+| Predicate | Disposition |
+|---|---|
+| Pred-epsua.1 (≥84% runnable) | ⚪ NOT REACHED (current ~80.9% post-EPSUA); requires constraint #1 + heterogeneous-tail closures |
+| Pred-epsua.2 (zero PASS→FAIL per round) | ✅ HELD (3/3 closed sub-locales) |
+| Pred-epsua.3 (cumulative within ±30% of projections) | ❌ FALSIFIED (cumulative 21/163 = 13% of cluster-projections; 21/54 = 39% of in-scope sub-cluster projections) |
+| Pred-epsua.4 (≥2 sub-locales within projection) | ❌ FALSIFIED across cluster-projections; ⚪ partial against in-scope projections (1 of 3 ≥50%) |
+| Pred-epsua.5 (≤2 implementation rounds per sub-locale) | ✅ HELD (all 3 closed in 1 round) |
+| Pred-epsua.6 (≥2 corroborate Finding T262C.4) | ✅ HELD with refinement (see below) |
+
+### Findings
+
+**Finding EPSUA.6 (Finding T262C.4 REFINEMENT)** — the shared-upstream vs mutually-exclusive discriminator was correctly applied at the matrix-cell level in T262C-EXT 2 but should be applied at the **reason-pattern level WITHIN the failure-reason histogram**:
+
+> A failure-reason text shape (e.g., "Expected a TypeError, none thrown") is necessary but NOT SUFFICIENT evidence of shared-upstream. The reason TEXT may recur across pipelines while the *upstream causes* remain distinct. The discriminator must also verify the upstream cause is common — not just the reason wording.
+
+The 226 TypeError-not-thrown cluster (constraint #1) demonstrates the failure mode: same reason text, ~6 different upstream causes. Each cause is its own shared-upstream sub-locale at a smaller cascade scale (~10-23 each).
+
+**Finding EPSUA.7** — the discrimination methodology IS demonstrated empirically: all three closed constraints (#4, #5, #2) WERE single substrate fixes that cascaded across multiple pipelines (per-cluster ratio averaging 13% of cluster-projection, 39% of in-scope-sub-cluster projection). Cluster-projection over-counts; sub-cluster-projection (post per-reason segmentation) is the correct unit for Doc 740 leverage prediction.
+
+**Finding EPSUA.8** — Doc 740 multi-tier closure default discipline (Finding T262C.5) continues to hold: 3 of 3 closed sub-locales with zero PASS→FAIL regressions; per-round substrate cost stayed under ~100 LOC; minimal-repro verification preceded every commit.
+
+### Status
+
+**CHAPTER CLOSED at EPSUA-EXT 4.**
+
+The arc empirically validates Finding T262C.4's discriminator structure but refutes its projected magnitudes. The remaining work (constraint #1 sub-clusters + #3 createRealm + heterogeneous tail) is no longer a single coherent arc; each sub-cluster spawns as its own top-level locale.
+
+Next per keeper directive: spawn `array-species-create-discipline` as a standalone top-level locale (the largest clean sub-cluster of the former constraint #1, ~20-23 tests, §7.3.21 single substrate site).
