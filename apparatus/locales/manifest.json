@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 86,
-    "top_level": 75,
+    "locales": 87,
+    "top_level": 76,
     "nested": 11,
     "warnings": 0
   },
@@ -152,6 +152,15 @@
       "depth": 1,
       "rung_count": 2,
       "status": "**CLOSED at FODAS-EXT 1** (1 implementation round; standing rule 13 prospective application; Doc 740 multi-tier closure)."
+    },
+    {
+      "coord": "for-of-rhs-is-assignment-expression",
+      "tag": "L.for-of-rhs-is-assignment-expression",
+      "parent": null,
+      "scope": "for-of-rhs-is-assignment-expression",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
     },
     {
       "coord": "get-own-property-descriptor-accessor-shape",

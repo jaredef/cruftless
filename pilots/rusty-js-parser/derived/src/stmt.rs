@@ -694,7 +694,7 @@ impl<'src> Parser<'src> {
                 if self.is_ident("in") || self.is_contextual_keyword("of") {
                     let is_of = self.is_contextual_keyword("of");
                     self.bump()?;
-                    let right = self.parse_expression()?;
+                    let right = if is_of { self.parse_assignment_expression()? } else { self.parse_expression()? };
                     self.expect_punct(Punct::RParen)?;
                     let body = self.parse_substatement()?;
                     let end = self.last_span_end();
@@ -769,7 +769,7 @@ impl<'src> Parser<'src> {
                 if self.is_ident("in") || self.is_contextual_keyword("of") {
                     let is_of = self.is_contextual_keyword("of");
                     self.bump()?;
-                    let right = self.parse_expression()?;
+                    let right = if is_of { self.parse_assignment_expression()? } else { self.parse_expression()? };
                     self.expect_punct(Punct::RParen)?;
                     let body = self.parse_substatement()?;
                     let end = self.last_span_end();
@@ -869,7 +869,7 @@ impl<'src> Parser<'src> {
                     if self.is_ident("in") || self.is_contextual_keyword("of") {
                         let is_of = self.is_contextual_keyword("of");
                         self.bump()?;
-                        let right = self.parse_expression()?;
+                        let right = if is_of { self.parse_assignment_expression()? } else { self.parse_expression()? };
                         self.expect_punct(Punct::RParen)?;
                         let body = self.parse_substatement()?;
                         let end = self.last_span_end();
@@ -896,7 +896,7 @@ impl<'src> Parser<'src> {
             if self.is_ident("in") || self.is_contextual_keyword("of") {
                 let is_of = self.is_contextual_keyword("of");
                 self.bump()?;
-                let right = self.parse_expression()?;
+                let right = if is_of { self.parse_assignment_expression()? } else { self.parse_expression()? };
                 self.expect_punct(Punct::RParen)?;
                 let body = self.parse_substatement()?;
                 let end = self.last_span_end();
