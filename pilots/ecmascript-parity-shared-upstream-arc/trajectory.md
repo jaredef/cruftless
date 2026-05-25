@@ -78,3 +78,27 @@ This is substantial substrate work, not the "smallest blast radius / pure additi
 | 3 | `pilots/strict-mode-parser-tracking/` | #2 | ~80 | queued |
 | 4 | `pilots/host-method-prologue-discipline/` | #1 | ~150 | queued |
 | (deferred) | `pilots/host-262-shim/` (or `realm-substrate`) | #3 | ~38 | deferred pending realm-substrate budget decision |
+
+---
+
+## EPSUA-EXT 1 — iterator-close-on-abrupt (2026-05-25)
+
+**Sub-locale**: `pilots/iterator-close-on-abrupt/` (ICOA-EXT 0+1; CLOSED).
+
+**Cumulative-vs-projected**: +6 PASS vs ~25 projected (**24% of projection**); 0 regressions. Pred-epsua.3 falsified for constraint #4 specifically.
+
+**Finding EPSUA.2** (cumulative across EXT 0.5 + EXT 1): TWO of the prospective doc's five constraints (#3 and #4) under-delivered vs projection in the first two probes. Aggregate doc projection (~340) requires upward revision; per-constraint amortization is lower than the prospective doc's matrix-cell heuristic suggested.
+
+**Finding EPSUA.3** (methodology-level — strengthening Finding T262C.6 carry-forward C4): per-reason segmentation within a cluster is a HARD prerequisite before scoping each sub-locale, not optional. The matrix's cell label (pipeline × data-shape) over-aggregates when multiple distinct reason-shapes fall under one cell — the case for $262/createRealm (single API; cost mis-projected) AND for iter-close (cluster aggregated 6 close-pure + 14 deeper sub-causes).
+
+**Implication for arc continuation**: EPSUA C4 strengthened — pre-scoping probe must enumerate the failure-REASON distribution within the candidate cluster AND identify the sub-cluster the candidate substrate fix targets. Projected cascade = the sub-cluster size, not the whole cluster size.
+
+**Re-ordered sub-locale queue** (post-ICOA, sub-cluster-sized projections applied where probed):
+
+| Order | Sub-locale dir | Constraint | Prior projection | Sub-cluster-segmented | Status |
+|---:|---|---|---:|---:|---|
+| 1 | `pilots/parser-permissiveness-audit-extensions/` | #5 | ~50 | unprobed | next |
+| 2 | `pilots/strict-mode-parser-tracking/` | #2 | ~80 | unprobed | queued |
+| 3 | `pilots/host-method-prologue-discipline/` | #1 | ~150 | unprobed | queued |
+| (deferred) | `pilots/host-262-shim/` (realm-substrate) | #3 | ~38 | (createRealm = full realm subst.) | deferred |
+| ✅ closed | `pilots/iterator-close-on-abrupt/` | #4 | ~25 | 6 close-pure | +6 |

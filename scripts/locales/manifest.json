@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 46,
-    "top_level": 35,
+    "locales": 47,
+    "top_level": 36,
     "nested": 11,
     "warnings": 0
   },
@@ -51,7 +51,7 @@
       "parent": null,
       "scope": "ecmascript-parity-shared-upstream-arc",
       "depth": 1,
-      "rung_count": 1,
+      "rung_count": 3,
       "status": "**WORKSTREAM FOUNDED (EPSUA-EXT 0)**. Successor arc to T262C's first ECMAScript-parity round. Carries the resume vector through the five shared-upstream substrates identified at T262C-EXT 2's prospective analysis. Each sub-locale closes one of the five named constraints."
     },
     {
@@ -89,6 +89,15 @@
       "depth": 1,
       "rung_count": 3,
       "status": "**CHAPTER CLOSED at IPBR-EXT 2 (P2.a at deeper-layer-first design tier)**. All six Pred-ipbr.* HELD including the Pred-ipbr.6 discipline falsifier (\u22643 rounds). CRB string_url_sweep 685 \u2192 584 ms (-14.7% additional; -21.4% cumulative vs 743 baseline); cruft/node 6.99x \u2192 6.21x (first sub-6.5\u00d7); A/B header_loop -21.8% additional (median 197 ms vs GPI 252). Locale closed in 1 implementation round; standing-rule-13 prospective-application thesis gets its second empirical corroboration."
+    },
+    {
+      "coord": "iterator-close-on-abrupt",
+      "tag": "L.iterator-close-on-abrupt",
+      "parent": null,
+      "scope": "iterator-close-on-abrupt",
+      "depth": 1,
+      "rung_count": 1,
+      "status": "**CLOSED at ICOA-EXT 1**."
     },
     {
       "coord": "iterator-protocol-error-propagation",

@@ -2005,6 +2005,7 @@ impl Compiler {
                 // next() threw, never propagated the throw. The 40-test
                 // for-of-dstr iterator-protocol cluster traces here.
                 let iter_slot = self.alloc_temp("<destr.iter>");
+                let done_slot = self.alloc_temp("<destr.iter.done>");
                 let open_idx = self.constants.intern(Constant::String("__destr_iter_open".into()));
                 encode_op(&mut self.bytecode, Op::LoadGlobal);
                 encode_u16(&mut self.bytecode, open_idx);
@@ -2014,8 +2015,12 @@ impl Compiler {
                 encode_u8(&mut self.bytecode, 1);
                 encode_op(&mut self.bytecode, Op::StoreLocal);
                 encode_u16(&mut self.bytecode, iter_slot);
+                // Initialize done_slot to false.
+                encode_op(&mut self.bytecode, Op::PushFalse);
+                encode_op(&mut self.bytecode, Op::StoreLocal);
+                encode_u16(&mut self.bytecode, done_slot);
                 for slot_opt in arr.elements.iter() {
-                    self.emit_iter_step_value(iter_slot)?;
+                    self.emit_iter_step_value(iter_slot, Some(done_slot))?;
                     match slot_opt {
                         Some(elem) => self.emit_element_with_default(&elem.target, elem.default.as_ref())?,
                         None => { encode_op(&mut self.bytecode, Op::Pop); } // elision: advance iter, discard
@@ -2030,6 +2035,10 @@ impl Compiler {
                     encode_op(&mut self.bytecode, Op::Call);
                     encode_u8(&mut self.bytecode, 1);
                     self.emit_element_with_default(rest_pat, None)?;
+                    // Rest exhausts iter; no close needed.
+                } else {
+                    // §13.15.5.3 step 5: IteratorClose if not exhausted.
+                    self.emit_iter_close_if_not_done(iter_slot, done_slot)?;
                 }
             }
             rusty_js_ast::BindingPattern::Object(obj) => {
@@ -2100,7 +2109,10 @@ impl Compiler {
     /// IPEP-EXT 1: emit one iterator-step + done-check sequence; leaves
     /// either the .value or Undefined on the operand stack. Used by both
     /// emit_destructure and emit_destructure_assign Array paths.
-    fn emit_iter_step_value(&mut self, iter_slot: u16) -> Result<(), CompileError> {
+    /// ICOA-EXT 1: optional done_slot records the most-recent step's
+    /// .done value so the caller can decide whether to emit
+    /// IteratorClose per §13.15.5.3 step 5.
+    fn emit_iter_step_value(&mut self, iter_slot: u16, done_slot: Option<u16>) -> Result<(), CompileError> {
         let step_idx = self.constants.intern(Constant::String("__destr_iter_step".into()));
         encode_op(&mut self.bytecode, Op::LoadGlobal);
         encode_u16(&mut self.bytecode, step_idx);
@@ -2113,6 +2125,13 @@ impl Compiler {
         let done_key = self.constants.intern(Constant::String("done".into()));
         encode_op(&mut self.bytecode, Op::GetProp);
         encode_u16(&mut self.bytecode, done_key);
+        // [r, done]
+        if let Some(slot) = done_slot {
+            encode_op(&mut self.bytecode, Op::Dup);
+            encode_op(&mut self.bytecode, Op::StoreLocal);
+            encode_u16(&mut self.bytecode, slot);
+            // [r, done] still on stack
+        }
         let j_done = self.emit_jump(Op::JumpIfTrue);
         // not-done: [r] → get value
         let value_key = self.constants.intern(Constant::String("value".into()));
@@ -2124,6 +2143,26 @@ impl Compiler {
         encode_op(&mut self.bytecode, Op::Pop);
         encode_op(&mut self.bytecode, Op::PushUndef);
         self.patch_jump(j_end);
+        Ok(())
+    }
+
+    /// ICOA-EXT 1: emit IteratorClose check + call per §13.15.5.3 step 5.
+    /// If done_slot is false at end-of-destructure (iter was not exhausted),
+    /// call __destr_iter_close(iter_slot) to invoke iter.return().
+    fn emit_iter_close_if_not_done(&mut self, iter_slot: u16, done_slot: u16) -> Result<(), CompileError> {
+        // if (done_slot) skip
+        encode_op(&mut self.bytecode, Op::LoadLocal);
+        encode_u16(&mut self.bytecode, done_slot);
+        let j_skip = self.emit_jump(Op::JumpIfTrue);
+        let close_idx = self.constants.intern(Constant::String("__destr_iter_close".into()));
+        encode_op(&mut self.bytecode, Op::LoadGlobal);
+        encode_u16(&mut self.bytecode, close_idx);
+        encode_op(&mut self.bytecode, Op::LoadLocal);
+        encode_u16(&mut self.bytecode, iter_slot);
+        encode_op(&mut self.bytecode, Op::Call);
+        encode_u8(&mut self.bytecode, 1);
+        encode_op(&mut self.bytecode, Op::Pop);
+        self.patch_jump(j_skip);
         Ok(())
     }
 
@@ -3945,6 +3984,7 @@ impl Compiler {
                 // per element use __destr_iter_step (symmetric with
                 // emit_destructure Array path). §13.15.5.3 RS:DAE.
                 let iter_slot = self.alloc_temp("<destr-assign.iter>");
+                let done_slot = self.alloc_temp("<destr-assign.iter.done>");
                 let open_idx = self.constants.intern(Constant::String("__destr_iter_open".into()));
                 encode_op(&mut self.bytecode, Op::LoadGlobal);
                 encode_u16(&mut self.bytecode, open_idx);
@@ -3954,14 +3994,18 @@ impl Compiler {
                 encode_u8(&mut self.bytecode, 1);
                 encode_op(&mut self.bytecode, Op::StoreLocal);
                 encode_u16(&mut self.bytecode, iter_slot);
+                encode_op(&mut self.bytecode, Op::PushFalse);
+                encode_op(&mut self.bytecode, Op::StoreLocal);
+                encode_u16(&mut self.bytecode, done_slot);
+                let mut has_rest = false;
                 for el in elements.iter() {
                     match el {
                         ArrayElement::Elision { .. } => {
-                            self.emit_iter_step_value(iter_slot)?;
+                            self.emit_iter_step_value(iter_slot, Some(done_slot))?;
                             encode_op(&mut self.bytecode, Op::Pop);
                         }
                         ArrayElement::Expr(leaf) => {
-                            self.emit_iter_step_value(iter_slot)?;
+                            self.emit_iter_step_value(iter_slot, Some(done_slot))?;
                             if let Expr::Assign { target: lt, value: dv, operator, .. } = leaf {
                                 if matches!(operator, AssignOp::Assign) {
                                     encode_op(&mut self.bytecode, Op::Dup);
@@ -3980,6 +4024,7 @@ impl Compiler {
                             self.assign_target_from_stack(leaf)?;
                         }
                         ArrayElement::Spread { expr: rest_target, .. } => {
+                            has_rest = true;
                             let rest_idx = self.constants.intern(Constant::String("__destr_iter_rest".into()));
                             encode_op(&mut self.bytecode, Op::LoadGlobal);
                             encode_u16(&mut self.bytecode, rest_idx);
@@ -3990,6 +4035,9 @@ impl Compiler {
                             self.assign_target_from_stack(rest_target)?;
                         }
                     }
+                }
+                if !has_rest {
+                    self.emit_iter_close_if_not_done(iter_slot, done_slot)?;
                 }
                 Ok(())
             }

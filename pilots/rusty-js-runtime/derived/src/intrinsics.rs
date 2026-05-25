@@ -1017,6 +1017,28 @@ impl Runtime {
             let next_fn = rt.object_get(iter_obj, "next");
             rt.call_function(next_fn, Value::Object(iter_obj), Vec::new())
         });
+        register_engine_helper(self, "__destr_iter_close", |rt, args| {
+            // ECMA-262 §7.4.9 IteratorClose. Called when the destructure
+            // exits without exhausting the iterator (per §13.15.5.3 step 5).
+            // If iter.return is undefined, NormalCompletion(); if it's a
+            // function, call it with this=iter, args=[]. Throw if the call
+            // throws (propagates per IteratorClose step 7).
+            let iter = args.first().cloned().unwrap_or(Value::Undefined);
+            let iter_obj = match iter {
+                Value::Object(id) => id,
+                _ => return Ok(Value::Undefined),
+            };
+            let ret = rt.object_get(iter_obj, "return");
+            if matches!(ret, Value::Undefined | Value::Null) {
+                return Ok(Value::Undefined);
+            }
+            if !matches!(ret, Value::Object(_)) {
+                // Per §7.4.9 step 4-5: GetMethod returns undefined for non-callable;
+                // callable check is implicit via Value::Object above.
+                return Ok(Value::Undefined);
+            }
+            rt.call_function(ret, Value::Object(iter_obj), Vec::new())
+        });
         register_engine_helper(self, "__destr_iter_rest", |rt, args| {
             let iter = args.first().cloned().unwrap_or(Value::Undefined);
             let iter_obj = match iter {
