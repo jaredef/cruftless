@@ -238,12 +238,19 @@ impl<'src> Parser<'src> {
                 let span = Span::new(start, arg.span().end);
                 Ok(Expr::Unary { operator: UnaryOp::Delete, argument: Box::new(arg), span })
             }
-            TokenKind::Ident(s) if s == "yield" && (self.function_body_depth > 0 || self.strict_mode) => {
-                // SMPT-EXT 1+2: yield is YieldExpression when inside a
-                // function body OR when strict-mode (strict-mode yield is
-                // unconditionally reserved per §13.2). At script/module
-                // top-level sloppy (depth == 0 && !strict), `yield` is
+            TokenKind::Ident(s) if s == "yield" && (self.in_generator || self.strict_mode) => {
+                // SMPT-EXT 3: yield is YieldExpression only inside a
+                // generator function body. In strict-mode outside a
+                // generator, `yield` is a reserved word (SyntaxError at
+                // parse per §13.2). In sloppy mode outside a generator
+                // (top-level OR non-generator function body), `yield` is
                 // IdentifierReference and falls through to default Ident.
+                if self.strict_mode && !self.in_generator {
+                    return Err(ParseError {
+                        span: self.lookahead_span(),
+                        message: "'yield' is a reserved word in strict mode and may not appear outside a generator function".into(),
+                    });
+                }
                 self.bump()?;
                 let delegate = matches!(self.current_kind(), TokenKind::Punct(Punct::Star));
                 if delegate { self.bump()?; }
@@ -707,7 +714,7 @@ impl<'src> Parser<'src> {
                 self.bump()?; // consume `*`
                 let key = self.parse_object_key()?;
                 let params = self.parse_function_parameters()?;
-                let body = self.parse_function_body()?;
+                let body = self.parse_function_body_g(Some(true))?;
                 let end = self.last_span_end();
                 let func = Expr::Function {
                     name: None,
@@ -737,7 +744,7 @@ impl<'src> Parser<'src> {
                 } else { false };
                 let key = self.parse_object_key()?;
                 let params = self.parse_function_parameters()?;
-                let body = self.parse_function_body()?;
+                let body = self.parse_function_body_g(Some(is_generator))?;
                 let end = self.last_span_end();
                 let func = Expr::Function {
                     name: None,
@@ -766,7 +773,7 @@ impl<'src> Parser<'src> {
                 self.bump()?; // consume `get` or `set`
                 let key = self.parse_object_key()?;
                 let params = self.parse_function_parameters()?;
-                let body = self.parse_function_body()?;
+                let body = self.parse_function_body_g(Some(false))?;
                 let end = self.last_span_end();
                 let func = Expr::Function {
                     name: None,
@@ -797,7 +804,7 @@ impl<'src> Parser<'src> {
                     // an anonymous name (the method name is the property key,
                     // not the function's [[Name]] in v1).
                     let params = self.parse_function_parameters()?;
-                    let body = self.parse_function_body()?;
+                    let body = self.parse_function_body_g(Some(false))?;
                     let end = self.last_span_end();
                     let func = Expr::Function {
                         name: None,
@@ -1178,7 +1185,7 @@ impl<'src> Parser<'src> {
             } else { None }
         } else { None };
         let params = self.parse_function_parameters()?;
-        let body = self.parse_function_body()?;
+        let body = self.parse_function_body_g(Some(is_generator))?;
         let end = self.last_span_end();
         Ok(Expr::Function {
             name, is_async, is_generator, params, body,
@@ -1308,11 +1315,17 @@ impl<'src> Parser<'src> {
         // SMPT-EXT 1: arrow expression body is also a function context per
         // spec; bump depth around expression-body parse too (parse_function_body
         // handles the block-body case itself).
+        // SMPT-EXT 3: arrow body is NOT a generator (ECMA-262 §15.3 — arrow
+        // function ConciseBody is not [Yield]-parameterized). Force
+        // in_generator=false for the body's duration.
         let body = if matches!(self.current_kind(), TokenKind::Punct(Punct::LBrace)) {
-            ArrowBody::Block(self.parse_function_body()?)
+            ArrowBody::Block(self.parse_function_body_g(Some(false))?)
         } else {
             self.function_body_depth += 1;
+            let prior_gen = self.in_generator;
+            self.in_generator = false;
             let e = self.parse_assignment_expression()?;
+            self.in_generator = prior_gen;
             self.function_body_depth = self.function_body_depth.saturating_sub(1);
             ArrowBody::Expression(Box::new(e))
         };

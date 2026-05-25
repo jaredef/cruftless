@@ -48,13 +48,22 @@ pub struct Parser<'src> {
     /// path is opaque-bodied in cruft; class-body strict propagation
     /// happens at the inner-function-body parse instead.
     pub(crate) strict_mode: bool,
+    /// SMPT-EXT 3: ECMAScript generator-context flag tracking. Set true
+    /// when entering a generator function body, false when entering a
+    /// non-generator function body (inner functions reset their own
+    /// context). Restored on body exit.
+    /// Per ECMA-262 §15.5: YieldExpression is valid only inside generator
+    /// bodies. Outside a generator: in strict mode `yield` is a reserved
+    /// word (SyntaxError at parse); in sloppy mode `yield` is an
+    /// IdentifierReference.
+    pub(crate) in_generator: bool,
 }
 
 impl<'src> Parser<'src> {
     pub fn new(src: &'src str) -> Result<Self, ParseError> {
         let mut lx = Lexer::new(src);
         let lookahead = lx.next_token(LexerGoal::RegExp).map_err(lex_to_parse)?;
-        Ok(Self { src, lx, lookahead, function_body_depth: 0, strict_mode: false })
+        Ok(Self { src, lx, lookahead, function_body_depth: 0, strict_mode: false, in_generator: false })
     }
 
     pub fn parse_module(&mut self) -> Result<Module, ParseError> {
@@ -350,7 +359,7 @@ impl<'src> Parser<'src> {
             Some(self.parse_binding_identifier()?)
         } else { None };
         let params = self.parse_function_parameters()?;
-        let body = self.parse_function_body()?;
+        let body = self.parse_function_body_g(Some(is_generator))?;
         Ok(DefaultExportBody::HoistableFunction {
             name, params, body, is_async, is_generator,
         })

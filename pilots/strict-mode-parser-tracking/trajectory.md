@@ -52,3 +52,35 @@
 - for-of head-yield-init-strict (~4): same as above
 
 **Status**: SMPT-EXT 2 CLOSED.
+
+## SMPT-EXT 3 — generator-context tracking (2026-05-25)
+
+**Trigger**: keeper "let's do smpt ext 3" after Addendum XIII Finding SMPT.4 predicted ~9 of remaining 21 yield-ident-invalid tests close on the generator-context axis.
+
+**Edits** (~45 LOC):
+- `parser.rs::Parser`: add `in_generator: bool` field (init false). Carries the §15.5 YieldExpression-valid-only-inside-generator predicate.
+- `stmt.rs::parse_function_body`: split into thin wrapper + `parse_function_body_g(is_generator: Option<bool>)`. `Some(g)` introduces a generator boundary (save/set/restore `in_generator`); `None` preserves enclosing (used by static-block, which is not a generator boundary).
+- Eight function-defining call sites updated to pass `Some(is_generator)`:
+  parser.rs (default export), stmt.rs (FunctionDecl + class method), expr.rs (generator-method shorthand, async-method shorthand, getter/setter, plain method, FunctionExpression).
+- `expr.rs` arrow body: pass `Some(false)` for arrow block body and save/set/restore `in_generator=false` around arrow expression body. Per §15.3, ConciseBody is not [Yield]-parameterized — arrows never inherit generator-context.
+- `expr.rs` yield-branch: condition replaced with `(self.in_generator || self.strict_mode)`. Strict-mode + !in_generator now `return Err(ParseError)` with the §13.2 reserved-word message.
+
+**Replaces** SMPT-EXT 1's `function_body_depth > 0` heuristic with the spec-correct `in_generator` predicate. SMPT-EXT 1's depth-bump remains for any future call site that needs body-vs-top-level discrimination (currently unused by the yield-branch).
+
+**Verification**:
+- `"use strict"; function f() { yield 1; }` → SyntaxError ✓
+- `function f() { var yield = 4; console.log(yield); }` → 4 ✓ (sloppy non-generator: yield is identifier; previously WRONG with EXT 1's depth heuristic, now correct)
+- `var yield = 4; for ([x = yield] of [[]]) console.log(x)` → 4 ✓ (SMPT-EXT 1 regression check)
+- Random 300 prev-PASS: **300/300, 0 regressions**
+- diff-prod: **42/42 PASS**
+
+**Exemplar** (19 prev-failing yield-ident-invalid + identifier-strict-futurereservedword + bindingidentifier-no fixtures):
+- PASS: 0 → **14**
+
+### Findings
+
+**Finding SMPT.5**: SMPT.4's axis-decomposition prediction held — 14/19 closure on the generator-axis residual matches "≈9 expected" within order-of-magnitude (under-projected by 1.5×; the axis-share estimate was conservative). Standing Rule 22 instantiation confirms.
+
+**Finding SMPT.6 (predicate-correctness over heuristic)**: replacing `function_body_depth > 0` with `in_generator` not only fixed the strict-mode case but corrected the sloppy non-generator function-body yield-as-identifier case (SMPT-EXT 1 was an over-rejecting heuristic). The principled predicate beat the proxy predicate on both axes.
+
+**Status**: SMPT-EXT 3 CLOSED.

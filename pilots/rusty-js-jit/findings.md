@@ -1099,14 +1099,53 @@ Multiple test failures with the same reason-shape across distinct modules (`isCo
 
 **Evidence**: RS-EXT 1+2 — prospective ~700-800 LOC for Round 1+4 of full Realm substrate; minimum probe-defeating substrate landed at ~190 LOC. Compartment arc total ~520 LOC for the Doc 736 JS-API expression vs an estimated ~1000+ for full Realm + Compartments combined.
 
+## Addendum XIII — strict-mode parser tracking extended + array-length-setter truncation (2026-05-25)
+
+### Finding SMPT.3 — strict_mode as structural source-of-truth
+
+Once `Parser.strict_mode` exists as a propagated state field (set at parse_module entry on top-level directive prologue; saved/restored at parse_function_body boundary on inner-body directive), per-site predicate selection becomes mechanical: each site that branched on "is this strict?" now reads `self.strict_mode` directly. Yield-as-identifier, arrow-param reserved-word, and (next) eval/arguments-as-binding-ident all collapse to one-line mode-gates.
+
+**Predicts**: each subsequent strict-only parser-rule will land at ~5-15 LOC (predicate-selection only) rather than 30-50 (state-propagation + predicate).
+
+**Evidence**: SMPT-EXT 2 added ~50 LOC for state-propagation + 2 mode-gates and closed 3/24 in-scope strict-yield/eval/arguments fixtures.
+
+### Finding SMPT.4 — sub-cluster decomposition predicts the next rung
+
+A substrate gap that closes only a fraction of its in-scope exemplar (3/24 here) often decomposes into orthogonal substrate-axes. yield-ident-invalid splits into arrow-param-strict (closed), function-body-yield-as-ident-strict-non-generator (~5, needs generator-context tracking), and for-of-head-init-strict-non-generator (~4, same). The decomposition predicts the next rung (SMPT-EXT 3: generator tracking) and its expected yield (~9 of remaining 21).
+
+**Predicts**: when partial closure shows a clean axis split, the next axis is a candidate for the next rung with yield ≈ that axis's share of the residual.
+
+### Finding ALST.1 — canonical revert-then-deeper-layer-closure instantiation
+
+When a multi-test cluster's shared upstream is a spec algorithm (here §10.4.2.1 ArraySetLength) that already exists as a closure but is invoked from only one of its two spec entry points (defineProperty but not assignment), the fix is **promotion-to-closure at the missing entry**, not parallel implementation. 22 LOC at `object_set_pk` routing through `array_set_length` closed 9 tests across 5 pipelines (forEach/filter/map/reduce/indexOf), reusing the algorithm wholesale.
+
+**Predicts**: cross-pipeline reason-shape coherence (per Standing Rule 20) on a length-mutation shape implies a single substrate gap. Cost is bounded by missing-entry-promotion, not algorithm complexity.
+
+**Evidence**: ALST-EXT 1 — array_set_length is ~107 LOC of generated spec-IR; the fix is 22 LOC reusing it. Four pipelines compressed to one substrate move.
+
+### Finding ALST.2 — exemplar-residual decomposition matches SMPT.4 shape
+
+Rank-1+8+9+10 ~80-test surface decomposes into length-mutation-during-iteration (closed: ALST-EXT 1), inherited-accessor-on-Array.prototype-numeric-index (separate substrate), and strict-throwing-set-of-invalid-length (deferred: needs object_set_pk error channel). Same decomposition shape as SMPT.4: partial closure surfaces multiple orthogonal substrate axes; each next axis is a separate locale.
+
+**Evidence**: after ALST-EXT 1, 21/30 in-exemplar tests still fail; spot-check on 15.4.4.20-9-c-i-16 ("inherited accessor on Array.prototype") confirms the axis split.
+
+### Standing rule 22 — partial-exemplar-closure as substrate-axis discriminator
+
+When a substrate rung closes a fraction of its exemplar (SMPT-EXT 2 at 3/24, ALST-EXT 1 at 9/30), the residual is rarely "more of the same fix needed at more sites" — it's typically "different substrate axis sharing the exemplar." Diagnose the residual by spot-reading 2-3 residual tests; the axis split usually appears in one read and predicts the next rung's locale identity and bounds its expected yield.
+
+**Predicts**: engineers who treat residuals as "more of the same" write parallel fixes that don't move the residual; engineers who diagnose axis splits spawn distinct locales that do.
+
+**Evidence**: SMPT.4 + ALST.2 — both findings in this addendum instantiate the rule.
+
 ### Findings-doc cumulative status (post-Addendum XII)
 
-After Addendum XII:
+After Addendum XIII:
 - 6 original finding sections (I-VI) + 8 original standing rules
 - Addenda I-XI as previously listed
-- **Addendum XII (this)**: 9 new findings (T262C.4, T262C.5, T262C.6, EPSUA.6, EPSUA.7, RS.1+RS.2, CP.4, SPTW.2, NACR.1) + 5 new standing rules (#17 pre-scoping per-reason-pattern, #18 brand-check-at-registration, #19 IC-fast-path-coherence, #20 substrate-discipline-drift-surfaces-cross-module, #21 probe-first-scoping)
+- Addendum XII: 9 findings + 5 standing rules (17-21)
+- **Addendum XIII (this)**: 4 new findings (SMPT.3, SMPT.4, ALST.1, ALST.2) + 1 new standing rule (#22 partial-exemplar-closure-as-axis-discriminator)
 
-Total: **38 findings** (6 original + 32 new across 12 addenda); **21 standing rules**; standing engagement instruments + corpus publications unchanged from prior addendum + Doc 736 Appendix A (added 2026-05-25).
+Total: **42 findings** (6 original + 36 new across 13 addenda); **22 standing rules**; standing engagement instruments + corpus publications unchanged + Doc 736 Appendix A.
 
 **Corpus publication candidates from this addendum**:
 - T262C.4 / T262C.5 / T262C.6 + EPSUA.6 / EPSUA.7 cluster: candidate for a single corpus doc on "shared-upstream vs mutually-exclusive cluster discriminator + per-reason-pattern segmentation as projection unit." Already drafted at docs/prospective/test262-long-tail-shared-vs-mutually-exclusive.md.

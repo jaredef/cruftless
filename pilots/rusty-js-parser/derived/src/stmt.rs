@@ -282,7 +282,7 @@ impl<'src> Parser<'src> {
             Some(BindingIdentifier { name: n, span })
         } else { None };
         let params = self.parse_function_parameters()?;
-        let body = self.parse_function_body()?;
+        let body = self.parse_function_body_g(Some(is_generator))?;
         let end = self.last_span_end();
         Ok(Stmt::FunctionDecl {
             name, is_async, is_generator, params, body,
@@ -316,6 +316,15 @@ impl<'src> Parser<'src> {
     }
 
     pub(crate) fn parse_function_body(&mut self) -> Result<Vec<Stmt>, ParseError> {
+        self.parse_function_body_g(None)
+    }
+
+    /// SMPT-EXT 3: parse_function_body with generator-context override.
+    /// `is_generator = Some(g)` introduces a generator boundary (saves
+    /// prior `in_generator`, sets to `g`, restores on body exit). `None`
+    /// preserves enclosing (arrow body, static block — neither introduces
+    /// a generator boundary per ECMA-262 §15.3 + §15.7).
+    pub(crate) fn parse_function_body_g(&mut self, is_generator: Option<bool>) -> Result<Vec<Stmt>, ParseError> {
         self.expect_punct(Punct::LBrace)?;
         // SMPT-EXT 1: track function-body depth for yield-context disambiguation.
         self.function_body_depth += 1;
@@ -326,6 +335,11 @@ impl<'src> Parser<'src> {
         if self.peek_use_strict_directive() {
             self.strict_mode = true;
         }
+        // SMPT-EXT 3: generator-context propagation.
+        let prior_gen = self.in_generator;
+        if let Some(g) = is_generator {
+            self.in_generator = g;
+        }
         let mut out = Vec::new();
         while !matches!(self.current_kind(), TokenKind::Punct(Punct::RBrace)) && !self.at_eof_internal() {
             out.push(self.parse_statement()?);
@@ -333,6 +347,7 @@ impl<'src> Parser<'src> {
         self.expect_punct(Punct::RBrace)?;
         self.function_body_depth = self.function_body_depth.saturating_sub(1);
         self.strict_mode = prior_strict;
+        self.in_generator = prior_gen;
         Ok(out)
     }
 
@@ -434,7 +449,7 @@ impl<'src> Parser<'src> {
             // Field or method?
             if matches!(self.current_kind(), TokenKind::Punct(Punct::LParen)) {
                 let params = self.parse_function_parameters()?;
-                let body = self.parse_function_body()?;
+                let body = self.parse_function_body_g(Some(is_generator))?;
                 let end = self.last_span_end();
                 // Constructor detection (only when not static and name is `constructor`).
                 let method_kind = if !is_static && kind == MethodKind::Method {
