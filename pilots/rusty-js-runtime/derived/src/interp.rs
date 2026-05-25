@@ -1350,6 +1350,7 @@ impl Runtime {
     pub fn set_proto_union_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let this = self.require_set_brand(self.current_this(), "union")?;
         let other = args.first().cloned().unwrap_or(Value::Undefined);
+        self.validate_set_like(&other, "union")?;
         let other_vals = crate::intrinsics::collect_iterable(self, other)?;
         let (new_set, storage) = self.new_empty_set();
         let mut size = 0.0;
@@ -1371,6 +1372,7 @@ impl Runtime {
     pub fn set_proto_intersection_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let this = self.require_set_brand(self.current_this(), "intersection")?;
         let other = args.first().cloned().unwrap_or(Value::Undefined);
+        self.validate_set_like(&other, "intersection")?;
         let other_vals = crate::intrinsics::collect_iterable(self, other)?;
         let other_keys: std::collections::HashSet<String> = other_vals.iter()
             .map(|v| Self::map_storage_key(v)).collect();
@@ -1390,6 +1392,7 @@ impl Runtime {
     pub fn set_proto_difference_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let this = self.require_set_brand(self.current_this(), "difference")?;
         let other = args.first().cloned().unwrap_or(Value::Undefined);
+        self.validate_set_like(&other, "difference")?;
         let other_vals = crate::intrinsics::collect_iterable(self, other)?;
         let other_keys: std::collections::HashSet<String> = other_vals.iter()
             .map(|v| Self::map_storage_key(v)).collect();
@@ -1409,6 +1412,7 @@ impl Runtime {
     pub fn set_proto_symmetric_difference_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let this = self.require_set_brand(self.current_this(), "symmetricDifference")?;
         let other = args.first().cloned().unwrap_or(Value::Undefined);
+        self.validate_set_like(&other, "symmetricDifference")?;
         let other_vals = crate::intrinsics::collect_iterable(self, other)?;
         let other_keys: std::collections::HashSet<String> = other_vals.iter()
             .map(|v| Self::map_storage_key(v)).collect();
@@ -1434,6 +1438,7 @@ impl Runtime {
     pub fn set_proto_is_subset_of_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let this = self.require_set_brand(self.current_this(), "isSubsetOf")?;
         let other = args.first().cloned().unwrap_or(Value::Undefined);
+        self.validate_set_like(&other, "isSubsetOf")?;
         let other_vals = crate::intrinsics::collect_iterable(self, other)?;
         let other_keys: std::collections::HashSet<String> = other_vals.iter()
             .map(|v| Self::map_storage_key(v)).collect();
@@ -1449,6 +1454,7 @@ impl Runtime {
     pub fn set_proto_is_superset_of_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let this = self.require_set_brand(self.current_this(), "isSupersetOf")?;
         let other = args.first().cloned().unwrap_or(Value::Undefined);
+        self.validate_set_like(&other, "isSupersetOf")?;
         let other_vals = crate::intrinsics::collect_iterable(self, other)?;
         let this_storage = match self.object_get(this, "__set_data") { Value::Object(id) => Some(id), _ => None };
         for v in other_vals {
@@ -1463,6 +1469,7 @@ impl Runtime {
     pub fn set_proto_is_disjoint_from_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let this = self.require_set_brand(self.current_this(), "isDisjointFrom")?;
         let other = args.first().cloned().unwrap_or(Value::Undefined);
+        self.validate_set_like(&other, "isDisjointFrom")?;
         let other_vals = crate::intrinsics::collect_iterable(self, other)?;
         let this_storage = match self.object_get(this, "__set_data") { Value::Object(id) => Some(id), _ => None };
         for v in other_vals {
@@ -1551,6 +1558,36 @@ impl Runtime {
             self.call_function(cb.clone(), Value::Undefined, vec![v.clone(), v, Value::Object(this)])?;
         }
         Ok(Value::Undefined)
+    }
+
+    /// SLV-EXT 1: ECMA-262 §24.2.1.2 GetSetRecord — Set ops require a
+    /// Set-like Object (size: Number, has: callable, keys: callable). Plain
+    /// Arrays, plain Objects, primitives all throw TypeError. Called at the
+    /// top of each Set.prototype op (union/intersection/etc.).
+    pub fn validate_set_like(&mut self, other: &Value, op: &str) -> Result<(), RuntimeError> {
+        let id = match other {
+            Value::Object(id) => *id,
+            _ => return Err(RuntimeError::TypeError(format!(
+                "Set.prototype.{}: argument is not an object", op))),
+        };
+        // Spec calls Get(obj, "size") and coerces to Number; NaN throws.
+        let size = self.read_property(id, "size")?;
+        let size_n = self.coerce_to_number(&size)?;
+        if size_n.is_nan() {
+            return Err(RuntimeError::TypeError(format!(
+                "Set.prototype.{}: argument has invalid size", op)));
+        }
+        let has = self.read_property(id, "has")?;
+        if !self.is_callable(&has) {
+            return Err(RuntimeError::TypeError(format!(
+                "Set.prototype.{}: argument's has property is not callable", op)));
+        }
+        let keys = self.read_property(id, "keys")?;
+        if !self.is_callable(&keys) {
+            return Err(RuntimeError::TypeError(format!(
+                "Set.prototype.{}: argument's keys property is not callable", op)));
+        }
+        Ok(())
     }
 
     fn map_this_and_storage(&mut self, who: &str) -> Result<(crate::value::ObjectRef, crate::value::ObjectRef), RuntimeError> {
