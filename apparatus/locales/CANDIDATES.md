@@ -266,10 +266,15 @@ Spawned from the post-TECR-EXT-2 matrix's `availability/missing-syntax-feature` 
 **LOC estimate**: ~5-15 LOC at parse_with_stmt (likely the body is parsed via a single-expression path instead of Statement → BlockStatement).
 **Carve-out**: strict mode forbids WithStatement entirely; cruft already rejects in strict — this only addresses the sloppy-mode body-parse bug.
 
-### (xx) `import-meta-metaproperty` (IMM) — 🟢 RIPE
-**Telos**: §13.3.13 ImportMeta — the `import.meta` MetaProperty distinct from ImportCall `import(...)`. cruft rejects with `expected meta after import.` (parser already enters the MetaProperty path but rejects the meta keyword).
-**Pool**: 76 records (language/expressions/dynamic-import/syntax/valid/* and sibling dirs).
-**LOC estimate**: parser rule (~5 LOC) + new IR op `ImportMeta` (~15 LOC) + runtime stub returning host-provided object (~10 LOC).
+### (xx) `import-meta-metaproperty` (IMM) — ★ REDIAGNOSED 2026-05-26 → apparatus
+
+**Rule 23 baseline-inspection refuted the seed**. cruft already handles `import.meta` correctly (`console.log(import.meta)` → `{ url: ..., dir: ... }`). All 76 records were stage-X proposals:
+- 38 `import-defer` (stage-3 deferred dynamic import)
+- 38 `source-phase-imports` (stage-3 source-phase import)
+
+Cluster redirected to apparatus-pilot: `pilots/apparatus/runner-features-skip-deliberate-omissions/` (RFSDO-EXT 1, LANDED). 76 records moved from FAIL to SKIP. No substrate work needed.
+
+**Standing lesson**: when a candidate's reason text matches a feature name cruft already implements, the Rule-23 founding probe is especially load-bearing — the text overlap can suggest the wrong substrate target.
 
 ### (yy) `dynamic-import-attributes` (DIA) — 🟢 RIPE
 **Telos**: stage-4 import-attributes — `import(specifier, { with: { type: 'json' } })` second-param syntax. cruft rejects with `expected ')' in dynamic import()` because it stops at the first comma.

@@ -60,6 +60,21 @@ function runOne(path) {
   if (meta.flags.raw) {
     return { path, status: 'SKIP', reason: 'raw tests skip harness; not yet wired' };
   }
+  // RFSDO-EXT 1: deliberately-omitted stage-X / non-standard proposals.
+  // Tests that require any of these features are not failures of cruft —
+  // cruft has chosen not to implement these proposals. SKIP rather than
+  // FAIL so the matrix reflects intent. Add features here ONLY when cruft
+  // has DELIBERATELY excluded them (not when implementation is incomplete).
+  const DELIBERATELY_OMITTED = new Set([
+    'import-defer',                       // stage-3 deferred dynamic import (import.defer)
+    'source-phase-imports',               // stage-3 source-phase import (import.source)
+    'source-phase-imports-module-source', // sibling flag for source-phase imports
+  ]);
+  for (const f of meta.features) {
+    if (DELIBERATELY_OMITTED.has(f)) {
+      return { path, status: 'SKIP', reason: `feature deliberately omitted: ${f}` };
+    }
+  }
 
   // Assemble the test source: harness + includes + source.
   // sta.js + assert.js are always prepended.
