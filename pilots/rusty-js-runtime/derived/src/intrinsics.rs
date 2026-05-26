@@ -1837,8 +1837,16 @@ impl Runtime {
             // directly to runtime.globals (where we read it back).
             // `globalThis.X = ...` would SetProp the globalThis Object
             // instead of touching the globals map.
+            // HLCL-EXT 1: per ECMA-262 §20.2.1.1.1 CreateDynamicFunction
+            // step 13, the synthesized source places `\n` between params
+            // and the closing `)`, and between `)` and the opening `{`.
+            // This newline placement is what allows Annex B B.1.3
+            // SingleLineHTMLCloseComment `-->` in params not to swallow
+            // the `)`. Putting `({params}) {` on one line breaks the
+            // HTML-comment / dynamic-function interaction; the spec
+            // structure is `function anonymous(<params>\n) {\n<body>\n}`.
             let source = format!(
-                "{} = function anonymous({}) {{\n{}\n}};",
+                "{} = function anonymous({}\n) {{\n{}\n}};",
                 stash_key,
                 params.join(","),
                 body

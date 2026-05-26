@@ -240,6 +240,40 @@ impl<'src> Lexer<'src> {
                 }
                 continue;
             }
+            // HLCL-EXT 1: Annex B B.1.3 SingleLineHTMLOpenComment `<!--`
+            // and SingleLineHTMLCloseComment `-->`. Both behave like `//`
+            // — consume the rest of the line. Per spec the `-->` form
+            // requires LT-preceded position (or start-of-source); cruft's
+            // saw_line_terminator tracks that. Always-on; matches cruft's
+            // other Annex-B acceptances (legacy octal, etc.).
+            if c == b'<'
+                && self.peek_byte_at(1) == Some(b'!')
+                && self.peek_byte_at(2) == Some(b'-')
+                && self.peek_byte_at(3) == Some(b'-')
+            {
+                self.pos += 4;
+                while let Some(b) = self.peek_byte() {
+                    if is_line_terminator_byte(b) || self.peek_lt_bytes().is_some() {
+                        break;
+                    }
+                    self.advance_one_char();
+                }
+                continue;
+            }
+            if c == b'-'
+                && self.peek_byte_at(1) == Some(b'-')
+                && self.peek_byte_at(2) == Some(b'>')
+                && (self.at_start || self.saw_line_terminator)
+            {
+                self.pos += 3;
+                while let Some(b) = self.peek_byte() {
+                    if is_line_terminator_byte(b) || self.peek_lt_bytes().is_some() {
+                        break;
+                    }
+                    self.advance_one_char();
+                }
+                continue;
+            }
             if c == b'/' {
                 match self.peek_byte_at(1) {
                     Some(b'/') => {

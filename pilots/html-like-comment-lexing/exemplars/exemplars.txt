@@ -1,0 +1,11 @@
+/home/jaredef/test262/test/annexB/built-ins/Function/createdynfn-html-close-comment-params.js
+/home/jaredef/test262/test/annexB/built-ins/Function/createdynfn-html-close-comment-body.js
+/home/jaredef/test262/test/annexB/built-ins/Function/createdynfn-html-open-comment-params.js
+/home/jaredef/test262/test/annexB/built-ins/Function/createdynfn-no-line-terminator-html-close-comment-params.js
+/home/jaredef/test262/test/annexB/built-ins/Function/createdynfn-no-line-terminator-html-close-comment-body.js
+/home/jaredef/test262/test/annexB/built-ins/Function/createdynfn-html-open-comment-body.js
+/home/jaredef/test262/test/annexB/language/comments/multi-line-html-close.js
+/home/jaredef/test262/test/annexB/language/comments/single-line-html-close-asi.js
+/home/jaredef/test262/test/annexB/language/comments/single-line-html-close-unicode-separators.js
+/home/jaredef/test262/test/annexB/language/comments/single-line-html-open.js
+/home/jaredef/test262/test/annexB/language/comments/single-line-html-close.js

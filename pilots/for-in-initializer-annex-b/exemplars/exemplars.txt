@@ -1,0 +1,7 @@
+/home/jaredef/test262/test/annexB/language/expressions/assignmenttargettype/callexpression-as-for-in-lhs.js
+/home/jaredef/test262/test/annexB/language/statements/for-in/nonstrict-initializer.js
+/home/jaredef/test262/test/language/statements/for-in/head-lhs-cover.js
+/home/jaredef/test262/test/language/statements/for-in/head-lhs-let.js
+/home/jaredef/test262/test/language/statements/for-in/head-lhs-member.js
+/home/jaredef/test262/test/language/statements/for-in/identifier-let-allowed-as-lefthandside-expression-not-strict.js
+/home/jaredef/test262/test/staging/sm/extensions/destructuring-for-inof-__proto__.js
