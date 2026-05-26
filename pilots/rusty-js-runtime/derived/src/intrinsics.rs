@@ -4826,6 +4826,170 @@ impl Runtime {
             .set_own_internal("constructor".into(), Value::Object(pd_ctor));
         self.obj_mut(pd_ctor)
             .set_own_frozen("prototype".into(), Value::Object(pd_proto));
+        // PDS-EXT 1 (plain-date-static): from + compare.
+        // Parse ISO date (with optional time/offset/annotation tail).
+        fn parse_iso_date(s: &str) -> Option<(i64, i64, i64)> {
+            let b = s.as_bytes();
+            if b.len() < 10 { return None; }
+            fn rd(b: &[u8], i: usize, n: usize) -> Option<i64> {
+                if i + n > b.len() { return None; }
+                let mut v = 0i64;
+                for k in 0..n {
+                    let c = b[i + k];
+                    if !c.is_ascii_digit() { return None; }
+                    v = v * 10 + (c - b'0') as i64;
+                }
+                Some(v)
+            }
+            // Optional ±YYYYYY expanded year (deferred for v1).
+            let year = rd(b, 0, 4)?;
+            if b.get(4) != Some(&b'-') { return None; }
+            let month = rd(b, 5, 2)?;
+            if b.get(7) != Some(&b'-') { return None; }
+            let day = rd(b, 8, 2)?;
+            // Range checks per ISO.
+            if !(1..=12).contains(&month) { return None; }
+            let leap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+            let max_day = match month {
+                1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+                4 | 6 | 9 | 11 => 30,
+                2 => if leap { 29 } else { 28 },
+                _ => return None,
+            };
+            if !(1..=max_day).contains(&day) { return None; }
+            // Tail (time/offset/annotation) accepted and ignored.
+            let mut i = 10;
+            if matches!(b.get(i), Some(b'T') | Some(b't') | Some(b' ')) {
+                i += 1;
+                // Skip everything to end (time part, offset, annotations).
+                i = b.len();
+            }
+            if i != b.len() { return None; }
+            Some((year, month, day))
+        }
+        let pd_proto_for_static = pd_proto;
+        fn make_plain_date(rt: &mut Runtime, proto: ObjectRef, y: i64, m: i64, d: i64) -> Value {
+            let mut o = Object::new_ordinary();
+            o.proto = Some(proto);
+            let id = rt.alloc_object(o);
+            rt.set_engine_sentinel(id, "__pd_year", Value::Number(y as f64));
+            rt.set_engine_sentinel(id, "__pd_month", Value::Number(m as f64));
+            rt.set_engine_sentinel(id, "__pd_day", Value::Number(d as f64));
+            rt.set_engine_sentinel(id, "__pd_calendar", Value::String(Rc::new("iso8601".into())));
+            Value::Object(id)
+        }
+        register_intrinsic_method(self, pd_ctor, "from", 1, move |rt, args| {
+            let item = args.first().cloned().unwrap_or(Value::Undefined);
+            if let Value::String(s) = &item {
+                let (y, m, d) = parse_iso_date(s).ok_or_else(|| RuntimeError::RangeError(format!(
+                    "Temporal.PlainDate.from(string): invalid ISO 8601 date: {:?}", s
+                )))?;
+                return Ok(make_plain_date(rt, pd_proto_for_static, y, m, d));
+            }
+            let id = match item {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainDate.from: argument must be a PlainDate, object, or string".into()
+                )),
+            };
+            // Brand-check: __pd_year sentinel -> clone.
+            if let Value::Number(y) = rt.object_get(id, "__pd_year") {
+                let m = match rt.object_get(id, "__pd_month") { Value::Number(n) => n as i64, _ => 0 };
+                let d = match rt.object_get(id, "__pd_day") { Value::Number(n) => n as i64, _ => 0 };
+                return Ok(make_plain_date(rt, pd_proto_for_static, y as i64, m, d));
+            }
+            // Property bag: {year, month, day, [calendar]}.
+            let mut have = [false; 3];
+            let mut vals = [0i64; 3];
+            for (i, name) in ["year", "month", "day"].iter().enumerate() {
+                let v = rt.object_get(id, name);
+                if matches!(v, Value::Undefined) { continue; }
+                have[i] = true;
+                let n = crate::abstract_ops::to_number(&v);
+                if !n.is_finite() || n != n.trunc() {
+                    return Err(RuntimeError::RangeError(format!(
+                        "Temporal.PlainDate.from: {} must be integer", name
+                    )));
+                }
+                vals[i] = n as i64;
+            }
+            if !have[0] || !have[1] || !have[2] {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.PlainDate.from: object must have year, month, and day".into()
+                ));
+            }
+            // Calendar check.
+            if let Value::String(s) = rt.object_get(id, "calendar") {
+                if s.to_lowercase() != "iso8601" {
+                    return Err(RuntimeError::RangeError(format!(
+                        "Temporal.PlainDate.from: only iso8601 calendar supported; got {:?}", s
+                    )));
+                }
+            }
+            // Range checks.
+            let (y, m, d) = (vals[0], vals[1], vals[2]);
+            if !(1..=12).contains(&m) {
+                return Err(RuntimeError::RangeError(format!(
+                    "Temporal.PlainDate.from: month {} out of range [1, 12]", m
+                )));
+            }
+            let leap = (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0);
+            let max_day = match m {
+                1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+                4 | 6 | 9 | 11 => 30,
+                2 => if leap { 29 } else { 28 },
+                _ => unreachable!(),
+            };
+            if !(1..=max_day).contains(&d) {
+                return Err(RuntimeError::RangeError(format!(
+                    "Temporal.PlainDate.from: day {} out of range", d
+                )));
+            }
+            Ok(make_plain_date(rt, pd_proto_for_static, y, m, d))
+        });
+        register_intrinsic_method(self, pd_ctor, "compare", 2, move |rt, args| {
+            fn extract_ymd(rt: &mut Runtime, v: Value) -> Result<(i64, i64, i64), RuntimeError> {
+                if let Value::String(s) = &v {
+                    return parse_iso_date(s).ok_or_else(|| RuntimeError::RangeError(format!(
+                        "Temporal.PlainDate.compare(string): invalid ISO 8601 date: {:?}", s
+                    )));
+                }
+                if let Value::Object(id) = v {
+                    if let Value::Number(y) = rt.object_get(id, "__pd_year") {
+                        let m = match rt.object_get(id, "__pd_month") { Value::Number(n) => n as i64, _ => 0 };
+                        let d = match rt.object_get(id, "__pd_day") { Value::Number(n) => n as i64, _ => 0 };
+                        return Ok((y as i64, m, d));
+                    }
+                    // Property bag.
+                    let y = match rt.object_get(id, "year") {
+                        Value::Number(n) => n as i64,
+                        _ => return Err(RuntimeError::TypeError(
+                            "Temporal.PlainDate.compare: object must have year/month/day".into()
+                        )),
+                    };
+                    let m = match rt.object_get(id, "month") {
+                        Value::Number(n) => n as i64,
+                        _ => return Err(RuntimeError::TypeError(
+                            "Temporal.PlainDate.compare: object must have year/month/day".into()
+                        )),
+                    };
+                    let d = match rt.object_get(id, "day") {
+                        Value::Number(n) => n as i64,
+                        _ => return Err(RuntimeError::TypeError(
+                            "Temporal.PlainDate.compare: object must have year/month/day".into()
+                        )),
+                    };
+                    return Ok((y, m, d));
+                }
+                Err(RuntimeError::TypeError(
+                    "Temporal.PlainDate.compare: argument must be PlainDate, object, or string".into()
+                ))
+            }
+            let a = extract_ymd(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
+            let b = extract_ymd(rt, args.get(1).cloned().unwrap_or(Value::Undefined))?;
+            let ord = if a < b { -1.0 } else if a > b { 1.0 } else { 0.0 };
+            Ok(Value::Number(ord))
+        });
         self.obj_mut(temporal)
             .set_own_internal("PlainDate".into(), Value::Object(pd_ctor));
         self.globals.insert("Temporal".into(), Value::Object(temporal));

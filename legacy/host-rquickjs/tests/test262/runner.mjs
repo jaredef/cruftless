@@ -227,6 +227,9 @@ function runOne(path) {
       '/Temporal/PlainDate/prototype/constructor.js',
       '/Temporal/PlainDate/prototype/prop-desc.js',
       '/Temporal/PlainDate/prototype/toStringTag/',
+      // PDS-EXT 1: plain-date-static (from / compare)
+      '/Temporal/PlainDate/from/',
+      '/Temporal/PlainDate/compare/',
       // Foundation tests that pass without per-class implementation.
       '/Temporal/getOwnPropertyNames.js',
       '/Temporal/keys.js',
