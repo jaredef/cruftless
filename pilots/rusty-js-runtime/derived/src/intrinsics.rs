@@ -4826,6 +4826,208 @@ impl Runtime {
             .set_own_internal("constructor".into(), Value::Object(pd_ctor));
         self.obj_mut(pd_ctor)
             .set_own_frozen("prototype".into(), Value::Object(pd_proto));
+        // PDA-EXT 1 (plain-date-arithmetic): add / subtract / since / until.
+        // ISO calendar only.
+        // civil_from_days inverse of days_from_civil (for date offset reconstruction).
+        fn pda_civil_from_days(days: i64) -> (i64, i64, i64) {
+            let z = days + 719468;
+            let era = if z >= 0 { z } else { z - 146096 } / 146097;
+            let doe = z - era * 146097;
+            let yoe = (doe - doe/1460 + doe/36524 - doe/146096) / 365;
+            let y = yoe + era * 400;
+            let doy = doe - (365*yoe + yoe/4 - yoe/100);
+            let mp = (5*doy + 2) / 153;
+            let d = doy - (153*mp + 2)/5 + 1;
+            let m = if mp < 10 { mp + 3 } else { mp - 9 };
+            let y_final = if m <= 2 { y + 1 } else { y };
+            (y_final, m, d)
+        }
+        // days_from_civil + helpers (mirror PDDP).
+        fn pda_days_from_civil(y: i64, m: i64, d: i64) -> i64 {
+            let y_adj = if m <= 2 { y - 1 } else { y };
+            let m_adj = if m > 2 { m - 3 } else { m + 9 };
+            let era = (if y_adj >= 0 { y_adj } else { y_adj - 399 }) / 400;
+            let yoe = y_adj - era * 400;
+            let doy = (153 * m_adj + 2) / 5 + d - 1;
+            let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+            era * 146097 + doe - 719468
+        }
+        fn pda_is_leap(y: i64) -> bool {
+            (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0)
+        }
+        fn pda_days_in_month(y: i64, m: i64) -> i64 {
+            match m {
+                1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+                4 | 6 | 9 | 11 => 30,
+                2 => if pda_is_leap(y) { 29 } else { 28 },
+                _ => 0,
+            }
+        }
+        fn pda_duration_units(rt: &mut Runtime, v: Value) -> Result<[i64; 10], RuntimeError> {
+            let names = ["years", "months", "weeks", "days", "hours",
+                         "minutes", "seconds", "milliseconds",
+                         "microseconds", "nanoseconds"];
+            let mut units = [0i64; 10];
+            if let Value::String(s) = &v {
+                let parsed = parse_iso_duration(s).ok_or_else(|| RuntimeError::RangeError(format!(
+                    "Temporal.PlainDate arithmetic: invalid ISO 8601 duration: {:?}", s
+                )))?;
+                for (i, &u) in parsed.iter().enumerate() {
+                    if !u.is_finite() || u != u.trunc() {
+                        return Err(RuntimeError::RangeError(
+                            "Temporal.PlainDate arithmetic: fractional unit out of position".into()
+                        ));
+                    }
+                    units[i] = u as i64;
+                }
+            } else if let Value::Object(id) = v {
+                let is_dur = !matches!(rt.object_get(id, "__td_years"), Value::Undefined);
+                for (i, n) in names.iter().enumerate() {
+                    let key = if is_dur { format!("__td_{}", n) } else { (*n).to_string() };
+                    if let Value::Number(v) = rt.object_get(id, &key) {
+                        units[i] = v as i64;
+                    }
+                }
+            } else {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.PlainDate arithmetic: argument must be Duration, object, or string".into()
+                ));
+            }
+            // PlainDate arithmetic forbids sub-day units (hours+).
+            if units[4] != 0 || units[5] != 0 || units[6] != 0
+                || units[7] != 0 || units[8] != 0 || units[9] != 0 {
+                return Err(RuntimeError::RangeError(
+                    "Temporal.PlainDate arithmetic: sub-day units (hours+) are not allowed".into()
+                ));
+            }
+            Ok(units)
+        }
+        let pd_proto_for_arith = pd_proto;
+        let dur_proto_for_pd_arith = dur_proto;
+        register_intrinsic_method(self, pd_proto, "add", 1, move |rt, args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("PlainDate.add: this not object".into())),
+            };
+            let (y, m, d) = pd_read_ymd(rt, id, "add")?;
+            let units = pda_duration_units(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
+            // Step 1: add years and months; year carries from months.
+            let mut new_y = y + units[0];
+            let total_months = (m - 1) + units[1];
+            new_y += total_months.div_euclid(12);
+            let new_m = total_months.rem_euclid(12) + 1;
+            // Step 2: clamp day (overflow=constrain default).
+            let mut new_d = d.min(pda_days_in_month(new_y, new_m));
+            // Step 3: add weeks*7 + days as day offset.
+            let day_offset = units[2] * 7 + units[3];
+            if day_offset != 0 {
+                let base_days = pda_days_from_civil(new_y, new_m, new_d);
+                let (yy, mm, dd) = pda_civil_from_days(base_days + day_offset);
+                new_y = yy; let _ = (new_m, new_d);
+                return Ok(make_plain_date(rt, pd_proto_for_arith, yy, mm, dd));
+            }
+            Ok(make_plain_date(rt, pd_proto_for_arith, new_y, new_m, new_d))
+        });
+        register_intrinsic_method(self, pd_proto, "subtract", 1, move |rt, args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("PlainDate.subtract: this not object".into())),
+            };
+            let (y, m, d) = pd_read_ymd(rt, id, "subtract")?;
+            let mut units = pda_duration_units(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
+            for u in units.iter_mut() { *u = -*u; }
+            // Same logic as add.
+            let mut new_y = y + units[0];
+            let total_months = (m - 1) + units[1];
+            new_y += total_months.div_euclid(12);
+            let new_m = total_months.rem_euclid(12) + 1;
+            let mut new_d = d.min(pda_days_in_month(new_y, new_m));
+            let day_offset = units[2] * 7 + units[3];
+            if day_offset != 0 {
+                let base_days = pda_days_from_civil(new_y, new_m, new_d);
+                let (yy, mm, dd) = pda_civil_from_days(base_days + day_offset);
+                let _ = (new_y, new_m, new_d);
+                return Ok(make_plain_date(rt, pd_proto_for_arith, yy, mm, dd));
+            }
+            Ok(make_plain_date(rt, pd_proto_for_arith, new_y, new_m, new_d))
+        });
+        // since/until — return Duration with days (or weeks+days for
+        // largestUnit "week"). years/months largestUnit deferred.
+        fn pda_extract_ymd(rt: &mut Runtime, v: Value) -> Result<(i64, i64, i64), RuntimeError> {
+            if let Value::String(s) = &v {
+                return parse_iso_date(&s).ok_or_else(|| RuntimeError::RangeError(format!(
+                    "Temporal.PlainDate since/until(string): invalid ISO 8601 date: {:?}", s
+                )));
+            }
+            if let Value::Object(id) = v {
+                if let Value::Number(y) = rt.object_get(id, "__pd_year") {
+                    let m = match rt.object_get(id, "__pd_month") { Value::Number(n) => n as i64, _ => 0 };
+                    let d = match rt.object_get(id, "__pd_day") { Value::Number(n) => n as i64, _ => 0 };
+                    return Ok((y as i64, m, d));
+                }
+            }
+            Err(RuntimeError::TypeError(
+                "Temporal.PlainDate since/until: argument must be PlainDate, object, or string".into()
+            ))
+        }
+        fn pda_make_duration_days(rt: &mut Runtime, dur_proto: ObjectRef, days: i64, largest: &str) -> Result<Value, RuntimeError> {
+            let mut units = [0.0f64; 10];
+            let (weeks, day_rem) = if largest == "weeks" || largest == "week" {
+                (days / 7, days % 7)
+            } else if largest == "days" || largest == "day" || largest == "auto" {
+                (0i64, days)
+            } else {
+                return Err(RuntimeError::RangeError(format!(
+                    "Temporal.PlainDate since/until: largestUnit {:?} requires calendar balancing (not yet implemented)", largest
+                )));
+            };
+            units[2] = weeks as f64;
+            units[3] = day_rem as f64;
+            let mut o = Object::new_ordinary();
+            o.proto = Some(dur_proto);
+            let id = rt.alloc_object(o);
+            let names = ["years", "months", "weeks", "days", "hours",
+                         "minutes", "seconds", "milliseconds",
+                         "microseconds", "nanoseconds"];
+            for (i, n) in names.iter().enumerate() {
+                rt.set_engine_sentinel(id, &format!("__td_{}", n), Value::Number(units[i]));
+            }
+            Ok(Value::Object(id))
+        }
+        register_intrinsic_method(self, pd_proto, "since", 1, move |rt, args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("PlainDate.since: this not object".into())),
+            };
+            let (y, m, d) = pd_read_ymd(rt, id, "since")?;
+            let (oy, om, od) = pda_extract_ymd(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
+            let largest = match args.get(1).cloned().unwrap_or(Value::Undefined) {
+                Value::Object(o) => match rt.object_get(o, "largestUnit") {
+                    Value::String(s) => (*s).to_string(),
+                    _ => "auto".to_string(),
+                },
+                _ => "auto".to_string(),
+            };
+            let diff_days = pda_days_from_civil(y, m, d) - pda_days_from_civil(oy, om, od);
+            pda_make_duration_days(rt, dur_proto_for_pd_arith, diff_days, &largest)
+        });
+        register_intrinsic_method(self, pd_proto, "until", 1, move |rt, args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("PlainDate.until: this not object".into())),
+            };
+            let (y, m, d) = pd_read_ymd(rt, id, "until")?;
+            let (oy, om, od) = pda_extract_ymd(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
+            let largest = match args.get(1).cloned().unwrap_or(Value::Undefined) {
+                Value::Object(o) => match rt.object_get(o, "largestUnit") {
+                    Value::String(s) => (*s).to_string(),
+                    _ => "auto".to_string(),
+                },
+                _ => "auto".to_string(),
+            };
+            let diff_days = pda_days_from_civil(oy, om, od) - pda_days_from_civil(y, m, d);
+            pda_make_duration_days(rt, dur_proto_for_pd_arith, diff_days, &largest)
+        });
         // PDDP-EXT 1 (plain-date-derived-properties): dayOfWeek / dayOfYear /
         // daysInMonth / daysInWeek / daysInYear / inLeapYear / monthsInYear /
         // weekOfYear / yearOfWeek / era / eraYear. ISO calendar only.

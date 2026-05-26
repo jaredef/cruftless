@@ -248,6 +248,11 @@ function runOne(path) {
       '/Temporal/PlainDate/prototype/yearOfWeek/',
       '/Temporal/PlainDate/prototype/era/',
       '/Temporal/PlainDate/prototype/eraYear/',
+      // PDA-EXT 1: plain-date-arithmetic
+      '/Temporal/PlainDate/prototype/add/',
+      '/Temporal/PlainDate/prototype/subtract/',
+      '/Temporal/PlainDate/prototype/since/',
+      '/Temporal/PlainDate/prototype/until/',
       // Foundation tests that pass without per-class implementation.
       '/Temporal/getOwnPropertyNames.js',
       '/Temporal/keys.js',
