@@ -90,6 +90,37 @@ impl<'src> Lexer<'src> {
         self.pos
     }
 
+    // LTC-EXT 1: return the byte-length of a LineTerminator at the cursor,
+    // or None. Covers LF (1), CR (1), CRLF (2), U+2028/U+2029 (3).
+    fn peek_lt_bytes(&self) -> Option<usize> {
+        let c = self.peek_byte()?;
+        if c == b'\n' { return Some(1); }
+        if c == b'\r' {
+            return Some(if self.peek_byte_at(1) == Some(b'\n') { 2 } else { 1 });
+        }
+        if c == 0xE2 && self.peek_byte_at(1) == Some(0x80) {
+            return match self.peek_byte_at(2) {
+                Some(0xA8) | Some(0xA9) => Some(3),
+                _ => None,
+            };
+        }
+        None
+    }
+
+    // LTC-EXT 1: post-numeric "identifier-start follows" check that excludes
+    // LineTerminator and Unicode whitespace at high-byte positions. Otherwise
+    // bytes like 0xE2 (first byte of LS/PS, etc.) would falsely register as
+    // identifier-start under the ASCII-fast-path predicate.
+    fn peek_is_ident_start_strict(&self) -> bool {
+        let Some(c) = self.peek_byte() else { return false; };
+        if c < 0x80 { return is_identifier_start_byte(c); }
+        if self.peek_lt_bytes().is_some() { return false; }
+        if let Some(cp) = self.peek_codepoint() {
+            if is_unicode_whitespace(cp) { return false; }
+        }
+        true
+    }
+
     /// Lex one token under the given goal. Consumers re-pick the goal at
     /// each call site based on parser context.
     pub fn next_token(&mut self, goal: LexerGoal) -> Result<Token, LexError> {
@@ -217,7 +248,12 @@ impl<'src> Lexer<'src> {
                             if is_line_terminator_byte(c) {
                                 break;
                             }
+                            // LTC-EXT 1: U+2028/U+2029 also terminate the line comment.
+                            if self.peek_lt_bytes().is_some() {
+                                break;
+                            }
                             self.advance_one_char();
+                            let _ = c;
                         }
                         continue;
                     }
@@ -532,15 +568,15 @@ impl<'src> Lexer<'src> {
                 preceded_by_line_terminator: preceded_by_lt,
             });
         }
-        // Disallow ident-start immediately after numeric (e.g., 1abc)
-        if let Some(c) = self.peek_byte() {
-            if is_identifier_start_byte(c) {
-                return Err(self.err(
-                    LexErrorKind::InvalidNumeric,
-                    start,
-                    "identifier directly after numeric literal",
-                ));
-            }
+        // Disallow ident-start immediately after numeric (e.g., 1abc).
+        // LTC-EXT 1: high-byte LT (U+2028/U+2029) and Unicode whitespace
+        // must not trigger the reject — they are token separators per §11.3.
+        if self.peek_is_ident_start_strict() {
+            return Err(self.err(
+                LexErrorKind::InvalidNumeric,
+                start,
+                "identifier directly after numeric literal",
+            ));
         }
         let lexeme = std::str::from_utf8(&self.src[start..self.pos])
             .unwrap()
@@ -605,7 +641,13 @@ impl<'src> Lexer<'src> {
         // suffix (`0xffn`, `0b1n`) — handled by the next branch below,
         // not rejected here.
         if let Some(b) = self.peek_byte() {
-            if b != b'n' && (b.is_ascii_digit() || is_identifier_start_byte(b)) {
+            let high_lt_or_ws = b >= 0x80
+                && (self.peek_lt_bytes().is_some()
+                    || self.peek_codepoint().map_or(false, is_unicode_whitespace));
+            if b != b'n'
+                && !high_lt_or_ws
+                && (b.is_ascii_digit() || is_identifier_start_byte(b))
+            {
                 return Err(self.err(
                     LexErrorKind::InvalidNumeric,
                     start,
@@ -661,6 +703,10 @@ impl<'src> Lexer<'src> {
                 self.pos += 1;
                 break;
             }
+            // ECMA-262 §12.9.4.1 (post-2019 JSON-superset amendment): only
+            // LF and CR are forbidden literally inside StringLiteral. U+2028
+            // and U+2029 are now permitted as literal characters and pass
+            // through unchanged.
             if is_line_terminator_byte(c) {
                 return Err(self.err(
                     LexErrorKind::UnterminatedString,
@@ -692,6 +738,16 @@ impl<'src> Lexer<'src> {
         let Some(c) = self.peek_byte() else {
             return Err(self.err(LexErrorKind::InvalidEscape, start, "lone backslash"));
         };
+        // LTC-EXT 1: \<LS> and \<PS> are LineContinuation per §12.9.4 —
+        // consume the 3-byte sequence and contribute nothing to the string.
+        if c == 0xE2 && self.peek_byte_at(1) == Some(0x80) {
+            if let Some(b3) = self.peek_byte_at(2) {
+                if b3 == 0xA8 || b3 == 0xA9 {
+                    self.pos += 3;
+                    return Ok(());
+                }
+            }
+        }
         self.pos += 1;
         match c {
             b'n' => out.push('\n'),
@@ -911,7 +967,7 @@ impl<'src> Lexer<'src> {
             let Some(c) = self.peek_byte() else {
                 return Err(self.err(LexErrorKind::UnterminatedRegex, start, "unterminated regex"));
             };
-            if is_line_terminator_byte(c) {
+            if is_line_terminator_byte(c) || self.peek_lt_bytes().is_some() {
                 return Err(self.err(
                     LexErrorKind::UnterminatedRegex,
                     start,
@@ -920,9 +976,8 @@ impl<'src> Lexer<'src> {
             }
             if c == b'\\' {
                 self.pos += 1;
-                if self
-                    .peek_byte()
-                    .map_or(true, |b| is_line_terminator_byte(b))
+                if self.peek_byte().map_or(true, |b| is_line_terminator_byte(b))
+                    || self.peek_lt_bytes().is_some()
                 {
                     return Err(self.err(
                         LexErrorKind::UnterminatedRegex,
@@ -1180,6 +1235,12 @@ fn is_line_terminator_byte(b: u8) -> bool {
     matches!(b, 0x0A | 0x0D)
 }
 
+// LTC-EXT 1: ECMA-262 §11.3 LineTerminator includes U+2028 LS and U+2029 PS
+// in addition to LF/CR. Their UTF-8 encoding is 0xE2 0x80 0xA8 / 0xA9. At any
+// lex site that checks for line termination (single-line comment terminator,
+// regex/string body LT-rejection), call `peek_is_line_terminator_bytes` to
+// get the byte-length to consume; `None` means no LT here.
+
 fn is_identifier_start_byte(b: u8) -> bool {
     b.is_ascii_alphabetic() || b == b'_' || b == b'$' || b >= 0x80
 }
@@ -1198,7 +1259,10 @@ fn is_id_start(cp: u32) -> bool {
     } else {
         // Permissive: accept any non-ASCII code point as ID_Start. v2
         // will gate against the Unicode ID_Start property table.
-        cp >= 0xA0 && cp != 0xFEFF
+        // LTC-EXT 1: exclude LineTerminator code points (U+2028 LS,
+        // U+2029 PS) and Unicode whitespace — they are §11.3/§11.2
+        // separators, not identifier characters.
+        cp >= 0xA0 && cp != 0xFEFF && cp != 0x2028 && cp != 0x2029 && !is_unicode_whitespace(cp)
     }
 }
 
@@ -1209,6 +1273,7 @@ fn is_id_continue(cp: u32) -> bool {
     } else {
         // Permissive: accept any non-ASCII code point as ID_Continue,
         // including ZWNJ (U+200C) and ZWJ (U+200D).
-        cp >= 0xA0 && cp != 0xFEFF
+        // LTC-EXT 1: same separator exclusion as is_id_start.
+        cp >= 0xA0 && cp != 0xFEFF && cp != 0x2028 && cp != 0x2029 && !is_unicode_whitespace(cp)
     }
 }
