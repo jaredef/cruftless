@@ -81,8 +81,61 @@ function runOne(path) {
     'explicit-resource-management',       // DisposableStack/AsyncDisposableStack/SuppressedError/using
     'ShadowRealm',                        // stage-3 cross-realm execution boundary
   ]);
+  // RFSDO-EXT 3 (TI.4): PARTIALLY_IMPLEMENTED carve-out. Maps a feature
+  // flag to an array of path-substring allowlist entries. A test whose
+  // path contains any allowlisted substring opts OUT of the SKIP — it
+  // runs and reveals real engine state. Used for progressive substrate
+  // programs where SOME tests pass and others don't yet.
+  const PARTIALLY_IMPLEMENTED = {
+    'Temporal': [
+      // TDur-EXT 1: Temporal.Duration ctor + 10 field-getters + valueOf-throws.
+      // Tests covering arithmetic / relativeTo / round / total stay SKIPped
+      // until the corresponding sub-rungs land.
+      '/Temporal/Duration/constructor.js',
+      '/Temporal/Duration/name.js',
+      '/Temporal/Duration/length.js',
+      '/Temporal/Duration/prop-desc.js',
+      '/Temporal/Duration/years-undefined.js',
+      '/Temporal/Duration/months-undefined.js',
+      '/Temporal/Duration/weeks-undefined.js',
+      '/Temporal/Duration/days-undefined.js',
+      '/Temporal/Duration/hours-undefined.js',
+      '/Temporal/Duration/minutes-undefined.js',
+      '/Temporal/Duration/seconds-undefined.js',
+      '/Temporal/Duration/milliseconds-undefined.js',
+      '/Temporal/Duration/microseconds-undefined.js',
+      '/Temporal/Duration/nanoseconds-undefined.js',
+      '/Temporal/Duration/basic.js',
+      '/Temporal/Duration/builtin.js',
+      '/Temporal/Duration/call-builtin.js',
+      '/Temporal/Duration/infinity-throws-rangeerror.js',
+      '/Temporal/Duration/negative-infinity-throws-rangeerror.js',
+      '/Temporal/Duration/fractional-throws-rangeerror.js',
+      '/Temporal/Duration/prototype/valueOf/',
+      '/Temporal/Duration/prototype/years/',
+      '/Temporal/Duration/prototype/months/',
+      '/Temporal/Duration/prototype/weeks/',
+      '/Temporal/Duration/prototype/days/',
+      '/Temporal/Duration/prototype/hours/',
+      '/Temporal/Duration/prototype/minutes/',
+      '/Temporal/Duration/prototype/seconds/',
+      '/Temporal/Duration/prototype/milliseconds/',
+      '/Temporal/Duration/prototype/microseconds/',
+      '/Temporal/Duration/prototype/nanoseconds/',
+      // Foundation tests that pass without per-class implementation.
+      '/Temporal/getOwnPropertyNames.js',
+      '/Temporal/keys.js',
+      '/Temporal/prop-desc.js',
+      '/Temporal/toStringTag/',
+    ],
+  };
   for (const f of meta.features) {
     if (DELIBERATELY_OMITTED.has(f)) {
+      // PARTIALLY_IMPLEMENTED carve-out: opt OUT of SKIP if path matches.
+      const allowlist = PARTIALLY_IMPLEMENTED[f];
+      if (allowlist && allowlist.some(prefix => path.includes(prefix))) {
+        break; // fall through to normal execution
+      }
       return { path, status: 'SKIP', reason: `feature deliberately omitted: ${f}` };
     }
   }

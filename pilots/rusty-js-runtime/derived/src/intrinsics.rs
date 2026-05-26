@@ -2308,8 +2308,10 @@ impl Runtime {
         // throws "not implemented" when invoked, but exists as an object
         // so `Temporal.PlainDate` etc. is defined and `instanceof` checks
         // do not crash. Real prototype + ctor land in per-class sub-locales.
+        // Stubs for classes whose per-class rung hasn't landed yet.
+        // Duration is REAL (installed below); others remain stubs.
         for class_name in &["Instant", "PlainDate", "PlainTime", "PlainDateTime",
-                            "PlainMonthDay", "PlainYearMonth", "Duration",
+                            "PlainMonthDay", "PlainYearMonth",
                             "ZonedDateTime"] {
             let stub = self.alloc_object(Object::new_ordinary());
             let cn = (*class_name).to_string();
@@ -2326,6 +2328,124 @@ impl Runtime {
             "@@toStringTag".into(),
             Value::String(Rc::new("Temporal".into())),
         );
+        // TDur-EXT 1 (duration-ctor-fields): install Temporal.Duration as
+        // a real constructor with prototype + 10 unit getters + valueOf-
+        // throws-TypeError + @@toStringTag. Per ECMA-262 §11.1 Temporal.Duration:
+        //   new Temporal.Duration(years, months, weeks, days, hours,
+        //                         minutes, seconds, milliseconds,
+        //                         microseconds, nanoseconds)
+        // Each arg is ToIntegerIfIntegral (default 0). Sign-uniformity
+        // and RangeError validation deferred to duration-arithmetic rung.
+        let dur_proto = self.alloc_object(Object::new_ordinary());
+        // 10 unit field getters. Each reads the __td_<unit> sentinel.
+        const UNITS: &[&str] = &[
+            "years", "months", "weeks", "days", "hours",
+            "minutes", "seconds", "milliseconds", "microseconds", "nanoseconds",
+        ];
+        for unit in UNITS {
+            let unit_name: &'static str = unit;
+            let key = format!("__td_{}", unit);
+            // Accessor getter pattern per regexp.rs::install_regexp_proto_accessor.
+            // `d.years` invokes the getter; tests probing
+            // Object.getOwnPropertyDescriptor(proto, 'years').get also see it.
+            let k = key.clone();
+            let getter_obj = make_native_non_ctor(
+                &format!("get {}", unit_name),
+                0,
+                move |rt, _args| {
+                    let id = match rt.current_this() {
+                        Value::Object(o) => o,
+                        _ => return Err(RuntimeError::TypeError(format!(
+                            "Temporal.Duration.prototype.{}: this is not an object",
+                            unit_name
+                        ))),
+                    };
+                    // Brand-check: this must be a Temporal.Duration instance.
+                    // Use sentinel presence as the brand.
+                    match rt.object_get(id, &k) {
+                        Value::Undefined => Err(RuntimeError::TypeError(format!(
+                            "Temporal.Duration.prototype.{}: this is not a Temporal.Duration",
+                            unit_name
+                        ))),
+                        v => Ok(v),
+                    }
+                },
+            );
+            let getter_id = self.alloc_object(getter_obj);
+            self.obj_mut(dur_proto).dict_mut().insert(
+                unit_name.into(),
+                PropertyDescriptor {
+                    value: Value::Undefined,
+                    writable: false,
+                    enumerable: false,
+                    configurable: true,
+                    getter: Some(Value::Object(getter_id)),
+                    setter: None,
+                },
+            );
+        }
+        // valueOf throws TypeError per §11.4.18 (Temporal.Duration is
+        // not orderable / comparable via valueOf coercion).
+        register_intrinsic_method(self, dur_proto, "valueOf", 0, |_rt, _args| {
+            Err(RuntimeError::TypeError(
+                "Temporal.Duration valueOf cannot be used; use compare()".into()
+            ))
+        });
+        self.obj_mut(dur_proto).set_own_frozen(
+            "@@toStringTag".into(),
+            Value::String(Rc::new("Temporal.Duration".into())),
+        );
+        let proto_for_ctor = dur_proto;
+        let dur_ctor_obj = make_native_with_length("Duration", 0, move |rt, args| {
+            // Per §11.1.1 step 1: if NewTarget is undefined, throw TypeError.
+            if rt.current_new_target.is_none() {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.Duration constructor cannot be called as a function".into()
+                ));
+            }
+            // ToIntegerIfIntegral for each of 10 args; undefined -> 0.
+            // Negative zero -> 0 per spec ToIntegerIfIntegral.
+            let mut units = [0.0f64; 10];
+            for (i, slot) in units.iter_mut().enumerate() {
+                let v = args.get(i).cloned().unwrap_or(Value::Undefined);
+                let n = match v {
+                    Value::Undefined => 0.0,
+                    _ => crate::abstract_ops::to_number(&v),
+                };
+                // ToIntegerIfIntegral: must be integer or RangeError.
+                // Sign-uniformity check deferred to duration-arithmetic.
+                if !n.is_finite() {
+                    return Err(RuntimeError::RangeError(
+                        "Temporal.Duration: arguments must be finite integers".into()
+                    ));
+                }
+                if n != n.trunc() {
+                    return Err(RuntimeError::RangeError(
+                        "Temporal.Duration: arguments must be integers".into()
+                    ));
+                }
+                // Normalize -0 to 0.
+                *slot = if n == 0.0 { 0.0 } else { n };
+            }
+            let mut o = Object::new_ordinary();
+            o.proto = Some(proto_for_ctor);
+            let id = rt.alloc_object(o);
+            for (i, unit) in UNITS.iter().enumerate() {
+                let key = format!("__td_{}", unit);
+                rt.set_engine_sentinel(id, &key, Value::Number(units[i]));
+            }
+            Ok(Value::Object(id))
+        });
+        let dur_ctor = self.alloc_object(dur_ctor_obj);
+        self.obj_mut(dur_proto)
+            .set_own_internal("constructor".into(), Value::Object(dur_ctor));
+        // Install ctor.prototype so `instanceof Temporal.Duration` works
+        // and `Temporal.Duration.prototype` is the dur_proto object.
+        self.obj_mut(dur_ctor)
+            .set_own_frozen("prototype".into(), Value::Object(dur_proto));
+        // Overwrite the Duration stub on the Temporal namespace with the real ctor.
+        self.obj_mut(temporal)
+            .set_own_internal("Duration".into(), Value::Object(dur_ctor));
         self.globals.insert("Temporal".into(), Value::Object(temporal));
     }
 
