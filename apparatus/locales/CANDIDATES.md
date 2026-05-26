@@ -281,9 +281,13 @@ Cluster redirected to apparatus-pilot: `pilots/apparatus/runner-features-skip-de
 **Pool**: 41 records (language/expressions/dynamic-import/import-attributes/*).
 **LOC estimate**: parser extension to ImportCall production (~10 LOC); runtime can stub the attributes pending real implementation.
 
-### (zz) `compound-assignment-rbrace` (CAR) — 🟡 PROBED
-**Telos**: 44 records in language/expressions/compound-assignment/ failing with `parse: unexpected token in expression: Punct(RBrace)`. Mechanism not yet drilled — needs Rule 23 baseline-inspection before substrate commit.
-**Status**: requires founding probe to identify whether this is a parser-precedence issue, an LHS-validity issue, or a parser-state-machine bug.
+### (zz) `compound-assignment-rbrace` (CAR) — ★ REDIRECTED 2026-05-26 → WBMS-EXT 2
+
+**Rule 23 baseline-inspection (post WBMS-EXT 1 landing)**: all 44 records now fail at RUNTIME with `scope.x === N. Actual: undefined`, not at parse. The compound-assignment tests use `with(scope) { x ^= 3 }` to exercise binding semantics under a `with`-extended scope chain. WBMS-EXT 1's parse-tier fix unblocked the parser; the residual is identical in mechanism to WBMS's 227 runtime-semantic residuals.
+
+Substrate move IS WBMS-EXT 2 (real with-runtime-semantics: Stmt::With AST + bytecode emission + ScopeChain extension). No separate locale spawn. WBMS-EXT 2's pool when spawned will include these 44 CAR records.
+
+**Standing lesson**: when a matrix-coordinate cluster's reason-text matches a parser-tier failure shape, baseline-inspect AFTER any sibling parser-tier moves have landed — Rule 23 may surface that the cluster is already absorbed by a sibling locale's deferred deeper-tier extension.
 
 ---
 
