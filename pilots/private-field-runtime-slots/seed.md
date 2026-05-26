@@ -47,6 +47,14 @@ Bridge `o?.c.#f` while the parser/compiler still represents the outer private me
 2. let a `#name` read over the optional short-circuit `undefined` produce `undefined`,
 3. preserve TypeError for ordinary missing private slots on non-nullish objects.
 
+### PFRS-EXT 3 — generator class method flag preservation
+
+Close the generator-method residuals that became visible after private slots landed:
+
+1. preserve `is_generator` when lowering class methods,
+2. seed the existing eager generator iterator with a non-undefined body return when the generator produced no `yield` values,
+3. leave async and async-generator harness rows out of scope.
+
 ## Carve-outs
 
 - This is not yet a full ECMA private-brand model. Prototype private-method lookup is a compatibility bridge for the current lowering, not the final brand semantics.
@@ -65,4 +73,4 @@ Read `trajectory.md` tail. Rebuild `cruft`, run the 40-path PNL smoke and the 19
 
 ## Status
 
-PFRS-EXT 2 landed locally. Runtime/bytecode compile; release binary keeps direct PNL at `40/40` and moves the focused PNL list from `160/194` to `162/194`.
+PFRS-EXT 3 landed locally. Runtime/bytecode compile; release binary keeps direct PNL at `40/40` and moves the focused PNL list from `162/194` to `178/194`. The remaining focused rows are async-harness SKIPs.

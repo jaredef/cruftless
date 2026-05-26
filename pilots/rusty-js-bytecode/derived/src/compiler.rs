@@ -5889,12 +5889,11 @@ impl Compiler {
                         // are deferred to the substrate round that wires
                         // Object.defineProperty's get/set fields end-to-end.
                         // Mirrors the object-literal treatment landed in Ω.5.p.parse.
-                        // Tier-Ω.5.w: async / generator class methods lower as
-                        // ordinary methods. v1 deviation: await / yield inside
-                        // the body still error at compile time at those specific
-                        // statements; but the method itself parses + compiles
-                        // so the surrounding class shape is reachable.
-                        let _ = (is_async, is_generator);
+                        // Tier-Ω.5.w: async class methods still lower through
+                        // the ordinary function path, but generator class
+                        // methods now preserve the generator flag so calls
+                        // return the runtime's generator iterator wrapper.
+                        let _ = is_async;
                         let method_key: Option<String> = match m_name {
                             ClassMemberName::Identifier { name, .. } => Some(name.clone()),
                             ClassMemberName::String { value, .. } => Some(value.clone()),
@@ -5929,7 +5928,7 @@ impl Compiler {
                             None,
                             method_key.as_deref(),
                             false,
-                            false,
+                            *is_generator,
                             params,
                             body,
                         )?;

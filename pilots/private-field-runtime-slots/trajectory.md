@@ -84,3 +84,37 @@ Residuals:
 
 - 16 generator-method runtime rows (`.next` on a returned Number),
 - 16 async harness SKIPs.
+
+## PFRS-EXT 3 — 2026-05-26 (generator class methods preserve generator flag)
+
+Closed the 16 generator-method runtime rows in the focused PNL probe.
+
+Problem shape:
+
+- Class method lowering discarded `is_generator`, even though ordinary function lowering and runtime generator wrappers already existed.
+- After preserving the flag, the runtime returned a generator iterator, but the eager generator model discarded a non-undefined body `return` when there were no `yield` values.
+
+Implementation:
+
+- Class method lowering now passes `*is_generator` into `compile_function_proto_with_name_hint`.
+- The eager generator wrapper seeds its yielded-value array with a non-undefined body return when no yields were collected.
+
+Verification:
+
+- `cargo check -p rusty-js-bytecode`
+- `cargo check -p rusty-js-runtime`
+- `cargo build --release --bin cruft -p cruftless`
+- Representative formerly failing row:
+  - `language/statements/class/elements/same-line-gen-private-names.js` → `PASS`
+- `pilots/private-name-lexing/exemplars/run-exemplars.sh`
+  - `PASS=40 FAIL=0 / 40`
+- `PNL_EXEMPLARS_LIST=/private/tmp/pnl-focused.txt pilots/private-name-lexing/exemplars/run-exemplars.sh`
+  - `PASS=178 FAIL=16 / 194`
+
+Movement:
+
+- Focused PNL probe moved from `162/194` to `178/194`.
+
+Residuals:
+
+- 16 async / async-generator rows, all harness SKIPs (`async-flag tests need the async-test harness; deferred`).

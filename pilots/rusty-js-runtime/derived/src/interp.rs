@@ -12945,7 +12945,12 @@ impl Runtime {
                 .pop()
                 .expect("gen_yields_stack underflow");
             let _ = gen_yields_id;
-            let _ = body_result; // even on Err, return an iterator that drains as if empty
+            if let Ok(v) = body_result {
+                if !matches!(v, Value::Undefined) && self.array_length(yields_id) == 0 {
+                    self.object_set(yields_id, "0".into(), v);
+                    self.object_set(yields_id, "length".into(), Value::Number(1.0));
+                }
+            }
                                  // diff-prod Rung-19: chain generator instances to %GeneratorPrototype%
                                  // (which in turn chains to %IteratorPrototype%). Pre-fix, generator
                                  // instances proto-chained only to Object.prototype, so the ES2025
