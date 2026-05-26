@@ -2391,6 +2391,117 @@ impl Runtime {
                 "Temporal.Duration valueOf cannot be used; use compare()".into()
             ))
         });
+        // DDP-EXT 1 (duration-derived-properties): sign + blank accessors,
+        // abs + negated methods. Brand-check via __td_years sentinel
+        // presence (all Duration instances carry it).
+        let proto_for_derived = dur_proto;
+        // Helper: read all 10 unit sentinels from `this`. Returns
+        // [years..nanoseconds] or TypeError if `this` isn't a Duration.
+        fn read_units(rt: &mut Runtime, this_id: ObjectRef) -> Result<[f64; 10], RuntimeError> {
+            let units = ["years", "months", "weeks", "days", "hours",
+                         "minutes", "seconds", "milliseconds",
+                         "microseconds", "nanoseconds"];
+            // Brand-check: first sentinel must be present.
+            if matches!(rt.object_get(this_id, "__td_years"), Value::Undefined) {
+                return Err(RuntimeError::TypeError(
+                    "this is not a Temporal.Duration".into()
+                ));
+            }
+            let mut out = [0.0f64; 10];
+            for (i, u) in units.iter().enumerate() {
+                let key = format!("__td_{}", u);
+                if let Value::Number(n) = rt.object_get(this_id, &key) {
+                    out[i] = n;
+                }
+            }
+            Ok(out)
+        }
+        // Helper: allocate a new Duration instance with given units.
+        fn make_duration(rt: &mut Runtime, proto: ObjectRef, units: [f64; 10]) -> Value {
+            let units_names = ["years", "months", "weeks", "days", "hours",
+                               "minutes", "seconds", "milliseconds",
+                               "microseconds", "nanoseconds"];
+            let mut o = Object::new_ordinary();
+            o.proto = Some(proto);
+            let id = rt.alloc_object(o);
+            for (i, u) in units_names.iter().enumerate() {
+                let key = format!("__td_{}", u);
+                let v = if units[i] == 0.0 { 0.0 } else { units[i] };
+                rt.set_engine_sentinel(id, &key, Value::Number(v));
+            }
+            Value::Object(id)
+        }
+        // sign accessor: -1 / 0 / 1 based on first non-zero unit's sign
+        // (per spec uniform-sign invariant; if any non-zero, all non-zeros
+        // share sign).
+        {
+            let getter = make_native_non_ctor("get sign", 0, move |rt, _args| {
+                let id = match rt.current_this() {
+                    Value::Object(o) => o,
+                    _ => return Err(RuntimeError::TypeError(
+                        "Temporal.Duration.prototype.sign: this is not an object".into()
+                    )),
+                };
+                let units = read_units(rt, id)?;
+                let s = units.iter().find(|&&u| u != 0.0).map_or(0.0, |&u| u.signum());
+                Ok(Value::Number(s))
+            });
+            let getter_id = self.alloc_object(getter);
+            self.obj_mut(dur_proto).dict_mut().insert(
+                "sign".into(),
+                PropertyDescriptor {
+                    value: Value::Undefined, writable: false,
+                    enumerable: false, configurable: true,
+                    getter: Some(Value::Object(getter_id)), setter: None,
+                },
+            );
+        }
+        // blank accessor: true iff all units are 0.
+        {
+            let getter = make_native_non_ctor("get blank", 0, move |rt, _args| {
+                let id = match rt.current_this() {
+                    Value::Object(o) => o,
+                    _ => return Err(RuntimeError::TypeError(
+                        "Temporal.Duration.prototype.blank: this is not an object".into()
+                    )),
+                };
+                let units = read_units(rt, id)?;
+                Ok(Value::Boolean(units.iter().all(|&u| u == 0.0)))
+            });
+            let getter_id = self.alloc_object(getter);
+            self.obj_mut(dur_proto).dict_mut().insert(
+                "blank".into(),
+                PropertyDescriptor {
+                    value: Value::Undefined, writable: false,
+                    enumerable: false, configurable: true,
+                    getter: Some(Value::Object(getter_id)), setter: None,
+                },
+            );
+        }
+        // abs() method: new Duration with abs(unit) for each.
+        register_intrinsic_method(self, dur_proto, "abs", 0, move |rt, _args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.Duration.prototype.abs: this is not an object".into()
+                )),
+            };
+            let mut units = read_units(rt, id)?;
+            for u in units.iter_mut() { *u = u.abs(); }
+            Ok(make_duration(rt, proto_for_derived, units))
+        });
+        // negated() method: new Duration with -unit for each.
+        register_intrinsic_method(self, dur_proto, "negated", 0, move |rt, _args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.Duration.prototype.negated: this is not an object".into()
+                )),
+            };
+            let mut units = read_units(rt, id)?;
+            for u in units.iter_mut() { *u = if *u == 0.0 { 0.0 } else { -*u }; }
+            Ok(make_duration(rt, proto_for_derived, units))
+        });
         self.obj_mut(dur_proto).set_own_frozen(
             "@@toStringTag".into(),
             Value::String(Rc::new("Temporal.Duration".into())),
