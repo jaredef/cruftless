@@ -170,6 +170,9 @@ function runOne(path) {
       '/Temporal/PlainTime/prototype/constructor.js',
       '/Temporal/PlainTime/prototype/prop-desc.js',
       '/Temporal/PlainTime/prototype/toStringTag/',
+      // PTS-EXT 1: plain-time-static (from / compare)
+      '/Temporal/PlainTime/from/',
+      '/Temporal/PlainTime/compare/',
       // Foundation tests that pass without per-class implementation.
       '/Temporal/getOwnPropertyNames.js',
       '/Temporal/keys.js',

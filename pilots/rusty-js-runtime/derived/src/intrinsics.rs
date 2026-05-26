@@ -3362,6 +3362,196 @@ impl Runtime {
             .set_own_internal("constructor".into(), Value::Object(pt_ctor));
         self.obj_mut(pt_ctor)
             .set_own_frozen("prototype".into(), Value::Object(pt_proto));
+        // PTS-EXT 1 (plain-time-static): from + compare.
+        // ISO time parser: HH:MM[:SS[.fff]] — same shape as datetime time-part.
+        fn parse_iso_time(s: &str) -> Option<[i64; 6]> {
+            let b = s.as_bytes();
+            if b.len() < 5 { return None; } // minimum HH:MM
+            fn rd(b: &[u8], i: usize, n: usize) -> Option<i64> {
+                if i + n > b.len() { return None; }
+                let mut v = 0i64;
+                for k in 0..n {
+                    let c = b[i + k];
+                    if !c.is_ascii_digit() { return None; }
+                    v = v * 10 + (c - b'0') as i64;
+                }
+                Some(v)
+            }
+            let mut i = 0;
+            // Optional date prefix: YYYY-MM-DD followed by T/t/space.
+            // PlainTime.from accepts a full datetime and extracts the
+            // time portion per §11.7.1.
+            if b.len() >= 11 && b.get(4) == Some(&b'-') && b.get(7) == Some(&b'-')
+                && matches!(b.get(10), Some(b'T') | Some(b't') | Some(b' '))
+            {
+                // Validate date digits but don't store; just advance.
+                rd(b, 0, 4)?;
+                rd(b, 5, 2)?;
+                rd(b, 8, 2)?;
+                i = 11;
+            }
+            // Optional leading 'T'/'t' (after date or standalone).
+            if matches!(b.get(i), Some(b'T') | Some(b't')) { i += 1; }
+            let hour = rd(b, i, 2)?; i += 2;
+            if b.get(i) != Some(&b':') { return None; } i += 1;
+            let minute = rd(b, i, 2)?; i += 2;
+            let mut sec = 0i64;
+            let mut ms = 0i64;
+            let mut us = 0i64;
+            let mut ns = 0i64;
+            if b.get(i) == Some(&b':') {
+                i += 1;
+                sec = rd(b, i, 2)?; i += 2;
+                if matches!(b.get(i), Some(b'.') | Some(b',')) {
+                    i += 1;
+                    let frac_start = i;
+                    while i < b.len() && b[i].is_ascii_digit() && i - frac_start < 9 {
+                        i += 1;
+                    }
+                    let n_digits = i - frac_start;
+                    if n_digits == 0 { return None; }
+                    let mut frac = 0i64;
+                    for k in 0..n_digits {
+                        frac = frac * 10 + (b[frac_start + k] - b'0') as i64;
+                    }
+                    // Pad to nanoseconds.
+                    for _ in 0..(9 - n_digits) { frac *= 10; }
+                    ns = frac % 1000;
+                    us = (frac / 1000) % 1000;
+                    ms = frac / 1_000_000;
+                }
+            }
+            // Range checks per §11.7.2.
+            if hour > 23 || minute > 59 || sec > 59 || ms > 999 || us > 999 || ns > 999 {
+                return None;
+            }
+            // Optional Z / ±HH:MM offset suffix accepted and ignored
+            // (PlainTime doesn't carry offset). Annotation handling
+            // (bracketed forms) deferred to a future stricter rung
+            // since per-spec rejection of capital/critical annotations
+            // is required (spawning that rung as plain-time-annotation-
+            // validation).
+            if matches!(b.get(i), Some(b'Z') | Some(b'z')) { i += 1; }
+            else if matches!(b.get(i), Some(b'+') | Some(b'-')) {
+                i += 1;
+                if rd(b, i, 2).is_none() { return None; } i += 2;
+                if b.get(i) == Some(&b':') { i += 1; }
+                if rd(b, i, 2).is_some() { i += 2; }
+            }
+            if i != b.len() { return None; }
+            Some([hour, minute, sec, ms, us, ns])
+        }
+        let pt_proto_for_static = pt_proto;
+        register_intrinsic_method(self, pt_ctor, "from", 1, move |rt, args| {
+            let item = args.first().cloned().unwrap_or(Value::Undefined);
+            // String form: parse ISO time per §11.8.2 time-portion.
+            if let Value::String(s) = &item {
+                let units = parse_iso_time(s).ok_or_else(|| RuntimeError::RangeError(format!(
+                    "Temporal.PlainTime.from(string): invalid ISO 8601 time: {:?}", s
+                )))?;
+                let mut o = Object::new_ordinary();
+                o.proto = Some(pt_proto_for_static);
+                let id = rt.alloc_object(o);
+                let unit_names = ["hour", "minute", "second", "millisecond",
+                                  "microsecond", "nanosecond"];
+                for (i, u) in unit_names.iter().enumerate() {
+                    let key = format!("__pt_{}", u);
+                    rt.set_engine_sentinel(id, &key, Value::Number(units[i] as f64));
+                }
+                return Ok(Value::Object(id));
+            }
+            let id = match item {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainTime.from: argument must be a PlainTime, object, or string".into()
+                )),
+            };
+            let unit_names = ["hour", "minute", "second", "millisecond",
+                              "microsecond", "nanosecond"];
+            let unit_maxes = [23i64, 59, 59, 999, 999, 999];
+            let mut units = [0i64; 6];
+            // Brand-check: __pt_hour sentinel present?
+            let is_pt = !matches!(rt.object_get(id, "__pt_hour"), Value::Undefined);
+            if is_pt {
+                for (i, u) in unit_names.iter().enumerate() {
+                    let key = format!("__pt_{}", u);
+                    if let Value::Number(n) = rt.object_get(id, &key) {
+                        units[i] = n as i64;
+                    }
+                }
+            } else {
+                // Property bag: at least one recognized unit required.
+                let mut has_any = false;
+                for (i, u) in unit_names.iter().enumerate() {
+                    let v = rt.object_get(id, u);
+                    if matches!(v, Value::Undefined) { continue; }
+                    has_any = true;
+                    let n = crate::abstract_ops::to_number(&v);
+                    if !n.is_finite() || n != n.trunc() {
+                        return Err(RuntimeError::RangeError(format!(
+                            "Temporal.PlainTime.from: {} must be integer", u
+                        )));
+                    }
+                    let ni = n as i64;
+                    if ni < 0 || ni > unit_maxes[i] {
+                        return Err(RuntimeError::RangeError(format!(
+                            "Temporal.PlainTime.from: {} {} out of range", u, ni
+                        )));
+                    }
+                    units[i] = ni;
+                }
+                if !has_any {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.PlainTime.from: object must have at least one time unit property".into()
+                    ));
+                }
+            }
+            let mut o = Object::new_ordinary();
+            o.proto = Some(pt_proto_for_static);
+            let id_new = rt.alloc_object(o);
+            for (i, u) in unit_names.iter().enumerate() {
+                let key = format!("__pt_{}", u);
+                rt.set_engine_sentinel(id_new, &key, Value::Number(units[i] as f64));
+            }
+            Ok(Value::Object(id_new))
+        });
+        register_intrinsic_method(self, pt_ctor, "compare", 2, move |rt, args| {
+            // Coerce each arg to nanoseconds-of-day. PlainTime instance or
+            // property bag or ISO string accepted.
+            fn to_ns_of_day(rt: &mut Runtime, v: Value) -> Result<i64, RuntimeError> {
+                let unit_names = ["hour", "minute", "second", "millisecond",
+                                  "microsecond", "nanosecond"];
+                let mut u = [0i64; 6];
+                if let Value::String(s) = &v {
+                    let parsed = parse_iso_time(s).ok_or_else(|| RuntimeError::RangeError(format!(
+                        "Temporal.PlainTime.compare(string): invalid ISO 8601 time: {:?}", s
+                    )))?;
+                    u = parsed;
+                } else if let Value::Object(id) = v {
+                    let is_pt = !matches!(rt.object_get(id, "__pt_hour"), Value::Undefined);
+                    let prefix = if is_pt { "__pt_" } else { "" };
+                    for (i, name) in unit_names.iter().enumerate() {
+                        let key = format!("{}{}", prefix, name);
+                        if let Value::Number(n) = rt.object_get(id, &key) {
+                            u[i] = n as i64;
+                        }
+                    }
+                } else {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.PlainTime.compare: argument must be PlainTime, object, or string".into()
+                    ));
+                }
+                Ok(u[0] * 3_600_000_000_000
+                 + u[1] * 60_000_000_000
+                 + u[2] * 1_000_000_000
+                 + u[3] * 1_000_000
+                 + u[4] * 1_000
+                 + u[5])
+            }
+            let a = to_ns_of_day(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
+            let b = to_ns_of_day(rt, args.get(1).cloned().unwrap_or(Value::Undefined))?;
+            Ok(Value::Number(if a < b { -1.0 } else if a > b { 1.0 } else { 0.0 }))
+        });
         self.obj_mut(temporal)
             .set_own_internal("PlainTime".into(), Value::Object(pt_ctor));
         self.globals.insert("Temporal".into(), Value::Object(temporal));
