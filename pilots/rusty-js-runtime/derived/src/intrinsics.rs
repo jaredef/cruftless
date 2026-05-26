@@ -5026,6 +5026,7 @@ impl Runtime {
             let diff_days = pda_days_from_civil(oy, om, od) - pda_days_from_civil(y, m, d);
             pda_make_duration_days(rt, dur_proto_for_pd_arith, diff_days, &largest)
         });
+        // PDC-EXT 1 — see end of install_temporal for actual installation.
         // PDW-EXT 1 (plain-date-with): with(dateLike) partial-update.
         let pd_proto_for_with = pd_proto;
         register_intrinsic_method(self, pd_proto, "with", 1, move |rt, args| {
@@ -6828,6 +6829,83 @@ impl Runtime {
             .set_own_frozen("prototype".into(), Value::Object(pym_proto));
         self.obj_mut(temporal)
             .set_own_internal("PlainYearMonth".into(), Value::Object(pym_ctor));
+        // PDC-EXT 1 (plain-date-conversion): toPlainDateTime / toPlainMonthDay /
+        // toPlainYearMonth. toZonedDateTime deferred (needs TZ database).
+        // Installed here so all target prototypes (pdt_proto / pmd_proto /
+        // pym_proto) are in scope.
+        let pdt_for_pdc = pdt_proto;
+        let pmd_for_pdc = pmd_proto;
+        let pym_for_pdc = pym_proto;
+        register_intrinsic_method(self, pd_proto, "toPlainDateTime", 1, move |rt, args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("PD.toPlainDateTime: this not object".into())),
+            };
+            let (y, m, d) = pd_read_ymd(rt, id, "toPlainDateTime")?;
+            let (h, mi, se, ms, us, ns) = match args.first().cloned().unwrap_or(Value::Undefined) {
+                Value::Undefined => (0i64, 0i64, 0i64, 0i64, 0i64, 0i64),
+                Value::Object(o) => {
+                    if !matches!(rt.object_get(o, "__pt_hour"), Value::Undefined) {
+                        let read = |name: &str| match rt.object_get(o, &format!("__pt_{}", name)) {
+                            Value::Number(n) => n as i64,
+                            _ => 0,
+                        };
+                        (read("hour"), read("minute"), read("second"),
+                         read("millisecond"), read("microsecond"), read("nanosecond"))
+                    } else if !matches!(rt.object_get(o, "__pdt_year"), Value::Undefined) {
+                        let read = |name: &str| match rt.object_get(o, &format!("__pdt_{}", name)) {
+                            Value::Number(n) => n as i64,
+                            _ => 0,
+                        };
+                        (read("hour"), read("minute"), read("second"),
+                         read("millisecond"), read("microsecond"), read("nanosecond"))
+                    } else {
+                        let names = ["hour","minute","second","millisecond","microsecond","nanosecond"];
+                        let mut vs = [0i64; 6];
+                        for (i, n) in names.iter().enumerate() {
+                            if let Value::Number(num) = rt.object_get(o, n) {
+                                vs[i] = num as i64;
+                            }
+                        }
+                        (vs[0], vs[1], vs[2], vs[3], vs[4], vs[5])
+                    }
+                }
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainDate.prototype.toPlainDateTime: argument must be PT, PDT, or object".into()
+                )),
+            };
+            Ok(make_pdt(rt, pdt_for_pdc, [y, m, d, h, mi, se, ms, us, ns]))
+        });
+        register_intrinsic_method(self, pd_proto, "toPlainMonthDay", 0, move |rt, _args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("PD.toPlainMonthDay: this not object".into())),
+            };
+            let (_, m, d) = pd_read_ymd(rt, id, "toPlainMonthDay")?;
+            let mut o = Object::new_ordinary();
+            o.proto = Some(pmd_for_pdc);
+            let new_id = rt.alloc_object(o);
+            rt.set_engine_sentinel(new_id, "__pmd_month", Value::Number(m as f64));
+            rt.set_engine_sentinel(new_id, "__pmd_day", Value::Number(d as f64));
+            rt.set_engine_sentinel(new_id, "__pmd_refyear", Value::Number(1972.0));
+            rt.set_engine_sentinel(new_id, "__pmd_calendar", Value::String(Rc::new("iso8601".into())));
+            Ok(Value::Object(new_id))
+        });
+        register_intrinsic_method(self, pd_proto, "toPlainYearMonth", 0, move |rt, _args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("PD.toPlainYearMonth: this not object".into())),
+            };
+            let (y, m, _) = pd_read_ymd(rt, id, "toPlainYearMonth")?;
+            let mut o = Object::new_ordinary();
+            o.proto = Some(pym_for_pdc);
+            let new_id = rt.alloc_object(o);
+            rt.set_engine_sentinel(new_id, "__pym_year", Value::Number(y as f64));
+            rt.set_engine_sentinel(new_id, "__pym_month", Value::Number(m as f64));
+            rt.set_engine_sentinel(new_id, "__pym_refday", Value::Number(1.0));
+            rt.set_engine_sentinel(new_id, "__pym_calendar", Value::String(Rc::new("iso8601".into())));
+            Ok(Value::Object(new_id))
+        });
         self.globals.insert("Temporal".into(), Value::Object(temporal));
     }
 

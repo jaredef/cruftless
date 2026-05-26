@@ -248,6 +248,10 @@ function runOne(path) {
       '/Temporal/PlainDate/prototype/yearOfWeek/',
       '/Temporal/PlainDate/prototype/era/',
       '/Temporal/PlainDate/prototype/eraYear/',
+      // PDC-EXT 1: plain-date-conversion
+      '/Temporal/PlainDate/prototype/toPlainDateTime/',
+      '/Temporal/PlainDate/prototype/toPlainMonthDay/',
+      '/Temporal/PlainDate/prototype/toPlainYearMonth/',
       // PDA-EXT 1: plain-date-arithmetic
       '/Temporal/PlainDate/prototype/add/',
       '/Temporal/PlainDate/prototype/subtract/',
