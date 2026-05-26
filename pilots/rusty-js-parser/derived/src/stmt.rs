@@ -579,6 +579,7 @@ impl<'src> Parser<'src> {
                 });
             }
             self.strict_mode = true;
+            self.set_lexer_strict(true);  // SLEC-EXT 1: push to lexer for legacy-escape rejection
         }
         // SMPT-EXT 3: generator-context propagation.
         let prior_gen = self.in_generator;
@@ -594,6 +595,7 @@ impl<'src> Parser<'src> {
         self.expect_punct(Punct::RBrace)?;
         self.function_body_depth = self.function_body_depth.saturating_sub(1);
         self.strict_mode = prior_strict;
+        self.set_lexer_strict(prior_strict);  // SLEC-EXT 1: restore lexer's view on body exit
         self.in_generator = prior_gen;
         Ok(out)
     }

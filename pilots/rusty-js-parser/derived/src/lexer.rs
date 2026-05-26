@@ -52,6 +52,12 @@ pub struct Lexer<'src> {
     saw_line_terminator: bool,
     /// True until the first non-trivia token. Hashbang only allowed at start.
     at_start: bool,
+    /// SLEC-EXT 1: lexer-side strict-mode flag for legacy-escape rejection.
+    /// Per §12.9.4 + Annex B B.1.2, strict-mode forbids `\1`-`\7` and
+    /// `\0` followed by a digit in string literals. The parser pushes
+    /// its strict_mode state into the lexer via `set_strict` when the
+    /// state flips (after a "use strict" directive or on module entry).
+    pub(crate) strict_mode: bool,
 }
 
 impl<'src> Lexer<'src> {
@@ -61,7 +67,15 @@ impl<'src> Lexer<'src> {
             pos: 0,
             saw_line_terminator: false,
             at_start: true,
+            strict_mode: false,
         }
+    }
+
+    /// SLEC-EXT 1: set the lexer's strict-mode flag. The Parser owns the
+    /// canonical strict_mode state; this updates the lexer's view so the
+    /// legacy-escape rejection rules apply.
+    pub fn set_strict(&mut self, strict: bool) {
+        self.strict_mode = strict;
     }
 
     /// Reposition the lexer. Used by the parser for goal-symbol re-lexing
@@ -334,6 +348,13 @@ impl<'src> Lexer<'src> {
                 }
             }
             if self.peek_byte() != Some(b'}') {
+                return None;
+            }
+            // SLEC-EXT 1: §12.9.4 — \u{...} requires at least one hex digit.
+            // Pre-fix accepted empty braces \u{} as codepoint 0; spec mandates
+            // SyntaxError. The CodePoint :: HexDigits production requires
+            // ≥1 HexDigit.
+            if count == 0 {
                 return None;
             }
             self.pos += 1;
@@ -642,13 +663,18 @@ impl<'src> Lexer<'src> {
             b'f' => out.push('\u{000C}'),
             b'v' => out.push('\u{000B}'),
             b'0' => {
-                // Ω.5.P53.E8: accept legacy octal escapes in string
-                // literals. Spec forbids them in strict mode and templates;
-                // we don't currently track strict-mode context per source,
-                // and the entire failing residual (forever/eyes,
-                // qrcode-terminal) lives in CJS wrappers where they're
-                // legal. Parse 1-3 octal digits after \0.
+                // Ω.5.P53.E8 + SLEC-EXT 1: legacy octal escape Annex B B.1.2.
+                // `\0` alone (not followed by a digit) is the NULL escape
+                // and is always allowed. `\0` followed by any digit is a
+                // legacy octal escape; spec forbids it in strict mode.
                 if self.peek_byte().map_or(false, |b| b.is_ascii_digit()) {
+                    if self.strict_mode {
+                        return Err(self.err(
+                            LexErrorKind::InvalidEscape,
+                            start,
+                            "legacy octal escape sequence in strict mode",
+                        ));
+                    }
                     let mut v: u32 = 0;
                     let mut n = 0;
                     while n < 3 {
@@ -697,13 +723,28 @@ impl<'src> Lexer<'src> {
                     self.pos += 1;
                 }
             }
-            // Ω.5.P53.E8: legacy octal (\1-\7) and non-octal-decimal (\8\9).
-            // Same rationale as the b'0' case — CJS-wrapped consumer files
-            // (eyes/qrcode-terminal) use \033-style ANSI codes.
+            // Ω.5.P53.E8 + SLEC-EXT 1: legacy octal escape (Annex B B.1.2).
+            // §12.9.4 + B.1.2: strict mode forbids `\1`-`\7` legacy octal.
+            // Per the LegacyOctalEscapeSequence grammar, three-digit form is
+            // restricted to leading 0-3 (ZeroToThree OctalDigit OctalDigit).
+            // Leading 4-7 (FourToSeven OctalDigit) caps at two digits — a
+            // following octal digit produces value-of-two-digit-octal then
+            // the next char is treated as a literal. Pre-fix accepted
+            // three-digit form for 4-7 leadings (e.g., \400 → 256); spec
+            // says \400 is \40 (32) then literal "0".
             b'1'..=b'7' => {
+                if self.strict_mode {
+                    return Err(self.err(
+                        LexErrorKind::InvalidEscape,
+                        start,
+                        "legacy octal escape sequence in strict mode",
+                    ));
+                }
                 let mut v: u32 = (c - b'0') as u32;
-                let mut n = 1;
-                while n < 3 {
+                let leading_four_to_seven = matches!(c, b'4'..=b'7');
+                let max_extra_digits = if leading_four_to_seven { 1 } else { 2 };
+                let mut n = 0;
+                while n < max_extra_digits {
                     match self.peek_byte() {
                         Some(b) if (b'0'..=b'7').contains(&b) => {
                             v = v * 8 + (b - b'0') as u32;
@@ -715,7 +756,17 @@ impl<'src> Lexer<'src> {
                 }
                 push_char(out, v);
             }
-            b'8' | b'9' => out.push(c as char),
+            // §12.9.4 + B.1.2: strict mode forbids \8 and \9 (NonOctalDecimalEscapeSequence).
+            b'8' | b'9' => {
+                if self.strict_mode {
+                    return Err(self.err(
+                        LexErrorKind::InvalidEscape,
+                        start,
+                        "legacy non-octal decimal escape sequence in strict mode",
+                    ));
+                }
+                out.push(c as char);
+            }
             _ => out.push(c as char),
         }
         Ok(())

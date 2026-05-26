@@ -118,6 +118,7 @@ impl<'src> Parser<'src> {
         // The import/export branches below promote to strict when seen.
         if self.peek_use_strict_directive() {
             self.strict_mode = true;
+            self.lx.set_strict(true);  // SLEC-EXT 1: push to lexer for legacy-escape rejection
         }
 
         while !self.at_eof() {
@@ -1006,6 +1007,11 @@ impl<'src> Parser<'src> {
     }
     pub(crate) fn lookahead_preceded_by_lt(&self) -> bool {
         self.lookahead.preceded_by_line_terminator
+    }
+    /// SLEC-EXT 1: push strict-mode state into the lexer for legacy-escape
+    /// rejection. Called alongside `self.strict_mode = …` mutations.
+    pub(crate) fn set_lexer_strict(&mut self, strict: bool) {
+        self.lx.set_strict(strict);
     }
     pub(crate) fn source(&self) -> &str {
         self.src
