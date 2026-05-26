@@ -9328,19 +9328,168 @@ impl Runtime {
         false
     }
 
-    fn resolve_with_name_base(&self, frame: &Frame, name: &str) -> Option<ObjectRef> {
-        frame
-            .with_env_stack
-            .iter()
-            .rev()
-            .copied()
-            .find(|obj_id| self.has_property(*obj_id, name))
+    fn has_property_with_proxy(&mut self, id: ObjectRef, key: &str) -> Result<bool, RuntimeError> {
+        let key_pk = crate::value::PropertyKey::String(key.to_string());
+        if let Some((target, handler)) = self.proxy_target_handler_checked(id)? {
+            let trap = self.object_get(handler, "has");
+            if matches!(trap, Value::Object(_)) {
+                let result = self.call_function(
+                    trap,
+                    Value::Object(handler),
+                    vec![
+                        Value::Object(target),
+                        Value::String(std::rc::Rc::new(key.to_string())),
+                    ],
+                )?;
+                let trap_has = crate::abstract_ops::to_boolean(&result);
+                self.apply_proxy_has_invariant(target, key, trap_has)?;
+                return Ok(trap_has);
+            }
+            return Ok(self.has_property_pk(target, &key_pk));
+        }
+        Ok(self.has_property_pk(id, &key_pk))
+    }
+
+    fn spec_get_pk(
+        &mut self,
+        id: ObjectRef,
+        key: &crate::value::PropertyKey,
+    ) -> Result<Value, RuntimeError> {
+        let key_str = key.as_str().to_string();
+        if let Some((target, handler)) = self.proxy_target_handler_checked(id)? {
+            let trap = self.object_get(handler, "get");
+            if matches!(trap, Value::Object(_)) {
+                let trap_key = match key {
+                    crate::value::PropertyKey::Symbol(rc) => Value::Symbol(rc.clone()),
+                    crate::value::PropertyKey::String(s) => {
+                        Value::String(std::rc::Rc::new(s.clone()))
+                    }
+                };
+                let result = self.call_function(
+                    trap,
+                    Value::Object(handler),
+                    vec![Value::Object(target), trap_key, Value::Object(id)],
+                )?;
+                self.apply_proxy_get_invariant(target, &key_str, &result)?;
+                return Ok(result);
+            }
+            if let Some(getter) = self.find_getter_pk(target, key) {
+                return self.call_function(getter, Value::Object(target), Vec::new());
+            }
+            return Ok(self.object_get_pk(target, key));
+        }
+        if let Some(getter) = self.find_getter_pk(id, key) {
+            return self.call_function(getter, Value::Object(id), Vec::new());
+        }
+        Ok(self.object_get_pk(id, key))
+    }
+
+    fn with_object_has_binding(
+        &mut self,
+        obj_id: ObjectRef,
+        name: &str,
+    ) -> Result<bool, RuntimeError> {
+        if !self.has_property_with_proxy(obj_id, name)? {
+            return Ok(false);
+        }
+
+        let unscopables_key = self
+            .globals
+            .get("Symbol")
+            .and_then(|v| match v {
+                Value::Object(sym) => match self.object_get(*sym, "unscopables") {
+                    Value::Symbol(rc) => Some(crate::value::PropertyKey::Symbol(rc)),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .unwrap_or_else(|| crate::value::PropertyKey::String("@@unscopables".to_string()));
+        let unscopables = self.spec_get_pk(obj_id, &unscopables_key)?;
+        let unscopables_id = match unscopables {
+            Value::Object(id) => id,
+            _ => return Ok(true),
+        };
+        let blocked = self.spec_get(&Value::Object(unscopables_id), name)?;
+        Ok(!crate::abstract_ops::to_boolean(&blocked))
+    }
+
+    fn set_with_object_binding(
+        &mut self,
+        obj_id: ObjectRef,
+        name: &str,
+        value: Value,
+        strict: bool,
+    ) -> Result<(), RuntimeError> {
+        if let Some((target, handler)) = self.proxy_target_handler_checked(obj_id)? {
+            let trap = self.object_get(handler, "set");
+            if matches!(trap, Value::Object(_)) {
+                let result = self.call_function(
+                    trap,
+                    Value::Object(handler),
+                    vec![
+                        Value::Object(target),
+                        Value::String(std::rc::Rc::new(name.to_string())),
+                        value.clone(),
+                        Value::Object(obj_id),
+                    ],
+                )?;
+                let accepted = crate::abstract_ops::to_boolean(&result);
+                self.apply_proxy_set_invariant(target, name, &value, accepted)?;
+                if !accepted && strict {
+                    return Err(RuntimeError::TypeError(format!(
+                        "Proxy 'set' trap returned false for '{}'",
+                        name
+                    )));
+                }
+                return Ok(());
+            }
+            self.object_set(target, name.to_string(), value);
+            return Ok(());
+        }
+
+        if let Some(setter) = self.find_setter(obj_id, name) {
+            self.call_function(setter, Value::Object(obj_id), vec![value])?;
+        } else if self.is_accessor_at(obj_id, name) {
+            if strict {
+                return Err(RuntimeError::TypeError(format!(
+                    "Cannot set property '{}' of object which has only a getter",
+                    name
+                )));
+            }
+        } else {
+            self.object_set(obj_id, name.to_string(), value);
+        }
+        Ok(())
+    }
+
+    fn resolve_with_name_base(
+        &mut self,
+        frame: &Frame,
+        name: &str,
+    ) -> Result<Option<ObjectRef>, RuntimeError> {
+        let with_stack: Vec<ObjectRef> = frame.with_env_stack.iter().rev().copied().collect();
+        for obj_id in with_stack {
+            if self.with_object_has_binding(obj_id, name)? {
+                return Ok(Some(obj_id));
+            }
+        }
+        Ok(None)
     }
 
     fn load_with_name(&mut self, frame: &mut Frame, name: &str) -> Result<Value, RuntimeError> {
-        for &obj_id in frame.with_env_stack.iter().rev() {
-            if self.has_property(obj_id, name) {
-                return self.read_property(obj_id, name);
+        let with_stack: Vec<ObjectRef> = frame.with_env_stack.iter().rev().copied().collect();
+        for obj_id in with_stack {
+            if self.with_object_has_binding(obj_id, name)? {
+                if !self.has_property_with_proxy(obj_id, name)? {
+                    if frame.strict {
+                        return Err(RuntimeError::ReferenceError(format!(
+                            "{} is not defined",
+                            name
+                        )));
+                    }
+                    return Ok(Value::Undefined);
+                }
+                return self.spec_get(&Value::Object(obj_id), name);
             }
         }
         for (slot, desc) in frame.locals_names.iter().enumerate().rev() {
@@ -9370,9 +9519,16 @@ impl Runtime {
         name: &str,
         value: Value,
     ) -> Result<(), RuntimeError> {
-        for &obj_id in frame.with_env_stack.iter().rev() {
-            if self.has_property(obj_id, name) {
-                self.object_set(obj_id, name.to_string(), value);
+        let with_stack: Vec<ObjectRef> = frame.with_env_stack.iter().rev().copied().collect();
+        for obj_id in with_stack {
+            if self.with_object_has_binding(obj_id, name)? {
+                if !self.has_property_with_proxy(obj_id, name)? && frame.strict {
+                    return Err(RuntimeError::ReferenceError(format!(
+                        "{} is not defined",
+                        name
+                    )));
+                }
+                self.set_with_object_binding(obj_id, name, value, frame.strict)?;
                 return Ok(());
             }
         }
@@ -10095,7 +10251,7 @@ impl Runtime {
                     frame.pc += 2;
                     let name = self.constant_name(frame, idx)?;
                     let base = self
-                        .resolve_with_name_base(frame, &name)
+                        .resolve_with_name_base(frame, &name)?
                         .map(Value::Object)
                         .unwrap_or(Value::Undefined);
                     frame.push(base);
@@ -10104,8 +10260,8 @@ impl Runtime {
                     let idx = decode_u16(&frame.bytecode, frame.pc);
                     frame.pc += 2;
                     let name = self.constant_name(frame, idx)?;
-                    if let Some(obj_id) = self.resolve_with_name_base(frame, &name) {
-                        let value = self.read_property(obj_id, &name)?;
+                    if let Some(obj_id) = self.resolve_with_name_base(frame, &name)? {
+                        let value = self.spec_get(&Value::Object(obj_id), &name)?;
                         frame.push(Value::Object(obj_id));
                         frame.push(value);
                     } else {
@@ -10121,7 +10277,9 @@ impl Runtime {
                     let v = frame.pop()?;
                     let base = frame.pop()?;
                     match base {
-                        Value::Object(obj_id) => self.object_set(obj_id, name, v.clone()),
+                        Value::Object(obj_id) => {
+                            self.set_with_object_binding(obj_id, &name, v.clone(), frame.strict)?
+                        }
                         _ => self.store_with_name(frame, &name, v.clone())?,
                     }
                     frame.push(v);

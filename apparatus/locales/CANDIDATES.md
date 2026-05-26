@@ -277,7 +277,9 @@ Spawned from the post-TECR-EXT-2 matrix's `availability/missing-syntax-feature` 
 **Landing**:
 - WBMS-EXT 1: parser `skip_to_top_terminator` brace completion fix, 0/264 -> 37/264 PASS.
 - WBMS-EXT 2: `Stmt::With`, `EnterWith` / `ExitWith`, dynamic with-name lookup/store, and reference-preserving with assignment, 37/264 -> 73/264 PASS.
-**Residual**: 183 FAIL / 8 SKIP. Remaining families are deeper environment-record surfaces: global-this/global-object aliasing, `@@unscopables`, Proxy `has`, direct/indirect eval, call-base `this`, destructuring order, and abrupt-completion cleanup.
+**Residual**: 183 FAIL / 8 SKIP at WBMS-EXT 2. Remaining families are deeper environment-record surfaces: global-this/global-object aliasing, `@@unscopables`, Proxy `has`, direct/indirect eval, call-base `this`, destructuring order, and abrupt-completion cleanup.
+
+**Follow-on locale**: `pilots/with-unscopables-proxy-has/` spawned 2026-05-26 for the Object Environment Record `HasBinding` rung (`HasProperty` via Proxy `has`, then `Symbol.unscopables` exclusion). WUPH-EXT 1 moves the parent pool to 78/264 PASS; remaining WUPH-local blockers are well-known Symbol stringification in proxy trap logs, computed accessor literal support for `get [Symbol.unscopables]`, Array.prototype `length`, and full Proxy `Set`/`DefineProperty` sequencing.
 
 ### (xx) `import-meta-metaproperty` (IMM) — ★ REDIAGNOSED 2026-05-26 → apparatus
 

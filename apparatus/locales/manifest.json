@@ -1,10 +1,10 @@
 {
   "generated_by": "apparatus/locales/discover.sh",
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
-  "locale_root": "/home/jaredef/Developer/cruftless/pilots",
+  "locale_root": "/Users/jaredfoy/Developer/cruftless/pilots",
   "totals": {
-    "locales": 126,
-    "top_level": 104,
+    "locales": 127,
+    "top_level": 105,
     "nested": 22,
     "warnings": 0
   },
@@ -1132,6 +1132,15 @@
       "scope": "with-body-multi-statement-parse",
       "depth": 1,
       "rung_count": 3,
+      "status": null
+    },
+    {
+      "coord": "with-unscopables-proxy-has",
+      "tag": "L.with-unscopables-proxy-has",
+      "parent": null,
+      "scope": "with-unscopables-proxy-has",
+      "depth": 1,
+      "rung_count": 2,
       "status": null
     },
     {
