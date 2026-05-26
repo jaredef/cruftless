@@ -1576,67 +1576,158 @@ impl<'src> Parser<'src> {
         self.parse_block_statement()
     }
 
-    /// BBND-EXT 1: §13.2.1 Block static-semantics early errors.
-    /// LexicallyDeclaredNames duplicate detection + LDN ∩ VDN check.
+    /// BBND-EXT 1+2: §13.2.1 Block static-semantics early errors.
+    /// LexicallyDeclaredNames duplicate detection + LDN ∩ VDN check,
+    /// per-decl identity tracked so Annex B B.3.2 carve-outs apply
+    /// correctly. VDN harvested from nested blocks/loops/etc to model
+    /// var-hoisting.
     pub(crate) fn check_block_bound_names(&self, body: &[Stmt]) -> Result<(), ParseError> {
+        // Each entry: (name, span, decl_id, is_lex, is_var, is_plain_func_nonstrict)
+        // A plain FunctionDecl in non-strict contributes BOTH is_lex and
+        // is_var with the same decl_id (Annex B B.3.2/B.3.3 dual-role).
+        let mut entries: Vec<(String, Span, u32, bool, bool, bool)> = Vec::new();
+        let mut next_id: u32 = 0;
+        self.collect_block_entries(body, false, &mut entries, &mut next_id);
+
+        use std::collections::HashMap;
+        let mut by_name: HashMap<&str, Vec<&(String, Span, u32, bool, bool, bool)>> = HashMap::new();
+        for e in &entries { by_name.entry(&e.0).or_default().push(e); }
+        for (_, es) in by_name {
+            // Dup-LDN: distinct decl_ids that contribute to LDN, where
+            // not all such contributions are plain-function-non-strict.
+            let mut lex_ids: Vec<(u32, bool)> = Vec::new();
+            for e in &es {
+                if e.3 {
+                    if !lex_ids.iter().any(|(id, _)| *id == e.2) {
+                        lex_ids.push((e.2, e.5));
+                    }
+                }
+            }
+            if lex_ids.len() >= 2 {
+                let all_plain_func = lex_ids.iter().all(|(_, pfn)| *pfn);
+                if !all_plain_func {
+                    let bad = es.iter().find(|e| e.3).unwrap();
+                    return Err(ParseError {
+                        span: bad.1,
+                        message: format!("Identifier `{}` has already been declared in this block", bad.0),
+                    });
+                }
+            }
+            // LDN∩VDN: exists a lex entry and a var entry from DIFFERENT
+            // decl_ids, where NOT both sides are plain-function-non-strict
+            // (Annex B B.3.2/B.3.3 lets multiple plain functions in
+            // non-strict block coexist as both LDN and VDN without error).
+            let lex_pairs: Vec<(u32, bool)> = es.iter().filter(|e| e.3).map(|e| (e.2, e.5)).collect();
+            let var_pairs: Vec<(u32, bool)> = es.iter().filter(|e| e.4).map(|e| (e.2, e.5)).collect();
+            let cross = lex_pairs.iter().any(|(li, lpf)| {
+                var_pairs.iter().any(|(vi, vpf)| li != vi && !(*lpf && *vpf))
+            });
+            if cross {
+                let bad = es.iter().find(|e| e.3).unwrap();
+                return Err(ParseError {
+                    span: bad.1,
+                    message: format!("Identifier `{}` cannot be redeclared (lexical/var conflict)", bad.0),
+                });
+            }
+        }
+        Ok(())
+    }
+
+    /// Walk a StatementList and emit (name, span, decl_id, is_lex,
+    /// is_var, is_plain_func_nonstrict) entries. `nested` controls var-
+    /// hoisting recursion: at depth=0 we emit all entries; at depth>0
+    /// we emit only VDN entries (vars hoist into the enclosing block;
+    /// lex declarations are block-scoped and do not).
+    fn collect_block_entries(
+        &self,
+        body: &[Stmt],
+        nested: bool,
+        out: &mut Vec<(String, Span, u32, bool, bool, bool)>,
+        next_id: &mut u32,
+    ) {
         use rusty_js_ast::{Stmt as S, VariableKind};
-        let mut lex: Vec<(String, Span)> = Vec::new();
-        let mut var: Vec<(String, Span)> = Vec::new();
         for s in body {
             match s {
                 S::Variable(vs) => {
-                    let target_list: &mut Vec<(String, Span)> = match vs.kind {
-                        VariableKind::Let | VariableKind::Const => &mut lex,
-                        VariableKind::Var => &mut var,
+                    let id = *next_id; *next_id += 1;
+                    let (is_lex, is_var) = match vs.kind {
+                        VariableKind::Let | VariableKind::Const => (!nested, false),
+                        VariableKind::Var => (false, true),
                     };
+                    if !is_lex && !is_var { continue; }
                     for d in &vs.declarators {
-                        for id in d.target.collect_names() {
-                            target_list.push((id.name.clone(), id.span));
+                        for nm in d.target.collect_names() {
+                            out.push((nm.name.clone(), nm.span, id, is_lex, is_var, false));
                         }
                     }
                 }
-                // Per spec §13.2.6 + Annex B.3.2: AsyncFunction /
-                // Generator / AsyncGenerator declarations always contribute
-                // to LexicallyDeclaredNames. Plain FunctionDeclaration is
-                // LDN in strict mode; in non-strict the Annex B carve-out
-                // demotes it to VDN, allowing function-function block dup.
                 S::FunctionDecl { name: Some(n), is_async, is_generator, .. } => {
-                    let is_plain_function = !is_async && !is_generator;
-                    if is_plain_function && !self.strict_mode {
-                        var.push((n.name.clone(), n.span));
+                    let id = *next_id; *next_id += 1;
+                    let is_plain = !is_async && !is_generator;
+                    let plain_func_nonstrict = is_plain && !self.strict_mode;
+                    // At nested depth, only the var-side contribution
+                    // hoists (and only plain functions in non-strict
+                    // contribute to var). Async/generator/async-gen and
+                    // strict-mode plain functions are pure-LDN and stay
+                    // in their own block.
+                    if nested {
+                        if plain_func_nonstrict {
+                            out.push((n.name.clone(), n.span, id, false, true, true));
+                        }
                     } else {
-                        lex.push((n.name.clone(), n.span));
+                        let is_lex = true; // FunctionDecl is LDN in all modes
+                        let is_var = plain_func_nonstrict;
+                        out.push((n.name.clone(), n.span, id, is_lex, is_var, plain_func_nonstrict));
                     }
                 }
                 S::ClassDecl { name: Some(n), .. } => {
-                    lex.push((n.name.clone(), n.span));
+                    if !nested {
+                        let id = *next_id; *next_id += 1;
+                        out.push((n.name.clone(), n.span, id, true, false, false));
+                    }
+                }
+                // Recurse into containers that can hold var declarations
+                // which hoist outward.
+                S::Block { body: inner, .. } => {
+                    self.collect_block_entries(inner, true, out, next_id);
+                }
+                S::If { consequent, alternate, .. } => {
+                    self.collect_stmt_entries(consequent, true, out, next_id);
+                    if let Some(a) = alternate { self.collect_stmt_entries(a, true, out, next_id); }
+                }
+                S::For { body: b, .. } | S::ForIn { body: b, .. } | S::ForOf { body: b, .. }
+                | S::While { body: b, .. } | S::DoWhile { body: b, .. } => {
+                    self.collect_stmt_entries(b, true, out, next_id);
+                }
+                S::Switch { cases, .. } => {
+                    for c in cases {
+                        self.collect_block_entries(&c.consequent, true, out, next_id);
+                    }
+                }
+                S::Try { block, handler, finalizer, .. } => {
+                    self.collect_stmt_entries(block, true, out, next_id);
+                    if let Some(h) = handler {
+                        self.collect_stmt_entries(&h.body, true, out, next_id);
+                    }
+                    if let Some(f) = finalizer { self.collect_stmt_entries(f, true, out, next_id); }
+                }
+                S::Labelled { body: b, .. } => {
+                    self.collect_stmt_entries(b, true, out, next_id);
                 }
                 _ => {}
             }
         }
-        // Dup within LDN.
-        for i in 0..lex.len() {
-            for j in (i+1)..lex.len() {
-                if lex[i].0 == lex[j].0 {
-                    return Err(ParseError {
-                        span: lex[j].1,
-                        message: format!("Identifier `{}` has already been declared in this block", lex[j].0),
-                    });
-                }
-            }
-        }
-        // LDN ∩ VDN.
-        for (ln, lspan) in &lex {
-            for (vn, _) in &var {
-                if ln == vn {
-                    return Err(ParseError {
-                        span: *lspan,
-                        message: format!("Identifier `{}` cannot be redeclared (lexical/var conflict)", ln),
-                    });
-                }
-            }
-        }
-        Ok(())
+    }
+
+    fn collect_stmt_entries(
+        &self,
+        s: &Stmt,
+        nested: bool,
+        out: &mut Vec<(String, Span, u32, bool, bool, bool)>,
+        next_id: &mut u32,
+    ) {
+        let slice = std::slice::from_ref(s);
+        self.collect_block_entries(slice, nested, out, next_id);
     }
 
     /// SBAP-EXT 1: walk a BindingPattern's leaf binding-identifiers and
