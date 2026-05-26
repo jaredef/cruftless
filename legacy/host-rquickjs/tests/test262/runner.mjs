@@ -291,6 +291,8 @@ function runOne(path) {
       // PDTS-EXT 1: PDT.from + PDT.compare
       '/Temporal/PlainDateTime/from/',
       '/Temporal/PlainDateTime/compare/',
+      // PDTW-EXT 1: PDT with
+      '/Temporal/PlainDateTime/prototype/with/',
       // PDTDP-EXT 1: PDT derived-properties (11 getters)
       '/Temporal/PlainDateTime/prototype/dayOfWeek/',
       '/Temporal/PlainDateTime/prototype/dayOfYear/',

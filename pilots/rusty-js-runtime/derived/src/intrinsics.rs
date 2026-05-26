@@ -5709,6 +5709,72 @@ impl Runtime {
             .set_own_internal("constructor".into(), Value::Object(pdt_ctor));
         self.obj_mut(pdt_ctor)
             .set_own_frozen("prototype".into(), Value::Object(pdt_proto));
+        // PDTW-EXT 1 (plain-date-time-with): with(dateTimeLike).
+        let pdt_proto_for_with = pdt_proto;
+        register_intrinsic_method(self, pdt_proto, "with", 1, move |rt, args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("PDT.with: this not object".into())),
+            };
+            let mut u = pdt_read_all(rt, id)?;
+            let arg = args.first().cloned().unwrap_or(Value::Undefined);
+            let arg_id = match arg {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainDateTime.prototype.with: argument must be an object".into()
+                )),
+            };
+            for marker in &["__pdt_year", "__pd_year", "__pt_hour", "__td_years", "__ti_ns"] {
+                if !matches!(rt.object_get(arg_id, marker), Value::Undefined) {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.PlainDateTime.prototype.with: argument cannot be a Temporal instance".into()
+                    ));
+                }
+            }
+            let names = ["year","month","day","hour","minute","second","millisecond","microsecond","nanosecond"];
+            let mut has_any = false;
+            for (i, name) in names.iter().enumerate() {
+                let v = rt.object_get(arg_id, name);
+                if matches!(v, Value::Undefined) { continue; }
+                has_any = true;
+                let n = crate::abstract_ops::to_number(&v);
+                if !n.is_finite() || n != n.trunc() {
+                    return Err(RuntimeError::RangeError(format!(
+                        "Temporal.PlainDateTime.prototype.with: {} must be integer", name
+                    )));
+                }
+                u[i] = n as i64;
+            }
+            if !has_any {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.PlainDateTime.prototype.with: argument must have at least one field".into()
+                ));
+            }
+            // Range checks after merge.
+            if !(1..=12).contains(&u[1]) {
+                return Err(RuntimeError::RangeError(format!("month {} out of range", u[1])));
+            }
+            let leap = (u[0] % 4 == 0 && u[0] % 100 != 0) || (u[0] % 400 == 0);
+            let max_day = match u[1] {
+                1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+                4 | 6 | 9 | 11 => 30,
+                2 => if leap { 29 } else { 28 },
+                _ => unreachable!(),
+            };
+            if !(1..=max_day).contains(&u[2]) {
+                return Err(RuntimeError::RangeError(format!("day {} out of range", u[2])));
+            }
+            let time_bounds = [(0,23i64), (0,59), (0,59), (0,999), (0,999), (0,999)];
+            for (i, (lo, hi)) in time_bounds.iter().enumerate() {
+                let v = u[3 + i];
+                if v < *lo || v > *hi {
+                    return Err(RuntimeError::RangeError(format!(
+                        "{} {} out of range", names[3 + i], v
+                    )));
+                }
+            }
+            Ok(make_pdt(rt, pdt_proto_for_with, u))
+        });
         // PDTDP-EXT 1 (plain-date-time-derived-properties): 11 calendar
         // getters that mirror PDDP, reading from __pdt_year/month/day.
         fn pdt_read_ymd(rt: &mut Runtime, id: ObjectRef, name: &str) -> Result<(i64, i64, i64), RuntimeError> {
