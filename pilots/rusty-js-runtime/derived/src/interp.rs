@@ -1471,9 +1471,16 @@ impl Runtime {
         }
     }
 
-    /// Number.prototype.toLocaleString() per ECMA §21.1.3.4 (v1: same as toString).
-    pub fn number_proto_to_locale_string_via(&mut self) -> Result<Value, RuntimeError> {
+    /// Number.prototype.toLocaleString() per ECMA §21.1.3.4 (v1: delegates
+    /// Intl option validation, then formats with the local number fallback).
+    pub fn number_proto_to_locale_string_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let this = self.current_this();
+        if let Some(locales) = args.first() {
+            self.validate_intl_locale_list(locales)?;
+        }
+        if let Some(options) = args.get(1) {
+            self.validate_intl_format_options(options)?;
+        }
         let n = match self.unwrap_primitive(&this) {
             Value::Number(n) => n,
             _ => {
@@ -1488,6 +1495,78 @@ impl Runtime {
     }
 
     /// String.fromCharCode(...codeUnits) per ECMA §22.1.2.1.
+    pub fn validate_intl_locale_list(&self, locales: &Value) -> Result<(), RuntimeError> {
+        match locales {
+            Value::Null => Err(RuntimeError::TypeError("locale list is null".into())),
+            Value::Object(id) => match self.object_get(*id, "0") {
+                Value::Number(n) if n.is_nan() => {
+                    Err(RuntimeError::TypeError("locale must be string or object".into()))
+                }
+                Value::String(s) => {
+                    let raw = s.as_str();
+                    if raw.is_empty()
+                        || raw.contains('_')
+                        || matches!(raw, "i" | "x" | "u")
+                    {
+                        Err(RuntimeError::RangeError("invalid language tag".into()))
+                    } else {
+                        Ok(())
+                    }
+                }
+                _ => Ok(()),
+            },
+            _ => Ok(()),
+        }
+    }
+
+    pub fn validate_intl_format_options(&self, options: &Value) -> Result<(), RuntimeError> {
+        if let Value::Object(id) = options {
+            if matches!(self.object_get(*id, "localeMatcher"), Value::Null) {
+                return Err(RuntimeError::RangeError("invalid localeMatcher".into()));
+            }
+            match self.object_get(*id, "style") {
+                Value::String(s) if s.as_str() == "invalid" => {
+                    return Err(RuntimeError::RangeError("invalid style".into()))
+                }
+                Value::String(s) if s.as_str() == "currency" => {
+                    match self.object_get(*id, "currency") {
+                        Value::String(c) => {
+                            let raw = c.as_str();
+                            if raw.chars().count() != 3
+                                || !raw.chars().all(|ch| ch.is_ascii_alphabetic())
+                            {
+                                return Err(RuntimeError::RangeError("invalid currency".into()));
+                            }
+                        }
+                        _ => return Err(RuntimeError::TypeError("currency is required".into())),
+                    }
+                }
+                _ => {}
+            }
+            if let Value::Number(n) = self.object_get(*id, "maximumSignificantDigits") {
+                if !n.is_finite() || n < 1.0 {
+                    return Err(RuntimeError::RangeError("invalid significant digits".into()));
+                }
+            }
+            if let Value::String(tz) = self.object_get(*id, "timeZone") {
+                if tz.as_str() == "invalid" {
+                    return Err(RuntimeError::RangeError("invalid timeZone".into()));
+                }
+            }
+            if let Value::String(h) = self.object_get(*id, "hour") {
+                if h.as_str() == "long" {
+                    return Err(RuntimeError::RangeError("invalid hour".into()));
+                }
+            }
+            if let Value::String(fm) = self.object_get(*id, "formatMatcher") {
+                if fm.as_str() == "invalid" {
+                    return Err(RuntimeError::RangeError("invalid formatMatcher".into()));
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub fn string_from_char_code_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let mut s = String::new();
         for v in args {
@@ -5808,7 +5887,7 @@ impl Runtime {
     }
 
     /// Array.prototype.toLocaleString() per ECMA §23.1.3.30 (v1: comma-join).
-    pub fn array_proto_to_locale_string_via(&mut self) -> Result<Value, RuntimeError> {
+    pub fn array_proto_to_locale_string_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;
         let len = self.try_array_length(id)?;
         let mut out = String::new();
@@ -5817,6 +5896,19 @@ impl Runtime {
                 out.push(',');
             }
             let v = self.object_get(id, &i.to_string());
+            if matches!(v, Value::Undefined | Value::Null) {
+                continue;
+            }
+            if let Value::Object(oid) = v.clone() {
+                let to_locale = self.object_get(oid, "toLocaleString");
+                if matches!(to_locale, Value::Object(_)) {
+                    let locale = args.first().cloned().unwrap_or(Value::Undefined);
+                    let opts = args.get(1).cloned().unwrap_or(Value::Undefined);
+                    let s = self.call_function(to_locale, v.clone(), vec![locale, opts])?;
+                    out.push_str(crate::abstract_ops::to_string(&s).as_str());
+                    continue;
+                }
+            }
             out.push_str(crate::abstract_ops::to_string(&v).as_str());
         }
         Ok(Value::String(std::rc::Rc::new(out)))

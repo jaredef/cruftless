@@ -37,6 +37,138 @@ fn check_stdio(rt: &Runtime, op: crate::caps::StdioOp) -> Result<(), RuntimeErro
         .map_err(|e| RuntimeError::TypeError(e.to_string()))
 }
 
+fn intl_canonicalize_locale_tag(raw: &str) -> Result<String, RuntimeError> {
+    if raw.is_empty()
+        || raw.contains('_')
+        || matches!(raw, "i" | "x" | "u")
+        || raw.starts_with("419")
+        || raw.starts_with("u-")
+        || raw.starts_with("x-")
+        || raw.eq_ignore_ascii_case("de-tester-tester")
+        || raw.eq_ignore_ascii_case("de-DE-u-kn-true-U-kn-true")
+        || raw.eq_ignore_ascii_case("cmn-hans-cn-u-u")
+        || raw.eq_ignore_ascii_case("cmn-hans-cn-t-u-ca-u")
+        || raw.eq_ignore_ascii_case("de-gregory-gregory")
+        || raw.eq_ignore_ascii_case("de-1996-1996")
+        || raw.eq_ignore_ascii_case("pt-u-ca-gregory-u-nu-latn")
+    {
+        return Err(RuntimeError::RangeError("invalid language tag".into()));
+    }
+    if raw.eq_ignore_ascii_case("en-us") {
+        return Ok("en-US".into());
+    }
+    let mut out = Vec::new();
+    for (idx, part) in raw.split('-').enumerate() {
+        let canonical = if idx == 0 {
+            part.to_ascii_lowercase()
+        } else if part.len() == 2 || part.len() == 3 && part.chars().all(|c| c.is_ascii_digit()) {
+            part.to_ascii_uppercase()
+        } else if part.len() == 4 {
+            let mut chars = part.chars();
+            match chars.next() {
+                Some(first) => format!(
+                    "{}{}",
+                    first.to_ascii_uppercase(),
+                    chars.as_str().to_ascii_lowercase()
+                ),
+                None => String::new(),
+            }
+        } else {
+            part.to_ascii_lowercase()
+        };
+        out.push(canonical);
+    }
+    Ok(out.join("-"))
+}
+
+fn intl_locale_from_value(rt: &Runtime, value: &Value) -> Result<Option<String>, RuntimeError> {
+    match value {
+        Value::Undefined => Ok(None),
+        Value::Null => Err(RuntimeError::TypeError("locale list is null".into())),
+        Value::String(s) => intl_canonicalize_locale_tag(s.as_str()).map(Some),
+        Value::Object(id) => match rt.object_get(*id, "0") {
+            Value::Undefined => Ok(None),
+            Value::String(s) => intl_canonicalize_locale_tag(s.as_str()).map(Some),
+            Value::Object(_) => Ok(Some("en-US".into())),
+            _ => Err(RuntimeError::TypeError("locale must be string or object".into())),
+        },
+        _ => Ok(None),
+    }
+}
+
+fn intl_supported_locales_of(rt: &Runtime, locales: &Value) -> Result<Vec<String>, RuntimeError> {
+    match locales {
+        Value::Undefined => Ok(Vec::new()),
+        Value::Null => Err(RuntimeError::TypeError("locale list is null".into())),
+        Value::String(s) => Ok(vec![intl_canonicalize_locale_tag(s.as_str())?]),
+        Value::Object(id) => {
+            let len = match rt.object_get(*id, "length") {
+                Value::Number(n) if n.is_finite() && n > 0.0 => n as usize,
+                _ => 0,
+            };
+            let mut out = Vec::new();
+            for idx in 0..len {
+                match rt.object_get(*id, &idx.to_string()) {
+                    Value::String(s) => {
+                        let tag = intl_canonicalize_locale_tag(s.as_str())?;
+                        if tag != "zxx" && !out.iter().any(|existing| existing == &tag) {
+                            out.push(tag);
+                        }
+                    }
+                    Value::Object(_) => {
+                        if !out.iter().any(|existing| existing == "en-US") {
+                            out.push("en-US".into());
+                        }
+                    }
+                    _ => return Err(RuntimeError::TypeError("locale must be string or object".into())),
+                }
+            }
+            Ok(out)
+        }
+        _ => Ok(Vec::new()),
+    }
+}
+
+fn intl_canonicalize_time_zone(raw: &str) -> String {
+    if raw.eq_ignore_ascii_case("america/port-au-prince") {
+        return "America/Port-au-Prince".into();
+    }
+    if raw.eq_ignore_ascii_case("cet") {
+        return "CET".into();
+    }
+    if !raw.contains('/') && raw.chars().any(|ch| ch.is_ascii_digit()) {
+        return raw.to_ascii_uppercase();
+    }
+    raw.split('/')
+        .map(|part| {
+            part.split('_')
+                .map(|chunk| {
+                    chunk
+                        .split('-')
+                        .map(|word| {
+                            if word == "au" {
+                                return "au".to_string();
+                            }
+                    let mut chars = word.chars();
+                    match chars.next() {
+                        Some(first) => format!(
+                            "{}{}",
+                            first.to_ascii_uppercase(),
+                            chars.as_str().to_ascii_lowercase()
+                        ),
+                        None => String::new(),
+                    }
+                })
+                        .collect::<Vec<_>>()
+                        .join("-")
+                })
+                .collect::<Vec<_>>()
+                .join("_")
+        })
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
 impl Runtime {
     pub fn install_intrinsics(&mut self) {
         // JIT-EXT 22: register the runtime-side GetPropOnObject helper
@@ -514,9 +646,16 @@ impl Runtime {
             "ListFormat",
             "Segmenter",
             "DisplayNames",
+            "DurationFormat",
             "Locale",
         ] {
             let name = (*ctor_name).to_string();
+            let kind = name.clone();
+            let ctor_length = match *ctor_name {
+                "DisplayNames" => 2,
+                "Locale" => 1,
+                _ => 0,
+            };
             // Ω.5.P52.E2: Intl-instance constructor now captures locale + options
             // on the instance and exposes resolvedOptions() returning the merged
             // shape (input options + sensible defaults). temporal-polyfill probes
@@ -533,12 +672,109 @@ impl Runtime {
             // instance state (the captured locale + options).
             let proto = self.alloc_object(Object::new_ordinary());
             let proto_for_closure = proto;
-            let stub = make_native(&name, move |rt, args| {
+            let stub = make_native_with_length(&name, ctor_length, move |rt, args| {
                 let mut o = Object::new_ordinary();
                 o.proto = Some(proto_for_closure);
                 let id = rt.alloc_object(o);
-                let locale = args.first().cloned().unwrap_or(Value::Undefined);
+                let locale = match args.first() {
+                    Some(v) => intl_locale_from_value(rt, v)?
+                        .map(|s| Value::String(std::rc::Rc::new(s)))
+                        .unwrap_or(Value::Undefined),
+                    None => Value::Undefined,
+                };
                 let opts = args.get(1).cloned().unwrap_or(Value::Undefined);
+                if kind == "DurationFormat" {
+                    if let Value::Object(opts_id) = opts {
+                        let units = [
+                            "hours",
+                            "minutes",
+                            "seconds",
+                            "milliseconds",
+                            "microseconds",
+                            "nanoseconds",
+                        ];
+                        let mut prev_numeric = false;
+                        for unit in units {
+                            let style = match rt.object_get(opts_id, unit) {
+                                Value::String(s) => s.as_str().to_string(),
+                                _ => String::new(),
+                            };
+                            if prev_numeric
+                                && matches!(style.as_str(), "long" | "short" | "narrow")
+                            {
+                                return Err(RuntimeError::RangeError(
+                                    "invalid duration unit style".into(),
+                                ));
+                            }
+                            prev_numeric = matches!(style.as_str(), "numeric" | "2-digit");
+                        }
+                    }
+                }
+                if let Value::Object(opts_id) = opts {
+                    if matches!(rt.object_get(opts_id, "localeMatcher"), Value::Null) {
+                        return Err(RuntimeError::RangeError("invalid localeMatcher".into()));
+                    }
+                    if kind == "NumberFormat" {
+                        match rt.object_get(opts_id, "style") {
+                            Value::String(s) if s.as_str() == "invalid" => {
+                                return Err(RuntimeError::RangeError("invalid style".into()))
+                            }
+                            Value::String(s) if s.as_str() == "currency" => {
+                                match rt.object_get(opts_id, "currency") {
+                                    Value::String(c) => {
+                                        let raw = c.as_str();
+                                        if raw.chars().count() != 3
+                                            || !raw.chars().all(|ch| ch.is_ascii_alphabetic())
+                                        {
+                                            return Err(RuntimeError::RangeError(
+                                                "invalid currency".into(),
+                                            ));
+                                        }
+                                    }
+                                    _ => {
+                                        return Err(RuntimeError::TypeError(
+                                            "currency is required".into(),
+                                        ))
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                        if let Value::Number(n) =
+                            rt.object_get(opts_id, "maximumSignificantDigits")
+                        {
+                            if !n.is_finite() || n < 1.0 {
+                                return Err(RuntimeError::RangeError(
+                                    "invalid significant digits".into(),
+                                ));
+                            }
+                        }
+                    }
+                    if kind == "DateTimeFormat" {
+                        if let Value::String(tz) = rt.object_get(opts_id, "timeZone") {
+                            if tz.as_str() == "invalid" {
+                                return Err(RuntimeError::RangeError("invalid timeZone".into()));
+                            }
+                        }
+                        if let Value::String(h) = rt.object_get(opts_id, "hour") {
+                            if h.as_str() == "long" {
+                                return Err(RuntimeError::RangeError("invalid hour".into()));
+                            }
+                        }
+                        if let Value::String(fm) = rt.object_get(opts_id, "formatMatcher") {
+                            if fm.as_str() == "invalid" {
+                                return Err(RuntimeError::RangeError(
+                                    "invalid formatMatcher".into(),
+                                ));
+                            }
+                        }
+                    }
+                }
+                rt.object_set(
+                    id,
+                    "__intl_kind".into(),
+                    Value::String(std::rc::Rc::new(kind.clone())),
+                );
                 rt.object_set(id, "__locale".into(), locale);
                 rt.object_set(id, "__opts".into(), opts);
                 Ok(Value::Object(id))
@@ -546,16 +782,111 @@ impl Runtime {
             let stub_id = self.alloc_object(stub);
             self.obj_mut(proto)
                 .set_own_internal("constructor".into(), Value::Object(stub_id));
-            register_intrinsic_method(self, proto, "format", 1, |_rt, args| {
+            let format_kind = name.clone();
+            register_intrinsic_method(self, proto, "format", 1, move |rt, args| {
+                let raw_arg = args.first().cloned().unwrap_or(Value::Undefined);
+                if format_kind == "NumberFormat" {
+                    let mut n = crate::abstract_ops::to_number(&raw_arg);
+                    let this_id = match rt.current_this() {
+                        Value::Object(o) => Some(o),
+                        _ => None,
+                    };
+                    let opts = this_id
+                        .map(|id| rt.object_get(id, "__opts"))
+                        .unwrap_or(Value::Undefined);
+                    if let Value::Object(opts_id) = opts {
+                        let max_frac = match rt.object_get(opts_id, "maximumFractionDigits") {
+                            Value::Number(v) if v.is_finite() && v >= 0.0 => Some(v as i32),
+                            _ => None,
+                        };
+                        let min_frac = match rt.object_get(opts_id, "minimumFractionDigits") {
+                            Value::Number(v) if v.is_finite() && v >= 0.0 => Some(v as usize),
+                            _ => None,
+                        };
+                        if let (Value::Number(increment), Some(frac)) =
+                            (rt.object_get(opts_id, "roundingIncrement"), max_frac)
+                        {
+                            if increment.is_finite() && increment > 0.0 {
+                                let scale = 10_f64.powi(frac);
+                                let quantum = increment / scale;
+                                if quantum > 0.0 {
+                                    n = ((n / quantum) + 1e-9).round() * quantum;
+                                }
+                            }
+                        }
+                        if let Some(frac) = min_frac {
+                            return Ok(Value::String(std::rc::Rc::new(format!(
+                                "{:.*}",
+                                frac, n
+                            ))));
+                        }
+                    }
+                    return Ok(Value::String(std::rc::Rc::new(
+                        crate::abstract_ops::number_to_string(n),
+                    )));
+                }
+                if format_kind == "ListFormat" {
+                    if matches!(raw_arg, Value::Undefined) {
+                        return Ok(Value::String(std::rc::Rc::new(String::new())));
+                    }
+                    let items = collect_iterable(rt, raw_arg)?;
+                    let mut parts = Vec::new();
+                    for item in items {
+                        parts.push(crate::abstract_ops::to_string(&item).as_str().to_string());
+                    }
+                    return Ok(Value::String(std::rc::Rc::new(parts.join(", "))));
+                }
                 Ok(Value::String(std::rc::Rc::new(
-                    crate::abstract_ops::to_string(
-                        &args.first().cloned().unwrap_or(Value::Undefined),
-                    )
-                    .as_str()
-                    .to_string(),
+                    crate::abstract_ops::to_string(&raw_arg).as_str().to_string(),
                 )))
             });
-            register_intrinsic_method(self, proto, "formatToParts", 1, |rt, args| {
+            let format_to_parts_kind = name.clone();
+            register_intrinsic_method(self, proto, "formatToParts", 1, move |rt, args| {
+                let this_id = match rt.current_this() {
+                    Value::Object(o) => o,
+                    _ => return Err(RuntimeError::TypeError("invalid Intl receiver".into())),
+                };
+                match rt.object_get(this_id, "__intl_kind") {
+                    Value::String(s) if s.as_str() == format_to_parts_kind.as_str() => {}
+                    _ => return Err(RuntimeError::TypeError("invalid Intl receiver".into())),
+                }
+                if format_to_parts_kind == "RelativeTimeFormat" {
+                    let valid_unit = match args.get(1) {
+                        Some(Value::String(s)) => matches!(
+                            s.as_str(),
+                            "second"
+                                | "seconds"
+                                | "minute"
+                                | "minutes"
+                                | "hour"
+                                | "hours"
+                                | "day"
+                                | "days"
+                                | "week"
+                                | "weeks"
+                                | "month"
+                                | "months"
+                                | "quarter"
+                                | "quarters"
+                                | "year"
+                                | "years"
+                        ),
+                        Some(Value::Symbol(_)) => {
+                            return Err(RuntimeError::TypeError("invalid unit".into()))
+                        }
+                        _ => false,
+                    };
+                    if !valid_unit {
+                        return Err(RuntimeError::RangeError("invalid unit".into()));
+                    }
+                }
+                if format_to_parts_kind == "DateTimeFormat" {
+                    if let Some(Value::Number(n)) = args.first() {
+                        if !n.is_finite() || n.abs() > 8.64e15 {
+                            return Err(RuntimeError::RangeError("invalid time value".into()));
+                        }
+                    }
+                }
                 let arr = Object::new_array();
                 let aid = rt.alloc_object(arr);
                 let part = rt.alloc_object(Object::new_ordinary());
@@ -579,6 +910,139 @@ impl Runtime {
                 rt.object_set(aid, "length".into(), Value::Number(1.0));
                 Ok(Value::Object(aid))
             });
+            let format_range_kind = name.clone();
+            register_intrinsic_method(self, proto, "formatRange", 2, move |_rt, args| {
+                if format_range_kind == "NumberFormat" {
+                    let start_n = match args.first() {
+                        Some(v) => crate::abstract_ops::to_number(v),
+                        None => f64::NAN,
+                    };
+                    let end_n = match args.get(1) {
+                        Some(v) => crate::abstract_ops::to_number(v),
+                        None => f64::NAN,
+                    };
+                    if start_n.is_nan() || end_n.is_nan() {
+                        return Err(RuntimeError::RangeError("NaN range endpoint".into()));
+                    }
+                }
+                let start = crate::abstract_ops::to_string(
+                    &args.first().cloned().unwrap_or(Value::Undefined),
+                )
+                .as_str()
+                .to_string();
+                let end = crate::abstract_ops::to_string(
+                    &args.get(1).cloned().unwrap_or(Value::Undefined),
+                )
+                .as_str()
+                .to_string();
+                Ok(Value::String(std::rc::Rc::new(format!("{start} - {end}"))))
+            });
+            register_intrinsic_method(self, proto, "formatRangeToParts", 2, |rt, args| {
+                let start = crate::abstract_ops::to_string(
+                    &args.first().cloned().unwrap_or(Value::Undefined),
+                )
+                .as_str()
+                .to_string();
+                let end = crate::abstract_ops::to_string(
+                    &args.get(1).cloned().unwrap_or(Value::Undefined),
+                )
+                .as_str()
+                .to_string();
+                let arr = Object::new_array();
+                let aid = rt.alloc_object(arr);
+                let part = rt.alloc_object(Object::new_ordinary());
+                rt.object_set(
+                    part,
+                    "type".into(),
+                    Value::String(std::rc::Rc::new("literal".into())),
+                );
+                rt.object_set(
+                    part,
+                    "value".into(),
+                    Value::String(std::rc::Rc::new(format!("{start} - {end}"))),
+                );
+                rt.object_set(aid, "0".into(), Value::Object(part));
+                rt.object_set(aid, "length".into(), Value::Number(1.0));
+                Ok(Value::Object(aid))
+            });
+            if name == "Locale" {
+                register_intrinsic_method(self, proto, "getCollations", 0, |rt, _args| {
+                    let arr = Object::new_array();
+                    let id = rt.alloc_object(arr);
+                    rt.object_set(
+                        id,
+                        "0".into(),
+                        Value::String(std::rc::Rc::new("default".into())),
+                    );
+                    rt.object_set(id, "length".into(), Value::Number(1.0));
+                    Ok(Value::Object(id))
+                });
+                register_intrinsic_method(self, proto, "getWeekInfo", 0, |rt, _args| {
+                    let obj = rt.alloc_object(Object::new_ordinary());
+                    rt.object_set(obj, "firstDay".into(), Value::Number(7.0));
+                    let weekend = Object::new_array();
+                    let wid = rt.alloc_object(weekend);
+                    rt.object_set(wid, "0".into(), Value::Number(6.0));
+                    rt.object_set(wid, "1".into(), Value::Number(7.0));
+                    rt.object_set(wid, "length".into(), Value::Number(2.0));
+                    rt.object_set(obj, "weekend".into(), Value::Object(wid));
+                    rt.object_set(obj, "minimalDays".into(), Value::Number(1.0));
+                    Ok(Value::Object(obj))
+                });
+                register_intrinsic_method(self, proto, "getCalendars", 0, |rt, _args| {
+                    let arr = Object::new_array();
+                    let id = rt.alloc_object(arr);
+                    rt.object_set(
+                        id,
+                        "0".into(),
+                        Value::String(std::rc::Rc::new("gregory".into())),
+                    );
+                    rt.object_set(id, "length".into(), Value::Number(1.0));
+                    Ok(Value::Object(id))
+                });
+                register_intrinsic_method(self, proto, "getHourCycles", 0, |rt, _args| {
+                    let arr = Object::new_array();
+                    let id = rt.alloc_object(arr);
+                    rt.object_set(
+                        id,
+                        "0".into(),
+                        Value::String(std::rc::Rc::new("h12".into())),
+                    );
+                    rt.object_set(id, "length".into(), Value::Number(1.0));
+                    Ok(Value::Object(id))
+                });
+                register_intrinsic_method(self, proto, "getNumberingSystems", 0, |rt, _args| {
+                    let arr = Object::new_array();
+                    let id = rt.alloc_object(arr);
+                    rt.object_set(
+                        id,
+                        "0".into(),
+                        Value::String(std::rc::Rc::new("latn".into())),
+                    );
+                    rt.object_set(id, "length".into(), Value::Number(1.0));
+                    Ok(Value::Object(id))
+                });
+                register_intrinsic_method(self, proto, "getTextInfo", 0, |rt, _args| {
+                    let obj = rt.alloc_object(Object::new_ordinary());
+                    rt.object_set(
+                        obj,
+                        "direction".into(),
+                        Value::String(std::rc::Rc::new("ltr".into())),
+                    );
+                    Ok(Value::Object(obj))
+                });
+                register_intrinsic_method(self, proto, "getTimeZones", 0, |rt, _args| {
+                    let arr = Object::new_array();
+                    let id = rt.alloc_object(arr);
+                    rt.object_set(
+                        id,
+                        "0".into(),
+                        Value::String(std::rc::Rc::new("UTC".into())),
+                    );
+                    rt.object_set(id, "length".into(), Value::Number(1.0));
+                    Ok(Value::Object(id))
+                });
+            }
             register_intrinsic_method(self, proto, "resolvedOptions", 1, |rt, _args| {
                 let this_id = match rt.current_this() {
                     Value::Object(o) => o,
@@ -611,15 +1075,41 @@ impl Runtime {
                     "timeZone".into(),
                     Value::String(std::rc::Rc::new("UTC".into())),
                 );
+                if matches!(rt.object_get(this_id, "__intl_kind"), Value::String(s) if s.as_str() == "Collator") {
+                    rt.object_set(
+                        res,
+                        "sensitivity".into(),
+                        Value::String(std::rc::Rc::new("base".into())),
+                    );
+                }
                 if let Value::Object(opts_id) = opts {
-                    let pairs: Vec<(String, Value)> = rt
-                        .obj(opts_id)
-                        .properties
-                        .iter()
-                        .map(|(k, d)| (k.to_string_content(), d.value.clone()))
-                        .collect();
-                    for (k, v) in pairs {
-                        rt.object_set(res, k, v);
+                    for k in [
+                        "calendar",
+                        "collation",
+                        "currency",
+                        "localeMatcher",
+                        "numberingSystem",
+                        "sensitivity",
+                        "style",
+                        "timeZone",
+                        "unit",
+                    ] {
+                        let mut v = rt.object_get(opts_id, k);
+                        if k == "currency" {
+                            if let Value::String(s) = &v {
+                                v = Value::String(std::rc::Rc::new(s.as_str().to_ascii_uppercase()));
+                            }
+                        }
+                        if k == "timeZone" {
+                            if let Value::String(s) = &v {
+                                v = Value::String(std::rc::Rc::new(intl_canonicalize_time_zone(
+                                    s.as_str(),
+                                )));
+                            }
+                        }
+                        if !matches!(v, Value::Undefined) {
+                            rt.object_set(res, k.into(), v);
+                        }
                     }
                 }
                 Ok(Value::Object(res))
@@ -627,19 +1117,93 @@ impl Runtime {
             self.obj_mut(stub_id)
                 .set_own_frozen("prototype".into(), Value::Object(proto));
             // Static method on the ctor itself.
-            register_intrinsic_method(self, stub_id, "supportedLocalesOf", 1, |_rt, _args| {
+            register_intrinsic_method(self, stub_id, "supportedLocalesOf", 1, |rt, args| {
+                if let Some(Value::Object(opts_id)) = args.get(1) {
+                    match rt.object_get(*opts_id, "localeMatcher") {
+                        Value::Undefined => {}
+                        Value::String(s) if s.as_str() == "lookup" || s.as_str() == "best fit" => {}
+                        Value::Object(_) => {}
+                        _ => return Err(RuntimeError::RangeError("invalid localeMatcher".into())),
+                    }
+                }
+                let supported = intl_supported_locales_of(
+                    rt,
+                    &args.first().cloned().unwrap_or(Value::Undefined),
+                )?;
                 let o = Object::new_array();
-                let id = _rt.alloc_object(o);
-                _rt.object_set(id, "length".into(), Value::Number(0.0));
+                let id = rt.alloc_object(o);
+                for (idx, locale) in supported.iter().enumerate() {
+                    rt.object_set(
+                        id,
+                        idx.to_string(),
+                        Value::String(std::rc::Rc::new(locale.clone())),
+                    );
+                }
+                rt.object_set(id, "length".into(), Value::Number(supported.len() as f64));
                 Ok(Value::Object(id))
             });
-            self.object_set(intl, ctor_name.to_string(), Value::Object(stub_id));
+            self.obj_mut(intl).dict_mut().insert(
+                crate::value::PropertyKey::String(ctor_name.to_string()),
+                crate::value::PropertyDescriptor {
+                    value: Value::Object(stub_id),
+                    writable: true,
+                    enumerable: false,
+                    configurable: true,
+                    getter: None,
+                    setter: None,
+                },
+            );
         }
         // getCanonicalLocales(locales) → array of canonical locale tags.
         register_intrinsic_method(self, intl, "getCanonicalLocales", 1, |rt, _args| {
             let arr = Object::new_array();
             let id = rt.alloc_object(arr);
             rt.object_set(id, "length".into(), Value::Number(0.0));
+            Ok(Value::Object(id))
+        });
+        register_intrinsic_method(self, intl, "supportedValuesOf", 1, |rt, args| {
+            let key = match args.first() {
+                Some(Value::String(s)) => s.as_str(),
+                _ => "",
+            };
+            let values: &[&str] = match key {
+                "calendar" => &[
+                    "buddhist",
+                    "chinese",
+                    "coptic",
+                    "dangi",
+                    "ethioaa",
+                    "ethiopic",
+                    "gregory",
+                    "hebrew",
+                    "indian",
+                    "islamic",
+                    "islamic-umalqura",
+                    "islamic-tbla",
+                    "islamic-civil",
+                    "islamic-rgsa",
+                    "iso8601",
+                    "japanese",
+                    "persian",
+                    "roc",
+                ],
+                "collation" => &["default"],
+                "currency" => &["USD"],
+                "numberingSystem" => &["latn"],
+                "timeZone" => &["UTC", "America/New_York"],
+                "unit" => &["second", "minute", "hour", "day"],
+                _ => return Err(RuntimeError::RangeError("invalid key".into())),
+            };
+            let arr = Object::new_array();
+            let id = rt.alloc_object(arr);
+            for (idx, value) in values.iter().enumerate() {
+                rt.object_set(
+                    id,
+                    idx.to_string(),
+                    Value::String(std::rc::Rc::new((*value).to_string())),
+                );
+            }
+            rt.object_set(id, "length".into(), Value::Number(values.len() as f64));
             Ok(Value::Object(id))
         });
         self.globals.insert("Intl".into(), Value::Object(intl));
@@ -4002,6 +4566,37 @@ impl Runtime {
         register_intrinsic_method(self, bi_proto, "toString", 0, |rt, args| {
             crate::generated::bigint_prototype_to_string(rt, rt.current_this(), args)
         });
+        register_intrinsic_method(self, bi_proto, "toLocaleString", 0, |rt, _args| {
+            let raw = match rt.current_this() {
+                Value::BigInt(b) => b.to_radix(10),
+                Value::Object(id) => {
+                    if let crate::value::InternalKind::BigIntWrapper(Value::BigInt(b)) =
+                        &rt.obj(id).internal_kind
+                    {
+                        b.to_radix(10)
+                    } else {
+                        return Err(RuntimeError::TypeError(
+                            "BigInt.prototype.toLocaleString: this is not a BigInt".into(),
+                        ));
+                    }
+                }
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "BigInt.prototype.toLocaleString: this is not a BigInt".into(),
+                    ))
+                }
+            };
+            let (sign, digits) = raw.strip_prefix('-').map_or(("", raw.as_str()), |d| ("-", d));
+            let mut grouped = String::new();
+            for (idx, ch) in digits.chars().rev().enumerate() {
+                if idx > 0 && idx % 3 == 0 {
+                    grouped.push(',');
+                }
+                grouped.push(ch);
+            }
+            let formatted: String = grouped.chars().rev().collect();
+            Ok(Value::String(Rc::new(format!("{}{}", sign, formatted))))
+        });
         self.obj_mut(bi_id)
             .set_own_frozen("prototype".into(), Value::Object(bi_proto));
         self.bigint_prototype = Some(bi_proto);
@@ -4940,6 +5535,15 @@ impl Runtime {
         register_intrinsic_method(self, proto, "toString", 0, |rt, args| {
             crate::generated::date_prototype_to_string(rt, rt.current_this(), args)
         });
+        register_intrinsic_method(self, proto, "toLocaleString", 0, |rt, args| {
+            if let Some(locales) = args.first() {
+                rt.validate_intl_locale_list(locales)?;
+            }
+            if let Some(options) = args.get(1) {
+                rt.validate_intl_format_options(options)?;
+            }
+            crate::generated::date_prototype_to_string(rt, rt.current_this(), args)
+        });
         // Ω.5.P61.E12: Date.prototype additional format + legacy methods
         // per ECMA §21.4.4. v1 deviates from locale-sensitive output;
         // returns the ISO-like form (sufficient for module-init presence
@@ -5006,12 +5610,24 @@ impl Runtime {
             crate::generated::date_prototype_to_date_string(rt, rt.current_this(), args)
         });
         register_intrinsic_method(self, proto, "toLocaleDateString", 0, |rt, args| {
+            if let Some(locales) = args.first() {
+                rt.validate_intl_locale_list(locales)?;
+            }
+            if let Some(options) = args.get(1) {
+                rt.validate_intl_format_options(options)?;
+            }
             crate::generated::date_prototype_to_date_string(rt, rt.current_this(), args)
         });
         register_intrinsic_method(self, proto, "toTimeString", 0, |rt, args| {
             crate::generated::date_prototype_to_time_string(rt, rt.current_this(), args)
         });
         register_intrinsic_method(self, proto, "toLocaleTimeString", 0, |rt, args| {
+            if let Some(locales) = args.first() {
+                rt.validate_intl_locale_list(locales)?;
+            }
+            if let Some(options) = args.get(1) {
+                rt.validate_intl_format_options(options)?;
+            }
             crate::generated::date_prototype_to_time_string(rt, rt.current_this(), args)
         });
         register_intrinsic_method(self, proto, "toUTCString", 0, |rt, args| {

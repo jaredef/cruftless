@@ -369,13 +369,13 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
         let this = rt.current_this();
         crate::generated::string_prototype_to_lower_case(rt, this, &[])
     });
-    register_intrinsic_method(rt, host, "toLocaleLowerCase", 0, |rt, _args| {
+    register_intrinsic_method(rt, host, "toLocaleLowerCase", 0, |rt, args| {
         let this = rt.current_this();
-        crate::generated::string_prototype_to_locale_lower_case(rt, this, &[])
+        crate::generated::string_prototype_to_locale_lower_case(rt, this, args)
     });
-    register_intrinsic_method(rt, host, "toLocaleUpperCase", 0, |rt, _args| {
+    register_intrinsic_method(rt, host, "toLocaleUpperCase", 0, |rt, args| {
         let this = rt.current_this();
-        crate::generated::string_prototype_to_locale_upper_case(rt, this, &[])
+        crate::generated::string_prototype_to_locale_upper_case(rt, this, args)
     });
     // Ω.5.P63.E22: trim family routed through IR.
     register_intrinsic_method(rt, host, "trim", 0, |rt, _args| {
