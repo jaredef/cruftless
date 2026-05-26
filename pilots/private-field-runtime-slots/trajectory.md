@@ -46,3 +46,41 @@ Residuals:
 - optional-chain private-field runtime path,
 - async/generator private method runtime semantics,
 - remaining statement/expression duplicated rows around those runtime families.
+
+## PFRS-EXT 2 — 2026-05-26 (optional-chain private continuation)
+
+Closed the two surfaced `private-field-after-optional-chain` rows.
+
+Problem shape:
+
+- Parser/compiler represented `o?.c.#f` as a normal private member read over an optional-chain subexpression.
+- If `o` was nullish, the inner optional member produced `undefined`, then the outer private read attempted `undefined.#f` and threw.
+
+Implementation:
+
+- Added `expr_contains_optional_chain` in the bytecode compiler.
+- When compiling a private member read whose receiver expression contains an optional chain, emit construct tag `optional-chain private-continuation`.
+- In runtime `Op::GetProp`, a `#name` read over `undefined` at that construct tag returns `undefined`.
+- Non-nullish ordinary objects without the private slot still throw TypeError, preserving the tested brand-miss path.
+
+Verification:
+
+- `cargo check -p rusty-js-bytecode`
+- `cargo check -p rusty-js-runtime`
+- `cargo build --release --bin cruft -p cruftless`
+- Direct optional-chain rows:
+  - `language/statements/class/elements/private-field-after-optional-chain.js` → `PASS`
+  - `language/expressions/class/elements/private-field-after-optional-chain.js` → `PASS`
+- `pilots/private-name-lexing/exemplars/run-exemplars.sh`
+  - `PASS=40 FAIL=0 / 40`
+- `PNL_EXEMPLARS_LIST=/private/tmp/pnl-focused.txt pilots/private-name-lexing/exemplars/run-exemplars.sh`
+  - `PASS=162 FAIL=32 / 194`
+
+Movement:
+
+- Focused PNL probe moved from `160/194` to `162/194`.
+
+Residuals:
+
+- 16 generator-method runtime rows (`.next` on a returned Number),
+- 16 async harness SKIPs.

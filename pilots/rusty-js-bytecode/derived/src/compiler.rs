@@ -433,6 +433,37 @@ fn directive_has_use_strict(body: &[Stmt]) -> bool {
     false
 }
 
+fn expr_contains_optional_chain(expr: &Expr) -> bool {
+    match expr {
+        Expr::Member {
+            object, optional, ..
+        } => *optional || expr_contains_optional_chain(object),
+        Expr::Call {
+            callee, optional, ..
+        } => *optional || expr_contains_optional_chain(callee),
+        Expr::Parenthesized { expr, .. }
+        | Expr::Update { argument: expr, .. }
+        | Expr::Unary { argument: expr, .. } => expr_contains_optional_chain(expr),
+        Expr::Binary { left, right, .. } | Expr::Assign { target: left, value: right, .. } => {
+            expr_contains_optional_chain(left) || expr_contains_optional_chain(right)
+        }
+        Expr::Conditional {
+            test,
+            consequent,
+            alternate,
+            ..
+        } => {
+            expr_contains_optional_chain(test)
+                || expr_contains_optional_chain(consequent)
+                || expr_contains_optional_chain(alternate)
+        }
+        Expr::Sequence { expressions, .. } | Expr::TemplateLiteral { expressions, .. } => {
+            expressions.iter().any(expr_contains_optional_chain)
+        }
+        _ => false,
+    }
+}
+
 impl Compiler {
     pub fn new() -> Self {
         Self {
@@ -3170,6 +3201,9 @@ impl Compiler {
                         encode_op(&mut self.bytecode, Op::GetIndex);
                     }
                     MemberProperty::Private { name, .. } => {
+                        if expr_contains_optional_chain(object) {
+                            self.emit_construct_tag("optional-chain private-continuation");
+                        }
                         let idx = self
                             .constants
                             .intern(Constant::String(format!("#{}", name)));
