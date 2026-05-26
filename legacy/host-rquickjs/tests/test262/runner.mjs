@@ -164,6 +164,11 @@ function runOne(path) {
       '/Temporal/Instant/prototype/toLocaleString/',
       // IE-EXT 1: instant-equals
       '/Temporal/Instant/prototype/equals/',
+      // IA-EXT 1: instant-arithmetic (add / subtract / since / until)
+      '/Temporal/Instant/prototype/add/',
+      '/Temporal/Instant/prototype/subtract/',
+      '/Temporal/Instant/prototype/since/',
+      '/Temporal/Instant/prototype/until/',
       // PTCF-EXT 1: plain-time-ctor-fields
       '/Temporal/PlainTime/constructor.js',
       '/Temporal/PlainTime/name.js',

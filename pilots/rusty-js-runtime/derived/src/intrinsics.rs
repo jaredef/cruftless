@@ -3491,6 +3491,196 @@ impl Runtime {
             };
             Ok(Value::String(Rc::new(instant_to_iso_string(rt, id)?)))
         });
+        // IA-EXT 1 (instant-arithmetic): add / subtract / since / until.
+        // add(duration): apply sub-day units to this.epochNs; year/month/
+        // week/day are forbidden (no calendar context).
+        // since/until: return Duration with seconds + sub-second fields.
+        fn duration_to_sub_day_ns(rt: &mut Runtime, v: Value) -> Result<i64, RuntimeError> {
+            let names = ["years", "months", "weeks", "days", "hours",
+                         "minutes", "seconds", "milliseconds",
+                         "microseconds", "nanoseconds"];
+            let mut units = [0i64; 10];
+            // String form: parse as ISO duration via parse_iso_duration (hoisted).
+            if let Value::String(s) = &v {
+                let parsed = parse_iso_duration(s).ok_or_else(|| RuntimeError::RangeError(format!(
+                    "Temporal.Instant arithmetic: invalid ISO 8601 duration: {:?}", s
+                )))?;
+                for (i, &u) in parsed.iter().enumerate() {
+                    if !u.is_finite() || u != u.trunc() {
+                        return Err(RuntimeError::RangeError(
+                            "Temporal.Instant arithmetic: fractional unit out of position".into()
+                        ));
+                    }
+                    units[i] = u as i64;
+                }
+            } else if let Value::Object(id) = v {
+                let is_dur = !matches!(rt.object_get(id, "__td_years"), Value::Undefined);
+                for (i, n) in names.iter().enumerate() {
+                    let key = if is_dur { format!("__td_{}", n) } else { (*n).to_string() };
+                    if let Value::Number(v) = rt.object_get(id, &key) {
+                        units[i] = v as i64;
+                    }
+                }
+            } else {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.Instant arithmetic: argument must be a Duration, object, or string".into()
+                ));
+            }
+            // Forbid year/month/week/day for Instant arithmetic.
+            if units[0] != 0 || units[1] != 0 || units[2] != 0 || units[3] != 0 {
+                return Err(RuntimeError::RangeError(
+                    "Temporal.Instant arithmetic: years / months / weeks / days are not allowed".into()
+                ));
+            }
+            // Compose sub-day ns. h*3600e9 + m*60e9 + s*1e9 + ms*1e6 + μs*1e3 + ns.
+            // Use i64 — sufficient for the spec range (sub-second roll-over carries).
+            let total_ns: i64 = units[4].saturating_mul(3_600_000_000_000)
+                + units[5].saturating_mul(60_000_000_000)
+                + units[6].saturating_mul(1_000_000_000)
+                + units[7].saturating_mul(1_000_000)
+                + units[8].saturating_mul(1_000)
+                + units[9];
+            Ok(total_ns)
+        }
+        let proto_for_arith = inst_proto;
+        register_intrinsic_method(self, inst_proto, "add", 1, move |rt, args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.Instant.prototype.add: this is not an object".into()
+                )),
+            };
+            let this_ns = match rt.object_get(id, "__ti_ns") {
+                Value::BigInt(b) => b,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.Instant.prototype.add: this is not a Temporal.Instant".into()
+                )),
+            };
+            let dur_ns = duration_to_sub_day_ns(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
+            // BigInt add: convert dur_ns to BigInt via decimal string.
+            let other_bi = crate::bigint::JsBigInt::from_decimal(&dur_ns.to_string())
+                .ok_or_else(|| RuntimeError::RangeError(
+                    "Temporal.Instant.prototype.add: BigInt encode failed".into()
+                ))?;
+            let sum = this_ns.add(&other_bi);
+            make_instant(rt, proto_for_arith, Value::BigInt(std::rc::Rc::new(sum)))
+        });
+        register_intrinsic_method(self, inst_proto, "subtract", 1, move |rt, args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.Instant.prototype.subtract: this is not an object".into()
+                )),
+            };
+            let this_ns = match rt.object_get(id, "__ti_ns") {
+                Value::BigInt(b) => b,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.Instant.prototype.subtract: this is not a Temporal.Instant".into()
+                )),
+            };
+            let dur_ns = duration_to_sub_day_ns(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
+            let other_bi = crate::bigint::JsBigInt::from_decimal(&dur_ns.to_string())
+                .ok_or_else(|| RuntimeError::RangeError(
+                    "Temporal.Instant.prototype.subtract: BigInt encode failed".into()
+                ))?;
+            let diff = this_ns.sub(&other_bi);
+            make_instant(rt, proto_for_arith, Value::BigInt(std::rc::Rc::new(diff)))
+        });
+        // since/until: return Duration with seconds + sub-second fields
+        // (default options.largestUnit = "second" for Instant).
+        fn diff_to_duration(rt: &mut Runtime, dur_proto: ObjectRef, diff_ns: f64) -> Value {
+            let neg = diff_ns < 0.0;
+            let abs = diff_ns.abs();
+            // Decompose into seconds + sub-second.
+            let total_sec = (abs / 1e9) as i64;
+            let frac_ns = (abs as i64) - total_sec * 1_000_000_000;
+            let ms = frac_ns / 1_000_000;
+            let us = (frac_ns / 1_000) % 1_000;
+            let ns = frac_ns % 1_000;
+            let mut units = [0.0f64; 10];
+            units[6] = if neg { -(total_sec as f64) } else { total_sec as f64 };
+            units[7] = if neg { -(ms as f64) } else { ms as f64 };
+            units[8] = if neg { -(us as f64) } else { us as f64 };
+            units[9] = if neg { -(ns as f64) } else { ns as f64 };
+            let units_names = ["years", "months", "weeks", "days", "hours",
+                               "minutes", "seconds", "milliseconds",
+                               "microseconds", "nanoseconds"];
+            let mut o = Object::new_ordinary();
+            o.proto = Some(dur_proto);
+            let id = rt.alloc_object(o);
+            for (i, n) in units_names.iter().enumerate() {
+                let key = format!("__td_{}", n);
+                rt.set_engine_sentinel(id, &key, Value::Number(units[i]));
+            }
+            Value::Object(id)
+        }
+        let dur_proto_for_arith = dur_proto;
+        register_intrinsic_method(self, inst_proto, "since", 1, move |rt, args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.Instant.prototype.since: this is not an object".into()
+                )),
+            };
+            let this_ns = match rt.object_get(id, "__ti_ns") {
+                Value::BigInt(b) => b.to_f64(),
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.Instant.prototype.since: this is not a Temporal.Instant".into()
+                )),
+            };
+            let other = args.first().cloned().unwrap_or(Value::Undefined);
+            let other_ns = match other {
+                Value::String(s) => {
+                    let (epoch_sec, frac_ns) = parse_iso_datetime(&s).ok_or_else(|| RuntimeError::RangeError(format!(
+                        "Temporal.Instant.prototype.since: invalid ISO 8601 datetime: {:?}", s
+                    )))?;
+                    (epoch_sec as f64) * 1e9 + (frac_ns as f64)
+                }
+                Value::Object(o) => match rt.object_get(o, "__ti_ns") {
+                    Value::BigInt(b) => b.to_f64(),
+                    _ => return Err(RuntimeError::TypeError(
+                        "Temporal.Instant.prototype.since: argument is not a Temporal.Instant".into()
+                    )),
+                },
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.Instant.prototype.since: argument must be Instant or string".into()
+                )),
+            };
+            Ok(diff_to_duration(rt, dur_proto_for_arith, this_ns - other_ns))
+        });
+        register_intrinsic_method(self, inst_proto, "until", 1, move |rt, args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.Instant.prototype.until: this is not an object".into()
+                )),
+            };
+            let this_ns = match rt.object_get(id, "__ti_ns") {
+                Value::BigInt(b) => b.to_f64(),
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.Instant.prototype.until: this is not a Temporal.Instant".into()
+                )),
+            };
+            let other = args.first().cloned().unwrap_or(Value::Undefined);
+            let other_ns = match other {
+                Value::String(s) => {
+                    let (epoch_sec, frac_ns) = parse_iso_datetime(&s).ok_or_else(|| RuntimeError::RangeError(format!(
+                        "Temporal.Instant.prototype.until: invalid ISO 8601 datetime: {:?}", s
+                    )))?;
+                    (epoch_sec as f64) * 1e9 + (frac_ns as f64)
+                }
+                Value::Object(o) => match rt.object_get(o, "__ti_ns") {
+                    Value::BigInt(b) => b.to_f64(),
+                    _ => return Err(RuntimeError::TypeError(
+                        "Temporal.Instant.prototype.until: argument is not a Temporal.Instant".into()
+                    )),
+                },
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.Instant.prototype.until: argument must be Instant or string".into()
+                )),
+            };
+            Ok(diff_to_duration(rt, dur_proto_for_arith, other_ns - this_ns))
+        });
         // IE-EXT 1 (instant-equals): equals(other) returns true iff
         // epochNanoseconds (BigInt) values are equal. `other` may be an
         // Instant instance OR an ISO 8601 datetime string.
