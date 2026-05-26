@@ -761,8 +761,10 @@ impl Runtime {
                 Some(Value::Object(id)) => *id,
                 _ => return Ok(Value::Undefined),
             };
-            let key: String = match args.get(1) {
-                Some(Value::String(s)) => (**s).clone(),
+            let key = match args.get(1) {
+                Some(v @ (Value::String(_) | Value::Symbol(_) | Value::Number(_))) => {
+                    crate::interp::property_key(v)
+                }
                 _ => return Ok(Value::Undefined),
             };
             let kind: String = match args.get(2) {
@@ -775,17 +777,17 @@ impl Runtime {
             // 15.7 MethodDefinitionEvaluation. Object-literal accessors
             // use a separate helper (__install_accessor_obj__) below to
             // get enumerable:true per sec 13.2.5.5 PropertyDefinitionEvaluation.
-            let desc = o
-                .properties
-                .entry(crate::value::PropertyKey::String(key))
-                .or_insert_with(|| crate::value::PropertyDescriptor {
-                    value: Value::Undefined,
-                    writable: false,
-                    enumerable: false,
-                    configurable: true,
-                    getter: None,
-                    setter: None,
-                });
+            let desc =
+                o.properties
+                    .entry(key)
+                    .or_insert_with(|| crate::value::PropertyDescriptor {
+                        value: Value::Undefined,
+                        writable: false,
+                        enumerable: false,
+                        configurable: true,
+                        getter: None,
+                        setter: None,
+                    });
             if kind == "get" {
                 desc.getter = Some(fn_v);
             } else if kind == "set" {
@@ -806,8 +808,10 @@ impl Runtime {
                 Some(Value::Object(id)) => *id,
                 _ => return Ok(Value::Undefined),
             };
-            let key: String = match args.get(1) {
-                Some(Value::String(s)) => (**s).clone(),
+            let key = match args.get(1) {
+                Some(v @ (Value::String(_) | Value::Symbol(_) | Value::Number(_))) => {
+                    crate::interp::property_key(v)
+                }
                 _ => return Ok(Value::Undefined),
             };
             let kind: String = match args.get(2) {
@@ -816,17 +820,17 @@ impl Runtime {
             };
             let fn_v = args.get(3).cloned().unwrap_or(Value::Undefined);
             let o = rt.obj_mut(target);
-            let desc = o
-                .properties
-                .entry(crate::value::PropertyKey::String(key))
-                .or_insert_with(|| crate::value::PropertyDescriptor {
-                    value: Value::Undefined,
-                    writable: false,
-                    enumerable: true,
-                    configurable: true,
-                    getter: None,
-                    setter: None,
-                });
+            let desc =
+                o.properties
+                    .entry(key)
+                    .or_insert_with(|| crate::value::PropertyDescriptor {
+                        value: Value::Undefined,
+                        writable: false,
+                        enumerable: true,
+                        configurable: true,
+                        getter: None,
+                        setter: None,
+                    });
             // If the property already existed (e.g. installed by a
             // sibling getter/setter half of the pair), force enumerable
             // back to true in case the prior install used the class form.

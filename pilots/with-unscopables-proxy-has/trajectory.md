@@ -95,3 +95,51 @@ WUPH-EXT 1 is a partial closure. The core HasBinding rung is in place and
 produces +5 parent-pool yield. The locale remains open for the adjacent
 well-known Symbol display, computed accessor literal, Array.prototype length,
 and Proxy Set sequencing blockers.
+
+## WUPH-EXT 2 — LANDED (2026-05-26)
+
+### Root cause
+
+The `get [Symbol.unscopables]()` residuals were not failing in the `with`
+environment-record helper anymore. They were failing before that helper could
+observe the object at all: object-literal accessor installation lowered the
+computed key expression, but the runtime helper only accepted `Value::String`
+keys and installed descriptors into the String bucket. A computed Symbol key
+therefore got dropped instead of becoming a Symbol-keyed accessor descriptor.
+
+### Edit
+
+Updated the runtime accessor-install helpers to accept string, symbol, and
+number key values through `property_key(v)` before inserting the descriptor.
+This keeps object-literal computed accessors on the same PropertyKey substrate
+used by computed reads/writes.
+
+### Probes
+
+- Smoke: `get [Symbol.unscopables]()` now installs a Symbol-keyed accessor:
+  `Object.getOwnPropertySymbols(env).length` prints `1`, reading
+  `env[Symbol.unscopables].x` returns `true`, and the getter call count is `1`.
+- `language/statements/with/get-mutable-binding-binding-deleted-in-get-unscopables.js`: PASS.
+- `language/statements/with/set-mutable-binding-binding-deleted-in-get-unscopables.js`: PASS.
+- Parent WBMS pool: 78/264 -> 80/264 PASS, 8 SKIP unchanged.
+
+### Residual
+
+- `unscopables-get-err.js` / `unscopables-prop-get-err.js` still report
+  `ReferenceError` instead of the thrown Test262Error when the identifier is
+  read inside a callback function created in the with-body. A direct
+  same-frame smoke propagates the thrown `Error`, so the residual points at
+  function-closure capture of active with-environments, not the accessor
+  `Get` path itself.
+- `unscopables-inc-dec.js` still fails, likely because update-expression
+  lowering is not yet using the reference-preserving with-object path added for
+  assignment.
+- The Proxy-env log probes still expose the well-known Symbol display mismatch
+  (`@@unscopables` vs `Symbol(Symbol.unscopables)`) and deeper Proxy Set
+  `DefineProperty` sequencing.
+
+### Status
+
+WUPH-EXT 2 closes the computed accessor literal blocker for this locale. The
+locale remains open; the next coherent rung is either closure capture of active
+with-environments or update-expression reference preservation.
