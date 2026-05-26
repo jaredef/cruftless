@@ -122,6 +122,7 @@ function runOne(path) {
       '/Temporal/Duration/prototype/milliseconds/',
       '/Temporal/Duration/prototype/microseconds/',
       '/Temporal/Duration/prototype/nanoseconds/',
+      '/Temporal/Duration/prototype/toStringTag/',
       // DDP-EXT 1: duration-derived-properties (sign / blank / abs / negated)
       '/Temporal/Duration/prototype/sign/',
       '/Temporal/Duration/prototype/blank/',

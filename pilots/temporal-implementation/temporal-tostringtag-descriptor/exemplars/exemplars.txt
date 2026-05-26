@@ -1,0 +1,1 @@
+# temporal-tostringtag-descriptor — measured via @@toStringTag prop-desc tests across Duration / Instant / PlainTime.

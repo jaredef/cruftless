@@ -2299,9 +2299,15 @@ impl Runtime {
                 )))
             });
         }
-        self.obj_mut(now).set_own_frozen(
+        // TTSTD-EXT 1: @@toStringTag must be {w:f, e:f, c:t} per spec
+        // §11.x.5; set_own_frozen would emit c:f. Install via dict_mut.
+        self.obj_mut(now).dict_mut().insert(
             "@@toStringTag".into(),
-            Value::String(Rc::new("Temporal.Now".into())),
+            PropertyDescriptor {
+                value: Value::String(Rc::new("Temporal.Now".into())),
+                writable: false, enumerable: false, configurable: true,
+                getter: None, setter: None,
+            },
         );
         self.obj_mut(temporal).set_own_internal("Now".into(), Value::Object(now));
         // Temporal class stubs — each is a constructor-shaped function that
@@ -2315,18 +2321,26 @@ impl Runtime {
                             "ZonedDateTime"] {
             let stub = self.alloc_object(Object::new_ordinary());
             let cn = (*class_name).to_string();
-            self.obj_mut(stub).set_own_frozen(
+            self.obj_mut(stub).dict_mut().insert(
                 "@@toStringTag".into(),
-                Value::String(Rc::new(format!("Temporal.{}", cn))),
+                PropertyDescriptor {
+                    value: Value::String(Rc::new(format!("Temporal.{}", cn))),
+                    writable: false, enumerable: false, configurable: true,
+                    getter: None, setter: None,
+                },
             );
             self.obj_mut(temporal).set_own_internal(
                 (*class_name).into(),
                 Value::Object(stub),
             );
         }
-        self.obj_mut(temporal).set_own_frozen(
+        self.obj_mut(temporal).dict_mut().insert(
             "@@toStringTag".into(),
-            Value::String(Rc::new("Temporal".into())),
+            PropertyDescriptor {
+                value: Value::String(Rc::new("Temporal".into())),
+                writable: false, enumerable: false, configurable: true,
+                getter: None, setter: None,
+            },
         );
         // TDur-EXT 1 (duration-ctor-fields): install Temporal.Duration as
         // a real constructor with prototype + 10 unit getters + valueOf-
@@ -2565,9 +2579,13 @@ impl Runtime {
             for u in units.iter_mut() { *u = if *u == 0.0 { 0.0 } else { -*u }; }
             Ok(make_duration(rt, proto_for_derived, units))
         });
-        self.obj_mut(dur_proto).set_own_frozen(
+        self.obj_mut(dur_proto).dict_mut().insert(
             "@@toStringTag".into(),
-            Value::String(Rc::new("Temporal.Duration".into())),
+            PropertyDescriptor {
+                value: Value::String(Rc::new("Temporal.Duration".into())),
+                writable: false, enumerable: false, configurable: true,
+                getter: None, setter: None,
+            },
         );
         let proto_for_ctor = dur_proto;
         let dur_ctor_obj = make_native_with_length("Duration", 0, move |rt, args| {
@@ -2971,9 +2989,13 @@ impl Runtime {
                 "Temporal.Instant valueOf cannot be used; use compare() or equals()".into()
             ))
         });
-        self.obj_mut(inst_proto).set_own_frozen(
+        self.obj_mut(inst_proto).dict_mut().insert(
             "@@toStringTag".into(),
-            Value::String(Rc::new("Temporal.Instant".into())),
+            PropertyDescriptor {
+                value: Value::String(Rc::new("Temporal.Instant".into())),
+                writable: false, enumerable: false, configurable: true,
+                getter: None, setter: None,
+            },
         );
         let inst_proto_for_ctor = inst_proto;
         // Spec range as a decimal-string for comparison via BigInt.
@@ -3312,9 +3334,13 @@ impl Runtime {
                 "Temporal.PlainTime valueOf cannot be used; use compare() or equals()".into()
             ))
         });
-        self.obj_mut(pt_proto).set_own_frozen(
+        self.obj_mut(pt_proto).dict_mut().insert(
             "@@toStringTag".into(),
-            Value::String(Rc::new("Temporal.PlainTime".into())),
+            PropertyDescriptor {
+                value: Value::String(Rc::new("Temporal.PlainTime".into())),
+                writable: false, enumerable: false, configurable: true,
+                getter: None, setter: None,
+            },
         );
         let pt_proto_for_ctor = pt_proto;
         let pt_ctor_obj = make_native_with_length("PlainTime", 0, move |rt, args| {

@@ -3,9 +3,9 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 143,
+    "locales": 144,
     "top_level": 104,
-    "nested": 39,
+    "nested": 40,
     "warnings": 0
   },
   "locales": [
@@ -1131,6 +1131,15 @@
       "parent": "L.temporal-implementation.temporal-plain-time",
       "scope": "plain-time-static",
       "depth": 3,
+      "rung_count": 1,
+      "status": null
+    },
+    {
+      "coord": "temporal-implementation/temporal-tostringtag-descriptor",
+      "tag": "L.temporal-implementation.temporal-tostringtag-descriptor",
+      "parent": "L.temporal-implementation",
+      "scope": "temporal-tostringtag-descriptor",
+      "depth": 2,
       "rung_count": 1,
       "status": null
     },
