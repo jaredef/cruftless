@@ -1261,8 +1261,15 @@ fn is_id_start(cp: u32) -> bool {
         // will gate against the Unicode ID_Start property table.
         // LTC-EXT 1: exclude LineTerminator code points (U+2028 LS,
         // U+2029 PS) and Unicode whitespace — they are §11.3/§11.2
-        // separators, not identifier characters.
-        cp >= 0xA0 && cp != 0xFEFF && cp != 0x2028 && cp != 0x2029 && !is_unicode_whitespace(cp)
+        // separators, not identifier characters. PNL-EXT 1: ZWNJ/ZWJ
+        // are IdentifierPart but not IdentifierStart.
+        cp >= 0xA0
+            && cp != 0x200C
+            && cp != 0x200D
+            && cp != 0xFEFF
+            && cp != 0x2028
+            && cp != 0x2029
+            && !is_unicode_whitespace(cp)
     }
 }
 

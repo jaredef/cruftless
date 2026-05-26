@@ -7,7 +7,7 @@ ROOT="$(cd "$HERE/../../.." && pwd)"
 
 T262="${T262_ROOT:?set T262_ROOT in env.local or export it before running}"
 RUNNER="$ROOT/legacy/host-rquickjs/tests/test262/runner.mjs"
-LIST="$HERE/exemplars.txt"
+LIST="${PNL_EXEMPLARS_LIST:-$HERE/exemplars.txt}"
 
 TOTAL=0
 PASS=0

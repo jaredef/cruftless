@@ -778,7 +778,7 @@ impl<'src> Parser<'src> {
             } else {
                 None
             };
-            self.consume_semicolon_pub()?;
+            self.consume_class_field_terminator()?;
             let end = self.last_span_end();
             out.push(ClassMember::Field {
                 name,
@@ -791,6 +791,19 @@ impl<'src> Parser<'src> {
         Ok(out)
     }
 
+    fn consume_class_field_terminator(&mut self) -> Result<(), ParseError> {
+        if matches!(self.current_kind(), TokenKind::Punct(Punct::Semicolon)) {
+            self.bump()?;
+            return Ok(());
+        }
+        if matches!(self.current_kind(), TokenKind::Punct(Punct::RBrace))
+            || self.lookahead_preceded_by_lt()
+        {
+            return Ok(());
+        }
+        Err(self.err_here("expected class field terminator".into()))
+    }
+
     fn parse_class_member_name(&mut self) -> Result<rusty_js_ast::ClassMemberName, ParseError> {
         use rusty_js_ast::ClassMemberName;
         let span = self.lookahead_span();
@@ -800,6 +813,12 @@ impl<'src> Parser<'src> {
                 Ok(ClassMemberName::Identifier { name, span })
             }
             TokenKind::PrivateIdent(name) => {
+                if name == "constructor" {
+                    return Err(ParseError {
+                        message: "PrivateName cannot be #constructor".into(),
+                        span,
+                    });
+                }
                 self.bump()?;
                 Ok(ClassMemberName::Private { name, span })
             }

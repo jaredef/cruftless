@@ -52,3 +52,39 @@ PNL-EXT 0 baseline-inspection proper:
 4. If bucket 1 dominates, proceed with PNL-EXT 1 lex-boundary fix. If not, record the Rule-23 redirect and spawn/attach the class-elements target.
 
 Status: founded, no substrate code changed.
+
+## PNL-EXT 1 — 2026-05-26 (private-name lexical/static early-error slice)
+
+Substrate edits:
+
+1. `lexer.rs::is_id_start` now excludes U+200C ZWNJ and U+200D ZWJ. They remain valid IdentifierPart through `is_id_continue`, but are not valid IdentifierStart. This closes the private-name `#\u200C...` / `#\u200D...` negative parse forms.
+2. `stmt.rs::parse_class_member_name` rejects `PrivateIdent("constructor")`, implementing the private class element early error that `#constructor` is forbidden.
+3. Class fields now use a class-specific terminator check instead of the generic permissive ASI helper. A field without `;`, `}`, or a line terminator before the next token now rejects, closing `#x #y` same-line negative forms.
+4. `exemplars/run-exemplars.sh` accepts `PNL_EXEMPLARS_LIST` so PNL can keep the committed 40-fixture smoke set and run broader Rule-23 probes from generated sidecar/tmp lists.
+
+Verification:
+
+```
+cargo check -p rusty-js-parser
+cargo build --release --bin cruft -p cruftless
+pilots/private-name-lexing/exemplars/run-exemplars.sh
+PNL_EXEMPLARS_LIST=/private/tmp/pnl-focused.txt pilots/private-name-lexing/exemplars/run-exemplars.sh
+```
+
+Results:
+
+| Probe | Before | After |
+|---|---:|---:|
+| direct `private-accessor-name` lex set | 40/40 | 40/40 |
+| focused private-name grammar/static set | 126/194 | 134/194 |
+
+Failure-shape after EXT 1:
+
+- 16 SKIP: async-flag harness limitation.
+- 18 FAIL: `test 3` assertion text, likely private-method/static semantics.
+- 20 FAIL: runtime/private-brand semantics (`callee is not callable`, ordinary-object brand check, optional-chain private field).
+- 6 FAIL: parse-phase static semantics still accepted (`arguments` in private field initializer; undeclared private name in computed property).
+
+Finding PNL.1: the original candidate name was partly stale. Direct PrivateIdentifier lexing is already healthy; the useful lex-tier remainder was small (+8 on the focused set, counting the same-line class-field parser boundary). Remaining action belongs to class-elements static/runtime semantics, not private-name tokenization. Per Rule 23, PNL should stop after this early-error slice unless the keeper wants to spawn a class-elements static-semantics locale.
+
+Status: PNL-EXT 1 landed; lex-tier slice closed for the focused probe. Recommended next coordinate: class-elements-static-semantics, not more private-name lexing.

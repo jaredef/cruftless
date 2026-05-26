@@ -99,4 +99,4 @@ Read `trajectory.md` tail. First action is PNL-EXT 0 exemplar construction + bas
 
 ## Status
 
-PNL-EXT 0 FOUNDED. Baseline not yet measured. Founding survey shows the lexing substrate exists; immediate work is Rule-23 baseline-inspection to decide whether this remains a lex-tier locale or redirects to class-elements parser/static-semantics.
+PNL-EXT 1 LANDED. Direct private-accessor-name lexing set remains 40/40 PASS. Focused private-name grammar/static probe moved 126/194 → 134/194 by closing the lex/private-name early-error slice: ZWNJ/ZWJ not IdentifierStart, `#constructor`, and same-line class-field terminator rejection. Remaining failures are class-elements static/runtime semantics or harness gaps, not direct private-name lexing.
