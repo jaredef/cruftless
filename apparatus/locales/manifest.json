@@ -1,14 +1,23 @@
 {
   "generated_by": "apparatus/locales/discover.sh",
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
-  "locale_root": "/Users/jaredfoy/Developer/cruftless/pilots",
+  "locale_root": "/home/jaredef/Developer/cruftless/pilots",
   "totals": {
-    "locales": 125,
-    "top_level": 103,
+    "locales": 126,
+    "top_level": 104,
     "nested": 22,
     "warnings": 0
   },
   "locales": [
+    {
+      "coord": "annexB-runtime-quirks",
+      "tag": "L.annexB-runtime-quirks",
+      "parent": null,
+      "scope": "annexB-runtime-quirks",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
+    },
     {
       "coord": "apparatus/cross-runtime-bench",
       "tag": "L.apparatus.cross-runtime-bench",
@@ -582,7 +591,7 @@
       "parent": null,
       "scope": "private-field-runtime-slots",
       "depth": 1,
-      "rung_count": 2,
+      "rung_count": 5,
       "status": null
     },
     {
@@ -1122,7 +1131,7 @@
       "parent": null,
       "scope": "with-body-multi-statement-parse",
       "depth": 1,
-      "rung_count": 2,
+      "rung_count": 3,
       "status": null
     },
     {

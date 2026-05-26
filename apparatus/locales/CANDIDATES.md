@@ -124,11 +124,8 @@ Candidates surfaced by the LPA-EXT 3 positioning-gap audit (`pilots/apparatus/lo
 **Methodology**: enumerate `compile: ...` reasons; cluster by lowering-tier mechanism; close per-mechanism rungs.
 **Status**: queued, post-PCR.
 
-### (x) `annexB-runtime-quirks` — 🟢 RIPE
-**Telos**: implement Annex B legacy intrinsics surfaced by PCR-EXT 1's annexB-resolver routing (~398 fails @ post-PCR rank 12 + ~202 fails in String.prototype html-methods cluster). Annex B covers Date.prototype.{getYear/setYear/toGMTString/toUTCString}, String.prototype.{anchor/big/blink/bold/etc.}, RegExp.prototype.compile, and the global escape/unescape.
-**Anchor**: PCR-EXT 1's annexB/built-ins/* resolver routing made these legible as a class.
-**Methodology**: surface-by-surface implementation; many are small per-method.
-**Status**: queued, post-PCR.
+### (x) `annexB-runtime-quirks` — **SPAWNED** 2026-05-26 as [`pilots/annexB-runtime-quirks/`](../../pilots/annexB-runtime-quirks/seed.md)
+**Status**: FOUNDED. Runtime built-ins scope only: Date legacy methods, String HTML methods, RegExp.prototype.compile, global escape/unescape. Annex B grammar/lowering surfaces remain excluded to avoid collision with HDSB/WBMS/regexp-conformance.
 
 ### (y) Class-D scope extensions (LPA-EXT 3 recommendation 4) — ⚪ HYPOTHETICAL
 **Telos**: extend existing top-10-batch locales to absorb sibling matrix coordinates at next chapter close. NOT new locale spawns; rung extensions to existing locales per R4-discipline (cluster-coherence multiplier's apparatus-tax non-amortization avoidance).
