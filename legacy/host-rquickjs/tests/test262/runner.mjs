@@ -288,6 +288,9 @@ function runOne(path) {
       '/Temporal/PlainDateTime/prototype/toJSON/',
       '/Temporal/PlainDateTime/prototype/toLocaleString/',
       '/Temporal/PlainDateTime/prototype/equals/',
+      // PDTS-EXT 1: PDT.from + PDT.compare
+      '/Temporal/PlainDateTime/from/',
+      '/Temporal/PlainDateTime/compare/',
       // Foundation tests that pass without per-class implementation.
       '/Temporal/getOwnPropertyNames.js',
       '/Temporal/keys.js',

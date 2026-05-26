@@ -5709,6 +5709,183 @@ impl Runtime {
             .set_own_internal("constructor".into(), Value::Object(pdt_ctor));
         self.obj_mut(pdt_ctor)
             .set_own_frozen("prototype".into(), Value::Object(pdt_proto));
+        // PDTS-EXT 1 (plain-date-time-static): from / compare.
+        // PDT-specific parser: handles ISO datetime without requiring offset
+        // (PDT has no TZ; offset and annotation are accepted and IGNORED).
+        fn parse_iso_pdt(s: &str) -> Option<[i64; 9]> {
+            let b = s.as_bytes();
+            if b.len() < 10 { return None; }
+            fn rd(b: &[u8], i: usize, n: usize) -> Option<i64> {
+                if i + n > b.len() { return None; }
+                let mut v = 0i64;
+                for k in 0..n {
+                    let c = b[i + k];
+                    if !c.is_ascii_digit() { return None; }
+                    v = v * 10 + (c - b'0') as i64;
+                }
+                Some(v)
+            }
+            let mut i = 0;
+            let year = rd(b, i, 4)?; i += 4;
+            if b.get(i) != Some(&b'-') { return None; } i += 1;
+            let month = rd(b, i, 2)?; i += 2;
+            if b.get(i) != Some(&b'-') { return None; } i += 1;
+            let day = rd(b, i, 2)?; i += 2;
+            // Validate y/m/d range.
+            if !(1..=12).contains(&month) { return None; }
+            let leap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+            let max_day = match month {
+                1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+                4 | 6 | 9 | 11 => 30,
+                2 => if leap { 29 } else { 28 },
+                _ => return None,
+            };
+            if !(1..=max_day).contains(&day) { return None; }
+            let mut hour = 0i64; let mut minute = 0i64; let mut second = 0i64;
+            let mut ms = 0i64; let mut us = 0i64; let mut ns = 0i64;
+            // Time portion optional for PD-style strings; full PDT typically has T.
+            if matches!(b.get(i), Some(b'T') | Some(b't') | Some(b' ')) {
+                i += 1;
+                hour = rd(b, i, 2)?; i += 2;
+                if b.get(i) != Some(&b':') { return None; } i += 1;
+                minute = rd(b, i, 2)?; i += 2;
+                if b.get(i) == Some(&b':') {
+                    i += 1;
+                    second = rd(b, i, 2)?; i += 2;
+                    if matches!(b.get(i), Some(b'.') | Some(b',')) {
+                        i += 1;
+                        let frac_start = i;
+                        while i < b.len() && b[i].is_ascii_digit() && i - frac_start < 9 {
+                            i += 1;
+                        }
+                        let n_digits = i - frac_start;
+                        if n_digits == 0 { return None; }
+                        let mut frac = 0i64;
+                        for k in 0..n_digits {
+                            frac = frac * 10 + (b[frac_start + k] - b'0') as i64;
+                        }
+                        for _ in 0..(9 - n_digits) { frac *= 10; }
+                        ms = frac / 1_000_000;
+                        us = (frac / 1_000) % 1_000;
+                        ns = frac % 1_000;
+                    }
+                }
+                if hour > 23 || minute > 59 || second > 59 { return None; }
+            }
+            // Optional offset (Z, ±HH:MM) — accepted and IGNORED for PDT.
+            if matches!(b.get(i), Some(b'Z') | Some(b'z')) { i += 1; }
+            else if matches!(b.get(i), Some(b'+') | Some(b'-')) {
+                i += 1;
+                if rd(b, i, 2).is_none() { return None; } i += 2;
+                if b.get(i) == Some(&b':') { i += 1; }
+                if rd(b, i, 2).is_some() { i += 2; }
+                if b.get(i) == Some(&b':') {
+                    i += 1;
+                    if rd(b, i, 2).is_some() { i += 2; }
+                }
+            }
+            // Annotations [...] — currently strict-reject to avoid PTS-like
+            // regression on critical/uppercase tests.
+            if i != b.len() { return None; }
+            Some([year, month, day, hour, minute, second, ms, us, ns])
+        }
+        let pdt_proto_for_static = pdt_proto;
+        fn make_pdt(rt: &mut Runtime, proto: ObjectRef, u: [i64; 9]) -> Value {
+            let names = ["year","month","day","hour","minute","second","millisecond","microsecond","nanosecond"];
+            let mut o = Object::new_ordinary();
+            o.proto = Some(proto);
+            let id = rt.alloc_object(o);
+            for (i, n) in names.iter().enumerate() {
+                rt.set_engine_sentinel(id, &format!("__pdt_{}", n), Value::Number(u[i] as f64));
+            }
+            rt.set_engine_sentinel(id, "__pdt_calendar", Value::String(Rc::new("iso8601".into())));
+            Value::Object(id)
+        }
+        register_intrinsic_method(self, pdt_ctor, "from", 1, move |rt, args| {
+            let item = args.first().cloned().unwrap_or(Value::Undefined);
+            if let Value::String(s) = &item {
+                let u = parse_iso_pdt(s).ok_or_else(|| RuntimeError::RangeError(format!(
+                    "Temporal.PlainDateTime.from(string): invalid ISO 8601 datetime: {:?}", s
+                )))?;
+                return Ok(make_pdt(rt, pdt_proto_for_static, u));
+            }
+            let id = match item {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainDateTime.from: argument must be PDT, object, or string".into()
+                )),
+            };
+            // PDT brand → clone.
+            if !matches!(rt.object_get(id, "__pdt_year"), Value::Undefined) {
+                let u = pdt_read_all(rt, id)?;
+                return Ok(make_pdt(rt, pdt_proto_for_static, u));
+            }
+            // PD brand → use PD fields + default time = 0.
+            if !matches!(rt.object_get(id, "__pd_year"), Value::Undefined) {
+                let y = match rt.object_get(id, "__pd_year") { Value::Number(n) => n as i64, _ => 0 };
+                let m = match rt.object_get(id, "__pd_month") { Value::Number(n) => n as i64, _ => 0 };
+                let d = match rt.object_get(id, "__pd_day") { Value::Number(n) => n as i64, _ => 0 };
+                return Ok(make_pdt(rt, pdt_proto_for_static, [y, m, d, 0, 0, 0, 0, 0, 0]));
+            }
+            // Property bag.
+            let mut u = [0i64; 9];
+            let names = ["year","month","day","hour","minute","second","millisecond","microsecond","nanosecond"];
+            let required = ["year", "month", "day"];
+            for (i, name) in names.iter().enumerate() {
+                let v = rt.object_get(id, name);
+                if matches!(v, Value::Undefined) {
+                    if required.contains(name) {
+                        return Err(RuntimeError::TypeError(format!(
+                            "Temporal.PlainDateTime.from: object must have {}", name
+                        )));
+                    }
+                    continue;
+                }
+                let n = crate::abstract_ops::to_number(&v);
+                if !n.is_finite() || n != n.trunc() {
+                    return Err(RuntimeError::RangeError(format!(
+                        "Temporal.PlainDateTime.from: {} must be integer", name
+                    )));
+                }
+                u[i] = n as i64;
+            }
+            // Range check (delegate to ctor-style validation simplified).
+            if !(1..=12).contains(&u[1]) {
+                return Err(RuntimeError::RangeError("month out of range".into()));
+            }
+            let leap = (u[0] % 4 == 0 && u[0] % 100 != 0) || (u[0] % 400 == 0);
+            let max_day = match u[1] {
+                1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+                4 | 6 | 9 | 11 => 30,
+                2 => if leap { 29 } else { 28 },
+                _ => unreachable!(),
+            };
+            if !(1..=max_day).contains(&u[2]) {
+                return Err(RuntimeError::RangeError("day out of range".into()));
+            }
+            Ok(make_pdt(rt, pdt_proto_for_static, u))
+        });
+        register_intrinsic_method(self, pdt_ctor, "compare", 2, move |rt, args| {
+            fn extract(rt: &mut Runtime, v: Value) -> Result<[i64; 9], RuntimeError> {
+                if let Value::String(s) = &v {
+                    return parse_iso_pdt(s).ok_or_else(|| RuntimeError::RangeError(format!(
+                        "Temporal.PlainDateTime.compare(string): invalid ISO 8601 datetime: {:?}", s
+                    )));
+                }
+                if let Value::Object(id) = v {
+                    if !matches!(rt.object_get(id, "__pdt_year"), Value::Undefined) {
+                        return pdt_read_all(rt, id);
+                    }
+                }
+                Err(RuntimeError::TypeError(
+                    "Temporal.PlainDateTime.compare: argument must be PDT or string".into()
+                ))
+            }
+            let a = extract(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
+            let b = extract(rt, args.get(1).cloned().unwrap_or(Value::Undefined))?;
+            let ord = if a < b { -1.0 } else if a > b { 1.0 } else { 0.0 };
+            Ok(Value::Number(ord))
+        });
         // PDTSC-EXT 1 (plain-date-time-string-conversion): toString/toJSON.
         // Format: 'YYYY-MM-DDTHH:MM:SS[.fff]' per §11.5.5.
         fn pdt_read_all(rt: &mut Runtime, this_id: ObjectRef) -> Result<[i64; 9], RuntimeError> {
@@ -5769,23 +5946,11 @@ impl Runtime {
             let other = args.first().cloned().unwrap_or(Value::Undefined);
             let other_u = match other {
                 Value::String(s) => {
-                    // Parse as ISO datetime; PDT accepts datetime form without offset.
-                    // Reuse parse_iso_datetime but extract y/m/d/H/M/S/.ffffff
-                    let (epoch_sec, frac_ns) = parse_iso_datetime(&s).ok_or_else(|| RuntimeError::RangeError(format!(
+                    // PDT uses parse_iso_pdt (no-offset friendly; offset
+                    // accepted and ignored per spec since PDT carries no TZ).
+                    parse_iso_pdt(&s).ok_or_else(|| RuntimeError::RangeError(format!(
                         "Temporal.PlainDateTime.prototype.equals: invalid ISO 8601 datetime: {:?}", s
-                    )))?;
-                    // Decompose epoch_sec to y/m/d/h/m/s.
-                    let secs_per_day = 86_400i64;
-                    let days = epoch_sec.div_euclid(secs_per_day);
-                    let secs_of_day = epoch_sec.rem_euclid(secs_per_day);
-                    let (y, mo, d) = pda_civil_from_days(days);
-                    let h = secs_of_day / 3600;
-                    let mi = (secs_of_day % 3600) / 60;
-                    let se = secs_of_day % 60;
-                    let ms = frac_ns / 1_000_000;
-                    let us = (frac_ns / 1_000) % 1_000;
-                    let ns = frac_ns % 1_000;
-                    [y, mo, d, h, mi, se, ms, us, ns]
+                    )))?
                 }
                 Value::Object(o) => {
                     if !matches!(rt.object_get(o, "__pdt_year"), Value::Undefined) {
