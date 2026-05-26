@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 106,
-    "top_level": 93,
+    "locales": 107,
+    "top_level": 94,
     "nested": 13,
     "warnings": 0
   },
@@ -343,6 +343,15 @@
       "status": null
     },
     {
+      "coord": "lexer-goal-symbol-selection",
+      "tag": "L.lexer-goal-symbol-selection",
+      "parent": null,
+      "scope": "lexer-goal-symbol-selection",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
+    },
+    {
       "coord": "map-getorinsert-upsert",
       "tag": "L.map-getorinsert-upsert",
       "parent": null,
@@ -393,7 +402,7 @@
       "parent": "L.parser-early-error-residual",
       "scope": "block-bound-names-dup",
       "depth": 2,
-      "rung_count": 1,
+      "rung_count": 2,
       "status": null
     },
     {
