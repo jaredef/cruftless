@@ -441,16 +441,25 @@ impl<'src> Lexer<'src> {
             }
         }
         // Reject leading-zero forms (legacy octal, non-octal-decimal-integer)
-        // in module mode. We detect: starts with `0`, then more digits, no `.`,
-        // no `e`/`E`, no `n`. Approximation: if start == `0` and next is digit,
-        // it's a legacy form.
-        if first == b'0' && self.pos > start + 1 {
+        // NLC-EXT 1 (revised; replaces the prior 'module-mode' check that
+        // was firing backwards). §12.8 + Annex B B.1.1: legacy octal
+        // (`0` + octal digits) and non-octal-decimal (`08`/`09`) integer
+        // literals are forbidden in STRICT mode (script + module). In
+        // sloppy script mode they are accepted via Annex B.
+        //
+        // Pre-fix: this check fired unconditionally as 'forbidden in
+        // module code,' which (a) wrongly rejected sloppy-script-mode
+        // legacy octals like `0001` and (b) failed to reject strict-mode
+        // legacy octals at all. The LegacyOctalInModule LexErrorKind name
+        // is retained for git-blame continuity; semantically it now fires
+        // on strict-mode legacy forms.
+        if first == b'0' && self.pos > start + 1 && self.strict_mode {
             let second = self.src[start + 1];
             if second.is_ascii_digit() {
                 return Err(self.err(
                     LexErrorKind::LegacyOctalInModule,
                     start,
-                    "legacy octal/decimal integer literals forbidden in module code",
+                    "legacy octal/non-octal-decimal integer literal in strict mode",
                 ));
             }
         }

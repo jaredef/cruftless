@@ -71,3 +71,46 @@ Each is a focused lex-tier check addition in `pilots/rusty-js-parser/derived/src
 **Per Doc 727 §X basin-stability**: the prior NLC-EXT 0 trajectory entry (above the divider) is preserved as the inspection-at-the-time record; this correction appends rather than edits.
 
 **Status (corrected)**: NLC's locale-tier substrate work is well-scoped per the lex-tier shapes identified in NLC-EXT 1-revised. The engagement-wide fix proposal is RETRACTED. NLC's substrate work follows the IDT pattern when keeper directs.
+
+---
+
+## NLC-EXT 1-revised — lex-tier legacy-octal direction-flip (2026-05-25; keeper: "continue to 1")
+
+**Trigger**: Keeper directive (Telegram 9832) "continue to 1." Lands the revised NLC-EXT 1 (per Addendum XV correction): lex-tier strict-mode gate on legacy-octal-integer literals, replacing the pre-fix unconditional "in module mode" rejection.
+
+**Edit** (~5 LOC in `pilots/rusty-js-parser/derived/src/lexer.rs::read_numeric_literal`):
+
+Pre-fix (line 426): `if first == b'0' && self.pos > start + 1` — fired UNCONDITIONALLY, wrongly rejecting sloppy-script-mode legacy octals.
+
+Post-fix: `if first == b'0' && self.pos > start + 1 && self.strict_mode` — fires in strict mode only, per §12.8 + Annex B B.1.1. The `Lexer::strict_mode` field is the one SLEC-EXT 1 added; the Parser pushes the state via set_lexer_strict.
+
+**Verification (probes)**:
+
+| Probe | Pre-fix | Post-fix |
+|---|---|---|
+| `0001;` (sloppy script) | REJECT (wrong) | **ACCEPT** ✓ |
+| `09;` (sloppy non-octal-decimal) | REJECT (wrong) | **ACCEPT** ✓ |
+| `"use strict"; 00;` (strict) | ACCEPT (wrong) | ACCEPT (still wrong — integration gap, see NLC.3 below) |
+
+**Test262 effect**:
+
+| Test | Pre-fix | Post-fix |
+|---|---|---|
+| `non-octal-decimal-integer.js` (sloppy, expects accept) | FAIL (cruft rejected) | **PASS** ✓ |
+| `legacy-octal-integer.js` (sloppy, expects accept + correct values) | FAIL (cruft rejected) | FAIL (cruft accepts but parses `070` as 70-decimal, not 56-octal) |
+| Strict-mode legacy-octal tests (`legacy-octal-integery-*-strict.js`) | FAIL | FAIL (integration gap) |
+
+Net NLC pool: 104/157 unchanged in aggregate (one PASSed + one DIFFERENTLY FAILed offset). Behavior is correctness-improved: cruft no longer wrongly rejects sloppy-script legacy-octals.
+
+**Gates**:
+- diff-prod: **42/42 PASS, 0 FAIL**
+- Random 300 prev-PASS: **300/300, 0 regressions**
+- SyntaxError curated cluster: **45/45 (held)**
+- IDT exemplars: **261/268 (held)**
+- SLEC exemplars: **53/73 (held)**
+
+**Finding NLC.3 (lex-tier strict-mode integration gap)**: probe shows `Lexer::strict_mode == true` correctly at the legacy-octal check site when source is `"use strict"; 00;` (or function-body with strict directive). My `return Err(...)` from `read_numeric_literal` IS executed (verified via debug eprintln). But cruft's downstream parse pipeline (Parser → compiler → eval) does NOT surface the error; the source compiles silently. There is a SPECULATIVE-PARSE or ERROR-SWALLOWING path somewhere downstream that absorbs the lex Err without propagating to test262's `(0,eval)(...)` catch. Substantial separate substrate investigation; surfaces as NLC-EXT 2 candidate (locate the swallow site; either fix it or route lex errors via a different path).
+
+**Finding NLC.4 (one PASS + one differently-FAIL = net-zero exemplar move can still be correctness gain)**: the lex-tier direction flip swapped which tests pass/fail without moving the aggregate, but the SUBSTRATE is more correct: cruft no longer rejects spec-valid source. The wrong-result legacy-octal case (`070 → 70` not `56`) is a SEPARATE semantic gap (cruft's numeric-literal evaluator doesn't treat sloppy-script legacy-octal as octal). Standing recommendation: pool-aggregate yield is not the only correctness signal; per-test direction-of-fix matters at locale-tier review.
+
+**Status**: NLC-EXT 1-revised CLOSED. Locale's substrate scope partially closed; the strict-mode integration gap (NLC.3) and the legacy-octal-semantic gap (NLC.4) are NLC-EXT 2+3 candidates. Locale stays open.
