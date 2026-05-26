@@ -66,3 +66,62 @@
 **Status**: PCR-EXT 1 CLOSED. Categorizer rules merged into `full_pinart.rs`; refreshed matrix written to dated subdirectory; LPA-EXT 3 positioning-gaps deserves re-rendering against the new matrix (LPA trigger: "after full-suite categorize re-run") — that's a successor LPA-EXT iteration.
 
 PCR-EXT 2 (close the remaining 1,354 uncategorized/projection long tail via per-batch pattern-mining) and PCR-EXT 3 (the categorizer should re-run on raw against the next full-suite test262 run) remain as successor rungs. Both run on opportunistic trigger.
+
+---
+
+## PCR-EXT 2 — long-tail projection pattern-mining (2026-05-25)
+
+**Trigger**: Keeper directive (Telegram 9814) "Ext 2, defer rerun." Long-tail closure on the 1,354 records still uncategorized/projection after EXT 1; EXT 3 (full re-categorize against raw test262) explicitly deferred per keeper.
+
+**Survey result on the EXT 1 residual** (1,354 records):
+
+| Pattern | Count | Mapped to |
+|---|---:|---|
+| `Object.getOwnPropertyDescriptor: argument is not coercible to Object` (annexB String html-methods) | 202 | `availability/missing-method-or-intrinsic` |
+| `#N: ...` spec-numbered (older test262 style) | 355 | `value-semantics/wrong-result` |
+| `compile: ...` cruft compiler-feature gaps | 115 | `availability/missing-lowering-feature` (new class) |
+| `(in-method=...)` / `(in-call=...)` cruft runtime traces | ~83 | `availability/missing-method-or-intrinsic` |
+| `descriptor value should` / `length descriptor` | 117 | `descriptor-shape/missing-own-property` |
+| `!== true` / `=== false` / shorthand identity assertions | ~73 | `value-semantics/wrong-result` |
+| `Test262Error:` literal | 33 | `value-semantics/wrong-result` |
+| `Cannot index undefined/null` (forEach traces) | 24 | `availability/missing-internal-slot` (extends EXT 1 rule) |
+| `URIError` | 18 | `value-semantics/wrong-result` |
+| `missing from character class` (regex parse) | 1 | `regexp-semantics/lex-error` (extends EXT 1 rule) |
+
+**Edits** (~30 LOC merged-in to the projection_axis fn in `full_pinart.rs`):
+
+Added 8 new pattern branches; extended 3 EXT 1 branches with additional phrasings:
+
+- **NEW**: `compile: ` / `not yet supported` / `not implemented` → `availability/missing-lowering-feature` (sibling class to missing-parser-feature)
+- **NEW**: `not coercible to object` / `is not coercible` / `is not a constructor` → `availability/missing-method-or-intrinsic`
+- **NEW**: `test262error:` literal → `value-semantics/wrong-result`
+- **NEW**: `!== true` / `!== false` / `=== true` / `=== false` → `value-semantics/wrong-result`
+- **NEW**: `#N: ...` spec-numbered assertions → `value-semantics/wrong-result`
+- **NEW**: `(in-method=` / `(in-call=` runtime traces → `availability/missing-method-or-intrinsic`
+- **NEW**: `urierror` / `uri error` → `value-semantics/wrong-result`
+- **EXTENDED** EXT 1's cannot-read-property to include `cannot index`
+- **EXTENDED** EXT 1's descriptor-shape to include `descriptor value should` / `length descriptor`
+- **EXTENDED** EXT 1's regex-lex-error to include `missing from character class`
+
+**Build**: `cargo build --release --bin t262-full-pinart` completes cleanly.
+
+**Re-interpretation** (dry-run; raw still sidecar-only):
+
+| Metric | Pre-PCR | Post-EXT 1 | Post-EXT 2 | Cumulative Δ |
+|---|---:|---:|---:|---:|
+| Distinct pins | 246 | 261 | **269** | +23 |
+| Records in uncategorized/projection | 2,104 | 1,354 | **365** | **-1,739 (-82.7%)** |
+| Records in uncategorized/resolver | 1,953 | 16 | **16** | -1,937 (-99.2%) |
+| Union (any uncat dim) | 3,681 | 1,367 | **378** | **-3,303 (-89.7%)** |
+
+**LPA-EXT 3 Class A target was 2,802 fails; EXT 1+2 cumulative shifted 3,303 records out of uncategorized — exceeded the target.**
+
+**Refreshed matrix** written to `pilots/apparatus/test262-categorize/full-suite/results/test262-full-2026-05-25-PCR-EXT-2-rerun/`.
+
+**Findings**
+
+**Finding PCR.4 (long-tail closure has diminishing yield-per-rule, as expected)**: PCR-EXT 1 closed 2,314 records with ~7 rules (~330 records per rule). PCR-EXT 2 closed an additional 989 records with ~11 new/extended rules (~90 records per rule). The marginal yield drops by ~4x at the long tail; this is the expected shape (high-frequency patterns get caught early; long-tail patterns require more discrimination per closure). Standing recommendation: stop categorizer-rule additions when marginal yield-per-rule drops below ~25-50 records; beyond that, the apparatus-tax of maintaining the rule exceeds the closure value. EXT 3 (when test262 raw is re-run) will surface new patterns from any cruft-substrate-behavior changes; new rules should be added then, not now.
+
+**Finding PCR.5 (missing-lowering-feature surfaced as a new named class)**: the `compile: ...` reasons for cruft's bytecode-compiler unsupported-feature rejections were previously diffused into uncategorized; EXT 2 named them as `availability/missing-lowering-feature` — sibling to EXT 1's `availability/missing-parser-feature`. The compiler/lowering tier now has a named availability coordinate just as the parser tier does. This creates symmetric apparatus-tier coordinates: each substrate tier whose features cruft hasn't yet implemented gets its own `availability/missing-X-feature` projection class. Standing recommendation: extend this pattern to runtime-tier (`missing-runtime-feature`) and JIT-tier (`missing-jit-feature`) if/when their unimplemented-feature errors become distinguishable in cruft's runtime traces.
+
+**Status**: PCR-EXT 2 CLOSED. 89.7% reduction in uncategorized records vs the pre-PCR baseline; ~378 records remain in a genuinely-long tail. PCR-EXT 3 (canonical re-categorize against next test262 raw run) **DEFERRED per keeper directive**; will land opportunistically when test262 is next re-run. Locale considered operationally complete pending that next trigger.

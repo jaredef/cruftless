@@ -402,39 +402,78 @@ fn projection_axis(rel: &str, reason: &str, surface: &str) -> String {
         "realm-prototype/prototype-chain".into()
     } else if r.contains("samevalue") || r.contains("expected") {
         "value-semantics/wrong-result".into()
-    // PCR-EXT 1: cruft parser failures on test source (e.g., TypeScript
-    // generics syntax, decorators, other parser-feature gaps). The reason
-    // text begins with "parse: ..." and includes a byte offset in the
-    // eval'd test source. These are cruft's own parser-feature gaps, not
-    // test262 assertions; route to availability/missing-parser-feature so
-    // substrate work targets the parser tier.
+    // PCR-EXT 1: cruft parser failures on test source.
     } else if r.starts_with("parse: ") || r.contains("parse error") {
         "availability/missing-parser-feature".into()
-    // PCR-EXT 1: cruft runtime errors of the shape "Cannot read property
-    // of null/undefined" — these are missing-internal-slot or missing-
-    // method-access patterns in the cruft runtime, not test262 wrong-
-    // result assertions. Route to availability/missing-internal-slot so
-    // substrate work targets the runtime tier.
-    } else if r.contains("cannot read property") {
+    // PCR-EXT 2: cruft bytecode-compiler failures on test source.
+    // `compile: ...` reasons (and "not yet supported" / "not implemented")
+    // are cruft's compile-tier feature gaps — sibling to the parser-tier
+    // gaps above. Route to availability/missing-lowering-feature so
+    // substrate work targets the compiler/lowering tier.
+    } else if r.starts_with("compile: ")
+        || r.contains("not yet supported")
+        || r.contains("not implemented")
+    {
+        "availability/missing-lowering-feature".into()
+    // PCR-EXT 1+2: cruft runtime errors of "Cannot read/index property"
+    // shape — missing-internal-slot or missing-method-access patterns.
+    } else if r.contains("cannot read property") || r.contains("cannot index") {
         "availability/missing-internal-slot".into()
-    // PCR-EXT 1: descriptor-shape assertions that didn't match the earlier
-    // descriptor-shape rule because they don't mention enumerable/
-    // configurable/writable directly. Common test262 phrasing.
-    } else if r.contains("should be an own property") || r.contains("should have own property") {
-        "descriptor-shape/missing-own-property".into()
-    // PCR-EXT 1: isConstructor invocation failures — the test checked
-    // whether a value is a constructor; cruft's response was wrong.
-    } else if r.contains("isconstructor invoked") {
+    // PCR-EXT 2: cruft runtime rejections of the form "not coercible to
+    // Object" / "is not coercible" / "is not a constructor" — Annex B
+    // String html-method tests (.anchor/.big/.blink/etc.) hit this when
+    // cruft refuses introspection. Route to availability/missing-method-
+    // or-intrinsic because the underlying Annex B method isn't implemented.
+    } else if r.contains("not coercible to object")
+        || r.contains("is not coercible")
+        || r.contains("is not a constructor")
+        || r.contains("isconstructor invoked")
+    {
         "availability/missing-method-or-intrinsic".into()
-    // PCR-EXT 1: regex-engine partial-implementation carve-outs. cruft's
-    // v1 regex engine refuses certain pattern features; this is documented
-    // partial-engine behavior, not a wrong-result.
+    // PCR-EXT 1+2: descriptor-shape assertions in more phrasings than the
+    // earlier rule caught.
+    } else if r.contains("should be an own property")
+        || r.contains("should have own property")
+        || r.contains("descriptor value should")
+        || r.contains("length descriptor")
+    {
+        "descriptor-shape/missing-own-property".into()
+    // PCR-EXT 1: regex-engine partial carve-outs.
     } else if r.contains("unsupported by the v1 regex engine") {
         "partial/regex-features-missing".into()
-    // PCR-EXT 1: regex lex errors (unterminated regex, missing char class
-    // elements) — regexp-semantics at the lex tier.
-    } else if r.contains("unterminated regex") || r.contains("lex error") && surface.contains("RegExp") {
+    // PCR-EXT 1+2: regex lex/parse errors.
+    } else if r.contains("unterminated regex")
+        || (r.contains("lex error") && surface.contains("RegExp"))
+        || r.contains("missing from character class")
+    {
         "regexp-semantics/lex-error".into()
+    // PCR-EXT 2: literal Test262Error throws (the test framework's own
+    // assertion class, when raised without a more specific reason).
+    // Route to value-semantics/wrong-result :: assertion/expected-
+    // mismatch since the framework fires Test262Error when an assert_*
+    // helper fails its comparison.
+    } else if r.starts_with("test262error:") || r.starts_with("test262error") {
+        "value-semantics/wrong-result".into()
+    // PCR-EXT 2: identity/equality assertions in shorthand cruft-trace
+    // phrasing (e.g., "testResult !== true", "X === false", "result !==
+    // expected"). These are value-semantics wrong-results in test262's
+    // older-style phrasing.
+    } else if r.contains("!== true") || r.contains("!== false")
+        || r.contains("=== false") || r.contains("=== true")
+    {
+        "value-semantics/wrong-result".into()
+    // PCR-EXT 2: spec-numbered older-style assertions like "#1: ...".
+    // Predominantly value-semantics in T_PA-era tests.
+    } else if r.starts_with("#") && r.contains(":") {
+        "value-semantics/wrong-result".into()
+    // PCR-EXT 2: cruft runtime traces showing "(in-method=X)" or
+    // "(in-call=X)" markers — these are runtime-tier errors that occurred
+    // during method-dispatch. Most are availability gaps; route as such.
+    } else if r.contains("(in-method=") || r.contains("(in-call=") {
+        "availability/missing-method-or-intrinsic".into()
+    // PCR-EXT 2: URIError-class results (encodeURI/decodeURI edge cases).
+    } else if r.contains("urierror") || r.contains("uri error") {
+        "value-semantics/wrong-result".into()
     } else if surface.contains("RegExp") {
         "regexp-semantics".into()
     } else {
