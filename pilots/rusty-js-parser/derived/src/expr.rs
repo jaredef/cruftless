@@ -1580,7 +1580,7 @@ impl<'src> Parser<'src> {
             // since the substitution completes an expression). Re-lex
             // starting at that `}` with TemplateTail goal to emit a
             // Middle/Tail token.
-            self.refetch_lookahead_with_goal(crate::lexer::LexerGoal::TemplateTail)?;
+            self.enter_template_tail()?;
             match self.current_kind().clone() {
                 TokenKind::Template {
                     cooked,

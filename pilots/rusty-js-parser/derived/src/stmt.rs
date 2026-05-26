@@ -1248,7 +1248,7 @@ impl<'src> Parser<'src> {
                     // Not for-in/of — recover by re-lexing from the ident's
                     // start position so the upcoming parse_expression sees
                     // the full head.
-                    self.rewind_lexer_to(saved_pos_before_id, crate::lexer::LexerGoal::RegExp)?;
+                    self.rewind_lexer_to(saved_pos_before_id)?;
                 }
             }
         }

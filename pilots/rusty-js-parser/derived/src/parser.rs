@@ -1000,29 +1000,39 @@ impl<'src> Parser<'src> {
     /// byte offset using a different goal symbol. Used by the template-
     /// literal parser to obtain a TemplateMiddle/Tail token at the close
     /// of a substitution where the lexer would otherwise emit a RBrace.
-    pub(crate) fn refetch_lookahead_with_goal(
-        &mut self,
-        goal: LexerGoal,
-    ) -> Result<(), ParseError> {
+    /// LGSS-EXT 2: enter TemplateTail goal at the close of a template
+    /// substitution. Re-lexes the current lookahead (which is at the `}`
+    /// position, having been lexed as RBrace under Div goal) under
+    /// TemplateTail goal so a Template Middle/Tail token is emitted.
+    /// Parser-tier method named after its purpose; no LexerGoal argument
+    /// in the public API. Per the LGSS thesis, the goal is implicit in
+    /// the call name (this is the only place that legitimately re-enters
+    /// TemplateTail). When LGSS-EXT 3 lands a Parser-side template-
+    /// substitution-depth, this method becomes deletable and the
+    /// re-entry is folded into `derive_lex_goal_after`.
+    pub(crate) fn enter_template_tail(&mut self) -> Result<(), ParseError> {
         let pos = self.lookahead.span.start;
         self.lx.set_pos(pos);
-        self.lookahead = self.lx.next_token(goal).map_err(lex_to_parse)?;
-        // LGSS-EXT 1: keep current_lex_goal in sync after explicit re-lex.
+        self.lookahead = self.lx.next_token(LexerGoal::TemplateTail).map_err(lex_to_parse)?;
         self.current_lex_goal = derive_lex_goal_after(&self.lookahead.kind);
         Ok(())
     }
 
-    /// Rewind the lexer to `pos` and re-lex the lookahead under `goal`.
-    /// Used by recovery paths (e.g. the for-head fast-path when the bumped
-    /// identifier turns out not to be followed by `in`/`of`).
+    /// LGSS-EXT 2: rewind the lexer to `pos` and re-lex the lookahead.
+    /// The goal-symbol is implicit: at a rewind boundary the parser is
+    /// returning to a position whose syntactic context is "fresh
+    /// expression head" (the only rewind site in cruft today is the
+    /// for-head fast-path bail, which rewinds to before a bumped
+    /// identifier in the for-paren expression position). RegExp is the
+    /// safe default — primary expressions can begin with regex literals.
+    /// Per the LGSS thesis, the goal is no longer a caller-passed
+    /// argument at the parser-tier method boundary.
     pub(crate) fn rewind_lexer_to(
         &mut self,
         pos: usize,
-        goal: LexerGoal,
     ) -> Result<(), ParseError> {
         self.lx.set_pos(pos);
-        self.lookahead = self.lx.next_token(goal).map_err(lex_to_parse)?;
-        // LGSS-EXT 1: keep current_lex_goal in sync after explicit re-lex.
+        self.lookahead = self.lx.next_token(LexerGoal::RegExp).map_err(lex_to_parse)?;
         self.current_lex_goal = derive_lex_goal_after(&self.lookahead.kind);
         Ok(())
     }
@@ -1374,9 +1384,11 @@ pub(crate) fn is_unconditional_reserved_word(name: &str) -> bool {
 /// the discrimination inline.
 ///
 /// Carve-out: TemplateTail re-entry (after a substitution's `}`) is
-/// currently handled by `refetch_lookahead_with_goal`, since the
-/// template-substitution-depth state is not yet tracked on the Parser;
-/// folding that case into this predicate is the LGSS-EXT 3 closure.
+/// currently handled by `Parser::enter_template_tail` (a parser-tier
+/// method named after its purpose; no LexerGoal in its public API),
+/// since the template-substitution-depth state is not yet tracked on
+/// the Parser. Folding that case into this predicate is the LGSS-EXT 3
+/// closure; at that point `enter_template_tail` becomes deletable.
 fn derive_lex_goal_after(prev_kind: &TokenKind) -> LexerGoal {
     if token_completes_expression(prev_kind) {
         LexerGoal::Div
