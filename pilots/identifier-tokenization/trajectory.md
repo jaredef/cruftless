@@ -89,3 +89,54 @@ The 7 residual IDT fails trace to the function-decl + class-decl name paths (pro
 **Finding IDT.2 (the eval-class-wrapping mechanism IS working as Addendum XV claims)**: post-EXT-1 probes show that cruft now correctly throws SyntaxError-class for var/let/const/param `break` cases. The eval-error wrapping carries the SyntaxError class to the JS-tier catch as a proper Error instance. This is the empirical confirmation of Addendum XV's NLC.0-revised: the eval-class wrapping was already correct; the substrate gap was at the lex/parse permissiveness.
 
 **Status**: IDT-EXT 1 CLOSED. 261/268 (97.4% of pool). IDT-EXT 2 (close function-decl + class-decl name paths) is the next rung; small substrate move (~5-10 LOC) once the entry path is identified.
+
+---
+
+## IDT-EXT 2 — function-expression + class-expression name paths (2026-05-25)
+
+**Trigger**: Keeper directive (Telegram 9828) "Continue to ext 2."
+
+**Diagnostic** (eval-path probe): direct script-mode `function break() {}` correctly REJECTS after IDT-EXT 1 (my parse_function_decl_stmt edit fires). But `(0,eval)("function break(){}")` ACCEPTS — eval treats top-of-string function-decl as function-EXPRESSION (parses via `parse_function_expression` in `expr.rs:1498`, which had no ReservedWord check). Same for class.
+
+**Edits** (~15 LOC across 2 sites in `pilots/rusty-js-parser/derived/src/expr.rs`):
+
+1. `parse_function_expression` (line 1498) — name-binding-id check via `is_unconditional_reserved_word`.
+2. `parse_class_expression` (line 1532) — name-binding-id check, sibling pattern.
+
+**Verification (probes)**:
+
+| Probe | Pre-EXT-2 | Post-EXT-2 |
+|---|---|---|
+| `(0,eval)("function break(){}")` | ACCEPT | **REJECT SyntaxError** ✓ |
+| `(0,eval)("class break {}")` | ACCEPT | **REJECT SyntaxError** ✓ |
+| `(0,eval)("(function break(){})()")` | ACCEPT | **REJECT SyntaxError** ✓ |
+| `(0,eval)("new (class break {})")` | ACCEPT | **REJECT SyntaxError** ✓ |
+| `(0,eval)("(function(){})()")` (anonymous) | ACCEPT | ACCEPT ✓ (preserved) |
+| `(0,eval)("new (class {})")` (anonymous) | ACCEPT | ACCEPT ✓ (preserved) |
+
+**Gates**:
+- diff-prod: **42/42 PASS, 0 FAIL**
+- Random 300 prev-PASS: **300/300, 0 regressions**
+- SyntaxError curated cluster: **45/45 (held)**
+
+**IDT exemplar yield**: 261/268 (unchanged). EXT 2's correctness gain is at a different surface than the IDT pool's tests — the 7 IDT residuals are different sub-shapes (Unicode-range edge cases + strict-yield). EXT 2's fixes are nonetheless correct cross-locale substrate work (eval-context function/class-name now correctly rejects ReservedWord); yield will surface in locales whose pool exercises function/class-expression-as-reserved.
+
+**Residual IDT fails analysis** (the 7 unchanged):
+
+| Test | Sub-shape | Owning concern |
+|---|---|---|
+| `start-zwj-escaped.js` | ZWJ as ID_Start | Unicode-range conformance |
+| `start-zwnj-escaped.js` | ZWNJ as ID_Start | Unicode-range conformance |
+| `val-yield-strict.js` | yield as ident in strict | sibling SBEA/SMPT territory |
+| `vertical-tilde-continue-escaped.js` | U+2E2F vertical-tilde as ID_Continue | Unicode-range conformance |
+| `vertical-tilde-continue.js` | ditto | Unicode-range conformance |
+| `vertical-tilde-start-escaped.js` | U+2E2F as ID_Start | Unicode-range conformance |
+| `vertical-tilde-start.js` | ditto | Unicode-range conformance |
+
+5 are Unicode-range; 1 is yield-strict. These are 2 distinct follow-on substrate concerns, neither in IDT-EXT 1/2's scope.
+
+**Findings**
+
+**Finding IDT.3 (substrate-tier ReservedWord exclusion is now coverage-complete for cruft's parser entry paths)**: the §11.6.2.1 ReservedWord check now fires at 5 sites cruft uses for BindingIdentifier construction: parse_binding_identifier, parse_binding_target, for-head plain-id, parse_function_decl_stmt, parse_class_decl_stmt, parse_function_expression, parse_class_expression. Any future BindingIdentifier consumer must route through one of these or add its own check. Standing recommendation: when a parser tier has multiple consumption paths for the same syntactic production, the substrate-completeness audit is enumerable — `grep -nE "TokenKind::Ident.*BindingIdentifier"` or similar surfaces all bypass sites.
+
+**Status**: IDT-EXT 2 CLOSED. Locale's substrate work on ReservedWord exclusion is coverage-complete across cruft's parser entry paths. Locale stays open for the 2 follow-on sub-concerns (Unicode-range + yield-strict) if/when the keeper directs spawning the corresponding rungs OR sibling locales.

@@ -1507,6 +1507,20 @@ impl<'src> Parser<'src> {
         let name = if let TokenKind::Ident(n) = self.current_kind().clone() {
             if !matches!(n.as_str(), "(") {
                 let span = self.lookahead_span();
+                // IDT-EXT 2: §11.6.2.1 ReservedWord exclusion at function-
+                // expression name. This path is hit by indirect-eval
+                // (eval('function f(){}') parses as function-expression
+                // statement), function-as-expression-in-paren, and
+                // function-as-RHS-of-assignment.
+                if crate::parser::is_unconditional_reserved_word(&n) {
+                    return Err(ParseError {
+                        span,
+                        message: format!(
+                            "`{}` is a reserved word and cannot be used as a function name",
+                            n
+                        ),
+                    });
+                }
                 self.bump()?;
                 Some(rusty_js_ast::BindingIdentifier { name: n, span })
             } else {
@@ -1535,6 +1549,17 @@ impl<'src> Parser<'src> {
         let name = if let TokenKind::Ident(n) = self.current_kind().clone() {
             if n != "extends" {
                 let span = self.lookahead_span();
+                // IDT-EXT 2: §11.6.2.1 ReservedWord exclusion at class-
+                // expression name (sibling to function-expression above).
+                if crate::parser::is_unconditional_reserved_word(&n) {
+                    return Err(ParseError {
+                        span,
+                        message: format!(
+                            "`{}` is a reserved word and cannot be used as a class name",
+                            n
+                        ),
+                    });
+                }
                 self.bump()?;
                 Some(rusty_js_ast::BindingIdentifier { name: n, span })
             } else {
