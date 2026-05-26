@@ -148,6 +148,11 @@ function runOne(path) {
       '/Temporal/Instant/prototype/constructor.js',
       '/Temporal/Instant/prototype/prop-desc.js',
       '/Temporal/Instant/prototype/toStringTag/',
+      // TIS-EXT 1: instant-static (from / fromEpochMilliseconds / fromEpochNanoseconds / compare)
+      '/Temporal/Instant/from/',
+      '/Temporal/Instant/fromEpochMilliseconds/',
+      '/Temporal/Instant/fromEpochNanoseconds/',
+      '/Temporal/Instant/compare/',
       // Foundation tests that pass without per-class implementation.
       '/Temporal/getOwnPropertyNames.js',
       '/Temporal/keys.js',

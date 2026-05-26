@@ -2859,6 +2859,105 @@ impl Runtime {
             .set_own_internal("constructor".into(), Value::Object(inst_ctor));
         self.obj_mut(inst_ctor)
             .set_own_frozen("prototype".into(), Value::Object(inst_proto));
+        // TIS-EXT 1 (instant-static): from / fromEpochMilliseconds /
+        // fromEpochNanoseconds / compare on Temporal.Instant ctor.
+        fn make_instant(rt: &mut Runtime, proto: ObjectRef, ns: crate::value::Value) -> Result<Value, RuntimeError> {
+            // ns must be BigInt; range-checked.
+            let big = match ns {
+                Value::BigInt(b) => b,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.Instant: epochNanoseconds must be a BigInt".into()
+                )),
+            };
+            let f = big.to_f64();
+            if !f.is_finite() || f.abs() > 8.64e21 {
+                return Err(RuntimeError::RangeError(
+                    "Temporal.Instant: epochNanoseconds out of range (|ns| > 8.64e21)".into()
+                ));
+            }
+            let mut o = Object::new_ordinary();
+            o.proto = Some(proto);
+            let id = rt.alloc_object(o);
+            rt.set_engine_sentinel(id, "__ti_ns", Value::BigInt(big));
+            Ok(Value::Object(id))
+        }
+        let proto_for_static = inst_proto;
+        register_intrinsic_method(self, inst_ctor, "from", 1, move |rt, args| {
+            let item = args.first().cloned().unwrap_or(Value::Undefined);
+            // String form: defer ISO 8601 datetime parsing to
+            // temporal-iso-string-parse shared substrate.
+            if let Value::String(s) = &item {
+                return Err(RuntimeError::TypeError(format!(
+                    "Temporal.Instant.from(string): ISO 8601 datetime string parsing not yet implemented (Tier-L stub); got {:?}",
+                    s
+                )));
+            }
+            let id = match item {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.Instant.from: argument must be an Instant or string".into()
+                )),
+            };
+            // Brand-check via __ti_ns presence; if present, clone.
+            match rt.object_get(id, "__ti_ns") {
+                Value::BigInt(b) => make_instant(rt, proto_for_static, Value::BigInt(b)),
+                _ => Err(RuntimeError::TypeError(
+                    "Temporal.Instant.from: argument is not a Temporal.Instant".into()
+                )),
+            }
+        });
+        register_intrinsic_method(self, inst_ctor, "fromEpochMilliseconds", 1, move |rt, args| {
+            // Per spec: ToNumber then convert to BigInt nanoseconds.
+            let v = args.first().cloned().unwrap_or(Value::Undefined);
+            let ms = crate::abstract_ops::to_number(&v);
+            if !ms.is_finite() {
+                return Err(RuntimeError::RangeError(
+                    "Temporal.Instant.fromEpochMilliseconds: argument must be finite".into()
+                ));
+            }
+            // Truncate then convert to ns BigInt (× 1_000_000).
+            let ms_int = ms.trunc() as i64;
+            let ns_str = format!("{}000000", ms_int);
+            let ns = crate::bigint::JsBigInt::from_decimal(&ns_str)
+                .ok_or_else(|| RuntimeError::RangeError(
+                    "Temporal.Instant.fromEpochMilliseconds: cannot convert to BigInt".into()
+                ))?;
+            make_instant(rt, proto_for_static, Value::BigInt(std::rc::Rc::new(ns)))
+        });
+        register_intrinsic_method(self, inst_ctor, "fromEpochNanoseconds", 1, move |rt, args| {
+            // Per spec: argument must already be BigInt (no Number coercion).
+            let v = args.first().cloned().unwrap_or(Value::Undefined);
+            match v {
+                Value::BigInt(_) => make_instant(rt, proto_for_static, v),
+                _ => Err(RuntimeError::TypeError(
+                    "Temporal.Instant.fromEpochNanoseconds: argument must be a BigInt".into()
+                )),
+            }
+        });
+        register_intrinsic_method(self, inst_ctor, "compare", 2, move |rt, args| {
+            fn extract_ns(rt: &mut Runtime, v: Value) -> Result<f64, RuntimeError> {
+                if let Value::String(_) = &v {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.Instant.compare: ISO string parsing not yet implemented (Tier-L stub)".into()
+                    ));
+                }
+                let id = match v {
+                    Value::Object(o) => o,
+                    _ => return Err(RuntimeError::TypeError(
+                        "Temporal.Instant.compare: argument must be Instant or string".into()
+                    )),
+                };
+                match rt.object_get(id, "__ti_ns") {
+                    Value::BigInt(b) => Ok(b.to_f64()),
+                    _ => Err(RuntimeError::TypeError(
+                        "Temporal.Instant.compare: argument is not a Temporal.Instant".into()
+                    )),
+                }
+            }
+            let a = extract_ns(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
+            let b = extract_ns(rt, args.get(1).cloned().unwrap_or(Value::Undefined))?;
+            Ok(Value::Number(if a < b { -1.0 } else if a > b { 1.0 } else { 0.0 }))
+        });
         self.obj_mut(temporal)
             .set_own_internal("Instant".into(), Value::Object(inst_ctor));
         self.globals.insert("Temporal".into(), Value::Object(temporal));
