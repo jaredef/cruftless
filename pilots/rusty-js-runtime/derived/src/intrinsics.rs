@@ -2309,8 +2309,8 @@ impl Runtime {
         // so `Temporal.PlainDate` etc. is defined and `instanceof` checks
         // do not crash. Real prototype + ctor land in per-class sub-locales.
         // Stubs for classes whose per-class rung hasn't landed yet.
-        // Duration is REAL (installed below); others remain stubs.
-        for class_name in &["Instant", "PlainDate", "PlainTime", "PlainDateTime",
+        // Duration + Instant are REAL (installed below); others remain stubs.
+        for class_name in &["PlainDate", "PlainTime", "PlainDateTime",
                             "PlainMonthDay", "PlainYearMonth",
                             "ZonedDateTime"] {
             let stub = self.alloc_object(Object::new_ordinary());
@@ -2752,6 +2752,115 @@ impl Runtime {
         // Overwrite the Duration stub on the Temporal namespace with the real ctor.
         self.obj_mut(temporal)
             .set_own_internal("Duration".into(), Value::Object(dur_ctor));
+        // TInst-EXT 1 (instant-ctor-fields): Temporal.Instant class.
+        // Stores epochNanoseconds as a BigInt sentinel __ti_ns.
+        // Spec range: |ns| <= 8.64e21 (about ±271,821 years from epoch).
+        let inst_proto = self.alloc_object(Object::new_ordinary());
+        // epochNanoseconds accessor — returns the BigInt sentinel directly.
+        {
+            let getter = make_native_non_ctor("get epochNanoseconds", 0, |rt, _args| {
+                let id = match rt.current_this() {
+                    Value::Object(o) => o,
+                    _ => return Err(RuntimeError::TypeError(
+                        "Temporal.Instant.prototype.epochNanoseconds: this is not an object".into()
+                    )),
+                };
+                match rt.object_get(id, "__ti_ns") {
+                    Value::Undefined => Err(RuntimeError::TypeError(
+                        "Temporal.Instant.prototype.epochNanoseconds: this is not a Temporal.Instant".into()
+                    )),
+                    v => Ok(v),
+                }
+            });
+            let getter_id = self.alloc_object(getter);
+            self.obj_mut(inst_proto).dict_mut().insert(
+                "epochNanoseconds".into(),
+                PropertyDescriptor {
+                    value: Value::Undefined, writable: false,
+                    enumerable: false, configurable: true,
+                    getter: Some(Value::Object(getter_id)), setter: None,
+                },
+            );
+        }
+        // epochMilliseconds accessor — derives from __ti_ns by floor-div 1_000_000.
+        {
+            let getter = make_native_non_ctor("get epochMilliseconds", 0, |rt, _args| {
+                let id = match rt.current_this() {
+                    Value::Object(o) => o,
+                    _ => return Err(RuntimeError::TypeError(
+                        "Temporal.Instant.prototype.epochMilliseconds: this is not an object".into()
+                    )),
+                };
+                let ns = match rt.object_get(id, "__ti_ns") {
+                    Value::BigInt(b) => b,
+                    _ => return Err(RuntimeError::TypeError(
+                        "Temporal.Instant.prototype.epochMilliseconds: this is not a Temporal.Instant".into()
+                    )),
+                };
+                // Per spec: floor(ns / 10^6). Use the BigInt's to_decimal +
+                // f64 conversion: divide by 1e6 then floor.
+                // Simpler: convert BigInt to f64 (lossy for very large but
+                // adequate for v1; spec also has fixed range).
+                let ns_f = ns.to_f64();
+                Ok(Value::Number((ns_f / 1_000_000.0).floor()))
+            });
+            let getter_id = self.alloc_object(getter);
+            self.obj_mut(inst_proto).dict_mut().insert(
+                "epochMilliseconds".into(),
+                PropertyDescriptor {
+                    value: Value::Undefined, writable: false,
+                    enumerable: false, configurable: true,
+                    getter: Some(Value::Object(getter_id)), setter: None,
+                },
+            );
+        }
+        // valueOf throws TypeError per spec (Instant is not orderable via valueOf).
+        register_intrinsic_method(self, inst_proto, "valueOf", 0, |_rt, _args| {
+            Err(RuntimeError::TypeError(
+                "Temporal.Instant valueOf cannot be used; use compare() or equals()".into()
+            ))
+        });
+        self.obj_mut(inst_proto).set_own_frozen(
+            "@@toStringTag".into(),
+            Value::String(Rc::new("Temporal.Instant".into())),
+        );
+        let inst_proto_for_ctor = inst_proto;
+        // Spec range as a decimal-string for comparison via BigInt.
+        let inst_ctor_obj = make_native_with_length("Instant", 1, move |rt, args| {
+            if rt.current_new_target.is_none() {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.Instant constructor cannot be called as a function".into()
+                ));
+            }
+            let arg = args.first().cloned().unwrap_or(Value::Undefined);
+            // ToBigInt — handles BigInt, bool, string (SyntaxError on bad string).
+            let ns = match crate::abstract_ops::to_bigint(rt, &arg)? {
+                Value::BigInt(b) => b,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.Instant: argument must be a BigInt".into()
+                )),
+            };
+            // Range check: |ns| <= 8.64e21. Use the BigInt's f64 conversion
+            // for the bounds test; range is well within f64 precision.
+            let ns_f = ns.to_f64();
+            if !ns_f.is_finite() || ns_f.abs() > 8.64e21 {
+                return Err(RuntimeError::RangeError(
+                    "Temporal.Instant: epochNanoseconds out of range (|ns| > 8.64e21)".into()
+                ));
+            }
+            let mut o = Object::new_ordinary();
+            o.proto = Some(inst_proto_for_ctor);
+            let id = rt.alloc_object(o);
+            rt.set_engine_sentinel(id, "__ti_ns", Value::BigInt(ns));
+            Ok(Value::Object(id))
+        });
+        let inst_ctor = self.alloc_object(inst_ctor_obj);
+        self.obj_mut(inst_proto)
+            .set_own_internal("constructor".into(), Value::Object(inst_ctor));
+        self.obj_mut(inst_ctor)
+            .set_own_frozen("prototype".into(), Value::Object(inst_proto));
+        self.obj_mut(temporal)
+            .set_own_internal("Instant".into(), Value::Object(inst_ctor));
         self.globals.insert("Temporal".into(), Value::Object(temporal));
     }
 

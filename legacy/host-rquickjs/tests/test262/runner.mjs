@@ -132,6 +132,22 @@ function runOne(path) {
       '/Temporal/Duration/compare/',
       // DWith-EXT 1: duration-with (with method)
       '/Temporal/Duration/prototype/with/',
+      // TInst-EXT 1: instant-ctor-fields
+      '/Temporal/Instant/constructor.js',
+      '/Temporal/Instant/name.js',
+      '/Temporal/Instant/length.js',
+      '/Temporal/Instant/basic.js',
+      '/Temporal/Instant/builtin.js',
+      '/Temporal/Instant/prop-desc.js',
+      '/Temporal/Instant/argument.js',
+      '/Temporal/Instant/large-bigint.js',
+      '/Temporal/Instant/limits.js',
+      '/Temporal/Instant/prototype/epochNanoseconds/',
+      '/Temporal/Instant/prototype/epochMilliseconds/',
+      '/Temporal/Instant/prototype/valueOf/',
+      '/Temporal/Instant/prototype/constructor.js',
+      '/Temporal/Instant/prototype/prop-desc.js',
+      '/Temporal/Instant/prototype/toStringTag/',
       // Foundation tests that pass without per-class implementation.
       '/Temporal/getOwnPropertyNames.js',
       '/Temporal/keys.js',
