@@ -1,10 +1,10 @@
 {
   "generated_by": "apparatus/locales/discover.sh",
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
-  "locale_root": "/home/jaredef/Developer/cruftless/pilots",
+  "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 95,
-    "top_level": 83,
+    "locales": 96,
+    "top_level": 84,
     "nested": 12,
     "warnings": 0
   },
@@ -694,6 +694,15 @@
       "status": "**CLOSED at SPTW-EXT 1**."
     },
     {
+      "coord": "temporal-availability",
+      "tag": "L.temporal-availability",
+      "parent": null,
+      "scope": "temporal-availability",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
+    },
+    {
       "coord": "test262-categorize",
       "tag": "L.test262-categorize",
       "parent": null,
@@ -708,7 +717,7 @@
       "parent": "L.test262-categorize",
       "scope": "full-suite",
       "depth": 2,
-      "rung_count": 2,
+      "rung_count": 5,
       "status": "founded 2026-05-25 as the full-suite interpretation apparatus for the upstream 53,289-path Test262 run."
     },
     {
