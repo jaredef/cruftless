@@ -3334,6 +3334,86 @@ impl Runtime {
                 "Temporal.PlainTime valueOf cannot be used; use compare() or equals()".into()
             ))
         });
+        // PTW-EXT 1 (plain-time-with): with(durationLike) overrides any
+        // provided unit fields, keeps the rest. Sibling shape to DWith.
+        let pt_proto_for_with = pt_proto;
+        register_intrinsic_method(self, pt_proto, "with", 1, move |rt, args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainTime.prototype.with: this is not an object".into()
+                )),
+            };
+            // Brand-check: __pt_hour sentinel.
+            if matches!(rt.object_get(id, "__pt_hour"), Value::Undefined) {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.PlainTime.prototype.with: this is not a Temporal.PlainTime".into()
+                ));
+            }
+            let arg = args.first().cloned().unwrap_or(Value::Undefined);
+            let arg_id = match arg {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainTime.prototype.with: argument must be an object".into()
+                )),
+            };
+            let unit_names = ["hour", "minute", "second", "millisecond",
+                              "microsecond", "nanosecond"];
+            let unit_maxes = [23i64, 59, 59, 999, 999, 999];
+            // Read current values.
+            let mut units = [0i64; 6];
+            for (i, u) in unit_names.iter().enumerate() {
+                let key = format!("__pt_{}", u);
+                if let Value::Number(n) = rt.object_get(id, &key) {
+                    units[i] = n as i64;
+                }
+            }
+            // Override with provided values. At-least-one required;
+            // Temporal-class instances (PlainTime, etc.) and Calendar/
+            // TimeZone references are rejected per spec.
+            // Reject if arg is itself a Temporal object via __pt_/__td_/__ti_
+            // sentinel presence (spec's IsValidEpochNanoseconds etc.).
+            for marker in &["__pt_hour", "__td_years", "__ti_ns"] {
+                if !matches!(rt.object_get(arg_id, marker), Value::Undefined) {
+                    return Err(RuntimeError::TypeError(format!(
+                        "Temporal.PlainTime.prototype.with: argument cannot be a Temporal {} instance",
+                        marker.trim_start_matches("__").split('_').next().unwrap_or("")
+                    )));
+                }
+            }
+            let mut has_any = false;
+            for (i, u) in unit_names.iter().enumerate() {
+                let v = rt.object_get(arg_id, u);
+                if matches!(v, Value::Undefined) { continue; }
+                has_any = true;
+                let n = crate::abstract_ops::to_number(&v);
+                if !n.is_finite() || n != n.trunc() {
+                    return Err(RuntimeError::RangeError(format!(
+                        "Temporal.PlainTime.prototype.with: {} must be integer", u
+                    )));
+                }
+                let ni = n as i64;
+                if ni < 0 || ni > unit_maxes[i] {
+                    return Err(RuntimeError::RangeError(format!(
+                        "Temporal.PlainTime.prototype.with: {} {} out of range", u, ni
+                    )));
+                }
+                units[i] = ni;
+            }
+            if !has_any {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.PlainTime.prototype.with: argument must have at least one time unit property".into()
+                ));
+            }
+            let mut o = Object::new_ordinary();
+            o.proto = Some(pt_proto_for_with);
+            let new_id = rt.alloc_object(o);
+            for (i, u) in unit_names.iter().enumerate() {
+                let key = format!("__pt_{}", u);
+                rt.set_engine_sentinel(new_id, &key, Value::Number(units[i] as f64));
+            }
+            Ok(Value::Object(new_id))
+        });
         self.obj_mut(pt_proto).dict_mut().insert(
             "@@toStringTag".into(),
             PropertyDescriptor {

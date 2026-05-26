@@ -174,6 +174,8 @@ function runOne(path) {
       // PTS-EXT 1: plain-time-static (from / compare)
       '/Temporal/PlainTime/from/',
       '/Temporal/PlainTime/compare/',
+      // PTW-EXT 1: plain-time-with
+      '/Temporal/PlainTime/prototype/with/',
       // Foundation tests that pass without per-class implementation.
       '/Temporal/getOwnPropertyNames.js',
       '/Temporal/keys.js',
