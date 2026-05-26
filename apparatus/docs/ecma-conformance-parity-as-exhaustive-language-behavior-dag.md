@@ -217,6 +217,42 @@ The cruft lexer carries this discipline as `LexerGoal::{InputElementDiv, InputEl
 
 A coordinate at the lexical-grammar tier is apparatus-complete when it identifies (a) which goal-symbol is in scope for the production, (b) which token-form decision the substrate must make, (c) whether the parser-side goal-symbol-selection rule is correctly conditioned on the relevant syntactic context. Today's session has touched two such coordinates: ALTA-EXT 1 (NoLineTerminator before `=>` — token-tier flag consumption at the parser tier) and prior arc work on had-escape preservation (`pilots/parser-permissiveness/` — A3 axis was the explicit token-tier obligation). Both should be re-read against this coordinate class now that it has a name.
 
+#### XI.1.a Empirical close — the LGSS locale
+
+The first locale spawned under the new coordinate class is `pilots/lexer-goal-symbol-selection/` (LGSS), closed 2026-05-25 in three rungs. Its empirical evidence refines this section.
+
+**What LGSS established.** The back-edge resolution discipline articulated above (goal-as-directive-parameter, lexer never reaches into parser state, per-call stage-determinism) is sound but the implicit constraint it names — *goal-symbol selection is a function of the prior token's expression-completion status (plus template-substitution context)* — was distributed across the cruft parser as scattered ad-hoc carriers before LGSS landed:
+
+- 1 inline `if token_completes_expression(...) { Div } else { RegExp }` derivation in `bump_regexp`.
+- 2 explicit `LexerGoal` parameters at parser-tier method signatures (`rewind_lexer_to(pos, goal)`, `refetch_lookahead_with_goal(goal)`).
+- 2 `LexerGoal::X` literal mentions at downstream-tier call sites (`stmt.rs:1251`, `expr.rs:1583`).
+
+After LGSS-EXT 1+2 the same constraint is consolidated to:
+
+- 1 named predicate (`derive_lex_goal_after`) — the canonical site for the Div/RegExp decision; §12.9.5 made executable.
+- 1 named parser-state field (`Parser::current_lex_goal`) carrying the per-bump invariant.
+- 1 named per-bump hook (inline tail of `bump_regexp`) maintaining the invariant.
+- 2 intent-named methods (`enter_template_tail`, `rewind_lexer_to`) for the irreducible carriers (see §XI.1.b).
+- 0 external (non-parser-crate) `LexerGoal` literal mentions.
+
+**LoC accounting.** Net executable-code delta across the three rungs: **+4 LOC**. The grow is the cost of naming the implicit constraint (the new predicate, field, and hook each cost their bytes); it is offset against the 2 deleted call-site mentions, the 2 deleted method-signature parameters, and the 1 deleted inline derivation. The full doc-and-comment delta is +46 lines (doc-comments on the new field, the new predicate, and the two intent-named methods explaining the §XI.1 carrier discipline).
+
+What was *eliminated from the DAG* is not raw LoC; it is **surface contamination**. Before LGSS, the source-to-tokens → tokens-to-AST tier boundary leaked `LexerGoal` into stmt.rs and expr.rs (downstream tiers); the goal-symbol-selection discipline existed at the wrong tier. After LGSS, the goal-symbol-selection lives entirely inside the parser crate, with the lexer holding the directive-parameter contract and the parser owning every consumer. Two tiers of the DAG (tokens-to-AST and downstream) became goal-symbol-agnostic. The lexer↔parser feedback edge is now confined to the resolver-instance boundary the §XI.1 articulation says it should live at.
+
+#### XI.1.b Irreducible carriers within tokenization-coordinate scope
+
+LGSS-EXT 3 documented two carriers that cannot be reduced further within the lexical-grammar coordinate class:
+
+1. **`enter_template_tail`** — the template-substitution-close re-lex. cruft's lexer emits Template{Middle/Tail} *starting at the `}` byte itself*; the `}` is the leading delimiter of the next template part, not its predecessor. The only correct sequence is **re-lex at the same byte position** under TemplateTail goal. This is structurally distinct from bump's forward fetch and cannot be folded into a per-bump hook without restructuring lexer byte-boundaries (deep lexer change affecting raw/cooked-string semantics) or introducing a pre-bump hook (parser-machinery change). Both are outside tokenization-coordinate scope.
+
+2. **`rewind_lexer_to`** — the for-head bare-identifier fast-path bail. With cruft's single-token lookahead, the parser must commit to bumping an identifier before it can see whether `in`/`of` follows; if not, the rewind is the recovery. Eliminating the rewind requires either two-token lookahead (architectural) or threading the spec's `[+In]` grammar parameter through the precedence climber (§13.7.5 ForStatement; eliminates the need for the fast-path entirely because `parse_expression` under `[+In]` would refuse `id in obj` as a RelationalExpression in for-head LHS position). The `[+In]` move is the spec-aligned alternative and is a candidate locale of its own.
+
+Both carriers are intent-named (the method name expresses the parser-tier purpose) and parser-internal (no downstream tier sees `LexerGoal`). They are the minimum the lexer↔parser back-edge reduces to under cruft's current parser architecture. The apparatus marks them as **bounded structural exceptions**, distinct from the unbounded ad-hoc goal-passing the original §XI.1 articulation guarded against. Future architectural work (lexer byte-boundary restructure; `[+In]` threading) could collapse one or both; until then, naming them explicitly preserves the §XIII discipline (no closure without a named coordinate).
+
+**Spinoff locale candidate**: `parser-precedence-in-flag` — implement `[+In]`/`[-In]` threading through the precedence climber. Would eliminate the `rewind_lexer_to` carrier; lives outside LGSS scope. CANDIDATES queue.
+
+**Standing finding (LGSS.5)**: locale boundaries are themselves coordinates. When remaining carriers are blocked by orthogonal substrate constraints, the honest closure documents the obstructions and surfaces the spinoff locale candidates that would address them. The rule-11 pre-spawn check should include *"what carries the locale's scope, what borders sit on other locales' scopes"* alongside the existing 5 axes.
+
 ## XII. How this guides standards implementation
 
 Once the basis is empirically closed, semantically corresponded, and computably traversable, the DAG becomes a guide for implementing new ECMA standards.
