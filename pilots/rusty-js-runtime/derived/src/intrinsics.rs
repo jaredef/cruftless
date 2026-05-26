@@ -2490,6 +2490,49 @@ impl Runtime {
             for u in units.iter_mut() { *u = u.abs(); }
             Ok(make_duration(rt, proto_for_derived, units))
         });
+        // DWith-EXT 1 (duration-with): with(durationLike) returns a new
+        // Duration where unit-name keys in durationLike OVERRIDE the
+        // existing units. Primitives / non-objects throw TypeError; an
+        // object with no recognized unit-name keys throws TypeError.
+        register_intrinsic_method(self, dur_proto, "with", 1, move |rt, args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.Duration.prototype.with: this is not an object".into()
+                )),
+            };
+            let mut units = read_units(rt, id)?;
+            // Argument must be an Object (not undefined / null / primitive).
+            let arg = args.first().cloned().unwrap_or(Value::Undefined);
+            let arg_id = match arg {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.Duration.prototype.with: argument must be an object".into()
+                )),
+            };
+            let units_names = ["years", "months", "weeks", "days", "hours",
+                               "minutes", "seconds", "milliseconds",
+                               "microseconds", "nanoseconds"];
+            let mut has_any = false;
+            for (i, u) in units_names.iter().enumerate() {
+                let v = rt.object_get(arg_id, u);
+                if matches!(v, Value::Undefined) { continue; }
+                has_any = true;
+                let n = crate::abstract_ops::to_number(&v);
+                if !n.is_finite() || n != n.trunc() {
+                    return Err(RuntimeError::RangeError(format!(
+                        "Temporal.Duration.prototype.with: {} must be a finite integer", u
+                    )));
+                }
+                units[i] = if n == 0.0 { 0.0 } else { n };
+            }
+            if !has_any {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.Duration.prototype.with: argument must have at least one unit property".into()
+                ));
+            }
+            Ok(make_duration(rt, proto_for_derived, units))
+        });
         // negated() method: new Duration with -unit for each.
         register_intrinsic_method(self, dur_proto, "negated", 0, move |rt, _args| {
             let id = match rt.current_this() {
