@@ -69,3 +69,7 @@ All four hold. Expect 1-round closure.
 ## Resume protocol
 
 Read `trajectory.md` tail.
+
+## Status
+
+TECR-EXT 1 CLOSED (lex/syntax split). TECR-EXT 2 CLOSED 2026-05-26 — added `availability/missing-runtime-feature` and lifted the missing-X-feature family above the generic assertion-text catch-all. Family is now complete against the §VI source-text pipeline: lex (61) + syntax (1015) + lowering (115) + runtime (10) = 1201 properly tier'd records. ~571 records reclaimed from `value-semantics/wrong-result` catch-all by the lift.

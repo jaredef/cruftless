@@ -376,6 +376,26 @@ fn projection_axis(rel: &str, reason: &str, surface: &str) -> String {
     } else if rel.starts_with("language/") && (r.contains("syntaxerror") || rel.contains("invalid"))
     {
         "parser-form/early-error".into()
+    // TECR-EXT 2: lift the missing-X-feature family above the generic
+    // assertion-text matching below. cruft self-tags these reasons
+    // (`parse: lex error:`, `parse:`, `compile:`, `not yet supported`,
+    // `not implemented`, `(stub)`, `webassembly`) — they are unambiguous
+    // tier discriminators that must beat the catch-all `r.contains("expected")`
+    // value-semantics rule that otherwise siphons records like
+    // "bangla is not yet supported ... Expected a RangeError" away from
+    // the runtime-tier coordinate they belong to.
+    } else if r.starts_with("parse: lex error:") {
+        "availability/missing-lex-feature".into()
+    } else if r.starts_with("parse: ") || r.contains("parse error") {
+        "availability/missing-syntax-feature".into()
+    } else if r.starts_with("compile: ") {
+        "availability/missing-lowering-feature".into()
+    } else if r.contains("not yet supported")
+        || r.contains("not implemented")
+        || r.contains("(stub)")
+        || r.contains("webassembly")
+    {
+        "availability/missing-runtime-feature".into()
     } else if r.contains("expected") && r.contains("thrown") {
         "abrupt-completion/throw-missing".into()
     } else if r.contains("wrong error")
@@ -402,32 +422,6 @@ fn projection_axis(rel: &str, reason: &str, surface: &str) -> String {
         "realm-prototype/prototype-chain".into()
     } else if r.contains("samevalue") || r.contains("expected") {
         "value-semantics/wrong-result".into()
-    // TECR-EXT 1: split cruft parser failures into lex-tier vs syntax-
-    // tier sub-classes. cruft's lexer prefixes its errors with
-    // "parse: lex error:" (e.g., "parse: lex error: unterminated regex
-    // (UnterminatedRegex)") — those are the lex-tier feature gaps.
-    // Other "parse: ..." reasons are syntactic-grammar feature gaps
-    // (unexpected token, expected X, HoistableDeclaration-as-Stmt, etc.).
-    // Per the apparatus §XI Lexical-grammar coordinate class + the
-    // tokenization-above-IR brief, these need separable coordinates so
-    // substrate locales targeting one tier don't confound work on the
-    // other. PCR-EXT 1's original `missing-parser-feature` is renamed
-    // to `missing-syntax-feature` to make the symmetry explicit with
-    // PCR-EXT 2's `missing-lowering-feature`.
-    } else if r.starts_with("parse: lex error:") {
-        "availability/missing-lex-feature".into()
-    } else if r.starts_with("parse: ") || r.contains("parse error") {
-        "availability/missing-syntax-feature".into()
-    // PCR-EXT 2: cruft bytecode-compiler failures on test source.
-    // `compile: ...` reasons (and "not yet supported" / "not implemented")
-    // are cruft's compile-tier feature gaps — sibling to the parser-tier
-    // gaps above. Route to availability/missing-lowering-feature so
-    // substrate work targets the compiler/lowering tier.
-    } else if r.starts_with("compile: ")
-        || r.contains("not yet supported")
-        || r.contains("not implemented")
-    {
-        "availability/missing-lowering-feature".into()
     // PCR-EXT 1+2: cruft runtime errors of "Cannot read/index property"
     // shape — missing-internal-slot or missing-method-access patterns.
     } else if r.contains("cannot read property") || r.contains("cannot index") {
