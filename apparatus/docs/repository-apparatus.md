@@ -250,13 +250,14 @@ pilots/
 
 36 locales as of 2026-05-24 (25 top-level, 11 nested) — see `apparatus/locales/manifest.json` for the authoritative list.
 
-### Locale spawn protocol (per Doc 737 + standing rule 11)
+### Locale spawn protocol (per Doc 737 + standing rules 11 + 23)
 
 1. Confirm the workstream's multi-rung shape (Doc 737 §II promotion threshold).
 2. Run rule 11's 5-axis pre-spawn coverage check (A1 component A/B is load-bearing).
 3. Create `pilots/<name>/seed.md` with telos / constraints / falsifiers / methodology / carve-outs / composes-with.
 4. Run `apparatus/locales/discover.sh`; commit the refreshed manifest in the same change as the seed.
-5. Begin substrate work at round EXT 0 (founding) → EXT 1 (first substrate move) → EXT N (close).
+5. **EXT 0 baseline-inspection rung (standing rule 23, locale-as-probe discipline)**: at founding, before declaring the substrate move-shape, MEASURE the locale's failure-shape against current cruft + INSPECT a sample of failures to verify the substrate move actually lives at the declared coordinate. If baseline-inspection reveals the move-shape is at a DIFFERENT coordinate than the seed initially declared, treat the locale as a probe that surfaced the real target — apply R13 prospective C1-C4 to the surfaced target and land it as the substrate move (the original locale becomes the validating test surface for the surfaced move).
+6. Begin substrate work at round EXT 1 (first substrate move; may be at the surfaced coordinate per step 5) → EXT N (close).
 
 ### Locale resume protocol
 

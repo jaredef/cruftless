@@ -1151,3 +1151,54 @@ Total: **42 findings** (6 original + 36 new across 13 addenda); **22 standing ru
 - T262C.4 / T262C.5 / T262C.6 + EPSUA.6 / EPSUA.7 cluster: candidate for a single corpus doc on "shared-upstream vs mutually-exclusive cluster discriminator + per-reason-pattern segmentation as projection unit." Already drafted at docs/engagement/prospective/test262-long-tail-shared-vs-mutually-exclusive.md.
 - RS.1+RS.2 + CP.4 cluster: already published as Doc 736 Appendix A (the two-pillar amendment).
 - SPTW.2 + NACR.1: substrate-discipline-coherence pattern; candidate for a corpus doc on discipline-drift detection via cross-module reason-shape coherence.
+
+---
+
+## Addendum XIV — locale-as-probe discipline (2026-05-25; post NLC founding)
+
+**Trigger**: NLC (numeric-literal-conformance) was spawned 2026-05-25 per LPA-EXT 3 + the tokenization-above-IR brief, with all 5 cluster-coherence-multiplier conditions held at founding (single spec rule §12.8, 157-fixture cross-product pool, lex-tier one-site implementation, lex-tier static-semantics, matrix-driven). Baseline-inspection at founding revealed that ~40 of the 53 failures trace to an engagement-wide eval-error-class wrapping issue at the RUNTIME tier, NOT a numeric-literal lex-tier issue: cruft's eval throws a String (the CompileError text) for parse-tier failures rather than a SyntaxError instance, and test262's `thrown.constructor.name` check fails accordingly. Per keeper directive 2026-05-25 (Telegram 9822), the standing recommendation from Finding NLC.1 is promoted to apparatus-tier as Rule 23.
+
+### New finding NLC.0 (engagement-wide eval-error-class wrapping)
+
+cruft's evaluation pathway throws a String (the CompileError text) for parse-tier failures, not a SyntaxError-class object. The test262 runner at `legacy/host-rquickjs/tests/test262/runner.mjs:103` does `thrownName = thrown.constructor.name` — for cruft's String-typed CompileError this evaluates to `"String"`. Every `negative: phase: parse, type: SyntaxError` test262 test that cruft's parser correctly rejects currently fails with the same shape (`"expected SyntaxError, got String"`) regardless of substrate area. Substrate fix is at the runtime eval-error wrapping layer; reach is engagement-wide. The numeric-literal locale was the probe that surfaced it; the substrate move target is the runtime tier.
+
+### New finding NLC.1 (locale-as-probe pattern — the empirical anchor for Rule 23)
+
+When a locale spawned at coordinate X reveals via baseline-inspection that the move-shape is at coordinate Y, the right discipline is to land the Y move first (per R13 prospective if its C1-C4 hold at Y) and treat X as the test surface that validates Y. Spawning the locale IS the probe; the target may be elsewhere. Empirical surface: NLC's 157-fixture pool became the test surface for the engagement-wide eval-error-class wrapping fix; landing that fix yields across not just NLC but every negative-parse-test surface in the engagement.
+
+### New standing rule 23 — Founding baseline-inspection rung (locale-as-probe discipline)
+
+**Statement**: at EXT 0 founding, before declaring the substrate move-shape, MEASURE the locale's failure-shape against current cruft + INSPECT a sample of failures to verify the substrate move actually lives at the declared coordinate. If baseline-inspection reveals the move-shape is at a DIFFERENT coordinate, treat the locale as a probe that surfaced the real target — land the surfaced-coordinate move first, treat the spawned locale's pool as the validating test surface.
+
+**Predicts**: locales that skip baseline-inspection at founding and proceed directly to substrate work at the seed-declared coordinate will produce one of:
+- (a) Successful close at the declared coordinate (the cluster-coherence multiplier delivered as predicted) — no rule-23 trigger.
+- (b) Successful close at the declared coordinate but with a finding that an ADJACENT engagement-wide move would have closed more — the rule-23 trigger surfaced post-hoc rather than at founding.
+- (c) Unsuccessful close because substrate work at the declared coordinate doesn't address the actual mechanism — the rule-23 trigger surfaced via failed substrate work rather than baseline inspection.
+
+Rule 23 favors case (a) when applicable and surfaces (b)/(c) at founding rather than post-hoc, preventing wasted substrate cycles. Cost: baseline-inspection takes ~5-10 minutes per locale; yield: catches case (b)/(c) at founding instead of after substrate work landed.
+
+**Evidence**: NLC-EXT 0 founding 2026-05-25 — baseline 104/157 + ~10-minute inspection of 20 fails surfaced the eval-error-class root cause; cluster-coherence multiplier's 5 conditions all held at the locale's seed coordinate but the load-bearing substrate move was at a different coordinate. Rule 23 codifies the discipline that caught this; future locales' founding follows the same protocol.
+
+**Operational integration**: repository-apparatus.md §IV.Locale-spawn-protocol step 5 (added 2026-05-25 same commit) names this rung as the baseline-inspection step inserted between seed-creation and EXT 1 substrate work.
+
+**Composes with**:
+- Rule 11 (5-axis pre-spawn) — rule 11 is BEFORE-spawn (where to spawn); rule 23 is AT-spawn (verify the spawned coordinate is the substrate target).
+- Rule 13 prospective application — when rule 23 surfaces a different coordinate, R13's C1-C4 check is run against the surfaced coordinate.
+- Heuristics §V row-coherence protocol — the baseline-inspection IS row-coherence applied at founding (inspect 5+ records for shared mechanism before claiming the coordinate is the target).
+- Doc 711 dyadic-ascent — the locale-as-probe pattern is the dyadic check applied to a single locale: the rung-2 (audit) checks the rung-1 (substrate) claim at founding.
+
+**Status as of this addendum**: 22 → **23 standing rules**; 42 → **44 findings** (NLC.0 + NLC.1 added).
+
+---
+
+### Findings-doc cumulative status (post-Addendum XIV)
+
+After Addendum XIV:
+- All prior addenda preserved.
+- **Addendum XIV (this)**: 2 new findings (NLC.0, NLC.1) + 1 new standing rule (#23 founding-baseline-inspection-rung; locale-as-probe).
+- Operational integration in `apparatus/docs/repository-apparatus.md` §IV.spawn-protocol step 5.
+
+Total: **44 findings**; **23 standing rules**.
+
+**Corpus publication candidates from this addendum**:
+- NLC.1 + Rule 23 (locale-as-probe discipline) is a candidate for a corpus articulation on "spawning the locale IS the probe" — extends Doc 581's resume-vector discipline with the founding-tier probe-then-decide protocol. Pending keeper review.

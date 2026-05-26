@@ -1,12 +1,12 @@
 # Cruftless Predictive Ruleset
 
-This document consolidates the engagement's 15 standing rules into a single predictive reference. Each rule is presented as a falsifiable PREDICTION about what will happen when it is (or is not) followed, with a pointer to the empirical evidence supporting the prediction in the engagement record.
+This document consolidates the engagement's standing rules into a single predictive reference. Each rule is presented as a falsifiable PREDICTION about what will happen when it is (or is not) followed, with a pointer to the empirical evidence supporting the prediction in the engagement record.
 
 The ruleset compounds: rules higher-numbered build on prior rules + their predictions condition each other. The compounding is itself a load-bearing structural claim — see Doc 541 Appendix E (SIPE-T scale-invariance) and Doc 742 (resolver-instance boundary contract).
 
-**Authoritative source**: `pilots/rusty-js-jit/findings.md` (15 rules across 10 addenda, append-only per Doc 727 §X). This doc is a derived consolidated view; on disagreement, findings.md is canonical.
+**Authoritative source**: `pilots/rusty-js-jit/findings.md` (23 rules across 14 addenda, append-only per Doc 727 §X). This doc is a derived consolidated view; on disagreement, findings.md is canonical.
 
-**Status as of 2026-05-24**: 15 rules; rule 11 multi-axis (5 coverage axes); rules 12-15 from the 2026-05-24 sessions (IHI/GPI/IPBR cascade + TS-parity arc).
+**Status as of 2026-05-25**: **23 rules in findings.md; rules 1-15 + 23 articulated in this doc**. Rules 16-22 (Addenda XII + XIII) are in findings.md but not yet folded into this consolidated view; a full re-consolidation pass remains open work. Rule 23 (founding-baseline-inspection / locale-as-probe) was promoted at keeper directive 2026-05-25 from Finding NLC.1 (tokenization-above-IR arc).
 
 ---
 
@@ -172,6 +172,20 @@ The ruleset compounds: rules higher-numbered build on prior rules + their predic
 
 ---
 
+## Rule 23 — Founding baseline-inspection rung (locale-as-probe discipline)
+
+**Statement**: at EXT 0 founding, before declaring the substrate move-shape, MEASURE the locale's failure-shape against current cruft + INSPECT a sample of failures to verify the substrate move actually lives at the seed-declared coordinate. If baseline-inspection reveals the move-shape is at a DIFFERENT coordinate, treat the locale as a probe that surfaced the real target — land the surfaced-coordinate move first; treat the spawned locale's pool as the validating test surface.
+
+**Predicts**: locales that skip baseline-inspection at founding and proceed directly to substrate work at the seed-declared coordinate will produce wasted cycles in proportion to how often the substrate move actually lives at an adjacent or upstream coordinate. Rule 23 catches such cases at founding (when the inspection cost is ~5-10 minutes) instead of post-hoc (when the wasted-substrate-work cost is hours-to-days).
+
+**Evidence**: NLC-EXT 0 founding 2026-05-25 — baseline 104/157 + ~10-minute inspection of 20 fails surfaced an engagement-wide eval-error-class wrapping root cause; all 5 cluster-coherence-multiplier conditions held at the locale's seed coordinate, but the load-bearing substrate move was at a different (runtime) coordinate. Rule 23 codifies the discipline that caught this; future locales' founding follows the same protocol.
+
+**Composes with**: Rule 11 (5-axis pre-spawn — BEFORE-spawn; rule 23 is AT-spawn); Rule 13 prospective application (when rule 23 surfaces a different coordinate, R13's C1-C4 check runs against the surfaced coordinate); heuristics §V row-coherence (baseline-inspection IS row-coherence applied at founding); Doc 711 dyadic-ascent (locale-as-probe is the rung-2/rung-1 check applied to a single locale at founding).
+
+**Operational integration**: `apparatus/docs/repository-apparatus.md` §IV.Locale-spawn-protocol step 5 (added 2026-05-25 same commit) names this rung as the inspection step inserted between seed-creation and EXT 1 substrate work.
+
+---
+
 ## Standing instruments (rule-supporting apparatus)
 
 The ruleset is supported by standing instruments that rules 5, 10, 11, 14, 15 explicitly invoke:
@@ -207,12 +221,16 @@ Rule 12       bit-pattern scheme discipline
 Rule 13       revert-then-deeper-layer (negative-result discipline)
    ↓
 Rules 14-15   substrate-heuristic discipline (TS-parity arc surfaced)
+   ↓
+Rule 23       founding-baseline-inspection (locale-as-probe; tokenization-above-IR arc surfaced)
 ```
 
 Rules at higher levels compose with prior rules:
 - Rule 5 + Rule 10 — three-probe-levels at default-on; canonical fuzz is the standing instrument for the fuzz probe level.
 - Rule 11 + Rule 13 — A1 (component A/B) identifies the dominator; rule 13's prospective application designs the closure from the deeper layer first when C1-C4 hold (see `apparatus/docs/standing-rule-13-prospective-application.md`).
 - Rule 14 + Rule 15 — conservative-strip + chapter-close-inspect together produce the inspect-then-iterate compound-discovery pattern that Doc 541 Appendix E identifies as a SIPE-T instance.
+- Rule 11 + Rule 23 — rule 11 is BEFORE-spawn (where to spawn); rule 23 is AT-spawn (verify the spawned coordinate is the substrate target). Together they bracket the spawn moment with a pre- and post-check, catching mis-spawns at both ends of the founding boundary.
+- Rule 23 + Rule 15 — both are inspection-based; rule 23 inspects at founding, rule 15 at chapter-close. Together they constitute the "inspect-twice" discipline (founding + closing) that bookends the locale's lifecycle.
 
 ---
 
@@ -233,6 +251,7 @@ What the ruleset, taken together, claims to PREVENT:
 | Substrate-class abandonment after negative | 13 |
 | Silent false-positive substrate regressions | 14 |
 | Premature chapter close | 15 |
+| Wrong-coordinate substrate work (locale at X, move-target at Y) | 23 |
 
 What the ruleset DOES NOT yet cover (open territory for future rules):
 - Cross-substrate-tier dispatch contracts (Doc 742's O1/O2/O3 — corpus-tier articulation, not yet a rule)
@@ -264,4 +283,4 @@ When adding a rule:
 
 ---
 
-*This doc is a consolidated view; `pilots/rusty-js-jit/findings.md` is canonical. Last consolidation: 2026-05-24 post-Addendum X (15 rules, 26 findings, 10 addenda).*
+*This doc is a consolidated view; `pilots/rusty-js-jit/findings.md` is canonical. Last full consolidation: 2026-05-24 post-Addendum X (15 rules). Last partial consolidation: 2026-05-25 post-Addendum XIV adds Rule 23 only; Rules 16-22 (Addenda XII + XIII) await consolidation pass.*
