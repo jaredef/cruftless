@@ -162,6 +162,8 @@ function runOne(path) {
       '/Temporal/Instant/prototype/toString/',
       '/Temporal/Instant/prototype/toJSON/',
       '/Temporal/Instant/prototype/toLocaleString/',
+      // IE-EXT 1: instant-equals
+      '/Temporal/Instant/prototype/equals/',
       // PTCF-EXT 1: plain-time-ctor-fields
       '/Temporal/PlainTime/constructor.js',
       '/Temporal/PlainTime/name.js',

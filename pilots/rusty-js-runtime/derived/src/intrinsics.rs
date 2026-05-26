@@ -3491,6 +3491,45 @@ impl Runtime {
             };
             Ok(Value::String(Rc::new(instant_to_iso_string(rt, id)?)))
         });
+        // IE-EXT 1 (instant-equals): equals(other) returns true iff
+        // epochNanoseconds (BigInt) values are equal. `other` may be an
+        // Instant instance OR an ISO 8601 datetime string.
+        register_intrinsic_method(self, inst_proto, "equals", 1, |rt, args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.Instant.prototype.equals: this is not an object".into()
+                )),
+            };
+            let this_ns = match rt.object_get(id, "__ti_ns") {
+                Value::BigInt(b) => b,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.Instant.prototype.equals: this is not a Temporal.Instant".into()
+                )),
+            };
+            let other = args.first().cloned().unwrap_or(Value::Undefined);
+            let other_ns_f = match other {
+                Value::String(s) => {
+                    let (epoch_sec, frac_ns) = parse_iso_datetime(&s).ok_or_else(|| RuntimeError::RangeError(format!(
+                        "Temporal.Instant.prototype.equals: invalid ISO 8601 datetime: {:?}", s
+                    )))?;
+                    (epoch_sec as f64) * 1e9 + (frac_ns as f64)
+                }
+                Value::Object(o) => {
+                    match rt.object_get(o, "__ti_ns") {
+                        Value::BigInt(b) => b.to_f64(),
+                        _ => return Err(RuntimeError::TypeError(
+                            "Temporal.Instant.prototype.equals: argument is not a Temporal.Instant".into()
+                        )),
+                    }
+                }
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.Instant.prototype.equals: argument must be an Instant or string".into()
+                )),
+            };
+            let this_ns_f = this_ns.to_f64();
+            Ok(Value::Boolean(this_ns_f == other_ns_f))
+        });
         self.obj_mut(temporal)
             .set_own_internal("Instant".into(), Value::Object(inst_ctor));
         // PTCF-EXT 1 (plain-time-ctor-fields): Temporal.PlainTime class.
