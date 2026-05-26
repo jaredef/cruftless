@@ -68,3 +68,38 @@ pilots/locale-positioning-audit/ → pilots/apparatus/locale-positioning-audit/
 **Finding LPA.2 (the 2-tier carve-out is principled, not lazy)**: the sweep preserved two carve-outs that are NOT laziness but apparatus-discipline: `docs/corpus-ref/` is the published-corpus mirror (editing it crosses the apparatus/docs tier-separation that §0 of repository-apparatus.md makes load-bearing); `rusty-js-jit/findings.md` is the canonical append-only ledger (editing prior entries violates Doc 727 §X basin-stability). The audit RECORDS the carve-outs rather than working around them; future readers chasing pre-move paths in those files now have this trajectory as the navigation breadcrumb. Standing recommendation: every audit sweep should produce a per-file disposition (updated / carve-out / protected); silent skipping is incompatible with the audit's claim-coherence telos.
 
 **Status**: LPA-EXT 1 CLOSED. The bilateral-pilot-tier housekeeping is now fully landed (Phase 1 structural move + Phase 2 reference sweep). LPA-EXT 2 (spinoff-chain mapping) and LPA-EXT 3 (positioning-gap detection) remain on the methodology and run on next trigger.
+
+---
+
+## LPA-EXT 2 — spinoff-chain mapping (2026-05-25)
+
+**Trigger**: Keeper directive (Telegram 9808) "continue with ext 2."
+
+**Produced**: `pilots/apparatus/locale-positioning-audit/findings/spinoff-chains.md` — the first chain-map snapshot.
+
+**Survey method**:
+
+1. Grep `pilots/` for explicit markers: "spinoff", "spawned from", "surfaced from", "surfaced by", "opened in response", "nested under", "nested locale".
+2. For each hit, walk the cited parent locale's trajectory tail to confirm the spawn-causation arrow.
+3. Group findings into chain types (3-tier substrate cascade, multi-sibling spawn, parent→nested rung, apparatus-pilot cascade, matrix fan-out, self-reflexive).
+
+**Snapshot at 2026-05-25**: **7 confirmed chains + 1 self-reflexive locale (LPA)**.
+
+| # | Chain | Type | Tier-span |
+|---|---|---|---|
+| 1 | LGSS → PPIF → FHNB | 3-tier substrate cascade | lexer → climber → bytecode/runtime |
+| 2 | TSR → 11 ts-resolve-* siblings | multi-sibling spawn | TSR-tier (single-tier broad fan-out) |
+| 3 | IHI → GPI → IPBR | 3-tier substrate cascade (LeJIT) | interp → bytecode-rewrite (Doc 740/741 instance) |
+| 4 | Shape → CMig (nested) | parent→nested rung | shapes-tier sub-workstream |
+| 5 | TCC → TXC | apparatus-pilot cascade | parse-parity → execute-parity instruments |
+| 6 | PEER → BBND (nested) → corpus-candidate Doc 743 | parent→nested rung→corpus | parser-tier; nested BBND surfaced apparatus-tier corpus draft |
+| 7 | full-suite matrix → top-10 batch | matrix fan-out | one matrix read → 10 coordinate-shaped sibling locales |
+| 8 | LPA → (self-reflexive) | meta-apparatus | no children yet |
+
+**Findings**
+
+**Finding LPA.3 (chain types are not all alike — each predicts different yield shape)**: the audit surfaced six distinct chain shapes across the 8 instances. 3-tier substrate cascades (Chains 1 + 3) produce the strongest amortization-conjecture corroboration — each tier's named constraint enables the next. Multi-sibling spawns (Chain 2) produce the strongest yield-per-spawn-event but no sequential depth. Parent→nested rungs (Chains 4, 6) are R4-disciplined (the parent's scope was correct, the sub-shape just needed its own seed). The audit's value scales with the engagement's chain count; today's 7 confirmed chains suggest the engagement has crossed from "spawn-per-need" into "spawn-via-chain-causation" as the dominant locale-spawn mode. Standing recommendation: tag new locales at spawn time with the chain-type they belong to (or are likely to anchor); this gives future audits a coordinate to read against, rather than re-deriving chain causation from grep.
+
+**Finding LPA.4 (the 7 confirmed chains corroborate the keeper's amortization conjecture engagement-wide, not just at LGSS→PPIF→FHNB)**: the keeper's amortization conjecture (Telegram 9794) was framed in response to LGSS's specific case. The audit shows the pattern was operating ENGAGEMENT-WIDE before LGSS — TSR's 11-sibling cascade, IHI/GPI/IPBR's 3-tier cascade, Shape's parent→nested. The conjecture's empirical track is older + broader than the LGSS→PPIF→FHNB chain implied; LGSS made the pattern legible at the engagement-discipline tier (via Findings + the cluster-coherence-multiplier prospective doc), but the substrate-engineering tier has been operating this way for the entire session arc. Standing recommendation: the prospective Doc 743 (cluster-coherence multiplier) should cite the 7-chain engagement-wide track, not just LGSS, as its empirical anchor. Update pending keeper review.
+
+**Status**: LPA-EXT 2 CLOSED. The spinoff-chains.md is the first standing output of this rung; refreshed opportunistically per the triggers (new spawn, locale close, full-suite re-categorize). LPA-EXT 3 (positioning-gap detection) remains.
