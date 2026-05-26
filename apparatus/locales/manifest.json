@@ -1,10 +1,10 @@
 {
   "generated_by": "apparatus/locales/discover.sh",
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
-  "locale_root": "/home/jaredef/rusty-bun/pilots",
+  "locale_root": "/Users/jaredfoy/Developer/cruftless/pilots",
   "totals": {
-    "locales": 116,
-    "top_level": 95,
+    "locales": 117,
+    "top_level": 96,
     "nested": 21,
     "warnings": 0
   },
@@ -563,6 +563,15 @@
       "tag": "L.regex-engine-substrate",
       "parent": null,
       "scope": "regex-engine-substrate",
+      "depth": 1,
+      "rung_count": 3,
+      "status": null
+    },
+    {
+      "coord": "regexp-conformance",
+      "tag": "L.regexp-conformance",
+      "parent": null,
+      "scope": "regexp-conformance",
       "depth": 1,
       "rung_count": 3,
       "status": null

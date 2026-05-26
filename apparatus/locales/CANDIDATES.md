@@ -109,11 +109,8 @@ Candidates surfaced by the LPA-EXT 3 positioning-gap audit (`pilots/apparatus/lo
 **Methodology**: stratified exemplar suite (100 fixtures by Intl class — Collator, DateTimeFormat, NumberFormat, etc.); subsystem registration MVP; class-by-class implementation.
 **Status**: queued; second of LPA-EXT 3 recommendations.
 
-### (u) `regexp-conformance` — 🟢 RIPE
-**Telos**: cover both regexp-cluster matrix coordinates (rank 19 wrong-result SyntaxError 262 + rank 23 regexp-semantics failure/other 229) as sibling rungs in one locale. Total 491 fails.
-**Anchor**: full-suite matrix ranks 19, 23. Both intrinsic-semantics shape per heuristics §IV.D.
-**Methodology**: stratified exemplar suite across surface families (CharacterClassEscapes, NamedCaptureGroups, lookbehind, etc.); rule-by-rule closure.
-**Status**: queued; third of LPA-EXT 3 recommendations.
+### (u) `regexp-conformance` — **SPAWNED** 2026-05-26 as [`pilots/regexp-conformance/`](../../pilots/regexp-conformance/seed.md)
+**Status**: FOUNDED. Parent locale for the 491-fail regexp matrix cluster; `regex-literal-lexing` is recorded as a possible nested rung pending RC-EXT 0 baseline-inspection.
 
 ### (v) `cruft-parser-feature-gaps` — 🟢 RIPE
 **Telos**: substrate work on cruft's parser to close the unimplemented-syntax cases surfaced by PCR-EXT 1's new `availability/missing-parser-feature` coordinate (~471 fails @ post-PCR rank 11). Per the categorization, reasons of shape `parse: ...` are cruft's parser refusing test source — typically TypeScript generics, decorators, other parser-feature gaps in JavaScript tests that exercise parser edge cases.
@@ -176,12 +173,8 @@ Three-rung methodology (stale-claim sweep, spinoff-chain mapping, positioning-ga
 
 Candidates surfaced by `docs/engagement/tokenization-above-ir-candidate-brief.md` against the test262 lex-tier surface (~802 fixtures across 7 subdirs). Read: lex-tier yield isn't "close more parse: errors" but "find wrong-result downstream coordinates whose ROOT CAUSE is at the lex tier and surface them as their own named coordinates."
 
-### (pp) `numeric-literal-conformance` — 🟢 RIPE
-**Telos**: §12.8 NumericLiteral correctness — separators (`1_000`), BigInt suffix (`123n`), legacy octals in non-strict, hex/binary/octal, decimal-exponent edge cases.
-**Pool**: 157 fixtures in `language/literals/numeric/`.
-**Cluster-coherence-multiplier**: all 5 conditions hold (single spec rule, generated tests, lex-tier one-site, tokenization static-semantics, matrix-surfaced via `parse: lex error: InvalidNumeric`).
-**LOC estimate**: ~30-50.
-**Status**: queued, FIRST substrate-tier spawn from tokenization-above-IR brief.
+### (pp) `numeric-literal-conformance` — **SPAWNED** 2026-05-25 as [`pilots/numeric-literal-conformance/`](../../pilots/numeric-literal-conformance/seed.md)
+**Status**: FOUNDED. NLC-EXT 0 baseline-inspection corrected post-IDT Rule-23 verification; NLC-EXT 1-revised is lex-tier malformed numeric rejection.
 
 ### (qq) `identifier-tokenization` — 🟢 RIPE
 **Telos**: §11.6 IdentifierName + ReservedWord + UnicodeID ranges + **had-escape preservation** (the A3 axis from prior parser-permissiveness work — the lexer must preserve a "had-escape" bit on identifier tokens so the parser's reserved-word gate can reject escaped reserved-words like `let in`).
@@ -197,9 +190,9 @@ Candidates surfaced by `docs/engagement/tokenization-above-ir-candidate-brief.md
 
 ### (ss) `regex-literal-lexing` — 🟡 PROBED
 **Telos**: §12.9.5 RegularExpressionLiteral lex production — pattern + flags accumulator + line-terminator rejection inside literal. Separate from regex-engine semantics.
-**Pool**: composes with regexp-conformance (Tier-E candidate (u)); likely nested rung inside that locale rather than sibling.
+**Pool**: composes with `regexp-conformance/`; likely nested rung inside that locale rather than sibling.
 **LOC estimate**: ~20-40.
-**Status**: deferred until regexp-conformance starts; nesting decision per Doc 737 §II.
+**Status**: deferred as nested candidate under `regexp-conformance/`; RC-EXT 0 baseline-inspection decides whether the lexing partition has multi-rung shape.
 
 ### (tt) `private-name-lexing` — ⚪ HYPOTHETICAL
 **Telos**: §13.3 PrivateIdentifier `#name` tokenization for class private members.

@@ -25,38 +25,43 @@ The induced property is that cruft's numeric literal lexer rejects every malform
 - **Exemplar suite**: `pilots/numeric-literal-conformance/exemplars/exemplars.txt` — 157 fixtures from `language/literals/numeric/`.
 - **Baseline measurement (FOUNDING)**: **PASS=104, FAIL=53 (66.2%)** at 2026-05-25.
 
-## Founding finding — the 53 fails are dominated by an error-class mismatch, not a missing lex rule
+## Founding finding — corrected by Rule 23 verification
 
-Inspecting the 53 fails (sample of 20):
+NLC-EXT 0 first read incorrectly diagnosed the dominant `expected SyntaxError, got String` shape as eval-error-class wrapping. Identifier-tokenization's follow-on Rule 23 verification probe showed that reading was wrong: cruft's eval path already surfaces parser rejection as SyntaxError when the parser rejects the source. The `String` comes from test262's `$DONOTEVALUATE()` sentinel running after cruft incorrectly ACCEPTS source the spec requires it to reject.
+
+Current reading: the 53 failures identify numeric-literal parser/lexer permissiveness, not runtime error wrapping.
 
 | Failure shape | Count | Cause |
 |---|---:|---|
-| `expected SyntaxError, got String` | ~40 | cruft's `eval()` throws a **String** (CompileError text) for parse-tier failures; test262 expects a SyntaxError instance |
-| `parse: lex error: legacy octal/decimal integer literals forbidden in module code (LegacyOctalInModule)` | 2 | cruft's lexer fires LegacyOctalInModule even outside module mode (the check at lexer.rs:426 doesn't gate on module-mode) |
-| `expected SyntaxError, got String` on strict-only legacy octals (`00`, `01`, …, `07`) | 7 | cruft accepts the lex but doesn't surface a SyntaxError in strict mode (and would have the eval-error-class issue if it did) |
-| Numeric-separator violations (`0b_1`, `1__2`, etc.) | ~4 | cruft's lex DOES reject these (per probe: `0b_1` raises InvalidNumeric) — but again CompileError class, not SyntaxError |
+| `expected SyntaxError, got String` | ~40 | cruft accepted malformed numeric source, allowing test262's `$DONOTEVALUATE()` string sentinel to run |
+| `parse: lex error: legacy octal/decimal integer literals forbidden in module code (LegacyOctalInModule)` | 2 | cruft rejects, but the specific legacy-octal gating needs direct verification against script/module/strict context |
+| strict-only legacy octals (`00`, `01`, ..., `07`) | ~7 | cruft needs strict-mode legacy-octal rejection at the lex/parser boundary |
+| Numeric-separator violations (`0b_1`, `1__2`, etc.) | ~4 | verify which forms already reject; close residual accepted malformed forms |
 
-**The root cause is the eval-error-class wrapping, not missing lex rules.** Cruft's lexer is already substantially correct — the 53 fails are MOSTLY cases where cruft correctly rejects the source but presents the error as a `String` (from the `CompileError("parse: lex error: ...")` shape) instead of a SyntaxError-class object.
+See `trajectory.md` "NLC-EXT 0 CORRECTION" for the append-only correction record. The earlier eval-wrapping hypothesis is retracted.
 
 ## Methodology
 
 Three rungs.
 
-### NLC-EXT 1 — eval-error-class wrapping (the load-bearing move)
+### NLC-EXT 1-revised — malformed numeric rejection at lex/parser sites
 
-Edit cruft's eval-side error pathway so parse-tier CompileError throws are wrapped as SyntaxError instances reaching JS-tier `catch`. The wrapper needs to set `.constructor.name === "SyntaxError"` (matching test262's `thrownName = thrown.constructor.name` check at `legacy/host-rquickjs/tests/test262/runner.mjs:103`).
+Close the malformed numeric shapes cruft currently accepts:
 
-**Substrate site**: cruft's eval implementation; likely in `pilots/rusty-js-runtime/derived/src/...` — the code path that turns the host-side CompileError into a JS-tier throw value.
+- Binary literal non-binary chars (`0b2`)
+- Strict-mode legacy octals (`"use strict"; 00`)
+- Non-octal decimal integer in strict context (`08`, `09`)
+- Numeric-separator placement edge cases (`0b_1`, `1__2`, etc.; verify residuals first)
 
-**Expected yield**: ~40+ tests in this locale alone; large engagement-wide yield because every `negative: phase: parse, type: SyntaxError` test262 test currently fails with the same shape regardless of substrate area. **This is engagement-wide, not numeric-specific** — landing NLC-EXT 1 would unblock the test262 negative-parse surface across all coordinates that fail with the same shape (parser-early-error, ast-bytecode-early-error, all currently-error-as-String cases).
+**Substrate site**: `pilots/rusty-js-parser/derived/src/lexer.rs::read_radix_int` / `read_numeric_literal`, plus strict-context plumbing if required.
 
-**This is the cross-coordinate yield Finding LPA.4 predicted: the eval-error-class fix is engagement-wide; spawning NLC was the locale that surfaced it.**
+**Expected yield**: residual numeric-literal negative-parse failures after direct verification. Scope is lex-tier, ~30-50 LOC.
 
 ### NLC-EXT 2 — strict-mode legacy octal detection
 
-After NLC-EXT 1 lands, the strict-mode legacy octal cases (`"use strict"; 00`) still need to detect-and-reject. Cruft's current LegacyOctalInModule check (lexer.rs:430) only fires in module mode; needs extension to strict-mode-in-script.
+If not closed by EXT 1-revised, reject strict-mode legacy octal cases (`"use strict"; 00`) with the correct SyntaxError-class path.
 
-**Substrate site**: lexer.rs:426-435. ~5 LOC.
+**Substrate site**: lexer/parser strict-mode numeric handling. ~5-15 LOC depending on where strict state is available.
 
 ### NLC-EXT 3 — remaining edge cases
 
@@ -64,11 +69,11 @@ Per-failure inspection of any residual fails after EXT 1+2 close. Likely numeric
 
 ## Cluster-coherence-multiplier reading
 
-The locale's pool (157) and the cluster-coherence multiplier's 5 conditions held at founding. BUT — the founding finding (NLC-EXT 1's engagement-wide yield) shows the load-bearing substrate move is NOT at the numeric-literal tier; it's at the eval-error-wrapping tier. The NLC spawn was correct as a SPECIFIC instance, but the substrate move it surfaced is broader. **Standing observation**: cluster-coherence-multiplier-shaped spawns sometimes surface engagement-wide substrate moves; the locale's apparent narrowness is a probe-shape that reveals broader work. (Finding NLC.0)
+The locale's pool (157) and the cluster-coherence multiplier's 5 conditions held at founding. Rule 23's corrected read keeps the substrate move at the numeric-literal lex/parser tier: the locale is a coherent §12.8 negative-parse surface, and its immediate work is to reject malformed numeric forms before `$DONOTEVALUATE()` can run.
 
 ## Composes-with
 
-- `apparatus/docs/ecma-conformance-...md` §XI Lexical-grammar coordinate class.
+- `apparatus/docs/ecma-conformance-parity-as-exhaustive-language-behavior-dag.md` §XI Lexical-grammar coordinate class.
 - `pilots/apparatus/tokenizer-error-classification-refinement/` (TECR) — sibling apparatus-pilot whose `availability/missing-lex-feature` coordinate is the post-NLC home of any remaining numeric-literal fails.
 - `pilots/apparatus/test262-categorize/` — the matrix this locale's yield will shift.
 - `docs/engagement/tokenization-above-ir-candidate-brief.md` — the brief that spawned this locale.
@@ -76,9 +81,9 @@ The locale's pool (157) and the cluster-coherence multiplier's 5 conditions held
 ## R13 prospective C1-C4 at founding
 
 - C1 (sibling): HOLDS — LGSS, BBND are cluster-coherence-shaped siblings at the parser tier; pattern transfers to lex tier.
-- C2 (shape-compat): HOLDS — lexer.rs's structure permits the EXT 2+3 fixes; EXT 1 is at a different tier (runtime) which is a known surface.
-- C3 (cost-positive): TBV at NLC-EXT 1; expected positive (eval-error wrapping is one site, large reach).
-- C4 (bail safety): TBV per substrate change at NLC-EXT 1; needs diff-prod + random-300 gating.
+- C2 (shape-compat): HOLDS — lexer.rs's structure permits the EXT 1-revised/EXT 2 fixes at lex/parser sites.
+- C3 (cost-positive): TBV at NLC-EXT 1-revised; expected positive if direct probes confirm the accepted malformed shapes.
+- C4 (bail safety): TBV per substrate change at NLC-EXT 1-revised; needs diff-prod + random-300 gating.
 
 ## Resume protocol
 
@@ -86,4 +91,4 @@ Read `trajectory.md` tail. Run `exemplars/run-exemplars.sh` (TBD) for current yi
 
 ## Status
 
-NLC-EXT 0 FOUNDED. Baseline 104/157 (66.2%). The load-bearing finding (NLC.0) is that the 53 fails are dominated by an engagement-wide eval-error-class wrapping issue, NOT by missing lex rules. NLC-EXT 1 (the eval-wrapping fix) is the immediate substrate move — substantial scope (touches runtime), engagement-wide yield. Deferred to keeper direction on scope.
+NLC-EXT 0 FOUNDED. Baseline 104/157 (66.2%). NLC-EXT 0 CORRECTION retracts the eval-error-class wrapping hypothesis; the immediate move is NLC-EXT 1-revised, lex/parser rejection of malformed numeric literals, following the IDT Rule-23 verification pattern.

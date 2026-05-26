@@ -608,11 +608,26 @@ fn install_regexp_proto(rt: &mut Runtime, host: ObjectRef) {
         install_regexp_proto_accessor(rt, host, name);
     }
 
-    // Ω.5.P61.E12: RegExp.prototype.compile per ECMA Annex B.2.4
-    // (legacy). Re-binds the receiver's source + flags to a new pattern.
-    // Returns the receiver. v1 noop after re-parse — sufficient for
-    // module-init presence-probes that check `typeof rx.compile`.
-    register_method(rt, host, "compile", |rt, _args| Ok(rt.current_this()));
+    // RC-EXT 2: RegExp.prototype.compile per ECMA Annex B.2.5.1.
+    // Re-binds the receiver's [[OriginalSource]], [[OriginalFlags]], matcher,
+    // and lastIndex. This legacy method is observable beyond mere presence.
+    register_method(rt, host, "compile", |rt, args| {
+        let this_id = current_regexp_this(rt, "RegExp.prototype.compile")?;
+        let (pattern, flags) = regexp_compile_args(
+            rt,
+            args.first().cloned().unwrap_or(Value::Undefined),
+            args.get(1).cloned().unwrap_or(Value::Undefined),
+        )?;
+        let compiled = compile_either(&pattern, &flags);
+        if let InternalKind::RegExp(re) = &mut rt.obj_mut(this_id).internal_kind {
+            re.source = Rc::new(pattern);
+            re.flags = Rc::new(flags);
+            re.compiled = compiled;
+            re.last_index = 0;
+        }
+        rt.object_set(this_id, "lastIndex".into(), Value::Number(0.0));
+        Ok(Value::Object(this_id))
+    });
     // RPTC-EXT 1: ECMA-262 §22.2.5.5 — RegExp.prototype.test( S )
     // 1. R = this; 2. S = ToString(S); 3. match = RegExpExec(R, S);
     // 4. return match !== null.
@@ -742,15 +757,116 @@ fn install_regexp_proto(rt: &mut Runtime, host: ObjectRef) {
                 return Ok(Value::Object(arr));
             }
         };
-        let parts: Vec<String> = rx.split_str(&s);
         let arr = rt.alloc_object(Object::new_array());
-        let take = limit.unwrap_or(parts.len()).min(parts.len());
-        for (i, p) in parts.iter().take(take).enumerate() {
-            rt.object_set(arr, i.to_string(), Value::String(Rc::new(p.clone())));
+        let limit = limit.unwrap_or(usize::MAX);
+        if limit == 0 {
+            rt.object_set(arr, "length".into(), Value::Number(0.0));
+            return Ok(Value::Object(arr));
         }
-        rt.object_set(arr, "length".into(), Value::Number(take as f64));
+        let parts = regexp_split_with_captures(&rx, &s, limit);
+        for (i, p) in parts.iter().enumerate() {
+            rt.object_set(arr, i.to_string(), p.clone());
+        }
+        rt.object_set(arr, "length".into(), Value::Number(parts.len() as f64));
         Ok(Value::Object(arr))
     });
+}
+
+// RC-EXT 1: RegExp.prototype[@@split] includes captured substrings in the
+// result array (§22.2.5.13). The engine already returns captures; this bridge
+// surfaces them instead of using the capture-dropping split_str helper.
+fn regexp_split_with_captures(rx: &CompiledRegex, input: &str, limit: usize) -> Vec<Value> {
+    if limit == 0 {
+        return Vec::new();
+    }
+    if input.is_empty() {
+        if matches!(rx.captures_at(input, 0), Some((0, 0, _))) {
+            return Vec::new();
+        }
+        return vec![Value::String(Rc::new(String::new()))];
+    }
+
+    let mut out = Vec::new();
+    let mut p = 0usize;
+    let mut q = 0usize;
+    while q < input.len() {
+        let Some((ms, me, groups)) = rx.captures_at(input, q) else {
+            break;
+        };
+        if ms >= input.len() {
+            break;
+        }
+        if me == p || ms < p {
+            q = advance_string_index(input, q);
+            continue;
+        }
+
+        out.push(Value::String(Rc::new(input[p..ms].to_string())));
+        if out.len() >= limit {
+            return out;
+        }
+        for g in groups.iter().skip(1) {
+            let v = g
+                .as_ref()
+                .map(|s| Value::String(Rc::new(s.clone())))
+                .unwrap_or(Value::Undefined);
+            out.push(v);
+            if out.len() >= limit {
+                return out;
+            }
+        }
+
+        p = me;
+        q = if me == ms {
+            advance_string_index(input, q)
+        } else {
+            me
+        };
+    }
+    out.push(Value::String(Rc::new(input[p..].to_string())));
+    out.truncate(limit);
+    out
+}
+
+fn advance_string_index(input: &str, byte_index: usize) -> usize {
+    if byte_index >= input.len() {
+        return input.len();
+    }
+    byte_index + input[byte_index..].chars().next().map_or(1, char::len_utf8)
+}
+
+fn regexp_compile_args(
+    rt: &mut Runtime,
+    pattern_v: Value,
+    flags_v: Value,
+) -> Result<(String, String), RuntimeError> {
+    if let Value::Object(id) = pattern_v {
+        if let InternalKind::RegExp(re) = &rt.obj(id).internal_kind {
+            if !matches!(flags_v, Value::Undefined) {
+                return Err(RuntimeError::TypeError(
+                    "RegExp.prototype.compile: flags must be undefined when pattern is RegExp"
+                        .into(),
+                ));
+            }
+            return Ok(((*re.source).clone(), (*re.flags).clone()));
+        }
+        let pattern = rt.coerce_to_string(&Value::Object(id))?;
+        let flags = match flags_v {
+            Value::Undefined => String::new(),
+            v => rt.coerce_to_string(&v)?,
+        };
+        return Ok((pattern, flags));
+    }
+
+    let pattern = match pattern_v {
+        Value::Undefined => String::new(),
+        v => rt.coerce_to_string(&v)?,
+    };
+    let flags = match flags_v {
+        Value::Undefined => String::new(),
+        v => rt.coerce_to_string(&v)?,
+    };
+    Ok((pattern, flags))
 }
 
 /// Per §22.2.5.2 RegExpBuiltinExec. v1 surface: returns null on no match,

@@ -154,6 +154,28 @@ fn t13_string_split_regex() {
 }
 
 #[test]
+fn t13b_string_split_regex_includes_captures() {
+    let rt = run_rt(
+        r#"
+        let parts = "a1b22c333".split(/(\d+)/);
+        __record(parts.length + "|" + parts[0] + "|" + parts[1] + "|" + parts[2] + "|" + parts[3] + "|" + parts[4] + "|" + parts[5] + "|" + parts[6]);
+    "#,
+    );
+    assert_eq!(last_string(&rt), "7|a|1|b|22|c|333|");
+}
+
+#[test]
+fn t13c_string_split_regex_capture_limit_counts_captures() {
+    let rt = run_rt(
+        r#"
+        let parts = "a1b22c333".split(/(\d+)/, 4);
+        __record(parts.length + "|" + parts[0] + "|" + parts[1] + "|" + parts[2] + "|" + parts[3]);
+    "#,
+    );
+    assert_eq!(last_string(&rt), "4|a|1|b|22");
+}
+
+#[test]
 fn t14_constructor_form() {
     let rt = run_rt(
         r#"
@@ -164,6 +186,43 @@ fn t14_constructor_form() {
     let s = last_string(&rt);
     assert!(s.starts_with("true|"), "got {:?}", s);
     assert!(s.contains('g'), "got {:?}", s);
+}
+
+#[test]
+fn t14b_compile_rebinds_receiver() {
+    let rt = run_rt(
+        r#"
+        let r = /foo/g;
+        r.lastIndex = 3;
+        let same = r.compile("bar", "i") === r;
+        __record(same + "|" + r.source + "|" + r.flags + "|" + r.lastIndex + "|" + r.test("BAR"));
+    "#,
+    );
+    assert_eq!(last_string(&rt), "true|bar|i|0|true");
+}
+
+#[test]
+fn t14c_compile_copies_regexp_pattern() {
+    let rt = run_rt(
+        r#"
+        let r = /x/;
+        r.compile(/foo/m);
+        __record(r.source + "|" + r.flags + "|" + r.test("foo"));
+    "#,
+    );
+    assert_eq!(last_string(&rt), "foo|m|true");
+}
+
+#[test]
+fn t14d_compile_regexp_with_flags_throws() {
+    let rt = run_rt(
+        r#"
+        let threw = false;
+        try { /x/.compile(/foo/, "g"); } catch (e) { threw = e instanceof TypeError; }
+        __record(threw);
+    "#,
+    );
+    assert!(last_bool(&rt));
 }
 
 #[test]
