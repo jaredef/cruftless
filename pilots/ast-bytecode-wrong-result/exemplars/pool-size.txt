@@ -1,0 +1,3 @@
+pool=1244
+chosen=100
+pin=ast-to-bytecode/language-lowering :: E2/internal-method:execution-semantics :: value-semantics/wrong-result :: assertion/expected-mismatch

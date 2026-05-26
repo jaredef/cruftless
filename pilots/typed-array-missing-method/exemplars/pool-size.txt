@@ -1,0 +1,3 @@
+pool=469
+chosen=100
+pin=runtime/buffer-typed-array :: E3/intrinsic-object:ecma-262 :: availability/missing-method-or-intrinsic :: failure/other

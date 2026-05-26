@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 96,
-    "top_level": 84,
+    "locales": 105,
+    "top_level": 93,
     "nested": 12,
     "warnings": 0
   },
@@ -88,6 +88,51 @@
       "scope": "arrow-misc-early-errors",
       "depth": 1,
       "rung_count": 0,
+      "status": null
+    },
+    {
+      "coord": "ast-bytecode-missing-method",
+      "tag": "L.ast-bytecode-missing-method",
+      "parent": null,
+      "scope": "ast-bytecode-missing-method",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
+    },
+    {
+      "coord": "ast-bytecode-missing-throw-typeerror",
+      "tag": "L.ast-bytecode-missing-throw-typeerror",
+      "parent": null,
+      "scope": "ast-bytecode-missing-throw-typeerror",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
+    },
+    {
+      "coord": "ast-bytecode-syntaxerror-cluster",
+      "tag": "L.ast-bytecode-syntaxerror-cluster",
+      "parent": null,
+      "scope": "ast-bytecode-syntaxerror-cluster",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
+    },
+    {
+      "coord": "ast-bytecode-uncategorized-projection",
+      "tag": "L.ast-bytecode-uncategorized-projection",
+      "parent": null,
+      "scope": "ast-bytecode-uncategorized-projection",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
+    },
+    {
+      "coord": "ast-bytecode-wrong-result",
+      "tag": "L.ast-bytecode-wrong-result",
+      "parent": null,
+      "scope": "ast-bytecode-wrong-result",
+      "depth": 1,
+      "rung_count": 1,
       "status": null
     },
     {
@@ -329,6 +374,15 @@
       "tag": "L.non-simple-params-strict-body",
       "parent": null,
       "scope": "non-simple-params-strict-body",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
+    },
+    {
+      "coord": "parser-early-error-residual",
+      "tag": "L.parser-early-error-residual",
+      "parent": null,
+      "scope": "parser-early-error-residual",
       "depth": 1,
       "rung_count": 1,
       "status": null
@@ -631,6 +685,15 @@
       "status": "**CLOSED at SPBC-EXT 1**."
     },
     {
+      "coord": "spec-builtins-wrong-result",
+      "tag": "L.spec-builtins-wrong-result",
+      "parent": null,
+      "scope": "spec-builtins-wrong-result",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
+    },
+    {
       "coord": "statement-declaration-in-body-position",
       "tag": "L.statement-declaration-in-body-position",
       "parent": null,
@@ -811,12 +874,30 @@
       "status": "**CHAPTER CLOSED at TROI-EXT 1 (1 implementation round; standing rule 13 twelfth corroboration; LARGEST-YIELD substrate fix of the parity arc)**. Execute-parity **60.7% \u2192 69.0%** (+8.3 pp). CRUFT_FAIL count: 39 \u2192 8 (31 files unblocked by ONE 110-LOC post-strip pass). Pred-troi.3 + Pred-troi.4 HELD STRONGLY \u2014 failure-table top tag shifted from `prototype-undefined` (30 files, ESM cycle) to small unrelated singletons. **Finding TROI.2**: the rxjs ESM-cycle issue was diagnosed as a runtime-substrate concern but the actual fix was at the resolver tier (TSR elision). Substantive refinement of Doc 729 \u2014 the resolver-instance pattern is even more powerful than originally framed."
     },
     {
+      "coord": "typed-array-missing-method",
+      "tag": "L.typed-array-missing-method",
+      "parent": null,
+      "scope": "typed-array-missing-method",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
+    },
+    {
       "coord": "typed-array-resizable-buffer-indexed-access",
       "tag": "L.typed-array-resizable-buffer-indexed-access",
       "parent": null,
       "scope": "typed-array-resizable-buffer-indexed-access",
       "depth": 1,
       "rung_count": 4,
+      "status": null
+    },
+    {
+      "coord": "typed-array-wrong-result",
+      "tag": "L.typed-array-wrong-result",
+      "parent": null,
+      "scope": "typed-array-wrong-result",
+      "depth": 1,
+      "rung_count": 1,
       "status": null
     },
     {

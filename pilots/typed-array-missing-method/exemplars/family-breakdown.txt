@@ -1,0 +1,11 @@
+23	ArrayBuffer/prototype
+23	TypedArray/prototype
+21	DataView/prototype
+15	TypedArrayConstructors/internals
+4	ArrayBuffer/Symbol.species
+4	TypedArray/Symbol.species
+3	TypedArrayConstructors/ctors
+2	TypedArrayConstructors/ctors-bigint
+2	TypedArrayConstructors/from
+2	TypedArrayConstructors/of
+1	Uint8Array/prototype

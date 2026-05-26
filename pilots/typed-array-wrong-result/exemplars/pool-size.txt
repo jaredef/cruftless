@@ -1,0 +1,3 @@
+pool=614
+chosen=100
+pin=runtime/buffer-typed-array :: E3/intrinsic-object:ecma-262 :: value-semantics/wrong-result :: assertion/expected-mismatch

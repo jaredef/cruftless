@@ -1,0 +1,3 @@
+pool=1296
+chosen=100
+pin=ast-to-bytecode/language-lowering :: E2/internal-method:execution-semantics :: parser-form/early-error :: err:SyntaxError
