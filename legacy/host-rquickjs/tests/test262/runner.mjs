@@ -230,6 +230,12 @@ function runOne(path) {
       // PDS-EXT 1: plain-date-static (from / compare)
       '/Temporal/PlainDate/from/',
       '/Temporal/PlainDate/compare/',
+      // PDSC-EXT 1: plain-date-string-conversion
+      '/Temporal/PlainDate/prototype/toString/',
+      '/Temporal/PlainDate/prototype/toJSON/',
+      '/Temporal/PlainDate/prototype/toLocaleString/',
+      // PDE-EXT 1: plain-date-equals
+      '/Temporal/PlainDate/prototype/equals/',
       // Foundation tests that pass without per-class implementation.
       '/Temporal/getOwnPropertyNames.js',
       '/Temporal/keys.js',

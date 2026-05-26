@@ -4826,6 +4826,118 @@ impl Runtime {
             .set_own_internal("constructor".into(), Value::Object(pd_ctor));
         self.obj_mut(pd_ctor)
             .set_own_frozen("prototype".into(), Value::Object(pd_proto));
+        // PDSC-EXT 1 (plain-date-string-conversion): toString/toJSON/toLocaleString.
+        // Format: "YYYY-MM-DD" per §11.5.4 (no calendar annotation for
+        // iso8601 calendar with calendarName default).
+        fn pd_to_iso_string(rt: &mut Runtime, this_id: ObjectRef) -> Result<String, RuntimeError> {
+            let y = match rt.object_get(this_id, "__pd_year") {
+                Value::Number(n) => n as i64,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainDate: this is not a Temporal.PlainDate".into()
+                )),
+            };
+            let m = match rt.object_get(this_id, "__pd_month") {
+                Value::Number(n) => n as i64,
+                _ => 0,
+            };
+            let d = match rt.object_get(this_id, "__pd_day") {
+                Value::Number(n) => n as i64,
+                _ => 0,
+            };
+            let year_str = if (0..=9999).contains(&y) {
+                format!("{:04}", y)
+            } else if y < 0 {
+                format!("-{:06}", -y)
+            } else {
+                format!("+{:06}", y)
+            };
+            Ok(format!("{}-{:02}-{:02}", year_str, m, d))
+        }
+        register_intrinsic_method(self, pd_proto, "toString", 0, |rt, _args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainDate.prototype.toString: this is not an object".into()
+                )),
+            };
+            Ok(Value::String(Rc::new(pd_to_iso_string(rt, id)?)))
+        });
+        register_intrinsic_method(self, pd_proto, "toJSON", 0, |rt, _args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainDate.prototype.toJSON: this is not an object".into()
+                )),
+            };
+            Ok(Value::String(Rc::new(pd_to_iso_string(rt, id)?)))
+        });
+        register_intrinsic_method(self, pd_proto, "toLocaleString", 0, |rt, _args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainDate.prototype.toLocaleString: this is not an object".into()
+                )),
+            };
+            Ok(Value::String(Rc::new(pd_to_iso_string(rt, id)?)))
+        });
+        // PDE-EXT 1 (plain-date-equals): equals(other) compares y/m/d/calendar.
+        register_intrinsic_method(self, pd_proto, "equals", 1, |rt, args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainDate.prototype.equals: this is not an object".into()
+                )),
+            };
+            let (ty, tm, td) = (
+                match rt.object_get(id, "__pd_year") { Value::Number(n) => n as i64, _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainDate.prototype.equals: this is not a Temporal.PlainDate".into()
+                ))},
+                match rt.object_get(id, "__pd_month") { Value::Number(n) => n as i64, _ => 0 },
+                match rt.object_get(id, "__pd_day") { Value::Number(n) => n as i64, _ => 0 },
+            );
+            // Coerce other.
+            let other = args.first().cloned().unwrap_or(Value::Undefined);
+            let (oy, om, od) = match other {
+                Value::String(s) => {
+                    let r = parse_iso_date(&s).ok_or_else(|| RuntimeError::RangeError(format!(
+                        "Temporal.PlainDate.prototype.equals: invalid ISO 8601 date: {:?}", s
+                    )))?;
+                    r
+                }
+                Value::Object(o) => {
+                    if let Value::Number(y) = rt.object_get(o, "__pd_year") {
+                        (y as i64,
+                         match rt.object_get(o, "__pd_month") { Value::Number(n) => n as i64, _ => 0 },
+                         match rt.object_get(o, "__pd_day") { Value::Number(n) => n as i64, _ => 0 })
+                    } else {
+                        // Property bag.
+                        let y = match rt.object_get(o, "year") {
+                            Value::Number(n) => n as i64,
+                            _ => return Err(RuntimeError::TypeError(
+                                "Temporal.PlainDate.prototype.equals: object must have year/month/day".into()
+                            )),
+                        };
+                        let m = match rt.object_get(o, "month") {
+                            Value::Number(n) => n as i64,
+                            _ => return Err(RuntimeError::TypeError(
+                                "Temporal.PlainDate.prototype.equals: object must have year/month/day".into()
+                            )),
+                        };
+                        let d = match rt.object_get(o, "day") {
+                            Value::Number(n) => n as i64,
+                            _ => return Err(RuntimeError::TypeError(
+                                "Temporal.PlainDate.prototype.equals: object must have year/month/day".into()
+                            )),
+                        };
+                        (y, m, d)
+                    }
+                }
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainDate.prototype.equals: argument must be PlainDate, object, or string".into()
+                )),
+            };
+            Ok(Value::Boolean(ty == oy && tm == om && td == od))
+        });
         // PDS-EXT 1 (plain-date-static): from + compare.
         // Parse ISO date (with optional time/offset/annotation tail).
         fn parse_iso_date(s: &str) -> Option<(i64, i64, i64)> {
