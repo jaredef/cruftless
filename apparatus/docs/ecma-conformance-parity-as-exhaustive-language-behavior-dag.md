@@ -81,11 +81,12 @@ Relevant resolver-instances:
 
 1. **Spec-to-IR:** ECMA algorithm prose/XML becomes `rusty-js-ir` sections.
 2. **IR-to-runtime:** IR lowers to Rust helpers and generated intrinsic code.
-3. **Source-to-AST:** user JavaScript source becomes AST plus import/export records.
-4. **AST-to-bytecode:** AST becomes opcode streams, constants, scope records, and module records.
-5. **Bytecode-to-values:** the runtime dispatch loop consumes opcodes into values and side effects.
-6. **Package-to-lockfile:** package metadata and tarballs become a closed artifact registry.
-7. **Import graph-to-authority graph:** module reachability and capability passing determine which effects can occur.
+3. **Source-to-tokens:** user JavaScript source becomes a token stream under the lexical grammar of §11/§12, with the lexical goal symbol selected by the syntactic context (the lexer↔parser feedback edge per §XI.1). The lexer's contingent decisions include token-form selection per goal, had-escape preservation, NoLineTerminator-here tracking, ASI candidate identification, and string/template/numeric/regex literal lexing.
+4. **Tokens-to-AST:** the token stream becomes AST plus import/export records under the syntactic grammar of §13–§15, with the parser owning goal-symbol selection at each lex call.
+5. **AST-to-bytecode:** AST becomes opcode streams, constants, scope records, and module records.
+6. **Bytecode-to-values:** the runtime dispatch loop consumes opcodes into values and side effects.
+7. **Package-to-lockfile:** package metadata and tarballs become a closed artifact registry.
+8. **Import graph-to-authority graph:** module reachability and capability passing determine which effects can occur.
 
 Each resolver-instance must consume its directives completely. Residue is the smell: an import still visible as runtime ambiguity, an IR section that still requires ad hoc Rust transcription, a parser flag ignored by bytecode emission, a built-in namespace reachable without an authority edge, or an algorithmic step that has no named coordinate.
 
@@ -110,10 +111,11 @@ ECMA algorithm section
   -> runtime helper surface
 ```
 
-The parser and bytecode pipeline handle user source text:
+The parser and bytecode pipeline handle user source text. The first stage of this pipeline — tokenization under a goal-symbol regime — is upstream of every downstream tier on this side and is itself a resolver-instance with its own contingent-decision surface; see §XI's lexical-grammar / tokenization coordinate class and §XI.1's articulation of the lexer↔parser feedback edge.
 
 ```
 source text
+  -> tokens (under InputElementDiv / InputElementRegExp / InputElementTemplateTail goal symbols, selected by the parser's syntactic context)
   -> AST/import-export records
   -> bytecode/module records
   -> runtime values
@@ -192,6 +194,7 @@ A decision basis coordinate names a contingent implementation obligation. It is 
 
 Examples of coordinate classes:
 
+- Lexical grammar / tokenization: goal-symbol selection (InputElementDiv vs InputElementRegExp vs InputElementTemplateTail), token-form decisions (template literal, numeric literal incl. separators and BigInt suffix, string-escape decoding, line continuation), had-escape preservation on identifier tokens (the `break` vs `break` distinction required for §11.6.2 reserved-word early errors), ASI insertion points, NoLineTerminator-here tracking, regex literal lexing.
 - Parser form: strictness propagation, module-mode parsing, early errors, destructuring heads, reserved-word gates, source-position threading.
 - AST-to-bytecode lowering: operator semantics, lexical binding, super/new.target placement, control-flow emission, scope materialization.
 - Runtime abstract operation: ToPrimitive, ToObject, ToLength, SameValue, IsCallable, property access, descriptor definition, iterator close.
@@ -201,6 +204,18 @@ Examples of coordinate classes:
 - Capability substrate: authority passing, closed import graphs, load-time integrity, compartments, and removal of ambient authority.
 
 A parity fix is apparatus-complete only when it identifies which coordinate class it closed, or explicitly records that the coordinate remains unnamed.
+
+### XI.1 The lexer↔parser feedback edge
+
+The lexical-grammar coordinate class has one structural feature that no other class has: a back-edge to the syntactic grammar. ECMA-262 §12 specifies that the lexical goal symbol applied at each input position is **chosen by the syntactic context**. The canonical instance is the divide/regex disambiguation (`/` opens a RegularExpressionLiteral when the prior syntactic context expects a primary expression; it opens a DivPunctuator after a Member/Call/Identifier in expression position). Template-tail re-entry after `}` inside a TemplateMiddle is the second instance. The closing `}` of a substitution must be lexed under InputElementTemplateTail, which the parser must signal.
+
+This relation is genuinely cyclic at the calling-convention level: tokens flow forward (lexer → parser), goal symbols flow backward (parser → lexer). Every other edge in the DAG is forward data-flow. The lexer↔parser pair is the one place where the language-behavior DAG is not strictly acyclic.
+
+The cycle is resolved by the resolver-instance discipline of [Doc 729](../../docs/corpus-ref/729-cruftless-a-primary-articulation-of-the-resolver-instance-pattern-as-the-comprehensive-design-toward-which-rusty-bun-morphs.md) §IV in a specific shape: the lexer is a resolver-instance whose input includes a **goal-symbol directive** parameter from the parser; each individual lex call is acyclic (goal in, token out, stage-deterministic). The feedback loop exists at the calling-convention level (parser owns the lex loop, drives the goal selection from its own syntactic state) but does not exist within any single lex call. Goal-symbol selection is therefore the parser's contingent decision, not the lexer's; the lexer's contingent decisions are the token-form decisions per goal symbol.
+
+The cruft lexer carries this discipline as `LexerGoal::{InputElementDiv, InputElementRegExp, InputElementTemplateTail}` at `pilots/rusty-js-parser/derived/src/lexer.rs:16`. The parser passes the goal at every call site; the lexer does not reach into parser state. This is the legitimate resolution of the one non-acyclic relation, and naming it explicitly is the apparatus tax this section pays so the DAG framing holds without quiet exception.
+
+A coordinate at the lexical-grammar tier is apparatus-complete when it identifies (a) which goal-symbol is in scope for the production, (b) which token-form decision the substrate must make, (c) whether the parser-side goal-symbol-selection rule is correctly conditioned on the relevant syntactic context. Today's session has touched two such coordinates: ALTA-EXT 1 (NoLineTerminator before `=>` — token-tier flag consumption at the parser tier) and prior arc work on had-escape preservation (`pilots/parser-permissiveness/` — A3 axis was the explicit token-tier obligation). Both should be re-read against this coordinate class now that it has a name.
 
 ## XII. How this guides standards implementation
 
