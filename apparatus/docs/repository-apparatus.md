@@ -42,6 +42,36 @@ apparatus/
 
 `apparatus/locales/` is the agent-readable registry of the locale-coordinate space (Doc 737). The manifest is consulted to find existing locales; CANDIDATES.md is consulted before founding a new one; discover.sh is run to refresh the manifest after a spawn.
 
+### Bilateral pilot tier: apparatus-pilots vs substrate-pilots
+
+Per keeper directive 2026-05-25 (Telegram 9804): within `pilots/`, the engagement carries a bilateral boundary between **apparatus-pilots** (cybernetic-loop instruments, measurement apparatus, meta-discipline) and **substrate-pilots** (engine-tier code work). This boundary is made visible in the directory tree:
+
+```
+pilots/
+├── apparatus/                      # apparatus-pilots: cybernetic-loop instruments + meta-discipline
+│   ├── test262-categorize/         # Pin-Art matrix categorizer; produces matrix.md
+│   ├── diff-prod/                  # engagement-wide differential-prod methodology + fixtures
+│   ├── cross-runtime-bench/        # CRB harness + per-fixture probes
+│   ├── ts-consumer-corpus/         # TCC parse-parity measurement instrument
+│   ├── ts-execute-corpus/          # TXC execute-parity measurement instrument
+│   └── locale-positioning-audit/   # meta-apparatus: locale-graph claim-coherence audit
+│
+└── <substrate-pilot>/              # substrate-pilots: engine-tier code work (default)
+    ├── rusty-js-{ast, parser, bytecode, runtime, gc, jit, shapes, ir, pm, caps}/
+    ├── <per-feature-locale>/       # e.g. lexer-goal-symbol-selection/, parser-precedence-in-flag/
+    ├── <per-surface-pilot>/        # e.g. tls/, web-crypto/, fetch-api/, ...
+    └── <coordinate-spawn>/         # e.g. temporal-availability/, typed-array-wrong-result/
+```
+
+Both pilot kinds are rung-1 substrate per the apparatus/-vs-docs/ tier-separation above; the new boundary is INSIDE rung-1, distinguishing **what the pilot produces**:
+
+- **Apparatus-pilots produce instruments + apparatus output** (matrix.md, manifest.json refinements, audit findings, parity measurements). Their telos is the discipline of the cybernetic loop itself.
+- **Substrate-pilots produce engine code** (parser rules, bytecode ops, runtime intrinsics, AST shapes). Their telos is conformance/correctness at the language-substrate tier.
+
+A pilot is apparatus iff its primary output is consumed by other pilots' substrate work (test262-categorize's matrix is consumed by every coordinate-shaped locale; diff-prod's gate is consumed at every substrate move's landing). A pilot is substrate iff its primary output is engine code that satisfies conformance probes. The discriminator is the consumer of the pilot's output, not its own internal complexity.
+
+Migration history: this boundary was introduced 2026-05-25 by relocating 6 then-extant apparatus-pilots from `pilots/<name>/` to `pilots/apparatus/<name>/`. Substrate pilots stay at `pilots/<name>/` (the implicit default). New pilots adopt the convention at spawn: apparatus-shaped goes to `pilots/apparatus/<name>/`; substrate-shaped goes to `pilots/<name>/`.
+
 ### `docs/` — the dyadic sidecar
 
 `docs/` is the **sidecar for development that the keeper utilizes in the cybernetic dyad**. It is the keeper's thinking surface: live engineering analyses, in-flight phase designs, and the read-only mirror of the published RESOLVE corpus that the keeper composes against. The agent reads from `docs/` only when the keeper explicitly directs it (e.g., "read Doc 736") or when the agent's task requires composing against a specific corpus articulation.
@@ -129,7 +159,7 @@ Every substrate move is observed by at least one instrument before it lands. Ins
 
 | Instrument | Path | Observes | Oracle |
 |---|---|---|---|
-| **CRB (cross-runtime bench)** | `pilots/cross-runtime-bench/scripts/run-bench.sh` | Wall-clock per-fixture vs node + bun; median of N runs | node v22.22.0 + bun 1.3.11 |
+| **CRB (cross-runtime bench)** | `pilots/apparatus/cross-runtime-bench/scripts/run-bench.sh` | Wall-clock per-fixture vs node + bun; median of N runs | node v22.22.0 + bun 1.3.11 |
 | **diff-prod** | `scripts/diff-prod/run-all.sh` | Byte-identical stdout per fixture under cruft vs bun | bun 1.3.11; 42-fixture suite |
 | **test262-sample** | `scripts/test262-sample/run-sample.sh` | ECMA-262 conformance via the official test suite | TC39 test262; 7,589-test curated representative sample |
 | **canonical fuzz** | `pilots/rusty-js-shapes/consumer-migration/fixtures/fuzz-canonical.mjs` | Deterministic accumulator over 2000 randomized invocations | node acc=−932188103 (version `cmig-ext-17-2026-05-23`) |
@@ -138,16 +168,16 @@ Every substrate move is observed by at least one instrument before it lands. Ins
 
 | Instrument | Path | Observes | Categorization |
 |---|---|---|---|
-| **TCC (TypeScript consumer corpus, parse-parity)** | `pilots/ts-consumer-corpus/derived/src/bin/measure.rs` | `ts_resolve::parse_and_erase` outcome per real npm `.ts` file | OK / STRIP / PARSE / PANIC; structural-tag heuristic |
-| **TXC (TypeScript execute corpus, execute-parity)** | `pilots/ts-execute-corpus/derived/src/bin/measure.rs` | Exit-status comparison under bun + cruft per fixture | MATCH / DIVERGE / BUN_FAIL / CRUFT_FAIL / SETUP_FAIL / TIMEOUT |
-| **TCC manifest** | `pilots/ts-consumer-corpus/manifest/packages.json` + `file-hashes.json` | Hash-pinned corpus of 374 `.ts` files from rxjs + ajv + pino | reproducibility instrument |
+| **TCC (TypeScript consumer corpus, parse-parity)** | `pilots/apparatus/ts-consumer-corpus/derived/src/bin/measure.rs` | `ts_resolve::parse_and_erase` outcome per real npm `.ts` file | OK / STRIP / PARSE / PANIC; structural-tag heuristic |
+| **TXC (TypeScript execute corpus, execute-parity)** | `pilots/apparatus/ts-execute-corpus/derived/src/bin/measure.rs` | Exit-status comparison under bun + cruft per fixture | MATCH / DIVERGE / BUN_FAIL / CRUFT_FAIL / SETUP_FAIL / TIMEOUT |
+| **TCC manifest** | `pilots/apparatus/ts-consumer-corpus/manifest/packages.json` + `file-hashes.json` | Hash-pinned corpus of 374 `.ts` files from rxjs + ajv + pino | reproducibility instrument |
 
 ### Component-decomposition probes
 
 | Instrument | Path | Observes | Used by |
 |---|---|---|---|
 | **JSF A/B probe** | `pilots/rusty-js-json-fast/fixtures/component-ab-probe.mjs` | 5 additive variants × 50-iter warmup × 500-iter measurement | Rule 11 axis A1 |
-| **string_url_sweep A/B probe** | `pilots/cross-runtime-bench/fixtures/string_url_sweep/component-ab-probe.mjs` | Header-loop dominator decomposition | IHI/GPI/IPBR locales |
+| **string_url_sweep A/B probe** | `pilots/apparatus/cross-runtime-bench/fixtures/string_url_sweep/component-ab-probe.mjs` | Header-loop dominator decomposition | IHI/GPI/IPBR locales |
 
 ### Self-validation instruments
 

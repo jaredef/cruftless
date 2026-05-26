@@ -8,5 +8,5 @@ name = "tcc-measure"
 path = "src/bin/measure.rs"
 
 [dependencies]
-ts-resolve = { path = "../../ts-resolve/derived" }
+ts-resolve = { path = "../../../ts-resolve/derived" }
 walkdir = "2"

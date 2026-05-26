@@ -4,11 +4,74 @@
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
     "locales": 110,
-    "top_level": 97,
-    "nested": 13,
+    "top_level": 91,
+    "nested": 19,
     "warnings": 0
   },
   "locales": [
+    {
+      "coord": "apparatus/cross-runtime-bench",
+      "tag": "L.apparatus.cross-runtime-bench",
+      "parent": "L.apparatus",
+      "scope": "cross-runtime-bench",
+      "depth": 2,
+      "rung_count": 5,
+      "status": "**WORKSTREAM FOUNDED (CRB-EXT 0)**. Spawned per keeper directive 2026-05-23 07:34-local. Cross-runtime speed benchmark for cruft, bun, and node executing realistic JS workloads. Independent of diff-prod (which tests semantic parity); this pilot tests *speed* on workloads representative of what real Node-ecosystem code does."
+    },
+    {
+      "coord": "apparatus/diff-prod",
+      "tag": "L.apparatus.diff-prod",
+      "parent": "L.apparatus",
+      "scope": "diff-prod",
+      "depth": 2,
+      "rung_count": 21,
+      "status": "**TELOS A HIT + TELOS B (42/42)**. Forty-two fixtures (mix of L and F categories), all PASS. Three Rung-19/20/21 substrate clusters landed in one session: AbortController + AbortSignal full surface; ES2025 Iterator Helpers + generator-proto wiring; Map.groupBy + Promise.try + Error.isError. Thirty+ substrate fixes landed via diff-prod since founding. Top-500 measured at 77.4% raw / 82.1% incl-agreed after cumulative fix-set. Coverage now spans JSON, Buffer, strings, Map/Set, async/Promise/iteration, error-throws, RegExp (incl. advanced surface), generators, Proxy, structuredClone, BigInt, Reflect, Symbol, Object/Array/Math statics, node:fs/crypto/stream/events/path, AbortController + AbortSignal, ES2025 Iterator Helpers, ES2023-26 method batch."
+    },
+    {
+      "coord": "apparatus/locale-positioning-audit",
+      "tag": "L.apparatus.locale-positioning-audit",
+      "parent": "L.apparatus",
+      "scope": "locale-positioning-audit",
+      "depth": 2,
+      "rung_count": 1,
+      "status": null
+    },
+    {
+      "coord": "apparatus/test262-categorize",
+      "tag": "L.apparatus.test262-categorize",
+      "parent": "L.apparatus",
+      "scope": "test262-categorize",
+      "depth": 2,
+      "rung_count": 3,
+      "status": "**CHAPTER CLOSED at T262C-EXT 1 (1 implementation round; standing rule 13 thirteenth corroboration)**. Categorize apparatus operational; baseline 77.6% (5576/7182). Top-15 cells = 25.5% (Pred-t262c.2 FALSIFIED on cross-product but top-10 pipelines alone = ~50% via the structure-axis marginal). Mid-round: surfaced + fixed an assert-global-shadow bug in cruftless that was masking ~511 real substrate gaps; fix unmasked them without changing the headline. **5 prioritized substrate sub-locales queued** per the matrix (strict-mode-destructuring-refs, parser-permissiveness, iterator-protocol-error-propagation, Object.defineProperty edge cases, Array.sort edge cases)."
+    },
+    {
+      "coord": "apparatus/test262-categorize/full-suite",
+      "tag": "L.apparatus.test262-categorize.full-suite",
+      "parent": "L.apparatus.test262-categorize",
+      "scope": "full-suite",
+      "depth": 3,
+      "rung_count": 5,
+      "status": "founded 2026-05-25 as the full-suite interpretation apparatus for the upstream 53,289-path Test262 run."
+    },
+    {
+      "coord": "apparatus/ts-consumer-corpus",
+      "tag": "L.apparatus.ts-consumer-corpus",
+      "parent": "L.apparatus",
+      "scope": "ts-consumer-corpus",
+      "depth": 2,
+      "rung_count": 2,
+      "status": "**CHAPTER CLOSED at TCC-EXT 1 (1 implementation round; Pred-tcc.5 HELD)**. All five Pred-tcc.* HELD plus the discipline falsifier. Baseline parse-success = **37.7%** (141/374 files from rxjs + ajv + pino). Failure-frequency table operational; top-10 categories cover ~52% of corpus and set the sub-locale priority order. Substrate-bug priority finding (Finding TCC.3): TSR's strip step corrupts source inside string/template literals on ~11 files \u2014 highest-priority next sub-locale."
+    },
+    {
+      "coord": "apparatus/ts-execute-corpus",
+      "tag": "L.apparatus.ts-execute-corpus",
+      "parent": "L.apparatus",
+      "scope": "ts-execute-corpus",
+      "depth": 2,
+      "rung_count": 2,
+      "status": "**CHAPTER CLOSED at TXC-EXT 1 (1 implementation round; standing rule 13 ninth corroboration)**. Execute-parity baseline = **5.1%** vs parse-parity baseline = 95.2% (**90.1 pp gap**). 64% of the gap traces to ONE substrate gap: cruft's module loader is TS-unaware. Load-bearing next sub-locale: `ts-resolve-module-loader-extension/`."
+    },
     {
       "coord": "array-create-data-property-discipline",
       "tag": "L.array-create-data-property-discipline",
@@ -152,24 +215,6 @@
       "depth": 1,
       "rung_count": 1,
       "status": null
-    },
-    {
-      "coord": "cross-runtime-bench",
-      "tag": "L.cross-runtime-bench",
-      "parent": null,
-      "scope": "cross-runtime-bench",
-      "depth": 1,
-      "rung_count": 5,
-      "status": "**WORKSTREAM FOUNDED (CRB-EXT 0)**. Spawned per keeper directive 2026-05-23 07:34-local. Cross-runtime speed benchmark for cruft, bun, and node executing realistic JS workloads. Independent of diff-prod (which tests semantic parity); this pilot tests *speed* on workloads representative of what real Node-ecosystem code does."
-    },
-    {
-      "coord": "diff-prod",
-      "tag": "L.diff-prod",
-      "parent": null,
-      "scope": "diff-prod",
-      "depth": 1,
-      "rung_count": 21,
-      "status": "**TELOS A HIT + TELOS B (42/42)**. Forty-two fixtures (mix of L and F categories), all PASS. Three Rung-19/20/21 substrate clusters landed in one session: AbortController + AbortSignal full surface; ES2025 Iterator Helpers + generator-proto wiring; Map.groupBy + Promise.try + Error.isError. Thirty+ substrate fixes landed via diff-prod since founding. Top-500 measured at 77.4% raw / 82.1% incl-agreed after cumulative fix-set. Coverage now spans JSON, Buffer, strings, Map/Set, async/Promise/iteration, error-throws, RegExp (incl. advanced surface), generators, Proxy, structuredClone, BigInt, Reflect, Symbol, Object/Array/Math statics, node:fs/crypto/stream/events/path, AbortController + AbortSignal, ES2025 Iterator Helpers, ES2023-26 method batch."
     },
     {
       "coord": "ecmascript-parity-shared-upstream-arc",
@@ -358,15 +403,6 @@
       "scope": "lexer-goal-symbol-selection",
       "depth": 1,
       "rung_count": 4,
-      "status": null
-    },
-    {
-      "coord": "locale-positioning-audit",
-      "tag": "L.locale-positioning-audit",
-      "parent": null,
-      "scope": "locale-positioning-audit",
-      "depth": 1,
-      "rung_count": 1,
       "status": null
     },
     {
@@ -811,24 +847,6 @@
       "status": null
     },
     {
-      "coord": "test262-categorize",
-      "tag": "L.test262-categorize",
-      "parent": null,
-      "scope": "test262-categorize",
-      "depth": 1,
-      "rung_count": 3,
-      "status": "**CHAPTER CLOSED at T262C-EXT 1 (1 implementation round; standing rule 13 thirteenth corroboration)**. Categorize apparatus operational; baseline 77.6% (5576/7182). Top-15 cells = 25.5% (Pred-t262c.2 FALSIFIED on cross-product but top-10 pipelines alone = ~50% via the structure-axis marginal). Mid-round: surfaced + fixed an assert-global-shadow bug in cruftless that was masking ~511 real substrate gaps; fix unmasked them without changing the headline. **5 prioritized substrate sub-locales queued** per the matrix (strict-mode-destructuring-refs, parser-permissiveness, iterator-protocol-error-propagation, Object.defineProperty edge cases, Array.sort edge cases)."
-    },
-    {
-      "coord": "test262-categorize/full-suite",
-      "tag": "L.test262-categorize.full-suite",
-      "parent": "L.test262-categorize",
-      "scope": "full-suite",
-      "depth": 2,
-      "rung_count": 5,
-      "status": "founded 2026-05-25 as the full-suite interpretation apparatus for the upstream 53,289-path Test262 run."
-    },
-    {
       "coord": "tls",
       "tag": "L.tls",
       "parent": null,
@@ -836,24 +854,6 @@
       "depth": 1,
       "rung_count": 10,
       "status": null
-    },
-    {
-      "coord": "ts-consumer-corpus",
-      "tag": "L.ts-consumer-corpus",
-      "parent": null,
-      "scope": "ts-consumer-corpus",
-      "depth": 1,
-      "rung_count": 2,
-      "status": "**CHAPTER CLOSED at TCC-EXT 1 (1 implementation round; Pred-tcc.5 HELD)**. All five Pred-tcc.* HELD plus the discipline falsifier. Baseline parse-success = **37.7%** (141/374 files from rxjs + ajv + pino). Failure-frequency table operational; top-10 categories cover ~52% of corpus and set the sub-locale priority order. Substrate-bug priority finding (Finding TCC.3): TSR's strip step corrupts source inside string/template literals on ~11 files \u2014 highest-priority next sub-locale."
-    },
-    {
-      "coord": "ts-execute-corpus",
-      "tag": "L.ts-execute-corpus",
-      "parent": null,
-      "scope": "ts-execute-corpus",
-      "depth": 1,
-      "rung_count": 2,
-      "status": "**CHAPTER CLOSED at TXC-EXT 1 (1 implementation round; standing rule 13 ninth corroboration)**. Execute-parity baseline = **5.1%** vs parse-parity baseline = 95.2% (**90.1 pp gap**). 64% of the gap traces to ONE substrate gap: cruft's module loader is TS-unaware. Load-bearing next sub-locale: `ts-resolve-module-loader-extension/`."
     },
     {
       "coord": "ts-resolve",

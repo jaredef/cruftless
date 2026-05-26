@@ -52,12 +52,12 @@ members = [
     "pilots/tls/derived",
     # TSR (TypeScript source-language resolver) — pilots/ts-resolve/seed.md
     "pilots/ts-resolve/derived",
-    # TCC (TypeScript consumer-corpus measurement) — pilots/ts-consumer-corpus/seed.md
-    "pilots/ts-consumer-corpus/derived",
-    # TXC (TypeScript execute-corpus measurement) — pilots/ts-execute-corpus/seed.md
-    "pilots/ts-execute-corpus/derived",
-    # T262C (test262 categorization) — pilots/test262-categorize/seed.md
-    "pilots/test262-categorize/derived",
+    # TCC (TypeScript consumer-corpus measurement) — pilots/apparatus/ts-consumer-corpus/seed.md
+    "pilots/apparatus/ts-consumer-corpus/derived",
+    # TXC (TypeScript execute-corpus measurement) — pilots/apparatus/ts-execute-corpus/seed.md
+    "pilots/apparatus/ts-execute-corpus/derived",
+    # T262C (test262 categorization) — pilots/apparatus/test262-categorize/seed.md
+    "pilots/apparatus/test262-categorize/derived",
     "pilots/urlsearchparams/derived",
     "pilots/web-crypto/derived",
     "pilots/websocket/derived",
