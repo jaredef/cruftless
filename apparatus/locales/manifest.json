@@ -3,9 +3,9 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 126,
+    "locales": 127,
     "top_level": 103,
-    "nested": 23,
+    "nested": 24,
     "warnings": 0
   },
   "locales": [
@@ -969,6 +969,15 @@
       "parent": null,
       "scope": "temporal-implementation",
       "depth": 1,
+      "rung_count": 1,
+      "status": null
+    },
+    {
+      "coord": "temporal-implementation/temporal-foundation",
+      "tag": "L.temporal-implementation.temporal-foundation",
+      "parent": "L.temporal-implementation",
+      "scope": "temporal-foundation",
+      "depth": 2,
       "rung_count": 1,
       "status": null
     },

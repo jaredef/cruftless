@@ -1,0 +1,1 @@
+# temporal-foundation has no exemplar surface — it is pure infrastructure validated by downstream rungs.

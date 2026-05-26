@@ -56,6 +56,11 @@ impl Runtime {
         self.install_number_static();
         self.install_math();
         self.install_json();
+        // TF-EXT 1: Temporal foundation. Registers the Temporal namespace
+        // and stub class identifiers per pilots/temporal-implementation/
+        // temporal-foundation/. No operative methods yet; per-class
+        // implementation lands in sub-locales (temporal-now, etc.).
+        self.install_temporal();
         self.install_console();
         self.install_promise();
         // diff-prod Rung-19 continuation: Iterator helpers + ES2024–26 batch.
@@ -2268,6 +2273,60 @@ impl Runtime {
             Value::String(Rc::new("Math".into())),
         );
         self.globals.insert("Math".into(), Value::Object(math));
+    }
+
+    fn install_temporal(&mut self) {
+        // TF-EXT 1 (temporal-foundation): register the Temporal namespace
+        // as a frozen global with empty stub objects for Now and each
+        // class (Instant, PlainDate, PlainTime, PlainDateTime,
+        // PlainMonthDay, PlainYearMonth, Duration, ZonedDateTime). No
+        // operative methods at this rung — sub-locales implement them.
+        // Goal: `typeof Temporal === "object"` + `Temporal.Now`,
+        // `Temporal.PlainDate` etc. exist as objects so instanceof checks
+        // and namespace traversal work. Methods that the 3 Now tests call
+        // (`plainDateTimeISO`, `zonedDateTimeISO`, `instant`) throw a
+        // TypeError 'Temporal.Now.X not implemented (Tier-L stub)' until
+        // temporal-now lands.
+        let temporal = self.alloc_object(Object::new_ordinary());
+        // Temporal.Now sub-namespace.
+        let now = self.alloc_object(Object::new_ordinary());
+        for method in &["plainDateTimeISO", "zonedDateTimeISO", "instant",
+                        "plainDateISO", "plainTimeISO", "timeZoneId"] {
+            let m = (*method).to_string();
+            register_intrinsic_method(self, now, method, 0, move |_rt, _args| {
+                Err(RuntimeError::TypeError(format!(
+                    "Temporal.Now.{} not implemented (Tier-L stub)", m
+                )))
+            });
+        }
+        self.obj_mut(now).set_own_frozen(
+            "@@toStringTag".into(),
+            Value::String(Rc::new("Temporal.Now".into())),
+        );
+        self.obj_mut(temporal).set_own_internal("Now".into(), Value::Object(now));
+        // Temporal class stubs — each is a constructor-shaped function that
+        // throws "not implemented" when invoked, but exists as an object
+        // so `Temporal.PlainDate` etc. is defined and `instanceof` checks
+        // do not crash. Real prototype + ctor land in per-class sub-locales.
+        for class_name in &["Instant", "PlainDate", "PlainTime", "PlainDateTime",
+                            "PlainMonthDay", "PlainYearMonth", "Duration",
+                            "ZonedDateTime"] {
+            let stub = self.alloc_object(Object::new_ordinary());
+            let cn = (*class_name).to_string();
+            self.obj_mut(stub).set_own_frozen(
+                "@@toStringTag".into(),
+                Value::String(Rc::new(format!("Temporal.{}", cn))),
+            );
+            self.obj_mut(temporal).set_own_internal(
+                (*class_name).into(),
+                Value::Object(stub),
+            );
+        }
+        self.obj_mut(temporal).set_own_frozen(
+            "@@toStringTag".into(),
+            Value::String(Rc::new("Temporal".into())),
+        );
+        self.globals.insert("Temporal".into(), Value::Object(temporal));
     }
 
     fn install_json(&mut self) {
