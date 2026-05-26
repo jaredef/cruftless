@@ -63,12 +63,43 @@ n_timeout=0
 total=0
 fails=()
 
+run_one() {
+  if command -v timeout >/dev/null 2>&1; then
+    T262_TEST_PATH="$1" T262_HARNESS_DIR="$HARNESS_DIR" \
+      timeout 10s "$CRUFT" "$RUNNER" 2>/dev/null
+    return $?
+  fi
+
+  perl -e '
+    my ($limit, $test_path, $harness_dir, @cmd) = @ARGV;
+    my $pid = fork;
+    die "fork failed: $!" unless defined $pid;
+    if ($pid == 0) {
+      $ENV{T262_TEST_PATH} = $test_path;
+      $ENV{T262_HARNESS_DIR} = $harness_dir;
+      exec @cmd;
+      exit 127;
+    }
+    local $SIG{ALRM} = sub {
+      kill "TERM", $pid;
+      sleep 1;
+      kill "KILL", $pid;
+      waitpid($pid, 0);
+      exit 124;
+    };
+    alarm $limit;
+    waitpid($pid, 0);
+    my $status = $?;
+    alarm 0;
+    exit($status & 127 ? 128 + ($status & 127) : $status >> 8);
+  ' 10 "$1" "$HARNESS_DIR" "$CRUFT" "$RUNNER" 2>/dev/null
+}
+
 for t in $TESTS; do
   total=$((total + 1))
   rel="${t#$DEFAULT_TESTS/}"
   rel="${rel#$HERE/tests/}"
-  out=$(T262_TEST_PATH="$t" T262_HARNESS_DIR="$HARNESS_DIR" \
-        timeout 10s "$CRUFT" "$RUNNER" 2>/dev/null)
+  out=$(run_one "$t")
   rc=$?
   if [ $rc -eq 124 ]; then
     n_timeout=$((n_timeout + 1))
