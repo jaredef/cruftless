@@ -172,6 +172,54 @@ Three-rung methodology (stale-claim sweep, spinoff-chain mapping, positioning-ga
 
 ---
 
+## Tier I — tokenization above the ECMA IR (substrate; 2026-05-25 brief)
+
+Candidates surfaced by `docs/engagement/tokenization-above-ir-candidate-brief.md` against the test262 lex-tier surface (~802 fixtures across 7 subdirs). Read: lex-tier yield isn't "close more parse: errors" but "find wrong-result downstream coordinates whose ROOT CAUSE is at the lex tier and surface them as their own named coordinates."
+
+### (pp) `numeric-literal-conformance` — 🟢 RIPE
+**Telos**: §12.8 NumericLiteral correctness — separators (`1_000`), BigInt suffix (`123n`), legacy octals in non-strict, hex/binary/octal, decimal-exponent edge cases.
+**Pool**: 157 fixtures in `language/literals/numeric/`.
+**Cluster-coherence-multiplier**: all 5 conditions hold (single spec rule, generated tests, lex-tier one-site, tokenization static-semantics, matrix-surfaced via `parse: lex error: InvalidNumeric`).
+**LOC estimate**: ~30-50.
+**Status**: queued, FIRST substrate-tier spawn from tokenization-above-IR brief.
+
+### (qq) `identifier-tokenization` — 🟢 RIPE
+**Telos**: §11.6 IdentifierName + ReservedWord + UnicodeID ranges + **had-escape preservation** (the A3 axis from prior parser-permissiveness work — the lexer must preserve a "had-escape" bit on identifier tokens so the parser's reserved-word gate can reject escaped reserved-words like `let in`).
+**Pool**: 268 fixtures in `language/identifiers/` (largest single lex-tier sub-dir).
+**LOC estimate**: ~30-50 for had-escape; variable for unicode-id range extension.
+**Status**: queued.
+
+### (rr) `string-literal-and-escape-conformance` — 🟢 RIPE
+**Telos**: §12.9 StringLiteral cooked/raw separation, escape decoding (\u{XXXX}, surrogate pairs, lone surrogates, hex escapes, line continuations).
+**Pool**: 73 fixtures in `language/literals/string/` + downstream wrong-value tests.
+**LOC estimate**: ~40-80.
+**Status**: queued.
+
+### (ss) `regex-literal-lexing` — 🟡 PROBED
+**Telos**: §12.9.5 RegularExpressionLiteral lex production — pattern + flags accumulator + line-terminator rejection inside literal. Separate from regex-engine semantics.
+**Pool**: composes with regexp-conformance (Tier-E candidate (u)); likely nested rung inside that locale rather than sibling.
+**LOC estimate**: ~20-40.
+**Status**: deferred until regexp-conformance starts; nesting decision per Doc 737 §II.
+
+### (tt) `private-name-lexing` — ⚪ HYPOTHETICAL
+**Telos**: §13.3 PrivateIdentifier `#name` tokenization for class private members.
+**Pool**: small visible surface (1 in PCR's parse: bucket) but large potential in class-elements test262 sub-dirs.
+**Status**: deferred until class-elements work is on the critical path.
+
+---
+
+## Tier J — apparatus-pilot extensions (sibling to PCR)
+
+Apparatus-pilot candidates that extend PCR's coordinate-refinement discipline to additional tiers. Each is small (~15-30 LOC) and produces named coordinates that substrate locales can target with clear move shapes.
+
+### (uu) `tokenizer-error-classification-refinement` (TECR) — 🟢 RIPE
+**Telos**: extend PCR's categorizer (`pilots/apparatus/test262-categorize/derived/src/bin/full_pinart.rs`) to split the `availability/missing-parser-feature` projection class into lex-tier vs syntax-tier sub-classes. Today these collapse together; sharpening them surfaces lex-tier substrate work explicitly per the apparatus §XI lexical-grammar coordinate class.
+**Composes with**: PCR-EXT 2's `missing-lowering-feature` pattern — same shape applied at the lex tier.
+**LOC estimate**: ~15 LOC in `full_pinart.rs::projection_axis`.
+**Status**: queued, FIRST apparatus-tier spawn from tokenization-above-IR brief; **lands BEFORE Tier-I substrate locales** per LPA-EXT 3 Finding LPA.5 (apparatus-tier refinement precedes substrate-tier spawns).
+
+---
+
 ## Tier H — top-10 spawn batch from 2026-05-25 matrix (post-hoc registration)
 
 Spawned 2026-05-25 from the full-suite Pin-Art matrix's top-10 coordinates (commit 561b7aa4). Registered here for audit-trail; each is anchored to a specific matrix coordinate per its seed.
