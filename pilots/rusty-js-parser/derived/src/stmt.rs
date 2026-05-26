@@ -296,15 +296,14 @@ impl<'src> Parser<'src> {
             self.consume_semicolon_pub()?;
             return Ok(Stmt::Debugger { span });
         }
-        // `with` forbidden in modules; falls back to Stmt::Opaque.
+        // `with` remains forbidden by strict/module semantics at higher
+        // layers, but sloppy script/function code needs a typed node so the
+        // bytecode tier can install the object environment.
         // Tier-Ω.5.gggggg: yield is now a real expression — let it fall
         // through to ExpressionStatement parsing where parse_unary picks
         // it up as Expr::Unary{Yield, ...}.
         if self.is_ident("with") {
-            let span = self.skip_to_top_terminator()?;
-            return Ok(Stmt::Opaque {
-                span: Span::new(start, span.end),
-            });
+            return self.parse_with_statement();
         }
         // LabelledStatement (Identifier ':' Statement) — typed.
         if let TokenKind::Ident(_) = self.current_kind() {
@@ -1654,6 +1653,21 @@ impl<'src> Parser<'src> {
         let end = self.last_span_end();
         Ok(Stmt::While {
             test,
+            body: Box::new(body),
+            span: Span::new(start, end),
+        })
+    }
+
+    fn parse_with_statement(&mut self) -> Result<Stmt, ParseError> {
+        let start = self.lookahead_span().start;
+        self.expect_keyword("with")?;
+        self.expect_punct(Punct::LParen)?;
+        let object = self.parse_expression()?;
+        self.expect_punct(Punct::RParen)?;
+        let body = self.parse_substatement()?;
+        let end = self.last_span_end();
+        Ok(Stmt::With {
+            object,
             body: Box::new(body),
             span: Span::new(start, end),
         })

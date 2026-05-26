@@ -34,6 +34,11 @@ pub fn disassemble(m: &CompiledModule) -> String {
         // const-pool-indexed opcodes.
         let const_resolved = match op {
             Op::PushConst
+            | Op::LoadWithName
+            | Op::StoreWithName
+            | Op::ResolveWithName
+            | Op::LoadWithNameRef
+            | Op::StoreWithNameRef
             | Op::LoadGlobal
             | Op::StoreGlobal
             | Op::GetProp

@@ -14,7 +14,9 @@ Spawned per keeper directive (Telegram 9855) selecting Cluster B from the TECR-E
 
 §14.11 WithStatement parser — accept body that contains line-terminator-preceded close-brace. `with(p){x;}` parses correctly; `with(p){\n x \n}` previously failed with `parse: unexpected token in expression: Punct(RBrace)` because the parse-tier helper `skip_to_top_terminator` broke via its ASI fallback on the `}` BEFORE bumping it.
 
-Note: WBMS-EXT 1 is purely parser-tier. The runtime `with` semantics remain stubbed as `Stmt::Opaque` (the with-body executes as a no-op). Tests that probe real `with` scope-chain extension belong to a separate locale (with-runtime-semantics, deferred).
+Note: WBMS-EXT 1 was purely parser-tier. WBMS-EXT 2 promotes `with` out of
+`Stmt::Opaque` into a typed AST node plus bytecode/runtime support for sloppy
+object-environment lookup and identifier assignment.
 
 ## Apparatus
 
@@ -37,9 +39,24 @@ When `}` decrements `depth_brace` to 0 inside `skip_to_top_terminator` AND paren
 
 Edit: ~12 LOC in stmt.rs.
 
-### WBMS-EXT 2 — with-runtime-semantics (DEFERRED)
+### WBMS-EXT 2 — with-runtime-semantics (LANDED)
 
-The 227 residuals are all tests that exercise real `with` semantics: scope-chain extension, property-shadowing, `with`-bound variable visibility. cruft currently emits `Stmt::Opaque` for `with` (parse-then-no-op), so the body never runs. Fix requires: implement Stmt::With AST node + bytecode emission for scope-chain push/pop + runtime ScopeChain extension semantics. Substantial scope; separate locale.
+The 227 residuals from WBMS-EXT 1 were tests that exercise real `with`
+semantics: scope-chain extension, property-shadowing, `with`-bound variable
+visibility, and assignment PutValue against an object environment record.
+
+Landed substrate:
+- `Stmt::With { object, body }`
+- bytecode `EnterWith` / `ExitWith`
+- dynamic `LoadWithName` / `StoreWithName`
+- reference-preserving `ResolveWithName`, `LoadWithNameRef`, and
+  `StoreWithNameRef` for assignment and compound-assignment sites where the
+  RHS/getter deletes the originally-resolved property before PutValue.
+
+Yield: 37/264 -> 73/264 PASS. Residuals are now dominated by adjacent deeper
+surfaces: global-this/global-object aliasing, `@@unscopables`, Proxy `has`
+trap integration, direct/indirect eval environment records, call-base `this`
+binding, destructuring target evaluation order, and abrupt-completion cleanup.
 
 ## Composes-with
 
@@ -55,4 +72,6 @@ The 227 residuals are all tests that exercise real `with` semantics: scope-chain
 
 ## Status
 
-WBMS-EXT 1 LANDED. 37/264 (14%) direct yield. WBMS-EXT 2 (real with-runtime-semantics) deferred — separate substantial-scope locale.
+WBMS-EXT 2 LANDED. 73/264 (27.7%) direct yield. Next rung should choose among
+the residual families above, with `@@unscopables` / Proxy `has` integration and
+global-this binding as the most obvious cross-cutting closures.

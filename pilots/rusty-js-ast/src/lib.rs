@@ -481,6 +481,12 @@ pub enum Stmt {
         body: Box<Stmt>,
         span: Span,
     },
+    /// `with (object) body`
+    With {
+        object: Expr,
+        body: Box<Stmt>,
+        span: Span,
+    },
     /// `do body while (test);`
     DoWhile {
         body: Box<Stmt>,
@@ -604,6 +610,7 @@ impl Stmt {
             | Stmt::ForIn { span, .. }
             | Stmt::ForOf { span, .. }
             | Stmt::While { span, .. }
+            | Stmt::With { span, .. }
             | Stmt::DoWhile { span, .. }
             | Stmt::Switch { span, .. }
             | Stmt::Try { span, .. }

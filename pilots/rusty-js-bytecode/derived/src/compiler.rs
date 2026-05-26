@@ -313,6 +313,9 @@ pub struct Compiler {
     /// reused the outer slot index from pre_allocated_slots, writing the
     /// inner value into the outer's slot and breaking shadow semantics.
     block_depth: u32,
+    /// WBMS-EXT 2: dynamic identifier mode for statement bodies executing
+    /// inside one or more `with` object environments.
+    with_depth: u32,
     /// EXT 73: strict-mode context for this compiler scope. Modules are
     /// always strict; a function body inherits the enclosing strictness
     /// and may upgrade itself to strict via a `"use strict"` directive
@@ -490,6 +493,7 @@ impl Compiler {
             source_line_starts: Vec::new(),
             source_url: String::new(),
             block_depth: 0,
+            with_depth: 0,
             construct_tags: Vec::new(),
             strict: false,
             locals_snapshot: None,
@@ -1410,6 +1414,14 @@ impl Compiler {
                 for site in frame.break_patches {
                     self.patch_jump_at(site);
                 }
+            }
+            Stmt::With { object, body, .. } => {
+                self.compile_expr(object)?;
+                encode_op(&mut self.bytecode, Op::EnterWith);
+                self.with_depth += 1;
+                self.compile_stmt(body)?;
+                self.with_depth -= 1;
+                encode_op(&mut self.bytecode, Op::ExitWith);
             }
             Stmt::DoWhile { body, test, .. } => {
                 let loop_start = self.bytecode.len();
@@ -2910,7 +2922,11 @@ impl Compiler {
                 encode_u16(&mut self.bytecode, idx);
             }
             Expr::Identifier { name, .. } => {
-                if let Some(slot) = self.resolve_local(name) {
+                if self.with_depth > 0 {
+                    let name_idx = self.constants.intern(Constant::String(name.clone()));
+                    encode_op(&mut self.bytecode, Op::LoadWithName);
+                    encode_u16(&mut self.bytecode, name_idx);
+                } else if let Some(slot) = self.resolve_local(name) {
                     encode_op(&mut self.bytecode, Op::LoadLocal);
                     encode_u16(&mut self.bytecode, slot);
                 } else if let Some(up) = self.resolve_upvalue(name) {
@@ -3985,6 +4001,7 @@ impl Compiler {
             // Ω.5.P52.E3: sub-compilers reset block_depth — the function body
             // is its own top level for scope tracking.
             block_depth: 0,
+            with_depth: 0,
             // Ω.5.P53.E2: each function has its own tag list.
             construct_tags: Vec::new(),
             // EXT 73: inherit enclosing strictness; upgrade below if the
@@ -4162,7 +4179,9 @@ impl Compiler {
                             collect_var_hoists(std::slice::from_ref(a.as_ref()), out);
                         }
                     }
-                    Stmt::While { body, .. } | Stmt::DoWhile { body, .. } => {
+                    Stmt::While { body, .. }
+                    | Stmt::With { body, .. }
+                    | Stmt::DoWhile { body, .. } => {
                         collect_var_hoists(std::slice::from_ref(body.as_ref()), out);
                     }
                     Stmt::For { init, body, .. } => {
@@ -4529,7 +4548,11 @@ impl Compiler {
     /// Emit load/store for a bare identifier resolved against locals,
     /// upvalues, then globals (in that order).
     fn emit_load_ident(&mut self, name: &str) {
-        if let Some(s) = self.resolve_local(name) {
+        if self.with_depth > 0 {
+            let idx = self.constants.intern(Constant::String(name.to_string()));
+            encode_op(&mut self.bytecode, Op::LoadWithName);
+            encode_u16(&mut self.bytecode, idx);
+        } else if let Some(s) = self.resolve_local(name) {
             encode_op(&mut self.bytecode, Op::LoadLocal);
             encode_u16(&mut self.bytecode, s);
         } else if let Some(u) = self.resolve_upvalue(name) {
@@ -4562,7 +4585,11 @@ impl Compiler {
     }
 
     fn emit_store_ident(&mut self, name: &str) {
-        if let Some(s) = self.resolve_local(name) {
+        if self.with_depth > 0 {
+            let idx = self.constants.intern(Constant::String(name.to_string()));
+            encode_op(&mut self.bytecode, Op::StoreWithName);
+            encode_u16(&mut self.bytecode, idx);
+        } else if let Some(s) = self.resolve_local(name) {
             encode_op(&mut self.bytecode, Op::StoreLocal);
             encode_u16(&mut self.bytecode, s);
         } else if let Some(u) = self.resolve_upvalue(name) {
@@ -4613,11 +4640,21 @@ impl Compiler {
                     let _ = span;
                     return Ok(());
                 }
-                self.emit_load_ident(name); // [old]
-                self.compile_expr(value)?; // [old, v]
-                encode_op(&mut self.bytecode, binop); // [new]
-                encode_op(&mut self.bytecode, Op::Dup); // [new, new]
-                self.emit_store_ident(name); // [new]
+                if self.with_depth > 0 {
+                    let idx = self.constants.intern(Constant::String(name.clone()));
+                    encode_op(&mut self.bytecode, Op::LoadWithNameRef);
+                    encode_u16(&mut self.bytecode, idx); // [base, old]
+                    self.compile_expr(value)?; // [base, old, v]
+                    encode_op(&mut self.bytecode, binop); // [base, new]
+                    encode_op(&mut self.bytecode, Op::StoreWithNameRef);
+                    encode_u16(&mut self.bytecode, idx); // [new]
+                } else {
+                    self.emit_load_ident(name); // [old]
+                    self.compile_expr(value)?; // [old, v]
+                    encode_op(&mut self.bytecode, binop); // [new]
+                    encode_op(&mut self.bytecode, Op::Dup); // [new, new]
+                    self.emit_store_ident(name); // [new]
+                }
             }
             Expr::Member {
                 object, property, ..
@@ -4656,9 +4693,18 @@ impl Compiler {
                     let _ = span;
                     return Ok(());
                 }
-                self.compile_expr(value)?;
-                encode_op(&mut self.bytecode, Op::Dup);
-                self.emit_store_ident(name);
+                if self.with_depth > 0 {
+                    let idx = self.constants.intern(Constant::String(name.clone()));
+                    encode_op(&mut self.bytecode, Op::ResolveWithName);
+                    encode_u16(&mut self.bytecode, idx);
+                    self.compile_expr(value)?;
+                    encode_op(&mut self.bytecode, Op::StoreWithNameRef);
+                    encode_u16(&mut self.bytecode, idx);
+                } else {
+                    self.compile_expr(value)?;
+                    encode_op(&mut self.bytecode, Op::Dup);
+                    self.emit_store_ident(name);
+                }
             }
             Expr::Member {
                 object, property, ..
@@ -6531,7 +6577,7 @@ fn collect_hoisted_var_names(
             }
             collect_hoisted_var_names(body, out);
         }
-        Stmt::While { body, .. } | Stmt::DoWhile { body, .. } => {
+        Stmt::While { body, .. } | Stmt::With { body, .. } | Stmt::DoWhile { body, .. } => {
             collect_hoisted_var_names(body, out)
         }
         Stmt::Switch { cases, .. } => {

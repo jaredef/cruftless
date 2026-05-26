@@ -9328,6 +9328,78 @@ impl Runtime {
         false
     }
 
+    fn resolve_with_name_base(&self, frame: &Frame, name: &str) -> Option<ObjectRef> {
+        frame
+            .with_env_stack
+            .iter()
+            .rev()
+            .copied()
+            .find(|obj_id| self.has_property(*obj_id, name))
+    }
+
+    fn load_with_name(&mut self, frame: &mut Frame, name: &str) -> Result<Value, RuntimeError> {
+        for &obj_id in frame.with_env_stack.iter().rev() {
+            if self.has_property(obj_id, name) {
+                return self.read_property(obj_id, name);
+            }
+        }
+        for (slot, desc) in frame.locals_names.iter().enumerate().rev() {
+            if desc.name == name {
+                return Ok(frame.read_local(slot));
+            }
+        }
+        for (slot, desc) in frame.upvalue_names.iter().enumerate().rev() {
+            if desc.name == name {
+                return Ok(frame
+                    .upvalues
+                    .get(slot)
+                    .map(|cell| cell.borrow().clone())
+                    .unwrap_or(Value::Undefined));
+            }
+        }
+        self.globals
+            .get(name)
+            .cloned()
+            .or_else(|| self.engine_helpers.get(name).cloned())
+            .ok_or_else(|| RuntimeError::ReferenceError(format!("{} is not defined", name)))
+    }
+
+    fn store_with_name(
+        &mut self,
+        frame: &mut Frame,
+        name: &str,
+        value: Value,
+    ) -> Result<(), RuntimeError> {
+        for &obj_id in frame.with_env_stack.iter().rev() {
+            if self.has_property(obj_id, name) {
+                self.object_set(obj_id, name.to_string(), value);
+                return Ok(());
+            }
+        }
+        for (slot, desc) in frame.locals_names.iter().enumerate().rev() {
+            if desc.name == name {
+                frame.write_local(slot, value);
+                return Ok(());
+            }
+        }
+        for (slot, desc) in frame.upvalue_names.iter().enumerate().rev() {
+            if desc.name == name {
+                if let Some(cell) = frame.upvalues.get(slot) {
+                    *cell.borrow_mut() = value;
+                    return Ok(());
+                }
+            }
+        }
+        if frame.strict && !self.globals.contains_key(name) {
+            return Err(RuntimeError::ReferenceError(format!(
+                "{} is not defined",
+                name
+            )));
+        }
+        self.globals.insert(name.to_string(), value);
+        Ok(())
+    }
+
     /// Ω.5.P63.E54: PropertyKey-aware has-property — walks proto chain
     /// and respects Symbol-typed keys (identity, by-Rc). Transitional shim:
     /// for Symbol keys whose inner identifier matches a String-bucket entry,
@@ -9817,6 +9889,7 @@ impl Runtime {
             operand_stack,
             pc: state.resume_pc as usize,
             try_stack: Vec::new(),
+            with_env_stack: Vec::new(),
             this_value,
             this_cell: None,
             upvalues: Vec::new(),
@@ -10001,6 +10074,57 @@ impl Runtime {
                     if slot < frame.local_cells.len() {
                         frame.local_cells[slot] = None;
                     }
+                }
+                Op::LoadWithName => {
+                    let idx = decode_u16(&frame.bytecode, frame.pc);
+                    frame.pc += 2;
+                    let name = self.constant_name(frame, idx)?;
+                    let v = self.load_with_name(frame, &name)?;
+                    frame.last_property_lookup = Some(format!("<with>{}", name));
+                    frame.push(v);
+                }
+                Op::StoreWithName => {
+                    let idx = decode_u16(&frame.bytecode, frame.pc);
+                    frame.pc += 2;
+                    let name = self.constant_name(frame, idx)?;
+                    let v = frame.pop()?;
+                    self.store_with_name(frame, &name, v)?;
+                }
+                Op::ResolveWithName => {
+                    let idx = decode_u16(&frame.bytecode, frame.pc);
+                    frame.pc += 2;
+                    let name = self.constant_name(frame, idx)?;
+                    let base = self
+                        .resolve_with_name_base(frame, &name)
+                        .map(Value::Object)
+                        .unwrap_or(Value::Undefined);
+                    frame.push(base);
+                }
+                Op::LoadWithNameRef => {
+                    let idx = decode_u16(&frame.bytecode, frame.pc);
+                    frame.pc += 2;
+                    let name = self.constant_name(frame, idx)?;
+                    if let Some(obj_id) = self.resolve_with_name_base(frame, &name) {
+                        let value = self.read_property(obj_id, &name)?;
+                        frame.push(Value::Object(obj_id));
+                        frame.push(value);
+                    } else {
+                        let value = self.load_with_name(frame, &name)?;
+                        frame.push(Value::Undefined);
+                        frame.push(value);
+                    }
+                }
+                Op::StoreWithNameRef => {
+                    let idx = decode_u16(&frame.bytecode, frame.pc);
+                    frame.pc += 2;
+                    let name = self.constant_name(frame, idx)?;
+                    let v = frame.pop()?;
+                    let base = frame.pop()?;
+                    match base {
+                        Value::Object(obj_id) => self.object_set(obj_id, name, v.clone()),
+                        _ => self.store_with_name(frame, &name, v.clone())?,
+                    }
+                    frame.push(v);
                 }
                 Op::LoadGlobal => {
                     let idx = decode_u16(&frame.bytecode, frame.pc);
@@ -12111,6 +12235,21 @@ impl Runtime {
                         frame.this_value = v;
                     }
                 }
+                Op::EnterWith => {
+                    let obj_expr = frame.pop()?;
+                    let obj = self.to_object(&obj_expr)?;
+                    match obj {
+                        Value::Object(id) => frame.with_env_stack.push(id),
+                        _ => {
+                            return Err(RuntimeError::TypeError(
+                                "with expression did not coerce to object".into(),
+                            ))
+                        }
+                    }
+                }
+                Op::ExitWith => {
+                    frame.with_env_stack.pop();
+                }
                 Op::PropagateNewTarget => {
                     // Ω.5.P03.E2.super-new-target: forward the current
                     // frame's new.target into the runtime's pending slot
@@ -12924,6 +13063,7 @@ impl Runtime {
             operand_stack: Vec::with_capacity(32),
             pc: 0,
             try_stack: Vec::new(),
+            with_env_stack: Vec::new(),
             this_value: this,
             this_cell: None,
             upvalues,
@@ -13438,6 +13578,10 @@ pub struct Frame<'a> {
     pub operand_stack: Vec<Value>,
     pub pc: usize,
     pub try_stack: Vec<TryFrame>,
+    /// WBMS-EXT 2: object-environment stack for sloppy `with` execution.
+    /// Bare identifier bytecodes inside a with-body route through these
+    /// objects before falling back to lexical bindings and globals.
+    pub with_env_stack: Vec<crate::value::ObjectRef>,
     /// `this` for the executing frame. Module frames default to Undefined;
     /// method-call frames receive the receiver. Tier-Ω.5.a.
     pub this_value: Value,
@@ -13724,6 +13868,7 @@ impl<'a> Frame<'a> {
             operand_stack: Vec::with_capacity(32),
             pc: 0,
             try_stack: Vec::new(),
+            with_env_stack: Vec::new(),
             this_value: Value::Undefined,
             this_cell: None,
             upvalues: Vec::new(),

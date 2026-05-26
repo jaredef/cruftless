@@ -46,6 +46,23 @@ pub enum Op {
     /// their Rc handle to iteration N's cell; iteration N+1 starts from None.
     /// Tier-Ω.5.g.1.
     ResetLocalCell = 0x19,
+    /// LOAD_WITH_NAME <u16> — dynamic identifier lookup inside a `with`
+    /// object environment.
+    LoadWithName = 0x1A,
+    /// STORE_WITH_NAME <u16> — dynamic identifier assignment inside a `with`
+    /// object environment.
+    StoreWithName = 0x1B,
+    /// ENTER_WITH — pop object expression, ToObject it, and push it onto the
+    /// frame's with-environment stack.
+    EnterWith = 0x1C,
+    /// EXIT_WITH — pop the current with-environment object.
+    ExitWith = 0x1D,
+    /// RESOLVE_WITH_NAME <u16> — push the object environment that currently
+    /// resolves this name, or undefined when resolution falls through.
+    ResolveWithName = 0x1E,
+    /// LOAD_WITH_NAME_REF <u16> — push the current with-resolution base and
+    /// value, preserving the base for compound assignment PutValue.
+    LoadWithNameRef = 0x1F,
 
     // Arithmetic
     Add = 0x20,
@@ -174,6 +191,10 @@ pub enum Op {
     /// DELETE_INDEX — pop key, pop obj, remove obj[ToString(key)],
     /// push Boolean true if existed and was removed.
     DeleteIndex = 0xA4,
+    /// STORE_WITH_NAME_REF <u16> — pop value and preserved with-resolution
+    /// base, perform PutValue, and push the assigned value as expression
+    /// result.
+    StoreWithNameRef = 0xA5,
 
     // Function / closure
     /// MAKE_CLOSURE <u16>
@@ -316,14 +337,15 @@ impl Op {
             | Not | Return | ReturnUndef | GetIndex | SetIndex | SetPrototype | NewObject
             | Typeof | Void | Delete | DeleteIndex | Throw | TryExit | IterInit | IterNext
             | IterClose | Nop | Debugger | PushThis | PushImportMeta | PushNewTarget | SetThis
-            | PropagateNewTarget | AddI64 | SubI64 | MulI64 | IncI64 | DecI64 | LtI64 | LeI64
-            | GtI64 | GeI64 | EqI64 | NeI64 => 0,
+            | PropagateNewTarget | EnterWith | ExitWith | AddI64 | SubI64 | MulI64 | IncI64
+            | DecI64 | LtI64 | LeI64 | GtI64 | GeI64 | EqI64 | NeI64 => 0,
             Call | New | CallMethod | CallMethodIcCached => 1,
             PushConst | LoadLocal | StoreLocal | LoadArg | StoreArg | LoadGlobal
             | LoadGlobalOrUndef | StoreGlobal | LoadUpvalue | StoreUpvalue | DefineLocal
-            | ResetLocalCell | GetProp | GetPropOnObject | GetPropSkipForMethod | SetProp
-            | NewArray | InitProp | MakeClosure | MakeArrow | CaptureLocal | CaptureUpvalue
-            | DeleteProp => 2,
+            | ResetLocalCell | LoadWithName | StoreWithName | ResolveWithName | LoadWithNameRef
+            | GetProp | GetPropOnObject | GetPropSkipForMethod | SetProp | NewArray | InitProp
+            | MakeClosure | MakeArrow | CaptureLocal | CaptureUpvalue | DeleteProp
+            | StoreWithNameRef => 2,
             PushI32 | Jump | JumpIfTrue | JumpIfFalse | JumpIfTrueKeep | JumpIfFalseKeep
             | JumpIfNullish | InitIndex | TryEnter => 4,
             ForOfFastNext => 10,
@@ -388,6 +410,12 @@ pub fn op_from_byte(b: u8) -> Option<Op> {
         0x17 => StoreUpvalue,
         0x18 => DefineLocal,
         0x19 => ResetLocalCell,
+        0x1A => LoadWithName,
+        0x1B => StoreWithName,
+        0x1C => EnterWith,
+        0x1D => ExitWith,
+        0x1E => ResolveWithName,
+        0x1F => LoadWithNameRef,
         0x20 => Add,
         0x21 => Sub,
         0x22 => Mul,
@@ -446,6 +474,7 @@ pub fn op_from_byte(b: u8) -> Option<Op> {
         0xA2 => Delete,
         0xA3 => DeleteProp,
         0xA4 => DeleteIndex,
+        0xA5 => StoreWithNameRef,
         0xB0 => MakeClosure,
         0xB1 => MakeArrow,
         0xB2 => CaptureLocal,

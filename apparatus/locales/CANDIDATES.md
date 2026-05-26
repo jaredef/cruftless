@@ -262,10 +262,10 @@ Spawned from the post-TECR-EXT-2 matrix's `availability/missing-syntax-feature` 
 | Ref | Cluster | Records | Mechanism | Status |
 |---|---|---:|---|---|
 | (vv) | `hoistable-declaration-as-statement-body` (HDSB) | 475 | Annex B B.3.4 — `if (x) function f(){}` parser rule | 🟢 RIPE |
-| (ww) | `with-body-multi-statement-parse` (WBMS) | ~150 | parse_with_stmt fails on multi-stmt body across LT | 🟢 RIPE |
+| (ww) | `with-body-multi-statement-parse` (WBMS) | 264 | parse WithStatement body + first runtime object-environment rung | ✅ LANDED |
 | (xx) | `import-meta-metaproperty` (IMM) | 76 | §13.3.13 ImportMeta — parser + IR + runtime stub | 🟢 RIPE |
 | (yy) | `dynamic-import-attributes` (DIA) | 41 | stage-4 import-attributes — ImportCall second-param | 🟢 RIPE |
-| (zz) | `compound-assignment-rbrace` (CAR) | 44 | parser quirk in CompoundAssignment LHS (drill-pending) | 🟡 PROBED |
+| (zz) | `compound-assignment-rbrace` (CAR) | 44 | absorbed by WBMS-EXT 2 reference-preserving with assignment | ✅ ABSORBED |
 
 ### (vv) `hoistable-declaration-as-statement-body` (HDSB) — 🟢 RIPE
 **Telos**: §13.6 IfStatement / Annex B B.3.4 — accept FunctionDeclaration as the Statement body of `if`/`else` in sloppy mode (and certain Annex B function-code contexts). cruft currently rejects with `parse: HoistableDeclaration is not allowed as Statement body`.
@@ -274,11 +274,13 @@ Spawned from the post-TECR-EXT-2 matrix's `availability/missing-syntax-feature` 
 **LOC estimate**: ~10-20 LOC at parser's Statement / IfStatement production + strict-mode carve-out.
 **R13 prospective C1-C4**: C1 sibling (existing FunctionDeclaration parse path), C2 shape-compat (additive grammar rule), C3 cost-positive (single rule), C4 bail-safe (parser-only).
 
-### (ww) `with-body-multi-statement-parse` (WBMS) — 🟢 RIPE
-**Telos**: §14.11 WithStatement — accept Statement body that spans multiple lines / contains multiple statements. cruft parses `with(p){x;}` but rejects `with(p){\n console.log(x); \n}` with `parse: unexpected token in expression: Punct(RBrace)`.
-**Pool**: ~150 records (130 in language/statements/with/, ~20 in Proxy/has + sm/lexical-environment).
-**LOC estimate**: ~5-15 LOC at parse_with_stmt (likely the body is parsed via a single-expression path instead of Statement → BlockStatement).
-**Carve-out**: strict mode forbids WithStatement entirely; cruft already rejects in strict — this only addresses the sloppy-mode body-parse bug.
+### (ww) `with-body-multi-statement-parse` (WBMS) — ✅ LANDED 2026-05-26
+**Telos**: §14.11 WithStatement — first close the line-terminator-preceded RBrace parser bug, then promote `with` from a no-op `Stmt::Opaque` into a typed statement plus first runtime object-environment rung.
+**Pool**: 264 records (130 language/statements/with/, Proxy/has, sm/lexical-environment, compound-assignment, and related with-environment tests).
+**Landing**:
+- WBMS-EXT 1: parser `skip_to_top_terminator` brace completion fix, 0/264 -> 37/264 PASS.
+- WBMS-EXT 2: `Stmt::With`, `EnterWith` / `ExitWith`, dynamic with-name lookup/store, and reference-preserving with assignment, 37/264 -> 73/264 PASS.
+**Residual**: 183 FAIL / 8 SKIP. Remaining families are deeper environment-record surfaces: global-this/global-object aliasing, `@@unscopables`, Proxy `has`, direct/indirect eval, call-base `this`, destructuring order, and abrupt-completion cleanup.
 
 ### (xx) `import-meta-metaproperty` (IMM) — ★ REDIAGNOSED 2026-05-26 → apparatus
 
@@ -295,11 +297,11 @@ Cluster redirected to apparatus-pilot: `pilots/apparatus/runner-features-skip-de
 **Pool**: 41 records (language/expressions/dynamic-import/import-attributes/*).
 **LOC estimate**: parser extension to ImportCall production (~10 LOC); runtime can stub the attributes pending real implementation.
 
-### (zz) `compound-assignment-rbrace` (CAR) — ★ REDIRECTED 2026-05-26 → WBMS-EXT 2
+### (zz) `compound-assignment-rbrace` (CAR) — ✅ ABSORBED 2026-05-26 by WBMS-EXT 2
 
 **Rule 23 baseline-inspection (post WBMS-EXT 1 landing)**: all 44 records now fail at RUNTIME with `scope.x === N. Actual: undefined`, not at parse. The compound-assignment tests use `with(scope) { x ^= 3 }` to exercise binding semantics under a `with`-extended scope chain. WBMS-EXT 1's parse-tier fix unblocked the parser; the residual is identical in mechanism to WBMS's 227 runtime-semantic residuals.
 
-Substrate move IS WBMS-EXT 2 (real with-runtime-semantics: Stmt::With AST + bytecode emission + ScopeChain extension). No separate locale spawn. WBMS-EXT 2's pool when spawned will include these 44 CAR records.
+Substrate move WAS WBMS-EXT 2. The first dynamic-name implementation still missed the reference-preserving PutValue shape, then Test262's delete-during-RHS and getter-deletes-property rows forced `ResolveWithName` / `LoadWithNameRef` / `StoreWithNameRef`. Representative CAR probe `language/expressions/compound-assignment/S11.13.2_A5.10_T1.js` now PASS.
 
 **Standing lesson**: when a matrix-coordinate cluster's reason-text matches a parser-tier failure shape, baseline-inspect AFTER any sibling parser-tier moves have landed — Rule 23 may surface that the cluster is already absorbed by a sibling locale's deferred deeper-tier extension.
 

@@ -65,3 +65,98 @@ All collapse to: with-runtime-semantics is unimplemented. Belongs to WBMS-EXT 2 
 ### Status
 
 WBMS-EXT 1 CLOSED. WBMS-EXT 2 (real with-runtime-semantics — Stmt::With AST + bytecode emission + ScopeChain extension) deferred as a separate substantial-scope locale.
+
+## WBMS-EXT 2 — LANDED (2026-05-26)
+
+### Root cause
+
+WBMS-EXT 1 left `with` as a parser-only stub: `parse_statement` accepted the
+surface by returning `Stmt::Opaque`, and the bytecode compiler emitted no body.
+That closed the RBrace recovery bug but left semantic tests unchanged. The
+next residual layer needed a real statement node and a runtime object
+environment stack.
+
+The first implementation pass (`LoadWithName` / `StoreWithName`) closed direct
+lookup and simple object writes, but Test262 exposed the deeper PutValue shape:
+the assignment reference is fixed at LHS evaluation time. If the RHS deletes
+the property, or a getter deletes it during compound assignment, the final
+write must still target the originally-resolved object environment record
+rather than falling through to a local/global binding.
+
+### Edit
+
+- Added `Stmt::With { object, body, span }` to `rusty-js-ast`.
+- Parser now lowers `with (expr) statement` with `parse_with_statement` instead
+  of byte-skipping to `Stmt::Opaque`.
+- Bytecode gained:
+  - `EnterWith` / `ExitWith` for the per-frame object-environment stack.
+  - `LoadWithName` / `StoreWithName` for dynamic identifier lookup/store.
+  - `ResolveWithName`, `LoadWithNameRef`, `StoreWithNameRef` for
+    reference-preserving assignment and compound assignment inside `with`.
+- Compiler tracks `with_depth` and emits dynamic identifier bytecodes inside
+  with-bodies. Var-hoist collectors recurse through `Stmt::With` bodies.
+- Runtime `Frame` gained `with_env_stack`; interpreter lookup walks that stack
+  first, then locals, upvalues, globals, and engine helpers.
+
+### Probes
+
+- Direct object lookup/store:
+  - `var o = { x: 1 }; var y = 0; with (o) { y = x + 2; x = 7; }`
+  - observed `3:7`
+- Compound assignment to object environment:
+  - `var x = 1; var o = { x: 2 }; with (o) { x += 5; }`
+  - observed `1:7`
+- Reference-preserving assignment after RHS delete:
+  - `var scope = {x: 1}; with (scope) { x = (delete scope.x, 2); }`
+  - observed `2`
+- Test262 probes:
+  - `language/expressions/assignment/S11.13.1_A5_T1.js` PASS
+  - `language/expressions/compound-assignment/S11.13.2_A5.10_T1.js` PASS
+
+### Yield
+
+- WBMS exemplar pool: **37 -> 73/264 PASS (+36, 27.7% total)**.
+- Build: `cargo check -p rusty-js-runtime` PASS.
+- Build: `cargo build --release --bin cruft -p cruftless` PASS.
+
+### Residual decomposition
+
+Remaining 183 FAIL / 8 SKIP are no longer dominated by parser no-op. The visible
+families from the first failing rows:
+
+- Proxy `has` trap and ordinary `HasProperty` integration for object environment
+  records.
+- `@@unscopables` exclusion.
+- global-this/global-object aliasing (`this.p1 = 1` does not bind global `p1`
+  in the current runtime, so older Sputnik with-global cases remain confounded).
+- direct/indirect eval environment-record behavior inside `with`.
+- CallExpression base object preservation (`with`-resolved functions need the
+  correct receiver).
+- destructuring assignment/binding target evaluation order under `with`.
+- abrupt completion cleanup for `return` / `break` / `throw` inside a with-body
+  is not yet structurally guaranteed by the straight `EnterWith; body; ExitWith`
+  lowering.
+
+### Findings
+
+**Finding WBMS.3 (with identifier assignment needs a reference, not just a
+late name store)**: Plain and compound identifier assignment inside `with`
+cannot be modeled as "evaluate RHS, then look up the name again." Per PutValue,
+the reference base is selected when the left-hand side is evaluated. Test262's
+delete-during-RHS and getter-deletes-property cases are a precise probe for
+this layer. The bytecode tier now carries a narrow reference-preserving path
+only for with identifiers, keeping the broader local/global fast paths unchanged.
+
+**Finding WBMS.4 (with semantics opens adjacent environment-record surfaces)**:
+Once `with` is no longer a no-op, residuals distribute across real semantic
+neighbors rather than one stub: Proxy `has`, `@@unscopables`, global object
+binding, eval environment records, call base references, destructuring order,
+and abrupt cleanup. Standing recommendation: do not treat WBMS residuals as a
+single with bucket from here; choose the next nested locale by the specific
+environment-record sub-surface.
+
+### Status
+
+WBMS-EXT 2 CLOSED as a first runtime-semantics rung. Candidate next rungs:
+with-unscopables-proxy-has, with-call-base-reference, with-eval-environment,
+with-abrupt-cleanup, or global-this-binding.
