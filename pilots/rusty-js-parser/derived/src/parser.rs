@@ -62,12 +62,23 @@ pub struct Parser<'src> {
     /// early errors: it is a SyntaxError if ArrowParameters / FormalParameters
     /// Contains YieldExpression is true).
     pub(crate) in_function_params: bool,
+    /// LGSS-EXT 1: lexical goal symbol for the next bump's fetch. Per
+    /// `apparatus/docs/ecma-conformance-...md` §XI.1, the lexer↔parser
+    /// feedback edge is resolved by the parser passing the goal as a
+    /// directive parameter to each lex call. This field holds that
+    /// directive, derived from the lookahead's kind at every consumption
+    /// site via `derive_lex_goal_after`. Names the implicit constraint
+    /// that previously lived as scattered ad-hoc `LexerGoal::X` literals
+    /// at lex-call sites; consolidation lets the rewind-on-goal-mismatch
+    /// class (LGSS-EXT 3 telos) become eliminable.
+    pub(crate) current_lex_goal: LexerGoal,
 }
 
 impl<'src> Parser<'src> {
     pub fn new(src: &'src str) -> Result<Self, ParseError> {
         let mut lx = Lexer::new(src);
         let lookahead = lx.next_token(LexerGoal::RegExp).map_err(lex_to_parse)?;
+        let current_lex_goal = derive_lex_goal_after(&lookahead.kind);
         Ok(Self {
             src,
             lx,
@@ -76,6 +87,7 @@ impl<'src> Parser<'src> {
             strict_mode: false,
             in_generator: false,
             in_function_params: false,
+            current_lex_goal,
         })
     }
 
@@ -845,20 +857,18 @@ impl<'src> Parser<'src> {
     // ───────────────────────────── Token plumbing ─────────────────────────────
 
     fn bump_regexp(&mut self) -> Result<Token, ParseError> {
-        // The token about to become `cur` is the current lookahead, which
-        // will be the predecessor of the NEXT lookahead in the stream. Its
-        // expression-completion status drives the goal-symbol selection for
-        // the next fetch: after a completing token, `/` lexes as
-        // DivPunctuator; otherwise it opens a RegularExpressionLiteral.
-        let goal = if token_completes_expression(&self.lookahead.kind) {
-            LexerGoal::Div
-        } else {
-            LexerGoal::RegExp
-        };
+        // LGSS-EXT 1: the goal for this fetch is `self.current_lex_goal`,
+        // maintained as parser state. After the fetch, derive the goal
+        // for the NEXT fetch from the just-fetched lookahead's kind via
+        // `derive_lex_goal_after`. The previous per-call ad-hoc derivation
+        // (which queried the OLD lookahead's kind) is now folded into the
+        // parser-state invariant: current_lex_goal at any moment is the
+        // correct goal for the immediately-next bump.
         let cur = std::mem::replace(
             &mut self.lookahead,
-            self.lx.next_token(goal).map_err(lex_to_parse)?,
+            self.lx.next_token(self.current_lex_goal).map_err(lex_to_parse)?,
         );
+        self.current_lex_goal = derive_lex_goal_after(&self.lookahead.kind);
         Ok(cur)
     }
 
@@ -997,6 +1007,8 @@ impl<'src> Parser<'src> {
         let pos = self.lookahead.span.start;
         self.lx.set_pos(pos);
         self.lookahead = self.lx.next_token(goal).map_err(lex_to_parse)?;
+        // LGSS-EXT 1: keep current_lex_goal in sync after explicit re-lex.
+        self.current_lex_goal = derive_lex_goal_after(&self.lookahead.kind);
         Ok(())
     }
 
@@ -1010,6 +1022,8 @@ impl<'src> Parser<'src> {
     ) -> Result<(), ParseError> {
         self.lx.set_pos(pos);
         self.lookahead = self.lx.next_token(goal).map_err(lex_to_parse)?;
+        // LGSS-EXT 1: keep current_lex_goal in sync after explicit re-lex.
+        self.current_lex_goal = derive_lex_goal_after(&self.lookahead.kind);
         Ok(())
     }
     pub(crate) fn consume_semicolon_pub(&mut self) {
@@ -1345,6 +1359,30 @@ pub(crate) fn is_unconditional_reserved_word(name: &str) -> bool {
             | "while"
             | "with"
     )
+}
+
+/// LGSS-EXT 1: derive the lexical goal symbol that should govern the NEXT
+/// `lex.next_token` call, given the kind of the token just produced (i.e.,
+/// the current lookahead, which will be the predecessor of the next fetch).
+///
+/// Per ECMA-262 §12.9.5 (Automatic Semicolon Insertion clarifications) and
+/// §12.9.6 (Goal Symbols), goal-symbol selection is parser-context-driven.
+/// This function is the canonical predicate; it is the substrate's named
+/// expression of the lexer↔parser feedback edge per `apparatus/docs/
+/// ecma-conformance-...md` §XI.1. All goal-symbol decisions at lex-call
+/// boundaries should route through this function rather than reconstruct
+/// the discrimination inline.
+///
+/// Carve-out: TemplateTail re-entry (after a substitution's `}`) is
+/// currently handled by `refetch_lookahead_with_goal`, since the
+/// template-substitution-depth state is not yet tracked on the Parser;
+/// folding that case into this predicate is the LGSS-EXT 3 closure.
+fn derive_lex_goal_after(prev_kind: &TokenKind) -> LexerGoal {
+    if token_completes_expression(prev_kind) {
+        LexerGoal::Div
+    } else {
+        LexerGoal::RegExp
+    }
 }
 
 /// Heuristic per the ECMA-262 goal-symbol grammar: did the token just consumed
