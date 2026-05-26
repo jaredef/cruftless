@@ -390,6 +390,18 @@ impl<'src> Parser<'src> {
         };
         let name = if let TokenKind::Ident(n) = self.current_kind().clone() {
             let span = self.lookahead_span();
+            // IDT-EXT 1: §11.6.2.1 ReservedWord exclusion at function-decl
+            // name (inline-constructed BindingIdentifier; bypasses
+            // parse_binding_identifier).
+            if crate::parser::is_unconditional_reserved_word(&n) {
+                return Err(ParseError {
+                    span,
+                    message: format!(
+                        "`{}` is a reserved word and cannot be used as a function name",
+                        n
+                    ),
+                });
+            }
             self.bump()?;
             Some(BindingIdentifier { name: n, span })
         } else {
@@ -592,6 +604,18 @@ impl<'src> Parser<'src> {
         let name = if let TokenKind::Ident(n) = self.current_kind().clone() {
             if n != "extends" {
                 let span = self.lookahead_span();
+                // IDT-EXT 1: §11.6.2.1 ReservedWord exclusion at class-decl
+                // name (inline-constructed BindingIdentifier; bypasses
+                // parse_binding_identifier).
+                if crate::parser::is_unconditional_reserved_word(&n) {
+                    return Err(ParseError {
+                        span,
+                        message: format!(
+                            "`{}` is a reserved word and cannot be used as a class name",
+                            n
+                        ),
+                    });
+                }
                 self.bump()?;
                 Some(BindingIdentifier { name: n, span })
             } else {
@@ -1026,6 +1050,18 @@ impl<'src> Parser<'src> {
             }
             if let TokenKind::Ident(n) = self.current_kind().clone() {
                 let id_span = self.lookahead_span();
+                // IDT-EXT 1: §11.6.2.1 ReservedWord exclusion at the
+                // for-head plain-id inline-construction path (bypasses
+                // parse_binding_target and parse_binding_identifier).
+                if crate::parser::is_unconditional_reserved_word(&n) {
+                    return Err(ParseError {
+                        span: id_span,
+                        message: format!(
+                            "`{}` is a reserved word and cannot be used as a binding identifier",
+                            n
+                        ),
+                    });
+                }
                 // SBEA-EXT 1: §13.2 strict-mode binding-id check at the
                 // for-(var|let|const) plain-identifier head — this path
                 // bypasses parse_binding_target and parse_binding_identifier

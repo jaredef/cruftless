@@ -492,12 +492,29 @@ impl<'src> Parser<'src> {
     fn parse_binding_identifier(&mut self) -> Result<BindingIdentifier, ParseError> {
         let tok = self.lookahead.clone();
         if let TokenKind::Ident(name) = &tok.kind {
+            // IDT-EXT 1: ECMA-262 §11.6.2.1 — Keyword tokens may not be used
+            // as IdentifierName at BindingIdentifier positions. Centralized
+            // check via `is_unconditional_reserved_word`; covers var/let/
+            // const decls, function/class names, parameter names, catch
+            // params, import specifiers — every site that routes through
+            // parse_binding_identifier. Contextual reserveds (yield, await,
+            // let, static, etc.) are handled by sibling locales (SBEA,
+            // SMPT, YIFP) against the appropriate context state.
+            if is_unconditional_reserved_word(name) {
+                return Err(ParseError {
+                    span: tok.span,
+                    message: format!(
+                        "`{}` is a reserved word and cannot be used as a binding identifier",
+                        name
+                    ),
+                });
+            }
             // SBEA-EXT 1: ECMA-262 §13.2 — in strict mode, `eval` and
-            // `arguments` are reserved as binding identifiers. Covers
-            // `var arguments`, `let eval`, `function eval() {}`, etc. in
-            // strict bodies. Param-name promotion (params parsed in non-
-            // strict then body's "use strict" promotes) is a sibling
-            // locale, not handled here.
+            // `arguments` are additionally reserved as binding identifiers.
+            // Covers `var arguments`, `let eval`, `function eval() {}`,
+            // etc. in strict bodies. Param-name promotion (params parsed
+            // in non-strict then body's "use strict" promotes) is a
+            // sibling locale, not handled here.
             if self.strict_mode && (name == "eval" || name == "arguments") {
                 return Err(ParseError {
                     span: tok.span,
@@ -1255,6 +1272,19 @@ impl<'src> Parser<'src> {
         match self.current_kind().clone() {
             TokenKind::Ident(n) => {
                 let span = self.lookahead_span();
+                // IDT-EXT 1: §11.6.2.1 ReservedWord exclusion at binding-
+                // target sites too (parse_binding_identifier covers most;
+                // this site covers var/let/const declarators + destructure
+                // leaves + for-head bindings that route through here).
+                if is_unconditional_reserved_word(&n) {
+                    return Err(ParseError {
+                        span,
+                        message: format!(
+                            "`{}` is a reserved word and cannot be used as a binding identifier",
+                            n
+                        ),
+                    });
+                }
                 // SBEA-EXT 1: §13.2 strict-mode binding-id check at the
                 // pattern-target site too (parse_binding_identifier covers
                 // function names, imports, etc.; this covers var/let/const

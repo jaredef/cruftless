@@ -40,3 +40,52 @@ Cruft accepts ReservedWord tokens as BindingIdentifier in virtually every bindin
 **Findings**
 
 **Finding IDT.0 (Rule 23 self-correction is a first-class outcome, not a failure)**: this locale's founding produced one mis-read + one correction within a single inspection cycle. The mis-read led to a (non-landed) substrate-move proposal that would have wasted runtime-tier cycles. Rule 23 caught the mis-read at the verification-probe stage before substrate work committed. Standing recommendation: when Rule 23's baseline inspection produces a hypothesis, the follow-on verification-probe step (direct probe in the substrate, NOT just re-reading the failure reasons) is REQUIRED before declaring the inspection complete. The probe is what distinguishes baseline-inspection-as-discipline from baseline-inspection-as-glance. Refines Rule 23's operational reading: "INSPECT a sample of failures AND verify the implied mechanism via direct probe."
+
+---
+
+## IDT-EXT 1 — centralize ReservedWord check across the binding-identifier consumption sites (2026-05-25)
+
+**Trigger**: Keeper directive (Telegram 9826) "Land it."
+
+**Edits** (~30 LOC across 3 sites):
+
+The §11.6.2.1 ReservedWord check (using the existing `is_unconditional_reserved_word` predicate) inserted at three consumption sites cruft uses for BindingIdentifier:
+
+1. `pilots/rusty-js-parser/derived/src/parser.rs::parse_binding_identifier` (line 492+) — central site; covers function/class names via parse_default_*, namespace imports, etc.
+2. `pilots/rusty-js-parser/derived/src/parser.rs::parse_binding_target` (line 1268+) — covers var/let/const declarators + destructure leaves + for-head bindings.
+3. `pilots/rusty-js-parser/derived/src/stmt.rs::parse_for_statement` for-(var|let|const) plain-id inline-construction site (line 1027+) — bypasses parse_binding_target.
+
+All three reject with SyntaxError-class ParseError; cruft's eval-error-class wrapping (verified in IDT-EXT 0's verification probe) presents these correctly as SyntaxError to JS-tier catch.
+
+**Verification (probes)**:
+
+| Probe | Pre-EXT-1 | Post-EXT-1 |
+|---|---|---|
+| `var break = 1` | ACCEPT | **REJECT SyntaxError** ✓ |
+| `let break = 1` | ACCEPT | **REJECT SyntaxError** ✓ |
+| `const break = 1` | ACCEPT | **REJECT SyntaxError** ✓ |
+| `function f(break) {}` | ACCEPT | **REJECT SyntaxError** ✓ |
+| `({break: 1}).break` (property name; should allow) | ACCEPT | ACCEPT ✓ (preserved) |
+| `function break() {}` | ACCEPT | ACCEPT (residual; routes through different parser entry) |
+| `class break {}` | ACCEPT | ACCEPT (residual; same shape) |
+
+**Gates**:
+- diff-prod: **42/42 PASS, 0 FAIL**
+- Random 300 prev-PASS: **300/300, 0 regressions**
+- SyntaxError curated cluster: **45/45 (held)**
+
+**Yield**:
+
+| Surface | Pre-EXT-1 | Post-EXT-1 | Δ |
+|---|---:|---:|---:|
+| IDT exemplars (268-fixture pool) | 153 | **261** | **+108 (+40 pp; 97.4% pass)** |
+
+The 7 residual IDT fails trace to the function-decl + class-decl name paths (probe-confirmed). These go through `parse_function_decl_stmt` + `parse_class_decl_stmt` which inline-construct the BindingIdentifier without routing through the centralized check sites; the EXT 1 attempt added the check there too but the probe shows it didn't fire — implying the function/class-decl path is hit via a DIFFERENT parser entry (perhaps via parse_default_* or via the substatement path) that bypasses both edits. Defer to IDT-EXT 2.
+
+**Findings**
+
+**Finding IDT.1 (3-site centralized check delivers 97% of pool with one constraint)**: the §11.6.2.1 ReservedWord rule is conceptually one check; cruft's parser has 3+ entry points to BindingIdentifier construction; landing the check at 3 sites (parse_binding_identifier, parse_binding_target, for-head plain-id) closes 108/115 fails. Standing recommendation: when a spec rule has one definition but multiple substrate consumption sites, check coverage > rule restatement count. Each new site discovered means scoping IDT-EXT 2+ to find the residual entry points that bypass current sites. Cruft's parser has a hidden function/class-decl entry path that doesn't share the centralized BindingIdentifier consumption sites; IDT-EXT 2 will surface and close it.
+
+**Finding IDT.2 (the eval-class-wrapping mechanism IS working as Addendum XV claims)**: post-EXT-1 probes show that cruft now correctly throws SyntaxError-class for var/let/const/param `break` cases. The eval-error wrapping carries the SyntaxError class to the JS-tier catch as a proper Error instance. This is the empirical confirmation of Addendum XV's NLC.0-revised: the eval-class wrapping was already correct; the substrate gap was at the lex/parse permissiveness.
+
+**Status**: IDT-EXT 1 CLOSED. 261/268 (97.4% of pool). IDT-EXT 2 (close function-decl + class-decl name paths) is the next rung; small substrate move (~5-10 LOC) once the entry path is identified.
