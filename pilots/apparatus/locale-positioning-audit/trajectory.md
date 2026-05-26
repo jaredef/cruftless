@@ -103,3 +103,55 @@ pilots/locale-positioning-audit/ → pilots/apparatus/locale-positioning-audit/
 **Finding LPA.4 (the 7 confirmed chains corroborate the keeper's amortization conjecture engagement-wide, not just at LGSS→PPIF→FHNB)**: the keeper's amortization conjecture (Telegram 9794) was framed in response to LGSS's specific case. The audit shows the pattern was operating ENGAGEMENT-WIDE before LGSS — TSR's 11-sibling cascade, IHI/GPI/IPBR's 3-tier cascade, Shape's parent→nested. The conjecture's empirical track is older + broader than the LGSS→PPIF→FHNB chain implied; LGSS made the pattern legible at the engagement-discipline tier (via Findings + the cluster-coherence-multiplier prospective doc), but the substrate-engineering tier has been operating this way for the entire session arc. Standing recommendation: the prospective Doc 743 (cluster-coherence multiplier) should cite the 7-chain engagement-wide track, not just LGSS, as its empirical anchor. Update pending keeper review.
 
 **Status**: LPA-EXT 2 CLOSED. The spinoff-chains.md is the first standing output of this rung; refreshed opportunistically per the triggers (new spawn, locale close, full-suite re-categorize). LPA-EXT 3 (positioning-gap detection) remains.
+
+---
+
+## LPA-EXT 3 — positioning-gap detection (2026-05-25)
+
+**Trigger**: Keeper directive (Telegram 9810) "continue with 3."
+
+**Produced**: `pilots/apparatus/locale-positioning-audit/findings/positioning-gaps.md` — the first positioning-gap snapshot against the current full-suite matrix.
+
+**Method**:
+
+1. Walk every `pilots/**/seed.md`; extract any 4-tuple `pin` string the seed cites (regex on backtick-wrapped strings matching the `X :: Y :: Z :: W` shape).
+2. Build a pin→locale map; for each top-30 matrix coordinate, look up whether a locale claims it.
+3. Partition gaps by heuristics §III + §IV class (apparatus-refinement / subsystem-absent-chapter / sibling-of-covered / temporal-downstream / regexp / net-new substrate).
+4. Detect drift: locales whose declared coordinate may have shifted since spawn.
+
+**Snapshot 2026-05-25** (against `test262-full-2026-05-25-165734-p2` matrix):
+
+| Rank range | Count of covered | Count of gaps | Aggregate fails in gaps |
+|---|---:|---:|---:|
+| 1–10 | 10 | 0 | 0 |
+| 11–30 | 1 | 19 | 5,403 |
+| **Total top-30** | **11** | **19** | **5,403** |
+
+**Class breakdown of gaps** (heuristics §III + §IV):
+
+| Class | Ranks | Count | Move shape |
+|---|---|---:|---|
+| A: apparatus-refinement (uncategorized/projection or uncategorized/resolver) | 8, 11, 12, 16, 17, 18, 24 | 2,802 | spawn `pinart-categorizer-refinement` apparatus-pilot FIRST; substrate locales for these unblock after |
+| B: subsystem-absent-chapter (intl402 cluster) | 2, 14, 25 | 2,613 | spawn `intl402-availability/` mirroring temporal-availability pattern |
+| C: regexp coordinate cluster | 19, 23 | 491 | spawn single `regexp-conformance/` locale (both sibling rungs) |
+| D: siblings of covered ranks | 15, 21, 28, 29 | 947 | extend existing top-10 batch locales' scope at next chapter close (no new locales) |
+| E: temporal-downstream (auto-resolves with TA-EXT 1+) | 20, 27 | 438 | no new spawns; will absorb when temporal-availability lands MVP |
+| F: net-new substrate coords not yet locale'd | 26, 30 | 363 | small; consider scope-extension of existing locales rather than spawn |
+
+**Cumulative addressable via recommendations**: ~6,853 fails (~29% of total FAIL records) through 3 new spawns + 4 scope-extensions.
+
+**Drift cases surfaced**:
+
+- `ast-bytecode-uncategorized-projection/` — declared coordinate is apparatus-gap; correctly positioned but successor (categorizer-refinement) not yet spawned; substrate work blocked until then.
+- `ts-resolve-*/` family — coordinates may be superseded by TXC execute-parity residual; per-locale verification deferred to LPA-EXT 1-style sweep.
+- `parser-early-error-residual/` — pool size in seed.md stale (809 cited; post-BBND ~714); coordinate still correct, just the residual count changed.
+
+**Locales without matrix coordinates** (substrate-only work): identified as a separate partition — substrate-architecture work-class (rusty-js-jit, rusty-js-caps, rusty-js-shapes, the FCA-amortization spinoff chain LGSS/PPIF/FHNB) vs matrix-coverage work-class (top-10 batch + temporal-availability + this audit's recommended spawns). Both legitimate; the audit notes the partition.
+
+**Findings**
+
+**Finding LPA.5 (the locale-coverage gap top-30 is dominated by apparatus-refinement, not substrate work)**: 2,802 of the 5,403 top-30 gap fails (52%) are in Class A (apparatus-refinement). A single `pinart-categorizer-refinement` apparatus-pilot would convert these from blurred-coordinate work-shape into specific-coordinate work-shapes that downstream substrate locales could address. The locale-spawn priority order is therefore: **apparatus-tier refinement BEFORE substrate-tier spawns** for the apparatus-gap class; substrate-tier spawns AFTER coordinates are sharpened. This inverts the naive "spawn locales by raw count" reading and matches the heuristics §III partition-before-rank discipline at the engagement-graph scope.
+
+**Finding LPA.6 (recommended spawns + scope-extensions are well-shaped per the cluster-coherence multiplier)**: of the 3 recommended new spawns (`pinart-categorizer-refinement`, `intl402-availability`, `regexp-conformance`), the latter two satisfy multiple conditions of the cluster-coherence multiplier (per `docs/engagement/prospective/cluster-coherence-multiplier-as-sipe-t-instance.md`): subsystem-availability gates (Conditions 1+3+4 of the five-condition multiplier) producing high yield-per-locale. The 4 scope-extensions (Class D) are R4-disciplined extensions of existing locales' surface, not new spawns; the audit explicitly recommends extension over new-spawn for siblings to avoid apparatus-tax non-amortization (per BBND's findings §IV recommendation).
+
+**Status**: LPA-EXT 3 CLOSED. The three audit methodology rungs (stale-claim sweep / spinoff-chain mapping / positioning-gap detection) all have first-execution outputs. The locale itself is now **operationally complete** — future runs re-render the same documents per the triggers without needing additional methodology rungs.
