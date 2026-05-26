@@ -3839,6 +3839,232 @@ impl Runtime {
             };
             Ok(Value::String(Rc::new(pt_to_iso_string(rt, id)?)))
         });
+        // PTA-EXT 1 (plain-time-arithmetic): add / subtract / since / until.
+        // PlainTime is wall-clock only; add/subtract wrap modulo 24h.
+        // since/until compute the diff as nanoseconds-of-day; if other > this
+        // since negates and until preserves (or vice versa).
+        const NS_PER_DAY: i64 = 86_400_000_000_000;
+        fn duration_to_subday_ns_pt(rt: &mut Runtime, v: Value) -> Result<i64, RuntimeError> {
+            let names = ["years", "months", "weeks", "days", "hours",
+                         "minutes", "seconds", "milliseconds",
+                         "microseconds", "nanoseconds"];
+            let mut units = [0i64; 10];
+            if let Value::String(s) = &v {
+                let parsed = parse_iso_duration(s).ok_or_else(|| RuntimeError::RangeError(format!(
+                    "Temporal.PlainTime arithmetic: invalid ISO duration: {:?}", s
+                )))?;
+                for (i, &u) in parsed.iter().enumerate() {
+                    if !u.is_finite() || u != u.trunc() {
+                        return Err(RuntimeError::RangeError(
+                            "Temporal.PlainTime arithmetic: fractional unit out of position".into()
+                        ));
+                    }
+                    units[i] = u as i64;
+                }
+            } else if let Value::Object(id) = v {
+                let is_dur = !matches!(rt.object_get(id, "__td_years"), Value::Undefined);
+                for (i, n) in names.iter().enumerate() {
+                    let key = if is_dur { format!("__td_{}", n) } else { (*n).to_string() };
+                    if let Value::Number(v) = rt.object_get(id, &key) {
+                        units[i] = v as i64;
+                    }
+                }
+            } else {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.PlainTime arithmetic: argument must be Duration, object, or string".into()
+                ));
+            }
+            // Per §11.7.6 add: year/month/week date units are rejected.
+            if units[0] != 0 || units[1] != 0 || units[2] != 0 {
+                return Err(RuntimeError::RangeError(
+                    "Temporal.PlainTime arithmetic: years / months / weeks are not allowed".into()
+                ));
+            }
+            // Days × 24h roll up into total ns.
+            let total_ns: i64 = units[3].saturating_mul(86_400_000_000_000)
+                + units[4].saturating_mul(3_600_000_000_000)
+                + units[5].saturating_mul(60_000_000_000)
+                + units[6].saturating_mul(1_000_000_000)
+                + units[7].saturating_mul(1_000_000)
+                + units[8].saturating_mul(1_000)
+                + units[9];
+            Ok(total_ns)
+        }
+        fn pt_ns_of_day(rt: &mut Runtime, id: ObjectRef) -> i64 {
+            let mut ns: i64 = 0;
+            for (name, mult) in [
+                ("hour", 3_600_000_000_000i64),
+                ("minute", 60_000_000_000),
+                ("second", 1_000_000_000),
+                ("millisecond", 1_000_000),
+                ("microsecond", 1_000),
+                ("nanosecond", 1),
+            ] {
+                let key = format!("__pt_{}", name);
+                if let Value::Number(n) = rt.object_get(id, &key) {
+                    ns += (n as i64) * mult;
+                }
+            }
+            ns
+        }
+        fn pt_from_ns_of_day(rt: &mut Runtime, proto: ObjectRef, mut ns: i64) -> Value {
+            ns = ns.rem_euclid(NS_PER_DAY);
+            let hour = ns / 3_600_000_000_000;
+            ns %= 3_600_000_000_000;
+            let minute = ns / 60_000_000_000;
+            ns %= 60_000_000_000;
+            let second = ns / 1_000_000_000;
+            ns %= 1_000_000_000;
+            let ms = ns / 1_000_000;
+            ns %= 1_000_000;
+            let us = ns / 1_000;
+            let nsec = ns % 1_000;
+            let mut o = Object::new_ordinary();
+            o.proto = Some(proto);
+            let id = rt.alloc_object(o);
+            for (k, v) in [
+                ("hour", hour), ("minute", minute), ("second", second),
+                ("millisecond", ms), ("microsecond", us), ("nanosecond", nsec),
+            ] {
+                rt.set_engine_sentinel(id, &format!("__pt_{}", k), Value::Number(v as f64));
+            }
+            Value::Object(id)
+        }
+        let pt_proto_for_arith = pt_proto;
+        let dur_proto_for_pt_arith = dur_proto;
+        register_intrinsic_method(self, pt_proto, "add", 1, move |rt, args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainTime.prototype.add: this is not an object".into()
+                )),
+            };
+            if matches!(rt.object_get(id, "__pt_hour"), Value::Undefined) {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.PlainTime.prototype.add: this is not a Temporal.PlainTime".into()
+                ));
+            }
+            let dur_ns = duration_to_subday_ns_pt(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
+            let total = pt_ns_of_day(rt, id) + dur_ns;
+            Ok(pt_from_ns_of_day(rt, pt_proto_for_arith, total))
+        });
+        register_intrinsic_method(self, pt_proto, "subtract", 1, move |rt, args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainTime.prototype.subtract: this is not an object".into()
+                )),
+            };
+            if matches!(rt.object_get(id, "__pt_hour"), Value::Undefined) {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.PlainTime.prototype.subtract: this is not a Temporal.PlainTime".into()
+                ));
+            }
+            let dur_ns = duration_to_subday_ns_pt(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
+            let total = pt_ns_of_day(rt, id) - dur_ns;
+            Ok(pt_from_ns_of_day(rt, pt_proto_for_arith, total))
+        });
+        // since/until coerce other to PlainTime, compute diff as ns, build Duration.
+        // PlainTime since spec wraps to within [-12h, +12h] modulo 24h
+        // (signed minimum-magnitude representation).
+        fn diff_to_pt_duration(rt: &mut Runtime, dur_proto: ObjectRef, diff_ns: i64) -> Value {
+            // Normalize to (-NS_PER_DAY/2, +NS_PER_DAY/2].
+            let half = NS_PER_DAY / 2;
+            let mut d = diff_ns.rem_euclid(NS_PER_DAY);
+            if d > half { d -= NS_PER_DAY; }
+            let neg = d < 0;
+            let abs = d.abs();
+            let hour = abs / 3_600_000_000_000;
+            let r1 = abs % 3_600_000_000_000;
+            let minute = r1 / 60_000_000_000;
+            let r2 = r1 % 60_000_000_000;
+            let second = r2 / 1_000_000_000;
+            let r3 = r2 % 1_000_000_000;
+            let ms = r3 / 1_000_000;
+            let r4 = r3 % 1_000_000;
+            let us = r4 / 1_000;
+            let ns = r4 % 1_000;
+            let units_names = ["years", "months", "weeks", "days", "hours",
+                               "minutes", "seconds", "milliseconds",
+                               "microseconds", "nanoseconds"];
+            let signed = |x: i64| if neg { -(x as f64) } else { x as f64 };
+            let units = [0.0, 0.0, 0.0, 0.0, signed(hour), signed(minute),
+                         signed(second), signed(ms), signed(us), signed(ns)];
+            let mut o = Object::new_ordinary();
+            o.proto = Some(dur_proto);
+            let id = rt.alloc_object(o);
+            for (i, n) in units_names.iter().enumerate() {
+                rt.set_engine_sentinel(id, &format!("__td_{}", n), Value::Number(units[i]));
+            }
+            Value::Object(id)
+        }
+        fn coerce_pt_to_ns(rt: &mut Runtime, v: Value) -> Result<i64, RuntimeError> {
+            if let Value::String(s) = &v {
+                let parsed = parse_iso_time(s).ok_or_else(|| RuntimeError::RangeError(format!(
+                    "Temporal.PlainTime: invalid ISO time: {:?}", s
+                )))?;
+                return Ok(parsed[0] * 3_600_000_000_000
+                    + parsed[1] * 60_000_000_000
+                    + parsed[2] * 1_000_000_000
+                    + parsed[3] * 1_000_000
+                    + parsed[4] * 1_000
+                    + parsed[5]);
+            }
+            if let Value::Object(id) = v {
+                let is_pt = !matches!(rt.object_get(id, "__pt_hour"), Value::Undefined);
+                let prefix = if is_pt { "__pt_" } else { "" };
+                let mut ns: i64 = 0;
+                for (name, mult) in [
+                    ("hour", 3_600_000_000_000i64),
+                    ("minute", 60_000_000_000),
+                    ("second", 1_000_000_000),
+                    ("millisecond", 1_000_000),
+                    ("microsecond", 1_000),
+                    ("nanosecond", 1),
+                ] {
+                    let key = format!("{}{}", prefix, name);
+                    if let Value::Number(n) = rt.object_get(id, &key) {
+                        ns += (n as i64) * mult;
+                    }
+                }
+                return Ok(ns);
+            }
+            Err(RuntimeError::TypeError(
+                "Temporal.PlainTime: argument must be a PlainTime, object, or string".into()
+            ))
+        }
+        register_intrinsic_method(self, pt_proto, "since", 1, move |rt, args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainTime.prototype.since: this is not an object".into()
+                )),
+            };
+            if matches!(rt.object_get(id, "__pt_hour"), Value::Undefined) {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.PlainTime.prototype.since: this is not a Temporal.PlainTime".into()
+                ));
+            }
+            let this_ns = pt_ns_of_day(rt, id);
+            let other_ns = coerce_pt_to_ns(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
+            Ok(diff_to_pt_duration(rt, dur_proto_for_pt_arith, this_ns - other_ns))
+        });
+        register_intrinsic_method(self, pt_proto, "until", 1, move |rt, args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainTime.prototype.until: this is not an object".into()
+                )),
+            };
+            if matches!(rt.object_get(id, "__pt_hour"), Value::Undefined) {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.PlainTime.prototype.until: this is not a Temporal.PlainTime".into()
+                ));
+            }
+            let this_ns = pt_ns_of_day(rt, id);
+            let other_ns = coerce_pt_to_ns(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
+            Ok(diff_to_pt_duration(rt, dur_proto_for_pt_arith, other_ns - this_ns))
+        });
         // PTE-EXT 1 (plain-time-equals): equals(other) returns true iff
         // every unit equals. Coerces `other` via PlainTime.from-like logic.
         register_intrinsic_method(self, pt_proto, "equals", 1, |rt, args| {

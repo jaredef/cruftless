@@ -197,6 +197,11 @@ function runOne(path) {
       '/Temporal/PlainTime/prototype/toLocaleString/',
       // PTE-EXT 1: plain-time-equals
       '/Temporal/PlainTime/prototype/equals/',
+      // PTA-EXT 1: plain-time-arithmetic
+      '/Temporal/PlainTime/prototype/add/',
+      '/Temporal/PlainTime/prototype/subtract/',
+      '/Temporal/PlainTime/prototype/since/',
+      '/Temporal/PlainTime/prototype/until/',
       // Foundation tests that pass without per-class implementation.
       '/Temporal/getOwnPropertyNames.js',
       '/Temporal/keys.js',

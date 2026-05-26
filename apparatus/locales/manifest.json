@@ -3,9 +3,9 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 151,
+    "locales": 152,
     "top_level": 104,
-    "nested": 47,
+    "nested": 48,
     "warnings": 0
   },
   "locales": [
@@ -1150,6 +1150,15 @@
       "scope": "temporal-plain-time",
       "depth": 2,
       "rung_count": 2,
+      "status": null
+    },
+    {
+      "coord": "temporal-implementation/temporal-plain-time/plain-time-arithmetic",
+      "tag": "L.temporal-implementation.temporal-plain-time.plain-time-arithmetic",
+      "parent": "L.temporal-implementation.temporal-plain-time",
+      "scope": "plain-time-arithmetic",
+      "depth": 3,
+      "rung_count": 1,
       "status": null
     },
     {
