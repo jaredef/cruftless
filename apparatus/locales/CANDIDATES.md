@@ -99,6 +99,98 @@ Living document; append-only at the bottom (newest at top within a section). Eac
 
 ---
 
+## Tier E — coordinate-driven (matrix-surfaced, post-2026-05-25 full-suite run)
+
+Candidates surfaced by the LPA-EXT 3 positioning-gap audit (`pilots/apparatus/locale-positioning-audit/findings/positioning-gaps.md`) + PCR-EXT 1+2 new top-rank coordinates. Each is anchored to a specific Pin-Art coordinate with a named fail-count from the full-suite matrix.
+
+### (t) `intl402-availability` — 🟢 RIPE
+**Telos**: Implement-Chapter mirroring `temporal-availability/`'s shape. Covers ECMA-402 (Intl namespace) absent-chapter coordinates. Three matrix coordinates roll up to 2,613 fails: missing-global-binding (rank 2 / 2,008), value-semantics/wrong-result (rank 14 / 382), missing-method (rank 25 / 223).
+**Anchor**: full-suite matrix ranks 2, 14, 25; sibling subsystem to Temporal.
+**Methodology**: stratified exemplar suite (100 fixtures by Intl class — Collator, DateTimeFormat, NumberFormat, etc.); subsystem registration MVP; class-by-class implementation.
+**Status**: queued; second of LPA-EXT 3 recommendations.
+
+### (u) `regexp-conformance` — 🟢 RIPE
+**Telos**: cover both regexp-cluster matrix coordinates (rank 19 wrong-result SyntaxError 262 + rank 23 regexp-semantics failure/other 229) as sibling rungs in one locale. Total 491 fails.
+**Anchor**: full-suite matrix ranks 19, 23. Both intrinsic-semantics shape per heuristics §IV.D.
+**Methodology**: stratified exemplar suite across surface families (CharacterClassEscapes, NamedCaptureGroups, lookbehind, etc.); rule-by-rule closure.
+**Status**: queued; third of LPA-EXT 3 recommendations.
+
+### (v) `cruft-parser-feature-gaps` — 🟢 RIPE
+**Telos**: substrate work on cruft's parser to close the unimplemented-syntax cases surfaced by PCR-EXT 1's new `availability/missing-parser-feature` coordinate (~471 fails @ post-PCR rank 11). Per the categorization, reasons of shape `parse: ...` are cruft's parser refusing test source — typically TypeScript generics, decorators, other parser-feature gaps in JavaScript tests that exercise parser edge cases.
+**Anchor**: PCR-EXT 1+2 categorizer surfaced the coordinate; sample reasons include `parse: unexpected token in expression: Punct(Gt)` (generic-arg disambig), `parse: expected binding identifier or pattern` (destructure shapes).
+**Methodology**: pull 10 sample reasons; cluster by parse-tier mechanism; close per-mechanism rungs.
+**Status**: queued, post-PCR; not yet rule-11-checked.
+
+### (w) `cruft-lowering-feature-gaps` — 🟢 RIPE
+**Telos**: substrate work on cruft's bytecode compiler to close unimplemented-feature rejections surfaced by PCR-EXT 2's new `availability/missing-lowering-feature` coordinate (~115 fails). Sibling to (v) at the lowering tier; reasons of shape `compile: complex assignment target not yet supported` etc.
+**Anchor**: PCR-EXT 2 categorizer surfaced the coordinate.
+**Methodology**: enumerate `compile: ...` reasons; cluster by lowering-tier mechanism; close per-mechanism rungs.
+**Status**: queued, post-PCR.
+
+### (x) `annexB-runtime-quirks` — 🟢 RIPE
+**Telos**: implement Annex B legacy intrinsics surfaced by PCR-EXT 1's annexB-resolver routing (~398 fails @ post-PCR rank 12 + ~202 fails in String.prototype html-methods cluster). Annex B covers Date.prototype.{getYear/setYear/toGMTString/toUTCString}, String.prototype.{anchor/big/blink/bold/etc.}, RegExp.prototype.compile, and the global escape/unescape.
+**Anchor**: PCR-EXT 1's annexB/built-ins/* resolver routing made these legible as a class.
+**Methodology**: surface-by-surface implementation; many are small per-method.
+**Status**: queued, post-PCR.
+
+### (y) Class-D scope extensions (LPA-EXT 3 recommendation 4) — ⚪ HYPOTHETICAL
+**Telos**: extend existing top-10-batch locales to absorb sibling matrix coordinates at next chapter close. NOT new locale spawns; rung extensions to existing locales per R4-discipline (cluster-coherence multiplier's apparatus-tax non-amortization avoidance).
+**Anchor**: LPA-EXT 3's Class D enumeration:
+  - `ast-bytecode-missing-throw-typeerror/` extends rank 15 (Test262Error, +350) + rank 29 (ReferenceError, +178)
+  - `ast-bytecode-missing-method/` extends rank 28 (missing-global, +180)
+  - `typed-array-wrong-result/` extends rank 21 (TypeError throw-missing, +239)
+**Methodology**: chapter-close-inspect (R15) the existing locales' current scope; extend to siblings.
+**Status**: pending the existing locales' next substrate-rung activity.
+
+### (z) `pinart-categorizer-refinement` — **SPAWNED** 2026-05-25 as [`pilots/apparatus/pinart-categorizer-refinement/`](../../pilots/apparatus/pinart-categorizer-refinement/seed.md)
+**Telos**: refine `full_pinart.rs` categorizer rules to extract specific projection classes from `uncategorized/*` records. PCR-EXT 1+2 reduced uncategorized records 3,681 → 378 (-89.7%).
+**Status**: CLOSED at EXT 2; PCR-EXT 3 (canonical re-categorize against next test262 raw run) deferred per keeper.
+
+---
+
+## Tier F — FCA-amortization spinoff chain (today's substrate work, post-spawn)
+
+These were spawned mid-session as the spinoff chain emerged (per `pilots/apparatus/locale-positioning-audit/findings/spinoff-chains.md` Chain 1). Recorded here for audit-trail completeness; not new candidates.
+
+### (aa) `lexer-goal-symbol-selection` (LGSS) — **SPAWNED + CLOSED** 2026-05-25 at [`pilots/lexer-goal-symbol-selection/`](../../pilots/lexer-goal-symbol-selection/seed.md)
+3-rung closure. Lexer-tier; surfaced PPIF as spinoff.
+
+### (bb) `parser-precedence-in-flag` (PPIF) — **SPAWNED** 2026-05-25 at [`pilots/parser-precedence-in-flag/`](../../pilots/parser-precedence-in-flag/seed.md)
+EXT 1+2 landed (-48 LOC at the bare-ident fast-path deletion); EXT 3 (for-* audit) open. Precedence-climber-tier.
+
+### (cc) `for-head-non-binding-lhs` (FHNB) — **SPAWNED, FOUNDED** 2026-05-25 at [`pilots/for-head-non-binding-lhs/`](../../pilots/for-head-non-binding-lhs/seed.md)
+Bytecode/runtime tier; substrate work pending. Per R4 should land as multi-tier coherent unit.
+
+---
+
+## Tier G — meta-apparatus (audit / process)
+
+### (dd) `locale-positioning-audit` (LPA) — **SPAWNED + operationally complete** 2026-05-25 at [`pilots/apparatus/locale-positioning-audit/`](../../pilots/apparatus/locale-positioning-audit/seed.md)
+Three-rung methodology (stale-claim sweep, spinoff-chain mapping, positioning-gap detection); all three executed at least once. Future runs re-render the findings docs per triggers.
+
+### (ee) `pinart-categorizer-refinement` — see (z) above.
+
+---
+
+## Tier H — top-10 spawn batch from 2026-05-25 matrix (post-hoc registration)
+
+Spawned 2026-05-25 from the full-suite Pin-Art matrix's top-10 coordinates (commit 561b7aa4). Registered here for audit-trail; each is anchored to a specific matrix coordinate per its seed.
+
+| Ref | Locale | Matrix rank | Pool | Status |
+|---|---|---:|---:|---|
+| (ff) | `temporal-availability/` | 1 | 4,152 | FOUNDED |
+| (gg) | `ast-bytecode-syntaxerror-cluster/` | 2 | 1,296 | FOUNDED |
+| (hh) | `ast-bytecode-wrong-result/` | 3 | 1,244 | FOUNDED |
+| (ii) | `ast-bytecode-missing-method/` | 4 | 1,088 | FOUNDED |
+| (jj) | `parser-early-error-residual/` | 5 | 809 | ACTIVE (BBND nested closed 95 tests of sub-cluster) |
+| (kk) | `ast-bytecode-uncategorized-projection/` | 6 | 659 | FOUNDED, apparatus-gap (per heuristics §IX); blocked on (v)/(w) precedence |
+| (ll) | `ast-bytecode-missing-throw-typeerror/` | 7 | 622 | FOUNDED |
+| (mm) | `typed-array-wrong-result/` | 8 | 614 | FOUNDED |
+| (nn) | `typed-array-missing-method/` | 9 | 469 | FOUNDED |
+| (oo) | `spec-builtins-wrong-result/` | 10 | 389 | FOUNDED |
+
+---
+
 ## Spawning protocol
 
 1. Read this file + identify the candidate.
