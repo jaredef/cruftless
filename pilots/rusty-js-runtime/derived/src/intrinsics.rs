@@ -2315,8 +2315,8 @@ impl Runtime {
         // so `Temporal.PlainDate` etc. is defined and `instanceof` checks
         // do not crash. Real prototype + ctor land in per-class sub-locales.
         // Stubs for classes whose per-class rung hasn't landed yet.
-        // Duration + Instant + PlainTime + PlainDate + PlainDateTime REAL.
-        for class_name in &["PlainMonthDay", "PlainYearMonth", "ZonedDateTime"] {
+        // Duration+Instant+PlainTime+PlainDate+PlainDateTime+PlainMonthDay REAL.
+        for class_name in &["PlainYearMonth", "ZonedDateTime"] {
             let stub = self.alloc_object(Object::new_ordinary());
             let cn = (*class_name).to_string();
             self.obj_mut(stub).dict_mut().insert(
@@ -6381,6 +6381,213 @@ impl Runtime {
         });
         self.obj_mut(temporal)
             .set_own_internal("PlainDateTime".into(), Value::Object(pdt_ctor));
+        // PMDCF-EXT 1 (plain-month-day-ctor-fields): Temporal.PlainMonthDay.
+        // Stores month, day, referenceISOYear, calendar as __pmd_<field> sentinels.
+        // Default referenceISOYear = 1972 (leap-aware: Feb 29 valid).
+        let pmd_proto = self.alloc_object(Object::new_ordinary());
+        // day getter.
+        {
+            let getter_obj = make_native_non_ctor("get day", 0, |rt, _args| {
+                let id = match rt.current_this() {
+                    Value::Object(o) => o,
+                    _ => return Err(RuntimeError::TypeError("PMD.day: this not object".into())),
+                };
+                match rt.object_get(id, "__pmd_day") {
+                    Value::Undefined => Err(RuntimeError::TypeError(
+                        "Temporal.PlainMonthDay.prototype.day: this is not a Temporal.PlainMonthDay".into()
+                    )),
+                    v => Ok(v),
+                }
+            });
+            let getter_id = self.alloc_object(getter_obj);
+            self.obj_mut(pmd_proto).dict_mut().insert(
+                "day".into(),
+                PropertyDescriptor {
+                    value: Value::Undefined, writable: false,
+                    enumerable: false, configurable: true,
+                    getter: Some(Value::Object(getter_id)), setter: None,
+                },
+            );
+        }
+        // monthCode getter.
+        {
+            let getter_obj = make_native_non_ctor("get monthCode", 0, |rt, _args| {
+                let id = match rt.current_this() {
+                    Value::Object(o) => o,
+                    _ => return Err(RuntimeError::TypeError("PMD.monthCode: this not object".into())),
+                };
+                let m = match rt.object_get(id, "__pmd_month") {
+                    Value::Number(n) => n as i64,
+                    _ => return Err(RuntimeError::TypeError(
+                        "Temporal.PlainMonthDay.prototype.monthCode: this is not a Temporal.PlainMonthDay".into()
+                    )),
+                };
+                Ok(Value::String(Rc::new(format!("M{:02}", m))))
+            });
+            let getter_id = self.alloc_object(getter_obj);
+            self.obj_mut(pmd_proto).dict_mut().insert(
+                "monthCode".into(),
+                PropertyDescriptor {
+                    value: Value::Undefined, writable: false,
+                    enumerable: false, configurable: true,
+                    getter: Some(Value::Object(getter_id)), setter: None,
+                },
+            );
+        }
+        // calendarId getter.
+        {
+            let getter_obj = make_native_non_ctor("get calendarId", 0, |rt, _args| {
+                let id = match rt.current_this() {
+                    Value::Object(o) => o,
+                    _ => return Err(RuntimeError::TypeError("PMD.calendarId: this not object".into())),
+                };
+                match rt.object_get(id, "__pmd_calendar") {
+                    Value::Undefined => Err(RuntimeError::TypeError(
+                        "Temporal.PlainMonthDay.prototype.calendarId: this is not a Temporal.PlainMonthDay".into()
+                    )),
+                    v => Ok(v),
+                }
+            });
+            let getter_id = self.alloc_object(getter_obj);
+            self.obj_mut(pmd_proto).dict_mut().insert(
+                "calendarId".into(),
+                PropertyDescriptor {
+                    value: Value::Undefined, writable: false,
+                    enumerable: false, configurable: true,
+                    getter: Some(Value::Object(getter_id)), setter: None,
+                },
+            );
+        }
+        register_intrinsic_method(self, pmd_proto, "valueOf", 0, |_rt, _args| {
+            Err(RuntimeError::TypeError(
+                "Temporal.PlainMonthDay valueOf cannot be used".into()
+            ))
+        });
+        // toString: "MM-DD" for default calendar+refYear; full date when refYear differs.
+        register_intrinsic_method(self, pmd_proto, "toString", 0, |rt, _args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("PMD.toString: this not object".into())),
+            };
+            let m = match rt.object_get(id, "__pmd_month") { Value::Number(n) => n as i64, _ => 0 };
+            let d = match rt.object_get(id, "__pmd_day") { Value::Number(n) => n as i64, _ => 0 };
+            let ry = match rt.object_get(id, "__pmd_refyear") { Value::Number(n) => n as i64, _ => 1972 };
+            // Default calendar + default refYear (1972) → "MM-DD".
+            // Otherwise → "YYYY-MM-DD".
+            let cal = match rt.object_get(id, "__pmd_calendar") {
+                Value::String(s) => (*s).to_string(),
+                _ => "iso8601".to_string(),
+            };
+            let s = if ry == 1972 && cal == "iso8601" {
+                format!("{:02}-{:02}", m, d)
+            } else {
+                format!("{:04}-{:02}-{:02}", ry, m, d)
+            };
+            Ok(Value::String(Rc::new(s)))
+        });
+        register_intrinsic_method(self, pmd_proto, "toJSON", 0, |rt, _args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("PMD.toJSON: this not object".into())),
+            };
+            let m = match rt.object_get(id, "__pmd_month") { Value::Number(n) => n as i64, _ => 0 };
+            let d = match rt.object_get(id, "__pmd_day") { Value::Number(n) => n as i64, _ => 0 };
+            let ry = match rt.object_get(id, "__pmd_refyear") { Value::Number(n) => n as i64, _ => 1972 };
+            let cal = match rt.object_get(id, "__pmd_calendar") {
+                Value::String(s) => (*s).to_string(),
+                _ => "iso8601".to_string(),
+            };
+            let s = if ry == 1972 && cal == "iso8601" {
+                format!("{:02}-{:02}", m, d)
+            } else {
+                format!("{:04}-{:02}-{:02}", ry, m, d)
+            };
+            Ok(Value::String(Rc::new(s)))
+        });
+        self.obj_mut(pmd_proto).dict_mut().insert(
+            "@@toStringTag".into(),
+            PropertyDescriptor {
+                value: Value::String(Rc::new("Temporal.PlainMonthDay".into())),
+                writable: false, enumerable: false, configurable: true,
+                getter: None, setter: None,
+            },
+        );
+        let pmd_proto_for_ctor = pmd_proto;
+        let pmd_ctor_obj = make_native_with_length("PlainMonthDay", 2, move |rt, args| {
+            if rt.current_new_target.is_none() {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.PlainMonthDay constructor cannot be called as a function".into()
+                ));
+            }
+            let month = crate::abstract_ops::to_number(&args.get(0).cloned().unwrap_or(Value::Undefined));
+            let day = crate::abstract_ops::to_number(&args.get(1).cloned().unwrap_or(Value::Undefined));
+            let calendar = match args.get(2).cloned().unwrap_or(Value::Undefined) {
+                Value::Undefined => "iso8601".to_string(),
+                Value::String(s) => s.to_lowercase(),
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainMonthDay: calendar must be a string or undefined".into()
+                )),
+            };
+            if calendar != "iso8601" {
+                return Err(RuntimeError::RangeError(format!(
+                    "Temporal.PlainMonthDay: only iso8601 calendar supported; got {:?}", calendar
+                )));
+            }
+            // referenceISOYear default 1972 (leap so Feb 29 valid).
+            let ref_year = match args.get(3).cloned().unwrap_or(Value::Undefined) {
+                Value::Undefined => 1972i64,
+                v => {
+                    let n = crate::abstract_ops::to_number(&v);
+                    if !n.is_finite() || n != n.trunc() {
+                        return Err(RuntimeError::RangeError(
+                            "Temporal.PlainMonthDay: referenceISOYear must be integer".into()
+                        ));
+                    }
+                    n as i64
+                }
+            };
+            for (n, name) in [(month, "month"), (day, "day")] {
+                if !n.is_finite() || n != n.trunc() {
+                    return Err(RuntimeError::RangeError(format!(
+                        "Temporal.PlainMonthDay: {} must be integer", name
+                    )));
+                }
+            }
+            let m = month as i64;
+            let d = day as i64;
+            if !(1..=12).contains(&m) {
+                return Err(RuntimeError::RangeError(format!(
+                    "Temporal.PlainMonthDay: month {} out of range", m
+                )));
+            }
+            let leap = (ref_year % 4 == 0 && ref_year % 100 != 0) || (ref_year % 400 == 0);
+            let max_day = match m {
+                1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+                4 | 6 | 9 | 11 => 30,
+                2 => if leap { 29 } else { 28 },
+                _ => unreachable!(),
+            };
+            if !(1..=max_day).contains(&d) {
+                return Err(RuntimeError::RangeError(format!(
+                    "Temporal.PlainMonthDay: day {} out of range for month {} in ref year {}", d, m, ref_year
+                )));
+            }
+            let mut o = Object::new_ordinary();
+            o.proto = Some(pmd_proto_for_ctor);
+            let id = rt.alloc_object(o);
+            rt.set_engine_sentinel(id, "__pmd_month", Value::Number(m as f64));
+            rt.set_engine_sentinel(id, "__pmd_day", Value::Number(d as f64));
+            rt.set_engine_sentinel(id, "__pmd_refyear", Value::Number(ref_year as f64));
+            rt.set_engine_sentinel(id, "__pmd_calendar", Value::String(Rc::new(calendar)));
+            Ok(Value::Object(id))
+        });
+        let pmd_ctor = self.alloc_object(pmd_ctor_obj);
+        self.obj_mut(pmd_proto)
+            .set_own_internal("constructor".into(), Value::Object(pmd_ctor));
+        self.obj_mut(pmd_ctor)
+            .set_own_frozen("prototype".into(), Value::Object(pmd_proto));
+        self.obj_mut(temporal)
+            .set_own_internal("PlainMonthDay".into(), Value::Object(pmd_ctor));
         self.globals.insert("Temporal".into(), Value::Object(temporal));
     }
 
