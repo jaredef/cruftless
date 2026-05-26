@@ -2637,6 +2637,102 @@ impl Runtime {
         // and `Temporal.Duration.prototype` is the dur_proto object.
         self.obj_mut(dur_ctor)
             .set_own_frozen("prototype".into(), Value::Object(dur_proto));
+        // DSC-EXT 1 (duration-string-conversion): toString / toJSON /
+        // toLocaleString. Format per §11.4.2.x:
+        //   [-]P[nY][nM][nW][nD][T[nH][nM][nS]]
+        // - Sign prefix on the whole string when any unit is negative
+        //   (uniform-sign invariant already enforced).
+        // - Each unit appears only if non-zero (EXCEPT seconds if any
+        //   sub-second unit is non-zero, since they roll up to fractional
+        //   seconds, AND PT0S when ALL fields are zero).
+        // - Sub-seconds combine: total_frac_ns = ms*10^6 + μs*10^3 + ns.
+        //   Carries (>1e9) propagate into the seconds field. Fractional
+        //   portion zero-pad to 9 digits then trim trailing zeros.
+        fn duration_to_iso_string(rt: &mut Runtime, this_id: ObjectRef) -> Result<String, RuntimeError> {
+            let units_names = ["years", "months", "weeks", "days", "hours",
+                               "minutes", "seconds", "milliseconds",
+                               "microseconds", "nanoseconds"];
+            if matches!(rt.object_get(this_id, "__td_years"), Value::Undefined) {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.Duration: this is not a Temporal.Duration".into()
+                ));
+            }
+            let mut u = [0i64; 10];
+            for (i, n) in units_names.iter().enumerate() {
+                let key = format!("__td_{}", n);
+                if let Value::Number(v) = rt.object_get(this_id, &key) {
+                    u[i] = v as i64;
+                }
+            }
+            // Negative if any non-zero unit is negative.
+            let neg = u.iter().any(|&x| x < 0);
+            for x in u.iter_mut() { *x = x.abs(); }
+            // Sub-second roll-up: combine ms*1e6 + μs*1e3 + ns → total ns,
+            // then carry into seconds.
+            let total_subsec_ns: i64 = u[7] * 1_000_000 + u[8] * 1_000 + u[9];
+            let carry_sec = total_subsec_ns / 1_000_000_000;
+            let frac_ns = total_subsec_ns % 1_000_000_000;
+            let seconds_total = u[6] + carry_sec;
+            // Build output. Detect "all zero" before consuming units.
+            let any_date = u[0] != 0 || u[1] != 0 || u[2] != 0 || u[3] != 0;
+            let any_time = u[4] != 0 || u[5] != 0 || seconds_total != 0 || frac_ns != 0;
+            let mut out = String::new();
+            if neg { out.push('-'); }
+            out.push('P');
+            if u[0] != 0 { out.push_str(&format!("{}Y", u[0])); }
+            if u[1] != 0 { out.push_str(&format!("{}M", u[1])); }
+            if u[2] != 0 { out.push_str(&format!("{}W", u[2])); }
+            if u[3] != 0 { out.push_str(&format!("{}D", u[3])); }
+            if any_time {
+                out.push('T');
+                if u[4] != 0 { out.push_str(&format!("{}H", u[4])); }
+                if u[5] != 0 { out.push_str(&format!("{}M", u[5])); }
+                // Seconds: emit if seconds_total != 0 OR frac_ns != 0 OR
+                // neither date nor other time units present (PT0S fallback).
+                let need_seconds = seconds_total != 0 || frac_ns != 0
+                    || (u[4] == 0 && u[5] == 0);
+                if need_seconds {
+                    if frac_ns > 0 {
+                        let frac_str = format!("{:09}", frac_ns);
+                        let trimmed = frac_str.trim_end_matches('0');
+                        out.push_str(&format!("{}.{}S", seconds_total, trimmed));
+                    } else {
+                        out.push_str(&format!("{}S", seconds_total));
+                    }
+                }
+            } else if !any_date {
+                // All zero → "PT0S".
+                out.push_str("T0S");
+            }
+            Ok(out)
+        }
+        register_intrinsic_method(self, dur_proto, "toString", 0, |rt, _args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.Duration.prototype.toString: this is not an object".into()
+                )),
+            };
+            Ok(Value::String(Rc::new(duration_to_iso_string(rt, id)?)))
+        });
+        register_intrinsic_method(self, dur_proto, "toJSON", 0, |rt, _args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.Duration.prototype.toJSON: this is not an object".into()
+                )),
+            };
+            Ok(Value::String(Rc::new(duration_to_iso_string(rt, id)?)))
+        });
+        register_intrinsic_method(self, dur_proto, "toLocaleString", 0, |rt, _args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.Duration.prototype.toLocaleString: this is not an object".into()
+                )),
+            };
+            Ok(Value::String(Rc::new(duration_to_iso_string(rt, id)?)))
+        });
         // DStat-EXT 1 (duration-static): Temporal.Duration.from + compare.
         // IDP-EXT 1 (iso-duration-parse): parse ISO 8601 duration string
         // into a 10-unit array per ECMA-262 §11.8.1. Grammar:

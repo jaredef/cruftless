@@ -123,6 +123,10 @@ function runOne(path) {
       '/Temporal/Duration/prototype/microseconds/',
       '/Temporal/Duration/prototype/nanoseconds/',
       '/Temporal/Duration/prototype/toStringTag/',
+      // DSC-EXT 1: duration-string-conversion
+      '/Temporal/Duration/prototype/toString/',
+      '/Temporal/Duration/prototype/toJSON/',
+      '/Temporal/Duration/prototype/toLocaleString/',
       // DDP-EXT 1: duration-derived-properties (sign / blank / abs / negated)
       '/Temporal/Duration/prototype/sign/',
       '/Temporal/Duration/prototype/blank/',
