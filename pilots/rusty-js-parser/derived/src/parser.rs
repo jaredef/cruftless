@@ -1029,24 +1029,17 @@ impl<'src> Parser<'src> {
         Ok(())
     }
 
-    /// LGSS-EXT 2: rewind the lexer to `pos` and re-lex the lookahead.
-    /// The goal-symbol is implicit: at a rewind boundary the parser is
-    /// returning to a position whose syntactic context is "fresh
-    /// expression head" (the only rewind site in cruft today is the
-    /// for-head fast-path bail, which rewinds to before a bumped
-    /// identifier in the for-paren expression position). RegExp is the
-    /// safe default — primary expressions can begin with regex literals.
-    /// Per the LGSS thesis, the goal is no longer a caller-passed
-    /// argument at the parser-tier method boundary.
-    pub(crate) fn rewind_lexer_to(
-        &mut self,
-        pos: usize,
-    ) -> Result<(), ParseError> {
-        self.lx.set_pos(pos);
-        self.lookahead = self.lx.next_token(LexerGoal::RegExp).map_err(lex_to_parse)?;
-        self.current_lex_goal = derive_lex_goal_after(&self.lookahead.kind);
-        Ok(())
-    }
+    // PPIF-EXT 2: `rewind_lexer_to` deleted. Its only caller was the
+    // bare-ident for-head fast-path (`parse_for_statement`), which
+    // PPIF-EXT 2 deleted along with it. The fast-path was a workaround
+    // for the absent [+In]/[-In] grammar parameter; PPIF-EXT 1 named the
+    // parameter as parser state, making the fast-path redundant. With
+    // zero callers, rewind_lexer_to itself becomes deletable — closing
+    // one of the two irreducible carriers named in LGSS-EXT 3's analysis
+    // (§XI.1.b of the apparatus doc).
+    //
+    // The lexer↔parser feedback edge's intent-named carrier count drops
+    // from 2 to 1; only `enter_template_tail` remains.
     pub(crate) fn consume_semicolon_pub(&mut self) {
         self.consume_semicolon()
     }

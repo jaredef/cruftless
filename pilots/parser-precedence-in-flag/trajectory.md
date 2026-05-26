@@ -58,3 +58,44 @@ All four conditions hold prospectively. Per R13 thirteenth-corroboration discipl
 **Finding PPIF.2 (amortization conjecture corroborated prospectively)**: the keeper's conjecture (LGSS-pattern amortizes across the engine in downstream tiers) lands at PPIF's first rung in a stronger form than predicted at seed time. The seed predicted "0 net test262 tests; the yield is structural-cleanliness." Empirically, PPIF-EXT 1 *unblocks parse shapes that the bare-ident fast-path workaround could not handle* — specifically, Member/Call/Pattern LHS in for-in/of head when the LHS subexpression contains the `o.x` shape that the fast-path bypasses. The naming-at-the-right-tier moves are not only structural; they make new correctness possible at downstream tiers (Member LHS now parses; the runtime bug behind the "undefined" body assignment is the next coordinate, surfaced for downstream work).
 
 **Status**: PPIF-EXT 1 CLOSED. The `[-In]` grammar parameter is materialized as parser state. PPIF-EXT 2 (eliminate the bare-ident fast-path + its rewind, which becomes redundant now) is the next rung.
+
+---
+
+## PPIF-EXT 2 — delete the bare-ident fast-path + `rewind_lexer_to` (2026-05-25)
+
+**Trigger**: Keeper directive (Telegram 9800) "deletions are just as important to maintaining legibility." This rung is the deletion-pair: the bare-ident for-head fast-path that PPIF-EXT 1 made redundant, plus `rewind_lexer_to` whose only caller was the fast-path.
+
+**Edits** (net **-48 LOC**: +47 added, -95 deleted):
+
+1. `pilots/rusty-js-parser/derived/src/stmt.rs` — delete the fast-path block (lines 1178-1254, ~77 lines including comments). Replaced by a documentation comment that records the deletion rationale + the named-constraint upstream (PPIF-EXT 1's `in_disallowed`) that made the deletion safe.
+2. `pilots/rusty-js-parser/derived/src/parser.rs` — delete `rewind_lexer_to` method body. Replaced by a documentation comment that records the deletion + names the eliminated irreducible carrier (one of the two in apparatus §XI.1.b; only `enter_template_tail` remains).
+3. `pilots/rusty-js-parser/derived/src/stmt.rs` — relocate FAOF-EXT 1's `async of` lookahead check from inside the deleted fast-path to the expression-head path, operating on the parsed-expression's identifier shape rather than the fast-path's peeked-ident name.
+
+**Verification**:
+
+| Probe | Result |
+|---|---|
+| `var x; for (x in {a:1,b:2})` (bare-ident for-in) | works ✓ |
+| `var x; for (x of [1,2])` (bare-ident for-of) | works ✓ |
+| `var async; for (async of [1])` (async-of) | SyntaxError ✓ (relocated FAOF) |
+| `for ((y) of [10])` (paren-wrapped ident) | parses ✓ |
+| `for (var i=0; i<2; i++)` (plain for) | works ✓ |
+| All probes from PPIF-EXT 1 | identical output (held) |
+
+**Gates**:
+- diff-prod: **42/42 PASS, 0 FAIL**
+- Random 300 prev-PASS: **300/300, 0 regressions**
+- SyntaxError cluster: **45/45 (held)**
+
+**LoC accounting**:
+- Deletion: 95 lines (fast-path body + `rewind_lexer_to` method body + parameter renames at signature)
+- Addition: 47 lines (documentation comments explaining the deletion rationale + the relocated `async of` check, ~10 LOC executable)
+- **Net: -48 LOC**
+
+**Findings**
+
+**Finding PPIF.3 (deletions are first-class substrate moves)**: PPIF-EXT 2 lands -48 net LOC by deleting code that PPIF-EXT 1's named constraint made redundant. The deletion is structurally enabled by the upstream naming; it's not janitorial cleanup, it's the second half of the constraint-naming move (name the constraint → delete the workaround). Per the keeper's directive at Telegram 9800, this and similar deletions land in `apparatus/docs/deletions-ledger.md` so the trajectory-binding survives git history.
+
+**Finding PPIF.4 (the LGSS §XI.1.b carrier count drops to 1)**: LGSS-EXT 3 documented two intent-named methods as the irreducible carriers in cruft's lexer↔parser feedback edge (apparatus §XI.1.b): `enter_template_tail` (forced by lexer byte-boundaries) and `rewind_lexer_to` (forced by absence of [In] grammar parameter). PPIF-EXT 1 named the [In] grammar parameter; PPIF-EXT 2 deletes `rewind_lexer_to`. The carrier count for the back-edge drops from 2 to 1. The apparatus §XI.1.b articulation should be re-read in light of this — what was "irreducible within LGSS scope" became reducible once a sibling locale (PPIF) named the orthogonal constraint that LGSS had identified as outside its scope. This is the FCA amortization conjecture corroborated mechanically: each named-constraint locale reduces the apparent irreducibility of sibling locales.
+
+**Status**: PPIF-EXT 2 CLOSED. PPIF-EXT 3 (audit other for-* positions taking [-In], particularly `for (var/let/const VariableDeclarationList ...)` initializers) remains; PPIF locale closes after EXT 3 verifies the audit returns no additional sites needing the threading.

@@ -1175,83 +1175,26 @@ impl<'src> Parser<'src> {
         if head_is_empty {
             self.bump()?;
         }
-        // Tier-Ω.5.gg fast-path: bare-identifier `for (id in …)` / `for (id of …)`
-        // — pre-Ω.5.gg this branch never fired because `export function`
-        // bodies were walked by skip_balanced. Now that real parsing runs,
-        // `parse_expression` would consume `id in obj` as a RelationalExpr
-        // (`in` is a binary op at precedence 10), tripping `expected `;``.
-        // The spec's [+In] flag is the proper fix; this peek captures the
-        // common shape (`for (ident in/of expr)`) without rebuilding the
-        // precedence climber.
-        if !head_is_empty {
-            if let TokenKind::Ident(n) = self.current_kind().clone() {
-                let id_span = self.lookahead_span();
-                // Save before we bump so we can fall through if it's not for-in/of.
-                let saved_pos_before_id = id_span.start;
-                // Peek the next byte after the identifier to decide whether
-                // it's `in` / `of`. We can't easily two-token-peek, so we
-                // bump and look; if not in/of, we still produce a usable
-                // expression by treating the bumped ident as the head and
-                // continuing.
-                // Avoid eating reserved words like `var`/`let`/`const`
-                // (already handled by head_is_var) or `await`.
-                // FHLA-EXT 1: exclude `this`/`super` from the bare-ident
-                // fast-path; they are not valid SimpleAssignmentTargets
-                // (§13.15.1) and the expression-head path below rejects them.
-                if !matches!(
-                    n.as_str(),
-                    "var" | "let" | "const" | "function" | "class" | "this" | "super"
-                ) {
-                    self.bump()?;
-                    if self.is_ident("in") || self.is_contextual_keyword("of") {
-                        let is_of = self.is_contextual_keyword("of");
-                        // FAOF-EXT 1: §14.7.5 grammar lookahead — the token
-                        // sequence `async of` is forbidden as a for-of head
-                        // (disambiguates from `for await … of …`).
-                        if is_of && n == "async" {
-                            return Err(ParseError {
-                                span: id_span,
-                                message: "`async` cannot be the for-of LHS (grammar lookahead restriction)".into(),
-                            });
-                        }
-                        self.bump()?;
-                        let right = if is_of {
-                            self.parse_assignment_expression()?
-                        } else {
-                            self.parse_expression()?
-                        };
-                        self.expect_punct(Punct::RParen)?;
-                        let body = self.parse_substatement()?;
-                        let end = self.last_span_end();
-                        let left =
-                            ForBinding::Pattern(BindingPattern::Identifier(BindingIdentifier {
-                                name: n,
-                                span: id_span,
-                            }));
-                        return if is_of {
-                            Ok(Stmt::ForOf {
-                                left,
-                                right,
-                                body: Box::new(body),
-                                await_: await_form,
-                                span: Span::new(start, end),
-                            })
-                        } else {
-                            Ok(Stmt::ForIn {
-                                left,
-                                right,
-                                body: Box::new(body),
-                                span: Span::new(start, end),
-                            })
-                        };
-                    }
-                    // Not for-in/of — recover by re-lexing from the ident's
-                    // start position so the upcoming parse_expression sees
-                    // the full head.
-                    self.rewind_lexer_to(saved_pos_before_id)?;
-                }
-            }
-        }
+        // PPIF-EXT 2 (DELETED): the bare-identifier `for (id in/of …)`
+        // fast-path lived here. It existed because `parse_expression` under
+        // the implicit [+In] default consumed `id in obj` as a
+        // RelationalExpression, tripping `expected `;``. The fast-path
+        // bumped the ident, peeked for `in`/`of`, and rewound on miss.
+        //
+        // PPIF-EXT 1 named the [+In]/[-In] grammar parameter as parser
+        // state (`Parser::in_disallowed`) and threaded `[-In]` around the
+        // expression-head LHS parse at the path below. With that in place
+        // the fast-path is structurally redundant: the expression-head
+        // path now handles every shape the fast-path handled, plus shapes
+        // the fast-path could not (MemberExpression LHS, ParenthesizedExpr
+        // LHS, etc.) — see Finding PPIF.2.
+        //
+        // The async-of grammar-lookahead check (FAOF-EXT 1) and the
+        // `this`/`super` SimpleAssignmentTarget check (FHLA-EXT 1) moved
+        // to the expression-head path below where they apply against the
+        // parsed expression's shape rather than the fast-path's peeked
+        // ident name. `rewind_lexer_to` deleted along with this block
+        // (its only caller was the fast-path's bail).
         let mut init_expr: Option<Expr> = None;
         if !head_is_empty && !matches!(self.current_kind(), TokenKind::Punct(Punct::Semicolon)) {
             // PPIF-EXT 1: enter for-head LHS under `[-In]`. §13.7.5
@@ -1267,6 +1210,22 @@ impl<'src> Parser<'src> {
             // Check for `in`/`of` after a LeftHandSideExpression head.
             if self.is_ident("in") || self.is_contextual_keyword("of") {
                 let is_of = self.is_contextual_keyword("of");
+                // FAOF-EXT 1 (relocated PPIF-EXT 2): §14.7.5 grammar
+                // lookahead — the token sequence `async of` is forbidden
+                // as a for-of head (disambiguates from `for await … of …`).
+                // Pre-PPIF-EXT 2 this lived in the bare-ident fast-path;
+                // now it operates on the parsed expression's identifier
+                // shape.
+                if is_of {
+                    if let Expr::Identifier { name, span } = &e {
+                        if name == "async" {
+                            return Err(ParseError {
+                                span: *span,
+                                message: "`async` cannot be the for-of LHS (grammar lookahead restriction)".into(),
+                            });
+                        }
+                    }
+                }
                 self.bump()?;
                 let right = if is_of {
                     self.parse_assignment_expression()?
