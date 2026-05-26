@@ -291,6 +291,18 @@ function runOne(path) {
       // PDTS-EXT 1: PDT.from + PDT.compare
       '/Temporal/PlainDateTime/from/',
       '/Temporal/PlainDateTime/compare/',
+      // PDTDP-EXT 1: PDT derived-properties (11 getters)
+      '/Temporal/PlainDateTime/prototype/dayOfWeek/',
+      '/Temporal/PlainDateTime/prototype/dayOfYear/',
+      '/Temporal/PlainDateTime/prototype/daysInMonth/',
+      '/Temporal/PlainDateTime/prototype/daysInWeek/',
+      '/Temporal/PlainDateTime/prototype/daysInYear/',
+      '/Temporal/PlainDateTime/prototype/inLeapYear/',
+      '/Temporal/PlainDateTime/prototype/monthsInYear/',
+      '/Temporal/PlainDateTime/prototype/weekOfYear/',
+      '/Temporal/PlainDateTime/prototype/yearOfWeek/',
+      '/Temporal/PlainDateTime/prototype/era/',
+      '/Temporal/PlainDateTime/prototype/eraYear/',
       // Foundation tests that pass without per-class implementation.
       '/Temporal/getOwnPropertyNames.js',
       '/Temporal/keys.js',

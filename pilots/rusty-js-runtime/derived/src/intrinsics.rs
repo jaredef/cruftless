@@ -5709,6 +5709,115 @@ impl Runtime {
             .set_own_internal("constructor".into(), Value::Object(pdt_ctor));
         self.obj_mut(pdt_ctor)
             .set_own_frozen("prototype".into(), Value::Object(pdt_proto));
+        // PDTDP-EXT 1 (plain-date-time-derived-properties): 11 calendar
+        // getters that mirror PDDP, reading from __pdt_year/month/day.
+        fn pdt_read_ymd(rt: &mut Runtime, id: ObjectRef, name: &str) -> Result<(i64, i64, i64), RuntimeError> {
+            let y = match rt.object_get(id, "__pdt_year") {
+                Value::Number(n) => n as i64,
+                _ => return Err(RuntimeError::TypeError(format!(
+                    "Temporal.PlainDateTime.prototype.{}: this is not a Temporal.PlainDateTime", name
+                ))),
+            };
+            let m = match rt.object_get(id, "__pdt_month") { Value::Number(n) => n as i64, _ => 0 };
+            let d = match rt.object_get(id, "__pdt_day") { Value::Number(n) => n as i64, _ => 0 };
+            Ok((y, m, d))
+        }
+        macro_rules! pdt_getter {
+            ($name:expr, $body:expr) => {{
+                let getter_obj = make_native_non_ctor(&format!("get {}", $name), 0, $body);
+                let getter_id = self.alloc_object(getter_obj);
+                self.obj_mut(pdt_proto).dict_mut().insert(
+                    $name.into(),
+                    PropertyDescriptor {
+                        value: Value::Undefined, writable: false,
+                        enumerable: false, configurable: true,
+                        getter: Some(Value::Object(getter_id)), setter: None,
+                    },
+                );
+            }};
+        }
+        pdt_getter!("dayOfWeek", |rt, _| {
+            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("dayOfWeek".into())) };
+            let (y, m, d) = pdt_read_ymd(rt, id, "dayOfWeek")?;
+            let days = pda_days_from_civil(y, m, d);
+            let dow0 = (days + 3).rem_euclid(7);
+            Ok(Value::Number((dow0 + 1) as f64))
+        });
+        pdt_getter!("dayOfYear", |rt, _| {
+            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("dayOfYear".into())) };
+            let (y, m, d) = pdt_read_ymd(rt, id, "dayOfYear")?;
+            let mut doy = d;
+            for mm in 1..m { doy += pda_days_in_month(y, mm); }
+            Ok(Value::Number(doy as f64))
+        });
+        pdt_getter!("daysInMonth", |rt, _| {
+            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("daysInMonth".into())) };
+            let (y, m, _) = pdt_read_ymd(rt, id, "daysInMonth")?;
+            Ok(Value::Number(pda_days_in_month(y, m) as f64))
+        });
+        pdt_getter!("daysInWeek", |rt, _| {
+            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("daysInWeek".into())) };
+            let _ = pdt_read_ymd(rt, id, "daysInWeek")?;
+            Ok(Value::Number(7.0))
+        });
+        pdt_getter!("daysInYear", |rt, _| {
+            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("daysInYear".into())) };
+            let (y, _, _) = pdt_read_ymd(rt, id, "daysInYear")?;
+            Ok(Value::Number(if pda_is_leap(y) { 366.0 } else { 365.0 }))
+        });
+        pdt_getter!("monthsInYear", |rt, _| {
+            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("monthsInYear".into())) };
+            let _ = pdt_read_ymd(rt, id, "monthsInYear")?;
+            Ok(Value::Number(12.0))
+        });
+        pdt_getter!("inLeapYear", |rt, _| {
+            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("inLeapYear".into())) };
+            let (y, _, _) = pdt_read_ymd(rt, id, "inLeapYear")?;
+            Ok(Value::Boolean(pda_is_leap(y)))
+        });
+        pdt_getter!("era", |rt, _| {
+            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("era".into())) };
+            let _ = pdt_read_ymd(rt, id, "era")?;
+            Ok(Value::Undefined)
+        });
+        pdt_getter!("eraYear", |rt, _| {
+            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("eraYear".into())) };
+            let _ = pdt_read_ymd(rt, id, "eraYear")?;
+            Ok(Value::Undefined)
+        });
+        // ISO week — duplicated from PDDP's logic; refactor opportunity but
+        // keep inline for sub-rung isolation.
+        fn pdt_iso_week(y: i64, m: i64, d: i64) -> (i64, i64) {
+            let days = pda_days_from_civil(y, m, d);
+            let dow0 = (days + 3).rem_euclid(7);
+            let thursday_days = days - dow0 as i64 + 3;
+            for cand_y in [y - 1, y, y + 1] {
+                let jan4_days = pda_days_from_civil(cand_y, 1, 4);
+                let jan4_dow0 = (jan4_days + 3).rem_euclid(7);
+                let week1_mon_days = jan4_days - jan4_dow0 as i64;
+                let week_diff = thursday_days - 3 - week1_mon_days;
+                if week_diff >= 0 {
+                    let week = week_diff / 7 + 1;
+                    let next_jan4 = pda_days_from_civil(cand_y + 1, 1, 4);
+                    let next_jan4_dow0 = (next_jan4 + 3).rem_euclid(7);
+                    let next_week1_mon = next_jan4 - next_jan4_dow0 as i64;
+                    if thursday_days - 3 < next_week1_mon {
+                        return (cand_y, week);
+                    }
+                }
+            }
+            (y, 1)
+        }
+        pdt_getter!("weekOfYear", |rt, _| {
+            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("weekOfYear".into())) };
+            let (y, m, d) = pdt_read_ymd(rt, id, "weekOfYear")?;
+            Ok(Value::Number(pdt_iso_week(y, m, d).1 as f64))
+        });
+        pdt_getter!("yearOfWeek", |rt, _| {
+            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("yearOfWeek".into())) };
+            let (y, m, d) = pdt_read_ymd(rt, id, "yearOfWeek")?;
+            Ok(Value::Number(pdt_iso_week(y, m, d).0 as f64))
+        });
         // PDTS-EXT 1 (plain-date-time-static): from / compare.
         // PDT-specific parser: handles ISO datetime without requiring offset
         // (PDT has no TZ; offset and annotation are accepted and IGNORED).
