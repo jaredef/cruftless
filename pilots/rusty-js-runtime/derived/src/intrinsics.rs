@@ -3010,6 +3010,127 @@ impl Runtime {
             .set_own_internal("constructor".into(), Value::Object(inst_ctor));
         self.obj_mut(inst_ctor)
             .set_own_frozen("prototype".into(), Value::Object(inst_proto));
+        // IDTP-EXT 1 (iso-datetime-parse): parse ISO 8601 datetime string
+        // per ECMA-262 §11.8.2 into epochNanoseconds. Grammar accepted:
+        //   YYYY-MM-DD ['T'|'t'|' '] HH:MM[:SS[.fff]] (Z|±HH:MM[:SS]) ['['annotation']' ...]
+        // Returns (epoch_ns_int_part_seconds, fractional_ns) or None.
+        // Annotations (e.g., bracketed IANA TZ, [u-ca=cal]) are accepted
+        // and IGNORED for Instant per timezone-custom.js (annotation is
+        // ignored; the explicit offset dominates).
+        fn parse_iso_datetime(s: &str) -> Option<(i64, i64)> {
+            let b = s.as_bytes();
+            if b.len() < 16 { return None; } // minimum YYYY-MM-DDTHH:MMZ
+            // Helper: parse N digits at index i.
+            fn rd(b: &[u8], i: usize, n: usize) -> Option<i64> {
+                if i + n > b.len() { return None; }
+                let mut v = 0i64;
+                for k in 0..n {
+                    let c = b[i + k];
+                    if !c.is_ascii_digit() { return None; }
+                    v = v * 10 + (c - b'0') as i64;
+                }
+                Some(v)
+            }
+            let mut i = 0;
+            let year = rd(b, i, 4)?; i += 4;
+            if b.get(i) != Some(&b'-') { return None; } i += 1;
+            let month = rd(b, i, 2)?; i += 2;
+            if b.get(i) != Some(&b'-') { return None; } i += 1;
+            let day = rd(b, i, 2)?; i += 2;
+            // Time separator: T, t, or space.
+            match b.get(i) {
+                Some(b'T') | Some(b't') | Some(b' ') => i += 1,
+                _ => return None,
+            }
+            let hour = rd(b, i, 2)?; i += 2;
+            // Minutes: separator ':' required or absent (compact form).
+            // For v1 simplicity, require ':' separator (basic-form deferred).
+            if b.get(i) != Some(&b':') { return None; } i += 1;
+            let minute = rd(b, i, 2)?; i += 2;
+            // Optional seconds.
+            let mut second = 0i64;
+            let mut frac_ns: i64 = 0;
+            if b.get(i) == Some(&b':') {
+                i += 1;
+                second = rd(b, i, 2)?; i += 2;
+                if matches!(b.get(i), Some(b'.') | Some(b',')) {
+                    i += 1;
+                    let frac_start = i;
+                    while i < b.len() && b[i].is_ascii_digit() && i - frac_start < 9 {
+                        i += 1;
+                    }
+                    let n_digits = i - frac_start;
+                    if n_digits == 0 { return None; }
+                    let mut frac = 0i64;
+                    for k in 0..n_digits {
+                        frac = frac * 10 + (b[frac_start + k] - b'0') as i64;
+                    }
+                    // pad to nanosecond precision (9 digits)
+                    for _ in 0..(9 - n_digits) { frac *= 10; }
+                    frac_ns = frac;
+                }
+            }
+            // Offset: Z (or z) or ±HH:MM[:SS].
+            let offset_sec: i64 = match b.get(i) {
+                Some(b'Z') | Some(b'z') => { i += 1; 0 }
+                Some(b'+') | Some(b'-') => {
+                    let sign: i64 = if b[i] == b'+' { 1 } else { -1 };
+                    i += 1;
+                    let oh = rd(b, i, 2)?; i += 2;
+                    let om;
+                    if b.get(i) == Some(&b':') {
+                        i += 1;
+                        om = rd(b, i, 2)?; i += 2;
+                    } else {
+                        // Compact form ±HHMM
+                        om = rd(b, i, 2)?; i += 2;
+                    }
+                    let mut os = 0i64;
+                    if b.get(i) == Some(&b':') {
+                        i += 1;
+                        os = rd(b, i, 2)?; i += 2;
+                        // sub-minute offsets are allowed but spec rejects
+                        // for fixed-offset; we accept and use.
+                    }
+                    sign * (oh * 3600 + om * 60 + os)
+                }
+                _ => return None,
+            };
+            // Optional bracketed annotations: '[' anything-until-']' ']' (repeatable).
+            while b.get(i) == Some(&b'[') {
+                i += 1;
+                while i < b.len() && b[i] != b']' { i += 1; }
+                if b.get(i) != Some(&b']') { return None; }
+                i += 1;
+            }
+            if i != b.len() { return None; }
+            // Compute epoch-seconds via correct Howard Hinnant chrono algo.
+            // cruft's ymd_to_ms helper has a latent month-convention bug
+            // (skips Feb when month >= 2); using an inline correct version
+            // avoids that bug. Per the chrono algo with m in [1, 12]:
+            //   y' = m <= 2 ? y - 1 : y
+            //   m' = m > 2 ? m - 3 : m + 9
+            //   doy = (153 * m' + 2) / 5 + d - 1
+            //   yoe = y' - era * 400
+            //   doe = yoe * 365 + yoe/4 - yoe/100 + doy
+            //   days = era * 146097 + doe - 719468
+            fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
+                let y_adj = if m <= 2 { y - 1 } else { y };
+                let m_adj = if m > 2 { m - 3 } else { m + 9 };
+                let era = (if y_adj >= 0 { y_adj } else { y_adj - 399 }) / 400;
+                let yoe = y_adj - era * 400;
+                let doy = (153 * m_adj + 2) / 5 + d - 1;
+                let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+                era * 146097 + doe - 719468
+            }
+            let date_sec_calc = days_from_civil(year, month, day) * 86400;
+            let time_sec = hour * 3600 + minute * 60 + second;
+            // Apply offset: spec says the timestamp BEFORE offset is the local
+            // value; subtract offset to get UTC. So:
+            //   epoch_sec = date_sec + time_sec - offset_sec
+            let epoch_sec = date_sec_calc + time_sec - offset_sec;
+            Some((epoch_sec, frac_ns))
+        }
         // TIS-EXT 1 (instant-static): from / fromEpochMilliseconds /
         // fromEpochNanoseconds / compare on Temporal.Instant ctor.
         fn make_instant(rt: &mut Runtime, proto: ObjectRef, ns: crate::value::Value) -> Result<Value, RuntimeError> {
@@ -3035,13 +3156,38 @@ impl Runtime {
         let proto_for_static = inst_proto;
         register_intrinsic_method(self, inst_ctor, "from", 1, move |rt, args| {
             let item = args.first().cloned().unwrap_or(Value::Undefined);
-            // String form: defer ISO 8601 datetime parsing to
-            // temporal-iso-string-parse shared substrate.
+            // IDTP-EXT 1: parse ISO 8601 datetime per §11.8.2.
             if let Value::String(s) = &item {
-                return Err(RuntimeError::TypeError(format!(
-                    "Temporal.Instant.from(string): ISO 8601 datetime string parsing not yet implemented (Tier-L stub); got {:?}",
-                    s
-                )));
+                let (epoch_sec, frac_ns) = parse_iso_datetime(s).ok_or_else(|| RuntimeError::RangeError(format!(
+                    "Temporal.Instant.from(string): invalid ISO 8601 datetime: {:?}", s
+                )))?;
+                // Compose epoch_sec * 1e9 + frac_ns as BigInt.
+                // Use string concat path (consistent with fromEpochMilliseconds).
+                let ns_str = if frac_ns == 0 {
+                    format!("{}000000000", epoch_sec)
+                } else {
+                    // Need to pad frac_ns to 9 digits in the concatenated string.
+                    let frac_str = format!("{:09}", frac_ns);
+                    if epoch_sec >= 0 {
+                        format!("{}{}", epoch_sec, frac_str)
+                    } else {
+                        // For negative epoch_sec, the fractional part must
+                        // be SUBTRACTED, not appended. epoch_sec=-1, frac=500000000
+                        // means -0.5 sec from epoch = -500000000 ns.
+                        // Actually no: epoch_sec is the seconds-part; if it's -1
+                        // and frac_ns is 500000000, that's -1 sec + 0.5 sec = -0.5 sec.
+                        // total_ns = epoch_sec * 1e9 + frac_ns = -1e9 + 5e8 = -5e8 ns.
+                        // String form: subtract frac from |epoch_sec|.
+                        // Simpler: do BigInt arithmetic instead of string concat.
+                        let epoch_ns_int = epoch_sec * 1_000_000_000 + frac_ns;
+                        format!("{}", epoch_ns_int)
+                    }
+                };
+                let bi = crate::bigint::JsBigInt::from_decimal(&ns_str)
+                    .ok_or_else(|| RuntimeError::RangeError(
+                        "Temporal.Instant.from(string): cannot encode nanoseconds".into()
+                    ))?;
+                return make_instant(rt, proto_for_static, Value::BigInt(std::rc::Rc::new(bi)));
             }
             let id = match item {
                 Value::Object(o) => o,
@@ -3087,10 +3233,12 @@ impl Runtime {
         });
         register_intrinsic_method(self, inst_ctor, "compare", 2, move |rt, args| {
             fn extract_ns(rt: &mut Runtime, v: Value) -> Result<f64, RuntimeError> {
-                if let Value::String(_) = &v {
-                    return Err(RuntimeError::TypeError(
-                        "Temporal.Instant.compare: ISO string parsing not yet implemented (Tier-L stub)".into()
-                    ));
+                if let Value::String(s) = &v {
+                    // IDTP-EXT 1: parse ISO datetime per §11.8.2.
+                    let (epoch_sec, frac_ns) = parse_iso_datetime(s).ok_or_else(|| RuntimeError::RangeError(format!(
+                        "Temporal.Instant.compare(string): invalid ISO 8601 datetime: {:?}", s
+                    )))?;
+                    return Ok((epoch_sec as f64) * 1e9 + (frac_ns as f64));
                 }
                 let id = match v {
                     Value::Object(o) => o,

@@ -3,9 +3,9 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 138,
+    "locales": 139,
     "top_level": 103,
-    "nested": 35,
+    "nested": 36,
     "warnings": 0
   },
   "locales": [
@@ -1069,6 +1069,15 @@
       "scope": "temporal-iso-string-parse",
       "depth": 2,
       "rung_count": 2,
+      "status": null
+    },
+    {
+      "coord": "temporal-implementation/temporal-iso-string-parse/iso-datetime-parse",
+      "tag": "L.temporal-implementation.temporal-iso-string-parse.iso-datetime-parse",
+      "parent": "L.temporal-implementation.temporal-iso-string-parse",
+      "scope": "iso-datetime-parse",
+      "depth": 3,
+      "rung_count": 1,
       "status": null
     },
     {
