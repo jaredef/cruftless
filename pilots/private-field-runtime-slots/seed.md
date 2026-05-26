@@ -24,8 +24,11 @@ Immediate surfaced cases:
 
 - `pilots/rusty-js-runtime/derived/src/value.rs::Object` — adds a private-field storage map traced by GC but excluded from ordinary property-key paths.
 - `pilots/rusty-js-runtime/derived/src/interp.rs::{object_get, object_set, Op::GetProp, Op::SetProp}` — routes compiler-generated `#name` property ops through private storage.
+- `pilots/rusty-js-runtime/derived/src/interp.rs::call_function` — preserves generator terminal returns and wraps async-generator `next()` results in Promises for the eager transitional iterator.
+- `pilots/rusty-js-runtime/derived/src/promise.rs::resolve_promise` — assimilates returned Promise objects so chained async test262 continuations observe the unwrapped value.
 - `pilots/rusty-js-runtime/derived/src/intrinsics.rs::__install_method__` — installs private methods into private storage when the key begins with `#`.
-- `pilots/rusty-js-bytecode/derived/src/compiler.rs` — marks private-member continuations whose receiver expression contains an optional chain.
+- `pilots/rusty-js-bytecode/derived/src/compiler.rs` — marks private-member continuations whose receiver expression contains an optional chain and preserves async/generator flags for class methods.
+- `legacy/host-rquickjs/tests/test262/runner.mjs` — executes async-flag tests through a quiet `$DONE` shim and the runtime await pump.
 - PNL focused probe: 194 private-name / class-elements test262 fixtures.
 
 ## Methodology
@@ -47,19 +50,21 @@ Bridge `o?.c.#f` while the parser/compiler still represents the outer private me
 2. let a `#name` read over the optional short-circuit `undefined` produce `undefined`,
 3. preserve TypeError for ordinary missing private slots on non-nullish objects.
 
-### PFRS-EXT 3 — generator class method flag preservation
+### PFRS-EXT 3/4 — generator and async class method flag preservation
 
-Close the generator-method residuals that became visible after private slots landed:
+Close the generator and async-method residuals that became visible after private slots landed:
 
-1. preserve `is_generator` when lowering class methods,
+1. preserve `is_async` and `is_generator` when lowering class methods,
 2. seed the existing eager generator iterator with a non-undefined body return when the generator produced no `yield` values,
-3. leave async and async-generator harness rows out of scope.
+3. wrap async-generator `next()` results in resolved Promises,
+4. let the test262 runner execute async-flag tests without leaking harness print output into its single JSON line,
+5. assimilate Promise fulfillment values so chained test262 async continuations receive the unwrapped result.
 
 ## Carve-outs
 
 - This is not yet a full ECMA private-brand model. Prototype private-method lookup is a compatibility bridge for the current lowering, not the final brand semantics.
 - Optional-chain private-field runtime semantics are only closed for the surfaced `o?.c.#f` continuation shape.
-- Async/generator method runtime semantics remain open.
+- Async/generator support is only closed for the eager, no-suspension class-method cases surfaced by the focused PNL probe.
 
 ## Composes-with
 
@@ -73,4 +78,4 @@ Read `trajectory.md` tail. Rebuild `cruft`, run the 40-path PNL smoke and the 19
 
 ## Status
 
-PFRS-EXT 3 landed locally. Runtime/bytecode compile; release binary keeps direct PNL at `40/40` and moves the focused PNL list from `162/194` to `178/194`. The remaining focused rows are async-harness SKIPs.
+PFRS-EXT 4 landed locally. Runtime/bytecode compile; release binary keeps direct PNL at `40/40` and moves the focused PNL list from `178/194` to `194/194`.

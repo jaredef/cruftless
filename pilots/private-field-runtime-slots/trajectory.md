@@ -118,3 +118,43 @@ Movement:
 Residuals:
 
 - 16 async / async-generator rows, all harness SKIPs (`async-flag tests need the async-test harness; deferred`).
+
+## PFRS-EXT 4 — 2026-05-26 (async class methods and async test262 runner)
+
+Closed the final 16 focused PNL rows, all async or async-generator class-element cases.
+
+Problem shape:
+
+- Class method lowering still discarded `is_async`, so `async m() { return 42 }` became an ordinary method returning `42`.
+- Async-generator class methods need `.next()` to return a Promise of the iterator result object.
+- The test262 runner skipped every `flags: [async]` test to avoid the noisy `doneprintHandle.js` harness protocol.
+- Once async-flag execution was enabled, chained async continuations exposed that `resolve_promise` fulfilled with returned Promise objects instead of assimilating them.
+
+Implementation:
+
+- Class method lowering now preserves both `is_async` and `is_generator` through `compile_function_proto_with_name_hint`.
+- The eager generator iterator records terminal body returns as `done: true` values when no yields were collected.
+- Async-generator iterator `next()` wraps each iterator-result object in a resolved Promise.
+- `resolve_promise` now assimilates internal Promise values, including pending source promises via forwarded fulfill/reject reactions.
+- The test262 runner now injects a quiet `$DONE` state shim for async-flag tests, drains a short Promise-turn ladder through `__await`, and keeps stdout to the existing one-line JSON result protocol.
+
+Verification:
+
+- `cargo check -p rusty-js-bytecode`
+- `cargo check -p rusty-js-runtime`
+- `cargo build --release --bin cruft -p cruftless`
+- Representative async rows:
+  - `language/statements/class/elements/same-line-async-method-private-names.js` → `PASS`
+  - `language/statements/class/elements/same-line-async-gen-private-names.js` → `PASS`
+- `pilots/private-name-lexing/exemplars/run-exemplars.sh`
+  - `PASS=40 FAIL=0 / 40`
+- `PNL_EXEMPLARS_LIST=/private/tmp/pnl-focused.txt pilots/private-name-lexing/exemplars/run-exemplars.sh`
+  - `PASS=194 FAIL=0 / 194`
+
+Movement:
+
+- Focused PNL probe moved from `178/194` to `194/194`.
+
+Residuals:
+
+- Full async-generator semantics remain transitional: this closes the surfaced eager class-method/no-yield return shape, not parked async-generator execution.

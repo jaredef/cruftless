@@ -444,9 +444,12 @@ fn expr_contains_optional_chain(expr: &Expr) -> bool {
         Expr::Parenthesized { expr, .. }
         | Expr::Update { argument: expr, .. }
         | Expr::Unary { argument: expr, .. } => expr_contains_optional_chain(expr),
-        Expr::Binary { left, right, .. } | Expr::Assign { target: left, value: right, .. } => {
-            expr_contains_optional_chain(left) || expr_contains_optional_chain(right)
-        }
+        Expr::Binary { left, right, .. }
+        | Expr::Assign {
+            target: left,
+            value: right,
+            ..
+        } => expr_contains_optional_chain(left) || expr_contains_optional_chain(right),
         Expr::Conditional {
             test,
             consequent,
@@ -5889,11 +5892,10 @@ impl Compiler {
                         // are deferred to the substrate round that wires
                         // Object.defineProperty's get/set fields end-to-end.
                         // Mirrors the object-literal treatment landed in Ω.5.p.parse.
-                        // Tier-Ω.5.w: async class methods still lower through
-                        // the ordinary function path, but generator class
-                        // methods now preserve the generator flag so calls
-                        // return the runtime's generator iterator wrapper.
-                        let _ = is_async;
+                        // PFRS-EXT 4: class methods preserve async and
+                        // generator flags through the shared function-proto
+                        // path so async class methods return Promises and
+                        // async generators surface the async-generator bridge.
                         let method_key: Option<String> = match m_name {
                             ClassMemberName::Identifier { name, .. } => Some(name.clone()),
                             ClassMemberName::String { value, .. } => Some(value.clone()),
@@ -5927,7 +5929,7 @@ impl Compiler {
                         let m_proto = self.compile_function_proto_with_name_hint(
                             None,
                             method_key.as_deref(),
-                            false,
+                            *is_async,
                             *is_generator,
                             params,
                             body,

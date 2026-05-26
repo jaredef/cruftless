@@ -54,9 +54,6 @@ function runOne(path) {
   if (meta.flags.module) {
     return { path, status: 'SKIP', reason: 'module-flag tests need a real module loader; using indirect-eval here' };
   }
-  if (meta.flags.async) {
-    return { path, status: 'SKIP', reason: 'async-flag tests need the async-test harness; deferred' };
-  }
   if (meta.flags.raw) {
     return { path, status: 'SKIP', reason: 'raw tests skip harness; not yet wired' };
   }
@@ -79,6 +76,16 @@ function runOne(path) {
   // Assemble the test source: harness + includes + source.
   // sta.js + assert.js are always prepended.
   let assembled = '';
+  if (meta.flags.async) {
+    assembled += [
+      'globalThis.__t262_async_state = { done: false, error: null };',
+      'function $DONE(error) {',
+      '  globalThis.__t262_async_state.done = true;',
+      '  globalThis.__t262_async_state.error = error || null;',
+      '}',
+      ''
+    ].join('\n');
+  }
   for (const h of ['sta.js', 'assert.js', ...meta.includes]) {
     const hpath = join(harnessDir, h);
     try {
@@ -105,6 +112,17 @@ function runOne(path) {
   let thrown = null;
   try {
     (0, eval)(assembled);
+    if (meta.flags.async && !thrown) {
+      try {
+        let t262Drain = Promise.resolve();
+        for (let i = 0; i < 8; i++) {
+          t262Drain = t262Drain.then(function () {});
+        }
+        __await(t262Drain);
+      } catch (e) {
+        thrown = e;
+      }
+    }
   } catch (e) {
     thrown = e;
   }
@@ -129,6 +147,16 @@ function runOne(path) {
   if (thrown) {
     const msg = (thrown && thrown.message) || String(thrown);
     return { path, status: 'FAIL', reason: msg.slice(0, 240) };
+  }
+  if (meta.flags.async) {
+    const state = globalThis.__t262_async_state;
+    if (!state || !state.done) {
+      return { path, status: 'FAIL', reason: 'async test did not call $DONE' };
+    }
+    if (state.error) {
+      const msg = (state.error && state.error.message) || String(state.error);
+      return { path, status: 'FAIL', reason: msg.slice(0, 240) };
+    }
   }
   return { path, status: 'PASS', reason: '' };
 }

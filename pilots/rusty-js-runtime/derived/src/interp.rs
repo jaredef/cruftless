@@ -10674,12 +10674,12 @@ impl Runtime {
                                     }
                                 }
                             } else {
-                            // Ω.5.P60.E1: Proxy get-trap dispatch. If obj
-                            // is a Proxy and handler.get is callable, call
-                            // handler.get(target, key, receiver) and use
-                            // its return value. Missing trap falls through
-                            // to target.
-                            let proxy_dispatch = self.proxy_target_handler_checked(*id)?;
+                                // Ω.5.P60.E1: Proxy get-trap dispatch. If obj
+                                // is a Proxy and handler.get is callable, call
+                                // handler.get(target, key, receiver) and use
+                                // its return value. Missing trap falls through
+                                // to target.
+                                let proxy_dispatch = self.proxy_target_handler_checked(*id)?;
                                 if let Some((target, handler)) = proxy_dispatch {
                                     let trap = self.object_get(handler, "get");
                                     if matches!(trap, Value::Object(_)) {
@@ -10856,7 +10856,11 @@ impl Runtime {
                     if let Value::Object(id) = &obj_v {
                         if key.starts_with('#') {
                             if let Some(setter) = self.find_setter(*id, &key) {
-                                self.call_function(setter, Value::Object(*id), vec![value.clone()])?;
+                                self.call_function(
+                                    setter,
+                                    Value::Object(*id),
+                                    vec![value.clone()],
+                                )?;
                             } else {
                                 self.obj_mut(*id).set_private(&key, value.clone());
                             }
@@ -12937,25 +12941,26 @@ impl Runtime {
         if is_generator {
             // Tier-Ω.5.gggggg: pop yields-array on generator exit; build
             // an index-cursor iterator over the collected values. The
-            // body's return value is discarded — generator return value
-            // is exposed via the {value, done:true} terminal step in
-            // proper coroutines; v1 sets done's value to undefined.
+            // body's return value is exposed as the terminal
+            // {value, done:true} step when no yields were collected.
             let yields_id = self
                 .gen_yields_stack
                 .pop()
                 .expect("gen_yields_stack underflow");
             let _ = gen_yields_id;
+            let mut terminal_return = false;
             if let Ok(v) = body_result {
                 if !matches!(v, Value::Undefined) && self.array_length(yields_id) == 0 {
                     self.object_set(yields_id, "0".into(), v);
                     self.object_set(yields_id, "length".into(), Value::Number(1.0));
+                    terminal_return = true;
                 }
             }
-                                 // diff-prod Rung-19: chain generator instances to %GeneratorPrototype%
-                                 // (which in turn chains to %IteratorPrototype%). Pre-fix, generator
-                                 // instances proto-chained only to Object.prototype, so the ES2025
-                                 // Iterator Helpers installed on %IteratorPrototype% were invisible
-                                 // to `g().map(...)` patterns.
+            // diff-prod Rung-19: chain generator instances to %GeneratorPrototype%
+            // (which in turn chains to %IteratorPrototype%). Pre-fix, generator
+            // instances proto-chained only to Object.prototype, so the ES2025
+            // Iterator Helpers installed on %IteratorPrototype% were invisible
+            // to `g().map(...)` patterns.
             let mut iter = Object::new_ordinary();
             iter.proto = self.generator_prototype;
             let it_id = self.alloc_object(iter);
@@ -12966,6 +12971,12 @@ impl Runtime {
             // prototype-routing refactor).
             self.set_engine_sentinel(it_id, "__gen_arr__", Value::Object(yields_id));
             self.set_engine_sentinel(it_id, "__gen_idx__", Value::Number(0.0));
+            self.set_engine_sentinel(
+                it_id,
+                "__gen_return_terminal__",
+                Value::Boolean(terminal_return),
+            );
+            self.set_engine_sentinel(it_id, "__gen_async__", Value::Boolean(proto.is_async));
             let next_fn = crate::intrinsics::make_native("next", |rt, _args| {
                 let this_id = match rt.current_this() {
                     Value::Object(o) => o,
@@ -12979,6 +12990,14 @@ impl Runtime {
                     Value::Number(n) => n as usize,
                     _ => 0,
                 };
+                let terminal_return = matches!(
+                    rt.object_get(this_id, "__gen_return_terminal__"),
+                    Value::Boolean(true)
+                );
+                let is_async_gen = matches!(
+                    rt.object_get(this_id, "__gen_async__"),
+                    Value::Boolean(true)
+                );
                 let len = rt.array_length(arr);
                 let mut o = Object::new_ordinary();
                 if idx >= len {
@@ -12992,9 +13011,19 @@ impl Runtime {
                         Value::Number((idx + 1) as f64),
                     );
                     o.set_own("value".into(), v);
-                    o.set_own("done".into(), Value::Boolean(false));
+                    o.set_own(
+                        "done".into(),
+                        Value::Boolean(terminal_return && idx + 1 >= len),
+                    );
                 }
-                Ok(Value::Object(rt.alloc_object(o)))
+                let result_id = rt.alloc_object(o);
+                if is_async_gen {
+                    let p = crate::promise::new_promise(rt);
+                    crate::promise::resolve_promise(rt, p, Value::Object(result_id));
+                    Ok(Value::Object(p))
+                } else {
+                    Ok(Value::Object(result_id))
+                }
             });
             let next_id = self.alloc_object(next_fn);
             self.set_engine_sentinel(it_id, "next", Value::Object(next_id));

@@ -181,6 +181,51 @@ pub fn new_promise(rt: &mut Runtime) -> ObjectRef {
 }
 
 pub fn resolve_promise(rt: &mut Runtime, promise: ObjectRef, value: Value) {
+    if let Value::Object(value_id) = value.clone() {
+        if value_id == promise {
+            reject_promise(
+                rt,
+                promise,
+                Value::String(std::rc::Rc::new(
+                    "Promise cannot resolve to itself".to_string(),
+                )),
+            );
+            return;
+        }
+        let maybe_promise = {
+            let o = rt.obj(value_id);
+            match &o.internal_kind {
+                InternalKind::Promise(ps) => Some((ps.status, ps.value.clone())),
+                _ => None,
+            }
+        };
+        if let Some((status, settled_value)) = maybe_promise {
+            match status {
+                PromiseStatus::Pending => {
+                    let src = rt.obj_mut(value_id);
+                    if let InternalKind::Promise(ps) = &mut src.internal_kind {
+                        ps.fulfill_reactions.push(PromiseReaction {
+                            handler: None,
+                            chain: promise,
+                        });
+                        ps.reject_reactions.push(PromiseReaction {
+                            handler: None,
+                            chain: promise,
+                        });
+                    }
+                    return;
+                }
+                PromiseStatus::Fulfilled => {
+                    resolve_promise(rt, promise, settled_value);
+                    return;
+                }
+                PromiseStatus::Rejected => {
+                    reject_promise(rt, promise, settled_value);
+                    return;
+                }
+            }
+        }
+    }
     let reactions = {
         let p = rt.obj_mut(promise);
         if let InternalKind::Promise(ps) = &mut p.internal_kind {
