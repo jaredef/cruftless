@@ -1254,7 +1254,16 @@ impl<'src> Parser<'src> {
         }
         let mut init_expr: Option<Expr> = None;
         if !head_is_empty && !matches!(self.current_kind(), TokenKind::Punct(Punct::Semicolon)) {
+            // PPIF-EXT 1: enter for-head LHS under `[-In]`. §13.7.5
+            // ForStatement uses Expression[~In, ...] in for-in/of LHS
+            // position; setting in_disallowed = true here makes the
+            // precedence climber refuse to consume `in` as a
+            // RelationalExpression operator, so the LHS parse returns
+            // before `in` is reached.
+            let saved_in_disallowed = self.in_disallowed;
+            self.in_disallowed = true;
             let e = self.parse_expression()?;
+            self.in_disallowed = saved_in_disallowed;
             // Check for `in`/`of` after a LeftHandSideExpression head.
             if self.is_ident("in") || self.is_contextual_keyword("of") {
                 let is_of = self.is_contextual_keyword("of");

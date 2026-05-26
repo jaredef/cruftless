@@ -197,7 +197,14 @@ impl<'src> Parser<'src> {
             TokenKind::Punct(Punct::Ge) => Some((BinaryOp::Ge, 10, false)),
             // instanceof / in
             TokenKind::Ident(s) if s == "instanceof" => Some((BinaryOp::Instanceof, 10, false)),
-            TokenKind::Ident(s) if s == "in" => Some((BinaryOp::In, 10, false)),
+            // PPIF-EXT 1: §13.10 RelationalExpression[+In] — when the parser
+            // is inside a for-head LHS position (`in_disallowed` set), the
+            // `in` token is NOT a RelationalExpression operator. Returning
+            // None here terminates the binary-op chain so the caller
+            // (parse_expression in the for-head) returns the LHS without
+            // consuming `in`. The for-statement then sees `in` as the
+            // ForIn/Of head keyword, as the spec intends.
+            TokenKind::Ident(s) if s == "in" && !self.in_disallowed => Some((BinaryOp::In, 10, false)),
             // Shift
             TokenKind::Punct(Punct::Shl) => Some((BinaryOp::Shl, 11, false)),
             TokenKind::Punct(Punct::Shr) => Some((BinaryOp::Shr, 11, false)),

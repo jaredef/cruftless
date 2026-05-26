@@ -72,6 +72,16 @@ pub struct Parser<'src> {
     /// at lex-call sites; consolidation lets the rewind-on-goal-mismatch
     /// class (LGSS-EXT 3 telos) become eliminable.
     pub(crate) current_lex_goal: LexerGoal,
+    /// PPIF-EXT 1: ECMA-262 `[+In]` / `[-In]` grammar parameter as
+    /// parser state. §13.10 RelationalExpression is parameterized by
+    /// `[In]`; §13.7.5 ForStatement uses `Expression[~In, ?Yield, ?Await]`
+    /// in for-in/for-of LHS position. When `in_disallowed` is true, the
+    /// precedence climber refuses to consume `in` as a RelationalExpression
+    /// operator (treats it as a non-operator, terminating the binary-op
+    /// chain). Default false (the spec's `[+In]` baseline). Save/restored
+    /// around for-head LHS parsing. This is the spec-aligned alternative
+    /// to the bare-ident fast-path + rewind workaround.
+    pub(crate) in_disallowed: bool,
 }
 
 impl<'src> Parser<'src> {
@@ -88,6 +98,7 @@ impl<'src> Parser<'src> {
             in_generator: false,
             in_function_params: false,
             current_lex_goal,
+            in_disallowed: false,
         })
     }
 
