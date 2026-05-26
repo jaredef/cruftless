@@ -702,6 +702,26 @@ impl<'src> Parser<'src> {
                         }
                         self.bump()?; // consume '('
                         let arg = self.parse_assignment_expression()?;
+                        let mut arguments = vec![rusty_js_ast::Argument::Expr(arg)];
+                        // DIA-EXT 1: import-attributes (§13.3.10 ImportCall).
+                        // Grammar: import ( AssignmentExpression , ? )
+                        //        | import ( AssignmentExpression , AssignmentExpression , ? )
+                        // Accept an optional trailing comma + optional second
+                        // AssignmentExpression (the import attributes object).
+                        // Runtime ignores attributes — cruft's __dynamic_import
+                        // is already a throwing stub; preserving second-arg in
+                        // the AST so a future runtime can read it.
+                        if matches!(self.current_kind(), TokenKind::Punct(Punct::Comma)) {
+                            self.bump()?; // consume ','
+                            if !matches!(self.current_kind(), TokenKind::Punct(Punct::RParen)) {
+                                let attrs = self.parse_assignment_expression()?;
+                                arguments.push(rusty_js_ast::Argument::Expr(attrs));
+                                // Optional trailing comma after second arg.
+                                if matches!(self.current_kind(), TokenKind::Punct(Punct::Comma)) {
+                                    self.bump()?;
+                                }
+                            }
+                        }
                         if !matches!(self.current_kind(), TokenKind::Punct(Punct::RParen)) {
                             return Err(self.err_here("expected ')' in dynamic import()".into()));
                         }
@@ -713,7 +733,7 @@ impl<'src> Parser<'src> {
                                 name: "__dynamic_import".into(),
                                 span,
                             }),
-                            arguments: vec![rusty_js_ast::Argument::Expr(arg)],
+                            arguments,
                             optional: false,
                             span,
                         })
