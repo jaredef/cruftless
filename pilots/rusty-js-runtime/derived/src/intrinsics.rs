@@ -3334,6 +3334,70 @@ impl Runtime {
                 "Temporal.PlainTime valueOf cannot be used; use compare() or equals()".into()
             ))
         });
+        // PTSC-EXT 1 (plain-time-string-conversion): toString / toJSON /
+        // toLocaleString. Format: HH:MM:SS[.fff] per §11.7.4.1, where
+        // the fractional part is trimmed to the minimum non-zero digit
+        // count (no trailing zeros), and absent entirely if sub-second
+        // parts are all zero.
+        fn pt_to_iso_string(rt: &mut Runtime, this_id: ObjectRef) -> Result<String, RuntimeError> {
+            let unit_names = ["hour", "minute", "second", "millisecond",
+                              "microsecond", "nanosecond"];
+            // Brand-check.
+            if matches!(rt.object_get(this_id, "__pt_hour"), Value::Undefined) {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.PlainTime: this is not a Temporal.PlainTime".into()
+                ));
+            }
+            let mut u = [0i64; 6];
+            for (i, name) in unit_names.iter().enumerate() {
+                let key = format!("__pt_{}", name);
+                if let Value::Number(n) = rt.object_get(this_id, &key) {
+                    u[i] = n as i64;
+                }
+            }
+            // Compose fractional nanoseconds: ms*1e6 + μs*1e3 + ns.
+            let ns_total = u[3] * 1_000_000 + u[4] * 1_000 + u[5];
+            let mut s = format!("{:02}:{:02}:{:02}", u[0], u[1], u[2]);
+            if ns_total > 0 {
+                // 9-digit zero-padded fractional, then trim trailing zeros.
+                let frac = format!("{:09}", ns_total);
+                let trimmed = frac.trim_end_matches('0');
+                s.push('.');
+                s.push_str(trimmed);
+            }
+            Ok(s)
+        }
+        register_intrinsic_method(self, pt_proto, "toString", 0, |rt, _args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainTime.prototype.toString: this is not an object".into()
+                )),
+            };
+            Ok(Value::String(Rc::new(pt_to_iso_string(rt, id)?)))
+        });
+        register_intrinsic_method(self, pt_proto, "toJSON", 0, |rt, _args| {
+            // toJSON ignores its argument (per spec, no options).
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainTime.prototype.toJSON: this is not an object".into()
+                )),
+            };
+            Ok(Value::String(Rc::new(pt_to_iso_string(rt, id)?)))
+        });
+        // toLocaleString v1: ignore locale + options; fall back to ISO form
+        // per spec §11.7.4.3 if Intl is not available. cruft has partial Intl
+        // but Temporal.PlainTime.prototype.toLocaleString is its own algo.
+        register_intrinsic_method(self, pt_proto, "toLocaleString", 0, |rt, _args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainTime.prototype.toLocaleString: this is not an object".into()
+                )),
+            };
+            Ok(Value::String(Rc::new(pt_to_iso_string(rt, id)?)))
+        });
         // PTW-EXT 1 (plain-time-with): with(durationLike) overrides any
         // provided unit fields, keeps the rest. Sibling shape to DWith.
         let pt_proto_for_with = pt_proto;

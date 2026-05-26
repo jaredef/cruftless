@@ -176,6 +176,10 @@ function runOne(path) {
       '/Temporal/PlainTime/compare/',
       // PTW-EXT 1: plain-time-with
       '/Temporal/PlainTime/prototype/with/',
+      // PTSC-EXT 1: plain-time-string-conversion
+      '/Temporal/PlainTime/prototype/toString/',
+      '/Temporal/PlainTime/prototype/toJSON/',
+      '/Temporal/PlainTime/prototype/toLocaleString/',
       // Foundation tests that pass without per-class implementation.
       '/Temporal/getOwnPropertyNames.js',
       '/Temporal/keys.js',
