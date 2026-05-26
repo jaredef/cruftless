@@ -1159,22 +1159,78 @@ impl<'src> Parser<'src> {
                 }
                 // C-style with single var decl + optional initializer +
                 // possibly more declarators. Recover via parse_variable_statement-like loop.
-                let mut declarators = vec![{
-                    let target = BindingPattern::Identifier(BindingIdentifier {
-                        name: n,
-                        span: id_span,
-                    });
-                    let init = if matches!(self.current_kind(), TokenKind::Punct(Punct::Assign)) {
-                        self.bump()?;
-                        Some(self.parse_assignment_expression()?)
-                    } else {
-                        None
+                let target = BindingPattern::Identifier(BindingIdentifier {
+                    name: n.clone(),
+                    span: id_span,
+                });
+                let init = if matches!(self.current_kind(), TokenKind::Punct(Punct::Assign)) {
+                    self.bump()?;
+                    // FII-EXT 1: parse Initializer under [-In] so that
+                    // `var a = expr in obj` doesn't consume `in obj` as a
+                    // RelationalExpression. The `in` must remain visible
+                    // to the FII carve-out below.
+                    let prev_in_disallowed = self.in_disallowed;
+                    self.in_disallowed = true;
+                    let e = self.parse_assignment_expression();
+                    self.in_disallowed = prev_in_disallowed;
+                    Some(e?)
+                } else {
+                    None
+                };
+                // FII-EXT 1: Annex B B.3.5 — for ( var BindingIdentifier
+                // Initializer in Expression ) Statement. Sloppy mode only,
+                // var only, plain BindingIdentifier only (not pattern),
+                // single declarator only, for-in only (not for-of).
+                if init.is_some()
+                    && matches!(kind, VariableKind::Var)
+                    && !self.strict_mode
+                    && self.is_ident("in")
+                {
+                    self.bump()?; // consume `in`
+                    let right = self.parse_expression()?;
+                    self.expect_punct(Punct::RParen)?;
+                    let body = self.parse_substatement()?;
+                    let end = self.last_span_end();
+                    // FII-EXT 1 emission: lower as a Block containing
+                    //   var a = init;         // hoist + initialize
+                    //   for (a in right) body // bare-name for-in
+                    // This preserves the legacy Annex-B B.3.5 semantics
+                    // (Initializer value bound to a before iteration)
+                    // by reusing the existing var-hoist + for-in paths
+                    // unchanged at the runtime tier.
+                    let var_stmt = VariableStatement {
+                        kind,
+                        declarators: vec![VariableDeclarator {
+                            target: BindingPattern::Identifier(BindingIdentifier {
+                                name: n.clone(),
+                                span: id_span,
+                            }),
+                            init,
+                            span: Span::new(id_span.start, id_span.end),
+                        }],
+                        span: kw_span,
                     };
-                    VariableDeclarator {
-                        target,
-                        init,
-                        span: Span::new(id_span.start, self.last_span_end()),
-                    }
+                    let left = ForBinding::Pattern(BindingPattern::Identifier(
+                        BindingIdentifier {
+                            name: n,
+                            span: id_span,
+                        },
+                    ));
+                    let for_in = Stmt::ForIn {
+                        left,
+                        right,
+                        body: Box::new(body),
+                        span: Span::new(start, end),
+                    };
+                    return Ok(Stmt::Block {
+                        body: vec![Stmt::Variable(var_stmt), for_in],
+                        span: Span::new(start, end),
+                    });
+                }
+                let mut declarators = vec![VariableDeclarator {
+                    target,
+                    init,
+                    span: Span::new(id_span.start, self.last_span_end()),
                 }];
                 while matches!(self.current_kind(), TokenKind::Punct(Punct::Comma)) {
                     self.bump()?;

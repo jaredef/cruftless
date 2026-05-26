@@ -69,4 +69,4 @@ All four hold. Expect 1-round closure.
 
 ## Status
 
-FII-EXT 0 FOUNDED 2026-05-26. FII-EXT 1 (parser carve-out) DEFERRED — keeper directive was "begin work on the first" (HLCL); FII spawned alongside but execution pending.
+FII-EXT 1 LANDED 2026-05-26. 6/7 on canonical Annex-B for-in/* surface. Block-rewrite lowering (hoisted var-decl + bare-name for-in) reuses existing runtime paths. Sole residual is `bare-initializer.js` (expression-headed for-in negative test); follow-on candidate `for-in-bare-assignment-rejection` left for future work.
