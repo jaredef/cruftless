@@ -1,7 +1,7 @@
 {
   "generated_by": "apparatus/locales/discover.sh",
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
-  "locale_root": "/home/jaredef/rusty-bun/pilots",
+  "locale_root": "/home/jaredef/Developer/cruftless/pilots",
   "totals": {
     "locales": 122,
     "top_level": 100,

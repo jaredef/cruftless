@@ -13,6 +13,14 @@
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
+
+# Repo-local machine paths are centralized in scripts/env.sh. In particular,
+# env.local may pin CRUFTLESS_ROOT for this checkout; use it before deriving
+# the default locale root so manifest.json does not retain legacy paths.
+# shellcheck disable=SC1091
+. "$ROOT/scripts/env.sh"
+
+ROOT="$CRUFTLESS_ROOT"
 LOCALE_ROOT="${LOCALE_ROOT:-$ROOT/pilots}"
 OUT="${1:-$HERE/manifest.json}"
 
