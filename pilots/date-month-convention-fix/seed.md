@@ -98,4 +98,4 @@ Any test that was passing via bug-compensation will newly fail; document and dec
 
 ## Status
 
-DMCF-EXT 0 FOUNDED 2026-05-26. Implementation deferred per keeper directive ("spawn that locale, and then comeback and keep working on this one"). Next move: continue Temporal work.
+DMCF-EXT 1 LANDED 2026-05-26. One-character fix: `month + 9` → `month + 10` in the `month < 2` branch. Zero regression across tokenization locales + Temporal sub-rungs; instant-arithmetic +4 sibling yield. Date 100-sample at 61% PASS. DMCF-EXT 2 (full Date test262 baseline + targeted regression sweep) deferred.

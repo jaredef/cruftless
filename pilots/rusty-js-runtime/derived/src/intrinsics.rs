@@ -11330,11 +11330,17 @@ pub(crate) fn date_components(ms: f64) -> (i64, i64, i64) {
 
 /// Build epoch-ms from (year, month-0-based, day-1-based).
 pub(crate) fn ymd_to_ms(year: i64, month: i64, day: i64) -> i64 {
+    // DMCF-EXT 1: month is 0-indexed per JS Date convention (Jan=0).
+    // Previous version had a buggy 'month < 2' + 'month - 2' shift that
+    // skipped February for month >= 2 and put Jan in December of prior
+    // year. Corrected Howard Hinnant chrono algorithm with 0-indexed
+    // input: m_internal in March=0 frame is (month + 10) % 12 with
+    // year-borrow when input month < 2.
     let y = if month < 2 { year - 1 } else { year };
     let m = if month < 2 {
-        (month + 9) as i64
+        (month + 10) as i64  // Jan -> 10, Feb -> 11 (in prior year's frame)
     } else {
-        (month - 2) as i64
+        (month - 2) as i64   // Mar -> 0, Apr -> 1, ..., Dec -> 9
     };
     let era = if y >= 0 { y } else { y - 399 } / 400;
     let yoe = y - era * 400;
