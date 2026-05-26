@@ -176,17 +176,17 @@ Candidates surfaced by `docs/engagement/tokenization-above-ir-candidate-brief.md
 ### (pp) `numeric-literal-conformance` — **SPAWNED** 2026-05-25 as [`pilots/numeric-literal-conformance/`](../../pilots/numeric-literal-conformance/seed.md)
 **Status**: FOUNDED. NLC-EXT 0 baseline-inspection corrected post-IDT Rule-23 verification; NLC-EXT 1-revised is lex-tier malformed numeric rejection.
 
-### (qq) `identifier-tokenization` — 🟢 RIPE
+### (qq) `identifier-tokenization` — **SPAWNED** 2026-05-25 as [`pilots/identifier-tokenization/`](../../pilots/identifier-tokenization/seed.md)
 **Telos**: §11.6 IdentifierName + ReservedWord + UnicodeID ranges + **had-escape preservation** (the A3 axis from prior parser-permissiveness work — the lexer must preserve a "had-escape" bit on identifier tokens so the parser's reserved-word gate can reject escaped reserved-words like `let in`).
 **Pool**: 268 fixtures in `language/identifiers/` (largest single lex-tier sub-dir).
 **LOC estimate**: ~30-50 for had-escape; variable for unicode-id range extension.
-**Status**: queued.
+**Status**: FOUNDED. Rule-23 baseline-inspection corrected the move shape: IDT-EXT 1 targets ReservedWord rejection at BindingIdentifier consumption, with escaped-form verification as IDT-EXT 2.
 
-### (rr) `string-literal-and-escape-conformance` — 🟢 RIPE
+### (rr) `string-literal-and-escape-conformance` — **SPAWNED** 2026-05-25 as [`pilots/string-literal-and-escape-conformance/`](../../pilots/string-literal-and-escape-conformance/seed.md)
 **Telos**: §12.9 StringLiteral cooked/raw separation, escape decoding (\u{XXXX}, surrogate pairs, lone surrogates, hex escapes, line continuations).
 **Pool**: 73 fixtures in `language/literals/string/` + downstream wrong-value tests.
 **LOC estimate**: ~40-80.
-**Status**: queued.
+**Status**: ACTIVE. SLEC-EXT 1 landed the first escape-form rejection bundle; directive-prologue retro-reject and non-ASCII string handling remain deferred rungs.
 
 ### (ss) `regex-literal-lexing` — 🟡 PROBED
 **Telos**: §12.9.5 RegularExpressionLiteral lex production — pattern + flags accumulator + line-terminator rejection inside literal. Separate from regex-engine semantics.
@@ -194,10 +194,10 @@ Candidates surfaced by `docs/engagement/tokenization-above-ir-candidate-brief.md
 **LOC estimate**: ~20-40.
 **Status**: deferred as nested candidate under `regexp-conformance/`; RC-EXT 0 baseline-inspection decides whether the lexing partition has multi-rung shape.
 
-### (tt) `private-name-lexing` — ⚪ HYPOTHETICAL
+### (tt) `private-name-lexing` — **SPAWNED** 2026-05-26 as [`pilots/private-name-lexing/`](../../pilots/private-name-lexing/seed.md)
 **Telos**: §13.3 PrivateIdentifier `#name` tokenization for class private members.
 **Pool**: small visible surface (1 in PCR's parse: bucket) but large potential in class-elements test262 sub-dirs.
-**Status**: deferred until class-elements work is on the critical path.
+**Status**: FOUNDED. Founding survey shows cruft already has `TokenKind::PrivateIdent` plus class-member/member-access parser consumers; PNL-EXT 0 baseline-inspection decides whether the residual pool is truly lex-tier or redirects to class-elements parser/static semantics.
 
 ---
 
@@ -205,11 +205,11 @@ Candidates surfaced by `docs/engagement/tokenization-above-ir-candidate-brief.md
 
 Apparatus-pilot candidates that extend PCR's coordinate-refinement discipline to additional tiers. Each is small (~15-30 LOC) and produces named coordinates that substrate locales can target with clear move shapes.
 
-### (uu) `tokenizer-error-classification-refinement` (TECR) — 🟢 RIPE
+### (uu) `tokenizer-error-classification-refinement` (TECR) — **SPAWNED** 2026-05-25 as [`pilots/apparatus/tokenizer-error-classification-refinement/`](../../pilots/apparatus/tokenizer-error-classification-refinement/seed.md)
 **Telos**: extend PCR's categorizer (`pilots/apparatus/test262-categorize/derived/src/bin/full_pinart.rs`) to split the `availability/missing-parser-feature` projection class into lex-tier vs syntax-tier sub-classes. Today these collapse together; sharpening them surfaces lex-tier substrate work explicitly per the apparatus §XI lexical-grammar coordinate class.
 **Composes with**: PCR-EXT 2's `missing-lowering-feature` pattern — same shape applied at the lex tier.
 **LOC estimate**: ~15 LOC in `full_pinart.rs::projection_axis`.
-**Status**: queued, FIRST apparatus-tier spawn from tokenization-above-IR brief; **lands BEFORE Tier-I substrate locales** per LPA-EXT 3 Finding LPA.5 (apparatus-tier refinement precedes substrate-tier spawns).
+**Status**: CLOSED at TECR-EXT 2. The missing-X-feature family now splits lex, syntax, lowering, and runtime coordinates before generic value-semantics catch-alls.
 
 ---
 

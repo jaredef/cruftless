@@ -1,10 +1,10 @@
 {
   "generated_by": "apparatus/locales/discover.sh",
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
-  "locale_root": "/home/jaredef/Developer/cruftless/pilots",
+  "locale_root": "/Users/jaredfoy/Developer/cruftless/pilots",
   "totals": {
-    "locales": 122,
-    "top_level": 100,
+    "locales": 123,
+    "top_level": 101,
     "nested": 22,
     "warnings": 0
   },
@@ -565,6 +565,15 @@
       "scope": "parser-precedence-in-flag",
       "depth": 1,
       "rung_count": 3,
+      "status": null
+    },
+    {
+      "coord": "private-name-lexing",
+      "tag": "L.private-name-lexing",
+      "parent": null,
+      "scope": "private-name-lexing",
+      "depth": 1,
+      "rung_count": 1,
       "status": null
     },
     {
