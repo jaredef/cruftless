@@ -8,7 +8,7 @@
 //!
 //! The output is an apparatus interpretation, not a replacement for the raw
 //! benchmark artifact. Raw JSONL stays in the sidecar; derived matrices land in
-//! `pilots/test262-categorize/full-suite/results/<run-id>/`.
+//! `pilots/apparatus/test262-categorize/full-suite/results/<run-id>/`.
 
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
@@ -59,7 +59,7 @@ fn main() {
     }
 
     let repo_root = repo_root();
-    let locale_dir = repo_root.join("pilots/test262-categorize/full-suite");
+    let locale_dir = repo_root.join("pilots/apparatus/test262-categorize/full-suite");
     let run_id = results_path
         .parent()
         .and_then(|p| p.file_name())
@@ -891,6 +891,8 @@ fn esc(s: &str) -> String {
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
         .parent()
         .unwrap()
         .parent()
