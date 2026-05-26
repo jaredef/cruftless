@@ -220,10 +220,13 @@ fn cd_foreach_invokes_for_each_entry() {
     let p = URLSearchParams::from_pairs(&[("a", "1"), ("b", "2")]);
     let mut collected: Vec<(String, String)> = Vec::new();
     p.for_each(|n, v| collected.push((n.to_string(), v.to_string())));
-    assert_eq!(collected, vec![
-        ("a".to_string(), "1".to_string()),
-        ("b".to_string(), "2".to_string())
-    ]);
+    assert_eq!(
+        collected,
+        vec![
+            ("a".to_string(), "1".to_string()),
+            ("b".to_string(), "2".to_string())
+        ]
+    );
 }
 
 // ─────────── size (CD URLSearchParams.prototype.size) ──────────
@@ -259,7 +262,12 @@ fn spec_encode_other_ascii_is_percent_encoded() {
     let s = p.to_string();
     // Must not contain any of these literally:
     for forbidden in &["!", "@", "#", "$", "^", "(", ")"] {
-        assert!(!s.contains(forbidden), "must encode {} but got {}", forbidden, s);
+        assert!(
+            !s.contains(forbidden),
+            "must encode {} but got {}",
+            forbidden,
+            s
+        );
     }
     // And must round-trip:
     assert_eq!(URLSearchParams::from_query(&s).get("k"), Some("!@#$%^&()"));
@@ -271,5 +279,9 @@ fn spec_decode_lossy_invalid_utf8_falls_back() {
     // Spec mandates the decoder does NOT throw; lossy conversion → U+FFFD.
     let p = URLSearchParams::from_query("k=%FE%FF");
     let v = p.get("k").unwrap();
-    assert!(v.contains('\u{FFFD}'), "expected U+FFFD replacement, got {:?}", v);
+    assert!(
+        v.contains('\u{FFFD}'),
+        "expected U+FFFD replacement, got {:?}",
+        v
+    );
 }

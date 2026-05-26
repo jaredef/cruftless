@@ -9,9 +9,9 @@
 //!   ObjectId — Objects live in Runtime.heap. Value::Object payload is
 //!   ObjectId (Copy + Eq). Cycles are now reclaimable via rt.collect().
 
+use indexmap::IndexMap;
 use std::cell::RefCell;
 use std::rc::Rc;
-use indexmap::IndexMap;
 
 /// A captured-binding cell. Tier-Ω.5.e migrated upvalues from
 /// value-snapshot (Vec<Value>) to binding-shared (Vec<UpvalueCell>) per
@@ -39,7 +39,9 @@ pub type ObjectRef = rusty_js_gc::ObjectId;
 //       Promise: each reaction's chain (always Object) + handler (if Object)
 impl rusty_js_gc::Trace for Object {
     fn trace(&self, ids: &mut Vec<rusty_js_gc::ObjectId>) {
-        if let Some(p) = self.proto { ids.push(p); }
+        if let Some(p) = self.proto {
+            ids.push(p);
+        }
         // CMig-EXT 16 NEEDS-VERIFY follow-up (2026-05-23): trace
         // shape_values for Object references. Shape-enrolled objects
         // store user-default properties in shape_values (not in
@@ -48,33 +50,49 @@ impl rusty_js_gc::Trace for Object {
         // Objects → use-after-free. Currently dormant because cruft's
         // GC leaks, but the fix is correctness-required forward-looking.
         for v in &self.shape_values {
-            if let Value::Object(id) = v { ids.push(*id); }
+            if let Value::Object(id) = v {
+                ids.push(*id);
+            }
         }
         for d in self.properties.values() {
-            if let Value::Object(id) = &d.value { ids.push(*id); }
+            if let Value::Object(id) = &d.value {
+                ids.push(*id);
+            }
         }
         match &self.internal_kind {
             InternalKind::Closure(c) => {
                 for cell in &c.upvalues {
-                    if let Value::Object(id) = &*cell.borrow() { ids.push(*id); }
+                    if let Value::Object(id) = &*cell.borrow() {
+                        ids.push(*id);
+                    }
                 }
             }
             InternalKind::BoundFunction(b) => {
                 ids.push(b.target);
-                if let Value::Object(id) = &b.this { ids.push(*id); }
+                if let Value::Object(id) = &b.this {
+                    ids.push(*id);
+                }
                 for v in &b.args {
-                    if let Value::Object(id) = v { ids.push(*id); }
+                    if let Value::Object(id) = v {
+                        ids.push(*id);
+                    }
                 }
             }
             InternalKind::Promise(ps) => {
-                if let Value::Object(id) = &ps.value { ids.push(*id); }
+                if let Value::Object(id) = &ps.value {
+                    ids.push(*id);
+                }
                 for r in &ps.fulfill_reactions {
                     ids.push(r.chain);
-                    if let Some(Value::Object(id)) = &r.handler { ids.push(*id); }
+                    if let Some(Value::Object(id)) = &r.handler {
+                        ids.push(*id);
+                    }
                 }
                 for r in &ps.reject_reactions {
                     ids.push(r.chain);
-                    if let Some(Value::Object(id)) = &r.handler { ids.push(*id); }
+                    if let Some(Value::Object(id)) = &r.handler {
+                        ids.push(*id);
+                    }
                 }
             }
             _ => {}
@@ -123,13 +141,13 @@ pub enum Value {
 // changes the layout, the static asserts below fail at compile time
 // and the JIT does not silently emit wrong code.
 pub const VALUE_TAG_UNDEFINED: u8 = 0;
-pub const VALUE_TAG_NULL: u8      = 1;
-pub const VALUE_TAG_BOOLEAN: u8   = 2;
-pub const VALUE_TAG_NUMBER: u8    = 3;
-pub const VALUE_TAG_STRING: u8    = 4;
-pub const VALUE_TAG_BIGINT: u8    = 5;
-pub const VALUE_TAG_SYMBOL: u8    = 6;
-pub const VALUE_TAG_OBJECT: u8    = 7;
+pub const VALUE_TAG_NULL: u8 = 1;
+pub const VALUE_TAG_BOOLEAN: u8 = 2;
+pub const VALUE_TAG_NUMBER: u8 = 3;
+pub const VALUE_TAG_STRING: u8 = 4;
+pub const VALUE_TAG_BIGINT: u8 = 5;
+pub const VALUE_TAG_SYMBOL: u8 = 6;
+pub const VALUE_TAG_OBJECT: u8 = 7;
 
 /// Byte offset of the Number variant's f64 payload within a Value.
 /// With #[repr(C, u8)] and f64's 8-byte alignment, this is 8.
@@ -137,11 +155,15 @@ pub const VALUE_NUMBER_PAYLOAD_OFFSET: usize = 8;
 
 const _: () = {
     // Discriminant byte at offset 0.
-    assert!(std::mem::size_of::<Value>() >= 16,
-        "Value must be at least 16 bytes (1B tag + 7B pad + 8B payload)");
+    assert!(
+        std::mem::size_of::<Value>() >= 16,
+        "Value must be at least 16 bytes (1B tag + 7B pad + 8B payload)"
+    );
     // Alignment is at least 8 (f64 payload).
-    assert!(std::mem::align_of::<Value>() >= 8,
-        "Value alignment must be at least 8 for f64 payload");
+    assert!(
+        std::mem::align_of::<Value>() >= 8,
+        "Value alignment must be at least 8 for f64 payload"
+    );
 };
 
 /// Runtime check: verify the chosen discriminant byte for Value::Number
@@ -151,10 +173,13 @@ pub fn assert_value_layout() {
     let v = Value::Number(0.0);
     // SAFETY: #[repr(C, u8)] places the discriminant at byte 0.
     let tag = unsafe { *((&v as *const Value) as *const u8) };
-    assert_eq!(tag, VALUE_TAG_NUMBER,
+    assert_eq!(
+        tag, VALUE_TAG_NUMBER,
         "Value::Number discriminant byte ({}) does not match \
          VALUE_TAG_NUMBER ({}); rustc layout drift detected. \
-         VTI-EXT 3a invariant violated.", tag, VALUE_TAG_NUMBER);
+         VTI-EXT 3a invariant violated.",
+        tag, VALUE_TAG_NUMBER
+    );
     // Payload offset: write a known sentinel, read it back at the
     // declared offset.
     let v2 = Value::Number(1.5_f64);
@@ -163,16 +188,18 @@ pub fn assert_value_layout() {
         let pf = base.add(VALUE_NUMBER_PAYLOAD_OFFSET) as *const f64;
         *pf
     };
-    assert_eq!(payload, 1.5,
+    assert_eq!(
+        payload, 1.5,
         "Value::Number payload not at offset {}; rustc layout drift.",
-        VALUE_NUMBER_PAYLOAD_OFFSET);
+        VALUE_NUMBER_PAYLOAD_OFFSET
+    );
 }
 
 impl Value {
     pub fn type_of(&self) -> &'static str {
         match self {
             Value::Undefined => "undefined",
-            Value::Null => "object",  // per §13.5.3 typeof null is "object"
+            Value::Null => "object", // per §13.5.3 typeof null is "object"
             Value::Boolean(_) => "boolean",
             Value::Number(_) => "number",
             Value::String(_) => "string",
@@ -193,7 +220,9 @@ impl Value {
             (Value::Null, Value::Null) => true,
             (Value::Boolean(x), Value::Boolean(y)) => x == y,
             (Value::Number(x), Value::Number(y)) => {
-                if x.is_nan() && y.is_nan() { return true; }
+                if x.is_nan() && y.is_nan() {
+                    return true;
+                }
                 x.to_bits() == y.to_bits()
             }
             (Value::String(x), Value::String(y)) => x == y,
@@ -259,8 +288,14 @@ impl Eq for PropertyKey {}
 impl std::hash::Hash for PropertyKey {
     fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
         match self {
-            Self::String(s) => { 0u8.hash(h); s.hash(h); }
-            Self::Symbol(rc) => { 1u8.hash(h); (Rc::as_ptr(rc) as usize).hash(h); }
+            Self::String(s) => {
+                0u8.hash(h);
+                s.hash(h);
+            }
+            Self::Symbol(rc) => {
+                1u8.hash(h);
+                (Rc::as_ptr(rc) as usize).hash(h);
+            }
         }
     }
 }
@@ -270,21 +305,43 @@ impl PropertyKey {
     /// string; for Symbol variant returns the Symbol's internal identifier.
     /// Callers that need to discriminate Symbol-typed should use is_symbol().
     pub fn as_str(&self) -> &str {
-        match self { Self::String(s) => s.as_str(), Self::Symbol(rc) => rc.as_str() }
+        match self {
+            Self::String(s) => s.as_str(),
+            Self::Symbol(rc) => rc.as_str(),
+        }
     }
-    pub fn is_symbol(&self) -> bool { matches!(self, Self::Symbol(_)) }
-    pub fn is_string(&self) -> bool { matches!(self, Self::String(_)) }
+    pub fn is_symbol(&self) -> bool {
+        matches!(self, Self::Symbol(_))
+    }
+    pub fn is_string(&self) -> bool {
+        matches!(self, Self::String(_))
+    }
     /// String-content view; for Symbol returns the internal identifier
     /// (used by debug printing, JSON keys, and the @@-prefix discrimination
     /// migration shim).
     pub fn to_string_content(&self) -> String {
-        match self { Self::String(s) => s.clone(), Self::Symbol(rc) => (**rc).clone() }
+        match self {
+            Self::String(s) => s.clone(),
+            Self::Symbol(rc) => (**rc).clone(),
+        }
     }
 }
 
-impl From<&str> for PropertyKey { fn from(s: &str) -> Self { Self::String(s.to_string()) } }
-impl From<String> for PropertyKey { fn from(s: String) -> Self { Self::String(s) } }
-impl From<&String> for PropertyKey { fn from(s: &String) -> Self { Self::String(s.clone()) } }
+impl From<&str> for PropertyKey {
+    fn from(s: &str) -> Self {
+        Self::String(s.to_string())
+    }
+}
+impl From<String> for PropertyKey {
+    fn from(s: String) -> Self {
+        Self::String(s)
+    }
+}
+impl From<&String> for PropertyKey {
+    fn from(s: &String) -> Self {
+        Self::String(s.clone())
+    }
+}
 
 // CMig-EXT 14 (default-on flip, second attempt — held post CMig-EXT
 // 12 + 13 close 279 of 283 test262 enrollment regressions):
@@ -418,7 +475,9 @@ impl Object {
     }
 
     /// Shape-EXT 4: is this object currently in Shaped storage form?
-    pub fn is_shaped(&self) -> bool { self.shape.is_some() }
+    pub fn is_shaped(&self) -> bool {
+        self.shape.is_some()
+    }
 
     /// Shape-EXT 4: read a value from the shape's slot. Returns None
     /// for properties not in the shape (which may still live in
@@ -434,9 +493,10 @@ impl Object {
     /// the name resolves to a slot. Pilot LeJIT-Σ consumes this as the
     /// IC fast-path cache key. Stable for the lifetime of any Rc<Shape>
     /// the caller keeps alive.
-    pub fn shape_ptr_and_slot_for(&self, name: &str)
-        -> Option<(*const rusty_js_shapes::Shape, u32)>
-    {
+    pub fn shape_ptr_and_slot_for(
+        &self,
+        name: &str,
+    ) -> Option<(*const rusty_js_shapes::Shape, u32)> {
         let shape = self.shape.as_ref()?;
         let slot = shape.slot_of(name)?;
         Some((std::rc::Rc::as_ptr(shape), slot))
@@ -466,17 +526,24 @@ impl Object {
     /// stays in pure-Dictionary form (back-promotion deferred per
     /// shapes seed §IV).
     pub fn migrate_to_dictionary(&mut self) {
-        let Some(shape) = self.shape.take() else { return; };
+        let Some(shape) = self.shape.take() else {
+            return;
+        };
         let values = std::mem::take(&mut self.shape_values);
         for (name, slot) in shape.iter_slots() {
             let idx = slot as usize;
-            if idx >= values.len() { continue; }
+            if idx >= values.len() {
+                continue;
+            }
             self.properties.insert(
                 PropertyKey::String(name.to_string()),
                 PropertyDescriptor {
                     value: values[idx].clone(),
-                    writable: true, enumerable: true, configurable: true,
-                    getter: None, setter: None,
+                    writable: true,
+                    enumerable: true,
+                    configurable: true,
+                    getter: None,
+                    setter: None,
                 },
             );
         }
@@ -506,7 +573,8 @@ impl Object {
 
     /// Mutable own-property lookup for string keys. PropertyKey migration shim.
     pub fn get_own_mut(&mut self, key: &str) -> Option<&mut PropertyDescriptor> {
-        self.properties.get_mut(&PropertyKey::String(key.to_string()))
+        self.properties
+            .get_mut(&PropertyKey::String(key.to_string()))
     }
 
     /// String-key membership test (migration shim).
@@ -516,10 +584,19 @@ impl Object {
     /// but membership tests must still observe it.
     pub fn has_own_str(&self, key: &str) -> bool {
         if let Some(shape) = self.shape.as_ref() {
-            if shape.slot_of(key).is_some() { return true; }
+            if shape.slot_of(key).is_some() {
+                return true;
+            }
         }
-        if self.properties.contains_key(&PropertyKey::String(key.to_string())) { return true; }
-        if key == "length" && matches!(self.internal_kind, InternalKind::Array) { return true; }
+        if self
+            .properties
+            .contains_key(&PropertyKey::String(key.to_string()))
+        {
+            return true;
+        }
+        if key == "length" && matches!(self.internal_kind, InternalKind::Array) {
+            return true;
+        }
         false
     }
 
@@ -527,14 +604,20 @@ impl Object {
     /// Shape-EXT 4: delete migrates to Dictionary first per shapes seed §IV.
     pub fn remove_str(&mut self, key: &str) -> Option<PropertyDescriptor> {
         self.migrate_to_dictionary();
-        self.properties.shift_remove(&PropertyKey::String(key.to_string()))
+        self.properties
+            .shift_remove(&PropertyKey::String(key.to_string()))
     }
 
     /// String-key insert with full descriptor (migration shim).
     /// Shape-EXT 4: arbitrary-descriptor insert migrates first.
-    pub fn insert_str(&mut self, key: impl Into<String>, desc: PropertyDescriptor) -> Option<PropertyDescriptor> {
+    pub fn insert_str(
+        &mut self,
+        key: impl Into<String>,
+        desc: PropertyDescriptor,
+    ) -> Option<PropertyDescriptor> {
         self.migrate_to_dictionary();
-        self.properties.insert(PropertyKey::String(key.into()), desc)
+        self.properties
+            .insert(PropertyKey::String(key.into()), desc)
     }
 
     /// Iterate string-keyed entries only (migration shim — most legacy callers
@@ -547,10 +630,14 @@ impl Object {
             Some(shape) => shape.iter_slots().map(|(n, _)| n).collect(),
             None => Vec::new(),
         };
-        let prop_names: Vec<&str> = self.properties.keys().filter_map(|k| match k {
-            PropertyKey::String(s) => Some(s.as_str()),
-            PropertyKey::Symbol(_) => None,
-        }).collect();
+        let prop_names: Vec<&str> = self
+            .properties
+            .keys()
+            .filter_map(|k| match k {
+                PropertyKey::String(s) => Some(s.as_str()),
+                PropertyKey::Symbol(_) => None,
+            })
+            .collect();
         shape_names.into_iter().chain(prop_names)
     }
 
@@ -562,10 +649,14 @@ impl Object {
             Some(shape) => shape.iter_slots().map(|(n, _)| n.to_string()).collect(),
             None => Vec::new(),
         };
-        let prop_names: Vec<String> = self.properties.keys().filter_map(|k| match k {
-            PropertyKey::String(s) => Some(s.clone()),
-            PropertyKey::Symbol(_) => None,
-        }).collect();
+        let prop_names: Vec<String> = self
+            .properties
+            .keys()
+            .filter_map(|k| match k {
+                PropertyKey::String(s) => Some(s.clone()),
+                PropertyKey::Symbol(_) => None,
+            })
+            .collect();
         shape_names.into_iter().chain(prop_names)
     }
 
@@ -600,14 +691,17 @@ impl Object {
             d.value = value;
             return;
         }
-        self.properties.insert(pk, PropertyDescriptor {
-            value,
-            writable: true,
-            enumerable: true,
-            configurable: true,
-            getter: None,
-            setter: None,
-        });
+        self.properties.insert(
+            pk,
+            PropertyDescriptor {
+                value,
+                writable: true,
+                enumerable: true,
+                configurable: true,
+                getter: None,
+                setter: None,
+            },
+        );
     }
 
     /// Ω.5.P58.E1 (Doc 729 §VII.B engine-internal-bilateral-boundary,
@@ -621,14 +715,17 @@ impl Object {
     pub fn set_own_internal(&mut self, key: String, value: Value) {
         // Shape-EXT 4: non-default descriptors migrate to Dictionary first.
         self.migrate_to_dictionary();
-        self.properties.insert(PropertyKey::String(key), PropertyDescriptor {
-            value,
-            writable: true,
-            enumerable: false,
-            configurable: true,
-            getter: None,
-            setter: None,
-        });
+        self.properties.insert(
+            PropertyKey::String(key),
+            PropertyDescriptor {
+                value,
+                writable: true,
+                enumerable: false,
+                configurable: true,
+                getter: None,
+                setter: None,
+            },
+        );
     }
 
     /// Ω.5.P61.E20: set an own property as **fully locked** — non-writable,
@@ -638,14 +735,17 @@ impl Object {
     pub fn set_own_frozen(&mut self, key: String, value: Value) {
         // Shape-EXT 4: non-default descriptors migrate to Dictionary first.
         self.migrate_to_dictionary();
-        self.properties.insert(PropertyKey::String(key), PropertyDescriptor {
-            value,
-            writable: false,
-            enumerable: false,
-            configurable: false,
-            getter: None,
-            setter: None,
-        });
+        self.properties.insert(
+            PropertyKey::String(key),
+            PropertyDescriptor {
+                value,
+                writable: false,
+                enumerable: false,
+                configurable: false,
+                getter: None,
+                setter: None,
+            },
+        );
     }
 }
 
@@ -749,10 +849,14 @@ impl CompiledRegex {
     /// Substrate-bridge consumers build the .groups Object from this.
     pub fn named_groups(&self) -> Vec<(String, usize)> {
         match self {
-            CompiledRegex::Rust(r) => r.capture_names().enumerate()
+            CompiledRegex::Rust(r) => r
+                .capture_names()
+                .enumerate()
                 .filter_map(|(i, n)| n.map(|s| (s.to_string(), i)))
                 .collect(),
-            CompiledRegex::Hand(h) => h.named_groups.iter()
+            CompiledRegex::Hand(h) => h
+                .named_groups
+                .iter()
                 .map(|(k, v)| (k.clone(), *v))
                 .collect(),
         }
@@ -765,7 +869,11 @@ impl CompiledRegex {
     }
     /// Find first match starting at byte offset `start`. Returns
     /// (match_byte_start, match_byte_end, captures_as_strings).
-    pub fn captures_at(&self, input: &str, start: usize) -> Option<(usize, usize, Vec<Option<String>>)> {
+    pub fn captures_at(
+        &self,
+        input: &str,
+        start: usize,
+    ) -> Option<(usize, usize, Vec<Option<String>>)> {
         match self {
             CompiledRegex::Rust(r) => r.captures_at(input, start).map(|caps| {
                 let m0 = caps.get(0).unwrap();
@@ -775,7 +883,11 @@ impl CompiledRegex {
                 (m0.start(), m0.end(), groups)
             }),
             CompiledRegex::Hand(h) => crate::regex_hand::find_at(h, input, start).map(|m| {
-                let groups: Vec<Option<String>> = m.captures.iter().map(|c| c.map(|(s,e)| input[s..e].to_string())).collect();
+                let groups: Vec<Option<String>> = m
+                    .captures
+                    .iter()
+                    .map(|c| c.map(|(s, e)| input[s..e].to_string()))
+                    .collect();
                 (m.start, m.end, groups)
             }),
         }
@@ -784,9 +896,11 @@ impl CompiledRegex {
     /// (match_byte_start, match_byte_end, Vec of per-group Option<(byte_start,
     /// byte_end)>). Used to build the `.indices` Array on exec results when
     /// the `d` flag is set, per ECMA-262 §22.2.7.7 MakeMatchIndicesArray.
-    pub fn captures_positions_at(&self, input: &str, start: usize)
-        -> Option<(usize, usize, Vec<Option<(usize, usize)>>)>
-    {
+    pub fn captures_positions_at(
+        &self,
+        input: &str,
+        start: usize,
+    ) -> Option<(usize, usize, Vec<Option<(usize, usize)>>)> {
         match self {
             CompiledRegex::Rust(r) => r.captures_at(input, start).map(|caps| {
                 let m0 = caps.get(0).unwrap();
@@ -795,15 +909,17 @@ impl CompiledRegex {
                     .collect();
                 (m0.start(), m0.end(), groups)
             }),
-            CompiledRegex::Hand(h) => crate::regex_hand::find_at(h, input, start).map(|m| {
-                (m.start, m.end, m.captures.clone())
-            }),
+            CompiledRegex::Hand(h) => crate::regex_hand::find_at(h, input, start)
+                .map(|m| (m.start, m.end, m.captures.clone())),
         }
     }
     /// Iterate non-overlapping matches; each yields (byte_start, byte_end, matched_str).
     pub fn find_iter_owned(&self, input: &str) -> Vec<(usize, usize, String)> {
         match self {
-            CompiledRegex::Rust(r) => r.find_iter(input).map(|m| (m.start(), m.end(), m.as_str().to_string())).collect(),
+            CompiledRegex::Rust(r) => r
+                .find_iter(input)
+                .map(|m| (m.start(), m.end(), m.as_str().to_string()))
+                .collect(),
             CompiledRegex::Hand(h) => {
                 let mut out = Vec::new();
                 let mut start = 0;
@@ -824,7 +940,7 @@ impl CompiledRegex {
     }
     /// Find first match anywhere in input.
     pub fn find_first(&self, input: &str) -> Option<(usize, usize)> {
-        self.captures_at(input, 0).map(|(s,e,_)| (s,e))
+        self.captures_at(input, 0).map(|(s, e, _)| (s, e))
     }
     /// Split `input` on each match, returning the pieces between matches.
     pub fn split_str(&self, input: &str) -> Vec<String> {
@@ -852,9 +968,15 @@ impl CompiledRegex {
             // Spec sec 22.1.3.21 step 18: loop while q < size. A match
             // anchored at end-of-input (ms == input.len()) is past the
             // loop boundary and must not contribute a slice.
-            if ms >= input.len() { break; }
-            if me == p { continue; }
-            if ms < p { continue; }
+            if ms >= input.len() {
+                break;
+            }
+            if me == p {
+                continue;
+            }
+            if ms < p {
+                continue;
+            }
             out.push(input[p..ms].to_string());
             p = me;
         }
@@ -871,7 +993,9 @@ impl CompiledRegex {
                 let mut out = String::new();
                 let mut cursor = 0;
                 for (i, (ms, me, _)) in matches.into_iter().enumerate() {
-                    if i >= n { break; }
+                    if i >= n {
+                        break;
+                    }
                     out.push_str(&input[cursor..ms]);
                     out.push_str(repl);
                     cursor = me;
@@ -898,7 +1022,11 @@ pub struct PromiseState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PromiseStatus { Pending, Fulfilled, Rejected }
+pub enum PromiseStatus {
+    Pending,
+    Fulfilled,
+    Rejected,
+}
 
 #[derive(Debug)]
 pub struct PromiseReaction {
@@ -1011,7 +1139,11 @@ pub struct FunctionInternals {
 
 impl std::fmt::Debug for FunctionInternals {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "FunctionInternals {{ name: {:?}, length: {} }}", self.name, self.length)
+        write!(
+            f,
+            "FunctionInternals {{ name: {:?}, length: {} }}",
+            self.name, self.length
+        )
     }
 }
 
@@ -1025,19 +1157,33 @@ pub fn install_function_meta_props(
     name: &str,
     length: f64,
 ) {
-    properties.insert(PropertyKey::String("length".to_string()), PropertyDescriptor {
-        value: Value::Number(length),
-        writable: false, enumerable: false, configurable: true,
-        getter: None, setter: None,
-    });
-    properties.insert(PropertyKey::String("name".to_string()), PropertyDescriptor {
-        value: Value::String(std::rc::Rc::new(name.to_string())),
-        writable: false, enumerable: false, configurable: true,
-        getter: None, setter: None,
-    });
+    properties.insert(
+        PropertyKey::String("length".to_string()),
+        PropertyDescriptor {
+            value: Value::Number(length),
+            writable: false,
+            enumerable: false,
+            configurable: true,
+            getter: None,
+            setter: None,
+        },
+    );
+    properties.insert(
+        PropertyKey::String("name".to_string()),
+        PropertyDescriptor {
+            value: Value::String(std::rc::Rc::new(name.to_string())),
+            writable: false,
+            enumerable: false,
+            configurable: true,
+            getter: None,
+            setter: None,
+        },
+    );
 }
 
-pub type NativeFn = std::rc::Rc<dyn Fn(&mut crate::interp::Runtime, &[Value]) -> Result<Value, crate::interp::RuntimeError>>;
+pub type NativeFn = std::rc::Rc<
+    dyn Fn(&mut crate::interp::Runtime, &[Value]) -> Result<Value, crate::interp::RuntimeError>,
+>;
 
 #[derive(Debug)]
 pub struct BoundFunctionInternals {
@@ -1078,8 +1224,7 @@ mod vti_layout_tests {
         ];
         for (v, expected) in cases {
             let tag = unsafe { *((v as *const Value) as *const u8) };
-            assert_eq!(tag, *expected,
-                "variant tag mismatch (rustc layout drift)");
+            assert_eq!(tag, *expected, "variant tag mismatch (rustc layout drift)");
         }
     }
 

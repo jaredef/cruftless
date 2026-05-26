@@ -10,10 +10,12 @@
 // app-traffic AEAD keys plus methods to send/receive application
 // data.
 
-use crate::record::{TlsError, TlsRecord, ContentType, ProtocolVersion,
-                    encode_record, decode_record, MAX_CIPHERTEXT_LEN};
-use crate::handshake::*;
 use crate::client::*;
+use crate::handshake::*;
+use crate::record::{
+    decode_record, encode_record, ContentType, ProtocolVersion, TlsError, TlsRecord,
+    MAX_CIPHERTEXT_LEN,
+};
 use crate::store::*;
 
 use rusty_x509::{Certificate as X509Cert, PublicKey, SubjectPublicKeyInfo};
@@ -28,7 +30,8 @@ pub struct TcpTlsTransport {
 impl TlsTransport for TcpTlsTransport {
     fn write_all(&mut self, bytes: &[u8]) -> Result<(), TlsError> {
         use std::io::Write;
-        self.stream.write_all(bytes)
+        self.stream
+            .write_all(bytes)
             .map_err(|e| TlsError::SignatureFail(format!("tcp write: {}", e)))
     }
     fn read_some(&mut self, buf: &mut Vec<u8>) -> Result<usize, TlsError> {
@@ -38,10 +41,14 @@ impl TlsTransport for TcpTlsTransport {
             Ok(n) => n,
             // Π2.6.c.d: surface WouldBlock distinct from other errors so
             // try_receive_application_data can map it to Ok(None).
-            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => return Err(TlsError::WouldBlock),
+            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                return Err(TlsError::WouldBlock)
+            }
             Err(e) => return Err(TlsError::SignatureFail(format!("tcp read: {}", e))),
         };
-        if n == 0 { return Err(TlsError::UnexpectedEnd); }
+        if n == 0 {
+            return Err(TlsError::UnexpectedEnd);
+        }
         buf.extend_from_slice(&tmp[..n]);
         Ok(n)
     }
@@ -51,7 +58,8 @@ impl TcpTlsTransport {
     /// Π2.6.c.d: toggle nonblocking on the underlying TcpStream so
     /// read_some surfaces WouldBlock instead of blocking the thread.
     pub fn set_nonblocking(&self, on: bool) -> Result<(), TlsError> {
-        self.stream.set_nonblocking(on)
+        self.stream
+            .set_nonblocking(on)
             .map_err(|e| TlsError::SignatureFail(format!("tls set_nonblocking: {}", e)))
     }
     /// Expose the underlying fd for reactor registration.
@@ -128,7 +136,11 @@ fn verify_certificate_verify_signature(
         SIG_RSA_PKCS1_SHA256 | SIG_RSA_PKCS1_SHA384 | SIG_RSA_PKCS1_SHA512 => {
             let (n, e) = match &spki.key {
                 PublicKey::Rsa { n, e } => (n, e),
-                _ => return Err(TlsError::SignatureFail("RSA scheme but leaf is not RSA".into())),
+                _ => {
+                    return Err(TlsError::SignatureFail(
+                        "RSA scheme but leaf is not RSA".into(),
+                    ))
+                }
             };
             let (hash, name) = match scheme {
                 SIG_RSA_PKCS1_SHA256 => (rusty_web_crypto::digest_sha256(tbs).to_vec(), "SHA-256"),
@@ -143,7 +155,11 @@ fn verify_certificate_verify_signature(
         SIG_RSA_PSS_RSAE_SHA256 | SIG_RSA_PSS_RSAE_SHA384 => {
             let (n, e) = match &spki.key {
                 PublicKey::Rsa { n, e } => (n, e),
-                _ => return Err(TlsError::SignatureFail("RSA-PSS scheme but leaf is not RSA".into())),
+                _ => {
+                    return Err(TlsError::SignatureFail(
+                        "RSA-PSS scheme but leaf is not RSA".into(),
+                    ))
+                }
             };
             let (hlen, hash_fn): (usize, fn(&[u8]) -> Vec<u8>) = match scheme {
                 SIG_RSA_PSS_RSAE_SHA256 => (32, |d| rusty_web_crypto::digest_sha256(d).to_vec()),
@@ -158,13 +174,21 @@ fn verify_certificate_verify_signature(
         SIG_ECDSA_SECP256R1_SHA256 | SIG_ECDSA_SECP384R1_SHA384 => {
             let (curve_oid, point) = match &spki.key {
                 PublicKey::Ec { curve_oid, point } => (curve_oid, point),
-                _ => return Err(TlsError::SignatureFail("ECDSA scheme but leaf is not EC".into())),
+                _ => {
+                    return Err(TlsError::SignatureFail(
+                        "ECDSA scheme but leaf is not EC".into(),
+                    ))
+                }
             };
             let curve = match curve_oid.as_str() {
                 rusty_x509::OID_P256_CURVE => rusty_web_crypto::curve_p256(),
                 rusty_x509::OID_P384_CURVE => rusty_web_crypto::curve_p384(),
-                _ => return Err(TlsError::SignatureFail(
-                    format!("unsupported EC curve {}", curve_oid))),
+                _ => {
+                    return Err(TlsError::SignatureFail(format!(
+                        "unsupported EC curve {}",
+                        curve_oid
+                    )))
+                }
             };
             if point.is_empty() || point[0] != 0x04 || point.len() != 1 + 2 * curve.coord_bytes {
                 return Err(TlsError::SignatureFail("malformed EC pubkey".into()));
@@ -180,29 +204,47 @@ fn verify_certificate_verify_signature(
             let dbg_der = std::env::var("CRUFTLESS_TLS_DEBUG").is_ok();
             if dbg_der {
                 let hex = |b: &[u8]| b.iter().map(|x| format!("{:02x}", x)).collect::<String>();
-                eprintln!("[ecdsa-der] signature ({} bytes)={}", signature.len(), hex(signature));
+                eprintln!(
+                    "[ecdsa-der] signature ({} bytes)={}",
+                    signature.len(),
+                    hex(signature)
+                );
                 eprintln!("[ecdsa-der] → parse_single...");
             }
             // ECDSA TLS signature is DER SEQUENCE { r INTEGER, s INTEGER }.
             let sig_seq = rusty_asn1_der::parse_single(signature)
                 .map_err(|e| TlsError::SignatureFail(format!("ECDSA sig DER: {}", e)))?;
-            if dbg_der { eprintln!("[ecdsa-der]   parse_single OK; tag={}", sig_seq.tag); }
+            if dbg_der {
+                eprintln!("[ecdsa-der]   parse_single OK; tag={}", sig_seq.tag);
+            }
             if sig_seq.tag != rusty_asn1_der::TAG_SEQUENCE {
                 return Err(TlsError::SignatureFail("ECDSA sig not SEQUENCE".into()));
             }
             let mut reader = rusty_asn1_der::DerReader::new(sig_seq.content);
-            if dbg_der { eprintln!("[ecdsa-der] → read r..."); }
-            let r_val = reader.read_tag(rusty_asn1_der::TAG_INTEGER)
+            if dbg_der {
+                eprintln!("[ecdsa-der] → read r...");
+            }
+            let r_val = reader
+                .read_tag(rusty_asn1_der::TAG_INTEGER)
                 .map_err(|e| TlsError::SignatureFail(format!("ECDSA r: {}", e)))?;
-            if dbg_der { eprintln!("[ecdsa-der] → read s..."); }
-            let s_val = reader.read_tag(rusty_asn1_der::TAG_INTEGER)
+            if dbg_der {
+                eprintln!("[ecdsa-der] → read s...");
+            }
+            let s_val = reader
+                .read_tag(rusty_asn1_der::TAG_INTEGER)
                 .map_err(|e| TlsError::SignatureFail(format!("ECDSA s: {}", e)))?;
-            if dbg_der { eprintln!("[ecdsa-der] → r/s as_unsigned_integer..."); }
-            let r = r_val.as_unsigned_integer()
+            if dbg_der {
+                eprintln!("[ecdsa-der] → r/s as_unsigned_integer...");
+            }
+            let r = r_val
+                .as_unsigned_integer()
                 .map_err(|e| TlsError::SignatureFail(format!("ECDSA r unsigned: {}", e)))?;
-            let s = s_val.as_unsigned_integer()
+            let s = s_val
+                .as_unsigned_integer()
                 .map_err(|e| TlsError::SignatureFail(format!("ECDSA s unsigned: {}", e)))?;
-            if dbg_der { eprintln!("[ecdsa-der]   r.len()={} s.len()={}", r.len(), s.len()); }
+            if dbg_der {
+                eprintln!("[ecdsa-der]   r.len()={} s.len()={}", r.len(), s.len());
+            }
             let mut sig_raw = vec![0u8; 2 * coord];
             sig_raw[coord - r.len()..coord].copy_from_slice(r);
             sig_raw[2 * coord - s.len()..].copy_from_slice(s);
@@ -217,8 +259,10 @@ fn verify_certificate_verify_signature(
             rusty_web_crypto::ecdsa_verify(&curve, qx, qy, &hash, &sig_raw)
                 .map_err(TlsError::SignatureFail)
         }
-        _ => Err(TlsError::SignatureFail(
-            format!("unsupported SignatureScheme 0x{:04x}", scheme))),
+        _ => Err(TlsError::SignatureFail(format!(
+            "unsupported SignatureScheme 0x{:04x}",
+            scheme
+        ))),
     }
 }
 
@@ -233,8 +277,8 @@ pub trait TlsTransport {
 
 /// Ephemeral ECDH-P-256 keypair for the key_share extension.
 pub struct EphemeralEcdh {
-    pub private_scalar: Vec<u8>,    // 32 bytes
-    pub public_point: Vec<u8>,      // 65 bytes: 0x04 || X || Y
+    pub private_scalar: Vec<u8>, // 32 bytes
+    pub public_point: Vec<u8>,   // 65 bytes: 0x04 || X || Y
 }
 
 impl EphemeralEcdh {
@@ -247,35 +291,45 @@ impl EphemeralEcdh {
         // P-256 is negligible (~2^-128); for hygiene, reject 0 and
         // any value ≥ n. We approximate by ensuring high bit clear
         // and re-sample if all zero.
-        sk[0] &= 0x7F;  // ensure scalar < n with high probability
-        if sk == [0u8; 32] { sk[31] = 1; }
+        sk[0] &= 0x7F; // ensure scalar < n with high probability
+        if sk == [0u8; 32] {
+            sk[31] = 1;
+        }
         // WC-EXT 13 (cross-pilot): the base-point scalar mul for
         // ephemeral keygen uses the Mont-form baked table that
         // ecdsa_verify's u1·G path uses. The table is precomputed
         // at first use (~170µs) and amortized across every ECDH
         // ephemeral + ECDSA verify in the process.
-        use rusty_web_crypto::{BigUInt, p256_scalar_mul_base_mont};
+        use rusty_web_crypto::{p256_scalar_mul_base_mont, BigUInt};
         let scalar = BigUInt::from_be_bytes(&sk);
         let pubpt = p256_scalar_mul_base_mont(&scalar);
         let (px, py) = match pubpt {
             rusty_web_crypto::P256Point::Affine { x, y } => (x.to_be_bytes(32), y.to_be_bytes(32)),
-            rusty_web_crypto::P256Point::Identity => return Err(TlsError::SignatureFail(
-                "ECDH ephemeral produced identity point".into())),
+            rusty_web_crypto::P256Point::Identity => {
+                return Err(TlsError::SignatureFail(
+                    "ECDH ephemeral produced identity point".into(),
+                ))
+            }
         };
         let mut public_point = Vec::with_capacity(65);
         public_point.push(0x04);
         public_point.extend_from_slice(&px);
         public_point.extend_from_slice(&py);
-        Ok(EphemeralEcdh { private_scalar: sk.to_vec(), public_point })
+        Ok(EphemeralEcdh {
+            private_scalar: sk.to_vec(),
+            public_point,
+        })
     }
 
     /// Derive the ECDH shared secret given the server's public point
     /// (uncompressed: 0x04 || X || Y, 65 bytes).
     pub fn shared_secret(&self, server_pubkey: &[u8]) -> Result<Vec<u8>, TlsError> {
         if server_pubkey.len() != 65 || server_pubkey[0] != 0x04 {
-            return Err(TlsError::SignatureFail("server key_share not uncompressed P-256".into()));
+            return Err(TlsError::SignatureFail(
+                "server key_share not uncompressed P-256".into(),
+            ));
         }
-        use rusty_web_crypto::{BigUInt, P256Point, p256_scalar_mul, curve_p256};
+        use rusty_web_crypto::{curve_p256, p256_scalar_mul, BigUInt, P256Point};
         let x = BigUInt::from_be_bytes(&server_pubkey[1..33]);
         let y = BigUInt::from_be_bytes(&server_pubkey[33..65]);
         let q = P256Point::Affine { x, y };
@@ -284,7 +338,9 @@ impl EphemeralEcdh {
         let shared_point = p256_scalar_mul(&scalar, &q);
         match shared_point {
             P256Point::Affine { x, .. } => Ok(x.to_be_bytes(32)),
-            P256Point::Identity => Err(TlsError::SignatureFail("ECDH produced identity point".into())),
+            P256Point::Identity => Err(TlsError::SignatureFail(
+                "ECDH produced identity point".into(),
+            )),
         }
     }
 }
@@ -304,8 +360,12 @@ pub struct TlsSession<T: TlsTransport> {
 impl<T: TlsTransport> TlsSession<T> {
     /// Send application data through the negotiated AEAD.
     pub fn send_application_data(&mut self, data: &[u8]) -> Result<(), TlsError> {
-        let ct = aead_encrypt_record(&self.client_app_keys, self.client_app_seq,
-                                     ContentType::ApplicationData as u8, data)?;
+        let ct = aead_encrypt_record(
+            &self.client_app_keys,
+            self.client_app_seq,
+            ContentType::ApplicationData as u8,
+            data,
+        )?;
         self.client_app_seq += 1;
         let record = TlsRecord {
             content_type: ContentType::ApplicationData,
@@ -321,29 +381,44 @@ impl<T: TlsTransport> TlsSession<T> {
     /// orderly close (UnexpectedEnd), alert, or unrecoverable I/O.
     /// Caller should set the transport nonblocking + park on reactor
     /// readiness when None.
-    pub fn try_receive_application_data(&mut self, accumulator: &mut Vec<u8>) -> Result<Option<Vec<u8>>, TlsError> {
+    pub fn try_receive_application_data(
+        &mut self,
+        accumulator: &mut Vec<u8>,
+    ) -> Result<Option<Vec<u8>>, TlsError> {
         loop {
             if let Ok((rec, n)) = decode_record(accumulator) {
                 accumulator.drain(..n);
                 if rec.content_type != ContentType::ApplicationData {
-                    if rec.content_type == ContentType::ChangeCipherSpec { continue; }
-                    return Err(TlsError::SignatureFail("unexpected plaintext record post-handshake".into()));
+                    if rec.content_type == ContentType::ChangeCipherSpec {
+                        continue;
+                    }
+                    return Err(TlsError::SignatureFail(
+                        "unexpected plaintext record post-handshake".into(),
+                    ));
                 }
-                let (inner_ct, plaintext) = aead_decrypt_record(
-                    &self.server_app_keys, self.server_app_seq, &rec.fragment)?;
+                let (inner_ct, plaintext) =
+                    aead_decrypt_record(&self.server_app_keys, self.server_app_seq, &rec.fragment)?;
                 self.server_app_seq += 1;
                 match inner_ct {
                     23 => return Ok(Some(plaintext)),
                     21 => return Err(crate::record::classify_alert(&plaintext)),
                     22 => continue,
-                    _ => return Err(TlsError::SignatureFail(
-                        format!("unknown inner content type {}", inner_ct))),
+                    _ => {
+                        return Err(TlsError::SignatureFail(format!(
+                            "unknown inner content type {}",
+                            inner_ct
+                        )))
+                    }
                 }
             } else {
                 match self.transport.read_some(accumulator) {
                     Ok(_) => {
-                        if accumulator.len() > MAX_CIPHERTEXT_LEN + 5 + 16 && decode_record(accumulator).is_err() {
-                            return Err(TlsError::SignatureFail("record buffer overflow without progress".into()));
+                        if accumulator.len() > MAX_CIPHERTEXT_LEN + 5 + 16
+                            && decode_record(accumulator).is_err()
+                        {
+                            return Err(TlsError::SignatureFail(
+                                "record buffer overflow without progress".into(),
+                            ));
                         }
                     }
                     Err(TlsError::WouldBlock) => return Ok(None),
@@ -356,35 +431,55 @@ impl<T: TlsTransport> TlsSession<T> {
     /// Receive application data, decrypting one record at a time.
     /// Returns the decrypted application payload (may be empty on
     /// alert records, which the caller should handle).
-    pub fn receive_application_data(&mut self, accumulator: &mut Vec<u8>) -> Result<Vec<u8>, TlsError> {
+    pub fn receive_application_data(
+        &mut self,
+        accumulator: &mut Vec<u8>,
+    ) -> Result<Vec<u8>, TlsError> {
         loop {
             // Try to decode a complete record from the accumulator.
             if let Ok((rec, n)) = decode_record(accumulator) {
                 let dbg = std::env::var("CRUFTLESS_TLS_DEBUG").is_ok();
-                if dbg { eprintln!("[tls-c-new-1] record: ct={:?} frag_len={} seq={}",
-                    rec.content_type, rec.fragment.len(), self.server_app_seq); }
+                if dbg {
+                    eprintln!(
+                        "[tls-c-new-1] record: ct={:?} frag_len={} seq={}",
+                        rec.content_type,
+                        rec.fragment.len(),
+                        self.server_app_seq
+                    );
+                }
                 accumulator.drain(..n);
                 if rec.content_type != ContentType::ApplicationData {
                     // Plaintext records during the application phase
                     // are unexpected except for ChangeCipherSpec which
                     // we ignore per RFC 8446 §5.
                     if rec.content_type == ContentType::ChangeCipherSpec {
-                        if dbg { eprintln!("[tls-c-new-1]   ignored: ChangeCipherSpec"); }
+                        if dbg {
+                            eprintln!("[tls-c-new-1]   ignored: ChangeCipherSpec");
+                        }
                         continue;
                     }
-                    return Err(TlsError::SignatureFail("unexpected plaintext record post-handshake".into()));
+                    return Err(TlsError::SignatureFail(
+                        "unexpected plaintext record post-handshake".into(),
+                    ));
                 }
-                let dec = aead_decrypt_record(
-                    &self.server_app_keys, self.server_app_seq, &rec.fragment);
+                let dec =
+                    aead_decrypt_record(&self.server_app_keys, self.server_app_seq, &rec.fragment);
                 let (inner_ct, plaintext) = match dec {
                     Ok(x) => x,
                     Err(e) => {
-                        if dbg { eprintln!("[tls-c-new-1]   DECRYPT FAILED: {:?}", e); }
+                        if dbg {
+                            eprintln!("[tls-c-new-1]   DECRYPT FAILED: {:?}", e);
+                        }
                         return Err(e);
                     }
                 };
-                if dbg { eprintln!("[tls-c-new-1]   decrypt OK: inner_ct={} pt_len={}",
-                    inner_ct, plaintext.len()); }
+                if dbg {
+                    eprintln!(
+                        "[tls-c-new-1]   decrypt OK: inner_ct={} pt_len={}",
+                        inner_ct,
+                        plaintext.len()
+                    );
+                }
                 self.server_app_seq += 1;
                 match inner_ct {
                     23 /* ApplicationData */ => return Ok(plaintext),
@@ -403,18 +498,34 @@ impl<T: TlsTransport> TlsSession<T> {
                 }
             } else {
                 let dbg = std::env::var("CRUFTLESS_TLS_DEBUG").is_ok();
-                if dbg { eprintln!("[tls-c-new-1] need more bytes; calling transport.read_some (acc={})", accumulator.len()); }
+                if dbg {
+                    eprintln!(
+                        "[tls-c-new-1] need more bytes; calling transport.read_some (acc={})",
+                        accumulator.len()
+                    );
+                }
                 let n = match self.transport.read_some(accumulator) {
                     Ok(n) => n,
                     Err(e) => {
-                        if dbg { eprintln!("[tls-c-new-1]   read_some FAILED: {:?}", e); }
+                        if dbg {
+                            eprintln!("[tls-c-new-1]   read_some FAILED: {:?}", e);
+                        }
                         return Err(e);
                     }
                 };
-                if dbg { eprintln!("[tls-c-new-1] transport.read_some → {} bytes (accumulator now {})",
-                    n, accumulator.len()); }
-                if accumulator.len() > MAX_CIPHERTEXT_LEN + 5 + 16 && decode_record(accumulator).is_err() {
-                    return Err(TlsError::SignatureFail("record buffer overflow without progress".into()));
+                if dbg {
+                    eprintln!(
+                        "[tls-c-new-1] transport.read_some → {} bytes (accumulator now {})",
+                        n,
+                        accumulator.len()
+                    );
+                }
+                if accumulator.len() > MAX_CIPHERTEXT_LEN + 5 + 16
+                    && decode_record(accumulator).is_err()
+                {
+                    return Err(TlsError::SignatureFail(
+                        "record buffer overflow without progress".into(),
+                    ));
                 }
             }
         }
@@ -496,20 +607,40 @@ pub fn complete_handshake<T: TlsTransport>(
     let mut phase1_iter = 0u32;
     while server_hello.is_none() {
         phase1_iter += 1;
-        if dbg_hs { eprintln!("[hs-phase1] iter={} acc_len={}", phase1_iter, accumulator.len()); }
+        if dbg_hs {
+            eprintln!(
+                "[hs-phase1] iter={} acc_len={}",
+                phase1_iter,
+                accumulator.len()
+            );
+        }
         let (rec, n) = match decode_record(&accumulator) {
             Ok(r) => r,
             Err(_) => {
-                if dbg_hs { eprintln!("[hs-phase1]   need more; read_some..."); }
+                if dbg_hs {
+                    eprintln!("[hs-phase1]   need more; read_some...");
+                }
                 let nb = transport.read_some(&mut accumulator)?;
-                if dbg_hs { eprintln!("[hs-phase1]   read_some → {} bytes (acc={})", nb, accumulator.len()); }
+                if dbg_hs {
+                    eprintln!(
+                        "[hs-phase1]   read_some → {} bytes (acc={})",
+                        nb,
+                        accumulator.len()
+                    );
+                }
                 continue;
             }
         };
-        if dbg_hs { eprintln!("[hs-phase1]   got record ct={:?} frag_len={}", rec.content_type, rec.fragment.len()); }
+        if dbg_hs {
+            eprintln!(
+                "[hs-phase1]   got record ct={:?} frag_len={}",
+                rec.content_type,
+                rec.fragment.len()
+            );
+        }
         accumulator.drain(..n);
         match rec.content_type {
-            ContentType::ChangeCipherSpec => continue,  // ignore per §5
+            ContentType::ChangeCipherSpec => continue, // ignore per §5
             ContentType::Handshake => {
                 let mut pos = 0;
                 while pos < rec.fragment.len() {
@@ -522,16 +653,21 @@ pub fn complete_handshake<T: TlsTransport>(
                         transcript.extend_from_slice(msg_bytes);
                         break;
                     } else {
-                        return Err(TlsError::SignatureFail(
-                            format!("unexpected handshake type {:?} before ServerHello", msg.msg_type)));
+                        return Err(TlsError::SignatureFail(format!(
+                            "unexpected handshake type {:?} before ServerHello",
+                            msg.msg_type
+                        )));
                     }
                 }
             }
             ContentType::Alert => {
                 return Err(crate::record::classify_alert(&rec.fragment));
             }
-            _ => return Err(TlsError::SignatureFail(
-                "unexpected content type before ServerHello".into())),
+            _ => {
+                return Err(TlsError::SignatureFail(
+                    "unexpected content type before ServerHello".into(),
+                ))
+            }
         }
     }
     let sh = server_hello.unwrap();
@@ -539,21 +675,30 @@ pub fn complete_handshake<T: TlsTransport>(
 
     // ── Phase 2: derive keys ──
     if sh.selected_version() != Some(0x0304) {
-        return Err(TlsError::SignatureFail("server did not select TLS 1.3".into()));
+        return Err(TlsError::SignatureFail(
+            "server did not select TLS 1.3".into(),
+        ));
     }
     if sh.cipher_suite != CIPHER_AES_128_GCM_SHA256 {
-        return Err(TlsError::SignatureFail(
-            format!("server selected unsupported cipher 0x{:04x}", sh.cipher_suite)));
+        return Err(TlsError::SignatureFail(format!(
+            "server selected unsupported cipher 0x{:04x}",
+            sh.cipher_suite
+        )));
     }
-    let (group, server_pub) = sh.server_key_share()
-        .ok_or(TlsError::SignatureFail("ServerHello missing key_share".into()))?;
+    let (group, server_pub) = sh.server_key_share().ok_or(TlsError::SignatureFail(
+        "ServerHello missing key_share".into(),
+    ))?;
     if group != GROUP_SECP256R1 {
-        return Err(TlsError::SignatureFail("server selected non-P256 group".into()));
+        return Err(TlsError::SignatureFail(
+            "server selected non-P256 group".into(),
+        ));
     }
     let profile_sh = std::env::var("CRUFTLESS_TLS_PROFILE").is_ok();
     let t_sh = std::time::Instant::now();
     let dhe = ephemeral.shared_secret(server_pub)?;
-    if profile_sh { eprintln!("[wc-ext-14] ECDH shared_secret: {:?}", t_sh.elapsed()); }
+    if profile_sh {
+        eprintln!("[wc-ext-14] ECDH shared_secret: {:?}", t_sh.elapsed());
+    }
     let schedule = KeySchedule::new(hash, &dhe, &hash.digest(&transcript))?;
     let transcript_hash_sh = hash.digest(&transcript);
     let server_hs_secret = schedule.server_handshake_traffic(&transcript_hash_sh)?;
@@ -573,43 +718,91 @@ pub fn complete_handshake<T: TlsTransport>(
     let mut phase3_iter = 0u32;
     'outer: while !got_finished {
         phase3_iter += 1;
-        if dbg_hs { eprintln!("[hs-phase3] iter={} acc_len={} hb_len={} seq={}",
-            phase3_iter, accumulator.len(), handshake_buffer.len(), server_seq); }
+        if dbg_hs {
+            eprintln!(
+                "[hs-phase3] iter={} acc_len={} hb_len={} seq={}",
+                phase3_iter,
+                accumulator.len(),
+                handshake_buffer.len(),
+                server_seq
+            );
+        }
         // Pull more records if buffer is empty.
         while !decode_record(&accumulator).is_ok() {
-            if dbg_hs { eprintln!("[hs-phase3]   inner: need more for record; read_some..."); }
+            if dbg_hs {
+                eprintln!("[hs-phase3]   inner: need more for record; read_some...");
+            }
             let nb = transport.read_some(&mut accumulator)?;
-            if dbg_hs { eprintln!("[hs-phase3]   inner: read_some → {} bytes (acc={})", nb, accumulator.len()); }
+            if dbg_hs {
+                eprintln!(
+                    "[hs-phase3]   inner: read_some → {} bytes (acc={})",
+                    nb,
+                    accumulator.len()
+                );
+            }
         }
         let (rec, n) = decode_record(&accumulator)?;
-        if dbg_hs { eprintln!("[hs-phase3]   record ct={:?} frag_len={}", rec.content_type, rec.fragment.len()); }
-        accumulator.drain(..n);
-        if rec.content_type == ContentType::ChangeCipherSpec { continue; }
-        if rec.content_type != ContentType::ApplicationData {
-            return Err(TlsError::SignatureFail("unexpected plaintext in handshake phase".into()));
+        if dbg_hs {
+            eprintln!(
+                "[hs-phase3]   record ct={:?} frag_len={}",
+                rec.content_type,
+                rec.fragment.len()
+            );
         }
-        let (inner_ct, plaintext) = aead_decrypt_record(&server_hs_keys, server_seq, &rec.fragment)?;
-        if dbg_hs { eprintln!("[hs-phase3]   decrypted: inner_ct={} pt_len={}", inner_ct, plaintext.len()); }
-        server_seq += 1;
-        if inner_ct != 22 /* Handshake */ {
+        accumulator.drain(..n);
+        if rec.content_type == ContentType::ChangeCipherSpec {
+            continue;
+        }
+        if rec.content_type != ContentType::ApplicationData {
             return Err(TlsError::SignatureFail(
-                format!("expected Handshake inner type, got {}", inner_ct)));
+                "unexpected plaintext in handshake phase".into(),
+            ));
+        }
+        let (inner_ct, plaintext) =
+            aead_decrypt_record(&server_hs_keys, server_seq, &rec.fragment)?;
+        if dbg_hs {
+            eprintln!(
+                "[hs-phase3]   decrypted: inner_ct={} pt_len={}",
+                inner_ct,
+                plaintext.len()
+            );
+        }
+        server_seq += 1;
+        if inner_ct != 22
+        /* Handshake */
+        {
+            return Err(TlsError::SignatureFail(format!(
+                "expected Handshake inner type, got {}",
+                inner_ct
+            )));
         }
         handshake_buffer.extend_from_slice(&plaintext);
         // Drain complete handshake messages.
         let mut drain_iter = 0u32;
         loop {
             drain_iter += 1;
-            if dbg_hs { eprintln!("[hs-phase3-drain] iter={} hb_len={}",
-                drain_iter, handshake_buffer.len()); }
+            if dbg_hs {
+                eprintln!(
+                    "[hs-phase3-drain] iter={} hb_len={}",
+                    drain_iter,
+                    handshake_buffer.len()
+                );
+            }
             let (msg, used) = match decode_handshake(&handshake_buffer) {
                 Ok(p) => p,
                 Err(e) => {
-                    if dbg_hs { eprintln!("[hs-phase3-drain]   decode_handshake Err: {:?} (continue 'outer for more bytes)", e); }
+                    if dbg_hs {
+                        eprintln!("[hs-phase3-drain]   decode_handshake Err: {:?} (continue 'outer for more bytes)", e);
+                    }
                     continue 'outer;
                 }
             };
-            if dbg_hs { eprintln!("[hs-phase3-drain]   msg_type={:?} used={}", msg.msg_type, used); }
+            if dbg_hs {
+                eprintln!(
+                    "[hs-phase3-drain]   msg_type={:?} used={}",
+                    msg.msg_type, used
+                );
+            }
             let msg_bytes = handshake_buffer[..used].to_vec();
             handshake_buffer.drain(..used);
             transcript.extend_from_slice(&msg_bytes);
@@ -626,12 +819,16 @@ pub fn complete_handshake<T: TlsTransport>(
                 HandshakeType::CertificateVerify => {
                     // RFC 8446 §4.4.3.
                     if msg.body.len() < 4 {
-                        return Err(TlsError::SignatureFail("CertificateVerify body too short".into()));
+                        return Err(TlsError::SignatureFail(
+                            "CertificateVerify body too short".into(),
+                        ));
                     }
                     let scheme = ((msg.body[0] as u16) << 8) | (msg.body[1] as u16);
                     let sig_len = ((msg.body[2] as usize) << 8) | (msg.body[3] as usize);
                     if msg.body.len() < 4 + sig_len {
-                        return Err(TlsError::SignatureFail("CertificateVerify truncated".into()));
+                        return Err(TlsError::SignatureFail(
+                            "CertificateVerify truncated".into(),
+                        ));
                     }
                     let signature = &msg.body[4..4 + sig_len];
                     // Construct the to-be-signed content per §4.4.3.
@@ -645,50 +842,75 @@ pub fn complete_handshake<T: TlsTransport>(
                     transcript_through_cert.truncate(transcript.len() - cv_len);
                     tbs.extend_from_slice(&hash.digest(&transcript_through_cert));
                     // Verify against leaf cert's pubkey per the SignatureScheme.
-                    let leaf = server_certs.first()
-                        .ok_or(TlsError::SignatureFail("CertificateVerify before Certificate".into()))?;
-                    if dbg_hs { eprintln!("[hs-cv] scheme=0x{:04x} sig_len={}", scheme, sig_len); }
+                    let leaf = server_certs.first().ok_or(TlsError::SignatureFail(
+                        "CertificateVerify before Certificate".into(),
+                    ))?;
+                    if dbg_hs {
+                        eprintln!("[hs-cv] scheme=0x{:04x} sig_len={}", scheme, sig_len);
+                    }
                     let profile_cv = std::env::var("CRUFTLESS_TLS_PROFILE").is_ok();
                     let t_cv = std::time::Instant::now();
-                    verify_certificate_verify_signature(scheme, &leaf.subject_public_key_info,
-                                                        &tbs, signature)?;
-                    if profile_cv { eprintln!("[wc-ext-14] CertificateVerify scheme=0x{:04x}: {:?}",
-                        scheme, t_cv.elapsed()); }
+                    verify_certificate_verify_signature(
+                        scheme,
+                        &leaf.subject_public_key_info,
+                        &tbs,
+                        signature,
+                    )?;
+                    if profile_cv {
+                        eprintln!(
+                            "[wc-ext-14] CertificateVerify scheme=0x{:04x}: {:?}",
+                            scheme,
+                            t_cv.elapsed()
+                        );
+                    }
                     transcript_through_cv = Some(transcript.clone());
                 }
                 HandshakeType::Finished => {
                     // Verify server Finished MAC.
-                    let th_through_cv = transcript_through_cv
-                        .clone()
-                        .ok_or(TlsError::SignatureFail("Finished before CertificateVerify".into()))?;
+                    let th_through_cv =
+                        transcript_through_cv
+                            .clone()
+                            .ok_or(TlsError::SignatureFail(
+                                "Finished before CertificateVerify".into(),
+                            ))?;
                     // transcript currently includes Finished. Server's
                     // Finished is over transcript_through_cv.
                     let th = hash.digest(&th_through_cv);
                     let expected = finished_mac(hash, &server_hs_secret, &th)?;
                     if msg.body != expected {
-                        return Err(TlsError::SignatureFail("server Finished MAC mismatch".into()));
+                        return Err(TlsError::SignatureFail(
+                            "server Finished MAC mismatch".into(),
+                        ));
                     }
                     transcript_through_finished = Some(transcript.clone());
                     got_finished = true;
                     break;
                 }
                 _ => {
-                    return Err(TlsError::SignatureFail(
-                        format!("unexpected handshake type {:?} in encrypted phase", msg.msg_type)));
+                    return Err(TlsError::SignatureFail(format!(
+                        "unexpected handshake type {:?} in encrypted phase",
+                        msg.msg_type
+                    )));
                 }
             }
         }
     }
 
     // ── Phase 4: validate server certificate chain ──
-    let leaf = server_certs.first()
+    let leaf = server_certs
+        .first()
         .ok_or(TlsError::SignatureFail("no leaf cert".into()))?;
     let intermediates: Vec<_> = server_certs.iter().skip(1).cloned().collect();
     let profile = std::env::var("CRUFTLESS_TLS_PROFILE").is_ok();
     let t0 = std::time::Instant::now();
     chain_walk(leaf, &intermediates, trust_store, 8)?;
-    if profile { eprintln!("[wc-ext-14] chain_walk total: {:?} ({} intermediates + 1 leaf)",
-        t0.elapsed(), intermediates.len()); }
+    if profile {
+        eprintln!(
+            "[wc-ext-14] chain_walk total: {:?} ({} intermediates + 1 leaf)",
+            t0.elapsed(),
+            intermediates.len()
+        );
+    }
 
     // ── Phase 5: derive application-traffic keys ──
     let transcript_sf = transcript_through_finished.unwrap();
@@ -705,8 +927,7 @@ pub fn complete_handshake<T: TlsTransport>(
         body: client_finished_mac,
     };
     let cf_bytes = encode_handshake(&cf_msg);
-    let cf_ct = aead_encrypt_record(&client_hs_keys, 0,
-                                    ContentType::Handshake as u8, &cf_bytes)?;
+    let cf_ct = aead_encrypt_record(&client_hs_keys, 0, ContentType::Handshake as u8, &cf_bytes)?;
     let cf_record = TlsRecord {
         content_type: ContentType::ApplicationData,
         version: ProtocolVersion::LEGACY,
@@ -736,30 +957,42 @@ pub fn complete_handshake<T: TlsTransport>(
 ///   Extension extensions<0..2^16-1>;
 /// }
 pub fn parse_certificate_message(body: &[u8]) -> Result<Vec<X509Cert>, TlsError> {
-    if body.is_empty() { return Err(TlsError::UnexpectedEnd); }
+    if body.is_empty() {
+        return Err(TlsError::UnexpectedEnd);
+    }
     let ctx_len = body[0] as usize;
-    if body.len() < 1 + ctx_len + 3 { return Err(TlsError::UnexpectedEnd); }
+    if body.len() < 1 + ctx_len + 3 {
+        return Err(TlsError::UnexpectedEnd);
+    }
     let list_start = 1 + ctx_len;
-    let list_len = ((body[list_start] as usize) << 16) |
-                   ((body[list_start + 1] as usize) << 8) |
-                   (body[list_start + 2] as usize);
+    let list_len = ((body[list_start] as usize) << 16)
+        | ((body[list_start + 1] as usize) << 8)
+        | (body[list_start + 2] as usize);
     let mut pos = list_start + 3;
     let list_end = pos + list_len;
-    if body.len() < list_end { return Err(TlsError::UnexpectedEnd); }
+    if body.len() < list_end {
+        return Err(TlsError::UnexpectedEnd);
+    }
     let mut certs = Vec::new();
     while pos < list_end {
-        if body.len() < pos + 3 { return Err(TlsError::UnexpectedEnd); }
-        let cert_len = ((body[pos] as usize) << 16) |
-                       ((body[pos + 1] as usize) << 8) |
-                       (body[pos + 2] as usize);
+        if body.len() < pos + 3 {
+            return Err(TlsError::UnexpectedEnd);
+        }
+        let cert_len = ((body[pos] as usize) << 16)
+            | ((body[pos + 1] as usize) << 8)
+            | (body[pos + 2] as usize);
         pos += 3;
-        if body.len() < pos + cert_len { return Err(TlsError::UnexpectedEnd); }
-        let cert = rusty_x509::parse_certificate(&body[pos..pos + cert_len])
-            .map_err(TlsError::X509)?;
+        if body.len() < pos + cert_len {
+            return Err(TlsError::UnexpectedEnd);
+        }
+        let cert =
+            rusty_x509::parse_certificate(&body[pos..pos + cert_len]).map_err(TlsError::X509)?;
         certs.push(cert);
         pos += cert_len;
         // Skip extensions vector (u16 length + entries).
-        if body.len() < pos + 2 { return Err(TlsError::UnexpectedEnd); }
+        if body.len() < pos + 2 {
+            return Err(TlsError::UnexpectedEnd);
+        }
         let ext_len = ((body[pos] as usize) << 8) | (body[pos + 1] as usize);
         pos += 2 + ext_len;
     }

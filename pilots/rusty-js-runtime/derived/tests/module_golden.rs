@@ -64,21 +64,29 @@ fn rename_export() {
 fn host_hook_synthesizes_default_as_namespace() {
     let mut rt = Runtime::new();
     rt.install_intrinsics();
-    rt.install_host_hook(HostHook::FinalizeModuleNamespace(Box::new(|rt, _ast, ns, _url| {
-        let has_default = rt.obj(ns).has_own_str("default");
-        if !has_default {
-            rt.object_set(ns, "default".into(), rusty_js_runtime::Value::String(
-                std::rc::Rc::new("<synthesized-default>".to_string())
-            ));
-        }
-        Ok(())
-    })));
+    rt.install_host_hook(HostHook::FinalizeModuleNamespace(Box::new(
+        |rt, _ast, ns, _url| {
+            let has_default = rt.obj(ns).has_own_str("default");
+            if !has_default {
+                rt.object_set(
+                    ns,
+                    "default".into(),
+                    rusty_js_runtime::Value::String(std::rc::Rc::new(
+                        "<synthesized-default>".to_string(),
+                    )),
+                );
+            }
+            Ok(())
+        },
+    )));
     let src = "const x = 1; export { x };";
     let ns = rt.evaluate_module(src, "test").expect("evaluate failed");
     let obj = rt.obj(ns);
     assert!(obj.has_own_str("x"));
-    assert!(obj.has_own_str("default"),
-        "Tuple-A closure: default synthesized by host hook");
+    assert!(
+        obj.has_own_str("default"),
+        "Tuple-A closure: default synthesized by host hook"
+    );
 }
 
 #[test]
@@ -98,32 +106,41 @@ fn host_hook_does_not_run_without_install() {
 fn host_hook_synthesizes_named_exports_from_default() {
     let mut rt = Runtime::new();
     rt.install_intrinsics();
-    rt.install_host_hook(HostHook::FinalizeModuleNamespace(Box::new(|rt, _ast, ns, _url| {
-        let keys_to_spread: Vec<(String, rusty_js_runtime::Value)> = {
-            let b = rt.obj(ns);
-            if let Some(d) = b.get_own("__default_obj_props") {
-                if let rusty_js_runtime::Value::Object(id) = &d.value {
-                    rt.obj(*id).string_keys()
-                        .map(|k| (k.to_string(), rt.object_get(*id, k)))
-                        .collect()
-                } else { Vec::new() }
-            } else { Vec::new() }
-        };
-        for (k, v) in keys_to_spread {
-            if !rt.obj(ns).has_own_str(&k) {
-                rt.object_set(ns, k, v);
+    rt.install_host_hook(HostHook::FinalizeModuleNamespace(Box::new(
+        |rt, _ast, ns, _url| {
+            let keys_to_spread: Vec<(String, rusty_js_runtime::Value)> = {
+                let b = rt.obj(ns);
+                if let Some(d) = b.get_own("__default_obj_props") {
+                    if let rusty_js_runtime::Value::Object(id) = &d.value {
+                        rt.obj(*id)
+                            .string_keys()
+                            .map(|k| (k.to_string(), rt.object_get(*id, k)))
+                            .collect()
+                    } else {
+                        Vec::new()
+                    }
+                } else {
+                    Vec::new()
+                }
+            };
+            for (k, v) in keys_to_spread {
+                if !rt.obj(ns).has_own_str(&k) {
+                    rt.object_set(ns, k, v);
+                }
             }
-        }
-        Ok(())
-    })));
+            Ok(())
+        },
+    )));
     let src = r#"
         const __default_obj_props = { Ls: 1, en: 2, extend: 3 };
         export { __default_obj_props };
     "#;
     let ns = rt.evaluate_module(src, "test").expect("evaluate failed");
     let obj = rt.obj(ns);
-    assert!(obj.has_own_str("Ls"),
-        "Tuple-B: 'Ls' spread from default's own props by host hook");
+    assert!(
+        obj.has_own_str("Ls"),
+        "Tuple-B: 'Ls' spread from default's own props by host hook"
+    );
     assert!(obj.has_own_str("en"));
     assert!(obj.has_own_str("extend"));
 }

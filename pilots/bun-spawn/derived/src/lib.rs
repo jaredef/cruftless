@@ -109,13 +109,17 @@ pub enum SpawnError {
 }
 
 impl From<std::io::Error> for SpawnError {
-    fn from(e: std::io::Error) -> Self { SpawnError::Io(e) }
+    fn from(e: std::io::Error) -> Self {
+        SpawnError::Io(e)
+    }
 }
 
 /// `Bun.spawn(args, options)` — async-shaped. Returns a Subprocess handle.
 /// CD: `expect(proc.pid).toBeNumber()`, `expect(proc.exited).toBeDefined()`
 pub fn spawn(args: &[&str], options: SpawnOptions) -> Result<Subprocess, SpawnError> {
-    if args.is_empty() { return Err(SpawnError::EmptyArgs); }
+    if args.is_empty() {
+        return Err(SpawnError::EmptyArgs);
+    }
     let mut cmd = build_command(args, &options)?;
     let captured_stdout = matches!(options.stdout, StdioMode::Pipe);
     let captured_stderr = matches!(options.stderr, StdioMode::Pipe);
@@ -125,21 +129,32 @@ pub fn spawn(args: &[&str], options: SpawnOptions) -> Result<Subprocess, SpawnEr
     // If stdin is a piped input, write it then close.
     match &options.stdin {
         StdinInput::Bytes(b) => {
-            if let Some(mut stdin) = child.stdin.take() { stdin.write_all(b)?; }
+            if let Some(mut stdin) = child.stdin.take() {
+                stdin.write_all(b)?;
+            }
         }
         StdinInput::Text(s) => {
-            if let Some(mut stdin) = child.stdin.take() { stdin.write_all(s.as_bytes())?; }
+            if let Some(mut stdin) = child.stdin.take() {
+                stdin.write_all(s.as_bytes())?;
+            }
         }
         _ => {}
     }
 
-    Ok(Subprocess { child, pid, captured_stdout, captured_stderr })
+    Ok(Subprocess {
+        child,
+        pid,
+        captured_stdout,
+        captured_stderr,
+    })
 }
 
 /// `Bun.spawnSync(args, options)` — synchronous. Blocks until the child
 /// exits and returns collected stdio + exit code.
 pub fn spawn_sync(args: &[&str], options: SpawnOptions) -> Result<SyncSubprocess, SpawnError> {
-    if args.is_empty() { return Err(SpawnError::EmptyArgs); }
+    if args.is_empty() {
+        return Err(SpawnError::EmptyArgs);
+    }
     let mut cmd = build_command(args, &options)?;
 
     // For spawn_sync with byte/text stdin we must spawn manually + write
@@ -149,18 +164,30 @@ pub fn spawn_sync(args: &[&str], options: SpawnOptions) -> Result<SyncSubprocess
     let mut child = cmd.spawn()?;
     match &options.stdin {
         StdinInput::Bytes(b) => {
-            if let Some(mut stdin) = child.stdin.take() { stdin.write_all(b)?; }
+            if let Some(mut stdin) = child.stdin.take() {
+                stdin.write_all(b)?;
+            }
         }
         StdinInput::Text(s) => {
-            if let Some(mut stdin) = child.stdin.take() { stdin.write_all(s.as_bytes())?; }
+            if let Some(mut stdin) = child.stdin.take() {
+                stdin.write_all(s.as_bytes())?;
+            }
         }
         _ => {}
     }
     let output = child.wait_with_output()?;
     let exit_code = output.status.code().unwrap_or(-1);
     Ok(SyncSubprocess {
-        stdout: if captured_stdout { output.stdout } else { Vec::new() },
-        stderr: if captured_stderr { output.stderr } else { Vec::new() },
+        stdout: if captured_stdout {
+            output.stdout
+        } else {
+            Vec::new()
+        },
+        stderr: if captured_stderr {
+            output.stderr
+        } else {
+            Vec::new()
+        },
         exit_code,
         signal_code: signal_code_of(&output.status),
         success: output.status.success(),
@@ -168,7 +195,9 @@ pub fn spawn_sync(args: &[&str], options: SpawnOptions) -> Result<SyncSubprocess
 }
 
 impl Subprocess {
-    pub fn pid(&self) -> u32 { self.pid }
+    pub fn pid(&self) -> u32 {
+        self.pid
+    }
 
     /// `proc.exited` — has the child exited yet. Pilot polls non-blocking.
     pub fn exited(&mut self) -> bool {
@@ -191,8 +220,16 @@ impl Subprocess {
         let captured_stderr = self.captured_stderr;
         let output = self.child.wait_with_output()?;
         Ok(ExitStatus {
-            stdout: if captured_stdout { output.stdout } else { Vec::new() },
-            stderr: if captured_stderr { output.stderr } else { Vec::new() },
+            stdout: if captured_stdout {
+                output.stdout
+            } else {
+                Vec::new()
+            },
+            stderr: if captured_stderr {
+                output.stderr
+            } else {
+                Vec::new()
+            },
             exit_code: output.status.code().unwrap_or(-1),
             signal_code: signal_code_of(&output.status),
             success: output.status.success(),
@@ -202,11 +239,17 @@ impl Subprocess {
 
 fn build_command(args: &[&str], options: &SpawnOptions) -> Result<Command, SpawnError> {
     let mut cmd = Command::new(args[0]);
-    if args.len() > 1 { cmd.args(&args[1..]); }
-    if let Some(cwd) = &options.cwd { cmd.current_dir(cwd); }
+    if args.len() > 1 {
+        cmd.args(&args[1..]);
+    }
+    if let Some(cwd) = &options.cwd {
+        cmd.current_dir(cwd);
+    }
     if let Some(env) = &options.env {
         cmd.env_clear();
-        for (k, v) in env { cmd.env(k, v); }
+        for (k, v) in env {
+            cmd.env(k, v);
+        }
     }
     cmd.stdin(match &options.stdin {
         StdinInput::None | StdinInput::Null => Stdio::null(),

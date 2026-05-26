@@ -36,8 +36,13 @@ impl Stats {
         let is_directory = m.is_dir();
         let is_symlink = m.file_type().is_symlink();
         Self {
-            size, mtime_ms, atime_ms, ctime_ms,
-            is_file, is_directory, is_symlink,
+            size,
+            mtime_ms,
+            atime_ms,
+            ctime_ms,
+            is_file,
+            is_directory,
+            is_symlink,
         }
     }
 }
@@ -76,7 +81,10 @@ pub fn write_file_string_sync(path: impl AsRef<Path>, data: &str) -> io::Result<
 /// `fs.appendFileSync(path, data)`.
 pub fn append_file_sync(path: impl AsRef<Path>, data: &[u8]) -> io::Result<()> {
     use io::Write;
-    let mut f = fs::OpenOptions::new().append(true).create(true).open(path)?;
+    let mut f = fs::OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(path)?;
     f.write_all(data)
 }
 

@@ -16,7 +16,11 @@ pub struct ObjectId(pub u32);
 
 /// Tri-color marking state per spec §III.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Color { White, Gray, Black }
+pub enum Color {
+    White,
+    Gray,
+    Black,
+}
 
 /// Heap-managed values implement this trait to declare their out-edges.
 /// The mark phase calls trace(ids) on each reached object; the
@@ -44,7 +48,9 @@ pub struct Heap<T: Trace> {
 }
 
 impl<T: Trace> Default for Heap<T> {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<T: Trace> Heap<T> {
@@ -59,7 +65,9 @@ impl<T: Trace> Heap<T> {
     }
 
     /// Total slot count (occupied + free).
-    pub fn len(&self) -> usize { self.slots.len() }
+    pub fn len(&self) -> usize {
+        self.slots.len()
+    }
 
     /// Allocate a new object. Returns its handle.
     pub fn alloc(&mut self, v: T) -> ObjectId {
@@ -118,7 +126,10 @@ impl<T: Trace> Heap<T> {
         let mut worklist: Vec<ObjectId> = Vec::new();
         for r in roots {
             let i = r.0 as usize;
-            if i < self.slots.len() && matches!(self.slots[i], Slot::Object(_)) && self.colors[i] == Color::White {
+            if i < self.slots.len()
+                && matches!(self.slots[i], Slot::Object(_))
+                && self.colors[i] == Color::White
+            {
                 self.colors[i] = Color::Gray;
                 worklist.push(r);
             }
@@ -133,7 +144,10 @@ impl<T: Trace> Heap<T> {
             }
             for e in out_edges {
                 let ei = e.0 as usize;
-                if ei < self.slots.len() && matches!(self.slots[ei], Slot::Object(_)) && self.colors[ei] == Color::White {
+                if ei < self.slots.len()
+                    && matches!(self.slots[ei], Slot::Object(_))
+                    && self.colors[ei] == Color::White
+                {
                     self.colors[ei] = Color::Gray;
                     worklist.push(e);
                 }
@@ -156,7 +170,11 @@ impl<T: Trace> Heap<T> {
         // pressure so the next cycle runs at the right time.
         self.alloc_count = 0;
         // Adaptive threshold: aim for 2x the live-object count, with floor.
-        let live = self.slots.iter().filter(|s| matches!(s, Slot::Object(_))).count();
+        let live = self
+            .slots
+            .iter()
+            .filter(|s| matches!(s, Slot::Object(_)))
+            .count();
         self.threshold = (live * 2).max(1024);
         freed
     }
@@ -165,17 +183,26 @@ impl<T: Trace> Heap<T> {
     pub fn maybe_collect(&mut self, roots: impl IntoIterator<Item = ObjectId>) -> Option<usize> {
         if self.alloc_count >= self.threshold {
             Some(self.collect(roots))
-        } else { None }
+        } else {
+            None
+        }
     }
 
     /// Number of allocations since last collection.
-    pub fn alloc_count(&self) -> usize { self.alloc_count }
+    pub fn alloc_count(&self) -> usize {
+        self.alloc_count
+    }
 
     /// Number of currently-occupied slots.
     pub fn live_count(&self) -> usize {
-        self.slots.iter().filter(|s| matches!(s, Slot::Object(_))).count()
+        self.slots
+            .iter()
+            .filter(|s| matches!(s, Slot::Object(_)))
+            .count()
     }
 
     /// Number of slots on the free list.
-    pub fn free_count(&self) -> usize { self.free_list.len() }
+    pub fn free_count(&self) -> usize {
+        self.free_list.len()
+    }
 }

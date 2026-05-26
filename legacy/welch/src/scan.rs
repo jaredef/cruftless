@@ -65,10 +65,7 @@ pub fn scan_dir(root: &Path) -> Result<ScanReport> {
             // containing those names (e.g. /tmp/welch-test/target) get
             // unexpectedly empty scans.
             let p = e.path();
-            let name = p
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("");
+            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
             match name {
                 ".git" | "node_modules" => false,
                 "target" | "vendor" => {
@@ -111,11 +108,7 @@ pub fn scan_dir(root: &Path) -> Result<ScanReport> {
     })
 }
 
-fn scan_one(
-    path: &Path,
-    rel: &str,
-    parse_failures: &std::sync::atomic::AtomicU64,
-) -> FileMetrics {
+fn scan_one(path: &Path, rel: &str, parse_failures: &std::sync::atomic::AtomicU64) -> FileMetrics {
     let src = match std::fs::read_to_string(path) {
         Ok(s) => s,
         Err(_) => {
@@ -132,7 +125,11 @@ fn scan_one(
         Err(_) => {
             parse_failures.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             // Record LOC even on parse failure so the corpus size is honest.
-            let mut m = FileMetrics::new(rel.to_string(), src.len() as u64, src.lines().count() as u64);
+            let mut m = FileMetrics::new(
+                rel.to_string(),
+                src.len() as u64,
+                src.lines().count() as u64,
+            );
             m.parsed = false;
             m
         }

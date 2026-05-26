@@ -4,15 +4,15 @@
 //! Module-goal only in v1. Statement and expression bodies are captured as
 //! opaque byte-spans until the expression-grammar sub-round.
 
-pub mod token;
+pub mod expr;
 pub mod lexer;
 pub mod parser;
-pub mod expr;
 pub mod stmt;
+pub mod token;
 
-pub use token::{Token, TokenKind, Punct, NumberKind, TemplatePart, Span};
-pub use lexer::{Lexer, LexError, LexErrorKind, LexerGoal};
-pub use parser::{Parser, ParseError};
+pub use lexer::{LexError, LexErrorKind, Lexer, LexerGoal};
+pub use parser::{ParseError, Parser};
+pub use token::{NumberKind, Punct, Span, TemplatePart, Token, TokenKind};
 
 /// Convenience: parse a complete module from a source string. Returns the
 /// AST or the first parse error.

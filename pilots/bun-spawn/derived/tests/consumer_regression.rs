@@ -28,7 +28,8 @@ fn consumer_test_runner_byte_equal_stdout() {
     let r = spawn_sync(
         &["sh", "-c", &format!("printf '%s' '{}'", payload)],
         Default::default(),
-    ).unwrap();
+    )
+    .unwrap();
     assert_eq!(r.stdout, payload.as_bytes());
 }
 
@@ -42,10 +43,14 @@ fn consumer_build_script_env_propagation() {
     let mut env = std::collections::HashMap::new();
     env.insert("NODE_ENV".into(), "production".into());
     env.insert("PATH".into(), std::env::var("PATH").unwrap_or_default());
-    let r = spawn_sync(&["sh", "-c", "echo $NODE_ENV"], SpawnOptions {
-        env: Some(env),
-        ..Default::default()
-    }).unwrap();
+    let r = spawn_sync(
+        &["sh", "-c", "echo $NODE_ENV"],
+        SpawnOptions {
+            env: Some(env),
+            ..Default::default()
+        },
+    )
+    .unwrap();
     assert_eq!(r.stdout, b"production\n");
 }
 
@@ -56,10 +61,14 @@ fn consumer_build_script_env_propagation() {
 
 #[test]
 fn consumer_cli_jq_style_stdin_pipe() {
-    let r = spawn_sync(&["cat"], SpawnOptions {
-        stdin: StdinInput::Text(r#"{"key":"value"}"#.into()),
-        ..Default::default()
-    }).unwrap();
+    let r = spawn_sync(
+        &["cat"],
+        SpawnOptions {
+            stdin: StdinInput::Text(r#"{"key":"value"}"#.into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
     assert_eq!(r.stdout, br#"{"key":"value"}"#.to_vec());
 }
 
@@ -70,11 +79,15 @@ fn consumer_cli_jq_style_stdin_pipe() {
 
 #[test]
 fn consumer_dev_server_kills_child_on_reload() {
-    let mut proc = spawn(&["sh", "-c", "sleep 30"], SpawnOptions {
-        stdout: StdioMode::Null,
-        stderr: StdioMode::Null,
-        ..Default::default()
-    }).unwrap();
+    let mut proc = spawn(
+        &["sh", "-c", "sleep 30"],
+        SpawnOptions {
+            stdout: StdioMode::Null,
+            stderr: StdioMode::Null,
+            ..Default::default()
+        },
+    )
+    .unwrap();
     let pid = proc.pid();
     assert!(pid > 0);
     proc.kill().unwrap();
@@ -102,14 +115,21 @@ fn consumer_bun_docs_basic_spawnsync() {
 
 #[test]
 fn consumer_lint_tool_runs_in_cwd() {
-    let r = spawn_sync(&["pwd"], SpawnOptions {
-        cwd: Some(std::path::PathBuf::from("/tmp")),
-        ..Default::default()
-    }).unwrap();
+    let r = spawn_sync(
+        &["pwd"],
+        SpawnOptions {
+            cwd: Some(std::path::PathBuf::from("/tmp")),
+            ..Default::default()
+        },
+    )
+    .unwrap();
     let out = String::from_utf8(r.stdout).unwrap();
     let trimmed = out.trim();
-    assert!(trimmed == "/tmp" || trimmed == "/private/tmp",
-        "expected /tmp pwd, got {}", trimmed);
+    assert!(
+        trimmed == "/tmp" || trimmed == "/private/tmp",
+        "expected /tmp pwd, got {}",
+        trimmed
+    );
 }
 
 // ────────── Error handling — nonzero exit signals failure ──────────
@@ -120,11 +140,11 @@ fn consumer_lint_tool_runs_in_cwd() {
 #[test]
 fn consumer_ci_pipeline_exit_code_precision() {
     for code in [0, 1, 2, 42, 127, 255] {
-        let r = spawn_sync(
-            &["sh", "-c", &format!("exit {}", code)],
-            Default::default(),
-        ).unwrap();
-        assert_eq!(r.exit_code, code,
-            "expected exit code {} got {}", code, r.exit_code);
+        let r = spawn_sync(&["sh", "-c", &format!("exit {}", code)], Default::default()).unwrap();
+        assert_eq!(
+            r.exit_code, code,
+            "expected exit code {} got {}",
+            code, r.exit_code
+        );
     }
 }

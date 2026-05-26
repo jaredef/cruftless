@@ -11,7 +11,8 @@ fn run_rt(src: &str) -> Runtime {
         .unwrap_or_else(|e| panic!("compile {:?}: {:?}", src, e));
     let mut rt = Runtime::new();
     rt.install_intrinsics();
-    rt.run_module(&module).unwrap_or_else(|e| panic!("run {:?}: {:?}", src, e));
+    rt.run_module(&module)
+        .unwrap_or_else(|e| panic!("run {:?}: {:?}", src, e));
     rt
 }
 

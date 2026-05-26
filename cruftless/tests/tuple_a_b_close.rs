@@ -29,7 +29,9 @@ fn package_url(file_name: &str, package_json: &str) -> String {
 fn pure_esm_named_exports_do_not_synthesize_default() {
     let mut rt = new_rt();
     let src = "const a = 1; const b = 2; export { a, b };";
-    let ns = rt.evaluate_module(src, "file:///tmp/cruftless-pure-esm.mjs").expect("evaluate");
+    let ns = rt
+        .evaluate_module(src, "file:///tmp/cruftless-pure-esm.mjs")
+        .expect("evaluate");
     let o = rt.obj(ns);
     assert!(o.has_own_str("a"));
     assert!(o.has_own_str("b"));
@@ -55,11 +57,19 @@ fn module_field_js_named_exports_synthesize_default_namespace() {
 fn default_object_does_not_spread_named_exports_on_esm_path() {
     let mut rt = new_rt();
     let src = "export default { x: 1, y: 2 };";
-    let ns = rt.evaluate_module(src, "file:///tmp/cruftless-default-object.mjs").expect("evaluate");
+    let ns = rt
+        .evaluate_module(src, "file:///tmp/cruftless-default-object.mjs")
+        .expect("evaluate");
     let o = rt.obj(ns);
     assert!(o.has_own_str("default"), "default still present");
-    assert!(!o.has_own_str("x"), "Tuple B spread is intentionally dropped");
-    assert!(!o.has_own_str("y"), "Tuple B spread is intentionally dropped");
+    assert!(
+        !o.has_own_str("x"),
+        "Tuple B spread is intentionally dropped"
+    );
+    assert!(
+        !o.has_own_str("y"),
+        "Tuple B spread is intentionally dropped"
+    );
 }
 
 #[test]
@@ -81,6 +91,8 @@ fn does_not_shadow_when_both_default_and_named_exist() {
     // Tuple B branch must NOT fire (named exports already exist), so 'z'
     // from default should NOT have been spread.
     let o = rt.obj(ns);
-    assert!(!o.has_own_str("z"),
-        "Tuple B suppressed when named exports already present");
+    assert!(
+        !o.has_own_str("z"),
+        "Tuple B suppressed when named exports already present"
+    );
 }

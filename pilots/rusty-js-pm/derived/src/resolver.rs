@@ -34,8 +34,8 @@ pub struct ResolvedDep {
     pub name: String,
     pub version: String,
     pub tarball_url: String,
-    pub integrity: Option<String>,  // SRI: sha512-<b64>
-    pub shasum: Option<String>,     // hex sha1 (legacy fallback)
+    pub integrity: Option<String>, // SRI: sha512-<b64>
+    pub shasum: Option<String>,    // hex sha1 (legacy fallback)
     /// Transitive deps as declared in the per-version manifest's
     /// `dependencies` object. Stored verbatim; ranges will be rejected
     /// by `resolve_specifier` when the closure walker recurses into
@@ -53,7 +53,9 @@ pub enum ResolverError {
 }
 
 impl From<HttpError> for ResolverError {
-    fn from(e: HttpError) -> Self { ResolverError::Http(e) }
+    fn from(e: HttpError) -> Self {
+        ResolverError::Http(e)
+    }
 }
 
 /// Resolve a single `(name, version)` against the configured registry.
@@ -67,30 +69,46 @@ pub fn resolve_specifier(
     // First-cut: only exact-pinned versions per Doc 732 §VI carve-out
     // and `docs/manifest-field-coverage.md` Class A. Range syntax
     // (caret, tilde, "*", complex) is rejected loudly.
-    if version.starts_with('^') || version.starts_with('~') || version.contains('*')
-        || version.contains(' ') || version.contains("||")
+    if version.starts_with('^')
+        || version.starts_with('~')
+        || version.contains('*')
+        || version.contains(' ')
+        || version.contains("||")
     {
         return Err(ResolverError::NonExactVersionSpec(version.to_string()));
     }
 
     let url = format!("{}/{}/{}", registry.trim_end_matches('/'), name, version);
     let body = pm_http_get(&url)?;
-    let json: serde_json::Value = serde_json::from_slice(&body)
-        .map_err(|e| ResolverError::Json(format!("{e:?}")))?;
+    let json: serde_json::Value =
+        serde_json::from_slice(&body).map_err(|e| ResolverError::Json(format!("{e:?}")))?;
 
     // Per docs/registry-response-schema.md §2 endpoint B: the per-
     // version manifest returns the version's manifest object directly
     // (no "versions" wrapping).
-    let name_returned = json.get("name").and_then(|v| v.as_str())
+    let name_returned = json
+        .get("name")
+        .and_then(|v| v.as_str())
         .ok_or(ResolverError::MissingField("name"))?;
-    let version_returned = json.get("version").and_then(|v| v.as_str())
+    let version_returned = json
+        .get("version")
+        .and_then(|v| v.as_str())
         .ok_or(ResolverError::MissingField("version"))?;
-    let dist = json.get("dist")
+    let dist = json
+        .get("dist")
         .ok_or(ResolverError::MissingField("dist"))?;
-    let tarball = dist.get("tarball").and_then(|v| v.as_str())
+    let tarball = dist
+        .get("tarball")
+        .and_then(|v| v.as_str())
         .ok_or(ResolverError::MissingField("dist.tarball"))?;
-    let integrity = dist.get("integrity").and_then(|v| v.as_str()).map(String::from);
-    let shasum = dist.get("shasum").and_then(|v| v.as_str()).map(String::from);
+    let integrity = dist
+        .get("integrity")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    let shasum = dist
+        .get("shasum")
+        .and_then(|v| v.as_str())
+        .map(String::from);
 
     // Parse transitive deps (Class A field per docs/registry-response-
     // schema.md). Absent means zero-transitive leaf.
@@ -105,11 +123,15 @@ pub fn resolve_specifier(
 
     if name_returned != name {
         return Err(ResolverError::Json(format!(
-            "registry returned name={} for requested {}", name_returned, name)));
+            "registry returned name={} for requested {}",
+            name_returned, name
+        )));
     }
     if version_returned != version {
         return Err(ResolverError::Json(format!(
-            "registry returned version={} for requested {}", version_returned, version)));
+            "registry returned version={} for requested {}",
+            version_returned, version
+        )));
     }
 
     Ok(ResolvedDep {
@@ -130,9 +152,12 @@ pub fn resolve_specifier(
 pub fn fetch_latest_version(registry: &str, name: &str) -> Result<String, ResolverError> {
     let url = format!("{}/{}", registry.trim_end_matches('/'), name);
     let body = pm_http_get(&url)?;
-    let json: serde_json::Value = serde_json::from_slice(&body)
-        .map_err(|e| ResolverError::Json(format!("{e:?}")))?;
-    let v = json.get("dist-tags").and_then(|d| d.get("latest")).and_then(|v| v.as_str())
+    let json: serde_json::Value =
+        serde_json::from_slice(&body).map_err(|e| ResolverError::Json(format!("{e:?}")))?;
+    let v = json
+        .get("dist-tags")
+        .and_then(|d| d.get("latest"))
+        .and_then(|v| v.as_str())
         .ok_or(ResolverError::MissingField("dist-tags.latest"))?;
     Ok(v.to_string())
 }
@@ -220,7 +245,9 @@ mod tests {
         match result {
             Ok(closure) => {
                 eprintln!("debug@4.3.4 closure: {} packages", closure.len());
-                for r in &closure { eprintln!("  {}@{}", r.name, r.version); }
+                for r in &closure {
+                    eprintln!("  {}@{}", r.name, r.version);
+                }
                 assert!(closure.iter().any(|r| r.name == "debug"));
             }
             Err(ResolverError::NonExactVersionSpec(v)) => {
@@ -239,10 +266,15 @@ mod tests {
             .expect("lodash 4.17.21 should resolve via npmmirror.com");
         assert_eq!(r.name, "lodash");
         assert_eq!(r.version, "4.17.21");
-        assert!(r.tarball_url.ends_with("lodash-4.17.21.tgz"),
-            "unexpected tarball URL: {}", r.tarball_url);
+        assert!(
+            r.tarball_url.ends_with("lodash-4.17.21.tgz"),
+            "unexpected tarball URL: {}",
+            r.tarball_url
+        );
         // npmmirror provides integrity OR shasum (typically both for modern packages).
-        assert!(r.integrity.is_some() || r.shasum.is_some(),
-            "neither integrity nor shasum present");
+        assert!(
+            r.integrity.is_some() || r.shasum.is_some(),
+            "neither integrity nor shasum present"
+        );
     }
 }

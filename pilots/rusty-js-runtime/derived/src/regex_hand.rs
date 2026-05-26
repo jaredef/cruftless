@@ -36,21 +36,30 @@ pub enum Node {
     /// Alternation: try each child in order.
     Alt(Vec<Node>),
     /// Repetition with min/max bounds + greedy/lazy.
-    Repeat { inner: Box<Node>, min: usize, max: Option<usize>, greedy: bool },
+    Repeat {
+        inner: Box<Node>,
+        min: usize,
+        max: Option<usize>,
+        greedy: bool,
+    },
     /// Capturing group with 1-based index.
     Group { index: usize, inner: Box<Node> },
     /// Non-capturing group (no slot reservation).
     NonCapture(Box<Node>),
     /// Zero-width assertion: lookahead/lookbehind, positive/negative.
-    Look { ahead: bool, positive: bool, inner: Box<Node> },
+    Look {
+        ahead: bool,
+        positive: bool,
+        inner: Box<Node>,
+    },
     /// Backreference \1..\9 — must match the same text as the indexed group.
     Backref(usize),
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum AnchorKind {
-    Start,       // ^
-    End,         // $
+    Start,           // ^
+    End,             // $
     WordBoundary,    // \b
     NotWordBoundary, // \B
 }
@@ -65,9 +74,12 @@ pub struct CharClass {
 
 #[derive(Debug, Clone, Copy)]
 pub enum SpecialClass {
-    Digit, NotDigit,
-    Word, NotWord,
-    Space, NotSpace,
+    Digit,
+    NotDigit,
+    Word,
+    NotWord,
+    Space,
+    NotSpace,
 }
 
 impl CharClass {
@@ -79,12 +91,18 @@ impl CharClass {
             v.extend(c.to_lowercase());
             v.extend(c.to_uppercase());
             v
-        } else { vec![c] };
+        } else {
+            vec![c]
+        };
         let inner_match = test_chars.iter().any(|&tc| {
             self.ranges.iter().any(|&(lo, hi)| tc >= lo && tc <= hi)
                 || self.specials.iter().any(|s| special_match(*s, tc))
         });
-        if self.negated { !inner_match } else { inner_match }
+        if self.negated {
+            !inner_match
+        } else {
+            inner_match
+        }
     }
 }
 
@@ -147,10 +165,19 @@ pub fn compile(pattern: &str, flag_str: &str) -> Result<HandRolledRegex, String>
             _ => return Err(format!("unsupported flag '{}'", c)),
         }
     }
-    let mut p = Parser { chars: pattern.chars().collect(), pos: 0, next_group: 1, group_count: 0, named_groups: std::collections::HashMap::new() };
+    let mut p = Parser {
+        chars: pattern.chars().collect(),
+        pos: 0,
+        next_group: 1,
+        group_count: 0,
+        named_groups: std::collections::HashMap::new(),
+    };
     let ast = p.parse_alt()?;
     if p.pos < p.chars.len() {
-        return Err(format!("unexpected '{}' at position {}", p.chars[p.pos], p.pos));
+        return Err(format!(
+            "unexpected '{}' at position {}",
+            p.chars[p.pos], p.pos
+        ));
     }
     let named_groups = p.named_groups.clone();
     Ok(HandRolledRegex {
@@ -172,9 +199,24 @@ struct Parser {
 }
 
 impl Parser {
-    fn peek(&self) -> Option<char> { self.chars.get(self.pos).copied() }
-    fn bump(&mut self) -> Option<char> { let c = self.peek(); if c.is_some() { self.pos += 1; } c }
-    fn eat(&mut self, c: char) -> bool { if self.peek() == Some(c) { self.pos += 1; true } else { false } }
+    fn peek(&self) -> Option<char> {
+        self.chars.get(self.pos).copied()
+    }
+    fn bump(&mut self) -> Option<char> {
+        let c = self.peek();
+        if c.is_some() {
+            self.pos += 1;
+        }
+        c
+    }
+    fn eat(&mut self, c: char) -> bool {
+        if self.peek() == Some(c) {
+            self.pos += 1;
+            true
+        } else {
+            false
+        }
+    }
 
     fn parse_alt(&mut self) -> Result<Node, String> {
         let first = self.parse_concat()?;
@@ -182,7 +224,11 @@ impl Parser {
         while self.eat('|') {
             alts.push(self.parse_concat()?);
         }
-        Ok(if alts.len() == 1 { alts.pop().unwrap() } else { Node::Alt(alts) })
+        Ok(if alts.len() == 1 {
+            alts.pop().unwrap()
+        } else {
+            Node::Alt(alts)
+        })
     }
 
     fn parse_concat(&mut self) -> Result<Node, String> {
@@ -197,20 +243,40 @@ impl Parser {
                 }
             }
         }
-        Ok(if items.len() == 1 { items.pop().unwrap() } else { Node::Concat(items) })
+        Ok(if items.len() == 1 {
+            items.pop().unwrap()
+        } else {
+            Node::Concat(items)
+        })
     }
 
     fn maybe_quantifier(&mut self, inner: Node) -> Result<Node, String> {
         let (min, max) = match self.peek() {
-            Some('?') => { self.bump(); (0, Some(1)) }
-            Some('*') => { self.bump(); (0, None) }
-            Some('+') => { self.bump(); (1, None) }
+            Some('?') => {
+                self.bump();
+                (0, Some(1))
+            }
+            Some('*') => {
+                self.bump();
+                (0, None)
+            }
+            Some('+') => {
+                self.bump();
+                (1, None)
+            }
             Some('{') => {
                 let save = self.pos;
                 self.bump();
                 // Parse digits.
                 let mut min_str = String::new();
-                while let Some(c) = self.peek() { if c.is_ascii_digit() { min_str.push(c); self.bump(); } else { break; } }
+                while let Some(c) = self.peek() {
+                    if c.is_ascii_digit() {
+                        min_str.push(c);
+                        self.bump();
+                    } else {
+                        break;
+                    }
+                }
                 if min_str.is_empty() {
                     // Not a quantifier — restore.
                     self.pos = save;
@@ -219,34 +285,62 @@ impl Parser {
                 let min_v: usize = min_str.parse().map_err(|_| "bad quantifier min")?;
                 let (max_v, ok): (Option<usize>, bool) = if self.eat(',') {
                     let mut s = String::new();
-                    while let Some(c) = self.peek() { if c.is_ascii_digit() { s.push(c); self.bump(); } else { break; } }
-                    if s.is_empty() { (None, self.eat('}')) }
-                    else {
+                    while let Some(c) = self.peek() {
+                        if c.is_ascii_digit() {
+                            s.push(c);
+                            self.bump();
+                        } else {
+                            break;
+                        }
+                    }
+                    if s.is_empty() {
+                        (None, self.eat('}'))
+                    } else {
                         let v: usize = s.parse().map_err(|_| "bad quantifier max")?;
                         (Some(v), self.eat('}'))
                     }
                 } else {
                     (Some(min_v), self.eat('}'))
                 };
-                if !ok { self.pos = save; return Ok(inner); }
+                if !ok {
+                    self.pos = save;
+                    return Ok(inner);
+                }
                 (min_v, max_v)
             }
             _ => return Ok(inner),
         };
         let greedy = !self.eat('?');
-        Ok(Node::Repeat { inner: Box::new(inner), min, max, greedy })
+        Ok(Node::Repeat {
+            inner: Box::new(inner),
+            min,
+            max,
+            greedy,
+        })
     }
 
     fn parse_atom(&mut self) -> Result<Node, String> {
         let c = self.peek().ok_or("unexpected end")?;
         match c {
-            '^' => { self.bump(); Ok(Node::Anchor(AnchorKind::Start)) }
-            '$' => { self.bump(); Ok(Node::Anchor(AnchorKind::End)) }
-            '.' => { self.bump(); Ok(Node::AnyChar) }
+            '^' => {
+                self.bump();
+                Ok(Node::Anchor(AnchorKind::Start))
+            }
+            '$' => {
+                self.bump();
+                Ok(Node::Anchor(AnchorKind::End))
+            }
+            '.' => {
+                self.bump();
+                Ok(Node::AnyChar)
+            }
             '\\' => self.parse_escape(),
             '[' => self.parse_class(),
             '(' => self.parse_group(),
-            _ => { self.bump(); Ok(Node::Char(c)) }
+            _ => {
+                self.bump();
+                Ok(Node::Char(c))
+            }
         }
     }
 
@@ -254,12 +348,36 @@ impl Parser {
         self.bump(); // consume backslash
         let c = self.bump().ok_or("trailing backslash")?;
         match c {
-            'd' => Ok(Node::Class(CharClass { negated: false, ranges: vec![], specials: vec![SpecialClass::Digit] })),
-            'D' => Ok(Node::Class(CharClass { negated: false, ranges: vec![], specials: vec![SpecialClass::NotDigit] })),
-            'w' => Ok(Node::Class(CharClass { negated: false, ranges: vec![], specials: vec![SpecialClass::Word] })),
-            'W' => Ok(Node::Class(CharClass { negated: false, ranges: vec![], specials: vec![SpecialClass::NotWord] })),
-            's' => Ok(Node::Class(CharClass { negated: false, ranges: vec![], specials: vec![SpecialClass::Space] })),
-            'S' => Ok(Node::Class(CharClass { negated: false, ranges: vec![], specials: vec![SpecialClass::NotSpace] })),
+            'd' => Ok(Node::Class(CharClass {
+                negated: false,
+                ranges: vec![],
+                specials: vec![SpecialClass::Digit],
+            })),
+            'D' => Ok(Node::Class(CharClass {
+                negated: false,
+                ranges: vec![],
+                specials: vec![SpecialClass::NotDigit],
+            })),
+            'w' => Ok(Node::Class(CharClass {
+                negated: false,
+                ranges: vec![],
+                specials: vec![SpecialClass::Word],
+            })),
+            'W' => Ok(Node::Class(CharClass {
+                negated: false,
+                ranges: vec![],
+                specials: vec![SpecialClass::NotWord],
+            })),
+            's' => Ok(Node::Class(CharClass {
+                negated: false,
+                ranges: vec![],
+                specials: vec![SpecialClass::Space],
+            })),
+            'S' => Ok(Node::Class(CharClass {
+                negated: false,
+                ranges: vec![],
+                specials: vec![SpecialClass::NotSpace],
+            })),
             'b' => Ok(Node::Anchor(AnchorKind::WordBoundary)),
             'B' => Ok(Node::Anchor(AnchorKind::NotWordBoundary)),
             'n' => Ok(Node::Char('\n')),
@@ -271,36 +389,55 @@ impl Parser {
             'x' => {
                 let h1 = self.bump().ok_or("bad \\x escape")?;
                 let h2 = self.bump().ok_or("bad \\x escape")?;
-                let n = u32::from_str_radix(&format!("{}{}", h1, h2), 16).map_err(|_| "bad \\x escape")?;
+                let n = u32::from_str_radix(&format!("{}{}", h1, h2), 16)
+                    .map_err(|_| "bad \\x escape")?;
                 Ok(Node::Char(char::from_u32(n).ok_or("bad \\x escape")?))
             }
             'u' => {
                 if self.eat('{') {
                     let mut s = String::new();
-                    while let Some(c) = self.peek() { if c == '}' { break; } s.push(c); self.bump(); }
-                    if !self.eat('}') { return Err("unterminated \\u{...}".into()); }
+                    while let Some(c) = self.peek() {
+                        if c == '}' {
+                            break;
+                        }
+                        s.push(c);
+                        self.bump();
+                    }
+                    if !self.eat('}') {
+                        return Err("unterminated \\u{...}".into());
+                    }
                     let n = u32::from_str_radix(&s, 16).map_err(|_| "bad \\u{...} escape")?;
                     Ok(Node::Char(char::from_u32(n).ok_or("bad \\u escape")?))
                 } else {
                     let mut s = String::new();
-                    for _ in 0..4 { s.push(self.bump().ok_or("bad \\u escape")?); }
+                    for _ in 0..4 {
+                        s.push(self.bump().ok_or("bad \\u escape")?);
+                    }
                     let n = u32::from_str_radix(&s, 16).map_err(|_| "bad \\u escape")?;
                     Ok(Node::Char(char::from_u32(n).ok_or("bad \\u escape")?))
                 }
             }
-            d if d.is_ascii_digit() && d != '0' => {
-                Ok(Node::Backref((d as u8 - b'0') as usize))
-            }
+            d if d.is_ascii_digit() && d != '0' => Ok(Node::Backref((d as u8 - b'0') as usize)),
             'k' => {
                 // Tier-Ω.5.vvvvv: named backreference \k<name>.
-                if !self.eat('<') { return Err("expected < after \\k".into()); }
+                if !self.eat('<') {
+                    return Err("expected < after \\k".into());
+                }
                 let mut name = String::new();
                 while let Some(c) = self.peek() {
-                    if c == '>' { break; }
-                    name.push(c); self.bump();
+                    if c == '>' {
+                        break;
+                    }
+                    name.push(c);
+                    self.bump();
                 }
-                if !self.eat('>') { return Err("unterminated named backref".into()); }
-                let idx = self.named_groups.get(&name).copied()
+                if !self.eat('>') {
+                    return Err("unterminated named backref".into());
+                }
+                let idx = self
+                    .named_groups
+                    .get(&name)
+                    .copied()
                     .ok_or_else(|| format!("unknown named group '{}'", name))?;
                 Ok(Node::Backref(idx))
             }
@@ -316,10 +453,12 @@ impl Parser {
         let mut specials = Vec::new();
         while self.peek() != Some(']') {
             let lo_item = self.parse_class_item()?;
-            if self.peek() == Some('-') && self.chars.get(self.pos+1) != Some(&']') {
+            if self.peek() == Some('-') && self.chars.get(self.pos + 1) != Some(&']') {
                 self.bump(); // -
                 let hi_item = self.parse_class_item()?;
-                if let (ClassItem::Char(lo), ClassItem::Char(hi)) = (lo_item.clone(), hi_item.clone()) {
+                if let (ClassItem::Char(lo), ClassItem::Char(hi)) =
+                    (lo_item.clone(), hi_item.clone())
+                {
                     ranges.push((lo, hi));
                 } else {
                     // Range from a special: treat both as separate items.
@@ -329,10 +468,16 @@ impl Parser {
             } else {
                 push_item(lo_item, &mut ranges, &mut specials);
             }
-            if self.pos >= self.chars.len() { return Err("unterminated class".into()); }
+            if self.pos >= self.chars.len() {
+                return Err("unterminated class".into());
+            }
         }
         self.bump(); // ]
-        Ok(Node::Class(CharClass { negated, ranges, specials }))
+        Ok(Node::Class(CharClass {
+            negated,
+            ranges,
+            specials,
+        }))
     }
 
     fn parse_class_item(&mut self) -> Result<ClassItem, String> {
@@ -368,18 +513,30 @@ impl Parser {
                 }
                 Some('=') => {
                     let inner = self.parse_alt()?;
-                    Node::Look { ahead: true, positive: true, inner: Box::new(inner) }
+                    Node::Look {
+                        ahead: true,
+                        positive: true,
+                        inner: Box::new(inner),
+                    }
                 }
                 Some('!') => {
                     let inner = self.parse_alt()?;
-                    Node::Look { ahead: true, positive: false, inner: Box::new(inner) }
+                    Node::Look {
+                        ahead: true,
+                        positive: false,
+                        inner: Box::new(inner),
+                    }
                 }
                 Some('<') => {
                     match self.peek() {
                         Some('=') | Some('!') => {
                             let positive = self.bump() == Some('=');
                             let inner = self.parse_alt()?;
-                            Node::Look { ahead: false, positive, inner: Box::new(inner) }
+                            Node::Look {
+                                ahead: false,
+                                positive,
+                                inner: Box::new(inner),
+                            }
                         }
                         Some(c) if c.is_alphabetic() || c == '_' || c == '$' => {
                             // Tier-Ω.5.vvvvv: named capture group (?<name>...).
@@ -390,16 +547,24 @@ impl Parser {
                             let mut name = String::new();
                             while let Some(c) = self.peek() {
                                 if c.is_alphanumeric() || c == '_' || c == '$' {
-                                    name.push(c); self.bump();
-                                } else { break; }
+                                    name.push(c);
+                                    self.bump();
+                                } else {
+                                    break;
+                                }
                             }
-                            if !self.eat('>') { return Err("expected > after group name".into()); }
+                            if !self.eat('>') {
+                                return Err("expected > after group name".into());
+                            }
                             let idx = self.next_group;
                             self.next_group += 1;
                             self.group_count = self.group_count.max(idx);
                             self.named_groups.insert(name, idx);
                             let inner = self.parse_alt()?;
-                            Node::Group { index: idx, inner: Box::new(inner) }
+                            Node::Group {
+                                index: idx,
+                                inner: Box::new(inner),
+                            }
                         }
                         _ => return Err("unsupported group prefix".into()),
                     }
@@ -412,9 +577,14 @@ impl Parser {
             self.next_group += 1;
             self.group_count = self.group_count.max(idx);
             let inner = self.parse_alt()?;
-            Node::Group { index: idx, inner: Box::new(inner) }
+            Node::Group {
+                index: idx,
+                inner: Box::new(inner),
+            }
         };
-        if !self.eat(')') { return Err("expected )".into()); }
+        if !self.eat(')') {
+            return Err("expected )".into());
+        }
         // Quantifier may follow.
         node = self.maybe_quantifier(node)?;
         Ok(node)
@@ -422,7 +592,10 @@ impl Parser {
 }
 
 #[derive(Clone)]
-enum ClassItem { Char(char), Special(SpecialClass) }
+enum ClassItem {
+    Char(char),
+    Special(SpecialClass),
+}
 
 fn push_item(it: ClassItem, ranges: &mut Vec<(char, char)>, specials: &mut Vec<SpecialClass>) {
     match it {
@@ -442,16 +615,27 @@ pub fn find_at(re: &HandRolledRegex, input: &str, start: usize) -> Option<HandMa
         let mut v = Vec::with_capacity(chars.len() + 1);
         let mut b = 0;
         v.push(0);
-        for c in &chars { b += c.len_utf8(); v.push(b); }
+        for c in &chars {
+            b += c.len_utf8();
+            v.push(b);
+        }
         v
     };
     // start is a byte offset; find the matching char index.
     let mut start_ci = 0;
     for (ci, &bo) in byte_idx_to_char.iter().enumerate() {
-        if bo == start { start_ci = ci; break; }
-        if bo > start { start_ci = ci.saturating_sub(1); break; }
+        if bo == start {
+            start_ci = ci;
+            break;
+        }
+        if bo > start {
+            start_ci = ci.saturating_sub(1);
+            break;
+        }
     }
-    if start > input.len() { return None; }
+    if start > input.len() {
+        return None;
+    }
     for try_at in start_ci..=chars.len() {
         let mut caps: Vec<Option<(usize, usize)>> = vec![None; re.group_count + 1];
         if let Some(end_ci) = mat(&re.ast, &chars, try_at, &re.flags, &mut caps) {
@@ -459,8 +643,15 @@ pub fn find_at(re: &HandRolledRegex, input: &str, start: usize) -> Option<HandMa
             // Convert char indices to byte offsets.
             let bstart = byte_idx_to_char[try_at];
             let bend = byte_idx_to_char[end_ci];
-            let bcaps: Vec<Option<(usize, usize)>> = caps.iter().map(|c| c.map(|(s,e)| (byte_idx_to_char[s], byte_idx_to_char[e]))).collect();
-            return Some(HandMatch { start: bstart, end: bend, captures: bcaps });
+            let bcaps: Vec<Option<(usize, usize)>> = caps
+                .iter()
+                .map(|c| c.map(|(s, e)| (byte_idx_to_char[s], byte_idx_to_char[e])))
+                .collect();
+            return Some(HandMatch {
+                start: bstart,
+                end: bend,
+                captures: bcaps,
+            });
         }
     }
     None
@@ -475,50 +666,87 @@ pub fn is_match(re: &HandRolledRegex, input: &str) -> bool {
 /// caller is responsible for unwinding on outer backtrack — for simplicity
 /// the recursive implementation just lets caps reflect the LAST attempted
 /// path, which is fine since callers only read caps after success.
-fn mat(node: &Node, chars: &[char], pos: usize, flags: &Flags, caps: &mut Vec<Option<(usize, usize)>>) -> Option<usize> {
+fn mat(
+    node: &Node,
+    chars: &[char],
+    pos: usize,
+    flags: &Flags,
+    caps: &mut Vec<Option<(usize, usize)>>,
+) -> Option<usize> {
     match node {
         Node::Char(c) => {
             let actual = *chars.get(pos)?;
-            if char_eq(actual, *c, flags.ignore_case) { Some(pos + 1) } else { None }
+            if char_eq(actual, *c, flags.ignore_case) {
+                Some(pos + 1)
+            } else {
+                None
+            }
         }
         Node::AnyChar => {
             let actual = *chars.get(pos)?;
-            if !flags.dot_all && (actual == '\n' || actual == '\r') { None } else { Some(pos + 1) }
+            if !flags.dot_all && (actual == '\n' || actual == '\r') {
+                None
+            } else {
+                Some(pos + 1)
+            }
         }
         Node::Class(cc) => {
             let actual = *chars.get(pos)?;
-            if cc.contains(actual, flags.ignore_case) { Some(pos + 1) } else { None }
-        }
-        Node::Anchor(a) => {
-            match a {
-                AnchorKind::Start => {
-                    if pos == 0 || (flags.multiline && pos > 0 && chars[pos-1] == '\n') { Some(pos) } else { None }
-                }
-                AnchorKind::End => {
-                    if pos == chars.len() || (flags.multiline && pos < chars.len() && chars[pos] == '\n') { Some(pos) } else { None }
-                }
-                AnchorKind::WordBoundary => {
-                    if at_word_boundary(chars, pos) { Some(pos) } else { None }
-                }
-                AnchorKind::NotWordBoundary => {
-                    if !at_word_boundary(chars, pos) { Some(pos) } else { None }
-                }
+            if cc.contains(actual, flags.ignore_case) {
+                Some(pos + 1)
+            } else {
+                None
             }
         }
-        Node::Concat(items) => {
-            match_concat(items, 0, chars, pos, flags, caps)
-        }
+        Node::Anchor(a) => match a {
+            AnchorKind::Start => {
+                if pos == 0 || (flags.multiline && pos > 0 && chars[pos - 1] == '\n') {
+                    Some(pos)
+                } else {
+                    None
+                }
+            }
+            AnchorKind::End => {
+                if pos == chars.len()
+                    || (flags.multiline && pos < chars.len() && chars[pos] == '\n')
+                {
+                    Some(pos)
+                } else {
+                    None
+                }
+            }
+            AnchorKind::WordBoundary => {
+                if at_word_boundary(chars, pos) {
+                    Some(pos)
+                } else {
+                    None
+                }
+            }
+            AnchorKind::NotWordBoundary => {
+                if !at_word_boundary(chars, pos) {
+                    Some(pos)
+                } else {
+                    None
+                }
+            }
+        },
+        Node::Concat(items) => match_concat(items, 0, chars, pos, flags, caps),
         Node::Alt(branches) => {
             for b in branches {
                 let saved = caps.clone();
-                if let Some(end) = mat(b, chars, pos, flags, caps) { return Some(end); }
+                if let Some(end) = mat(b, chars, pos, flags, caps) {
+                    return Some(end);
+                }
                 *caps = saved;
             }
             None
         }
-        Node::Repeat { inner, min, max, greedy } => {
-            match_repeat(inner, *min, *max, *greedy, &[], chars, pos, flags, caps)
-        }
+        Node::Repeat {
+            inner,
+            min,
+            max,
+            greedy,
+        } => match_repeat(inner, *min, *max, *greedy, &[], chars, pos, flags, caps),
         Node::Group { index, inner } => {
             let saved = caps[*index];
             // Optimistically record the start; finalize end on success.
@@ -531,24 +759,43 @@ fn mat(node: &Node, chars: &[char], pos: usize, flags: &Flags, caps: &mut Vec<Op
             }
         }
         Node::NonCapture(inner) => mat(inner, chars, pos, flags, caps),
-        Node::Look { ahead: true, positive, inner } => {
+        Node::Look {
+            ahead: true,
+            positive,
+            inner,
+        } => {
             let saved = caps.clone();
             let m = mat(inner, chars, pos, flags, caps);
             *caps = saved;
-            if m.is_some() == *positive { Some(pos) } else { None }
+            if m.is_some() == *positive {
+                Some(pos)
+            } else {
+                None
+            }
         }
-        Node::Look { ahead: false, positive, inner } => {
+        Node::Look {
+            ahead: false,
+            positive,
+            inner,
+        } => {
             // Lookbehind: try to match `inner` such that it ends exactly at `pos`.
             let saved = caps.clone();
             let mut matched_any = false;
             for try_start in (0..=pos).rev() {
                 let mut tcaps = caps.clone();
                 if let Some(end) = mat(inner, chars, try_start, flags, &mut tcaps) {
-                    if end == pos { matched_any = true; break; }
+                    if end == pos {
+                        matched_any = true;
+                        break;
+                    }
                 }
             }
             *caps = saved;
-            if matched_any == *positive { Some(pos) } else { None }
+            if matched_any == *positive {
+                Some(pos)
+            } else {
+                None
+            }
         }
         Node::Backref(i) => {
             let cap = (*caps).get(*i).and_then(|c| *c)?;
@@ -556,18 +803,35 @@ fn mat(node: &Node, chars: &[char], pos: usize, flags: &Flags, caps: &mut Vec<Op
             let needed: Vec<char> = chars[cs..ce].to_vec();
             let avail = chars.get(pos..pos + needed.len())?;
             for (a, b) in avail.iter().zip(needed.iter()) {
-                if !char_eq(*a, *b, flags.ignore_case) { return None; }
+                if !char_eq(*a, *b, flags.ignore_case) {
+                    return None;
+                }
             }
             Some(pos + needed.len())
         }
     }
 }
 
-fn match_concat(items: &[Node], idx: usize, chars: &[char], pos: usize, flags: &Flags, caps: &mut Vec<Option<(usize, usize)>>) -> Option<usize> {
-    if idx >= items.len() { return Some(pos); }
+fn match_concat(
+    items: &[Node],
+    idx: usize,
+    chars: &[char],
+    pos: usize,
+    flags: &Flags,
+    caps: &mut Vec<Option<(usize, usize)>>,
+) -> Option<usize> {
+    if idx >= items.len() {
+        return Some(pos);
+    }
     let item = &items[idx];
     // If the item is a Repeat, handle inline so we can sequence properly.
-    if let Node::Repeat { inner, min, max, greedy } = item {
+    if let Node::Repeat {
+        inner,
+        min,
+        max,
+        greedy,
+    } = item
+    {
         let rest = &items[idx + 1..];
         return match_repeat(inner, *min, *max, *greedy, rest, chars, pos, flags, caps);
     }
@@ -586,7 +850,17 @@ fn match_concat(items: &[Node], idx: usize, chars: &[char], pos: usize, flags: &
 /// Repeat `inner` between min and max times, then match the trailing
 /// `rest` items. Greedy: try max first, back off to min. Lazy: try min
 /// first, extend toward max.
-fn match_repeat(inner: &Node, min: usize, max: Option<usize>, greedy: bool, rest: &[Node], chars: &[char], pos: usize, flags: &Flags, caps: &mut Vec<Option<(usize, usize)>>) -> Option<usize> {
+fn match_repeat(
+    inner: &Node,
+    min: usize,
+    max: Option<usize>,
+    greedy: bool,
+    rest: &[Node],
+    chars: &[char],
+    pos: usize,
+    flags: &Flags,
+    caps: &mut Vec<Option<(usize, usize)>>,
+) -> Option<usize> {
     // Collect each successive match position up to max.
     let mut positions = vec![pos];
     let cap_max = max.unwrap_or(chars.len() - pos + 1);
@@ -594,19 +868,27 @@ fn match_repeat(inner: &Node, min: usize, max: Option<usize>, greedy: bool, rest
     while positions.len() <= cap_max + 1 {
         let saved = caps.clone();
         match mat(inner, chars, cur, flags, caps) {
-            Some(next) if next > cur => { positions.push(next); cur = next; }
+            Some(next) if next > cur => {
+                positions.push(next);
+                cur = next;
+            }
             Some(_) => {
                 // Zero-width match. Avoid infinite loop: stop after registering once.
                 *caps = saved;
                 break;
             }
-            None => { *caps = saved; break; }
+            None => {
+                *caps = saved;
+                break;
+            }
         }
     }
     // positions[k] = char index after k repetitions.
     // We want a k in [min, ..len-1] that lets `rest` match.
     let max_k = positions.len() - 1;
-    if max_k < min { return None; }
+    if max_k < min {
+        return None;
+    }
     let candidates: Vec<usize> = if greedy {
         (min..=max_k).rev().collect()
     } else {
@@ -628,7 +910,9 @@ fn match_repeat(inner: &Node, min: usize, max: Option<usize>, greedy: bool, rest
 }
 
 fn char_eq(a: char, b: char, ignore_case: bool) -> bool {
-    if !ignore_case { return a == b; }
+    if !ignore_case {
+        return a == b;
+    }
     a.to_lowercase().next() == b.to_lowercase().next()
 }
 
@@ -651,26 +935,49 @@ mod tests {
     }
 
     #[test]
-    fn literal() { assert_eq!(m("foo", "", "xfoox"), Some((1, 4))); }
+    fn literal() {
+        assert_eq!(m("foo", "", "xfoox"), Some((1, 4)));
+    }
     #[test]
-    fn any_char() { assert_eq!(m("f.o", "", "fxo"), Some((0, 3))); }
+    fn any_char() {
+        assert_eq!(m("f.o", "", "fxo"), Some((0, 3)));
+    }
     #[test]
-    fn star_greedy() { assert_eq!(m("a*", "", "aaab"), Some((0, 3))); }
+    fn star_greedy() {
+        assert_eq!(m("a*", "", "aaab"), Some((0, 3)));
+    }
     #[test]
-    fn lazy() { assert_eq!(m("a.*?b", "", "axxbyyb"), Some((0, 4))); }
+    fn lazy() {
+        assert_eq!(m("a.*?b", "", "axxbyyb"), Some((0, 4)));
+    }
     #[test]
-    fn alt() { assert_eq!(m("cat|dog", "", "I see a dog!"), Some((8, 11))); }
+    fn alt() {
+        assert_eq!(m("cat|dog", "", "I see a dog!"), Some((8, 11)));
+    }
     #[test]
-    fn class() { assert_eq!(m("[a-c]+", "", "xxxabbc"), Some((3, 7))); }
+    fn class() {
+        assert_eq!(m("[a-c]+", "", "xxxabbc"), Some((3, 7)));
+    }
     #[test]
-    fn anchor() { assert_eq!(m("^abc", "", "abc"), Some((0, 3))); assert_eq!(m("^abc", "", "xabc"), None); }
+    fn anchor() {
+        assert_eq!(m("^abc", "", "abc"), Some((0, 3)));
+        assert_eq!(m("^abc", "", "xabc"), None);
+    }
     #[test]
-    fn lookahead_pos() { assert_eq!(m("foo(?=bar)", "", "foobar"), Some((0, 3))); assert_eq!(m("foo(?=bar)", "", "fooqux"), None); }
+    fn lookahead_pos() {
+        assert_eq!(m("foo(?=bar)", "", "foobar"), Some((0, 3)));
+        assert_eq!(m("foo(?=bar)", "", "fooqux"), None);
+    }
     #[test]
-    fn lookahead_neg() { assert_eq!(m("foo(?!bar)", "", "fooqux"), Some((0, 3))); assert_eq!(m("foo(?!bar)", "", "foobar"), None); }
+    fn lookahead_neg() {
+        assert_eq!(m("foo(?!bar)", "", "fooqux"), Some((0, 3)));
+        assert_eq!(m("foo(?!bar)", "", "foobar"), None);
+    }
     #[test]
     #[ignore] // backref through Repeat still TODO — capture caps not threaded into match_repeat positions
-    fn backref() { assert_eq!(m("(a+)\\1", "", "aaaa"), Some((0, 4))); }
+    fn backref() {
+        assert_eq!(m("(a+)\\1", "", "aaaa"), Some((0, 4)));
+    }
     #[test]
     fn pathe_pattern() {
         // Pathe's pattern: ^[/\\\\](?![/\\\\])|^[/\\\\]{2}(?!\\.)|^[A-Za-z]:[/\\\\]

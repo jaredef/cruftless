@@ -80,7 +80,10 @@ fn spec_type_returns_empty_when_none() {
 fn spec_type_lowercases_ascii() {
     let b = Blob::from_parts(
         &[BlobPart::Str("x")],
-        BlobPropertyBag { mime_type: "Application/JSON".into(), ..Default::default() },
+        BlobPropertyBag {
+            mime_type: "Application/JSON".into(),
+            ..Default::default()
+        },
     );
     assert_eq!(b.mime_type(), "application/json");
 }
@@ -90,7 +93,10 @@ fn spec_type_preserves_non_ascii() {
     // SPEC: only ASCII upper→lower required; non-ASCII passes through.
     let b = Blob::from_parts(
         &[BlobPart::Str("x")],
-        BlobPropertyBag { mime_type: "TEXT/Ω".into(), ..Default::default() },
+        BlobPropertyBag {
+            mime_type: "TEXT/Ω".into(),
+            ..Default::default()
+        },
     );
     assert_eq!(b.mime_type(), "text/Ω");
 }
@@ -135,7 +141,10 @@ fn spec_slice_end_clamps_to_size() {
 fn spec_slice_content_type_override() {
     let b = Blob::from_parts(
         &[BlobPart::Str("data")],
-        BlobPropertyBag { mime_type: "text/plain".into(), ..Default::default() },
+        BlobPropertyBag {
+            mime_type: "text/plain".into(),
+            ..Default::default()
+        },
     );
     let s = b.slice(0, None, Some("APPLICATION/Json"));
     assert_eq!(s.mime_type(), "application/json");
@@ -147,7 +156,10 @@ fn spec_slice_no_content_type_override_clears_to_empty() {
     // string (not the parent's type).
     let b = Blob::from_parts(
         &[BlobPart::Str("data")],
-        BlobPropertyBag { mime_type: "text/plain".into(), ..Default::default() },
+        BlobPropertyBag {
+            mime_type: "text/plain".into(),
+            ..Default::default()
+        },
     );
     let s = b.slice(0, None, None);
     assert_eq!(s.mime_type(), "");
@@ -201,7 +213,11 @@ fn spec_constructor_concatenates_string_parts() {
 #[test]
 fn spec_constructor_mixes_bytes_and_strings() {
     let b = Blob::from_parts(
-        &[BlobPart::Bytes(b"AB"), BlobPart::Str("CD"), BlobPart::Bytes(b"EF")],
+        &[
+            BlobPart::Bytes(b"AB"),
+            BlobPart::Str("CD"),
+            BlobPart::Bytes(b"EF"),
+        ],
         Default::default(),
     );
     assert_eq!(b.text(), "ABCDEF");
@@ -212,7 +228,11 @@ fn spec_constructor_mixes_bytes_and_strings() {
 fn spec_constructor_includes_blob_parts() {
     let inner = Blob::from_bytes(b"inner".to_vec());
     let outer = Blob::from_parts(
-        &[BlobPart::Str("["), BlobPart::Blob(&inner), BlobPart::Str("]")],
+        &[
+            BlobPart::Str("["),
+            BlobPart::Blob(&inner),
+            BlobPart::Str("]"),
+        ],
         Default::default(),
     );
     assert_eq!(outer.text(), "[inner]");
@@ -224,7 +244,10 @@ fn spec_constructor_includes_blob_parts() {
 fn spec_endings_transparent_preserves_input() {
     let b = Blob::from_parts(
         &[BlobPart::Str("a\rb\nc\r\nd")],
-        BlobPropertyBag { endings: LineEndings::Transparent, ..Default::default() },
+        BlobPropertyBag {
+            endings: LineEndings::Transparent,
+            ..Default::default()
+        },
     );
     assert_eq!(b.bytes(), b"a\rb\nc\r\nd");
 }
@@ -234,7 +257,10 @@ fn spec_endings_transparent_preserves_input() {
 fn spec_endings_native_lf_on_unix() {
     let b = Blob::from_parts(
         &[BlobPart::Str("a\rb\nc\r\nd")],
-        BlobPropertyBag { endings: LineEndings::Native, ..Default::default() },
+        BlobPropertyBag {
+            endings: LineEndings::Native,
+            ..Default::default()
+        },
     );
     assert_eq!(b.bytes(), b"a\nb\nc\nd");
 }

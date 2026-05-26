@@ -26,7 +26,7 @@
 //! `public/private/protected/readonly` ctor-param shorthand (requires
 //! body rewrite), namespaces.
 
-use rusty_js_parser::{Lexer, LexerGoal, Token, TokenKind, Punct, Span, TemplatePart};
+use rusty_js_parser::{Lexer, LexerGoal, Punct, Span, TemplatePart, Token, TokenKind};
 
 /// TRCAPS-EXT 1 (regex-literal goal fix): select `LexerGoal::RegExp`
 /// when the previous token's right-hand context permits a regex
@@ -44,7 +44,8 @@ fn is_overload_blocked_name(name: &str) -> bool {
     // next_punct_immediate(LParen) check naturally rejects them. As
     // method/function names (`function of(...)`, `arr.in(...)`), they
     // need to be matched by the overload rule.
-    matches!(name,
+    matches!(
+        name,
         "if" | "for" | "while" | "switch" | "catch" | "with"
         | "return" | "yield" | "await" | "throw" | "new" | "typeof"
         | "delete" | "void"
@@ -62,14 +63,29 @@ fn is_overload_blocked_name(name: &str) -> bool {
 fn expr_or_div_goal(prev: Option<&TokenKind>) -> LexerGoal {
     let prev = match prev {
         Some(p) => p,
-        None => return LexerGoal::RegExp,  // start of file = expression position
+        None => return LexerGoal::RegExp, // start of file = expression position
     };
     match prev {
         // Tokens that END an expression: a `/` after them is division.
-        TokenKind::Ident(name) if !matches!(name.as_str(),
-            "return" | "typeof" | "delete" | "void" | "await" | "yield"
-            | "throw" | "new" | "in" | "of" | "instanceof" | "case"
-        ) => LexerGoal::Div,
+        TokenKind::Ident(name)
+            if !matches!(
+                name.as_str(),
+                "return"
+                    | "typeof"
+                    | "delete"
+                    | "void"
+                    | "await"
+                    | "yield"
+                    | "throw"
+                    | "new"
+                    | "in"
+                    | "of"
+                    | "instanceof"
+                    | "case"
+            ) =>
+        {
+            LexerGoal::Div
+        }
         TokenKind::Number(_, _)
         | TokenKind::BigInt(_, _)
         | TokenKind::String(_)
@@ -84,7 +100,7 @@ fn expr_or_div_goal(prev: Option<&TokenKind>) -> LexerGoal {
         _ => LexerGoal::RegExp,
     }
 }
-use crate::ts_ast::{TypeWitness, TypeWitnessKind, TsTypeRef};
+use crate::ts_ast::{TsTypeRef, TypeWitness, TypeWitnessKind};
 
 #[derive(Debug)]
 pub struct StripError {
@@ -116,8 +132,10 @@ pub fn strip_ts(src: &str) -> Result<(String, Vec<TypeWitness>), StripError> {
             }
         }
     }
-    let stripped = String::from_utf8(out)
-        .map_err(|e| StripError { message: format!("utf-8 corruption: {}", e), pos: 0 })?;
+    let stripped = String::from_utf8(out).map_err(|e| StripError {
+        message: format!("utf-8 corruption: {}", e),
+        pos: 0,
+    })?;
     Ok((stripped, scanner.witnesses))
 }
 
@@ -232,7 +250,9 @@ impl<'src> Scanner<'src> {
     /// body returning an object via `=> ({ ... })`) are handled by the
     /// `(` wrapper, not at the brace.
     fn classify_brace(&self, i: usize) -> BraceCtx {
-        if i == 0 { return BraceCtx::Block; }
+        if i == 0 {
+            return BraceCtx::Block;
+        }
         match &self.toks[i - 1].kind {
             // Expression contexts → object literal.
             TokenKind::Punct(Punct::Assign)
@@ -250,13 +270,17 @@ impl<'src> Scanner<'src> {
             // require explicit wrapping `=> ({...})`. Including Arrow
             // mis-classified arrow function bodies as ObjectLit, which
             // broke annotation detection inside the body.
-            TokenKind::Ident(n) if n == "return"
-                || n == "yield"
-                || n == "throw"
-                || n == "in"
-                || n == "of"
-                || n == "delete"
-                || n == "new" => BraceCtx::ObjectLit,
+            TokenKind::Ident(n)
+                if n == "return"
+                    || n == "yield"
+                    || n == "throw"
+                    || n == "in"
+                    || n == "of"
+                    || n == "delete"
+                    || n == "new" =>
+            {
+                BraceCtx::ObjectLit
+            }
             // NOTE: `void` and `typeof` excluded — these names appear
             // very commonly as TS return-type or type-query annotations
             // (e.g. `function f(): void {`). Including them caused the
@@ -322,11 +346,10 @@ impl<'src> Scanner<'src> {
             } else {
                 expr_or_div_goal(prev_kind.as_ref())
             };
-            let t = lx.next_token(goal)
-                .map_err(|e| StripError {
-                    message: format!("lex: {:?}", e),
-                    pos: lx.pos(),
-                })?;
+            let t = lx.next_token(goal).map_err(|e| StripError {
+                message: format!("lex: {:?}", e),
+                pos: lx.pos(),
+            })?;
             // Maintain brace_depth + template-substitution stack.
             match &t.kind {
                 TokenKind::Punct(Punct::LBrace) => brace_depth += 1,
@@ -361,9 +384,21 @@ impl<'src> Scanner<'src> {
             // the flag after consuming the next token.
             prev_was_postfix_bang = matches!(t.kind, TokenKind::Punct(Punct::LogicalNot))
                 && match prev_kind.as_ref() {
-                    Some(TokenKind::Ident(n)) => !matches!(n.as_str(),
-                        "return" | "yield" | "delete" | "typeof" | "void"
-                        | "throw" | "await" | "new" | "in" | "of" | "instanceof" | "case"),
+                    Some(TokenKind::Ident(n)) => !matches!(
+                        n.as_str(),
+                        "return"
+                            | "yield"
+                            | "delete"
+                            | "typeof"
+                            | "void"
+                            | "throw"
+                            | "await"
+                            | "new"
+                            | "in"
+                            | "of"
+                            | "instanceof"
+                            | "case"
+                    ),
                     Some(TokenKind::Number(_, _))
                     | Some(TokenKind::BigInt(_, _))
                     | Some(TokenKind::String(_))
@@ -382,7 +417,9 @@ impl<'src> Scanner<'src> {
                 span: t.span,
                 preceded_by_line_terminator: t.preceded_by_line_terminator,
             });
-            if done { return Ok(()); }
+            if done {
+                return Ok(());
+            }
         }
     }
 
@@ -412,15 +449,24 @@ impl<'src> Scanner<'src> {
         let mut new_strips: Vec<(usize, usize)> = Vec::new();
         let mut i = 0;
         while i < self.toks.len() {
-            if in_strip[i] { i += 1; continue; }
+            if in_strip[i] {
+                i += 1;
+                continue;
+            }
             let is_import_stmt = matches!(&self.toks[i].kind,
                 TokenKind::Ident(n) if n == "import")
                 && self.is_stmt_start(i);
-            if !is_import_stmt { i += 1; continue; }
+            if !is_import_stmt {
+                i += 1;
+                continue;
+            }
             // Find statement end (next top-level `;` or end-of-string-after-from).
             let stmt_end_idx = match self.find_stmt_end(i + 1) {
                 Some(idx) => idx,
-                None => { i += 1; continue; }
+                None => {
+                    i += 1;
+                    continue;
+                }
             };
             // Detect side-effect-only: `import 'foo';` or `import "foo";`
             // (no `{`/`*`/Ident between `import` and the String).
@@ -453,8 +499,10 @@ impl<'src> Scanner<'src> {
                     TokenKind::Punct(Punct::Star) => {
                         side_effect_only = false;
                     }
-                    TokenKind::Punct(Punct::LBrace) | TokenKind::Punct(Punct::RBrace)
-                    | TokenKind::Punct(Punct::Comma) | TokenKind::Punct(Punct::Colon) => {}
+                    TokenKind::Punct(Punct::LBrace)
+                    | TokenKind::Punct(Punct::RBrace)
+                    | TokenKind::Punct(Punct::Comma)
+                    | TokenKind::Punct(Punct::Colon) => {}
                     TokenKind::String(_) => {
                         // Should be the source path after `from`. Done.
                         break;
@@ -478,10 +526,16 @@ impl<'src> Scanner<'src> {
                 };
                 let mut count = 0usize;
                 for (idx, tok) in self.toks.iter().enumerate() {
-                    if idx >= i && idx <= stmt_end_idx { continue; }
-                    if in_strip[idx] { continue; }
+                    if idx >= i && idx <= stmt_end_idx {
+                        continue;
+                    }
+                    if in_strip[idx] {
+                        continue;
+                    }
                     if let TokenKind::Ident(n) = &tok.kind {
-                        if n == &target_name { count += 1; }
+                        if n == &target_name {
+                            count += 1;
+                        }
                     }
                 }
                 if count > 0 {
@@ -503,7 +557,10 @@ impl<'src> Scanner<'src> {
             let mut merged: Vec<(usize, usize)> = Vec::with_capacity(self.strips.len());
             for r in self.strips.drain(..) {
                 if let Some(last) = merged.last_mut() {
-                    if r.0 <= last.1 { last.1 = last.1.max(r.1); continue; }
+                    if r.0 <= last.1 {
+                        last.1 = last.1.max(r.1);
+                        continue;
+                    }
                 }
                 merged.push(r);
             }
@@ -601,10 +658,14 @@ impl<'src> Scanner<'src> {
                     while j < self.toks.len() {
                         match &self.toks[j].kind {
                             TokenKind::Punct(Punct::LBrace) if depth == 0 => break,
-                            TokenKind::Punct(Punct::LParen)
-                            | TokenKind::Punct(Punct::LBracket) => depth += 1,
-                            TokenKind::Punct(Punct::RParen)
-                            | TokenKind::Punct(Punct::RBracket) if depth > 0 => depth -= 1,
+                            TokenKind::Punct(Punct::LParen) | TokenKind::Punct(Punct::LBracket) => {
+                                depth += 1
+                            }
+                            TokenKind::Punct(Punct::RParen) | TokenKind::Punct(Punct::RBracket)
+                                if depth > 0 =>
+                            {
+                                depth -= 1
+                            }
                             TokenKind::Punct(Punct::Lt) => depth += 1,
                             TokenKind::Punct(Punct::Gt) if depth > 0 => depth -= 1,
                             TokenKind::Eof | TokenKind::Punct(Punct::Semicolon) => break,
@@ -625,9 +686,9 @@ impl<'src> Scanner<'src> {
                 // level of a class body, strip the lone keyword before
                 // a member name. ECMAScript `static` is NOT stripped
                 // (it's a real JS modifier).
-                let is_ts_class_modifier = matches!(name.as_str(),
-                    "public" | "private" | "protected" | "readonly"
-                    | "abstract" | "override"
+                let is_ts_class_modifier = matches!(
+                    name.as_str(),
+                    "public" | "private" | "protected" | "readonly" | "abstract" | "override"
                 );
                 if is_ts_class_modifier && self.in_class_body() {
                     // Only strip when followed by another Ident (the
@@ -661,13 +722,16 @@ impl<'src> Scanner<'src> {
                 // body member-start or module top-level. NOT in plain
                 // function bodies (where `name(...): expr` is a
                 // ternary, not a method decl). Per Finding TRGC.9.
-                let in_block_or_module = matches!(self.brace_stack.last(),
-                    Some((BraceCtx::ClassBody, _)) | None);
+                let in_block_or_module = matches!(
+                    self.brace_stack.last(),
+                    Some((BraceCtx::ClassBody, _)) | None
+                );
                 let stmt_start_prev = i == 0
                     || t.preceded_by_line_terminator
-                    || matches!(self.toks[i - 1].kind,
-                        TokenKind::Punct(Punct::LBrace)
-                        | TokenKind::Punct(Punct::Semicolon))
+                    || matches!(
+                        self.toks[i - 1].kind,
+                        TokenKind::Punct(Punct::LBrace) | TokenKind::Punct(Punct::Semicolon)
+                    )
                     || matches!(&self.toks[i - 1].kind,
                         TokenKind::Ident(prev_name) if prev_name == "function"
                             || prev_name == "abstract"
@@ -685,9 +749,15 @@ impl<'src> Scanner<'src> {
                     {
                         if let Some(close) = self.match_angle(i + 1) {
                             close + 1
-                        } else { i + 1 }
-                    } else { i + 1 };
-                    if let Some(lparen) = self.next_punct_immediate(lparen_search_pos, Punct::LParen) {
+                        } else {
+                            i + 1
+                        }
+                    } else {
+                        i + 1
+                    };
+                    if let Some(lparen) =
+                        self.next_punct_immediate(lparen_search_pos, Punct::LParen)
+                    {
                         if let Some(rparen) = self.match_parens(lparen) {
                             // Tighten: the IMMEDIATE next token after
                             // `)` must be `:` (annotation), `;` (no-
@@ -696,10 +766,11 @@ impl<'src> Scanner<'src> {
                             // call/expression, not a method-decl.
                             let after_rparen = rparen + 1;
                             let after_kind = self.toks.get(after_rparen).map(|t| &t.kind);
-                            let is_method_decl_shape = matches!(after_kind,
+                            let is_method_decl_shape = matches!(
+                                after_kind,
                                 Some(TokenKind::Punct(Punct::Colon))
-                                | Some(TokenKind::Punct(Punct::LBrace))
-                                | Some(TokenKind::Punct(Punct::Semicolon))
+                                    | Some(TokenKind::Punct(Punct::LBrace))
+                                    | Some(TokenKind::Punct(Punct::Semicolon))
                             );
                             if !is_method_decl_shape {
                                 // Fall through to other rules.
@@ -711,8 +782,10 @@ impl<'src> Scanner<'src> {
                                 let mut k = after_rparen;
                                 let mut depth = 0i32;
                                 let mut found_overload = false;
-                                let in_class_body = matches!(self.brace_stack.last(),
-                                    Some((BraceCtx::ClassBody, _)));
+                                let in_class_body = matches!(
+                                    self.brace_stack.last(),
+                                    Some((BraceCtx::ClassBody, _))
+                                );
                                 while k < self.toks.len() {
                                     // TRGC-EXT 6 (2026-05-24): abstract
                                     // class method (no body, no ';',
@@ -721,12 +794,14 @@ impl<'src> Scanner<'src> {
                                     // level preceded by line terminator
                                     // is the next member — treat
                                     // current sig as overload.
-                                    if in_class_body && depth == 0
+                                    if in_class_body
+                                        && depth == 0
                                         && k > after_rparen
                                         && self.toks[k].preceded_by_line_terminator
-                                        && matches!(self.toks[k].kind,
-                                            TokenKind::Ident(_)
-                                            | TokenKind::Punct(Punct::RBrace))
+                                        && matches!(
+                                            self.toks[k].kind,
+                                            TokenKind::Ident(_) | TokenKind::Punct(Punct::RBrace)
+                                        )
                                     {
                                         found_overload = true;
                                         // Don't include the next member
@@ -745,9 +820,17 @@ impl<'src> Scanner<'src> {
                                         | TokenKind::Punct(Punct::Lt) => depth += 1,
                                         TokenKind::Punct(Punct::RParen)
                                         | TokenKind::Punct(Punct::RBracket)
-                                        | TokenKind::Punct(Punct::Gt) if depth > 0 => depth -= 1,
-                                        TokenKind::Punct(Punct::Shr) if depth > 0 => depth = (depth - 2).max(0),
-                                        TokenKind::Punct(Punct::UShr) if depth > 0 => depth = (depth - 3).max(0),
+                                        | TokenKind::Punct(Punct::Gt)
+                                            if depth > 0 =>
+                                        {
+                                            depth -= 1
+                                        }
+                                        TokenKind::Punct(Punct::Shr) if depth > 0 => {
+                                            depth = (depth - 2).max(0)
+                                        }
+                                        TokenKind::Punct(Punct::UShr) if depth > 0 => {
+                                            depth = (depth - 3).max(0)
+                                        }
                                         TokenKind::Punct(Punct::Semicolon) if depth == 0 => {
                                             found_overload = true;
                                             break;
@@ -764,11 +847,14 @@ impl<'src> Scanner<'src> {
                                     // `function` keyword — otherwise a
                                     // bare `function` keyword remains
                                     // and the file fails to parse.
-                                    let start = if i > 0 && matches!(&self.toks[i - 1].kind,
+                                    let start = if i > 0
+                                        && matches!(&self.toks[i - 1].kind,
                                         TokenKind::Ident(n) if n == "function")
                                     {
                                         self.toks[i - 1].span.start
-                                    } else { t.span.start };
+                                    } else {
+                                        t.span.start
+                                    };
                                     let end = self.toks[k].span.end;
                                     self.strips.push((start, end));
                                     // Resume scan AT the next member's
@@ -869,7 +955,11 @@ impl<'src> Scanner<'src> {
                             let mut start_idx = i;
                             while start_idx > 0 {
                                 if let TokenKind::Ident(n) = &self.toks[start_idx - 1].kind {
-                                    if n == "export" || n == "declare" || n == "const" || n == "default" {
+                                    if n == "export"
+                                        || n == "declare"
+                                        || n == "const"
+                                        || n == "default"
+                                    {
                                         start_idx -= 1;
                                         continue;
                                     }
@@ -906,7 +996,9 @@ impl<'src> Scanner<'src> {
                     let after = self.skip_type(i + 1);
                     let type_end = if after > i + 1 {
                         self.toks[after - 1].span.end
-                    } else { t.span.end };
+                    } else {
+                        t.span.end
+                    };
                     self.strips.push((type_start, type_end));
                     return Ok(after);
                 }
@@ -944,7 +1036,9 @@ impl<'src> Scanner<'src> {
                     let after = self.skip_type(i + 1);
                     let end = if after > i + 1 {
                         self.toks[after - 1].span.end
-                    } else { t.span.end };
+                    } else {
+                        t.span.end
+                    };
                     self.strips.push((start, end));
                     // Emit a witness for the type. The name is the
                     // preceding Ident if available.
@@ -954,7 +1048,10 @@ impl<'src> Scanner<'src> {
                             self.witnesses.push(TypeWitness {
                                 kind: TypeWitnessKind::LocalBinding {
                                     name: nm.clone(),
-                                    ty: TsTypeRef::Named { name: ty_text.trim().to_string(), type_args: vec![] },
+                                    ty: TsTypeRef::Named {
+                                        name: ty_text.trim().to_string(),
+                                        type_args: vec![],
+                                    },
                                 },
                                 span: Span::new(start, end),
                             });
@@ -986,7 +1083,8 @@ impl<'src> Scanner<'src> {
                 let next_is_dot = i + 1 < self.toks.len()
                     && matches!(self.toks[i + 1].kind, TokenKind::Punct(Punct::Dot));
                 if !next_is_colon && !next_is_dot && i > 0 && self.is_expr_terminator(i - 1) {
-                    self.ternary_stack.push((self.paren_depth, self.brace_stack.len()));
+                    self.ternary_stack
+                        .push((self.paren_depth, self.brace_stack.len()));
                 }
                 Ok(i + 1)
             }
@@ -1024,7 +1122,9 @@ impl<'src> Scanner<'src> {
                 Ok(i + 1)
             }
             TokenKind::Punct(Punct::RParen) => {
-                if self.paren_depth > 0 { self.paren_depth -= 1; }
+                if self.paren_depth > 0 {
+                    self.paren_depth -= 1;
+                }
                 Ok(i + 1)
             }
             TokenKind::Punct(Punct::Lt) => {
@@ -1048,7 +1148,7 @@ impl<'src> Scanner<'src> {
                         //   strip `<...>` only (the `(...)` is the
                         //   call's arg list).
                         let prev_is_expr_terminator = i > 0 && self.is_expr_terminator(i - 1);
-                        let _ = prev_is_expr_terminator;  // both cases strip the same range
+                        let _ = prev_is_expr_terminator; // both cases strip the same range
                         let start = self.toks[i].span.start;
                         let end = self.toks[close].span.end;
                         self.strips.push((start, end));
@@ -1065,13 +1165,18 @@ impl<'src> Scanner<'src> {
     }
 
     fn is_stmt_start(&self, i: usize) -> bool {
-        if i == 0 { return true; }
+        if i == 0 {
+            return true;
+        }
         let prev = &self.toks[i - 1];
-        if prev.preceded_by_line_terminator || self.toks[i].preceded_by_line_terminator { return true; }
-        matches!(prev.kind,
+        if prev.preceded_by_line_terminator || self.toks[i].preceded_by_line_terminator {
+            return true;
+        }
+        matches!(
+            prev.kind,
             TokenKind::Punct(Punct::Semicolon)
-            | TokenKind::Punct(Punct::LBrace)
-            | TokenKind::Punct(Punct::RBrace)
+                | TokenKind::Punct(Punct::LBrace)
+                | TokenKind::Punct(Punct::RBrace)
         )
     }
 
@@ -1082,7 +1187,9 @@ impl<'src> Scanner<'src> {
     fn next_punct_immediate(&self, at: usize, p: Punct) -> Option<usize> {
         if at < self.toks.len() {
             if let TokenKind::Punct(pp) = &self.toks[at].kind {
-                if *pp == p { return Some(at); }
+                if *pp == p {
+                    return Some(at);
+                }
             }
         }
         None
@@ -1097,7 +1204,9 @@ impl<'src> Scanner<'src> {
                 TokenKind::Punct(Punct::LParen) => depth += 1,
                 TokenKind::Punct(Punct::RParen) => {
                     depth -= 1;
-                    if depth == 0 { return Some(j); }
+                    if depth == 0 {
+                        return Some(j);
+                    }
                 }
                 TokenKind::Eof => return None,
                 _ => {}
@@ -1112,7 +1221,9 @@ impl<'src> Scanner<'src> {
     fn find_punct(&self, from: usize, p: Punct) -> Option<usize> {
         for j in from..self.toks.len() {
             if let TokenKind::Punct(pp) = &self.toks[j].kind {
-                if *pp == p { return Some(j); }
+                if *pp == p {
+                    return Some(j);
+                }
             }
         }
         None
@@ -1132,28 +1243,48 @@ impl<'src> Scanner<'src> {
         let mut depth_brack = 0i32;
         for j in lt..self.toks.len() {
             match &self.toks[j].kind {
-                TokenKind::Punct(Punct::Lt) if depth_brace == 0 && depth_paren == 0 && depth_brack == 0 => depth += 1,
-                TokenKind::Punct(Punct::Gt) if depth_brace == 0 && depth_paren == 0 && depth_brack == 0 => {
+                TokenKind::Punct(Punct::Lt)
+                    if depth_brace == 0 && depth_paren == 0 && depth_brack == 0 =>
+                {
+                    depth += 1
+                }
+                TokenKind::Punct(Punct::Gt)
+                    if depth_brace == 0 && depth_paren == 0 && depth_brack == 0 =>
+                {
                     depth -= 1;
-                    if depth == 0 { return Some(j); }
+                    if depth == 0 {
+                        return Some(j);
+                    }
                 }
-                TokenKind::Punct(Punct::Shr) if depth_brace == 0 && depth_paren == 0 && depth_brack == 0 => {
+                TokenKind::Punct(Punct::Shr)
+                    if depth_brace == 0 && depth_paren == 0 && depth_brack == 0 =>
+                {
                     depth -= 2;
-                    if depth <= 0 { return Some(j); }
+                    if depth <= 0 {
+                        return Some(j);
+                    }
                 }
-                TokenKind::Punct(Punct::UShr) if depth_brace == 0 && depth_paren == 0 && depth_brack == 0 => {
+                TokenKind::Punct(Punct::UShr)
+                    if depth_brace == 0 && depth_paren == 0 && depth_brack == 0 =>
+                {
                     depth -= 3;
-                    if depth <= 0 { return Some(j); }
+                    if depth <= 0 {
+                        return Some(j);
+                    }
                 }
                 TokenKind::Punct(Punct::LBrace) => depth_brace += 1,
                 TokenKind::Punct(Punct::RBrace) if depth_brace > 0 => depth_brace -= 1,
-                TokenKind::Punct(Punct::RBrace) => return None,  // unmatched body-start
+                TokenKind::Punct(Punct::RBrace) => return None, // unmatched body-start
                 TokenKind::Punct(Punct::LParen) => depth_paren += 1,
                 TokenKind::Punct(Punct::RParen) if depth_paren > 0 => depth_paren -= 1,
                 TokenKind::Punct(Punct::LBracket) => depth_brack += 1,
                 TokenKind::Punct(Punct::RBracket) if depth_brack > 0 => depth_brack -= 1,
                 TokenKind::Eof => return None,
-                TokenKind::Punct(Punct::Semicolon) if depth_brace == 0 && depth_paren == 0 && depth_brack == 0 => return None,
+                TokenKind::Punct(Punct::Semicolon)
+                    if depth_brace == 0 && depth_paren == 0 && depth_brack == 0 =>
+                {
+                    return None
+                }
                 _ => {}
             }
         }
@@ -1168,7 +1299,9 @@ impl<'src> Scanner<'src> {
                 TokenKind::Punct(Punct::LBrace) => depth += 1,
                 TokenKind::Punct(Punct::RBrace) => {
                     depth -= 1;
-                    if depth == 0 { return Some(j); }
+                    if depth == 0 {
+                        return Some(j);
+                    }
                 }
                 _ => {}
             }
@@ -1191,7 +1324,9 @@ impl<'src> Scanner<'src> {
                 TokenKind::Punct(Punct::RParen) => depth_paren -= 1,
                 TokenKind::Punct(Punct::LBrace) => depth_brace += 1,
                 TokenKind::Punct(Punct::RBrace) => {
-                    if depth_brace == 0 { return Some(j.saturating_sub(1).max(from)); }
+                    if depth_brace == 0 {
+                        return Some(j.saturating_sub(1).max(from));
+                    }
                     depth_brace -= 1;
                 }
                 TokenKind::Punct(Punct::LBracket) => depth_brack += 1,
@@ -1226,7 +1361,9 @@ impl<'src> Scanner<'src> {
     }
 
     fn next_is_postfix_context(&self, i: usize) -> bool {
-        if i >= self.toks.len() { return true; }
+        if i >= self.toks.len() {
+            return true;
+        }
         match &self.toks[i].kind {
             TokenKind::Eof
             | TokenKind::Punct(Punct::Semicolon)
@@ -1261,7 +1398,9 @@ impl<'src> Scanner<'src> {
     /// True iff the `:` at index `i` is an annotation (vs ternary /
     /// object-key / label / case).
     fn is_annotation_colon(&self, i: usize) -> bool {
-        if i == 0 { return false; }
+        if i == 0 {
+            return false;
+        }
         // Inside an object literal, an Ident-anchored `:` is a
         // key:value separator, not an annotation. BUT a `)`-anchored
         // `:` inside an object literal is a method-shorthand return-
@@ -1307,9 +1446,7 @@ impl<'src> Scanner<'src> {
         // `default` OR the token before the anchor is Ident `case`
         // (anchor would be the case-expression value: String, Number,
         // Ident-constant-name).
-        if prev_is_ident
-            && matches!(&prev.kind, TokenKind::Ident(n) if n == "default")
-        {
+        if prev_is_ident && matches!(&prev.kind, TokenKind::Ident(n) if n == "default") {
             return false;
         }
         if anchor > 0 {
@@ -1343,11 +1480,12 @@ impl<'src> Scanner<'src> {
             }
             let after = self.skip_type(i + 1);
             if after < self.toks.len() {
-                return matches!(self.toks[after].kind,
+                return matches!(
+                    self.toks[after].kind,
                     TokenKind::Punct(Punct::Comma)
-                    | TokenKind::Punct(Punct::RParen)
-                    | TokenKind::Punct(Punct::Assign)
-                    | TokenKind::Eof
+                        | TokenKind::Punct(Punct::RParen)
+                        | TokenKind::Punct(Punct::Assign)
+                        | TokenKind::Eof
                 );
             }
             return false;
@@ -1363,13 +1501,14 @@ impl<'src> Scanner<'src> {
         if prev_is_close_paren {
             let after = self.skip_type(i + 1);
             if after < self.toks.len() {
-                return matches!(self.toks[after].kind,
+                return matches!(
+                    self.toks[after].kind,
                     TokenKind::Punct(Punct::LBrace)
-                    | TokenKind::Punct(Punct::Arrow)
-                    | TokenKind::Punct(Punct::Semicolon)
-                    | TokenKind::Punct(Punct::Comma)
-                    | TokenKind::Punct(Punct::Assign)
-                    | TokenKind::Eof
+                        | TokenKind::Punct(Punct::Arrow)
+                        | TokenKind::Punct(Punct::Semicolon)
+                        | TokenKind::Punct(Punct::Comma)
+                        | TokenKind::Punct(Punct::Assign)
+                        | TokenKind::Eof
                 );
             }
             return false;
@@ -1387,9 +1526,9 @@ impl<'src> Scanner<'src> {
         // bail only on the obvious `{ key: value }` shape:
         if prev_is_ident && anchor >= 1 {
             let two_back = &self.toks[anchor - 1].kind;
-            if matches!(two_back,
-                TokenKind::Punct(Punct::LBrace)
-                | TokenKind::Punct(Punct::Comma)
+            if matches!(
+                two_back,
+                TokenKind::Punct(Punct::LBrace) | TokenKind::Punct(Punct::Comma)
             ) {
                 // Could be object-literal-key OR destructuring pattern
                 // OR param list. Disambiguate by scanning the type:
@@ -1399,13 +1538,14 @@ impl<'src> Scanner<'src> {
                 // annotation. Otherwise bail.
                 let after = self.skip_type(i + 1);
                 if after < self.toks.len() {
-                    return matches!(self.toks[after].kind,
+                    return matches!(
+                        self.toks[after].kind,
                         TokenKind::Punct(Punct::Comma)
-                        | TokenKind::Punct(Punct::RParen)
-                        | TokenKind::Punct(Punct::RBrace)
-                        | TokenKind::Punct(Punct::Semicolon)
-                        | TokenKind::Punct(Punct::Assign)
-                        | TokenKind::Eof
+                            | TokenKind::Punct(Punct::RParen)
+                            | TokenKind::Punct(Punct::RBrace)
+                            | TokenKind::Punct(Punct::Semicolon)
+                            | TokenKind::Punct(Punct::Assign)
+                            | TokenKind::Eof
                     );
                 }
                 return true;
@@ -1430,7 +1570,8 @@ impl<'src> Scanner<'src> {
         // position arrow that ends the annotation (e.g. `: T => body`).
         let mut prev_was_rparen_at_top = false;
         while i < self.toks.len() {
-            let at_top = depth_angle == 0 && depth_paren == 0 && depth_brace == 0 && depth_brack == 0;
+            let at_top =
+                depth_angle == 0 && depth_paren == 0 && depth_brace == 0 && depth_brack == 0;
             // Eof always stops. Semicolon only stops at top level —
             // inside `{...}` of an object type literal, `;` is a
             // property separator, NOT a statement terminator.
@@ -1438,9 +1579,15 @@ impl<'src> Scanner<'src> {
             // type expression. Important for `as T` inside template
             // substitutions: skip_type must not consume the
             // Template{Tail} that closes the substitution.
-            if matches!(self.toks[i].kind, TokenKind::Eof) { break; }
-            if matches!(self.toks[i].kind, TokenKind::Template { .. }) { break; }
-            if at_top && matches!(self.toks[i].kind, TokenKind::Punct(Punct::Semicolon)) { break; }
+            if matches!(self.toks[i].kind, TokenKind::Eof) {
+                break;
+            }
+            if matches!(self.toks[i].kind, TokenKind::Template { .. }) {
+                break;
+            }
+            if at_top && matches!(self.toks[i].kind, TokenKind::Punct(Punct::Semicolon)) {
+                break;
+            }
             if at_top {
                 // TRGC-EXT 2 follow-on: ASI-aware top-level break.
                 // Class-field annotations end at line-terminator before
@@ -1459,7 +1606,9 @@ impl<'src> Scanner<'src> {
                     | TokenKind::Punct(Punct::RBrace)
                     | TokenKind::Punct(Punct::RBracket) => break,
                     TokenKind::Punct(Punct::Arrow) => {
-                        if !prev_was_rparen_at_top { break; }
+                        if !prev_was_rparen_at_top {
+                            break;
+                        }
                         // Else fall through; consume as fn-type arrow.
                     }
                     TokenKind::Punct(Punct::LBrace) => {
@@ -1469,8 +1618,11 @@ impl<'src> Scanner<'src> {
                         // is also a type literal — descend. After
                         // consumed type tokens otherwise, a top-level
                         // `{` is the function/initializer body — stop.
-                        let prev_is_type_op = i > 0 && matches!(self.toks[i - 1].kind,
-                            TokenKind::Punct(Punct::BitAnd) | TokenKind::Punct(Punct::BitOr));
+                        let prev_is_type_op = i > 0
+                            && matches!(
+                                self.toks[i - 1].kind,
+                                TokenKind::Punct(Punct::BitAnd) | TokenKind::Punct(Punct::BitOr)
+                            );
                         if i == start || prev_is_type_op {
                             depth_brace += 1;
                         } else {
@@ -1497,7 +1649,10 @@ impl<'src> Scanner<'src> {
             // so a `)` that just popped to zero is recognized as a
             // top-level RParen on the next iteration.
             prev_was_rparen_at_top = matches!(self.toks[i].kind, TokenKind::Punct(Punct::RParen))
-                && depth_angle == 0 && depth_paren == 0 && depth_brace == 0 && depth_brack == 0;
+                && depth_angle == 0
+                && depth_paren == 0
+                && depth_brace == 0
+                && depth_brack == 0;
             i += 1;
         }
         i

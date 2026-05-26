@@ -4,8 +4,11 @@ use rusty_tls::*;
 use std::process::Command;
 
 fn openssl_available() -> bool {
-    Command::new("openssl").arg("version").output()
-        .map(|o| o.status.success()).unwrap_or(false)
+    Command::new("openssl")
+        .arg("version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
 }
 
 // ─── Record layer ───────────────────────────────────────────────────
@@ -18,9 +21,9 @@ fn record_roundtrip_handshake() {
         fragment: vec![0x01, 0x02, 0x03, 0x04, 0x05],
     };
     let bytes = encode_record(&r).unwrap();
-    assert_eq!(bytes[0], 22);  // ContentType.Handshake
-    assert_eq!(&bytes[1..3], &[0x03, 0x03]);  // legacy version
-    assert_eq!(&bytes[3..5], &[0x00, 0x05]);  // length
+    assert_eq!(bytes[0], 22); // ContentType.Handshake
+    assert_eq!(&bytes[1..3], &[0x03, 0x03]); // legacy version
+    assert_eq!(&bytes[3..5], &[0x00, 0x05]); // length
     assert_eq!(&bytes[5..], &[0x01, 0x02, 0x03, 0x04, 0x05]);
 
     let (decoded, n) = decode_record(&bytes).unwrap();
@@ -53,7 +56,10 @@ fn record_decode_truncated_returns_unexpected_end() {
 #[test]
 fn record_decode_unknown_content_type() {
     let buf = [99, 0x03, 0x03, 0x00, 0x00];
-    assert!(matches!(decode_record(&buf), Err(TlsError::UnknownContentType(99))));
+    assert!(matches!(
+        decode_record(&buf),
+        Err(TlsError::UnknownContentType(99))
+    ));
 }
 
 #[test]
@@ -105,7 +111,7 @@ fn alert_encode_decode_fatal_unknown_ca() {
 // ─── Trust store + chain walk ────────────────────────────────────────
 
 #[test]
-#[ignore]  // seed A8.17: openssl keygen exceeds inner-loop budget
+#[ignore] // seed A8.17: openssl keygen exceeds inner-loop budget
 fn trust_store_loads_system_default() {
     let store = TrustStore::load_system_default();
     match store {
@@ -118,22 +124,35 @@ fn trust_store_loads_system_default() {
 }
 
 #[test]
-#[ignore]  // seed A8.17: openssl keygen exceeds inner-loop budget
+#[ignore] // seed A8.17: openssl keygen exceeds inner-loop budget
 fn chain_walk_self_signed_trust_anchor() {
     if !openssl_available() {
-        eprintln!("skipping: openssl unavailable"); return;
+        eprintln!("skipping: openssl unavailable");
+        return;
     }
     let dir = std::env::temp_dir().join(format!("rusty-tls-chain-{}", std::process::id()));
     let _ = std::fs::create_dir_all(&dir);
     let key_path = dir.join("ca.key");
     let cert_path = dir.join("ca.crt");
-    let _ = Command::new("openssl").args(&[
-        "req", "-x509", "-newkey", "rsa:2048", "-sha256",
-        "-keyout", key_path.to_str().unwrap(),
-        "-out", cert_path.to_str().unwrap(),
-        "-days", "365", "-nodes",
-        "-subj", "/CN=Test Root CA",
-    ]).output().expect("openssl");
+    let _ = Command::new("openssl")
+        .args(&[
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-sha256",
+            "-keyout",
+            key_path.to_str().unwrap(),
+            "-out",
+            cert_path.to_str().unwrap(),
+            "-days",
+            "365",
+            "-nodes",
+            "-subj",
+            "/CN=Test Root CA",
+        ])
+        .output()
+        .expect("openssl");
 
     let pem = std::fs::read_to_string(&cert_path).unwrap();
     let der = pem_to_der(&pem).unwrap();
@@ -147,22 +166,35 @@ fn chain_walk_self_signed_trust_anchor() {
 }
 
 #[test]
-#[ignore]  // seed A8.17
+#[ignore] // seed A8.17
 fn chain_walk_unknown_self_signed_rejected() {
     if !openssl_available() {
-        eprintln!("skipping: openssl unavailable"); return;
+        eprintln!("skipping: openssl unavailable");
+        return;
     }
     let dir = std::env::temp_dir().join(format!("rusty-tls-unknown-{}", std::process::id()));
     let _ = std::fs::create_dir_all(&dir);
     let key_path = dir.join("k.key");
     let cert_path = dir.join("k.crt");
-    let _ = Command::new("openssl").args(&[
-        "req", "-x509", "-newkey", "rsa:2048", "-sha256",
-        "-keyout", key_path.to_str().unwrap(),
-        "-out", cert_path.to_str().unwrap(),
-        "-days", "365", "-nodes",
-        "-subj", "/CN=Unknown Self-Signed",
-    ]).output().expect("openssl");
+    let _ = Command::new("openssl")
+        .args(&[
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-sha256",
+            "-keyout",
+            key_path.to_str().unwrap(),
+            "-out",
+            cert_path.to_str().unwrap(),
+            "-days",
+            "365",
+            "-nodes",
+            "-subj",
+            "/CN=Unknown Self-Signed",
+        ])
+        .output()
+        .expect("openssl");
 
     let pem = std::fs::read_to_string(&cert_path).unwrap();
     let der = pem_to_der(&pem).unwrap();
@@ -184,8 +216,8 @@ fn handshake_encode_decode_roundtrip() {
         body: vec![0x03, 0x03, 0xAA, 0xBB, 0xCC, 0xDD],
     };
     let bytes = encode_handshake(&m);
-    assert_eq!(bytes[0], 1);  // ClientHello
-    assert_eq!(&bytes[1..4], &[0x00, 0x00, 0x06]);  // length
+    assert_eq!(bytes[0], 1); // ClientHello
+    assert_eq!(&bytes[1..4], &[0x00, 0x00, 0x06]); // length
     let (d, n) = decode_handshake(&bytes).unwrap();
     assert_eq!(n, bytes.len());
     assert_eq!(d.msg_type, HandshakeType::ClientHello);
@@ -201,7 +233,7 @@ fn handshake_decode_unknown_type() {
 
 #[test]
 fn handshake_decode_truncated() {
-    let buf = [1u8, 0, 0, 0x10, 0x01];  // declared length 16, only 1 byte
+    let buf = [1u8, 0, 0, 0x10, 0x01]; // declared length 16, only 1 byte
     let r = decode_handshake(&buf);
     assert!(matches!(r, Err(TlsError::UnexpectedEnd)));
 }
@@ -219,7 +251,8 @@ fn early_secret_from_zero() {
     let hash = HashAlgorithm::Sha256;
     let zeros = vec![0u8; 32];
     let early = hash.hkdf_extract(&zeros, &zeros);
-    let expected = hex::decode_hex("33ad0a1c607ec03b09e6cd9893680ce210adf300aa1f2660e1b22e10f170f92a");
+    let expected =
+        hex::decode_hex("33ad0a1c607ec03b09e6cd9893680ce210adf300aa1f2660e1b22e10f170f92a");
     assert_eq!(early, expected);
 }
 
@@ -234,7 +267,8 @@ fn derived_early_secret_label() {
     let early = hash.hkdf_extract(&zeros, &zeros);
     let empty_hash = hash.empty_hash();
     let derived = hkdf_expand_label(hash, &early, b"derived", &empty_hash, 32).unwrap();
-    let expected = hex::decode_hex("6f2615a108c702c5678f54fc9dbab69716c076189c48250cebeac3576c3611ba");
+    let expected =
+        hex::decode_hex("6f2615a108c702c5678f54fc9dbab69716c076189c48250cebeac3576c3611ba");
     assert_eq!(derived, expected);
 }
 
@@ -251,7 +285,7 @@ fn record_nonce_xors_seq_into_iv() {
     assert_eq!(nonce1, expected1);
     // High-byte placement.
     let nonce_big = record_nonce(&iv, 0x0102_0304_0506_0708);
-    let expected_big = vec![0,0,0,0, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
+    let expected_big = vec![0, 0, 0, 0, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
     assert_eq!(nonce_big, expected_big);
 }
 
@@ -309,7 +343,7 @@ fn finished_mac_deterministic() {
 #[test]
 fn client_hello_encodes_with_correct_shape() {
     let random = [0xAA; 32];
-    let key_share_bytes = vec![0x04; 65];  // dummy uncompressed P-256 point
+    let key_share_bytes = vec![0x04; 65]; // dummy uncompressed P-256 point
     let params = ClientHelloParams {
         random: &random,
         legacy_session_id: &[],
@@ -344,12 +378,12 @@ fn client_hello_encodes_with_correct_shape() {
 fn server_hello_decode_roundtrip() {
     // Synthesize a valid ServerHello body and decode it.
     let mut body = Vec::new();
-    body.extend_from_slice(&[0x03, 0x03]);   // legacy_version
-    body.extend_from_slice(&[0xBB; 32]);     // random
-    body.push(0x00);                         // legacy_session_id_echo length
-    body.extend_from_slice(&[0x13, 0x01]);   // cipher_suite = TLS_AES_128_GCM_SHA256
-    body.push(0x00);                         // legacy_compression_method
-    // extensions: supported_versions (selected = 0x0304)
+    body.extend_from_slice(&[0x03, 0x03]); // legacy_version
+    body.extend_from_slice(&[0xBB; 32]); // random
+    body.push(0x00); // legacy_session_id_echo length
+    body.extend_from_slice(&[0x13, 0x01]); // cipher_suite = TLS_AES_128_GCM_SHA256
+    body.push(0x00); // legacy_compression_method
+                     // extensions: supported_versions (selected = 0x0304)
     let sv_ext = vec![0x00, 0x2B, 0x00, 0x02, 0x03, 0x04];
     body.extend_from_slice(&[0x00, sv_ext.len() as u8]);
     body.extend_from_slice(&sv_ext);
@@ -380,7 +414,8 @@ fn server_hello_key_share_extracted() {
     ks_ext.push((key_bytes.len() & 0xFF) as u8);
     ks_ext.extend_from_slice(&key_bytes);
     let mut ext_block = Vec::new();
-    ext_block.push(0x00); ext_block.push(0x33); // EXT_KEY_SHARE
+    ext_block.push(0x00);
+    ext_block.push(0x33); // EXT_KEY_SHARE
     ext_block.push((ks_ext.len() >> 8) as u8);
     ext_block.push((ks_ext.len() & 0xFF) as u8);
     ext_block.extend_from_slice(&ks_ext);
@@ -396,7 +431,7 @@ fn server_hello_key_share_extracted() {
 // ─── ECDH ephemeral keypair (P-256) ─────────────────────────────────
 
 #[test]
-#[ignore]  // seed A8.17: P-256 ECDH scalar mul slow on Pi
+#[ignore] // seed A8.17: P-256 ECDH scalar mul slow on Pi
 fn ephemeral_ecdh_generates_valid_point() {
     let kp = EphemeralEcdh::generate().unwrap();
     assert_eq!(kp.private_scalar.len(), 32);
@@ -408,7 +443,7 @@ fn ephemeral_ecdh_generates_valid_point() {
 }
 
 #[test]
-#[ignore]  // seed A8.17: P-256 ECDH scalar mul slow on Pi
+#[ignore] // seed A8.17: P-256 ECDH scalar mul slow on Pi
 fn ephemeral_ecdh_shared_secret_symmetric() {
     // Alice and Bob each generate a keypair; their shared secrets via
     // ECDH should be equal (canonical DH property).
@@ -421,7 +456,7 @@ fn ephemeral_ecdh_shared_secret_symmetric() {
 }
 
 #[test]
-#[ignore]  // seed A8.17: ephemeral generate triggers P-256 scalar mul
+#[ignore] // seed A8.17: ephemeral generate triggers P-256 scalar mul
 fn shared_secret_rejects_invalid_format() {
     let kp = EphemeralEcdh::generate().unwrap();
     // Compressed form (we only accept uncompressed 0x04).
@@ -461,7 +496,9 @@ impl TlsTransport for MockTransport {
     }
     fn read_some(&mut self, buf: &mut Vec<u8>) -> Result<usize, TlsError> {
         let remaining = &self.read_data[self.read_pos..];
-        if remaining.is_empty() { return Err(TlsError::UnexpectedEnd); }
+        if remaining.is_empty() {
+            return Err(TlsError::UnexpectedEnd);
+        }
         buf.extend_from_slice(remaining);
         self.read_pos = self.read_data.len();
         Ok(remaining.len())
@@ -469,16 +506,18 @@ impl TlsTransport for MockTransport {
 }
 
 #[test]
-#[ignore]  // seed A8.17: P-256 ECDH scalar mul slow on Pi
+#[ignore] // seed A8.17: P-256 ECDH scalar mul slow on Pi
 fn initiate_handshake_writes_client_hello() {
     let mut transport = MockTransport {
-        write_log: Vec::new(), read_data: Vec::new(), read_pos: 0,
+        write_log: Vec::new(),
+        read_data: Vec::new(),
+        read_pos: 0,
     };
     let store = TrustStore::new();
     let ephemeral = initiate_handshake(&mut transport, "example.com", &store).unwrap();
     // Verify a record was written: starts with 0x16 (Handshake), 0x03 0x03 legacy version.
     assert!(transport.write_log.len() > 5);
-    assert_eq!(transport.write_log[0], 22);  // ContentType.Handshake
+    assert_eq!(transport.write_log[0], 22); // ContentType.Handshake
     assert_eq!(&transport.write_log[1..3], &[0x03, 0x03]);
     // The handshake-message inside the record body starts with type=1 (ClientHello).
     assert_eq!(transport.write_log[5], 1);
@@ -490,28 +529,41 @@ fn initiate_handshake_writes_client_hello() {
 // ─── Live handshake against openssl s_server (slow test) ────────────
 
 #[test]
-#[ignore]  // seed A8.17: spawns openssl + runs full TLS handshake
+#[ignore] // seed A8.17: spawns openssl + runs full TLS handshake
 fn tls_connect_against_openssl_s_server() {
     if !openssl_available() {
-        eprintln!("skipping: openssl unavailable"); return;
+        eprintln!("skipping: openssl unavailable");
+        return;
     }
     // Generate a self-signed RSA-SHA256 cert, run `openssl s_server` on a
     // chosen port, connect with rusty-tls using that cert as the trust
     // anchor, verify a handshake completes and one byte of app data
     // round-trips.
-    let dir = std::env::temp_dir().join(format!("rusty-tls-live-{}",
-        std::process::id()));
+    let dir = std::env::temp_dir().join(format!("rusty-tls-live-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let key_path = dir.join("key.pem");
     let cert_path = dir.join("cert.pem");
-    let r = Command::new("openssl").args(&[
-        "req", "-x509", "-newkey", "rsa:2048", "-sha256",
-        "-keyout", key_path.to_str().unwrap(),
-        "-out", cert_path.to_str().unwrap(),
-        "-days", "365", "-nodes",
-        "-subj", "/CN=127.0.0.1",
-        "-addext", "subjectAltName=IP:127.0.0.1",
-    ]).output().expect("openssl req");
+    let r = Command::new("openssl")
+        .args(&[
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-sha256",
+            "-keyout",
+            key_path.to_str().unwrap(),
+            "-out",
+            cert_path.to_str().unwrap(),
+            "-days",
+            "365",
+            "-nodes",
+            "-subj",
+            "/CN=127.0.0.1",
+            "-addext",
+            "subjectAltName=IP:127.0.0.1",
+        ])
+        .output()
+        .expect("openssl req");
     if !r.status.success() {
         eprintln!("openssl req failed: {}", String::from_utf8_lossy(&r.stderr));
         return;
@@ -524,15 +576,24 @@ fn tls_connect_against_openssl_s_server() {
     let server_log = dir.join("s_server.log");
     let log_file = std::fs::File::create(&server_log).unwrap();
     let log_file2 = log_file.try_clone().unwrap();
-    let mut server = Command::new("openssl").args(&[
-        "s_server", "-port", &port.to_string(),
-        "-cert", cert_path.to_str().unwrap(),
-        "-key", key_path.to_str().unwrap(),
-        "-tls1_3", "-naccept", "1",
-        "-www",
-    ]).stdout(std::process::Stdio::from(log_file))
-      .stderr(std::process::Stdio::from(log_file2))
-      .spawn().expect("spawn s_server");
+    let mut server = Command::new("openssl")
+        .args(&[
+            "s_server",
+            "-port",
+            &port.to_string(),
+            "-cert",
+            cert_path.to_str().unwrap(),
+            "-key",
+            key_path.to_str().unwrap(),
+            "-tls1_3",
+            "-naccept",
+            "1",
+            "-www",
+        ])
+        .stdout(std::process::Stdio::from(log_file))
+        .stderr(std::process::Stdio::from(log_file2))
+        .spawn()
+        .expect("spawn s_server");
     // Wait for s_server to bind. On a Pi, openssl req + server start can be slow.
     std::thread::sleep(std::time::Duration::from_millis(2000));
 
@@ -545,15 +606,14 @@ fn tls_connect_against_openssl_s_server() {
     let session_result = tls_connect("127.0.0.1", port, &store);
 
     let session_outcome = match session_result {
-        Ok(mut session) => {
-            session.send_application_data(b"GET / HTTP/1.0\r\n\r\n")
-                .map(|_| ())
-                .and_then(|_| {
-                    let mut acc = Vec::new();
-                    session.receive_application_data(&mut acc)
-                })
-                .map(|resp| String::from_utf8_lossy(&resp).to_string())
-        }
+        Ok(mut session) => session
+            .send_application_data(b"GET / HTTP/1.0\r\n\r\n")
+            .map(|_| ())
+            .and_then(|_| {
+                let mut acc = Vec::new();
+                session.receive_application_data(&mut acc)
+            })
+            .map(|resp| String::from_utf8_lossy(&resp).to_string()),
         Err(e) => Err(e),
     };
 
@@ -562,10 +622,18 @@ fn tls_connect_against_openssl_s_server() {
     let _ = server.wait();
     let log = std::fs::read_to_string(&server_log).unwrap_or_default();
     let _ = std::fs::remove_dir_all(&dir);
-    eprintln!("--- s_server log ({} bytes) ---\n{}\n--- end log ---", log.len(), log);
+    eprintln!(
+        "--- s_server log ({} bytes) ---\n{}\n--- end log ---",
+        log.len(),
+        log
+    );
 
     let s = session_outcome.expect("session round-trip");
-    assert!(s.starts_with("HTTP/1.0"), "unexpected response: {:?}", &s[..s.len().min(40)]);
+    assert!(
+        s.starts_with("HTTP/1.0"),
+        "unexpected response: {:?}",
+        &s[..s.len().min(40)]
+    );
 }
 
 // ─── Hex helper module ──────────────────────────────────────────────

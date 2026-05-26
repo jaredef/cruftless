@@ -32,7 +32,13 @@ const DESCRIBE_NAMES: &[&str] = &["describe"];
 const SKIP_SUFFIXES: &[&str] = &["skip"];
 const TODO_SUFFIXES: &[&str] = &["todo"];
 const FAILING_SUFFIXES: &[&str] = &["failing", "fails"];
-const ASSERT_NAMES: &[&str] = &["assert", "assertEquals", "assertEqual", "assertNotEqual", "ok"];
+const ASSERT_NAMES: &[&str] = &[
+    "assert",
+    "assertEquals",
+    "assertEqual",
+    "assertNotEqual",
+    "ok",
+];
 
 pub fn extract(path: &str, src: &str, lang: Language) -> Result<TestFile> {
     let mut parser = Parser::new();
@@ -183,7 +189,11 @@ fn classify_call<'tree>(node: &Node<'tree>, src: &[u8]) -> Option<ClassifiedCall
                     name = Some(string_literal_text(&arg, src));
                 }
             }
-            "arrow_function" | "function" | "function_expression" | "async_function" | "function_declaration" => {
+            "arrow_function"
+            | "function"
+            | "function_expression"
+            | "async_function"
+            | "function_declaration" => {
                 if body.is_none() {
                     body = arg.child_by_field_name("body").or(Some(arg));
                 }
@@ -483,17 +493,30 @@ fn is_simple_call_chain(value: &str) -> bool {
     let mut s = value.trim();
     loop {
         let t = s.trim_start();
-        if let Some(r) = t.strip_prefix("await ") { s = r; continue; }
-        if let Some(r) = t.strip_prefix("new ") { s = r; continue; }
-        if let Some(r) = t.strip_prefix("typeof ") { s = r; continue; }
+        if let Some(r) = t.strip_prefix("await ") {
+            s = r;
+            continue;
+        }
+        if let Some(r) = t.strip_prefix("new ") {
+            s = r;
+            continue;
+        }
+        if let Some(r) = t.strip_prefix("typeof ") {
+            s = r;
+            continue;
+        }
         s = t;
         break;
     }
     let bytes = s.as_bytes();
-    if bytes.is_empty() { return false; }
+    if bytes.is_empty() {
+        return false;
+    }
     let is_id_start = |c: u8| matches!(c, b'_' | b'$' | b'A'..=b'Z' | b'a'..=b'z');
-    let is_id_cont  = |c: u8| matches!(c, b'_' | b'$' | b'0'..=b'9' | b'A'..=b'Z' | b'a'..=b'z');
-    if !is_id_start(bytes[0]) { return false; }
+    let is_id_cont = |c: u8| matches!(c, b'_' | b'$' | b'0'..=b'9' | b'A'..=b'Z' | b'a'..=b'z');
+    if !is_id_start(bytes[0]) {
+        return false;
+    }
     let mut i = 0;
     while i < bytes.len() && (is_id_cont(bytes[i]) || bytes[i] == b'.') {
         // Disallow consecutive dots (would mean an operator-like construct).
@@ -515,24 +538,41 @@ fn is_simple_call_chain(value: &str) -> bool {
                 while i < bytes.len() && depth > 0 {
                     let cc = bytes[i];
                     if let Some(q) = in_str {
-                        if cc == b'\\' && !prev_back { prev_back = true; i += 1; continue; }
-                        if cc == q && !prev_back { in_str = None; }
+                        if cc == b'\\' && !prev_back {
+                            prev_back = true;
+                            i += 1;
+                            continue;
+                        }
+                        if cc == q && !prev_back {
+                            in_str = None;
+                        }
                         prev_back = false;
                     } else if matches!(cc, b'"' | b'\'' | b'`') {
                         in_str = Some(cc);
-                    } else if cc == open { depth += 1; }
-                    else if cc == close { depth -= 1; }
+                    } else if cc == open {
+                        depth += 1;
+                    } else if cc == close {
+                        depth -= 1;
+                    }
                     i += 1;
                 }
-                if depth != 0 { return false; }
+                if depth != 0 {
+                    return false;
+                }
             }
             b'.' => {
                 i += 1;
                 let start = i;
-                while i < bytes.len() && is_id_cont(bytes[i]) { i += 1; }
-                if i == start { return false; }
+                while i < bytes.len() && is_id_cont(bytes[i]) {
+                    i += 1;
+                }
+                if i == start {
+                    return false;
+                }
             }
-            b' ' | b'\t' | b'\n' | b'\r' => { i += 1; }
+            b' ' | b'\t' | b'\n' | b'\r' => {
+                i += 1;
+            }
             _ => return false,
         }
     }

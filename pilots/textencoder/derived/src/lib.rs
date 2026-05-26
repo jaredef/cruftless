@@ -28,10 +28,14 @@ pub struct EncodeIntoResult {
 }
 
 impl TextEncoder {
-    pub fn new() -> Self { TextEncoder }
+    pub fn new() -> Self {
+        TextEncoder
+    }
 
     /// SPEC §9.1: `readonly attribute DOMString encoding` always returns "utf-8".
-    pub fn encoding(&self) -> &'static str { "utf-8" }
+    pub fn encoding(&self) -> &'static str {
+        "utf-8"
+    }
 
     /// SPEC §9.1.encode: `Uint8Array encode(optional USVString input = "")`.
     ///
@@ -65,16 +69,25 @@ impl TextEncoder {
         let mut read_utf16 = 0usize;
         for ch in source.chars() {
             let utf8_len = ch.len_utf8();
-            if written + utf8_len > destination.len() { break; }
+            if written + utf8_len > destination.len() {
+                break;
+            }
             ch.encode_utf8(&mut destination[written..]);
             written += utf8_len;
             read_utf16 += ch.len_utf16();
         }
-        EncodeIntoResult { read: read_utf16, written }
+        EncodeIntoResult {
+            read: read_utf16,
+            written,
+        }
     }
 }
 
-impl Default for TextEncoder { fn default() -> Self { Self::new() } }
+impl Default for TextEncoder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl fmt::Display for TextEncoder {
     /// CD asserts: `encoder.toString() === "[object TextEncoder]"`. JS's
@@ -112,7 +125,12 @@ pub struct TextDecoderOptions {
 }
 
 impl Default for TextDecoderOptions {
-    fn default() -> Self { Self { fatal: false, ignore_bom: false } }
+    fn default() -> Self {
+        Self {
+            fatal: false,
+            ignore_bom: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -121,7 +139,9 @@ pub struct TextDecodeOptions {
 }
 
 impl Default for TextDecodeOptions {
-    fn default() -> Self { Self { stream: false } }
+    fn default() -> Self {
+        Self { stream: false }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -147,12 +167,22 @@ impl TextDecoder {
         })
     }
 
-    pub fn encoding(&self) -> &'static str { self.encoding }
-    pub fn fatal(&self) -> bool { self.fatal }
-    pub fn ignore_bom(&self) -> bool { self.ignore_bom }
+    pub fn encoding(&self) -> &'static str {
+        self.encoding
+    }
+    pub fn fatal(&self) -> bool {
+        self.fatal
+    }
+    pub fn ignore_bom(&self) -> bool {
+        self.ignore_bom
+    }
 
     /// SPEC §10.1.decode.
-    pub fn decode(&mut self, input: &[u8], options: TextDecodeOptions) -> Result<String, DecoderError> {
+    pub fn decode(
+        &mut self,
+        input: &[u8],
+        options: TextDecodeOptions,
+    ) -> Result<String, DecoderError> {
         // Combine any pending stream-mode bytes with the new input.
         let mut buf: Vec<u8> = Vec::with_capacity(self.pending.len() + input.len());
         buf.extend_from_slice(&self.pending);
@@ -176,11 +206,15 @@ impl TextDecoder {
             self.pending = retained;
         } else if !retained.is_empty() {
             // Non-streaming end-of-input with incomplete trailing bytes.
-            if self.fatal { return Err(DecoderError::InvalidSequence); }
+            if self.fatal {
+                return Err(DecoderError::InvalidSequence);
+            }
             // Otherwise: replace each incomplete byte with U+FFFD per SPEC's
             // "end-of-stream" handler in the UTF-8 decoder.
             let mut s = decoded;
-            for _ in &retained { s.push('\u{FFFD}'); }
+            for _ in &retained {
+                s.push('\u{FFFD}');
+            }
             return Ok(s);
         }
         Ok(decoded)
@@ -192,9 +226,8 @@ impl TextDecoder {
 fn resolve_label(label: &str) -> Result<&'static str, DecoderError> {
     let l = label.trim().to_ascii_lowercase();
     match l.as_str() {
-        "utf-8" | "utf8" | "unicode-1-1-utf-8" | "unicode11utf8" | "unicode20utf8" | "x-unicode20utf8" => {
-            Ok("utf-8")
-        }
+        "utf-8" | "utf8" | "unicode-1-1-utf-8" | "unicode11utf8" | "unicode20utf8"
+        | "x-unicode20utf8" => Ok("utf-8"),
         _ => Err(DecoderError::UnknownEncoding(label.to_string())),
     }
 }
@@ -202,21 +235,31 @@ fn resolve_label(label: &str) -> Result<&'static str, DecoderError> {
 /// UTF-8 decoder per SPEC §4.4.4. Returns (decoded_string, retained_partial_bytes).
 /// In non-streaming, retained_partial_bytes is the trailing bytes that did not
 /// form a complete sequence — the caller decides whether to U+FFFD-pad or error.
-fn utf8_decode(bytes: &[u8], fatal: bool, _stream: bool) -> Result<(String, Vec<u8>), DecoderError> {
+fn utf8_decode(
+    bytes: &[u8],
+    fatal: bool,
+    _stream: bool,
+) -> Result<(String, Vec<u8>), DecoderError> {
     let mut out = String::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {
         let b = bytes[i];
-        let need = if b < 0x80 { 1 }
-            else if b & 0xE0 == 0xC0 { 2 }
-            else if b & 0xF0 == 0xE0 { 3 }
-            else if b & 0xF8 == 0xF0 { 4 }
-            else {
-                if fatal { return Err(DecoderError::InvalidSequence); }
-                out.push('\u{FFFD}');
-                i += 1;
-                continue;
-            };
+        let need = if b < 0x80 {
+            1
+        } else if b & 0xE0 == 0xC0 {
+            2
+        } else if b & 0xF0 == 0xE0 {
+            3
+        } else if b & 0xF8 == 0xF0 {
+            4
+        } else {
+            if fatal {
+                return Err(DecoderError::InvalidSequence);
+            }
+            out.push('\u{FFFD}');
+            i += 1;
+            continue;
+        };
         if i + need > bytes.len() {
             // Incomplete trailing sequence. Defer to caller.
             let retained = bytes[i..].to_vec();
@@ -226,7 +269,9 @@ fn utf8_decode(bytes: &[u8], fatal: bool, _stream: bool) -> Result<(String, Vec<
         match std::str::from_utf8(seq) {
             Ok(s) => out.push_str(s),
             Err(_) => {
-                if fatal { return Err(DecoderError::InvalidSequence); }
+                if fatal {
+                    return Err(DecoderError::InvalidSequence);
+                }
                 out.push('\u{FFFD}');
             }
         }

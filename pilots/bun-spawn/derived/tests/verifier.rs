@@ -27,41 +27,60 @@ fn cd_spawn_sync_stderr_captured() {
 
 #[test]
 fn cd_spawn_sync_stdin_text_passed_through() {
-    let r = spawn_sync(&["cat"], SpawnOptions {
-        stdin: StdinInput::Text("input data".into()),
-        ..Default::default()
-    }).unwrap();
+    let r = spawn_sync(
+        &["cat"],
+        SpawnOptions {
+            stdin: StdinInput::Text("input data".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
     assert_eq!(r.stdout, b"input data".to_vec());
 }
 
 #[test]
 fn cd_spawn_sync_stdin_bytes_passed_through() {
-    let r = spawn_sync(&["cat"], SpawnOptions {
-        stdin: StdinInput::Bytes(vec![0u8, 1, 2, 3, 0xFF]),
-        ..Default::default()
-    }).unwrap();
+    let r = spawn_sync(
+        &["cat"],
+        SpawnOptions {
+            stdin: StdinInput::Bytes(vec![0u8, 1, 2, 3, 0xFF]),
+            ..Default::default()
+        },
+    )
+    .unwrap();
     assert_eq!(r.stdout, vec![0u8, 1, 2, 3, 0xFF]);
 }
 
 #[test]
 fn spec_spawn_sync_cwd_set() {
-    let r = spawn_sync(&["pwd"], SpawnOptions {
-        cwd: Some(std::path::PathBuf::from("/tmp")),
-        ..Default::default()
-    }).unwrap();
+    let r = spawn_sync(
+        &["pwd"],
+        SpawnOptions {
+            cwd: Some(std::path::PathBuf::from("/tmp")),
+            ..Default::default()
+        },
+    )
+    .unwrap();
     let out = String::from_utf8(r.stdout).unwrap();
-    assert!(out.starts_with("/tmp") || out.starts_with("/private/tmp"),
-        "expected /tmp prefix, got {}", out);
+    assert!(
+        out.starts_with("/tmp") || out.starts_with("/private/tmp"),
+        "expected /tmp prefix, got {}",
+        out
+    );
 }
 
 #[test]
 fn spec_spawn_sync_env_set() {
     let mut env = std::collections::HashMap::new();
     env.insert("MYVAR".into(), "thevalue".into());
-    let r = spawn_sync(&["sh", "-c", "echo $MYVAR"], SpawnOptions {
-        env: Some(env),
-        ..Default::default()
-    }).unwrap();
+    let r = spawn_sync(
+        &["sh", "-c", "echo $MYVAR"],
+        SpawnOptions {
+            env: Some(env),
+            ..Default::default()
+        },
+    )
+    .unwrap();
     assert_eq!(r.stdout, b"thevalue\n".to_vec());
 }
 
@@ -72,23 +91,34 @@ fn spec_spawn_sync_env_clear_when_set() {
     // PATH from a built-in default if PATH is unset, masking the env-clear.
     let mut env = std::collections::HashMap::new();
     env.insert("ONLY_THIS".into(), "x".into());
-    let r = spawn_sync(&["env"], SpawnOptions {
-        env: Some(env),
-        ..Default::default()
-    }).unwrap();
+    let r = spawn_sync(
+        &["env"],
+        SpawnOptions {
+            env: Some(env),
+            ..Default::default()
+        },
+    )
+    .unwrap();
     let out = String::from_utf8(r.stdout).unwrap();
     assert!(out.contains("ONLY_THIS=x"));
     // Child env should NOT contain inherited variables like PATH.
-    assert!(!out.contains("PATH="),
-        "child should not inherit PATH; got {}", out);
+    assert!(
+        !out.contains("PATH="),
+        "child should not inherit PATH; got {}",
+        out
+    );
 }
 
 #[test]
 fn spec_spawn_sync_stdout_null_discards() {
-    let r = spawn_sync(&["sh", "-c", "echo hello"], SpawnOptions {
-        stdout: StdioMode::Null,
-        ..Default::default()
-    }).unwrap();
+    let r = spawn_sync(
+        &["sh", "-c", "echo hello"],
+        SpawnOptions {
+            stdout: StdioMode::Null,
+            ..Default::default()
+        },
+    )
+    .unwrap();
     assert!(r.stdout.is_empty());
     assert!(r.success);
 }
@@ -128,11 +158,15 @@ fn spec_spawn_wait_collects_stderr() {
 
 #[test]
 fn spec_spawn_kill_terminates() {
-    let mut proc = spawn(&["sh", "-c", "sleep 30"], SpawnOptions {
-        stdout: StdioMode::Null,
-        stderr: StdioMode::Null,
-        ..Default::default()
-    }).unwrap();
+    let mut proc = spawn(
+        &["sh", "-c", "sleep 30"],
+        SpawnOptions {
+            stdout: StdioMode::Null,
+            stderr: StdioMode::Null,
+            ..Default::default()
+        },
+    )
+    .unwrap();
     proc.kill().unwrap();
     let r = proc.wait().unwrap();
     // Killed processes have non-zero exit; exact code depends on platform
@@ -142,10 +176,14 @@ fn spec_spawn_kill_terminates() {
 
 #[test]
 fn spec_spawn_stdin_text_then_wait() {
-    let proc = spawn(&["cat"], SpawnOptions {
-        stdin: StdinInput::Text("piped".into()),
-        ..Default::default()
-    }).unwrap();
+    let proc = spawn(
+        &["cat"],
+        SpawnOptions {
+            stdin: StdinInput::Text("piped".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
     let r = proc.wait().unwrap();
     assert_eq!(r.stdout, b"piped".to_vec());
 }
@@ -166,7 +204,11 @@ fn spec_spawn_sync_unknown_program_errors() {
 
 #[test]
 fn spec_spawn_sync_multiline_stdout_preserved() {
-    let r = spawn_sync(&["sh", "-c", "echo line1; echo line2; echo line3"], Default::default()).unwrap();
+    let r = spawn_sync(
+        &["sh", "-c", "echo line1; echo line2; echo line3"],
+        Default::default(),
+    )
+    .unwrap();
     let s = String::from_utf8(r.stdout).unwrap();
     assert_eq!(s, "line1\nline2\nline3\n");
 }

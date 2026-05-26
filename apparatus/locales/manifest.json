@@ -1,11 +1,11 @@
 {
   "generated_by": "apparatus/locales/discover.sh",
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
-  "locale_root": "/home/jaredef/rusty-bun/pilots",
+  "locale_root": "/home/jaredef/Developer/cruftless/pilots",
   "totals": {
-    "locales": 94,
+    "locales": 95,
     "top_level": 83,
-    "nested": 11,
+    "nested": 12,
     "warnings": 0
   },
   "locales": [
@@ -701,6 +701,15 @@
       "depth": 1,
       "rung_count": 3,
       "status": "**CHAPTER CLOSED at T262C-EXT 1 (1 implementation round; standing rule 13 thirteenth corroboration)**. Categorize apparatus operational; baseline 77.6% (5576/7182). Top-15 cells = 25.5% (Pred-t262c.2 FALSIFIED on cross-product but top-10 pipelines alone = ~50% via the structure-axis marginal). Mid-round: surfaced + fixed an assert-global-shadow bug in cruftless that was masking ~511 real substrate gaps; fix unmasked them without changing the headline. **5 prioritized substrate sub-locales queued** per the matrix (strict-mode-destructuring-refs, parser-permissiveness, iterator-protocol-error-propagation, Object.defineProperty edge cases, Array.sort edge cases)."
+    },
+    {
+      "coord": "test262-categorize/full-suite",
+      "tag": "L.test262-categorize.full-suite",
+      "parent": "L.test262-categorize",
+      "scope": "full-suite",
+      "depth": 2,
+      "rung_count": 2,
+      "status": "founded 2026-05-25 as the full-suite interpretation apparatus for the upstream 53,289-path Test262 run."
     },
     {
       "coord": "tls",

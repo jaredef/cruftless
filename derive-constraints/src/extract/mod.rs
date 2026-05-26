@@ -92,7 +92,9 @@ pub struct ConstraintClause {
     pub authority_tier: AuthorityTier,
 }
 
-fn default_authority_tier() -> AuthorityTier { AuthorityTier::Contingent }
+fn default_authority_tier() -> AuthorityTier {
+    AuthorityTier::Contingent
+}
 
 /// Per [Doc 707](https://jaredfoy.com/resolve/doc/707-pin-art-at-the-behavioral-surface-bidirectional-probes)
 /// §"Plug-and-play criterion as forward operational consequence":
@@ -131,35 +133,98 @@ pub fn classify_authority_tier(subject: Option<&str>, kind: ConstraintKind) -> A
     if matches!(kind, ConstraintKind::SpecInvariant) {
         return AuthorityTier::Spec;
     }
-    let subj = match subject { Some(s) => s, None => return AuthorityTier::Contingent };
+    let subj = match subject {
+        Some(s) => s,
+        None => return AuthorityTier::Contingent,
+    };
     let head = subj.split('.').next().unwrap_or("");
 
     // Web-platform surfaces (WHATWG / W3C spec'd) → Spec.
-    if matches!(head,
-        "URL" | "URLSearchParams" | "Request" | "Response" | "Headers"
-        | "Blob" | "File" | "FormData" | "ReadableStream" | "WritableStream"
-        | "TransformStream" | "TextEncoder" | "TextDecoder"
-        | "AbortController" | "AbortSignal" | "WebSocket" | "Worker"
-        | "MessagePort" | "MessageChannel" | "BroadcastChannel"
-        | "EventTarget" | "Event" | "CustomEvent" | "fetch"
-        | "structuredClone" | "queueMicrotask" | "atob" | "btoa"
-        | "performance" | "crypto" | "Image" | "Notification"
+    if matches!(
+        head,
+        "URL"
+            | "URLSearchParams"
+            | "Request"
+            | "Response"
+            | "Headers"
+            | "Blob"
+            | "File"
+            | "FormData"
+            | "ReadableStream"
+            | "WritableStream"
+            | "TransformStream"
+            | "TextEncoder"
+            | "TextDecoder"
+            | "AbortController"
+            | "AbortSignal"
+            | "WebSocket"
+            | "Worker"
+            | "MessagePort"
+            | "MessageChannel"
+            | "BroadcastChannel"
+            | "EventTarget"
+            | "Event"
+            | "CustomEvent"
+            | "fetch"
+            | "structuredClone"
+            | "queueMicrotask"
+            | "atob"
+            | "btoa"
+            | "performance"
+            | "crypto"
+            | "Image"
+            | "Notification"
     ) {
         return AuthorityTier::Spec;
     }
 
     // Bun-namespace + Node-API surfaces → Ecosystem.
-    if matches!(head,
-        "Bun" | "Buffer" | "process" | "global" | "globalThis"
-        | "fs" | "path" | "http" | "https" | "http2"
-        | "net" | "tls" | "dgram" | "dns" | "url"
-        | "querystring" | "zlib" | "stream" | "events" | "util"
-        | "os" | "child_process" | "cluster" | "worker_threads"
-        | "vm" | "v8" | "perf_hooks" | "async_hooks" | "buffer"
-        | "inspector" | "module" | "readline" | "repl" | "tty"
-        | "string_decoder" | "punycode" | "assert" | "timers"
-        | "setTimeout" | "setInterval" | "setImmediate"
-        | "clearTimeout" | "clearInterval" | "clearImmediate"
+    if matches!(
+        head,
+        "Bun"
+            | "Buffer"
+            | "process"
+            | "global"
+            | "globalThis"
+            | "fs"
+            | "path"
+            | "http"
+            | "https"
+            | "http2"
+            | "net"
+            | "tls"
+            | "dgram"
+            | "dns"
+            | "url"
+            | "querystring"
+            | "zlib"
+            | "stream"
+            | "events"
+            | "util"
+            | "os"
+            | "child_process"
+            | "cluster"
+            | "worker_threads"
+            | "vm"
+            | "v8"
+            | "perf_hooks"
+            | "async_hooks"
+            | "buffer"
+            | "inspector"
+            | "module"
+            | "readline"
+            | "repl"
+            | "tty"
+            | "string_decoder"
+            | "punycode"
+            | "assert"
+            | "timers"
+            | "setTimeout"
+            | "setInterval"
+            | "setImmediate"
+            | "clearTimeout"
+            | "clearInterval"
+            | "clearImmediate"
     ) {
         return AuthorityTier::Ecosystem;
     }

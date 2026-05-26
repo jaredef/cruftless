@@ -10,8 +10,8 @@
 //! arrive at CAPS-EXT 6+.
 
 use std::path::PathBuf;
-use std::time::Duration;
 use std::sync::Mutex;
+use std::time::Duration;
 
 // ---------------------------------------------------------------- mode
 
@@ -35,7 +35,9 @@ pub enum CapMode {
 }
 
 impl Default for CapMode {
-    fn default() -> Self { Self::Compat }
+    fn default() -> Self {
+        Self::Compat
+    }
 }
 
 impl CapMode {
@@ -94,15 +96,24 @@ pub struct ModuleId {
 
 impl ModuleId {
     pub fn application(url: impl Into<String>) -> Self {
-        Self { url: url.into(), provenance: ModuleProvenance::Application }
+        Self {
+            url: url.into(),
+            provenance: ModuleProvenance::Application,
+        }
     }
 
     pub fn dependency(url: impl Into<String>) -> Self {
-        Self { url: url.into(), provenance: ModuleProvenance::Dependency }
+        Self {
+            url: url.into(),
+            provenance: ModuleProvenance::Dependency,
+        }
     }
 
     pub fn builtin(name: impl Into<String>) -> Self {
-        Self { url: name.into(), provenance: ModuleProvenance::Builtin }
+        Self {
+            url: name.into(),
+            provenance: ModuleProvenance::Builtin,
+        }
     }
 }
 
@@ -119,9 +130,15 @@ pub struct CapabilityError {
 
 impl std::fmt::Display for CapabilityError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}.{}: no {} capability granted to module '{}' (mode: {})",
-            self.capability, self.operation, self.capability,
-            self.calling_module, self.mode.as_str())?;
+        write!(
+            f,
+            "{}.{}: no {} capability granted to module '{}' (mode: {})",
+            self.capability,
+            self.operation,
+            self.capability,
+            self.calling_module,
+            self.mode.as_str()
+        )?;
         if let Some(hint) = &self.hint {
             write!(f, " — hint: {hint}")?;
         }
@@ -265,8 +282,18 @@ pub struct Stdio {
 }
 
 impl Stdio {
-    pub fn full() -> Self { Self { stdout: true, stderr: true } }
-    pub fn none() -> Self { Self { stdout: false, stderr: false } }
+    pub fn full() -> Self {
+        Self {
+            stdout: true,
+            stderr: true,
+        }
+    }
+    pub fn none() -> Self {
+        Self {
+            stdout: false,
+            stderr: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -290,9 +317,21 @@ pub struct Clock {
 }
 
 impl Clock {
-    pub fn fine() -> Self { Self { resolution: ClockResolution::Fine } }
-    pub fn disabled() -> Self { Self { resolution: ClockResolution::Disabled } }
-    pub fn coarse(d: Duration) -> Self { Self { resolution: ClockResolution::Coarse(d) } }
+    pub fn fine() -> Self {
+        Self {
+            resolution: ClockResolution::Fine,
+        }
+    }
+    pub fn disabled() -> Self {
+        Self {
+            resolution: ClockResolution::Disabled,
+        }
+    }
+    pub fn coarse(d: Duration) -> Self {
+        Self {
+            resolution: ClockResolution::Coarse(d),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -312,10 +351,18 @@ pub struct Scheduler {
 
 impl Scheduler {
     pub fn full() -> Self {
-        Self { timers: true, microtasks: true, min_delay: Duration::ZERO }
+        Self {
+            timers: true,
+            microtasks: true,
+            min_delay: Duration::ZERO,
+        }
     }
     pub fn none() -> Self {
-        Self { timers: false, microtasks: false, min_delay: Duration::ZERO }
+        Self {
+            timers: false,
+            microtasks: false,
+            min_delay: Duration::ZERO,
+        }
     }
 }
 
@@ -336,10 +383,18 @@ pub struct Process {
 
 impl Process {
     pub fn full() -> Self {
-        Self { may_exit: true, may_read_cwd: true, may_read_pid: true }
+        Self {
+            may_exit: true,
+            may_read_cwd: true,
+            may_read_pid: true,
+        }
     }
     pub fn none() -> Self {
-        Self { may_exit: false, may_read_cwd: false, may_read_pid: false }
+        Self {
+            may_exit: false,
+            may_read_cwd: false,
+            may_read_pid: false,
+        }
     }
 }
 
@@ -376,14 +431,24 @@ pub struct Env {
 }
 
 impl Env {
-    pub fn full() -> Self { Self { vars: EnvVarPolicy::Any, system_info: true } }
-    pub fn none() -> Self { Self { vars: EnvVarPolicy::None, system_info: false } }
+    pub fn full() -> Self {
+        Self {
+            vars: EnvVarPolicy::Any,
+            system_info: true,
+        }
+    }
+    pub fn none() -> Self {
+        Self {
+            vars: EnvVarPolicy::None,
+            system_info: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
 pub enum EnvOp {
     ReadVar(String),
-    SystemInfo(&'static str),  // e.g. "cpus", "hostname", "homedir"
+    SystemInfo(&'static str), // e.g. "cpus", "hostname", "homedir"
 }
 
 // ------------------------------------------------------------ Net capability
@@ -396,7 +461,10 @@ pub struct NetEndpoint {
 
 impl NetEndpoint {
     pub fn new(host: impl Into<String>, port: u16) -> Self {
-        Self { host: host.into(), port }
+        Self {
+            host: host.into(),
+            port,
+        }
     }
 
     fn matches(&self, host: &str, port: u16) -> bool {
@@ -450,15 +518,24 @@ pub struct Net {
 
 impl Net {
     pub fn full() -> Self {
-        Self { listen: NetListenPolicy::Any, connect: NetConnectPolicy::Any }
+        Self {
+            listen: NetListenPolicy::Any,
+            connect: NetConnectPolicy::Any,
+        }
     }
 
     pub fn none() -> Self {
-        Self { listen: NetListenPolicy::None, connect: NetConnectPolicy::None }
+        Self {
+            listen: NetListenPolicy::None,
+            connect: NetConnectPolicy::None,
+        }
     }
 
     pub fn loopback_server() -> Self {
-        Self { listen: NetListenPolicy::LoopbackAnyPort, connect: NetConnectPolicy::None }
+        Self {
+            listen: NetListenPolicy::LoopbackAnyPort,
+            connect: NetConnectPolicy::None,
+        }
     }
 
     pub fn listen_exact(host: impl Into<String>, port: u16) -> Self {
@@ -541,7 +618,9 @@ impl AmbientCaps {
 }
 
 impl Default for AmbientCaps {
-    fn default() -> Self { Self::full() }
+    fn default() -> Self {
+        Self::full()
+    }
 }
 
 // -------------------------------------------------------------- AuditLog
@@ -630,18 +709,15 @@ impl CapDispatcher {
     }
 
     fn record_audit(&self, caller: &ModuleId, capability: &'static str, op: &str) {
-        if !matches!(self.mode, CapMode::Audit) { return; }
+        if !matches!(self.mode, CapMode::Audit) {
+            return;
+        }
         if let Ok(mut g) = self.audit.lock() {
             g.record(caller, capability, op);
         }
     }
 
-    pub fn require_fs(
-        &self,
-        cap: &Fs,
-        op: FsOp,
-        caller: &ModuleId,
-    ) -> Result<(), CapabilityError> {
+    pub fn require_fs(&self, cap: &Fs, op: FsOp, caller: &ModuleId) -> Result<(), CapabilityError> {
         let op_desc = op.describe();
         self.record_audit(caller, "fs", &op_desc);
         match self.mode {
@@ -659,7 +735,8 @@ impl CapDispatcher {
                         mode: self.mode,
                         hint: Some(format!(
                             "add to caps in package.json: {{ fs: {{ {action}: ['{}'] }} }}",
-                            path.display())),
+                            path.display()
+                        )),
                     })
                 }
             }
@@ -682,14 +759,17 @@ impl CapDispatcher {
             CapMode::Compat | CapMode::Audit => Ok(()),
             CapMode::SealedDeps if caller.provenance.is_application() => Ok(()),
             CapMode::SealedDeps | CapMode::Sealed => {
-                if allowed { Ok(()) } else {
+                if allowed {
+                    Ok(())
+                } else {
                     Err(CapabilityError {
                         capability: "stdio",
                         operation: op_desc,
                         calling_module: caller.url.clone(),
                         mode: self.mode,
                         hint: Some(format!(
-                            "add to caps in package.json: {{ stdio: {{ {stream}: true }} }}")),
+                            "add to caps in package.json: {{ stdio: {{ {stream}: true }} }}"
+                        )),
                     })
                 }
             }
@@ -732,8 +812,7 @@ impl CapDispatcher {
         caller: &ModuleId,
     ) -> Result<(), CapabilityError> {
         let (allowed, kind, op_desc) = match op {
-            SchedulerOp::Timer(d) => (cap.timers, "timers",
-                format!("timer({}ms)", d.as_millis())),
+            SchedulerOp::Timer(d) => (cap.timers, "timers", format!("timer({}ms)", d.as_millis())),
             SchedulerOp::Microtask => (cap.microtasks, "microtasks", "microtask".to_string()),
         };
         self.record_audit(caller, "scheduler", &op_desc);
@@ -741,14 +820,17 @@ impl CapDispatcher {
             CapMode::Compat | CapMode::Audit => Ok(()),
             CapMode::SealedDeps if caller.provenance.is_application() => Ok(()),
             CapMode::SealedDeps | CapMode::Sealed => {
-                if allowed { Ok(()) } else {
+                if allowed {
+                    Ok(())
+                } else {
                     Err(CapabilityError {
                         capability: "scheduler",
                         operation: op_desc,
                         calling_module: caller.url.clone(),
                         mode: self.mode,
                         hint: Some(format!(
-                            "add to caps in package.json: {{ scheduler: {{ {kind}: true }} }}")),
+                            "add to caps in package.json: {{ scheduler: {{ {kind}: true }} }}"
+                        )),
                     })
                 }
             }
@@ -771,13 +853,17 @@ impl CapDispatcher {
             CapMode::Compat | CapMode::Audit => Ok(()),
             CapMode::SealedDeps if caller.provenance.is_application() => Ok(()),
             CapMode::SealedDeps | CapMode::Sealed => {
-                if allowed { Ok(()) } else {
+                if allowed {
+                    Ok(())
+                } else {
                     Err(CapabilityError {
                         capability: "process",
                         operation: op_desc,
                         calling_module: caller.url.clone(),
                         mode: self.mode,
-                        hint: Some(format!("add to caps in package.json: {{ process: {{ {field}: true }} }}")),
+                        hint: Some(format!(
+                            "add to caps in package.json: {{ process: {{ {field}: true }} }}"
+                        )),
                     })
                 }
             }
@@ -803,11 +889,16 @@ impl CapDispatcher {
                     EnvOp::ReadVar(name) => cap.vars.allows(name),
                     EnvOp::SystemInfo(_) => cap.system_info,
                 };
-                if allowed { Ok(()) } else {
+                if allowed {
+                    Ok(())
+                } else {
                     let hint = match &op {
                         EnvOp::ReadVar(name) => format!(
-                            "add to caps in package.json: {{ env: {{ vars: ['{name}'] }} }}"),
-                        EnvOp::SystemInfo(_) => "add to caps in package.json: { env: { systemInfo: true } }".into(),
+                            "add to caps in package.json: {{ env: {{ vars: ['{name}'] }} }}"
+                        ),
+                        EnvOp::SystemInfo(_) => {
+                            "add to caps in package.json: { env: { systemInfo: true } }".into()
+                        }
                     };
                     Err(CapabilityError {
                         capability: "env",
@@ -850,7 +941,9 @@ impl CapDispatcher {
 }
 
 impl Default for CapDispatcher {
-    fn default() -> Self { Self::compat() }
+    fn default() -> Self {
+        Self::compat()
+    }
 }
 
 // ----------------------------------------------------------------- tests
@@ -859,8 +952,12 @@ impl Default for CapDispatcher {
 mod tests {
     use super::*;
 
-    fn app_caller() -> ModuleId { ModuleId::application("file:///proj/app.mjs") }
-    fn dep_caller() -> ModuleId { ModuleId::dependency("file:///proj/node_modules/lodash/index.js") }
+    fn app_caller() -> ModuleId {
+        ModuleId::application("file:///proj/app.mjs")
+    }
+    fn dep_caller() -> ModuleId {
+        ModuleId::dependency("file:///proj/node_modules/lodash/index.js")
+    }
 
     #[test]
     fn mode_default_is_compat() {
@@ -881,11 +978,7 @@ mod tests {
         let d = CapDispatcher::compat();
         // Even an empty Fs capability is ignored under Mode 0.
         let cap = Fs::none();
-        let result = d.require_fs(
-            &cap,
-            FsOp::Read("/etc/passwd".into()),
-            &dep_caller(),
-        );
+        let result = d.require_fs(&cap, FsOp::Read("/etc/passwd".into()), &dep_caller());
         assert!(result.is_ok());
     }
 
@@ -947,26 +1040,43 @@ mod tests {
     fn fs_sub_dir_narrows() {
         let cap = Fs::full().sub_dir("/proj/data");
         let d = CapDispatcher::new(CapMode::Sealed);
-        assert!(d.require_fs(&cap, FsOp::Read("/proj/data/x".into()), &dep_caller()).is_ok());
-        assert!(d.require_fs(&cap, FsOp::Read("/proj/secrets".into()), &dep_caller()).is_err());
+        assert!(d
+            .require_fs(&cap, FsOp::Read("/proj/data/x".into()), &dep_caller())
+            .is_ok());
+        assert!(d
+            .require_fs(&cap, FsOp::Read("/proj/secrets".into()), &dep_caller())
+            .is_err());
     }
 
     #[test]
     fn fs_read_only_strips_writes() {
         let cap = Fs::full().read_only();
         let d = CapDispatcher::new(CapMode::Sealed);
-        assert!(d.require_fs(&cap, FsOp::Read("/x".into()), &dep_caller()).is_ok());
-        assert!(d.require_fs(&cap, FsOp::Write("/x".into()), &dep_caller()).is_err());
+        assert!(d
+            .require_fs(&cap, FsOp::Read("/x".into()), &dep_caller())
+            .is_ok());
+        assert!(d
+            .require_fs(&cap, FsOp::Write("/x".into()), &dep_caller())
+            .is_err());
     }
 
     #[test]
     fn stdio_sealed_blocks_unless_granted() {
         let d = CapDispatcher::new(CapMode::Sealed);
         let none = Stdio::none();
-        assert!(d.require_stdio(&none, StdioOp::Stdout(b"x".to_vec()), &dep_caller()).is_err());
-        let stdout_only = Stdio { stdout: true, stderr: false };
-        assert!(d.require_stdio(&stdout_only, StdioOp::Stdout(b"x".to_vec()), &dep_caller()).is_ok());
-        assert!(d.require_stdio(&stdout_only, StdioOp::Stderr(b"x".to_vec()), &dep_caller()).is_err());
+        assert!(d
+            .require_stdio(&none, StdioOp::Stdout(b"x".to_vec()), &dep_caller())
+            .is_err());
+        let stdout_only = Stdio {
+            stdout: true,
+            stderr: false,
+        };
+        assert!(d
+            .require_stdio(&stdout_only, StdioOp::Stdout(b"x".to_vec()), &dep_caller())
+            .is_ok());
+        assert!(d
+            .require_stdio(&stdout_only, StdioOp::Stderr(b"x".to_vec()), &dep_caller())
+            .is_err());
     }
 
     #[test]
@@ -982,9 +1092,13 @@ mod tests {
     fn process_exit_gated() {
         let d = CapDispatcher::new(CapMode::Sealed);
         let none = Process::none();
-        assert!(d.require_process(&none, ProcessOp::Exit(1), &dep_caller()).is_err());
+        assert!(d
+            .require_process(&none, ProcessOp::Exit(1), &dep_caller())
+            .is_err());
         let full = Process::full();
-        assert!(d.require_process(&full, ProcessOp::Exit(1), &dep_caller()).is_ok());
+        assert!(d
+            .require_process(&full, ProcessOp::Exit(1), &dep_caller())
+            .is_ok());
     }
 
     #[test]
@@ -994,33 +1108,91 @@ mod tests {
             system_info: false,
         };
         let d = CapDispatcher::new(CapMode::Sealed);
-        assert!(d.require_env(&cap, EnvOp::ReadVar("LANG".into()), &dep_caller()).is_ok());
-        assert!(d.require_env(&cap, EnvOp::ReadVar("AWS_KEY".into()), &dep_caller()).is_err());
-        assert!(d.require_env(&cap, EnvOp::SystemInfo("cpus"), &dep_caller()).is_err());
+        assert!(d
+            .require_env(&cap, EnvOp::ReadVar("LANG".into()), &dep_caller())
+            .is_ok());
+        assert!(d
+            .require_env(&cap, EnvOp::ReadVar("AWS_KEY".into()), &dep_caller())
+            .is_err());
+        assert!(d
+            .require_env(&cap, EnvOp::SystemInfo("cpus"), &dep_caller())
+            .is_err());
     }
 
     #[test]
     fn net_loopback_listen_policy() {
         let d = CapDispatcher::new(CapMode::Sealed);
         let cap = Net::loopback_server();
-        assert!(d.require_net(&cap, NetOp::Listen { host: "127.0.0.1".into(), port: 0 }, &dep_caller()).is_ok());
-        assert!(d.require_net(&cap, NetOp::Listen { host: "localhost".into(), port: 3000 }, &dep_caller()).is_ok());
-        assert!(d.require_net(&cap, NetOp::Listen { host: "0.0.0.0".into(), port: 0 }, &dep_caller()).is_err());
+        assert!(d
+            .require_net(
+                &cap,
+                NetOp::Listen {
+                    host: "127.0.0.1".into(),
+                    port: 0
+                },
+                &dep_caller()
+            )
+            .is_ok());
+        assert!(d
+            .require_net(
+                &cap,
+                NetOp::Listen {
+                    host: "localhost".into(),
+                    port: 3000
+                },
+                &dep_caller()
+            )
+            .is_ok());
+        assert!(d
+            .require_net(
+                &cap,
+                NetOp::Listen {
+                    host: "0.0.0.0".into(),
+                    port: 0
+                },
+                &dep_caller()
+            )
+            .is_err());
     }
 
     #[test]
     fn net_exact_listen_policy() {
         let d = CapDispatcher::new(CapMode::Sealed);
         let cap = Net::listen_exact("127.0.0.1", 8080);
-        assert!(d.require_net(&cap, NetOp::Listen { host: "127.0.0.1".into(), port: 8080 }, &dep_caller()).is_ok());
-        assert!(d.require_net(&cap, NetOp::Listen { host: "127.0.0.1".into(), port: 8081 }, &dep_caller()).is_err());
+        assert!(d
+            .require_net(
+                &cap,
+                NetOp::Listen {
+                    host: "127.0.0.1".into(),
+                    port: 8080
+                },
+                &dep_caller()
+            )
+            .is_ok());
+        assert!(d
+            .require_net(
+                &cap,
+                NetOp::Listen {
+                    host: "127.0.0.1".into(),
+                    port: 8081
+                },
+                &dep_caller()
+            )
+            .is_err());
     }
 
     #[test]
     fn net_audit_records_listen() {
         let d = CapDispatcher::audit_mode();
         let cap = Net::none();
-        let r = d.require_net(&cap, NetOp::Listen { host: "127.0.0.1".into(), port: 0 }, &dep_caller());
+        let r = d.require_net(
+            &cap,
+            NetOp::Listen {
+                host: "127.0.0.1".into(),
+                port: 0,
+            },
+            &dep_caller(),
+        );
         assert!(r.is_ok());
         let records = d.drain_audit();
         assert_eq!(records.len(), 1);
@@ -1032,15 +1204,35 @@ mod tests {
     fn net_sealed_deps_app_passes() {
         let d = CapDispatcher::new(CapMode::SealedDeps);
         let cap = Net::none();
-        assert!(d.require_net(&cap, NetOp::Listen { host: "0.0.0.0".into(), port: 0 }, &app_caller()).is_ok());
-        assert!(d.require_net(&cap, NetOp::Listen { host: "0.0.0.0".into(), port: 0 }, &dep_caller()).is_err());
+        assert!(d
+            .require_net(
+                &cap,
+                NetOp::Listen {
+                    host: "0.0.0.0".into(),
+                    port: 0
+                },
+                &app_caller()
+            )
+            .is_ok());
+        assert!(d
+            .require_net(
+                &cap,
+                NetOp::Listen {
+                    host: "0.0.0.0".into(),
+                    port: 0
+                },
+                &dep_caller()
+            )
+            .is_err());
     }
 
     #[test]
     fn capability_error_display() {
         let d = CapDispatcher::new(CapMode::Sealed);
         let cap = Fs::none();
-        let e = d.require_fs(&cap, FsOp::Read("/etc/passwd".into()), &dep_caller()).unwrap_err();
+        let e = d
+            .require_fs(&cap, FsOp::Read("/etc/passwd".into()), &dep_caller())
+            .unwrap_err();
         let s = format!("{e}");
         assert!(s.contains("fs"));
         assert!(s.contains("/etc/passwd"));

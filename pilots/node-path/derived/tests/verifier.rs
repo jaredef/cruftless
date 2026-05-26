@@ -155,12 +155,18 @@ fn cd_posix_isabsolute_relative() {
 
 #[test]
 fn cd_posix_join_simple() {
-    assert_eq!(posix::join(&["/foo", "bar", "baz/asdf"]), "/foo/bar/baz/asdf");
+    assert_eq!(
+        posix::join(&["/foo", "bar", "baz/asdf"]),
+        "/foo/bar/baz/asdf"
+    );
 }
 
 #[test]
 fn cd_posix_join_with_dotdot() {
-    assert_eq!(posix::join(&["/foo", "bar", "baz/asdf", "quux", ".."]), "/foo/bar/baz/asdf");
+    assert_eq!(
+        posix::join(&["/foo", "bar", "baz/asdf", "quux", ".."]),
+        "/foo/bar/baz/asdf"
+    );
 }
 
 #[test]
@@ -178,7 +184,10 @@ fn cd_posix_join_preserves_leading_slash() {
 
 #[test]
 fn cd_posix_normalize_collapse_dotdot() {
-    assert_eq!(posix::normalize("/foo/bar//baz/asdf/quux/.."), "/foo/bar/baz/asdf");
+    assert_eq!(
+        posix::normalize("/foo/bar//baz/asdf/quux/.."),
+        "/foo/bar/baz/asdf"
+    );
 }
 
 #[test]
@@ -232,12 +241,18 @@ fn cd_posix_relative_same_path_empty() {
 
 #[test]
 fn cd_posix_resolve_simple() {
-    assert_eq!(posix::resolve(&["/foo/bar", "./baz"], "/cwd"), "/foo/bar/baz");
+    assert_eq!(
+        posix::resolve(&["/foo/bar", "./baz"], "/cwd"),
+        "/foo/bar/baz"
+    );
 }
 
 #[test]
 fn cd_posix_resolve_absolute_overrides() {
-    assert_eq!(posix::resolve(&["/foo/bar", "/tmp/file"], "/cwd"), "/tmp/file");
+    assert_eq!(
+        posix::resolve(&["/foo/bar", "/tmp/file"], "/cwd"),
+        "/tmp/file"
+    );
 }
 
 #[test]
@@ -258,9 +273,13 @@ fn cd_posix_resolve_collapses_dotdot() {
 // ════════════════════ POSIX CONSTANTS ════════════════════
 
 #[test]
-fn spec_posix_sep_is_slash() { assert_eq!(posix::SEP, "/"); }
+fn spec_posix_sep_is_slash() {
+    assert_eq!(posix::SEP, "/");
+}
 #[test]
-fn spec_posix_delimiter_is_colon() { assert_eq!(posix::DELIMITER, ":"); }
+fn spec_posix_delimiter_is_colon() {
+    assert_eq!(posix::DELIMITER, ":");
+}
 
 // ════════════════════ WIN32 ISABSOLUTE ════════════════════
 
@@ -281,7 +300,7 @@ fn cd_win32_isabsolute_drive_letter() {
 fn cd_win32_isabsolute_relative() {
     assert!(!win32::is_absolute(""));
     assert!(!win32::is_absolute("foo\\bar"));
-    assert!(!win32::is_absolute("C:foo"));  // drive-relative without separator
+    assert!(!win32::is_absolute("C:foo")); // drive-relative without separator
 }
 
 // ════════════════════ WIN32 BASENAME / DIRNAME ════════════════════

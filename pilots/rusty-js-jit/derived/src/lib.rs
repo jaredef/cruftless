@@ -26,26 +26,23 @@
 //! a hand-built `fn add(a: i64, b: i64) -> i64` round-trips through
 //! Cranelift's JIT module path.
 
-pub mod translator;
-pub mod promote;
 pub mod deopt;
+pub mod ic_table;
+pub mod promote;
 pub mod stub_aarch64;
 pub mod tiny_baseline;
-pub mod ic_table;
-pub use translator::{compile_function, compile_function_osr, CompiledFn, JitFn};
-pub use tiny_baseline::{TinyBaselineMetadata, lejit_tb_enabled, TB_BYTECODE_LEN_THRESHOLD};
-pub use promote::promote_to_typed_i64;
+pub mod translator;
 pub use deopt::{
-    DeoptReason, DeoptSite, DeoptLiveLocal, JitLocation,
-    DeoptCallFrame, DeoptRecoveredState, JitCallOutcome,
-    DeoptSiteTable, jit_deopt_thunk, reconstruct_state,
-    deopt_trip, set_current_deopt_sites, clear_current_deopt_sites, take_last_deopt,
-    set_force_shape_trip, get_force_shape_trip_addr,
-    jit_getprop_on_object, GetPropFn,
-    set_active_getprop_fn, clear_active_getprop_fn,
-    set_current_runtime, clear_current_runtime, get_current_runtime,
-    set_current_proto, clear_current_proto, get_current_proto,
+    clear_active_getprop_fn, clear_current_deopt_sites, clear_current_proto, clear_current_runtime,
+    deopt_trip, get_current_proto, get_current_runtime, get_force_shape_trip_addr, jit_deopt_thunk,
+    jit_getprop_on_object, reconstruct_state, set_active_getprop_fn, set_current_deopt_sites,
+    set_current_proto, set_current_runtime, set_force_shape_trip, take_last_deopt, DeoptCallFrame,
+    DeoptLiveLocal, DeoptReason, DeoptRecoveredState, DeoptSite, DeoptSiteTable, GetPropFn,
+    JitCallOutcome, JitLocation,
 };
+pub use promote::promote_to_typed_i64;
+pub use tiny_baseline::{lejit_tb_enabled, TinyBaselineMetadata, TB_BYTECODE_LEN_THRESHOLD};
+pub use translator::{compile_function, compile_function_osr, CompiledFn, JitFn};
 
 // JIT-EXT 12: synthetic-trip smoke test. Builds a hand-rolled
 // JIT'd function that unconditionally calls `deopt_trip(site_id=0, 42, 0, 0, 0)`
@@ -59,13 +56,15 @@ pub use deopt::{
 #[cfg(test)]
 pub fn synthetic_trip_smoke() -> Result<extern "C" fn() -> i64, String> {
     let mut flag_builder = settings::builder();
-    flag_builder.set("use_colocated_libcalls", "false")
+    flag_builder
+        .set("use_colocated_libcalls", "false")
         .map_err(|e| format!("flag use_colocated_libcalls: {e:?}"))?;
-    flag_builder.set("is_pic", "false")
+    flag_builder
+        .set("is_pic", "false")
         .map_err(|e| format!("flag is_pic: {e:?}"))?;
-    let isa_builder = cranelift_native::builder()
-        .map_err(|e| format!("isa builder: {e}"))?;
-    let isa = isa_builder.finish(settings::Flags::new(flag_builder))
+    let isa_builder = cranelift_native::builder().map_err(|e| format!("isa builder: {e}"))?;
+    let isa = isa_builder
+        .finish(settings::Flags::new(flag_builder))
         .map_err(|e| format!("isa finish: {e:?}"))?;
 
     let mut jit_builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
@@ -77,7 +76,9 @@ pub fn synthetic_trip_smoke() -> Result<extern "C" fn() -> i64, String> {
     // Declare the trip function's signature in the JIT module so we
     // can refer to it from emitted code.
     let mut trip_sig = module.make_signature();
-    for _ in 0..5 { trip_sig.params.push(AbiParam::new(I64)); }
+    for _ in 0..5 {
+        trip_sig.params.push(AbiParam::new(I64));
+    }
     trip_sig.returns.push(AbiParam::new(I64));
     let trip_id = module
         .declare_function("deopt_trip", Linkage::Import, &trip_sig)
@@ -113,10 +114,12 @@ pub fn synthetic_trip_smoke() -> Result<extern "C" fn() -> i64, String> {
     let id = module
         .declare_function("synthetic_trip", Linkage::Export, &ctx.func.signature)
         .map_err(|e| format!("declare synthetic: {e}"))?;
-    module.define_function(id, &mut ctx)
+    module
+        .define_function(id, &mut ctx)
         .map_err(|e| format!("define synthetic: {e}"))?;
     module.clear_context(&mut ctx);
-    module.finalize_definitions()
+    module
+        .finalize_definitions()
         .map_err(|e| format!("finalize: {e:?}"))?;
 
     let code_ptr = module.get_finalized_function(id);
@@ -139,12 +142,13 @@ use cranelift_module::{Linkage, Module};
 /// attempted.
 pub fn smoke_test_add() -> Result<extern "C" fn(i64, i64) -> i64, String> {
     let mut flag_builder = settings::builder();
-    flag_builder.set("use_colocated_libcalls", "false")
+    flag_builder
+        .set("use_colocated_libcalls", "false")
         .map_err(|e| format!("flag use_colocated_libcalls: {e:?}"))?;
-    flag_builder.set("is_pic", "false")
+    flag_builder
+        .set("is_pic", "false")
         .map_err(|e| format!("flag is_pic: {e:?}"))?;
-    let isa_builder = cranelift_native::builder()
-        .map_err(|e| format!("isa builder: {e}"))?;
+    let isa_builder = cranelift_native::builder().map_err(|e| format!("isa builder: {e}"))?;
     let isa = isa_builder
         .finish(settings::Flags::new(flag_builder))
         .map_err(|e| format!("isa finish: {e:?}"))?;
@@ -175,10 +179,12 @@ pub fn smoke_test_add() -> Result<extern "C" fn(i64, i64) -> i64, String> {
     let id = module
         .declare_function("smoke_add", Linkage::Export, &ctx.func.signature)
         .map_err(|e| format!("declare_function: {e}"))?;
-    module.define_function(id, &mut ctx)
+    module
+        .define_function(id, &mut ctx)
         .map_err(|e| format!("define_function: {e}"))?;
     module.clear_context(&mut ctx);
-    module.finalize_definitions()
+    module
+        .finalize_definitions()
         .map_err(|e| format!("finalize_definitions: {e}"))?;
 
     let code_ptr = module.get_finalized_function(id);
@@ -227,10 +233,16 @@ mod tests {
 
         let trip_fn = synthetic_trip_smoke().expect("Cranelift extern wiring failed");
         let ret = trip_fn();
-        assert_eq!(ret, 0, "thunk's sentinel propagates through Cranelift return");
+        assert_eq!(
+            ret, 0,
+            "thunk's sentinel propagates through Cranelift return"
+        );
 
         let recovered = take_last_deopt().expect("trip should have recorded state");
-        assert_eq!(recovered.reason, DeoptReason::IntegerOverflow { op_pc: 100 });
+        assert_eq!(
+            recovered.reason,
+            DeoptReason::IntegerOverflow { op_pc: 100 }
+        );
         assert_eq!(recovered.resume_pc, 200);
         // The synthetic_trip passes r0=42, which maps to interp_slot 0
         // per the site's live_locals.

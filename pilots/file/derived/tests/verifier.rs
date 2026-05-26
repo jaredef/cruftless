@@ -23,7 +23,11 @@ fn cd_file1_class_exists() {
 // `new File(new Uint8Array(), "file.txt")` ⇒ `expect(blob.name).toBe("file.txt")`
 #[test]
 fn cd_file1_constructed_from_bytes_with_name() {
-    let f = File::new(&[BlobPart::Bytes(&[1, 2, 3])], "file.txt", Default::default());
+    let f = File::new(
+        &[BlobPart::Bytes(&[1, 2, 3])],
+        "file.txt",
+        Default::default(),
+    );
     assert_eq!(f.name(), "file.txt");
     assert_eq!(f.size(), 3);
 }
@@ -136,7 +140,9 @@ fn spec_bytes_delegates_to_blob() {
 
 #[test]
 fn structural_file_can_be_used_where_blob_expected() {
-    fn takes_blob(b: &Blob) -> usize { b.size() }
+    fn takes_blob(b: &Blob) -> usize {
+        b.size()
+    }
     let f = File::new(&[BlobPart::Str("test")], "x", Default::default());
     let n = takes_blob(f.as_blob());
     assert_eq!(n, 4);

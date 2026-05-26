@@ -17,12 +17,16 @@
 use rusty_js_bytecode::compiler::{FunctionProto, LocalDescriptor, UpvalueDescriptor};
 use rusty_js_bytecode::constants::ConstantsPool;
 use rusty_js_bytecode::op::Op;
-use rusty_js_runtime::{Runtime, Value};
 use rusty_js_runtime::value::{ClosureInternals, InternalKind, Object};
+use rusty_js_runtime::{Runtime, Value};
 use std::time::Instant;
 
-fn encode_op(bc: &mut Vec<u8>, op: Op) { bc.push(op as u8); }
-fn encode_u16(bc: &mut Vec<u8>, v: u16) { bc.extend_from_slice(&v.to_le_bytes()); }
+fn encode_op(bc: &mut Vec<u8>, op: Op) {
+    bc.push(op as u8);
+}
+fn encode_u16(bc: &mut Vec<u8>, v: u16) {
+    bc.extend_from_slice(&v.to_le_bytes());
+}
 
 fn local(name: &str) -> LocalDescriptor {
     LocalDescriptor {
@@ -32,9 +36,7 @@ fn local(name: &str) -> LocalDescriptor {
     }
 }
 
-fn make_proto(name: &str, bc: Vec<u8>, params: u16, locals: Vec<LocalDescriptor>)
-    -> FunctionProto
-{
+fn make_proto(name: &str, bc: Vec<u8>, params: u16, locals: Vec<LocalDescriptor>) -> FunctionProto {
     FunctionProto {
         bytecode: bc,
         constants: ConstantsPool::new(),
@@ -59,7 +61,8 @@ fn make_proto(name: &str, bc: Vec<u8>, params: u16, locals: Vec<LocalDescriptor>
 /// function id1(x) { return x; }
 fn build_id1() -> FunctionProto {
     let mut bc = Vec::new();
-    encode_op(&mut bc, Op::LoadLocal); encode_u16(&mut bc, 0);
+    encode_op(&mut bc, Op::LoadLocal);
+    encode_u16(&mut bc, 0);
     encode_op(&mut bc, Op::Return);
     make_proto("id1", bc, 1, vec![local("x")])
 }
@@ -67,8 +70,10 @@ fn build_id1() -> FunctionProto {
 /// function id2(x, y) { return x + y; }
 fn build_id2() -> FunctionProto {
     let mut bc = Vec::new();
-    encode_op(&mut bc, Op::LoadLocal); encode_u16(&mut bc, 0);
-    encode_op(&mut bc, Op::LoadLocal); encode_u16(&mut bc, 1);
+    encode_op(&mut bc, Op::LoadLocal);
+    encode_u16(&mut bc, 0);
+    encode_op(&mut bc, Op::LoadLocal);
+    encode_u16(&mut bc, 1);
     encode_op(&mut bc, Op::Add);
     encode_op(&mut bc, Op::Return);
     make_proto("id2", bc, 2, vec![local("x"), local("y")])
@@ -77,9 +82,12 @@ fn build_id2() -> FunctionProto {
 /// function id_locals(x) { let y = x; return y; }
 fn build_id_locals() -> FunctionProto {
     let mut bc = Vec::new();
-    encode_op(&mut bc, Op::LoadLocal); encode_u16(&mut bc, 0);
-    encode_op(&mut bc, Op::StoreLocal); encode_u16(&mut bc, 1);
-    encode_op(&mut bc, Op::LoadLocal); encode_u16(&mut bc, 1);
+    encode_op(&mut bc, Op::LoadLocal);
+    encode_u16(&mut bc, 0);
+    encode_op(&mut bc, Op::StoreLocal);
+    encode_u16(&mut bc, 1);
+    encode_op(&mut bc, Op::LoadLocal);
+    encode_u16(&mut bc, 1);
     encode_op(&mut bc, Op::Return);
     make_proto("id_locals", bc, 1, vec![local("x"), local("y")])
 }
@@ -94,7 +102,7 @@ fn install_closure(rt: &mut Runtime, proto: FunctionProto) -> Value {
         is_arrow: false,
         call_count: std::cell::Cell::new(0),
         jit_disabled: std::cell::Cell::new(false),
-    tb_metadata_ptr: std::cell::Cell::new(None),
+        tb_metadata_ptr: std::cell::Cell::new(None),
     };
     let closure_obj = Object {
         proto: None,
@@ -107,9 +115,7 @@ fn install_closure(rt: &mut Runtime, proto: FunctionProto) -> Value {
     Value::Object(closure_id)
 }
 
-fn bench(name: &str, rt: &mut Runtime, closure_v: Value,
-         args: Vec<Value>, expected: f64) -> f64
-{
+fn bench(name: &str, rt: &mut Runtime, closure_v: Value, args: Vec<Value>, expected: f64) -> f64 {
     // Warm-up: JIT compile happens on first call.
     for _ in 0..10 {
         let _ = rt.call_function(closure_v.clone(), Value::Undefined, args.clone());
@@ -118,18 +124,24 @@ fn bench(name: &str, rt: &mut Runtime, closure_v: Value,
     let t0 = Instant::now();
     let mut last = Value::Undefined;
     for _ in 0..N {
-        last = rt.call_function(closure_v.clone(), Value::Undefined, args.clone())
+        last = rt
+            .call_function(closure_v.clone(), Value::Undefined, args.clone())
             .expect("call_function should succeed");
     }
     let elapsed = t0.elapsed();
     let per_iter_ns = (elapsed.as_nanos() as f64) / N as f64;
     match last {
-        Value::Number(n) => assert!((n - expected).abs() < 1e-9,
-            "{name}: expected {expected}, got {n}"),
+        Value::Number(n) => assert!(
+            (n - expected).abs() < 1e-9,
+            "{name}: expected {expected}, got {n}"
+        ),
         other => panic!("{name}: expected Number({expected}); got {other:?}"),
     }
-    println!("  {name:<12}  elapsed: {:>7.2} ms   per-iter: {:>6.1} ns",
-        elapsed.as_secs_f64() * 1000.0, per_iter_ns);
+    println!(
+        "  {name:<12}  elapsed: {:>7.2} ms   per-iter: {:>6.1} ns",
+        elapsed.as_secs_f64() * 1000.0,
+        per_iter_ns
+    );
     per_iter_ns
 }
 
@@ -151,19 +163,26 @@ fn main() {
     println!("dispatch:    call_function -> arg-coerce -> JIT -> rebox");
     println!();
 
-    let p1 = bench("id1",        &mut rt, id1,
-        vec![arg42.clone()], 42.0);
-    let p2 = bench("id2",        &mut rt, id2,
-        vec![arg42.clone(), arg17.clone()], 59.0);
-    let p3 = bench("id_locals",  &mut rt, id_locals,
-        vec![arg42.clone()], 42.0);
+    let p1 = bench("id1", &mut rt, id1, vec![arg42.clone()], 42.0);
+    let p2 = bench(
+        "id2",
+        &mut rt,
+        id2,
+        vec![arg42.clone(), arg17.clone()],
+        59.0,
+    );
+    let p3 = bench("id_locals", &mut rt, id_locals, vec![arg42.clone()], 42.0);
 
     println!();
     println!("Decomposition reading:");
-    println!("  id2 - id1       = {:>5.1} ns  (2nd arg coerce + Add op)",
-        p2 - p1);
-    println!("  id_locals - id1 = {:>5.1} ns  (local-init + StoreLocal)",
-        p3 - p1);
+    println!(
+        "  id2 - id1       = {:>5.1} ns  (2nd arg coerce + Add op)",
+        p2 - p1
+    );
+    println!(
+        "  id_locals - id1 = {:>5.1} ns  (local-init + StoreLocal)",
+        p3 - p1
+    );
     println!();
     println!("Pred-tb.1 target: TB-EXT 3b call-thunk reduces id1 by >=40 ns post-3b.");
 }

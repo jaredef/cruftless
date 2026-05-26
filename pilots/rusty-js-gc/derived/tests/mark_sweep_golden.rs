@@ -19,7 +19,10 @@ impl Trace for Node {
 }
 
 fn n(label: &str) -> Node {
-    Node { label: label.to_string(), refs: Vec::new() }
+    Node {
+        label: label.to_string(),
+        refs: Vec::new(),
+    }
 }
 
 // ─────────── Allocation + free-list ───────────
@@ -60,7 +63,7 @@ fn alloc_reuses_free_slot() {
 fn collect_frees_unreachable() {
     let mut h: Heap<Node> = Heap::new();
     let a = h.alloc(n("a"));
-    let _b = h.alloc(n("b"));  // unreachable from roots
+    let _b = h.alloc(n("b")); // unreachable from roots
     let _c = h.alloc(n("c"));
     let freed = h.collect([a]);
     assert_eq!(freed, 2, "b and c should be freed");
@@ -93,7 +96,10 @@ fn collect_frees_cycle_when_unreachable() {
     h.get_mut(b).unwrap().refs.push(a);
     // Collect with NO roots — both should be freed.
     let freed = h.collect([]);
-    assert_eq!(freed, 2, "cycle should be collected when external root drops");
+    assert_eq!(
+        freed, 2,
+        "cycle should be collected when external root drops"
+    );
     assert!(h.is_free(a));
     assert!(h.is_free(b));
 }
@@ -185,7 +191,10 @@ fn maybe_collect_runs_at_threshold() {
     let mut h: Heap<Node> = Heap::new();
     // Allocate enough to exceed threshold.
     for i in 0..1500 {
-        let _ = h.alloc(Node { label: format!("n{}", i), refs: Vec::new() });
+        let _ = h.alloc(Node {
+            label: format!("n{}", i),
+            refs: Vec::new(),
+        });
     }
     let result = h.maybe_collect([]);
     assert!(result.is_some(), "should collect at threshold");
@@ -199,7 +208,7 @@ fn alloc_after_collection_reuses_slots() {
     let mut h: Heap<Node> = Heap::new();
     let _a = h.alloc(n("a"));
     let _b = h.alloc(n("b"));
-    h.collect([]);  // free both
+    h.collect([]); // free both
     assert_eq!(h.free_count(), 2);
     let _c = h.alloc(n("c"));
     let _d = h.alloc(n("d"));

@@ -206,7 +206,10 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
     // and locals are populated by the entry-block prologue. The OSR
     // synthetic FunctionProto is built with params=0 at try_osr_compile.
     if !osr_mode && proto.params != 0 && proto.params != 1 && proto.params != 2 {
-        return Err(format!("first-cut JIT supports 0, 1, or 2 params; got {}", proto.params));
+        return Err(format!(
+            "first-cut JIT supports 0, 1, or 2 params; got {}",
+            proto.params
+        ));
     }
 
     // Pre-scan: parse bytecode into a structured op list with absolute
@@ -224,19 +227,25 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
     if osr_mode {
         parsed.push((proto.bytecode.len(), ParsedOp::ReturnUndef));
     }
-    let mut targets: Vec<usize> = parsed.iter()
+    let mut targets: Vec<usize> = parsed
+        .iter()
         .filter_map(|(_, op)| op.jump_target())
         .collect();
     targets.push(0); // entry block.
-    // Also: the instruction immediately AFTER any terminator (Jump,
-    // JumpIfTrue, JumpIfFalse, Return, ReturnUndef) is a block start —
-    // either it's the fallthrough target of a conditional, or it's
-    // dead but might be reached via another jump landing here. Cranelift
-    // brif needs an actual fallthrough block, so we materialize one.
+                     // Also: the instruction immediately AFTER any terminator (Jump,
+                     // JumpIfTrue, JumpIfFalse, Return, ReturnUndef) is a block start —
+                     // either it's the fallthrough target of a conditional, or it's
+                     // dead but might be reached via another jump landing here. Cranelift
+                     // brif needs an actual fallthrough block, so we materialize one.
     for i in 0..parsed.len() {
-        let is_terminator = matches!(&parsed[i].1,
-            ParsedOp::Jump(_) | ParsedOp::JumpIfTrue(_) | ParsedOp::JumpIfFalse(_)
-            | ParsedOp::Return | ParsedOp::ReturnUndef);
+        let is_terminator = matches!(
+            &parsed[i].1,
+            ParsedOp::Jump(_)
+                | ParsedOp::JumpIfTrue(_)
+                | ParsedOp::JumpIfFalse(_)
+                | ParsedOp::Return
+                | ParsedOp::ReturnUndef
+        );
         if is_terminator {
             if let Some(next) = parsed.get(i + 1) {
                 targets.push(next.0);
@@ -248,12 +257,15 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
 
     // Build Cranelift JIT module.
     let mut flag_builder = settings::builder();
-    flag_builder.set("use_colocated_libcalls", "false")
+    flag_builder
+        .set("use_colocated_libcalls", "false")
         .map_err(|e| format!("flag: {e:?}"))?;
-    flag_builder.set("is_pic", "false")
+    flag_builder
+        .set("is_pic", "false")
         .map_err(|e| format!("flag: {e:?}"))?;
     let isa_builder = cranelift_native::builder().map_err(|e| format!("isa: {e}"))?;
-    let isa = isa_builder.finish(settings::Flags::new(flag_builder))
+    let isa = isa_builder
+        .finish(settings::Flags::new(flag_builder))
         .map_err(|e| format!("isa: {e:?}"))?;
     // JIT-EXT 13: detect the deopt-guard feature flag.
     //
@@ -314,7 +326,8 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
     // 3 site-id allocator + ICStubCache). EXT 5b consumes these at the
     // codegen site by indexing in parse order via a counter.
     let ic_site_ids: Vec<crate::stub_aarch64::ICSiteId> = if lejit_stub {
-        parsed.iter()
+        parsed
+            .iter()
             .filter(|(_, op)| matches!(op, ParsedOp::GetPropOnObject(_)))
             .map(|_| crate::stub_aarch64::alloc_ic_site())
             .collect()
@@ -326,7 +339,9 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
     // JIT-EXT 20: detect GetPropOnObject in the parsed op list so we
     // can pre-bind the runtime helper. Pre-binding has no cost when
     // the symbol isn't used.
-    let has_getprop = parsed.iter().any(|(_, op)| matches!(op, ParsedOp::GetPropOnObject(_)));
+    let has_getprop = parsed
+        .iter()
+        .any(|(_, op)| matches!(op, ParsedOp::GetPropOnObject(_)));
     // HI-EXT 2 (2026-05-23): per-IC-table-entry use detection. Each
     // entry that appears in the parsed list (via IcPropertyGet or
     // IcMethodCall) is pre-bound + signature-declared.
@@ -347,13 +362,17 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
         jit_builder.symbol("deopt_trip", crate::deopt::deopt_trip as *const u8);
     }
     if has_getprop {
-        jit_builder.symbol("jit_getprop_on_object",
-            crate::deopt::jit_getprop_on_object as *const u8);
+        jit_builder.symbol(
+            "jit_getprop_on_object",
+            crate::deopt::jit_getprop_on_object as *const u8,
+        );
         // LeJIT-Σ StubE-EXT 5b: also pre-bind the IC-aware variant
         // when the flag is set.
         if lejit_stub {
-            jit_builder.symbol("jit_getprop_with_ic",
-                crate::deopt::jit_getprop_with_ic as *const u8);
+            jit_builder.symbol(
+                "jit_getprop_with_ic",
+                crate::deopt::jit_getprop_with_ic as *const u8,
+            );
         }
     }
     // HI-EXT 2 (2026-05-23): per-entry symbol pre-bind from IC_TABLE.
@@ -369,12 +388,18 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
     let mut deopt_sites: crate::deopt::DeoptSiteTable = Vec::new();
     let trip_id_opt = if any_guard {
         let mut trip_sig = module.make_signature();
-        for _ in 0..5 { trip_sig.params.push(AbiParam::new(I64)); }
+        for _ in 0..5 {
+            trip_sig.params.push(AbiParam::new(I64));
+        }
         trip_sig.returns.push(AbiParam::new(I64));
-        Some(module
-            .declare_function("deopt_trip", Linkage::Import, &trip_sig)
-            .map_err(|e| format!("declare deopt_trip: {e}"))?)
-    } else { None };
+        Some(
+            module
+                .declare_function("deopt_trip", Linkage::Import, &trip_sig)
+                .map_err(|e| format!("declare deopt_trip: {e}"))?,
+        )
+    } else {
+        None
+    };
 
     // JIT-EXT 20 + LeJIT-Σ StubE-EXT 5b: declare the GetProp runtime
     // helper. When CRUFTLESS_LEJIT_STUB=1, declare the IC-aware variant
@@ -384,21 +409,30 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
     let getprop_id_opt = if has_getprop {
         let mut sig = module.make_signature();
         if lejit_stub {
-            sig.params.push(AbiParam::new(I64));  // site_id
+            sig.params.push(AbiParam::new(I64)); // site_id
         }
-        sig.params.push(AbiParam::new(I64));  // receiver_idx
-        sig.params.push(AbiParam::new(I64));  // prop_name_idx
+        sig.params.push(AbiParam::new(I64)); // receiver_idx
+        sig.params.push(AbiParam::new(I64)); // prop_name_idx
         sig.returns.push(AbiParam::new(I64));
-        let name = if lejit_stub { "jit_getprop_with_ic" } else { "jit_getprop_on_object" };
-        Some(module
-            .declare_function(name, Linkage::Import, &sig)
-            .map_err(|e| format!("declare {name}: {e}"))?)
-    } else { None };
+        let name = if lejit_stub {
+            "jit_getprop_with_ic"
+        } else {
+            "jit_getprop_on_object"
+        };
+        Some(
+            module
+                .declare_function(name, Linkage::Import, &sig)
+                .map_err(|e| format!("declare {name}: {e}"))?,
+        )
+    } else {
+        None
+    };
 
     // HI-EXT 2 (2026-05-23): per-entry signature declarations from
     // IC_TABLE. Each used entry's extern_sig builder constructs the
     // Cranelift signature; declare_function returns the FuncId.
-    let mut ic_entry_ids: Vec<Option<cranelift_module::FuncId>> = vec![None; crate::ic_table::IC_TABLE.len()];
+    let mut ic_entry_ids: Vec<Option<cranelift_module::FuncId>> =
+        vec![None; crate::ic_table::IC_TABLE.len()];
     for (i, entry) in crate::ic_table::IC_TABLE.iter().enumerate() {
         if ic_entry_used[i] {
             let mut sig = module.make_signature();
@@ -442,10 +476,12 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
         // before any other block work so subsequent code can call it.
         let trip_ref = trip_id_opt.map(|id| module.declare_func_in_func(id, &mut builder.func));
         // JIT-EXT 20: same for the GetProp runtime helper.
-        let getprop_ref = getprop_id_opt.map(|id| module.declare_func_in_func(id, &mut builder.func));
+        let getprop_ref =
+            getprop_id_opt.map(|id| module.declare_func_in_func(id, &mut builder.func));
         // HI-EXT 2 (2026-05-23): per-entry FuncRef declarations from
         // IC_TABLE. Used by ParsedOp::Ic{PropertyGet,MethodCall} lower fns.
-        let ic_entry_refs: Vec<Option<cranelift_codegen::ir::FuncRef>> = ic_entry_ids.iter()
+        let ic_entry_refs: Vec<Option<cranelift_codegen::ir::FuncRef>> = ic_entry_ids
+            .iter()
             .map(|id_opt| id_opt.map(|id| module.declare_func_in_func(id, &mut builder.func)))
             .collect();
 
@@ -509,7 +545,9 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
             let z = builder.ins().iconst(I64, 0);
             builder.def_var(v, z);
             Some(v)
-        } else { None };
+        } else {
+            None
+        };
         // Args land in locals 0..params at function entry per the
         // interpreter convention (compile_function_proto allocates one
         // slot per param at the head of self.locals).
@@ -549,10 +587,15 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
             // locals array). Save to arr_ptr_var; then load each local
             // from arr_ptr + i*8, overriding the 0.0 init above.
             let arr_ptr = entry_params[0];
-            builder.def_var(osr_arr_ptr_var.expect("osr_mode requires arr_ptr_var"), arr_ptr);
+            builder.def_var(
+                osr_arr_ptr_var.expect("osr_mode requires arr_ptr_var"),
+                arr_ptr,
+            );
             for i in 0..local_vars.len() {
                 let offset = (i * 8) as i32;
-                let v = builder.ins().load(F64, MemFlags::trusted(), arr_ptr, offset);
+                let v = builder
+                    .ins()
+                    .load(F64, MemFlags::trusted(), arr_ptr, offset);
                 builder.def_var(local_vars[i], v);
             }
         } else {
@@ -560,8 +603,10 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
                 if i < local_vars.len() {
                     if lejit_vti && i < proto.params as usize {
                         // VTI=1: p is F64 holding *const Value bits.
-                        let ptr_as_i64 = builder.ins().bitcast(I64,
-                            cranelift_codegen::ir::MemFlags::new(), p);
+                        let ptr_as_i64 =
+                            builder
+                                .ins()
+                                .bitcast(I64, cranelift_codegen::ir::MemFlags::new(), p);
                         let payload = builder.ins().load(
                             F64,
                             MemFlags::trusted(),
@@ -595,8 +640,9 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
         // per-site cache state instead of this global flag.
         if force_shape_trip {
             let st_trip_ref = trip_ref.expect("force_shape_trip requires trip_ref");
-            let addr_val = builder.ins().iconst(I64,
-                crate::deopt::get_force_shape_trip_addr() as i64);
+            let addr_val = builder
+                .ins()
+                .iconst(I64, crate::deopt::get_force_shape_trip_addr() as i64);
             let flag_val = builder.ins().load(
                 cranelift_codegen::ir::types::I8,
                 cranelift_codegen::ir::MemFlags::trusted(),
@@ -610,7 +656,9 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
 
             let trip_block = builder.create_block();
             let normal_block = builder.create_block();
-            builder.ins().brif(should_trip, trip_block, &[], normal_block, &[]);
+            builder
+                .ins()
+                .brif(should_trip, trip_block, &[], normal_block, &[]);
 
             builder.switch_to_block(trip_block);
             builder.seal_block(trip_block);
@@ -618,13 +666,19 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
             let site_id_v = builder.ins().iconst(I64, site_id);
             let r0 = if !local_vars.is_empty() {
                 builder.use_var(local_vars[0])
-            } else { builder.ins().iconst(I64, 0) };
+            } else {
+                builder.ins().iconst(I64, 0)
+            };
             let r1 = if local_vars.len() > 1 {
                 builder.use_var(local_vars[1])
-            } else { builder.ins().iconst(I64, 0) };
+            } else {
+                builder.ins().iconst(I64, 0)
+            };
             let r2_const = builder.ins().iconst(I64, 0);
             let r3_const = builder.ins().iconst(I64, 0);
-            let call_inst = builder.ins().call(st_trip_ref, &[site_id_v, r0, r1, r2_const, r3_const]);
+            let call_inst = builder
+                .ins()
+                .call(st_trip_ref, &[site_id_v, r0, r1, r2_const, r3_const]);
             let sentinel = builder.inst_results(call_inst)[0];
             // Φ-EXT 2: sentinel is i64 (deopt_trip returns 0); convert
             // to F64 for the F64-return signature.
@@ -666,7 +720,10 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
                 if !block_terminated {
                     if !stack.is_empty() {
                         return Err(format!(
-                            "stack non-empty at block boundary pc={} (depth={})", pc, stack.len()));
+                            "stack non-empty at block boundary pc={} (depth={})",
+                            pc,
+                            stack.len()
+                        ));
                     }
                     builder.ins().jump(next_block, &[]);
                 }
@@ -685,13 +742,15 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
                 // variants (AddI64 etc., below) preserve the i64-domain
                 // path for the bytecode tier's Doc 731 §XIII promotions.
                 ParsedOp::LoadArg(slot) | ParsedOp::LoadLocal(slot) => {
-                    let v = local_vars.get(*slot as usize)
+                    let v = local_vars
+                        .get(*slot as usize)
                         .ok_or_else(|| format!("local slot {} out of range", slot))?;
                     let val = builder.use_var(*v);
                     stack.push(val);
                 }
                 ParsedOp::StoreLocal(slot) => {
-                    let v = local_vars.get(*slot as usize)
+                    let v = local_vars
+                        .get(*slot as usize)
                         .ok_or_else(|| format!("local slot {} out of range", slot))?;
                     let val = stack.pop().ok_or("StoreLocal: stack underflow")?;
                     builder.def_var(*v, val);
@@ -768,8 +827,12 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
                 ParsedOp::Le => fcmpop(&mut stack, &mut builder, FloatCC::LessThanOrEqual)?,
                 ParsedOp::Gt => fcmpop(&mut stack, &mut builder, FloatCC::GreaterThan)?,
                 ParsedOp::Ge => fcmpop(&mut stack, &mut builder, FloatCC::GreaterThanOrEqual)?,
-                ParsedOp::Eq | ParsedOp::StrictEq => fcmpop(&mut stack, &mut builder, FloatCC::Equal)?,
-                ParsedOp::Ne | ParsedOp::StrictNe => fcmpop(&mut stack, &mut builder, FloatCC::NotEqual)?,
+                ParsedOp::Eq | ParsedOp::StrictEq => {
+                    fcmpop(&mut stack, &mut builder, FloatCC::Equal)?
+                }
+                ParsedOp::Ne | ParsedOp::StrictNe => {
+                    fcmpop(&mut stack, &mut builder, FloatCC::NotEqual)?
+                }
                 ParsedOp::Dup => {
                     let v = *stack.last().ok_or("Dup: stack underflow")?;
                     stack.push(v);
@@ -779,7 +842,11 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
                 }
                 ParsedOp::Jump(target) => {
                     if !stack.is_empty() {
-                        return Err(format!("stack non-empty at Jump pc={} (depth={})", pc, stack.len()));
+                        return Err(format!(
+                            "stack non-empty at Jump pc={} (depth={})",
+                            pc,
+                            stack.len()
+                        ));
                     }
                     let target_block = blocks[target];
                     builder.ins().jump(target_block, &[]);
@@ -788,7 +855,11 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
                 ParsedOp::JumpIfTrue(target) | ParsedOp::JumpIfFalse(target) => {
                     let cond_f64 = stack.pop().ok_or("JumpIfX: stack underflow")?;
                     if !stack.is_empty() {
-                        return Err(format!("stack non-empty at JumpIfX pc={} (depth={})", pc, stack.len()));
+                        return Err(format!(
+                            "stack non-empty at JumpIfX pc={} (depth={})",
+                            pc,
+                            stack.len()
+                        ));
                     }
                     // Φ-EXT 3: cond is F64 (0.0 = false; non-zero,
                     // non-NaN = true). fcmp `ne 0.0` returns true for
@@ -802,10 +873,14 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
                     let target_block = blocks[target];
                     match op {
                         ParsedOp::JumpIfTrue(_) => {
-                            builder.ins().brif(truthy, target_block, &[], fall_block, &[]);
+                            builder
+                                .ins()
+                                .brif(truthy, target_block, &[], fall_block, &[]);
                         }
                         ParsedOp::JumpIfFalse(_) => {
-                            builder.ins().brif(truthy, fall_block, &[], target_block, &[]);
+                            builder
+                                .ins()
+                                .brif(truthy, fall_block, &[], target_block, &[]);
                         }
                         _ => unreachable!(),
                     }
@@ -850,31 +925,63 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
                 // alphabet's typed contract holds (operands already i64
                 // in JIT-internal SSA representation).
                 ParsedOp::AddI64 => {
-                    if guard_overflow { let tr = trip_ref.expect("guard_overflow requires trip_ref");
-                        emit_guarded_add(&mut stack, &mut builder, tr, *pc, &local_vars, &mut deopt_sites)?;
+                    if guard_overflow {
+                        let tr = trip_ref.expect("guard_overflow requires trip_ref");
+                        emit_guarded_add(
+                            &mut stack,
+                            &mut builder,
+                            tr,
+                            *pc,
+                            &local_vars,
+                            &mut deopt_sites,
+                        )?;
                     } else {
                         binop(&mut stack, &mut builder, |b, l, r| b.ins().iadd(l, r))?;
                     }
                 }
                 ParsedOp::SubI64 => {
-                    if guard_overflow { let tr = trip_ref.expect("guard_overflow requires trip_ref");
-                        emit_guarded_sub(&mut stack, &mut builder, tr, *pc, &local_vars, &mut deopt_sites)?;
+                    if guard_overflow {
+                        let tr = trip_ref.expect("guard_overflow requires trip_ref");
+                        emit_guarded_sub(
+                            &mut stack,
+                            &mut builder,
+                            tr,
+                            *pc,
+                            &local_vars,
+                            &mut deopt_sites,
+                        )?;
                     } else {
                         binop(&mut stack, &mut builder, |b, l, r| b.ins().isub(l, r))?;
                     }
                 }
                 ParsedOp::MulI64 => {
-                    if guard_overflow { let tr = trip_ref.expect("guard_overflow requires trip_ref");
-                        emit_guarded_mul(&mut stack, &mut builder, tr, *pc, &local_vars, &mut deopt_sites)?;
+                    if guard_overflow {
+                        let tr = trip_ref.expect("guard_overflow requires trip_ref");
+                        emit_guarded_mul(
+                            &mut stack,
+                            &mut builder,
+                            tr,
+                            *pc,
+                            &local_vars,
+                            &mut deopt_sites,
+                        )?;
                     } else {
                         binop(&mut stack, &mut builder, |b, l, r| b.ins().imul(l, r))?;
                     }
                 }
                 ParsedOp::IncI64 => {
-                    if guard_overflow { let tr = trip_ref.expect("guard_overflow requires trip_ref");
+                    if guard_overflow {
+                        let tr = trip_ref.expect("guard_overflow requires trip_ref");
                         let one = builder.ins().iconst(I64, 1);
                         stack.push(one);
-                        emit_guarded_add(&mut stack, &mut builder, tr, *pc, &local_vars, &mut deopt_sites)?;
+                        emit_guarded_add(
+                            &mut stack,
+                            &mut builder,
+                            tr,
+                            *pc,
+                            &local_vars,
+                            &mut deopt_sites,
+                        )?;
                     } else {
                         let v = stack.pop().ok_or("IncI64: stack underflow")?;
                         let one = builder.ins().iconst(I64, 1);
@@ -882,10 +989,18 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
                     }
                 }
                 ParsedOp::DecI64 => {
-                    if guard_overflow { let tr = trip_ref.expect("guard_overflow requires trip_ref");
+                    if guard_overflow {
+                        let tr = trip_ref.expect("guard_overflow requires trip_ref");
                         let one = builder.ins().iconst(I64, 1);
                         stack.push(one);
-                        emit_guarded_sub(&mut stack, &mut builder, tr, *pc, &local_vars, &mut deopt_sites)?;
+                        emit_guarded_sub(
+                            &mut stack,
+                            &mut builder,
+                            tr,
+                            *pc,
+                            &local_vars,
+                            &mut deopt_sites,
+                        )?;
                     } else {
                         let v = stack.pop().ok_or("DecI64: stack underflow")?;
                         let one = builder.ins().iconst(I64, 1);
@@ -895,7 +1010,9 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
                 ParsedOp::LtI64 => cmpop(&mut stack, &mut builder, IntCC::SignedLessThan)?,
                 ParsedOp::LeI64 => cmpop(&mut stack, &mut builder, IntCC::SignedLessThanOrEqual)?,
                 ParsedOp::GtI64 => cmpop(&mut stack, &mut builder, IntCC::SignedGreaterThan)?,
-                ParsedOp::GeI64 => cmpop(&mut stack, &mut builder, IntCC::SignedGreaterThanOrEqual)?,
+                ParsedOp::GeI64 => {
+                    cmpop(&mut stack, &mut builder, IntCC::SignedGreaterThanOrEqual)?
+                }
                 ParsedOp::EqI64 => cmpop(&mut stack, &mut builder, IntCC::Equal)?,
                 ParsedOp::NeI64 => cmpop(&mut stack, &mut builder, IntCC::NotEqual)?,
                 ParsedOp::GetPropOnObject(prop_idx) => {
@@ -908,10 +1025,17 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
                     // truncated currently; Φ-EXT 3+ may change return to
                     // f64 in a follow-on round). Convert returned i64 →
                     // F64 via fcvt_from_sint for stack uniformity.
-                    let gpref = getprop_ref.expect("getprop_ref must be set when ParsedOp::GetPropOnObject is present");
-                    let receiver_f64 = stack.pop().ok_or("GetPropOnObject: stack underflow (receiver)")?;
-                    let receiver = builder.ins().bitcast(I64,
-                        cranelift_codegen::ir::MemFlags::new(), receiver_f64);
+                    let gpref = getprop_ref.expect(
+                        "getprop_ref must be set when ParsedOp::GetPropOnObject is present",
+                    );
+                    let receiver_f64 = stack
+                        .pop()
+                        .ok_or("GetPropOnObject: stack underflow (receiver)")?;
+                    let receiver = builder.ins().bitcast(
+                        I64,
+                        cranelift_codegen::ir::MemFlags::new(),
+                        receiver_f64,
+                    );
                     let prop_v = builder.ins().iconst(I64, *prop_idx as i64);
                     let call_inst = if lejit_stub {
                         let site_id = ic_site_ids[ic_site_cursor];
@@ -957,16 +1081,26 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
         builder.finalize();
     }
 
-    let name = if proto.display_name.is_empty() { "anon".to_string() } else { proto.display_name.clone() };
+    let name = if proto.display_name.is_empty() {
+        "anon".to_string()
+    } else {
+        proto.display_name.clone()
+    };
     let id = module
-        .declare_function(&format!("jit_{}", name), Linkage::Export, &ctx.func.signature)
+        .declare_function(
+            &format!("jit_{}", name),
+            Linkage::Export,
+            &ctx.func.signature,
+        )
         .map_err(|e| format!("declare_function: {e}"))?;
     // Diagnostic: print the function IR on error.
     let ir_dump = format!("{}", ctx.func.display());
-    module.define_function(id, &mut ctx)
+    module
+        .define_function(id, &mut ctx)
         .map_err(|e| format!("define_function: {e}\nIR:\n{}", ir_dump))?;
     module.clear_context(&mut ctx);
-    module.finalize_definitions()
+    module
+        .finalize_definitions()
         .map_err(|e| format!("finalize_definitions: {e}"))?;
 
     let code_ptr = module.get_finalized_function(id);
@@ -996,13 +1130,23 @@ fn compile_function_inner(proto: &FunctionProto, osr_mode: bool) -> Result<Compi
             proto.params,
             proto.bytecode.len(),
         ))
-    } else { None };
+    } else {
+        None
+    };
 
-    Ok(CompiledFn { func, _module: leaked, deopt_sites, vti_enabled: lejit_vti, tb_metadata })
+    Ok(CompiledFn {
+        func,
+        _module: leaked,
+        deopt_sites,
+        vti_enabled: lejit_vti,
+        tb_metadata,
+    })
 }
 
 fn binop<F>(stack: &mut Vec<ClValue>, builder: &mut FunctionBuilder, f: F) -> Result<(), String>
-where F: FnOnce(&mut FunctionBuilder, ClValue, ClValue) -> ClValue {
+where
+    F: FnOnce(&mut FunctionBuilder, ClValue, ClValue) -> ClValue,
+{
     let r = stack.pop().ok_or("binop: stack underflow (rhs)")?;
     let l = stack.pop().ok_or("binop: stack underflow (lhs)")?;
     let v = f(builder, l, r);
@@ -1038,7 +1182,7 @@ fn emit_guarded_add(
     local_vars: &[Variable],
     deopt_sites: &mut crate::deopt::DeoptSiteTable,
 ) -> Result<(), String> {
-    use crate::deopt::{DeoptSite, DeoptReason, DeoptLiveLocal, JitLocation};
+    use crate::deopt::{DeoptLiveLocal, DeoptReason, DeoptSite, JitLocation};
 
     let r = stack.pop().ok_or("guarded_add: stack underflow (rhs)")?;
     let l = stack.pop().ok_or("guarded_add: stack underflow (lhs)")?;
@@ -1059,7 +1203,9 @@ fn emit_guarded_add(
     // so SSA stays clean.
     let cont_result = builder.append_block_param(cont_block, I64);
 
-    builder.ins().brif(overflowed, deopt_block, &[], cont_block, &[result]);
+    builder
+        .ins()
+        .brif(overflowed, deopt_block, &[], cont_block, &[result]);
 
     // Deopt block: build the trip call args and invoke the thunk.
     builder.switch_to_block(deopt_block);
@@ -1069,11 +1215,17 @@ fn emit_guarded_add(
     // r2 / r3: first two locals (zeros if fewer).
     let local0 = if !local_vars.is_empty() {
         builder.use_var(local_vars[0])
-    } else { builder.ins().iconst(I64, 0) };
+    } else {
+        builder.ins().iconst(I64, 0)
+    };
     let local1 = if local_vars.len() > 1 {
         builder.use_var(local_vars[1])
-    } else { builder.ins().iconst(I64, 0) };
-    let call_inst = builder.ins().call(trip_ref, &[site_id_v, l, r, local0, local1]);
+    } else {
+        builder.ins().iconst(I64, 0)
+    };
+    let call_inst = builder
+        .ins()
+        .call(trip_ref, &[site_id_v, l, r, local0, local1]);
     let sentinel = builder.inst_results(call_inst)[0];
     // Φ-EXT 2: F64 return signature; convert i64 sentinel.
     let sentinel_f64 = builder.ins().fcvt_from_sint(F64, sentinel);
@@ -1084,13 +1236,25 @@ fn emit_guarded_add(
         reason: DeoptReason::IntegerOverflow { op_pc: pc as u32 },
         resume_pc: pc as u32,
         live_locals: vec![
-            DeoptLiveLocal { interp_slot: 0, jit_location: JitLocation::Register(2) },
-            DeoptLiveLocal { interp_slot: 1, jit_location: JitLocation::Register(3) },
+            DeoptLiveLocal {
+                interp_slot: 0,
+                jit_location: JitLocation::Register(2),
+            },
+            DeoptLiveLocal {
+                interp_slot: 1,
+                jit_location: JitLocation::Register(3),
+            },
         ],
         stack_depth: 2,
         stack_slots: vec![
-            DeoptLiveLocal { interp_slot: 0, jit_location: JitLocation::Register(0) },
-            DeoptLiveLocal { interp_slot: 1, jit_location: JitLocation::Register(1) },
+            DeoptLiveLocal {
+                interp_slot: 0,
+                jit_location: JitLocation::Register(0),
+            },
+            DeoptLiveLocal {
+                interp_slot: 1,
+                jit_location: JitLocation::Register(1),
+            },
         ],
     });
 
@@ -1114,7 +1278,11 @@ fn cmpop(stack: &mut Vec<ClValue>, builder: &mut FunctionBuilder, cc: IntCC) -> 
 /// Φ-EXT 3: f64-domain comparison op. Pops two F64 operands; performs
 /// fcmp; promotes the i8 result to F64 (0.0 or 1.0) so the operand
 /// stack remains uniformly F64 post-Φ.
-fn fcmpop(stack: &mut Vec<ClValue>, builder: &mut FunctionBuilder, cc: FloatCC) -> Result<(), String> {
+fn fcmpop(
+    stack: &mut Vec<ClValue>,
+    builder: &mut FunctionBuilder,
+    cc: FloatCC,
+) -> Result<(), String> {
     let r = stack.pop().ok_or("fcmp: stack underflow (rhs)")?;
     let l = stack.pop().ok_or("fcmp: stack underflow (lhs)")?;
     let i8_result = builder.ins().fcmp(cc, l, r);
@@ -1138,7 +1306,7 @@ fn emit_guarded_sub(
     local_vars: &[Variable],
     deopt_sites: &mut crate::deopt::DeoptSiteTable,
 ) -> Result<(), String> {
-    use crate::deopt::{DeoptSite, DeoptReason, DeoptLiveLocal, JitLocation};
+    use crate::deopt::{DeoptLiveLocal, DeoptReason, DeoptSite, JitLocation};
 
     let r = stack.pop().ok_or("guarded_sub: stack underflow (rhs)")?;
     let l = stack.pop().ok_or("guarded_sub: stack underflow (lhs)")?;
@@ -1154,15 +1322,27 @@ fn emit_guarded_sub(
     let cont_block = builder.create_block();
     let cont_result = builder.append_block_param(cont_block, I64);
 
-    builder.ins().brif(overflowed, deopt_block, &[], cont_block, &[result]);
+    builder
+        .ins()
+        .brif(overflowed, deopt_block, &[], cont_block, &[result]);
 
     builder.switch_to_block(deopt_block);
     builder.seal_block(deopt_block);
     let site_id = deopt_sites.len() as i64;
     let site_id_v = builder.ins().iconst(I64, site_id);
-    let local0 = if !local_vars.is_empty() { builder.use_var(local_vars[0]) } else { builder.ins().iconst(I64, 0) };
-    let local1 = if local_vars.len() > 1 { builder.use_var(local_vars[1]) } else { builder.ins().iconst(I64, 0) };
-    let call_inst = builder.ins().call(trip_ref, &[site_id_v, l, r, local0, local1]);
+    let local0 = if !local_vars.is_empty() {
+        builder.use_var(local_vars[0])
+    } else {
+        builder.ins().iconst(I64, 0)
+    };
+    let local1 = if local_vars.len() > 1 {
+        builder.use_var(local_vars[1])
+    } else {
+        builder.ins().iconst(I64, 0)
+    };
+    let call_inst = builder
+        .ins()
+        .call(trip_ref, &[site_id_v, l, r, local0, local1]);
     let sentinel = builder.inst_results(call_inst)[0];
     // Φ-EXT 2: F64 return signature; convert i64 sentinel.
     let sentinel_f64 = builder.ins().fcvt_from_sint(F64, sentinel);
@@ -1172,13 +1352,25 @@ fn emit_guarded_sub(
         reason: DeoptReason::IntegerOverflow { op_pc: pc as u32 },
         resume_pc: pc as u32,
         live_locals: vec![
-            DeoptLiveLocal { interp_slot: 0, jit_location: JitLocation::Register(2) },
-            DeoptLiveLocal { interp_slot: 1, jit_location: JitLocation::Register(3) },
+            DeoptLiveLocal {
+                interp_slot: 0,
+                jit_location: JitLocation::Register(2),
+            },
+            DeoptLiveLocal {
+                interp_slot: 1,
+                jit_location: JitLocation::Register(3),
+            },
         ],
         stack_depth: 2,
         stack_slots: vec![
-            DeoptLiveLocal { interp_slot: 0, jit_location: JitLocation::Register(0) },
-            DeoptLiveLocal { interp_slot: 1, jit_location: JitLocation::Register(1) },
+            DeoptLiveLocal {
+                interp_slot: 0,
+                jit_location: JitLocation::Register(0),
+            },
+            DeoptLiveLocal {
+                interp_slot: 1,
+                jit_location: JitLocation::Register(1),
+            },
         ],
     });
 
@@ -1203,7 +1395,7 @@ fn emit_guarded_mul(
     local_vars: &[Variable],
     deopt_sites: &mut crate::deopt::DeoptSiteTable,
 ) -> Result<(), String> {
-    use crate::deopt::{DeoptSite, DeoptReason, DeoptLiveLocal, JitLocation};
+    use crate::deopt::{DeoptLiveLocal, DeoptReason, DeoptSite, JitLocation};
 
     let r = stack.pop().ok_or("guarded_mul: stack underflow (rhs)")?;
     let l = stack.pop().ok_or("guarded_mul: stack underflow (lhs)")?;
@@ -1218,15 +1410,27 @@ fn emit_guarded_mul(
     let cont_block = builder.create_block();
     let cont_result = builder.append_block_param(cont_block, I64);
 
-    builder.ins().brif(overflowed, deopt_block, &[], cont_block, &[result]);
+    builder
+        .ins()
+        .brif(overflowed, deopt_block, &[], cont_block, &[result]);
 
     builder.switch_to_block(deopt_block);
     builder.seal_block(deopt_block);
     let site_id = deopt_sites.len() as i64;
     let site_id_v = builder.ins().iconst(I64, site_id);
-    let local0 = if !local_vars.is_empty() { builder.use_var(local_vars[0]) } else { builder.ins().iconst(I64, 0) };
-    let local1 = if local_vars.len() > 1 { builder.use_var(local_vars[1]) } else { builder.ins().iconst(I64, 0) };
-    let call_inst = builder.ins().call(trip_ref, &[site_id_v, l, r, local0, local1]);
+    let local0 = if !local_vars.is_empty() {
+        builder.use_var(local_vars[0])
+    } else {
+        builder.ins().iconst(I64, 0)
+    };
+    let local1 = if local_vars.len() > 1 {
+        builder.use_var(local_vars[1])
+    } else {
+        builder.ins().iconst(I64, 0)
+    };
+    let call_inst = builder
+        .ins()
+        .call(trip_ref, &[site_id_v, l, r, local0, local1]);
     let sentinel = builder.inst_results(call_inst)[0];
     // Φ-EXT 2: F64 return signature; convert i64 sentinel.
     let sentinel_f64 = builder.ins().fcvt_from_sint(F64, sentinel);
@@ -1236,13 +1440,25 @@ fn emit_guarded_mul(
         reason: DeoptReason::IntegerOverflow { op_pc: pc as u32 },
         resume_pc: pc as u32,
         live_locals: vec![
-            DeoptLiveLocal { interp_slot: 0, jit_location: JitLocation::Register(2) },
-            DeoptLiveLocal { interp_slot: 1, jit_location: JitLocation::Register(3) },
+            DeoptLiveLocal {
+                interp_slot: 0,
+                jit_location: JitLocation::Register(2),
+            },
+            DeoptLiveLocal {
+                interp_slot: 1,
+                jit_location: JitLocation::Register(3),
+            },
         ],
         stack_depth: 2,
         stack_slots: vec![
-            DeoptLiveLocal { interp_slot: 0, jit_location: JitLocation::Register(0) },
-            DeoptLiveLocal { interp_slot: 1, jit_location: JitLocation::Register(1) },
+            DeoptLiveLocal {
+                interp_slot: 0,
+                jit_location: JitLocation::Register(0),
+            },
+            DeoptLiveLocal {
+                interp_slot: 1,
+                jit_location: JitLocation::Register(1),
+            },
         ],
     });
 
@@ -1252,14 +1468,24 @@ fn emit_guarded_mul(
     Ok(())
 }
 
-fn find_next_block_pc(parsed: &[(usize, ParsedOp)], cur_pc: usize, blocks: &HashMap<usize, Block>)
-    -> Result<usize, String>
-{
-    let i = parsed.iter().position(|(p, _)| *p == cur_pc).expect("pc not found");
+fn find_next_block_pc(
+    parsed: &[(usize, ParsedOp)],
+    cur_pc: usize,
+    blocks: &HashMap<usize, Block>,
+) -> Result<usize, String> {
+    let i = parsed
+        .iter()
+        .position(|(p, _)| *p == cur_pc)
+        .expect("pc not found");
     for (p, _) in parsed[i + 1..].iter() {
-        if blocks.contains_key(p) { return Ok(*p); }
+        if blocks.contains_key(p) {
+            return Ok(*p);
+        }
     }
-    Err(format!("no fallthrough block after JumpIfX at pc={}", cur_pc))
+    Err(format!(
+        "no fallthrough block after JumpIfX at pc={}",
+        cur_pc
+    ))
 }
 
 /// Parsed op + jump target convenience.
@@ -1289,20 +1515,42 @@ enum ParsedOp {
     /// back to Number. Common in `x | 0` int32 coercion idiom.
     BitOr,
     ResetLocalCellNop,
-    Add, Sub, Mul, Inc, Dec,
-    Lt, Le, Gt, Ge, Eq, Ne, StrictEq, StrictNe,
-    Dup, Pop,
+    Add,
+    Sub,
+    Mul,
+    Inc,
+    Dec,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    Eq,
+    Ne,
+    StrictEq,
+    StrictNe,
+    Dup,
+    Pop,
     Jump(usize),
     JumpIfTrue(usize),
     JumpIfFalse(usize),
-    Return, ReturnUndef,
+    Return,
+    ReturnUndef,
     // Doc 731 §XIV.d typed-I64 alphabet promotion. The JIT prefers
     // these over the plain variants because no type assumption is
     // required at the JIT tier — the typed assumption is encoded in
     // the bytecode alphabet itself, and the upstream emitter is
     // responsible for proving it.
-    AddI64, SubI64, MulI64, IncI64, DecI64,
-    LtI64, LeI64, GtI64, GeI64, EqI64, NeI64,
+    AddI64,
+    SubI64,
+    MulI64,
+    IncI64,
+    DecI64,
+    LtI64,
+    LeI64,
+    GtI64,
+    GeI64,
+    EqI64,
+    NeI64,
     /// JIT-EXT 19 (Doc 731 §XIV.d β-path for property access).
     /// Recognized at parser-tier; JIT lowering arrives at JIT-EXT 20.
     /// Operand is the constant-pool index of the property name.
@@ -1327,10 +1575,26 @@ fn parse_bytecode(bc: &[u8], constants: &ConstantsPool) -> Result<Vec<(usize, Pa
             .ok_or_else(|| format!("unknown opcode byte 0x{:02x} at pc={}", bc[pc], pc))?;
         pc += 1;
         let parsed = match opcode {
-            Op::LoadArg => { let s = u16::from_le_bytes([bc[pc], bc[pc + 1]]); pc += 2; ParsedOp::LoadArg(s) }
-            Op::LoadLocal => { let s = u16::from_le_bytes([bc[pc], bc[pc + 1]]); pc += 2; ParsedOp::LoadLocal(s) }
-            Op::StoreLocal => { let s = u16::from_le_bytes([bc[pc], bc[pc + 1]]); pc += 2; ParsedOp::StoreLocal(s) }
-            Op::PushI32 => { let n = i32::from_le_bytes([bc[pc], bc[pc + 1], bc[pc + 2], bc[pc + 3]]); pc += 4; ParsedOp::PushI32(n) }
+            Op::LoadArg => {
+                let s = u16::from_le_bytes([bc[pc], bc[pc + 1]]);
+                pc += 2;
+                ParsedOp::LoadArg(s)
+            }
+            Op::LoadLocal => {
+                let s = u16::from_le_bytes([bc[pc], bc[pc + 1]]);
+                pc += 2;
+                ParsedOp::LoadLocal(s)
+            }
+            Op::StoreLocal => {
+                let s = u16::from_le_bytes([bc[pc], bc[pc + 1]]);
+                pc += 2;
+                ParsedOp::StoreLocal(s)
+            }
+            Op::PushI32 => {
+                let n = i32::from_le_bytes([bc[pc], bc[pc + 1], bc[pc + 2], bc[pc + 3]]);
+                pc += 4;
+                ParsedOp::PushI32(n)
+            }
             // TL-EXT 2 (2026-05-23): resolve PushConst's constant pool
             // index at parse time. Only Number constants are JIT-eligible;
             // other variants bail the whole function per C8 bail discipline.
@@ -1339,8 +1603,16 @@ fn parse_bytecode(bc: &[u8], constants: &ConstantsPool) -> Result<Vec<(usize, Pa
                 pc += 2;
                 match constants.get(idx) {
                     Some(Constant::Number(n)) => ParsedOp::PushConst(*n),
-                    Some(_) => return Err(format!("PushConst at pc={op_pc}: non-Number constant unsupported in JIT alphabet")),
-                    None => return Err(format!("PushConst at pc={op_pc}: constant idx {idx} out of bounds")),
+                    Some(_) => {
+                        return Err(format!(
+                        "PushConst at pc={op_pc}: non-Number constant unsupported in JIT alphabet"
+                    ))
+                    }
+                    None => {
+                        return Err(format!(
+                            "PushConst at pc={op_pc}: constant idx {idx} out of bounds"
+                        ))
+                    }
                 }
             }
             // HI-EXT 2 (2026-05-23): GetProp consults the IC_TABLE.
@@ -1351,14 +1623,22 @@ fn parse_bytecode(bc: &[u8], constants: &ConstantsPool) -> Result<Vec<(usize, Pa
                 pc += 2;
                 let key = match constants.get(idx) {
                     Some(Constant::String(s)) => s.as_str(),
-                    Some(_) => return Err(format!("GetProp at pc={op_pc}: non-String key unsupported")),
-                    None => return Err(format!("GetProp at pc={op_pc}: constant idx {idx} out of bounds")),
+                    Some(_) => {
+                        return Err(format!("GetProp at pc={op_pc}: non-String key unsupported"))
+                    }
+                    None => {
+                        return Err(format!(
+                            "GetProp at pc={op_pc}: constant idx {idx} out of bounds"
+                        ))
+                    }
                 };
                 let entry_idx = crate::ic_table::lookup_by_key(key)
                     .ok_or_else(|| format!("GetProp at pc={op_pc}: key '{key}' not in IC_TABLE"))?;
                 match crate::ic_table::IC_TABLE[entry_idx as usize].kind {
                     crate::ic_table::IcEntryKind::PropertyGet => ParsedOp::IcPropertyGet(entry_idx),
-                    crate::ic_table::IcEntryKind::MethodCall { .. } => ParsedOp::IcMethodResolve(entry_idx),
+                    crate::ic_table::IcEntryKind::MethodCall { .. } => {
+                        ParsedOp::IcMethodResolve(entry_idx)
+                    }
                 }
             }
             // HI-EXT 2 (2026-05-23): CallMethod consults IC_TABLE by
@@ -1452,7 +1732,12 @@ fn parse_bytecode(bc: &[u8], constants: &ConstantsPool) -> Result<Vec<(usize, Pa
             Op::GeI64 => ParsedOp::GeI64,
             Op::EqI64 => ParsedOp::EqI64,
             Op::NeI64 => ParsedOp::NeI64,
-            other => return Err(format!("first-cut JIT does not support op {:?} at pc={}", other, op_pc)),
+            other => {
+                return Err(format!(
+                    "first-cut JIT does not support op {:?} at pc={}",
+                    other, op_pc
+                ))
+            }
         };
         out.push((op_pc, parsed));
     }
@@ -1500,8 +1785,10 @@ mod tests {
     #[test]
     fn jit_add_two_args() {
         let mut bc = Vec::new();
-        encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 0);
-        encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 1);
+        encode_op(&mut bc, Op::LoadArg);
+        encode_u16(&mut bc, 0);
+        encode_op(&mut bc, Op::LoadArg);
+        encode_u16(&mut bc, 1);
         encode_op(&mut bc, Op::Add);
         encode_op(&mut bc, Op::Return);
         let proto = empty_proto(bc, 2);
@@ -1513,11 +1800,15 @@ mod tests {
     #[test]
     fn jit_combined_arith() {
         let mut bc = Vec::new();
-        encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 0);
-        encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 1);
+        encode_op(&mut bc, Op::LoadArg);
+        encode_u16(&mut bc, 0);
+        encode_op(&mut bc, Op::LoadArg);
+        encode_u16(&mut bc, 1);
         encode_op(&mut bc, Op::Add);
-        encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 0);
-        encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 1);
+        encode_op(&mut bc, Op::LoadArg);
+        encode_u16(&mut bc, 0);
+        encode_op(&mut bc, Op::LoadArg);
+        encode_u16(&mut bc, 1);
         encode_op(&mut bc, Op::Sub);
         encode_op(&mut bc, Op::Mul);
         encode_op(&mut bc, Op::Return);
@@ -1570,29 +1861,40 @@ mod tests {
         use rusty_js_bytecode::op::{encode_i32, encode_u16};
         let mut bc = Vec::new();
         // s = 0
-        encode_op(&mut bc, Op::PushI32); encode_i32(&mut bc, 0);
-        encode_op(&mut bc, Op::StoreLocal); encode_u16(&mut bc, 1);
+        encode_op(&mut bc, Op::PushI32);
+        encode_i32(&mut bc, 0);
+        encode_op(&mut bc, Op::StoreLocal);
+        encode_u16(&mut bc, 1);
         // i = 0
-        encode_op(&mut bc, Op::PushI32); encode_i32(&mut bc, 0);
-        encode_op(&mut bc, Op::StoreLocal); encode_u16(&mut bc, 2);
+        encode_op(&mut bc, Op::PushI32);
+        encode_i32(&mut bc, 0);
+        encode_op(&mut bc, Op::StoreLocal);
+        encode_u16(&mut bc, 2);
         let loop_top = bc.len();
         // i < n
-        encode_op(&mut bc, Op::LoadLocal); encode_u16(&mut bc, 2);
-        encode_op(&mut bc, Op::LoadArg);   encode_u16(&mut bc, 0);
+        encode_op(&mut bc, Op::LoadLocal);
+        encode_u16(&mut bc, 2);
+        encode_op(&mut bc, Op::LoadArg);
+        encode_u16(&mut bc, 0);
         encode_op(&mut bc, Op::LtI64);
         // JumpIfFalse → exit (patched after we know exit pc)
         encode_op(&mut bc, Op::JumpIfFalse);
         let jif_disp_at = bc.len();
         encode_i32(&mut bc, 0);
         // s = s + i
-        encode_op(&mut bc, Op::LoadLocal); encode_u16(&mut bc, 1);
-        encode_op(&mut bc, Op::LoadLocal); encode_u16(&mut bc, 2);
+        encode_op(&mut bc, Op::LoadLocal);
+        encode_u16(&mut bc, 1);
+        encode_op(&mut bc, Op::LoadLocal);
+        encode_u16(&mut bc, 2);
         encode_op(&mut bc, Op::AddI64);
-        encode_op(&mut bc, Op::StoreLocal); encode_u16(&mut bc, 1);
+        encode_op(&mut bc, Op::StoreLocal);
+        encode_u16(&mut bc, 1);
         // i++
-        encode_op(&mut bc, Op::LoadLocal); encode_u16(&mut bc, 2);
+        encode_op(&mut bc, Op::LoadLocal);
+        encode_u16(&mut bc, 2);
         encode_op(&mut bc, Op::IncI64);
-        encode_op(&mut bc, Op::StoreLocal); encode_u16(&mut bc, 2);
+        encode_op(&mut bc, Op::StoreLocal);
+        encode_u16(&mut bc, 2);
         // Jump → loop_top
         encode_op(&mut bc, Op::Jump);
         let jump_disp_at = bc.len();
@@ -1604,7 +1906,8 @@ mod tests {
         let jif_disp = exit_pc as i32 - (jif_disp_at + 4) as i32;
         bc[jif_disp_at..jif_disp_at + 4].copy_from_slice(&jif_disp.to_le_bytes());
         // return s
-        encode_op(&mut bc, Op::LoadLocal); encode_u16(&mut bc, 1);
+        encode_op(&mut bc, Op::LoadLocal);
+        encode_u16(&mut bc, 1);
         encode_op(&mut bc, Op::Return);
         // dead stub
         encode_op(&mut bc, Op::ReturnUndef);
@@ -1612,8 +1915,16 @@ mod tests {
 
         // Need 3 locals: n (arg 0), s (slot 1), i (slot 2).
         let mut proto = empty_proto(bc, 1);
-        proto.locals.push(LocalDescriptor { name: "s".to_string(), kind: rusty_js_ast::VariableKind::Var, depth: 0 });
-        proto.locals.push(LocalDescriptor { name: "i".to_string(), kind: rusty_js_ast::VariableKind::Var, depth: 0 });
+        proto.locals.push(LocalDescriptor {
+            name: "s".to_string(),
+            kind: rusty_js_ast::VariableKind::Var,
+            depth: 0,
+        });
+        proto.locals.push(LocalDescriptor {
+            name: "i".to_string(),
+            kind: rusty_js_ast::VariableKind::Var,
+            depth: 0,
+        });
 
         let jit = compile_function(&proto).expect("typed-i64 JIT compile failed");
         assert_eq!(jit.func.call1(0.0_f64), 0.0_f64);
@@ -1627,12 +1938,16 @@ mod tests {
     #[ignore = "Φ-EXT 3: i64-specific behavior; revisit at Move 2 typed-i64 fast path"]
     #[test]
     fn guarded_sub_trips_on_overflow() {
-        use crate::deopt::{set_current_deopt_sites, take_last_deopt, clear_current_deopt_sites, DeoptReason};
+        use crate::deopt::{
+            clear_current_deopt_sites, set_current_deopt_sites, take_last_deopt, DeoptReason,
+        };
 
         std::env::set_var("CRUFTLESS_JIT_GUARD_OVERFLOW", "1");
         let mut bc = Vec::new();
-        encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 0);
-        encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 1);
+        encode_op(&mut bc, Op::LoadArg);
+        encode_u16(&mut bc, 0);
+        encode_op(&mut bc, Op::LoadArg);
+        encode_u16(&mut bc, 1);
         encode_op(&mut bc, Op::Sub);
         encode_op(&mut bc, Op::Return);
         let proto = empty_proto(bc, 2);
@@ -1660,12 +1975,16 @@ mod tests {
     #[ignore = "Φ-EXT 3: i64-specific behavior; revisit at Move 2 typed-i64 fast path"]
     #[test]
     fn guarded_mul_trips_on_overflow() {
-        use crate::deopt::{set_current_deopt_sites, take_last_deopt, clear_current_deopt_sites, DeoptReason};
+        use crate::deopt::{
+            clear_current_deopt_sites, set_current_deopt_sites, take_last_deopt, DeoptReason,
+        };
 
         std::env::set_var("CRUFTLESS_JIT_GUARD_OVERFLOW", "1");
         let mut bc = Vec::new();
-        encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 0);
-        encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 1);
+        encode_op(&mut bc, Op::LoadArg);
+        encode_u16(&mut bc, 0);
+        encode_op(&mut bc, Op::LoadArg);
+        encode_u16(&mut bc, 1);
         encode_op(&mut bc, Op::Mul);
         encode_op(&mut bc, Op::Return);
         let proto = empty_proto(bc, 2);
@@ -1698,8 +2017,10 @@ mod tests {
     #[test]
     fn jit_lowers_getprop_on_object_calls_stub() {
         let mut bc = Vec::new();
-        encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 0);
-        encode_op(&mut bc, Op::GetPropOnObject); encode_u16(&mut bc, 7);  // prop_idx = 7
+        encode_op(&mut bc, Op::LoadArg);
+        encode_u16(&mut bc, 0);
+        encode_op(&mut bc, Op::GetPropOnObject);
+        encode_u16(&mut bc, 7); // prop_idx = 7
         encode_op(&mut bc, Op::Return);
         let proto = empty_proto(bc, 1);
         let jit = compile_function(&proto).expect("JIT-EXT 20 should compile GetPropOnObject");
@@ -1732,14 +2053,16 @@ mod tests {
     #[test]
     fn shape_trip_at_entry_demonstrator() {
         use crate::deopt::{
-            set_current_deopt_sites, take_last_deopt, clear_current_deopt_sites,
-            set_force_shape_trip, DeoptReason,
+            clear_current_deopt_sites, set_current_deopt_sites, set_force_shape_trip,
+            take_last_deopt, DeoptReason,
         };
 
         std::env::set_var("CRUFTLESS_JIT_FORCE_SHAPE_TRIP", "1");
         let mut bc = Vec::new();
-        encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 0);
-        encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 1);
+        encode_op(&mut bc, Op::LoadArg);
+        encode_u16(&mut bc, 0);
+        encode_op(&mut bc, Op::LoadArg);
+        encode_u16(&mut bc, 1);
         encode_op(&mut bc, Op::Add);
         encode_op(&mut bc, Op::Return);
         let proto = empty_proto(bc, 2);
@@ -1749,7 +2072,10 @@ mod tests {
         // Exactly one DeoptSite for the entry check (no arith guards
         // because guard_overflow was not set).
         assert_eq!(jit.deopt_sites.len(), 1, "expected one entry-shape site");
-        assert!(matches!(jit.deopt_sites[0].reason, DeoptReason::ICShapeMismatch { .. }));
+        assert!(matches!(
+            jit.deopt_sites[0].reason,
+            DeoptReason::ICShapeMismatch { .. }
+        ));
         assert_eq!(jit.deopt_sites[0].resume_pc, 0);
 
         set_current_deopt_sites(&jit.deopt_sites);
@@ -1757,19 +2083,27 @@ mod tests {
         // Flag false → entry check passes, arithmetic runs.
         set_force_shape_trip(false);
         assert_eq!(jit.func.call2(7.0_f64, 5.0_f64), 12.0_f64);
-        assert!(take_last_deopt().is_none(),
-            "no trip when JIT_FORCE_SHAPE_TRIP is false");
+        assert!(
+            take_last_deopt().is_none(),
+            "no trip when JIT_FORCE_SHAPE_TRIP is false"
+        );
 
         // Flag true → entry check trips before the Add runs.
         set_force_shape_trip(true);
         let r = jit.func.call2(7.0_f64, 5.0_f64);
         assert_eq!(r, 0 as f64, "trip should return sentinel; got {r}");
         let state = take_last_deopt().expect("flag-on trip should record state");
-        assert!(matches!(state.reason, DeoptReason::ICShapeMismatch { .. }),
-            "trip reason should be ICShapeMismatch; got {:?}", state.reason);
+        assert!(
+            matches!(state.reason, DeoptReason::ICShapeMismatch { .. }),
+            "trip reason should be ICShapeMismatch; got {:?}",
+            state.reason
+        );
         assert_eq!(state.resume_pc, 0, "trip site is at function entry");
-        assert_eq!(state.local_values, vec![(0, 7), (1, 5)],
-            "recovered locals should be the original args");
+        assert_eq!(
+            state.local_values,
+            vec![(0, 7), (1, 5)],
+            "recovered locals should be the original args"
+        );
 
         // Flag false again → resumes normal behavior.
         set_force_shape_trip(false);
@@ -1783,11 +2117,14 @@ mod tests {
     #[ignore = "Φ-EXT 3: i64-specific behavior; revisit at Move 2 typed-i64 fast path"]
     #[test]
     fn guarded_inc_trips_on_overflow() {
-        use crate::deopt::{set_current_deopt_sites, take_last_deopt, clear_current_deopt_sites, DeoptReason};
+        use crate::deopt::{
+            clear_current_deopt_sites, set_current_deopt_sites, take_last_deopt, DeoptReason,
+        };
 
         std::env::set_var("CRUFTLESS_JIT_GUARD_OVERFLOW", "1");
         let mut bc = Vec::new();
-        encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 0);
+        encode_op(&mut bc, Op::LoadArg);
+        encode_u16(&mut bc, 0);
         encode_op(&mut bc, Op::Inc);
         encode_op(&mut bc, Op::Return);
         let proto = empty_proto(bc, 1);
@@ -1814,11 +2151,14 @@ mod tests {
     #[ignore = "Φ-EXT 3: i64-specific behavior; revisit at Move 2 typed-i64 fast path"]
     #[test]
     fn guarded_dec_trips_on_overflow() {
-        use crate::deopt::{set_current_deopt_sites, take_last_deopt, clear_current_deopt_sites, DeoptReason};
+        use crate::deopt::{
+            clear_current_deopt_sites, set_current_deopt_sites, take_last_deopt, DeoptReason,
+        };
 
         std::env::set_var("CRUFTLESS_JIT_GUARD_OVERFLOW", "1");
         let mut bc = Vec::new();
-        encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 0);
+        encode_op(&mut bc, Op::LoadArg);
+        encode_u16(&mut bc, 0);
         encode_op(&mut bc, Op::Dec);
         encode_op(&mut bc, Op::Return);
         let proto = empty_proto(bc, 1);
@@ -1856,14 +2196,18 @@ mod tests {
     #[ignore = "Φ-EXT 3: i64-specific behavior; revisit at Move 2 typed-i64 fast path"]
     #[test]
     fn guarded_add_trips_on_overflow() {
-        use crate::deopt::{set_current_deopt_sites, take_last_deopt, clear_current_deopt_sites, DeoptReason};
+        use crate::deopt::{
+            clear_current_deopt_sites, set_current_deopt_sites, take_last_deopt, DeoptReason,
+        };
 
         // The env-var is read once at compile_function entry.
         std::env::set_var("CRUFTLESS_JIT_GUARD_OVERFLOW", "1");
 
         let mut bc = Vec::new();
-        encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 0);
-        encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 1);
+        encode_op(&mut bc, Op::LoadArg);
+        encode_u16(&mut bc, 0);
+        encode_op(&mut bc, Op::LoadArg);
+        encode_u16(&mut bc, 1);
         encode_op(&mut bc, Op::Add);
         encode_op(&mut bc, Op::Return);
         let proto = empty_proto(bc, 2);
@@ -1873,9 +2217,16 @@ mod tests {
         std::env::remove_var("CRUFTLESS_JIT_GUARD_OVERFLOW");
 
         // Sanity: one DeoptSite for the one Add.
-        assert_eq!(jit.deopt_sites.len(), 1,
-            "expected exactly one DeoptSite; got {:?}", jit.deopt_sites);
-        assert!(matches!(jit.deopt_sites[0].reason, DeoptReason::IntegerOverflow { .. }));
+        assert_eq!(
+            jit.deopt_sites.len(),
+            1,
+            "expected exactly one DeoptSite; got {:?}",
+            jit.deopt_sites
+        );
+        assert!(matches!(
+            jit.deopt_sites[0].reason,
+            DeoptReason::IntegerOverflow { .. }
+        ));
 
         // Wire the dispatcher TLS to point at the compiled fn's sites.
         set_current_deopt_sites(&jit.deopt_sites);
@@ -1883,12 +2234,18 @@ mod tests {
         // No-overflow call: must work normally, no trip recorded.
         let r = jit.func.call2(2.0_f64, 3.0_f64);
         assert_eq!(r, 5 as f64);
-        assert!(take_last_deopt().is_none(), "no-overflow call should not trip");
+        assert!(
+            take_last_deopt().is_none(),
+            "no-overflow call should not trip"
+        );
 
         // Overflow call: i64::MAX + 1 wraps to i64::MIN; the guard
         // detects this and trips. The JIT returns sentinel 0.
         let r = jit.func.call2(i64::MAX as f64, 1 as f64);
-        assert_eq!(r, 0 as f64, "guarded JIT should return sentinel on trip; got {r}");
+        assert_eq!(
+            r, 0 as f64,
+            "guarded JIT should return sentinel on trip; got {r}"
+        );
 
         let state = take_last_deopt().expect("overflow should have tripped");
         assert!(matches!(state.reason, DeoptReason::IntegerOverflow { .. }));
@@ -1903,10 +2260,17 @@ mod tests {
     #[test]
     fn jit_compile_sum_function() {
         // function sum(n) { var s=0; for (var i=0; i<n; i++) s=s+i; return s; }
-        let src = r#"function sum(n) { var s = 0; for (var i = 0; i < n; i++) s = s + i; return s; }"#;
+        let src =
+            r#"function sum(n) { var s = 0; for (var i = 0; i < n; i++) s = s + i; return s; }"#;
         let m = compile_module(src).expect("compile module");
-        let sum_proto = m.constants.entries().iter()
-            .find_map(|c| match c { Constant::Function(p) if p.display_name == "sum" => Some((**p).clone()), _ => None })
+        let sum_proto = m
+            .constants
+            .entries()
+            .iter()
+            .find_map(|c| match c {
+                Constant::Function(p) if p.display_name == "sum" => Some((**p).clone()),
+                _ => None,
+            })
             .expect("find sum proto");
         let jit = compile_function(&sum_proto).expect("JIT compile sum failed");
         // sum(0) = 0, sum(1) = 0, sum(5) = 0+1+2+3+4 = 10, sum(100) = 4950

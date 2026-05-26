@@ -52,11 +52,26 @@ impl ScanReport {
         self.stats.parse_failures += other.stats.parse_failures;
         self.stats.tests_total += other.stats.tests_total;
         self.stats.constraints_total += other.stats.constraints_total;
-        self.stats.by_language.rust.merge(other.stats.by_language.rust);
-        self.stats.by_language.typescript.merge(other.stats.by_language.typescript);
-        self.stats.by_language.javascript.merge(other.stats.by_language.javascript);
-        self.stats.by_language.zig.merge(other.stats.by_language.zig);
-        self.stats.by_language.spec.merge(other.stats.by_language.spec);
+        self.stats
+            .by_language
+            .rust
+            .merge(other.stats.by_language.rust);
+        self.stats
+            .by_language
+            .typescript
+            .merge(other.stats.by_language.typescript);
+        self.stats
+            .by_language
+            .javascript
+            .merge(other.stats.by_language.javascript);
+        self.stats
+            .by_language
+            .zig
+            .merge(other.stats.by_language.zig);
+        self.stats
+            .by_language
+            .spec
+            .merge(other.stats.by_language.spec);
     }
 }
 
@@ -76,11 +91,7 @@ pub fn scan_dir(root: &Path) -> Result<ScanReport> {
         .follow_links(false)
         .into_iter()
         .filter_entry(|e| {
-            let name = e
-                .path()
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("");
+            let name = e.path().file_name().and_then(|n| n.to_str()).unwrap_or("");
             !matches!(name, ".git" | "node_modules")
         })
         .filter_map(|e| e.ok())
@@ -136,8 +147,11 @@ fn classify_file(path: &Path) -> Option<Language> {
     if name.ends_with(".test.ts") || name.ends_with(".test.tsx") || name.ends_with(".spec.ts") {
         return Some(Language::TypeScript);
     }
-    if name.ends_with(".test.js") || name.ends_with(".test.jsx") || name.ends_with(".spec.js")
-        || name.ends_with(".test.mjs") || name.ends_with(".test.cjs")
+    if name.ends_with(".test.js")
+        || name.ends_with(".test.jsx")
+        || name.ends_with(".spec.js")
+        || name.ends_with(".test.mjs")
+        || name.ends_with(".test.cjs")
     {
         return Some(Language::JavaScript);
     }

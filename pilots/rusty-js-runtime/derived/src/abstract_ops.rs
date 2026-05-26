@@ -28,17 +28,24 @@ pub fn to_number(v: &Value) -> f64 {
         Value::Boolean(false) => 0.0,
         Value::Number(n) => *n,
         Value::String(s) => parse_string_to_number(s.as_str()),
-        Value::BigInt(b) => b.to_f64(),  // ECMA §7.1.4 throws TypeError; we follow Bun's pragmatic lossy coercion
-        Value::Symbol(_) => f64::NAN,    // ECMA §7.1.4 throws TypeError on Symbol; lossy NaN matches existing BigInt pragmatism
-        Value::Object(_) => f64::NAN,    // Object -> primitive deferred
+        Value::BigInt(b) => b.to_f64(), // ECMA §7.1.4 throws TypeError; we follow Bun's pragmatic lossy coercion
+        Value::Symbol(_) => f64::NAN, // ECMA §7.1.4 throws TypeError on Symbol; lossy NaN matches existing BigInt pragmatism
+        Value::Object(_) => f64::NAN, // Object -> primitive deferred
     }
 }
 
 fn parse_string_to_number(s: &str) -> f64 {
     let trimmed = s.trim();
-    if trimmed.is_empty() { return 0.0; }
-    if let Some(rest) = trimmed.strip_prefix("0x").or_else(|| trimmed.strip_prefix("0X")) {
-        return u64::from_str_radix(rest, 16).map(|n| n as f64).unwrap_or(f64::NAN);
+    if trimmed.is_empty() {
+        return 0.0;
+    }
+    if let Some(rest) = trimmed
+        .strip_prefix("0x")
+        .or_else(|| trimmed.strip_prefix("0X"))
+    {
+        return u64::from_str_radix(rest, 16)
+            .map(|n| n as f64)
+            .unwrap_or(f64::NAN);
     }
     trimmed.parse::<f64>().unwrap_or(f64::NAN)
 }
@@ -59,17 +66,25 @@ pub fn to_string(v: &Value) -> Rc<String> {
         // depends on. Spec §7.1.17 throws TypeError on Symbol; we follow
         // the same pragmatic relaxation BigInt takes one line up.
         Value::Symbol(s) => return s.clone(),
-        Value::Object(_) => "[object Object]".to_string(),  // Object ToString deferred
+        Value::Object(_) => "[object Object]".to_string(), // Object ToString deferred
     })
 }
 
 /// Number::toString per §6.1.6.1.20. v1 uses Rust's default f64 formatter
 /// with special-cases for integer numbers + NaN + Infinity per spec.
 pub fn number_to_string(n: f64) -> String {
-    if n.is_nan() { return "NaN".to_string(); }
-    if n == f64::INFINITY { return "Infinity".to_string(); }
-    if n == f64::NEG_INFINITY { return "-Infinity".to_string(); }
-    if n == 0.0 { return "0".to_string(); }
+    if n.is_nan() {
+        return "NaN".to_string();
+    }
+    if n == f64::INFINITY {
+        return "Infinity".to_string();
+    }
+    if n == f64::NEG_INFINITY {
+        return "-Infinity".to_string();
+    }
+    if n == 0.0 {
+        return "0".to_string();
+    }
     // Ω.5.P61.E17: number-to-string per ECMA §6.1.6.1.20.
     // - Integers below 2^53 use the exact i64 representation.
     // - Integers between 2^53 and 10^21 use {:.0} (no exponential).
@@ -94,7 +109,11 @@ pub fn number_to_string(n: f64) -> String {
         while i < bytes.len() {
             let c = bytes[i] as char;
             out.push(c);
-            if c == 'e' && i + 1 < bytes.len() && bytes[i + 1] as char != '-' && bytes[i + 1] as char != '+' {
+            if c == 'e'
+                && i + 1 < bytes.len()
+                && bytes[i + 1] as char != '-'
+                && bytes[i + 1] as char != '+'
+            {
                 out.push('+');
             }
             i += 1;
@@ -112,7 +131,11 @@ pub fn number_to_string(n: f64) -> String {
         while i < bytes.len() {
             let c = bytes[i] as char;
             out.push(c);
-            if c == 'e' && i + 1 < bytes.len() && bytes[i + 1] as char != '-' && bytes[i + 1] as char != '+' {
+            if c == 'e'
+                && i + 1 < bytes.len()
+                && bytes[i + 1] as char != '-'
+                && bytes[i + 1] as char != '+'
+            {
                 out.push('+');
             }
             i += 1;
@@ -127,7 +150,9 @@ pub fn number_to_string(n: f64) -> String {
 pub fn same_value(a: &Value, b: &Value) -> bool {
     match (a, b) {
         (Value::Number(x), Value::Number(y)) => {
-            if x.is_nan() && y.is_nan() { return true; }
+            if x.is_nan() && y.is_nan() {
+                return true;
+            }
             // +0 / -0 distinguish via sign bit.
             if *x == 0.0 && *y == 0.0 {
                 return x.is_sign_positive() == y.is_sign_positive();
@@ -143,7 +168,9 @@ pub fn same_value(a: &Value, b: &Value) -> bool {
 pub fn same_value_zero(a: &Value, b: &Value) -> bool {
     match (a, b) {
         (Value::Number(x), Value::Number(y)) => {
-            if x.is_nan() && y.is_nan() { return true; }
+            if x.is_nan() && y.is_nan() {
+                return true;
+            }
             x == y
         }
         _ => is_strictly_equal(a, b),
@@ -158,7 +185,9 @@ pub fn is_strictly_equal(a: &Value, b: &Value) -> bool {
         (Value::Boolean(x), Value::Boolean(y)) => x == y,
         (Value::Number(x), Value::Number(y)) => {
             // NaN !== NaN per IEEE 754 and spec
-            if x.is_nan() || y.is_nan() { return false; }
+            if x.is_nan() || y.is_nan() {
+                return false;
+            }
             x == y
         }
         (Value::String(x), Value::String(y)) => x.as_str() == y.as_str(),
@@ -190,7 +219,9 @@ pub fn is_loosely_equal(a: &Value, b: &Value) -> bool {
         }
         // ECMA §7.2.13 BigInt/Number: equal iff BigInt numerically == n.
         (Value::BigInt(b), Value::Number(n)) | (Value::Number(n), Value::BigInt(b)) => {
-            if n.is_nan() || n.is_infinite() || n.fract() != 0.0 { return false; }
+            if n.is_nan() || n.is_infinite() || n.fract() != 0.0 {
+                return false;
+            }
             matches!(b.cmp_f64(*n), Some(std::cmp::Ordering::Equal))
         }
         // BigInt/String: parse the string as a BigInt and compare.
@@ -212,7 +243,12 @@ pub fn is_loosely_equal(a: &Value, b: &Value) -> bool {
 /// Abstract Relational Comparison per §7.2.14, returning Ordering.
 /// Used by <, >, <=, >= opcodes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RelOrder { Less, Greater, Equal, Undefined }
+pub enum RelOrder {
+    Less,
+    Greater,
+    Equal,
+    Undefined,
+}
 
 pub fn abstract_relational_compare(x: &Value, y: &Value) -> RelOrder {
     use std::cmp::Ordering::*;
@@ -226,24 +262,38 @@ pub fn abstract_relational_compare(x: &Value, y: &Value) -> RelOrder {
     }
     // BigInt-aware relational compare per ECMA §7.2.13.
     let ord_to_rel = |o: std::cmp::Ordering| match o {
-        Less => RelOrder::Less, Greater => RelOrder::Greater, Equal => RelOrder::Equal,
+        Less => RelOrder::Less,
+        Greater => RelOrder::Greater,
+        Equal => RelOrder::Equal,
     };
     match (x, y) {
         (Value::BigInt(a), Value::BigInt(b)) => return ord_to_rel(a.cmp(b)),
         (Value::BigInt(a), Value::Number(n)) => {
-            return match a.cmp_f64(*n) { Some(o) => ord_to_rel(o), None => RelOrder::Undefined };
+            return match a.cmp_f64(*n) {
+                Some(o) => ord_to_rel(o),
+                None => RelOrder::Undefined,
+            };
         }
         (Value::Number(n), Value::BigInt(b)) => {
-            return match b.cmp_f64(*n) { Some(o) => ord_to_rel(o.reverse()), None => RelOrder::Undefined };
+            return match b.cmp_f64(*n) {
+                Some(o) => ord_to_rel(o.reverse()),
+                None => RelOrder::Undefined,
+            };
         }
         _ => {}
     }
     let nx = to_number(x);
     let ny = to_number(y);
-    if nx.is_nan() || ny.is_nan() { return RelOrder::Undefined; }
-    if nx < ny { RelOrder::Less }
-    else if nx > ny { RelOrder::Greater }
-    else { RelOrder::Equal }
+    if nx.is_nan() || ny.is_nan() {
+        return RelOrder::Undefined;
+    }
+    if nx < ny {
+        RelOrder::Less
+    } else if nx > ny {
+        RelOrder::Greater
+    } else {
+        RelOrder::Equal
+    }
 }
 
 /// EXT 78: ECMA-262 §21.2.1.1 BigInt() constructor body.
@@ -252,7 +302,10 @@ pub fn abstract_relational_compare(x: &Value, y: &Value) -> RelOrder {
 /// (RangeError when not integral), other primitives through ToBigInt
 /// (§7.1.13). Object inputs unbox via ToPrimitive so BigInt wrappers
 /// and user @@toPrimitive run.
-pub fn to_bigint(rt: &mut crate::interp::Runtime, v: &Value) -> Result<Value, crate::interp::RuntimeError> {
+pub fn to_bigint(
+    rt: &mut crate::interp::Runtime,
+    v: &Value,
+) -> Result<Value, crate::interp::RuntimeError> {
     use crate::bigint::JsBigInt;
     use crate::interp::RuntimeError;
     let prim = match v {
@@ -261,30 +314,41 @@ pub fn to_bigint(rt: &mut crate::interp::Runtime, v: &Value) -> Result<Value, cr
     };
     match prim {
         Value::BigInt(b) => Ok(Value::BigInt(b)),
-        Value::Boolean(b) => Ok(Value::BigInt(Rc::new(
-            if b { JsBigInt::one() } else { JsBigInt::zero() }))),
+        Value::Boolean(b) => Ok(Value::BigInt(Rc::new(if b {
+            JsBigInt::one()
+        } else {
+            JsBigInt::zero()
+        }))),
         Value::String(s) => match JsBigInt::from_decimal(s.trim()) {
             Some(b) => Ok(Value::BigInt(Rc::new(b))),
             None => Err(RuntimeError::SyntaxError(format!(
-                "Cannot convert {:?} to a BigInt", s.as_str()))),
+                "Cannot convert {:?} to a BigInt",
+                s.as_str()
+            ))),
         },
         // NumberToBigInt per §21.2.1.1.1: RangeError for non-integral
         // Numbers (NaN, ±Infinity, fractional). Integral Numbers convert.
         Value::Number(n) => {
             if !n.is_finite() || n.fract() != 0.0 {
                 return Err(RuntimeError::RangeError(format!(
-                    "The number {} cannot be converted to a BigInt because it is not an integer", n)));
+                    "The number {} cannot be converted to a BigInt because it is not an integer",
+                    n
+                )));
             }
             Ok(Value::BigInt(Rc::new(JsBigInt::from_i64(n as i64))))
         }
         Value::Undefined => Err(RuntimeError::TypeError(
-            "Cannot convert undefined to a BigInt".into())),
+            "Cannot convert undefined to a BigInt".into(),
+        )),
         Value::Null => Err(RuntimeError::TypeError(
-            "Cannot convert null to a BigInt".into())),
+            "Cannot convert null to a BigInt".into(),
+        )),
         Value::Symbol(_) => Err(RuntimeError::TypeError(
-            "Cannot convert a Symbol value to a BigInt".into())),
+            "Cannot convert a Symbol value to a BigInt".into(),
+        )),
         Value::Object(_) => Err(RuntimeError::TypeError(
-            "Cannot convert object to a BigInt".into())),
+            "Cannot convert object to a BigInt".into(),
+        )),
     }
 }
 

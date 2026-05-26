@@ -8,19 +8,33 @@
 use rusty_js_ast::*;
 
 fn id(name: &str) -> BindingIdentifier {
-    BindingIdentifier { name: name.to_string(), span: Span::new(0, 0) }
+    BindingIdentifier {
+        name: name.to_string(),
+        span: Span::new(0, 0),
+    }
 }
 
 fn elem(target: BindingPattern) -> BindingElement {
-    BindingElement { target, default: None, span: Span::new(0, 0) }
+    BindingElement {
+        target,
+        default: None,
+        span: Span::new(0, 0),
+    }
 }
 
 fn elem_with_default(target: BindingPattern, default: Expr) -> BindingElement {
-    BindingElement { target, default: Some(default), span: Span::new(0, 0) }
+    BindingElement {
+        target,
+        default: Some(default),
+        span: Span::new(0, 0),
+    }
 }
 
 fn names_of(pat: &BindingPattern) -> Vec<String> {
-    pat.collect_names().into_iter().map(|n| n.name.clone()).collect()
+    pat.collect_names()
+        .into_iter()
+        .map(|n| n.name.clone())
+        .collect()
 }
 
 #[test]
@@ -72,9 +86,15 @@ fn t04_array_pattern_with_elision() {
 #[test]
 fn t05_array_pattern_with_default() {
     // `[a = 99]`
-    let default = Expr::NumberLiteral { value: 99.0, span: Span::new(0, 0) };
+    let default = Expr::NumberLiteral {
+        value: 99.0,
+        span: Span::new(0, 0),
+    };
     let p = BindingPattern::Array(ArrayPattern {
-        elements: vec![Some(elem_with_default(BindingPattern::Identifier(id("a")), default))],
+        elements: vec![Some(elem_with_default(
+            BindingPattern::Identifier(id("a")),
+            default,
+        ))],
         rest: None,
         span: Span::new(0, 0),
     });

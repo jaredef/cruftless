@@ -55,7 +55,7 @@ const CANDIDATES: &[&str] = &[
     "ansi-styles",
     "is-number",
     "color-name",
-    "ms",  // dup to test dedup behavior; should resolve to same
+    "ms", // dup to test dedup behavior; should resolve to same
     "tslib",
     "yallist",
     "lru-cache",
@@ -83,7 +83,9 @@ fn classify(name: &str) -> Outcome {
     };
 
     match resolve_closure(DEFAULT_REGISTRY, &[(name.to_string(), version.clone())]) {
-        Ok(closure) => Outcome::Reachable { count: closure.len() },
+        Ok(closure) => Outcome::Reachable {
+            count: closure.len(),
+        },
         Err(ResolverError::NonExactVersionSpec(s)) => Outcome::RangeAt { spec: s },
         Err(e) => Outcome::Other(format!("closure: {e:?}")),
     }
@@ -91,9 +93,15 @@ fn classify(name: &str) -> Outcome {
 
 fn main() {
     let mut seen = std::collections::BTreeSet::new();
-    let mut tallies: std::collections::BTreeMap<&'static str, usize> =
-        [("Reachable", 0usize), ("RangeAt", 0), ("NotFound", 0),
-         ("HttpError", 0), ("Other", 0)].into_iter().collect();
+    let mut tallies: std::collections::BTreeMap<&'static str, usize> = [
+        ("Reachable", 0usize),
+        ("RangeAt", 0),
+        ("NotFound", 0),
+        ("HttpError", 0),
+        ("Other", 0),
+    ]
+    .into_iter()
+    .collect();
 
     println!("# npm-coverage reconnaissance (PM-EXT 13)");
     println!("# registry = {DEFAULT_REGISTRY}");
@@ -101,7 +109,9 @@ fn main() {
     println!("| package | outcome | detail |");
     println!("|---|---|---|");
     for &name in CANDIDATES {
-        if !seen.insert(name) { continue; }
+        if !seen.insert(name) {
+            continue;
+        }
         let t0 = std::time::Instant::now();
         let out = classify(name);
         let dt = t0.elapsed();
@@ -120,7 +130,11 @@ fn main() {
     println!("## Summary");
     let total: usize = tallies.values().sum();
     for (cat, n) in &tallies {
-        let pct = if total > 0 { 100.0 * (*n as f64) / (total as f64) } else { 0.0 };
+        let pct = if total > 0 {
+            100.0 * (*n as f64) / (total as f64)
+        } else {
+            0.0
+        };
         println!("- **{cat}**: {n}/{total} ({pct:.0}%)");
     }
 }

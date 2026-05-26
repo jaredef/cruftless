@@ -35,7 +35,10 @@ fn write_file(dir: &PathBuf, name: &str, contents: &str) -> PathBuf {
 }
 
 fn entry_url(path: &PathBuf) -> String {
-    format!("file://{}", path.canonicalize().expect("canonicalize").display())
+    format!(
+        "file://{}",
+        path.canonicalize().expect("canonicalize").display()
+    )
 }
 
 fn fresh_runtime() -> Runtime {
@@ -62,13 +65,20 @@ fn load(rt: &mut Runtime, dir: &PathBuf, entry: &str) -> rusty_js_runtime::Objec
 #[test]
 fn t01_single_default_import() {
     let dir = fixture_dir("default");
-    write_file(&dir, "add.mjs",
-        "function add(a, b) { return a + b }\nexport default add;\n");
-    write_file(&dir, "main.mjs", r#"
+    write_file(
+        &dir,
+        "add.mjs",
+        "function add(a, b) { return a + b }\nexport default add;\n",
+    );
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import add from "./add.mjs";
         const result = add(2, 3);
         export { result };
-    "#);
+    "#,
+    );
     let mut rt = fresh_runtime();
     let ns = load(&mut rt, &dir, "main.mjs");
     match rt.object_get(ns, "result") {
@@ -81,13 +91,20 @@ fn t01_single_default_import() {
 #[test]
 fn t02_named_import() {
     let dir = fixture_dir("named");
-    write_file(&dir, "math.mjs",
-        "function mul(a, b) { return a * b }\nexport { mul };\n");
-    write_file(&dir, "main.mjs", r#"
+    write_file(
+        &dir,
+        "math.mjs",
+        "function mul(a, b) { return a * b }\nexport { mul };\n",
+    );
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import { mul } from "./math.mjs";
         const result = mul(3, 4);
         export { result };
-    "#);
+    "#,
+    );
     let mut rt = fresh_runtime();
     let ns = load(&mut rt, &dir, "main.mjs");
     match rt.object_get(ns, "result") {
@@ -100,17 +117,25 @@ fn t02_named_import() {
 #[test]
 fn t03_namespace_import() {
     let dir = fixture_dir("ns");
-    write_file(&dir, "mod.mjs", r#"
+    write_file(
+        &dir,
+        "mod.mjs",
+        r#"
         const x = 1;
         function f(n) { return n * 2 }
         export { x, f };
-    "#);
-    write_file(&dir, "main.mjs", r#"
+    "#,
+    );
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import * as M from "./mod.mjs";
         const a = M.x;
         const b = M.f(2);
         export { a, b };
-    "#);
+    "#,
+    );
     let mut rt = fresh_runtime();
     let ns = load(&mut rt, &dir, "main.mjs");
     assert!(matches!(rt.object_get(ns, "a"), Value::Number(n) if n == 1.0));
@@ -121,17 +146,25 @@ fn t03_namespace_import() {
 #[test]
 fn t04_multiple_named_imports() {
     let dir = fixture_dir("pack");
-    write_file(&dir, "pack.mjs", r#"
+    write_file(
+        &dir,
+        "pack.mjs",
+        r#"
         const a = 10;
         const b = 20;
         const c = 30;
         export { a, b, c };
-    "#);
-    write_file(&dir, "main.mjs", r#"
+    "#,
+    );
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import { a, b, c } from "./pack.mjs";
         const sum = a + b + c;
         export { sum };
-    "#);
+    "#,
+    );
     let mut rt = fresh_runtime();
     let ns = load(&mut rt, &dir, "main.mjs");
     assert!(matches!(rt.object_get(ns, "sum"), Value::Number(n) if n == 60.0));
@@ -145,22 +178,36 @@ fn t05_module_cache() {
     // The dep increments a counter held in a closure each time its body
     // runs. With the cache in place, two imports from sibling modules
     // both see counter == 1, not 2.
-    write_file(&dir, "dep.mjs", r#"
+    write_file(
+        &dir,
+        "dep.mjs",
+        r#"
         let counter = 0;
         counter = counter + 1;
         const seen = counter;
         export { seen };
-    "#);
-    write_file(&dir, "a.mjs",
-        "import { seen } from \"./dep.mjs\";\nconst a_seen = seen;\nexport { a_seen };\n");
-    write_file(&dir, "b.mjs",
-        "import { seen } from \"./dep.mjs\";\nconst b_seen = seen;\nexport { b_seen };\n");
-    write_file(&dir, "main.mjs", r#"
+    "#,
+    );
+    write_file(
+        &dir,
+        "a.mjs",
+        "import { seen } from \"./dep.mjs\";\nconst a_seen = seen;\nexport { a_seen };\n",
+    );
+    write_file(
+        &dir,
+        "b.mjs",
+        "import { seen } from \"./dep.mjs\";\nconst b_seen = seen;\nexport { b_seen };\n",
+    );
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import { a_seen } from "./a.mjs";
         import { b_seen } from "./b.mjs";
         const both = a_seen + b_seen;
         export { both };
-    "#);
+    "#,
+    );
     let mut rt = fresh_runtime();
     let ns = load(&mut rt, &dir, "main.mjs");
     // Each child saw counter == 1, sum == 2.
@@ -171,18 +218,25 @@ fn t05_module_cache() {
 #[test]
 fn t06_two_level_transitive() {
     let dir = fixture_dir("transitive");
-    write_file(&dir, "leaf.mjs",
-        "const value = 42;\nexport { value };\n");
-    write_file(&dir, "mid.mjs", r#"
+    write_file(&dir, "leaf.mjs", "const value = 42;\nexport { value };\n");
+    write_file(
+        &dir,
+        "mid.mjs",
+        r#"
         import { value } from "./leaf.mjs";
         const doubled = value + value;
         export { doubled };
-    "#);
-    write_file(&dir, "main.mjs", r#"
+    "#,
+    );
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import { doubled } from "./mid.mjs";
         const final_value = doubled;
         export { final_value };
-    "#);
+    "#,
+    );
     let mut rt = fresh_runtime();
     let ns = load(&mut rt, &dir, "main.mjs");
     assert!(matches!(rt.object_get(ns, "final_value"), Value::Number(n) if n == 84.0));
@@ -192,29 +246,41 @@ fn t06_two_level_transitive() {
 #[test]
 fn t07_node_fs_builtin() {
     let dir = fixture_dir("nodefs");
-    write_file(&dir, "main.mjs", r#"
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import { existsSync } from "node:fs";
         const here = existsSync("/tmp");
         const nope = existsSync("/this/path/should/not/exist/abc123");
         export { here, nope };
-    "#);
+    "#,
+    );
     let mut rt = fresh_runtime_with_host();
     let ns = load(&mut rt, &dir, "main.mjs");
-    assert!(matches!(rt.object_get(ns, "here"), Value::Boolean(true)),
-        "existsSync(/tmp) should be true");
-    assert!(matches!(rt.object_get(ns, "nope"), Value::Boolean(false)),
-        "existsSync(bogus) should be false");
+    assert!(
+        matches!(rt.object_get(ns, "here"), Value::Boolean(true)),
+        "existsSync(/tmp) should be true"
+    );
+    assert!(
+        matches!(rt.object_get(ns, "nope"), Value::Boolean(false)),
+        "existsSync(bogus) should be false"
+    );
 }
 
 // ─── 8. node:path built-in (default import). ──────────────────────────
 #[test]
 fn t08_node_path_default() {
     let dir = fixture_dir("nodepath");
-    write_file(&dir, "main.mjs", r#"
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import path from "node:path";
         const j = path.join("a", "b");
         export { j };
-    "#);
+    "#,
+    );
     let mut rt = fresh_runtime_with_host();
     let ns = load(&mut rt, &dir, "main.mjs");
     match rt.object_get(ns, "j") {
@@ -227,18 +293,26 @@ fn t08_node_path_default() {
 #[test]
 fn t09_default_plus_named() {
     let dir = fixture_dir("mixed-import");
-    write_file(&dir, "mod.mjs", r#"
+    write_file(
+        &dir,
+        "mod.mjs",
+        r#"
         function makeIt(n) { return n + 100 }
         const x = 7;
         export { x };
         export default makeIt;
-    "#);
-    write_file(&dir, "main.mjs", r#"
+    "#,
+    );
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import def, { x } from "./mod.mjs";
         const a = def(1);
         const b = x;
         export { a, b };
-    "#);
+    "#,
+    );
     let mut rt = fresh_runtime();
     let ns = load(&mut rt, &dir, "main.mjs");
     assert!(matches!(rt.object_get(ns, "a"), Value::Number(n) if n == 101.0));
@@ -249,19 +323,27 @@ fn t09_default_plus_named() {
 #[test]
 fn t10_mixed_export_shapes() {
     let dir = fixture_dir("mixed-export");
-    write_file(&dir, "lib.mjs", r#"
+    write_file(
+        &dir,
+        "lib.mjs",
+        r#"
         function helper(n) { return n - 1 }
         const VERSION = "1.0.0";
         export { helper, VERSION };
         export default helper;
-    "#);
-    write_file(&dir, "main.mjs", r#"
+    "#,
+    );
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import * as L from "./lib.mjs";
         const v = L.VERSION;
         const h = L.helper(10);
         const d = L.default(20);
         export { v, h, d };
-    "#);
+    "#,
+    );
     let mut rt = fresh_runtime();
     let ns = load(&mut rt, &dir, "main.mjs");
     match rt.object_get(ns, "v") {
@@ -276,13 +358,20 @@ fn t10_mixed_export_shapes() {
 #[test]
 fn t11_extension_probe_mjs() {
     let dir = fixture_dir("probe-mjs");
-    write_file(&dir, "util.mjs",
-        "const greet = \"hi\";\nexport { greet };\n");
-    write_file(&dir, "main.mjs", r#"
+    write_file(
+        &dir,
+        "util.mjs",
+        "const greet = \"hi\";\nexport { greet };\n",
+    );
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import { greet } from "./util";
         const s = greet;
         export { s };
-    "#);
+    "#,
+    );
     let mut rt = fresh_runtime();
     let ns = load(&mut rt, &dir, "main.mjs");
     match rt.object_get(ns, "s") {
@@ -295,13 +384,16 @@ fn t11_extension_probe_mjs() {
 #[test]
 fn t12_index_resolution() {
     let dir = fixture_dir("indexres");
-    write_file(&dir, "lib/index.mjs",
-        "const id = 99;\nexport { id };\n");
-    write_file(&dir, "main.mjs", r#"
+    write_file(&dir, "lib/index.mjs", "const id = 99;\nexport { id };\n");
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import { id } from "./lib";
         const v = id;
         export { v };
-    "#);
+    "#,
+    );
     let mut rt = fresh_runtime();
     let ns = load(&mut rt, &dir, "main.mjs");
     assert!(matches!(rt.object_get(ns, "v"), Value::Number(n) if n == 99.0));
@@ -311,11 +403,15 @@ fn t12_index_resolution() {
 #[test]
 fn t13_bare_specifier_errors() {
     let dir = fixture_dir("bare");
-    write_file(&dir, "main.mjs", r#"
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import x from "react";
         const v = x;
         export { v };
-    "#);
+    "#,
+    );
     let mut rt = fresh_runtime();
     let entry = dir.join("main.mjs");
     let url = entry_url(&entry);
@@ -323,8 +419,11 @@ fn t13_bare_specifier_errors() {
     let r = rt.evaluate_module(&src, &url);
     match r {
         Err(RuntimeError::TypeError(msg)) => {
-            assert!(msg.contains("bare specifier") && msg.contains("react"),
-                "error should mention bare specifier + react, got: {}", msg);
+            assert!(
+                msg.contains("bare specifier") && msg.contains("react"),
+                "error should mention bare specifier + react, got: {}",
+                msg
+            );
         }
         other => panic!("expected TypeError for bare specifier, got {:?}", other),
     }
@@ -338,13 +437,20 @@ fn t14_extension_probe_js() {
     // declares `"type": "module"`. The fixture is ESM-shaped, so the
     // marker is required.
     write_file(&dir, "package.json", r#"{"type":"module"}"#);
-    write_file(&dir, "util.js",
-        "const tag = \"js-mode\";\nexport { tag };\n");
-    write_file(&dir, "main.mjs", r#"
+    write_file(
+        &dir,
+        "util.js",
+        "const tag = \"js-mode\";\nexport { tag };\n",
+    );
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import { tag } from "./util";
         const s = tag;
         export { s };
-    "#);
+    "#,
+    );
     let mut rt = fresh_runtime();
     let ns = load(&mut rt, &dir, "main.mjs");
     match rt.object_get(ns, "s") {

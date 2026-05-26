@@ -21,7 +21,11 @@ struct WInner {
 
 impl WInner {
     fn new() -> Self {
-        Self { state: WState::Writable, error: None, locked: false }
+        Self {
+            state: WState::Writable,
+            error: None,
+            locked: false,
+        }
     }
 }
 
@@ -30,7 +34,9 @@ pub trait UnderlyingSink<T> {
     /// SPEC: write callback returns success or an error reason. Pilot uses
     /// Result so the verifier can probe error propagation.
     fn write(&mut self, chunk: T) -> Result<(), String>;
-    fn close(&mut self) -> Result<(), String> { Ok(()) }
+    fn close(&mut self) -> Result<(), String> {
+        Ok(())
+    }
     fn abort(&mut self, _reason: Option<String>) {}
 }
 
@@ -50,11 +56,15 @@ impl<T: 'static> WritableStream<T> {
     }
 
     /// SPEC §5.locked.
-    pub fn locked(&self) -> bool { self.inner.borrow().locked }
+    pub fn locked(&self) -> bool {
+        self.inner.borrow().locked
+    }
 
     /// SPEC §5.abort.
     pub fn abort(&self, reason: Option<String>) -> Result<(), StreamError> {
-        if self.inner.borrow().locked { return Err(StreamError::AlreadyLocked); }
+        if self.inner.borrow().locked {
+            return Err(StreamError::AlreadyLocked);
+        }
         let mut inner = self.inner.borrow_mut();
         inner.state = WState::Errored;
         inner.error = Some(reason.clone().unwrap_or_default());
@@ -65,7 +75,9 @@ impl<T: 'static> WritableStream<T> {
 
     /// SPEC §5.close.
     pub fn close(&self) -> Result<(), StreamError> {
-        if self.inner.borrow().locked { return Err(StreamError::AlreadyLocked); }
+        if self.inner.borrow().locked {
+            return Err(StreamError::AlreadyLocked);
+        }
         self.do_close()
     }
 
@@ -74,7 +86,7 @@ impl<T: 'static> WritableStream<T> {
         match state {
             WState::Closed | WState::Closing => Err(StreamError::Closed),
             WState::Errored => Err(StreamError::Errored(
-                self.inner.borrow().error.clone().unwrap_or_default()
+                self.inner.borrow().error.clone().unwrap_or_default(),
             )),
             WState::Writable => {
                 self.inner.borrow_mut().state = WState::Closing;
@@ -98,7 +110,9 @@ impl<T: 'static> WritableStream<T> {
     /// SPEC §5.getWriter: locks the stream + returns a Writer.
     pub fn get_writer(&self) -> Result<Writer<T>, StreamError> {
         let mut inner = self.inner.borrow_mut();
-        if inner.locked { return Err(StreamError::AlreadyLocked); }
+        if inner.locked {
+            return Err(StreamError::AlreadyLocked);
+        }
         inner.locked = true;
         Ok(Writer {
             inner: self.inner.clone(),
@@ -119,12 +133,14 @@ pub struct Writer<T> {
 impl<T: 'static> Writer<T> {
     /// SPEC §5.writer.write.
     pub fn write(&mut self, chunk: T) -> Result<(), StreamError> {
-        if self.released { return Err(StreamError::ReleasedReader); }
+        if self.released {
+            return Err(StreamError::ReleasedReader);
+        }
         let state = self.inner.borrow().state;
         match state {
             WState::Closed | WState::Closing => Err(StreamError::Closed),
             WState::Errored => Err(StreamError::Errored(
-                self.inner.borrow().error.clone().unwrap_or_default()
+                self.inner.borrow().error.clone().unwrap_or_default(),
             )),
             WState::Writable => {
                 let r = self.sink.borrow_mut().write(chunk);
@@ -141,7 +157,9 @@ impl<T: 'static> Writer<T> {
 
     /// SPEC §5.writer.close.
     pub fn close(&mut self) -> Result<(), StreamError> {
-        if self.released { return Err(StreamError::ReleasedReader); }
+        if self.released {
+            return Err(StreamError::ReleasedReader);
+        }
         let state = self.inner.borrow().state;
         match state {
             WState::Writable => {
@@ -168,7 +186,9 @@ impl<T: 'static> Writer<T> {
     }
 
     pub fn abort(&mut self, reason: Option<String>) -> Result<(), StreamError> {
-        if self.released { return Err(StreamError::ReleasedReader); }
+        if self.released {
+            return Err(StreamError::ReleasedReader);
+        }
         let mut i = self.inner.borrow_mut();
         i.state = WState::Errored;
         i.error = Some(reason.clone().unwrap_or_default());
@@ -180,7 +200,9 @@ impl<T: 'static> Writer<T> {
     }
 
     pub fn release_lock(&mut self) -> Result<(), StreamError> {
-        if self.released { return Err(StreamError::ReleasedReader); }
+        if self.released {
+            return Err(StreamError::ReleasedReader);
+        }
         self.inner.borrow_mut().locked = false;
         self.released = true;
         Ok(())

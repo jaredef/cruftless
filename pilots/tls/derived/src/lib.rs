@@ -23,14 +23,14 @@
 
 use rusty_x509::*;
 
-pub mod record;
-pub mod store;
-pub mod handshake;
 pub mod client;
 pub mod driver;
+pub mod handshake;
+pub mod record;
+pub mod store;
 
-pub use record::*;
-pub use store::*;
-pub use handshake::*;
 pub use client::*;
 pub use driver::*;
+pub use handshake::*;
+pub use record::*;
+pub use store::*;

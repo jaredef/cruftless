@@ -32,8 +32,11 @@ fn cd_te_text1_existence() {
 #[test]
 fn cd_te_text1_undefined_length_zero() {
     let encoder = TextEncoder::new();
-    assert_eq!(encoder.encode(None).len(), 0,
-        "absent-argument case (Rust None analog of JS absent) — passes per SPEC default");
+    assert_eq!(
+        encoder.encode(None).len(),
+        0,
+        "absent-argument case (Rust None analog of JS absent) — passes per SPEC default"
+    );
     // The JS-undefined-explicit case is unobservable in Rust's type system.
     // Documented as VERIFIER-REPORT row R2.
 }
@@ -103,7 +106,10 @@ fn spec_te_encode_ascii() {
 #[test]
 fn spec_te_encode_unicode() {
     // U+1F600 GRINNING FACE — 4 UTF-8 bytes: F0 9F 98 80
-    assert_eq!(TextEncoder::new().encode(Some("\u{1F600}")), vec![0xF0, 0x9F, 0x98, 0x80]);
+    assert_eq!(
+        TextEncoder::new().encode(Some("\u{1F600}")),
+        vec![0xF0, 0x9F, 0x98, 0x80]
+    );
 }
 
 #[test]
@@ -138,7 +144,12 @@ fn spec_td_default_label_is_utf8() {
 fn spec_td_label_aliases_resolve_to_utf8() {
     for label in ["UTF-8", "utf8", "Unicode-1-1-UTF-8", "  utf-8  "] {
         let d = TextDecoder::new(Some(label), Default::default()).unwrap();
-        assert_eq!(d.encoding(), "utf-8", "label {:?} should resolve to utf-8", label);
+        assert_eq!(
+            d.encoding(),
+            "utf-8",
+            "label {:?} should resolve to utf-8",
+            label
+        );
     }
 }
 
@@ -158,18 +169,38 @@ fn spec_td_unicode_decode() {
 #[test]
 fn spec_td_consumes_bom_by_default() {
     let mut d = TextDecoder::new(None, Default::default()).unwrap();
-    assert_eq!(d.decode(b"\xEF\xBB\xBFhi", Default::default()).unwrap(), "hi");
+    assert_eq!(
+        d.decode(b"\xEF\xBB\xBFhi", Default::default()).unwrap(),
+        "hi"
+    );
 }
 
 #[test]
 fn spec_td_ignore_bom_keeps_it() {
-    let mut d = TextDecoder::new(None, TextDecoderOptions { fatal: false, ignore_bom: true }).unwrap();
-    assert_eq!(d.decode(b"\xEF\xBB\xBFhi", Default::default()).unwrap(), "\u{FEFF}hi");
+    let mut d = TextDecoder::new(
+        None,
+        TextDecoderOptions {
+            fatal: false,
+            ignore_bom: true,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        d.decode(b"\xEF\xBB\xBFhi", Default::default()).unwrap(),
+        "\u{FEFF}hi"
+    );
 }
 
 #[test]
 fn spec_td_fatal_mode_rejects_invalid() {
-    let mut d = TextDecoder::new(None, TextDecoderOptions { fatal: true, ignore_bom: false }).unwrap();
+    let mut d = TextDecoder::new(
+        None,
+        TextDecoderOptions {
+            fatal: true,
+            ignore_bom: false,
+        },
+    )
+    .unwrap();
     let r = d.decode(&[0xFF, 0xFE], Default::default());
     assert_eq!(r, Err(DecoderError::InvalidSequence));
 }
@@ -184,9 +215,13 @@ fn spec_td_replacement_in_default_mode() {
 fn spec_td_streaming_partial_sequence() {
     let mut d = TextDecoder::new(None, Default::default()).unwrap();
     // Split U+1F600 (F0 9F 98 80) across two stream chunks.
-    let s1 = d.decode(&[0xF0, 0x9F], TextDecodeOptions { stream: true }).unwrap();
+    let s1 = d
+        .decode(&[0xF0, 0x9F], TextDecodeOptions { stream: true })
+        .unwrap();
     assert_eq!(s1, "");
-    let s2 = d.decode(&[0x98, 0x80], TextDecodeOptions { stream: false }).unwrap();
+    let s2 = d
+        .decode(&[0x98, 0x80], TextDecodeOptions { stream: false })
+        .unwrap();
     assert_eq!(s2, "\u{1F600}");
 }
 

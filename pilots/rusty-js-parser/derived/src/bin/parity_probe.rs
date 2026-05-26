@@ -24,20 +24,25 @@ fn resolve_entry(pkg_root: &Path) -> Option<PathBuf> {
                 if let Some(qend) = after2.find('"') {
                     let rel = &after2[..qend];
                     let p = pkg_root.join(rel);
-                    if p.is_file() { return Some(p); }
+                    if p.is_file() {
+                        return Some(p);
+                    }
                 }
             }
         }
     }
     for fname in &["index.js", "index.mjs", "index.cjs"] {
         let p = pkg_root.join(fname);
-        if p.is_file() { return Some(p); }
+        if p.is_file() {
+            return Some(p);
+        }
     }
     None
 }
 
 fn main() {
-    let list_path = std::env::args().nth(1)
+    let list_path = std::env::args()
+        .nth(1)
         .unwrap_or_else(|| "/home/jaredef/rusty-bun/host/tools/parity-top100.txt".to_string());
     let raw = std::fs::read_to_string(&list_path).expect("list.txt read failed");
 
@@ -49,14 +54,25 @@ fn main() {
 
     for line in raw.lines() {
         let pkg = line.trim();
-        if pkg.is_empty() || pkg.starts_with('#') { continue; }
+        if pkg.is_empty() || pkg.starts_with('#') {
+            continue;
+        }
         total += 1;
         let safe = pkg.replace('/', "--");
         let sandbox = format!("/tmp/parity-sandbox/{}/node_modules/{}", safe, pkg);
         let pkg_root = Path::new(&sandbox);
-        if !pkg_root.is_dir() { skip_no_source += 1; continue; }
-        let Some(entry) = resolve_entry(pkg_root) else { skip_no_source += 1; continue; };
-        let Ok(src) = std::fs::read_to_string(&entry) else { skip_no_source += 1; continue; };
+        if !pkg_root.is_dir() {
+            skip_no_source += 1;
+            continue;
+        }
+        let Some(entry) = resolve_entry(pkg_root) else {
+            skip_no_source += 1;
+            continue;
+        };
+        let Ok(src) = std::fs::read_to_string(&entry) else {
+            skip_no_source += 1;
+            continue;
+        };
 
         if src.len() > 500_000 {
             skip_too_large += 1;
@@ -72,7 +88,9 @@ fn main() {
     let measurable = total - skip_no_source - skip_too_large;
     let pct = if measurable > 0 {
         (parsed as f64) / (measurable as f64) * 100.0
-    } else { 0.0 };
+    } else {
+        0.0
+    };
 
     println!();
     println!("═══════════════════════════════════════════════");

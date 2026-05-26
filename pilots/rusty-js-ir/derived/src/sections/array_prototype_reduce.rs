@@ -11,11 +11,13 @@ use crate::ir::{Expr, IRFunction, IRNode, Step};
 use crate::lint::SpecStepRecord;
 
 pub fn build_reduce() -> IRFunction {
-    let body = vec![
-        Step { spec_step: "1".into(), node: IRNode::Return(Expr::CallBuiltin {
-            name: "array_proto_reduce_via", args: vec![Expr::AllArgs],
-        })},
-    ];
+    let body = vec![Step {
+        spec_step: "1".into(),
+        node: IRNode::Return(Expr::CallBuiltin {
+            name: "array_proto_reduce_via",
+            args: vec![Expr::AllArgs],
+        }),
+    }];
     IRFunction {
         spec_section: "23.1.3.24".into(),
         rust_name: "array_prototype_reduce".into(),

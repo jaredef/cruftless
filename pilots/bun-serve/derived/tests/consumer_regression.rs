@@ -3,10 +3,14 @@
 use bun_serve::*;
 
 fn req(method: &str, url: &str) -> Request {
-    Request::new(url, RequestInit {
-        method: Some(method.into()),
-        ..Default::default()
-    }).unwrap()
+    Request::new(
+        url,
+        RequestInit {
+            method: Some(method.into()),
+            ..Default::default()
+        },
+    )
+    .unwrap()
 }
 
 // ────────── Bun docs canonical example — fetch handler ──────────
@@ -19,10 +23,7 @@ fn req(method: &str, url: &str) -> Request {
 fn consumer_bun_docs_fetch_canonical() {
     let mut s = serve(ServeOptions {
         fetch: Some(Box::new(|_req, _params| {
-            Response::new(
-                Some(Body::Text("hello".into())),
-                Default::default(),
-            ).unwrap()
+            Response::new(Some(Body::Text("hello".into())), Default::default()).unwrap()
         })),
         ..Default::default()
     });
@@ -45,7 +46,10 @@ fn consumer_hono_json_response_pattern() {
         ..Default::default()
     });
     let r = s.fetch(&req("GET", "http://localhost/"));
-    assert_eq!(r.headers().get("content-type"), Some("application/json".to_string()));
+    assert_eq!(
+        r.headers().get("content-type"),
+        Some("application/json".to_string())
+    );
     assert_eq!(r.text().unwrap(), r#"{"message":"hello"}"#);
 }
 
@@ -59,26 +63,28 @@ fn consumer_hono_json_response_pattern() {
 #[test]
 fn consumer_elysia_routes_first_priority() {
     let mut s = serve(ServeOptions {
-        routes: vec![
-            Route::any("/healthz", |_req, _params| {
-                Response::new(
-                    Some(Body::Text("ok".into())),
-                    Default::default(),
-                ).unwrap()
-            }),
-        ],
+        routes: vec![Route::any("/healthz", |_req, _params| {
+            Response::new(Some(Body::Text("ok".into())), Default::default()).unwrap()
+        })],
         fetch: Some(Box::new(|_req, _params| {
-            Response::new(
-                Some(Body::Text("dynamic".into())),
-                Default::default(),
-            ).unwrap()
+            Response::new(Some(Body::Text("dynamic".into())), Default::default()).unwrap()
         })),
         ..Default::default()
     });
     // Route matches first, fetch never invoked
-    assert_eq!(s.fetch(&req("GET", "http://localhost/healthz")).text().unwrap(), "ok");
+    assert_eq!(
+        s.fetch(&req("GET", "http://localhost/healthz"))
+            .text()
+            .unwrap(),
+        "ok"
+    );
     // No route matches → fetch invoked
-    assert_eq!(s.fetch(&req("GET", "http://localhost/dynamic")).text().unwrap(), "dynamic");
+    assert_eq!(
+        s.fetch(&req("GET", "http://localhost/dynamic"))
+            .text()
+            .unwrap(),
+        "dynamic"
+    );
 }
 
 // ────────── REST API — method-keyed routes ──────────
@@ -90,27 +96,36 @@ fn consumer_elysia_routes_first_priority() {
 #[test]
 fn consumer_rest_api_method_dispatch() {
     let mut s = serve(ServeOptions {
-        routes: vec![
-            Route::methods("/api/items")
-                .on("GET", |_req, _params| {
-                    Response::new(
-                        Some(Body::Text("[]".into())),
-                        Default::default(),
-                    ).unwrap()
-                })
-                .on("POST", |_req, _params| {
-                    Response::new(
-                        None,
-                        ResponseInit { status: Some(201), ..Default::default() },
-                    ).unwrap()
-                })
-                .build(),
-        ],
+        routes: vec![Route::methods("/api/items")
+            .on("GET", |_req, _params| {
+                Response::new(Some(Body::Text("[]".into())), Default::default()).unwrap()
+            })
+            .on("POST", |_req, _params| {
+                Response::new(
+                    None,
+                    ResponseInit {
+                        status: Some(201),
+                        ..Default::default()
+                    },
+                )
+                .unwrap()
+            })
+            .build()],
         ..Default::default()
     });
-    assert_eq!(s.fetch(&req("GET", "http://localhost/api/items")).status(), 200);
-    assert_eq!(s.fetch(&req("POST", "http://localhost/api/items")).status(), 201);
-    assert_eq!(s.fetch(&req("DELETE", "http://localhost/api/items")).status(), 405);
+    assert_eq!(
+        s.fetch(&req("GET", "http://localhost/api/items")).status(),
+        200
+    );
+    assert_eq!(
+        s.fetch(&req("POST", "http://localhost/api/items")).status(),
+        201
+    );
+    assert_eq!(
+        s.fetch(&req("DELETE", "http://localhost/api/items"))
+            .status(),
+        405
+    );
 }
 
 // ────────── Bun-native development workflow — server.reload ──────────
@@ -126,26 +141,26 @@ fn consumer_bun_dev_hot_reload() {
         port: 5555,
         hostname: "127.0.0.1".into(),
         fetch: Some(Box::new(|_req, _params| {
-            Response::new(
-                Some(Body::Text("v1".into())),
-                Default::default(),
-            ).unwrap()
+            Response::new(Some(Body::Text("v1".into())), Default::default()).unwrap()
         })),
         ..Default::default()
     });
-    assert_eq!(s.fetch(&req("GET", "http://localhost/")).text().unwrap(), "v1");
+    assert_eq!(
+        s.fetch(&req("GET", "http://localhost/")).text().unwrap(),
+        "v1"
+    );
     s.reload(ServeOptions {
-        port: 0, // ignored per spec
+        port: 0,                      // ignored per spec
         hostname: "different".into(), // ignored per spec
         fetch: Some(Box::new(|_req, _params| {
-            Response::new(
-                Some(Body::Text("v2".into())),
-                Default::default(),
-            ).unwrap()
+            Response::new(Some(Body::Text("v2".into())), Default::default()).unwrap()
         })),
         ..Default::default()
     });
-    assert_eq!(s.fetch(&req("GET", "http://localhost/")).text().unwrap(), "v2");
+    assert_eq!(
+        s.fetch(&req("GET", "http://localhost/")).text().unwrap(),
+        "v2"
+    );
     assert_eq!(s.port(), 5555);
     assert_eq!(s.hostname(), "127.0.0.1");
 }
@@ -163,7 +178,8 @@ fn consumer_rest_path_parameter() {
             Response::new(
                 Some(Body::Text(format!(r#"{{"id":"{}"}}"#, id))),
                 Default::default(),
-            ).unwrap()
+            )
+            .unwrap()
         })],
         ..Default::default()
     });
@@ -195,14 +211,14 @@ fn consumer_ops_introspects_server_url() {
 fn consumer_graceful_shutdown_after_stop() {
     let mut s = serve(ServeOptions {
         fetch: Some(Box::new(|_req, _params| {
-            Response::new(
-                Some(Body::Text("ok".into())),
-                Default::default(),
-            ).unwrap()
+            Response::new(Some(Body::Text("ok".into())), Default::default()).unwrap()
         })),
         ..Default::default()
     });
     assert_eq!(s.fetch(&req("GET", "http://localhost/")).status(), 200);
     s.stop();
-    assert_eq!(s.fetch(&req("GET", "http://localhost/")).response_type(), ResponseType::Error);
+    assert_eq!(
+        s.fetch(&req("GET", "http://localhost/")).response_type(),
+        ResponseType::Error
+    );
 }

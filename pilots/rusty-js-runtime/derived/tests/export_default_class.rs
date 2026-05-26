@@ -27,7 +27,10 @@ fn write_file(dir: &PathBuf, name: &str, contents: &str) -> PathBuf {
 }
 
 fn entry_url(path: &PathBuf) -> String {
-    format!("file://{}", path.canonicalize().expect("canonicalize").display())
+    format!(
+        "file://{}",
+        path.canonicalize().expect("canonicalize").display()
+    )
 }
 
 fn fresh() -> Runtime {
@@ -47,13 +50,20 @@ fn load(rt: &mut Runtime, dir: &PathBuf, entry: &str) -> rusty_js_runtime::Objec
 #[test]
 fn t01_anonymous_default_class() {
     let dir = fixture_dir("anon");
-    write_file(&dir, "lib.mjs",
-        "export default class { greet() { return \"hi\"; } }\n");
-    write_file(&dir, "main.mjs", r#"
+    write_file(
+        &dir,
+        "lib.mjs",
+        "export default class { greet() { return \"hi\"; } }\n",
+    );
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import Lib from "./lib.mjs";
         const r = (new Lib()).greet();
         export { r };
-    "#);
+    "#,
+    );
     let mut rt = fresh();
     let ns = load(&mut rt, &dir, "main.mjs");
     match rt.object_get(ns, "r") {
@@ -66,13 +76,20 @@ fn t01_anonymous_default_class() {
 #[test]
 fn t02_named_default_class() {
     let dir = fixture_dir("named");
-    write_file(&dir, "lib.mjs",
-        "export default class Foo { foo() { return 1; } }\n");
-    write_file(&dir, "main.mjs", r#"
+    write_file(
+        &dir,
+        "lib.mjs",
+        "export default class Foo { foo() { return 1; } }\n",
+    );
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import Foo from "./lib.mjs";
         const r = (new Foo()).foo();
         export { r };
-    "#);
+    "#,
+    );
     let mut rt = fresh();
     let ns = load(&mut rt, &dir, "main.mjs");
     assert_eq!(rt.object_get(ns, "r"), Value::Number(1.0));
@@ -82,15 +99,22 @@ fn t02_named_default_class() {
 #[test]
 fn t03_default_class_as_extends_base() {
     let dir = fixture_dir("extends");
-    write_file(&dir, "base.mjs",
-        "export default class Base { kind() { return \"base\"; } }\n");
-    write_file(&dir, "main.mjs", r#"
+    write_file(
+        &dir,
+        "base.mjs",
+        "export default class Base { kind() { return \"base\"; } }\n",
+    );
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import Base from "./base.mjs";
         class Derived extends Base { extra() { return "extra"; } }
         const d = new Derived();
         const r = d.kind() + ":" + d.extra();
         export { r };
-    "#);
+    "#,
+    );
     let mut rt = fresh();
     let ns = load(&mut rt, &dir, "main.mjs");
     match rt.object_get(ns, "r") {

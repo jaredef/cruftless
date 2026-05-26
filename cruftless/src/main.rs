@@ -20,8 +20,14 @@ fn format_thrown(rt: &Runtime, v: &Value) -> String {
     match v {
         Value::String(s) => format!("Thrown: {}", s),
         Value::Object(id) => {
-            let name = match rt.object_get(*id, "name") { Value::String(s) => (*s).clone(), _ => String::new() };
-            let message = match rt.object_get(*id, "message") { Value::String(s) => (*s).clone(), _ => String::new() };
+            let name = match rt.object_get(*id, "name") {
+                Value::String(s) => (*s).clone(),
+                _ => String::new(),
+            };
+            let message = match rt.object_get(*id, "message") {
+                Value::String(s) => (*s).clone(),
+                _ => String::new(),
+            };
             if !name.is_empty() && !message.is_empty() {
                 format!("Thrown: {}: {}", name, message)
             } else if !message.is_empty() {
@@ -42,18 +48,32 @@ fn run_install_subcommand() -> ExitCode {
     // registry (registry.npmmirror.com per Doc 730 §XVI Case-4 scope).
     let cwd = match std::env::current_dir() {
         Ok(p) => p,
-        Err(e) => { eprintln!("cruft install: cannot read cwd: {e}"); return ExitCode::from(66); }
+        Err(e) => {
+            eprintln!("cruft install: cannot read cwd: {e}");
+            return ExitCode::from(66);
+        }
     };
     let registry = std::env::var("CRUFT_REGISTRY")
         .or_else(|_| std::env::var("CRUFTLESS_REGISTRY"))
         .unwrap_or_else(|_| rusty_js_pm::resolver::DEFAULT_REGISTRY.to_string());
-    eprintln!("cruft install: project={} registry={}", cwd.display(), registry);
+    eprintln!(
+        "cruft install: project={} registry={}",
+        cwd.display(),
+        registry
+    );
     match rusty_js_pm::install::pm_install(&cwd, &registry) {
         Ok(report) => {
-            for (n, v) in &report.installed { println!("+ {n}@{v}"); }
-            for (n, v) in &report.skipped { println!("= {n}@{v}"); }
-            eprintln!("cruft install: {} installed, {} skipped",
-                report.installed.len(), report.skipped.len());
+            for (n, v) in &report.installed {
+                println!("+ {n}@{v}");
+            }
+            for (n, v) in &report.skipped {
+                println!("= {n}@{v}");
+            }
+            eprintln!(
+                "cruft install: {} installed, {} skipped",
+                report.installed.len(),
+                report.skipped.len()
+            );
             ExitCode::from(0)
         }
         Err(e) => {
@@ -70,7 +90,14 @@ fn run_install_subcommand() -> ExitCode {
 /// Default: CapMode::Compat (Mode 0). Returns (mode, audit_log_path,
 /// allow_net_loopback, remaining_args) where remaining_args is argv with
 /// the flag(s) consumed.
-fn parse_cap_flags(args: Vec<String>) -> (rusty_js_runtime::caps::CapMode, Option<String>, bool, Vec<String>) {
+fn parse_cap_flags(
+    args: Vec<String>,
+) -> (
+    rusty_js_runtime::caps::CapMode,
+    Option<String>,
+    bool,
+    Vec<String>,
+) {
     use rusty_js_runtime::caps::CapMode;
     let mut mode = CapMode::Compat;
     let mut audit_path: Option<String> = None;
@@ -83,7 +110,9 @@ fn parse_cap_flags(args: Vec<String>) -> (rusty_js_runtime::caps::CapMode, Optio
             "--sealed-deps" => mode = CapMode::SealedDeps,
             "--sealed" => mode = CapMode::Sealed,
             "--audit-log" => {
-                if let Some(p) = it.next() { audit_path = Some(p); }
+                if let Some(p) = it.next() {
+                    audit_path = Some(p);
+                }
             }
             "--allow-net-loopback" => allow_net_loopback = true,
             _ => out.push(a),
@@ -92,10 +121,12 @@ fn parse_cap_flags(args: Vec<String>) -> (rusty_js_runtime::caps::CapMode, Optio
     // CRUFT_CAPS_MODE / CRUFTLESS_CAPS_MODE env var as override fallback
     // (the CRUFTLESS_ prefix preserved for one release of backwards-compat).
     if mode == CapMode::Compat {
-        let env = std::env::var("CRUFT_CAPS_MODE")
-            .or_else(|_| std::env::var("CRUFTLESS_CAPS_MODE"));
+        let env =
+            std::env::var("CRUFT_CAPS_MODE").or_else(|_| std::env::var("CRUFTLESS_CAPS_MODE"));
         if let Ok(s) = env {
-            if let Some(m) = CapMode::from_str(&s) { mode = m; }
+            if let Some(m) = CapMode::from_str(&s) {
+                mode = m;
+            }
         }
     }
     if !allow_net_loopback {
@@ -109,7 +140,9 @@ fn parse_cap_flags(args: Vec<String>) -> (rusty_js_runtime::caps::CapMode, Optio
 
 fn drain_audit_log(rt: &rusty_js_runtime::Runtime, dest: Option<&str>) {
     let records = rt.caps.drain_audit();
-    if records.is_empty() { return; }
+    if records.is_empty() {
+        return;
+    }
     let mut sink: Box<dyn std::io::Write> = match dest {
         Some(path) => match std::fs::File::create(path) {
             Ok(f) => Box::new(std::io::BufWriter::new(f)),
@@ -122,10 +155,16 @@ fn drain_audit_log(rt: &rusty_js_runtime::Runtime, dest: Option<&str>) {
     };
     use std::io::Write;
     let _ = writeln!(sink, "# cruft audit log — {} records", records.len());
-    let _ = writeln!(sink, "# format: <caller>\\t<capability>\\t<operation>\\t<unix_micros>");
+    let _ = writeln!(
+        sink,
+        "# format: <caller>\\t<capability>\\t<operation>\\t<unix_micros>"
+    );
     for r in &records {
-        let _ = writeln!(sink, "{}\t{}\t{}\t{}",
-            r.caller, r.capability, r.operation, r.timestamp_micros);
+        let _ = writeln!(
+            sink,
+            "{}\t{}\t{}\t{}",
+            r.caller, r.capability, r.operation, r.timestamp_micros
+        );
     }
     let _ = sink.flush();
 }
@@ -165,7 +204,11 @@ fn main() -> ExitCode {
     let (cap_mode, audit_log_path, allow_net_loopback, args) = parse_cap_flags(raw_args);
 
     // Global flags handled before subcommand dispatch.
-    if args.iter().skip(1).any(|a| a == "-h" || a == "--help" || a == "help") {
+    if args
+        .iter()
+        .skip(1)
+        .any(|a| a == "-h" || a == "--help" || a == "help")
+    {
         print_help();
         return ExitCode::SUCCESS;
     }
@@ -220,7 +263,7 @@ fn main() -> ExitCode {
     if allow_net_loopback {
         rt.caps = std::sync::Arc::new(
             rusty_js_runtime::caps::CapDispatcher::new(cap_mode)
-                .with_net_grant(rusty_js_runtime::caps::Net::loopback_server())
+                .with_net_grant(rusty_js_runtime::caps::Net::loopback_server()),
         );
     }
     rt.install_intrinsics();
@@ -243,11 +286,12 @@ fn main() -> ExitCode {
         }
     }
 
-    let t_loop = if std::env::var("CRUFT_PROFILE").is_ok()
-        || std::env::var("CRUFTLESS_PROFILE").is_ok()
-    {
-        Some(std::time::Instant::now())
-    } else { None };
+    let t_loop =
+        if std::env::var("CRUFT_PROFILE").is_ok() || std::env::var("CRUFTLESS_PROFILE").is_ok() {
+            Some(std::time::Instant::now())
+        } else {
+            None
+        };
     if let Err(e) = rt.run_to_completion() {
         eprintln!("cruft: event-loop error: {:?}", e);
         return ExitCode::from(70);

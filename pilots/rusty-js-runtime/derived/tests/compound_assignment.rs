@@ -107,17 +107,26 @@ fn t14b_nullish_assign_zero_keeps() {
 
 #[test]
 fn t15_static_member_add_assign() {
-    assert_eq!(run("let o = {n: 5}; o.n += 3; return o.n;"), Value::Number(8.0));
+    assert_eq!(
+        run("let o = {n: 5}; o.n += 3; return o.n;"),
+        Value::Number(8.0)
+    );
 }
 
 #[test]
 fn t16_index_mul_assign() {
-    assert_eq!(run("let a = [10, 20, 30]; a[1] *= 2; return a[1];"), Value::Number(40.0));
+    assert_eq!(
+        run("let a = [10, 20, 30]; a[1] *= 2; return a[1];"),
+        Value::Number(40.0)
+    );
 }
 
 #[test]
 fn t17_computed_member_sub_assign() {
-    assert_eq!(run("let o = {n: 5}; let k = \"n\"; o[k] -= 2; return o.n;"), Value::Number(3.0));
+    assert_eq!(
+        run("let o = {n: 5}; let k = \"n\"; o[k] -= 2; return o.n;"),
+        Value::Number(3.0)
+    );
 }
 
 // ───────── Update expressions ─────────
@@ -125,7 +134,10 @@ fn t17_computed_member_sub_assign() {
 #[test]
 fn t18_prefix_inc_identifier_value_and_effect() {
     // Expression evaluates to new value; n becomes 6.
-    assert_eq!(run("let n = 5; let r = ++n; return [r, n][0];"), Value::Number(6.0));
+    assert_eq!(
+        run("let n = 5; let r = ++n; return [r, n][0];"),
+        Value::Number(6.0)
+    );
     assert_eq!(run("let n = 5; ++n; return n;"), Value::Number(6.0));
 }
 
@@ -150,14 +162,26 @@ fn t21_postfix_dec_value_and_effect() {
 
 #[test]
 fn t22_prefix_inc_static_member() {
-    assert_eq!(run("let o = {n: 5}; ++o.n; return o.n;"), Value::Number(6.0));
-    assert_eq!(run("let o = {n: 5}; let r = ++o.n; return r;"), Value::Number(6.0));
+    assert_eq!(
+        run("let o = {n: 5}; ++o.n; return o.n;"),
+        Value::Number(6.0)
+    );
+    assert_eq!(
+        run("let o = {n: 5}; let r = ++o.n; return r;"),
+        Value::Number(6.0)
+    );
 }
 
 #[test]
 fn t23_postfix_inc_index() {
-    assert_eq!(run("let a = [10, 20]; a[0]++; return a[0];"), Value::Number(11.0));
-    assert_eq!(run("let a = [10, 20]; let r = a[0]++; return r;"), Value::Number(10.0));
+    assert_eq!(
+        run("let a = [10, 20]; a[0]++; return a[0];"),
+        Value::Number(11.0)
+    );
+    assert_eq!(
+        run("let a = [10, 20]; let r = a[0]++; return r;"),
+        Value::Number(10.0)
+    );
 }
 
 // ───────── For-of with compound (canonical smoke) ─────────

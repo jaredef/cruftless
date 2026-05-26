@@ -4,7 +4,7 @@
 // decode under our pilot, and assert round-trip equality. Plus a few
 // hand-crafted RFC test vectors for fixed-Huffman + stored blocks.
 
-use rusty_compression::{gunzip, inflate, zlib_inflate, http_deflate_inflate};
+use rusty_compression::{gunzip, http_deflate_inflate, inflate, zlib_inflate};
 use std::io::Write;
 use std::process::{Command, Stdio};
 
@@ -12,7 +12,7 @@ fn gzip_via_system(input: &[u8]) -> Vec<u8> {
     // Use the system `gzip` binary as an external reference (POSIX).
     let mut child = Command::new("gzip")
         .arg("-c")
-        .arg("-n")  // suppress filename/mtime in header for determinism
+        .arg("-n") // suppress filename/mtime in header for determinism
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
@@ -78,13 +78,19 @@ fn gunzip_corrupt_crc_detected() {
     let n = g.len();
     g[n - 8] ^= 0x01;
     let r = gunzip(&g);
-    assert!(matches!(r, Err(rusty_compression::DecodeError::GzipCrcMismatch)));
+    assert!(matches!(
+        r,
+        Err(rusty_compression::DecodeError::GzipCrcMismatch)
+    ));
 }
 
 #[test]
 fn gunzip_invalid_magic() {
     let r = gunzip(b"NOTGZIP\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00");
-    assert!(matches!(r, Err(rusty_compression::DecodeError::InvalidGzipMagic)));
+    assert!(matches!(
+        r,
+        Err(rusty_compression::DecodeError::InvalidGzipMagic)
+    ));
 }
 
 #[test]
@@ -100,12 +106,18 @@ fn zlib_roundtrip_via_python() {
         .spawn()
     {
         Ok(c) => c,
-        Err(_) => { eprintln!("python3 missing — skip zlib test"); return; }
+        Err(_) => {
+            eprintln!("python3 missing — skip zlib test");
+            return;
+        }
     };
     child.stdin.as_mut().unwrap().write_all(input).unwrap();
     let out = match child.wait_with_output() {
         Ok(o) if o.status.success() => o.stdout,
-        _ => { eprintln!("python3 zlib invocation failed — skip"); return; }
+        _ => {
+            eprintln!("python3 zlib invocation failed — skip");
+            return;
+        }
     };
     let decoded = zlib_inflate(&out).unwrap();
     assert_eq!(decoded.as_slice(), input as &[u8]);
@@ -118,9 +130,11 @@ fn http_deflate_accepts_both_wrappings() {
     // DEFLATE we use python3.
     let raw = Command::new("python3")
         .arg("-c")
-        .arg("import sys, zlib; \
+        .arg(
+            "import sys, zlib; \
               d = zlib.compressobj(-1, zlib.DEFLATED, -15); \
-              sys.stdout.buffer.write(d.compress(b'raw deflate') + d.flush())")
+              sys.stdout.buffer.write(d.compress(b'raw deflate') + d.flush())",
+        )
         .output();
     if let Ok(o) = raw {
         if o.status.success() {
@@ -198,6 +212,10 @@ fn gzip_deflate_stored_decodes_under_system_gunzip() {
         .expect("gzip missing");
     child.stdin.as_mut().unwrap().write_all(&encoded).unwrap();
     let out = child.wait_with_output().unwrap();
-    assert!(out.status.success(), "gunzip failed: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "gunzip failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     assert_eq!(&out.stdout, input);
 }

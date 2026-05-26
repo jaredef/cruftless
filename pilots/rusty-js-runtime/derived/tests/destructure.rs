@@ -12,12 +12,16 @@ fn run_rt(src: &str) -> Runtime {
         .unwrap_or_else(|e| panic!("compile {:?}: {:?}", src, e));
     let mut rt = Runtime::new();
     rt.install_intrinsics();
-    rt.run_module(&module).unwrap_or_else(|e| panic!("run {:?}: {:?}", src, e));
+    rt.run_module(&module)
+        .unwrap_or_else(|e| panic!("run {:?}: {:?}", src, e));
     rt
 }
 
 fn last(rt: &Runtime) -> Value {
-    rt.globals.get("__last_recorded").cloned().unwrap_or(Value::Undefined)
+    rt.globals
+        .get("__last_recorded")
+        .cloned()
+        .unwrap_or(Value::Undefined)
 }
 
 // 1. Plain array destructure.
@@ -53,7 +57,7 @@ fn t04_array_default_skipped() {
 fn t05_array_rest() {
     let rt = run_rt(
         "const [a, ...rest] = [1, 2, 3, 4]; \
-         __record(rest.length === 3 && rest[0] === 2 && rest[2] === 4);"
+         __record(rest.length === 3 && rest[0] === 2 && rest[2] === 4);",
     );
     assert_eq!(last(&rt), Value::Boolean(true));
 }
@@ -90,7 +94,7 @@ fn t09_param_array() {
 #[test]
 fn t10_forof_destructure_head() {
     let rt = run_rt(
-        "let sum = 0; for (const [a, b] of [[1,2],[3,4]]) { sum = sum + a + b; } __record(sum);"
+        "let sum = 0; for (const [a, b] of [[1,2],[3,4]]) { sum = sum + a + b; } __record(sum);",
     );
     assert_eq!(last(&rt), Value::Number(10.0));
 }
@@ -100,7 +104,7 @@ fn t10_forof_destructure_head() {
 fn t11_object_rest() {
     let rt = run_rt(
         "const {a, b, ...rest} = {a:1, b:2, c:3, d:4}; \
-         __record(rest.c === 3 && rest.d === 4 && rest.a === undefined && rest.b === undefined);"
+         __record(rest.c === 3 && rest.d === 4 && rest.a === undefined && rest.b === undefined);",
     );
     assert_eq!(last(&rt), Value::Boolean(true));
 }

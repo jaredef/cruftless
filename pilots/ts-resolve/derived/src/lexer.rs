@@ -14,17 +14,34 @@
 //! channel does not need a parallel token stream — annotations live in
 //! the parser's tree, not the token sequence.
 
-pub use rusty_js_parser::{Lexer, LexError, LexErrorKind, LexerGoal};
-pub use rusty_js_parser::{Token, TokenKind, Punct, NumberKind, TemplatePart, Span};
+pub use rusty_js_parser::{LexError, LexErrorKind, Lexer, LexerGoal};
+pub use rusty_js_parser::{NumberKind, Punct, Span, TemplatePart, Token, TokenKind};
 
 /// TS-specific contextual keywords. None of these are reserved at value
 /// position; the parser consults this set when deciding whether a given
 /// Ident token introduces a type-position construct.
 pub const TS_CONTEXTUAL_KEYWORDS: &[&str] = &[
-    "type", "interface", "keyof", "as", "is", "readonly", "unique",
-    "infer", "satisfies", "namespace", "module", "declare", "abstract",
-    "override", "public", "private", "protected", "implements", "out",
-    "asserts", "global",
+    "type",
+    "interface",
+    "keyof",
+    "as",
+    "is",
+    "readonly",
+    "unique",
+    "infer",
+    "satisfies",
+    "namespace",
+    "module",
+    "declare",
+    "abstract",
+    "override",
+    "public",
+    "private",
+    "protected",
+    "implements",
+    "out",
+    "asserts",
+    "global",
 ];
 
 /// Returns true if `name` is a TS contextual keyword. The parser uses

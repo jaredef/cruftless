@@ -30,7 +30,10 @@ pub struct BunFile {
 impl BunFile {
     /// `Bun.file(path)` — construct a BunFile lazily. No I/O happens here.
     pub fn open(path: impl Into<PathBuf>) -> Self {
-        Self { path: path.into(), explicit_mime_type: None }
+        Self {
+            path: path.into(),
+            explicit_mime_type: None,
+        }
     }
 
     /// `Bun.file(path, { type })` — construct with an explicit MIME type
@@ -57,7 +60,9 @@ impl BunFile {
     /// `.type` getter. Inferred from extension when not explicit; empty
     /// string when no mapping. Per Bun docs.
     pub fn mime_type(&self) -> String {
-        if let Some(ref t) = self.explicit_mime_type { return t.clone(); }
+        if let Some(ref t) = self.explicit_mime_type {
+            return t.clone();
+        }
         let ext = self.path.extension().and_then(|e| e.to_str()).unwrap_or("");
         match ext {
             "html" | "htm" => "text/html;charset=utf-8",
@@ -74,21 +79,25 @@ impl BunFile {
             "pdf" => "application/pdf",
             "" => "",
             _ => "application/octet-stream",
-        }.to_string()
+        }
+        .to_string()
     }
 
     /// `.lastModified` getter — milliseconds since Unix epoch.
     pub fn last_modified(&self) -> io::Result<i64> {
         let m = fs::metadata(&self.path)?;
         let mtime = m.modified()?;
-        let dur = mtime.duration_since(std::time::UNIX_EPOCH)
+        let dur = mtime
+            .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default();
         Ok((dur.as_secs() as i64) * 1000 + (dur.subsec_millis() as i64))
     }
 
     /// `Bun.file(...).exists()` — sync boolean predicate. (Real Bun returns
     /// a Promise; pure-Rust analog is sync.)
-    pub fn exists(&self) -> bool { self.path.exists() }
+    pub fn exists(&self) -> bool {
+        self.path.exists()
+    }
 
     /// CD: `await Bun.file(...).text()` — read full file as UTF-8.
     pub fn text(&self) -> io::Result<String> {
@@ -100,14 +109,19 @@ impl BunFile {
         Ok(fs::read(&self.path)?)
     }
 
-    pub fn array_buffer(&self) -> io::Result<Vec<u8>> { self.bytes() }
+    pub fn array_buffer(&self) -> io::Result<Vec<u8>> {
+        self.bytes()
+    }
 
     /// `.slice(start, end?, contentType?)` — read a byte range, return as
     /// Blob (NOT BunFile, per File-API spec). Type-system enforces the
     /// "slice strips File metadata" invariant.
-    pub fn slice(&self, start: i64, end: Option<i64>, content_type: Option<&str>)
-        -> io::Result<Blob>
-    {
+    pub fn slice(
+        &self,
+        start: i64,
+        end: Option<i64>,
+        content_type: Option<&str>,
+    ) -> io::Result<Blob> {
         let bytes = self.bytes()?;
         let blob = Blob::from_bytes(bytes);
         Ok(blob.slice(start, end, content_type))
@@ -144,7 +158,9 @@ impl BunFile {
 
     /// Reference to the underlying path; not part of Bun.file's JS API,
     /// exposed in pilot for verifier convenience.
-    pub fn path(&self) -> &Path { &self.path }
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
 }
 
 /// Top-level `Bun::file(path)` convenience function matching JS shape.

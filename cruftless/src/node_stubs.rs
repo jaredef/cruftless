@@ -6,27 +6,36 @@
 //! string_decoder, buffer.
 
 use crate::register::{make_callable, new_object, register_method};
+use rusty_js_runtime::caps;
+use rusty_js_runtime::caps::{ModuleId, ModuleProvenance};
 use rusty_js_runtime::value::Object as RtObject;
 use rusty_js_runtime::{Runtime, RuntimeError, Value};
-use rusty_js_runtime::caps as caps;
-use rusty_js_runtime::caps::{ModuleId, ModuleProvenance};
 use std::rc::Rc;
 
 /// Standard base64 decoder (RFC 4648). Tolerant of `=` padding; returns
 /// the raw bytes. Invalid chars stop the decode (best-effort).
 fn base64_decode(s: &str) -> Vec<u8> {
     let mut lut = [255u8; 128];
-    for (i, c) in b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/".iter().enumerate() {
+    for (i, c) in b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+        .iter()
+        .enumerate()
+    {
         lut[*c as usize] = i as u8;
     }
     let mut out = Vec::with_capacity(s.len() * 3 / 4);
     let mut buf: u32 = 0;
     let mut bits = 0;
     for c in s.bytes() {
-        if c == b'=' { break; }
-        if c >= 128 { continue; }
+        if c == b'=' {
+            break;
+        }
+        if c >= 128 {
+            continue;
+        }
         let v = lut[c as usize];
-        if v == 255 { continue; }
+        if v == 255 {
+            continue;
+        }
         buf = (buf << 6) | v as u32;
         bits += 6;
         if bits >= 8 {
@@ -44,7 +53,7 @@ fn base64_encode(bytes: &[u8]) -> String {
     let mut out = String::new();
     let mut i = 0;
     while i + 2 < bytes.len() {
-        let b = ((bytes[i] as u32) << 16) | ((bytes[i+1] as u32) << 8) | (bytes[i+2] as u32);
+        let b = ((bytes[i] as u32) << 16) | ((bytes[i + 1] as u32) << 8) | (bytes[i + 2] as u32);
         out.push(T[((b >> 18) & 0x3f) as usize] as char);
         out.push(T[((b >> 12) & 0x3f) as usize] as char);
         out.push(T[((b >> 6) & 0x3f) as usize] as char);
@@ -58,7 +67,7 @@ fn base64_encode(bytes: &[u8]) -> String {
         out.push(T[((b >> 12) & 0x3f) as usize] as char);
         out.push_str("==");
     } else if rem == 2 {
-        let b = ((bytes[i] as u32) << 16) | ((bytes[i+1] as u32) << 8);
+        let b = ((bytes[i] as u32) << 16) | ((bytes[i + 1] as u32) << 8);
         out.push(T[((b >> 18) & 0x3f) as usize] as char);
         out.push(T[((b >> 12) & 0x3f) as usize] as char);
         out.push(T[((b >> 6) & 0x3f) as usize] as char);
@@ -78,11 +87,15 @@ fn check_clock_ns(rt: &Runtime, op: caps::ClockOp) -> Result<(), RuntimeError> {
         ModuleProvenance::Application
     };
     let caller = ModuleId { url, provenance };
-    rt.caps.require_clock(&caps::Clock::disabled(), op, &caller)
+    rt.caps
+        .require_clock(&caps::Clock::disabled(), op, &caller)
         .map_err(|e| RuntimeError::TypeError(e.to_string()))
 }
 
-fn stub(module: &'static str, method: &'static str) -> impl Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> {
+fn stub(
+    module: &'static str,
+    method: &'static str,
+) -> impl Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> {
     move |_rt, _args| {
         Err(RuntimeError::Thrown(Value::String(Rc::new(format!(
             "TypeError: node:{module}.{method} not yet implemented (Tier-Ω.5.bb stub)"
@@ -92,7 +105,15 @@ fn stub(module: &'static str, method: &'static str) -> impl Fn(&mut Runtime, &[V
 
 pub fn install_child_process(rt: &mut Runtime) {
     let ns = new_object(rt);
-    for m in &["spawn", "spawnSync", "exec", "execSync", "execFile", "execFileSync", "fork"] {
+    for m in &[
+        "spawn",
+        "spawnSync",
+        "exec",
+        "execSync",
+        "execFile",
+        "execFileSync",
+        "fork",
+    ] {
         register_method(rt, ns, m, stub("child_process", m));
     }
     rt.globals.insert("child_process".into(), Value::Object(ns));
@@ -135,16 +156,21 @@ pub fn install_tls(rt: &mut Runtime) {
             // placeholder chain satisfies the access; the placeholder's
             // .constructor is a no-op stub ctor.
             let parent_wrap_ctor = rt.alloc_object(RtObject::new_ordinary());
-            register_method(rt, parent_wrap_ctor, "__call__", |_rt, _a| Ok(Value::Undefined));
+            register_method(rt, parent_wrap_ctor, "__call__", |_rt, _a| {
+                Ok(Value::Undefined)
+            });
             let parent_wrap = rt.alloc_object(RtObject::new_ordinary());
-            rt.obj_mut(parent_wrap).set_own_internal("constructor".into(), Value::Object(parent_wrap_ctor));
+            rt.obj_mut(parent_wrap)
+                .set_own_internal("constructor".into(), Value::Object(parent_wrap_ctor));
             let handle = rt.alloc_object(RtObject::new_ordinary());
             rt.object_set(handle, "_parentWrap".into(), Value::Object(parent_wrap));
             rt.object_set(inst, "_handle".into(), Value::Object(handle));
             Ok(Value::Object(inst))
         });
-        rt.obj_mut(ctor).set_own_frozen("prototype".into(), Value::Object(proto));
-        rt.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(ctor));
+        rt.obj_mut(ctor)
+            .set_own_frozen("prototype".into(), Value::Object(proto));
+        rt.obj_mut(proto)
+            .set_own_internal("constructor".into(), Value::Object(ctor));
         rt.object_set(ns, (*cls).into(), Value::Object(ctor));
     }
     rt.globals.insert("tls".into(), Value::Object(ns));
@@ -152,7 +178,15 @@ pub fn install_tls(rt: &mut Runtime) {
 
 pub fn install_readline(rt: &mut Runtime) {
     let ns = new_object(rt);
-    for m in &["createInterface", "Interface", "emitKeypressEvents", "cursorTo", "moveCursor", "clearLine", "clearScreenDown"] {
+    for m in &[
+        "createInterface",
+        "Interface",
+        "emitKeypressEvents",
+        "cursorTo",
+        "moveCursor",
+        "clearLine",
+        "clearScreenDown",
+    ] {
         register_method(rt, ns, m, stub("readline", m));
     }
     rt.globals.insert("readline".into(), Value::Object(ns));
@@ -179,29 +213,81 @@ pub fn install_constants(rt: &mut Runtime) {
     // the first time, `_c.os` is undefined and `.errno.EBADF` throws.
     // Linux errno values per <asm-generic/errno-base.h> / <asm-generic/errno.h>.
     let errno_vals: &[(&str, f64)] = &[
-        ("E2BIG", 7.0), ("EACCES", 13.0), ("EADDRINUSE", 98.0),
-        ("EADDRNOTAVAIL", 99.0), ("EAFNOSUPPORT", 97.0), ("EAGAIN", 11.0),
-        ("EALREADY", 114.0), ("EBADF", 9.0), ("EBADMSG", 74.0), ("EBUSY", 16.0),
-        ("ECANCELED", 125.0), ("ECHILD", 10.0), ("ECONNABORTED", 103.0),
-        ("ECONNREFUSED", 111.0), ("ECONNRESET", 104.0), ("EDEADLK", 35.0),
-        ("EDESTADDRREQ", 89.0), ("EDOM", 33.0), ("EEXIST", 17.0),
-        ("EFAULT", 14.0), ("EFBIG", 27.0), ("EHOSTUNREACH", 113.0),
-        ("EIDRM", 43.0), ("EILSEQ", 84.0), ("EINPROGRESS", 115.0),
-        ("EINTR", 4.0), ("EINVAL", 22.0), ("EIO", 5.0), ("EISCONN", 106.0),
-        ("EISDIR", 21.0), ("ELOOP", 40.0), ("EMFILE", 24.0), ("EMLINK", 31.0),
-        ("EMSGSIZE", 90.0), ("ENAMETOOLONG", 36.0), ("ENETDOWN", 100.0),
-        ("ENETRESET", 102.0), ("ENETUNREACH", 101.0), ("ENFILE", 23.0),
-        ("ENOBUFS", 105.0), ("ENODATA", 61.0), ("ENODEV", 19.0),
-        ("ENOENT", 2.0), ("ENOEXEC", 8.0), ("ENOLCK", 37.0), ("ENOLINK", 67.0),
-        ("ENOMEM", 12.0), ("ENOMSG", 42.0), ("ENOPROTOOPT", 92.0),
-        ("ENOSPC", 28.0), ("ENOSR", 63.0), ("ENOSTR", 60.0), ("ENOSYS", 38.0),
-        ("ENOTCONN", 107.0), ("ENOTDIR", 20.0), ("ENOTEMPTY", 39.0),
-        ("ENOTSOCK", 88.0), ("ENOTSUP", 95.0), ("ENOTTY", 25.0),
-        ("ENXIO", 6.0), ("EOPNOTSUPP", 95.0), ("EOVERFLOW", 75.0),
-        ("EPERM", 1.0), ("EPIPE", 32.0), ("EPROTO", 71.0),
-        ("EPROTONOSUPPORT", 93.0), ("EPROTOTYPE", 91.0), ("ERANGE", 34.0),
-        ("EROFS", 30.0), ("ESPIPE", 29.0), ("ESRCH", 3.0), ("ETIME", 62.0),
-        ("ETIMEDOUT", 110.0), ("ETXTBSY", 26.0), ("EWOULDBLOCK", 11.0),
+        ("E2BIG", 7.0),
+        ("EACCES", 13.0),
+        ("EADDRINUSE", 98.0),
+        ("EADDRNOTAVAIL", 99.0),
+        ("EAFNOSUPPORT", 97.0),
+        ("EAGAIN", 11.0),
+        ("EALREADY", 114.0),
+        ("EBADF", 9.0),
+        ("EBADMSG", 74.0),
+        ("EBUSY", 16.0),
+        ("ECANCELED", 125.0),
+        ("ECHILD", 10.0),
+        ("ECONNABORTED", 103.0),
+        ("ECONNREFUSED", 111.0),
+        ("ECONNRESET", 104.0),
+        ("EDEADLK", 35.0),
+        ("EDESTADDRREQ", 89.0),
+        ("EDOM", 33.0),
+        ("EEXIST", 17.0),
+        ("EFAULT", 14.0),
+        ("EFBIG", 27.0),
+        ("EHOSTUNREACH", 113.0),
+        ("EIDRM", 43.0),
+        ("EILSEQ", 84.0),
+        ("EINPROGRESS", 115.0),
+        ("EINTR", 4.0),
+        ("EINVAL", 22.0),
+        ("EIO", 5.0),
+        ("EISCONN", 106.0),
+        ("EISDIR", 21.0),
+        ("ELOOP", 40.0),
+        ("EMFILE", 24.0),
+        ("EMLINK", 31.0),
+        ("EMSGSIZE", 90.0),
+        ("ENAMETOOLONG", 36.0),
+        ("ENETDOWN", 100.0),
+        ("ENETRESET", 102.0),
+        ("ENETUNREACH", 101.0),
+        ("ENFILE", 23.0),
+        ("ENOBUFS", 105.0),
+        ("ENODATA", 61.0),
+        ("ENODEV", 19.0),
+        ("ENOENT", 2.0),
+        ("ENOEXEC", 8.0),
+        ("ENOLCK", 37.0),
+        ("ENOLINK", 67.0),
+        ("ENOMEM", 12.0),
+        ("ENOMSG", 42.0),
+        ("ENOPROTOOPT", 92.0),
+        ("ENOSPC", 28.0),
+        ("ENOSR", 63.0),
+        ("ENOSTR", 60.0),
+        ("ENOSYS", 38.0),
+        ("ENOTCONN", 107.0),
+        ("ENOTDIR", 20.0),
+        ("ENOTEMPTY", 39.0),
+        ("ENOTSOCK", 88.0),
+        ("ENOTSUP", 95.0),
+        ("ENOTTY", 25.0),
+        ("ENXIO", 6.0),
+        ("EOPNOTSUPP", 95.0),
+        ("EOVERFLOW", 75.0),
+        ("EPERM", 1.0),
+        ("EPIPE", 32.0),
+        ("EPROTO", 71.0),
+        ("EPROTONOSUPPORT", 93.0),
+        ("EPROTOTYPE", 91.0),
+        ("ERANGE", 34.0),
+        ("EROFS", 30.0),
+        ("ESPIPE", 29.0),
+        ("ESRCH", 3.0),
+        ("ETIME", 62.0),
+        ("ETIMEDOUT", 110.0),
+        ("ETXTBSY", 26.0),
+        ("EWOULDBLOCK", 11.0),
         ("EXDEV", 18.0),
     ];
     for (name, val) in errno_vals {
@@ -244,10 +330,13 @@ pub fn install_string_decoder(rt: &mut Runtime) {
                 _ => Ok(Value::String(Rc::new(String::new()))),
             }
         });
-        register_method(rt, id, "end", |_rt, _args| Ok(Value::String(Rc::new(String::new()))));
+        register_method(rt, id, "end", |_rt, _args| {
+            Ok(Value::String(Rc::new(String::new())))
+        });
         Ok(Value::Object(id))
     });
-    rt.globals.insert("string_decoder".into(), Value::Object(ns));
+    rt.globals
+        .insert("string_decoder".into(), Value::Object(ns));
 }
 
 // Tier-Ω.5.bbbbbb: rich Buffer-instance method surface — slice, toString,
@@ -255,13 +344,49 @@ pub fn install_string_decoder(rt: &mut Runtime) {
 fn install_buffer_methods(rt: &mut Runtime, id: rusty_js_runtime::ObjectRef) {
     register_method(rt, id, "slice", |rt, args| {
         let this_id = match rt.current_this() {
-            Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("Buffer.slice: this must be a Buffer".into())),
+            Value::Object(o) => o,
+            _ => {
+                return Err(RuntimeError::TypeError(
+                    "Buffer.slice: this must be a Buffer".into(),
+                ))
+            }
         };
-        let len = match rt.object_get(this_id, "length") { Value::Number(n) => n as usize, _ => 0 };
-        let start = args.first().and_then(|v| if let Value::Number(n)=v { Some(*n as i64) } else { None }).unwrap_or(0);
-        let end = args.get(1).and_then(|v| if let Value::Number(n)=v { Some(*n as i64) } else { None }).unwrap_or(len as i64);
-        let start = (if start < 0 { (len as i64 + start).max(0) } else { start }).min(len as i64) as usize;
-        let end = (if end < 0 { (len as i64 + end).max(0) } else { end }).min(len as i64) as usize;
+        let len = match rt.object_get(this_id, "length") {
+            Value::Number(n) => n as usize,
+            _ => 0,
+        };
+        let start = args
+            .first()
+            .and_then(|v| {
+                if let Value::Number(n) = v {
+                    Some(*n as i64)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0);
+        let end = args
+            .get(1)
+            .and_then(|v| {
+                if let Value::Number(n) = v {
+                    Some(*n as i64)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(len as i64);
+        let start = (if start < 0 {
+            (len as i64 + start).max(0)
+        } else {
+            start
+        })
+        .min(len as i64) as usize;
+        let end = (if end < 0 {
+            (len as i64 + end).max(0)
+        } else {
+            end
+        })
+        .min(len as i64) as usize;
         let slice_len = end.saturating_sub(start);
         let mut o = RtObject::new_ordinary();
         o.set_own("length".into(), Value::Number(slice_len as f64));
@@ -276,10 +401,17 @@ fn install_buffer_methods(rt: &mut Runtime, id: rusty_js_runtime::ObjectRef) {
     });
     register_method(rt, id, "toString", |rt, args| {
         let this_id = match rt.current_this() {
-            Value::Object(o) => o, _ => return Ok(Value::String(Rc::new(String::new()))),
+            Value::Object(o) => o,
+            _ => return Ok(Value::String(Rc::new(String::new()))),
         };
-        let enc = match args.first() { Some(Value::String(s)) => s.as_str().to_string(), _ => "utf8".into() };
-        let len = match rt.object_get(this_id, "length") { Value::Number(n) => n as usize, _ => 0 };
+        let enc = match args.first() {
+            Some(Value::String(s)) => s.as_str().to_string(),
+            _ => "utf8".into(),
+        };
+        let len = match rt.object_get(this_id, "length") {
+            Value::Number(n) => n as usize,
+            _ => 0,
+        };
         let mut bytes: Vec<u8> = Vec::with_capacity(len);
         for i in 0..len {
             if let Value::Number(n) = rt.object_get(this_id, &i.to_string()) {
@@ -287,24 +419,65 @@ fn install_buffer_methods(rt: &mut Runtime, id: rusty_js_runtime::ObjectRef) {
             }
         }
         let out = match enc.as_str() {
-            "hex" => bytes.iter().map(|b| format!("{:02x}", b)).collect::<String>(),
+            "hex" => bytes
+                .iter()
+                .map(|b| format!("{:02x}", b))
+                .collect::<String>(),
             "base64" => base64_encode(&bytes),
-            "base64url" => base64_encode(&bytes).trim_end_matches('=').replace('+', "-").replace('/', "_"),
+            "base64url" => base64_encode(&bytes)
+                .trim_end_matches('=')
+                .replace('+', "-")
+                .replace('/', "_"),
             "latin1" | "binary" => bytes.iter().map(|b| *b as char).collect::<String>(),
             "ascii" => bytes.iter().map(|b| (b & 0x7f) as char).collect::<String>(),
-            _ => String::from_utf8_lossy(&bytes).to_string(),  // utf8 default
+            _ => String::from_utf8_lossy(&bytes).to_string(), // utf8 default
         };
         Ok(Value::String(Rc::new(out)))
     });
     register_method(rt, id, "copy", |rt, args| {
         let this_id = match rt.current_this() {
-            Value::Object(o) => o, _ => return Ok(Value::Number(0.0)),
+            Value::Object(o) => o,
+            _ => return Ok(Value::Number(0.0)),
         };
-        let target = match args.first() { Some(Value::Object(id)) => *id, _ => return Ok(Value::Number(0.0)) };
-        let target_start = args.get(1).and_then(|v| if let Value::Number(n)=v { Some(*n as usize) } else { None }).unwrap_or(0);
-        let src_start = args.get(2).and_then(|v| if let Value::Number(n)=v { Some(*n as usize) } else { None }).unwrap_or(0);
-        let src_len = match rt.object_get(this_id, "length") { Value::Number(n) => n as usize, _ => 0 };
-        let src_end = args.get(3).and_then(|v| if let Value::Number(n)=v { Some(*n as usize) } else { None }).unwrap_or(src_len).min(src_len);
+        let target = match args.first() {
+            Some(Value::Object(id)) => *id,
+            _ => return Ok(Value::Number(0.0)),
+        };
+        let target_start = args
+            .get(1)
+            .and_then(|v| {
+                if let Value::Number(n) = v {
+                    Some(*n as usize)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0);
+        let src_start = args
+            .get(2)
+            .and_then(|v| {
+                if let Value::Number(n) = v {
+                    Some(*n as usize)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0);
+        let src_len = match rt.object_get(this_id, "length") {
+            Value::Number(n) => n as usize,
+            _ => 0,
+        };
+        let src_end = args
+            .get(3)
+            .and_then(|v| {
+                if let Value::Number(n) = v {
+                    Some(*n as usize)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(src_len)
+            .min(src_len);
         let count = src_end.saturating_sub(src_start);
         for i in 0..count {
             let v = rt.object_get(this_id, &(src_start + i).to_string());
@@ -314,13 +487,49 @@ fn install_buffer_methods(rt: &mut Runtime, id: rusty_js_runtime::ObjectRef) {
     });
     register_method(rt, id, "subarray", |rt, args| {
         let this_id = match rt.current_this() {
-            Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("Buffer.subarray: this must be a Buffer".into())),
+            Value::Object(o) => o,
+            _ => {
+                return Err(RuntimeError::TypeError(
+                    "Buffer.subarray: this must be a Buffer".into(),
+                ))
+            }
         };
-        let len = match rt.object_get(this_id, "length") { Value::Number(n) => n as usize, _ => 0 };
-        let start = args.first().and_then(|v| if let Value::Number(n)=v { Some(*n as i64) } else { None }).unwrap_or(0);
-        let end = args.get(1).and_then(|v| if let Value::Number(n)=v { Some(*n as i64) } else { None }).unwrap_or(len as i64);
-        let start = (if start < 0 { (len as i64 + start).max(0) } else { start }).min(len as i64) as usize;
-        let end = (if end < 0 { (len as i64 + end).max(0) } else { end }).min(len as i64) as usize;
+        let len = match rt.object_get(this_id, "length") {
+            Value::Number(n) => n as usize,
+            _ => 0,
+        };
+        let start = args
+            .first()
+            .and_then(|v| {
+                if let Value::Number(n) = v {
+                    Some(*n as i64)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0);
+        let end = args
+            .get(1)
+            .and_then(|v| {
+                if let Value::Number(n) = v {
+                    Some(*n as i64)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(len as i64);
+        let start = (if start < 0 {
+            (len as i64 + start).max(0)
+        } else {
+            start
+        })
+        .min(len as i64) as usize;
+        let end = (if end < 0 {
+            (len as i64 + end).max(0)
+        } else {
+            end
+        })
+        .min(len as i64) as usize;
         let slice_len = end.saturating_sub(start);
         let mut o = RtObject::new_ordinary();
         o.set_own("length".into(), Value::Number(slice_len as f64));
@@ -334,22 +543,48 @@ fn install_buffer_methods(rt: &mut Runtime, id: rusty_js_runtime::ObjectRef) {
         Ok(Value::Object(new_id))
     });
     register_method(rt, id, "readUInt8", |rt, args| {
-        let this_id = match rt.current_this() { Value::Object(o) => o, _ => return Ok(Value::Number(0.0)) };
-        let offset = args.first().and_then(|v| if let Value::Number(n)=v { Some(*n as usize) } else { None }).unwrap_or(0);
+        let this_id = match rt.current_this() {
+            Value::Object(o) => o,
+            _ => return Ok(Value::Number(0.0)),
+        };
+        let offset = args
+            .first()
+            .and_then(|v| {
+                if let Value::Number(n) = v {
+                    Some(*n as usize)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0);
         match rt.object_get(this_id, &offset.to_string()) {
             Value::Number(n) => Ok(Value::Number(n)),
             _ => Ok(Value::Number(0.0)),
         }
     });
     register_method(rt, id, "indexOf", |rt, args| {
-        let this_id = match rt.current_this() { Value::Object(o) => o, _ => return Ok(Value::Number(-1.0)) };
-        let len = match rt.object_get(this_id, "length") { Value::Number(n) => n as usize, _ => 0 };
+        let this_id = match rt.current_this() {
+            Value::Object(o) => o,
+            _ => return Ok(Value::Number(-1.0)),
+        };
+        let len = match rt.object_get(this_id, "length") {
+            Value::Number(n) => n as usize,
+            _ => 0,
+        };
         let needle_bytes: Vec<u8> = match args.first() {
             Some(Value::Number(n)) => vec![*n as u8],
             Some(Value::String(s)) => s.as_bytes().to_vec(),
             Some(Value::Object(nid)) => {
-                let nl = match rt.object_get(*nid, "length") { Value::Number(n) => n as usize, _ => 0 };
-                (0..nl).filter_map(|i| match rt.object_get(*nid, &i.to_string()) { Value::Number(n) => Some(n as u8), _ => None }).collect()
+                let nl = match rt.object_get(*nid, "length") {
+                    Value::Number(n) => n as usize,
+                    _ => 0,
+                };
+                (0..nl)
+                    .filter_map(|i| match rt.object_get(*nid, &i.to_string()) {
+                        Value::Number(n) => Some(n as u8),
+                        _ => None,
+                    })
+                    .collect()
             }
             _ => return Ok(Value::Number(-1.0)),
         };
@@ -357,19 +592,41 @@ fn install_buffer_methods(rt: &mut Runtime, id: rusty_js_runtime::ObjectRef) {
             let mut all = true;
             for (j, b) in needle_bytes.iter().enumerate() {
                 if let Value::Number(n) = rt.object_get(this_id, &(start + j).to_string()) {
-                    if n as u8 != *b { all = false; break; }
-                } else { all = false; break; }
+                    if n as u8 != *b {
+                        all = false;
+                        break;
+                    }
+                } else {
+                    all = false;
+                    break;
+                }
             }
-            if all { return Ok(Value::Number(start as f64)); }
+            if all {
+                return Ok(Value::Number(start as f64));
+            }
         }
         Ok(Value::Number(-1.0))
     });
     register_method(rt, id, "equals", |rt, args| {
-        let this_id = match rt.current_this() { Value::Object(o) => o, _ => return Ok(Value::Boolean(false)) };
-        let other = match args.first() { Some(Value::Object(o)) => *o, _ => return Ok(Value::Boolean(false)) };
-        let l1 = match rt.object_get(this_id, "length") { Value::Number(n) => n as usize, _ => 0 };
-        let l2 = match rt.object_get(other, "length") { Value::Number(n) => n as usize, _ => 0 };
-        if l1 != l2 { return Ok(Value::Boolean(false)); }
+        let this_id = match rt.current_this() {
+            Value::Object(o) => o,
+            _ => return Ok(Value::Boolean(false)),
+        };
+        let other = match args.first() {
+            Some(Value::Object(o)) => *o,
+            _ => return Ok(Value::Boolean(false)),
+        };
+        let l1 = match rt.object_get(this_id, "length") {
+            Value::Number(n) => n as usize,
+            _ => 0,
+        };
+        let l2 = match rt.object_get(other, "length") {
+            Value::Number(n) => n as usize,
+            _ => 0,
+        };
+        if l1 != l2 {
+            return Ok(Value::Boolean(false));
+        }
         for i in 0..l1 {
             if rt.object_get(this_id, &i.to_string()) != rt.object_get(other, &i.to_string()) {
                 return Ok(Value::Boolean(false));
@@ -384,8 +641,14 @@ fn install_buffer_methods(rt: &mut Runtime, id: rusty_js_runtime::ObjectRef) {
     // since `for...of` only needs iterability and we don't yet have
     // generic iterator objects.
     register_method(rt, id, "values", |rt, _args| {
-        let this_id = match rt.current_this() { Value::Object(o) => o, _ => return Ok(Value::Undefined) };
-        let len = match rt.object_get(this_id, "length") { Value::Number(n) => n as usize, _ => 0 };
+        let this_id = match rt.current_this() {
+            Value::Object(o) => o,
+            _ => return Ok(Value::Undefined),
+        };
+        let len = match rt.object_get(this_id, "length") {
+            Value::Number(n) => n as usize,
+            _ => 0,
+        };
         let arr = rt.alloc_object(rusty_js_runtime::value::Object::new_array());
         for i in 0..len {
             let v = rt.object_get(this_id, &i.to_string());
@@ -395,8 +658,14 @@ fn install_buffer_methods(rt: &mut Runtime, id: rusty_js_runtime::ObjectRef) {
         Ok(Value::Object(arr))
     });
     register_method(rt, id, "keys", |rt, _args| {
-        let this_id = match rt.current_this() { Value::Object(o) => o, _ => return Ok(Value::Undefined) };
-        let len = match rt.object_get(this_id, "length") { Value::Number(n) => n as usize, _ => 0 };
+        let this_id = match rt.current_this() {
+            Value::Object(o) => o,
+            _ => return Ok(Value::Undefined),
+        };
+        let len = match rt.object_get(this_id, "length") {
+            Value::Number(n) => n as usize,
+            _ => 0,
+        };
         let arr = rt.alloc_object(rusty_js_runtime::value::Object::new_array());
         for i in 0..len {
             rt.object_set(arr, i.to_string(), Value::Number(i as f64));
@@ -405,8 +674,14 @@ fn install_buffer_methods(rt: &mut Runtime, id: rusty_js_runtime::ObjectRef) {
         Ok(Value::Object(arr))
     });
     register_method(rt, id, "entries", |rt, _args| {
-        let this_id = match rt.current_this() { Value::Object(o) => o, _ => return Ok(Value::Undefined) };
-        let len = match rt.object_get(this_id, "length") { Value::Number(n) => n as usize, _ => 0 };
+        let this_id = match rt.current_this() {
+            Value::Object(o) => o,
+            _ => return Ok(Value::Undefined),
+        };
+        let len = match rt.object_get(this_id, "length") {
+            Value::Number(n) => n as usize,
+            _ => 0,
+        };
         let arr = rt.alloc_object(rusty_js_runtime::value::Object::new_array());
         for i in 0..len {
             let v = rt.object_get(this_id, &i.to_string());
@@ -501,12 +776,14 @@ pub fn install_buffer(rt: &mut Runtime) {
             "base64" | "base64url" => {
                 let mut normalized = s.replace('-', "+").replace('_', "/");
                 // Pad to multiple of 4.
-                while normalized.len() % 4 != 0 { normalized.push('='); }
+                while normalized.len() % 4 != 0 {
+                    normalized.push('=');
+                }
                 base64_decode(&normalized)
             }
             "latin1" | "binary" => s.chars().map(|c| c as u8).collect(),
             "ascii" => s.chars().map(|c| (c as u32 & 0x7f) as u8).collect(),
-            _ => s.as_bytes().to_vec(),  // utf8 default
+            _ => s.as_bytes().to_vec(), // utf8 default
         };
         let mut o = RtObject::new_ordinary();
         o.set_own_internal("__buffer_data".into(), Value::String(Rc::new(s.clone())));
@@ -574,20 +851,31 @@ pub fn install_buffer(rt: &mut Runtime) {
         register_method(rt, id, "readUInt8", |rt, args| {
             let this_id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("Buffer.readUInt8: this must be a Buffer".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Buffer.readUInt8: this must be a Buffer".into(),
+                    ))
+                }
             };
             let offset = match args.first() {
                 Some(Value::Number(n)) => *n as usize,
                 _ => 0,
             };
             let v = rt.object_get(this_id, &offset.to_string());
-            Ok(match v { Value::Number(n) => Value::Number(n), _ => Value::Number(0.0) })
+            Ok(match v {
+                Value::Number(n) => Value::Number(n),
+                _ => Value::Number(0.0),
+            })
         });
         install_buffer_methods(rt, id);
         register_method(rt, id, "subarray", |rt, args| {
             let this_id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("Buffer.subarray: this must be a Buffer".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Buffer.subarray: this must be a Buffer".into(),
+                    ))
+                }
             };
             let len = match rt.object_get(this_id, &"length".to_string()) {
                 Value::Number(n) => n as usize,
@@ -596,11 +884,13 @@ pub fn install_buffer(rt: &mut Runtime) {
             let start = match args.first() {
                 Some(Value::Number(n)) => (*n as i64).max(0) as usize,
                 _ => 0,
-            }.min(len);
+            }
+            .min(len);
             let end = match args.get(1) {
                 Some(Value::Number(n)) => (*n as i64).max(0) as usize,
                 _ => len,
-            }.min(len);
+            }
+            .min(len);
             let slice_len = end.saturating_sub(start);
             let mut o = RtObject::new_ordinary();
             o.set_own("length".into(), Value::Number(slice_len as f64));
@@ -620,12 +910,17 @@ pub fn install_buffer(rt: &mut Runtime) {
             match v {
                 Value::String(s) => s.as_bytes().to_vec(),
                 Value::Object(id) => {
-                    let len = match rt.object_get(*id, "length") { Value::Number(n) => n as usize, _ => 0 };
-                    (0..len).map(|i| match rt.object_get(*id, &i.to_string()) {
-                        Value::Number(n) => n as u8,
-                        Value::String(s) if !s.is_empty() => s.as_bytes()[0],
+                    let len = match rt.object_get(*id, "length") {
+                        Value::Number(n) => n as usize,
                         _ => 0,
-                    }).collect()
+                    };
+                    (0..len)
+                        .map(|i| match rt.object_get(*id, &i.to_string()) {
+                            Value::Number(n) => n as u8,
+                            Value::String(s) if !s.is_empty() => s.as_bytes()[0],
+                            _ => 0,
+                        })
+                        .collect()
                 }
                 _ => Vec::new(),
             }
@@ -641,13 +936,20 @@ pub fn install_buffer(rt: &mut Runtime) {
     register_method(rt, buf_ctor, "concat", |rt, args| {
         let list = match args.first() {
             Some(Value::Object(id)) => *id,
-            _ => return Err(RuntimeError::TypeError("Buffer.concat: expected array".into())),
+            _ => {
+                return Err(RuntimeError::TypeError(
+                    "Buffer.concat: expected array".into(),
+                ))
+            }
         };
         let len = rt.array_length(list);
         let mut bytes: Vec<u8> = Vec::new();
         for i in 0..len {
             if let Value::Object(b) = rt.object_get(list, &i.to_string()) {
-                let bl = match rt.object_get(b, "length") { Value::Number(n) => n as usize, _ => 0 };
+                let bl = match rt.object_get(b, "length") {
+                    Value::Number(n) => n as usize,
+                    _ => 0,
+                };
                 for j in 0..bl {
                     if let Value::Number(n) = rt.object_get(b, &j.to_string()) {
                         bytes.push(n as u8);
@@ -687,14 +989,23 @@ pub fn install_buffer(rt: &mut Runtime) {
     // `Object.create(Buffer.prototype)` (safe-buffer / many polyfills)
     // and inheritance chains terminate properly.
     let buf_proto = new_object(rt);
-    rt.obj_mut(buf_ctor).set_own_frozen("prototype".into(), Value::Object(buf_proto));
+    rt.obj_mut(buf_ctor)
+        .set_own_frozen("prototype".into(), Value::Object(buf_proto));
     rt.object_set(ns, "Buffer".into(), Value::Object(buf_ctor));
     // Tier-Ω.5.EEEEEEEE: node:buffer.constants. pino / pino-http read
     // MAX_STRING_LENGTH at module-init for string-truncation thresholds.
     // Values reproduce Node's V8 defaults (1GB string, 2GB buffer).
     let buf_constants = new_object(rt);
-    rt.object_set(buf_constants, "MAX_LENGTH".into(), Value::Number((4.0_f64).powi(30) * 2.0)); // 2^31-1
-    rt.object_set(buf_constants, "MAX_STRING_LENGTH".into(), Value::Number(1073741799.0)); // 2^30 - 25
+    rt.object_set(
+        buf_constants,
+        "MAX_LENGTH".into(),
+        Value::Number((4.0_f64).powi(30) * 2.0),
+    ); // 2^31-1
+    rt.object_set(
+        buf_constants,
+        "MAX_STRING_LENGTH".into(),
+        Value::Number(1073741799.0),
+    ); // 2^30 - 25
     rt.object_set(ns, "constants".into(), Value::Object(buf_constants));
     rt.object_set(buf_ctor, "constants".into(), Value::Object(buf_constants));
     register_method(rt, ns, "Blob", stub("buffer", "Blob"));
@@ -709,40 +1020,72 @@ pub fn install_buffer(rt: &mut Runtime) {
     register_method(rt, ns, "File", stub("buffer", "File"));
     register_method(rt, ns, "SlowBuffer", |rt, args| {
         // Legacy alias for Buffer.alloc(n). Delegate.
-        let buf_global = match rt.globals.get("Buffer") { Some(Value::Object(id)) => *id, _ => return Ok(Value::Undefined) };
+        let buf_global = match rt.globals.get("Buffer") {
+            Some(Value::Object(id)) => *id,
+            _ => return Ok(Value::Undefined),
+        };
         let from = rt.object_get(buf_global, "alloc");
         rt.call_function(from, Value::Undefined, args.to_vec())
     });
     rt.object_set(ns, "INSPECT_MAX_BYTES".into(), Value::Number(50.0));
-    rt.object_set(ns, "kMaxLength".into(), Value::Number((4.0_f64).powi(30) * 2.0));
+    rt.object_set(
+        ns,
+        "kMaxLength".into(),
+        Value::Number((4.0_f64).powi(30) * 2.0),
+    );
     rt.object_set(ns, "kStringMaxLength".into(), Value::Number(1073741799.0));
     register_method(rt, ns, "isAscii", |_rt, args| {
         // Accepts a Buffer / TypedArray / DataView. Check each byte < 128.
-        let id = match args.first() { Some(Value::Object(id)) => *id, _ => return Ok(Value::Boolean(true)) };
-        let len = match _rt.object_get(id, "length") { Value::Number(n) => n as usize, _ => 0 };
+        let id = match args.first() {
+            Some(Value::Object(id)) => *id,
+            _ => return Ok(Value::Boolean(true)),
+        };
+        let len = match _rt.object_get(id, "length") {
+            Value::Number(n) => n as usize,
+            _ => 0,
+        };
         for i in 0..len {
             if let Value::Number(n) = _rt.object_get(id, &i.to_string()) {
-                if (n as u32) >= 0x80 { return Ok(Value::Boolean(false)); }
+                if (n as u32) >= 0x80 {
+                    return Ok(Value::Boolean(false));
+                }
             }
         }
         Ok(Value::Boolean(true))
     });
     register_method(rt, ns, "isUtf8", |_rt, args| {
         // Accepts a Buffer / TypedArray / DataView. Check via std::str::from_utf8.
-        let id = match args.first() { Some(Value::Object(id)) => *id, _ => return Ok(Value::Boolean(true)) };
-        let len = match _rt.object_get(id, "length") { Value::Number(n) => n as usize, _ => 0 };
+        let id = match args.first() {
+            Some(Value::Object(id)) => *id,
+            _ => return Ok(Value::Boolean(true)),
+        };
+        let len = match _rt.object_get(id, "length") {
+            Value::Number(n) => n as usize,
+            _ => 0,
+        };
         let mut bytes = Vec::with_capacity(len);
         for i in 0..len {
             if let Value::Number(n) = _rt.object_get(id, &i.to_string()) {
                 bytes.push(n as u8);
-            } else { return Ok(Value::Boolean(false)); }
+            } else {
+                return Ok(Value::Boolean(false));
+            }
         }
         Ok(Value::Boolean(std::str::from_utf8(&bytes).is_ok()))
     });
     // atob / btoa — re-exports of the globals (so `import {atob} from 'node:buffer'` works).
-    if let Some(v) = rt.globals.get("atob").cloned() { rt.object_set(ns, "atob".into(), v); }
-    if let Some(v) = rt.globals.get("btoa").cloned() { rt.object_set(ns, "btoa".into(), v); }
-    register_method(rt, ns, "resolveObjectURL", stub("buffer", "resolveObjectURL"));
+    if let Some(v) = rt.globals.get("atob").cloned() {
+        rt.object_set(ns, "atob".into(), v);
+    }
+    if let Some(v) = rt.globals.get("btoa").cloned() {
+        rt.object_set(ns, "btoa".into(), v);
+    }
+    register_method(
+        rt,
+        ns,
+        "resolveObjectURL",
+        stub("buffer", "resolveObjectURL"),
+    );
     // Ω.5.P44.E1: Bun exposes `transcode` as undefined (not a function),
     // because Node's transcode is icu-backed and the build often ships
     // without it. Match the Bun shape.
@@ -767,7 +1110,15 @@ pub fn install_http2(rt: &mut Runtime) {
 // Tier-Ω.5.kkkk: node:dns stub for `got` cluster.
 pub fn install_dns(rt: &mut Runtime) {
     let ns = new_object(rt);
-    for m in &["lookup", "resolve", "resolve4", "resolve6", "reverse", "setServers", "getServers"] {
+    for m in &[
+        "lookup",
+        "resolve",
+        "resolve4",
+        "resolve6",
+        "reverse",
+        "setServers",
+        "getServers",
+    ] {
         register_method(rt, ns, m, stub("dns", m));
     }
     let promises = new_object(rt);
@@ -791,8 +1142,11 @@ pub fn install_global_require(rt: &mut Runtime) {
     let require_obj = crate::register::make_callable(rt, "require", |rt, args| {
         let spec = match args.first() {
             Some(Value::String(s)) => s.as_str().to_string(),
-            _ => return Err(rusty_js_runtime::RuntimeError::TypeError(
-                "require: specifier must be a string".into())),
+            _ => {
+                return Err(rusty_js_runtime::RuntimeError::TypeError(
+                    "require: specifier must be a string".into(),
+                ))
+            }
         };
         let parent = rt.current_module_url.last().cloned().unwrap_or_default();
         rt.cjs_require(&parent, &spec)
@@ -801,19 +1155,25 @@ pub fn install_global_require(rt: &mut Runtime) {
     let resolve_fn = crate::register::make_callable(rt, "resolve", |rt, args| {
         let spec = match args.first() {
             Some(Value::String(s)) => s.as_str().to_string(),
-            _ => return Err(rusty_js_runtime::RuntimeError::TypeError(
-                "require.resolve: specifier must be a string".into())),
+            _ => {
+                return Err(rusty_js_runtime::RuntimeError::TypeError(
+                    "require.resolve: specifier must be a string".into(),
+                ))
+            }
         };
         let parent = rt.current_module_url.last().cloned().unwrap_or_default();
         match rt.resolve_module_full(&parent, &spec, rusty_js_runtime::ModuleKind::CJS) {
             Ok(url) => Ok(Value::String(std::rc::Rc::new(
-                url.strip_prefix("file://").map(|s| s.to_string()).unwrap_or(url),
+                url.strip_prefix("file://")
+                    .map(|s| s.to_string())
+                    .unwrap_or(url),
             ))),
             Err(e) => Err(e),
         }
     });
     rt.object_set(require_obj, "resolve".into(), Value::Object(resolve_fn));
-    rt.globals.insert("require".into(), Value::Object(require_obj));
+    rt.globals
+        .insert("require".into(), Value::Object(require_obj));
 }
 
 pub fn install_module(rt: &mut Runtime) {
@@ -842,8 +1202,11 @@ pub fn install_module(rt: &mut Runtime) {
         let require_obj = crate::register::make_callable(rt, "require", move |rt, args| {
             let spec = match args.first() {
                 Some(Value::String(s)) => s.as_str().to_string(),
-                _ => return Err(rusty_js_runtime::RuntimeError::TypeError(
-                    "require: specifier must be a string".into())),
+                _ => {
+                    return Err(rusty_js_runtime::RuntimeError::TypeError(
+                        "require: specifier must be a string".into(),
+                    ))
+                }
             };
             rt.cjs_require(&parent_for_req, &spec)
         });
@@ -851,12 +1214,18 @@ pub fn install_module(rt: &mut Runtime) {
         let resolve_fn = crate::register::make_callable(rt, "resolve", move |rt, args| {
             let spec = match args.first() {
                 Some(Value::String(s)) => s.as_str().to_string(),
-                _ => return Err(rusty_js_runtime::RuntimeError::TypeError(
-                    "require.resolve: specifier must be a string".into())),
+                _ => {
+                    return Err(rusty_js_runtime::RuntimeError::TypeError(
+                        "require.resolve: specifier must be a string".into(),
+                    ))
+                }
             };
-            match rt.resolve_module_full(&parent_for_res, &spec, rusty_js_runtime::ModuleKind::CJS) {
+            match rt.resolve_module_full(&parent_for_res, &spec, rusty_js_runtime::ModuleKind::CJS)
+            {
                 Ok(url) => Ok(Value::String(std::rc::Rc::new(
-                    url.strip_prefix("file://").map(|s| s.to_string()).unwrap_or(url),
+                    url.strip_prefix("file://")
+                        .map(|s| s.to_string())
+                        .unwrap_or(url),
                 ))),
                 Err(e) => Err(e),
             }
@@ -906,8 +1275,12 @@ pub fn install_domain(rt: &mut Runtime) {
         });
         register_method(rt, d, "add", |rt, _a| Ok(rt.current_this()));
         register_method(rt, d, "remove", |rt, _a| Ok(rt.current_this()));
-        register_method(rt, d, "bind", |rt, args| Ok(args.first().cloned().unwrap_or(rt.current_this())));
-        register_method(rt, d, "intercept", |rt, args| Ok(args.first().cloned().unwrap_or(rt.current_this())));
+        register_method(rt, d, "bind", |rt, args| {
+            Ok(args.first().cloned().unwrap_or(rt.current_this()))
+        });
+        register_method(rt, d, "intercept", |rt, args| {
+            Ok(args.first().cloned().unwrap_or(rt.current_this()))
+        });
         register_method(rt, d, "on", |rt, _a| Ok(rt.current_this()));
         register_method(rt, d, "once", |rt, _a| Ok(rt.current_this()));
         register_method(rt, d, "emit", |_rt, _a| Ok(Value::Boolean(false)));
@@ -937,7 +1310,9 @@ pub fn install_dom_exception(rt: &mut Runtime) {
         let inst = rt.alloc_object(RtObject::new_ordinary());
         let msg = match args.first() {
             Some(Value::String(s)) => s.as_str().to_string(),
-            Some(v) => rusty_js_runtime::abstract_ops::to_string(v).as_str().to_string(),
+            Some(v) => rusty_js_runtime::abstract_ops::to_string(v)
+                .as_str()
+                .to_string(),
             None => String::new(),
         };
         let name = match args.get(1) {
@@ -950,25 +1325,39 @@ pub fn install_dom_exception(rt: &mut Runtime) {
         rt.object_set(inst, "stack".into(), Value::String(Rc::new("".into())));
         Ok(Value::Object(inst))
     });
-    rt.obj_mut(ctor).set_own_frozen("prototype".into(), Value::Object(proto));
-    rt.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(ctor));
+    rt.obj_mut(ctor)
+        .set_own_frozen("prototype".into(), Value::Object(proto));
+    rt.obj_mut(proto)
+        .set_own_internal("constructor".into(), Value::Object(ctor));
     // WHATWG-spec numeric constants on the constructor.
     for (name, code) in &[
-        ("INDEX_SIZE_ERR", 1), ("HIERARCHY_REQUEST_ERR", 3),
-        ("WRONG_DOCUMENT_ERR", 4), ("INVALID_CHARACTER_ERR", 5),
-        ("NO_MODIFICATION_ALLOWED_ERR", 7), ("NOT_FOUND_ERR", 8),
-        ("NOT_SUPPORTED_ERR", 9), ("INUSE_ATTRIBUTE_ERR", 10),
-        ("INVALID_STATE_ERR", 11), ("SYNTAX_ERR", 12), ("INVALID_MODIFICATION_ERR", 13),
-        ("NAMESPACE_ERR", 14), ("INVALID_ACCESS_ERR", 15),
-        ("SECURITY_ERR", 18), ("NETWORK_ERR", 19), ("ABORT_ERR", 20),
-        ("URL_MISMATCH_ERR", 21), ("QUOTA_EXCEEDED_ERR", 22),
-        ("TIMEOUT_ERR", 23), ("INVALID_NODE_TYPE_ERR", 24),
+        ("INDEX_SIZE_ERR", 1),
+        ("HIERARCHY_REQUEST_ERR", 3),
+        ("WRONG_DOCUMENT_ERR", 4),
+        ("INVALID_CHARACTER_ERR", 5),
+        ("NO_MODIFICATION_ALLOWED_ERR", 7),
+        ("NOT_FOUND_ERR", 8),
+        ("NOT_SUPPORTED_ERR", 9),
+        ("INUSE_ATTRIBUTE_ERR", 10),
+        ("INVALID_STATE_ERR", 11),
+        ("SYNTAX_ERR", 12),
+        ("INVALID_MODIFICATION_ERR", 13),
+        ("NAMESPACE_ERR", 14),
+        ("INVALID_ACCESS_ERR", 15),
+        ("SECURITY_ERR", 18),
+        ("NETWORK_ERR", 19),
+        ("ABORT_ERR", 20),
+        ("URL_MISMATCH_ERR", 21),
+        ("QUOTA_EXCEEDED_ERR", 22),
+        ("TIMEOUT_ERR", 23),
+        ("INVALID_NODE_TYPE_ERR", 24),
         ("DATA_CLONE_ERR", 25),
     ] {
         crate::register::set_constant(rt, ctor, name, Value::Number(*code as f64));
         crate::register::set_constant(rt, proto, name, Value::Number(*code as f64));
     }
-    rt.globals.insert("DOMException".into(), Value::Object(ctor));
+    rt.globals
+        .insert("DOMException".into(), Value::Object(ctor));
 }
 
 /// Tier-Ω.5.SSSSSSS: global `performance` object — undici / fastify and
@@ -979,8 +1368,10 @@ pub fn install_performance(rt: &mut Runtime) {
     register_method(rt, perf, "now", |rt, _a| {
         use std::time::{SystemTime, UNIX_EPOCH};
         check_clock_ns(rt, caps::ClockOp::HighResolution)?;
-        let ms = SystemTime::now().duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs_f64() * 1000.0).unwrap_or(0.0);
+        let ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs_f64() * 1000.0)
+            .unwrap_or(0.0);
         Ok(Value::Number(ms))
     });
     register_method(rt, perf, "timeOrigin", |_rt, _a| Ok(Value::Number(0.0)));
@@ -1004,8 +1395,12 @@ pub fn install_performance(rt: &mut Runtime) {
         rt.object_set(arr, "length".into(), Value::Number(0.0));
         Ok(Value::Object(arr))
     });
-    register_method(rt, perf, "markResourceTiming", |_rt, _a| Ok(Value::Undefined));
-    register_method(rt, perf, "clearResourceTimings", |_rt, _a| Ok(Value::Undefined));
+    register_method(rt, perf, "markResourceTiming", |_rt, _a| {
+        Ok(Value::Undefined)
+    });
+    register_method(rt, perf, "clearResourceTimings", |_rt, _a| {
+        Ok(Value::Undefined)
+    });
     register_method(rt, perf, "eventLoopUtilization", |rt, _a| {
         let o = new_object(rt);
         rt.object_set(o, "idle".into(), Value::Number(0.0));
@@ -1031,15 +1426,21 @@ pub fn install_performance(rt: &mut Runtime) {
         Ok(Value::Object(inst))
     });
     let po_proto = new_object(rt);
-    rt.obj_mut(po_ctor).set_own_frozen("prototype".into(), Value::Object(po_proto));
-    rt.obj_mut(po_proto).set_own_internal("constructor".into(), Value::Object(po_ctor));
+    rt.obj_mut(po_ctor)
+        .set_own_frozen("prototype".into(), Value::Object(po_proto));
+    rt.obj_mut(po_proto)
+        .set_own_internal("constructor".into(), Value::Object(po_ctor));
     let st_arr = rt.alloc_object(RtObject::new_array());
-    for (i, t) in ["mark","measure","resource","navigation","function"].iter().enumerate() {
+    for (i, t) in ["mark", "measure", "resource", "navigation", "function"]
+        .iter()
+        .enumerate()
+    {
         rt.object_set(st_arr, i.to_string(), Value::String(Rc::new((*t).into())));
     }
     rt.object_set(st_arr, "length".into(), Value::Number(5.0));
     rt.object_set(po_ctor, "supportedEntryTypes".into(), Value::Object(st_arr));
-    rt.globals.insert("PerformanceObserver".into(), Value::Object(po_ctor));
+    rt.globals
+        .insert("PerformanceObserver".into(), Value::Object(po_ctor));
 
     // node:perf_hooks namespace mirrors the relevant globals.
     let ph = new_object(rt);
@@ -1089,12 +1490,18 @@ pub fn install_async_hooks(rt: &mut Runtime) {
         register_method(rt, inst, "emitDestroy", |rt, _a| Ok(rt.current_this()));
         register_method(rt, inst, "asyncId", |_rt, _a| Ok(Value::Number(0.0)));
         register_method(rt, inst, "triggerAsyncId", |_rt, _a| Ok(Value::Number(0.0)));
-        register_method(rt, inst, "bind", |rt, args| Ok(args.first().cloned().unwrap_or(rt.current_this())));
+        register_method(rt, inst, "bind", |rt, args| {
+            Ok(args.first().cloned().unwrap_or(rt.current_this()))
+        });
         Ok(Value::Object(inst))
     });
-    rt.obj_mut(ar_ctor).set_own_frozen("prototype".into(), Value::Object(ar_proto));
-    rt.obj_mut(ar_proto).set_own_internal("constructor".into(), Value::Object(ar_ctor));
-    register_method(rt, ar_ctor, "bind", |rt, args| Ok(args.first().cloned().unwrap_or(rt.current_this())));
+    rt.obj_mut(ar_ctor)
+        .set_own_frozen("prototype".into(), Value::Object(ar_proto));
+    rt.obj_mut(ar_proto)
+        .set_own_internal("constructor".into(), Value::Object(ar_ctor));
+    register_method(rt, ar_ctor, "bind", |rt, args| {
+        Ok(args.first().cloned().unwrap_or(rt.current_this()))
+    });
     rt.object_set(ns, "AsyncResource".into(), Value::Object(ar_ctor));
 
     // AsyncLocalStorage — used by undici/fastify for context propagation.
@@ -1117,17 +1524,21 @@ pub fn install_async_hooks(rt: &mut Runtime) {
         register_method(rt, inst, "disable", |_rt, _a| Ok(Value::Undefined));
         Ok(Value::Object(inst))
     });
-    rt.obj_mut(als_ctor).set_own_frozen("prototype".into(), Value::Object(als_proto));
-    rt.obj_mut(als_proto).set_own_internal("constructor".into(), Value::Object(als_ctor));
-    register_method(rt, als_ctor, "bind", |rt, args| Ok(args.first().cloned().unwrap_or(rt.current_this())));
-    register_method(rt, als_ctor, "snapshot", |_rt, _a| {
-        Ok(Value::Undefined)
+    rt.obj_mut(als_ctor)
+        .set_own_frozen("prototype".into(), Value::Object(als_proto));
+    rt.obj_mut(als_proto)
+        .set_own_internal("constructor".into(), Value::Object(als_ctor));
+    register_method(rt, als_ctor, "bind", |rt, args| {
+        Ok(args.first().cloned().unwrap_or(rt.current_this()))
     });
+    register_method(rt, als_ctor, "snapshot", |_rt, _a| Ok(Value::Undefined));
     rt.object_set(ns, "AsyncLocalStorage".into(), Value::Object(als_ctor));
 
     register_method(rt, ns, "executionAsyncId", |_rt, _a| Ok(Value::Number(0.0)));
     register_method(rt, ns, "triggerAsyncId", |_rt, _a| Ok(Value::Number(0.0)));
-    register_method(rt, ns, "executionAsyncResource", |rt, _a| Ok(Value::Object(new_object(rt))));
+    register_method(rt, ns, "executionAsyncResource", |rt, _a| {
+        Ok(Value::Object(new_object(rt)))
+    });
     register_method(rt, ns, "createHook", |rt, _a| {
         let hook = rt.alloc_object(RtObject::new_ordinary());
         register_method(rt, hook, "enable", |rt, _a| Ok(rt.current_this()));
@@ -1146,25 +1557,41 @@ pub fn install_async_hooks(rt: &mut Runtime) {
 pub fn install_punycode(rt: &mut Runtime) {
     let ns = new_object(rt);
     register_method(rt, ns, "encode", |_rt, args| {
-        let s = match args.first() { Some(Value::String(s)) => s.as_str().to_string(), _ => String::new() };
+        let s = match args.first() {
+            Some(Value::String(s)) => s.as_str().to_string(),
+            _ => String::new(),
+        };
         Ok(Value::String(Rc::new(s)))
     });
     register_method(rt, ns, "decode", |_rt, args| {
-        let s = match args.first() { Some(Value::String(s)) => s.as_str().to_string(), _ => String::new() };
+        let s = match args.first() {
+            Some(Value::String(s)) => s.as_str().to_string(),
+            _ => String::new(),
+        };
         Ok(Value::String(Rc::new(s)))
     });
     register_method(rt, ns, "toASCII", |_rt, args| {
-        let s = match args.first() { Some(Value::String(s)) => s.as_str().to_string(), _ => String::new() };
+        let s = match args.first() {
+            Some(Value::String(s)) => s.as_str().to_string(),
+            _ => String::new(),
+        };
         Ok(Value::String(Rc::new(s)))
     });
     register_method(rt, ns, "toUnicode", |_rt, args| {
-        let s = match args.first() { Some(Value::String(s)) => s.as_str().to_string(), _ => String::new() };
+        let s = match args.first() {
+            Some(Value::String(s)) => s.as_str().to_string(),
+            _ => String::new(),
+        };
         Ok(Value::String(Rc::new(s)))
     });
     crate::register::set_constant(rt, ns, "version", Value::String(Rc::new("2.3.1".into())));
     let ucs2 = new_object(rt);
-    register_method(rt, ucs2, "encode", |_rt, args| Ok(args.first().cloned().unwrap_or(Value::Undefined)));
-    register_method(rt, ucs2, "decode", |_rt, args| Ok(args.first().cloned().unwrap_or(Value::Undefined)));
+    register_method(rt, ucs2, "encode", |_rt, args| {
+        Ok(args.first().cloned().unwrap_or(Value::Undefined))
+    });
+    register_method(rt, ucs2, "decode", |_rt, args| {
+        Ok(args.first().cloned().unwrap_or(Value::Undefined))
+    });
     crate::register::set_constant(rt, ns, "ucs2", Value::Object(ucs2));
     rt.globals.insert("punycode".into(), Value::Object(ns));
 }
@@ -1203,7 +1630,13 @@ pub fn install_v8(rt: &mut Runtime) {
     register_method(rt, ns, "getHeapCodeStatistics", |rt, _args| {
         Ok(Value::Object(new_object(rt)))
     });
-    for m in &["serialize", "deserialize", "writeHeapSnapshot", "setFlagsFromString", "cachedDataVersionTag"] {
+    for m in &[
+        "serialize",
+        "deserialize",
+        "writeHeapSnapshot",
+        "setFlagsFromString",
+        "cachedDataVersionTag",
+    ] {
         register_method(rt, ns, m, stub("v8", m));
     }
     rt.globals.insert("v8".into(), Value::Object(ns));
@@ -1222,8 +1655,14 @@ pub fn install_inspector(rt: &mut Runtime) {
 /// (`typeof vm.runInContext === 'function'`); methods error on call.
 pub fn install_vm(rt: &mut Runtime) {
     let ns = new_object(rt);
-    for m in &["runInThisContext", "runInContext", "runInNewContext", "createContext",
-              "compileFunction", "measureMemory"] {
+    for m in &[
+        "runInThisContext",
+        "runInContext",
+        "runInNewContext",
+        "createContext",
+        "compileFunction",
+        "measureMemory",
+    ] {
         register_method(rt, ns, m, stub("vm", m));
     }
     // Tier-Ω.5.QQQQQQQ: Script / SourceTextModule / SyntheticModule as
@@ -1245,8 +1684,10 @@ pub fn install_vm(rt: &mut Runtime) {
             });
             Ok(Value::Object(inst))
         });
-        rt.obj_mut(ctor).set_own_frozen("prototype".into(), Value::Object(proto));
-        rt.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(ctor));
+        rt.obj_mut(ctor)
+            .set_own_frozen("prototype".into(), Value::Object(proto));
+        rt.obj_mut(proto)
+            .set_own_internal("constructor".into(), Value::Object(ctor));
         rt.object_set(ns, (*cls).into(), Value::Object(ctor));
     }
     rt.globals.insert("vm".into(), Value::Object(ns));
@@ -1264,13 +1705,24 @@ pub fn install_diagnostics_channel(rt: &mut Runtime) {
         rt.object_set(ch, "hasSubscribers".into(), Value::Boolean(false));
         register_method(rt, ch, "publish", |_rt, _args| Ok(Value::Undefined));
         register_method(rt, ch, "subscribe", |_rt, _args| Ok(Value::Undefined));
-        register_method(rt, ch, "unsubscribe", |_rt, _args| Ok(Value::Boolean(false)));
+        register_method(rt, ch, "unsubscribe", |_rt, _args| {
+            Ok(Value::Boolean(false))
+        });
         Ok(Value::Object(ch))
     });
     register_method(rt, ns, "tracingChannel", |rt, _args| {
         let ch = new_object(rt);
         rt.object_set(ch, "hasSubscribers".into(), Value::Boolean(false));
-        for m in &["start", "end", "asyncStart", "asyncEnd", "error", "traceSync", "tracePromise", "traceCallback"] {
+        for m in &[
+            "start",
+            "end",
+            "asyncStart",
+            "asyncEnd",
+            "error",
+            "traceSync",
+            "tracePromise",
+            "traceCallback",
+        ] {
             register_method(rt, ch, m, |_rt, args| {
                 Ok(args.get(1).cloned().unwrap_or(Value::Undefined))
             });
@@ -1278,7 +1730,12 @@ pub fn install_diagnostics_channel(rt: &mut Runtime) {
         Ok(Value::Object(ch))
     });
     register_method(rt, ns, "subscribe", |_rt, _args| Ok(Value::Undefined));
-    register_method(rt, ns, "unsubscribe", |_rt, _args| Ok(Value::Boolean(false)));
-    register_method(rt, ns, "hasSubscribers", |_rt, _args| Ok(Value::Boolean(false)));
-    rt.globals.insert("diagnostics_channel".into(), Value::Object(ns));
+    register_method(rt, ns, "unsubscribe", |_rt, _args| {
+        Ok(Value::Boolean(false))
+    });
+    register_method(rt, ns, "hasSubscribers", |_rt, _args| {
+        Ok(Value::Boolean(false))
+    });
+    rt.globals
+        .insert("diagnostics_channel".into(), Value::Object(ns));
 }

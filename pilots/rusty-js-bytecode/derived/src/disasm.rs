@@ -33,16 +33,34 @@ pub fn disassemble(m: &CompiledModule) -> String {
         // Constant-resolving operand: render the constant inline for the
         // const-pool-indexed opcodes.
         let const_resolved = match op {
-            Op::PushConst | Op::LoadGlobal | Op::StoreGlobal | Op::GetProp | Op::SetProp
-            | Op::InitProp | Op::LoadLocal | Op::StoreLocal | Op::LoadArg | Op::StoreArg
-            | Op::LoadUpvalue | Op::StoreUpvalue | Op::DefineLocal => {
+            Op::PushConst
+            | Op::LoadGlobal
+            | Op::StoreGlobal
+            | Op::GetProp
+            | Op::SetProp
+            | Op::InitProp
+            | Op::LoadLocal
+            | Op::StoreLocal
+            | Op::LoadArg
+            | Op::StoreArg
+            | Op::LoadUpvalue
+            | Op::StoreUpvalue
+            | Op::DefineLocal => {
                 let idx = decode_u16(&m.bytecode, off + 1) as usize;
-                m.constants.entries().get(idx).map(|c| format!("  ; {}", render_constant(c)))
+                m.constants
+                    .entries()
+                    .get(idx)
+                    .map(|c| format!("  ; {}", render_constant(c)))
             }
             _ => None,
         };
-        out.push_str(&format!("{:5}  {}{}{}\n", off, opname, operand_str,
-            const_resolved.unwrap_or_default()));
+        out.push_str(&format!(
+            "{:5}  {}{}{}\n",
+            off,
+            opname,
+            operand_str,
+            const_resolved.unwrap_or_default()
+        ));
         off += 1 + osize;
     }
     out

@@ -38,7 +38,10 @@ fn write_file(dir: &PathBuf, name: &str, contents: &str) -> PathBuf {
 }
 
 fn entry_url(path: &PathBuf) -> String {
-    format!("file://{}", path.canonicalize().expect("canonicalize").display())
+    format!(
+        "file://{}",
+        path.canonicalize().expect("canonicalize").display()
+    )
 }
 
 fn fresh_runtime() -> Runtime {
@@ -65,13 +68,20 @@ fn load(rt: &mut Runtime, dir: &PathBuf, entry: &str) -> rusty_js_runtime::Objec
 #[test]
 fn t01_simple_cjs() {
     let dir = fixture_dir("simple-cjs");
-    write_file(&dir, "lib.cjs",
-        "module.exports = { add: function(a, b) { return a + b } };\n");
-    write_file(&dir, "main.mjs", r#"
+    write_file(
+        &dir,
+        "lib.cjs",
+        "module.exports = { add: function(a, b) { return a + b } };\n",
+    );
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import lib from "./lib.cjs";
         const result = lib.add(2, 3);
         export { result };
-    "#);
+    "#,
+    );
     let mut rt = fresh_runtime();
     let ns = load(&mut rt, &dir, "main.mjs");
     match rt.object_get(ns, "result") {
@@ -84,13 +94,20 @@ fn t01_simple_cjs() {
 #[test]
 fn t02_js_no_pkg_is_cjs() {
     let dir = fixture_dir("js-no-pkg");
-    write_file(&dir, "lib.js",
-        "module.exports = { add: function(a, b) { return a + b } };\n");
-    write_file(&dir, "main.mjs", r#"
+    write_file(
+        &dir,
+        "lib.js",
+        "module.exports = { add: function(a, b) { return a + b } };\n",
+    );
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import lib from "./lib.js";
         const result = lib.add(4, 5);
         export { result };
-    "#);
+    "#,
+    );
     let mut rt = fresh_runtime();
     let ns = load(&mut rt, &dir, "main.mjs");
     match rt.object_get(ns, "result") {
@@ -104,13 +121,20 @@ fn t02_js_no_pkg_is_cjs() {
 fn t03_pkg_type_module_is_esm() {
     let dir = fixture_dir("pkg-type-module");
     write_file(&dir, "pkg/package.json", "{ \"type\": \"module\" }");
-    write_file(&dir, "pkg/lib.js",
-        "function add(a, b) { return a + b }\nexport { add };\n");
-    write_file(&dir, "main.mjs", r#"
+    write_file(
+        &dir,
+        "pkg/lib.js",
+        "function add(a, b) { return a + b }\nexport { add };\n",
+    );
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import { add } from "./pkg/lib.js";
         const result = add(6, 7);
         export { result };
-    "#);
+    "#,
+    );
     let mut rt = fresh_runtime();
     let ns = load(&mut rt, &dir, "main.mjs");
     match rt.object_get(ns, "result") {
@@ -123,13 +147,20 @@ fn t03_pkg_type_module_is_esm() {
 #[test]
 fn t04_cjs_named_import() {
     let dir = fixture_dir("cjs-named");
-    write_file(&dir, "lib.cjs",
-        "module.exports.add = function(a, b) { return a + b };\n");
-    write_file(&dir, "main.mjs", r#"
+    write_file(
+        &dir,
+        "lib.cjs",
+        "module.exports.add = function(a, b) { return a + b };\n",
+    );
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import { add } from "./lib.cjs";
         const result = add(2, 3);
         export { result };
-    "#);
+    "#,
+    );
     let mut rt = fresh_runtime();
     let ns = load(&mut rt, &dir, "main.mjs");
     match rt.object_get(ns, "result") {
@@ -143,11 +174,15 @@ fn t04_cjs_named_import() {
 fn t05_module_exports_rebind() {
     let dir = fixture_dir("rebind");
     write_file(&dir, "lib.cjs", "module.exports = 42;\n");
-    write_file(&dir, "main.mjs", r#"
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import x from "./lib.cjs";
         const v = x;
         export { v };
-    "#);
+    "#,
+    );
     let mut rt = fresh_runtime();
     let ns = load(&mut rt, &dir, "main.mjs");
     match rt.object_get(ns, "v") {
@@ -161,11 +196,15 @@ fn t05_module_exports_rebind() {
 fn t06_exports_alias() {
     let dir = fixture_dir("exports-alias");
     write_file(&dir, "lib.cjs", "exports.x = 1; exports.y = 2;\n");
-    write_file(&dir, "main.mjs", r#"
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import { x, y } from "./lib.cjs";
         const sum = x + y;
         export { sum };
-    "#);
+    "#,
+    );
     let mut rt = fresh_runtime();
     let ns = load(&mut rt, &dir, "main.mjs");
     match rt.object_get(ns, "sum") {
@@ -179,13 +218,20 @@ fn t06_exports_alias() {
 fn t07_require_relative() {
     let dir = fixture_dir("require-rel");
     write_file(&dir, "b.cjs", "module.exports = { value: 41 };\n");
-    write_file(&dir, "a.cjs",
-        "var b = require(\"./b.cjs\"); module.exports = b.value + 1;\n");
-    write_file(&dir, "main.mjs", r#"
+    write_file(
+        &dir,
+        "a.cjs",
+        "var b = require(\"./b.cjs\"); module.exports = b.value + 1;\n",
+    );
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import a from "./a.cjs";
         const v = a;
         export { v };
-    "#);
+    "#,
+    );
     let mut rt = fresh_runtime();
     let ns = load(&mut rt, &dir, "main.mjs");
     match rt.object_get(ns, "v") {
@@ -198,13 +244,20 @@ fn t07_require_relative() {
 #[test]
 fn t08_require_builtin_no_prefix() {
     let dir = fixture_dir("require-builtin");
-    write_file(&dir, "lib.cjs",
-        "var path = require(\"path\"); module.exports = path.sep;\n");
-    write_file(&dir, "main.mjs", r#"
+    write_file(
+        &dir,
+        "lib.cjs",
+        "var path = require(\"path\"); module.exports = path.sep;\n",
+    );
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import sep from "./lib.cjs";
         const s = sep;
         export { s };
-    "#);
+    "#,
+    );
     let mut rt = fresh_runtime_with_host();
     let ns = load(&mut rt, &dir, "main.mjs");
     match rt.object_get(ns, "s") {
@@ -217,14 +270,21 @@ fn t08_require_builtin_no_prefix() {
 #[test]
 fn t09_filename_dirname() {
     let dir = fixture_dir("dirname");
-    write_file(&dir, "lib.cjs",
-        "module.exports = { dir: __dirname, file: __filename };\n");
-    write_file(&dir, "main.mjs", r#"
+    write_file(
+        &dir,
+        "lib.cjs",
+        "module.exports = { dir: __dirname, file: __filename };\n",
+    );
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import lib from "./lib.cjs";
         const d = lib.dir;
         const f = lib.file;
         export { d, f };
-    "#);
+    "#,
+    );
     let mut rt = fresh_runtime();
     let ns = load(&mut rt, &dir, "main.mjs");
     let d = rt.object_get(ns, "d");
@@ -233,7 +293,11 @@ fn t09_filename_dirname() {
         (Value::String(d), Value::String(f)) => {
             assert!(!d.is_empty(), "__dirname empty");
             assert!(!f.is_empty(), "__filename empty");
-            assert!(f.ends_with("lib.cjs"), "expected __filename to end with lib.cjs, got {:?}", f);
+            assert!(
+                f.ends_with("lib.cjs"),
+                "expected __filename to end with lib.cjs, got {:?}",
+                f
+            );
         }
         (d, f) => panic!("expected string dir+file, got {:?} {:?}", d, f),
     }
@@ -244,15 +308,25 @@ fn t09_filename_dirname() {
 fn t10_cjs_chain() {
     let dir = fixture_dir("chain");
     write_file(&dir, "c.cjs", "module.exports = { val: 7 };\n");
-    write_file(&dir, "b.cjs",
-        "var c = require(\"./c.cjs\"); module.exports = { val: c.val + 1 };\n");
-    write_file(&dir, "a.cjs",
-        "var b = require(\"./b.cjs\"); module.exports = b.val + 1;\n");
-    write_file(&dir, "main.mjs", r#"
+    write_file(
+        &dir,
+        "b.cjs",
+        "var c = require(\"./c.cjs\"); module.exports = { val: c.val + 1 };\n",
+    );
+    write_file(
+        &dir,
+        "a.cjs",
+        "var b = require(\"./b.cjs\"); module.exports = b.val + 1;\n",
+    );
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import a from "./a.cjs";
         const v = a;
         export { v };
-    "#);
+    "#,
+    );
     let mut rt = fresh_runtime();
     let ns = load(&mut rt, &dir, "main.mjs");
     match rt.object_get(ns, "v") {
@@ -266,26 +340,42 @@ fn t10_cjs_chain() {
 fn t11_module_cache_identity() {
     let dir = fixture_dir("cache-id");
     // dep tracks a side-effect counter; if cache works, both views see 1.
-    write_file(&dir, "dep.cjs", r#"
+    write_file(
+        &dir,
+        "dep.cjs",
+        r#"
         if (!global_counter) { var global_counter = 0; }
         global_counter = (typeof global_counter === "number" ? global_counter : 0) + 1;
         module.exports = { tag: "once" };
-    "#);
-    write_file(&dir, "a.cjs",
-        "var d = require(\"./dep.cjs\"); module.exports = d;\n");
-    write_file(&dir, "b.cjs",
-        "var d = require(\"./dep.cjs\"); module.exports = d;\n");
-    write_file(&dir, "main.mjs", r#"
+    "#,
+    );
+    write_file(
+        &dir,
+        "a.cjs",
+        "var d = require(\"./dep.cjs\"); module.exports = d;\n",
+    );
+    write_file(
+        &dir,
+        "b.cjs",
+        "var d = require(\"./dep.cjs\"); module.exports = d;\n",
+    );
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import a from "./a.cjs";
         import b from "./b.cjs";
         const same = (a === b);
         const tag = a.tag;
         export { same, tag };
-    "#);
+    "#,
+    );
     let mut rt = fresh_runtime();
     let ns = load(&mut rt, &dir, "main.mjs");
-    assert!(matches!(rt.object_get(ns, "same"), Value::Boolean(true)),
-        "a and b should be the same exports identity");
+    assert!(
+        matches!(rt.object_get(ns, "same"), Value::Boolean(true)),
+        "a and b should be the same exports identity"
+    );
     match rt.object_get(ns, "tag") {
         Value::String(s) => assert_eq!(s.as_str(), "once"),
         v => panic!("expected 'once', got {:?}", v),
@@ -296,13 +386,20 @@ fn t11_module_cache_identity() {
 #[test]
 fn t12_cjs_function_default() {
     let dir = fixture_dir("fn-default");
-    write_file(&dir, "lib.cjs",
-        "module.exports = function() { return 7 };\n");
-    write_file(&dir, "main.mjs", r#"
+    write_file(
+        &dir,
+        "lib.cjs",
+        "module.exports = function() { return 7 };\n",
+    );
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import f from "./lib.cjs";
         const v = f();
         export { v };
-    "#);
+    "#,
+    );
     let mut rt = fresh_runtime();
     let ns = load(&mut rt, &dir, "main.mjs");
     match rt.object_get(ns, "v") {

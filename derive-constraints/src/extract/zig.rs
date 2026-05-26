@@ -10,8 +10,7 @@ use regex::Regex;
 
 pub fn extract(path: &str, src: &str) -> Result<TestFile> {
     let test_re = Regex::new(r#"^test\s+"([^"]*)"\s*\{"#).unwrap();
-    let testing_re =
-        Regex::new(r"\btry\s+(?:std\.)?testing\.(expect[A-Za-z]*)\s*\(").unwrap();
+    let testing_re = Regex::new(r"\btry\s+(?:std\.)?testing\.(expect[A-Za-z]*)\s*\(").unwrap();
     // Bun's tests sometimes import testing aliases — `bun.testing.expect*` etc.
     let alias_re = Regex::new(r"\btry\s+\w+\.(expect[A-Za-z]*)\s*\(").unwrap();
 
@@ -28,7 +27,9 @@ pub fn extract(path: &str, src: &str) -> Result<TestFile> {
             for (off, body_line) in body.iter().enumerate() {
                 if let Some(c) = capture_clause(&testing_re, body_line, line_start + off as u32) {
                     constraints.push(c);
-                } else if let Some(c) = capture_clause(&alias_re, body_line, line_start + off as u32) {
+                } else if let Some(c) =
+                    capture_clause(&alias_re, body_line, line_start + off as u32)
+                {
                     constraints.push(c);
                 }
             }

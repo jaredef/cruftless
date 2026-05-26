@@ -9,8 +9,8 @@
 //! TSR-EXT 3 replaces this pass-through with a real parser that handles
 //! the Tier-A + Tier-B TS surface per `docs/design.md` §2.
 
-use rusty_js_ast::Module;
 use crate::ts_ast::TypeWitness;
+use rusty_js_ast::Module;
 
 #[derive(Debug)]
 pub struct TsParseError {
@@ -19,7 +19,9 @@ pub struct TsParseError {
 
 impl From<rusty_js_parser::ParseError> for TsParseError {
     fn from(e: rusty_js_parser::ParseError) -> Self {
-        TsParseError { message: format!("{:?}", e) }
+        TsParseError {
+            message: format!("{:?}", e),
+        }
     }
 }
 
@@ -48,8 +50,9 @@ impl<'src> TsParser<'src> {
     /// are derived from TS spec excerpts at the source-text tier (see
     /// `strip.rs`'s rule list).
     pub fn parse_module(&mut self) -> Result<(Module, Vec<TypeWitness>), TsParseError> {
-        let (stripped, witnesses) = crate::strip::strip_ts(self.src)
-            .map_err(|e| TsParseError { message: format!("strip: {}", e) })?;
+        let (stripped, witnesses) = crate::strip::strip_ts(self.src).map_err(|e| TsParseError {
+            message: format!("strip: {}", e),
+        })?;
         let module = rusty_js_parser::parse_module(&stripped)?;
         Ok((module, witnesses))
     }

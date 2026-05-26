@@ -100,7 +100,10 @@ pub fn cluster(scan: &ScanReport) -> Result<ClusterReport> {
                 let verb = classify_verb(&clause.raw, clause.kind);
                 let subject = canonicalize_subject(clause.subject.as_deref(), &clause.raw);
                 let key = (subject, verb);
-                groups.entry(key).or_default().push(Entry::from_clause(file, test, clause));
+                groups
+                    .entry(key)
+                    .or_default()
+                    .push(Entry::from_clause(file, test, clause));
             }
         }
     }
@@ -279,13 +282,17 @@ fn classify_spec_invariant(raw: &str) -> VerbClass {
     if lower.contains("throws") || lower.contains("raises") || lower.contains("rejects with") {
         return VerbClass::Error;
     }
-    if lower.contains(" returns ") || lower.contains("always equals")
-        || lower.contains("is the string") || lower.contains("evaluates to")
+    if lower.contains(" returns ")
+        || lower.contains("always equals")
+        || lower.contains("is the string")
+        || lower.contains("evaluates to")
     {
         return VerbClass::Equivalence;
     }
-    if lower.contains("is defined") || lower.contains("exists")
-        || lower.contains("is a global") || lower.contains("is a constructor")
+    if lower.contains("is defined")
+        || lower.contains("exists")
+        || lower.contains("is a global")
+        || lower.contains("is a constructor")
         || lower.contains("is an instance")
     {
         return VerbClass::Existence;
@@ -693,14 +700,7 @@ fn is_structural_value(arg: &str) -> bool {
     let unquoted = strip_quotes(arg);
     if matches!(
         unquoted,
-        "function"
-            | "object"
-            | "string"
-            | "number"
-            | "boolean"
-            | "undefined"
-            | "symbol"
-            | "bigint"
+        "function" | "object" | "string" | "number" | "boolean" | "undefined" | "symbol" | "bigint"
     ) {
         return true;
     }

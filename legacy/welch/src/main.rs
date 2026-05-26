@@ -11,7 +11,11 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "welch", version, about = "Welch-bound diagnostic for Rust codebases.")]
+#[command(
+    name = "welch",
+    version,
+    about = "Welch-bound diagnostic for Rust codebases."
+)]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
@@ -57,8 +61,8 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.cmd {
         Cmd::Scan { path, out } => {
-            let report = scan::scan_dir(&path)
-                .with_context(|| format!("scanning {}", path.display()))?;
+            let report =
+                scan::scan_dir(&path).with_context(|| format!("scanning {}", path.display()))?;
             write_json(&out, &report)?;
             eprintln!(
                 "scanned {} files, {} parse failures",
@@ -98,8 +102,8 @@ fn main() -> Result<()> {
 
 fn read_json<T: serde::de::DeserializeOwned>(path: &PathBuf) -> Result<T> {
     let data = std::fs::read(path).with_context(|| format!("read {}", path.display()))?;
-    let value = serde_json::from_slice(&data)
-        .with_context(|| format!("parse json {}", path.display()))?;
+    let value =
+        serde_json::from_slice(&data).with_context(|| format!("parse json {}", path.display()))?;
     Ok(value)
 }
 

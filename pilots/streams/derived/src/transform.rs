@@ -43,10 +43,14 @@ impl<I: 'static, O: Clone + 'static> TransformStream<I, O> {
     }
 
     /// SPEC §6.readable.
-    pub fn readable(&self) -> &ReadableStream<O> { &self.readable }
+    pub fn readable(&self) -> &ReadableStream<O> {
+        &self.readable
+    }
 
     /// SPEC §6.writable.
-    pub fn writable(&self) -> &WritableStream<I> { &self.writable }
+    pub fn writable(&self) -> &WritableStream<I> {
+        &self.writable
+    }
 
     /// Owned getters for chained-test usage (the verifier sometimes needs
     /// to consume the readable side after dropping the TransformStream).

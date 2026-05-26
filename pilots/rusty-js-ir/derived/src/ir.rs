@@ -244,7 +244,6 @@ pub enum Expr {
     //   - `Expr::CellNew / CellGet` and `IRNode::CellSet` — explicit
     //     handles for the Rc<RefCell<_>> idiom so the linter sees the
     //     spec's "Internal slot of F" assignments structurally.
-
     /// Allocate a fresh shared mutable cell holding the given Value-typed
     /// initial. Lowers to `std::rc::Rc::new(std::cell::RefCell::new(<init>))`.
     /// Cells are the substrate for spec slots assigned by closures (the
@@ -303,10 +302,7 @@ pub enum IRNode {
     AssignIndex { name: String, value: Expr },
 
     /// Throw a canonical error class with a message.
-    Throw {
-        class: ErrorClass,
-        message: String,
-    },
+    Throw { class: ErrorClass, message: String },
 
     /// Return a value.
     Return(Expr),
@@ -319,10 +315,7 @@ pub enum IRNode {
     },
 
     /// While loop.
-    While {
-        cond: Expr,
-        body: Vec<Step>,
-    },
+    While { cond: Expr, body: Vec<Step> },
 
     /// Reassign a previously bound local (for loop counters etc.).
     Assign { name: String, value: Expr },

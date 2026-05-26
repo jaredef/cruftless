@@ -5,7 +5,11 @@ use std::path::PathBuf;
 
 fn fixture_path(name: &str) -> PathBuf {
     let mut p = std::env::temp_dir();
-    p.push(format!("rusty-node-fs-cons-{}-{}", name, std::process::id()));
+    p.push(format!(
+        "rusty-node-fs-cons-{}-{}",
+        name,
+        std::process::id()
+    ));
     p
 }
 

@@ -14,9 +14,14 @@ pub fn install(rt: &mut Runtime) {
     register_method(rt, url_ns, "fileURLToPath", |_rt, args| {
         let s = match args.first() {
             Some(Value::String(s)) => s.as_str().to_string(),
-            Some(v) => rusty_js_runtime::abstract_ops::to_string(v).as_str().to_string(),
-            None => return Err(RuntimeError::TypeError(
-                "url.fileURLToPath: missing argument".into())),
+            Some(v) => rusty_js_runtime::abstract_ops::to_string(v)
+                .as_str()
+                .to_string(),
+            None => {
+                return Err(RuntimeError::TypeError(
+                    "url.fileURLToPath: missing argument".into(),
+                ))
+            }
         };
         let stripped = s.strip_prefix("file://").unwrap_or(&s).to_string();
         Ok(Value::String(Rc::new(stripped)))
@@ -24,9 +29,14 @@ pub fn install(rt: &mut Runtime) {
     register_method(rt, url_ns, "pathToFileURL", |_rt, args| {
         let s = match args.first() {
             Some(Value::String(s)) => s.as_str().to_string(),
-            Some(v) => rusty_js_runtime::abstract_ops::to_string(v).as_str().to_string(),
-            None => return Err(RuntimeError::TypeError(
-                "url.pathToFileURL: missing argument".into())),
+            Some(v) => rusty_js_runtime::abstract_ops::to_string(v)
+                .as_str()
+                .to_string(),
+            None => {
+                return Err(RuntimeError::TypeError(
+                    "url.pathToFileURL: missing argument".into(),
+                ))
+            }
         };
         Ok(Value::String(Rc::new(format!("file://{}", s))))
     });

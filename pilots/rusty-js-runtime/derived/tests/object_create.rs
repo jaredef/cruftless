@@ -12,12 +12,16 @@ fn run_rt(src: &str) -> Runtime {
         .unwrap_or_else(|e| panic!("compile {:?}: {:?}", src, e));
     let mut rt = Runtime::new();
     rt.install_intrinsics();
-    rt.run_module(&module).unwrap_or_else(|e| panic!("run {:?}: {:?}", src, e));
+    rt.run_module(&module)
+        .unwrap_or_else(|e| panic!("run {:?}: {:?}", src, e));
     rt
 }
 
 fn last(rt: &Runtime) -> Value {
-    rt.globals.get("__last_recorded").cloned().unwrap_or(Value::Undefined)
+    rt.globals
+        .get("__last_recorded")
+        .cloned()
+        .unwrap_or(Value::Undefined)
 }
 
 // 1. Object.create(null) allocates an ordinary object.
@@ -30,11 +34,13 @@ fn t01_create_null_proto() {
 // 2. Prototype chain hookup: methods from proto are reachable.
 #[test]
 fn t02_create_proto_chain() {
-    let rt = run_rt(r#"
+    let rt = run_rt(
+        r#"
         const proto = {greet() { return "hi"; }};
         const o = Object.create(proto);
         __record(o.greet());
-    "#);
+    "#,
+    );
     assert!(matches!(last(&rt), Value::String(ref s) if &**s == "hi"));
 }
 
@@ -45,7 +51,9 @@ fn t03_create_bad_proto_throws() {
     let module = rusty_js_bytecode::compile_module(src).unwrap();
     let mut rt = Runtime::new();
     rt.install_intrinsics();
-    let err = rt.run_module(&module).expect_err("Object.create with non-object proto must error");
+    let err = rt
+        .run_module(&module)
+        .expect_err("Object.create with non-object proto must error");
     let msg = format!("{:?}", err);
     assert!(msg.contains("Object.create"), "unexpected error: {}", msg);
 }

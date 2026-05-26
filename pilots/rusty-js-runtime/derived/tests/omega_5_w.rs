@@ -14,12 +14,16 @@ fn run_rt(src: &str) -> Runtime {
         .unwrap_or_else(|e| panic!("compile {:?}: {:?}", src, e));
     let mut rt = Runtime::new();
     rt.install_intrinsics();
-    rt.run_module(&module).unwrap_or_else(|e| panic!("run {:?}: {:?}", src, e));
+    rt.run_module(&module)
+        .unwrap_or_else(|e| panic!("run {:?}: {:?}", src, e));
     rt
 }
 
 fn last(rt: &Runtime) -> Value {
-    rt.globals.get("__last_recorded").cloned().unwrap_or(Value::Undefined)
+    rt.globals
+        .get("__last_recorded")
+        .cloned()
+        .unwrap_or(Value::Undefined)
 }
 
 // ─── Symbol() callable ──────────────────────────────────────────────
@@ -78,7 +82,9 @@ fn private_field_with_initializer() {
 
 #[test]
 fn private_method_callable_within_class() {
-    let rt = run_rt("class C { #m() { return 1; } call_m() { return this.#m(); } } __record(new C().call_m());");
+    let rt = run_rt(
+        "class C { #m() { return 1; } call_m() { return this.#m(); } } __record(new C().call_m());",
+    );
     assert_eq!(last(&rt), Value::Number(1.0));
 }
 
@@ -90,6 +96,8 @@ fn private_field_set_in_constructor() {
 
 #[test]
 fn multiple_private_fields_sum() {
-    let rt = run_rt("class C { #a = 1; #b = 2; sum() { return this.#a + this.#b; } } __record(new C().sum());");
+    let rt = run_rt(
+        "class C { #a = 1; #b = 2; sum() { return this.#a + this.#b; } } __record(new C().sum());",
+    );
     assert_eq!(last(&rt), Value::Number(3.0));
 }

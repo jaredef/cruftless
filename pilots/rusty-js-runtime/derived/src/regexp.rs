@@ -41,16 +41,18 @@ impl Runtime {
         // engine-internal bilateral boundary (Doc 729 §VII.B) so
         // `globalThis.__createRegExp` reads as undefined from JS.
         let crx_obj = make_native("__createRegExp", |rt, args| {
-            let pattern = abstract_ops::to_string(
-                &args.first().cloned().unwrap_or(Value::Undefined)
-            ).as_str().to_string();
-            let flags = abstract_ops::to_string(
-                &args.get(1).cloned().unwrap_or(Value::Undefined)
-            ).as_str().to_string();
+            let pattern =
+                abstract_ops::to_string(&args.first().cloned().unwrap_or(Value::Undefined))
+                    .as_str()
+                    .to_string();
+            let flags = abstract_ops::to_string(&args.get(1).cloned().unwrap_or(Value::Undefined))
+                .as_str()
+                .to_string();
             Ok(Value::Object(new_regexp(rt, &pattern, &flags)?))
         });
         let crx_id = self.alloc_object(crx_obj);
-        self.engine_helpers.insert("__createRegExp".into(), Value::Object(crx_id));
+        self.engine_helpers
+            .insert("__createRegExp".into(), Value::Object(crx_id));
 
         // RegExp constructor — `new RegExp(p, f)` and `RegExp(p, f)` are
         // both routed through this. If `p` is itself a RegExp the spec
@@ -100,9 +102,11 @@ impl Runtime {
         // RegExp.prototype.toString at module init (yup, validator, …)
         // see a real function rather than undefined.
         if let Some(Value::Object(ctor_id)) = self.globals.get("RegExp").cloned() {
-            self.obj_mut(ctor_id).set_own_frozen("prototype".into(), Value::Object(proto));
+            self.obj_mut(ctor_id)
+                .set_own_frozen("prototype".into(), Value::Object(proto));
             // Ω.5.P58.E4: RegExp.prototype.constructor = RegExp per ECMA §10.2.12.
-            self.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(ctor_id));
+            self.obj_mut(proto)
+                .set_own_internal("constructor".into(), Value::Object(ctor_id));
         }
 
         install_string_regex_methods(self);
@@ -123,7 +127,7 @@ pub fn new_regexp(rt: &mut Runtime, pattern: &str, flags: &str) -> Result<Object
         extensible: true,
         properties: indexmap::IndexMap::new(),
         internal_kind: InternalKind::RegExp(internals),
-    
+
         ..Default::default()
     };
     let id = rt.alloc_object(obj);
@@ -137,8 +141,11 @@ pub fn new_regexp(rt: &mut Runtime, pattern: &str, flags: &str) -> Result<Object
         crate::value::PropertyKey::String("lastIndex".to_string()),
         PropertyDescriptor {
             value: Value::Number(0.0),
-            writable: true, enumerable: false, configurable: false,
-            getter: None, setter: None,
+            writable: true,
+            enumerable: false,
+            configurable: false,
+            getter: None,
+            setter: None,
         },
     );
     Ok(id)
@@ -181,9 +188,13 @@ fn elide_surrogate_pair_alternatives(pattern: &str) -> Option<String> {
     let bytes = pattern.as_bytes();
     // Detect a `\uD[89AB]XX` (high-surrogate) escape at position p.
     let is_high_surrogate_at = |p: usize| -> bool {
-        if p + 6 > bytes.len() || &bytes[p..p+2] != b"\\u" { return false; }
-        let hex = &bytes[p+2..p+6];
-        if !hex.iter().all(|b| b.is_ascii_hexdigit()) { return false; }
+        if p + 6 > bytes.len() || &bytes[p..p + 2] != b"\\u" {
+            return false;
+        }
+        let hex = &bytes[p + 2..p + 6];
+        if !hex.iter().all(|b| b.is_ascii_hexdigit()) {
+            return false;
+        }
         let val = u32::from_str_radix(std::str::from_utf8(hex).unwrap(), 16).unwrap();
         (0xD800..=0xDBFF).contains(&val)
     };
@@ -192,10 +203,13 @@ fn elide_surrogate_pair_alternatives(pattern: &str) -> Option<String> {
     // whose body contains a high-surrogate escape anywhere, and recurse
     // into the bodies of `(?...)` groups that are kept. Returns the
     // cleaned segment text. Outer wrapper preserves `(` and `)` of groups.
-    fn clean_segment(bytes: &[u8], start: usize, end: usize,
-                     is_high_surrogate_at: &dyn Fn(usize) -> bool,
-                     changed: &mut bool) -> String
-    {
+    fn clean_segment(
+        bytes: &[u8],
+        start: usize,
+        end: usize,
+        is_high_surrogate_at: &dyn Fn(usize) -> bool,
+        changed: &mut bool,
+    ) -> String {
         // Split into top-level alternatives within [start, end).
         let mut alt_starts: Vec<usize> = vec![start];
         let mut alt_ends: Vec<usize> = Vec::new();
@@ -204,17 +218,33 @@ fn elide_surrogate_pair_alternatives(pattern: &str) -> Option<String> {
         let mut i = start;
         while i < end {
             match bytes[i] {
-                b'\\' if i + 1 < end => { i += 2; }
-                b'(' if class_depth == 0 => { group_depth += 1; i += 1; }
-                b')' if class_depth == 0 => { group_depth -= 1; i += 1; }
-                b'[' if class_depth == 0 => { class_depth = 1; i += 1; }
-                b']' if class_depth > 0 => { class_depth = 0; i += 1; }
+                b'\\' if i + 1 < end => {
+                    i += 2;
+                }
+                b'(' if class_depth == 0 => {
+                    group_depth += 1;
+                    i += 1;
+                }
+                b')' if class_depth == 0 => {
+                    group_depth -= 1;
+                    i += 1;
+                }
+                b'[' if class_depth == 0 => {
+                    class_depth = 1;
+                    i += 1;
+                }
+                b']' if class_depth > 0 => {
+                    class_depth = 0;
+                    i += 1;
+                }
                 b'|' if group_depth == 0 && class_depth == 0 => {
                     alt_ends.push(i);
                     alt_starts.push(i + 1);
                     i += 1;
                 }
-                _ => { i += 1; }
+                _ => {
+                    i += 1;
+                }
             }
         }
         alt_ends.push(end);
@@ -234,13 +264,22 @@ fn elide_surrogate_pair_alternatives(pattern: &str) -> Option<String> {
                 match bytes[k] {
                     b'\\' if k + 1 < e => {
                         if scan_group_depth == 0 && is_high_surrogate_at(k) {
-                            has_surrogate = true; break;
+                            has_surrogate = true;
+                            break;
                         }
                         k += 2;
                     }
-                    b'(' => { scan_group_depth += 1; k += 1; }
-                    b')' => { scan_group_depth -= 1; k += 1; }
-                    _ => { k += 1; }
+                    b'(' => {
+                        scan_group_depth += 1;
+                        k += 1;
+                    }
+                    b')' => {
+                        scan_group_depth -= 1;
+                        k += 1;
+                    }
+                    _ => {
+                        k += 1;
+                    }
                 }
             }
             if has_surrogate {
@@ -260,11 +299,19 @@ fn elide_surrogate_pair_alternatives(pattern: &str) -> Option<String> {
                 match bytes[p] {
                     b'\\' if p + 1 < e => {
                         rebuilt.push(bytes[p] as char);
-                        rebuilt.push(bytes[p+1] as char);
+                        rebuilt.push(bytes[p + 1] as char);
                         p += 2;
                     }
-                    b'[' if cd == 0 => { cd = 1; rebuilt.push('['); p += 1; }
-                    b']' if cd > 0 => { cd = 0; rebuilt.push(']'); p += 1; }
+                    b'[' if cd == 0 => {
+                        cd = 1;
+                        rebuilt.push('[');
+                        p += 1;
+                    }
+                    b']' if cd > 0 => {
+                        cd = 0;
+                        rebuilt.push(']');
+                        p += 1;
+                    }
                     b'(' if cd == 0 => {
                         // Find matching `)` at depth 0.
                         let group_start = p;
@@ -275,12 +322,20 @@ fn elide_surrogate_pair_alternatives(pattern: &str) -> Option<String> {
                         if q < e && bytes[q] == b'?' {
                             // Capture the prefix up to and including the marker.
                             q += 1;
-                            while q < e && bytes[q] != b':' && bytes[q] != b'=' && bytes[q] != b'!' && bytes[q] != b'<' && bytes[q] != b'>' {
+                            while q < e
+                                && bytes[q] != b':'
+                                && bytes[q] != b'='
+                                && bytes[q] != b'!'
+                                && bytes[q] != b'<'
+                                && bytes[q] != b'>'
+                            {
                                 q += 1;
                             }
                             if q < e {
                                 if bytes[q] == b'<' {
-                                    while q < e && bytes[q] != b'>' { q += 1; }
+                                    while q < e && bytes[q] != b'>' {
+                                        q += 1;
+                                    }
                                 }
                                 q += 1;
                                 inner_start = q;
@@ -291,12 +346,31 @@ fn elide_surrogate_pair_alternatives(pattern: &str) -> Option<String> {
                         let mut close = q;
                         while close < e && d > 0 {
                             match bytes[close] {
-                                b'\\' if close + 1 < e => { close += 2; }
-                                b'[' if cd2 == 0 => { cd2 = 1; close += 1; }
-                                b']' if cd2 > 0 => { cd2 = 0; close += 1; }
-                                b'(' if cd2 == 0 => { d += 1; close += 1; }
-                                b')' if cd2 == 0 => { d -= 1; if d == 0 { break; } close += 1; }
-                                _ => { close += 1; }
+                                b'\\' if close + 1 < e => {
+                                    close += 2;
+                                }
+                                b'[' if cd2 == 0 => {
+                                    cd2 = 1;
+                                    close += 1;
+                                }
+                                b']' if cd2 > 0 => {
+                                    cd2 = 0;
+                                    close += 1;
+                                }
+                                b'(' if cd2 == 0 => {
+                                    d += 1;
+                                    close += 1;
+                                }
+                                b')' if cd2 == 0 => {
+                                    d -= 1;
+                                    if d == 0 {
+                                        break;
+                                    }
+                                    close += 1;
+                                }
+                                _ => {
+                                    close += 1;
+                                }
                             }
                         }
                         if d == 0 && close < e {
@@ -305,7 +379,13 @@ fn elide_surrogate_pair_alternatives(pattern: &str) -> Option<String> {
                                 rebuilt.push(*b as char);
                             }
                             // Recurse into the inner body.
-                            let inner = clean_segment(bytes, inner_start, close, is_high_surrogate_at, changed);
+                            let inner = clean_segment(
+                                bytes,
+                                inner_start,
+                                close,
+                                is_high_surrogate_at,
+                                changed,
+                            );
                             rebuilt.push_str(&inner);
                             rebuilt.push(')');
                             p = close + 1;
@@ -315,23 +395,36 @@ fn elide_surrogate_pair_alternatives(pattern: &str) -> Option<String> {
                             p = e;
                         }
                     }
-                    _ => { rebuilt.push(bytes[p] as char); p += 1; }
+                    _ => {
+                        rebuilt.push(bytes[p] as char);
+                        p += 1;
+                    }
                 }
             }
             kept.push(rebuilt);
         }
-        if kept.is_empty() { "(?!)".to_string() } else { kept.join("|") }
+        if kept.is_empty() {
+            "(?!)".to_string()
+        } else {
+            kept.join("|")
+        }
     }
 
     let mut changed = false;
     let cleaned = clean_segment(bytes, 0, bytes.len(), &is_high_surrogate_at, &mut changed);
-    if changed { Some(cleaned) } else { None }
+    if changed {
+        Some(cleaned)
+    } else {
+        None
+    }
 }
 
 /// EXT 76b: parse a `\uHHHH` escape at position p. Returns (codepoint, end_pos).
 fn parse_unicode_esc(bytes: &[u8], p: usize) -> Option<(u32, usize)> {
-    if p + 6 > bytes.len() || &bytes[p..p+2] != b"\\u" { return None; }
-    let hex = std::str::from_utf8(&bytes[p+2..p+6]).ok()?;
+    if p + 6 > bytes.len() || &bytes[p..p + 2] != b"\\u" {
+        return None;
+    }
+    let hex = std::str::from_utf8(&bytes[p + 2..p + 6]).ok()?;
     let v = u32::from_str_radix(hex, 16).ok()?;
     Some((v, p + 6))
 }
@@ -342,23 +435,30 @@ fn parse_unicode_esc(bytes: &[u8], p: usize) -> Option<(u32, usize)> {
 /// (ASCII chars, named classes, escapes other than \u, ...). Caller must
 /// ensure bytes[start] == b'['.
 fn parse_uesc_class(bytes: &[u8], start: usize) -> Option<(Vec<(u32, u32)>, usize)> {
-    if start >= bytes.len() || bytes[start] != b'[' { return None; }
+    if start >= bytes.len() || bytes[start] != b'[' {
+        return None;
+    }
     let mut p = start + 1;
-    if p < bytes.len() && bytes[p] == b'^' { return None; }
+    if p < bytes.len() && bytes[p] == b'^' {
+        return None;
+    }
     let mut ranges = Vec::new();
     while p < bytes.len() && bytes[p] != b']' {
         let (lo, q) = parse_unicode_esc(bytes, p)?;
         p = q;
-        let hi = if p < bytes.len() && bytes[p] == b'-'
-            && p + 1 < bytes.len() && bytes[p+1] != b']'
-        {
-            let (h, q2) = parse_unicode_esc(bytes, p + 1)?;
-            p = q2;
-            h
-        } else { lo };
+        let hi =
+            if p < bytes.len() && bytes[p] == b'-' && p + 1 < bytes.len() && bytes[p + 1] != b']' {
+                let (h, q2) = parse_unicode_esc(bytes, p + 1)?;
+                p = q2;
+                h
+            } else {
+                lo
+            };
         ranges.push((lo, hi));
     }
-    if p >= bytes.len() { return None; }
+    if p >= bytes.len() {
+        return None;
+    }
     Some((ranges, p + 1))
 }
 
@@ -366,7 +466,9 @@ fn parse_uesc_class(bytes: &[u8], start: usize) -> Option<(Vec<(u32, u32)>, usiz
 /// each as `\u{HEX}` or `\u{HEX}-\u{HEX}`. Adjacent ranges are merged
 /// before emission so the output is canonical.
 fn emit_scalar_class(mut ranges: Vec<(u32, u32)>) -> String {
-    if ranges.is_empty() { return "(?!)".to_string(); }
+    if ranges.is_empty() {
+        return "(?!)".to_string();
+    }
     ranges.sort();
     let mut merged: Vec<(u32, u32)> = Vec::new();
     for r in ranges {
@@ -401,13 +503,15 @@ fn translate_surrogate_alt(bytes: &[u8], start: usize, end: usize) -> Option<Str
     let mut p = start;
     // Parse the high component: either a single \uHHHH or a class.
     let high_ranges: Vec<(u32, u32)>;
-    if p + 6 <= end && &bytes[p..p+2] == b"\\u" {
+    if p + 6 <= end && &bytes[p..p + 2] == b"\\u" {
         let (v, q) = parse_unicode_esc(bytes, p)?;
         high_ranges = vec![(v, v)];
         p = q;
     } else if p < end && bytes[p] == b'[' {
         let (rs, q) = parse_uesc_class(bytes, p)?;
-        if q > end { return None; }
+        if q > end {
+            return None;
+        }
         high_ranges = rs;
         p = q;
     } else {
@@ -420,9 +524,13 @@ fn translate_surrogate_alt(bytes: &[u8], start: usize, end: usize) -> Option<Str
         }
     }
     // Parse the low component: must be a class of low surrogates.
-    if p >= end || bytes[p] != b'[' { return None; }
+    if p >= end || bytes[p] != b'[' {
+        return None;
+    }
     let (low_ranges, q) = parse_uesc_class(bytes, p)?;
-    if q != end { return None; } // anything trailing → not a clean shape.
+    if q != end {
+        return None;
+    } // anything trailing → not a clean shape.
     for &(a, b) in &low_ranges {
         if !(0xDC00..=0xDFFF).contains(&a) || !(0xDC00..=0xDFFF).contains(&b) {
             return None;
@@ -486,8 +594,17 @@ pub fn compile_either(pattern: &str, flags: &str) -> Option<CompiledRegex> {
 fn install_regexp_proto(rt: &mut Runtime, host: ObjectRef) {
     // §22.2.6 accessors on RegExp.prototype. Each is a brand-checked
     // getter that reads the corresponding per-instance data property.
-    for name in &["source", "flags", "global", "ignoreCase", "multiline",
-                  "sticky", "unicode", "dotAll", "hasIndices"] {
+    for name in &[
+        "source",
+        "flags",
+        "global",
+        "ignoreCase",
+        "multiline",
+        "sticky",
+        "unicode",
+        "dotAll",
+        "hasIndices",
+    ] {
         install_regexp_proto_accessor(rt, host, name);
     }
 
@@ -495,9 +612,7 @@ fn install_regexp_proto(rt: &mut Runtime, host: ObjectRef) {
     // (legacy). Re-binds the receiver's source + flags to a new pattern.
     // Returns the receiver. v1 noop after re-parse — sufficient for
     // module-init presence-probes that check `typeof rx.compile`.
-    register_method(rt, host, "compile", |rt, _args| {
-        Ok(rt.current_this())
-    });
+    register_method(rt, host, "compile", |rt, _args| Ok(rt.current_this()));
     // RPTC-EXT 1: ECMA-262 §22.2.5.5 — RegExp.prototype.test( S )
     // 1. R = this; 2. S = ToString(S); 3. match = RegExpExec(R, S);
     // 4. return match !== null.
@@ -562,8 +677,14 @@ fn install_regexp_proto(rt: &mut Runtime, host: ObjectRef) {
             Some(r) => r,
             None => return Ok(Value::Null),
         };
-        let ms: Vec<String> = rx.find_iter_owned(&s).into_iter().map(|(_,_,s)| s).collect();
-        if ms.is_empty() { return Ok(Value::Null); }
+        let ms: Vec<String> = rx
+            .find_iter_owned(&s)
+            .into_iter()
+            .map(|(_, _, s)| s)
+            .collect();
+        if ms.is_empty() {
+            return Ok(Value::Null);
+        }
         let arr = rt.alloc_object(Object::new_array());
         for (i, m) in ms.iter().enumerate() {
             rt.object_set(arr, i.to_string(), Value::String(Rc::new(m.clone())));
@@ -578,7 +699,10 @@ fn install_regexp_proto(rt: &mut Runtime, host: ObjectRef) {
             InternalKind::RegExp(r) => r.compiled.clone(),
             _ => None,
         };
-        let rx = match rx { Some(r) => r, None => return Ok(Value::Number(-1.0)) };
+        let rx = match rx {
+            Some(r) => r,
+            None => return Ok(Value::Number(-1.0)),
+        };
         match rx.find_first(&s) {
             Some((start, _)) => Ok(Value::Number(byte_to_char_index(&s, start) as f64)),
             None => Ok(Value::Number(-1.0)),
@@ -596,8 +720,14 @@ fn install_regexp_proto(rt: &mut Runtime, host: ObjectRef) {
         let this_id = current_regexp_this(rt, "RegExp.prototype[@@split]")?;
         let s = rt.to_string_strict(&args.first().cloned().unwrap_or(Value::Undefined))?;
         let limit = args.get(1).cloned().and_then(|v| {
-            if matches!(v, Value::Undefined) { None }
-            else { rt.coerce_to_number(&v).ok().filter(|n| n.is_finite() && *n >= 0.0).map(|n| n as usize) }
+            if matches!(v, Value::Undefined) {
+                None
+            } else {
+                rt.coerce_to_number(&v)
+                    .ok()
+                    .filter(|n| n.is_finite() && *n >= 0.0)
+                    .map(|n| n as usize)
+            }
         });
         let rx = match &rt.obj(this_id).internal_kind {
             InternalKind::RegExp(r) => r.compiled.clone(),
@@ -631,10 +761,15 @@ fn install_regexp_proto(rt: &mut Runtime, host: ObjectRef) {
 /// data property is non-writable, throw TypeError. Used wherever
 /// spec says `Set(R, "lastIndex", ..., true)`.
 fn set_last_index_strict(rt: &mut Runtime, id: ObjectRef, n: f64) -> Result<(), RuntimeError> {
-    let writable = rt.obj(id).get_own("lastIndex").map(|d| d.writable).unwrap_or(true);
+    let writable = rt
+        .obj(id)
+        .get_own("lastIndex")
+        .map(|d| d.writable)
+        .unwrap_or(true);
     if !writable {
         return Err(RuntimeError::TypeError(
-            "Cannot assign to read only property 'lastIndex' of object '#<RegExp>'".into()));
+            "Cannot assign to read only property 'lastIndex' of object '#<RegExp>'".into(),
+        ));
     }
     rt.object_set(id, "lastIndex".into(), Value::Number(n));
     Ok(())
@@ -648,15 +783,26 @@ fn set_last_index_strict(rt: &mut Runtime, id: ObjectRef, n: f64) -> Result<(), 
 /// lastIndex — wrong for any non-BMP input.)
 fn byte_to_utf16(s: &str, byte_off: usize) -> usize {
     let off = byte_off.min(s.len());
-    s[..off].chars().map(|c| if (c as u32) >= 0x10000 { 2 } else { 1 }).sum()
+    s[..off]
+        .chars()
+        .map(|c| if (c as u32) >= 0x10000 { 2 } else { 1 })
+        .sum()
 }
 
-pub fn regexp_exec(rt: &mut Runtime, this_id: ObjectRef, input: &str) -> Result<Value, RuntimeError> {
+pub fn regexp_exec(
+    rt: &mut Runtime,
+    this_id: ObjectRef,
+    input: &str,
+) -> Result<Value, RuntimeError> {
     let (is_global, is_sticky, has_indices, has_compiled) = {
         let o = rt.obj(this_id);
         let re = match &o.internal_kind {
             InternalKind::RegExp(r) => r,
-            _ => return Err(RuntimeError::TypeError("RegExp.prototype.exec: this is not a RegExp".into())),
+            _ => {
+                return Err(RuntimeError::TypeError(
+                    "RegExp.prototype.exec: this is not a RegExp".into(),
+                ))
+            }
         };
         let is_sticky = re.flags.contains('y');
         // Both `g` and `y` honor lastIndex bookkeeping; only `y` anchors.
@@ -674,7 +820,13 @@ pub fn regexp_exec(rt: &mut Runtime, this_id: ObjectRef, input: &str) -> Result<
     let last_index_v = rt.object_get(this_id, "lastIndex");
     let last_index_n = {
         let n = rt.coerce_to_number(&last_index_v)?;
-        if n.is_nan() || n <= 0.0 { 0.0 } else if !n.is_finite() { 9007199254740991.0 } else { n.floor() }
+        if n.is_nan() || n <= 0.0 {
+            0.0
+        } else if !n.is_finite() {
+            9007199254740991.0
+        } else {
+            n.floor()
+        }
     };
     let start: usize = if is_global { last_index_n as usize } else { 0 };
     if !has_compiled {
@@ -684,7 +836,8 @@ pub fn regexp_exec(rt: &mut Runtime, this_id: ObjectRef, input: &str) -> Result<
         };
         return Err(RuntimeError::TypeError(format!(
             "RegExp pattern uses features unsupported by the v1 regex engine: /{}/{}",
-            src, flags)));
+            src, flags
+        )));
     }
     if start > input.len() {
         if is_global {
@@ -754,7 +907,11 @@ pub fn regexp_exec(rt: &mut Runtime, this_id: ObjectRef, input: &str) -> Result<
             }
             rt.object_set(arr, "length".into(), Value::Number(groups.len() as f64));
             rt.object_set(arr, "index".into(), Value::Number(mstart_u16 as f64));
-            rt.object_set(arr, "input".into(), Value::String(Rc::new(input.to_string())));
+            rt.object_set(
+                arr,
+                "input".into(),
+                Value::String(Rc::new(input.to_string())),
+            );
             // RES-EXT 1: build .groups per ECMA-262 §22.2.7.2 step 33.
             // Spec mandates a null-prototype Object whose own properties
             // are name → matched-substring (or undefined for non-
@@ -764,7 +921,9 @@ pub fn regexp_exec(rt: &mut Runtime, this_id: ObjectRef, input: &str) -> Result<
             if !named_list.is_empty() {
                 let g_obj = rt.alloc_object_with_explicit_null_proto(Object::new_ordinary());
                 for (name, idx) in &named_list {
-                    let v = groups.get(*idx).and_then(|g| g.clone())
+                    let v = groups
+                        .get(*idx)
+                        .and_then(|g| g.clone())
                         .map(|s| Value::String(Rc::new(s)))
                         .unwrap_or(Value::Undefined);
                     rt.object_set(g_obj, name.clone(), v);
@@ -797,8 +956,16 @@ pub fn regexp_exec(rt: &mut Runtime, this_id: ObjectRef, input: &str) -> Result<
                         let v = match p {
                             Some((s, e)) => {
                                 let pair = rt.alloc_object(Object::new_array());
-                                rt.object_set(pair, "0".into(), Value::Number(byte_to_utf16(input, *s) as f64));
-                                rt.object_set(pair, "1".into(), Value::Number(byte_to_utf16(input, *e) as f64));
+                                rt.object_set(
+                                    pair,
+                                    "0".into(),
+                                    Value::Number(byte_to_utf16(input, *s) as f64),
+                                );
+                                rt.object_set(
+                                    pair,
+                                    "1".into(),
+                                    Value::Number(byte_to_utf16(input, *e) as f64),
+                                );
                                 rt.object_set(pair, "length".into(), Value::Number(2.0));
                                 Value::Object(pair)
                             }
@@ -806,17 +973,29 @@ pub fn regexp_exec(rt: &mut Runtime, this_id: ObjectRef, input: &str) -> Result<
                         };
                         rt.object_set(indices_arr, i.to_string(), v);
                     }
-                    rt.object_set(indices_arr, "length".into(),
-                        Value::Number(pos_caps.len() as f64));
+                    rt.object_set(
+                        indices_arr,
+                        "length".into(),
+                        Value::Number(pos_caps.len() as f64),
+                    );
                     // .indices.groups mirrors .groups but with [start,end] pairs.
                     if !named_list.is_empty() {
-                        let ig_obj = rt.alloc_object_with_explicit_null_proto(Object::new_ordinary());
+                        let ig_obj =
+                            rt.alloc_object_with_explicit_null_proto(Object::new_ordinary());
                         for (name, idx) in &named_list {
                             let v = match pos_caps.get(*idx).and_then(|c| c.as_ref()) {
                                 Some((s, e)) => {
                                     let pair = rt.alloc_object(Object::new_array());
-                                    rt.object_set(pair, "0".into(), Value::Number(byte_to_utf16(input, *s) as f64));
-                                    rt.object_set(pair, "1".into(), Value::Number(byte_to_utf16(input, *e) as f64));
+                                    rt.object_set(
+                                        pair,
+                                        "0".into(),
+                                        Value::Number(byte_to_utf16(input, *s) as f64),
+                                    );
+                                    rt.object_set(
+                                        pair,
+                                        "1".into(),
+                                        Value::Number(byte_to_utf16(input, *e) as f64),
+                                    );
                                     rt.object_set(pair, "length".into(), Value::Number(2.0));
                                     Value::Object(pair)
                                 }
@@ -843,7 +1022,10 @@ fn byte_to_char_index(s: &str, byte_off: usize) -> usize {
 fn current_regexp_this(rt: &Runtime, label: &str) -> Result<ObjectRef, RuntimeError> {
     match rt.current_this() {
         Value::Object(id) if matches!(rt.obj(id).internal_kind, InternalKind::RegExp(_)) => Ok(id),
-        _ => Err(RuntimeError::TypeError(format!("{}: this is not a RegExp", label))),
+        _ => Err(RuntimeError::TypeError(format!(
+            "{}: this is not a RegExp",
+            label
+        ))),
     }
 }
 
@@ -881,11 +1063,20 @@ fn install_string_regex_methods(rt: &mut Runtime) {
         };
         let rx = match rx {
             Some(r) => r,
-            None => return Err(RuntimeError::TypeError(
-                "String.prototype.match: regex pattern unsupported".into())),
+            None => {
+                return Err(RuntimeError::TypeError(
+                    "String.prototype.match: regex pattern unsupported".into(),
+                ))
+            }
         };
-        let matches: Vec<String> = rx.find_iter_owned(&s).into_iter().map(|(_,_,s)| s).collect();
-        if matches.is_empty() { return Ok(Value::Null); }
+        let matches: Vec<String> = rx
+            .find_iter_owned(&s)
+            .into_iter()
+            .map(|(_, _, s)| s)
+            .collect();
+        if matches.is_empty() {
+            return Ok(Value::Null);
+        }
         let arr = rt.alloc_object(Object::new_array());
         for (i, m) in matches.iter().enumerate() {
             rt.object_set(arr, i.to_string(), Value::String(Rc::new(m.clone())));
@@ -903,8 +1094,11 @@ fn install_string_regex_methods(rt: &mut Runtime) {
         };
         let rx = match rx {
             Some(r) => r,
-            None => return Err(RuntimeError::TypeError(
-                "String.prototype.search: regex pattern unsupported".into())),
+            None => {
+                return Err(RuntimeError::TypeError(
+                    "String.prototype.search: regex pattern unsupported".into(),
+                ))
+            }
         };
         match rx.find_first(&s) {
             Some((start, _)) => Ok(Value::Number(byte_to_char_index(&s, start) as f64)),
@@ -931,7 +1125,8 @@ fn install_string_regex_methods(rt: &mut Runtime) {
             if let InternalKind::RegExp(r) = &rt.obj(*id).internal_kind {
                 if !r.flags.contains('g') {
                     return Err(RuntimeError::TypeError(
-                        "String.prototype.replaceAll: non-global RegExp".into()));
+                        "String.prototype.replaceAll: non-global RegExp".into(),
+                    ));
                 }
             }
         }
@@ -949,7 +1144,9 @@ fn install_string_regex_methods(rt: &mut Runtime) {
             None | Some(Value::Undefined) => u32::MAX as usize,
             Some(v) => {
                 let n = abstract_ops::to_number(v);
-                if !n.is_finite() { 0 } else {
+                if !n.is_finite() {
+                    0
+                } else {
                     let f = n.trunc();
                     f.rem_euclid(4294967296.0) as u32 as usize
                 }
@@ -967,20 +1164,27 @@ fn install_string_regex_methods(rt: &mut Runtime) {
         // captures survive (Vec<String> would force lossy "undefined" text).
         let parts: Vec<Value> = match args.first() {
             None | Some(Value::Undefined) => vec![Value::String(Rc::new(s.clone()))],
-            Some(Value::Object(id)) if matches!(rt.obj(*id).internal_kind, InternalKind::RegExp(_)) => {
+            Some(Value::Object(id))
+                if matches!(rt.obj(*id).internal_kind, InternalKind::RegExp(_)) =>
+            {
                 let rx = match &rt.obj(*id).internal_kind {
                     InternalKind::RegExp(r) => r.compiled.clone(),
                     _ => None,
                 };
                 let rx = match rx {
                     Some(r) => r,
-                    None => return Err(RuntimeError::TypeError(
-                        "String.prototype.split: regex pattern unsupported".into())),
+                    None => {
+                        return Err(RuntimeError::TypeError(
+                            "String.prototype.split: regex pattern unsupported".into(),
+                        ))
+                    }
                 };
                 let mut out: Vec<Value> = Vec::new();
                 let mut cursor: usize = 0;
                 loop {
-                    if cursor > s.len() { break; }
+                    if cursor > s.len() {
+                        break;
+                    }
                     let caps = rx.captures_at(&s, cursor);
                     match caps {
                         None => {
@@ -996,7 +1200,11 @@ fn install_string_regex_methods(rt: &mut Runtime) {
                                     out.push(Value::String(Rc::new(s[cursor..].to_string())));
                                     break;
                                 }
-                                let ch_len = s[cursor..].chars().next().map(|c| c.len_utf8()).unwrap_or(1);
+                                let ch_len = s[cursor..]
+                                    .chars()
+                                    .next()
+                                    .map(|c| c.len_utf8())
+                                    .unwrap_or(1);
                                 cursor += ch_len;
                                 continue;
                             }
@@ -1017,9 +1225,13 @@ fn install_string_regex_methods(rt: &mut Runtime) {
             Some(sep_v) => {
                 let sep = rt.to_string_strict(sep_v)?;
                 if sep.is_empty() {
-                    s.chars().map(|c| Value::String(Rc::new(c.to_string()))).collect()
+                    s.chars()
+                        .map(|c| Value::String(Rc::new(c.to_string())))
+                        .collect()
                 } else {
-                    s.split(&sep).map(|p| Value::String(Rc::new(p.to_string()))).collect()
+                    s.split(&sep)
+                        .map(|p| Value::String(Rc::new(p.to_string())))
+                        .collect()
                 }
             }
         };
@@ -1045,7 +1257,11 @@ fn install_string_regex_methods(rt: &mut Runtime) {
 ///   $NN → two-digit group form (if NN is a valid 1-99 group index)
 ///   ${name} → named group (best-effort; v1 returns empty for missing)
 fn process_regex_substitution(
-    repl: &str, matched: &str, before: &str, after: &str, groups: &[Option<&str>],
+    repl: &str,
+    matched: &str,
+    before: &str,
+    after: &str,
+    groups: &[Option<&str>],
 ) -> String {
     let mut out = String::with_capacity(repl.len());
     let bytes = repl.as_bytes();
@@ -1053,19 +1269,46 @@ fn process_regex_substitution(
     while i < bytes.len() {
         if bytes[i] == b'$' && i + 1 < bytes.len() {
             match bytes[i + 1] {
-                b'$' => { out.push('$'); i += 2; continue; }
-                b'&' => { out.push_str(matched); i += 2; continue; }
-                b'`' => { out.push_str(before); i += 2; continue; }
-                b'\'' => { out.push_str(after); i += 2; continue; }
+                b'$' => {
+                    out.push('$');
+                    i += 2;
+                    continue;
+                }
+                b'&' => {
+                    out.push_str(matched);
+                    i += 2;
+                    continue;
+                }
+                b'`' => {
+                    out.push_str(before);
+                    i += 2;
+                    continue;
+                }
+                b'\'' => {
+                    out.push_str(after);
+                    i += 2;
+                    continue;
+                }
                 b'0'..=b'9' => {
                     // Try two-digit form first, then single-digit.
                     let n2 = if i + 2 < bytes.len() && (bytes[i + 2] as char).is_ascii_digit() {
-                        let n = (bytes[i + 1] - b'0') as usize * 10 + (bytes[i + 2] - b'0') as usize;
-                        if n >= 1 && n <= groups.len() { Some((n, 3usize)) } else { None }
-                    } else { None };
+                        let n =
+                            (bytes[i + 1] - b'0') as usize * 10 + (bytes[i + 2] - b'0') as usize;
+                        if n >= 1 && n <= groups.len() {
+                            Some((n, 3usize))
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
                     let n1 = {
                         let n = (bytes[i + 1] - b'0') as usize;
-                        if n >= 1 && n <= groups.len() { Some((n, 2usize)) } else { None }
+                        if n >= 1 && n <= groups.len() {
+                            Some((n, 2usize))
+                        } else {
+                            None
+                        }
                     };
                     let pick = n2.or(n1);
                     if let Some((n, adv)) = pick {
@@ -1091,7 +1334,9 @@ fn process_regex_substitution(
         }
         let ch_start = i;
         let mut ch_end = i + 1;
-        while ch_end < bytes.len() && (bytes[ch_end] & 0xC0) == 0x80 { ch_end += 1; }
+        while ch_end < bytes.len() && (bytes[ch_end] & 0xC0) == 0x80 {
+            ch_end += 1;
+        }
         out.push_str(&repl[ch_start..ch_end]);
         i = ch_end;
     }
@@ -1114,8 +1359,11 @@ fn string_replace_impl(
             };
             let rx = match rx {
                 Some(r) => r,
-                None => return Err(RuntimeError::TypeError(
-                    "String.prototype.replace: regex pattern unsupported".into())),
+                None => {
+                    return Err(RuntimeError::TypeError(
+                        "String.prototype.replace: regex pattern unsupported".into(),
+                    ))
+                }
             };
             (rx, force_global || flags.contains('g'))
         }
@@ -1125,7 +1373,8 @@ fn string_replace_impl(
             // separate code path.
             let needle = rt.coerce_to_string(&pat)?;
             let escaped = regex::escape(&needle);
-            let rx = regex::Regex::new(&escaped).map_err(|e| RuntimeError::TypeError(format!("{}", e)))?;
+            let rx = regex::Regex::new(&escaped)
+                .map_err(|e| RuntimeError::TypeError(format!("{}", e)))?;
             (CompiledRegex::Rust(rx), force_global)
         }
     };
@@ -1148,22 +1397,25 @@ fn string_replace_impl(
         let max_n = if is_global { usize::MAX } else { 1 };
         while count < max_n {
             let caps = match rx.captures_at(s, search_start) {
-                Some(c) => c, None => break,
+                Some(c) => c,
+                None => break,
             };
             let (mstart, mend, groups) = caps;
             out.push_str(&s[cursor..mstart]);
             let matched = &s[mstart..mend];
             let before = &s[..mstart];
             let after = &s[mend..];
-            let group_slices: Vec<Option<&str>> = groups.iter().skip(1)
-                .map(|g| g.as_deref()).collect();
-            let substituted = process_regex_substitution(
-                &repl_s, matched, before, after, &group_slices);
+            let group_slices: Vec<Option<&str>> =
+                groups.iter().skip(1).map(|g| g.as_deref()).collect();
+            let substituted =
+                process_regex_substitution(&repl_s, matched, before, after, &group_slices);
             out.push_str(&substituted);
             cursor = mend;
             search_start = if mend == mstart { mend + 1 } else { mend };
             count += 1;
-            if search_start > s.len() { break; }
+            if search_start > s.len() {
+                break;
+            }
         }
         out.push_str(&s[cursor..]);
         return Ok(Value::String(Rc::new(out)));
@@ -1219,7 +1471,9 @@ fn string_replace_impl(
         if !named.is_empty() {
             let g_obj = rt.alloc_object_with_explicit_null_proto(Object::new_ordinary());
             for (name, idx) in &named {
-                let v = groups.get(*idx).and_then(|g| g.clone())
+                let v = groups
+                    .get(*idx)
+                    .and_then(|g| g.clone())
                     .map(|s| Value::String(Rc::new(s)))
                     .unwrap_or(Value::Undefined);
                 rt.object_set(g_obj, name.clone(), v);
@@ -1235,7 +1489,9 @@ fn string_replace_impl(
         // Advance search_start. Avoid zero-width infinite loop.
         search_start = if mend == mstart { mend + 1 } else { mend };
         count += 1;
-        if search_start > s.len() { break; }
+        if search_start > s.len() {
+            break;
+        }
     }
     out.push_str(&s[cursor..]);
     Ok(Value::String(Rc::new(out)))
@@ -1256,7 +1512,9 @@ fn coerce_regexp(rt: &mut Runtime, v: Value) -> Result<ObjectRef, RuntimeError> 
 // ──────────────── local helpers ────────────────
 
 fn register_method<F>(rt: &mut Runtime, host: ObjectRef, name: &str, f: F)
-where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
+where
+    F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static,
+{
     // NACR-EXT 1: built-in prototype methods are non-constructors per
     // ECMA-262 §21.3. Mirrors the intrinsics.rs::register_method discipline.
     // Pre-fix RegExp.prototype.{replace, exec, test, ...} registered here
@@ -1264,12 +1522,17 @@ where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
     // `isConstructor(RegExp.prototype.test)` returned true.
     let fn_obj = crate::intrinsics::make_native_non_ctor(name, 0, f);
     let fn_id = rt.alloc_object(fn_obj);
-    rt.obj_mut(host).dict_mut().insert(name.into(), PropertyDescriptor {
-        value: Value::Object(fn_id),
-        writable: true,
-        enumerable: false,
-        configurable: true, getter: None, setter: None,
-    });
+    rt.obj_mut(host).dict_mut().insert(
+        name.into(),
+        PropertyDescriptor {
+            value: Value::Object(fn_id),
+            writable: true,
+            enumerable: false,
+            configurable: true,
+            getter: None,
+            setter: None,
+        },
+    );
 }
 
 /// Install an accessor getter on RegExp.prototype that, when invoked,
@@ -1280,18 +1543,26 @@ where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
 /// on RegExp.prototype; test262 probes the descriptor shape via
 /// Object.getOwnPropertyDescriptor(RegExp.prototype, key).get.
 fn install_regexp_proto_accessor(rt: &mut Runtime, host: ObjectRef, name: &'static str) {
-    let getter_obj = crate::intrinsics::make_native_non_ctor(
-        &format!("get {}", name), 0, move |rt, _args| {
+    let getter_obj =
+        crate::intrinsics::make_native_non_ctor(&format!("get {}", name), 0, move |rt, _args| {
             let this = match rt.current_this() {
                 Value::Object(id) => id,
-                _ => return Err(RuntimeError::TypeError(format!(
-                    "get {}: this is not an Object", name))),
+                _ => {
+                    return Err(RuntimeError::TypeError(format!(
+                        "get {}: this is not an Object",
+                        name
+                    )))
+                }
             };
             // Brand-check via [[RegExpData]] internal slot per §22.2.6.{2..10}.
             let re = match &rt.obj(this).internal_kind {
                 InternalKind::RegExp(r) => r,
-                _ => return Err(RuntimeError::TypeError(format!(
-                    "RegExp.prototype.{}: this is not a RegExp", name))),
+                _ => {
+                    return Err(RuntimeError::TypeError(format!(
+                        "RegExp.prototype.{}: this is not a RegExp",
+                        name
+                    )))
+                }
             };
             // RIAS-EXT 1: read directly from InternalKind::RegExp(internals)
             // rather than rt.object_get(this, name). The latter would now
@@ -1299,27 +1570,35 @@ fn install_regexp_proto_accessor(rt: &mut Runtime, host: ObjectRef, name: &'stat
             // either infinite-recurse or return undefined.
             Ok(match name {
                 "source" => Value::String(re.source.clone()),
-                "flags"  => Value::String(re.flags.clone()),
-                "global"     => Value::Boolean(re.flags.contains('g')),
+                "flags" => Value::String(re.flags.clone()),
+                "global" => Value::Boolean(re.flags.contains('g')),
                 "ignoreCase" => Value::Boolean(re.flags.contains('i')),
-                "multiline"  => Value::Boolean(re.flags.contains('m')),
-                "sticky"     => Value::Boolean(re.flags.contains('y')),
-                "unicode"    => Value::Boolean(re.flags.contains('u')),
-                "dotAll"     => Value::Boolean(re.flags.contains('s')),
+                "multiline" => Value::Boolean(re.flags.contains('m')),
+                "sticky" => Value::Boolean(re.flags.contains('y')),
+                "unicode" => Value::Boolean(re.flags.contains('u')),
+                "dotAll" => Value::Boolean(re.flags.contains('s')),
                 "hasIndices" => Value::Boolean(re.flags.contains('d')),
                 _ => Value::Undefined,
             })
         });
     let getter_id = rt.alloc_object(getter_obj);
-    rt.obj_mut(host).dict_mut().insert(name.into(), PropertyDescriptor {
-        value: Value::Undefined,
-        writable: false, enumerable: false, configurable: true,
-        getter: Some(Value::Object(getter_id)), setter: None,
-    });
+    rt.obj_mut(host).dict_mut().insert(
+        name.into(),
+        PropertyDescriptor {
+            value: Value::Undefined,
+            writable: false,
+            enumerable: false,
+            configurable: true,
+            getter: Some(Value::Object(getter_id)),
+            setter: None,
+        },
+    );
 }
 
 fn register_global_native<F>(rt: &mut Runtime, name: &str, f: F)
-where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
+where
+    F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static,
+{
     let fn_obj = make_native(name, f);
     let fn_id = rt.alloc_object(fn_obj);
     rt.globals.insert(name.into(), Value::Object(fn_id));

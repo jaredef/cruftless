@@ -15,7 +15,11 @@ use clap::{Parser, Subcommand};
 use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
-#[command(name = "derive-constraints", version, about = "Extract test-corpus constraints.")]
+#[command(
+    name = "derive-constraints",
+    version,
+    about = "Extract test-corpus constraints."
+)]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
@@ -155,8 +159,8 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.cmd {
         Cmd::Scan { path, out, summary } => {
-            let report = scan::scan_dir(&path)
-                .with_context(|| format!("scanning {}", path.display()))?;
+            let report =
+                scan::scan_dir(&path).with_context(|| format!("scanning {}", path.display()))?;
             write_json(&out, &report)?;
             if summary {
                 print_summary(&report);
@@ -230,8 +234,7 @@ fn main() -> Result<()> {
         } => {
             let cluster_report: cluster::ClusterReport = read_json(&cluster_path)
                 .with_context(|| format!("loading cluster from {}", cluster_path.display()))?;
-            let mut report =
-                seams::detect_seams(&cluster_report, corpus_root.as_deref())?;
+            let mut report = seams::detect_seams(&cluster_report, corpus_root.as_deref())?;
             report.cluster_source = Some(cluster_path.to_string_lossy().into_owned());
             write_json(&out, &report)?;
             if summary {
@@ -244,8 +247,8 @@ fn main() -> Result<()> {
 
 fn read_json<T: serde::de::DeserializeOwned>(path: &PathBuf) -> Result<T> {
     let data = std::fs::read(path).with_context(|| format!("read {}", path.display()))?;
-    let value = serde_json::from_slice(&data)
-        .with_context(|| format!("parse json {}", path.display()))?;
+    let value =
+        serde_json::from_slice(&data).with_context(|| format!("parse json {}", path.display()))?;
     Ok(value)
 }
 
@@ -333,9 +336,7 @@ fn run_pipeline(
     let welch_binary = welch_binary_arg
         .or_else(|| guess_welch_binary())
         .ok_or_else(|| {
-            anyhow::anyhow!(
-                "could not locate welch binary; pass --welch-binary <PATH>"
-            )
+            anyhow::anyhow!("could not locate welch binary; pass --welch-binary <PATH>")
         })?;
     if !welch_binary.exists() {
         anyhow::bail!("welch binary does not exist at {}", welch_binary.display());
@@ -389,7 +390,11 @@ fn run_pipeline(
             welch_target_scan.as_os_str(),
         ],
     )?;
-    eprintln!("      → {} in {:?}", welch_target_scan.display(), t.elapsed());
+    eprintln!(
+        "      → {} in {:?}",
+        welch_target_scan.display(),
+        t.elapsed()
+    );
 
     // Step 3: welch scan over baseline
     let welch_baseline_scan = out_dir.join("welch-baseline-scan.json");
@@ -404,7 +409,11 @@ fn run_pipeline(
             welch_baseline_scan.as_os_str(),
         ],
     )?;
-    eprintln!("      → {} in {:?}", welch_baseline_scan.display(), t.elapsed());
+    eprintln!(
+        "      → {} in {:?}",
+        welch_baseline_scan.display(),
+        t.elapsed()
+    );
 
     // Step 4: welch baseline (summary)
     let welch_baseline_summary = out_dir.join("welch-baseline-summary.json");
@@ -507,12 +516,26 @@ fn run_pipeline(
 
     eprintln!();
     eprintln!("pipeline complete. Artifacts in {}/:", out_dir.display());
-    eprintln!("  scan.json                  — {} clauses across {} files", scan_report.stats.constraints_total, scan_report.stats.files_scanned);
-    eprintln!("  cluster.json               — {} properties ({} construction-style)", cluster_report.stats.properties_out, cluster_report.stats.construction_style_count);
-    eprintln!("  seams.json                 — {} signal-vector clusters, {} cross-namespace seams", seams_report.stats.distinct_signal_vectors, seams_report.stats.cross_namespace_seam_count);
-    eprintln!("  coupled.json               — {} surfaces, {} mismatch candidates", coupled_report.stats.surfaces_total, coupled_report.stats.mismatch_candidates);
+    eprintln!(
+        "  scan.json                  — {} clauses across {} files",
+        scan_report.stats.constraints_total, scan_report.stats.files_scanned
+    );
+    eprintln!(
+        "  cluster.json               — {} properties ({} construction-style)",
+        cluster_report.stats.properties_out, cluster_report.stats.construction_style_count
+    );
+    eprintln!(
+        "  seams.json                 — {} signal-vector clusters, {} cross-namespace seams",
+        seams_report.stats.distinct_signal_vectors, seams_report.stats.cross_namespace_seam_count
+    );
+    eprintln!(
+        "  coupled.json               — {} surfaces, {} mismatch candidates",
+        coupled_report.stats.surfaces_total, coupled_report.stats.mismatch_candidates
+    );
     eprintln!("  welch-anomalies.json       — implementation-source z-anomalies");
-    eprintln!("  constraints/               — namespace-grouped .constraints.md (rederive-compatible)");
+    eprintln!(
+        "  constraints/               — namespace-grouped .constraints.md (rederive-compatible)"
+    );
     eprintln!("  constraints-by-seams/      — seam-grouped .constraints.md (rederive-compatible, Doc 705 form)");
     Ok(())
 }

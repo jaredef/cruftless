@@ -2,22 +2,26 @@
 //! with proper `this` threading. Covers Object/Array/String/Function/
 //! Promise/Number prototypes. Numbered to the round's spec.
 
-use rusty_js_runtime::{run_module, Runtime, Value};
 use rusty_js_runtime::interp::RuntimeError;
+use rusty_js_runtime::{run_module, Runtime, Value};
 
 fn run(src: &str) -> Value {
     run_module(src).unwrap_or_else(|e| panic!("run failed for {:?}: {:?}", src, e))
 }
 
 fn run_drain(src: &str) -> Value {
-    let module = rusty_js_bytecode::compile_module(src)
-        .unwrap_or_else(|e| panic!("compile: {:?}", e));
+    let module =
+        rusty_js_bytecode::compile_module(src).unwrap_or_else(|e| panic!("compile: {:?}", e));
     let mut rt = Runtime::new();
     rt.install_intrinsics();
-    rt.run_module(&module).unwrap_or_else(|e| panic!("run: {:?}", e));
+    rt.run_module(&module)
+        .unwrap_or_else(|e| panic!("run: {:?}", e));
     // Drain microtasks to fire Promise reaction chains.
     let _ = rt.run_to_completion();
-    rt.globals.get("__last_recorded").cloned().unwrap_or(Value::Undefined)
+    rt.globals
+        .get("__last_recorded")
+        .cloned()
+        .unwrap_or(Value::Undefined)
 }
 
 // ─────────── 1. ({}).toString() === "[object Object]" ───────────
@@ -25,14 +29,22 @@ fn run_drain(src: &str) -> Value {
 fn t01_object_to_string() {
     if let Value::String(s) = run("return ({}).toString();") {
         assert_eq!(s.as_str(), "[object Object]");
-    } else { panic!("not a string"); }
+    } else {
+        panic!("not a string");
+    }
 }
 
 // ─────────── 2. ({a:1}).hasOwnProperty("a") === true ───────────
 #[test]
 fn t02_object_has_own_property() {
-    assert_eq!(run("return ({a:1}).hasOwnProperty(\"a\");"), Value::Boolean(true));
-    assert_eq!(run("return ({a:1}).hasOwnProperty(\"b\");"), Value::Boolean(false));
+    assert_eq!(
+        run("return ({a:1}).hasOwnProperty(\"a\");"),
+        Value::Boolean(true)
+    );
+    assert_eq!(
+        run("return ({a:1}).hasOwnProperty(\"b\");"),
+        Value::Boolean(false)
+    );
 }
 
 // ─────────── 3. [1,2,3].map(x => x * 2) -> [2,4,6] ───────────
@@ -41,7 +53,9 @@ fn t03_array_map() {
     // Check elements via join (avoid array equality dance).
     if let Value::String(s) = run("return [1,2,3].map(x => x * 2).join(\",\");") {
         assert_eq!(s.as_str(), "2,4,6");
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 // ─────────── 4. [1,2,3].forEach(fn) fires three times ───────────
@@ -57,16 +71,24 @@ fn t04_array_forEach() {
         __record(totalForEach);
     "#);
     // Re-execute via a Runtime we can inspect.
-    let module = rusty_js_bytecode::compile_module(r#"
+    let module = rusty_js_bytecode::compile_module(
+        r#"
         totalForEach = 0;
         [10, 20, 30].forEach(function(v){ totalForEach = totalForEach + v; });
         __record(totalForEach);
-    "#).unwrap();
+    "#,
+    )
+    .unwrap();
     let mut rt = Runtime::new();
     rt.install_intrinsics();
     rt.run_module(&module).unwrap();
-    assert_eq!(rt.globals.get("__last_recorded").cloned().unwrap_or(Value::Undefined),
-        Value::Number(60.0));
+    assert_eq!(
+        rt.globals
+            .get("__last_recorded")
+            .cloned()
+            .unwrap_or(Value::Undefined),
+        Value::Number(60.0)
+    );
 }
 
 // ─────────── 5. [1,2,3].length === 3 ───────────
@@ -82,9 +104,12 @@ fn t06_array_push() {
         let a = [1,2,3];
         let r = a.push(4);
         return r + ":" + a.length + ":" + a.join(",");
-    "#) {
+    "#)
+    {
         assert_eq!(s.as_str(), "4:4:1,2,3,4");
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 // ─────────── 7. [1,2,3].indexOf(2) === 1 ───────────
@@ -99,7 +124,9 @@ fn t07_array_indexOf() {
 fn t08_string_to_upper_case() {
     if let Value::String(s) = run("return \"hello\".toUpperCase();") {
         assert_eq!(s.as_str(), "HELLO");
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 // ─────────── 9. "hello".length === 5 ───────────
@@ -113,7 +140,9 @@ fn t09_string_length() {
 fn t10_string_charAt() {
     if let Value::String(s) = run("return \"hello\".charAt(1);") {
         assert_eq!(s.as_str(), "e");
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 // ─────────── 11. "hello".slice(1,3) === "el" ───────────
@@ -121,15 +150,19 @@ fn t10_string_charAt() {
 fn t11_string_slice() {
     if let Value::String(s) = run("return \"hello\".slice(1, 3);") {
         assert_eq!(s.as_str(), "el");
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 // ─────────── 12. Promise.resolve(42).then(x => x * 2).then(__record) records 84 ───────────
 #[test]
 fn t12_promise_then_chain_instance_form() {
-    let v = run_drain(r#"
+    let v = run_drain(
+        r#"
         Promise.resolve(42).then(function(x){ return x * 2; }).then(function(x){ __record(x); });
-    "#);
+    "#,
+    );
     assert_eq!(v, Value::Number(84.0));
 }
 
@@ -139,9 +172,12 @@ fn t13_function_call() {
     if let Value::Number(n) = run(r#"
         function add(a, b) { return this + a + b; }
         return add.call(10, 1, 2);
-    "#) {
+    "#)
+    {
         assert_eq!(n, 13.0);
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 // ─────────── 14. fn.apply(thisVal, [args]) ───────────
@@ -150,9 +186,12 @@ fn t14_function_apply() {
     if let Value::Number(n) = run(r#"
         function add(a, b) { return this + a + b; }
         return add.apply(100, [3, 4]);
-    "#) {
+    "#)
+    {
         assert_eq!(n, 107.0);
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 // ─────────── stretch: array filter / reduce / some / every ───────────
@@ -160,21 +199,34 @@ fn t14_function_apply() {
 fn stretch_array_filter() {
     if let Value::String(s) = run("return [1,2,3,4].filter(x => x > 2).join(\",\");") {
         assert_eq!(s.as_str(), "3,4");
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 #[test]
 fn stretch_array_reduce() {
     if let Value::Number(n) = run("return [1,2,3,4].reduce(function(a,b){ return a + b; }, 0);") {
         assert_eq!(n, 10.0);
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 #[test]
 fn stretch_array_some_every_find() {
-    assert_eq!(run("return [1,2,3].some(x => x > 2);"), Value::Boolean(true));
-    assert_eq!(run("return [1,2,3].every(x => x > 0);"), Value::Boolean(true));
-    assert_eq!(run("return [1,2,3].every(x => x > 1);"), Value::Boolean(false));
+    assert_eq!(
+        run("return [1,2,3].some(x => x > 2);"),
+        Value::Boolean(true)
+    );
+    assert_eq!(
+        run("return [1,2,3].every(x => x > 0);"),
+        Value::Boolean(true)
+    );
+    assert_eq!(
+        run("return [1,2,3].every(x => x > 1);"),
+        Value::Boolean(false)
+    );
     assert_eq!(run("return [1,2,3].find(x => x > 1);"), Value::Number(2.0));
 }
 
@@ -184,24 +236,33 @@ fn stretch_function_bind() {
         function add(a, b, c) { return a + b + c; }
         let bound = add.bind(null, 1, 2);
         return bound(10);
-    "#) {
+    "#)
+    {
         assert_eq!(n, 13.0);
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 #[test]
 fn stretch_string_split_join_round_trip() {
     if let Value::String(s) = run(r#"return "a,b,c".split(",").join("-");"#) {
         assert_eq!(s.as_str(), "a-b-c");
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 #[test]
 fn stretch_number_to_fixed() {
     if let Value::String(s) = run("return (3.14159).toFixed(2);") {
         assert_eq!(s.as_str(), "3.14");
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 // Suppress unused-import warning when promise_then_chain isn't drained.
-fn _silence() -> Result<(), RuntimeError> { Ok(()) }
+fn _silence() -> Result<(), RuntimeError> {
+    Ok(())
+}

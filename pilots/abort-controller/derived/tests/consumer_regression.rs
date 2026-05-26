@@ -30,7 +30,9 @@ fn consumer_node_fetch_listener_receives_abort_synchronously() {
     let ac = AbortController::new();
     let fired = Rc::new(Cell::new(false));
     let f = fired.clone();
-    ac.signal().add_event_listener(move |_| { f.set(true); });
+    ac.signal().add_event_listener(move |_| {
+        f.set(true);
+    });
     ac.abort();
     // node-fetch installs cleanup listeners; expects them to run before
     // ac.abort() returns control to the caller (synchronous in this scope).
@@ -48,7 +50,10 @@ fn consumer_node_fetch_listener_receives_abort_synchronously() {
 fn consumer_polyfill_custom_reason_preserved() {
     let ac = AbortController::new();
     ac.abort_with(Reason::Custom("user cancelled".into()));
-    assert_eq!(ac.signal().reason(), Some(Reason::Custom("user cancelled".into())));
+    assert_eq!(
+        ac.signal().reason(),
+        Some(Reason::Custom("user cancelled".into()))
+    );
 }
 
 // ─────────── p-cancelable — Promise cancellation idiom ──────────
@@ -82,13 +87,13 @@ fn consumer_p_cancelable_throw_if_aborted_noop_when_not_aborted() {
 fn consumer_undici_any_combines_user_and_timeout_signals() {
     let user_ac = AbortController::new();
     let timeout_ac = AbortController::new();
-    let combined = AbortSignal::any(&[
-        user_ac.signal().clone(),
-        timeout_ac.signal().clone(),
-    ]);
+    let combined = AbortSignal::any(&[user_ac.signal().clone(), timeout_ac.signal().clone()]);
     assert!(!combined.aborted());
     timeout_ac.abort();
-    assert!(combined.aborted(), "any() must abort when timeout signal fires");
+    assert!(
+        combined.aborted(),
+        "any() must abort when timeout signal fires"
+    );
 }
 
 #[test]
@@ -96,12 +101,12 @@ fn consumer_undici_any_with_already_aborted_user_returns_aborted() {
     let user_ac = AbortController::new();
     user_ac.abort_with(Reason::Custom("user cancelled".into()));
     let timeout_ac = AbortController::new();
-    let combined = AbortSignal::any(&[
-        user_ac.signal().clone(),
-        timeout_ac.signal().clone(),
-    ]);
+    let combined = AbortSignal::any(&[user_ac.signal().clone(), timeout_ac.signal().clone()]);
     assert!(combined.aborted());
-    assert_eq!(combined.reason(), Some(Reason::Custom("user cancelled".into())));
+    assert_eq!(
+        combined.reason(),
+        Some(Reason::Custom("user cancelled".into()))
+    );
 }
 
 // ─────────── AsyncIterator + abort — modern async consumers ──────────
@@ -116,7 +121,9 @@ fn consumer_p_event_late_listener_fires_immediately() {
     let s = AbortSignal::abort_default();
     let fired = Rc::new(Cell::new(false));
     let f = fired.clone();
-    s.add_event_listener(move |_| { f.set(true); });
+    s.add_event_listener(move |_| {
+        f.set(true);
+    });
     assert!(fired.get());
 }
 
@@ -131,7 +138,9 @@ fn consumer_idempotent_abort_listener_fires_at_most_once() {
     let ac = AbortController::new();
     let count = Rc::new(Cell::new(0u32));
     let c = count.clone();
-    ac.signal().add_event_listener(move |_| { c.set(c.get() + 1); });
+    ac.signal().add_event_listener(move |_| {
+        c.set(c.get() + 1);
+    });
     ac.abort();
     ac.abort();
     ac.abort();

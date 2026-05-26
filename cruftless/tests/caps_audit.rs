@@ -10,13 +10,19 @@
 
 use std::process::Command;
 
-fn bin() -> &'static str { env!("CARGO_BIN_EXE_cruftless") }
+fn bin() -> &'static str {
+    env!("CARGO_BIN_EXE_cruftless")
+}
 
 fn tmp_path(tag: &str) -> std::path::PathBuf {
     let mut p = std::env::temp_dir();
-    p.push(format!("cruftless-caps-{tag}-{}",
+    p.push(format!(
+        "cruftless-caps-{tag}-{}",
         std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
     p
 }
 
@@ -30,7 +36,8 @@ fn audit_mode_smoke_compat_behavior() {
 
     let out = Command::new(bin())
         .arg("--audit")
-        .arg("--audit-log").arg(&log)
+        .arg("--audit-log")
+        .arg(&log)
         .arg(&src)
         .output()
         .expect("run cruftless --audit");
@@ -39,11 +46,20 @@ fn audit_mode_smoke_compat_behavior() {
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(out.status.success(),
         "--audit run should exit 0 (Mode 1 == Mode 0 + logging)\nstdout: {stdout}\nstderr: {stderr}");
-    assert!(stdout.contains("hello"), "expected 'hello' in stdout; got: {stdout}");
+    assert!(
+        stdout.contains("hello"),
+        "expected 'hello' in stdout; got: {stdout}"
+    );
 
     let body = std::fs::read_to_string(&log).expect("audit log should be written");
-    assert!(body.contains("# cruft audit log"), "log file malformed: {body}");
-    assert!(body.contains("\tstdio\twrite(stdout)\t"), "expected stdout audit record: {body}");
+    assert!(
+        body.contains("# cruft audit log"),
+        "log file malformed: {body}"
+    );
+    assert!(
+        body.contains("\tstdio\twrite(stdout)\t"),
+        "expected stdout audit record: {body}"
+    );
 
     let _ = std::fs::remove_file(&src);
     let _ = std::fs::remove_file(&log);
@@ -62,8 +78,11 @@ fn mode_flag_parsed_does_not_affect_compat_run() {
         .arg(&src)
         .output()
         .expect("run cruftless --sealed");
-    assert!(out.status.success(),
-        "Mode 3 on a no-effectful-call program should still exit 0; got {:?}", out.status);
+    assert!(
+        out.status.success(),
+        "Mode 3 on a no-effectful-call program should still exit 0; got {:?}",
+        out.status
+    );
 
     let _ = std::fs::remove_file(&src);
 }

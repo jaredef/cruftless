@@ -25,11 +25,11 @@
 //! Promise creation + queue push without re-entering the runtime).
 
 use crate::register::{arg_string, make_callable, new_object, register_method};
+use rusty_js_runtime::caps;
+use rusty_js_runtime::caps::{ModuleId, ModuleProvenance};
 use rusty_js_runtime::promise::{new_promise, reject_promise, resolve_promise};
 use rusty_js_runtime::value::{Object, ObjectRef};
 use rusty_js_runtime::{HostHook, Runtime, RuntimeError, Value};
-use rusty_js_runtime::caps as caps;
-use rusty_js_runtime::caps::{ModuleId, ModuleProvenance};
 
 /// CAPS-EXT 6: gate an fs operation through the capability dispatcher.
 ///
@@ -58,7 +58,8 @@ fn check_fs(rt: &Runtime, op: caps::FsOp) -> Result<(), RuntimeError> {
         ModuleProvenance::Application
     };
     let caller = ModuleId { url, provenance };
-    rt.caps.require_fs(&caps::Fs::none(), op, &caller)
+    rt.caps
+        .require_fs(&caps::Fs::none(), op, &caller)
         .map_err(|e| RuntimeError::TypeError(e.to_string()))
 }
 use std::cell::RefCell;
@@ -67,9 +68,17 @@ use std::rc::Rc;
 // ─────────── PendingIo registry ───────────
 
 enum FsOp {
-    Read { path: String, encoding: Option<String> },
-    Write { path: String, data: Vec<u8> },
-    Exists { path: String },
+    Read {
+        path: String,
+        encoding: Option<String>,
+    },
+    Write {
+        path: String,
+        data: Vec<u8>,
+    },
+    Exists {
+        path: String,
+    },
 }
 
 struct PendingFsOp {
@@ -105,12 +114,27 @@ struct WatchEntry {
     last_polled: std::time::Instant,
 }
 
-fn register_watcher(path: String, listener: Option<Value>, watcher_obj: ObjectRef, interval_ms: u64) -> u64 {
-    let id = NEXT_WATCH_ID.with(|c| { let mut c = c.borrow_mut(); let id = *c; *c += 1; id });
+fn register_watcher(
+    path: String,
+    listener: Option<Value>,
+    watcher_obj: ObjectRef,
+    interval_ms: u64,
+) -> u64 {
+    let id = NEXT_WATCH_ID.with(|c| {
+        let mut c = c.borrow_mut();
+        let id = *c;
+        *c += 1;
+        id
+    });
     let (last_mtime, last_size) = mtime_size(&path);
     WATCHERS.with(|w| {
         w.borrow_mut().push(WatchEntry {
-            id, path, listener, last_mtime, last_size, watcher_obj,
+            id,
+            path,
+            listener,
+            last_mtime,
+            last_size,
+            watcher_obj,
             interval_ms,
             last_polled: std::time::Instant::now(),
         });
@@ -129,7 +153,9 @@ fn unregister_watchers_by_path(path: &str) {
 fn mtime_size(path: &str) -> (Option<f64>, Option<u64>) {
     match std::fs::metadata(path) {
         Ok(md) => {
-            let mt = md.modified().ok()
+            let mt = md
+                .modified()
+                .ok()
                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                 .map(|d| d.as_secs_f64());
             (mt, Some(md.len()))
@@ -210,11 +236,13 @@ fn sleep_until_next_poll() {
     let now = std::time::Instant::now();
     let next = WATCHERS.with(|w| {
         let w = w.borrow();
-        let mut min_wait_ms: u64 = 1000;  // upper bound on sleep
+        let mut min_wait_ms: u64 = 1000; // upper bound on sleep
         for e in w.iter() {
             let elapsed = now.duration_since(e.last_polled).as_millis() as u64;
             let remaining = e.interval_ms.saturating_sub(elapsed);
-            if remaining < min_wait_ms { min_wait_ms = remaining; }
+            if remaining < min_wait_ms {
+                min_wait_ms = remaining;
+            }
         }
         min_wait_ms.max(10)
     });
@@ -231,7 +259,9 @@ fn sleep_until_next_event() {
         for e in w.iter() {
             let elapsed = now.duration_since(e.last_polled).as_millis() as u64;
             let remaining = e.interval_ms.saturating_sub(elapsed);
-            if remaining < min { min = remaining; }
+            if remaining < min {
+                min = remaining;
+            }
         }
         min
     });
@@ -304,7 +334,8 @@ pub fn install_poll_io(rt: &mut Runtime) {
                             }
                             Err(e) => {
                                 reject_promise(
-                                    rt, promise,
+                                    rt,
+                                    promise,
                                     Value::String(Rc::new(format!("fs.readFile: {}", e))),
                                 );
                             }
@@ -317,7 +348,8 @@ pub fn install_poll_io(rt: &mut Runtime) {
                         match std::fs::write(&path, &data) {
                             Ok(()) => resolve_promise(rt, promise, Value::Undefined),
                             Err(e) => reject_promise(
-                                rt, promise,
+                                rt,
+                                promise,
                                 Value::String(Rc::new(format!("fs.writeFile: {}", e))),
                             ),
                         }
@@ -384,7 +416,10 @@ fn bytes_to_value(rt: &mut Runtime, bytes: &[u8], encoding: Option<&str>) -> Val
 /// for non-string inputs by stringifying.
 fn value_to_bytes(rt: &Runtime, v: &Value, encoding: Option<&str>) -> Vec<u8> {
     if encoding.is_some() {
-        return rusty_js_runtime::abstract_ops::to_string(v).as_str().as_bytes().to_vec();
+        return rusty_js_runtime::abstract_ops::to_string(v)
+            .as_str()
+            .as_bytes()
+            .to_vec();
     }
     match v {
         Value::String(s) => s.as_bytes().to_vec(),
@@ -404,7 +439,10 @@ fn value_to_bytes(rt: &Runtime, v: &Value, encoding: Option<&str>) -> Vec<u8> {
             }
             out
         }
-        other => rusty_js_runtime::abstract_ops::to_string(other).as_str().as_bytes().to_vec(),
+        other => rusty_js_runtime::abstract_ops::to_string(other)
+            .as_str()
+            .as_bytes()
+            .to_vec(),
     }
 }
 
@@ -427,8 +465,12 @@ fn stat_object(rt: &mut Runtime, md: &std::fs::Metadata) -> ObjectRef {
         .map(|d| d.as_millis() as f64)
         .unwrap_or(0.0);
     rt.object_set(o, "mtimeMs".into(), Value::Number(mtime_ms));
-    register_method(rt, o, "isFile", move |_rt, _args| Ok(Value::Boolean(is_file)));
-    register_method(rt, o, "isDirectory", move |_rt, _args| Ok(Value::Boolean(is_dir)));
+    register_method(rt, o, "isFile", move |_rt, _args| {
+        Ok(Value::Boolean(is_file))
+    });
+    register_method(rt, o, "isDirectory", move |_rt, _args| {
+        Ok(Value::Boolean(is_dir))
+    });
     o
 }
 
@@ -501,7 +543,9 @@ pub fn install(rt: &mut Runtime) {
         let path = arg_string(args, 0);
         check_fs(rt, caps::FsOp::Mkdir(path.clone().into()))?;
         let recursive = match args.get(1) {
-            Some(Value::Object(id)) => matches!(rt.object_get(*id, "recursive"), Value::Boolean(true)),
+            Some(Value::Object(id)) => {
+                matches!(rt.object_get(*id, "recursive"), Value::Boolean(true))
+            }
             _ => false,
         };
         let r = if recursive {
@@ -579,7 +623,10 @@ pub fn install(rt: &mut Runtime) {
         let encoding = arg_encoding(args, 1);
         match std::fs::read(&path) {
             Ok(bytes) => Ok(bytes_to_value(rt, &bytes, encoding.as_deref())),
-            Err(e) => Err(RuntimeError::TypeError(format!("fs.promises.readFile: {}", e))),
+            Err(e) => Err(RuntimeError::TypeError(format!(
+                "fs.promises.readFile: {}",
+                e
+            ))),
         }
     });
     register_method(rt, promises, "writeFile", |rt, args| {
@@ -592,14 +639,23 @@ pub fn install(rt: &mut Runtime) {
         };
         match std::fs::write(&path, &data) {
             Ok(()) => Ok(Value::Undefined),
-            Err(e) => Err(RuntimeError::TypeError(format!("fs.promises.writeFile: {}", e))),
+            Err(e) => Err(RuntimeError::TypeError(format!(
+                "fs.promises.writeFile: {}",
+                e
+            ))),
         }
     });
     register_method(rt, promises, "access", |rt, args| {
         let path = arg_string(args, 0);
         check_fs(rt, caps::FsOp::Stat(path.clone().into()))?;
-        if std::path::Path::new(&path).exists() { Ok(Value::Undefined) }
-        else { Err(RuntimeError::TypeError(format!("fs.promises.access: ENOENT: {}", path))) }
+        if std::path::Path::new(&path).exists() {
+            Ok(Value::Undefined)
+        } else {
+            Err(RuntimeError::TypeError(format!(
+                "fs.promises.access: ENOENT: {}",
+                path
+            )))
+        }
     });
     register_method(rt, promises, "mkdir", |rt, args| {
         let path = arg_string(args, 0);
@@ -614,7 +670,10 @@ pub fn install(rt: &mut Runtime) {
         check_fs(rt, caps::FsOp::Remove(path.clone().into()))?;
         match std::fs::remove_file(&path) {
             Ok(()) => Ok(Value::Undefined),
-            Err(e) => Err(RuntimeError::TypeError(format!("fs.promises.unlink: {}", e))),
+            Err(e) => Err(RuntimeError::TypeError(format!(
+                "fs.promises.unlink: {}",
+                e
+            ))),
         }
     });
     rt.object_set(fs, "promises".into(), Value::Object(promises));
@@ -623,10 +682,14 @@ pub fn install(rt: &mut Runtime) {
     // but only invokes it inside .stream() at runtime. Stub errors on call.
     let create_read_stream = make_callable(rt, "createReadStream", |_rt, _args| {
         Err(RuntimeError::TypeError(
-            "fs.createReadStream not yet implemented (Tier-Ω.5.BBBBBBB stub)".into()
+            "fs.createReadStream not yet implemented (Tier-Ω.5.BBBBBBB stub)".into(),
         ))
     });
-    rt.object_set(fs, "createReadStream".into(), Value::Object(create_read_stream));
+    rt.object_set(
+        fs,
+        "createReadStream".into(),
+        Value::Object(create_read_stream),
+    );
 
     // Ω.5.P56.E1: throw-on-call stubs for the permission + stat fs surface
     // not yet implemented at host-v2. Module-init shape probes pass
@@ -636,23 +699,33 @@ pub fn install(rt: &mut Runtime) {
     // typeof-diff residual surfaced at EXT 12. Mirrors the throwStub
     // pattern host/ uses post-install (host/src/lib.rs:6296+).
     for stub in &[
-        "chmod", "chmodSync",
-        "chown", "chownSync",
-        "fchmod", "fchmodSync",
-        "fchown", "fchownSync",
-        "fstat", "fstatSync",
-        "lchmod", "lchmodSync",
-        "lchown", "lchownSync",
-        "lstat", "lstatSync",
+        "chmod",
+        "chmodSync",
+        "chown",
+        "chownSync",
+        "fchmod",
+        "fchmodSync",
+        "fchown",
+        "fchownSync",
+        "fstat",
+        "fstatSync",
+        "lchmod",
+        "lchmodSync",
+        "lchown",
+        "lchownSync",
+        "lstat",
+        "lstatSync",
         "stat",
         // Ω.5.P57.E2: scatter-gather IO; graceful-fs re-exports these.
-        "readv", "writev",
+        "readv",
+        "writev",
     ] {
         let nm: &'static str = stub;
         let cb = make_callable(rt, nm, move |_rt, _args| {
-            Err(RuntimeError::TypeError(
-                format!("fs.{} is not yet implemented in cruftless host-v2", nm)
-            ))
+            Err(RuntimeError::TypeError(format!(
+                "fs.{} is not yet implemented in cruftless host-v2",
+                nm
+            )))
         });
         rt.object_set(fs, (*stub).into(), Value::Object(cb));
     }
@@ -688,7 +761,11 @@ pub fn install(rt: &mut Runtime) {
         let path = arg_string(args, 0);
         Ok(Value::String(std::rc::Rc::new(path)))
     });
-    rt.object_set(realpath_sync, "native".into(), Value::Object(realpath_sync_native));
+    rt.object_set(
+        realpath_sync,
+        "native".into(),
+        Value::Object(realpath_sync_native),
+    );
     rt.object_set(fs, "realpathSync".into(), Value::Object(realpath_sync));
 
     // Ω.5.P32.E1.fs-surface-stubs: bulk-install the Node fs surface
@@ -702,20 +779,50 @@ pub fn install(rt: &mut Runtime) {
     // POSIX fs.constants (mode bits + access modes) per Node docs.
     let constants = new_object(rt);
     let consts: &[(&str, f64)] = &[
-        ("F_OK", 0.0), ("R_OK", 4.0), ("W_OK", 2.0), ("X_OK", 1.0),
-        ("O_RDONLY", 0.0), ("O_WRONLY", 1.0), ("O_RDWR", 2.0),
-        ("O_CREAT", 64.0), ("O_EXCL", 128.0), ("O_NOCTTY", 256.0),
-        ("O_TRUNC", 512.0), ("O_APPEND", 1024.0), ("O_DIRECTORY", 65536.0),
-        ("O_NOFOLLOW", 131072.0), ("O_SYNC", 1052672.0), ("O_DSYNC", 4096.0),
-        ("S_IFMT", 61440.0), ("S_IFREG", 32768.0), ("S_IFDIR", 16384.0),
-        ("S_IFCHR", 8192.0), ("S_IFBLK", 24576.0), ("S_IFIFO", 4096.0),
-        ("S_IFLNK", 40960.0), ("S_IFSOCK", 49152.0),
-        ("S_IRWXU", 448.0), ("S_IRUSR", 256.0), ("S_IWUSR", 128.0), ("S_IXUSR", 64.0),
-        ("S_IRWXG", 56.0), ("S_IRGRP", 32.0), ("S_IWGRP", 16.0), ("S_IXGRP", 8.0),
-        ("S_IRWXO", 7.0), ("S_IROTH", 4.0), ("S_IWOTH", 2.0), ("S_IXOTH", 1.0),
-        ("COPYFILE_EXCL", 1.0), ("COPYFILE_FICLONE", 2.0), ("COPYFILE_FICLONE_FORCE", 4.0),
-        ("UV_FS_O_FILEMAP", 0.0), ("UV_DIRENT_UNKNOWN", 0.0),
-        ("UV_DIRENT_FILE", 1.0), ("UV_DIRENT_DIR", 2.0), ("UV_DIRENT_LINK", 3.0),
+        ("F_OK", 0.0),
+        ("R_OK", 4.0),
+        ("W_OK", 2.0),
+        ("X_OK", 1.0),
+        ("O_RDONLY", 0.0),
+        ("O_WRONLY", 1.0),
+        ("O_RDWR", 2.0),
+        ("O_CREAT", 64.0),
+        ("O_EXCL", 128.0),
+        ("O_NOCTTY", 256.0),
+        ("O_TRUNC", 512.0),
+        ("O_APPEND", 1024.0),
+        ("O_DIRECTORY", 65536.0),
+        ("O_NOFOLLOW", 131072.0),
+        ("O_SYNC", 1052672.0),
+        ("O_DSYNC", 4096.0),
+        ("S_IFMT", 61440.0),
+        ("S_IFREG", 32768.0),
+        ("S_IFDIR", 16384.0),
+        ("S_IFCHR", 8192.0),
+        ("S_IFBLK", 24576.0),
+        ("S_IFIFO", 4096.0),
+        ("S_IFLNK", 40960.0),
+        ("S_IFSOCK", 49152.0),
+        ("S_IRWXU", 448.0),
+        ("S_IRUSR", 256.0),
+        ("S_IWUSR", 128.0),
+        ("S_IXUSR", 64.0),
+        ("S_IRWXG", 56.0),
+        ("S_IRGRP", 32.0),
+        ("S_IWGRP", 16.0),
+        ("S_IXGRP", 8.0),
+        ("S_IRWXO", 7.0),
+        ("S_IROTH", 4.0),
+        ("S_IWOTH", 2.0),
+        ("S_IXOTH", 1.0),
+        ("COPYFILE_EXCL", 1.0),
+        ("COPYFILE_FICLONE", 2.0),
+        ("COPYFILE_FICLONE_FORCE", 4.0),
+        ("UV_FS_O_FILEMAP", 0.0),
+        ("UV_DIRENT_UNKNOWN", 0.0),
+        ("UV_DIRENT_FILE", 1.0),
+        ("UV_DIRENT_DIR", 2.0),
+        ("UV_DIRENT_LINK", 3.0),
     ];
     for (name, val) in consts {
         rt.object_set(constants, (*name).into(), Value::Number(*val));
@@ -742,7 +849,10 @@ pub fn install(rt: &mut Runtime) {
     register_method(rt, fs, "accessSync", |rt, args| {
         let _ = check_fs(rt, caps::FsOp::Stat(arg_string(args, 0).into()))?;
         let path = arg_string(args, 0);
-        let mode = match args.get(1) { Some(Value::Number(n)) => *n as u32, _ => 0 };
+        let mode = match args.get(1) {
+            Some(Value::Number(n)) => *n as u32,
+            _ => 0,
+        };
         match std::fs::metadata(&path) {
             Ok(md) => {
                 #[cfg(unix)]
@@ -753,9 +863,24 @@ pub fn install(rt: &mut Runtime) {
                     let need_r = mode & 4 != 0;
                     let need_w = mode & 2 != 0;
                     let need_x = mode & 1 != 0;
-                    if need_r && perms & 0o400 == 0 { return Err(RuntimeError::TypeError(format!("accessSync: EACCES on '{}'", path))); }
-                    if need_w && perms & 0o200 == 0 { return Err(RuntimeError::TypeError(format!("accessSync: EACCES on '{}'", path))); }
-                    if need_x && perms & 0o100 == 0 { return Err(RuntimeError::TypeError(format!("accessSync: EACCES on '{}'", path))); }
+                    if need_r && perms & 0o400 == 0 {
+                        return Err(RuntimeError::TypeError(format!(
+                            "accessSync: EACCES on '{}'",
+                            path
+                        )));
+                    }
+                    if need_w && perms & 0o200 == 0 {
+                        return Err(RuntimeError::TypeError(format!(
+                            "accessSync: EACCES on '{}'",
+                            path
+                        )));
+                    }
+                    if need_x && perms & 0o100 == 0 {
+                        return Err(RuntimeError::TypeError(format!(
+                            "accessSync: EACCES on '{}'",
+                            path
+                        )));
+                    }
                 }
                 let _ = rt;
                 Ok(Value::Undefined)
@@ -773,9 +898,13 @@ pub fn install(rt: &mut Runtime) {
             Some(v) => value_to_bytes(rt, v, encoding.as_deref()),
             None => Vec::new(),
         };
-        let mut file = std::fs::OpenOptions::new().create(true).append(true).open(&path)
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
             .map_err(|e| RuntimeError::TypeError(format!("appendFileSync: {}", e)))?;
-        file.write_all(&data).map_err(|e| RuntimeError::TypeError(format!("appendFileSync: {}", e)))?;
+        file.write_all(&data)
+            .map_err(|e| RuntimeError::TypeError(format!("appendFileSync: {}", e)))?;
         Ok(Value::Undefined)
     });
     // copyFile / copyFileSync
@@ -784,7 +913,8 @@ pub fn install(rt: &mut Runtime) {
         let dst = arg_string(args, 1);
         check_fs(rt, caps::FsOp::Read(src.clone().into()))?;
         check_fs(rt, caps::FsOp::Write(dst.clone().into()))?;
-        std::fs::copy(&src, &dst).map(|_| Value::Undefined)
+        std::fs::copy(&src, &dst)
+            .map(|_| Value::Undefined)
             .map_err(|e| RuntimeError::TypeError(format!("copyFileSync: {}", e)))
     });
     // cp / cpSync — recursive copy honoring directory + file shapes.
@@ -794,18 +924,25 @@ pub fn install(rt: &mut Runtime) {
         check_fs(rt, caps::FsOp::Read(src.clone().into()))?;
         check_fs(rt, caps::FsOp::Write(dst.clone().into()))?;
         let recursive = match args.get(2) {
-            Some(Value::Object(id)) => matches!(rt.object_get(*id, "recursive"), Value::Boolean(true)),
+            Some(Value::Object(id)) => {
+                matches!(rt.object_get(*id, "recursive"), Value::Boolean(true))
+            }
             _ => false,
         };
-        cp_recursive(std::path::Path::new(&src), std::path::Path::new(&dst), recursive)
-            .map_err(|e| RuntimeError::TypeError(format!("cpSync: {}", e)))?;
+        cp_recursive(
+            std::path::Path::new(&src),
+            std::path::Path::new(&dst),
+            recursive,
+        )
+        .map_err(|e| RuntimeError::TypeError(format!("cpSync: {}", e)))?;
         Ok(Value::Undefined)
     });
     // link / linkSync — hard link
     register_method(rt, fs, "linkSync", |_rt, args| {
         let src = arg_string(args, 0);
         let dst = arg_string(args, 1);
-        std::fs::hard_link(&src, &dst).map(|_| Value::Undefined)
+        std::fs::hard_link(&src, &dst)
+            .map(|_| Value::Undefined)
             .map_err(|e| RuntimeError::TypeError(format!("linkSync: {}", e)))
     });
     // readlink / readlinkSync — read symlink target
@@ -819,7 +956,8 @@ pub fn install(rt: &mut Runtime) {
     register_method(rt, fs, "renameSync", |_rt, args| {
         let src = arg_string(args, 0);
         let dst = arg_string(args, 1);
-        std::fs::rename(&src, &dst).map(|_| Value::Undefined)
+        std::fs::rename(&src, &dst)
+            .map(|_| Value::Undefined)
             .map_err(|e| RuntimeError::TypeError(format!("renameSync: {}", e)))
     });
     // rm / rmSync — file or dir, with options.recursive + options.force
@@ -834,8 +972,14 @@ pub fn install(rt: &mut Runtime) {
         };
         let p = std::path::Path::new(&path);
         let r = if p.is_dir() {
-            if recursive { std::fs::remove_dir_all(&path) } else { std::fs::remove_dir(&path) }
-        } else { std::fs::remove_file(&path) };
+            if recursive {
+                std::fs::remove_dir_all(&path)
+            } else {
+                std::fs::remove_dir(&path)
+            }
+        } else {
+            std::fs::remove_file(&path)
+        };
         match r {
             Ok(()) => Ok(Value::Undefined),
             Err(e) if force && e.kind() == std::io::ErrorKind::NotFound => Ok(Value::Undefined),
@@ -846,10 +990,16 @@ pub fn install(rt: &mut Runtime) {
     register_method(rt, fs, "rmdirSync", |rt, args| {
         let path = arg_string(args, 0);
         let recursive = match args.get(1) {
-            Some(Value::Object(id)) => matches!(rt.object_get(*id, "recursive"), Value::Boolean(true)),
+            Some(Value::Object(id)) => {
+                matches!(rt.object_get(*id, "recursive"), Value::Boolean(true))
+            }
             _ => false,
         };
-        let r = if recursive { std::fs::remove_dir_all(&path) } else { std::fs::remove_dir(&path) };
+        let r = if recursive {
+            std::fs::remove_dir_all(&path)
+        } else {
+            std::fs::remove_dir(&path)
+        };
         r.map(|_| Value::Undefined)
             .map_err(|e| RuntimeError::TypeError(format!("rmdirSync: {}", e)))
     });
@@ -858,18 +1008,32 @@ pub fn install(rt: &mut Runtime) {
         let target = arg_string(args, 0);
         let link = arg_string(args, 1);
         #[cfg(unix)]
-        { std::os::unix::fs::symlink(&target, &link).map(|_| Value::Undefined)
-            .map_err(|e| RuntimeError::TypeError(format!("symlinkSync: {}", e))) }
+        {
+            std::os::unix::fs::symlink(&target, &link)
+                .map(|_| Value::Undefined)
+                .map_err(|e| RuntimeError::TypeError(format!("symlinkSync: {}", e)))
+        }
         #[cfg(not(unix))]
-        { let _ = (target, link); Err(RuntimeError::TypeError("symlinkSync: unsupported on this platform".into())) }
+        {
+            let _ = (target, link);
+            Err(RuntimeError::TypeError(
+                "symlinkSync: unsupported on this platform".into(),
+            ))
+        }
     });
     // truncate / truncateSync — set file length
     register_method(rt, fs, "truncateSync", |_rt, args| {
         let path = arg_string(args, 0);
-        let len = match args.get(1) { Some(Value::Number(n)) => *n as u64, _ => 0 };
-        let file = std::fs::OpenOptions::new().write(true).open(&path)
+        let len = match args.get(1) {
+            Some(Value::Number(n)) => *n as u64,
+            _ => 0,
+        };
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .open(&path)
             .map_err(|e| RuntimeError::TypeError(format!("truncateSync: {}", e)))?;
-        file.set_len(len).map(|_| Value::Undefined)
+        file.set_len(len)
+            .map(|_| Value::Undefined)
             .map_err(|e| RuntimeError::TypeError(format!("truncateSync: {}", e)))
     });
     // mkdtemp / mkdtempSync — create unique temp dir
@@ -878,9 +1042,16 @@ pub fn install(rt: &mut Runtime) {
         let mut attempts = 0;
         loop {
             attempts += 1;
-            if attempts > 64 { return Err(RuntimeError::TypeError("mkdtempSync: too many collisions".into())); }
+            if attempts > 64 {
+                return Err(RuntimeError::TypeError(
+                    "mkdtempSync: too many collisions".into(),
+                ));
+            }
             use std::time::{SystemTime, UNIX_EPOCH};
-            let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().subsec_nanos();
+            let nanos = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .subsec_nanos();
             let path = format!("{}{:06X}{:02X}", prefix, nanos, attempts);
             match std::fs::create_dir(&path) {
                 Ok(()) => return Ok(Value::String(Rc::new(path))),
@@ -894,7 +1065,7 @@ pub fn install(rt: &mut Runtime) {
     // values are placeholders. Consumers that need real disk-space
     // numbers will diverge; consumers that check shape pass.
     register_method(rt, fs, "statfsSync", |rt, args| {
-        let _ = arg_string(args, 0);  // path consumed for arg shape
+        let _ = arg_string(args, 0); // path consumed for arg shape
         let o = new_object(rt);
         rt.object_set(o, "type".into(), Value::Number(0.0));
         rt.object_set(o, "bsize".into(), Value::Number(4096.0));
@@ -942,7 +1113,10 @@ pub fn install(rt: &mut Runtime) {
         let key = sync_name.to_string();
         register_method(rt, fs, async_name, move |rt, args| {
             let p = new_promise(rt);
-            let fs_global = match rt.globals.get("fs") { Some(Value::Object(id)) => *id, _ => return Ok(Value::Object(p)) };
+            let fs_global = match rt.globals.get("fs") {
+                Some(Value::Object(id)) => *id,
+                _ => return Ok(Value::Object(p)),
+            };
             let sync_fn = rt.object_get(fs_global, &key);
             let argv: Vec<Value> = args.to_vec();
             match rt.call_function(sync_fn, Value::Object(fs_global), argv) {
@@ -977,28 +1151,55 @@ pub fn install(rt: &mut Runtime) {
         // Accept Node flag strings ("r", "r+", "w", "w+", "a", "a+", "wx", "ax")
         // and integer-flag fallback (treat as O_RDONLY base; +1 → write, +2 → rw).
         match flags.as_str() {
-            "r" => { opts.read(true); }
-            "r+" => { opts.read(true).write(true); }
-            "w" => { opts.write(true).create(true).truncate(true); }
-            "w+" => { opts.read(true).write(true).create(true).truncate(true); }
-            "a" => { opts.append(true).create(true); }
-            "a+" => { opts.read(true).append(true).create(true); }
-            "wx" => { opts.write(true).create_new(true); }
-            "wx+" => { opts.read(true).write(true).create_new(true); }
-            "ax" => { opts.append(true).create_new(true); }
-            "ax+" => { opts.read(true).append(true).create_new(true); }
+            "r" => {
+                opts.read(true);
+            }
+            "r+" => {
+                opts.read(true).write(true);
+            }
+            "w" => {
+                opts.write(true).create(true).truncate(true);
+            }
+            "w+" => {
+                opts.read(true).write(true).create(true).truncate(true);
+            }
+            "a" => {
+                opts.append(true).create(true);
+            }
+            "a+" => {
+                opts.read(true).append(true).create(true);
+            }
+            "wx" => {
+                opts.write(true).create_new(true);
+            }
+            "wx+" => {
+                opts.read(true).write(true).create_new(true);
+            }
+            "ax" => {
+                opts.append(true).create_new(true);
+            }
+            "ax+" => {
+                opts.read(true).append(true).create_new(true);
+            }
             other => {
                 // Integer-flag form: lossy mapping (O_RDONLY=0, O_WRONLY=1,
                 // O_RDWR=2; ignore O_CREAT etc. — they're rare in CJS shims).
                 let n = other.parse::<i32>().unwrap_or(0);
                 match n & 0x3 {
-                    1 => { opts.write(true).create(true); }
-                    2 => { opts.read(true).write(true).create(true); }
-                    _ => { opts.read(true); }
+                    1 => {
+                        opts.write(true).create(true);
+                    }
+                    2 => {
+                        opts.read(true).write(true).create(true);
+                    }
+                    _ => {
+                        opts.read(true);
+                    }
                 }
             }
         }
-        let file = opts.open(&path)
+        let file = opts
+            .open(&path)
             .map_err(|e| RuntimeError::TypeError(format!("openSync: {}", e)))?;
         let fd = rt.next_fd;
         rt.next_fd += 1;
@@ -1006,73 +1207,132 @@ pub fn install(rt: &mut Runtime) {
         Ok(Value::Number(fd as f64))
     });
     register_method(rt, fs, "closeSync", |rt, args| {
-        let fd = match args.first() { Some(Value::Number(n)) => *n as i32, _ => -1 };
+        let fd = match args.first() {
+            Some(Value::Number(n)) => *n as i32,
+            _ => -1,
+        };
         match rt.fd_table.remove(&fd) {
             Some(_) => Ok(Value::Undefined),
-            None => Err(RuntimeError::TypeError(format!("closeSync: EBADF (fd={})", fd))),
+            None => Err(RuntimeError::TypeError(format!(
+                "closeSync: EBADF (fd={})",
+                fd
+            ))),
         }
     });
     register_method(rt, fs, "fsyncSync", |rt, args| {
-        let fd = match args.first() { Some(Value::Number(n)) => *n as i32, _ => -1 };
-        let file = rt.fd_table.get(&fd)
+        let fd = match args.first() {
+            Some(Value::Number(n)) => *n as i32,
+            _ => -1,
+        };
+        let file = rt
+            .fd_table
+            .get(&fd)
             .ok_or_else(|| RuntimeError::TypeError(format!("fsyncSync: EBADF (fd={})", fd)))?;
-        file.sync_all().map(|_| Value::Undefined)
+        file.sync_all()
+            .map(|_| Value::Undefined)
             .map_err(|e| RuntimeError::TypeError(format!("fsyncSync: {}", e)))
     });
     register_method(rt, fs, "fdatasyncSync", |rt, args| {
-        let fd = match args.first() { Some(Value::Number(n)) => *n as i32, _ => -1 };
-        let file = rt.fd_table.get(&fd)
+        let fd = match args.first() {
+            Some(Value::Number(n)) => *n as i32,
+            _ => -1,
+        };
+        let file = rt
+            .fd_table
+            .get(&fd)
             .ok_or_else(|| RuntimeError::TypeError(format!("fdatasyncSync: EBADF (fd={})", fd)))?;
-        file.sync_data().map(|_| Value::Undefined)
+        file.sync_data()
+            .map(|_| Value::Undefined)
             .map_err(|e| RuntimeError::TypeError(format!("fdatasyncSync: {}", e)))
     });
     register_method(rt, fs, "ftruncateSync", |rt, args| {
-        let fd = match args.first() { Some(Value::Number(n)) => *n as i32, _ => -1 };
-        let len = match args.get(1) { Some(Value::Number(n)) => *n as u64, _ => 0 };
-        let file = rt.fd_table.get(&fd)
+        let fd = match args.first() {
+            Some(Value::Number(n)) => *n as i32,
+            _ => -1,
+        };
+        let len = match args.get(1) {
+            Some(Value::Number(n)) => *n as u64,
+            _ => 0,
+        };
+        let file = rt
+            .fd_table
+            .get(&fd)
             .ok_or_else(|| RuntimeError::TypeError(format!("ftruncateSync: EBADF (fd={})", fd)))?;
-        file.set_len(len).map(|_| Value::Undefined)
+        file.set_len(len)
+            .map(|_| Value::Undefined)
             .map_err(|e| RuntimeError::TypeError(format!("ftruncateSync: {}", e)))
     });
     register_method(rt, fs, "futimesSync", |rt, args| {
-        let fd = match args.first() { Some(Value::Number(n)) => *n as i32, _ => -1 };
-        let atime_s = match args.get(1) { Some(Value::Number(n)) => *n, _ => 0.0 };
-        let mtime_s = match args.get(2) { Some(Value::Number(n)) => *n, _ => 0.0 };
-        let file = rt.fd_table.get(&fd)
+        let fd = match args.first() {
+            Some(Value::Number(n)) => *n as i32,
+            _ => -1,
+        };
+        let atime_s = match args.get(1) {
+            Some(Value::Number(n)) => *n,
+            _ => 0.0,
+        };
+        let mtime_s = match args.get(2) {
+            Some(Value::Number(n)) => *n,
+            _ => 0.0,
+        };
+        let file = rt
+            .fd_table
+            .get(&fd)
             .ok_or_else(|| RuntimeError::TypeError(format!("futimesSync: EBADF (fd={})", fd)))?;
         let to_st = |s: f64| -> std::time::SystemTime {
             let dur = std::time::Duration::from_secs_f64(s.max(0.0));
             std::time::UNIX_EPOCH + dur
         };
-        let times = std::fs::FileTimes::new().set_accessed(to_st(atime_s)).set_modified(to_st(mtime_s));
-        file.set_times(times).map(|_| Value::Undefined)
+        let times = std::fs::FileTimes::new()
+            .set_accessed(to_st(atime_s))
+            .set_modified(to_st(mtime_s));
+        file.set_times(times)
+            .map(|_| Value::Undefined)
             .map_err(|e| RuntimeError::TypeError(format!("futimesSync: {}", e)))
     });
     register_method(rt, fs, "writeSync", |rt, args| {
         use std::io::Write;
-        let fd = match args.first() { Some(Value::Number(n)) => *n as i32, _ => -1 };
+        let fd = match args.first() {
+            Some(Value::Number(n)) => *n as i32,
+            _ => -1,
+        };
         let data: Vec<u8> = match args.get(1) {
             Some(v) => value_to_bytes(rt, v, None),
             None => Vec::new(),
         };
-        let file = rt.fd_table.get_mut(&fd)
+        let file = rt
+            .fd_table
+            .get_mut(&fd)
             .ok_or_else(|| RuntimeError::TypeError(format!("writeSync: EBADF (fd={})", fd)))?;
-        let n = file.write(&data)
+        let n = file
+            .write(&data)
             .map_err(|e| RuntimeError::TypeError(format!("writeSync: {}", e)))?;
         Ok(Value::Number(n as f64))
     });
     register_method(rt, fs, "readSync", |rt, args| {
         use std::io::Read;
         // readSync(fd, buffer, offset, length, position)
-        let fd = match args.first() { Some(Value::Number(n)) => *n as i32, _ => -1 };
-        let length = match args.get(3) { Some(Value::Number(n)) => *n as usize, _ => 0 };
+        let fd = match args.first() {
+            Some(Value::Number(n)) => *n as i32,
+            _ => -1,
+        };
+        let length = match args.get(3) {
+            Some(Value::Number(n)) => *n as usize,
+            _ => 0,
+        };
         let mut buf = vec![0u8; length];
-        let file = rt.fd_table.get_mut(&fd)
+        let file = rt
+            .fd_table
+            .get_mut(&fd)
             .ok_or_else(|| RuntimeError::TypeError(format!("readSync: EBADF (fd={})", fd)))?;
-        let n = file.read(&mut buf)
+        let n = file
+            .read(&mut buf)
             .map_err(|e| RuntimeError::TypeError(format!("readSync: {}", e)))?;
         // Write bytes into the provided buffer at offset.
-        let offset = match args.get(2) { Some(Value::Number(n)) => *n as usize, _ => 0 };
+        let offset = match args.get(2) {
+            Some(Value::Number(n)) => *n as usize,
+            _ => 0,
+        };
         if let Some(Value::Object(bid)) = args.get(1).cloned() {
             for (i, b) in buf[..n].iter().enumerate() {
                 rt.object_set(bid, (offset + i).to_string(), Value::Number(*b as f64));
@@ -1083,24 +1343,38 @@ pub fn install(rt: &mut Runtime) {
     // utimesSync — path-based modify times, via std::fs::FileTimes.
     register_method(rt, fs, "utimesSync", |_rt, args| {
         let path = arg_string(args, 0);
-        let atime_s = match args.get(1) { Some(Value::Number(n)) => *n, _ => 0.0 };
-        let mtime_s = match args.get(2) { Some(Value::Number(n)) => *n, _ => 0.0 };
-        let file = std::fs::OpenOptions::new().write(true).open(&path)
+        let atime_s = match args.get(1) {
+            Some(Value::Number(n)) => *n,
+            _ => 0.0,
+        };
+        let mtime_s = match args.get(2) {
+            Some(Value::Number(n)) => *n,
+            _ => 0.0,
+        };
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .open(&path)
             .or_else(|_| std::fs::OpenOptions::new().read(true).open(&path))
             .map_err(|e| RuntimeError::TypeError(format!("utimesSync: {}", e)))?;
         let to_st = |s: f64| -> std::time::SystemTime {
             let dur = std::time::Duration::from_secs_f64(s.max(0.0));
             std::time::UNIX_EPOCH + dur
         };
-        let times = std::fs::FileTimes::new().set_accessed(to_st(atime_s)).set_modified(to_st(mtime_s));
-        file.set_times(times).map(|_| Value::Undefined)
+        let times = std::fs::FileTimes::new()
+            .set_accessed(to_st(atime_s))
+            .set_modified(to_st(mtime_s));
+        file.set_times(times)
+            .map(|_| Value::Undefined)
             .map_err(|e| RuntimeError::TypeError(format!("utimesSync: {}", e)))
     });
     // lutimesSync — like utimesSync but doesn't follow symlinks. Cheap
     // approximation: delegate to utimesSync. Real impl needs libc::utimensat
     // with AT_SYMLINK_NOFOLLOW; deferred.
     register_method(rt, fs, "lutimesSync", |rt, args| {
-        let fs_global = match rt.globals.get("fs") { Some(Value::Object(id)) => *id, _ => return Ok(Value::Undefined) };
+        let fs_global = match rt.globals.get("fs") {
+            Some(Value::Object(id)) => *id,
+            _ => return Ok(Value::Undefined),
+        };
         let f = rt.object_get(fs_global, "utimesSync");
         rt.call_function(f, Value::Object(fs_global), args.to_vec())
     });
@@ -1131,17 +1405,39 @@ pub fn install(rt: &mut Runtime) {
         // Stash entries + cursor on the Dir for the closures.
         let entries_arr = rt.alloc_object(Object::new_array());
         for (i, name) in dir_entries.iter().enumerate() {
-            rt.object_set(entries_arr, i.to_string(), Value::String(Rc::new(name.clone())));
+            rt.object_set(
+                entries_arr,
+                i.to_string(),
+                Value::String(Rc::new(name.clone())),
+            );
         }
-        rt.object_set(entries_arr, "length".into(), Value::Number(dir_entries.len() as f64));
+        rt.object_set(
+            entries_arr,
+            "length".into(),
+            Value::Number(dir_entries.len() as f64),
+        );
         rt.object_set(dir, "__entries".into(), Value::Object(entries_arr));
         rt.object_set(dir, "__cursor".into(), Value::Number(0.0));
         register_method(rt, dir, "read", |rt, _args| {
-            let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Null) };
-            let entries = match rt.object_get(this, "__entries") { Value::Object(id) => id, _ => return Ok(Value::Null) };
-            let cur = match rt.object_get(this, "__cursor") { Value::Number(n) => n as usize, _ => 0 };
-            let len = match rt.object_get(entries, "length") { Value::Number(n) => n as usize, _ => 0 };
-            if cur >= len { return Ok(Value::Null); }
+            let this = match rt.current_this() {
+                Value::Object(id) => id,
+                _ => return Ok(Value::Null),
+            };
+            let entries = match rt.object_get(this, "__entries") {
+                Value::Object(id) => id,
+                _ => return Ok(Value::Null),
+            };
+            let cur = match rt.object_get(this, "__cursor") {
+                Value::Number(n) => n as usize,
+                _ => 0,
+            };
+            let len = match rt.object_get(entries, "length") {
+                Value::Number(n) => n as usize,
+                _ => 0,
+            };
+            if cur >= len {
+                return Ok(Value::Null);
+            }
             let name = rt.object_get(entries, &cur.to_string());
             rt.object_set(this, "__cursor".into(), Value::Number((cur + 1) as f64));
             // Build a Dirent-shaped object.
@@ -1167,17 +1463,30 @@ pub fn install(rt: &mut Runtime) {
     // the file borrow.
     register_method(rt, fs, "readvSync", |rt, args| {
         use std::io::Read;
-        let fd = match args.first() { Some(Value::Number(n)) => *n as i32, _ => -1 };
+        let fd = match args.first() {
+            Some(Value::Number(n)) => *n as i32,
+            _ => -1,
+        };
         let buffers_id = match args.get(1) {
             Some(Value::Object(id)) => *id,
-            _ => return Err(RuntimeError::TypeError("readvSync: buffers must be an array".into())),
+            _ => {
+                return Err(RuntimeError::TypeError(
+                    "readvSync: buffers must be an array".into(),
+                ))
+            }
         };
-        let len = match rt.object_get(buffers_id, "length") { Value::Number(n) => n as usize, _ => 0 };
+        let len = match rt.object_get(buffers_id, "length") {
+            Value::Number(n) => n as usize,
+            _ => 0,
+        };
         // Snapshot lengths + ids first.
         let mut targets: Vec<(ObjectRef, usize)> = Vec::with_capacity(len);
         for i in 0..len {
             if let Value::Object(buf_id) = rt.object_get(buffers_id, &i.to_string()) {
-                let blen = match rt.object_get(buf_id, "length") { Value::Number(n) => n as usize, _ => 0 };
+                let blen = match rt.object_get(buf_id, "length") {
+                    Value::Number(n) => n as usize,
+                    _ => 0,
+                };
                 targets.push((buf_id, blen));
             }
         }
@@ -1185,17 +1494,22 @@ pub fn install(rt: &mut Runtime) {
         let mut chunks: Vec<(ObjectRef, Vec<u8>)> = Vec::with_capacity(targets.len());
         let mut total = 0usize;
         {
-            let file = rt.fd_table.get_mut(&fd)
+            let file = rt
+                .fd_table
+                .get_mut(&fd)
                 .ok_or_else(|| RuntimeError::TypeError(format!("readvSync: EBADF (fd={})", fd)))?;
             for (id, blen) in &targets {
                 let mut b = vec![0u8; *blen];
-                let n = file.read(&mut b)
+                let n = file
+                    .read(&mut b)
                     .map_err(|e| RuntimeError::TypeError(format!("readvSync: {}", e)))?;
                 total += n;
                 b.truncate(n);
                 let short = n < *blen;
                 chunks.push((*id, b));
-                if short { break; }
+                if short {
+                    break;
+                }
             }
         }
         for (id, bytes) in chunks {
@@ -1209,30 +1523,52 @@ pub fn install(rt: &mut Runtime) {
     // writevSync(fd, buffers) — write each buffer's bytes in sequence.
     register_method(rt, fs, "writevSync", |rt, args| {
         use std::io::Write;
-        let fd = match args.first() { Some(Value::Number(n)) => *n as i32, _ => -1 };
+        let fd = match args.first() {
+            Some(Value::Number(n)) => *n as i32,
+            _ => -1,
+        };
         let buffers_id = match args.get(1) {
             Some(Value::Object(id)) => *id,
-            _ => return Err(RuntimeError::TypeError("writevSync: buffers must be an array".into())),
+            _ => {
+                return Err(RuntimeError::TypeError(
+                    "writevSync: buffers must be an array".into(),
+                ))
+            }
         };
-        let len = match rt.object_get(buffers_id, "length") { Value::Number(n) => n as usize, _ => 0 };
+        let len = match rt.object_get(buffers_id, "length") {
+            Value::Number(n) => n as usize,
+            _ => 0,
+        };
         // Snapshot buffer bytes first (avoid borrowing rt across the loop).
         let mut all_bytes: Vec<Vec<u8>> = Vec::with_capacity(len);
         for i in 0..len {
             let buf_v = rt.object_get(buffers_id, &i.to_string());
-            let buf_id = match buf_v { Value::Object(id) => id, _ => continue };
-            let blen = match rt.object_get(buf_id, "length") { Value::Number(n) => n as usize, _ => 0 };
+            let buf_id = match buf_v {
+                Value::Object(id) => id,
+                _ => continue,
+            };
+            let blen = match rt.object_get(buf_id, "length") {
+                Value::Number(n) => n as usize,
+                _ => 0,
+            };
             let mut b = Vec::with_capacity(blen);
             for j in 0..blen {
                 let v = rt.object_get(buf_id, &j.to_string());
-                b.push(match v { Value::Number(n) => n as u8, _ => 0 });
+                b.push(match v {
+                    Value::Number(n) => n as u8,
+                    _ => 0,
+                });
             }
             all_bytes.push(b);
         }
-        let file = rt.fd_table.get_mut(&fd)
+        let file = rt
+            .fd_table
+            .get_mut(&fd)
             .ok_or_else(|| RuntimeError::TypeError(format!("writevSync: EBADF (fd={})", fd)))?;
         let mut total = 0usize;
         for chunk in all_bytes {
-            let n = file.write(&chunk)
+            let n = file
+                .write(&chunk)
                 .map_err(|e| RuntimeError::TypeError(format!("writevSync: {}", e)))?;
             total += n;
         }
@@ -1278,14 +1614,21 @@ pub fn install(rt: &mut Runtime) {
     register_method(rt, fs, "watch", |rt, args| {
         let path = arg_string(args, 0);
         let watcher = rt.alloc_object(rusty_js_runtime::value::Object::new_ordinary());
-        let listener = args.iter().rev().find(|v| matches!(v, Value::Object(_))).cloned();
+        let listener = args
+            .iter()
+            .rev()
+            .find(|v| matches!(v, Value::Object(_)))
+            .cloned();
         if let Some(v) = listener.clone() {
             rt.object_set(watcher, "__listener".into(), v);
         }
         let id = register_watcher(path, listener, watcher, /* default interval */ 200);
         rt.object_set(watcher, "__watch_id".into(), Value::Number(id as f64));
         register_method(rt, watcher, "close", |rt, _args| {
-            let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
+            let this = match rt.current_this() {
+                Value::Object(id) => id,
+                _ => return Ok(Value::Undefined),
+            };
             if let Value::Number(wid) = rt.object_get(this, "__watch_id") {
                 unregister_watcher(wid as u64);
             }
@@ -1311,7 +1654,11 @@ pub fn install(rt: &mut Runtime) {
             }
         }
         let watcher = rt.alloc_object(rusty_js_runtime::value::Object::new_ordinary());
-        let listener = args.iter().rev().find(|v| matches!(v, Value::Object(_))).cloned();
+        let listener = args
+            .iter()
+            .rev()
+            .find(|v| matches!(v, Value::Object(_)))
+            .cloned();
         if let Some(v) = listener.clone() {
             rt.object_set(watcher, "__listener".into(), v);
         }
@@ -1330,7 +1677,10 @@ pub fn install(rt: &mut Runtime) {
     for cls in ["Stats", "Dirent", "Dir"] {
         let n = cls.to_string();
         let stub = make_callable(rt, cls, move |_rt, _args| {
-            Err(RuntimeError::TypeError(format!("fs.{}: class not constructable (Tier-Ω.5.P32.E1 stub)", n)))
+            Err(RuntimeError::TypeError(format!(
+                "fs.{}: class not constructable (Tier-Ω.5.P32.E1 stub)",
+                n
+            )))
         });
         rt.object_set(fs, cls.into(), Value::Object(stub));
     }
@@ -1350,7 +1700,11 @@ pub fn install(rt: &mut Runtime) {
 // Streams return a no-op ReadableStream-shaped object; consumers that
 // actually consume the stream will diverge from Bun (Blob streaming is
 // the separate substrate that openAsBlob's stub was a stand-in for).
-fn build_blob(rt: &mut rusty_js_runtime::Runtime, bytes: Vec<u8>, mime: String) -> rusty_js_runtime::value::ObjectRef {
+fn build_blob(
+    rt: &mut rusty_js_runtime::Runtime,
+    bytes: Vec<u8>,
+    mime: String,
+) -> rusty_js_runtime::value::ObjectRef {
     use rusty_js_runtime::value::Object as RObj;
     let blob = rt.alloc_object(RObj::new_ordinary());
     let size = bytes.len() as f64;
@@ -1364,23 +1718,44 @@ fn build_blob(rt: &mut rusty_js_runtime::Runtime, bytes: Vec<u8>, mime: String) 
     rt.object_set(bytes_arr, "length".into(), Value::Number(size));
     rt.object_set(blob, "__bytes".into(), Value::Object(bytes_arr));
     register_method(rt, blob, "arrayBuffer", |rt, _args| {
-        let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
-        let bytes = match rt.object_get(this, "__bytes") { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
+        let this = match rt.current_this() {
+            Value::Object(id) => id,
+            _ => return Ok(Value::Undefined),
+        };
+        let bytes = match rt.object_get(this, "__bytes") {
+            Value::Object(id) => id,
+            _ => return Ok(Value::Undefined),
+        };
         let p = new_promise(rt);
         resolve_promise(rt, p, Value::Object(bytes));
         Ok(Value::Object(p))
     });
     register_method(rt, blob, "bytes", |rt, _args| {
-        let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
-        let bytes = match rt.object_get(this, "__bytes") { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
+        let this = match rt.current_this() {
+            Value::Object(id) => id,
+            _ => return Ok(Value::Undefined),
+        };
+        let bytes = match rt.object_get(this, "__bytes") {
+            Value::Object(id) => id,
+            _ => return Ok(Value::Undefined),
+        };
         let p = new_promise(rt);
         resolve_promise(rt, p, Value::Object(bytes));
         Ok(Value::Object(p))
     });
     register_method(rt, blob, "text", |rt, _args| {
-        let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
-        let bytes = match rt.object_get(this, "__bytes") { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
-        let len = match rt.object_get(bytes, "length") { Value::Number(n) => n as usize, _ => 0 };
+        let this = match rt.current_this() {
+            Value::Object(id) => id,
+            _ => return Ok(Value::Undefined),
+        };
+        let bytes = match rt.object_get(this, "__bytes") {
+            Value::Object(id) => id,
+            _ => return Ok(Value::Undefined),
+        };
+        let len = match rt.object_get(bytes, "length") {
+            Value::Number(n) => n as usize,
+            _ => 0,
+        };
         let mut s = String::with_capacity(len);
         for i in 0..len {
             if let Value::Number(b) = rt.object_get(bytes, &i.to_string()) {
@@ -1392,14 +1767,54 @@ fn build_blob(rt: &mut rusty_js_runtime::Runtime, bytes: Vec<u8>, mime: String) 
         Ok(Value::Object(p))
     });
     register_method(rt, blob, "slice", |rt, args| {
-        let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
-        let bytes = match rt.object_get(this, "__bytes") { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
-        let len = match rt.object_get(bytes, "length") { Value::Number(n) => n as usize, _ => 0 };
-        let start = args.first().and_then(|v| if let Value::Number(n) = v { Some(*n as i64) } else { None }).unwrap_or(0);
-        let end = args.get(1).and_then(|v| if let Value::Number(n) = v { Some(*n as i64) } else { None }).unwrap_or(len as i64);
-        let mime = match args.get(2) { Some(Value::String(s)) => s.as_str().to_string(), _ => "".into() };
-        let s = (if start < 0 { (len as i64 + start).max(0) } else { start }).min(len as i64) as usize;
-        let e = (if end < 0 { (len as i64 + end).max(0) } else { end }).min(len as i64) as usize;
+        let this = match rt.current_this() {
+            Value::Object(id) => id,
+            _ => return Ok(Value::Undefined),
+        };
+        let bytes = match rt.object_get(this, "__bytes") {
+            Value::Object(id) => id,
+            _ => return Ok(Value::Undefined),
+        };
+        let len = match rt.object_get(bytes, "length") {
+            Value::Number(n) => n as usize,
+            _ => 0,
+        };
+        let start = args
+            .first()
+            .and_then(|v| {
+                if let Value::Number(n) = v {
+                    Some(*n as i64)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0);
+        let end = args
+            .get(1)
+            .and_then(|v| {
+                if let Value::Number(n) = v {
+                    Some(*n as i64)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(len as i64);
+        let mime = match args.get(2) {
+            Some(Value::String(s)) => s.as_str().to_string(),
+            _ => "".into(),
+        };
+        let s = (if start < 0 {
+            (len as i64 + start).max(0)
+        } else {
+            start
+        })
+        .min(len as i64) as usize;
+        let e = (if end < 0 {
+            (len as i64 + end).max(0)
+        } else {
+            end
+        })
+        .min(len as i64) as usize;
         let mut slice_bytes: Vec<u8> = Vec::with_capacity(e.saturating_sub(s));
         for i in s..e {
             if let Value::Number(b) = rt.object_get(bytes, &i.to_string()) {
@@ -1417,7 +1832,10 @@ fn build_blob(rt: &mut rusty_js_runtime::Runtime, bytes: Vec<u8>, mime: String) 
             let reader = rt.alloc_object(rusty_js_runtime::value::Object::new_ordinary());
             rt.object_set(reader, "__done".into(), Value::Boolean(false));
             register_method(rt, reader, "read", |rt, _args| {
-                let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
+                let this = match rt.current_this() {
+                    Value::Object(id) => id,
+                    _ => return Ok(Value::Undefined),
+                };
                 let done = matches!(rt.object_get(this, "__done"), Value::Boolean(true));
                 let result = rt.alloc_object(rusty_js_runtime::value::Object::new_ordinary());
                 rt.object_set(result, "value".into(), Value::Undefined);
@@ -1446,12 +1864,7 @@ fn build_blob(rt: &mut rusty_js_runtime::Runtime, bytes: Vec<u8>, mime: String) 
 // paths relative to `start_dir`. Returns matches in undefined order.
 fn glob_walk(start_dir: &str, pattern: &str, out: &mut Vec<String>) {
     let segs: Vec<&str> = pattern.split('/').collect();
-    fn walk(
-        cur: &std::path::Path,
-        rel: &str,
-        segs: &[&str],
-        out: &mut Vec<String>,
-    ) {
+    fn walk(cur: &std::path::Path, rel: &str, segs: &[&str], out: &mut Vec<String>) {
         if segs.is_empty() {
             out.push(rel.to_string());
             return;
@@ -1466,7 +1879,11 @@ fn glob_walk(start_dir: &str, pattern: &str, out: &mut Vec<String>) {
                 for entry in read.flatten() {
                     if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
                         let name = entry.file_name().to_string_lossy().into_owned();
-                        let new_rel = if rel.is_empty() { name.clone() } else { format!("{}/{}", rel, name) };
+                        let new_rel = if rel.is_empty() {
+                            name.clone()
+                        } else {
+                            format!("{}/{}", rel, name)
+                        };
                         walk(&entry.path(), &new_rel, segs, out);
                     }
                 }
@@ -1477,7 +1894,11 @@ fn glob_walk(start_dir: &str, pattern: &str, out: &mut Vec<String>) {
             for entry in read.flatten() {
                 let name = entry.file_name().to_string_lossy().into_owned();
                 if glob_match(seg, &name) {
-                    let new_rel = if rel.is_empty() { name.clone() } else { format!("{}/{}", rel, name) };
+                    let new_rel = if rel.is_empty() {
+                        name.clone()
+                    } else {
+                        format!("{}/{}", rel, name)
+                    };
                     if rest.is_empty() {
                         out.push(new_rel);
                     } else if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
@@ -1494,12 +1915,18 @@ fn glob_match(pattern: &str, name: &str) -> bool {
     let pat: Vec<char> = pattern.chars().collect();
     let txt: Vec<char> = name.chars().collect();
     fn rec(p: &[char], t: &[char]) -> bool {
-        if p.is_empty() { return t.is_empty(); }
+        if p.is_empty() {
+            return t.is_empty();
+        }
         match p[0] {
             '*' => {
                 // Match zero or more chars within the segment.
-                if rec(&p[1..], t) { return true; }
-                if !t.is_empty() && rec(p, &t[1..]) { return true; }
+                if rec(&p[1..], t) {
+                    return true;
+                }
+                if !t.is_empty() && rec(p, &t[1..]) {
+                    return true;
+                }
                 false
             }
             '?' => !t.is_empty() && rec(&p[1..], &t[1..]),
@@ -1510,12 +1937,18 @@ fn glob_match(pattern: &str, name: &str) -> bool {
 }
 
 // Ω.5.P33.E1: recursive copy helper for fs.cpSync.
-fn cp_recursive(src: &std::path::Path, dst: &std::path::Path, recursive: bool) -> std::io::Result<()> {
+fn cp_recursive(
+    src: &std::path::Path,
+    dst: &std::path::Path,
+    recursive: bool,
+) -> std::io::Result<()> {
     let md = std::fs::metadata(src)?;
     if md.is_dir() {
         if !recursive {
-            return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput,
-                "cp: source is a directory and recursive is not set"));
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "cp: source is a directory and recursive is not set",
+            ));
         }
         std::fs::create_dir_all(dst)?;
         for entry in std::fs::read_dir(src)? {
@@ -1621,9 +2054,18 @@ mod tests {
         std::fs::write(&present, "x").unwrap();
         let missing = dir.join("missing");
         let mut rt = fresh();
-        rt.globals.insert("P".into(), Value::String(Rc::new(present.to_string_lossy().into_owned())));
-        rt.globals.insert("M".into(), Value::String(Rc::new(missing.to_string_lossy().into_owned())));
-        run_with(&mut rt, "__record(fs.existsSync(P) + ',' + fs.existsSync(M));");
+        rt.globals.insert(
+            "P".into(),
+            Value::String(Rc::new(present.to_string_lossy().into_owned())),
+        );
+        rt.globals.insert(
+            "M".into(),
+            Value::String(Rc::new(missing.to_string_lossy().into_owned())),
+        );
+        run_with(
+            &mut rt,
+            "__record(fs.existsSync(P) + ',' + fs.existsSync(M));",
+        );
         match recorded(&rt) {
             Some(Value::String(s)) => assert_eq!(s.as_str(), "true,false"),
             other => panic!("{:?}", other),
@@ -1637,7 +2079,10 @@ mod tests {
         let path = dir.join("s.txt");
         std::fs::write(&path, "abcd").unwrap();
         let mut rt = fresh();
-        rt.globals.insert("PATH".into(), Value::String(Rc::new(path.to_string_lossy().into_owned())));
+        rt.globals.insert(
+            "PATH".into(),
+            Value::String(Rc::new(path.to_string_lossy().into_owned())),
+        );
         run_with(&mut rt, "let s = fs.statSync(PATH); __record(s.size + ',' + s.isFile() + ',' + s.isDirectory());");
         match recorded(&rt) {
             Some(Value::String(s)) => assert_eq!(s.as_str(), "4,true,false"),
@@ -1652,7 +2097,10 @@ mod tests {
         std::fs::write(dir.join("a"), "").unwrap();
         std::fs::write(dir.join("b"), "").unwrap();
         let mut rt = fresh();
-        rt.globals.insert("D".into(), Value::String(Rc::new(dir.to_string_lossy().into_owned())));
+        rt.globals.insert(
+            "D".into(),
+            Value::String(Rc::new(dir.to_string_lossy().into_owned())),
+        );
         run_with(&mut rt, "let e = fs.readdirSync(D); __record(e.length);");
         assert!(matches!(recorded(&rt), Some(Value::Number(n)) if n == 2.0));
         let _ = std::fs::remove_dir_all(&dir);
@@ -1663,8 +2111,14 @@ mod tests {
         let dir = tmpdir("mkdir");
         let nested = dir.join("a/b/c");
         let mut rt = fresh();
-        rt.globals.insert("D".into(), Value::String(Rc::new(nested.to_string_lossy().into_owned())));
-        run_with(&mut rt, "fs.mkdirSync(D, {recursive: true}); __record(fs.existsSync(D));");
+        rt.globals.insert(
+            "D".into(),
+            Value::String(Rc::new(nested.to_string_lossy().into_owned())),
+        );
+        run_with(
+            &mut rt,
+            "fs.mkdirSync(D, {recursive: true}); __record(fs.existsSync(D));",
+        );
         assert!(matches!(recorded(&rt), Some(Value::Boolean(true))));
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1675,7 +2129,10 @@ mod tests {
         let path = dir.join("u");
         std::fs::write(&path, "x").unwrap();
         let mut rt = fresh();
-        rt.globals.insert("P".into(), Value::String(Rc::new(path.to_string_lossy().into_owned())));
+        rt.globals.insert(
+            "P".into(),
+            Value::String(Rc::new(path.to_string_lossy().into_owned())),
+        );
         run_with(&mut rt, "fs.unlinkSync(P); __record(fs.existsSync(P));");
         assert!(matches!(recorded(&rt), Some(Value::Boolean(false))));
         let _ = std::fs::remove_dir_all(&dir);
@@ -1686,7 +2143,10 @@ mod tests {
         let dir = tmpdir("byte-rt");
         let path = dir.join("r.bin");
         let mut rt = fresh();
-        rt.globals.insert("PATH".into(), Value::String(Rc::new(path.to_string_lossy().into_owned())));
+        rt.globals.insert(
+            "PATH".into(),
+            Value::String(Rc::new(path.to_string_lossy().into_owned())),
+        );
         // Write bytes via array-of-number, then read back as utf-8 to
         // confirm the byte path serialised correctly.
         run_with(
@@ -1710,7 +2170,10 @@ mod tests {
         let path = dir.join("a.txt");
         std::fs::write(&path, "async-payload").unwrap();
         let mut rt = fresh();
-        rt.globals.insert("PATH".into(), Value::String(Rc::new(path.to_string_lossy().into_owned())));
+        rt.globals.insert(
+            "PATH".into(),
+            Value::String(Rc::new(path.to_string_lossy().into_owned())),
+        );
         // The .then closure runs only if PollIo drained the queue and
         // the macrotask resolved the promise → microtask reaction fired.
         run_with(
@@ -1733,7 +2196,10 @@ mod tests {
         let path = dir.join("p");
         std::fs::write(&path, "x").unwrap();
         let mut rt = fresh();
-        rt.globals.insert("P".into(), Value::String(Rc::new(path.to_string_lossy().into_owned())));
+        rt.globals.insert(
+            "P".into(),
+            Value::String(Rc::new(path.to_string_lossy().into_owned())),
+        );
         run_with(
             &mut rt,
             r#"Promise.then(fs.exists(P), function(b) { __record(b ? "yes" : "no"); });"#,
@@ -1747,7 +2213,10 @@ mod tests {
         let dir = tmpdir("async-chain");
         let path = dir.join("c.txt");
         let mut rt = fresh();
-        rt.globals.insert("PATH".into(), Value::String(Rc::new(path.to_string_lossy().into_owned())));
+        rt.globals.insert(
+            "PATH".into(),
+            Value::String(Rc::new(path.to_string_lossy().into_owned())),
+        );
         run_with(
             &mut rt,
             r#"Promise.then(fs.writeFile(PATH, "chained"), function() {

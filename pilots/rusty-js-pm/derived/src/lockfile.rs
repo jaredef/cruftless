@@ -40,12 +40,17 @@ pub enum LockfileError {
 
 impl Lockfile {
     pub fn new() -> Self {
-        Self { version: LOCKFILE_VERSION, packages: BTreeMap::new() }
+        Self {
+            version: LOCKFILE_VERSION,
+            packages: BTreeMap::new(),
+        }
     }
 
     pub fn from_resolved(deps: impl IntoIterator<Item = ResolvedDep>) -> Self {
         let mut lock = Self::new();
-        for dep in deps { lock.insert(dep); }
+        for dep in deps {
+            lock.insert(dep);
+        }
         lock
     }
 
@@ -59,19 +64,18 @@ impl Lockfile {
     }
 
     pub fn write_to(&self, path: &Path) -> Result<(), LockfileError> {
-        let json = serde_json::to_string_pretty(self)
-            .map_err(|e| LockfileError::Json(format!("{e}")))?;
+        let json =
+            serde_json::to_string_pretty(self).map_err(|e| LockfileError::Json(format!("{e}")))?;
         // newline-terminated for diff-friendliness
         let bytes = format!("{json}\n");
-        std::fs::write(path, bytes)
-            .map_err(|e| LockfileError::Io(format!("write {path:?}: {e}")))
+        std::fs::write(path, bytes).map_err(|e| LockfileError::Io(format!("write {path:?}: {e}")))
     }
 
     pub fn read_from(path: &Path) -> Result<Self, LockfileError> {
-        let bytes = std::fs::read(path)
-            .map_err(|e| LockfileError::Io(format!("read {path:?}: {e}")))?;
-        let lock: Lockfile = serde_json::from_slice(&bytes)
-            .map_err(|e| LockfileError::Json(format!("{e}")))?;
+        let bytes =
+            std::fs::read(path).map_err(|e| LockfileError::Io(format!("read {path:?}: {e}")))?;
+        let lock: Lockfile =
+            serde_json::from_slice(&bytes).map_err(|e| LockfileError::Json(format!("{e}")))?;
         if lock.version != LOCKFILE_VERSION {
             return Err(LockfileError::UnsupportedVersion(lock.version));
         }
@@ -80,7 +84,9 @@ impl Lockfile {
 }
 
 impl Default for Lockfile {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(test)]
@@ -101,8 +107,13 @@ mod tests {
     #[test]
     fn roundtrip_empty() {
         let lock = Lockfile::new();
-        let path = std::env::temp_dir().join(format!("lock-empty-{}.json",
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let path = std::env::temp_dir().join(format!(
+            "lock-empty-{}.json",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         lock.write_to(&path).unwrap();
         let back = Lockfile::read_from(&path).unwrap();
         assert_eq!(lock, back);
@@ -116,13 +127,21 @@ mod tests {
         lock.insert(sample_dep("lodash", "4.17.21"));
         lock.insert(sample_dep("@babel/core", "7.24.0"));
 
-        let path = std::env::temp_dir().join(format!("lock-stable-{}.json",
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let path = std::env::temp_dir().join(format!(
+            "lock-stable-{}.json",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         lock.write_to(&path).unwrap();
         let serialized = std::fs::read_to_string(&path).unwrap();
         let babel_pos = serialized.find("@babel/core").unwrap();
         let lodash_pos = serialized.find("lodash").unwrap();
-        assert!(babel_pos < lodash_pos, "BTreeMap should sort @babel before lodash");
+        assert!(
+            babel_pos < lodash_pos,
+            "BTreeMap should sort @babel before lodash"
+        );
 
         let back = Lockfile::read_from(&path).unwrap();
         assert_eq!(lock, back);
@@ -140,8 +159,13 @@ mod tests {
 
     #[test]
     fn rejects_unsupported_version() {
-        let path = std::env::temp_dir().join(format!("lock-badver-{}.json",
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let path = std::env::temp_dir().join(format!(
+            "lock-badver-{}.json",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         std::fs::write(&path, br#"{"lockfileVersion":999,"packages":{}}"#).unwrap();
         let r = Lockfile::read_from(&path);
         assert!(matches!(r, Err(LockfileError::UnsupportedVersion(999))));
@@ -165,7 +189,10 @@ mod tests {
         b.write_to(&pb).unwrap();
         let sa = std::fs::read_to_string(&pa).unwrap();
         let sb = std::fs::read_to_string(&pb).unwrap();
-        assert_eq!(sa, sb, "lockfile must be byte-stable across insertion orders");
+        assert_eq!(
+            sa, sb,
+            "lockfile must be byte-stable across insertion orders"
+        );
         let _ = std::fs::remove_file(&pa);
         let _ = std::fs::remove_file(&pb);
     }

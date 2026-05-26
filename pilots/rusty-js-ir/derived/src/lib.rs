@@ -12,8 +12,8 @@
 //! Composes with seed §A8.28–§A8.33.
 
 pub mod ir;
-pub mod lower;
 pub mod lint;
+pub mod lower;
 pub mod spec_parser;
 
 pub mod sections; // Hand-translated spec sections live here.

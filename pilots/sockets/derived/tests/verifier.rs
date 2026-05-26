@@ -135,7 +135,10 @@ fn wrong_kind_errors() {
     let (lid, _) = listener_bind("127.0.0.1:0").unwrap();
     // Trying to use a listener id as a stream → wrong kind.
     assert!(matches!(stream_read(lid, 100), Err(SocketError::WrongKind)));
-    assert!(matches!(stream_write(lid, b"x"), Err(SocketError::WrongKind)));
+    assert!(matches!(
+        stream_write(lid, b"x"),
+        Err(SocketError::WrongKind)
+    ));
     handle_close(lid).unwrap();
 }
 
@@ -254,7 +257,9 @@ fn async_listener_multiple_connections() {
         handle_close(sid).unwrap();
     }
 
-    for c in clients { c.join().unwrap(); }
+    for c in clients {
+        c.join().unwrap();
+    }
     listener_stop_async(id).unwrap();
 }
 
@@ -273,9 +278,15 @@ fn async_listener_kind_distinguishes_from_sync() {
     assert_eq!(handle_kind(sync_id).unwrap(), "listener");
     assert_eq!(handle_kind(async_id).unwrap(), "async-listener");
     // Async ops on sync handle → WrongKind.
-    assert!(matches!(listener_poll(sync_id, 10), Err(SocketError::WrongKind)));
+    assert!(matches!(
+        listener_poll(sync_id, 10),
+        Err(SocketError::WrongKind)
+    ));
     // Sync accept on async handle → WrongKind.
-    assert!(matches!(listener_accept(async_id), Err(SocketError::WrongKind)));
+    assert!(matches!(
+        listener_accept(async_id),
+        Err(SocketError::WrongKind)
+    ));
     handle_close(sync_id).unwrap();
     listener_stop_async(async_id).unwrap();
 }

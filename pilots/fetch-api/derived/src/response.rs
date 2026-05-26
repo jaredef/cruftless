@@ -3,7 +3,7 @@
 // Pilot scope: the data-structure half of Response. Static methods .json(),
 // .redirect(), .error() included. Body extraction same shape as Request.
 
-use crate::body::{Body, BodyHolder, BodyError};
+use crate::body::{Body, BodyError, BodyHolder};
 use crate::headers::{HeaderError, Headers};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -15,11 +15,15 @@ pub enum ResponseError {
 }
 
 impl From<HeaderError> for ResponseError {
-    fn from(e: HeaderError) -> Self { ResponseError::HeadersError(e) }
+    fn from(e: HeaderError) -> Self {
+        ResponseError::HeadersError(e)
+    }
 }
 
 impl From<BodyError> for ResponseError {
-    fn from(e: BodyError) -> Self { ResponseError::BodyError(e) }
+    fn from(e: BodyError) -> Self {
+        ResponseError::BodyError(e)
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -94,7 +98,10 @@ impl Response {
     pub fn json(data: &str, init: ResponseInit) -> Result<Self, ResponseError> {
         let mut headers = init.headers.unwrap_or_default();
         headers.set("Content-Type", "application/json")?;
-        let init = ResponseInit { headers: Some(headers), ..init };
+        let init = ResponseInit {
+            headers: Some(headers),
+            ..init
+        };
         Self::new(Some(Body::Text(data.to_string())), init)
     }
 
@@ -116,15 +123,33 @@ impl Response {
         })
     }
 
-    pub fn status(&self) -> u16 { self.status }
-    pub fn status_text(&self) -> &str { &self.status_text }
-    pub fn headers(&self) -> &Headers { &self.headers }
-    pub fn ok(&self) -> bool { (200..=299).contains(&self.status) }
-    pub fn response_type(&self) -> ResponseType { self.response_type }
-    pub fn url(&self) -> &str { &self.url }
-    pub fn redirected(&self) -> bool { self.redirected }
-    pub fn body_used(&self) -> bool { self.body.used() }
-    pub fn body_is_null(&self) -> bool { self.body.is_null() }
+    pub fn status(&self) -> u16 {
+        self.status
+    }
+    pub fn status_text(&self) -> &str {
+        &self.status_text
+    }
+    pub fn headers(&self) -> &Headers {
+        &self.headers
+    }
+    pub fn ok(&self) -> bool {
+        (200..=299).contains(&self.status)
+    }
+    pub fn response_type(&self) -> ResponseType {
+        self.response_type
+    }
+    pub fn url(&self) -> &str {
+        &self.url
+    }
+    pub fn redirected(&self) -> bool {
+        self.redirected
+    }
+    pub fn body_used(&self) -> bool {
+        self.body.used()
+    }
+    pub fn body_is_null(&self) -> bool {
+        self.body.is_null()
+    }
 
     pub fn text(&self) -> Result<String, ResponseError> {
         Ok(self.body.consume_text()?)

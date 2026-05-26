@@ -89,7 +89,12 @@ fn request_listeners(rt: &mut Runtime, server: ObjectRef) -> ObjectRef {
     }
 }
 
-fn add_request_listener(rt: &mut Runtime, server: ObjectRef, listener: Value, once: bool) -> Result<(), RuntimeError> {
+fn add_request_listener(
+    rt: &mut Runtime,
+    server: ObjectRef,
+    listener: Value,
+    once: bool,
+) -> Result<(), RuntimeError> {
     if !rt.is_callable(&listener) {
         return Err(RuntimeError::TypeError(
             "server.on: listener must be callable".into(),
@@ -106,15 +111,25 @@ fn add_request_listener(rt: &mut Runtime, server: ObjectRef, listener: Value, on
 fn current_server_id(rt: &mut Runtime) -> Result<usize, RuntimeError> {
     let this_id = match rt.current_this() {
         Value::Object(id) => id,
-        _ => return Err(RuntimeError::TypeError("node:http Server method: invalid receiver".into())),
+        _ => {
+            return Err(RuntimeError::TypeError(
+                "node:http Server method: invalid receiver".into(),
+            ))
+        }
     };
     match rt.object_get(this_id, SERVER_SLOT) {
         Value::Number(n) => Ok(n as usize),
-        _ => Err(RuntimeError::TypeError("node:http Server method: missing server id".into())),
+        _ => Err(RuntimeError::TypeError(
+            "node:http Server method: missing server id".into(),
+        )),
     }
 }
 
-fn make_server_object(rt: &mut Runtime, handler: Value, net_cap: caps::Net) -> Result<ObjectRef, RuntimeError> {
+fn make_server_object(
+    rt: &mut Runtime,
+    handler: Value,
+    net_cap: caps::Net,
+) -> Result<ObjectRef, RuntimeError> {
     let server = new_object(rt);
     rt.object_set(server, "listening".into(), Value::Boolean(false));
     let listeners = rt.alloc_object(rusty_js_runtime::Object::new_array());
@@ -127,7 +142,11 @@ fn make_server_object(rt: &mut Runtime, handler: Value, net_cap: caps::Net) -> R
     register_method(rt, server, "listen", move |rt, args| {
         let this_id = match rt.current_this() {
             Value::Object(id) => id,
-            _ => return Err(RuntimeError::TypeError("server.listen: invalid receiver".into())),
+            _ => {
+                return Err(RuntimeError::TypeError(
+                    "server.listen: invalid receiver".into(),
+                ))
+            }
         };
         if matches!(rt.object_get(this_id, SERVER_SLOT), Value::Number(_)) {
             return Ok(Value::Object(this_id));
@@ -144,14 +163,20 @@ fn make_server_object(rt: &mut Runtime, handler: Value, net_cap: caps::Net) -> R
         };
         let callback = args.iter().find(|v| matches!(v, Value::Object(_))).cloned();
 
-        rt.caps.require_net(
-            &net_cap,
-            caps::NetOp::Listen { host: host.clone(), port },
-            &ModuleId::builtin("node:http"),
-        ).map_err(|e| RuntimeError::TypeError(e.to_string()))?;
+        rt.caps
+            .require_net(
+                &net_cap,
+                caps::NetOp::Listen {
+                    host: host.clone(),
+                    port,
+                },
+                &ModuleId::builtin("node:http"),
+            )
+            .map_err(|e| RuntimeError::TypeError(e.to_string()))?;
 
-        let (listener_handle, bound_addr) = rusty_sockets::listener_bind_async(&format!("{host}:{port}"))
-            .map_err(|e| RuntimeError::TypeError(format!("server.listen: {e:?}")))?;
+        let (listener_handle, bound_addr) =
+            rusty_sockets::listener_bind_async(&format!("{host}:{port}"))
+                .map_err(|e| RuntimeError::TypeError(format!("server.listen: {e:?}")))?;
         let server_id = next_server_id(ActiveHttpServer {
             listener_handle,
             bound_addr: bound_addr.clone(),
@@ -160,7 +185,11 @@ fn make_server_object(rt: &mut Runtime, handler: Value, net_cap: caps::Net) -> R
         });
         // ESNE-EXT 1: __X engine sentinels installed non-enumerable.
         rt.set_engine_sentinel(this_id, SERVER_SLOT, Value::Number(server_id as f64));
-        rt.set_engine_sentinel(this_id, "__cruftless_http_bound_addr", Value::String(Rc::new(bound_addr)));
+        rt.set_engine_sentinel(
+            this_id,
+            "__cruftless_http_bound_addr",
+            Value::String(Rc::new(bound_addr)),
+        );
         rt.object_set(this_id, "listening".into(), Value::Boolean(true));
         if let Some(cb) = callback {
             let _ = rt.call_function(cb, Value::Object(this_id), Vec::new())?;
@@ -170,7 +199,8 @@ fn make_server_object(rt: &mut Runtime, handler: Value, net_cap: caps::Net) -> R
 
     register_method(rt, server, "address", |rt, _args| {
         let id = current_server_id(rt)?;
-        let server = get_server(id).ok_or_else(|| RuntimeError::TypeError("server.address: closed".into()))?;
+        let server = get_server(id)
+            .ok_or_else(|| RuntimeError::TypeError("server.address: closed".into()))?;
         let out = new_object(rt);
         let (host, port) = split_bound_addr(&server.bound_addr);
         rt.object_set(out, "address".into(), Value::String(Rc::new(host)));
@@ -183,7 +213,11 @@ fn make_server_object(rt: &mut Runtime, handler: Value, net_cap: caps::Net) -> R
         let id = current_server_id(rt)?;
         if let Some(server) = remove_server(id) {
             let _ = rusty_sockets::listener_stop_async(server.listener_handle);
-            rt.object_set(server.server_object, "listening".into(), Value::Boolean(false));
+            rt.object_set(
+                server.server_object,
+                "listening".into(),
+                Value::Boolean(false),
+            );
         }
         if let Some(cb) = args.iter().find(|v| matches!(v, Value::Object(_))).cloned() {
             let _ = rt.call_function(cb, rt.current_this(), Vec::new())?;
@@ -194,35 +228,60 @@ fn make_server_object(rt: &mut Runtime, handler: Value, net_cap: caps::Net) -> R
     register_method(rt, server, "on", |rt, args| {
         let this_id = match rt.current_this() {
             Value::Object(id) => id,
-            _ => return Err(RuntimeError::TypeError("server.on: invalid receiver".into())),
+            _ => {
+                return Err(RuntimeError::TypeError(
+                    "server.on: invalid receiver".into(),
+                ))
+            }
         };
         let event = match args.first() {
             Some(v) => value_to_string(rt, v)?,
             None => String::new(),
         };
         if event == "request" {
-            add_request_listener(rt, this_id, args.get(1).cloned().unwrap_or(Value::Undefined), false)?;
+            add_request_listener(
+                rt,
+                this_id,
+                args.get(1).cloned().unwrap_or(Value::Undefined),
+                false,
+            )?;
         }
         Ok(Value::Object(this_id))
     });
     register_method(rt, server, "addListener", |rt, args| {
-        let on = rt.object_get(match rt.current_this() {
-            Value::Object(id) => id,
-            _ => return Err(RuntimeError::TypeError("server.addListener: invalid receiver".into())),
-        }, "on");
+        let on = rt.object_get(
+            match rt.current_this() {
+                Value::Object(id) => id,
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "server.addListener: invalid receiver".into(),
+                    ))
+                }
+            },
+            "on",
+        );
         rt.call_function(on, rt.current_this(), args.to_vec())
     });
     register_method(rt, server, "once", |rt, args| {
         let this_id = match rt.current_this() {
             Value::Object(id) => id,
-            _ => return Err(RuntimeError::TypeError("server.once: invalid receiver".into())),
+            _ => {
+                return Err(RuntimeError::TypeError(
+                    "server.once: invalid receiver".into(),
+                ))
+            }
         };
         let event = match args.first() {
             Some(v) => value_to_string(rt, v)?,
             None => String::new(),
         };
         if event == "request" {
-            add_request_listener(rt, this_id, args.get(1).cloned().unwrap_or(Value::Undefined), true)?;
+            add_request_listener(
+                rt,
+                this_id,
+                args.get(1).cloned().unwrap_or(Value::Undefined),
+                true,
+            )?;
         }
         Ok(Value::Object(this_id))
     });
@@ -233,19 +292,38 @@ fn make_server_object(rt: &mut Runtime, handler: Value, net_cap: caps::Net) -> R
 
 fn split_bound_addr(addr: &str) -> (String, u16) {
     match addr.rsplit_once(':') {
-        Some((host, port)) => (host.trim_matches(['[', ']']).to_string(), port.parse().unwrap_or(0)),
+        Some((host, port)) => (
+            host.trim_matches(['[', ']']).to_string(),
+            port.parse().unwrap_or(0),
+        ),
         None => (addr.to_string(), 0),
     }
 }
 
 fn make_request_object(rt: &mut Runtime, req: &rusty_http_codec::ParsedRequest) -> ObjectRef {
     let obj = new_object(rt);
-    rt.object_set(obj, "method".into(), Value::String(Rc::new(req.method.clone())));
-    rt.object_set(obj, "url".into(), Value::String(Rc::new(req.target.clone())));
-    rt.object_set(obj, "httpVersion".into(), Value::String(Rc::new(req.version.trim_start_matches("HTTP/").to_string())));
+    rt.object_set(
+        obj,
+        "method".into(),
+        Value::String(Rc::new(req.method.clone())),
+    );
+    rt.object_set(
+        obj,
+        "url".into(),
+        Value::String(Rc::new(req.target.clone())),
+    );
+    rt.object_set(
+        obj,
+        "httpVersion".into(),
+        Value::String(Rc::new(req.version.trim_start_matches("HTTP/").to_string())),
+    );
     let headers = new_object(rt);
     for (name, value) in &req.headers {
-        rt.object_set(headers, name.to_ascii_lowercase(), Value::String(Rc::new(value.clone())));
+        rt.object_set(
+            headers,
+            name.to_ascii_lowercase(),
+            Value::String(Rc::new(value.clone())),
+        );
     }
     rt.object_set(obj, "headers".into(), Value::Object(headers));
     obj
@@ -255,19 +333,30 @@ fn make_response_object(rt: &mut Runtime) -> ObjectRef {
     let obj = new_object(rt);
     let headers = new_object(rt);
     rt.object_set(obj, "statusCode".into(), Value::Number(200.0));
-    rt.object_set(obj, "statusMessage".into(), Value::String(Rc::new("OK".into())));
+    rt.object_set(
+        obj,
+        "statusMessage".into(),
+        Value::String(Rc::new("OK".into())),
+    );
     rt.object_set(obj, "headersSent".into(), Value::Boolean(false));
     // ESNE-EXT 1: __X engine sentinels installed non-enumerable.
     rt.set_engine_sentinel(obj, HEADERS_SLOT, Value::Object(headers));
     rt.set_engine_sentinel(obj, BODY_SLOT, Value::String(Rc::new(String::new())));
 
     register_method(rt, obj, "setHeader", |rt, args| {
-        let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
-        let headers = match rt.object_get(this, HEADERS_SLOT) { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
+        let this = match rt.current_this() {
+            Value::Object(id) => id,
+            _ => return Ok(Value::Undefined),
+        };
+        let headers = match rt.object_get(this, HEADERS_SLOT) {
+            Value::Object(id) => id,
+            _ => return Ok(Value::Undefined),
+        };
         let name = match args.first() {
             Some(v) => value_to_string(rt, v)?,
             None => String::new(),
-        }.to_ascii_lowercase();
+        }
+        .to_ascii_lowercase();
         let value = match args.get(1) {
             Some(v) => value_to_string(rt, v)?,
             None => String::new(),
@@ -276,26 +365,43 @@ fn make_response_object(rt: &mut Runtime) -> ObjectRef {
         Ok(rt.current_this())
     });
     register_method(rt, obj, "getHeader", |rt, args| {
-        let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
-        let headers = match rt.object_get(this, HEADERS_SLOT) { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
+        let this = match rt.current_this() {
+            Value::Object(id) => id,
+            _ => return Ok(Value::Undefined),
+        };
+        let headers = match rt.object_get(this, HEADERS_SLOT) {
+            Value::Object(id) => id,
+            _ => return Ok(Value::Undefined),
+        };
         let name = match args.first() {
             Some(v) => value_to_string(rt, v)?,
             None => String::new(),
-        }.to_ascii_lowercase();
+        }
+        .to_ascii_lowercase();
         Ok(rt.object_get(headers, &name))
     });
     register_method(rt, obj, "removeHeader", |rt, args| {
-        let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
-        let headers = match rt.object_get(this, HEADERS_SLOT) { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
+        let this = match rt.current_this() {
+            Value::Object(id) => id,
+            _ => return Ok(Value::Undefined),
+        };
+        let headers = match rt.object_get(this, HEADERS_SLOT) {
+            Value::Object(id) => id,
+            _ => return Ok(Value::Undefined),
+        };
         let name = match args.first() {
             Some(v) => value_to_string(rt, v)?,
             None => String::new(),
-        }.to_ascii_lowercase();
+        }
+        .to_ascii_lowercase();
         rt.object_set(headers, name, Value::Undefined);
         Ok(rt.current_this())
     });
     register_method(rt, obj, "writeHead", |rt, args| {
-        let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
+        let this = match rt.current_this() {
+            Value::Object(id) => id,
+            _ => return Ok(Value::Undefined),
+        };
         if let Some(Value::Number(n)) = args.first() {
             rt.object_set(this, "statusCode".into(), Value::Number(*n));
         }
@@ -306,16 +412,26 @@ fn make_response_object(rt: &mut Runtime) -> ObjectRef {
             args.get(1).cloned()
         };
         if let Some(Value::Object(hid)) = header_arg {
-            let headers = match rt.object_get(this, HEADERS_SLOT) { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
+            let headers = match rt.object_get(this, HEADERS_SLOT) {
+                Value::Object(id) => id,
+                _ => return Ok(Value::Undefined),
+            };
             for key in rt.ordinary_own_enumerable_string_keys(hid) {
                 let value = value_to_string(rt, &rt.object_get(hid, &key))?;
-                rt.object_set(headers, key.to_ascii_lowercase(), Value::String(Rc::new(value)));
+                rt.object_set(
+                    headers,
+                    key.to_ascii_lowercase(),
+                    Value::String(Rc::new(value)),
+                );
             }
         }
         Ok(rt.current_this())
     });
     register_method(rt, obj, "write", |rt, args| {
-        let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
+        let this = match rt.current_this() {
+            Value::Object(id) => id,
+            _ => return Ok(Value::Undefined),
+        };
         let mut body = match rt.object_get(this, BODY_SLOT) {
             Value::String(s) => s.as_str().to_string(),
             _ => String::new(),
@@ -327,7 +443,10 @@ fn make_response_object(rt: &mut Runtime) -> ObjectRef {
         Ok(Value::Boolean(true))
     });
     register_method(rt, obj, "end", |rt, args| {
-        let this = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
+        let this = match rt.current_this() {
+            Value::Object(id) => id,
+            _ => return Ok(Value::Undefined),
+        };
         if let Some(chunk) = args.first() {
             let mut body = match rt.object_get(this, BODY_SLOT) {
                 Value::String(s) => s.as_str().to_string(),
@@ -359,14 +478,21 @@ fn response_to_wire(rt: &mut Runtime, res: ObjectRef) -> Result<Vec<u8>, Runtime
     let mut headers = Vec::new();
     if let Value::Object(hid) = rt.object_get(res, HEADERS_SLOT) {
         for key in rt.ordinary_own_enumerable_string_keys(hid) {
-            if matches!(rt.object_get(hid, &key), Value::Undefined) { continue; }
+            if matches!(rt.object_get(hid, &key), Value::Undefined) {
+                continue;
+            }
             headers.push((key.clone(), value_to_string(rt, &rt.object_get(hid, &key))?));
         }
     }
-    if !headers.iter().any(|(n, _)| n.eq_ignore_ascii_case("connection")) {
+    if !headers
+        .iter()
+        .any(|(n, _)| n.eq_ignore_ascii_case("connection"))
+    {
         headers.push(("connection".into(), "close".into()));
     }
-    Ok(rusty_http_codec::serialize_response(status, &reason, &headers, &body))
+    Ok(rusty_http_codec::serialize_response(
+        status, &reason, &headers, &body,
+    ))
 }
 
 fn read_request(stream_id: u64) -> Result<Vec<u8>, String> {
@@ -374,7 +500,9 @@ fn read_request(stream_id: u64) -> Result<Vec<u8>, String> {
     let mut buf = Vec::new();
     while Instant::now() < deadline {
         let chunk = rusty_sockets::stream_read(stream_id, 8192).map_err(|e| format!("{e:?}"))?;
-        if chunk.is_empty() { break; }
+        if chunk.is_empty() {
+            break;
+        }
         buf.extend_from_slice(&chunk);
         if buf.len() > MAX_REQUEST_BYTES {
             return Err("request too large".into());
@@ -387,7 +515,9 @@ fn read_request(stream_id: u64) -> Result<Vec<u8>, String> {
 }
 
 fn request_complete(buf: &[u8]) -> bool {
-    let Some(header_end) = find_header_end(buf) else { return false; };
+    let Some(header_end) = find_header_end(buf) else {
+        return false;
+    };
     let headers = String::from_utf8_lossy(&buf[..header_end]);
     let content_length = headers
         .lines()
@@ -404,12 +534,17 @@ fn request_complete(buf: &[u8]) -> bool {
 }
 
 fn find_header_end(buf: &[u8]) -> Option<usize> {
-    buf.windows(4).position(|w| w == b"\r\n\r\n").map(|idx| idx + 4)
+    buf.windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .map(|idx| idx + 4)
 }
 
 pub fn poll_io(rt: &mut Runtime) -> Result<bool, RuntimeError> {
     let ids: Vec<(usize, u64)> = HTTP_SERVERS.with(|servers| {
-        servers.borrow().iter().enumerate()
+        servers
+            .borrow()
+            .iter()
+            .enumerate()
             .filter_map(|(idx, s)| s.as_ref().map(|srv| (idx, srv.listener_handle)))
             .collect()
     });
@@ -451,30 +586,57 @@ fn handle_connection(rt: &mut Runtime, server_id: usize, stream_id: u64) {
             let call_result = dispatch_request(rt, server.server_object, req, res);
             rt.exit_realm(prior);
             if call_result.is_err() {
-                rusty_http_codec::serialize_response(500, "Internal Server Error", &[("connection".into(), "close".into())], b"")
+                rusty_http_codec::serialize_response(
+                    500,
+                    "Internal Server Error",
+                    &[("connection".into(), "close".into())],
+                    b"",
+                )
             } else {
                 response_to_wire(rt, res).unwrap_or_else(|_| {
-                    rusty_http_codec::serialize_response(500, "Internal Server Error", &[("connection".into(), "close".into())], b"")
+                    rusty_http_codec::serialize_response(
+                        500,
+                        "Internal Server Error",
+                        &[("connection".into(), "close".into())],
+                        b"",
+                    )
                 })
             }
         }
-        Err(_) => rusty_http_codec::serialize_response(400, "Bad Request", &[("connection".into(), "close".into())], b""),
+        Err(_) => rusty_http_codec::serialize_response(
+            400,
+            "Bad Request",
+            &[("connection".into(), "close".into())],
+            b"",
+        ),
     };
     let _ = rusty_sockets::stream_write_all(stream_id, &response);
     let _ = rusty_sockets::handle_close(stream_id);
 }
 
-fn dispatch_request(rt: &mut Runtime, server_object: ObjectRef, req: ObjectRef, res: ObjectRef) -> Result<(), RuntimeError> {
+fn dispatch_request(
+    rt: &mut Runtime,
+    server_object: ObjectRef,
+    req: ObjectRef,
+    res: ObjectRef,
+) -> Result<(), RuntimeError> {
     let arr = request_listeners(rt, server_object);
     let len = rt.array_length(arr);
     let mut calls = Vec::new();
     let mut keep = Vec::new();
     for i in 0..len {
         let item = rt.object_get(arr, &i.to_string());
-        let Value::Object(record) = item else { continue; };
+        let Value::Object(record) = item else {
+            continue;
+        };
         let listener = rt.object_get(record, "listener");
-        if !rt.is_callable(&listener) { continue; }
-        let once = matches!(rt.object_get(record, REQUEST_ONCE_SLOT), Value::Boolean(true));
+        if !rt.is_callable(&listener) {
+            continue;
+        }
+        let once = matches!(
+            rt.object_get(record, REQUEST_ONCE_SLOT),
+            Value::Boolean(true)
+        );
         calls.push(listener);
         if !once {
             keep.push(Value::Object(record));
@@ -555,7 +717,12 @@ fn make_http_namespace(rt: &mut Runtime, net_cap: caps::Net) -> ObjectRef {
         (503, "Service Unavailable"),
         (504, "Gateway Timeout"),
     ] {
-        set_constant(rt, codes, &code.to_string(), Value::String(Rc::new((*msg).into())));
+        set_constant(
+            rt,
+            codes,
+            &code.to_string(),
+            Value::String(Rc::new((*msg).into())),
+        );
     }
     set_constant(rt, http, "STATUS_CODES", Value::Object(codes));
 
@@ -569,11 +736,41 @@ fn make_http_namespace(rt: &mut Runtime, net_cap: caps::Net) -> ObjectRef {
     // probed it as iterable broke at module-init.
     let methods = rt.alloc_object(rusty_js_runtime::value::Object::new_array());
     let names = [
-        "ACL", "BIND", "CHECKOUT", "CONNECT", "COPY", "DELETE", "GET", "HEAD",
-        "LINK", "LOCK", "M-SEARCH", "MERGE", "MKACTIVITY", "MKCALENDAR", "MKCOL",
-        "MOVE", "NOTIFY", "OPTIONS", "PATCH", "POST", "PROPFIND", "PROPPATCH",
-        "PURGE", "PUT", "QUERY", "REBIND", "REPORT", "SEARCH", "SOURCE",
-        "SUBSCRIBE", "TRACE", "UNBIND", "UNLINK", "UNLOCK", "UNSUBSCRIBE",
+        "ACL",
+        "BIND",
+        "CHECKOUT",
+        "CONNECT",
+        "COPY",
+        "DELETE",
+        "GET",
+        "HEAD",
+        "LINK",
+        "LOCK",
+        "M-SEARCH",
+        "MERGE",
+        "MKACTIVITY",
+        "MKCALENDAR",
+        "MKCOL",
+        "MOVE",
+        "NOTIFY",
+        "OPTIONS",
+        "PATCH",
+        "POST",
+        "PROPFIND",
+        "PROPPATCH",
+        "PURGE",
+        "PUT",
+        "QUERY",
+        "REBIND",
+        "REPORT",
+        "SEARCH",
+        "SOURCE",
+        "SUBSCRIBE",
+        "TRACE",
+        "UNBIND",
+        "UNLINK",
+        "UNLOCK",
+        "UNSUBSCRIBE",
     ];
     for (i, n) in names.iter().enumerate() {
         rt.object_set(methods, i.to_string(), Value::String(Rc::new((*n).into())));
@@ -588,15 +785,22 @@ fn make_http_namespace(rt: &mut Runtime, net_cap: caps::Net) -> ObjectRef {
     // stub: constructor errors if called, prototype is an empty object,
     // sufficient for `class X extends http.ServerResponse` and
     // `typeof http.ServerResponse.prototype.foo === 'function'` probes.
-    for class_name in &["ServerResponse", "IncomingMessage", "Server", "ClientRequest"] {
+    for class_name in &[
+        "ServerResponse",
+        "IncomingMessage",
+        "Server",
+        "ClientRequest",
+    ] {
         let proto = new_object(rt);
         let ctor = crate::register::make_callable(rt, class_name, |_rt, _args| {
             Err(RuntimeError::TypeError(format!(
                 "node:http class constructor not yet implemented (Tier-Ω.5.xxxxxx stub)",
             )))
         });
-        rt.obj_mut(ctor).set_own_frozen("prototype".into(), Value::Object(proto));
-        rt.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(ctor));
+        rt.obj_mut(ctor)
+            .set_own_frozen("prototype".into(), Value::Object(proto));
+        rt.obj_mut(proto)
+            .set_own_internal("constructor".into(), Value::Object(ctor));
         set_constant(rt, http, class_name, Value::Object(ctor));
     }
 
@@ -612,11 +816,21 @@ fn make_http_namespace(rt: &mut Runtime, net_cap: caps::Net) -> ObjectRef {
 pub fn install(rt: &mut Runtime) {
     let http = make_http_namespace(rt, caps::Net::none());
     register_method(rt, http, "__cruftless_makeLoopbackFacade", |rt, _args| {
-        Ok(Value::Object(make_http_namespace(rt, caps::Net::loopback_server())))
+        Ok(Value::Object(make_http_namespace(
+            rt,
+            caps::Net::loopback_server(),
+        )))
     });
-    let facade_factory = crate::register::make_callable(rt, "__cruftless_makeHttpFacade", |rt, _args| {
-        Ok(Value::Object(make_http_namespace(rt, caps::Net::loopback_server())))
-    });
-    rt.globals.insert("__cruftless_makeHttpFacade".into(), Value::Object(facade_factory));
+    let facade_factory =
+        crate::register::make_callable(rt, "__cruftless_makeHttpFacade", |rt, _args| {
+            Ok(Value::Object(make_http_namespace(
+                rt,
+                caps::Net::loopback_server(),
+            )))
+        });
+    rt.globals.insert(
+        "__cruftless_makeHttpFacade".into(),
+        Value::Object(facade_factory),
+    );
     rt.globals.insert("http".into(), Value::Object(http));
 }

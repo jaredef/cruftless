@@ -22,8 +22,11 @@ fn cycle_collection_reclaims_unreachable_pair() {
     let before_anchor = rt.heap.live_count();
     // Confirm the GC keeps them while they are reachable.
     let freed_when_reachable = rt.collect();
-    assert_eq!(freed_when_reachable, 0,
-        "reachable cycle should not be freed (freed={})", freed_when_reachable);
+    assert_eq!(
+        freed_when_reachable, 0,
+        "reachable cycle should not be freed (freed={})",
+        freed_when_reachable
+    );
     let after_anchor = rt.heap.live_count();
     assert_eq!(before_anchor, after_anchor);
 
@@ -37,12 +40,21 @@ fn cycle_collection_reclaims_unreachable_pair() {
     let freed = rt.collect();
     let live_after = rt.heap.live_count();
 
-    println!("gc_cycle: live_before={} freed={} live_after={}",
-        live_before, freed, live_after);
+    println!(
+        "gc_cycle: live_before={} freed={} live_after={}",
+        live_before, freed, live_after
+    );
 
-    assert!(live_before - live_after >= 2,
+    assert!(
+        live_before - live_after >= 2,
         "cycle should drop live_count by at least 2 (before={}, after={}, freed={})",
-        live_before, live_after, freed);
-    assert!(freed >= 2,
-        "collect() should report at least 2 freed slots, got {}", freed);
+        live_before,
+        live_after,
+        freed
+    );
+    assert!(
+        freed >= 2,
+        "collect() should report at least 2 freed slots, got {}",
+        freed
+    );
 }

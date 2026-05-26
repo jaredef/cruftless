@@ -23,7 +23,9 @@ pub struct NodeHeaders {
 }
 
 impl NodeHeaders {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     pub fn set(&mut self, name: &str, value: impl Into<String>) {
         let lower = name.to_ascii_lowercase();
@@ -37,7 +39,10 @@ impl NodeHeaders {
 
     pub fn get(&self, name: &str) -> Option<&str> {
         let lower = name.to_ascii_lowercase();
-        self.entries.iter().find(|(n, _)| n == &lower).map(|(_, v)| v.as_str())
+        self.entries
+            .iter()
+            .find(|(n, _)| n == &lower)
+            .map(|(_, v)| v.as_str())
     }
 
     pub fn has(&self, name: &str) -> bool {
@@ -54,12 +59,16 @@ impl NodeHeaders {
         self.entries.iter().map(|(n, v)| (n.as_str(), v.as_str()))
     }
 
-    pub fn count(&self) -> usize { self.entries.len() }
+    pub fn count(&self) -> usize {
+        self.entries.len()
+    }
 
     /// Node's flat-object representation: HashMap<lowercased_name, value>.
     pub fn as_object(&self) -> HashMap<String, String> {
         let mut o = HashMap::new();
-        for (n, v) in &self.entries { o.insert(n.clone(), v.clone()); }
+        for (n, v) in &self.entries {
+            o.insert(n.clone(), v.clone());
+        }
         o
     }
 }
@@ -82,7 +91,9 @@ pub struct IncomingMessage {
 }
 
 impl IncomingMessage {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 }
 
 // ─────────────────────── ServerResponse ────────────────────────────────
@@ -111,15 +122,22 @@ impl ServerResponse {
 
     /// `res.writeHead(statusCode, statusMessage?, headers?)`.
     pub fn write_head(
-        &mut self, status_code: u16,
+        &mut self,
+        status_code: u16,
         status_message: Option<&str>,
         headers: Option<&[(&str, &str)]>,
     ) {
-        if self.headers_sent { return; }
+        if self.headers_sent {
+            return;
+        }
         self.status_code = status_code;
-        if let Some(msg) = status_message { self.status_message = msg.into(); }
+        if let Some(msg) = status_message {
+            self.status_message = msg.into();
+        }
         if let Some(hs) = headers {
-            for (n, v) in hs { self.headers.set(n, *v); }
+            for (n, v) in hs {
+                self.headers.set(n, *v);
+            }
         }
         self.headers_sent = true;
     }
@@ -137,7 +155,9 @@ impl ServerResponse {
     }
 
     pub fn write(&mut self, chunk: &[u8]) {
-        if self.ended { return; }
+        if self.ended {
+            return;
+        }
         self.headers_sent = true;
         self.body.extend_from_slice(chunk);
     }
@@ -147,8 +167,12 @@ impl ServerResponse {
     }
 
     pub fn end(&mut self, chunk: Option<&[u8]>) {
-        if self.ended { return; }
-        if let Some(c) = chunk { self.body.extend_from_slice(c); }
+        if self.ended {
+            return;
+        }
+        if let Some(c) = chunk {
+            self.body.extend_from_slice(c);
+        }
         self.headers_sent = true;
         self.ended = true;
     }
@@ -157,14 +181,24 @@ impl ServerResponse {
         self.end(Some(chunk.as_bytes()));
     }
 
-    pub fn headers_sent(&self) -> bool { self.headers_sent }
-    pub fn ended(&self) -> bool { self.ended }
-    pub fn body(&self) -> &[u8] { &self.body }
-    pub fn headers(&self) -> &NodeHeaders { &self.headers }
+    pub fn headers_sent(&self) -> bool {
+        self.headers_sent
+    }
+    pub fn ended(&self) -> bool {
+        self.ended
+    }
+    pub fn body(&self) -> &[u8] {
+        &self.body
+    }
+    pub fn headers(&self) -> &NodeHeaders {
+        &self.headers
+    }
 }
 
 impl Default for ServerResponse {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ─────────────────────── ClientRequest ────────────────────────────────
@@ -196,13 +230,19 @@ impl ClientRequest {
     }
 
     pub fn write(&mut self, chunk: &[u8]) {
-        if self.aborted || self.ended { return; }
+        if self.aborted || self.ended {
+            return;
+        }
         self.body.extend_from_slice(chunk);
     }
 
     pub fn end(&mut self, chunk: Option<&[u8]>) {
-        if self.aborted || self.ended { return; }
-        if let Some(c) = chunk { self.body.extend_from_slice(c); }
+        if self.aborted || self.ended {
+            return;
+        }
+        if let Some(c) = chunk {
+            self.body.extend_from_slice(c);
+        }
         self.ended = true;
     }
 
@@ -210,10 +250,18 @@ impl ClientRequest {
         self.aborted = true;
     }
 
-    pub fn aborted(&self) -> bool { self.aborted }
-    pub fn ended(&self) -> bool { self.ended }
-    pub fn body(&self) -> &[u8] { &self.body }
-    pub fn headers(&self) -> &NodeHeaders { &self.headers }
+    pub fn aborted(&self) -> bool {
+        self.aborted
+    }
+    pub fn ended(&self) -> bool {
+        self.ended
+    }
+    pub fn body(&self) -> &[u8] {
+        &self.body
+    }
+    pub fn headers(&self) -> &NodeHeaders {
+        &self.headers
+    }
 }
 
 // ───────────────────────────── Server ──────────────────────────────────
@@ -229,11 +277,17 @@ pub struct Server {
 
 impl Server {
     pub fn new() -> Self {
-        Self { handler: None, port: 0, listening: false, closed: false }
+        Self {
+            handler: None,
+            port: 0,
+            listening: false,
+            closed: false,
+        }
     }
 
     pub fn on_request<F>(&mut self, handler: F)
-    where F: Fn(&IncomingMessage, &mut ServerResponse) + 'static
+    where
+        F: Fn(&IncomingMessage, &mut ServerResponse) + 'static,
     {
         self.handler = Some(Box::new(handler));
     }
@@ -249,26 +303,37 @@ impl Server {
         self.closed = true;
     }
 
-    pub fn port(&self) -> u16 { self.port }
-    pub fn listening(&self) -> bool { self.listening }
-    pub fn closed(&self) -> bool { self.closed }
+    pub fn port(&self) -> u16 {
+        self.port
+    }
+    pub fn listening(&self) -> bool {
+        self.listening
+    }
+    pub fn closed(&self) -> bool {
+        self.closed
+    }
 
     /// Pilot-only invocation: route a request through the handler and return
     /// the populated ServerResponse. Real Node would deliver via socket.
     pub fn dispatch(&self, request: &IncomingMessage) -> ServerResponse {
         let mut response = ServerResponse::new();
-        if let Some(h) = &self.handler { h(request, &mut response); }
+        if let Some(h) = &self.handler {
+            h(request, &mut response);
+        }
         response
     }
 }
 
 impl Default for Server {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// `http.createServer(handler)` — top-level factory.
 pub fn create_server<F>(handler: F) -> Server
-where F: Fn(&IncomingMessage, &mut ServerResponse) + 'static
+where
+    F: Fn(&IncomingMessage, &mut ServerResponse) + 'static,
 {
     let mut s = Server::new();
     s.on_request(handler);
@@ -280,7 +345,9 @@ where F: Fn(&IncomingMessage, &mut ServerResponse) + 'static
 pub fn request(method: &str, url: &str, headers: Option<&[(&str, &str)]>) -> ClientRequest {
     let mut req = ClientRequest::new(method, url);
     if let Some(hs) = headers {
-        for (n, v) in hs { req.set_header(n, *v); }
+        for (n, v) in hs {
+            req.set_header(n, *v);
+        }
     }
     req
 }

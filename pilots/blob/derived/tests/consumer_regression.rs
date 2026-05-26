@@ -24,7 +24,10 @@ fn consumer_multer_file_size_matches_byte_length() {
 fn consumer_multer_blob_type_lowercased_per_spec() {
     let b = Blob::from_parts(
         &[BlobPart::Bytes(b"<svg></svg>")],
-        BlobPropertyBag { mime_type: "Image/SVG+XML".into(), ..Default::default() },
+        BlobPropertyBag {
+            mime_type: "Image/SVG+XML".into(),
+            ..Default::default()
+        },
     );
     // multer normalizes Content-Type to lowercase per Blob spec; consumers
     // dispatch on `.type` and expect lowercase.
@@ -44,7 +47,11 @@ fn consumer_formdata_polyfill_concatenates_blob_parts() {
     let part2 = Blob::from_bytes(b"Content-Disposition: form-data; name=\"x\"\r\n\r\n".to_vec());
     let part3 = Blob::from_bytes(b"value\r\n".to_vec());
     let combined = Blob::from_parts(
-        &[BlobPart::Blob(&part1), BlobPart::Blob(&part2), BlobPart::Blob(&part3)],
+        &[
+            BlobPart::Blob(&part1),
+            BlobPart::Blob(&part2),
+            BlobPart::Blob(&part3),
+        ],
         Default::default(),
     );
     assert_eq!(combined.size(), part1.size() + part2.size() + part3.size());
@@ -87,7 +94,10 @@ fn consumer_azure_storage_text_does_not_normalize_line_endings() {
         Default::default(),
     );
     let s = b.text();
-    assert!(s.contains("\r\n"), "Blob.text() must preserve \\r\\n, not normalize");
+    assert!(
+        s.contains("\r\n"),
+        "Blob.text() must preserve \\r\\n, not normalize"
+    );
 }
 
 // ─────────── papa-parse — CSV parser BOM & encoding handling ──────────
@@ -129,7 +139,10 @@ fn wpt_blob_slice_strips_type_when_none_given() {
     // contentType arg is supplied.
     let b = Blob::from_parts(
         &[BlobPart::Bytes(b"content")],
-        BlobPropertyBag { mime_type: "text/plain".into(), ..Default::default() },
+        BlobPropertyBag {
+            mime_type: "text/plain".into(),
+            ..Default::default()
+        },
     );
     let s = b.slice(0, Some(3), None);
     assert_eq!(s.mime_type(), "");

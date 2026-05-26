@@ -19,7 +19,10 @@ fn cd_stru1_empty_object_roundtrip() {
     let mut heap = Heap::new();
     let v = heap.alloc(HeapObject::Object(Vec::new()));
     let (cloned_heap, cloned) = clone_value(&heap, v);
-    let id = match cloned { Value::Ref(id) => id, _ => panic!("expected ref") };
+    let id = match cloned {
+        Value::Ref(id) => id,
+        _ => panic!("expected ref"),
+    };
     assert!(matches!(cloned_heap.get(id), HeapObject::Object(e) if e.is_empty()));
 }
 
@@ -32,8 +35,13 @@ fn cd_stru1_empty_blob_size_zero() {
         mime_type: String::new(),
     });
     let (cloned_heap, cloned) = clone_value(&heap, blob);
-    let id = match cloned { Value::Ref(id) => id, _ => panic!() };
-    let HeapObject::Blob { bytes, mime_type } = cloned_heap.get(id) else { panic!("expected blob") };
+    let id = match cloned {
+        Value::Ref(id) => id,
+        _ => panic!(),
+    };
+    let HeapObject::Blob { bytes, mime_type } = cloned_heap.get(id) else {
+        panic!("expected blob")
+    };
     assert_eq!(bytes.len(), 0);
     assert_eq!(mime_type, "");
 }
@@ -51,11 +59,21 @@ fn cd_stru1_file_name_preserved() {
     // Wrap in {file: <File>} object as the test does
     let wrapper = heap.alloc(HeapObject::Object(vec![("file".into(), file)]));
     let (cloned_heap, cloned) = clone_value(&heap, wrapper);
-    let wrapper_id = match cloned { Value::Ref(id) => id, _ => panic!() };
-    let HeapObject::Object(entries) = cloned_heap.get(wrapper_id) else { panic!() };
+    let wrapper_id = match cloned {
+        Value::Ref(id) => id,
+        _ => panic!(),
+    };
+    let HeapObject::Object(entries) = cloned_heap.get(wrapper_id) else {
+        panic!()
+    };
     let file_v = &entries[0].1;
-    let file_id = match file_v { Value::Ref(id) => *id, _ => panic!() };
-    let HeapObject::File { name, .. } = cloned_heap.get(file_id) else { panic!() };
+    let file_id = match file_v {
+        Value::Ref(id) => *id,
+        _ => panic!(),
+    };
+    let HeapObject::File { name, .. } = cloned_heap.get(file_id) else {
+        panic!()
+    };
     assert_eq!(name, "example.txt");
 }
 
@@ -65,9 +83,15 @@ fn cd_stru1_file_name_preserved() {
 #[test]
 fn cd_stru2_array_class_preserved() {
     let mut heap = Heap::new();
-    let arr = heap.alloc(HeapObject::Array(vec![Value::Number(1.0), Value::Number(2.0)]));
+    let arr = heap.alloc(HeapObject::Array(vec![
+        Value::Number(1.0),
+        Value::Number(2.0),
+    ]));
     let (cloned_heap, cloned) = clone_value(&heap, arr);
-    let id = match cloned { Value::Ref(id) => id, _ => panic!() };
+    let id = match cloned {
+        Value::Ref(id) => id,
+        _ => panic!(),
+    };
     assert!(matches!(cloned_heap.get(id), HeapObject::Array(_)));
 }
 
@@ -75,9 +99,15 @@ fn cd_stru2_array_class_preserved() {
 #[test]
 fn cd_stru2_blob_class_preserved() {
     let mut heap = Heap::new();
-    let blob = heap.alloc(HeapObject::Blob { bytes: vec![1, 2, 3], mime_type: "image/png".into() });
+    let blob = heap.alloc(HeapObject::Blob {
+        bytes: vec![1, 2, 3],
+        mime_type: "image/png".into(),
+    });
     let (cloned_heap, cloned) = clone_value(&heap, blob);
-    let id = match cloned { Value::Ref(id) => id, _ => panic!() };
+    let id = match cloned {
+        Value::Ref(id) => id,
+        _ => panic!(),
+    };
     assert!(matches!(cloned_heap.get(id), HeapObject::Blob { .. }));
 }
 
@@ -92,7 +122,10 @@ fn cd_stru2_file_class_preserved() {
         last_modified: 0,
     });
     let (cloned_heap, cloned) = clone_value(&heap, file);
-    let id = match cloned { Value::Ref(id) => id, _ => panic!() };
+    let id = match cloned {
+        Value::Ref(id) => id,
+        _ => panic!(),
+    };
     assert!(matches!(cloned_heap.get(id), HeapObject::File { .. }));
 }
 
@@ -108,10 +141,20 @@ fn cd_stru3_null_property_preserved() {
     ]));
     let outer = heap.alloc(HeapObject::Array(vec![inner]));
     let (cloned_heap, cloned) = clone_value(&heap, outer);
-    let outer_id = match cloned { Value::Ref(id) => id, _ => panic!() };
-    let HeapObject::Array(items) = cloned_heap.get(outer_id) else { panic!() };
-    let inner_id = match items[0] { Value::Ref(id) => id, _ => panic!() };
-    let HeapObject::Object(entries) = cloned_heap.get(inner_id) else { panic!() };
+    let outer_id = match cloned {
+        Value::Ref(id) => id,
+        _ => panic!(),
+    };
+    let HeapObject::Array(items) = cloned_heap.get(outer_id) else {
+        panic!()
+    };
+    let inner_id = match items[0] {
+        Value::Ref(id) => id,
+        _ => panic!(),
+    };
+    let HeapObject::Object(entries) = cloned_heap.get(inner_id) else {
+        panic!()
+    };
     assert_eq!(entries[0].1, Value::Null);
     assert_eq!(entries[1].1, Value::Undefined);
 }
@@ -167,7 +210,10 @@ fn spec_clones_date_with_same_time_value() {
     let mut heap = Heap::new();
     let d = heap.alloc(HeapObject::Date(1_700_000_000_000));
     let (cloned_heap, cloned) = clone_value(&heap, d);
-    let id = match cloned { Value::Ref(id) => id, _ => panic!() };
+    let id = match cloned {
+        Value::Ref(id) => id,
+        _ => panic!(),
+    };
     assert_eq!(*cloned_heap.get(id), HeapObject::Date(1_700_000_000_000));
 }
 
@@ -179,8 +225,13 @@ fn spec_clones_regexp_with_source_and_flags() {
         flags: "gi".into(),
     });
     let (cloned_heap, cloned) = clone_value(&heap, re);
-    let id = match cloned { Value::Ref(id) => id, _ => panic!() };
-    let HeapObject::RegExp { source, flags } = cloned_heap.get(id) else { panic!() };
+    let id = match cloned {
+        Value::Ref(id) => id,
+        _ => panic!(),
+    };
+    let HeapObject::RegExp { source, flags } = cloned_heap.get(id) else {
+        panic!()
+    };
     assert_eq!(source, "abc.*");
     assert_eq!(flags, "gi");
 }
@@ -194,8 +245,13 @@ fn spec_clones_map_preserving_entry_order() {
         (Value::String("c".into()), Value::Number(3.0)),
     ]));
     let (cloned_heap, cloned) = clone_value(&heap, m);
-    let id = match cloned { Value::Ref(id) => id, _ => panic!() };
-    let HeapObject::Map(entries) = cloned_heap.get(id) else { panic!() };
+    let id = match cloned {
+        Value::Ref(id) => id,
+        _ => panic!(),
+    };
+    let HeapObject::Map(entries) = cloned_heap.get(id) else {
+        panic!()
+    };
     assert_eq!(entries.len(), 3);
     assert_eq!(entries[0].0, Value::String("a".into()));
     assert_eq!(entries[2].0, Value::String("c".into()));
@@ -205,41 +261,70 @@ fn spec_clones_map_preserving_entry_order() {
 fn spec_clones_set_preserving_entry_order() {
     let mut heap = Heap::new();
     let s = heap.alloc(HeapObject::Set(vec![
-        Value::Number(3.0), Value::Number(1.0), Value::Number(2.0),
+        Value::Number(3.0),
+        Value::Number(1.0),
+        Value::Number(2.0),
     ]));
     let (cloned_heap, cloned) = clone_value(&heap, s);
-    let id = match cloned { Value::Ref(id) => id, _ => panic!() };
-    let HeapObject::Set(items) = cloned_heap.get(id) else { panic!() };
-    assert_eq!(items, &vec![Value::Number(3.0), Value::Number(1.0), Value::Number(2.0)]);
+    let id = match cloned {
+        Value::Ref(id) => id,
+        _ => panic!(),
+    };
+    let HeapObject::Set(items) = cloned_heap.get(id) else {
+        panic!()
+    };
+    assert_eq!(
+        items,
+        &vec![Value::Number(3.0), Value::Number(1.0), Value::Number(2.0)]
+    );
 }
 
 #[test]
 fn spec_clones_plain_objects_recursively() {
     let mut heap = Heap::new();
-    let inner = heap.alloc(HeapObject::Object(vec![
-        ("x".into(), Value::Number(1.0)),
-    ]));
-    let outer = heap.alloc(HeapObject::Object(vec![
-        ("inner".into(), inner),
-    ]));
+    let inner = heap.alloc(HeapObject::Object(vec![("x".into(), Value::Number(1.0))]));
+    let outer = heap.alloc(HeapObject::Object(vec![("inner".into(), inner)]));
     let (cloned_heap, cloned) = clone_value(&heap, outer);
-    let outer_id = match cloned { Value::Ref(id) => id, _ => panic!() };
-    let HeapObject::Object(entries) = cloned_heap.get(outer_id) else { panic!() };
-    let inner_id = match &entries[0].1 { Value::Ref(id) => *id, _ => panic!() };
-    let HeapObject::Object(inner_entries) = cloned_heap.get(inner_id) else { panic!() };
+    let outer_id = match cloned {
+        Value::Ref(id) => id,
+        _ => panic!(),
+    };
+    let HeapObject::Object(entries) = cloned_heap.get(outer_id) else {
+        panic!()
+    };
+    let inner_id = match &entries[0].1 {
+        Value::Ref(id) => *id,
+        _ => panic!(),
+    };
+    let HeapObject::Object(inner_entries) = cloned_heap.get(inner_id) else {
+        panic!()
+    };
     assert_eq!(inner_entries[0].1, Value::Number(1.0));
 }
 
 #[test]
 fn spec_clones_arrays_recursively() {
     let mut heap = Heap::new();
-    let inner = heap.alloc(HeapObject::Array(vec![Value::Number(1.0), Value::Number(2.0)]));
+    let inner = heap.alloc(HeapObject::Array(vec![
+        Value::Number(1.0),
+        Value::Number(2.0),
+    ]));
     let outer = heap.alloc(HeapObject::Array(vec![inner, Value::Number(3.0)]));
     let (cloned_heap, cloned) = clone_value(&heap, outer);
-    let outer_id = match cloned { Value::Ref(id) => id, _ => panic!() };
-    let HeapObject::Array(items) = cloned_heap.get(outer_id) else { panic!() };
-    let inner_id = match items[0] { Value::Ref(id) => id, _ => panic!() };
-    let HeapObject::Array(inner_items) = cloned_heap.get(inner_id) else { panic!() };
+    let outer_id = match cloned {
+        Value::Ref(id) => id,
+        _ => panic!(),
+    };
+    let HeapObject::Array(items) = cloned_heap.get(outer_id) else {
+        panic!()
+    };
+    let inner_id = match items[0] {
+        Value::Ref(id) => id,
+        _ => panic!(),
+    };
+    let HeapObject::Array(inner_items) = cloned_heap.get(inner_id) else {
+        panic!()
+    };
     assert_eq!(inner_items, &vec![Value::Number(1.0), Value::Number(2.0)]);
 }
 
@@ -248,8 +333,13 @@ fn spec_clones_arraybuffer_with_byte_content() {
     let mut heap = Heap::new();
     let buf = heap.alloc(HeapObject::ArrayBuffer(vec![10, 20, 30, 40]));
     let (cloned_heap, cloned) = clone_value(&heap, buf);
-    let id = match cloned { Value::Ref(id) => id, _ => panic!() };
-    let HeapObject::ArrayBuffer(bytes) = cloned_heap.get(id) else { panic!() };
+    let id = match cloned {
+        Value::Ref(id) => id,
+        _ => panic!(),
+    };
+    let HeapObject::ArrayBuffer(bytes) = cloned_heap.get(id) else {
+        panic!()
+    };
     assert_eq!(bytes, &vec![10, 20, 30, 40]);
 }
 
@@ -257,7 +347,10 @@ fn spec_clones_arraybuffer_with_byte_content() {
 fn spec_clones_typedarray_attached_to_cloned_buffer() {
     let mut heap = Heap::new();
     let buf = heap.alloc(HeapObject::ArrayBuffer(vec![0xAA; 16]));
-    let buf_id = match buf { Value::Ref(id) => id, _ => panic!() };
+    let buf_id = match buf {
+        Value::Ref(id) => id,
+        _ => panic!(),
+    };
     let view = heap.alloc(HeapObject::TypedArrayView {
         buffer: buf_id,
         byte_offset: 4,
@@ -265,13 +358,26 @@ fn spec_clones_typedarray_attached_to_cloned_buffer() {
         kind: TypedArrayKind::Uint32,
     });
     let (cloned_heap, cloned) = clone_value(&heap, view);
-    let view_id = match cloned { Value::Ref(id) => id, _ => panic!() };
-    let HeapObject::TypedArrayView { buffer, byte_offset, length, kind } = cloned_heap.get(view_id) else { panic!() };
+    let view_id = match cloned {
+        Value::Ref(id) => id,
+        _ => panic!(),
+    };
+    let HeapObject::TypedArrayView {
+        buffer,
+        byte_offset,
+        length,
+        kind,
+    } = cloned_heap.get(view_id)
+    else {
+        panic!()
+    };
     assert_eq!(*byte_offset, 4);
     assert_eq!(*length, 2);
     assert_eq!(*kind, TypedArrayKind::Uint32);
     // The cloned view's buffer must point to the cloned ArrayBuffer
-    let HeapObject::ArrayBuffer(bytes) = cloned_heap.get(*buffer) else { panic!() };
+    let HeapObject::ArrayBuffer(bytes) = cloned_heap.get(*buffer) else {
+        panic!()
+    };
     assert_eq!(bytes.len(), 16);
 }
 
@@ -283,11 +389,22 @@ fn spec_preserves_shared_reference_identity_within_call() {
     let shared = heap.alloc(HeapObject::Object(vec![("k".into(), Value::Number(42.0))]));
     let outer = heap.alloc(HeapObject::Array(vec![shared.clone(), shared.clone()]));
     let (cloned_heap, cloned) = clone_value(&heap, outer);
-    let outer_id = match cloned { Value::Ref(id) => id, _ => panic!() };
-    let HeapObject::Array(items) = cloned_heap.get(outer_id) else { panic!() };
+    let outer_id = match cloned {
+        Value::Ref(id) => id,
+        _ => panic!(),
+    };
+    let HeapObject::Array(items) = cloned_heap.get(outer_id) else {
+        panic!()
+    };
     // Both array slots must reference the SAME id in the cloned heap.
-    let id_a = match items[0] { Value::Ref(id) => id, _ => panic!() };
-    let id_b = match items[1] { Value::Ref(id) => id, _ => panic!() };
+    let id_a = match items[0] {
+        Value::Ref(id) => id,
+        _ => panic!(),
+    };
+    let id_b = match items[1] {
+        Value::Ref(id) => id,
+        _ => panic!(),
+    };
     assert_eq!(id_a, id_b, "shared reference identity must be preserved");
 }
 
@@ -300,10 +417,21 @@ fn spec_preserves_circular_references() {
     heap.objects[self_id] = HeapObject::Object(vec![("self".into(), Value::Ref(self_id))]);
     let root = Value::Ref(self_id);
     let (cloned_heap, cloned) = clone_value(&heap, root);
-    let cloned_id = match cloned { Value::Ref(id) => id, _ => panic!() };
-    let HeapObject::Object(entries) = cloned_heap.get(cloned_id) else { panic!() };
-    let self_ref_id = match entries[0].1 { Value::Ref(id) => id, _ => panic!() };
-    assert_eq!(self_ref_id, cloned_id, "cloned self-reference must point to the cloned object");
+    let cloned_id = match cloned {
+        Value::Ref(id) => id,
+        _ => panic!(),
+    };
+    let HeapObject::Object(entries) = cloned_heap.get(cloned_id) else {
+        panic!()
+    };
+    let self_ref_id = match entries[0].1 {
+        Value::Ref(id) => id,
+        _ => panic!(),
+    };
+    assert_eq!(
+        self_ref_id, cloned_id,
+        "cloned self-reference must point to the cloned object"
+    );
 }
 
 #[test]
@@ -317,12 +445,28 @@ fn spec_circular_via_indirection() {
     heap.objects[a_id] = HeapObject::Object(vec![("b".into(), Value::Ref(b_id))]);
     heap.objects[b_id] = HeapObject::Object(vec![("a".into(), Value::Ref(a_id))]);
     let (cloned_heap, cloned) = clone_value(&heap, Value::Ref(a_id));
-    let new_a = match cloned { Value::Ref(id) => id, _ => panic!() };
-    let HeapObject::Object(a_entries) = cloned_heap.get(new_a) else { panic!() };
-    let new_b = match a_entries[0].1 { Value::Ref(id) => id, _ => panic!() };
-    let HeapObject::Object(b_entries) = cloned_heap.get(new_b) else { panic!() };
-    let back_to_a = match b_entries[0].1 { Value::Ref(id) => id, _ => panic!() };
-    assert_eq!(back_to_a, new_a, "B's back-reference must point to the cloned A");
+    let new_a = match cloned {
+        Value::Ref(id) => id,
+        _ => panic!(),
+    };
+    let HeapObject::Object(a_entries) = cloned_heap.get(new_a) else {
+        panic!()
+    };
+    let new_b = match a_entries[0].1 {
+        Value::Ref(id) => id,
+        _ => panic!(),
+    };
+    let HeapObject::Object(b_entries) = cloned_heap.get(new_b) else {
+        panic!()
+    };
+    let back_to_a = match b_entries[0].1 {
+        Value::Ref(id) => id,
+        _ => panic!(),
+    };
+    assert_eq!(
+        back_to_a, new_a,
+        "B's back-reference must point to the cloned A"
+    );
 }
 
 #[test]
@@ -332,12 +476,20 @@ fn spec_clone_produces_independent_target() {
     let arr = heap.alloc(HeapObject::Array(vec![Value::Number(1.0)]));
     let (cloned_heap, cloned) = clone_value(&heap, arr.clone());
     // Mutate source:
-    let src_id = match arr { Value::Ref(id) => id, _ => panic!() };
+    let src_id = match arr {
+        Value::Ref(id) => id,
+        _ => panic!(),
+    };
     if let HeapObject::Array(items) = heap.get_mut(src_id) {
         items.push(Value::Number(99.0));
     }
     // Clone should still have 1 item.
-    let new_id = match cloned { Value::Ref(id) => id, _ => panic!() };
-    let HeapObject::Array(items) = cloned_heap.get(new_id) else { panic!() };
+    let new_id = match cloned {
+        Value::Ref(id) => id,
+        _ => panic!(),
+    };
+    let HeapObject::Array(items) = cloned_heap.get(new_id) else {
+        panic!()
+    };
     assert_eq!(items.len(), 1);
 }

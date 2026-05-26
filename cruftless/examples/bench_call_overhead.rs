@@ -19,17 +19,22 @@
 use rusty_js_bytecode::compiler::{FunctionProto, LocalDescriptor, UpvalueDescriptor};
 use rusty_js_bytecode::constants::ConstantsPool;
 use rusty_js_bytecode::op::Op;
-use rusty_js_runtime::{Runtime, Value};
 use rusty_js_runtime::value::{ClosureInternals, InternalKind, Object};
+use rusty_js_runtime::{Runtime, Value};
 use std::time::Instant;
 
-fn encode_op(bc: &mut Vec<u8>, op: Op) { bc.push(op as u8); }
-fn encode_u16(bc: &mut Vec<u8>, v: u16) { bc.extend_from_slice(&v.to_le_bytes()); }
+fn encode_op(bc: &mut Vec<u8>, op: Op) {
+    bc.push(op as u8);
+}
+fn encode_u16(bc: &mut Vec<u8>, v: u16) {
+    bc.extend_from_slice(&v.to_le_bytes());
+}
 
 /// Hand-build `function id(x) { return x; }` as bytecode.
 fn build_id_proto() -> FunctionProto {
     let mut bc = Vec::new();
-    encode_op(&mut bc, Op::LoadLocal); encode_u16(&mut bc, 0);
+    encode_op(&mut bc, Op::LoadLocal);
+    encode_u16(&mut bc, 0);
     encode_op(&mut bc, Op::Return);
 
     FunctionProto {
@@ -73,7 +78,7 @@ fn main() {
         is_arrow: false,
         call_count: std::cell::Cell::new(0),
         jit_disabled: std::cell::Cell::new(false),
-    tb_metadata_ptr: std::cell::Cell::new(None),
+        tb_metadata_ptr: std::cell::Cell::new(None),
     };
     let closure_obj = Object {
         proto: None,
@@ -88,8 +93,7 @@ fn main() {
 
     // Warm-up: JIT compile happens on first call.
     for _ in 0..10 {
-        let _ = rt.call_function(closure_v.clone(), Value::Undefined,
-            vec![arg.clone()]);
+        let _ = rt.call_function(closure_v.clone(), Value::Undefined, vec![arg.clone()]);
     }
 
     // Bench: N = 1_000_000 call_function dispatches through the JIT
@@ -99,8 +103,9 @@ fn main() {
     let t0 = Instant::now();
     let mut last = Value::Undefined;
     for _ in 0..N {
-        last = rt.call_function(closure_v.clone(), Value::Undefined,
-            vec![arg.clone()]).expect("call_function should succeed");
+        last = rt
+            .call_function(closure_v.clone(), Value::Undefined, vec![arg.clone()])
+            .expect("call_function should succeed");
     }
     let elapsed = t0.elapsed();
     let per_iter_ns = (elapsed.as_nanos() as f64) / N as f64;
@@ -119,5 +124,7 @@ fn main() {
     println!("per-iter:    {:.1} ns", per_iter_ns);
     println!();
     println!("Pred-vti.1 target: inline tag-check reduces per-iter by ≥20 ns post-VTI-EXT 4.");
-    println!("(For composition reading: bench_ic measures the same dispatcher + extra IC dispatch.)");
+    println!(
+        "(For composition reading: bench_ic measures the same dispatcher + extra IC dispatch.)"
+    );
 }

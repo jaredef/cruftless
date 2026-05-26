@@ -42,8 +42,11 @@ impl std::fmt::Display for DerError {
             DerError::UnexpectedEnd => write!(f, "unexpected end of DER input"),
             DerError::InvalidLength => write!(f, "invalid DER length encoding"),
             DerError::UnknownTag(t) => write!(f, "unknown DER tag 0x{:02x}", t),
-            DerError::WrongTag { expected, actual } => write!(f,
-                "DER tag mismatch: expected 0x{:02x}, got 0x{:02x}", expected, actual),
+            DerError::WrongTag { expected, actual } => write!(
+                f,
+                "DER tag mismatch: expected 0x{:02x}, got 0x{:02x}",
+                expected, actual
+            ),
             DerError::NotConstructed => write!(f, "DER value is not constructed (no inner)"),
             DerError::NotPrimitive => write!(f, "DER value is primitive (no constructed inner)"),
             DerError::InvalidOid => write!(f, "invalid OID encoding"),
@@ -65,8 +68,8 @@ pub const TAG_OCTET_STRING: u8 = 0x04;
 pub const TAG_NULL: u8 = 0x05;
 pub const TAG_OID: u8 = 0x06;
 pub const TAG_UTF8_STRING: u8 = 0x0C;
-pub const TAG_SEQUENCE: u8 = 0x30;  // 0x10 | constructed bit (0x20)
-pub const TAG_SET: u8 = 0x31;       // 0x11 | constructed bit
+pub const TAG_SEQUENCE: u8 = 0x30; // 0x10 | constructed bit (0x20)
+pub const TAG_SET: u8 = 0x31; // 0x11 | constructed bit
 pub const TAG_PRINTABLE_STRING: u8 = 0x13;
 pub const TAG_TELETEX_STRING: u8 = 0x14;
 pub const TAG_IA5_STRING: u8 = 0x16;
@@ -81,9 +84,15 @@ pub struct DerValue<'a> {
 }
 
 impl<'a> DerValue<'a> {
-    pub fn is_constructed(&self) -> bool { (self.tag & 0x20) != 0 }
-    pub fn is_context_specific(&self) -> bool { (self.tag & 0xC0) == 0x80 }
-    pub fn context_tag_number(&self) -> u8 { self.tag & 0x1F }
+    pub fn is_constructed(&self) -> bool {
+        (self.tag & 0x20) != 0
+    }
+    pub fn is_context_specific(&self) -> bool {
+        (self.tag & 0xC0) == 0x80
+    }
+    pub fn context_tag_number(&self) -> u8 {
+        self.tag & 0x1F
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -98,17 +107,25 @@ impl<'a> DerReader<'a> {
         DerReader { buf }
     }
 
-    pub fn is_empty(&self) -> bool { self.buf.is_empty() }
-    pub fn remaining(&self) -> &'a [u8] { self.buf }
+    pub fn is_empty(&self) -> bool {
+        self.buf.is_empty()
+    }
+    pub fn remaining(&self) -> &'a [u8] {
+        self.buf
+    }
 
     /// Read one TLV. Advances the reader past the value.
     pub fn read_tlv(&mut self) -> Result<DerValue<'a>, DerError> {
-        if self.buf.is_empty() { return Err(DerError::UnexpectedEnd); }
+        if self.buf.is_empty() {
+            return Err(DerError::UnexpectedEnd);
+        }
         let tag = self.buf[0];
         let (length, header_len) = parse_length(&self.buf[1..])?;
         let total = 1 + header_len + length;
-        if total > self.buf.len() { return Err(DerError::UnexpectedEnd); }
-        let content = &self.buf[1 + header_len .. 1 + header_len + length];
+        if total > self.buf.len() {
+            return Err(DerError::UnexpectedEnd);
+        }
+        let content = &self.buf[1 + header_len..1 + header_len + length];
         self.buf = &self.buf[total..];
         Ok(DerValue { tag, content })
     }
@@ -117,7 +134,10 @@ impl<'a> DerReader<'a> {
     pub fn read_tag(&mut self, expected: u8) -> Result<DerValue<'a>, DerError> {
         let v = self.read_tlv()?;
         if v.tag != expected {
-            return Err(DerError::WrongTag { expected, actual: v.tag });
+            return Err(DerError::WrongTag {
+                expected,
+                actual: v.tag,
+            });
         }
         Ok(v)
     }
@@ -130,7 +150,9 @@ impl<'a> DerReader<'a> {
 
 /// Parse a DER length field. Returns (length, bytes_consumed).
 fn parse_length(buf: &[u8]) -> Result<(usize, usize), DerError> {
-    if buf.is_empty() { return Err(DerError::UnexpectedEnd); }
+    if buf.is_empty() {
+        return Err(DerError::UnexpectedEnd);
+    }
     let first = buf[0];
     if first < 0x80 {
         // Short form: length 0..=127 in a single byte.
@@ -143,14 +165,18 @@ fn parse_length(buf: &[u8]) -> Result<(usize, usize), DerError> {
             // n > 4 is impractical for any real certificate.
             return Err(DerError::InvalidLength);
         }
-        if buf.len() < 1 + n { return Err(DerError::UnexpectedEnd); }
+        if buf.len() < 1 + n {
+            return Err(DerError::UnexpectedEnd);
+        }
         let mut length: usize = 0;
         for i in 0..n {
             length = (length << 8) | (buf[1 + i] as usize);
         }
         // DER requires minimal length encoding: if n=1 and length < 128,
         // short form should have been used. Reject as ill-formed.
-        if n == 1 && length < 128 { return Err(DerError::InvalidLength); }
+        if n == 1 && length < 128 {
+            return Err(DerError::InvalidLength);
+        }
         Ok((length, 1 + n))
     }
 }
@@ -162,25 +188,34 @@ fn parse_length(buf: &[u8]) -> Result<(usize, usize), DerError> {
 impl<'a> DerValue<'a> {
     /// Treat content as a SEQUENCE (or SET) and return a reader over inner.
     pub fn into_reader(self) -> Result<DerReader<'a>, DerError> {
-        if !self.is_constructed() { return Err(DerError::NotConstructed); }
+        if !self.is_constructed() {
+            return Err(DerError::NotConstructed);
+        }
         Ok(DerReader::new(self.content))
     }
 
     /// Return content as a slice (for OCTET STRING, raw bytes, etc.).
-    pub fn as_bytes(&self) -> &'a [u8] { self.content }
+    pub fn as_bytes(&self) -> &'a [u8] {
+        self.content
+    }
 
     /// Parse content as INTEGER. Returns the raw two's-complement bytes.
     /// Caller can convert to i64 / u64 / BigInt as needed.
     pub fn as_integer_bytes(&self) -> Result<&'a [u8], DerError> {
-        if self.tag != TAG_INTEGER { return Err(DerError::WrongTag {
-            expected: TAG_INTEGER, actual: self.tag }); }
-        if self.content.is_empty() { return Err(DerError::InvalidInteger); }
+        if self.tag != TAG_INTEGER {
+            return Err(DerError::WrongTag {
+                expected: TAG_INTEGER,
+                actual: self.tag,
+            });
+        }
+        if self.content.is_empty() {
+            return Err(DerError::InvalidInteger);
+        }
         // DER requires minimal encoding (X.690 §8.3.2).
         if self.content.len() > 1 {
             let b0 = self.content[0];
             let b1 = self.content[1];
-            if (b0 == 0x00 && (b1 & 0x80) == 0) ||
-               (b0 == 0xFF && (b1 & 0x80) != 0) {
+            if (b0 == 0x00 && (b1 & 0x80) == 0) || (b0 == 0xFF && (b1 & 0x80) != 0) {
                 return Err(DerError::InvalidInteger);
             }
         }
@@ -206,9 +241,13 @@ impl<'a> DerValue<'a> {
     /// Parse content as a small INTEGER. Returns i64 if it fits.
     pub fn as_i64(&self) -> Result<i64, DerError> {
         let bytes = self.as_integer_bytes()?;
-        if bytes.len() > 8 { return Err(DerError::InvalidInteger); }
+        if bytes.len() > 8 {
+            return Err(DerError::InvalidInteger);
+        }
         let mut v: i64 = if (bytes[0] & 0x80) != 0 { -1 } else { 0 };
-        for &b in bytes { v = (v << 8) | (b as i64 & 0xff); }
+        for &b in bytes {
+            v = (v << 8) | (b as i64 & 0xff);
+        }
         Ok(v)
     }
 
@@ -217,20 +256,34 @@ impl<'a> DerValue<'a> {
     /// byte; the rest are the bit-string content (typically a DER blob
     /// for SubjectPublicKey / Signature wrappers).
     pub fn as_bit_string(&self) -> Result<(u8, &'a [u8]), DerError> {
-        if self.tag != TAG_BIT_STRING { return Err(DerError::WrongTag {
-            expected: TAG_BIT_STRING, actual: self.tag }); }
-        if self.content.is_empty() { return Err(DerError::InvalidLength); }
+        if self.tag != TAG_BIT_STRING {
+            return Err(DerError::WrongTag {
+                expected: TAG_BIT_STRING,
+                actual: self.tag,
+            });
+        }
+        if self.content.is_empty() {
+            return Err(DerError::InvalidLength);
+        }
         let unused = self.content[0];
-        if unused > 7 { return Err(DerError::InvalidLength); }
+        if unused > 7 {
+            return Err(DerError::InvalidLength);
+        }
         Ok((unused, &self.content[1..]))
     }
 
     /// Parse content as OBJECT IDENTIFIER. Returns the decoded arc list.
     /// X.690 §8.19: first two arcs encoded as 40 * first + second.
     pub fn as_oid(&self) -> Result<Vec<u64>, DerError> {
-        if self.tag != TAG_OID { return Err(DerError::WrongTag {
-            expected: TAG_OID, actual: self.tag }); }
-        if self.content.is_empty() { return Err(DerError::InvalidOid); }
+        if self.tag != TAG_OID {
+            return Err(DerError::WrongTag {
+                expected: TAG_OID,
+                actual: self.tag,
+            });
+        }
+        if self.content.is_empty() {
+            return Err(DerError::InvalidOid);
+        }
         let mut out = Vec::new();
         let first_byte = self.content[0];
         out.push((first_byte / 40) as u64);
@@ -238,7 +291,9 @@ impl<'a> DerValue<'a> {
         let mut value: u64 = 0;
         for &b in &self.content[1..] {
             // Reject value-too-large that would overflow u64.
-            if value > (u64::MAX >> 7) { return Err(DerError::InvalidOid); }
+            if value > (u64::MAX >> 7) {
+                return Err(DerError::InvalidOid);
+            }
             value = (value << 7) | ((b & 0x7F) as u64);
             if (b & 0x80) == 0 {
                 out.push(value);
@@ -257,13 +312,12 @@ impl<'a> DerValue<'a> {
     /// caller can validate UTF-8 explicitly if needed.
     pub fn as_string(&self) -> Result<&'a str, DerError> {
         match self.tag {
-            TAG_UTF8_STRING | TAG_PRINTABLE_STRING | TAG_IA5_STRING
-            | TAG_TELETEX_STRING => {
-                std::str::from_utf8(self.content)
-                    .map_err(|_| DerError::InvalidLength)
+            TAG_UTF8_STRING | TAG_PRINTABLE_STRING | TAG_IA5_STRING | TAG_TELETEX_STRING => {
+                std::str::from_utf8(self.content).map_err(|_| DerError::InvalidLength)
             }
             _ => Err(DerError::WrongTag {
-                expected: TAG_UTF8_STRING, actual: self.tag,
+                expected: TAG_UTF8_STRING,
+                actual: self.tag,
             }),
         }
     }
@@ -272,23 +326,37 @@ impl<'a> DerValue<'a> {
     /// Caller composes the year-decode using the 50-year window per
     /// RFC 5280 §4.1.2.5.1.
     pub fn as_utc_time(&self) -> Result<&'a [u8], DerError> {
-        if self.tag != TAG_UTC_TIME { return Err(DerError::WrongTag {
-            expected: TAG_UTC_TIME, actual: self.tag }); }
+        if self.tag != TAG_UTC_TIME {
+            return Err(DerError::WrongTag {
+                expected: TAG_UTC_TIME,
+                actual: self.tag,
+            });
+        }
         Ok(self.content)
     }
 
     /// Parse GeneralizedTime (YYYYMMDDHHMMSSZ). Returns the raw bytes.
     pub fn as_generalized_time(&self) -> Result<&'a [u8], DerError> {
-        if self.tag != TAG_GENERALIZED_TIME { return Err(DerError::WrongTag {
-            expected: TAG_GENERALIZED_TIME, actual: self.tag }); }
+        if self.tag != TAG_GENERALIZED_TIME {
+            return Err(DerError::WrongTag {
+                expected: TAG_GENERALIZED_TIME,
+                actual: self.tag,
+            });
+        }
         Ok(self.content)
     }
 
     /// Parse a BOOLEAN. DER requires content == [0x00] (FALSE) or [0xFF] (TRUE).
     pub fn as_bool(&self) -> Result<bool, DerError> {
-        if self.tag != TAG_BOOLEAN { return Err(DerError::WrongTag {
-            expected: TAG_BOOLEAN, actual: self.tag }); }
-        if self.content.len() != 1 { return Err(DerError::InvalidLength); }
+        if self.tag != TAG_BOOLEAN {
+            return Err(DerError::WrongTag {
+                expected: TAG_BOOLEAN,
+                actual: self.tag,
+            });
+        }
+        if self.content.len() != 1 {
+            return Err(DerError::InvalidLength);
+        }
         match self.content[0] {
             0x00 => Ok(false),
             0xFF => Ok(true),
@@ -305,7 +373,9 @@ impl<'a> DerValue<'a> {
 pub fn oid_to_string(arcs: &[u64]) -> String {
     let mut s = String::new();
     for (i, a) in arcs.iter().enumerate() {
-        if i > 0 { s.push('.'); }
+        if i > 0 {
+            s.push('.');
+        }
         s.push_str(&a.to_string());
     }
     s
@@ -316,6 +386,8 @@ pub fn oid_to_string(arcs: &[u64]) -> String {
 pub fn parse_single<'a>(buf: &'a [u8]) -> Result<DerValue<'a>, DerError> {
     let mut r = DerReader::new(buf);
     let v = r.read_tlv()?;
-    if !r.is_empty() { return Err(DerError::TrailingData); }
+    if !r.is_empty() {
+        return Err(DerError::TrailingData);
+    }
     Ok(v)
 }

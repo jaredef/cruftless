@@ -22,7 +22,8 @@ fn push_log(log: &Rc<RefCell<Vec<&'static str>>>, s: &'static str) {
 #[test]
 fn run_to_completion_empty_exits_immediately() {
     let mut rt = Runtime::new();
-    rt.run_to_completion().expect("empty queue should exit cleanly");
+    rt.run_to_completion()
+        .expect("empty queue should exit cleanly");
 }
 
 #[test]
@@ -42,9 +43,18 @@ fn microtasks_run_fifo() {
     let l1 = log.clone();
     let l2 = log.clone();
     let l3 = log.clone();
-    rt.enqueue_microtask("a", move |_rt| { push_log(&l1, "a"); Ok(()) });
-    rt.enqueue_microtask("b", move |_rt| { push_log(&l2, "b"); Ok(()) });
-    rt.enqueue_microtask("c", move |_rt| { push_log(&l3, "c"); Ok(()) });
+    rt.enqueue_microtask("a", move |_rt| {
+        push_log(&l1, "a");
+        Ok(())
+    });
+    rt.enqueue_microtask("b", move |_rt| {
+        push_log(&l2, "b");
+        Ok(())
+    });
+    rt.enqueue_microtask("c", move |_rt| {
+        push_log(&l3, "c");
+        Ok(())
+    });
     rt.run_to_completion().unwrap();
     assert_eq!(*log.borrow(), vec!["a", "b", "c"]);
 }
@@ -79,8 +89,14 @@ fn macrotasks_run_fifo_one_at_a_time() {
     let log = log_setup();
     let l1 = log.clone();
     let l2 = log.clone();
-    rt.enqueue_macrotask("m1", move |_rt| { push_log(&l1, "m1"); Ok(()) });
-    rt.enqueue_macrotask("m2", move |_rt| { push_log(&l2, "m2"); Ok(()) });
+    rt.enqueue_macrotask("m1", move |_rt| {
+        push_log(&l1, "m1");
+        Ok(())
+    });
+    rt.enqueue_macrotask("m2", move |_rt| {
+        push_log(&l2, "m2");
+        Ok(())
+    });
     rt.run_to_completion().unwrap();
     assert_eq!(*log.borrow(), vec!["m1", "m2"]);
 }
@@ -112,7 +128,8 @@ fn microtask_drains_between_macrotasks() {
         });
         Ok(())
     });
-    let _ = l_m2; let _ = l_micro;
+    let _ = l_m2;
+    let _ = l_micro;
     rt.run_to_completion().unwrap();
     // Expected order: m1, then microtask drain (micro-from-m1), then m2
     assert_eq!(*log.borrow(), vec!["m1", "micro-from-m1", "m2"]);
@@ -126,8 +143,14 @@ fn microtasks_drain_before_first_macrotask() {
     let log = log_setup();
     let l_micro = log.clone();
     let l_macro = log.clone();
-    rt.enqueue_macrotask("macro1", move |_rt| { push_log(&l_macro, "macro1"); Ok(()) });
-    rt.enqueue_microtask("micro1", move |_rt| { push_log(&l_micro, "micro1"); Ok(()) });
+    rt.enqueue_macrotask("macro1", move |_rt| {
+        push_log(&l_macro, "macro1");
+        Ok(())
+    });
+    rt.enqueue_microtask("micro1", move |_rt| {
+        push_log(&l_micro, "micro1");
+        Ok(())
+    });
     rt.run_to_completion().unwrap();
     assert_eq!(*log.borrow(), vec!["micro1", "macro1"]);
 }
@@ -159,7 +182,10 @@ fn macrotask_can_enqueue_nested_microtasks() {
         });
         Ok(())
     });
-    rt.enqueue_macrotask("m2", move |_rt| { push_log(&l_m2, "m2"); Ok(()) });
+    rt.enqueue_macrotask("m2", move |_rt| {
+        push_log(&l_m2, "m2");
+        Ok(())
+    });
     rt.run_to_completion().unwrap();
     assert_eq!(*log.borrow(), vec!["m1", "a", "b", "m2"]);
 }
@@ -172,13 +198,19 @@ fn deep_microtask_chain_drains_all() {
     let l_log = log.clone();
     // Use a Cell to share count across closure boundaries.
     let counter = Rc::new(RefCell::new(0u32));
-    fn enqueue_next(rt: &mut Runtime, counter: Rc<RefCell<u32>>, log: Rc<RefCell<Vec<&'static str>>>) {
+    fn enqueue_next(
+        rt: &mut Runtime,
+        counter: Rc<RefCell<u32>>,
+        log: Rc<RefCell<Vec<&'static str>>>,
+    ) {
         let c = counter.clone();
         let l = log.clone();
         rt.enqueue_microtask("chain", move |rt| {
             let mut count = c.borrow_mut();
             *count += 1;
-            if *count >= 10 { return Ok(()); }
+            if *count >= 10 {
+                return Ok(());
+            }
             drop(count);
             let l_push = l.clone();
             push_log(&l_push, "chain");
@@ -197,7 +229,9 @@ fn deep_microtask_chain_drains_all() {
 fn microtask_error_propagates_out() {
     let mut rt = Runtime::new();
     rt.enqueue_microtask("err", |_rt| {
-        Err(rusty_js_runtime::RuntimeError::TypeError("intentional".into()))
+        Err(rusty_js_runtime::RuntimeError::TypeError(
+            "intentional".into(),
+        ))
     });
     let result = rt.run_to_completion();
     assert!(result.is_err());
@@ -207,7 +241,9 @@ fn microtask_error_propagates_out() {
 fn macrotask_error_propagates_out() {
     let mut rt = Runtime::new();
     rt.enqueue_macrotask("err", |_rt| {
-        Err(rusty_js_runtime::RuntimeError::TypeError("intentional".into()))
+        Err(rusty_js_runtime::RuntimeError::TypeError(
+            "intentional".into(),
+        ))
     });
     let result = rt.run_to_completion();
     assert!(result.is_err());

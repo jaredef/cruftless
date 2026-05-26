@@ -1,9 +1,9 @@
 //! process intrinsic — minimal v1 surface.
 
 use crate::register::{new_object, register_method, set_constant};
-use rusty_js_runtime::{Runtime, RuntimeError, Value};
-use rusty_js_runtime::caps as caps;
+use rusty_js_runtime::caps;
 use rusty_js_runtime::caps::{ModuleId, ModuleProvenance};
+use rusty_js_runtime::{Runtime, RuntimeError, Value};
 use std::rc::Rc;
 
 /// CAPS-EXT 11: gate a clock operation through the dispatcher.
@@ -17,7 +17,8 @@ fn check_clock(rt: &Runtime, op: caps::ClockOp) -> Result<(), RuntimeError> {
         ModuleProvenance::Application
     };
     let caller = ModuleId { url, provenance };
-    rt.caps.require_clock(&caps::Clock::disabled(), op, &caller)
+    rt.caps
+        .require_clock(&caps::Clock::disabled(), op, &caller)
         .map_err(|e| RuntimeError::TypeError(e.to_string()))
 }
 
@@ -33,7 +34,8 @@ fn check_process(rt: &Runtime, op: caps::ProcessOp) -> Result<(), RuntimeError> 
         ModuleProvenance::Application
     };
     let caller = ModuleId { url, provenance };
-    rt.caps.require_process(&caps::Process::none(), op, &caller)
+    rt.caps
+        .require_process(&caps::Process::none(), op, &caller)
         .map_err(|e| RuntimeError::TypeError(e.to_string()))
 }
 
@@ -74,7 +76,10 @@ pub fn install(rt: &mut Runtime, argv: Vec<String>) {
     // semantics correctly and Mode 2's partial.
     let env_obj = new_object(rt);
     let mode = rt.caps.mode;
-    if matches!(mode, rusty_js_runtime::caps::CapMode::Compat | rusty_js_runtime::caps::CapMode::Audit) {
+    if matches!(
+        mode,
+        rusty_js_runtime::caps::CapMode::Compat | rusty_js_runtime::caps::CapMode::Audit
+    ) {
         let vars: Vec<(String, String)> = std::env::vars().collect();
         for (k, v) in vars {
             rt.object_set(env_obj, k, Value::String(Rc::new(v)));
@@ -82,30 +87,71 @@ pub fn install(rt: &mut Runtime, argv: Vec<String>) {
     }
     set_constant(rt, process, "env", Value::Object(env_obj));
 
-    set_constant(rt, process, "platform", Value::String(Rc::new(
-        if cfg!(target_os = "linux") { "linux" }
-        else if cfg!(target_os = "macos") { "darwin" }
-        else { "unknown" }.to_string()
-    )));
-    set_constant(rt, process, "arch", Value::String(Rc::new(
-        if cfg!(target_arch = "x86_64") { "x64" }
-        else if cfg!(target_arch = "aarch64") { "arm64" }
-        else { "unknown" }.to_string()
-    )));
+    set_constant(
+        rt,
+        process,
+        "platform",
+        Value::String(Rc::new(
+            if cfg!(target_os = "linux") {
+                "linux"
+            } else if cfg!(target_os = "macos") {
+                "darwin"
+            } else {
+                "unknown"
+            }
+            .to_string(),
+        )),
+    );
+    set_constant(
+        rt,
+        process,
+        "arch",
+        Value::String(Rc::new(
+            if cfg!(target_arch = "x86_64") {
+                "x64"
+            } else if cfg!(target_arch = "aarch64") {
+                "arm64"
+            } else {
+                "unknown"
+            }
+            .to_string(),
+        )),
+    );
     // Ω.5.P45.E2: report a real Node major version. Many packages
     // pattern-match `process.version` against /^v\d+\.\d+\.\d+$/ for
     // platform-support gating (nx is the canonical case — its native
     // dependency loader prints "NX Missing Platform Dependency" if the
     // version doesn't parse as Node-shaped). Match the process.versions.node
     // value below so consumers cross-checking the two agree.
-    set_constant(rt, process, "version", Value::String(Rc::new("v20.10.0".to_string())));
+    set_constant(
+        rt,
+        process,
+        "version",
+        Value::String(Rc::new("v20.10.0".to_string())),
+    );
     // Tier-Ω.5.pppp: process.versions for fast-glob + many libs that gate
     // behavior on node major version.
     let versions = new_object(rt);
-    rt.object_set(versions, "node".into(), Value::String(Rc::new("20.10.0".into())));
-    rt.object_set(versions, "v8".into(), Value::String(Rc::new("11.3.244.8".into())));
-    rt.object_set(versions, "uv".into(), Value::String(Rc::new("1.46.0".into())));
-    rt.object_set(versions, "modules".into(), Value::String(Rc::new("115".into())));
+    rt.object_set(
+        versions,
+        "node".into(),
+        Value::String(Rc::new("20.10.0".into())),
+    );
+    rt.object_set(
+        versions,
+        "v8".into(),
+        Value::String(Rc::new("11.3.244.8".into())),
+    );
+    rt.object_set(
+        versions,
+        "uv".into(),
+        Value::String(Rc::new("1.46.0".into())),
+    );
+    rt.object_set(
+        versions,
+        "modules".into(),
+        Value::String(Rc::new("115".into())),
+    );
     set_constant(rt, process, "versions", Value::Object(versions));
     set_constant(rt, process, "pid", Value::Number(std::process::id() as f64));
     // Tier-Ω.5.nnnnnn: process.stdout / stderr / stdin minimal shapes
@@ -132,7 +178,8 @@ pub fn install(rt: &mut Runtime, argv: Vec<String>) {
                         ModuleProvenance::Application
                     };
                     let caller = ModuleId { url, provenance };
-                    rt.caps.require_stdio(&caps::Stdio::none(), caps::StdioOp::Stdout(bytes), &caller)
+                    rt.caps
+                        .require_stdio(&caps::Stdio::none(), caps::StdioOp::Stdout(bytes), &caller)
                         .map_err(|e| RuntimeError::TypeError(e.to_string()))?;
                     print!("{}", s);
                 } else {
@@ -155,9 +202,10 @@ pub fn install(rt: &mut Runtime, argv: Vec<String>) {
     });
 
     register_method(rt, process, "exit", |rt, args| {
-        let code = args.first().map(|v| {
-            rusty_js_runtime::abstract_ops::to_number(v) as i32
-        }).unwrap_or(0);
+        let code = args
+            .first()
+            .map(|v| rusty_js_runtime::abstract_ops::to_number(v) as i32)
+            .unwrap_or(0);
         check_process(rt, caps::ProcessOp::Exit(code))?;
         std::process::exit(code);
     });
@@ -165,7 +213,9 @@ pub fn install(rt: &mut Runtime, argv: Vec<String>) {
     register_method(rt, process, "hrtime", |rt, _args| {
         use std::time::{SystemTime, UNIX_EPOCH};
         check_clock(rt, caps::ClockOp::HighResolution)?;
-        let d = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+        let d = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default();
         let arr = rt.alloc_object(rusty_js_runtime::value::Object::new_array());
         rt.object_set(arr, "0".into(), Value::Number(d.as_secs() as f64));
         rt.object_set(arr, "1".into(), Value::Number(d.subsec_nanos() as f64));
@@ -178,15 +228,27 @@ pub fn install(rt: &mut Runtime, argv: Vec<String>) {
         let bigint_fn: rusty_js_runtime::value::NativeFn = std::rc::Rc::new(|rt, _args| {
             use std::time::{SystemTime, UNIX_EPOCH};
             check_clock(rt, caps::ClockOp::HighResolution)?;
-            let ns = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos() as i64;
-            Ok(Value::BigInt(std::rc::Rc::new(rusty_js_runtime::bigint::JsBigInt::from_i64(ns))))
+            let ns = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos() as i64;
+            Ok(Value::BigInt(std::rc::Rc::new(
+                rusty_js_runtime::bigint::JsBigInt::from_i64(ns),
+            )))
         });
         let mut bigint_props = indexmap::IndexMap::new();
         rusty_js_runtime::value::install_function_meta_props(&mut bigint_props, "bigint", 0.0);
         let bigint_obj = rusty_js_runtime::value::Object {
-            proto: None, extensible: true, properties: bigint_props,
+            proto: None,
+            extensible: true,
+            properties: bigint_props,
             internal_kind: rusty_js_runtime::value::InternalKind::Function(
-                rusty_js_runtime::value::FunctionInternals { name: "bigint".into(), length: 0, native: bigint_fn , is_constructor: true }
+                rusty_js_runtime::value::FunctionInternals {
+                    name: "bigint".into(),
+                    length: 0,
+                    native: bigint_fn,
+                    is_constructor: true,
+                },
             ),
             ..Default::default()
         };
@@ -206,10 +268,24 @@ pub fn install(rt: &mut Runtime, argv: Vec<String>) {
     let report = rt.alloc_object(rusty_js_runtime::value::Object::new_ordinary());
     rt.object_set(report, "reportOnFatalError".into(), Value::Boolean(false));
     rt.object_set(report, "reportOnSignal".into(), Value::Boolean(false));
-    rt.object_set(report, "reportOnUncaughtException".into(), Value::Boolean(false));
-    rt.object_set(report, "directory".into(), Value::String(std::rc::Rc::new(String::new())));
-    register_method(rt, report, "writeReport", |_rt, _a| Ok(Value::String(std::rc::Rc::new(String::new()))));
-    register_method(rt, report, "getReport", |rt, _a| Ok(Value::Object(rt.alloc_object(rusty_js_runtime::value::Object::new_ordinary()))));
+    rt.object_set(
+        report,
+        "reportOnUncaughtException".into(),
+        Value::Boolean(false),
+    );
+    rt.object_set(
+        report,
+        "directory".into(),
+        Value::String(std::rc::Rc::new(String::new())),
+    );
+    register_method(rt, report, "writeReport", |_rt, _a| {
+        Ok(Value::String(std::rc::Rc::new(String::new())))
+    });
+    register_method(rt, report, "getReport", |rt, _a| {
+        Ok(Value::Object(rt.alloc_object(
+            rusty_js_runtime::value::Object::new_ordinary(),
+        )))
+    });
     rt.object_set(process, "report".into(), Value::Object(report));
 
     // Tier-Ω.5.cccc: process.nextTick(cb, ...args) — synchronous-ish
@@ -228,24 +304,49 @@ pub fn install(rt: &mut Runtime, argv: Vec<String>) {
     register_method(rt, process, "on", |rt, _args| Ok(rt.current_this()));
     register_method(rt, process, "off", |rt, _args| Ok(rt.current_this()));
     register_method(rt, process, "once", |rt, _args| Ok(rt.current_this()));
-    register_method(rt, process, "removeListener", |rt, _args| Ok(rt.current_this()));
+    register_method(rt, process, "removeListener", |rt, _args| {
+        Ok(rt.current_this())
+    });
     // EventEmitter alias surface — nx daemon client calls process.addListener.
-    register_method(rt, process, "addListener", |rt, _args| Ok(rt.current_this()));
-    register_method(rt, process, "removeAllListeners", |rt, _args| Ok(rt.current_this()));
-    register_method(rt, process, "prependListener", |rt, _args| Ok(rt.current_this()));
-    register_method(rt, process, "prependOnceListener", |rt, _args| Ok(rt.current_this()));
+    register_method(
+        rt,
+        process,
+        "addListener",
+        |rt, _args| Ok(rt.current_this()),
+    );
+    register_method(rt, process, "removeAllListeners", |rt, _args| {
+        Ok(rt.current_this())
+    });
+    register_method(rt, process, "prependListener", |rt, _args| {
+        Ok(rt.current_this())
+    });
+    register_method(rt, process, "prependOnceListener", |rt, _args| {
+        Ok(rt.current_this())
+    });
     register_method(rt, process, "listeners", |rt, _args| {
-        Ok(Value::Object(rt.alloc_object(rusty_js_runtime::value::Object::new_array())))
+        Ok(Value::Object(
+            rt.alloc_object(rusty_js_runtime::value::Object::new_array()),
+        ))
     });
     register_method(rt, process, "rawListeners", |rt, _args| {
-        Ok(Value::Object(rt.alloc_object(rusty_js_runtime::value::Object::new_array())))
+        Ok(Value::Object(
+            rt.alloc_object(rusty_js_runtime::value::Object::new_array()),
+        ))
     });
-    register_method(rt, process, "listenerCount", |_rt, _args| Ok(Value::Number(0.0)));
+    register_method(rt, process, "listenerCount", |_rt, _args| {
+        Ok(Value::Number(0.0))
+    });
     register_method(rt, process, "eventNames", |rt, _args| {
-        Ok(Value::Object(rt.alloc_object(rusty_js_runtime::value::Object::new_array())))
+        Ok(Value::Object(
+            rt.alloc_object(rusty_js_runtime::value::Object::new_array()),
+        ))
     });
-    register_method(rt, process, "setMaxListeners", |rt, _args| Ok(rt.current_this()));
-    register_method(rt, process, "getMaxListeners", |_rt, _args| Ok(Value::Number(10.0)));
+    register_method(rt, process, "setMaxListeners", |rt, _args| {
+        Ok(rt.current_this())
+    });
+    register_method(rt, process, "getMaxListeners", |_rt, _args| {
+        Ok(Value::Number(10.0))
+    });
 
     // Tier-Ω.5.mmmm: process.getBuiltinModule(name) — Node 22+ API. ohash
     // calls it at module init to fetch node:crypto without going through

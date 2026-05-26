@@ -38,7 +38,11 @@ pub enum Init<'a> {
 impl URLSearchParams {
     // SPEC §5.2.constructor + §5.2.5 application/x-www-form-urlencoded parser.
     // CD URLSearchParams[card=5/spec] enumerates the three init forms.
-    pub fn new() -> Self { Self { list: Entries::new() } }
+    pub fn new() -> Self {
+        Self {
+            list: Entries::new(),
+        }
+    }
 
     pub fn from_query(s: &str) -> Self {
         let mut list = Entries::new();
@@ -48,7 +52,9 @@ impl URLSearchParams {
             return Self { list };
         }
         for chunk in body.split('&') {
-            if chunk.is_empty() { continue; }
+            if chunk.is_empty() {
+                continue;
+            }
             let (name, value) = match chunk.find('=') {
                 Some(i) => (&chunk[..i], &chunk[i + 1..]),
                 None => (chunk, ""),
@@ -91,7 +97,10 @@ impl URLSearchParams {
 
     // CD URLSearchParams.prototype.get[card=2/spec]: first match or None.
     pub fn get(&self, name: &str) -> Option<&str> {
-        self.list.iter().find(|(n, _)| n == name).map(|(_, v)| v.as_str())
+        self.list
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, v)| v.as_str())
     }
 
     // CD URLSearchParams.prototype.getAll[card=2/spec].
@@ -144,7 +153,9 @@ impl URLSearchParams {
     }
 
     // CD URLSearchParams.prototype.size[card=1/spec]: count of entries.
-    pub fn size(&self) -> usize { self.list.len() }
+    pub fn size(&self) -> usize {
+        self.list.len()
+    }
 
     // CD URLSearchParams.prototype.entries / keys / values / forEach.
     pub fn entries(&self) -> impl Iterator<Item = (&str, &str)> {
@@ -176,7 +187,9 @@ impl fmt::Display for URLSearchParams {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut first = true;
         for (n, v) in &self.list {
-            if !first { f.write_str("&")?; }
+            if !first {
+                f.write_str("&")?;
+            }
             first = false;
             form_urlencode_write(f, n)?;
             f.write_str("=")?;

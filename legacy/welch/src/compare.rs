@@ -142,11 +142,7 @@ pub fn summarize_baseline(report: &ScanReport) -> BaselineSummary {
         samples.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         let n = samples.len() as u64;
         let mean = samples.iter().sum::<f64>() / (n as f64);
-        let var = samples
-            .iter()
-            .map(|x| (x - mean).powi(2))
-            .sum::<f64>()
-            / (n as f64).max(1.0);
+        let var = samples.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (n as f64).max(1.0);
         let std = var.sqrt();
         distributions.push(MetricDistribution {
             name: name.to_string(),
@@ -174,11 +170,7 @@ fn quantile(sorted: &[f64], q: f64) -> f64 {
     sorted[idx.min(sorted.len() - 1)]
 }
 
-pub fn compare(
-    baseline: &BaselineSummary,
-    target: &ScanReport,
-    threshold_z: f64,
-) -> AnomalyReport {
+pub fn compare(baseline: &BaselineSummary, target: &ScanReport, threshold_z: f64) -> AnomalyReport {
     let agg = target.aggregate();
     let target_total_loc = agg.loc;
 
@@ -249,7 +241,9 @@ pub fn compare(
             .iter()
             .map(|m| m.rank_z())
             .fold(f64::MIN, f64::max);
-        max_b.partial_cmp(&max_a).unwrap_or(std::cmp::Ordering::Equal)
+        max_b
+            .partial_cmp(&max_a)
+            .unwrap_or(std::cmp::Ordering::Equal)
     });
 
     AnomalyReport {
@@ -260,4 +254,3 @@ pub fn compare(
         anomalous_files,
     }
 }
-

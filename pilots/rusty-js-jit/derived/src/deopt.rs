@@ -140,14 +140,22 @@ pub fn reconstruct_state(
     frame: &DeoptCallFrame,
 ) -> Option<DeoptRecoveredState> {
     let site = sites.get(frame.site_id as usize)?;
-    let local_values = site.live_locals.iter().map(|live| {
-        let v = read_location(&live.jit_location, frame);
-        (live.interp_slot, v)
-    }).collect();
-    let stack_values = site.stack_slots.iter().map(|live| {
-        let v = read_location(&live.jit_location, frame);
-        (live.interp_slot, v)
-    }).collect();
+    let local_values = site
+        .live_locals
+        .iter()
+        .map(|live| {
+            let v = read_location(&live.jit_location, frame);
+            (live.interp_slot, v)
+        })
+        .collect();
+    let stack_values = site
+        .stack_slots
+        .iter()
+        .map(|live| {
+            let v = read_location(&live.jit_location, frame);
+            (live.interp_slot, v)
+        })
+        .collect();
     Some(DeoptRecoveredState {
         reason: site.reason,
         resume_pc: site.resume_pc,
@@ -174,10 +182,7 @@ fn read_location(loc: &JitLocation, frame: &DeoptCallFrame) -> i64 {
 /// behind a Cranelift extern reference; JIT-EXT 13+ has the runtime
 /// dispatcher consume `DeoptRecoveredState` to populate the
 /// interpreter's locals + stack and resume at `resume_pc`.
-pub fn jit_deopt_thunk(
-    sites: &[DeoptSite],
-    frame: DeoptCallFrame,
-) -> Option<DeoptRecoveredState> {
+pub fn jit_deopt_thunk(sites: &[DeoptSite], frame: DeoptCallFrame) -> Option<DeoptRecoveredState> {
     reconstruct_state(sites, &frame)
 }
 
@@ -385,11 +390,8 @@ pub fn clear_active_ic_observe_fn() {
 /// on miss; otherwise returns the encoded i64 value. The high-bit
 /// sentinel is unambiguous because cruft's typed-i64 alphabet uses
 /// the lower 53 bits (f64 mantissa range) for actual values.
-pub type IcFastGetFn = extern "C" fn(
-    receiver_idx: i64,
-    cached_shape_ptr_usize: i64,
-    cached_slot: i64,
-) -> i64;
+pub type IcFastGetFn =
+    extern "C" fn(receiver_idx: i64, cached_shape_ptr_usize: i64, cached_slot: i64) -> i64;
 
 /// Sentinel returned by IcFastGetFn on miss. High-bit set; cruft's
 /// typed-i64 alphabet uses lower 53 bits per Doc 731 §XIV.d.
@@ -420,11 +422,7 @@ pub fn clear_active_ic_fast_get_fn() {
 /// EXT 5c adds the inline compare-branch-load fast path that consults
 /// the populated cache.
 #[no_mangle]
-pub extern "C" fn jit_getprop_with_ic(
-    site_id: i64,
-    receiver_idx: i64,
-    prop_name_idx: i64,
-) -> i64 {
+pub extern "C" fn jit_getprop_with_ic(site_id: i64, receiver_idx: i64, prop_name_idx: i64) -> i64 {
     // LeJIT-Σ StubE-EXT 5c: fast path. When the IC cache entry is
     // WarmMono with a cached (shape_ptr, slot), consult the
     // runtime's fast-get fn pointer; if the receiver's current shape
@@ -436,8 +434,11 @@ pub extern "C" fn jit_getprop_with_ic(
         crate::stub_aarch64::IC_STUB_CACHE.with(|cell| {
             let cache = cell.borrow();
             let e = cache.entry(site_id as u32);
-            (e.cached_shape as i64, e.cached_slot as i64,
-             matches!(e.state(), crate::stub_aarch64::ICState::WarmMono))
+            (
+                e.cached_shape as i64,
+                e.cached_slot as i64,
+                matches!(e.state(), crate::stub_aarch64::ICState::WarmMono),
+            )
         });
     if is_warm_mono && cached_shape_ptr != 0 {
         if let Some(fast_get) = ACTIVE_IC_FAST_GET_FN.with(|c| c.get()) {
@@ -563,13 +564,21 @@ mod thunk_tests {
 mod tests {
     use super::*;
 
-    fn site_with_locals(reason: DeoptReason, resume_pc: u32, locals: Vec<(u16, JitLocation)>) -> DeoptSite {
+    fn site_with_locals(
+        reason: DeoptReason,
+        resume_pc: u32,
+        locals: Vec<(u16, JitLocation)>,
+    ) -> DeoptSite {
         DeoptSite {
             reason,
             resume_pc,
-            live_locals: locals.into_iter().map(|(slot, loc)| DeoptLiveLocal {
-                interp_slot: slot, jit_location: loc,
-            }).collect(),
+            live_locals: locals
+                .into_iter()
+                .map(|(slot, loc)| DeoptLiveLocal {
+                    interp_slot: slot,
+                    jit_location: loc,
+                })
+                .collect(),
             stack_depth: 0,
             stack_slots: Vec::new(),
         }
@@ -577,12 +586,12 @@ mod tests {
 
     #[test]
     fn empty_site_reconstructs_to_empty_state() {
-        let site = site_with_locals(
-            DeoptReason::IntegerOverflow { op_pc: 42 },
-            16,
-            vec![],
-        );
-        let frame = DeoptCallFrame { site_id: 0, regs: [0; 8], frame_base: 0 };
+        let site = site_with_locals(DeoptReason::IntegerOverflow { op_pc: 42 }, 16, vec![]);
+        let frame = DeoptCallFrame {
+            site_id: 0,
+            regs: [0; 8],
+            frame_base: 0,
+        };
         let r = reconstruct_state(&[site], &frame).expect("site found");
         assert_eq!(r.reason, DeoptReason::IntegerOverflow { op_pc: 42 });
         assert_eq!(r.resume_pc, 16);
@@ -612,7 +621,11 @@ mod tests {
 
     #[test]
     fn missing_site_id_returns_none() {
-        let frame = DeoptCallFrame { site_id: 5, regs: [0; 8], frame_base: 0 };
+        let frame = DeoptCallFrame {
+            site_id: 5,
+            regs: [0; 8],
+            frame_base: 0,
+        };
         let r = reconstruct_state(&[], &frame);
         assert!(r.is_none());
     }
@@ -643,8 +656,14 @@ mod tests {
             live_locals: vec![],
             stack_depth: 2,
             stack_slots: vec![
-                DeoptLiveLocal { interp_slot: 0, jit_location: JitLocation::Register(0) },
-                DeoptLiveLocal { interp_slot: 1, jit_location: JitLocation::Register(1) },
+                DeoptLiveLocal {
+                    interp_slot: 0,
+                    jit_location: JitLocation::Register(0),
+                },
+                DeoptLiveLocal {
+                    interp_slot: 1,
+                    jit_location: JitLocation::Register(1),
+                },
             ],
         };
         let frame = DeoptCallFrame {

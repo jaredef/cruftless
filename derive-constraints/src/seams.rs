@@ -43,17 +43,17 @@ pub enum ThrowReturn {
 /// criterion for the simple-cluster MVP at Doc 705 §5 step 2.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct SignalVector {
-    pub cfg: bool,                       // S1: conditional compilation present
-    pub path_top: Option<String>,        // S2: dominant test-path segment (node/web/bun/regression/…)
-    pub sync_async: SyncAsync,           // S3
-    pub throw_return: ThrowReturn,       // S4
-    pub native: bool,                    // S5: native / FFI / sys
-    pub construct_handle: bool,          // S6: prototype-method or constructor-then-method
+    pub cfg: bool,                 // S1: conditional compilation present
+    pub path_top: Option<String>,  // S2: dominant test-path segment (node/web/bun/regression/…)
+    pub sync_async: SyncAsync,     // S3
+    pub throw_return: ThrowReturn, // S4
+    pub native: bool,              // S5: native / FFI / sys
+    pub construct_handle: bool,    // S6: prototype-method or constructor-then-method
     // ── v0.2 extensions ────────────────────────────────────────────────
-    pub weak_ref: bool,                  // S7: ownership/reference-cycle
-    pub error_shape: ErrorShape,         // S8: refines S4 — distinguish Result-shape from {ok,errors}
-    pub allocator_aware: bool,           // S9: arena/bumpalo/slab references
-    pub threaded: bool,                  // S10: Worker/MessageChannel/Atomics/SharedArrayBuffer
+    pub weak_ref: bool,          // S7: ownership/reference-cycle
+    pub error_shape: ErrorShape, // S8: refines S4 — distinguish Result-shape from {ok,errors}
+    pub allocator_aware: bool,   // S9: arena/bumpalo/slab references
+    pub threaded: bool,          // S10: Worker/MessageChannel/Atomics/SharedArrayBuffer
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -185,10 +185,7 @@ pub fn detect_seams(report: &ClusterReport, corpus_root: Option<&Path>) -> Resul
 fn build_cluster(vector: &SignalVector, props: &[&Property]) -> SignalCluster {
     let cardinality_total: u64 = props.iter().map(|p| p.constraints_in).sum();
     let cs_count = props.iter().filter(|p| p.construction_style).count() as u32;
-    let mut surfaces: Vec<String> = props
-        .iter()
-        .map(|p| surface_of(&p.subject))
-        .collect();
+    let mut surfaces: Vec<String> = props.iter().map(|p| surface_of(&p.subject)).collect();
     surfaces.sort();
     surfaces.dedup();
 
@@ -358,7 +355,7 @@ impl ContextCache {
         });
         let lines = entry.as_ref()?;
         let start = (line as i64 - CONTEXT_LINES as i64).max(0) as usize;
-        let end = ((line as usize + CONTEXT_LINES as usize)).min(lines.len());
+        let end = (line as usize + CONTEXT_LINES as usize).min(lines.len());
         if start >= lines.len() {
             return None;
         }
@@ -433,7 +430,8 @@ fn signal_error_shape(prop: &Property, antichain: &[RepresentativeConstraint]) -
     let mut has_plain_throw = matches!(prop.verb_class, VerbClass::Error);
 
     for r in antichain {
-        if r.raw.contains(".errors).") || r.raw.contains(".errors[") || r.raw.contains("errors: [") {
+        if r.raw.contains(".errors).") || r.raw.contains(".errors[") || r.raw.contains("errors: [")
+        {
             if r.raw.contains(".ok)") || r.raw.contains("ok: ") {
                 has_ok_errors = true;
             } else if r.raw.contains(".success)") || r.raw.contains("success: ") {
@@ -441,7 +439,8 @@ fn signal_error_shape(prop: &Property, antichain: &[RepresentativeConstraint]) -
             } else {
                 has_ok_errors = true; // ambiguous — bias to ok-errors-array shape
             }
-        } else if r.raw.contains(".success).toBe(true)") || r.raw.contains(".success).toBe(false)") {
+        } else if r.raw.contains(".success).toBe(true)") || r.raw.contains(".success).toBe(false)")
+        {
             has_success = true;
         } else if r.raw.contains(".ok).toBe(true)") || r.raw.contains(".ok).toBe(false)") {
             has_result_ok = true;
@@ -541,12 +540,7 @@ fn build_context(antichain: &[RepresentativeConstraint], ctx: &ContextCache) -> 
 fn collect_path_components(antichain: &[RepresentativeConstraint]) -> Vec<Vec<String>> {
     antichain
         .iter()
-        .map(|r| {
-            r.file
-                .split('/')
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>()
-        })
+        .map(|r| r.file.split('/').map(|s| s.to_string()).collect::<Vec<_>>())
         .collect()
 }
 
@@ -593,8 +587,14 @@ fn signal_cfg(
     ];
     const CFG_PATH_NAMES: &[&str] = &["darwin", "linux", "windows", "posix", "win32"];
     const CFG_TEST_NAME_HINTS: &[&str] = &[
-        "on Windows", "on macOS", "on Linux", "Windows-only",
-        "POSIX", "Linux-only", "macOS-only", "Darwin-only",
+        "on Windows",
+        "on macOS",
+        "on Linux",
+        "Windows-only",
+        "POSIX",
+        "Linux-only",
+        "macOS-only",
+        "Darwin-only",
     ];
 
     for r in antichain {

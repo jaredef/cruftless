@@ -11,7 +11,9 @@ pub fn new_object(rt: &mut Runtime) -> ObjectRef {
 }
 
 pub fn register_method<F>(rt: &mut Runtime, host: ObjectRef, name: &str, f: F)
-where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
+where
+    F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static,
+{
     let native: NativeFn = Rc::new(f);
     let mut properties = indexmap::IndexMap::new();
     rusty_js_runtime::value::install_function_meta_props(&mut properties, name, 0.0);
@@ -19,8 +21,13 @@ where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
         proto: None,
         extensible: true,
         properties,
-        internal_kind: InternalKind::Function(FunctionInternals { name: name.to_string(), length: 0, native, is_constructor: true }),
-    
+        internal_kind: InternalKind::Function(FunctionInternals {
+            name: name.to_string(),
+            length: 0,
+            native,
+            is_constructor: true,
+        }),
+
         ..Default::default()
     };
     let fn_id = rt.alloc_object(fn_obj);
@@ -35,7 +42,9 @@ pub fn set_constant(rt: &mut Runtime, host: ObjectRef, name: &str, value: Value)
 /// surfaces like `new EventEmitter()` where the global is the function
 /// rather than a wrapper object. Returns the object id.
 pub fn make_callable<F>(rt: &mut Runtime, name: &str, f: F) -> ObjectRef
-where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
+where
+    F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static,
+{
     let native: NativeFn = Rc::new(f);
     let mut properties = indexmap::IndexMap::new();
     rusty_js_runtime::value::install_function_meta_props(&mut properties, name, 0.0);
@@ -43,8 +52,13 @@ where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
         proto: None,
         extensible: true,
         properties,
-        internal_kind: InternalKind::Function(FunctionInternals { name: name.to_string(), length: 0, native, is_constructor: true }),
-    
+        internal_kind: InternalKind::Function(FunctionInternals {
+            name: name.to_string(),
+            length: 0,
+            native,
+            is_constructor: true,
+        }),
+
         ..Default::default()
     };
     rt.alloc_object(fn_obj)

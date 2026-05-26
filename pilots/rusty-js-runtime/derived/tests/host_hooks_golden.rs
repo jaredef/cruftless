@@ -39,7 +39,11 @@ fn poll_io_can_enqueue_macrotask_then_exit() {
 
     rt.run_to_completion().unwrap();
     assert_eq!(*log.borrow(), vec!["io_event"]);
-    assert_eq!(*calls.borrow(), 2, "PollIo called once to enqueue + once to confirm idle");
+    assert_eq!(
+        *calls.borrow(),
+        2,
+        "PollIo called once to enqueue + once to confirm idle"
+    );
 }
 
 // ─────────── PollIo not called when work is pending ───────────
@@ -115,7 +119,9 @@ fn poll_io_can_enqueue_microtask_too() {
     let f = fired.clone();
     let l = log.clone();
     rt.install_host_hook(HostHook::PollIo(Box::new(move |rt| {
-        if *f.borrow() { return Ok(false); }
+        if *f.borrow() {
+            return Ok(false);
+        }
         *f.borrow_mut() = true;
         let l_micro = l.clone();
         let l_macro = l.clone();
@@ -141,7 +147,9 @@ fn poll_io_can_enqueue_microtask_too() {
 fn poll_io_error_propagates() {
     let mut rt = Runtime::new();
     rt.install_host_hook(HostHook::PollIo(Box::new(|_rt| {
-        Err(rusty_js_runtime::RuntimeError::TypeError("io failure".into()))
+        Err(rusty_js_runtime::RuntimeError::TypeError(
+            "io failure".into(),
+        ))
     })));
     let result = rt.run_to_completion();
     assert!(result.is_err());
@@ -167,7 +175,9 @@ fn pre_existing_macrotask_drains_then_poll_io_fires() {
     let p_handle = polled.clone();
     let log_p = log.clone();
     rt.install_host_hook(HostHook::PollIo(Box::new(move |rt| {
-        if *p_handle.borrow() { return Ok(false); }
+        if *p_handle.borrow() {
+            return Ok(false);
+        }
         *p_handle.borrow_mut() = true;
         let lh = log_p.clone();
         rt.enqueue_macrotask("polled_event", move |_rt| {

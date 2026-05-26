@@ -35,7 +35,9 @@ fn t3_get_own_property_descriptor_shape() {
     ";
     if let Value::String(s) = run(src) {
         assert_eq!(s.as_str(), "true,true");
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 #[test]

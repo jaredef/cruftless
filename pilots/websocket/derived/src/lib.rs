@@ -35,12 +35,18 @@ impl Opcode {
     pub fn from_u8(b: u8) -> Option<Opcode> {
         use Opcode::*;
         Some(match b & 0x0F {
-            0x0 => Continuation, 0x1 => Text, 0x2 => Binary,
-            0x8 => Close, 0x9 => Ping, 0xA => Pong,
+            0x0 => Continuation,
+            0x1 => Text,
+            0x2 => Binary,
+            0x8 => Close,
+            0x9 => Ping,
+            0xA => Pong,
             _ => return None,
         })
     }
-    pub fn is_control(&self) -> bool { matches!(self, Opcode::Close | Opcode::Ping | Opcode::Pong) }
+    pub fn is_control(&self) -> bool {
+        matches!(self, Opcode::Close | Opcode::Ping | Opcode::Pong)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -87,8 +93,12 @@ impl std::error::Error for WsError {}
 /// Encode a single frame to wire bytes.
 pub fn encode_frame(frame: &Frame) -> Result<Vec<u8>, WsError> {
     if frame.opcode.is_control() {
-        if frame.payload.len() > 125 { return Err(WsError::ControlTooLong); }
-        if !frame.fin { return Err(WsError::ControlFragmented); }
+        if frame.payload.len() > 125 {
+            return Err(WsError::ControlTooLong);
+        }
+        if !frame.fin {
+            return Err(WsError::ControlFragmented);
+        }
     }
     let mut out = Vec::with_capacity(2 + frame.payload.len());
     let b0 = if frame.fin { 0x80 } else { 0x00 } | (frame.opcode as u8);
@@ -123,12 +133,18 @@ pub fn encode_frame(frame: &Frame) -> Result<Vec<u8>, WsError> {
 /// Decode a single frame from a byte buffer. Returns the frame plus
 /// bytes consumed.
 pub fn decode_frame(buf: &[u8]) -> Result<(Frame, usize), WsError> {
-    if buf.len() < 2 { return Err(WsError::UnexpectedEnd); }
+    if buf.len() < 2 {
+        return Err(WsError::UnexpectedEnd);
+    }
     let b0 = buf[0];
     let fin = (b0 & 0x80) != 0;
-    if (b0 & 0x70) != 0 { return Err(WsError::ReservedBitsSet); }
+    if (b0 & 0x70) != 0 {
+        return Err(WsError::ReservedBitsSet);
+    }
     let opcode = Opcode::from_u8(b0 & 0x0F).ok_or(WsError::InvalidOpcode(b0 & 0x0F))?;
-    if opcode.is_control() && !fin { return Err(WsError::ControlFragmented); }
+    if opcode.is_control() && !fin {
+        return Err(WsError::ControlFragmented);
+    }
     let b1 = buf[1];
     let masked = (b1 & 0x80) != 0;
     let len7 = b1 & 0x7F;
@@ -136,34 +152,60 @@ pub fn decode_frame(buf: &[u8]) -> Result<(Frame, usize), WsError> {
     let payload_len: usize = match len7 {
         0..=125 => len7 as usize,
         126 => {
-            if buf.len() < pos + 2 { return Err(WsError::UnexpectedEnd); }
+            if buf.len() < pos + 2 {
+                return Err(WsError::UnexpectedEnd);
+            }
             let l = ((buf[pos] as usize) << 8) | (buf[pos + 1] as usize);
             pos += 2;
             l
         }
         127 => {
-            if buf.len() < pos + 8 { return Err(WsError::UnexpectedEnd); }
+            if buf.len() < pos + 8 {
+                return Err(WsError::UnexpectedEnd);
+            }
             let mut l: u64 = 0;
-            for i in 0..8 { l = (l << 8) | (buf[pos + i] as u64); }
+            for i in 0..8 {
+                l = (l << 8) | (buf[pos + i] as u64);
+            }
             pos += 8;
-            if l > 0x7FFF_FFFF_FFFF_FFFF { return Err(WsError::PayloadTooLong); }
+            if l > 0x7FFF_FFFF_FFFF_FFFF {
+                return Err(WsError::PayloadTooLong);
+            }
             l as usize
         }
         _ => unreachable!(),
     };
-    if opcode.is_control() && payload_len > 125 { return Err(WsError::ControlTooLong); }
+    if opcode.is_control() && payload_len > 125 {
+        return Err(WsError::ControlTooLong);
+    }
     let mask: Option<[u8; 4]> = if masked {
-        if buf.len() < pos + 4 { return Err(WsError::UnexpectedEnd); }
+        if buf.len() < pos + 4 {
+            return Err(WsError::UnexpectedEnd);
+        }
         let m = [buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]];
         pos += 4;
         Some(m)
-    } else { None };
-    if buf.len() < pos + payload_len { return Err(WsError::UnexpectedEnd); }
+    } else {
+        None
+    };
+    if buf.len() < pos + payload_len {
+        return Err(WsError::UnexpectedEnd);
+    }
     let mut payload = buf[pos..pos + payload_len].to_vec();
     if let Some(m) = mask {
-        for (i, b) in payload.iter_mut().enumerate() { *b ^= m[i % 4]; }
+        for (i, b) in payload.iter_mut().enumerate() {
+            *b ^= m[i % 4];
+        }
     }
-    Ok((Frame { fin, opcode, payload, mask }, pos + payload_len))
+    Ok((
+        Frame {
+            fin,
+            opcode,
+            payload,
+            mask,
+        },
+        pos + payload_len,
+    ))
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -187,11 +229,24 @@ pub fn encode_close(code: Option<u16>, reason: &str) -> Vec<u8> {
 }
 
 pub fn decode_close(payload: &[u8]) -> CloseFrame {
-    if payload.is_empty() { return CloseFrame { code: None, reason: String::new() }; }
-    if payload.len() < 2 { return CloseFrame { code: None, reason: String::new() }; }
+    if payload.is_empty() {
+        return CloseFrame {
+            code: None,
+            reason: String::new(),
+        };
+    }
+    if payload.len() < 2 {
+        return CloseFrame {
+            code: None,
+            reason: String::new(),
+        };
+    }
     let code = ((payload[0] as u16) << 8) | (payload[1] as u16);
     let reason = String::from_utf8_lossy(&payload[2..]).into_owned();
-    CloseFrame { code: Some(code), reason }
+    CloseFrame {
+        code: Some(code),
+        reason,
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -227,8 +282,7 @@ pub fn verify_accept(client_key: &str, server_accept: &str) -> bool {
 // ─────────────────────────────────────────────────────────────────────
 
 fn base64_encode(input: &[u8]) -> String {
-    const ALPHABET: &[u8] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity((input.len() + 2) / 3 * 4);
     let mut i = 0;
     while i + 3 <= input.len() {

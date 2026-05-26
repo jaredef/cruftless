@@ -14,12 +14,20 @@ use rusty_js_runtime::{Runtime, RuntimeError, Value};
 // pipe methods. Enough for `class X extends Transform {}` modules to load
 // and run their constructors without throwing. ndjson, split2, through2,
 // pump cluster aimed at module-load presence rather than real I/O.
-fn make_stream_instance(rt: &mut Runtime, opts: Option<rusty_js_runtime::ObjectRef>, receiver: Option<rusty_js_runtime::ObjectRef>) -> rusty_js_runtime::ObjectRef {
+fn make_stream_instance(
+    rt: &mut Runtime,
+    opts: Option<rusty_js_runtime::ObjectRef>,
+    receiver: Option<rusty_js_runtime::ObjectRef>,
+) -> rusty_js_runtime::ObjectRef {
     // Tier-Ω.5.yyyy: mutate the receiver when called as a super-ctor
     // (Transform.call(this) / super(opts) from subclass). Only allocate
     // fresh when invoked bare. Without this, subclass instances never
     // get _writableState et al because the fresh object is discarded.
-    let id = if let Some(r) = receiver { r } else { rt.alloc_object(RtObject::new_ordinary()) };
+    let id = if let Some(r) = receiver {
+        r
+    } else {
+        rt.alloc_object(RtObject::new_ordinary())
+    };
     // State objects required by many libs for shape probes.
     let rs = rt.alloc_object(RtObject::new_ordinary());
     let ws = rt.alloc_object(RtObject::new_ordinary());
@@ -43,7 +51,9 @@ fn make_stream_instance(rt: &mut Runtime, opts: Option<rusty_js_runtime::ObjectR
     register_method(rt, id, "off", |rt, _args| Ok(rt.current_this()));
     register_method(rt, id, "removeListener", |rt, _args| Ok(rt.current_this()));
     register_method(rt, id, "emit", |_rt, _args| Ok(Value::Boolean(false)));
-    register_method(rt, id, "pipe", |_rt, args| Ok(args.first().cloned().unwrap_or(Value::Undefined)));
+    register_method(rt, id, "pipe", |_rt, args| {
+        Ok(args.first().cloned().unwrap_or(Value::Undefined))
+    });
     register_method(rt, id, "unpipe", |rt, _args| Ok(rt.current_this()));
     register_method(rt, id, "write", |_rt, _args| Ok(Value::Boolean(true)));
     register_method(rt, id, "end", |rt, _args| Ok(rt.current_this()));
@@ -63,7 +73,14 @@ fn make_stream_instance(rt: &mut Runtime, opts: Option<rusty_js_runtime::ObjectR
 pub fn install(rt: &mut Runtime) {
     let stream = new_object(rt);
 
-    for name in &["Readable", "Writable", "Transform", "Duplex", "PassThrough", "Stream"] {
+    for name in &[
+        "Readable",
+        "Writable",
+        "Transform",
+        "Duplex",
+        "PassThrough",
+        "Stream",
+    ] {
         let ctor = new_object(rt);
         // The constructor's prototype is a placeholder so
         // `class X extends Transform { }` finds something callable to read
@@ -71,12 +88,17 @@ pub fn install(rt: &mut Runtime) {
         // module-load substrate, the ctor body returning an object is
         // enough because Op::New picks up the returned object.
         let proto = new_object(rt);
-        rt.obj_mut(ctor).set_own_frozen("prototype".into(), Value::Object(proto));
-        rt.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(ctor));
+        rt.obj_mut(ctor)
+            .set_own_frozen("prototype".into(), Value::Object(proto));
+        rt.obj_mut(proto)
+            .set_own_internal("constructor".into(), Value::Object(ctor));
         // The ctor itself: accepting an optional options object.
         let nm = *name;
         register_method(rt, ctor, "__call__", move |_rt, _args| {
-            Err(RuntimeError::TypeError(format!("internal: {} called via __call__", nm)))
+            Err(RuntimeError::TypeError(format!(
+                "internal: {} called via __call__",
+                nm
+            )))
         });
         // Real call dispatch path: assign a native callable property on
         // the ctor object via a trampoline kept in stream.<Name>.
@@ -87,7 +109,14 @@ pub fn install(rt: &mut Runtime) {
     // produces a stream instance. The register_method trick above only
     // wires methods — for `new Transform()` to construct, the global
     // needs to itself be callable. We re-register each as a native.
-    for name in &["Readable", "Writable", "Transform", "Duplex", "PassThrough", "Stream"] {
+    for name in &[
+        "Readable",
+        "Writable",
+        "Transform",
+        "Duplex",
+        "PassThrough",
+        "Stream",
+    ] {
         let nm = name.to_string();
         register_method(rt, stream, name, move |rt, args| {
             let opts = match args.first() {
@@ -113,8 +142,10 @@ pub fn install(rt: &mut Runtime) {
         // `Object.create(Stream.Transform.prototype)` → must be object.
         let proto = new_object(rt);
         if let Value::Object(ctor) = rt.object_get(stream, name) {
-            rt.obj_mut(ctor).set_own_frozen("prototype".into(), Value::Object(proto));
-            rt.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(ctor));
+            rt.obj_mut(ctor)
+                .set_own_frozen("prototype".into(), Value::Object(proto));
+            rt.obj_mut(proto)
+                .set_own_internal("constructor".into(), Value::Object(ctor));
         }
     }
     // Tier-Ω.5.gggg: stream.pipeline / .finished return undefined
@@ -128,9 +159,18 @@ pub fn install(rt: &mut Runtime) {
     // events.EventEmitter on node:stream for legacy compat. node-cron and
     // others do `const stream = require('stream'); class X extends
     // stream.EventEmitter`. Forward to the events global's ctor.
-    if let Value::Object(ee_ctor) = rt.globals.get("events").cloned().unwrap_or(Value::Undefined) {
+    if let Value::Object(ee_ctor) = rt
+        .globals
+        .get("events")
+        .cloned()
+        .unwrap_or(Value::Undefined)
+    {
         rt.object_set(stream, "EventEmitter".into(), Value::Object(ee_ctor));
-        rt.object_set(stream, "EventEmitterAsyncResource".into(), Value::Object(ee_ctor));
+        rt.object_set(
+            stream,
+            "EventEmitterAsyncResource".into(),
+            Value::Object(ee_ctor),
+        );
     }
 
     // Ω.5.P58.E6: Readable/Writable static surface for Node v18+ stream
@@ -153,33 +193,37 @@ pub fn install(rt: &mut Runtime) {
         for ctor_key in &["Readable", "Writable"] {
             if let Value::Object(ctor) = rt.object_get(stream, ctor_key) {
                 let nm = name.to_string();
-                register_method(rt, ctor, name, move |_rt, args| {
-                    match nm.as_str() {
-                        "getDefaultHighWaterMark" => {
-                            let object_mode = matches!(args.first(), Some(Value::Boolean(true)));
-                            Ok(Value::Number(if object_mode { 16.0 } else { 16.0 * 1024.0 }))
-                        }
-                        "setDefaultHighWaterMark" => Ok(Value::Undefined),
-                        "isReadable" | "isWritable" => Ok(Value::Boolean(false)),
-                        "isDisturbed" | "isErrored" => Ok(Value::Boolean(false)),
-                        _ => Ok(Value::Undefined),
+                register_method(rt, ctor, name, move |_rt, args| match nm.as_str() {
+                    "getDefaultHighWaterMark" => {
+                        let object_mode = matches!(args.first(), Some(Value::Boolean(true)));
+                        Ok(Value::Number(if object_mode {
+                            16.0
+                        } else {
+                            16.0 * 1024.0
+                        }))
                     }
+                    "setDefaultHighWaterMark" => Ok(Value::Undefined),
+                    "isReadable" | "isWritable" => Ok(Value::Boolean(false)),
+                    "isDisturbed" | "isErrored" => Ok(Value::Boolean(false)),
+                    _ => Ok(Value::Undefined),
                 });
             }
         }
         // Top-level node:stream export.
         let nm = name.to_string();
-        register_method(rt, stream, name, move |_rt, args| {
-            match nm.as_str() {
-                "getDefaultHighWaterMark" => {
-                    let object_mode = matches!(args.first(), Some(Value::Boolean(true)));
-                    Ok(Value::Number(if object_mode { 16.0 } else { 16.0 * 1024.0 }))
-                }
-                "setDefaultHighWaterMark" => Ok(Value::Undefined),
-                "isReadable" | "isWritable" => Ok(Value::Boolean(false)),
-                "isDisturbed" | "isErrored" => Ok(Value::Boolean(false)),
-                _ => Ok(Value::Undefined),
+        register_method(rt, stream, name, move |_rt, args| match nm.as_str() {
+            "getDefaultHighWaterMark" => {
+                let object_mode = matches!(args.first(), Some(Value::Boolean(true)));
+                Ok(Value::Number(if object_mode {
+                    16.0
+                } else {
+                    16.0 * 1024.0
+                }))
             }
+            "setDefaultHighWaterMark" => Ok(Value::Undefined),
+            "isReadable" | "isWritable" => Ok(Value::Boolean(false)),
+            "isDisturbed" | "isErrored" => Ok(Value::Boolean(false)),
+            _ => Ok(Value::Undefined),
         });
     }
 

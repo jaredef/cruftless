@@ -11,11 +11,13 @@ fn run(src: &str) -> Value {
 }
 
 fn run_rt(src: &str) -> (Runtime, Value) {
-    let module = rusty_js_bytecode::compile_module(src)
-        .unwrap_or_else(|e| panic!("compile: {:?}", e));
+    let module =
+        rusty_js_bytecode::compile_module(src).unwrap_or_else(|e| panic!("compile: {:?}", e));
     let mut rt = Runtime::new();
     rt.install_intrinsics();
-    let v = rt.run_module(&module).unwrap_or_else(|e| panic!("run: {:?}", e));
+    let v = rt
+        .run_module(&module)
+        .unwrap_or_else(|e| panic!("run: {:?}", e));
     (rt, v)
 }
 
@@ -113,7 +115,11 @@ fn t07_foreach_accumulator() {
         __record(n);
     "#;
     let (rt, _) = run_rt(src);
-    let recorded = rt.globals.get("__last_recorded").cloned().unwrap_or(Value::Undefined);
+    let recorded = rt
+        .globals
+        .get("__last_recorded")
+        .cloned()
+        .unwrap_or(Value::Undefined);
     assert_eq!(recorded, Value::Number(6.0));
 }
 
@@ -125,8 +131,11 @@ fn t08_map_side_effect_trail() {
         [1,2,3].map(x => { trail = trail + x; return x * 2; });
         return trail;
     "#;
-    if let Value::String(s) = run(src) { assert_eq!(s.as_str(), "123"); }
-    else { panic!("expected string"); }
+    if let Value::String(s) = run(src) {
+        assert_eq!(s.as_str(), "123");
+    } else {
+        panic!("expected string");
+    }
 }
 
 // 9. Reduce canary — built-in accumulator. Should remain green.
@@ -151,8 +160,11 @@ fn t10_for_of_per_iteration_binding() {
         for (const i of [1,2,3]) { closures.push(() => i); }
         return closures[0]() + "," + closures[1]() + "," + closures[2]();
     "#;
-    if let Value::String(s) = run(src) { assert_eq!(s.as_str(), "1,2,3"); }
-    else { panic!("expected string"); }
+    if let Value::String(s) = run(src) {
+        assert_eq!(s.as_str(), "1,2,3");
+    } else {
+        panic!("expected string");
+    }
 }
 
 // 10b. Same as t10 but with `let` head — let and const behave identically
@@ -164,8 +176,11 @@ fn t10b_for_of_let_head_per_iteration() {
         for (let i of [1,2,3]) { closures.push(() => i); }
         return closures[0]() + "," + closures[1]() + "," + closures[2]();
     "#;
-    if let Value::String(s) = run(src) { assert_eq!(s.as_str(), "1,2,3"); }
-    else { panic!("expected string"); }
+    if let Value::String(s) = run(src) {
+        assert_eq!(s.as_str(), "1,2,3");
+    } else {
+        panic!("expected string");
+    }
 }
 
 // 10c. `var` head in for-of stays function-scoped and shared across
@@ -178,8 +193,11 @@ fn t10c_for_of_var_head_shared() {
         for (var i of [1,2,3]) { closures.push(() => i); }
         return closures[0]() + "," + closures[1]() + "," + closures[2]();
     "#;
-    if let Value::String(s) = run(src) { assert_eq!(s.as_str(), "3,3,3"); }
-    else { panic!("expected string"); }
+    if let Value::String(s) = run(src) {
+        assert_eq!(s.as_str(), "3,3,3");
+    } else {
+        panic!("expected string");
+    }
 }
 
 // 10d. continue mid-loop: skip iteration where i === 2; first/third
@@ -194,8 +212,11 @@ fn t10d_for_of_per_iteration_with_continue() {
         }
         return closures[0]() + "," + closures[1]();
     "#;
-    if let Value::String(s) = run(src) { assert_eq!(s.as_str(), "1,3"); }
-    else { panic!("expected string"); }
+    if let Value::String(s) = run(src) {
+        assert_eq!(s.as_str(), "1,3");
+    } else {
+        panic!("expected string");
+    }
 }
 
 // 10e. break mid-loop: closures collected before the break observe
@@ -210,8 +231,11 @@ fn t10e_for_of_per_iteration_with_break() {
         }
         return closures[0]() + "," + closures[1]();
     "#;
-    if let Value::String(s) = run(src) { assert_eq!(s.as_str(), "1,2"); }
-    else { panic!("expected string"); }
+    if let Value::String(s) = run(src) {
+        assert_eq!(s.as_str(), "1,2");
+    } else {
+        panic!("expected string");
+    }
 }
 
 // 11. Closure outlives the creating frame.

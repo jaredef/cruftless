@@ -11,14 +11,14 @@
 //! verbatim — no TS-specific residue reaches rusty-js-ir (C3 per
 //! seed.md §I.2).
 
-pub mod lexer;
-pub mod ts_ast;
-pub mod parser;
 pub mod erase;
+pub mod lexer;
+pub mod parser;
 pub mod strip;
+pub mod ts_ast;
 
-pub use parser::{TsParser, TsParseError};
-pub use ts_ast::{TsTypeRef, TsLiteralVal, TsAnnotation};
+pub use parser::{TsParseError, TsParser};
+pub use ts_ast::{TsAnnotation, TsLiteralVal, TsTypeRef};
 
 /// Convenience: parse a TS module + erase types, returning a plain
 /// `rusty_js_ast::Module` consumable by rusty-js-ir.
@@ -31,7 +31,9 @@ pub fn parse_and_erase(src: &str) -> Result<rusty_js_ast::Module, TsParseError> 
 /// Sidecar-aware parse: returns the erased module + the collected
 /// `TypeWitness` records for downstream IC/JIT consumers. TSR-EXT 5
 /// fully wires this through; for now witnesses are an empty stash.
-pub fn parse_with_witnesses(src: &str) -> Result<(rusty_js_ast::Module, Vec<ts_ast::TypeWitness>), TsParseError> {
+pub fn parse_with_witnesses(
+    src: &str,
+) -> Result<(rusty_js_ast::Module, Vec<ts_ast::TypeWitness>), TsParseError> {
     let mut p = TsParser::new(src)?;
     let (module, witnesses) = p.parse_module()?;
     Ok((erase::erase_module(module), witnesses))

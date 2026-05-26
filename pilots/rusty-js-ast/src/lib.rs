@@ -16,7 +16,9 @@ pub struct Span {
 }
 
 impl Span {
-    pub fn new(start: usize, end: usize) -> Self { Self { start, end } }
+    pub fn new(start: usize, end: usize) -> Self {
+        Self { start, end }
+    }
 }
 
 // ─────────── Expression nodes (Tier-Ω.3.b round 3a subset) ───────────
@@ -29,27 +31,103 @@ impl Span {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
-    NullLiteral { span: Span },
-    BoolLiteral { value: bool, span: Span },
-    NumberLiteral { value: f64, span: Span },
-    BigIntLiteral { digits: String, span: Span },
-    StringLiteral { value: String, span: Span },
-    Identifier { name: String, span: Span },
-    This { span: Span },
-    Super { span: Span },
-    MetaProperty { meta: String, property: String, span: Span },
-    Array { elements: Vec<ArrayElement>, trailing_comma_after_spread: bool, span: Span },
-    Object { properties: Vec<ObjectProperty>, span: Span },
-    Parenthesized { expr: Box<Expr>, span: Span },
-    Member { object: Box<Expr>, property: Box<MemberProperty>, optional: bool, span: Span },
-    Call { callee: Box<Expr>, arguments: Vec<Argument>, optional: bool, span: Span },
-    New { callee: Box<Expr>, arguments: Vec<Argument>, span: Span },
-    Update { operator: UpdateOp, argument: Box<Expr>, prefix: bool, span: Span },
-    Unary { operator: UnaryOp, argument: Box<Expr>, span: Span },
-    Binary { operator: BinaryOp, left: Box<Expr>, right: Box<Expr>, span: Span },
-    Conditional { test: Box<Expr>, consequent: Box<Expr>, alternate: Box<Expr>, span: Span },
-    Assign { operator: AssignOp, target: Box<Expr>, value: Box<Expr>, span: Span },
-    Sequence { expressions: Vec<Expr>, span: Span },
+    NullLiteral {
+        span: Span,
+    },
+    BoolLiteral {
+        value: bool,
+        span: Span,
+    },
+    NumberLiteral {
+        value: f64,
+        span: Span,
+    },
+    BigIntLiteral {
+        digits: String,
+        span: Span,
+    },
+    StringLiteral {
+        value: String,
+        span: Span,
+    },
+    Identifier {
+        name: String,
+        span: Span,
+    },
+    This {
+        span: Span,
+    },
+    Super {
+        span: Span,
+    },
+    MetaProperty {
+        meta: String,
+        property: String,
+        span: Span,
+    },
+    Array {
+        elements: Vec<ArrayElement>,
+        trailing_comma_after_spread: bool,
+        span: Span,
+    },
+    Object {
+        properties: Vec<ObjectProperty>,
+        span: Span,
+    },
+    Parenthesized {
+        expr: Box<Expr>,
+        span: Span,
+    },
+    Member {
+        object: Box<Expr>,
+        property: Box<MemberProperty>,
+        optional: bool,
+        span: Span,
+    },
+    Call {
+        callee: Box<Expr>,
+        arguments: Vec<Argument>,
+        optional: bool,
+        span: Span,
+    },
+    New {
+        callee: Box<Expr>,
+        arguments: Vec<Argument>,
+        span: Span,
+    },
+    Update {
+        operator: UpdateOp,
+        argument: Box<Expr>,
+        prefix: bool,
+        span: Span,
+    },
+    Unary {
+        operator: UnaryOp,
+        argument: Box<Expr>,
+        span: Span,
+    },
+    Binary {
+        operator: BinaryOp,
+        left: Box<Expr>,
+        right: Box<Expr>,
+        span: Span,
+    },
+    Conditional {
+        test: Box<Expr>,
+        consequent: Box<Expr>,
+        alternate: Box<Expr>,
+        span: Span,
+    },
+    Assign {
+        operator: AssignOp,
+        target: Box<Expr>,
+        value: Box<Expr>,
+        span: Span,
+    },
+    Sequence {
+        expressions: Vec<Expr>,
+        span: Span,
+    },
     /// `function NAME?(params) { body }` in expression position.
     Function {
         name: Option<BindingIdentifier>,
@@ -94,7 +172,9 @@ pub enum Expr {
     },
     /// Opaque byte-span placeholder for forms still pending
     /// (dynamic-import-call). Other forms have moved off this fallback.
-    Opaque { span: Span },
+    Opaque {
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -133,7 +213,12 @@ pub enum ClassMember {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MethodKind { Method, Constructor, Getter, Setter }
+pub enum MethodKind {
+    Method,
+    Constructor,
+    Getter,
+    Setter,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ClassMemberName {
@@ -166,8 +251,17 @@ pub enum ArrayElement {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ObjectProperty {
-    Property { key: ObjectKey, value: Expr, shorthand: bool, kind: ObjectPropertyKind, span: Span },
-    Spread { expr: Expr, span: Span },
+    Property {
+        key: ObjectKey,
+        value: Expr,
+        shorthand: bool,
+        kind: ObjectPropertyKind,
+        span: Span,
+    },
+    Spread {
+        expr: Expr,
+        span: Span,
+    },
 }
 
 /// Ω.5.P52.E1: distinguishes data property vs accessor-pair members in
@@ -192,54 +286,104 @@ pub enum ObjectKey {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum UpdateOp { Inc, Dec }
+pub enum UpdateOp {
+    Inc,
+    Dec,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnaryOp {
-    Plus, Minus, BitNot, LogicalNot,
-    Typeof, Void, Delete,
+    Plus,
+    Minus,
+    BitNot,
+    LogicalNot,
+    Typeof,
+    Void,
+    Delete,
     Await,
-    Yield, YieldDelegate,
+    Yield,
+    YieldDelegate,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BinaryOp {
-    Add, Sub, Mul, Div, Mod, Pow,
-    Shl, Shr, UShr,
-    Lt, Gt, Le, Ge,
-    Eq, Ne, StrictEq, StrictNe,
-    Instanceof, In,
-    BitAnd, BitOr, BitXor,
-    LogicalAnd, LogicalOr, NullishCoalesce,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    Pow,
+    Shl,
+    Shr,
+    UShr,
+    Lt,
+    Gt,
+    Le,
+    Ge,
+    Eq,
+    Ne,
+    StrictEq,
+    StrictNe,
+    Instanceof,
+    In,
+    BitAnd,
+    BitOr,
+    BitXor,
+    LogicalAnd,
+    LogicalOr,
+    NullishCoalesce,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AssignOp {
     Assign,
-    AddAssign, SubAssign, MulAssign, DivAssign, ModAssign, PowAssign,
-    ShlAssign, ShrAssign, UShrAssign,
-    BitAndAssign, BitOrAssign, BitXorAssign,
-    LogicalAndAssign, LogicalOrAssign, NullishAssign,
+    AddAssign,
+    SubAssign,
+    MulAssign,
+    DivAssign,
+    ModAssign,
+    PowAssign,
+    ShlAssign,
+    ShrAssign,
+    UShrAssign,
+    BitAndAssign,
+    BitOrAssign,
+    BitXorAssign,
+    LogicalAndAssign,
+    LogicalOrAssign,
+    NullishAssign,
 }
 
 impl Expr {
     pub fn span(&self) -> Span {
         match self {
-            Expr::NullLiteral { span } | Expr::BoolLiteral { span, .. } |
-            Expr::NumberLiteral { span, .. } | Expr::BigIntLiteral { span, .. } |
-            Expr::StringLiteral { span, .. } | Expr::Identifier { span, .. } |
-            Expr::This { span } | Expr::Super { span } |
-            Expr::MetaProperty { span, .. } | Expr::Array { span, .. } |
-            Expr::Object { span, .. } | Expr::Parenthesized { span, .. } |
-            Expr::Member { span, .. } | Expr::Call { span, .. } |
-            Expr::New { span, .. } | Expr::Update { span, .. } |
-            Expr::Unary { span, .. } | Expr::Binary { span, .. } |
-            Expr::Conditional { span, .. } | Expr::Assign { span, .. } |
-            Expr::Sequence { span, .. } | Expr::Function { span, .. } |
-            Expr::Class { span, .. } | Expr::Arrow { span, .. } |
-            Expr::TemplateLiteral { span, .. } |
-            Expr::RegExp { span, .. } |
-            Expr::Opaque { span } => *span,
+            Expr::NullLiteral { span }
+            | Expr::BoolLiteral { span, .. }
+            | Expr::NumberLiteral { span, .. }
+            | Expr::BigIntLiteral { span, .. }
+            | Expr::StringLiteral { span, .. }
+            | Expr::Identifier { span, .. }
+            | Expr::This { span }
+            | Expr::Super { span }
+            | Expr::MetaProperty { span, .. }
+            | Expr::Array { span, .. }
+            | Expr::Object { span, .. }
+            | Expr::Parenthesized { span, .. }
+            | Expr::Member { span, .. }
+            | Expr::Call { span, .. }
+            | Expr::New { span, .. }
+            | Expr::Update { span, .. }
+            | Expr::Unary { span, .. }
+            | Expr::Binary { span, .. }
+            | Expr::Conditional { span, .. }
+            | Expr::Assign { span, .. }
+            | Expr::Sequence { span, .. }
+            | Expr::Function { span, .. }
+            | Expr::Class { span, .. }
+            | Expr::Arrow { span, .. }
+            | Expr::TemplateLiteral { span, .. }
+            | Expr::RegExp { span, .. }
+            | Expr::Opaque { span } => *span,
         }
     }
 }
@@ -274,9 +418,17 @@ pub enum ModuleItem {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stmt {
     Variable(VariableStatement),
-    Expression { expr: Expr, span: Span },
-    Block { body: Vec<Stmt>, span: Span },
-    Empty { span: Span },
+    Expression {
+        expr: Expr,
+        span: Span,
+    },
+    Block {
+        body: Vec<Stmt>,
+        span: Span,
+    },
+    Empty {
+        span: Span,
+    },
     /// `function NAME(params) { body }` — typed parameters + body.
     FunctionDecl {
         name: Option<BindingIdentifier>,
@@ -294,37 +446,96 @@ pub enum Stmt {
         span: Span,
     },
     /// `if (test) consequent [else alternate]`
-    If { test: Expr, consequent: Box<Stmt>, alternate: Option<Box<Stmt>>, span: Span },
+    If {
+        test: Expr,
+        consequent: Box<Stmt>,
+        alternate: Option<Box<Stmt>>,
+        span: Span,
+    },
     /// `for (init; test; update) body` — C-style.
-    For { init: Option<ForInit>, test: Option<Expr>, update: Option<Expr>, body: Box<Stmt>, span: Span },
+    For {
+        init: Option<ForInit>,
+        test: Option<Expr>,
+        update: Option<Expr>,
+        body: Box<Stmt>,
+        span: Span,
+    },
     /// `for (left in right) body`
-    ForIn { left: ForBinding, right: Expr, body: Box<Stmt>, span: Span },
+    ForIn {
+        left: ForBinding,
+        right: Expr,
+        body: Box<Stmt>,
+        span: Span,
+    },
     /// `for [await] (left of right) body`
-    ForOf { left: ForBinding, right: Expr, body: Box<Stmt>, await_: bool, span: Span },
+    ForOf {
+        left: ForBinding,
+        right: Expr,
+        body: Box<Stmt>,
+        await_: bool,
+        span: Span,
+    },
     /// `while (test) body`
-    While { test: Expr, body: Box<Stmt>, span: Span },
+    While {
+        test: Expr,
+        body: Box<Stmt>,
+        span: Span,
+    },
     /// `do body while (test);`
-    DoWhile { body: Box<Stmt>, test: Expr, span: Span },
+    DoWhile {
+        body: Box<Stmt>,
+        test: Expr,
+        span: Span,
+    },
     /// `switch (discr) { cases... }`
-    Switch { discriminant: Expr, cases: Vec<SwitchCase>, span: Span },
+    Switch {
+        discriminant: Expr,
+        cases: Vec<SwitchCase>,
+        span: Span,
+    },
     /// `try { ... } [catch (e) { ... }] [finally { ... }]`
-    Try { block: Box<Stmt>, handler: Option<CatchClause>, finalizer: Option<Box<Stmt>>, span: Span },
+    Try {
+        block: Box<Stmt>,
+        handler: Option<CatchClause>,
+        finalizer: Option<Box<Stmt>>,
+        span: Span,
+    },
     /// `return [argument];`
-    Return { argument: Option<Expr>, span: Span },
+    Return {
+        argument: Option<Expr>,
+        span: Span,
+    },
     /// `throw argument;`
-    Throw { argument: Expr, span: Span },
+    Throw {
+        argument: Expr,
+        span: Span,
+    },
     /// `break [label];`
-    Break { label: Option<BindingIdentifier>, span: Span },
+    Break {
+        label: Option<BindingIdentifier>,
+        span: Span,
+    },
     /// `continue [label];`
-    Continue { label: Option<BindingIdentifier>, span: Span },
+    Continue {
+        label: Option<BindingIdentifier>,
+        span: Span,
+    },
     /// `debugger;`
-    Debugger { span: Span },
+    Debugger {
+        span: Span,
+    },
     /// `LABEL: body`
-    Labelled { label: BindingIdentifier, body: Box<Stmt>, span: Span },
+    Labelled {
+        label: BindingIdentifier,
+        body: Box<Stmt>,
+        span: Span,
+    },
     /// Statement forms still unhandled. The 3c sub-round retired
     /// If/For/While/DoWhile/Switch/Try/Return/Throw/Break/Continue/
     /// Debugger/Labelled. `with` remains opaque (forbidden in modules anyway).
-    Opaque { span: Span },
+    Opaque {
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -337,7 +548,11 @@ pub enum ForInit {
 pub enum ForBinding {
     /// `var X` / `let X` / `const X` head — target carries the pattern
     /// shape (BindingPattern::Identifier for the simple case).
-    Decl { kind: VariableKind, target: BindingPattern, span: Span },
+    Decl {
+        kind: VariableKind,
+        target: BindingPattern,
+        span: Span,
+    },
     /// Pre-existing binding (or pattern) without a decl keyword:
     /// `for (x of arr)` or `for ([a,b] of arrs)`.
     Pattern(BindingPattern),
@@ -379,15 +594,25 @@ impl Stmt {
     pub fn span(&self) -> Span {
         match self {
             Stmt::Variable(v) => v.span,
-            Stmt::Expression { span, .. } | Stmt::Block { span, .. } | Stmt::Empty { span }
-            | Stmt::FunctionDecl { span, .. } | Stmt::ClassDecl { span, .. }
-            | Stmt::If { span, .. } | Stmt::For { span, .. }
-            | Stmt::ForIn { span, .. } | Stmt::ForOf { span, .. }
-            | Stmt::While { span, .. } | Stmt::DoWhile { span, .. }
-            | Stmt::Switch { span, .. } | Stmt::Try { span, .. }
-            | Stmt::Return { span, .. } | Stmt::Throw { span, .. }
-            | Stmt::Break { span, .. } | Stmt::Continue { span, .. }
-            | Stmt::Debugger { span } | Stmt::Labelled { span, .. }
+            Stmt::Expression { span, .. }
+            | Stmt::Block { span, .. }
+            | Stmt::Empty { span }
+            | Stmt::FunctionDecl { span, .. }
+            | Stmt::ClassDecl { span, .. }
+            | Stmt::If { span, .. }
+            | Stmt::For { span, .. }
+            | Stmt::ForIn { span, .. }
+            | Stmt::ForOf { span, .. }
+            | Stmt::While { span, .. }
+            | Stmt::DoWhile { span, .. }
+            | Stmt::Switch { span, .. }
+            | Stmt::Try { span, .. }
+            | Stmt::Return { span, .. }
+            | Stmt::Throw { span, .. }
+            | Stmt::Break { span, .. }
+            | Stmt::Continue { span, .. }
+            | Stmt::Debugger { span }
+            | Stmt::Labelled { span, .. }
             | Stmt::Opaque { span } => *span,
         }
     }
@@ -401,7 +626,11 @@ pub struct VariableStatement {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum VariableKind { Let, Const, Var }
+pub enum VariableKind {
+    Let,
+    Const,
+    Var,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct VariableDeclarator {
@@ -484,13 +713,21 @@ impl BindingPattern {
             BindingPattern::Identifier(id) => out.push(id),
             BindingPattern::Array(arr) => {
                 for elem in &arr.elements {
-                    if let Some(e) = elem { e.target.collect_names_into(out); }
+                    if let Some(e) = elem {
+                        e.target.collect_names_into(out);
+                    }
                 }
-                if let Some(rest) = &arr.rest { rest.collect_names_into(out); }
+                if let Some(rest) = &arr.rest {
+                    rest.collect_names_into(out);
+                }
             }
             BindingPattern::Object(obj) => {
-                for prop in &obj.properties { prop.value.target.collect_names_into(out); }
-                if let Some(rest) = &obj.rest { out.push(rest); }
+                for prop in &obj.properties {
+                    prop.value.target.collect_names_into(out);
+                }
+                if let Some(rest) = &obj.rest {
+                    out.push(rest);
+                }
             }
         }
     }
@@ -666,16 +903,16 @@ pub enum ImportName {
 /// by the parent ExportDeclaration node + the absence of `module_request`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExportEntry {
-    pub export_name: Option<String>,        // None = star export without name
-    pub module_request: Option<String>,     // None = local export
+    pub export_name: Option<String>,    // None = star export without name
+    pub module_request: Option<String>, // None = local export
     pub import_name: Option<ExportImportName>,
     pub local_name: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExportImportName {
-    All,                // export * from
-    AllButDefault,      // not used in v1 (relevant for export * grammar nuance)
+    All,           // export * from
+    AllButDefault, // not used in v1 (relevant for export * grammar nuance)
     Default,
     Single(String),
 }

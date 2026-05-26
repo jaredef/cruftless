@@ -48,7 +48,12 @@ fn consumer_jsdom_whatwg_encoding_canonical_name() {
     // Different label inputs all canonicalize to "utf-8".
     for label in ["utf-8", "UTF-8", "utf8", "Unicode-1-1-UTF-8"] {
         let d = TextDecoder::new(Some(label), Default::default()).unwrap();
-        assert_eq!(d.encoding(), "utf-8", "label {:?} should canonicalize", label);
+        assert_eq!(
+            d.encoding(),
+            "utf-8",
+            "label {:?} should canonicalize",
+            label
+        );
     }
 }
 
@@ -84,7 +89,10 @@ fn consumer_protobufjs_encodeinto_does_not_split_multibyte_at_boundary() {
     // Verify no truncated multi-byte sequence: the bytes must be
     // valid UTF-8 when decoded.
     let mut d = TextDecoder::new(None, Default::default()).unwrap();
-    assert_eq!(d.decode(&buf[..r.written], Default::default()).unwrap(), "hé");
+    assert_eq!(
+        d.decode(&buf[..r.written], Default::default()).unwrap(),
+        "hé"
+    );
 }
 
 // ─────────── WPT encoding test corpus ──────────
@@ -115,9 +123,13 @@ fn wpt_textdecoder_utf8_streaming_split_codepoint() {
     // WPT: splitting a multi-byte UTF-8 sequence across stream chunks
     // must NOT emit replacement chars; the decoder retains state.
     let mut d = TextDecoder::new(None, Default::default()).unwrap();
-    let s1 = d.decode(&[0xF0, 0x9F], TextDecodeOptions { stream: true }).unwrap();
+    let s1 = d
+        .decode(&[0xF0, 0x9F], TextDecodeOptions { stream: true })
+        .unwrap();
     assert_eq!(s1, "");
-    let s2 = d.decode(&[0x98, 0x80], TextDecodeOptions { stream: false }).unwrap();
+    let s2 = d
+        .decode(&[0x98, 0x80], TextDecodeOptions { stream: false })
+        .unwrap();
     assert_eq!(s2, "\u{1F600}");
 }
 
@@ -143,8 +155,12 @@ fn consumer_csv_parser_bom_consumed_by_default() {
 fn consumer_csv_parser_bom_preserved_with_ignore_bom() {
     let mut d = TextDecoder::new(
         None,
-        TextDecoderOptions { fatal: false, ignore_bom: true },
-    ).unwrap();
+        TextDecoderOptions {
+            fatal: false,
+            ignore_bom: true,
+        },
+    )
+    .unwrap();
     let bytes = b"\xEF\xBB\xBFhello";
     let s = d.decode(bytes, Default::default()).unwrap();
     assert_eq!(s, "\u{FEFF}hello");
@@ -160,8 +176,12 @@ fn consumer_csv_parser_bom_preserved_with_ignore_bom() {
 fn consumer_strict_decoder_fatal_throws_on_invalid() {
     let mut d = TextDecoder::new(
         None,
-        TextDecoderOptions { fatal: true, ignore_bom: false },
-    ).unwrap();
+        TextDecoderOptions {
+            fatal: true,
+            ignore_bom: false,
+        },
+    )
+    .unwrap();
     let r = d.decode(&[0xFF, 0xFE], Default::default());
     assert_eq!(r, Err(DecoderError::InvalidSequence));
 }

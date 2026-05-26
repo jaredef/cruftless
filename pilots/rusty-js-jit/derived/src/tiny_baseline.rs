@@ -71,16 +71,22 @@ impl TinyBaselineMetadata {
     /// `translator::compile_function` when `CRUFTLESS_LEJIT_TB=1`
     /// AND the function is param-eligible (1-2 args).
     pub fn build(jit_fn_ptr: usize, params: u16, bytecode_len: usize) -> Self {
-        let tb_eligible = bytecode_len <= TB_BYTECODE_LEN_THRESHOLD
-            && (params == 1 || params == 2);
-        Self { jit_fn_ptr, params, bytecode_len, tb_eligible }
+        let tb_eligible = bytecode_len <= TB_BYTECODE_LEN_THRESHOLD && (params == 1 || params == 2);
+        Self {
+            jit_fn_ptr,
+            params,
+            bytecode_len,
+            tb_eligible,
+        }
     }
 
     /// Returns true iff this metadata's function is eligible for
     /// thunk dispatch under TB-EXT 3b. The dispatcher under TB=1
     /// reads this once per call to decide whether to route through
     /// the thunk or fall through to the standard path.
-    pub fn eligible(&self) -> bool { self.tb_eligible }
+    pub fn eligible(&self) -> bool {
+        self.tb_eligible
+    }
 }
 
 /// Read the `CRUFTLESS_LEJIT_TB` env flag.

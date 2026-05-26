@@ -12,7 +12,9 @@
 // No actual socket binding, no HTTP wire format. The transport-layer
 // derivation is a separate pilot (deferred).
 
-pub use rusty_fetch_api::{Body, Headers, Request, RequestInit, Response, ResponseInit, ResponseType};
+pub use rusty_fetch_api::{
+    Body, Headers, Request, RequestInit, Response, ResponseInit, ResponseType,
+};
 
 use std::collections::HashMap;
 
@@ -48,11 +50,15 @@ pub struct Route {
 
 impl Route {
     pub fn any<F>(pattern: impl Into<String>, handler: F) -> Self
-    where F: Fn(&Request, &RouteParams) -> Response + 'static
+    where
+        F: Fn(&Request, &RouteParams) -> Response + 'static,
     {
         let mut methods = HashMap::new();
         methods.insert(String::new(), Box::new(handler) as Handler);
-        Self { pattern: pattern.into(), methods }
+        Self {
+            pattern: pattern.into(),
+            methods,
+        }
     }
 
     pub fn methods(pattern: impl Into<String>) -> RouteBuilder {
@@ -70,13 +76,18 @@ pub struct RouteBuilder {
 
 impl RouteBuilder {
     pub fn on<F>(mut self, method: impl Into<String>, handler: F) -> Self
-    where F: Fn(&Request, &RouteParams) -> Response + 'static
+    where
+        F: Fn(&Request, &RouteParams) -> Response + 'static,
     {
-        self.methods.insert(method.into(), Box::new(handler) as Handler);
+        self.methods
+            .insert(method.into(), Box::new(handler) as Handler);
         self
     }
     pub fn build(self) -> Route {
-        Route { pattern: self.pattern, methods: self.methods }
+        Route {
+            pattern: self.pattern,
+            methods: self.methods,
+        }
     }
 }
 
@@ -115,17 +126,31 @@ pub struct Server {
 impl Server {
     /// `Bun.serve(options)` — construct + transition to Listening.
     pub fn new(options: ServeOptions) -> Self {
-        Self { options, state: ServerState::Listening, pending_requests: 0 }
+        Self {
+            options,
+            state: ServerState::Listening,
+            pending_requests: 0,
+        }
     }
 
-    pub fn port(&self) -> u16 { self.options.port }
-    pub fn hostname(&self) -> &str { &self.options.hostname }
+    pub fn port(&self) -> u16 {
+        self.options.port
+    }
+    pub fn hostname(&self) -> &str {
+        &self.options.hostname
+    }
     pub fn url(&self) -> String {
         format!("http://{}:{}/", self.options.hostname, self.options.port)
     }
-    pub fn pending_requests(&self) -> u64 { self.pending_requests }
-    pub fn state(&self) -> &ServerState { &self.state }
-    pub fn is_listening(&self) -> bool { matches!(self.state, ServerState::Listening) }
+    pub fn pending_requests(&self) -> u64 {
+        self.pending_requests
+    }
+    pub fn state(&self) -> &ServerState {
+        &self.state
+    }
+    pub fn is_listening(&self) -> bool {
+        matches!(self.state, ServerState::Listening)
+    }
 
     /// `server.fetch(request)` — the data-layer core. Match routes first,
     /// then catch-all fetch handler, then error handler.
@@ -154,8 +179,12 @@ impl Server {
                 // Pattern matched but no handler for this method → 405.
                 return Response::new(
                     None,
-                    ResponseInit { status: Some(405), ..Default::default() },
-                ).unwrap_or_else(|_| Response::error());
+                    ResponseInit {
+                        status: Some(405),
+                        ..Default::default()
+                    },
+                )
+                .unwrap_or_else(|_| Response::error());
             }
         }
         // 2. Catch-all fetch handler.
@@ -169,8 +198,12 @@ impl Server {
         // 4. Default: 404.
         Response::new(
             None,
-            ResponseInit { status: Some(404), ..Default::default() },
-        ).unwrap_or_else(|_| Response::error())
+            ResponseInit {
+                status: Some(404),
+                ..Default::default()
+            },
+        )
+        .unwrap_or_else(|_| Response::error())
     }
 
     /// `server.reload(newOptions)` — hot-reload handler/routes without
@@ -202,8 +235,14 @@ impl Server {
 pub fn match_pattern(pattern: &str, url: &str) -> Option<RouteParams> {
     // Extract path from URL (strip scheme + host + query).
     let path = extract_path(url);
-    let pat_segs: Vec<&str> = strip_trailing_slash(pattern).trim_start_matches('/').split('/').collect();
-    let path_segs: Vec<&str> = strip_trailing_slash(&path).trim_start_matches('/').split('/').collect();
+    let pat_segs: Vec<&str> = strip_trailing_slash(pattern)
+        .trim_start_matches('/')
+        .split('/')
+        .collect();
+    let path_segs: Vec<&str> = strip_trailing_slash(&path)
+        .trim_start_matches('/')
+        .split('/')
+        .collect();
     if pat_segs.len() != path_segs.len() {
         return None;
     }
@@ -247,4 +286,6 @@ fn strip_trailing_slash(s: &str) -> &str {
 }
 
 /// Top-level `Bun::serve(options)` matching JS shape.
-pub fn serve(options: ServeOptions) -> Server { Server::new(options) }
+pub fn serve(options: ServeOptions) -> Server {
+    Server::new(options)
+}

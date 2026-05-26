@@ -51,7 +51,9 @@ pub fn random_uuid_v4() -> String {
 /// (per Node spec; the constant-time guarantee applies only to equal-length
 /// inputs).
 pub fn timing_safe_equal(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() { return false; }
+    if a.len() != b.len() {
+        return false;
+    }
     let mut diff: u8 = 0;
     for i in 0..a.len() {
         diff |= a[i] ^ b[i];
@@ -75,8 +77,7 @@ const SHA256_K: [u32; 64] = [
 ];
 
 const SHA256_H0: [u32; 8] = [
-    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
-    0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
 ];
 
 pub fn digest_sha256(data: &[u8]) -> [u8; 32] {
@@ -84,18 +85,28 @@ pub fn digest_sha256(data: &[u8]) -> [u8; 32] {
     let mut padded: Vec<u8> = data.to_vec();
     let bit_len = (data.len() as u64) * 8;
     padded.push(0x80);
-    while padded.len() % 64 != 56 { padded.push(0); }
+    while padded.len() % 64 != 56 {
+        padded.push(0);
+    }
     padded.extend_from_slice(&bit_len.to_be_bytes());
 
     for chunk in padded.chunks_exact(64) {
         let mut w = [0u32; 64];
         for i in 0..16 {
-            w[i] = u32::from_be_bytes([chunk[i*4], chunk[i*4+1], chunk[i*4+2], chunk[i*4+3]]);
+            w[i] = u32::from_be_bytes([
+                chunk[i * 4],
+                chunk[i * 4 + 1],
+                chunk[i * 4 + 2],
+                chunk[i * 4 + 3],
+            ]);
         }
         for i in 16..64 {
-            let s0 = w[i-15].rotate_right(7) ^ w[i-15].rotate_right(18) ^ (w[i-15] >> 3);
-            let s1 = w[i-2].rotate_right(17) ^ w[i-2].rotate_right(19) ^ (w[i-2] >> 10);
-            w[i] = w[i-16].wrapping_add(s0).wrapping_add(w[i-7]).wrapping_add(s1);
+            let s0 = w[i - 15].rotate_right(7) ^ w[i - 15].rotate_right(18) ^ (w[i - 15] >> 3);
+            let s1 = w[i - 2].rotate_right(17) ^ w[i - 2].rotate_right(19) ^ (w[i - 2] >> 10);
+            w[i] = w[i - 16]
+                .wrapping_add(s0)
+                .wrapping_add(w[i - 7])
+                .wrapping_add(s1);
         }
 
         let (mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut hh) =
@@ -104,12 +115,22 @@ pub fn digest_sha256(data: &[u8]) -> [u8; 32] {
         for i in 0..64 {
             let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
             let ch = (e & f) ^ (!e & g);
-            let t1 = hh.wrapping_add(s1).wrapping_add(ch).wrapping_add(SHA256_K[i]).wrapping_add(w[i]);
+            let t1 = hh
+                .wrapping_add(s1)
+                .wrapping_add(ch)
+                .wrapping_add(SHA256_K[i])
+                .wrapping_add(w[i]);
             let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
             let maj = (a & b) ^ (a & c) ^ (b & c);
             let t2 = s0.wrapping_add(maj);
-            hh = g; g = f; f = e; e = d.wrapping_add(t1);
-            d = c; c = b; b = a; a = t1.wrapping_add(t2);
+            hh = g;
+            g = f;
+            f = e;
+            e = d.wrapping_add(t1);
+            d = c;
+            c = b;
+            b = a;
+            a = t1.wrapping_add(t2);
         }
         h[0] = h[0].wrapping_add(a);
         h[1] = h[1].wrapping_add(b);
@@ -123,7 +144,7 @@ pub fn digest_sha256(data: &[u8]) -> [u8; 32] {
 
     let mut out = [0u8; 32];
     for i in 0..8 {
-        out[i*4..i*4+4].copy_from_slice(&h[i].to_be_bytes());
+        out[i * 4..i * 4 + 4].copy_from_slice(&h[i].to_be_bytes());
     }
     out
 }
@@ -132,7 +153,9 @@ pub fn digest_sha256(data: &[u8]) -> [u8; 32] {
 pub fn digest_sha256_hex(data: &[u8]) -> String {
     let bytes = digest_sha256(data);
     let mut s = String::with_capacity(64);
-    for b in &bytes { s.push_str(&format!("{:02x}", b)); }
+    for b in &bytes {
+        s.push_str(&format!("{:02x}", b));
+    }
     s
 }
 
@@ -151,16 +174,23 @@ pub fn digest_sha1(data: &[u8]) -> [u8; 20] {
     let mut padded: Vec<u8> = data.to_vec();
     let bit_len = (data.len() as u64) * 8;
     padded.push(0x80);
-    while padded.len() % 64 != 56 { padded.push(0); }
+    while padded.len() % 64 != 56 {
+        padded.push(0);
+    }
     padded.extend_from_slice(&bit_len.to_be_bytes());
 
     for chunk in padded.chunks_exact(64) {
         let mut w = [0u32; 80];
         for i in 0..16 {
-            w[i] = u32::from_be_bytes([chunk[i*4], chunk[i*4+1], chunk[i*4+2], chunk[i*4+3]]);
+            w[i] = u32::from_be_bytes([
+                chunk[i * 4],
+                chunk[i * 4 + 1],
+                chunk[i * 4 + 2],
+                chunk[i * 4 + 3],
+            ]);
         }
         for i in 16..80 {
-            w[i] = (w[i-3] ^ w[i-8] ^ w[i-14] ^ w[i-16]).rotate_left(1);
+            w[i] = (w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16]).rotate_left(1);
         }
         let (mut a, mut b, mut c, mut d, mut e) = (h[0], h[1], h[2], h[3], h[4]);
         for i in 0..80 {
@@ -173,7 +203,8 @@ pub fn digest_sha1(data: &[u8]) -> [u8; 20] {
             } else {
                 (b ^ c ^ d, 0xca62c1d6_u32)
             };
-            let t = a.rotate_left(5)
+            let t = a
+                .rotate_left(5)
                 .wrapping_add(f)
                 .wrapping_add(e)
                 .wrapping_add(k)
@@ -192,7 +223,7 @@ pub fn digest_sha1(data: &[u8]) -> [u8; 20] {
     }
     let mut out = [0u8; 20];
     for i in 0..5 {
-        out[i*4..i*4+4].copy_from_slice(&h[i].to_be_bytes());
+        out[i * 4..i * 4 + 4].copy_from_slice(&h[i].to_be_bytes());
     }
     out
 }
@@ -200,7 +231,9 @@ pub fn digest_sha1(data: &[u8]) -> [u8; 20] {
 pub fn digest_sha1_hex(data: &[u8]) -> String {
     let bytes = digest_sha1(data);
     let mut s = String::with_capacity(40);
-    for b in &bytes { s.push_str(&format!("{:02x}", b)); }
+    for b in &bytes {
+        s.push_str(&format!("{:02x}", b));
+    }
     s
 }
 
@@ -265,36 +298,108 @@ pub fn hmac_sha256(key: &[u8], message: &[u8]) -> [u8; 32] {
 // truncates output to the first 48 bytes.
 
 const SHA512_K: [u64; 80] = [
-    0x428a2f98d728ae22, 0x7137449123ef65cd, 0xb5c0fbcfec4d3b2f, 0xe9b5dba58189dbbc,
-    0x3956c25bf348b538, 0x59f111f1b605d019, 0x923f82a4af194f9b, 0xab1c5ed5da6d8118,
-    0xd807aa98a3030242, 0x12835b0145706fbe, 0x243185be4ee4b28c, 0x550c7dc3d5ffb4e2,
-    0x72be5d74f27b896f, 0x80deb1fe3b1696b1, 0x9bdc06a725c71235, 0xc19bf174cf692694,
-    0xe49b69c19ef14ad2, 0xefbe4786384f25e3, 0x0fc19dc68b8cd5b5, 0x240ca1cc77ac9c65,
-    0x2de92c6f592b0275, 0x4a7484aa6ea6e483, 0x5cb0a9dcbd41fbd4, 0x76f988da831153b5,
-    0x983e5152ee66dfab, 0xa831c66d2db43210, 0xb00327c898fb213f, 0xbf597fc7beef0ee4,
-    0xc6e00bf33da88fc2, 0xd5a79147930aa725, 0x06ca6351e003826f, 0x142929670a0e6e70,
-    0x27b70a8546d22ffc, 0x2e1b21385c26c926, 0x4d2c6dfc5ac42aed, 0x53380d139d95b3df,
-    0x650a73548baf63de, 0x766a0abb3c77b2a8, 0x81c2c92e47edaee6, 0x92722c851482353b,
-    0xa2bfe8a14cf10364, 0xa81a664bbc423001, 0xc24b8b70d0f89791, 0xc76c51a30654be30,
-    0xd192e819d6ef5218, 0xd69906245565a910, 0xf40e35855771202a, 0x106aa07032bbd1b8,
-    0x19a4c116b8d2d0c8, 0x1e376c085141ab53, 0x2748774cdf8eeb99, 0x34b0bcb5e19b48a8,
-    0x391c0cb3c5c95a63, 0x4ed8aa4ae3418acb, 0x5b9cca4f7763e373, 0x682e6ff3d6b2b8a3,
-    0x748f82ee5defb2fc, 0x78a5636f43172f60, 0x84c87814a1f0ab72, 0x8cc702081a6439ec,
-    0x90befffa23631e28, 0xa4506cebde82bde9, 0xbef9a3f7b2c67915, 0xc67178f2e372532b,
-    0xca273eceea26619c, 0xd186b8c721c0c207, 0xeada7dd6cde0eb1e, 0xf57d4f7fee6ed178,
-    0x06f067aa72176fba, 0x0a637dc5a2c898a6, 0x113f9804bef90dae, 0x1b710b35131c471b,
-    0x28db77f523047d84, 0x32caab7b40c72493, 0x3c9ebe0a15c9bebc, 0x431d67c49c100d4c,
-    0x4cc5d4becb3e42b6, 0x597f299cfc657e2a, 0x5fcb6fab3ad6faec, 0x6c44198c4a475817,
+    0x428a2f98d728ae22,
+    0x7137449123ef65cd,
+    0xb5c0fbcfec4d3b2f,
+    0xe9b5dba58189dbbc,
+    0x3956c25bf348b538,
+    0x59f111f1b605d019,
+    0x923f82a4af194f9b,
+    0xab1c5ed5da6d8118,
+    0xd807aa98a3030242,
+    0x12835b0145706fbe,
+    0x243185be4ee4b28c,
+    0x550c7dc3d5ffb4e2,
+    0x72be5d74f27b896f,
+    0x80deb1fe3b1696b1,
+    0x9bdc06a725c71235,
+    0xc19bf174cf692694,
+    0xe49b69c19ef14ad2,
+    0xefbe4786384f25e3,
+    0x0fc19dc68b8cd5b5,
+    0x240ca1cc77ac9c65,
+    0x2de92c6f592b0275,
+    0x4a7484aa6ea6e483,
+    0x5cb0a9dcbd41fbd4,
+    0x76f988da831153b5,
+    0x983e5152ee66dfab,
+    0xa831c66d2db43210,
+    0xb00327c898fb213f,
+    0xbf597fc7beef0ee4,
+    0xc6e00bf33da88fc2,
+    0xd5a79147930aa725,
+    0x06ca6351e003826f,
+    0x142929670a0e6e70,
+    0x27b70a8546d22ffc,
+    0x2e1b21385c26c926,
+    0x4d2c6dfc5ac42aed,
+    0x53380d139d95b3df,
+    0x650a73548baf63de,
+    0x766a0abb3c77b2a8,
+    0x81c2c92e47edaee6,
+    0x92722c851482353b,
+    0xa2bfe8a14cf10364,
+    0xa81a664bbc423001,
+    0xc24b8b70d0f89791,
+    0xc76c51a30654be30,
+    0xd192e819d6ef5218,
+    0xd69906245565a910,
+    0xf40e35855771202a,
+    0x106aa07032bbd1b8,
+    0x19a4c116b8d2d0c8,
+    0x1e376c085141ab53,
+    0x2748774cdf8eeb99,
+    0x34b0bcb5e19b48a8,
+    0x391c0cb3c5c95a63,
+    0x4ed8aa4ae3418acb,
+    0x5b9cca4f7763e373,
+    0x682e6ff3d6b2b8a3,
+    0x748f82ee5defb2fc,
+    0x78a5636f43172f60,
+    0x84c87814a1f0ab72,
+    0x8cc702081a6439ec,
+    0x90befffa23631e28,
+    0xa4506cebde82bde9,
+    0xbef9a3f7b2c67915,
+    0xc67178f2e372532b,
+    0xca273eceea26619c,
+    0xd186b8c721c0c207,
+    0xeada7dd6cde0eb1e,
+    0xf57d4f7fee6ed178,
+    0x06f067aa72176fba,
+    0x0a637dc5a2c898a6,
+    0x113f9804bef90dae,
+    0x1b710b35131c471b,
+    0x28db77f523047d84,
+    0x32caab7b40c72493,
+    0x3c9ebe0a15c9bebc,
+    0x431d67c49c100d4c,
+    0x4cc5d4becb3e42b6,
+    0x597f299cfc657e2a,
+    0x5fcb6fab3ad6faec,
+    0x6c44198c4a475817,
 ];
 
 const SHA512_H0: [u64; 8] = [
-    0x6a09e667f3bcc908, 0xbb67ae8584caa73b, 0x3c6ef372fe94f82b, 0xa54ff53a5f1d36f1,
-    0x510e527fade682d1, 0x9b05688c2b3e6c1f, 0x1f83d9abfb41bd6b, 0x5be0cd19137e2179,
+    0x6a09e667f3bcc908,
+    0xbb67ae8584caa73b,
+    0x3c6ef372fe94f82b,
+    0xa54ff53a5f1d36f1,
+    0x510e527fade682d1,
+    0x9b05688c2b3e6c1f,
+    0x1f83d9abfb41bd6b,
+    0x5be0cd19137e2179,
 ];
 
 const SHA384_H0: [u64; 8] = [
-    0xcbbb9d5dc1059ed8, 0x629a292a367cd507, 0x9159015a3070dd17, 0x152fecd8f70e5939,
-    0x67332667ffc00b31, 0x8eb44a8768581511, 0xdb0c2e0d64f98fa7, 0x47b5481dbefa4fa4,
+    0xcbbb9d5dc1059ed8,
+    0x629a292a367cd507,
+    0x9159015a3070dd17,
+    0x152fecd8f70e5939,
+    0x67332667ffc00b31,
+    0x8eb44a8768581511,
+    0xdb0c2e0d64f98fa7,
+    0x47b5481dbefa4fa4,
 ];
 
 fn sha512_compress(h: &mut [u64; 8], data: &[u8]) {
@@ -302,7 +407,9 @@ fn sha512_compress(h: &mut [u64; 8], data: &[u8]) {
     let mut padded: Vec<u8> = data.to_vec();
     let bit_len_lo = (data.len() as u128) * 8;
     padded.push(0x80);
-    while padded.len() % 128 != 112 { padded.push(0); }
+    while padded.len() % 128 != 112 {
+        padded.push(0);
+    }
     // 128-bit big-endian length.
     padded.extend_from_slice(&bit_len_lo.to_be_bytes());
 
@@ -310,26 +417,45 @@ fn sha512_compress(h: &mut [u64; 8], data: &[u8]) {
         let mut w = [0u64; 80];
         for i in 0..16 {
             w[i] = u64::from_be_bytes([
-                chunk[i*8], chunk[i*8+1], chunk[i*8+2], chunk[i*8+3],
-                chunk[i*8+4], chunk[i*8+5], chunk[i*8+6], chunk[i*8+7],
+                chunk[i * 8],
+                chunk[i * 8 + 1],
+                chunk[i * 8 + 2],
+                chunk[i * 8 + 3],
+                chunk[i * 8 + 4],
+                chunk[i * 8 + 5],
+                chunk[i * 8 + 6],
+                chunk[i * 8 + 7],
             ]);
         }
         for i in 16..80 {
-            let s0 = w[i-15].rotate_right(1) ^ w[i-15].rotate_right(8) ^ (w[i-15] >> 7);
-            let s1 = w[i-2].rotate_right(19) ^ w[i-2].rotate_right(61) ^ (w[i-2] >> 6);
-            w[i] = w[i-16].wrapping_add(s0).wrapping_add(w[i-7]).wrapping_add(s1);
+            let s0 = w[i - 15].rotate_right(1) ^ w[i - 15].rotate_right(8) ^ (w[i - 15] >> 7);
+            let s1 = w[i - 2].rotate_right(19) ^ w[i - 2].rotate_right(61) ^ (w[i - 2] >> 6);
+            w[i] = w[i - 16]
+                .wrapping_add(s0)
+                .wrapping_add(w[i - 7])
+                .wrapping_add(s1);
         }
         let (mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut hh) =
             (h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7]);
         for i in 0..80 {
             let s1 = e.rotate_right(14) ^ e.rotate_right(18) ^ e.rotate_right(41);
             let ch = (e & f) ^ (!e & g);
-            let t1 = hh.wrapping_add(s1).wrapping_add(ch).wrapping_add(SHA512_K[i]).wrapping_add(w[i]);
+            let t1 = hh
+                .wrapping_add(s1)
+                .wrapping_add(ch)
+                .wrapping_add(SHA512_K[i])
+                .wrapping_add(w[i]);
             let s0 = a.rotate_right(28) ^ a.rotate_right(34) ^ a.rotate_right(39);
             let maj = (a & b) ^ (a & c) ^ (b & c);
             let t2 = s0.wrapping_add(maj);
-            hh = g; g = f; f = e; e = d.wrapping_add(t1);
-            d = c; c = b; b = a; a = t1.wrapping_add(t2);
+            hh = g;
+            g = f;
+            f = e;
+            e = d.wrapping_add(t1);
+            d = c;
+            c = b;
+            b = a;
+            a = t1.wrapping_add(t2);
         }
         h[0] = h[0].wrapping_add(a);
         h[1] = h[1].wrapping_add(b);
@@ -347,7 +473,7 @@ pub fn digest_sha512(data: &[u8]) -> [u8; 64] {
     sha512_compress(&mut h, data);
     let mut out = [0u8; 64];
     for i in 0..8 {
-        out[i*8..i*8+8].copy_from_slice(&h[i].to_be_bytes());
+        out[i * 8..i * 8 + 8].copy_from_slice(&h[i].to_be_bytes());
     }
     out
 }
@@ -358,7 +484,7 @@ pub fn digest_sha384(data: &[u8]) -> [u8; 48] {
     let mut out = [0u8; 48];
     // SHA-384 truncates the SHA-512 state to the first 6 words (48 bytes).
     for i in 0..6 {
-        out[i*8..i*8+8].copy_from_slice(&h[i].to_be_bytes());
+        out[i * 8..i * 8 + 8].copy_from_slice(&h[i].to_be_bytes());
     }
     out
 }
@@ -366,14 +492,18 @@ pub fn digest_sha384(data: &[u8]) -> [u8; 48] {
 pub fn digest_sha512_hex(data: &[u8]) -> String {
     let bytes = digest_sha512(data);
     let mut s = String::with_capacity(128);
-    for b in &bytes { s.push_str(&format!("{:02x}", b)); }
+    for b in &bytes {
+        s.push_str(&format!("{:02x}", b));
+    }
     s
 }
 
 pub fn digest_sha384_hex(data: &[u8]) -> String {
     let bytes = digest_sha384(data);
     let mut s = String::with_capacity(96);
-    for b in &bytes { s.push_str(&format!("{:02x}", b)); }
+    for b in &bytes {
+        s.push_str(&format!("{:02x}", b));
+    }
     s
 }
 
@@ -453,8 +583,10 @@ fn pbkdf2_inner<F, const H: usize>(
 where
     F: Fn(&[u8], &[u8]) -> [u8; H],
 {
-    if iterations == 0 || dk_len == 0 { return Vec::new(); }
-    let l = (dk_len + H - 1) / H;  // number of blocks
+    if iterations == 0 || dk_len == 0 {
+        return Vec::new();
+    }
+    let l = (dk_len + H - 1) / H; // number of blocks
     let mut out = Vec::with_capacity(l * H);
     let mut salt_with_index = Vec::with_capacity(salt.len() + 4);
     for i in 1..=l {
@@ -465,7 +597,9 @@ where
         let mut t = u;
         for _ in 1..iterations {
             u = prf(password, &u);
-            for k in 0..H { t[k] ^= u[k]; }
+            for k in 0..H {
+                t[k] ^= u[k];
+            }
         }
         out.extend_from_slice(&t);
     }
@@ -496,17 +630,30 @@ pub fn pbkdf2_hmac_sha512(password: &[u8], salt: &[u8], iterations: u32, dk_len:
 // content-encryption-key derivation, OAuth2 PoP, Noise Protocol.
 
 fn hkdf_inner<F, const H: usize>(
-    prf: F, ikm: &[u8], salt: &[u8], info: &[u8], length: usize,
+    prf: F,
+    ikm: &[u8],
+    salt: &[u8],
+    info: &[u8],
+    length: usize,
 ) -> Result<Vec<u8>, String>
-where F: Fn(&[u8], &[u8]) -> [u8; H],
+where
+    F: Fn(&[u8], &[u8]) -> [u8; H],
 {
     // L must be <= 255 * HashLen (RFC 5869 §2.3).
     if length > 255 * H {
-        return Err(format!("HKDF: length {} exceeds 255 * HashLen ({})", length, 255 * H));
+        return Err(format!(
+            "HKDF: length {} exceeds 255 * HashLen ({})",
+            length,
+            255 * H
+        ));
     }
     // Extract: PRK = HMAC(salt, IKM). If salt is empty, use HashLen zero bytes.
     let zero_salt = vec![0u8; H];
-    let prk = if salt.is_empty() { prf(&zero_salt, ikm) } else { prf(salt, ikm) };
+    let prk = if salt.is_empty() {
+        prf(&zero_salt, ikm)
+    } else {
+        prf(salt, ikm)
+    };
     // Expand: T(i) = HMAC(PRK, T(i-1) || info || i), concatenated until length bytes.
     let n = (length + H - 1) / H;
     let mut okm = Vec::with_capacity(n * H);
@@ -563,7 +710,9 @@ const AES_SBOX: [u8; 256] = [
     0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16,
 ];
 
-const AES_RCON: [u8; 11] = [0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36];
+const AES_RCON: [u8; 11] = [
+    0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36,
+];
 
 fn aes_xtime(x: u8) -> u8 {
     (x << 1) ^ if x & 0x80 != 0 { 0x1b } else { 0x00 }
@@ -571,8 +720,12 @@ fn aes_xtime(x: u8) -> u8 {
 
 fn aes_sub_word(w: u32) -> u32 {
     let b = w.to_be_bytes();
-    u32::from_be_bytes([AES_SBOX[b[0] as usize], AES_SBOX[b[1] as usize],
-                        AES_SBOX[b[2] as usize], AES_SBOX[b[3] as usize]])
+    u32::from_be_bytes([
+        AES_SBOX[b[0] as usize],
+        AES_SBOX[b[1] as usize],
+        AES_SBOX[b[2] as usize],
+        AES_SBOX[b[3] as usize],
+    ])
 }
 
 /// FIPS 197 §5.2 KeyExpansion. nk = 4/6/8 for AES-128/192/256.
@@ -583,7 +736,12 @@ fn aes_key_expansion(key: &[u8]) -> Vec<u32> {
     let total = 4 * (nr + 1);
     let mut w = Vec::with_capacity(total);
     for i in 0..nk {
-        w.push(u32::from_be_bytes([key[4*i], key[4*i+1], key[4*i+2], key[4*i+3]]));
+        w.push(u32::from_be_bytes([
+            key[4 * i],
+            key[4 * i + 1],
+            key[4 * i + 2],
+            key[4 * i + 3],
+        ]));
     }
     for i in nk..total {
         let mut t = w[i - 1];
@@ -600,12 +758,16 @@ fn aes_key_expansion(key: &[u8]) -> Vec<u32> {
 fn aes_add_round_key(state: &mut [u8; 16], w: &[u32]) {
     for c in 0..4 {
         let k = w[c].to_be_bytes();
-        for r in 0..4 { state[r * 4 + c] ^= k[r]; }
+        for r in 0..4 {
+            state[r * 4 + c] ^= k[r];
+        }
     }
 }
 
 fn aes_sub_bytes(state: &mut [u8; 16]) {
-    for b in state.iter_mut() { *b = AES_SBOX[*b as usize]; }
+    for b in state.iter_mut() {
+        *b = AES_SBOX[*b as usize];
+    }
 }
 
 fn aes_shift_rows(state: &mut [u8; 16]) {
@@ -621,12 +783,14 @@ fn aes_shift_rows(state: &mut [u8; 16]) {
 
 fn aes_mix_columns(state: &mut [u8; 16]) {
     for c in 0..4 {
-        let s0 = state[c]; let s1 = state[4 + c];
-        let s2 = state[8 + c]; let s3 = state[12 + c];
+        let s0 = state[c];
+        let s1 = state[4 + c];
+        let s2 = state[8 + c];
+        let s3 = state[12 + c];
         let t = s0 ^ s1 ^ s2 ^ s3;
-        state[c]      ^= t ^ aes_xtime(s0 ^ s1);
-        state[4 + c]  ^= t ^ aes_xtime(s1 ^ s2);
-        state[8 + c]  ^= t ^ aes_xtime(s2 ^ s3);
+        state[c] ^= t ^ aes_xtime(s0 ^ s1);
+        state[4 + c] ^= t ^ aes_xtime(s1 ^ s2);
+        state[8 + c] ^= t ^ aes_xtime(s2 ^ s3);
         state[12 + c] ^= t ^ aes_xtime(s3 ^ s0);
     }
 }
@@ -638,28 +802,35 @@ fn aes_encrypt_block(block: &[u8; 16], w: &[u32]) -> [u8; 16] {
     let nr = w.len() / 4 - 1;
     let mut state = [0u8; 16];
     for c in 0..4 {
-        for r in 0..4 { state[r * 4 + c] = block[4 * c + r]; }
+        for r in 0..4 {
+            state[r * 4 + c] = block[4 * c + r];
+        }
     }
     aes_add_round_key(&mut state, &w[0..4]);
     for round in 1..nr {
         aes_sub_bytes(&mut state);
         aes_shift_rows(&mut state);
         aes_mix_columns(&mut state);
-        aes_add_round_key(&mut state, &w[4 * round .. 4 * round + 4]);
+        aes_add_round_key(&mut state, &w[4 * round..4 * round + 4]);
     }
     aes_sub_bytes(&mut state);
     aes_shift_rows(&mut state);
-    aes_add_round_key(&mut state, &w[4 * nr .. 4 * nr + 4]);
+    aes_add_round_key(&mut state, &w[4 * nr..4 * nr + 4]);
     let mut out = [0u8; 16];
     for c in 0..4 {
-        for r in 0..4 { out[4 * c + r] = state[r * 4 + c]; }
+        for r in 0..4 {
+            out[4 * c + r] = state[r * 4 + c];
+        }
     }
     out
 }
 
 /// AES single-block encryption with key (128/192/256 bits).
 pub fn aes_encrypt_block_with_key(key: &[u8], block: &[u8; 16]) -> [u8; 16] {
-    assert!(key.len() == 16 || key.len() == 24 || key.len() == 32, "AES key must be 16/24/32 bytes");
+    assert!(
+        key.len() == 16 || key.len() == 24 || key.len() == 32,
+        "AES key must be 16/24/32 bytes"
+    );
     let w = aes_key_expansion(key);
     aes_encrypt_block(block, &w)
 }
@@ -675,16 +846,22 @@ pub fn aes_encrypt_block_with_key(key: &[u8], block: &[u8; 16]) -> [u8; 16] {
 // Scope: enough for RSA-OAEP / RSA-PSS over 2048/3072/4096-bit keys.
 
 #[derive(Clone, Debug)]
-pub struct BigUInt(Vec<u32>);  // limbs[0] = least significant
+pub struct BigUInt(Vec<u32>); // limbs[0] = least significant
 
 impl BigUInt {
-    pub fn zero() -> Self { BigUInt(vec![0]) }
-    pub fn one() -> Self { BigUInt(vec![1]) }
+    pub fn zero() -> Self {
+        BigUInt(vec![0])
+    }
+    pub fn one() -> Self {
+        BigUInt(vec![1])
+    }
 
     /// Read-only view of the limbs (little-endian u32). Added in
     /// WC-EXT 6 for wNAF scalar mul which needs in-place mutation of
     /// a copy of the scalar's limbs.
-    pub fn limbs(&self) -> &[u32] { &self.0 }
+    pub fn limbs(&self) -> &[u32] {
+        &self.0
+    }
 
     /// Build a BigUInt from a limbs vector (little-endian u32),
     /// trimming trailing zeros. Used by WC-EXT 8 Montgomery REDC.
@@ -722,7 +899,9 @@ impl BigUInt {
         }
     }
 
-    pub fn is_zero(&self) -> bool { self.0.iter().all(|&l| l == 0) }
+    pub fn is_zero(&self) -> bool {
+        self.0.iter().all(|&l| l == 0)
+    }
 
     pub fn bit_len(&self) -> usize {
         for i in (0..self.0.len()).rev() {
@@ -744,9 +923,19 @@ impl BigUInt {
         // Compare limbs from most-significant down.
         let la = self.0.len();
         let lb = other.0.len();
-        let la_eff = (0..la).rev().find(|&i| self.0[i] != 0).map(|i| i + 1).unwrap_or(0);
-        let lb_eff = (0..lb).rev().find(|&i| other.0[i] != 0).map(|i| i + 1).unwrap_or(0);
-        if la_eff != lb_eff { return la_eff.cmp(&lb_eff); }
+        let la_eff = (0..la)
+            .rev()
+            .find(|&i| self.0[i] != 0)
+            .map(|i| i + 1)
+            .unwrap_or(0);
+        let lb_eff = (0..lb)
+            .rev()
+            .find(|&i| other.0[i] != 0)
+            .map(|i| i + 1)
+            .unwrap_or(0);
+        if la_eff != lb_eff {
+            return la_eff.cmp(&lb_eff);
+        }
         for i in (0..la_eff).rev() {
             match self.0[i].cmp(&other.0[i]) {
                 Ordering::Equal => continue,
@@ -800,7 +989,7 @@ impl BigUInt {
     /// (64 limbs) Karatsuba dominates; for P-256 (8 limbs) schoolbook
     /// wins on constant factor. Threshold tuned empirically.
     pub fn mul(&self, other: &BigUInt) -> BigUInt {
-        const KARATSUBA_THRESHOLD: usize = 24;  // limbs; below this, schoolbook
+        const KARATSUBA_THRESHOLD: usize = 24; // limbs; below this, schoolbook
         let n = std::cmp::max(self.0.len(), other.0.len());
         if n < KARATSUBA_THRESHOLD || self.0.len() < 2 || other.0.len() < 2 {
             return self.mul_schoolbook(other);
@@ -829,7 +1018,9 @@ impl BigUInt {
     }
 
     fn shl_limbs(&self, k: usize) -> BigUInt {
-        if self.is_zero() { return BigUInt::zero(); }
+        if self.is_zero() {
+            return BigUInt::zero();
+        }
         let mut out = vec![0u32; k + self.0.len()];
         out[k..].copy_from_slice(&self.0);
         let mut r = BigUInt(out);
@@ -894,7 +1085,9 @@ impl BigUInt {
             r = r.shl1();
             if self.bit(i) {
                 // OR in 1.
-                if r.0.is_empty() { r.0.push(0); }
+                if r.0.is_empty() {
+                    r.0.push(0);
+                }
                 r.0[0] |= 1;
             }
             if r.cmp(divisor) != Ordering::Less {
@@ -973,10 +1166,22 @@ pub fn rsadp(n: &BigUInt, d: &BigUInt, c: &BigUInt) -> Result<BigUInt, String> {
 fn digest_info_prefix(hash_name: &str) -> Result<&'static [u8], String> {
     // DER-encoded DigestInfo prefix per RFC 8017 §9.2 note 1.
     match hash_name {
-        "SHA-1"   => Ok(&[0x30,0x21,0x30,0x09,0x06,0x05,0x2b,0x0e,0x03,0x02,0x1a,0x05,0x00,0x04,0x14]),
-        "SHA-256" => Ok(&[0x30,0x31,0x30,0x0d,0x06,0x09,0x60,0x86,0x48,0x01,0x65,0x03,0x04,0x02,0x01,0x05,0x00,0x04,0x20]),
-        "SHA-384" => Ok(&[0x30,0x41,0x30,0x0d,0x06,0x09,0x60,0x86,0x48,0x01,0x65,0x03,0x04,0x02,0x02,0x05,0x00,0x04,0x30]),
-        "SHA-512" => Ok(&[0x30,0x51,0x30,0x0d,0x06,0x09,0x60,0x86,0x48,0x01,0x65,0x03,0x04,0x02,0x03,0x05,0x00,0x04,0x40]),
+        "SHA-1" => Ok(&[
+            0x30, 0x21, 0x30, 0x09, 0x06, 0x05, 0x2b, 0x0e, 0x03, 0x02, 0x1a, 0x05, 0x00, 0x04,
+            0x14,
+        ]),
+        "SHA-256" => Ok(&[
+            0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02,
+            0x01, 0x05, 0x00, 0x04, 0x20,
+        ]),
+        "SHA-384" => Ok(&[
+            0x30, 0x41, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02,
+            0x02, 0x05, 0x00, 0x04, 0x30,
+        ]),
+        "SHA-512" => Ok(&[
+            0x30, 0x51, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02,
+            0x03, 0x05, 0x00, 0x04, 0x40,
+        ]),
         other => Err(format!("PKCS1-v1_5: unsupported hash {}", other)),
     }
 }
@@ -1000,7 +1205,10 @@ fn emsa_pkcs1_v1_5_encode(hash: &[u8], em_len: usize, hash_name: &str) -> Result
 }
 
 pub fn rsa_pkcs1_v15_sign(
-    n_bytes: &[u8], d_bytes: &[u8], hash: &[u8], hash_name: &str,
+    n_bytes: &[u8],
+    d_bytes: &[u8],
+    hash: &[u8],
+    hash_name: &str,
 ) -> Result<Vec<u8>, String> {
     let k = n_bytes.len();
     let em = emsa_pkcs1_v1_5_encode(hash, k, hash_name)?;
@@ -1012,10 +1220,16 @@ pub fn rsa_pkcs1_v15_sign(
 }
 
 pub fn rsa_pkcs1_v15_verify(
-    n_bytes: &[u8], e_bytes: &[u8], hash: &[u8], signature: &[u8], hash_name: &str,
+    n_bytes: &[u8],
+    e_bytes: &[u8],
+    hash: &[u8],
+    signature: &[u8],
+    hash_name: &str,
 ) -> Result<(), String> {
     let k = n_bytes.len();
-    if signature.len() != k { return Err("PKCS1-v1_5: signature length mismatch".into()); }
+    if signature.len() != k {
+        return Err("PKCS1-v1_5: signature length mismatch".into());
+    }
     let n = BigUInt::from_be_bytes(n_bytes);
     let e = BigUInt::from_be_bytes(e_bytes);
     let s_int = BigUInt::from_be_bytes(signature);
@@ -1040,31 +1254,36 @@ pub fn rsa_pkcs1_v15_verify(
 
 fn p256_p() -> BigUInt {
     BigUInt::from_be_bytes(&[
-        0xff,0xff,0xff,0xff,0x00,0x00,0x00,0x01,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
-        0x00,0x00,0x00,0x00,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
+        0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff,
     ])
 }
 fn p256_n() -> BigUInt {
     BigUInt::from_be_bytes(&[
-        0xff,0xff,0xff,0xff,0x00,0x00,0x00,0x00,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
-        0xbc,0xe6,0xfa,0xad,0xa7,0x17,0x9e,0x84,0xf3,0xb9,0xca,0xc2,0xfc,0x63,0x25,0x51,
+        0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xbc, 0xe6, 0xfa, 0xad, 0xa7, 0x17, 0x9e, 0x84, 0xf3, 0xb9, 0xca, 0xc2, 0xfc, 0x63,
+        0x25, 0x51,
     ])
 }
 fn p256_b() -> BigUInt {
     BigUInt::from_be_bytes(&[
-        0x5a,0xc6,0x35,0xd8,0xaa,0x3a,0x93,0xe7,0xb3,0xeb,0xbd,0x55,0x76,0x98,0x86,0xbc,
-        0x65,0x1d,0x06,0xb0,0xcc,0x53,0xb0,0xf6,0x3b,0xce,0x3c,0x3e,0x27,0xd2,0x60,0x4b,
+        0x5a, 0xc6, 0x35, 0xd8, 0xaa, 0x3a, 0x93, 0xe7, 0xb3, 0xeb, 0xbd, 0x55, 0x76, 0x98, 0x86,
+        0xbc, 0x65, 0x1d, 0x06, 0xb0, 0xcc, 0x53, 0xb0, 0xf6, 0x3b, 0xce, 0x3c, 0x3e, 0x27, 0xd2,
+        0x60, 0x4b,
     ])
 }
 pub fn p256_g() -> P256Point {
     P256Point::Affine {
         x: BigUInt::from_be_bytes(&[
-            0x6b,0x17,0xd1,0xf2,0xe1,0x2c,0x42,0x47,0xf8,0xbc,0xe6,0xe5,0x63,0xa4,0x40,0xf2,
-            0x77,0x03,0x7d,0x81,0x2d,0xeb,0x33,0xa0,0xf4,0xa1,0x39,0x45,0xd8,0x98,0xc2,0x96,
+            0x6b, 0x17, 0xd1, 0xf2, 0xe1, 0x2c, 0x42, 0x47, 0xf8, 0xbc, 0xe6, 0xe5, 0x63, 0xa4,
+            0x40, 0xf2, 0x77, 0x03, 0x7d, 0x81, 0x2d, 0xeb, 0x33, 0xa0, 0xf4, 0xa1, 0x39, 0x45,
+            0xd8, 0x98, 0xc2, 0x96,
         ]),
         y: BigUInt::from_be_bytes(&[
-            0x4f,0xe3,0x42,0xe2,0xfe,0x1a,0x7f,0x9b,0x8e,0xe7,0xeb,0x4a,0x7c,0x0f,0x9e,0x16,
-            0x2b,0xce,0x33,0x57,0x6b,0x31,0x5e,0xce,0xcb,0xb6,0x40,0x68,0x37,0xbf,0x51,0xf5,
+            0x4f, 0xe3, 0x42, 0xe2, 0xfe, 0x1a, 0x7f, 0x9b, 0x8e, 0xe7, 0xeb, 0x4a, 0x7c, 0x0f,
+            0x9e, 0x16, 0x2b, 0xce, 0x33, 0x57, 0x6b, 0x31, 0x5e, 0xce, 0xcb, 0xb6, 0x40, 0x68,
+            0x37, 0xbf, 0x51, 0xf5,
         ]),
     }
 }
@@ -1080,7 +1299,11 @@ fn mod_add(a: &BigUInt, b: &BigUInt, m: &BigUInt) -> BigUInt {
 }
 fn mod_sub(a: &BigUInt, b: &BigUInt, m: &BigUInt) -> BigUInt {
     use std::cmp::Ordering;
-    if a.cmp(b) != Ordering::Less { a.sub(b) } else { m.add(a).sub(b).modulo(m) }
+    if a.cmp(b) != Ordering::Less {
+        a.sub(b)
+    } else {
+        m.add(a).sub(b).modulo(m)
+    }
 }
 fn mod_mul(a: &BigUInt, b: &BigUInt, m: &BigUInt) -> BigUInt {
     a.mul(b).modulo(m)
@@ -1139,7 +1362,9 @@ fn p256_r_sq() -> &'static BigUInt {
 /// m' = 1 (which holds for P-256 because p[0] = 0xFFFFFFFF).
 fn p256_redc(mut t: Vec<u32>) -> BigUInt {
     // Ensure t has room for at least 17 limbs to absorb carries.
-    while t.len() < 17 { t.push(0); }
+    while t.len() < 17 {
+        t.push(0);
+    }
     let p = p256_p();
     let p_limbs = p.limbs();
     debug_assert_eq!(p_limbs.len(), 8, "p256_p must be 8 limbs");
@@ -1148,7 +1373,9 @@ fn p256_redc(mut t: Vec<u32>) -> BigUInt {
     // (m' = 1 for P-256, so u_i = t[i] * m' mod 2^32 = t[i].)
     for i in 0..8 {
         let u = t[i] as u64;
-        if u == 0 { continue; }
+        if u == 0 {
+            continue;
+        }
         let mut carry: u64 = 0;
         for j in 0..8 {
             let prod = u * (p_limbs[j] as u64);
@@ -1224,7 +1451,9 @@ pub fn p256_from_mont(am: &BigUInt) -> BigUInt {
 fn p256_solinas_reduce(t_limbs: &[u32]) -> BigUInt {
     // Pad to 16 limbs.
     let mut t = t_limbs.to_vec();
-    while t.len() < 16 { t.push(0); }
+    while t.len() < 16 {
+        t.push(0);
+    }
     let p = p256_p();
 
     // s1 = T0..T7  (the low 256 bits of T)
@@ -1279,7 +1508,9 @@ pub fn p256_mod_mul_solinas(a: &BigUInt, b: &BigUInt) -> BigUInt {
 /// the divmod entirely.
 fn p256_solinas_reduce_v2(t_in: &[u32]) -> BigUInt {
     let mut t = [0u32; 16];
-    for (i, &l) in t_in.iter().take(16).enumerate() { t[i] = l; }
+    for (i, &l) in t_in.iter().take(16).enumerate() {
+        t[i] = l;
+    }
     let g = |i: usize| t[i] as i64;
 
     // Per-column signed accumulators. Derived from FIPS 186-4 §B.2.1
@@ -1288,18 +1519,18 @@ fn p256_solinas_reduce_v2(t_in: &[u32]) -> BigUInt {
         g(0) + g(8) + g(9) - g(11) - g(12) - g(13) - g(14),
         g(1) + g(9) + g(10) - g(12) - g(13) - g(14) - g(15),
         g(2) + g(10) + g(11) - g(13) - g(14) - g(15),
-        g(3) + 2*g(11) + 2*g(12) + g(13) - g(8) - g(9) - g(15),
-        g(4) + 2*g(12) + 2*g(13) + g(14) - g(9) - g(10),
-        g(5) + 2*g(13) + 2*g(14) + g(15) - g(10) - g(11),
-        g(6) + 2*g(14) + 2*g(15) + g(14) + g(13) - g(8) - g(9),
-        g(7) + 2*g(15) + g(15) + g(8) - g(10) - g(11) - g(12) - g(13),
+        g(3) + 2 * g(11) + 2 * g(12) + g(13) - g(8) - g(9) - g(15),
+        g(4) + 2 * g(12) + 2 * g(13) + g(14) - g(9) - g(10),
+        g(5) + 2 * g(13) + 2 * g(14) + g(15) - g(10) - g(11),
+        g(6) + 2 * g(14) + 2 * g(15) + g(14) + g(13) - g(8) - g(9),
+        g(7) + 2 * g(15) + g(15) + g(8) - g(10) - g(11) - g(12) - g(13),
         0i64,
     ];
 
     // Propagate carries with arithmetic shift (sign-extending for i64).
     for i in 0..8 {
         let lo = (col[i] as i64).rem_euclid(1i64 << 32);
-        let hi = (col[i] - lo) >> 32;  // exact division (lo is the residue)
+        let hi = (col[i] - lo) >> 32; // exact division (lo is the residue)
         col[i] = lo;
         col[i + 1] += hi;
     }
@@ -1307,7 +1538,9 @@ fn p256_solinas_reduce_v2(t_in: &[u32]) -> BigUInt {
 
     let p = p256_p();
     let mut limbs8 = [0u32; 8];
-    for i in 0..8 { limbs8[i] = col[i] as u32; }
+    for i in 0..8 {
+        limbs8[i] = col[i] as u32;
+    }
     let mut result = BigUInt::from_limbs(limbs8.to_vec());
 
     use std::cmp::Ordering;
@@ -1331,15 +1564,18 @@ fn p256_solinas_reduce_v2(t_in: &[u32]) -> BigUInt {
         // limb 6 = 0xFFFFFFFF instead of 0xFFFFFFFE → off-by-1 at
         // bit 192 (50% of fuzz inputs diverged per WC-EXT 23).
         let c_2_256_mod_p = BigUInt::from_be_bytes(&[
-            0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xfe,
-            0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-            0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+            0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+            0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x01,
         ]);
-        for _ in 0..extra { result = result.add(&c_2_256_mod_p); }
+        for _ in 0..extra {
+            result = result.add(&c_2_256_mod_p);
+        }
     } else if extra < 0 {
         // Add |extra| copies of p to flip the missing 2^256 terms positive.
-        for _ in 0..(-extra) { result = result.add(&p); }
+        for _ in 0..(-extra) {
+            result = result.add(&p);
+        }
         // WC-EXT 25 FIX: byte 7 was 0xFF; correct value is 0xFE.
         // 2^256 mod p256_p = 2^224 - 2^192 - 2^96 + 1.
         // The -2^192 term means limb 6 (bits 192-223) is 0xFFFFFFFE
@@ -1349,12 +1585,13 @@ fn p256_solinas_reduce_v2(t_in: &[u32]) -> BigUInt {
         // limb 6 = 0xFFFFFFFF instead of 0xFFFFFFFE → off-by-1 at
         // bit 192 (50% of fuzz inputs diverged per WC-EXT 23).
         let c_2_256_mod_p = BigUInt::from_be_bytes(&[
-            0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xfe,
-            0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-            0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+            0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+            0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x01,
         ]);
-        for _ in 0..(-extra) { result = result.sub(&c_2_256_mod_p); }
+        for _ in 0..(-extra) {
+            result = result.sub(&c_2_256_mod_p);
+        }
     }
 
     // Final reduction: at most a few iterations of subtract-p.
@@ -1400,7 +1637,9 @@ fn p384_c_2_384_mod_p() -> &'static BigUInt {
 /// product T. Returns a 12-limb (384-bit) result in [0, p384).
 fn p384_solinas_reduce(t_in: &[u32]) -> BigUInt {
     let mut t = [0u32; 24];
-    for (i, &l) in t_in.iter().take(24).enumerate() { t[i] = l; }
+    for (i, &l) in t_in.iter().take(24).enumerate() {
+        t[i] = l;
+    }
     let g = |i: usize| t[i] as i64;
 
     // Per Hankerson Table 14.7 + FIPS 186-4 §B.2.2:
@@ -1417,11 +1656,11 @@ fn p384_solinas_reduce(t_in: &[u32]) -> BigUInt {
         // col 3: T3 + T15 + T12 + T20 + T21 - T14 - T22 - T23
         g(3) + g(15) + g(12) + g(20) + g(21) - g(14) - g(22) - g(23),
         // col 4: T4 + 2·T21 + T16 + T13 + T12 + T20 + T22 - T15 - 2·T23
-        g(4) + 2*g(21) + g(16) + g(13) + g(12) + g(20) + g(22) - g(15) - 2*g(23),
+        g(4) + 2 * g(21) + g(16) + g(13) + g(12) + g(20) + g(22) - g(15) - 2 * g(23),
         // col 5: T5 + 2·T22 + T17 + T14 + T13 + T21 + T23 - T16
-        g(5) + 2*g(22) + g(17) + g(14) + g(13) + g(21) + g(23) - g(16),
+        g(5) + 2 * g(22) + g(17) + g(14) + g(13) + g(21) + g(23) - g(16),
         // col 6: T6 + 2·T23 + T18 + T15 + T14 + T22 - T17
-        g(6) + 2*g(23) + g(18) + g(15) + g(14) + g(22) - g(17),
+        g(6) + 2 * g(23) + g(18) + g(15) + g(14) + g(22) - g(17),
         // col 7: T7 + T19 + T16 + T15 + T23 - T18
         g(7) + g(19) + g(16) + g(15) + g(23) - g(18),
         // col 8: T8 + T20 + T17 + T16 - T19
@@ -1445,17 +1684,25 @@ fn p384_solinas_reduce(t_in: &[u32]) -> BigUInt {
 
     let p = p384_p();
     let mut limbs12 = vec![0u32; 12];
-    for i in 0..12 { limbs12[i] = col[i] as u32; }
+    for i in 0..12 {
+        limbs12[i] = col[i] as u32;
+    }
     let mut result = BigUInt::from_limbs(limbs12);
 
     use std::cmp::Ordering;
     let extra = col[12];
     let c = p384_c_2_384_mod_p();
     if extra > 0 {
-        for _ in 0..extra { result = result.add(c); }
+        for _ in 0..extra {
+            result = result.add(c);
+        }
     } else if extra < 0 {
-        for _ in 0..(-extra) { result = result.add(&p); }
-        for _ in 0..(-extra) { result = result.sub(c); }
+        for _ in 0..(-extra) {
+            result = result.add(&p);
+        }
+        for _ in 0..(-extra) {
+            result = result.sub(c);
+        }
     }
 
     while result.cmp(&p) != Ordering::Less {
@@ -1482,13 +1729,17 @@ fn sol_mul_p384(a: &BigUInt, b: &BigUInt) -> BigUInt {
 
 fn jac_double_solinas_p384(j: &JacPoint) -> JacPoint {
     let p = p384_p();
-    if j.is_identity() { return j.clone(); }
-    if j.y.is_zero() { return JacPoint::identity(); }
+    if j.is_identity() {
+        return j.clone();
+    }
+    if j.y.is_zero() {
+        return JacPoint::identity();
+    }
     let delta = sol_mul_p384(&j.z, &j.z);
     let gamma = sol_mul_p384(&j.y, &j.y);
     let beta = sol_mul_p384(&j.x, &gamma);
     let x_minus_d = mod_sub(&j.x, &delta, &p);
-    let x_plus_d  = mod_add(&j.x, &delta, &p);
+    let x_plus_d = mod_add(&j.x, &delta, &p);
     let xm_xp = sol_mul_p384(&x_minus_d, &x_plus_d);
     let alpha = {
         let v2 = mod_add(&xm_xp, &xm_xp, &p);
@@ -1500,14 +1751,22 @@ fn jac_double_solinas_p384(j: &JacPoint) -> JacPoint {
     let beta8 = mod_add(&beta4, &beta4, &p);
     let x3 = mod_sub(&alpha2, &beta8, &p);
     let y_plus_z = mod_add(&j.y, &j.z, &p);
-    let z3 = mod_sub(&mod_sub(&sol_mul_p384(&y_plus_z, &y_plus_z), &gamma, &p), &delta, &p);
+    let z3 = mod_sub(
+        &mod_sub(&sol_mul_p384(&y_plus_z, &y_plus_z), &gamma, &p),
+        &delta,
+        &p,
+    );
     let four_beta_minus_x3 = mod_sub(&beta4, &x3, &p);
     let gamma2 = sol_mul_p384(&gamma, &gamma);
     let g2_2 = mod_add(&gamma2, &gamma2, &p);
     let g2_4 = mod_add(&g2_2, &g2_2, &p);
     let g2_8 = mod_add(&g2_4, &g2_4, &p);
     let y3 = mod_sub(&sol_mul_p384(&alpha, &four_beta_minus_x3), &g2_8, &p);
-    JacPoint { x: x3, y: y3, z: z3 }
+    JacPoint {
+        x: x3,
+        y: y3,
+        z: z3,
+    }
 }
 
 fn jac_add_affine_solinas_p384(j: &JacPoint, a: &P256Point) -> JacPoint {
@@ -1518,14 +1777,20 @@ fn jac_add_affine_solinas_p384(j: &JacPoint, a: &P256Point) -> JacPoint {
         P256Point::Affine { x, y } => (x, y),
     };
     if j.is_identity() {
-        return JacPoint { x: ax.clone(), y: ay.clone(), z: BigUInt::one() };
+        return JacPoint {
+            x: ax.clone(),
+            y: ay.clone(),
+            z: BigUInt::one(),
+        };
     }
     let z1z1 = sol_mul_p384(&j.z, &j.z);
     let u2 = sol_mul_p384(ax, &z1z1);
     let z1_cubed = sol_mul_p384(&j.z, &z1z1);
     let s2 = sol_mul_p384(ay, &z1_cubed);
     if u2.cmp(&j.x) == Ordering::Equal {
-        if s2.cmp(&j.y) == Ordering::Equal { return jac_double_solinas_p384(j); }
+        if s2.cmp(&j.y) == Ordering::Equal {
+            return jac_double_solinas_p384(j);
+        }
         return JacPoint::identity();
     }
     let h = mod_sub(&u2, &j.x, &p);
@@ -1542,11 +1807,17 @@ fn jac_add_affine_solinas_p384(j: &JacPoint, a: &P256Point) -> JacPoint {
         &p,
     );
     let z3 = sol_mul_p384(&j.z, &h);
-    JacPoint { x: x3, y: y3, z: z3 }
+    JacPoint {
+        x: x3,
+        y: y3,
+        z: z3,
+    }
 }
 
 fn jac_to_affine_solinas_p384(j: &JacPoint) -> P256Point {
-    if j.is_identity() { return P256Point::Identity; }
+    if j.is_identity() {
+        return P256Point::Identity;
+    }
     let p = p384_p();
     let two = BigUInt::from_be_bytes(&[2]);
     let p_minus_2 = p.sub(&two);
@@ -1570,8 +1841,12 @@ fn jac_to_affine_solinas_p384(j: &JacPoint) -> P256Point {
 
 pub fn p384_scalar_mul_solinas(k: &BigUInt, pt: &P256Point) -> P256Point {
     let bits = k.bit_len();
-    if bits == 0 { return P256Point::Identity; }
-    if matches!(pt, P256Point::Identity) { return P256Point::Identity; }
+    if bits == 0 {
+        return P256Point::Identity;
+    }
+    if matches!(pt, P256Point::Identity) {
+        return P256Point::Identity;
+    }
     let mut result = JacPoint::identity();
     for i in (0..bits).rev() {
         result = jac_double_solinas_p384(&result);
@@ -1596,13 +1871,17 @@ fn sol_mul(a: &BigUInt, b: &BigUInt) -> BigUInt {
 
 fn jac_double_solinas(j: &JacPoint) -> JacPoint {
     let p = p256_p();
-    if j.is_identity() { return j.clone(); }
-    if j.y.is_zero() { return JacPoint::identity(); }
+    if j.is_identity() {
+        return j.clone();
+    }
+    if j.y.is_zero() {
+        return JacPoint::identity();
+    }
     let delta = sol_mul(&j.z, &j.z);
     let gamma = sol_mul(&j.y, &j.y);
     let beta = sol_mul(&j.x, &gamma);
     let x_minus_d = mod_sub(&j.x, &delta, &p);
-    let x_plus_d  = mod_add(&j.x, &delta, &p);
+    let x_plus_d = mod_add(&j.x, &delta, &p);
     let xm_xp = sol_mul(&x_minus_d, &x_plus_d);
     // alpha = 3·xm_xp via mod_add chain (cheap; no mod_mul)
     let alpha = {
@@ -1617,7 +1896,8 @@ fn jac_double_solinas(j: &JacPoint) -> JacPoint {
     let y_plus_z = mod_add(&j.y, &j.z, &p);
     let z3 = mod_sub(
         &mod_sub(&sol_mul(&y_plus_z, &y_plus_z), &gamma, &p),
-        &delta, &p,
+        &delta,
+        &p,
     );
     let four_beta_minus_x3 = mod_sub(&beta4, &x3, &p);
     let gamma2 = sol_mul(&gamma, &gamma);
@@ -1625,7 +1905,11 @@ fn jac_double_solinas(j: &JacPoint) -> JacPoint {
     let g2_4 = mod_add(&g2_2, &g2_2, &p);
     let g2_8 = mod_add(&g2_4, &g2_4, &p);
     let y3 = mod_sub(&sol_mul(&alpha, &four_beta_minus_x3), &g2_8, &p);
-    JacPoint { x: x3, y: y3, z: z3 }
+    JacPoint {
+        x: x3,
+        y: y3,
+        z: z3,
+    }
 }
 
 fn jac_add_affine_solinas(j: &JacPoint, a: &P256Point) -> JacPoint {
@@ -1637,14 +1921,20 @@ fn jac_add_affine_solinas(j: &JacPoint, a: &P256Point) -> JacPoint {
     };
     if j.is_identity() {
         // Std-form: Z = 1 (literal one, no Mont)
-        return JacPoint { x: ax.clone(), y: ay.clone(), z: BigUInt::one() };
+        return JacPoint {
+            x: ax.clone(),
+            y: ay.clone(),
+            z: BigUInt::one(),
+        };
     }
     let z1z1 = sol_mul(&j.z, &j.z);
     let u2 = sol_mul(ax, &z1z1);
     let z1_cubed = sol_mul(&j.z, &z1z1);
     let s2 = sol_mul(ay, &z1_cubed);
     if u2.cmp(&j.x) == Ordering::Equal {
-        if s2.cmp(&j.y) == Ordering::Equal { return jac_double_solinas(j); }
+        if s2.cmp(&j.y) == Ordering::Equal {
+            return jac_double_solinas(j);
+        }
         return JacPoint::identity();
     }
     let h = mod_sub(&u2, &j.x, &p);
@@ -1661,11 +1951,17 @@ fn jac_add_affine_solinas(j: &JacPoint, a: &P256Point) -> JacPoint {
         &p,
     );
     let z3 = sol_mul(&j.z, &h);
-    JacPoint { x: x3, y: y3, z: z3 }
+    JacPoint {
+        x: x3,
+        y: y3,
+        z: z3,
+    }
 }
 
 fn jac_to_affine_solinas(j: &JacPoint) -> P256Point {
-    if j.is_identity() { return P256Point::Identity; }
+    if j.is_identity() {
+        return P256Point::Identity;
+    }
     // z⁻¹ via Fermat in Solinas form: z^(p-2) mod p, square-and-multiply
     // using sol_mul throughout.
     let p = p256_p();
@@ -1694,8 +1990,12 @@ fn jac_to_affine_solinas(j: &JacPoint) -> P256Point {
 /// 2.22× faster Solinas mod_mul at every operation.
 pub fn p256_scalar_mul_solinas(k: &BigUInt, pt: &P256Point) -> P256Point {
     let bits = k.bit_len();
-    if bits == 0 { return P256Point::Identity; }
-    if matches!(pt, P256Point::Identity) { return P256Point::Identity; }
+    if bits == 0 {
+        return P256Point::Identity;
+    }
+    if matches!(pt, P256Point::Identity) {
+        return P256Point::Identity;
+    }
     let mut result = JacPoint::identity();
     for i in (0..bits).rev() {
         result = jac_double_solinas(&result);
@@ -1711,7 +2011,9 @@ pub fn p256_scalar_mul_solinas(k: &BigUInt, pt: &P256Point) -> P256Point {
 /// reduction throughout.
 pub fn p256_scalar_mul_base_solinas(k: &BigUInt) -> P256Point {
     let bits = k.bit_len();
-    if bits == 0 { return P256Point::Identity; }
+    if bits == 0 {
+        return P256Point::Identity;
+    }
     let table = p256_base_table();
     let mut result = JacPoint::identity();
     for i in 0..bits {
@@ -1740,8 +2042,8 @@ pub fn p256_scalar_mul_base_solinas(k: &BigUInt) -> P256Point {
 
 pub struct MontCtx {
     p: BigUInt,
-    k: usize,           // number of limbs in p
-    m_prime: u32,       // -p[0]^(-1) mod 2^32
+    k: usize,            // number of limbs in p
+    m_prime: u32,        // -p[0]^(-1) mod 2^32
     r_sq_mod_p: BigUInt, // R² mod p, where R = 2^(32·k)
 }
 
@@ -1769,7 +2071,12 @@ impl MontCtx {
         let mut r_sq_bytes = vec![0u8; 8 * k + 1];
         r_sq_bytes[0] = 1;
         let r_sq = BigUInt::from_be_bytes(&r_sq_bytes).modulo(p);
-        MontCtx { p: p.clone(), k, m_prime, r_sq_mod_p: r_sq }
+        MontCtx {
+            p: p.clone(),
+            k,
+            m_prime,
+            r_sq_mod_p: r_sq,
+        }
     }
 }
 
@@ -1777,13 +2084,17 @@ impl MontCtx {
 /// Input `t` is the unreduced product of two values in Mont form
 /// (up to 2·k limbs); output is one value in Mont form (k limbs).
 pub fn mont_redc(mut t: Vec<u32>, ctx: &MontCtx) -> BigUInt {
-    while t.len() < 2 * ctx.k + 1 { t.push(0); }
+    while t.len() < 2 * ctx.k + 1 {
+        t.push(0);
+    }
     let p_limbs = ctx.p.limbs();
     let m_prime = ctx.m_prime as u64;
     for i in 0..ctx.k {
         // u_i = t[i] · m_prime mod 2^32
         let u = ((t[i] as u64).wrapping_mul(m_prime)) & 0xFFFF_FFFF;
-        if u == 0 { continue; }
+        if u == 0 {
+            continue;
+        }
         let mut carry: u64 = 0;
         for j in 0..ctx.k {
             let prod = u * (p_limbs[j] as u64);
@@ -2042,26 +2353,42 @@ pub fn p256_mont_inv(am: &BigUInt) -> BigUInt {
 /// of input/output are Mont-form BigUInts.
 fn p256_jac_double_mont(j: &JacPoint) -> JacPoint {
     let p = p256_p();
-    if j.is_identity() { return j.clone(); }
-    if j.y.is_zero() { return JacPoint::identity(); }
+    if j.is_identity() {
+        return j.clone();
+    }
+    if j.y.is_zero() {
+        return JacPoint::identity();
+    }
     let delta = p256_mont_mul(&j.z, &j.z);
     let gamma = p256_mont_mul(&j.y, &j.y);
     let beta = p256_mont_mul(&j.x, &gamma);
     let x_minus_d = mod_sub(&j.x, &delta, &p);
-    let x_plus_d  = mod_add(&j.x, &delta, &p);
+    let x_plus_d = mod_add(&j.x, &delta, &p);
     let xm_xp = p256_mont_mul(&x_minus_d, &x_plus_d);
-    let alpha = p256_mont_mul_by_small(&xm_xp, 3);  // 3·(X-Δ)·(X+Δ)
+    let alpha = p256_mont_mul_by_small(&xm_xp, 3); // 3·(X-Δ)·(X+Δ)
     let alpha2 = p256_mont_mul(&alpha, &alpha);
     let eight_beta = p256_mont_mul_by_small(&beta, 8);
     let x3 = mod_sub(&alpha2, &eight_beta, &p);
     let y_plus_z = mod_add(&j.y, &j.z, &p);
-    let z3 = mod_sub(&mod_sub(&p256_mont_mul(&y_plus_z, &y_plus_z), &gamma, &p), &delta, &p);
+    let z3 = mod_sub(
+        &mod_sub(&p256_mont_mul(&y_plus_z, &y_plus_z), &gamma, &p),
+        &delta,
+        &p,
+    );
     let four_beta = p256_mont_mul_by_small(&beta, 4);
     let four_beta_minus_x3 = mod_sub(&four_beta, &x3, &p);
     let gamma2 = p256_mont_mul(&gamma, &gamma);
     let eight_gamma2 = p256_mont_mul_by_small(&gamma2, 8);
-    let y3 = mod_sub(&p256_mont_mul(&alpha, &four_beta_minus_x3), &eight_gamma2, &p);
-    JacPoint { x: x3, y: y3, z: z3 }
+    let y3 = mod_sub(
+        &p256_mont_mul(&alpha, &four_beta_minus_x3),
+        &eight_gamma2,
+        &p,
+    );
+    JacPoint {
+        x: x3,
+        y: y3,
+        z: z3,
+    }
 }
 
 /// Mixed addition Jacobian + Affine → Jacobian, all in Mont form.
@@ -2072,13 +2399,17 @@ fn p256_jac_add_affine_mont(j: &JacPoint, a: &P256Point) -> JacPoint {
         P256Point::Identity => return j.clone(),
         P256Point::Affine { x, y } => (x, y),
     };
-    if j.is_identity() { return jacpoint_from_affine_mont(a); }
+    if j.is_identity() {
+        return jacpoint_from_affine_mont(a);
+    }
     let z1z1 = p256_mont_mul(&j.z, &j.z);
     let u2 = p256_mont_mul(ax, &z1z1);
     let z1_cubed = p256_mont_mul(&j.z, &z1z1);
     let s2 = p256_mont_mul(ay, &z1_cubed);
     if u2.cmp(&j.x) == Ordering::Equal {
-        if s2.cmp(&j.y) == Ordering::Equal { return p256_jac_double_mont(j); }
+        if s2.cmp(&j.y) == Ordering::Equal {
+            return p256_jac_double_mont(j);
+        }
         return JacPoint::identity();
     }
     let h = mod_sub(&u2, &j.x, &p);
@@ -2095,14 +2426,20 @@ fn p256_jac_add_affine_mont(j: &JacPoint, a: &P256Point) -> JacPoint {
         &p,
     );
     let z3 = p256_mont_mul(&j.z, &h);
-    JacPoint { x: x3, y: y3, z: z3 }
+    JacPoint {
+        x: x3,
+        y: y3,
+        z: z3,
+    }
 }
 
 /// Convert Mont-form Jacobian point to standard-form affine. Performs
 /// one Montgomery inversion + a few mont_muls + one final from_mont per
 /// coordinate. Output is in standard (non-Mont) form.
 fn p256_jac_to_affine_mont(j: &JacPoint) -> P256Point {
-    if j.is_identity() { return P256Point::Identity; }
+    if j.is_identity() {
+        return P256Point::Identity;
+    }
     let z_inv_m = p256_mont_inv(&j.z);
     let z_inv2_m = p256_mont_mul(&z_inv_m, &z_inv_m);
     let z_inv3_m = p256_mont_mul(&z_inv2_m, &z_inv_m);
@@ -2137,9 +2474,7 @@ fn p256_affine_to_mont(p: &P256Point) -> P256Point {
 
 static P256_BASE_TABLE_MONT: OnceLock<Vec<P256Point>> = OnceLock::new();
 fn p256_base_table_mont() -> &'static [P256Point] {
-    P256_BASE_TABLE_MONT.get_or_init(|| {
-        p256_base_table().iter().map(p256_affine_to_mont).collect()
-    })
+    P256_BASE_TABLE_MONT.get_or_init(|| p256_base_table().iter().map(p256_affine_to_mont).collect())
 }
 
 /// Scalar mul of the P-256 generator G using the Mont-form base
@@ -2148,7 +2483,9 @@ fn p256_base_table_mont() -> &'static [P256Point] {
 /// BigUInt tier per WC-EXT 8 bench).
 pub fn p256_scalar_mul_base_mont(k: &BigUInt) -> P256Point {
     let bits = k.bit_len();
-    if bits == 0 { return P256Point::Identity; }
+    if bits == 0 {
+        return P256Point::Identity;
+    }
     let table = p256_base_table_mont();
     let mut result = JacPoint::identity();
     for i in 0..bits {
@@ -2180,7 +2517,10 @@ fn mont_ctx_for_curve(c: &Curve) -> &'static MontCtx {
         32 => MONT_CTX_P256.get_or_init(|| MontCtx::for_modulus(&c.p)),
         48 => MONT_CTX_P384.get_or_init(|| MontCtx::for_modulus(&c.p)),
         66 => MONT_CTX_P521.get_or_init(|| MontCtx::for_modulus(&c.p)),
-        _ => panic!("mont_ctx_for_curve: unsupported coord_bytes {}", c.coord_bytes),
+        _ => panic!(
+            "mont_ctx_for_curve: unsupported coord_bytes {}",
+            c.coord_bytes
+        ),
     }
 }
 
@@ -2199,14 +2539,18 @@ fn jacpoint_from_affine_mont_g(ctx: &MontCtx, a: &P256Point) -> JacPoint {
 
 /// Mont-form Jacobian doubling (a = -3 case; works for all NIST P-curves).
 fn jac_double_mont_g(ctx: &MontCtx, j: &JacPoint) -> JacPoint {
-    if j.is_identity() { return j.clone(); }
-    if j.y.is_zero() { return JacPoint::identity(); }
+    if j.is_identity() {
+        return j.clone();
+    }
+    if j.y.is_zero() {
+        return JacPoint::identity();
+    }
     let p = &ctx.p;
     let delta = mont_mul(&j.z, &j.z, ctx);
     let gamma = mont_mul(&j.y, &j.y, ctx);
     let beta = mont_mul(&j.x, &gamma, ctx);
     let x_minus_d = mod_sub(&j.x, &delta, p);
-    let x_plus_d  = mod_add(&j.x, &delta, p);
+    let x_plus_d = mod_add(&j.x, &delta, p);
     let xm_xp = mont_mul(&x_minus_d, &x_plus_d, ctx);
     // alpha = 3·xm_xp via mod_add chain (cheap)
     let alpha = {
@@ -2222,7 +2566,8 @@ fn jac_double_mont_g(ctx: &MontCtx, j: &JacPoint) -> JacPoint {
     let y_plus_z = mod_add(&j.y, &j.z, p);
     let z3 = mod_sub(
         &mod_sub(&mont_mul(&y_plus_z, &y_plus_z, ctx), &gamma, p),
-        &delta, p,
+        &delta,
+        p,
     );
     let four_beta_minus_x3 = mod_sub(&beta4, &x3, p);
     let gamma2 = mont_mul(&gamma, &gamma, ctx);
@@ -2230,7 +2575,11 @@ fn jac_double_mont_g(ctx: &MontCtx, j: &JacPoint) -> JacPoint {
     let g2_4 = mod_add(&g2_2, &g2_2, p);
     let g2_8 = mod_add(&g2_4, &g2_4, p);
     let y3 = mod_sub(&mont_mul(&alpha, &four_beta_minus_x3, ctx), &g2_8, p);
-    JacPoint { x: x3, y: y3, z: z3 }
+    JacPoint {
+        x: x3,
+        y: y3,
+        z: z3,
+    }
 }
 
 /// Mont-form mixed Jacobian + Affine addition.
@@ -2241,13 +2590,17 @@ fn jac_add_affine_mont_g(ctx: &MontCtx, j: &JacPoint, a_mont: &P256Point) -> Jac
         P256Point::Identity => return j.clone(),
         P256Point::Affine { x, y } => (x, y),
     };
-    if j.is_identity() { return jacpoint_from_affine_mont_g(ctx, a_mont); }
+    if j.is_identity() {
+        return jacpoint_from_affine_mont_g(ctx, a_mont);
+    }
     let z1z1 = mont_mul(&j.z, &j.z, ctx);
     let u2 = mont_mul(ax, &z1z1, ctx);
     let z1_cubed = mont_mul(&j.z, &z1z1, ctx);
     let s2 = mont_mul(ay, &z1_cubed, ctx);
     if u2.cmp(&j.x) == Ordering::Equal {
-        if s2.cmp(&j.y) == Ordering::Equal { return jac_double_mont_g(ctx, j); }
+        if s2.cmp(&j.y) == Ordering::Equal {
+            return jac_double_mont_g(ctx, j);
+        }
         return JacPoint::identity();
     }
     let h = mod_sub(&u2, &j.x, p);
@@ -2264,12 +2617,18 @@ fn jac_add_affine_mont_g(ctx: &MontCtx, j: &JacPoint, a_mont: &P256Point) -> Jac
         p,
     );
     let z3 = mont_mul(&j.z, &h, ctx);
-    JacPoint { x: x3, y: y3, z: z3 }
+    JacPoint {
+        x: x3,
+        y: y3,
+        z: z3,
+    }
 }
 
 /// Mont-form Jacobian → std-form affine.
 fn jac_to_affine_mont_g(ctx: &MontCtx, j: &JacPoint) -> P256Point {
-    if j.is_identity() { return P256Point::Identity; }
+    if j.is_identity() {
+        return P256Point::Identity;
+    }
     // z⁻¹ in Mont form via Fermat: z^(p-2).
     let two = BigUInt::from_be_bytes(&[2]);
     let p_minus_2 = ctx.p.sub(&two);
@@ -2299,8 +2658,12 @@ fn jac_to_affine_mont_g(ctx: &MontCtx, j: &JacPoint) -> P256Point {
 /// Mont form, converts result back to std form.
 pub fn ec_scalar_mul_mont_g(c: &Curve, k: &BigUInt, pt_std: &P256Point) -> P256Point {
     let bits = k.bit_len();
-    if bits == 0 { return P256Point::Identity; }
-    if matches!(pt_std, P256Point::Identity) { return P256Point::Identity; }
+    if bits == 0 {
+        return P256Point::Identity;
+    }
+    if matches!(pt_std, P256Point::Identity) {
+        return P256Point::Identity;
+    }
     let ctx = mont_ctx_for_curve(c);
     let pt_mont = match pt_std {
         P256Point::Affine { x, y } => P256Point::Affine {
@@ -2325,8 +2688,12 @@ pub fn ec_scalar_mul_mont_g(c: &Curve, k: &BigUInt, pt_std: &P256Point) -> P256P
 /// path with the 40×-faster Mont mul.
 pub fn p256_scalar_mul_mont(k: &BigUInt, q_std: &P256Point) -> P256Point {
     let bits = k.bit_len();
-    if bits == 0 { return P256Point::Identity; }
-    if matches!(q_std, P256Point::Identity) { return P256Point::Identity; }
+    if bits == 0 {
+        return P256Point::Identity;
+    }
+    if matches!(q_std, P256Point::Identity) {
+        return P256Point::Identity;
+    }
     let q_mont = p256_affine_to_mont(q_std);
     let mut result = JacPoint::identity();
     for i in (0..bits).rev() {
@@ -2345,11 +2712,13 @@ fn p256_double(pt: &P256Point) -> P256Point {
     match pt {
         P256Point::Identity => P256Point::Identity,
         P256Point::Affine { x, y } => {
-            if y.is_zero() { return P256Point::Identity; }
+            if y.is_zero() {
+                return P256Point::Identity;
+            }
             // λ = (3x² + a) / (2y); a = -3 mod p.
             let x2 = mod_mul(x, x, &p);
             let three_x2 = mod_mul(&three, &x2, &p);
-            let three_x2_plus_a = mod_sub(&three_x2, &three, &p);  // a = -3 → +(-3) ≡ -3
+            let three_x2_plus_a = mod_sub(&three_x2, &three, &p); // a = -3 → +(-3) ≡ -3
             let two_y = mod_mul(&two, y, &p);
             let inv = mod_inv_fermat(&two_y, &p);
             let lambda = mod_mul(&three_x2_plus_a, &inv, &p);
@@ -2425,7 +2794,9 @@ fn p256_scalar_mul_affine(k: &BigUInt, pt: &P256Point) -> P256Point {
 /// is reduced mod n. Signature format: r ‖ s (P1363 / WebCrypto raw),
 /// each 32 bytes big-endian.
 pub fn ecdsa_p256_sha256_sign(
-    d_bytes: &[u8], message: &[u8], nonce_k: &[u8],
+    d_bytes: &[u8],
+    message: &[u8],
+    nonce_k: &[u8],
 ) -> Result<Vec<u8>, String> {
     let n = p256_n();
     let d = BigUInt::from_be_bytes(d_bytes);
@@ -2448,12 +2819,16 @@ pub fn ecdsa_p256_sha256_sign(
         P256Point::Identity => return Err("ECDSA: k*G is identity".into()),
     };
     let r = x1.modulo(&n);
-    if r.is_zero() { return Err("ECDSA: r=0 — retry with new k".into()); }
+    if r.is_zero() {
+        return Err("ECDSA: r=0 — retry with new k".into());
+    }
     let k_inv = mod_inv_fermat(&k, &n);
     let rd = mod_mul(&r, &d, &n);
     let e_plus_rd = mod_add(&e_red, &rd, &n);
     let s = mod_mul(&k_inv, &e_plus_rd, &n);
-    if s.is_zero() { return Err("ECDSA: s=0 — retry with new k".into()); }
+    if s.is_zero() {
+        return Err("ECDSA: s=0 — retry with new k".into());
+    }
     let mut out = Vec::with_capacity(64);
     out.extend_from_slice(&r.to_be_bytes(32));
     out.extend_from_slice(&s.to_be_bytes(32));
@@ -2462,10 +2837,15 @@ pub fn ecdsa_p256_sha256_sign(
 
 /// ECDSA-P256 verify per FIPS 186-4 §6.4. Signature is P1363 r ‖ s.
 pub fn ecdsa_p256_sha256_verify(
-    qx_bytes: &[u8], qy_bytes: &[u8], message: &[u8], signature: &[u8],
+    qx_bytes: &[u8],
+    qy_bytes: &[u8],
+    message: &[u8],
+    signature: &[u8],
 ) -> Result<(), String> {
     use std::cmp::Ordering;
-    if signature.len() != 64 { return Err("ECDSA: signature must be 64 bytes".into()); }
+    if signature.len() != 64 {
+        return Err("ECDSA: signature must be 64 bytes".into());
+    }
     let n = p256_n();
     let one = BigUInt::one();
     let r = BigUInt::from_be_bytes(&signature[..32]);
@@ -2500,8 +2880,11 @@ pub fn ecdsa_p256_sha256_verify(
         P256Point::Affine { x, .. } => x,
         P256Point::Identity => return Err("ECDSA: u1*G + u2*Q is identity".into()),
     };
-    if x1.modulo(&n).cmp(&r) == Ordering::Equal { Ok(()) }
-    else { Err("ECDSA: signature mismatch".into()) }
+    if x1.modulo(&n).cmp(&r) == Ordering::Equal {
+        Ok(())
+    } else {
+        Err("ECDSA: signature mismatch".into())
+    }
 }
 
 // ─────────────────────── Curve-parameterized EC primitives ─────────
@@ -2515,8 +2898,8 @@ pub struct Curve {
     pub p: BigUInt,
     pub n: BigUInt,
     pub b: BigUInt,
-    pub g: P256Point,           // reuse the affine Point type — same shape
-    pub coord_bytes: usize,     // 32 (P-256), 48 (P-384), 66 (P-521)
+    pub g: P256Point,       // reuse the affine Point type — same shape
+    pub coord_bytes: usize, // 32 (P-256), 48 (P-384), 66 (P-521)
 }
 
 pub fn curve_p256() -> Curve {
@@ -2541,7 +2924,13 @@ pub fn curve_p384() -> Curve {
         "aa87ca22be8b05378eb1c71ef320ad746e1d3b628ba79b9859f741e082542a385502f25dbf55296c3a545e3872760ab7"));
     let gy = BigUInt::from_be_bytes(&hex_to_bytes(
         "3617de4a96262c6f5d9e98bf9292dc29f8f41dbd289a147ce9da3113b5f0b8c00a60b1ce1d7e819d7a431d7c90ea0e5f"));
-    Curve { p, n, b, g: P256Point::Affine { x: gx, y: gy }, coord_bytes: 48 }
+    Curve {
+        p,
+        n,
+        b,
+        g: P256Point::Affine { x: gx, y: gy },
+        coord_bytes: 48,
+    }
 }
 
 pub fn curve_p521() -> Curve {
@@ -2557,12 +2946,19 @@ pub fn curve_p521() -> Curve {
         "00c6858e06b70404e9cd9e3ecb662395b4429c648139053fb521f828af606b4d3dbaa14b5e77efe75928fe1dc127a2ffa8de3348b3c1856a429bf97e7e31c2e5bd66"));
     let gy = BigUInt::from_be_bytes(&hex_to_bytes(
         "011839296a789a3bc0045c8a5fb42c7d1bd998f54449579b446817afbd17273e662c97ee72995ef42640c550b9013fad0761353c7086a272c24088be94769fd16650"));
-    Curve { p, n, b, g: P256Point::Affine { x: gx, y: gy }, coord_bytes: 66 }
+    Curve {
+        p,
+        n,
+        b,
+        g: P256Point::Affine { x: gx, y: gy },
+        coord_bytes: 66,
+    }
 }
 
 fn hex_to_bytes(s: &str) -> Vec<u8> {
-    (0..s.len()).step_by(2)
-        .map(|i| u8::from_str_radix(&s[i..i+2], 16).unwrap())
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
         .collect()
 }
 
@@ -2573,10 +2969,12 @@ fn ec_double(c: &Curve, pt: &P256Point) -> P256Point {
     match pt {
         P256Point::Identity => P256Point::Identity,
         P256Point::Affine { x, y } => {
-            if y.is_zero() { return P256Point::Identity; }
+            if y.is_zero() {
+                return P256Point::Identity;
+            }
             let x2 = mod_mul(x, x, p);
             let three_x2 = mod_mul(&three, &x2, p);
-            let three_x2_plus_a = mod_sub(&three_x2, &three, p);  // a = -3
+            let three_x2_plus_a = mod_sub(&three_x2, &three, p); // a = -3
             let two_y = mod_mul(&two, y, p);
             let inv = mod_inv_fermat(&two_y, p);
             let lambda = mod_mul(&three_x2_plus_a, &inv, p);
@@ -2598,7 +2996,9 @@ fn ec_add(c: &Curve, p1: &P256Point, p2: &P256Point) -> P256Point {
         (P256Point::Identity, q) | (q, P256Point::Identity) => q.clone(),
         (P256Point::Affine { x: x1, y: y1 }, P256Point::Affine { x: x2, y: y2 }) => {
             if x1.cmp(x2) == Ordering::Equal {
-                if y1.cmp(y2) == Ordering::Equal { return ec_double(c, p1); }
+                if y1.cmp(y2) == Ordering::Equal {
+                    return ec_double(c, p1);
+                }
                 return P256Point::Identity;
             }
             let dy = mod_sub(y2, y1, p);
@@ -2631,20 +3031,28 @@ fn ec_add(c: &Curve, p1: &P256Point, p2: &P256Point) -> P256Point {
 struct JacPoint {
     x: BigUInt,
     y: BigUInt,
-    z: BigUInt,  // Identity represented by Z = 0
+    z: BigUInt, // Identity represented by Z = 0
 }
 
 impl JacPoint {
     fn identity() -> Self {
-        JacPoint { x: BigUInt::one(), y: BigUInt::one(), z: BigUInt::from_be_bytes(&[]) }
+        JacPoint {
+            x: BigUInt::one(),
+            y: BigUInt::one(),
+            z: BigUInt::from_be_bytes(&[]),
+        }
     }
-    fn is_identity(&self) -> bool { self.z.is_zero() }
+    fn is_identity(&self) -> bool {
+        self.z.is_zero()
+    }
     fn from_affine(pt: &P256Point) -> Self {
         match pt {
             P256Point::Identity => Self::identity(),
             P256Point::Affine { x, y } => JacPoint {
-                x: x.clone(), y: y.clone(), z: BigUInt::one(),
-            }
+                x: x.clone(),
+                y: y.clone(),
+                z: BigUInt::one(),
+            },
         }
     }
 }
@@ -2660,8 +3068,12 @@ impl JacPoint {
 //   Y3 = alpha·(4·beta - X3) - 8·gamma²
 fn jac_double(c: &Curve, j: &JacPoint) -> JacPoint {
     let p = &c.p;
-    if j.is_identity() { return j.clone(); }
-    if j.y.is_zero() { return JacPoint::identity(); }
+    if j.is_identity() {
+        return j.clone();
+    }
+    if j.y.is_zero() {
+        return JacPoint::identity();
+    }
     let three = BigUInt::from_be_bytes(&[3]);
     let four = BigUInt::from_be_bytes(&[4]);
     let eight = BigUInt::from_be_bytes(&[8]);
@@ -2669,16 +3081,28 @@ fn jac_double(c: &Curve, j: &JacPoint) -> JacPoint {
     let gamma = mod_mul(&j.y, &j.y, p);
     let beta = mod_mul(&j.x, &gamma, p);
     let x_minus_d = mod_sub(&j.x, &delta, p);
-    let x_plus_d  = mod_add(&j.x, &delta, p);
+    let x_plus_d = mod_add(&j.x, &delta, p);
     let alpha = mod_mul(&three, &mod_mul(&x_minus_d, &x_plus_d, p), p);
     let alpha2 = mod_mul(&alpha, &alpha, p);
     let x3 = mod_sub(&alpha2, &mod_mul(&eight, &beta, p), p);
     let y_plus_z = mod_add(&j.y, &j.z, p);
-    let z3 = mod_sub(&mod_sub(&mod_mul(&y_plus_z, &y_plus_z, p), &gamma, p), &delta, p);
+    let z3 = mod_sub(
+        &mod_sub(&mod_mul(&y_plus_z, &y_plus_z, p), &gamma, p),
+        &delta,
+        p,
+    );
     let four_beta_minus_x3 = mod_sub(&mod_mul(&four, &beta, p), &x3, p);
     let gamma2 = mod_mul(&gamma, &gamma, p);
-    let y3 = mod_sub(&mod_mul(&alpha, &four_beta_minus_x3, p), &mod_mul(&eight, &gamma2, p), p);
-    JacPoint { x: x3, y: y3, z: z3 }
+    let y3 = mod_sub(
+        &mod_mul(&alpha, &four_beta_minus_x3, p),
+        &mod_mul(&eight, &gamma2, p),
+        p,
+    );
+    JacPoint {
+        x: x3,
+        y: y3,
+        z: z3,
+    }
 }
 
 // Mixed addition: Jacobian + Affine → Jacobian. Per Hankerson §3.2.1.
@@ -2689,13 +3113,17 @@ fn jac_add_affine(c: &Curve, j: &JacPoint, a: &P256Point) -> JacPoint {
         P256Point::Identity => return j.clone(),
         P256Point::Affine { x, y } => (x, y),
     };
-    if j.is_identity() { return JacPoint::from_affine(a); }
+    if j.is_identity() {
+        return JacPoint::from_affine(a);
+    }
     let z1z1 = mod_mul(&j.z, &j.z, p);
     let u2 = mod_mul(ax, &z1z1, p);
     let z1_cubed = mod_mul(&j.z, &z1z1, p);
     let s2 = mod_mul(ay, &z1_cubed, p);
     if u2.cmp(&j.x) == Ordering::Equal {
-        if s2.cmp(&j.y) == Ordering::Equal { return jac_double(c, j); }
+        if s2.cmp(&j.y) == Ordering::Equal {
+            return jac_double(c, j);
+        }
         return JacPoint::identity();
     }
     let h = mod_sub(&u2, &j.x, p);
@@ -2706,15 +3134,24 @@ fn jac_add_affine(c: &Curve, j: &JacPoint, a: &P256Point) -> JacPoint {
     let two = BigUInt::from_be_bytes(&[2]);
     let r2 = mod_mul(&r, &r, p);
     let x3 = mod_sub(&mod_sub(&r2, &h3, p), &mod_mul(&two, &x1_h2, p), p);
-    let y3 = mod_sub(&mod_mul(&r, &mod_sub(&x1_h2, &x3, p), p),
-                     &mod_mul(&j.y, &h3, p), p);
+    let y3 = mod_sub(
+        &mod_mul(&r, &mod_sub(&x1_h2, &x3, p), p),
+        &mod_mul(&j.y, &h3, p),
+        p,
+    );
     let z3 = mod_mul(&j.z, &h, p);
-    JacPoint { x: x3, y: y3, z: z3 }
+    JacPoint {
+        x: x3,
+        y: y3,
+        z: z3,
+    }
 }
 
 fn jac_to_affine(c: &Curve, j: &JacPoint) -> P256Point {
     let p = &c.p;
-    if j.is_identity() { return P256Point::Identity; }
+    if j.is_identity() {
+        return P256Point::Identity;
+    }
     let z_inv = mod_inv_fermat(&j.z, p);
     let z_inv2 = mod_mul(&z_inv, &z_inv, p);
     let z_inv3 = mod_mul(&z_inv2, &z_inv, p);
@@ -2745,7 +3182,9 @@ fn jac_to_affine(c: &Curve, j: &JacPoint) -> P256Point {
 // extraction is itself per-call (T3) since the scalar is per-call.
 
 fn jac_negate(c: &Curve, j: &JacPoint) -> JacPoint {
-    if j.is_identity() { return j.clone(); }
+    if j.is_identity() {
+        return j.clone();
+    }
     JacPoint {
         x: j.x.clone(),
         y: mod_sub(&c.p, &j.y, &c.p),
@@ -2769,16 +3208,18 @@ fn affine_negate(c: &Curve, p: &P256Point) -> P256Point {
 /// two adjacent non-zero digits.
 fn wnaf(k: &BigUInt, w: u32) -> Vec<i32> {
     assert!(w >= 2 && w <= 8);
-    let pow_w = 1i32 << w;          // 2^w
-    let mask = (pow_w - 1) as u32;  // low w bits
-    let half = pow_w >> 1;          // 2^(w-1)
-    // Work on a mutable big-int representation. The scalar is non-
-    // negative; we mutate by subtraction and shift-right.
+    let pow_w = 1i32 << w; // 2^w
+    let mask = (pow_w - 1) as u32; // low w bits
+    let half = pow_w >> 1; // 2^(w-1)
+                           // Work on a mutable big-int representation. The scalar is non-
+                           // negative; we mutate by subtraction and shift-right.
     let mut limbs: Vec<u32> = k.limbs().to_vec();
     let mut digits = Vec::new();
     loop {
         // Is k == 0?
-        if limbs.iter().all(|&l| l == 0) { break; }
+        if limbs.iter().all(|&l| l == 0) {
+            break;
+        }
         let lsb = limbs[0] & 1;
         if lsb == 1 {
             // d = (k mod 2^w) — if >= 2^(w-1), subtract 2^w to make negative.
@@ -2804,7 +3245,9 @@ fn add_u32_inplace(limbs: &mut Vec<u32>, x: u32) {
     let mut carry = x as u64;
     let mut i = 0;
     while carry != 0 {
-        if i >= limbs.len() { limbs.push(0); }
+        if i >= limbs.len() {
+            limbs.push(0);
+        }
         let s = limbs[i] as u64 + carry;
         limbs[i] = (s & 0xFFFF_FFFF) as u32;
         carry = s >> 32;
@@ -2826,9 +3269,13 @@ fn sub_u32_inplace(limbs: &mut Vec<u32>, x: u32) {
             borrow = 0;
         }
         i += 1;
-        if i >= limbs.len() { break; }
+        if i >= limbs.len() {
+            break;
+        }
     }
-    while limbs.len() > 1 && *limbs.last().unwrap() == 0 { limbs.pop(); }
+    while limbs.len() > 1 && *limbs.last().unwrap() == 0 {
+        limbs.pop();
+    }
 }
 
 fn shr1_inplace(limbs: &mut Vec<u32>) {
@@ -2838,7 +3285,9 @@ fn shr1_inplace(limbs: &mut Vec<u32>) {
         limbs[i] = (limbs[i] >> 1) | (carry << 31);
         carry = next_carry;
     }
-    while limbs.len() > 1 && *limbs.last().unwrap() == 0 { limbs.pop(); }
+    while limbs.len() > 1 && *limbs.last().unwrap() == 0 {
+        limbs.pop();
+    }
 }
 
 // WC-EXT 7: Montgomery's batch inversion trick. Given n field values
@@ -2850,7 +3299,9 @@ fn shr1_inplace(limbs: &mut Vec<u32>) {
 // computation tier, much cheaper.
 fn batch_mod_inv(values: &[BigUInt], p: &BigUInt) -> Vec<BigUInt> {
     let n = values.len();
-    if n == 0 { return Vec::new(); }
+    if n == 0 {
+        return Vec::new();
+    }
     // Forward prefix products: prefix[i] = a_0 * a_1 * ... * a_i.
     let mut prefix: Vec<BigUInt> = Vec::with_capacity(n);
     prefix.push(values[0].clone());
@@ -2875,7 +3326,8 @@ fn jac_to_affine_batch(c: &Curve, jacs: &[JacPoint]) -> Vec<P256Point> {
     // Filter Identity points out of the batch-inv (their Z = 0 has
     // no inverse). Collect non-Identity Z values; batch-invert; emit
     // affine points in original order.
-    let zs: Vec<BigUInt> = jacs.iter()
+    let zs: Vec<BigUInt> = jacs
+        .iter()
         .filter(|j| !j.is_identity())
         .map(|j| j.z.clone())
         .collect();
@@ -2887,7 +3339,8 @@ fn jac_to_affine_batch(c: &Curve, jacs: &[JacPoint]) -> Vec<P256Point> {
         if j.is_identity() {
             out.push(P256Point::Identity);
         } else {
-            let z_inv = &z_invs[zi]; zi += 1;
+            let z_inv = &z_invs[zi];
+            zi += 1;
             let z_inv2 = mod_mul(z_inv, z_inv, p);
             let z_inv3 = mod_mul(&z_inv2, z_inv, p);
             out.push(P256Point::Affine {
@@ -2919,16 +3372,20 @@ pub fn ec_scalar_mul(c: &Curve, k: &BigUInt, pt: &P256Point) -> P256Point {
     // WC-EXT 7: wNAF window-4 scalar mul with Montgomery batch
     // inversion (preserved for archaeology; routed off in WC-EXT 15).
     let bits = k.bit_len();
-    if bits == 0 { return P256Point::Identity; }
-    if matches!(pt, P256Point::Identity) { return P256Point::Identity; }
+    if bits == 0 {
+        return P256Point::Identity;
+    }
+    if matches!(pt, P256Point::Identity) {
+        return P256Point::Identity;
+    }
 
     const W: u32 = 4;
-    let n_entries = 1usize << (W - 1);  // 4 for w=4: 1P, 3P, 5P, 7P
+    let n_entries = 1usize << (W - 1); // 4 for w=4: 1P, 3P, 5P, 7P
 
     // Build odd-multiples table in Jacobian, then batch-convert to affine.
     let mut odd_jac: Vec<JacPoint> = Vec::with_capacity(n_entries);
-    odd_jac.push(JacPoint::from_affine(pt));         // 1P
-    // 2P in Jacobian, then converted once for the add-affine path.
+    odd_jac.push(JacPoint::from_affine(pt)); // 1P
+                                             // 2P in Jacobian, then converted once for the add-affine path.
     let two_p_j = jac_double(c, &odd_jac[0]);
     // We need 2P in affine to do jac_add_affine. One inversion here,
     // unavoidable without a jac_add_jac primitive. Still nets a win
@@ -2945,7 +3402,8 @@ pub fn ec_scalar_mul(c: &Curve, k: &BigUInt, pt: &P256Point) -> P256Point {
     let digits = wnaf(k, W);
 
     let mut result = JacPoint::identity();
-    for &d in digits.iter().rev() {  // MSB to LSB
+    for &d in digits.iter().rev() {
+        // MSB to LSB
         result = jac_double(c, &result);
         if d != 0 {
             let idx = (d.abs() as usize - 1) / 2;
@@ -2997,7 +3455,9 @@ fn p256_base_table() -> &'static [P256Point] {
 pub fn p256_scalar_mul_base(k: &BigUInt) -> P256Point {
     let c = curve_p256();
     let bits = k.bit_len();
-    if bits == 0 { return P256Point::Identity; }
+    if bits == 0 {
+        return P256Point::Identity;
+    }
     let table = p256_base_table();
     let mut result = JacPoint::identity();
     for i in 0..bits {
@@ -3020,7 +3480,8 @@ pub fn ec_generate_keypair(c: &Curve) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
         let d = BigUInt::from_be_bytes(&d_bytes);
         use std::cmp::Ordering;
         if d.cmp(&BigUInt::from_be_bytes(&[0])) == Ordering::Greater
-            && d.cmp(&c.n) == Ordering::Less {
+            && d.cmp(&c.n) == Ordering::Less
+        {
             let q = ec_scalar_mul(c, &d, &c.g);
             if let P256Point::Affine { x, y } = q {
                 let x_bytes = x.to_be_bytes(c.coord_bytes);
@@ -3047,7 +3508,10 @@ fn on_curve(c: &Curve, x: &BigUInt, y: &BigUInt) -> bool {
 /// computed; caller selects the hash to match the curve. `nonce_k` is
 /// the per-signature random k (caller-supplied).
 pub fn ecdsa_sign(
-    c: &Curve, d_bytes: &[u8], hash: &[u8], nonce_k: &[u8],
+    c: &Curve,
+    d_bytes: &[u8],
+    hash: &[u8],
+    nonce_k: &[u8],
 ) -> Result<Vec<u8>, String> {
     use std::cmp::Ordering;
     let d = BigUInt::from_be_bytes(d_bytes);
@@ -3068,12 +3532,16 @@ pub fn ecdsa_sign(
         P256Point::Identity => return Err("ECDSA: k*G is identity".into()),
     };
     let r = x1.modulo(&c.n);
-    if r.is_zero() { return Err("ECDSA: r=0".into()); }
+    if r.is_zero() {
+        return Err("ECDSA: r=0".into());
+    }
     let k_inv = mod_inv_fermat(&k, &c.n);
     let rd = mod_mul(&r, &d, &c.n);
     let e_plus_rd = mod_add(&e, &rd, &c.n);
     let s = mod_mul(&k_inv, &e_plus_rd, &c.n);
-    if s.is_zero() { return Err("ECDSA: s=0".into()); }
+    if s.is_zero() {
+        return Err("ECDSA: s=0".into());
+    }
     let mut out = Vec::with_capacity(2 * c.coord_bytes);
     out.extend_from_slice(&r.to_be_bytes(c.coord_bytes));
     out.extend_from_slice(&s.to_be_bytes(c.coord_bytes));
@@ -3081,7 +3549,11 @@ pub fn ecdsa_sign(
 }
 
 pub fn ecdsa_verify(
-    c: &Curve, qx_bytes: &[u8], qy_bytes: &[u8], hash: &[u8], signature: &[u8],
+    c: &Curve,
+    qx_bytes: &[u8],
+    qy_bytes: &[u8],
+    hash: &[u8],
+    signature: &[u8],
 ) -> Result<(), String> {
     use std::cmp::Ordering;
     if signature.len() != 2 * c.coord_bytes {
@@ -3103,16 +3575,28 @@ pub fn ecdsa_verify(
     }
     let q = P256Point::Affine { x: qx, y: qy };
     let dbg_ec = std::env::var("CRUFTLESS_WC_DEBUG").is_ok();
-    if dbg_ec { eprintln!("[wc-ec] e = hash mod n"); }
+    if dbg_ec {
+        eprintln!("[wc-ec] e = hash mod n");
+    }
     let e = BigUInt::from_be_bytes(hash).modulo(&c.n);
-    if dbg_ec { eprintln!("[wc-ec] → mod_inv_fermat(s, n)"); }
+    if dbg_ec {
+        eprintln!("[wc-ec] → mod_inv_fermat(s, n)");
+    }
     let w = mod_inv_fermat(&s, &c.n);
-    if dbg_ec { eprintln!("[wc-ec]   mod_inv_fermat OK"); }
-    if dbg_ec { eprintln!("[wc-ec] → mod_mul(e, w, n) = u1"); }
+    if dbg_ec {
+        eprintln!("[wc-ec]   mod_inv_fermat OK");
+    }
+    if dbg_ec {
+        eprintln!("[wc-ec] → mod_mul(e, w, n) = u1");
+    }
     let u1 = mod_mul(&e, &w, &c.n);
-    if dbg_ec { eprintln!("[wc-ec] → mod_mul(r, w, n) = u2"); }
+    if dbg_ec {
+        eprintln!("[wc-ec] → mod_mul(r, w, n) = u2");
+    }
     let u2 = mod_mul(&r, &w, &c.n);
-    if dbg_ec { eprintln!("[wc-ec] → scalar_mul(u1, G) = p1 (Solinas base-table fast path if P-256, else generic)"); }
+    if dbg_ec {
+        eprintln!("[wc-ec] → scalar_mul(u1, G) = p1 (Solinas base-table fast path if P-256, else generic)");
+    }
     let p1 = if c.coord_bytes == 32 && c.b.cmp(&p256_b()) == std::cmp::Ordering::Equal {
         // WC-EXT 25: route through Solinas now that v2 c_2_256_mod_p
         // bug is fixed (0/2000 fuzz divergent; 2.26× faster per mod_mul).
@@ -3120,27 +3604,45 @@ pub fn ecdsa_verify(
     } else {
         ec_scalar_mul(c, &u1, &c.g)
     };
-    if dbg_ec { eprintln!("[wc-ec]   p1 OK"); }
-    if dbg_ec { eprintln!("[wc-ec] → scalar_mul(u2, Q) = p2 (Solinas fast path if P-256)"); }
+    if dbg_ec {
+        eprintln!("[wc-ec]   p1 OK");
+    }
+    if dbg_ec {
+        eprintln!("[wc-ec] → scalar_mul(u2, Q) = p2 (Solinas fast path if P-256)");
+    }
     let p2 = if c.coord_bytes == 32 && c.b.cmp(&p256_b()) == std::cmp::Ordering::Equal {
         // WC-EXT 25: Solinas EC re-routed after v2 c_2_256_mod_p fix.
         p256_scalar_mul_solinas(&u2, &q)
     } else {
         ec_scalar_mul(c, &u2, &q)
     };
-    if dbg_ec { eprintln!("[wc-ec]   p2 OK"); }
-    if dbg_ec { eprintln!("[wc-ec] → ec_add(p1, p2)"); }
+    if dbg_ec {
+        eprintln!("[wc-ec]   p2 OK");
+    }
+    if dbg_ec {
+        eprintln!("[wc-ec] → ec_add(p1, p2)");
+    }
     let r_pt = ec_add(c, &p1, &p2);
-    if dbg_ec { eprintln!("[wc-ec]   ec_add OK"); }
+    if dbg_ec {
+        eprintln!("[wc-ec]   ec_add OK");
+    }
     let x1 = match r_pt {
         P256Point::Affine { x, .. } => x,
         P256Point::Identity => return Err("ECDSA: u1·G + u2·Q is identity".into()),
     };
-    if x1.modulo(&c.n).cmp(&r) == Ordering::Equal { Ok(()) }
-    else { Err("ECDSA: signature mismatch".into()) }
+    if x1.modulo(&c.n).cmp(&r) == Ordering::Equal {
+        Ok(())
+    } else {
+        Err("ECDSA: signature mismatch".into())
+    }
 }
 
-pub fn ecdh(c: &Curve, d_bytes: &[u8], qx_bytes: &[u8], qy_bytes: &[u8]) -> Result<Vec<u8>, String> {
+pub fn ecdh(
+    c: &Curve,
+    d_bytes: &[u8],
+    qx_bytes: &[u8],
+    qy_bytes: &[u8],
+) -> Result<Vec<u8>, String> {
     use std::cmp::Ordering;
     let d = BigUInt::from_be_bytes(d_bytes);
     if d.is_zero() || d.cmp(&c.n) != Ordering::Less {
@@ -3200,7 +3702,8 @@ pub fn ecdh_p256(d_bytes: &[u8], qx_bytes: &[u8], qy_bytes: &[u8]) -> Result<Vec
 // Output is T truncated to maskLen bytes.
 
 pub fn mgf1<F>(mgf_seed: &[u8], mask_len: usize, hash_fn: F, hlen: usize) -> Vec<u8>
-where F: Fn(&[u8]) -> Vec<u8>,
+where
+    F: Fn(&[u8]) -> Vec<u8>,
 {
     let mut t = Vec::with_capacity(mask_len + hlen);
     let n_iters = (mask_len + hlen - 1) / hlen;
@@ -3219,14 +3722,22 @@ where F: Fn(&[u8]) -> Vec<u8>,
 /// of randomness (caller-supplied for testability; production code
 /// passes /dev/urandom output). Hash is parameterized via `hash_fn`.
 pub fn rsa_oaep_encrypt<F: Fn(&[u8]) -> Vec<u8> + Copy>(
-    n_bytes: &[u8], e_bytes: &[u8],
-    message: &[u8], label: &[u8], seed: &[u8],
-    hash_fn: F, hlen: usize,
+    n_bytes: &[u8],
+    e_bytes: &[u8],
+    message: &[u8],
+    label: &[u8],
+    seed: &[u8],
+    hash_fn: F,
+    hlen: usize,
 ) -> Result<Vec<u8>, String> {
     let n = BigUInt::from_be_bytes(n_bytes);
     let e = BigUInt::from_be_bytes(e_bytes);
-    let k = n_bytes.len();  // octet length of n; assumes leading zeros are present in n_bytes if needed
-    let k = if k == 0 { return Err("RSA-OAEP: empty modulus".into()) } else { k };
+    let k = n_bytes.len(); // octet length of n; assumes leading zeros are present in n_bytes if needed
+    let k = if k == 0 {
+        return Err("RSA-OAEP: empty modulus".into());
+    } else {
+        k
+    };
     // mLen check: mLen <= k - 2*hLen - 2.
     if message.len() > k.saturating_sub(2 * hlen + 2) {
         return Err("RSA-OAEP: message too long".into());
@@ -3251,7 +3762,11 @@ pub fn rsa_oaep_encrypt<F: Fn(&[u8]) -> Vec<u8> + Copy>(
     // seedMask = MGF1(maskedDB, hLen).
     let seed_mask = mgf1(&masked_db, hlen, hash_fn, hlen);
     // maskedSeed = seed ⊕ seedMask.
-    let masked_seed: Vec<u8> = seed.iter().zip(seed_mask.iter()).map(|(a, b)| a ^ b).collect();
+    let masked_seed: Vec<u8> = seed
+        .iter()
+        .zip(seed_mask.iter())
+        .map(|(a, b)| a ^ b)
+        .collect();
     // EM = 0x00 || maskedSeed || maskedDB.
     let mut em = Vec::with_capacity(k);
     em.push(0x00);
@@ -3266,9 +3781,12 @@ pub fn rsa_oaep_encrypt<F: Fn(&[u8]) -> Vec<u8> + Copy>(
 
 /// RSAES-OAEP-DECRYPT (RFC 8017 §7.1.2).
 pub fn rsa_oaep_decrypt<F: Fn(&[u8]) -> Vec<u8> + Copy>(
-    n_bytes: &[u8], d_bytes: &[u8],
-    ciphertext: &[u8], label: &[u8],
-    hash_fn: F, hlen: usize,
+    n_bytes: &[u8],
+    d_bytes: &[u8],
+    ciphertext: &[u8],
+    label: &[u8],
+    hash_fn: F,
+    hlen: usize,
 ) -> Result<Vec<u8>, String> {
     let n = BigUInt::from_be_bytes(n_bytes);
     let d = BigUInt::from_be_bytes(d_bytes);
@@ -3287,14 +3805,22 @@ pub fn rsa_oaep_decrypt<F: Fn(&[u8]) -> Vec<u8> + Copy>(
     let l_hash = hash_fn(label);
     // Split EM: Y (1 byte) || maskedSeed (hlen) || maskedDB (k - hlen - 1).
     let y = em[0];
-    let masked_seed = &em[1 .. 1 + hlen];
-    let masked_db = &em[1 + hlen ..];
+    let masked_seed = &em[1..1 + hlen];
+    let masked_db = &em[1 + hlen..];
     // seedMask = MGF1(maskedDB, hlen). seed = maskedSeed ⊕ seedMask.
     let seed_mask = mgf1(masked_db, hlen, hash_fn, hlen);
-    let seed: Vec<u8> = masked_seed.iter().zip(seed_mask.iter()).map(|(a, b)| a ^ b).collect();
+    let seed: Vec<u8> = masked_seed
+        .iter()
+        .zip(seed_mask.iter())
+        .map(|(a, b)| a ^ b)
+        .collect();
     // dbMask = MGF1(seed, k - hlen - 1). DB = maskedDB ⊕ dbMask.
     let db_mask = mgf1(&seed, k - hlen - 1, hash_fn, hlen);
-    let db: Vec<u8> = masked_db.iter().zip(db_mask.iter()).map(|(a, b)| a ^ b).collect();
+    let db: Vec<u8> = masked_db
+        .iter()
+        .zip(db_mask.iter())
+        .map(|(a, b)| a ^ b)
+        .collect();
     // Verify structure: DB = lHash' || PS || 0x01 || M, with lHash' == lHash,
     // PS all-zeros, separator 0x01. Constant-time comparison of these checks
     // is the spec recommendation; we use a single boolean accumulator to
@@ -3316,7 +3842,7 @@ pub fn rsa_oaep_decrypt<F: Fn(&[u8]) -> Vec<u8> + Copy>(
     if !ok {
         return Err("RSA-OAEP: decryption error".into());
     }
-    Ok(rest[sep + 1 ..].to_vec())
+    Ok(rest[sep + 1..].to_vec())
 }
 
 // ─────────────────────── RSA-PSS (RFC 8017 §8.1 + §9.1) ──────────
@@ -3325,7 +3851,11 @@ pub fn rsa_oaep_decrypt<F: Fn(&[u8]) -> Vec<u8> + Copy>(
 // + RSADP; RSASSA-PSS-VERIFY wraps RSAEP + EMSA-PSS-VERIFY.
 
 fn emsa_pss_encode<F: Fn(&[u8]) -> Vec<u8> + Copy>(
-    message: &[u8], em_bits: usize, salt: &[u8], hash_fn: F, hlen: usize,
+    message: &[u8],
+    em_bits: usize,
+    salt: &[u8],
+    hash_fn: F,
+    hlen: usize,
 ) -> Result<Vec<u8>, String> {
     let em_len = (em_bits + 7) / 8;
     let s_len = salt.len();
@@ -3360,14 +3890,25 @@ fn emsa_pss_encode<F: Fn(&[u8]) -> Vec<u8> + Copy>(
 }
 
 fn emsa_pss_verify<F: Fn(&[u8]) -> Vec<u8> + Copy>(
-    message: &[u8], em: &[u8], em_bits: usize, s_len: usize, hash_fn: F, hlen: usize,
+    message: &[u8],
+    em: &[u8],
+    em_bits: usize,
+    s_len: usize,
+    hash_fn: F,
+    hlen: usize,
 ) -> Result<(), String> {
     let em_len = (em_bits + 7) / 8;
-    if em.len() != em_len { return Err("EMSA-PSS-VERIFY: EM length mismatch".into()); }
-    if em_len < hlen + s_len + 2 { return Err("EMSA-PSS-VERIFY: inconsistent".into()); }
-    if *em.last().unwrap() != 0xbc { return Err("EMSA-PSS-VERIFY: missing 0xbc trailer".into()); }
+    if em.len() != em_len {
+        return Err("EMSA-PSS-VERIFY: EM length mismatch".into());
+    }
+    if em_len < hlen + s_len + 2 {
+        return Err("EMSA-PSS-VERIFY: inconsistent".into());
+    }
+    if *em.last().unwrap() != 0xbc {
+        return Err("EMSA-PSS-VERIFY: missing 0xbc trailer".into());
+    }
     let masked_db = &em[..em_len - hlen - 1];
-    let h = &em[em_len - hlen - 1 .. em_len - 1];
+    let h = &em[em_len - hlen - 1..em_len - 1];
     let unused_bits = 8 * em_len - em_bits;
     if unused_bits > 0 {
         let mask: u8 = (0xff_u16 << (8 - unused_bits)) as u8;
@@ -3376,19 +3917,25 @@ fn emsa_pss_verify<F: Fn(&[u8]) -> Vec<u8> + Copy>(
         }
     }
     let db_mask = mgf1(h, em_len - hlen - 1, hash_fn, hlen);
-    let mut db: Vec<u8> = masked_db.iter().zip(db_mask.iter()).map(|(a, b)| a ^ b).collect();
+    let mut db: Vec<u8> = masked_db
+        .iter()
+        .zip(db_mask.iter())
+        .map(|(a, b)| a ^ b)
+        .collect();
     if unused_bits > 0 {
         db[0] &= 0xff >> unused_bits;
     }
     // First emLen - hLen - sLen - 2 bytes must be 0x00, then 0x01.
     let ps_len = em_len - hlen - s_len - 2;
     for &b in &db[..ps_len] {
-        if b != 0 { return Err("EMSA-PSS-VERIFY: non-zero PS".into()); }
+        if b != 0 {
+            return Err("EMSA-PSS-VERIFY: non-zero PS".into());
+        }
     }
     if db[ps_len] != 0x01 {
         return Err("EMSA-PSS-VERIFY: missing 0x01 separator".into());
     }
-    let salt = &db[ps_len + 1 ..];
+    let salt = &db[ps_len + 1..];
     let m_hash = hash_fn(message);
     let mut m_prime = Vec::with_capacity(8 + hlen + salt.len());
     m_prime.extend_from_slice(&[0u8; 8]);
@@ -3404,8 +3951,12 @@ fn emsa_pss_verify<F: Fn(&[u8]) -> Vec<u8> + Copy>(
 /// RSASSA-PSS-SIGN (RFC 8017 §8.1.1). `salt` must be `sLen` bytes of
 /// randomness (caller-supplied for testability).
 pub fn rsa_pss_sign<F: Fn(&[u8]) -> Vec<u8> + Copy>(
-    n_bytes: &[u8], d_bytes: &[u8], message: &[u8], salt: &[u8],
-    hash_fn: F, hlen: usize,
+    n_bytes: &[u8],
+    d_bytes: &[u8],
+    message: &[u8],
+    salt: &[u8],
+    hash_fn: F,
+    hlen: usize,
 ) -> Result<Vec<u8>, String> {
     let k = n_bytes.len();
     let mod_bits = BigUInt::from_be_bytes(n_bytes).bit_len();
@@ -3419,11 +3970,18 @@ pub fn rsa_pss_sign<F: Fn(&[u8]) -> Vec<u8> + Copy>(
 
 /// RSASSA-PSS-VERIFY (RFC 8017 §8.1.2).
 pub fn rsa_pss_verify<F: Fn(&[u8]) -> Vec<u8> + Copy>(
-    n_bytes: &[u8], e_bytes: &[u8], message: &[u8], signature: &[u8],
-    s_len: usize, hash_fn: F, hlen: usize,
+    n_bytes: &[u8],
+    e_bytes: &[u8],
+    message: &[u8],
+    signature: &[u8],
+    s_len: usize,
+    hash_fn: F,
+    hlen: usize,
 ) -> Result<(), String> {
     let k = n_bytes.len();
-    if signature.len() != k { return Err("RSA-PSS-VERIFY: signature length mismatch".into()); }
+    if signature.len() != k {
+        return Err("RSA-PSS-VERIFY: signature length mismatch".into());
+    }
     let n = BigUInt::from_be_bytes(n_bytes);
     let e = BigUInt::from_be_bytes(e_bytes);
     let mod_bits = n.bit_len();
@@ -3456,7 +4014,9 @@ const AES_INV_SBOX: [u8; 256] = [
 ];
 
 fn aes_inv_sub_bytes(state: &mut [u8; 16]) {
-    for b in state.iter_mut() { *b = AES_INV_SBOX[*b as usize]; }
+    for b in state.iter_mut() {
+        *b = AES_INV_SBOX[*b as usize];
+    }
 }
 
 fn aes_inv_shift_rows(state: &mut [u8; 16]) {
@@ -3472,10 +4032,14 @@ fn aes_inv_shift_rows(state: &mut [u8; 16]) {
 fn gf_mul(mut a: u8, mut b: u8) -> u8 {
     let mut p = 0u8;
     for _ in 0..8 {
-        if b & 1 != 0 { p ^= a; }
+        if b & 1 != 0 {
+            p ^= a;
+        }
         let hi = a & 0x80;
         a <<= 1;
-        if hi != 0 { a ^= 0x1b; }
+        if hi != 0 {
+            a ^= 0x1b;
+        }
         b >>= 1;
     }
     p
@@ -3483,11 +4047,13 @@ fn gf_mul(mut a: u8, mut b: u8) -> u8 {
 
 fn aes_inv_mix_columns(state: &mut [u8; 16]) {
     for c in 0..4 {
-        let s0 = state[c]; let s1 = state[4 + c];
-        let s2 = state[8 + c]; let s3 = state[12 + c];
-        state[c]      = gf_mul(0x0e, s0) ^ gf_mul(0x0b, s1) ^ gf_mul(0x0d, s2) ^ gf_mul(0x09, s3);
-        state[4 + c]  = gf_mul(0x09, s0) ^ gf_mul(0x0e, s1) ^ gf_mul(0x0b, s2) ^ gf_mul(0x0d, s3);
-        state[8 + c]  = gf_mul(0x0d, s0) ^ gf_mul(0x09, s1) ^ gf_mul(0x0e, s2) ^ gf_mul(0x0b, s3);
+        let s0 = state[c];
+        let s1 = state[4 + c];
+        let s2 = state[8 + c];
+        let s3 = state[12 + c];
+        state[c] = gf_mul(0x0e, s0) ^ gf_mul(0x0b, s1) ^ gf_mul(0x0d, s2) ^ gf_mul(0x09, s3);
+        state[4 + c] = gf_mul(0x09, s0) ^ gf_mul(0x0e, s1) ^ gf_mul(0x0b, s2) ^ gf_mul(0x0d, s3);
+        state[8 + c] = gf_mul(0x0d, s0) ^ gf_mul(0x09, s1) ^ gf_mul(0x0e, s2) ^ gf_mul(0x0b, s3);
         state[12 + c] = gf_mul(0x0b, s0) ^ gf_mul(0x0d, s1) ^ gf_mul(0x09, s2) ^ gf_mul(0x0e, s3);
     }
 }
@@ -3496,13 +4062,15 @@ fn aes_decrypt_block(block: &[u8; 16], w: &[u32]) -> [u8; 16] {
     let nr = w.len() / 4 - 1;
     let mut state = [0u8; 16];
     for c in 0..4 {
-        for r in 0..4 { state[r * 4 + c] = block[4 * c + r]; }
+        for r in 0..4 {
+            state[r * 4 + c] = block[4 * c + r];
+        }
     }
-    aes_add_round_key(&mut state, &w[4 * nr .. 4 * nr + 4]);
+    aes_add_round_key(&mut state, &w[4 * nr..4 * nr + 4]);
     for round in (1..nr).rev() {
         aes_inv_shift_rows(&mut state);
         aes_inv_sub_bytes(&mut state);
-        aes_add_round_key(&mut state, &w[4 * round .. 4 * round + 4]);
+        aes_add_round_key(&mut state, &w[4 * round..4 * round + 4]);
         aes_inv_mix_columns(&mut state);
     }
     aes_inv_shift_rows(&mut state);
@@ -3510,7 +4078,9 @@ fn aes_decrypt_block(block: &[u8; 16], w: &[u32]) -> [u8; 16] {
     aes_add_round_key(&mut state, &w[0..4]);
     let mut out = [0u8; 16];
     for c in 0..4 {
-        for r in 0..4 { out[4 * c + r] = state[r * 4 + c]; }
+        for r in 0..4 {
+            out[4 * c + r] = state[r * 4 + c];
+        }
     }
     out
 }
@@ -3528,7 +4098,9 @@ pub fn aes_cbc_encrypt(key: &[u8], iv: &[u8], plaintext: &[u8]) -> Result<Vec<u8
     if key.len() != 16 && key.len() != 24 && key.len() != 32 {
         return Err(format!("AES-CBC: invalid key length {}", key.len()));
     }
-    if iv.len() != 16 { return Err("AES-CBC: IV must be 16 bytes".to_string()); }
+    if iv.len() != 16 {
+        return Err("AES-CBC: IV must be 16 bytes".to_string());
+    }
     let w = aes_key_expansion(key);
     let pad = 16 - (plaintext.len() % 16);
     let mut padded = plaintext.to_vec();
@@ -3538,7 +4110,9 @@ pub fn aes_cbc_encrypt(key: &[u8], iv: &[u8], plaintext: &[u8]) -> Result<Vec<u8
     let mut out = Vec::with_capacity(padded.len());
     for chunk in padded.chunks(16) {
         let mut block = [0u8; 16];
-        for i in 0..16 { block[i] = chunk[i] ^ prev[i]; }
+        for i in 0..16 {
+            block[i] = chunk[i] ^ prev[i];
+        }
         let c = aes_encrypt_block(&block, &w);
         out.extend_from_slice(&c);
         prev = c;
@@ -3550,7 +4124,9 @@ pub fn aes_cbc_decrypt(key: &[u8], iv: &[u8], ciphertext: &[u8]) -> Result<Vec<u
     if key.len() != 16 && key.len() != 24 && key.len() != 32 {
         return Err(format!("AES-CBC: invalid key length {}", key.len()));
     }
-    if iv.len() != 16 { return Err("AES-CBC: IV must be 16 bytes".to_string()); }
+    if iv.len() != 16 {
+        return Err("AES-CBC: IV must be 16 bytes".to_string());
+    }
     if ciphertext.is_empty() || ciphertext.len() % 16 != 0 {
         return Err("AES-CBC: ciphertext must be a positive multiple of 16 bytes".to_string());
     }
@@ -3563,17 +4139,25 @@ pub fn aes_cbc_decrypt(key: &[u8], iv: &[u8], ciphertext: &[u8]) -> Result<Vec<u
         block.copy_from_slice(chunk);
         let d = aes_decrypt_block(&block, &w);
         let mut plain = [0u8; 16];
-        for i in 0..16 { plain[i] = d[i] ^ prev[i]; }
+        for i in 0..16 {
+            plain[i] = d[i] ^ prev[i];
+        }
         out.extend_from_slice(&plain);
         prev = block;
     }
     // PKCS#7 unpad.
     let pad = *out.last().ok_or("AES-CBC: empty output")? as usize;
-    if pad == 0 || pad > 16 { return Err("AES-CBC: bad padding".to_string()); }
-    if out.len() < pad { return Err("AES-CBC: bad padding".to_string()); }
+    if pad == 0 || pad > 16 {
+        return Err("AES-CBC: bad padding".to_string());
+    }
+    if out.len() < pad {
+        return Err("AES-CBC: bad padding".to_string());
+    }
     let n = out.len();
-    for &b in &out[n - pad ..] {
-        if b as usize != pad { return Err("AES-CBC: bad padding".to_string()); }
+    for &b in &out[n - pad..] {
+        if b as usize != pad {
+            return Err("AES-CBC: bad padding".to_string());
+        }
     }
     out.truncate(n - pad);
     Ok(out)
@@ -3585,11 +4169,18 @@ pub fn aes_cbc_decrypt(key: &[u8], iv: &[u8], ciphertext: &[u8]) -> Result<Vec<u
 // `length` bits are the counter (incremented per block) and the rest
 // is the nonce prefix.
 
-pub fn aes_ctr_xor_with_key(key: &[u8], counter0: &[u8], counter_bits: u32, data: &[u8]) -> Result<Vec<u8>, String> {
+pub fn aes_ctr_xor_with_key(
+    key: &[u8],
+    counter0: &[u8],
+    counter_bits: u32,
+    data: &[u8],
+) -> Result<Vec<u8>, String> {
     if key.len() != 16 && key.len() != 24 && key.len() != 32 {
         return Err(format!("AES-CTR: invalid key length {}", key.len()));
     }
-    if counter0.len() != 16 { return Err("AES-CTR: counter must be 16 bytes".to_string()); }
+    if counter0.len() != 16 {
+        return Err("AES-CTR: counter must be 16 bytes".to_string());
+    }
     if counter_bits == 0 || counter_bits > 128 {
         return Err("AES-CTR: length must be in 1..=128".to_string());
     }
@@ -3605,7 +4196,9 @@ pub fn aes_ctr_xor_with_key(key: &[u8], counter0: &[u8], counter_bits: u32, data
             out.push(b ^ ks[i]);
         }
         block_idx += 1;
-        if block_idx as usize == total_blocks { break; }
+        if block_idx as usize == total_blocks {
+            break;
+        }
         // Increment the low `counter_bits` of the counter block per
         // SP 800-38A §B.1. Modulo 2^counter_bits, wrap allowed.
         counter_inc(&mut counter, counter_bits as usize);
@@ -3629,7 +4222,9 @@ fn counter_inc(counter: &mut [u8; 16], bits: usize) {
         counter[idx] = (high | new_low) as u8;
         carry = sum >> take;
         remaining -= take;
-        if idx == 0 { break; }
+        if idx == 0 {
+            break;
+        }
         idx -= 1;
     }
 }
@@ -3655,7 +4250,7 @@ pub fn aes_kw_wrap(kek: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, String> {
     let mut r: Vec<[u8; 8]> = (0..n)
         .map(|i| {
             let mut b = [0u8; 8];
-            b.copy_from_slice(&plaintext[i * 8 .. (i + 1) * 8]);
+            b.copy_from_slice(&plaintext[i * 8..(i + 1) * 8]);
             b
         })
         .collect();
@@ -3668,13 +4263,17 @@ pub fn aes_kw_wrap(kek: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, String> {
             a.copy_from_slice(&enc[..8]);
             let t = ((n * j) + i + 1) as u64;
             let t_be = t.to_be_bytes();
-            for k in 0..8 { a[k] ^= t_be[k]; }
+            for k in 0..8 {
+                a[k] ^= t_be[k];
+            }
             r[i].copy_from_slice(&enc[8..]);
         }
     }
     let mut out = Vec::with_capacity(8 * (n + 1));
     out.extend_from_slice(&a);
-    for block in &r { out.extend_from_slice(block); }
+    for block in &r {
+        out.extend_from_slice(block);
+    }
     Ok(out)
 }
 
@@ -3692,7 +4291,7 @@ pub fn aes_kw_unwrap(kek: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, String> {
     let mut r: Vec<[u8; 8]> = (0..n)
         .map(|i| {
             let mut b = [0u8; 8];
-            b.copy_from_slice(&ciphertext[8 + i * 8 .. 8 + (i + 1) * 8]);
+            b.copy_from_slice(&ciphertext[8 + i * 8..8 + (i + 1) * 8]);
             b
         })
         .collect();
@@ -3701,7 +4300,9 @@ pub fn aes_kw_unwrap(kek: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, String> {
             let t = ((n * j) + i + 1) as u64;
             let t_be = t.to_be_bytes();
             let mut b = [0u8; 16];
-            for k in 0..8 { b[k] = a[k] ^ t_be[k]; }
+            for k in 0..8 {
+                b[k] = a[k] ^ t_be[k];
+            }
             b[8..].copy_from_slice(&r[i]);
             let dec = aes_decrypt_block(&b, &w);
             a.copy_from_slice(&dec[..8]);
@@ -3712,7 +4313,9 @@ pub fn aes_kw_unwrap(kek: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, String> {
         return Err("AES-KW: integrity check failed".to_string());
     }
     let mut out = Vec::with_capacity(8 * n);
-    for block in &r { out.extend_from_slice(block); }
+    for block in &r {
+        out.extend_from_slice(block);
+    }
     Ok(out)
 }
 
@@ -3734,7 +4337,9 @@ fn gf128_mul(x: [u8; 16], y: [u8; 16]) -> [u8; 16] {
     for i in 0..128 {
         let bit = (x[i / 8] >> (7 - (i % 8))) & 1;
         if bit == 1 {
-            for k in 0..16 { z[k] ^= v[k]; }
+            for k in 0..16 {
+                z[k] ^= v[k];
+            }
         }
         let lsb = v[15] & 1;
         // shift v right by 1 (in the spec's bit ordering this is the
@@ -3744,7 +4349,7 @@ fn gf128_mul(x: [u8; 16], y: [u8; 16]) -> [u8; 16] {
         }
         v[0] >>= 1;
         if lsb == 1 {
-            v[0] ^= 0xe1;  // reducing polynomial high byte
+            v[0] ^= 0xe1; // reducing polynomial high byte
         }
     }
     z
@@ -3757,7 +4362,9 @@ fn ghash(h: [u8; 16], aad: &[u8], ct: &[u8]) -> [u8; 16] {
         for c in chunk.chunks(16) {
             let mut block = [0u8; 16];
             block[..c.len()].copy_from_slice(c);
-            for i in 0..16 { y[i] ^= block[i]; }
+            for i in 0..16 {
+                y[i] ^= block[i];
+            }
             y = gf128_mul(y, h);
         }
     };
@@ -3766,7 +4373,9 @@ fn ghash(h: [u8; 16], aad: &[u8], ct: &[u8]) -> [u8; 16] {
     let mut len_block = [0u8; 16];
     len_block[..8].copy_from_slice(&((aad.len() as u64) * 8).to_be_bytes());
     len_block[8..].copy_from_slice(&((ct.len() as u64) * 8).to_be_bytes());
-    for i in 0..16 { y[i] ^= len_block[i]; }
+    for i in 0..16 {
+        y[i] ^= len_block[i];
+    }
     gf128_mul(y, h)
 }
 
@@ -3788,7 +4397,12 @@ fn aes_ctr_xor(w: &[u32], counter0: [u8; 16], data: &[u8]) -> Vec<u8> {
 
 /// AES-GCM encrypt. Returns ciphertext || tag (WebCrypto layout).
 /// Pilot scope: 12-byte IV, 16-byte tag.
-pub fn aes_gcm_encrypt(key: &[u8], iv: &[u8], aad: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, String> {
+pub fn aes_gcm_encrypt(
+    key: &[u8],
+    iv: &[u8],
+    aad: &[u8],
+    plaintext: &[u8],
+) -> Result<Vec<u8>, String> {
     if key.len() != 16 && key.len() != 24 && key.len() != 32 {
         return Err(format!("AES-GCM: invalid key length {}", key.len()));
     }
@@ -3808,7 +4422,9 @@ pub fn aes_gcm_encrypt(key: &[u8], iv: &[u8], aad: &[u8], plaintext: &[u8]) -> R
     let s = ghash(h, aad, &ciphertext);
     let ej0 = aes_encrypt_block(&j0, &w);
     let mut tag = [0u8; 16];
-    for i in 0..16 { tag[i] = s[i] ^ ej0[i]; }
+    for i in 0..16 {
+        tag[i] = s[i] ^ ej0[i];
+    }
     let mut out = ciphertext;
     out.extend_from_slice(&tag);
     Ok(out)
@@ -3816,7 +4432,12 @@ pub fn aes_gcm_encrypt(key: &[u8], iv: &[u8], aad: &[u8], plaintext: &[u8]) -> R
 
 /// AES-GCM decrypt. Input is ciphertext || tag (WebCrypto layout).
 /// Returns Err on authentication-tag mismatch.
-pub fn aes_gcm_decrypt(key: &[u8], iv: &[u8], aad: &[u8], ct_and_tag: &[u8]) -> Result<Vec<u8>, String> {
+pub fn aes_gcm_decrypt(
+    key: &[u8],
+    iv: &[u8],
+    aad: &[u8],
+    ct_and_tag: &[u8],
+) -> Result<Vec<u8>, String> {
     if key.len() != 16 && key.len() != 24 && key.len() != 32 {
         return Err(format!("AES-GCM: invalid key length {}", key.len()));
     }
@@ -3835,7 +4456,9 @@ pub fn aes_gcm_decrypt(key: &[u8], iv: &[u8], aad: &[u8], ct_and_tag: &[u8]) -> 
     let s = ghash(h, aad, ciphertext);
     let ej0 = aes_encrypt_block(&j0, &w);
     let mut expected_tag = [0u8; 16];
-    for i in 0..16 { expected_tag[i] = s[i] ^ ej0[i]; }
+    for i in 0..16 {
+        expected_tag[i] = s[i] ^ ej0[i];
+    }
     if !timing_safe_equal(&expected_tag, tag) {
         return Err("AES-GCM: authentication tag mismatch".to_string());
     }
@@ -3869,25 +4492,29 @@ pub mod subtle {
 // Used by Argon2id (RFC 9106) for password hashing.
 
 const BLAKE2B_IV: [u64; 8] = [
-    0x6a09e667f3bcc908, 0xbb67ae8584caa73b,
-    0x3c6ef372fe94f82b, 0xa54ff53a5f1d36f1,
-    0x510e527fade682d1, 0x9b05688c2b3e6c1f,
-    0x1f83d9abfb41bd6b, 0x5be0cd19137e2179,
+    0x6a09e667f3bcc908,
+    0xbb67ae8584caa73b,
+    0x3c6ef372fe94f82b,
+    0xa54ff53a5f1d36f1,
+    0x510e527fade682d1,
+    0x9b05688c2b3e6c1f,
+    0x1f83d9abfb41bd6b,
+    0x5be0cd19137e2179,
 ];
 
 // SIGMA permutation table (RFC 7693 §2.7).
 const BLAKE2B_SIGMA: [[usize; 16]; 12] = [
-    [ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
     [14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3],
     [11, 8, 12, 0, 5, 2, 15, 13, 10, 14, 3, 6, 7, 1, 9, 4],
-    [ 7, 9, 3, 1, 13, 12, 11, 14, 2, 6, 5, 10, 4, 0, 15, 8],
-    [ 9, 0, 5, 7, 2, 4, 10, 15, 14, 1, 11, 12, 6, 8, 3, 13],
-    [ 2, 12, 6, 10, 0, 11, 8, 3, 4, 13, 7, 5, 15, 14, 1, 9],
+    [7, 9, 3, 1, 13, 12, 11, 14, 2, 6, 5, 10, 4, 0, 15, 8],
+    [9, 0, 5, 7, 2, 4, 10, 15, 14, 1, 11, 12, 6, 8, 3, 13],
+    [2, 12, 6, 10, 0, 11, 8, 3, 4, 13, 7, 5, 15, 14, 1, 9],
     [12, 5, 1, 15, 14, 13, 4, 10, 0, 7, 6, 3, 9, 2, 8, 11],
     [13, 11, 7, 14, 12, 1, 3, 9, 5, 0, 15, 4, 8, 6, 2, 10],
-    [ 6, 15, 14, 9, 11, 3, 0, 8, 12, 2, 13, 7, 1, 4, 10, 5],
+    [6, 15, 14, 9, 11, 3, 0, 8, 12, 2, 13, 7, 1, 4, 10, 5],
     [10, 2, 8, 4, 7, 6, 1, 5, 15, 11, 9, 14, 3, 12, 13, 0],
-    [ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
     [14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3],
 ];
 
@@ -3908,33 +4535,47 @@ fn blake2b_compress(h: &mut [u64; 8], block: &[u8; 128], t: u128, last: bool) {
     v[8..].copy_from_slice(&BLAKE2B_IV);
     v[12] ^= t as u64;
     v[13] ^= (t >> 64) as u64;
-    if last { v[14] = !v[14]; }
+    if last {
+        v[14] = !v[14];
+    }
     let mut m: [u64; 16] = [0; 16];
     for i in 0..16 {
         let off = i * 8;
         m[i] = u64::from_le_bytes([
-            block[off], block[off+1], block[off+2], block[off+3],
-            block[off+4], block[off+5], block[off+6], block[off+7],
+            block[off],
+            block[off + 1],
+            block[off + 2],
+            block[off + 3],
+            block[off + 4],
+            block[off + 5],
+            block[off + 6],
+            block[off + 7],
         ]);
     }
     for round in 0..12 {
         let s = &BLAKE2B_SIGMA[round];
-        blake2b_mix(&mut v, 0, 4,  8, 12, m[s[ 0]], m[s[ 1]]);
-        blake2b_mix(&mut v, 1, 5,  9, 13, m[s[ 2]], m[s[ 3]]);
-        blake2b_mix(&mut v, 2, 6, 10, 14, m[s[ 4]], m[s[ 5]]);
-        blake2b_mix(&mut v, 3, 7, 11, 15, m[s[ 6]], m[s[ 7]]);
-        blake2b_mix(&mut v, 0, 5, 10, 15, m[s[ 8]], m[s[ 9]]);
+        blake2b_mix(&mut v, 0, 4, 8, 12, m[s[0]], m[s[1]]);
+        blake2b_mix(&mut v, 1, 5, 9, 13, m[s[2]], m[s[3]]);
+        blake2b_mix(&mut v, 2, 6, 10, 14, m[s[4]], m[s[5]]);
+        blake2b_mix(&mut v, 3, 7, 11, 15, m[s[6]], m[s[7]]);
+        blake2b_mix(&mut v, 0, 5, 10, 15, m[s[8]], m[s[9]]);
         blake2b_mix(&mut v, 1, 6, 11, 12, m[s[10]], m[s[11]]);
-        blake2b_mix(&mut v, 2, 7,  8, 13, m[s[12]], m[s[13]]);
-        blake2b_mix(&mut v, 3, 4,  9, 14, m[s[14]], m[s[15]]);
+        blake2b_mix(&mut v, 2, 7, 8, 13, m[s[12]], m[s[13]]);
+        blake2b_mix(&mut v, 3, 4, 9, 14, m[s[14]], m[s[15]]);
     }
-    for i in 0..8 { h[i] ^= v[i] ^ v[i + 8]; }
+    for i in 0..8 {
+        h[i] ^= v[i] ^ v[i + 8];
+    }
 }
 
 /// Blake2b hash with variable output length (1..=64) and optional key (0..=64).
 pub fn blake2b(input: &[u8], key: &[u8], out_len: usize) -> Result<Vec<u8>, String> {
-    if out_len == 0 || out_len > 64 { return Err("blake2b: out_len must be 1..=64".into()); }
-    if key.len() > 64 { return Err("blake2b: key length must be 0..=64".into()); }
+    if out_len == 0 || out_len > 64 {
+        return Err("blake2b: out_len must be 1..=64".into());
+    }
+    if key.len() > 64 {
+        return Err("blake2b: key length must be 0..=64".into());
+    }
     let mut h = BLAKE2B_IV;
     // Parameter block (RFC 7693 §2.5): low byte order is
     //   digest_length || key_length || fanout || depth.
@@ -3968,13 +4609,14 @@ pub fn blake2b(input: &[u8], key: &[u8], out_len: usize) -> Result<Vec<u8>, Stri
     let mut out = Vec::with_capacity(out_len);
     for word in h.iter().take((out_len + 7) / 8) {
         for b in word.to_le_bytes() {
-            if out.len() < out_len { out.push(b); }
+            if out.len() < out_len {
+                out.push(b);
+            }
         }
     }
     out.truncate(out_len);
     Ok(out)
 }
-
 
 // ──────────────────────── Argon2id (RFC 9106) ──────────────────────
 // Single-lane (p=1) implementation. Hybrid indexing: Argon2i for pass 0
@@ -3995,7 +4637,10 @@ pub struct Argon2idParams {
 }
 
 #[derive(Debug)]
-pub enum Argon2Error { InvalidParam(&'static str), Crypto(String) }
+pub enum Argon2Error {
+    InvalidParam(&'static str),
+    Crypto(String),
+}
 impl std::fmt::Display for Argon2Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -4007,7 +4652,10 @@ impl std::fmt::Display for Argon2Error {
 impl std::error::Error for Argon2Error {}
 
 type Block = [u64; ARGON2_QWORDS];
-#[inline] fn block_zero() -> Block { [0u64; ARGON2_QWORDS] }
+#[inline]
+fn block_zero() -> Block {
+    [0u64; ARGON2_QWORDS]
+}
 fn block_from_bytes(b: &[u8]) -> Block {
     let mut r = block_zero();
     for (i, c) in b.chunks_exact(8).enumerate().take(ARGON2_QWORDS) {
@@ -4017,12 +4665,16 @@ fn block_from_bytes(b: &[u8]) -> Block {
 }
 fn block_to_bytes(b: &Block) -> Vec<u8> {
     let mut o = Vec::with_capacity(ARGON2_BLOCK_SIZE);
-    for &w in b { o.extend_from_slice(&w.to_le_bytes()); }
+    for &w in b {
+        o.extend_from_slice(&w.to_le_bytes());
+    }
     o
 }
 fn block_xor(a: &Block, b: &Block) -> Block {
     let mut r = block_zero();
-    for i in 0..ARGON2_QWORDS { r[i] = a[i] ^ b[i]; }
+    for i in 0..ARGON2_QWORDS {
+        r[i] = a[i] ^ b[i];
+    }
     r
 }
 
@@ -4052,25 +4704,31 @@ pub fn argon2_h_prime(input: &[u8], tau: u32) -> Result<Vec<u8>, Argon2Error> {
 #[inline]
 fn gb(v: &mut [u64; 16], a: usize, b: usize, c: usize, d: usize) {
     let add = |x: u64, y: u64| {
-        let lx = x & 0xFFFFFFFF; let ly = y & 0xFFFFFFFF;
-        x.wrapping_add(y).wrapping_add(2u64.wrapping_mul(lx).wrapping_mul(ly))
+        let lx = x & 0xFFFFFFFF;
+        let ly = y & 0xFFFFFFFF;
+        x.wrapping_add(y)
+            .wrapping_add(2u64.wrapping_mul(lx).wrapping_mul(ly))
     };
-    v[a] = add(v[a], v[b]); v[d] = (v[d] ^ v[a]).rotate_right(32);
-    v[c] = add(v[c], v[d]); v[b] = (v[b] ^ v[c]).rotate_right(24);
-    v[a] = add(v[a], v[b]); v[d] = (v[d] ^ v[a]).rotate_right(16);
-    v[c] = add(v[c], v[d]); v[b] = (v[b] ^ v[c]).rotate_right(63);
+    v[a] = add(v[a], v[b]);
+    v[d] = (v[d] ^ v[a]).rotate_right(32);
+    v[c] = add(v[c], v[d]);
+    v[b] = (v[b] ^ v[c]).rotate_right(24);
+    v[a] = add(v[a], v[b]);
+    v[d] = (v[d] ^ v[a]).rotate_right(16);
+    v[c] = add(v[c], v[d]);
+    v[b] = (v[b] ^ v[c]).rotate_right(63);
 }
 
 /// Permutation P (RFC 9106 §3.5) over 16 u64s.
 fn permute_p(v: &mut [u64; 16]) {
-    gb(v, 0, 4,  8, 12);
-    gb(v, 1, 5,  9, 13);
+    gb(v, 0, 4, 8, 12);
+    gb(v, 1, 5, 9, 13);
     gb(v, 2, 6, 10, 14);
     gb(v, 3, 7, 11, 15);
     gb(v, 0, 5, 10, 15);
     gb(v, 1, 6, 11, 12);
-    gb(v, 2, 7,  8, 13);
-    gb(v, 3, 4,  9, 14);
+    gb(v, 2, 7, 8, 13);
+    gb(v, 3, 4, 9, 14);
 }
 
 /// G(X, Y) compression. R = X^Y, apply P to 8 rows then 8 columns of R,
@@ -4105,8 +4763,13 @@ fn compress_g(x: &Block, y: &Block) -> Block {
 /// Build an Argon2i address block (RFC 9106 §3.4.1.2). The block at
 /// `counter` provides 128 (J1, J2) pseudo-random pairs.
 fn argon2i_address_block(
-    pass: u64, lane: u64, slice: u64, total_blocks: u64,
-    total_passes: u64, ty: u64, counter: u64,
+    pass: u64,
+    lane: u64,
+    slice: u64,
+    total_blocks: u64,
+    total_passes: u64,
+    ty: u64,
+    counter: u64,
 ) -> Block {
     let zero = block_zero();
     let mut input = block_zero();
@@ -4132,13 +4795,25 @@ fn map_index(j1: u32, ref_area_size: usize) -> usize {
 
 /// Argon2id KDF per RFC 9106 — single lane.
 pub fn argon2id_hash(
-    password: &[u8], salt: &[u8], params: &Argon2idParams,
+    password: &[u8],
+    salt: &[u8],
+    params: &Argon2idParams,
 ) -> Result<Vec<u8>, Argon2Error> {
-    if params.parallelism != 1 { return Err(Argon2Error::InvalidParam("p=1 only")); }
-    if params.t_cost < 1 { return Err(Argon2Error::InvalidParam("t >= 1")); }
-    if params.tau < 4 { return Err(Argon2Error::InvalidParam("tau >= 4")); }
-    if salt.len() < 8 { return Err(Argon2Error::InvalidParam("salt >= 8")); }
-    if params.m_kib < 8 { return Err(Argon2Error::InvalidParam("m >= 8")); }
+    if params.parallelism != 1 {
+        return Err(Argon2Error::InvalidParam("p=1 only"));
+    }
+    if params.t_cost < 1 {
+        return Err(Argon2Error::InvalidParam("t >= 1"));
+    }
+    if params.tau < 4 {
+        return Err(Argon2Error::InvalidParam("tau >= 4"));
+    }
+    if salt.len() < 8 {
+        return Err(Argon2Error::InvalidParam("salt >= 8"));
+    }
+    if params.m_kib < 8 {
+        return Err(Argon2Error::InvalidParam("m >= 8"));
+    }
 
     let p = params.parallelism;
     let tau = params.tau;
@@ -4189,7 +4864,13 @@ pub fn argon2id_hash(
             if use_argon2i {
                 addr_counter = 1;
                 addr_block = argon2i_address_block(
-                    pass, 0, slice, q as u64, t as u64, ARGON2ID_TYPE as u64, addr_counter,
+                    pass,
+                    0,
+                    slice,
+                    q as u64,
+                    t as u64,
+                    ARGON2ID_TYPE as u64,
+                    addr_counter,
                 );
             }
 
@@ -4200,7 +4881,13 @@ pub fn argon2id_hash(
                 if use_argon2i && idx_in_seg > 0 && idx_in_seg % ARGON2_QWORDS == 0 {
                     addr_counter += 1;
                     addr_block = argon2i_address_block(
-                        pass, 0, slice, q as u64, t as u64, ARGON2ID_TYPE as u64, addr_counter,
+                        pass,
+                        0,
+                        slice,
+                        q as u64,
+                        t as u64,
+                        ARGON2ID_TYPE as u64,
+                        addr_counter,
                     );
                 }
                 let prev_idx = if j_abs == 0 { q - 1 } else { j_abs - 1 };
@@ -4224,7 +4911,9 @@ pub fn argon2id_hash(
                     // blocks in current segment, minus 1.
                     q - segment_length + idx_in_seg - 1
                 };
-                if ref_area_size == 0 { continue; }
+                if ref_area_size == 0 {
+                    continue;
+                }
 
                 let rel = map_index(j1, ref_area_size);
                 let ref_index = if pass == 0 {
@@ -4258,7 +4947,9 @@ pub fn argon2id_hash(
 pub fn p256_mod_mul_solinas_v3(a: &BigUInt, b: &BigUInt) -> BigUInt {
     let product = a.mul(b);
     let mut t = [0u32; 16];
-    for (i, &l) in product.limbs().iter().take(16).enumerate() { t[i] = l; }
+    for (i, &l) in product.limbs().iter().take(16).enumerate() {
+        t[i] = l;
+    }
     let mk = |arr: [u32; 8]| BigUInt::from_limbs(arr.to_vec());
     let s1 = mk([t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7]]);
     let s2 = mk([0, 0, 0, t[11], t[12], t[13], t[14], t[15]]);

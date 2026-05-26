@@ -35,11 +35,18 @@ pub struct TrustStore {
 
 impl TrustStore {
     pub fn new() -> Self {
-        TrustStore { certs: Vec::new(), by_subject: HashMap::new() }
+        TrustStore {
+            certs: Vec::new(),
+            by_subject: HashMap::new(),
+        }
     }
 
-    pub fn len(&self) -> usize { self.certs.len() }
-    pub fn is_empty(&self) -> bool { self.certs.is_empty() }
+    pub fn len(&self) -> usize {
+        self.certs.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.certs.is_empty()
+    }
 
     /// Add a single parsed certificate to the store.
     pub fn add(&mut self, cert: Certificate) {
@@ -76,7 +83,9 @@ impl TrustStore {
         for path in &candidates {
             if let Ok(contents) = std::fs::read_to_string(path) {
                 store.add_pem_bundle(&contents)?;
-                if !store.is_empty() { return Ok(store); }
+                if !store.is_empty() {
+                    return Ok(store);
+                }
             }
         }
         Err(TlsError::StoreLoad("no platform CA bundle found".into()))
@@ -95,7 +104,9 @@ impl TrustStore {
     /// Determine whether a certificate is a trust anchor: present in
     /// the store AND self-signed (issuer == subject).
     pub fn is_trust_anchor(&self, cert: &Certificate) -> bool {
-        if cert.issuer.raw_der != cert.subject.raw_der { return false; }
+        if cert.issuer.raw_der != cert.subject.raw_der {
+            return false;
+        }
         // Check the cert appears in the store with this subject.
         if let Some(idxs) = self.by_subject.get(&cert.subject.raw_der) {
             for i in idxs {
@@ -147,8 +158,8 @@ pub fn chain_walk(
         }
         if issuer_opt.is_none() {
             for candidate in intermediates {
-                if candidate.subject.raw_der == current.issuer.raw_der &&
-                   verify_signature(current, &candidate.subject_public_key_info).is_ok()
+                if candidate.subject.raw_der == current.issuer.raw_der
+                    && verify_signature(current, &candidate.subject_public_key_info).is_ok()
                 {
                     issuer_opt = Some(candidate);
                     break;

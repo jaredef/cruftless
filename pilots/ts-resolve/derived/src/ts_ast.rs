@@ -15,7 +15,10 @@ pub enum TsTypeRef {
     Primitive(String),
     /// Named type reference; possibly generic. `Foo`, `Foo<T>`,
     /// `Foo<T, U>`.
-    Named { name: String, type_args: Vec<TsTypeRef> },
+    Named {
+        name: String,
+        type_args: Vec<TsTypeRef>,
+    },
     /// `T[]` (sugar for `Array<T>`); preserved separately to keep the
     /// witness output's shape close to source.
     Array(Box<TsTypeRef>),
@@ -28,9 +31,15 @@ pub enum TsTypeRef {
     /// `{ x: T; y?: U }`.
     ObjectLit(Vec<TsObjectMember>),
     /// `(x: T) => U`.
-    FnType { params: Vec<TsFnParam>, ret: Box<TsTypeRef> },
+    FnType {
+        params: Vec<TsFnParam>,
+        ret: Box<TsTypeRef>,
+    },
     /// `T[K]` indexed access.
-    Indexed { target: Box<TsTypeRef>, index: Box<TsTypeRef> },
+    Indexed {
+        target: Box<TsTypeRef>,
+        index: Box<TsTypeRef>,
+    },
     /// `typeof Foo`.
     TypeOf(String),
     /// Literal type: `42`, `"abc"`, `true`.
@@ -89,12 +98,26 @@ pub enum TypeWitnessKind {
     /// (the bytecode compiler resolves to a concrete slot during lowering).
     LocalBinding { name: String, ty: TsTypeRef },
     /// Annotation on a function parameter.
-    FnParam { fn_name: Option<String>, param_idx: u8, ty: TsTypeRef },
+    FnParam {
+        fn_name: Option<String>,
+        param_idx: u8,
+        ty: TsTypeRef,
+    },
     /// Annotation on a function return.
-    FnReturn { fn_name: Option<String>, ty: TsTypeRef },
+    FnReturn {
+        fn_name: Option<String>,
+        ty: TsTypeRef,
+    },
     /// Annotation on a class field.
-    ClassField { class_name: String, field: String, ty: TsTypeRef },
+    ClassField {
+        class_name: String,
+        field: String,
+        ty: TsTypeRef,
+    },
     /// Enum declaration lowered to const-object; preserved here so JIT
     /// can recognize the frozen-shape opportunity.
-    EnumLowering { name: String, members: Vec<(String, f64)> },
+    EnumLowering {
+        name: String,
+        members: Vec<(String, f64)>,
+    },
 }

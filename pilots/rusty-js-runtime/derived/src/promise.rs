@@ -6,8 +6,8 @@
 
 use crate::interp::{Runtime, RuntimeError};
 use crate::value::{
-    FunctionInternals, InternalKind, NativeFn, Object, ObjectRef, PromiseReaction,
-    PromiseState, PromiseStatus, Value,
+    FunctionInternals, InternalKind, NativeFn, Object, ObjectRef, PromiseReaction, PromiseState,
+    PromiseStatus, Value,
 };
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -27,12 +27,14 @@ impl Runtime {
             // executor must be callable.
             if rt.current_new_target.is_none() {
                 return Err(RuntimeError::TypeError(
-                    "Promise constructor must be called with new".into()));
+                    "Promise constructor must be called with new".into(),
+                ));
             }
             let executor = args.first().cloned().unwrap_or(Value::Undefined);
             if !rt.is_callable(&executor) {
                 return Err(RuntimeError::TypeError(
-                    "Promise constructor: executor must be callable".into()));
+                    "Promise constructor: executor must be callable".into(),
+                ));
             }
             let p = new_promise(rt);
             let p_for_resolve = p;
@@ -54,10 +56,11 @@ impl Runtime {
             let resolve_id = rt.alloc_object(resolve_fn);
             let reject_id = rt.alloc_object(reject_fn);
             // Synchronously invoke executor(resolve, reject) per spec.
-            let _ = rt.call_function(executor, Value::Undefined, vec![
-                Value::Object(resolve_id),
-                Value::Object(reject_id),
-            ])?;
+            let _ = rt.call_function(
+                executor,
+                Value::Undefined,
+                vec![Value::Object(resolve_id), Value::Object(reject_id)],
+            )?;
             Ok(Value::Object(p))
         });
         let promise_obj = self.alloc_object(promise_ctor);
@@ -67,9 +70,13 @@ impl Runtime {
         // still call new_promise + resolve_promise / reject_promise; the
         // IR is a 2-step wrapper that exposes the spec's PromiseResolve
         // / PromiseReject step granularity to the linter.
-        crate::intrinsics::register_intrinsic_method(self, promise_obj, "resolve", 1, |rt, args| {
-            crate::generated::promise_resolve(rt, Value::Undefined, args)
-        });
+        crate::intrinsics::register_intrinsic_method(
+            self,
+            promise_obj,
+            "resolve",
+            1,
+            |rt, args| crate::generated::promise_resolve(rt, Value::Undefined, args),
+        );
         crate::intrinsics::register_intrinsic_method(self, promise_obj, "reject", 1, |rt, args| {
             crate::generated::promise_reject(rt, Value::Undefined, args)
         });
@@ -91,9 +98,13 @@ impl Runtime {
         crate::intrinsics::register_intrinsic_method(self, promise_obj, "all", 1, |rt, args| {
             crate::generated::promise_all(rt, rt.current_this(), args)
         });
-        crate::intrinsics::register_intrinsic_method(self, promise_obj, "allSettled", 1, |rt, args| {
-            crate::generated::promise_all_settled(rt, rt.current_this(), args)
-        });
+        crate::intrinsics::register_intrinsic_method(
+            self,
+            promise_obj,
+            "allSettled",
+            1,
+            |rt, args| crate::generated::promise_all_settled(rt, rt.current_this(), args),
+        );
         crate::intrinsics::register_intrinsic_method(self, promise_obj, "any", 1, |rt, args| {
             crate::generated::promise_any(rt, rt.current_this(), args)
         });
@@ -103,23 +114,34 @@ impl Runtime {
         // Ω.5.P63.E55 Stage 2: routed through IR (uses Expr::Closure for the
         // resolve/reject functions; first IR section to demonstrate the
         // alphabet-closures primitive).
-        crate::intrinsics::register_intrinsic_method(self, promise_obj, "withResolvers", 0, |rt, args| {
-            crate::generated::promise_with_resolvers(rt, rt.current_this(), args)
-        });
+        crate::intrinsics::register_intrinsic_method(
+            self,
+            promise_obj,
+            "withResolvers",
+            0,
+            |rt, args| crate::generated::promise_with_resolvers(rt, rt.current_this(), args),
+        );
         if let Some(proto) = self.promise_prototype {
-            self.obj_mut(promise_obj).set_own_frozen("prototype".into(), Value::Object(proto));
+            self.obj_mut(promise_obj)
+                .set_own_frozen("prototype".into(), Value::Object(proto));
             // Ω.5.P63.E52: Promise.prototype[@@toStringTag] = "Promise" per §27.2.5.5.
             // {writable:false, enumerable:false, configurable:true} — set_own_frozen
             // gives configurable:false (frozen), but the spec is c:true. Use a
             // hand-set descriptor.
-            self.obj_mut(proto).dict_mut().insert("@@toStringTag".into(),
+            self.obj_mut(proto).dict_mut().insert(
+                "@@toStringTag".into(),
                 crate::value::PropertyDescriptor {
                     value: Value::String(Rc::new("Promise".into())),
-                    writable: false, enumerable: false, configurable: true,
-                    getter: None, setter: None,
-                });
+                    writable: false,
+                    enumerable: false,
+                    configurable: true,
+                    getter: None,
+                    setter: None,
+                },
+            );
             // Ω.5.P58.E7: Promise.prototype.constructor = Promise per ECMA §27.2.5.
-            self.obj_mut(proto).set_own_internal("constructor".into(), Value::Object(promise_obj));
+            self.obj_mut(proto)
+                .set_own_internal("constructor".into(), Value::Object(promise_obj));
             // Ω.5.P61.E11: Promise.prototype.finally per ECMA §27.2.5.3.
             // Ω.5.P63.E52: Promise.prototype.finally routed through IR.
             // The via-helper expects args[0]=source (current_this), args[1..]=user args;
@@ -131,7 +153,8 @@ impl Runtime {
                 crate::generated::promise_prototype_finally(rt, rt.current_this(), &a)
             });
         }
-        self.globals.insert("Promise".into(), Value::Object(promise_obj));
+        self.globals
+            .insert("Promise".into(), Value::Object(promise_obj));
     }
 }
 
@@ -152,7 +175,7 @@ pub fn new_promise(rt: &mut Runtime) -> ObjectRef {
             fulfill_reactions: Vec::new(),
             reject_reactions: Vec::new(),
         }),
-    
+
         ..Default::default()
     })
 }
@@ -161,11 +184,15 @@ pub fn resolve_promise(rt: &mut Runtime, promise: ObjectRef, value: Value) {
     let reactions = {
         let p = rt.obj_mut(promise);
         if let InternalKind::Promise(ps) = &mut p.internal_kind {
-            if !matches!(ps.status, PromiseStatus::Pending) { return; }
+            if !matches!(ps.status, PromiseStatus::Pending) {
+                return;
+            }
             ps.status = PromiseStatus::Fulfilled;
             ps.value = value;
             std::mem::take(&mut ps.fulfill_reactions)
-        } else { return; }
+        } else {
+            return;
+        }
     };
     let value = match &rt.obj(promise).internal_kind {
         InternalKind::Promise(ps) => ps.value.clone(),
@@ -180,11 +207,15 @@ pub fn reject_promise(rt: &mut Runtime, promise: ObjectRef, reason: Value) {
     let reactions = {
         let p = rt.obj_mut(promise);
         if let InternalKind::Promise(ps) = &mut p.internal_kind {
-            if !matches!(ps.status, PromiseStatus::Pending) { return; }
+            if !matches!(ps.status, PromiseStatus::Pending) {
+                return;
+            }
             ps.status = PromiseStatus::Rejected;
             ps.value = reason;
             std::mem::take(&mut ps.reject_reactions)
-        } else { return; }
+        } else {
+            return;
+        }
     };
     // Per §27.2.1.9 HostPromiseRejectionTracker: a rejection landing with
     // no reject reaction attached is a candidate unhandled rejection.
@@ -212,18 +243,18 @@ pub(crate) fn enqueue_reaction(
 ) {
     rt.enqueue_microtask("PromiseReactionJob", move |rt| {
         match handler {
-            Some(h) => {
-                match rt.call_function(h, Value::Undefined, vec![value]) {
-                    Ok(result) => { resolve_promise(rt, chain, result); }
-                    Err(e) => {
-                        let thrown = match e {
-                            RuntimeError::Thrown(v) => v,
-                            other => Value::String(std::rc::Rc::new(format!("{:?}", other))),
-                        };
-                        reject_promise(rt, chain, thrown);
-                    }
+            Some(h) => match rt.call_function(h, Value::Undefined, vec![value]) {
+                Ok(result) => {
+                    resolve_promise(rt, chain, result);
                 }
-            }
+                Err(e) => {
+                    let thrown = match e {
+                        RuntimeError::Thrown(v) => v,
+                        other => Value::String(std::rc::Rc::new(format!("{:?}", other))),
+                    };
+                    reject_promise(rt, chain, thrown);
+                }
+            },
             None => {
                 if is_rejected {
                     reject_promise(rt, chain, value);
@@ -237,7 +268,9 @@ pub(crate) fn enqueue_reaction(
 }
 
 fn register_method<F>(rt: &mut Runtime, host: ObjectRef, name: &str, f: F)
-where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
+where
+    F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static,
+{
     let native: NativeFn = Rc::new(f);
     let mut properties = indexmap::IndexMap::new();
     crate::value::install_function_meta_props(&mut properties, name, 0.0);
@@ -247,8 +280,13 @@ where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
         properties,
         // NACR-EXT 1: Promise.prototype.{then, catch, finally} are
         // non-constructors per ECMA-262 §27.2.5. Pre-fix is_constructor=true.
-        internal_kind: InternalKind::Function(FunctionInternals { name: name.to_string(), length: 0, native, is_constructor: false }),
-    
+        internal_kind: InternalKind::Function(FunctionInternals {
+            name: name.to_string(),
+            length: 0,
+            native,
+            is_constructor: false,
+        }),
+
         ..Default::default()
     };
     let fn_id = rt.alloc_object(fn_obj);

@@ -44,17 +44,33 @@ pub enum Value {
 pub enum HeapObject {
     Object(Vec<(String, Value)>),
     Array(Vec<Value>),
-    Date(i64),                        // epoch ms
-    RegExp { source: String, flags: String },
+    Date(i64), // epoch ms
+    RegExp {
+        source: String,
+        flags: String,
+    },
     Map(Vec<(Value, Value)>),
     Set(Vec<Value>),
     ArrayBuffer(Vec<u8>),
-    TypedArrayView { buffer: ValueId, byte_offset: usize, length: usize, kind: TypedArrayKind },
+    TypedArrayView {
+        buffer: ValueId,
+        byte_offset: usize,
+        length: usize,
+        kind: TypedArrayKind,
+    },
     /// Pilot-scope simplified Blob: bytes + MIME type, satisfies the
     /// constraint-doc reps (`cloned.size === 0`, `cloned instanceof Blob`).
-    Blob { bytes: Vec<u8>, mime_type: String },
+    Blob {
+        bytes: Vec<u8>,
+        mime_type: String,
+    },
     /// Pilot-scope simplified File: extends Blob with name + lastModified.
-    File { bytes: Vec<u8>, mime_type: String, name: String, last_modified: i64 },
+    File {
+        bytes: Vec<u8>,
+        mime_type: String,
+        name: String,
+        last_modified: i64,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -82,7 +98,11 @@ pub struct Heap {
 }
 
 impl Heap {
-    pub fn new() -> Self { Self { objects: Vec::new() } }
+    pub fn new() -> Self {
+        Self {
+            objects: Vec::new(),
+        }
+    }
 
     pub fn alloc(&mut self, obj: HeapObject) -> Value {
         let id = self.objects.len();
@@ -114,15 +134,41 @@ pub enum SerializedRecord {
     BigInt(i128),
     String(String),
     Date(i64),
-    RegExp { source: String, flags: String },
-    Map { entries: Vec<(SerializedSlot, SerializedSlot)> },
-    Set { entries: Vec<SerializedSlot> },
-    Array { items: Vec<SerializedSlot> },
-    Object { entries: Vec<(String, SerializedSlot)> },
-    ArrayBuffer { bytes: Vec<u8> },
-    TypedArrayView { buffer: SerializedSlot, byte_offset: usize, length: usize, kind: TypedArrayKind },
-    Blob { bytes: Vec<u8>, mime_type: String },
-    File { bytes: Vec<u8>, mime_type: String, name: String, last_modified: i64 },
+    RegExp {
+        source: String,
+        flags: String,
+    },
+    Map {
+        entries: Vec<(SerializedSlot, SerializedSlot)>,
+    },
+    Set {
+        entries: Vec<SerializedSlot>,
+    },
+    Array {
+        items: Vec<SerializedSlot>,
+    },
+    Object {
+        entries: Vec<(String, SerializedSlot)>,
+    },
+    ArrayBuffer {
+        bytes: Vec<u8>,
+    },
+    TypedArrayView {
+        buffer: SerializedSlot,
+        byte_offset: usize,
+        length: usize,
+        kind: TypedArrayKind,
+    },
+    Blob {
+        bytes: Vec<u8>,
+        mime_type: String,
+    },
+    File {
+        bytes: Vec<u8>,
+        mime_type: String,
+        name: String,
+        last_modified: i64,
+    },
 }
 
 /// A slot is either an inline primitive or a back-reference to a record.
@@ -167,9 +213,16 @@ pub enum CloneError {
 // emits a back-reference instead of re-serializing.
 
 pub fn structured_serialize(heap: &Heap, root: &Value) -> Result<SerializedScript, CloneError> {
-    let mut ser = Serializer { heap, records: Vec::new(), memory: HashMap::new() };
+    let mut ser = Serializer {
+        heap,
+        records: Vec::new(),
+        memory: HashMap::new(),
+    };
     let root_slot = ser.serialize_value(root)?;
-    Ok(SerializedScript { records: ser.records, root: root_slot })
+    Ok(SerializedScript {
+        records: ser.records,
+        root: root_slot,
+    })
 }
 
 struct Serializer<'a> {
@@ -250,16 +303,32 @@ impl<'a> Serializer<'a> {
                 SerializedRecord::Set { entries: out }
             }
             HeapObject::ArrayBuffer(bytes) => SerializedRecord::ArrayBuffer { bytes },
-            HeapObject::TypedArrayView { buffer, byte_offset, length, kind } => {
+            HeapObject::TypedArrayView {
+                buffer,
+                byte_offset,
+                length,
+                kind,
+            } => {
                 let buf_slot = self.serialize_ref(buffer)?;
-                SerializedRecord::TypedArrayView { buffer: buf_slot, byte_offset, length, kind }
+                SerializedRecord::TypedArrayView {
+                    buffer: buf_slot,
+                    byte_offset,
+                    length,
+                    kind,
+                }
             }
-            HeapObject::Blob { bytes, mime_type } => {
-                SerializedRecord::Blob { bytes, mime_type }
-            }
-            HeapObject::File { bytes, mime_type, name, last_modified } => {
-                SerializedRecord::File { bytes, mime_type, name, last_modified }
-            }
+            HeapObject::Blob { bytes, mime_type } => SerializedRecord::Blob { bytes, mime_type },
+            HeapObject::File {
+                bytes,
+                mime_type,
+                name,
+                last_modified,
+            } => SerializedRecord::File {
+                bytes,
+                mime_type,
+                name,
+                last_modified,
+            },
         })
     }
 }
@@ -329,7 +398,10 @@ fn build_heap_object(
         SerializedRecord::Object { entries } => {
             let mut out = Vec::with_capacity(entries.len());
             for (k, slot) in entries {
-                out.push((k.clone(), deserialize_slot(slot, records, heap, record_to_id)));
+                out.push((
+                    k.clone(),
+                    deserialize_slot(slot, records, heap, record_to_id),
+                ));
             }
             HeapObject::Object(out)
         }
@@ -362,7 +434,12 @@ fn build_heap_object(
             HeapObject::Set(out)
         }
         SerializedRecord::ArrayBuffer { bytes } => HeapObject::ArrayBuffer(bytes.clone()),
-        SerializedRecord::TypedArrayView { buffer, byte_offset, length, kind } => {
+        SerializedRecord::TypedArrayView {
+            buffer,
+            byte_offset,
+            length,
+            kind,
+        } => {
             let buf_value = deserialize_slot(buffer, records, heap, record_to_id);
             let buffer_id = match buf_value {
                 Value::Ref(id) => id,
@@ -379,7 +456,12 @@ fn build_heap_object(
             bytes: bytes.clone(),
             mime_type: mime_type.clone(),
         },
-        SerializedRecord::File { bytes, mime_type, name, last_modified } => HeapObject::File {
+        SerializedRecord::File {
+            bytes,
+            mime_type,
+            name,
+            last_modified,
+        } => HeapObject::File {
             bytes: bytes.clone(),
             mime_type: mime_type.clone(),
             name: name.clone(),

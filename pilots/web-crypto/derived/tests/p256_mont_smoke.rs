@@ -13,22 +13,22 @@
 //! reduction. If the assertion holds across many random fixtures,
 //! the Montgomery infrastructure is gold-standard correct.
 
-use rusty_web_crypto::{p256_to_mont, p256_from_mont, p256_mont_mul, BigUInt};
+use rusty_web_crypto::{p256_from_mont, p256_mont_mul, p256_to_mont, BigUInt};
 
 fn p256_p_local() -> BigUInt {
     // Pull P-256 prime from web-crypto's public surface via mod path.
     // (curve_p256().p exposes it; using the raw bytes here keeps the
     // fixture self-contained.)
     BigUInt::from_be_bytes(&[
-        0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x01,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF,
-        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF,
     ])
 }
 
 fn hex_to_big(s: &str) -> BigUInt {
-    let bytes: Vec<u8> = (0..s.len()).step_by(2)
+    let bytes: Vec<u8> = (0..s.len())
+        .step_by(2)
         .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
         .collect();
     BigUInt::from_be_bytes(&bytes)
@@ -41,9 +41,13 @@ fn assert_mont_correct(a: &BigUInt, b: &BigUInt) {
     let cm = p256_mont_mul(&am, &bm);
     let c_via_mont = p256_from_mont(&cm);
     let c_reference = a.mul(b).modulo(&p);
-    assert_eq!(c_via_mont.to_be_bytes(32), c_reference.to_be_bytes(32),
+    assert_eq!(
+        c_via_mont.to_be_bytes(32),
+        c_reference.to_be_bytes(32),
         "Montgomery output diverges from reference at\n  a={:?}\n  b={:?}\n",
-        a.to_be_bytes(32), b.to_be_bytes(32));
+        a.to_be_bytes(32),
+        b.to_be_bytes(32)
+    );
 }
 
 #[test]
@@ -90,16 +94,26 @@ fn mont_random_fixtures() {
     // Hardcoded "random-looking" fixtures — deterministic test inputs
     // that exercise different bit patterns.
     let fixtures: &[(&str, &str)] = &[
-        ("0000000000000000000000000000000000000000000000000000000000000001",
-         "ffffffff00000001000000000000000000000000fffffffffffffffffffffffe"),
-        ("dead000000000000000000000000000000000000000000000000000000000000",
-         "00000000000000000000000000000000000000000000000000000000000000ad"),
-        ("123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0",
-         "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"),
-        ("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-         "5555555555555555555555555555555555555555555555555555555555555555"),
-        ("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-         "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
+        (
+            "0000000000000000000000000000000000000000000000000000000000000001",
+            "ffffffff00000001000000000000000000000000fffffffffffffffffffffffe",
+        ),
+        (
+            "dead000000000000000000000000000000000000000000000000000000000000",
+            "00000000000000000000000000000000000000000000000000000000000000ad",
+        ),
+        (
+            "123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0",
+            "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+        ),
+        (
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "5555555555555555555555555555555555555555555555555555555555555555",
+        ),
+        (
+            "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        ),
     ];
     for (a_hex, b_hex) in fixtures {
         let a = hex_to_big(a_hex);

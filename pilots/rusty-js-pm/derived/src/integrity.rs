@@ -9,17 +9,21 @@
 //! by `verify_shasum`. See docs/registry-response-schema.md §Class A
 //! for precedence rules.
 
-use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as B64_STANDARD;
-use sha1::{Sha1, Digest as Sha1Digest};
-use sha2::{Sha512, Digest as Sha2Digest};
+use base64::Engine as _;
+use sha1::{Digest as Sha1Digest, Sha1};
+use sha2::{Digest as Sha2Digest, Sha512};
 
 #[derive(Debug)]
 pub enum IntegrityError {
     UnsupportedAlgorithm(String),
     MalformedSri(String),
     Base64Decode(String),
-    DigestMismatch { algorithm: &'static str, expected_len: usize, got_len: usize },
+    DigestMismatch {
+        algorithm: &'static str,
+        expected_len: usize,
+        got_len: usize,
+    },
     HexDecode(String),
     ShasumMismatch,
 }
@@ -27,7 +31,9 @@ pub enum IntegrityError {
 /// Verify `bytes` matches the SRI string `sri` of the form
 /// `<algo>-<base64-digest>`. First cut accepts `sha512-` only.
 pub fn verify_sri(bytes: &[u8], sri: &str) -> Result<(), IntegrityError> {
-    let dash = sri.find('-').ok_or_else(|| IntegrityError::MalformedSri(sri.to_string()))?;
+    let dash = sri
+        .find('-')
+        .ok_or_else(|| IntegrityError::MalformedSri(sri.to_string()))?;
     let (algo, rest) = sri.split_at(dash);
     let b64 = &rest[1..];
     let expected = B64_STANDARD

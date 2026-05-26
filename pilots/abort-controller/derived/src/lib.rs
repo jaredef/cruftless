@@ -67,7 +67,9 @@ impl AbortSignal {
     /// Construct a non-aborted signal. Used internally by AbortController and
     /// AbortSignal::any.
     fn new() -> Self {
-        Self { inner: Rc::new(RefCell::new(SignalInner::default())) }
+        Self {
+            inner: Rc::new(RefCell::new(SignalInner::default())),
+        }
     }
 
     /// SPEC §3.3.AbortSignal.abort: returns an already-aborted signal.
@@ -114,7 +116,9 @@ impl AbortSignal {
                     let listeners: Vec<_> = r.listeners.drain(..).collect();
                     drop(r);
                     let final_reason = result_clone.inner.borrow().reason.clone().unwrap();
-                    for cb in listeners { cb(&final_reason); }
+                    for cb in listeners {
+                        cb(&final_reason);
+                    }
                 }
             });
         }
@@ -148,7 +152,8 @@ impl AbortSignal {
     /// callback fires immediately (per the spec's microtask semantics — pilot
     /// runs synchronously).
     pub fn add_event_listener<F>(&self, callback: F)
-    where F: FnOnce(&Reason) + 'static
+    where
+        F: FnOnce(&Reason) + 'static,
     {
         let mut inner = self.inner.borrow_mut();
         if inner.aborted {
@@ -164,12 +169,16 @@ impl AbortSignal {
     /// calls are no-ops per the spec.
     fn fire_abort(&self, reason: Reason) {
         let mut inner = self.inner.borrow_mut();
-        if inner.aborted { return; }
+        if inner.aborted {
+            return;
+        }
         inner.aborted = true;
         inner.reason = Some(reason.clone());
         let listeners: Vec<_> = inner.listeners.drain(..).collect();
         drop(inner);
-        for cb in listeners { cb(&reason); }
+        for cb in listeners {
+            cb(&reason);
+        }
     }
 }
 
@@ -183,11 +192,15 @@ impl AbortController {
     /// SPEC §3.3.AbortController constructor: creates a non-aborted signal.
     /// CD ABOR3: `AbortController is defined as a global constructor`.
     pub fn new() -> Self {
-        Self { signal: AbortSignal::new() }
+        Self {
+            signal: AbortSignal::new(),
+        }
     }
 
     /// SPEC §3.3.signal getter: returns the controller's associated signal.
-    pub fn signal(&self) -> &AbortSignal { &self.signal }
+    pub fn signal(&self) -> &AbortSignal {
+        &self.signal
+    }
 
     /// SPEC §3.3.abort: aborts the signal with the default reason.
     /// CD ABOR1 antichain: `expect(ac.signal.aborted).toBe(true)` after
@@ -203,5 +216,7 @@ impl AbortController {
 }
 
 impl Default for AbortController {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

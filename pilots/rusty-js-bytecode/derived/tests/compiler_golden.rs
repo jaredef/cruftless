@@ -61,7 +61,10 @@ fn precedence_in_emission() {
     let d = disasm("1 + 2 * 3;");
     let mul_idx = d.find("Mul").unwrap();
     let add_idx = d.find("Add").unwrap();
-    assert!(mul_idx < add_idx, "Mul should come before Add (RHS evaluated first)");
+    assert!(
+        mul_idx < add_idx,
+        "Mul should come before Add (RHS evaluated first)"
+    );
 }
 
 #[test]
@@ -432,7 +435,10 @@ fn block_compiles_children_in_order() {
 #[test]
 fn constants_pool_dedups_strings() {
     let m = compile_module("'x'; 'x'; 'x';").unwrap();
-    let string_xs = m.constants.entries().iter()
+    let string_xs = m
+        .constants
+        .entries()
+        .iter()
         .filter(|c| matches!(c, Constant::String(s) if s == "x"))
         .count();
     assert_eq!(string_xs, 1, "string constants should dedupe");
@@ -441,7 +447,10 @@ fn constants_pool_dedups_strings() {
 #[test]
 fn constants_pool_dedups_numbers() {
     let m = compile_module("1e100; 1e100;").unwrap();
-    let nums = m.constants.entries().iter()
+    let nums = m
+        .constants
+        .entries()
+        .iter()
         .filter(|c| matches!(c, Constant::Number(v) if (*v - 1e100).abs() < 1e90))
         .count();
     assert_eq!(nums, 1, "number constants should dedupe");

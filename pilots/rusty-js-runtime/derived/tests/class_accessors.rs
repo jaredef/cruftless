@@ -71,5 +71,8 @@ fn t05_getter_and_setter_same_key() {
         const d = Object.getOwnPropertyDescriptor(C.prototype, "x");
         return typeof d.get + "," + typeof d.set + "," + new C().x;
     "#;
-    assert_eq!(run(src), Value::String(std::rc::Rc::new("function,function,1".into())));
+    assert_eq!(
+        run(src),
+        Value::String(std::rc::Rc::new("function,function,1".into()))
+    );
 }

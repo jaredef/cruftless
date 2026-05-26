@@ -9,12 +9,16 @@ fn run_rt(src: &str) -> Runtime {
         .unwrap_or_else(|e| panic!("compile {:?}: {:?}", src, e));
     let mut rt = Runtime::new();
     rt.install_intrinsics();
-    rt.run_module(&module).unwrap_or_else(|e| panic!("run {:?}: {:?}", src, e));
+    rt.run_module(&module)
+        .unwrap_or_else(|e| panic!("run {:?}: {:?}", src, e));
     rt
 }
 
 fn last_recorded(rt: &Runtime) -> Value {
-    rt.globals.get("__last_recorded").cloned().unwrap_or(Value::Undefined)
+    rt.globals
+        .get("__last_recorded")
+        .cloned()
+        .unwrap_or(Value::Undefined)
 }
 
 fn last_bool(rt: &Runtime) -> bool {
@@ -79,41 +83,49 @@ fn t06_case_insensitive() {
 
 #[test]
 fn t07_exec_returns_array_with_index_input() {
-    let rt = run_rt(r#"
+    let rt = run_rt(
+        r#"
         let m = /(\w+)\s+(\w+)/.exec("hello world");
         __record(m[0] + "|" + m[1] + "|" + m[2] + "|" + m.index + "|" + m.input);
-    "#);
+    "#,
+    );
     assert_eq!(last_string(&rt), "hello world|hello|world|0|hello world");
 }
 
 #[test]
 fn t08_exec_no_match_null() {
-    let rt = run_rt(r#"
+    let rt = run_rt(
+        r#"
         let m = /xyz/.exec("hello");
         __record(m === null);
-    "#);
+    "#,
+    );
     assert!(last_bool(&rt));
 }
 
 #[test]
 fn t09_global_stateful_exec() {
-    let rt = run_rt(r#"
+    let rt = run_rt(
+        r#"
         let r = /\d+/g;
         let a = r.exec("a1b22c333");
         let b = r.exec("a1b22c333");
         let c = r.exec("a1b22c333");
         __record(a[0] + "|" + b[0] + "|" + c[0] + "|" + r.lastIndex);
-    "#);
+    "#,
+    );
     // After third match "333" ending at byte index 9, lastIndex = 9.
     assert_eq!(last_string(&rt), "1|22|333|9");
 }
 
 #[test]
 fn t10_string_match_groups() {
-    let rt = run_rt(r#"
+    let rt = run_rt(
+        r#"
         let m = "hello world".match(/(\w+) (\w+)/);
         __record(m[2]);
-    "#);
+    "#,
+    );
     assert_eq!(last_string(&rt), "world");
 }
 
@@ -131,20 +143,24 @@ fn t12_string_replace_global() {
 
 #[test]
 fn t13_string_split_regex() {
-    let rt = run_rt(r#"
+    let rt = run_rt(
+        r#"
         let parts = "a1b2c3".split(/\d/);
         __record(parts.length + "|" + parts[0] + "|" + parts[1] + "|" + parts[2] + "|" + parts[3]);
-    "#);
+    "#,
+    );
     // "a1b2c3" split by /\d/ → ["a","b","c",""] in JS.
     assert_eq!(last_string(&rt), "4|a|b|c|");
 }
 
 #[test]
 fn t14_constructor_form() {
-    let rt = run_rt(r#"
+    let rt = run_rt(
+        r#"
         let r = new RegExp("\\d+", "g");
         __record(r.test("abc 123") + "|" + r.flags);
-    "#);
+    "#,
+    );
     let s = last_string(&rt);
     assert!(s.starts_with("true|"), "got {:?}", s);
     assert!(s.contains('g'), "got {:?}", s);

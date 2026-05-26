@@ -55,7 +55,10 @@ fn consumer_express_dirname_handles_root() {
 
 #[test]
 fn consumer_jest_relative_same_path_empty_string() {
-    assert_eq!(posix::relative("/proj/src/foo.test.js", "/proj/src/foo.test.js"), "");
+    assert_eq!(
+        posix::relative("/proj/src/foo.test.js", "/proj/src/foo.test.js"),
+        ""
+    );
 }
 
 #[test]

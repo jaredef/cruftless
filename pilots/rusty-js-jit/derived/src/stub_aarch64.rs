@@ -93,7 +93,9 @@ impl ICEntry {
     /// `(shape, slot)`. Patches the cache; updates state. Degrades at
     /// `MISS_THRESHOLD`.
     pub fn observe(&mut self, shape: std::rc::Rc<rusty_js_shapes::Shape>, slot: u32) {
-        if self.degraded { return; }
+        if self.degraded {
+            return;
+        }
         if !self.cached_shape.is_null() {
             // Not Cold; this is a miss against the cached value.
             self.miss_count = self.miss_count.saturating_add(1);
@@ -115,7 +117,9 @@ impl ICEntry {
     /// to patch (e.g., the receiver was None-shape — Dictionary form —
     /// so there's no shape to cache).
     pub fn observe_miss_no_shape(&mut self) {
-        if self.degraded { return; }
+        if self.degraded {
+            return;
+        }
         if !self.cached_shape.is_null() {
             self.miss_count = self.miss_count.saturating_add(1);
             if self.miss_count > MISS_THRESHOLD {
@@ -157,7 +161,9 @@ impl ICStubCache {
         &mut self.sites[id as usize]
     }
 
-    pub fn len(&self) -> usize { self.sites.len() }
+    pub fn len(&self) -> usize {
+        self.sites.len()
+    }
 
     /// Diagnostic helper: count of sites by current state.
     pub fn state_histogram(&self) -> (usize, usize, usize, usize) {
@@ -178,7 +184,9 @@ impl ICStubCache {
 }
 
 impl Default for ICStubCache {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 thread_local! {
@@ -271,9 +279,11 @@ pub fn emit_stub_pattern(
 /// Used by the integration test below; available as a public helper for
 /// any future bench harness or fuzz probe that needs to exercise the
 /// pattern in isolation.
-pub fn build_stub_pattern_module(
-) -> Result<extern "C" fn(i64, i64, i64, i64, i64) -> i64, String> {
-    use cranelift_codegen::ir::{types::I64, AbiParam, Function, InstBuilder, Signature, UserFuncName};
+pub fn build_stub_pattern_module() -> Result<extern "C" fn(i64, i64, i64, i64, i64) -> i64, String>
+{
+    use cranelift_codegen::ir::{
+        types::I64, AbiParam, Function, InstBuilder, Signature, UserFuncName,
+    };
     use cranelift_codegen::isa::CallConv;
     use cranelift_codegen::settings::{self, Configurable};
     use cranelift_codegen::Context;
@@ -286,18 +296,23 @@ pub fn build_stub_pattern_module(
     // the JITBuilder doesn't try to emit PLT entries (which aarch64
     // doesn't support per cranelift-jit 0.118 backend.rs:297).
     let mut flag_builder = settings::builder();
-    flag_builder.set("use_colocated_libcalls", "false")
+    flag_builder
+        .set("use_colocated_libcalls", "false")
         .map_err(|e| format!("flag: {e:?}"))?;
-    flag_builder.set("is_pic", "false")
+    flag_builder
+        .set("is_pic", "false")
         .map_err(|e| format!("flag: {e:?}"))?;
     let isa_builder = cranelift_native::builder().map_err(|e| format!("isa: {e}"))?;
-    let isa = isa_builder.finish(settings::Flags::new(flag_builder))
+    let isa = isa_builder
+        .finish(settings::Flags::new(flag_builder))
         .map_err(|e| format!("isa: {e:?}"))?;
     let jit_builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
     let mut module = JITModule::new(jit_builder);
 
     let mut sig = Signature::new(CallConv::SystemV);
-    for _ in 0..5 { sig.params.push(AbiParam::new(I64)); }
+    for _ in 0..5 {
+        sig.params.push(AbiParam::new(I64));
+    }
     sig.returns.push(AbiParam::new(I64));
 
     let func_id = module
@@ -317,7 +332,11 @@ pub fn build_stub_pattern_module(
         let params: Vec<_> = builder.block_params(entry).to_vec();
         let result = emit_stub_pattern(
             &mut builder,
-            params[0], params[1], params[2], params[3], params[4],
+            params[0],
+            params[1],
+            params[2],
+            params[3],
+            params[4],
         );
         builder.ins().return_(&[result]);
         builder.finalize();
@@ -326,11 +345,11 @@ pub fn build_stub_pattern_module(
     module
         .define_function(func_id, &mut ctx)
         .map_err(|e| format!("define_function: {e}"))?;
-    module.finalize_definitions()
+    module
+        .finalize_definitions()
         .map_err(|e| format!("finalize_definitions: {e}"))?;
     let raw = module.get_finalized_function(func_id);
-    let f: extern "C" fn(i64, i64, i64, i64, i64) -> i64 =
-        unsafe { std::mem::transmute(raw) };
+    let f: extern "C" fn(i64, i64, i64, i64, i64) -> i64 = unsafe { std::mem::transmute(raw) };
     Ok(f)
 }
 
@@ -405,7 +424,11 @@ mod tests {
             let s = rusty_js_shapes::Shape::root().transition_to(&format!("p{}", i));
             e.observe(s, 0);
             if i <= MISS_THRESHOLD {
-                assert!(!e.degraded, "should not degrade until miss_count > {}", MISS_THRESHOLD);
+                assert!(
+                    !e.degraded,
+                    "should not degrade until miss_count > {}",
+                    MISS_THRESHOLD
+                );
             }
         }
         assert!(e.degraded, "should degrade past MISS_THRESHOLD");
@@ -464,7 +487,8 @@ mod tests {
         let id3 = c.alloc_site(); // Will be Degraded
         c.entry_mut(id1).observe(s.clone(), 0);
         c.entry_mut(id2).observe(s.clone(), 0);
-        c.entry_mut(id2).observe(rusty_js_shapes::Shape::root().transition_to("y"), 0);
+        c.entry_mut(id2)
+            .observe(rusty_js_shapes::Shape::root().transition_to("y"), 0);
         c.entry_mut(id3).degraded = true;
         let (cold, warm, cam, deg) = c.state_histogram();
         assert_eq!((cold, warm, cam, deg), (1, 1, 1, 1));

@@ -20,12 +20,12 @@
 //!   components in entry paths are rejected (zip-slip / tar-slip
 //!   defense).
 
-use std::path::{Path, PathBuf, Component};
+use std::path::{Component, Path, PathBuf};
 
 use flate2::read::GzDecoder;
 
 use crate::http::{pm_http_get_follow, HttpError};
-use crate::integrity::{verify_sri, verify_shasum, IntegrityError};
+use crate::integrity::{verify_shasum, verify_sri, IntegrityError};
 use crate::resolver::ResolvedDep;
 
 #[derive(Debug)]
@@ -40,7 +40,9 @@ pub enum FetchError {
 }
 
 impl From<HttpError> for FetchError {
-    fn from(e: HttpError) -> Self { FetchError::Http(e) }
+    fn from(e: HttpError) -> Self {
+        FetchError::Http(e)
+    }
 }
 
 /// Outcome of a fetch+extract: the on-disk staging directory plus the
@@ -82,7 +84,10 @@ pub fn fetch_and_extract(
     let mut archive = tar::Archive::new(gz);
     let mut count = 0usize;
 
-    for entry in archive.entries().map_err(|e| FetchError::Tar(format!("{e}")))? {
+    for entry in archive
+        .entries()
+        .map_err(|e| FetchError::Tar(format!("{e}")))?
+    {
         let mut entry = entry.map_err(|e| FetchError::Tar(format!("{e}")))?;
         let kind = entry.header().entry_type();
 
@@ -93,7 +98,8 @@ pub fn fetch_and_extract(
             return Err(FetchError::UnsafeEntryKind(format!("{:?}", kind)));
         }
 
-        let raw_path = entry.path()
+        let raw_path = entry
+            .path()
             .map_err(|e| FetchError::Tar(format!("path: {e}")))?
             .into_owned();
         let safe = sanitize_entry_path(&raw_path)?;
@@ -115,7 +121,10 @@ pub fn fetch_and_extract(
         count += 1;
     }
 
-    Ok(FetchedPackage { staging_dir: staging_dir.to_path_buf(), file_count: count })
+    Ok(FetchedPackage {
+        staging_dir: staging_dir.to_path_buf(),
+        file_count: count,
+    })
 }
 
 /// Strip the single leading `package/` component that npm packs into
@@ -165,8 +174,14 @@ mod tests {
 
     fn tmp_staging(suffix: &str) -> PathBuf {
         let mut p = std::env::temp_dir();
-        p.push(format!("cruftless-pm-test-{}-{}", suffix,
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        p.push(format!(
+            "cruftless-pm-test-{}-{}",
+            suffix,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         p
     }
 
@@ -199,17 +214,22 @@ mod tests {
     #[ignore]
     fn fetch_lodash_end_to_end() {
         use crate::resolver::{resolve_specifier, DEFAULT_REGISTRY};
-        let dep = resolve_specifier(DEFAULT_REGISTRY, "lodash", "4.17.21")
-            .expect("resolve");
+        let dep = resolve_specifier(DEFAULT_REGISTRY, "lodash", "4.17.21").expect("resolve");
         let staging = tmp_staging("lodash");
         let result = fetch_and_extract(&dep, &staging).expect("fetch+extract");
-        assert!(result.file_count > 100,
-            "expected >100 files in lodash, got {}", result.file_count);
+        assert!(
+            result.file_count > 100,
+            "expected >100 files in lodash, got {}",
+            result.file_count
+        );
         let pkg_json_path = result.staging_dir.join("package.json");
         let body = std::fs::read_to_string(&pkg_json_path)
             .unwrap_or_else(|e| panic!("read {pkg_json_path:?}: {e}"));
-        assert!(body.contains("\"version\": \"4.17.21\""),
-            "package.json missing expected version: {}", &body[..body.len().min(200)]);
+        assert!(
+            body.contains("\"version\": \"4.17.21\""),
+            "package.json missing expected version: {}",
+            &body[..body.len().min(200)]
+        );
         // cleanup
         let _ = std::fs::remove_dir_all(&staging);
     }

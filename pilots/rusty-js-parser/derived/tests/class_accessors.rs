@@ -26,8 +26,12 @@ fn class_getter_method_kind() {
         assert_eq!(*kind, MethodKind::Getter);
         if let ClassMemberName::Identifier { name: n, .. } = name {
             assert_eq!(n, "foo");
-        } else { panic!("expected identifier name"); }
-    } else { panic!("expected Method, got {:?}", m); }
+        } else {
+            panic!("expected identifier name");
+        }
+    } else {
+        panic!("expected Method, got {:?}", m);
+    }
 }
 
 #[test]
@@ -37,8 +41,12 @@ fn class_setter_method_kind() {
         assert_eq!(*kind, MethodKind::Setter);
         if let ClassMemberName::Identifier { name: n, .. } = name {
             assert_eq!(n, "bar");
-        } else { panic!("expected identifier name"); }
-    } else { panic!("expected Method"); }
+        } else {
+            panic!("expected identifier name");
+        }
+    } else {
+        panic!("expected Method");
+    }
 }
 
 #[test]
@@ -51,6 +59,10 @@ fn class_get_as_method_name_disambiguation() {
         assert_eq!(*kind, MethodKind::Method);
         if let ClassMemberName::Identifier { name: n, .. } = name {
             assert_eq!(n, "get");
-        } else { panic!("expected identifier name"); }
-    } else { panic!("expected Method"); }
+        } else {
+            panic!("expected identifier name");
+        }
+    } else {
+        panic!("expected Method");
+    }
 }

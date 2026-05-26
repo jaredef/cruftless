@@ -60,8 +60,11 @@ fn consumer_session_id_format() {
     assert!(id.chars().nth(23).unwrap() == '-');
     // All non-dash chars are lowercase hex
     for c in id.chars().filter(|&c| c != '-') {
-        assert!(c.is_ascii_hexdigit() && (c.is_numeric() || c.is_lowercase()),
-            "invalid char in UUID: {}", c);
+        assert!(
+            c.is_ascii_hexdigit() && (c.is_numeric() || c.is_lowercase()),
+            "invalid char in UUID: {}",
+            c
+        );
     }
 }
 
@@ -119,6 +122,8 @@ fn consumer_password_hash_correctness_warning_aside() {
 fn consumer_bun_subtle_digest_canonical_name() {
     let r = subtle::digest("SHA-256", b"hello").unwrap();
     let hex: String = r.iter().map(|b| format!("{:02x}", b)).collect();
-    assert_eq!(hex,
-        "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
+    assert_eq!(
+        hex,
+        "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+    );
 }

@@ -141,7 +141,8 @@ pub fn install(rt: &mut Runtime) {
     // assert.throws — root cause was global shadowing, not destructuring
     // substrate.
     // rt.globals.insert("assert".into(), Value::Object(assert));
-    rt.globals.insert("__node_assert".into(), Value::Object(assert));
+    rt.globals
+        .insert("__node_assert".into(), Value::Object(assert));
 }
 
 /// Call JSON.stringify(v) via the installed intrinsic. Avoids

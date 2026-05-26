@@ -10,13 +10,12 @@
 //! drive the engine's link phase (Tier-Ω.4.a Module Namespace
 //! augmentation hooks).
 
-use crate::lexer::{Lexer, LexerGoal, LexError};
+use crate::lexer::{LexError, Lexer, LexerGoal};
 use crate::token::{Punct, TemplatePart, Token, TokenKind};
 use rusty_js_ast::{
-    BindingIdentifier, DefaultExportBody, ExportDeclaration, ExportEntry,
-    ExportImportName, ExportSpecifier, ImportAttribute, ImportDeclaration,
-    ImportEntry, ImportName, ImportSpecifier, Module, ModuleExportName,
-    ModuleItem, ModuleSpecifier, Span, Stmt,
+    BindingIdentifier, DefaultExportBody, ExportDeclaration, ExportEntry, ExportImportName,
+    ExportSpecifier, ImportAttribute, ImportDeclaration, ImportEntry, ImportName, ImportSpecifier,
+    Module, ModuleExportName, ModuleItem, ModuleSpecifier, Span, Stmt,
 };
 
 #[derive(Debug, Clone)]
@@ -69,7 +68,15 @@ impl<'src> Parser<'src> {
     pub fn new(src: &'src str) -> Result<Self, ParseError> {
         let mut lx = Lexer::new(src);
         let lookahead = lx.next_token(LexerGoal::RegExp).map_err(lex_to_parse)?;
-        Ok(Self { src, lx, lookahead, function_body_depth: 0, strict_mode: false, in_generator: false, in_function_params: false })
+        Ok(Self {
+            src,
+            lx,
+            lookahead,
+            function_body_depth: 0,
+            strict_mode: false,
+            in_generator: false,
+            in_function_params: false,
+        })
     }
 
     pub fn parse_module(&mut self) -> Result<Module, ParseError> {
@@ -104,8 +111,12 @@ impl<'src> Parser<'src> {
             }
             if self.is_ident("export") {
                 let decl = self.parse_export_declaration()?;
-                self.collect_export_entries(&decl, &mut local_export_entries,
-                    &mut indirect_export_entries, &mut star_export_entries);
+                self.collect_export_entries(
+                    &decl,
+                    &mut local_export_entries,
+                    &mut indirect_export_entries,
+                    &mut star_export_entries,
+                );
                 body.push(ModuleItem::Export(decl));
                 continue;
             }
@@ -201,7 +212,10 @@ impl<'src> Parser<'src> {
                 match &imported {
                     ModuleExportName::Ident(b) => b.clone(),
                     ModuleExportName::String { span, .. } => {
-                        return Err(self.err_at(*span, "string-literal imported name requires `as Local`".into()));
+                        return Err(self.err_at(
+                            *span,
+                            "string-literal imported name requires `as Local`".into(),
+                        ));
                     }
                 }
             };
@@ -230,7 +244,9 @@ impl<'src> Parser<'src> {
         // approximate by examining the immediately-following source byte
         // after the current token's end.
         let mut p = self.lookahead.span.end;
-        while p < self.src.len() && self.src.as_bytes()[p].is_ascii_whitespace() { p += 1; }
+        while p < self.src.len() && self.src.as_bytes()[p].is_ascii_whitespace() {
+            p += 1;
+        }
         matches!(self.src.as_bytes().get(p), Some(b'(') | Some(b'.'))
     }
 
@@ -282,8 +298,14 @@ impl<'src> Parser<'src> {
             let source = if self.is_ident("from") {
                 self.bump_regexp()?;
                 Some(self.parse_module_specifier()?)
-            } else { None };
-            let attributes = if source.is_some() { self.parse_optional_attributes()? } else { vec![] };
+            } else {
+                None
+            };
+            let attributes = if source.is_some() {
+                self.parse_optional_attributes()?
+            } else {
+                vec![]
+            };
             self.consume_semicolon();
             return Ok(ExportDeclaration::Named {
                 span: Span::new(start, self.last_span_end()),
@@ -339,7 +361,9 @@ impl<'src> Parser<'src> {
             // Disambiguate `async function ...` from `async <expr>`.
             // We need a peek-2; approximate from raw source.
             let mut p = self.lookahead.span.end;
-            while p < self.src.len() && self.src.as_bytes()[p].is_ascii_whitespace() { p += 1; }
+            while p < self.src.len() && self.src.as_bytes()[p].is_ascii_whitespace() {
+                p += 1;
+            }
             // Match prefix "function"
             if self.src.as_bytes()[p..].starts_with(b"function") {
                 self.bump_regexp()?; // consume "async"
@@ -360,28 +384,49 @@ impl<'src> Parser<'src> {
         let is_generator = if self.is_punct(Punct::Star) {
             self.bump_regexp()?;
             true
-        } else { false };
-        let name = if matches!(self.lookahead.kind, TokenKind::Ident(_)) && !self.is_punct(Punct::LParen) {
+        } else {
+            false
+        };
+        let name = if matches!(self.lookahead.kind, TokenKind::Ident(_))
+            && !self.is_punct(Punct::LParen)
+        {
             Some(self.parse_binding_identifier()?)
-        } else { None };
+        } else {
+            None
+        };
         let params = self.parse_function_parameters_g(is_generator)?;
-        let body = self.parse_function_body_gs(Some(is_generator), Self::is_simple_param_list(&params))?;
+        let body =
+            self.parse_function_body_gs(Some(is_generator), Self::is_simple_param_list(&params))?;
         Ok(DefaultExportBody::HoistableFunction {
-            name, params, body, is_async, is_generator,
+            name,
+            params,
+            body,
+            is_async,
+            is_generator,
         })
     }
 
     fn parse_default_class(&mut self) -> Result<DefaultExportBody, ParseError> {
         self.expect_keyword("class")?;
-        let name = if matches!(self.lookahead.kind, TokenKind::Ident(ref s) if s != "extends" && s != "{") && !self.is_punct(Punct::LBrace) {
+        let name = if matches!(self.lookahead.kind, TokenKind::Ident(ref s) if s != "extends" && s != "{")
+            && !self.is_punct(Punct::LBrace)
+        {
             Some(self.parse_binding_identifier()?)
-        } else { None };
+        } else {
+            None
+        };
         let super_class = if self.is_ident("extends") {
             self.bump_regexp()?;
             Some(self.parse_left_hand_side_expression()?)
-        } else { None };
+        } else {
+            None
+        };
         let members = self.parse_class_body()?;
-        Ok(DefaultExportBody::Class { name, super_class, members })
+        Ok(DefaultExportBody::Class {
+            name,
+            super_class,
+            members,
+        })
     }
 
     // ───────────────────────────── Names + specifiers ─────────────────────────────
@@ -391,7 +436,10 @@ impl<'src> Parser<'src> {
         match &tok.kind {
             TokenKind::String(s) => {
                 self.bump_regexp()?;
-                Ok(ModuleSpecifier { value: s.clone(), span: tok.span })
+                Ok(ModuleSpecifier {
+                    value: s.clone(),
+                    span: tok.span,
+                })
             }
             _ => Err(self.err_here("expected module specifier (string literal)".into())),
         }
@@ -402,11 +450,17 @@ impl<'src> Parser<'src> {
         match &tok.kind {
             TokenKind::Ident(name) => {
                 self.bump_regexp()?;
-                Ok(ModuleExportName::Ident(BindingIdentifier { name: name.clone(), span: tok.span }))
+                Ok(ModuleExportName::Ident(BindingIdentifier {
+                    name: name.clone(),
+                    span: tok.span,
+                }))
             }
             TokenKind::String(s) => {
                 self.bump_regexp()?;
-                Ok(ModuleExportName::String { value: s.clone(), span: tok.span })
+                Ok(ModuleExportName::String {
+                    value: s.clone(),
+                    span: tok.span,
+                })
             }
             _ => Err(self.err_here("expected identifier or string literal".into())),
         }
@@ -425,11 +479,16 @@ impl<'src> Parser<'src> {
                 return Err(ParseError {
                     span: tok.span,
                     message: format!(
-                        "Binding identifier '{}' is not allowed in strict mode", name),
+                        "Binding identifier '{}' is not allowed in strict mode",
+                        name
+                    ),
                 });
             }
             self.bump_regexp()?;
-            Ok(BindingIdentifier { name: name.clone(), span: tok.span })
+            Ok(BindingIdentifier {
+                name: name.clone(),
+                span: tok.span,
+            })
         } else {
             Err(self.err_here("expected identifier".into()))
         }
@@ -448,7 +507,11 @@ impl<'src> Parser<'src> {
             let key = self.parse_module_export_name()?;
             self.expect_punct(Punct::Colon)?;
             let value = match &self.lookahead.kind {
-                TokenKind::String(s) => { let s = s.clone(); self.bump_regexp()?; s }
+                TokenKind::String(s) => {
+                    let s = s.clone();
+                    self.bump_regexp()?;
+                    s
+                }
                 _ => return Err(self.err_here("expected string literal in attribute value".into())),
             };
             out.push(ImportAttribute {
@@ -477,11 +540,15 @@ impl<'src> Parser<'src> {
         let mut depth_paren = 0i32;
         let mut depth_bracket = 0i32;
         loop {
-            if self.at_eof() { break; }
+            if self.at_eof() {
+                break;
+            }
             match self.lookahead.kind {
                 TokenKind::Punct(Punct::LBrace) => depth_brace += 1,
                 TokenKind::Punct(Punct::RBrace) => {
-                    if depth_brace == 0 { break; }
+                    if depth_brace == 0 {
+                        break;
+                    }
                     depth_brace -= 1;
                 }
                 TokenKind::Punct(Punct::LParen) => depth_paren += 1,
@@ -499,7 +566,9 @@ impl<'src> Parser<'src> {
             }
             // ASI sentinel: a newline-preceded `import`/`export` at top level
             // closes a statement that didn't have a trailing semicolon.
-            if depth_brace == 0 && depth_paren == 0 && depth_bracket == 0
+            if depth_brace == 0
+                && depth_paren == 0
+                && depth_bracket == 0
                 && self.lookahead.preceded_by_line_terminator
                 && (self.is_ident("import") || self.is_ident("export"))
             {
@@ -510,7 +579,9 @@ impl<'src> Parser<'src> {
         Ok(Span::new(start, self.last_span_end()))
     }
 
-    fn parse_declaration_for_export(&mut self) -> Result<(Span, Vec<BindingIdentifier>, Option<Box<Stmt>>), ParseError> {
+    fn parse_declaration_for_export(
+        &mut self,
+    ) -> Result<(Span, Vec<BindingIdentifier>, Option<Box<Stmt>>), ParseError> {
         let start = self.lookahead.span.start;
         let mut names: Vec<BindingIdentifier> = Vec::new();
         let is_func = self.is_ident("function") || self.is_ident("async");
@@ -520,7 +591,9 @@ impl<'src> Parser<'src> {
         let is_var = self.is_ident("var");
         let stmt_opt: Option<Box<Stmt>> = if is_func {
             let is_async_kw = self.is_ident("async");
-            if is_async_kw { self.bump_regexp()?; }
+            if is_async_kw {
+                self.bump_regexp()?;
+            }
             let stmt = self.parse_function_decl_stmt(is_async_kw)?;
             if let Stmt::FunctionDecl { name: Some(bi), .. } = &stmt {
                 names.push(bi.clone());
@@ -552,12 +625,21 @@ impl<'src> Parser<'src> {
         Ok((Span::new(start, self.last_span_end()), names, stmt_opt))
     }
 
-    fn extract_destructure_names_object(&mut self, out: &mut Vec<BindingIdentifier>) -> Result<(), ParseError> {
+    fn extract_destructure_names_object(
+        &mut self,
+        out: &mut Vec<BindingIdentifier>,
+    ) -> Result<(), ParseError> {
         let mut depth = 1i32;
         while depth > 0 && !self.at_eof() {
             match &self.lookahead.kind {
-                TokenKind::Punct(Punct::LBrace) => { depth += 1; self.bump_regexp()?; }
-                TokenKind::Punct(Punct::RBrace) => { depth -= 1; self.bump_regexp()?; }
+                TokenKind::Punct(Punct::LBrace) => {
+                    depth += 1;
+                    self.bump_regexp()?;
+                }
+                TokenKind::Punct(Punct::RBrace) => {
+                    depth -= 1;
+                    self.bump_regexp()?;
+                }
                 TokenKind::Ident(n) => {
                     if depth == 1 {
                         // Peek next: `:` → renamed binding; else `n` is the binding.
@@ -568,7 +650,10 @@ impl<'src> Parser<'src> {
                             self.bump_regexp()?;
                             // The renamed local is the next ident or pattern.
                             if let TokenKind::Ident(nn) = &self.lookahead.kind {
-                                out.push(BindingIdentifier { name: nn.clone(), span: self.lookahead.span });
+                                out.push(BindingIdentifier {
+                                    name: nn.clone(),
+                                    span: self.lookahead.span,
+                                });
                                 self.bump_regexp()?;
                             }
                         } else {
@@ -578,30 +663,45 @@ impl<'src> Parser<'src> {
                         self.bump_regexp()?;
                     }
                 }
-                _ => { self.bump_regexp()?; }
+                _ => {
+                    self.bump_regexp()?;
+                }
             }
         }
         Ok(())
     }
 
-    fn extract_destructure_names_array(&mut self, out: &mut Vec<BindingIdentifier>) -> Result<(), ParseError> {
+    fn extract_destructure_names_array(
+        &mut self,
+        out: &mut Vec<BindingIdentifier>,
+    ) -> Result<(), ParseError> {
         let mut depth = 1i32;
         while depth > 0 && !self.at_eof() {
             match &self.lookahead.kind {
-                TokenKind::Punct(Punct::LBracket) => { depth += 1; self.bump_regexp()?; }
-                TokenKind::Punct(Punct::RBracket) => { depth -= 1; self.bump_regexp()?; }
+                TokenKind::Punct(Punct::LBracket) => {
+                    depth += 1;
+                    self.bump_regexp()?;
+                }
+                TokenKind::Punct(Punct::RBracket) => {
+                    depth -= 1;
+                    self.bump_regexp()?;
+                }
                 TokenKind::Ident(n) => {
                     if depth == 1 {
-                        out.push(BindingIdentifier { name: n.clone(), span: self.lookahead.span });
+                        out.push(BindingIdentifier {
+                            name: n.clone(),
+                            span: self.lookahead.span,
+                        });
                     }
                     self.bump_regexp()?;
                 }
-                _ => { self.bump_regexp()?; }
+                _ => {
+                    self.bump_regexp()?;
+                }
             }
         }
         Ok(())
     }
-
 
     fn skip_balanced(&mut self, open: Punct, close: Punct) -> Result<(), ParseError> {
         if !self.is_punct(open) {
@@ -672,7 +772,9 @@ impl<'src> Parser<'src> {
                     });
                 }
             }
-            ExportDeclaration::Named { specifiers, source, .. } => {
+            ExportDeclaration::Named {
+                specifiers, source, ..
+            } => {
                 let mr = source.as_ref().map(|s| s.value.clone());
                 for spec in specifiers {
                     let exported_name = match &spec.exported {
@@ -688,10 +790,16 @@ impl<'src> Parser<'src> {
                         module_request: mr.clone(),
                         import_name: if mr.is_some() {
                             local_name.clone().map(ExportImportName::Single)
-                        } else { None },
+                        } else {
+                            None
+                        },
                         local_name: if mr.is_none() { local_name } else { None },
                     };
-                    if mr.is_some() { indirect.push(entry); } else { local.push(entry); }
+                    if mr.is_some() {
+                        indirect.push(entry);
+                    } else {
+                        local.push(entry);
+                    }
                 }
             }
             ExportDeclaration::StarFrom { source, .. } => {
@@ -702,7 +810,9 @@ impl<'src> Parser<'src> {
                     local_name: None,
                 });
             }
-            ExportDeclaration::StarAsFrom { exported, source, .. } => {
+            ExportDeclaration::StarAsFrom {
+                exported, source, ..
+            } => {
                 let name = match exported {
                     ModuleExportName::Ident(b) => b.name.clone(),
                     ModuleExportName::String { value, .. } => value.clone(),
@@ -716,7 +826,9 @@ impl<'src> Parser<'src> {
             }
             ExportDeclaration::Default { body, .. } => {
                 let local_name = match body {
-                    DefaultExportBody::HoistableFunction { name, .. } => name.as_ref().map(|b| b.name.clone()),
+                    DefaultExportBody::HoistableFunction { name, .. } => {
+                        name.as_ref().map(|b| b.name.clone())
+                    }
                     DefaultExportBody::Class { name, .. } => name.as_ref().map(|b| b.name.clone()),
                     DefaultExportBody::Expression { .. } => None,
                 };
@@ -777,12 +889,20 @@ impl<'src> Parser<'src> {
     pub(crate) fn peek_use_strict_directive(&self) -> bool {
         let start = self.lookahead.span.start;
         let bytes = self.src.as_bytes();
-        if start >= bytes.len() { return false; }
+        if start >= bytes.len() {
+            return false;
+        }
         // Skip any contiguous whitespace at the start (lookahead already
         // points past prior trivia; this guard is defensive).
         let mut i = start;
-        while i < bytes.len() && (bytes[i] == b' ' || bytes[i] == b'\t' || bytes[i] == b'\n' || bytes[i] == b'\r') { i += 1; }
-        if i + 12 > bytes.len() { return false; }
+        while i < bytes.len()
+            && (bytes[i] == b' ' || bytes[i] == b'\t' || bytes[i] == b'\n' || bytes[i] == b'\r')
+        {
+            i += 1;
+        }
+        if i + 12 > bytes.len() {
+            return false;
+        }
         // Accept "use strict" or 'use strict' — both quote forms.
         let slice = &bytes[i..i + 12];
         slice == b"\"use strict\"" || slice == b"'use strict'"
@@ -804,18 +924,30 @@ impl<'src> Parser<'src> {
     }
 
     pub(crate) fn expect_punct(&mut self, p: Punct) -> Result<(), ParseError> {
-        if self.is_punct(p) { self.bump_regexp()?; Ok(()) }
-        else { Err(self.err_here(format!("expected `{:?}`", p))) }
+        if self.is_punct(p) {
+            self.bump_regexp()?;
+            Ok(())
+        } else {
+            Err(self.err_here(format!("expected `{:?}`", p)))
+        }
     }
 
     pub(crate) fn expect_keyword(&mut self, kw: &str) -> Result<(), ParseError> {
-        if self.is_ident(kw) { self.bump_regexp()?; Ok(()) }
-        else { Err(self.err_here(format!("expected `{}`", kw))) }
+        if self.is_ident(kw) {
+            self.bump_regexp()?;
+            Ok(())
+        } else {
+            Err(self.err_here(format!("expected `{}`", kw)))
+        }
     }
 
     pub(crate) fn expect_ident(&mut self, name: &str) -> Result<(), ParseError> {
-        if self.is_ident(name) { self.bump_regexp()?; Ok(()) }
-        else { Err(self.err_here(format!("expected `{}`", name))) }
+        if self.is_ident(name) {
+            self.bump_regexp()?;
+            Ok(())
+        } else {
+            Err(self.err_here(format!("expected `{}`", name)))
+        }
     }
 
     fn consume_semicolon(&mut self) {
@@ -846,7 +978,11 @@ impl<'src> Parser<'src> {
     pub(crate) fn bump(&mut self) -> Result<Token, ParseError> {
         self.bump_regexp()
     }
-    pub(crate) fn skip_balanced_public(&mut self, open: Punct, close: Punct) -> Result<(), ParseError> {
+    pub(crate) fn skip_balanced_public(
+        &mut self,
+        open: Punct,
+        close: Punct,
+    ) -> Result<(), ParseError> {
         self.skip_balanced(open, close)
     }
 
@@ -854,7 +990,10 @@ impl<'src> Parser<'src> {
     /// byte offset using a different goal symbol. Used by the template-
     /// literal parser to obtain a TemplateMiddle/Tail token at the close
     /// of a substitution where the lexer would otherwise emit a RBrace.
-    pub(crate) fn refetch_lookahead_with_goal(&mut self, goal: LexerGoal) -> Result<(), ParseError> {
+    pub(crate) fn refetch_lookahead_with_goal(
+        &mut self,
+        goal: LexerGoal,
+    ) -> Result<(), ParseError> {
         let pos = self.lookahead.span.start;
         self.lx.set_pos(pos);
         self.lookahead = self.lx.next_token(goal).map_err(lex_to_parse)?;
@@ -864,12 +1003,18 @@ impl<'src> Parser<'src> {
     /// Rewind the lexer to `pos` and re-lex the lookahead under `goal`.
     /// Used by recovery paths (e.g. the for-head fast-path when the bumped
     /// identifier turns out not to be followed by `in`/`of`).
-    pub(crate) fn rewind_lexer_to(&mut self, pos: usize, goal: LexerGoal) -> Result<(), ParseError> {
+    pub(crate) fn rewind_lexer_to(
+        &mut self,
+        pos: usize,
+        goal: LexerGoal,
+    ) -> Result<(), ParseError> {
         self.lx.set_pos(pos);
         self.lookahead = self.lx.next_token(goal).map_err(lex_to_parse)?;
         Ok(())
     }
-    pub(crate) fn consume_semicolon_pub(&mut self) { self.consume_semicolon() }
+    pub(crate) fn consume_semicolon_pub(&mut self) {
+        self.consume_semicolon()
+    }
     // ─── Tier-Ω.5.g.2: typed BindingPattern parsers ───
     //
     // Each entry point assumes the opening `{` / `[` has already been
@@ -879,8 +1024,14 @@ impl<'src> Parser<'src> {
     /// Parse the inside of `{ ... }` as an ObjectPattern. The opening
     /// `{` is already consumed; this function consumes through the
     /// matching `}`.
-    pub(crate) fn parse_object_binding_pattern_body(&mut self, open_start: usize) -> Result<rusty_js_ast::ObjectPattern, ParseError> {
-        use rusty_js_ast::{ObjectPattern, ObjectPatternProperty, PropertyKey, BindingElement, BindingPattern, BindingIdentifier};
+    pub(crate) fn parse_object_binding_pattern_body(
+        &mut self,
+        open_start: usize,
+    ) -> Result<rusty_js_ast::ObjectPattern, ParseError> {
+        use rusty_js_ast::{
+            BindingElement, BindingIdentifier, BindingPattern, ObjectPattern,
+            ObjectPatternProperty, PropertyKey,
+        };
         let mut properties: Vec<ObjectPatternProperty> = Vec::new();
         let mut rest: Option<Box<BindingIdentifier>> = None;
         loop {
@@ -893,7 +1044,10 @@ impl<'src> Parser<'src> {
                 let n_span = self.lookahead_span();
                 if let TokenKind::Ident(n) = self.current_kind().clone() {
                     self.bump()?;
-                    rest = Some(Box::new(BindingIdentifier { name: n, span: n_span }));
+                    rest = Some(Box::new(BindingIdentifier {
+                        name: n,
+                        span: n_span,
+                    }));
                 } else {
                     return Err(self.err_here("object rest must be a plain identifier".into()));
                 }
@@ -902,59 +1056,97 @@ impl<'src> Parser<'src> {
             }
             // Property: key [: value] [= default]
             let prop_start = self.lookahead_span().start;
-            let (key, shorthand_ident): (PropertyKey, Option<BindingIdentifier>) = match self.current_kind().clone() {
-                TokenKind::Ident(name) => {
-                    let span = self.lookahead_span();
+            let (key, shorthand_ident): (PropertyKey, Option<BindingIdentifier>) =
+                match self.current_kind().clone() {
+                    TokenKind::Ident(name) => {
+                        let span = self.lookahead_span();
+                        self.bump()?;
+                        let id = BindingIdentifier {
+                            name: name.clone(),
+                            span,
+                        };
+                        (PropertyKey::Identifier(id.clone()), Some(id))
+                    }
+                    TokenKind::String(value) => {
+                        self.bump()?;
+                        (PropertyKey::String(std::rc::Rc::new(value)), None)
+                    }
+                    TokenKind::Number(value, _) => {
+                        self.bump()?;
+                        (PropertyKey::Number(value), None)
+                    }
+                    TokenKind::Punct(Punct::LBracket) => {
+                        self.bump()?;
+                        let expr = self.parse_assignment_expression()?;
+                        self.expect_punct(Punct::RBracket)?;
+                        (PropertyKey::Computed(expr), None)
+                    }
+                    _ => {
+                        return Err(self
+                            .err_here("expected property name in object binding pattern".into()))
+                    }
+                };
+            let (value, shorthand) =
+                if matches!(self.current_kind(), TokenKind::Punct(Punct::Colon)) {
                     self.bump()?;
-                    let id = BindingIdentifier { name: name.clone(), span };
-                    (PropertyKey::Identifier(id.clone()), Some(id))
-                }
-                TokenKind::String(value) => {
-                    self.bump()?;
-                    (PropertyKey::String(std::rc::Rc::new(value)), None)
-                }
-                TokenKind::Number(value, _) => {
-                    self.bump()?;
-                    (PropertyKey::Number(value), None)
-                }
-                TokenKind::Punct(Punct::LBracket) => {
-                    self.bump()?;
-                    let expr = self.parse_assignment_expression()?;
-                    self.expect_punct(Punct::RBracket)?;
-                    (PropertyKey::Computed(expr), None)
-                }
-                _ => return Err(self.err_here("expected property name in object binding pattern".into())),
-            };
-            let (value, shorthand) = if matches!(self.current_kind(), TokenKind::Punct(Punct::Colon)) {
-                self.bump()?;
-                let elem_start = self.lookahead_span().start;
-                let target = self.parse_binding_target()?;
-                let default = if matches!(self.current_kind(), TokenKind::Punct(Punct::Assign)) {
-                    self.bump()?;
-                    Some(self.parse_assignment_expression()?)
-                } else { None };
-                let elem_end = self.last_span_end();
-                (BindingElement { target, default, span: Span::new(elem_start, elem_end) }, false)
-            } else {
-                // Shorthand: key is an Identifier; target is the same name.
-                // §13.1.1.1 SS:1 BindingIdentifier cannot be a ReservedWord.
-                let id = shorthand_ident
-                    .ok_or_else(|| self.err_here("non-identifier key requires `: value`".into()))?;
-                if is_reserved_word(&id.name) {
-                    return Err(self.err_at(id.span, format!("`{}` is a reserved word and cannot be used as a binding identifier", id.name)));
-                }
-                let elem_start = id.span.start;
-                let target = BindingPattern::Identifier(id);
-                let default = if matches!(self.current_kind(), TokenKind::Punct(Punct::Assign)) {
-                    self.bump()?;
-                    Some(self.parse_assignment_expression()?)
-                } else { None };
-                let elem_end = self.last_span_end();
-                (BindingElement { target, default, span: Span::new(elem_start, elem_end) }, true)
-            };
+                    let elem_start = self.lookahead_span().start;
+                    let target = self.parse_binding_target()?;
+                    let default = if matches!(self.current_kind(), TokenKind::Punct(Punct::Assign))
+                    {
+                        self.bump()?;
+                        Some(self.parse_assignment_expression()?)
+                    } else {
+                        None
+                    };
+                    let elem_end = self.last_span_end();
+                    (
+                        BindingElement {
+                            target,
+                            default,
+                            span: Span::new(elem_start, elem_end),
+                        },
+                        false,
+                    )
+                } else {
+                    // Shorthand: key is an Identifier; target is the same name.
+                    // §13.1.1.1 SS:1 BindingIdentifier cannot be a ReservedWord.
+                    let id = shorthand_ident.ok_or_else(|| {
+                        self.err_here("non-identifier key requires `: value`".into())
+                    })?;
+                    if is_reserved_word(&id.name) {
+                        return Err(self.err_at(
+                            id.span,
+                            format!(
+                            "`{}` is a reserved word and cannot be used as a binding identifier",
+                            id.name
+                        ),
+                        ));
+                    }
+                    let elem_start = id.span.start;
+                    let target = BindingPattern::Identifier(id);
+                    let default = if matches!(self.current_kind(), TokenKind::Punct(Punct::Assign))
+                    {
+                        self.bump()?;
+                        Some(self.parse_assignment_expression()?)
+                    } else {
+                        None
+                    };
+                    let elem_end = self.last_span_end();
+                    (
+                        BindingElement {
+                            target,
+                            default,
+                            span: Span::new(elem_start, elem_end),
+                        },
+                        true,
+                    )
+                };
             let prop_end = self.last_span_end();
             properties.push(ObjectPatternProperty {
-                key, value, shorthand, span: Span::new(prop_start, prop_end),
+                key,
+                value,
+                shorthand,
+                span: Span::new(prop_start, prop_end),
             });
             if matches!(self.current_kind(), TokenKind::Punct(Punct::Comma)) {
                 self.bump()?;
@@ -964,12 +1156,19 @@ impl<'src> Parser<'src> {
         }
         self.expect_punct(Punct::RBrace)?;
         let end = self.last_span_end();
-        Ok(ObjectPattern { properties, rest, span: Span::new(open_start, end) })
+        Ok(ObjectPattern {
+            properties,
+            rest,
+            span: Span::new(open_start, end),
+        })
     }
 
     /// Parse the inside of `[ ... ]` as an ArrayPattern. The opening
     /// `[` is already consumed; this function consumes through `]`.
-    pub(crate) fn parse_array_binding_pattern_body(&mut self, open_start: usize) -> Result<rusty_js_ast::ArrayPattern, ParseError> {
+    pub(crate) fn parse_array_binding_pattern_body(
+        &mut self,
+        open_start: usize,
+    ) -> Result<rusty_js_ast::ArrayPattern, ParseError> {
         use rusty_js_ast::{ArrayPattern, BindingElement, BindingPattern};
         let mut elements: Vec<Option<BindingElement>> = Vec::new();
         let mut rest: Option<Box<BindingPattern>> = None;
@@ -995,10 +1194,14 @@ impl<'src> Parser<'src> {
             let default = if matches!(self.current_kind(), TokenKind::Punct(Punct::Assign)) {
                 self.bump()?;
                 Some(self.parse_assignment_expression()?)
-            } else { None };
+            } else {
+                None
+            };
             let elem_end = self.last_span_end();
             elements.push(Some(BindingElement {
-                target, default, span: Span::new(elem_start, elem_end),
+                target,
+                default,
+                span: Span::new(elem_start, elem_end),
             }));
             if matches!(self.current_kind(), TokenKind::Punct(Punct::Comma)) {
                 self.bump()?;
@@ -1008,13 +1211,19 @@ impl<'src> Parser<'src> {
         }
         self.expect_punct(Punct::RBracket)?;
         let end = self.last_span_end();
-        Ok(ArrayPattern { elements, rest, span: Span::new(open_start, end) })
+        Ok(ArrayPattern {
+            elements,
+            rest,
+            span: Span::new(open_start, end),
+        })
     }
 
     /// Parse one BindingPattern (Identifier | `{...}` | `[...]`) without
     /// consuming a trailing default initializer.
-    pub(crate) fn parse_binding_target(&mut self) -> Result<rusty_js_ast::BindingPattern, ParseError> {
-        use rusty_js_ast::{BindingPattern, BindingIdentifier};
+    pub(crate) fn parse_binding_target(
+        &mut self,
+    ) -> Result<rusty_js_ast::BindingPattern, ParseError> {
+        use rusty_js_ast::{BindingIdentifier, BindingPattern};
         match self.current_kind().clone() {
             TokenKind::Ident(n) => {
                 let span = self.lookahead_span();
@@ -1027,28 +1236,40 @@ impl<'src> Parser<'src> {
                     return Err(ParseError {
                         span,
                         message: format!(
-                            "Binding identifier '{}' is not allowed in strict mode", n),
+                            "Binding identifier '{}' is not allowed in strict mode",
+                            n
+                        ),
                     });
                 }
                 self.bump()?;
-                Ok(BindingPattern::Identifier(BindingIdentifier { name: n, span }))
+                Ok(BindingPattern::Identifier(BindingIdentifier {
+                    name: n,
+                    span,
+                }))
             }
             TokenKind::Punct(Punct::LBrace) => {
                 let open_start = self.lookahead_span().start;
                 self.bump()?;
-                Ok(BindingPattern::Object(self.parse_object_binding_pattern_body(open_start)?))
+                Ok(BindingPattern::Object(
+                    self.parse_object_binding_pattern_body(open_start)?,
+                ))
             }
             TokenKind::Punct(Punct::LBracket) => {
                 let open_start = self.lookahead_span().start;
                 self.bump()?;
-                Ok(BindingPattern::Array(self.parse_array_binding_pattern_body(open_start)?))
+                Ok(BindingPattern::Array(
+                    self.parse_array_binding_pattern_body(open_start)?,
+                ))
             }
             _ => Err(self.err_here("expected binding identifier or pattern".into())),
         }
     }
 
     pub(crate) fn err_here(&self, message: String) -> ParseError {
-        ParseError { span: self.lookahead.span, message }
+        ParseError {
+            span: self.lookahead.span,
+            message,
+        }
     }
 
     pub(crate) fn err_at(&self, span: Span, message: String) -> ParseError {
@@ -1063,7 +1284,8 @@ impl<'src> Parser<'src> {
 /// surface here with the same name string; the rejection is name-based, not
 /// token-shape based, so both forms are caught uniformly.
 pub(crate) fn is_reserved_word(name: &str) -> bool {
-    matches!(name,
+    matches!(
+        name,
         // Keywords (§11.6.2.1)
         "await" | "break" | "case" | "catch" | "class" | "const" | "continue"
         | "debugger" | "default" | "delete" | "do" | "else" | "enum" | "export"
@@ -1084,13 +1306,44 @@ pub(crate) fn is_reserved_word(name: &str) -> bool {
 /// sloppy non-generator non-module contexts; the unconditional set is
 /// what an arrow function parameter MUST never be, regardless of mode.
 pub(crate) fn is_unconditional_reserved_word(name: &str) -> bool {
-    matches!(name,
-        "break" | "case" | "catch" | "class" | "const" | "continue"
-        | "debugger" | "default" | "delete" | "do" | "else" | "enum" | "export"
-        | "extends" | "false" | "finally" | "for" | "function" | "if" | "import"
-        | "in" | "instanceof" | "new" | "null" | "return" | "super" | "switch"
-        | "this" | "throw" | "true" | "try" | "typeof" | "var" | "void" | "while"
-        | "with"
+    matches!(
+        name,
+        "break"
+            | "case"
+            | "catch"
+            | "class"
+            | "const"
+            | "continue"
+            | "debugger"
+            | "default"
+            | "delete"
+            | "do"
+            | "else"
+            | "enum"
+            | "export"
+            | "extends"
+            | "false"
+            | "finally"
+            | "for"
+            | "function"
+            | "if"
+            | "import"
+            | "in"
+            | "instanceof"
+            | "new"
+            | "null"
+            | "return"
+            | "super"
+            | "switch"
+            | "this"
+            | "throw"
+            | "true"
+            | "try"
+            | "typeof"
+            | "var"
+            | "void"
+            | "while"
+            | "with"
     )
 }
 
@@ -1099,24 +1352,61 @@ pub(crate) fn is_unconditional_reserved_word(name: &str) -> bool {
 /// DivPunctuator (not RegularExpressionLiteral)?
 fn token_completes_expression(t: &TokenKind) -> bool {
     match t {
-        TokenKind::Ident(s) => matches!(s.as_str(),
-            "this" | "super" | "null" | "true" | "false"
-        ) || !matches!(s.as_str(),
-            "return" | "throw" | "new" | "delete" | "typeof" | "void" | "await"
-            | "yield" | "if" | "else" | "for" | "while" | "do" | "switch"
-            | "case" | "default" | "break" | "continue" | "try" | "catch"
-            | "finally" | "class" | "function" | "var" | "let" | "const"
-            | "in" | "of" | "instanceof" | "import" | "export" | "extends"
-            | "static" | "async" | "from" | "as" | "with" | "debugger"
-            | "get" | "set"
-        ),
+        TokenKind::Ident(s) => {
+            matches!(s.as_str(), "this" | "super" | "null" | "true" | "false")
+                || !matches!(
+                    s.as_str(),
+                    "return"
+                        | "throw"
+                        | "new"
+                        | "delete"
+                        | "typeof"
+                        | "void"
+                        | "await"
+                        | "yield"
+                        | "if"
+                        | "else"
+                        | "for"
+                        | "while"
+                        | "do"
+                        | "switch"
+                        | "case"
+                        | "default"
+                        | "break"
+                        | "continue"
+                        | "try"
+                        | "catch"
+                        | "finally"
+                        | "class"
+                        | "function"
+                        | "var"
+                        | "let"
+                        | "const"
+                        | "in"
+                        | "of"
+                        | "instanceof"
+                        | "import"
+                        | "export"
+                        | "extends"
+                        | "static"
+                        | "async"
+                        | "from"
+                        | "as"
+                        | "with"
+                        | "debugger"
+                        | "get"
+                        | "set"
+                )
+        }
         TokenKind::Number(..) | TokenKind::String(..) | TokenKind::BigInt(..) => true,
-        TokenKind::Template { part, .. } => matches!(part, TemplatePart::NoSubstitution | TemplatePart::Tail),
+        TokenKind::Template { part, .. } => {
+            matches!(part, TemplatePart::NoSubstitution | TemplatePart::Tail)
+        }
         TokenKind::Regex { .. } => true,
         TokenKind::PrivateIdent(_) => true,
-        TokenKind::Punct(p) => matches!(p,
-            Punct::RParen | Punct::RBracket | Punct::RBrace
-            | Punct::Inc | Punct::Dec
+        TokenKind::Punct(p) => matches!(
+            p,
+            Punct::RParen | Punct::RBracket | Punct::RBrace | Punct::Inc | Punct::Dec
         ),
         _ => false,
     }

@@ -51,8 +51,17 @@ fn rewrite_bytecode(bc: &[u8]) -> Option<Vec<u8>> {
         // Eligibility check + rewrite.
         let new_opcode = match opcode {
             // Already typed — keep.
-            Op::AddI64 | Op::SubI64 | Op::MulI64 | Op::IncI64 | Op::DecI64
-            | Op::LtI64 | Op::LeI64 | Op::GtI64 | Op::GeI64 | Op::EqI64 | Op::NeI64 => opcode,
+            Op::AddI64
+            | Op::SubI64
+            | Op::MulI64
+            | Op::IncI64
+            | Op::DecI64
+            | Op::LtI64
+            | Op::LeI64
+            | Op::GtI64
+            | Op::GeI64
+            | Op::EqI64
+            | Op::NeI64 => opcode,
 
             // Plain → typed.
             Op::Add => Op::AddI64,
@@ -60,10 +69,10 @@ fn rewrite_bytecode(bc: &[u8]) -> Option<Vec<u8>> {
             Op::Mul => Op::MulI64,
             Op::Inc => Op::IncI64,
             Op::Dec => Op::DecI64,
-            Op::Lt  => Op::LtI64,
-            Op::Le  => Op::LeI64,
-            Op::Gt  => Op::GtI64,
-            Op::Ge  => Op::GeI64,
+            Op::Lt => Op::LtI64,
+            Op::Le => Op::LeI64,
+            Op::Gt => Op::GtI64,
+            Op::Ge => Op::GeI64,
             // Note: Eq/Ne in JS have ToPrimitive dispatch that's not
             // strictly equivalent to integer compare; we promote only
             // when the JIT supports the typed variant. The typed
@@ -75,11 +84,18 @@ fn rewrite_bytecode(bc: &[u8]) -> Option<Vec<u8>> {
 
             // Pass-through (typed-I64 doesn't apply or the op is
             // already type-neutral).
-            Op::LoadArg | Op::LoadLocal | Op::StoreLocal
-            | Op::PushI32 | Op::PushUndef
-            | Op::Pop | Op::Dup
-            | Op::Jump | Op::JumpIfTrue | Op::JumpIfFalse
-            | Op::Return | Op::ReturnUndef
+            Op::LoadArg
+            | Op::LoadLocal
+            | Op::StoreLocal
+            | Op::PushI32
+            | Op::PushUndef
+            | Op::Pop
+            | Op::Dup
+            | Op::Jump
+            | Op::JumpIfTrue
+            | Op::JumpIfFalse
+            | Op::Return
+            | Op::ReturnUndef
             | Op::Nop => opcode,
 
             // Any other op disqualifies the function for typed
@@ -104,10 +120,17 @@ mod tests {
 
     #[test]
     fn promotes_sum_to_typed_i64() {
-        let src = r#"function sum(n) { var s = 0; for (var i = 0; i < n; i++) s = s + i; return s; }"#;
+        let src =
+            r#"function sum(n) { var s = 0; for (var i = 0; i < n; i++) s = s + i; return s; }"#;
         let m = compile_module(src).expect("compile module");
-        let sum_proto = m.constants.entries().iter()
-            .find_map(|c| match c { Constant::Function(p) if p.display_name == "sum" => Some((**p).clone()), _ => None })
+        let sum_proto = m
+            .constants
+            .entries()
+            .iter()
+            .find_map(|c| match c {
+                Constant::Function(p) if p.display_name == "sum" => Some((**p).clone()),
+                _ => None,
+            })
             .expect("find sum proto");
         let promoted = promote_to_typed_i64(&sum_proto).expect("promote sum");
 
@@ -119,16 +142,37 @@ mod tests {
         while pc < promoted.bytecode.len() {
             let op = op_from_byte(promoted.bytecode[pc]).unwrap();
             match op {
-                Op::Add | Op::Sub | Op::Mul | Op::Inc | Op::Dec
-                | Op::Lt | Op::Le | Op::Gt | Op::Ge => plain_count += 1,
-                Op::AddI64 | Op::SubI64 | Op::MulI64 | Op::IncI64 | Op::DecI64
-                | Op::LtI64 | Op::LeI64 | Op::GtI64 | Op::GeI64 => typed_count += 1,
+                Op::Add
+                | Op::Sub
+                | Op::Mul
+                | Op::Inc
+                | Op::Dec
+                | Op::Lt
+                | Op::Le
+                | Op::Gt
+                | Op::Ge => plain_count += 1,
+                Op::AddI64
+                | Op::SubI64
+                | Op::MulI64
+                | Op::IncI64
+                | Op::DecI64
+                | Op::LtI64
+                | Op::LeI64
+                | Op::GtI64
+                | Op::GeI64 => typed_count += 1,
                 _ => {}
             }
             pc += 1 + op.operand_size();
         }
-        assert_eq!(plain_count, 0, "no plain arithmetic ops should remain after promotion");
-        assert!(typed_count >= 3, "expected at least Add+Lt+Inc to be promoted; got {}", typed_count);
+        assert_eq!(
+            plain_count, 0,
+            "no plain arithmetic ops should remain after promotion"
+        );
+        assert!(
+            typed_count >= 3,
+            "expected at least Add+Lt+Inc to be promoted; got {}",
+            typed_count
+        );
     }
 
     #[test]
@@ -136,20 +180,36 @@ mod tests {
         // A function with object property access can't be typed-promoted.
         let src = r#"function getx(o) { return o.x; }"#;
         let m = compile_module(src).expect("compile module");
-        let proto = m.constants.entries().iter()
-            .find_map(|c| match c { Constant::Function(p) if p.display_name == "getx" => Some((**p).clone()), _ => None })
+        let proto = m
+            .constants
+            .entries()
+            .iter()
+            .find_map(|c| match c {
+                Constant::Function(p) if p.display_name == "getx" => Some((**p).clone()),
+                _ => None,
+            })
             .expect("find getx proto");
         let result = promote_to_typed_i64(&proto);
-        assert!(result.is_none(), "function with GetProp should not be promotable");
+        assert!(
+            result.is_none(),
+            "function with GetProp should not be promotable"
+        );
     }
 
     #[ignore = "Φ-EXT 3: i64-specific behavior; revisit at Move 2 typed-i64 fast path"]
     #[test]
     fn promoted_sum_jit_compiles_and_runs() {
-        let src = r#"function sum(n) { var s = 0; for (var i = 0; i < n; i++) s = s + i; return s; }"#;
+        let src =
+            r#"function sum(n) { var s = 0; for (var i = 0; i < n; i++) s = s + i; return s; }"#;
         let m = compile_module(src).expect("compile module");
-        let sum_proto = m.constants.entries().iter()
-            .find_map(|c| match c { Constant::Function(p) if p.display_name == "sum" => Some((**p).clone()), _ => None })
+        let sum_proto = m
+            .constants
+            .entries()
+            .iter()
+            .find_map(|c| match c {
+                Constant::Function(p) if p.display_name == "sum" => Some((**p).clone()),
+                _ => None,
+            })
             .expect("find sum proto");
         let promoted = promote_to_typed_i64(&sum_proto).expect("promote sum");
         let jit = crate::compile_function(&promoted).expect("JIT compile promoted sum");

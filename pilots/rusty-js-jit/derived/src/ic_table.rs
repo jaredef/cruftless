@@ -11,9 +11,11 @@
 //! budget: extern fn (10-15) + extern_sig (3-5) + lower fn (15-25) +
 //! IcEntry literal (5-7).
 
-use cranelift_codegen::ir::condcodes::IntCC as _;  // for IR ops below
+use cranelift_codegen::ir::condcodes::IntCC as _; // for IR ops below
 use cranelift_codegen::ir::types::{F64, I64};
-use cranelift_codegen::ir::{AbiParam, FuncRef, InstBuilder, MemFlags, Signature, Value as ClValue};
+use cranelift_codegen::ir::{
+    AbiParam, FuncRef, InstBuilder, MemFlags, Signature, Value as ClValue,
+};
 use cranelift_frontend::FunctionBuilder;
 
 /// HI-EXT 2 (2026-05-23): one hot-intrinsic-IC table entry.
@@ -89,11 +91,17 @@ fn lower_ic_string_len(
 pub extern "C" fn ic_string_char_code_at(payload: i64, i: i64) -> f64 {
     let ptr = payload as *const String;
     let s: &String = unsafe { &*ptr };
-    if i < 0 { return f64::NAN; }
+    if i < 0 {
+        return f64::NAN;
+    }
     let i = i as usize;
     let bytes = s.as_bytes();
     if s.is_ascii() {
-        if i < bytes.len() { bytes[i] as f64 } else { f64::NAN }
+        if i < bytes.len() {
+            bytes[i] as f64
+        } else {
+            f64::NAN
+        }
     } else {
         match s.chars().nth(i) {
             Some(c) => c as u32 as f64,
@@ -113,9 +121,15 @@ fn lower_ic_string_char_code_at(
     stack: &mut Vec<ClValue>,
     extern_ref: FuncRef,
 ) -> Result<(), String> {
-    let arg_f64 = stack.pop().ok_or("ic_string_char_code_at: stack underflow (arg)")?;
-    let _sentinel = stack.pop().ok_or("ic_string_char_code_at: stack underflow (sentinel)")?;
-    let recv_f64 = stack.pop().ok_or("ic_string_char_code_at: stack underflow (receiver)")?;
+    let arg_f64 = stack
+        .pop()
+        .ok_or("ic_string_char_code_at: stack underflow (arg)")?;
+    let _sentinel = stack
+        .pop()
+        .ok_or("ic_string_char_code_at: stack underflow (sentinel)")?;
+    let recv_f64 = stack
+        .pop()
+        .ok_or("ic_string_char_code_at: stack underflow (receiver)")?;
     let recv_bits = builder.ins().bitcast(I64, MemFlags::new(), recv_f64);
     let payload_mask = builder.ins().iconst(I64, 0x0000_FFFF_FFFF_FFFF_u64 as i64);
     let payload = builder.ins().band(recv_bits, payload_mask);
@@ -136,11 +150,17 @@ fn lower_ic_string_char_code_at(
 pub extern "C" fn ic_string_code_point_at(payload: i64, i: i64) -> f64 {
     let ptr = payload as *const String;
     let s: &String = unsafe { &*ptr };
-    if i < 0 { return f64::NAN; }
+    if i < 0 {
+        return f64::NAN;
+    }
     let i = i as usize;
     let bytes = s.as_bytes();
     if s.is_ascii() {
-        if i < bytes.len() { bytes[i] as f64 } else { f64::NAN }
+        if i < bytes.len() {
+            bytes[i] as f64
+        } else {
+            f64::NAN
+        }
     } else {
         match s.chars().nth(i) {
             Some(c) => c as u32 as f64,
@@ -160,9 +180,15 @@ fn lower_ic_string_code_point_at(
     stack: &mut Vec<ClValue>,
     extern_ref: FuncRef,
 ) -> Result<(), String> {
-    let arg_f64 = stack.pop().ok_or("ic_string_code_point_at: stack underflow (arg)")?;
-    let _sentinel = stack.pop().ok_or("ic_string_code_point_at: stack underflow (sentinel)")?;
-    let recv_f64 = stack.pop().ok_or("ic_string_code_point_at: stack underflow (receiver)")?;
+    let arg_f64 = stack
+        .pop()
+        .ok_or("ic_string_code_point_at: stack underflow (arg)")?;
+    let _sentinel = stack
+        .pop()
+        .ok_or("ic_string_code_point_at: stack underflow (sentinel)")?;
+    let recv_f64 = stack
+        .pop()
+        .ok_or("ic_string_code_point_at: stack underflow (receiver)")?;
     let recv_bits = builder.ins().bitcast(I64, MemFlags::new(), recv_f64);
     let payload_mask = builder.ins().iconst(I64, 0x0000_FFFF_FFFF_FFFF_u64 as i64);
     let payload = builder.ins().band(recv_bits, payload_mask);
@@ -194,10 +220,19 @@ pub extern "C" fn ic_string_index_of(haystack: i64, needle: i64, from: i64) -> f
         // Fast-path: byte-search; char-index == byte-index.
         let s_bytes = s.as_bytes();
         let n_bytes = n.as_bytes();
-        if start_char > s_bytes.len() { return -1.0; }
-        if n_bytes.is_empty() { return start_char as f64; }
-        if start_char + n_bytes.len() > s_bytes.len() { return -1.0; }
-        match s_bytes[start_char..].windows(n_bytes.len()).position(|w| w == n_bytes) {
+        if start_char > s_bytes.len() {
+            return -1.0;
+        }
+        if n_bytes.is_empty() {
+            return start_char as f64;
+        }
+        if start_char + n_bytes.len() > s_bytes.len() {
+            return -1.0;
+        }
+        match s_bytes[start_char..]
+            .windows(n_bytes.len())
+            .position(|w| w == n_bytes)
+        {
             Some(p) => (start_char + p) as f64,
             None => -1.0,
         }
@@ -205,7 +240,11 @@ pub extern "C" fn ic_string_index_of(haystack: i64, needle: i64, from: i64) -> f
         // Non-ASCII: char-index clamp + str::find + byte→char re-index.
         let char_count = s.chars().count();
         let clamped = start_char.min(char_count);
-        let start_byte = s.char_indices().nth(clamped).map(|(b, _)| b).unwrap_or(s.len());
+        let start_byte = s
+            .char_indices()
+            .nth(clamped)
+            .map(|(b, _)| b)
+            .unwrap_or(s.len());
         match s[start_byte..].find(n.as_str()) {
             Some(rel_byte) => s[..start_byte + rel_byte].chars().count() as f64,
             None => -1.0,
@@ -214,9 +253,9 @@ pub extern "C" fn ic_string_index_of(haystack: i64, needle: i64, from: i64) -> f
 }
 
 fn ic_string_index_of_sig(sig: &mut Signature) {
-    sig.params.push(AbiParam::new(I64));  // haystack payload
-    sig.params.push(AbiParam::new(I64));  // needle payload
-    sig.params.push(AbiParam::new(I64));  // from index
+    sig.params.push(AbiParam::new(I64)); // haystack payload
+    sig.params.push(AbiParam::new(I64)); // needle payload
+    sig.params.push(AbiParam::new(I64)); // from index
     sig.returns.push(AbiParam::new(F64));
 }
 
@@ -226,17 +265,27 @@ fn lower_ic_string_index_of(
     extern_ref: FuncRef,
 ) -> Result<(), String> {
     // Arity 2: stack from bottom is [receiver, sentinel, needle, from].
-    let from_f64 = stack.pop().ok_or("ic_string_index_of: stack underflow (from)")?;
-    let needle_f64 = stack.pop().ok_or("ic_string_index_of: stack underflow (needle)")?;
-    let _sentinel = stack.pop().ok_or("ic_string_index_of: stack underflow (sentinel)")?;
-    let recv_f64 = stack.pop().ok_or("ic_string_index_of: stack underflow (receiver)")?;
+    let from_f64 = stack
+        .pop()
+        .ok_or("ic_string_index_of: stack underflow (from)")?;
+    let needle_f64 = stack
+        .pop()
+        .ok_or("ic_string_index_of: stack underflow (needle)")?;
+    let _sentinel = stack
+        .pop()
+        .ok_or("ic_string_index_of: stack underflow (sentinel)")?;
+    let recv_f64 = stack
+        .pop()
+        .ok_or("ic_string_index_of: stack underflow (receiver)")?;
     let recv_bits = builder.ins().bitcast(I64, MemFlags::new(), recv_f64);
     let needle_bits = builder.ins().bitcast(I64, MemFlags::new(), needle_f64);
     let payload_mask = builder.ins().iconst(I64, 0x0000_FFFF_FFFF_FFFF_u64 as i64);
     let recv_payload = builder.ins().band(recv_bits, payload_mask);
     let needle_payload = builder.ins().band(needle_bits, payload_mask);
     let from_i64 = builder.ins().fcvt_to_sint_sat(I64, from_f64);
-    let call_inst = builder.ins().call(extern_ref, &[recv_payload, needle_payload, from_i64]);
+    let call_inst = builder
+        .ins()
+        .call(extern_ref, &[recv_payload, needle_payload, from_i64]);
     let result = builder.inst_results(call_inst)[0];
     stack.push(result);
     Ok(())

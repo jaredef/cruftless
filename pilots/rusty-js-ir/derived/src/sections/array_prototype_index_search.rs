@@ -15,11 +15,13 @@ use crate::lint::SpecStepRecord;
 // ──────────────── §23.1.3.16 indexOf ────────────────
 
 pub fn build_index_of() -> IRFunction {
-    let body = vec![
-        Step { spec_step: "1".into(), node: IRNode::Return(Expr::CallBuiltin {
-            name: "array_proto_index_of_via", args: vec![Expr::AllArgs],
-        })},
-    ];
+    let body = vec![Step {
+        spec_step: "1".into(),
+        node: IRNode::Return(Expr::CallBuiltin {
+            name: "array_proto_index_of_via",
+            args: vec![Expr::AllArgs],
+        }),
+    }];
     IRFunction {
         spec_section: "23.1.3.16".into(),
         rust_name: "array_prototype_index_of".into(),
@@ -31,11 +33,13 @@ pub fn build_index_of() -> IRFunction {
 // ──────────────── §23.1.3.14 includes ────────────────
 
 pub fn build_includes() -> IRFunction {
-    let body = vec![
-        Step { spec_step: "1".into(), node: IRNode::Return(Expr::CallBuiltin {
-            name: "array_proto_includes_via", args: vec![Expr::AllArgs],
-        })},
-    ];
+    let body = vec![Step {
+        spec_step: "1".into(),
+        node: IRNode::Return(Expr::CallBuiltin {
+            name: "array_proto_includes_via",
+            args: vec![Expr::AllArgs],
+        }),
+    }];
     IRFunction {
         spec_section: "23.1.3.14".into(),
         rust_name: "array_prototype_includes".into(),

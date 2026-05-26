@@ -12,7 +12,11 @@ fn main() {
     let spec = array_prototype_map::spec_steps();
     let report = lint(&f, &spec);
     if report.ok() {
-        println!("§{} — OK (0 findings; {} steps verified)", f.spec_section, spec.len());
+        println!(
+            "§{} — OK (0 findings; {} steps verified)",
+            f.spec_section,
+            spec.len()
+        );
     } else {
         eprintln!("§{} — {} findings:", f.spec_section, report.findings.len());
         for finding in &report.findings {

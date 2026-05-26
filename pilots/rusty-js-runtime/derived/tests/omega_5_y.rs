@@ -7,12 +7,16 @@ fn run_rt(src: &str) -> Runtime {
         .unwrap_or_else(|e| panic!("compile {:?}: {:?}", src, e));
     let mut rt = Runtime::new();
     rt.install_intrinsics();
-    rt.run_module(&module).unwrap_or_else(|e| panic!("run {:?}: {:?}", src, e));
+    rt.run_module(&module)
+        .unwrap_or_else(|e| panic!("run {:?}: {:?}", src, e));
     rt
 }
 
 fn last(rt: &Runtime) -> Value {
-    rt.globals.get("__last_recorded").cloned().unwrap_or(Value::Undefined)
+    rt.globals
+        .get("__last_recorded")
+        .cloned()
+        .unwrap_or(Value::Undefined)
 }
 
 #[test]
@@ -29,7 +33,9 @@ fn computed_class_method_via_expression() {
 
 #[test]
 fn computed_class_static_method() {
-    let rt = run_rt("const k = \"compute\"; class C { static [k]() { return 100; } } __record(C.compute());");
+    let rt = run_rt(
+        "const k = \"compute\"; class C { static [k]() { return 100; } } __record(C.compute());",
+    );
     assert_eq!(last(&rt), Value::Number(100.0));
 }
 

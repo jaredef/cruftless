@@ -2,11 +2,12 @@
 // Compares the per-operation cost over 1000 iterations of a known
 // 256-bit-by-256-bit multiplication modulo p256_p.
 
-use rusty_web_crypto::{p256_to_mont, p256_from_mont, p256_mont_mul, BigUInt};
+use rusty_web_crypto::{p256_from_mont, p256_mont_mul, p256_to_mont, BigUInt};
 use std::time::Instant;
 
 fn hex_to_big(s: &str) -> BigUInt {
-    let bytes: Vec<u8> = (0..s.len()).step_by(2)
+    let bytes: Vec<u8> = (0..s.len())
+        .step_by(2)
         .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
         .collect();
     BigUInt::from_be_bytes(&bytes)
@@ -14,10 +15,9 @@ fn hex_to_big(s: &str) -> BigUInt {
 
 fn p256_p_local() -> BigUInt {
     BigUInt::from_be_bytes(&[
-        0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x01,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF,
-        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF,
     ])
 }
 
@@ -41,8 +41,12 @@ fn main() {
     }
     let modmul_t = t0.elapsed();
     let _ = acc;
-    println!("mod_mul       (a*b mod p, N={}): {:?}, per-op {:?}",
-        N, modmul_t, modmul_t / N as u32);
+    println!(
+        "mod_mul       (a*b mod p, N={}): {:?}, per-op {:?}",
+        N,
+        modmul_t,
+        modmul_t / N as u32
+    );
 
     // Bench Montgomery mul (already-in-Montgomery-form, doesn't count the
     // conversion — that's the steady-state scenario where everything lives
@@ -54,8 +58,12 @@ fn main() {
     }
     let mont_t = t0.elapsed();
     let _ = accm;
-    println!("mont_mul      (am*bm * R^-1, N={}): {:?}, per-op {:?}",
-        N, mont_t, mont_t / N as u32);
+    println!(
+        "mont_mul      (am*bm * R^-1, N={}): {:?}, per-op {:?}",
+        N,
+        mont_t,
+        mont_t / N as u32
+    );
 
     // Verify equivalence one final time.
     let canonical = a.mul(&b).modulo(&p);
@@ -68,7 +76,7 @@ fn main() {
 
     // WC-EXT 20: bench Solinas reduction for P-256.
     use rusty_web_crypto::p256_mod_mul_solinas;
-    let _ = p256_mod_mul_solinas(&a, &b);  // warm
+    let _ = p256_mod_mul_solinas(&a, &b); // warm
     let t0 = Instant::now();
     let mut acc = BigUInt::one();
     for _ in 0..N {
@@ -76,8 +84,12 @@ fn main() {
     }
     let solinas_t = t0.elapsed();
     let _ = acc;
-    println!("solinas       (P-256 std mod_mul, N={}): {:?}, per-op {:?}",
-        N, solinas_t, solinas_t / N as u32);
+    println!(
+        "solinas       (P-256 std mod_mul, N={}): {:?}, per-op {:?}",
+        N,
+        solinas_t,
+        solinas_t / N as u32
+    );
     let sol_vs_modmul = modmul_t.as_nanos() as f64 / solinas_t.as_nanos() as f64;
     let sol_vs_mont = mont_t.as_nanos() as f64 / solinas_t.as_nanos() as f64;
     println!("Solinas vs binary-divmod mod_mul: {:.2}x", sol_vs_modmul);
@@ -93,14 +105,18 @@ fn main() {
     }
     let solinas2_t = t0.elapsed();
     let _ = acc;
-    println!("solinas v2    (P-256 inline u32 carry, N={}): {:?}, per-op {:?}",
-        N, solinas2_t, solinas2_t / N as u32);
+    println!(
+        "solinas v2    (P-256 inline u32 carry, N={}): {:?}, per-op {:?}",
+        N,
+        solinas2_t,
+        solinas2_t / N as u32
+    );
     let s2_vs_mont = mont_t.as_nanos() as f64 / solinas2_t.as_nanos() as f64;
     println!("Solinas v2 vs Montgomery mont_mul: {:.2}x", s2_vs_mont);
 
     let canonical2 = a.mul(&b).modulo(&p);
     let via_sol2 = p256_mod_mul_solinas_v2(&a, &b);
-    let _ = via_sol2;  // v2 has known fuzz divergence; equivalence-on-this-input only
+    let _ = via_sol2; // v2 has known fuzz divergence; equivalence-on-this-input only
 
     // WC-EXT 24: bench v3 (BigUInt-based, fuzz-correct).
     use rusty_web_crypto::p256_mod_mul_solinas_v3;
@@ -112,19 +128,29 @@ fn main() {
     }
     let solinas3_t = t0.elapsed();
     let _ = acc;
-    println!("solinas v3    (BigUInt-add based, fuzz-correct, N={}): {:?}, per-op {:?}",
-        N, solinas3_t, solinas3_t / N as u32);
+    println!(
+        "solinas v3    (BigUInt-add based, fuzz-correct, N={}): {:?}, per-op {:?}",
+        N,
+        solinas3_t,
+        solinas3_t / N as u32
+    );
     let s3_vs_mont = mont_t.as_nanos() as f64 / solinas3_t.as_nanos() as f64;
     println!("Solinas v3 vs Montgomery mont_mul: {:.2}x", s3_vs_mont);
     let via_sol3 = p256_mod_mul_solinas_v3(&a, &b);
-    assert_eq!(canonical2.to_be_bytes(32), via_sol3.to_be_bytes(32),
-        "Solinas v3 reduction diverges from canonical mod_mul");
+    assert_eq!(
+        canonical2.to_be_bytes(32),
+        via_sol3.to_be_bytes(32),
+        "Solinas v3 reduction diverges from canonical mod_mul"
+    );
     println!("(sanity: Solinas v3 equivalence holds)");
 
     // Verify Solinas equivalence.
     let canonical = a.mul(&b).modulo(&p);
     let via_sol = p256_mod_mul_solinas(&a, &b);
-    assert_eq!(canonical.to_be_bytes(32), via_sol.to_be_bytes(32),
-        "Solinas reduction diverges from canonical mod_mul");
+    assert_eq!(
+        canonical.to_be_bytes(32),
+        via_sol.to_be_bytes(32),
+        "Solinas reduction diverges from canonical mod_mul"
+    );
     println!("(sanity: Solinas equivalence holds)");
 }

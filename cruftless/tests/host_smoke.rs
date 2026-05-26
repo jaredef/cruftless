@@ -25,7 +25,9 @@ fn engine_intrinsics_available() {
     let rt = run("__record(Math.sqrt(16));");
     if let Some(Value::Number(n)) = recorded(&rt) {
         assert_eq!(n, 4.0);
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 #[test]
@@ -37,7 +39,9 @@ fn json_roundtrip_works() {
     "#);
     if let Some(Value::Number(n)) = recorded(&rt) {
         assert_eq!(n, 42.0);
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 // ─────────── path intrinsic ───────────
@@ -47,7 +51,9 @@ fn path_basename() {
     let rt = run("__record(path.basename('/foo/bar/baz.js'));");
     if let Some(Value::String(s)) = recorded(&rt) {
         assert_eq!(s.as_str(), "baz.js");
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 #[test]
@@ -55,7 +61,9 @@ fn path_basename_with_ext() {
     let rt = run("__record(path.basename('/foo/bar/baz.js', '.js'));");
     if let Some(Value::String(s)) = recorded(&rt) {
         assert_eq!(s.as_str(), "baz");
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 #[test]
@@ -63,7 +71,9 @@ fn path_dirname() {
     let rt = run("__record(path.dirname('/foo/bar/baz.js'));");
     if let Some(Value::String(s)) = recorded(&rt) {
         assert_eq!(s.as_str(), "/foo/bar");
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 #[test]
@@ -71,7 +81,9 @@ fn path_extname() {
     let rt = run("__record(path.extname('/foo/bar/baz.tar.gz'));");
     if let Some(Value::String(s)) = recorded(&rt) {
         assert_eq!(s.as_str(), ".gz");
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 #[test]
@@ -79,7 +91,9 @@ fn path_join() {
     let rt = run("__record(path.join('foo', 'bar', 'baz'));");
     if let Some(Value::String(s)) = recorded(&rt) {
         assert_eq!(s.as_str(), "foo/bar/baz");
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 #[test]
@@ -87,7 +101,9 @@ fn path_normalize_dots() {
     let rt = run("__record(path.normalize('/foo/./bar/../baz'));");
     if let Some(Value::String(s)) = recorded(&rt) {
         assert_eq!(s.as_str(), "/foo/baz");
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 #[test]
@@ -103,7 +119,9 @@ fn path_sep_constant() {
     let rt = run("__record(path.sep);");
     if let Some(Value::String(s)) = recorded(&rt) {
         assert_eq!(s.as_str(), "/");
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 // ─────────── os intrinsic ───────────
@@ -112,8 +130,13 @@ fn path_sep_constant() {
 fn os_platform() {
     let rt = run("__record(os.platform());");
     if let Some(Value::String(s)) = recorded(&rt) {
-        assert!(matches!(s.as_str(), "linux" | "darwin" | "win32" | "unknown"));
-    } else { panic!(); }
+        assert!(matches!(
+            s.as_str(),
+            "linux" | "darwin" | "win32" | "unknown"
+        ));
+    } else {
+        panic!();
+    }
 }
 
 #[test]
@@ -121,7 +144,9 @@ fn os_arch() {
     let rt = run("__record(os.arch());");
     if let Some(Value::String(s)) = recorded(&rt) {
         assert!(matches!(s.as_str(), "x64" | "arm64" | "arm" | "unknown"));
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 #[test]
@@ -129,7 +154,9 @@ fn os_eol_constant() {
     let rt = run("__record(os.EOL);");
     if let Some(Value::String(s)) = recorded(&rt) {
         assert_eq!(s.as_str(), "\n");
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 // ─────────── process intrinsic ───────────
@@ -139,7 +166,9 @@ fn process_platform() {
     let rt = run("__record(process.platform);");
     if let Some(Value::String(s)) = recorded(&rt) {
         assert!(matches!(s.as_str(), "linux" | "darwin" | "unknown"));
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 #[test]
@@ -147,7 +176,9 @@ fn process_argv() {
     let rt = run("__record(process.argv[0]);");
     if let Some(Value::String(s)) = recorded(&rt) {
         assert_eq!(s.as_str(), "cruftless");
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 #[test]
@@ -157,7 +188,9 @@ fn process_env_present() {
     let rt = run("__record(typeof process.env);");
     if let Some(Value::String(s)) = recorded(&rt) {
         assert_eq!(s.as_str(), "object");
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 #[test]
@@ -165,7 +198,9 @@ fn process_cwd() {
     let rt = run("__record(typeof process.cwd());");
     if let Some(Value::String(s)) = recorded(&rt) {
         assert_eq!(s.as_str(), "string");
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 // ─────────── Composed: host + engine intrinsics together ───────────
@@ -181,5 +216,7 @@ fn composed_path_and_promise() {
     "#);
     if let Some(Value::String(s)) = recorded(&rt) {
         assert_eq!(s.as_str(), "bar.js");
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }

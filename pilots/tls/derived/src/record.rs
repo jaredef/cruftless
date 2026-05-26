@@ -15,7 +15,7 @@
 
 use std::convert::TryFrom;
 
-pub const MAX_PLAINTEXT_LEN: usize = 1 << 14;        // RFC 8446 §5.1
+pub const MAX_PLAINTEXT_LEN: usize = 1 << 14; // RFC 8446 §5.1
 pub const MAX_CIPHERTEXT_LEN: usize = (1 << 14) + 256; // RFC 8446 §5.2
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -89,7 +89,9 @@ pub enum TlsError {
 
 use rusty_x509::X509Error;
 impl From<X509Error> for TlsError {
-    fn from(e: X509Error) -> Self { TlsError::X509(e) }
+    fn from(e: X509Error) -> Self {
+        TlsError::X509(e)
+    }
 }
 
 impl std::fmt::Display for TlsError {
@@ -103,8 +105,9 @@ impl std::fmt::Display for TlsError {
             TlsError::NoIssuerFound => write!(f, "no issuer found for certificate"),
             TlsError::SignatureFail(s) => write!(f, "signature verification failed: {}", s),
             TlsError::ValidityExpired => write!(f, "certificate validity expired"),
-            TlsError::SelfSignedNotInTrust => write!(f,
-                "self-signed certificate not present in trust store"),
+            TlsError::SelfSignedNotInTrust => {
+                write!(f, "self-signed certificate not present in trust store")
+            }
             TlsError::StoreLoad(s) => write!(f, "trust store load failed: {}", s),
             TlsError::X509(e) => write!(f, "X.509: {}", e),
             TlsError::WouldBlock => write!(f, "transport would block"),
@@ -153,16 +156,27 @@ pub fn encode_record(record: &TlsRecord) -> Result<Vec<u8>, TlsError> {
 /// bytes_consumed). Caller is responsible for calling repeatedly to
 /// drain a stream containing multiple records.
 pub fn decode_record(buf: &[u8]) -> Result<(TlsRecord, usize), TlsError> {
-    if buf.len() < 5 { return Err(TlsError::UnexpectedEnd); }
+    if buf.len() < 5 {
+        return Err(TlsError::UnexpectedEnd);
+    }
     let content_type = ContentType::try_from(buf[0])?;
     let version = ProtocolVersion(((buf[1] as u16) << 8) | (buf[2] as u16));
     let length = (((buf[3] as u16) << 8) | (buf[4] as u16)) as usize;
     if length > MAX_CIPHERTEXT_LEN {
         return Err(TlsError::FragmentTooLong(length));
     }
-    if buf.len() < 5 + length { return Err(TlsError::UnexpectedEnd); }
+    if buf.len() < 5 + length {
+        return Err(TlsError::UnexpectedEnd);
+    }
     let fragment = buf[5..5 + length].to_vec();
-    Ok((TlsRecord { content_type, version, fragment }, 5 + length))
+    Ok((
+        TlsRecord {
+            content_type,
+            version,
+            fragment,
+        },
+        5 + length,
+    ))
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -175,7 +189,10 @@ pub fn decode_record(buf: &[u8]) -> Result<(TlsRecord, usize), TlsError> {
 // }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AlertLevel { Warning = 1, Fatal = 2 }
+pub enum AlertLevel {
+    Warning = 1,
+    Fatal = 2,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AlertDescription(pub u8);
@@ -215,7 +232,9 @@ pub fn encode_alert(level: AlertLevel, description: AlertDescription) -> Vec<u8>
 }
 
 pub fn decode_alert(buf: &[u8]) -> Result<(AlertLevel, AlertDescription), TlsError> {
-    if buf.len() != 2 { return Err(TlsError::InvalidAlert); }
+    if buf.len() != 2 {
+        return Err(TlsError::InvalidAlert);
+    }
     let level = match buf[0] {
         1 => AlertLevel::Warning,
         2 => AlertLevel::Fatal,

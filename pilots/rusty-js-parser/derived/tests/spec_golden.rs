@@ -3,14 +3,16 @@
 //! Each test names the spec clause it verifies. Coverage is per-clause:
 //! one positive and (where applicable) one negative.
 
-use rusty_js_parser::{Lexer, LexerGoal, NumberKind, Punct, TemplatePart, TokenKind, LexErrorKind};
+use rusty_js_parser::{LexErrorKind, Lexer, LexerGoal, NumberKind, Punct, TemplatePart, TokenKind};
 
 fn tokens(src: &str) -> Vec<TokenKind> {
     let mut lx = Lexer::new(src);
     let mut out = Vec::new();
     loop {
         let t = lx.next_token(LexerGoal::Div).expect("lex error");
-        if matches!(t.kind, TokenKind::Eof) { break; }
+        if matches!(t.kind, TokenKind::Eof) {
+            break;
+        }
         out.push(t.kind);
     }
     out
@@ -21,7 +23,9 @@ fn tokens_regex_goal(src: &str) -> Vec<TokenKind> {
     let mut out = Vec::new();
     loop {
         let t = lx.next_token(LexerGoal::RegExp).expect("lex error");
-        if matches!(t.kind, TokenKind::Eof) { break; }
+        if matches!(t.kind, TokenKind::Eof) {
+            break;
+        }
         out.push(t.kind);
     }
     out
@@ -53,12 +57,18 @@ fn cr_lf_single_line_terminator() {
 
 #[test]
 fn single_line_comment() {
-    assert_eq!(tokens("a // comment\nb"), vec![TokenKind::Ident("a".into()), TokenKind::Ident("b".into())]);
+    assert_eq!(
+        tokens("a // comment\nb"),
+        vec![TokenKind::Ident("a".into()), TokenKind::Ident("b".into())]
+    );
 }
 
 #[test]
 fn multi_line_comment() {
-    assert_eq!(tokens("a /* in\nside */ b"), vec![TokenKind::Ident("a".into()), TokenKind::Ident("b".into())]);
+    assert_eq!(
+        tokens("a /* in\nside */ b"),
+        vec![TokenKind::Ident("a".into()), TokenKind::Ident("b".into())]
+    );
 }
 
 #[test]
@@ -89,8 +99,14 @@ fn hashbang_only_at_start() {
 
 #[test]
 fn identifier_ascii() {
-    assert_eq!(tokens("foo $bar _baz"),
-        vec![TokenKind::Ident("foo".into()), TokenKind::Ident("$bar".into()), TokenKind::Ident("_baz".into())]);
+    assert_eq!(
+        tokens("foo $bar _baz"),
+        vec![
+            TokenKind::Ident("foo".into()),
+            TokenKind::Ident("$bar".into()),
+            TokenKind::Ident("_baz".into())
+        ]
+    );
 }
 
 #[test]
@@ -112,56 +128,88 @@ fn private_identifier() {
 
 #[test]
 fn decimal_integer() {
-    assert_eq!(tokens("42"), vec![TokenKind::Number(42.0, NumberKind::Decimal)]);
+    assert_eq!(
+        tokens("42"),
+        vec![TokenKind::Number(42.0, NumberKind::Decimal)]
+    );
 }
 
 #[test]
 fn decimal_fractional() {
-    assert_eq!(tokens("3.14"), vec![TokenKind::Number(3.14, NumberKind::Decimal)]);
+    assert_eq!(
+        tokens("3.14"),
+        vec![TokenKind::Number(3.14, NumberKind::Decimal)]
+    );
 }
 
 #[test]
 fn decimal_leading_dot() {
-    assert_eq!(tokens(".5"), vec![TokenKind::Number(0.5, NumberKind::Decimal)]);
+    assert_eq!(
+        tokens(".5"),
+        vec![TokenKind::Number(0.5, NumberKind::Decimal)]
+    );
 }
 
 #[test]
 fn decimal_exponent() {
     let t = tokens("1e3");
     assert_eq!(t.len(), 1);
-    if let TokenKind::Number(v, _) = &t[0] { assert!((v - 1000.0).abs() < 1e-9); }
-    else { panic!("expected number"); }
+    if let TokenKind::Number(v, _) = &t[0] {
+        assert!((v - 1000.0).abs() < 1e-9);
+    } else {
+        panic!("expected number");
+    }
 }
 
 #[test]
 fn hex_literal() {
-    assert_eq!(tokens("0xff"), vec![TokenKind::Number(255.0, NumberKind::Hex)]);
+    assert_eq!(
+        tokens("0xff"),
+        vec![TokenKind::Number(255.0, NumberKind::Hex)]
+    );
 }
 
 #[test]
 fn binary_literal() {
-    assert_eq!(tokens("0b1010"), vec![TokenKind::Number(10.0, NumberKind::Binary)]);
+    assert_eq!(
+        tokens("0b1010"),
+        vec![TokenKind::Number(10.0, NumberKind::Binary)]
+    );
 }
 
 #[test]
 fn octal_literal() {
-    assert_eq!(tokens("0o17"), vec![TokenKind::Number(15.0, NumberKind::Octal)]);
+    assert_eq!(
+        tokens("0o17"),
+        vec![TokenKind::Number(15.0, NumberKind::Octal)]
+    );
 }
 
 #[test]
 fn bigint_decimal() {
-    assert_eq!(tokens("9007199254740993n"),
-        vec![TokenKind::BigInt("9007199254740993".into(), NumberKind::Decimal)]);
+    assert_eq!(
+        tokens("9007199254740993n"),
+        vec![TokenKind::BigInt(
+            "9007199254740993".into(),
+            NumberKind::Decimal
+        )]
+    );
 }
 
 #[test]
 fn bigint_hex() {
-    assert_eq!(tokens("0xffn"), vec![TokenKind::BigInt("ff".into(), NumberKind::Hex)]);
+    assert_eq!(
+        tokens("0xffn"),
+        vec![TokenKind::BigInt("ff".into(), NumberKind::Hex)]
+    );
 }
 
 #[test]
 fn numeric_separator() {
-    assert_eq!(tokens("1_000_000"), vec![TokenKind::Number(1_000_000.0, NumberKind::Decimal)]);
+    assert_eq!(
+        tokens("1_000_000"),
+        vec![TokenKind::Number(1_000_000.0, NumberKind::Decimal)]
+    );
 }
 
 #[test]
@@ -192,7 +240,10 @@ fn string_single_quote() {
 
 #[test]
 fn string_escape_sequences() {
-    assert_eq!(tokens(r#""\n\t\"\\""#), vec![TokenKind::String("\n\t\"\\".into())]);
+    assert_eq!(
+        tokens(r#""\n\t\"\\""#),
+        vec![TokenKind::String("\n\t\"\\".into())]
+    );
 }
 
 #[test]
@@ -207,7 +258,10 @@ fn string_unicode_escape() {
 
 #[test]
 fn string_unicode_braced_escape() {
-    assert_eq!(tokens(r#""\u{1F600}""#), vec![TokenKind::String("😀".into())]);
+    assert_eq!(
+        tokens(r#""\u{1F600}""#),
+        vec![TokenKind::String("😀".into())]
+    );
 }
 
 #[test]
@@ -245,7 +299,9 @@ fn no_substitution_template() {
         assert_eq!(cooked.as_deref(), Some("hello"));
         assert_eq!(raw, "hello");
         assert_eq!(*part, TemplatePart::NoSubstitution);
-    } else { panic!("expected template"); }
+    } else {
+        panic!("expected template");
+    }
 }
 
 #[test]
@@ -255,9 +311,21 @@ fn template_head_and_tail() {
     let head = lx.next_token(LexerGoal::Div).unwrap();
     let x = lx.next_token(LexerGoal::Div).unwrap();
     let tail = lx.next_token(LexerGoal::TemplateTail).unwrap();
-    assert!(matches!(&head.kind, TokenKind::Template { part: TemplatePart::Head, .. }));
+    assert!(matches!(
+        &head.kind,
+        TokenKind::Template {
+            part: TemplatePart::Head,
+            ..
+        }
+    ));
     assert_eq!(x.kind, TokenKind::Ident("x".into()));
-    assert!(matches!(&tail.kind, TokenKind::Template { part: TemplatePart::Tail, .. }));
+    assert!(matches!(
+        &tail.kind,
+        TokenKind::Template {
+            part: TemplatePart::Tail,
+            ..
+        }
+    ));
 }
 
 // ─────────── Regex literal ───────────
@@ -269,7 +337,9 @@ fn regex_simple() {
     if let TokenKind::Regex { body, flags } = &t[0] {
         assert_eq!(body, "abc");
         assert_eq!(flags, "g");
-    } else { panic!("expected regex"); }
+    } else {
+        panic!("expected regex");
+    }
 }
 
 #[test]
@@ -278,7 +348,9 @@ fn regex_with_class() {
     assert_eq!(t.len(), 1);
     if let TokenKind::Regex { body, .. } = &t[0] {
         assert_eq!(body, "[abc/def]");
-    } else { panic!("expected regex"); }
+    } else {
+        panic!("expected regex");
+    }
 }
 
 #[test]
@@ -287,7 +359,9 @@ fn regex_escape() {
     assert_eq!(t.len(), 1);
     if let TokenKind::Regex { body, .. } = &t[0] {
         assert_eq!(body, r"\d+");
-    } else { panic!("expected regex"); }
+    } else {
+        panic!("expected regex");
+    }
 }
 
 #[test]
@@ -301,28 +375,42 @@ fn unterminated_regex_errors() {
 
 #[test]
 fn structural_punctuators() {
-    assert_eq!(tokens("(){}[],;:"), vec![
-        TokenKind::Punct(Punct::LParen), TokenKind::Punct(Punct::RParen),
-        TokenKind::Punct(Punct::LBrace), TokenKind::Punct(Punct::RBrace),
-        TokenKind::Punct(Punct::LBracket), TokenKind::Punct(Punct::RBracket),
-        TokenKind::Punct(Punct::Comma), TokenKind::Punct(Punct::Semicolon),
-        TokenKind::Punct(Punct::Colon),
-    ]);
+    assert_eq!(
+        tokens("(){}[],;:"),
+        vec![
+            TokenKind::Punct(Punct::LParen),
+            TokenKind::Punct(Punct::RParen),
+            TokenKind::Punct(Punct::LBrace),
+            TokenKind::Punct(Punct::RBrace),
+            TokenKind::Punct(Punct::LBracket),
+            TokenKind::Punct(Punct::RBracket),
+            TokenKind::Punct(Punct::Comma),
+            TokenKind::Punct(Punct::Semicolon),
+            TokenKind::Punct(Punct::Colon),
+        ]
+    );
 }
 
 #[test]
 fn arrow_and_optional_chain() {
-    assert_eq!(tokens("=> ?."), vec![
-        TokenKind::Punct(Punct::Arrow),
-        TokenKind::Punct(Punct::OptionalChain),
-    ]);
+    assert_eq!(
+        tokens("=> ?."),
+        vec![
+            TokenKind::Punct(Punct::Arrow),
+            TokenKind::Punct(Punct::OptionalChain),
+        ]
+    );
 }
 
 #[test]
 fn strict_equality() {
-    assert_eq!(tokens("=== !=="), vec![
-        TokenKind::Punct(Punct::StrictEq), TokenKind::Punct(Punct::StrictNe),
-    ]);
+    assert_eq!(
+        tokens("=== !=="),
+        vec![
+            TokenKind::Punct(Punct::StrictEq),
+            TokenKind::Punct(Punct::StrictNe),
+        ]
+    );
 }
 
 #[test]
@@ -332,11 +420,14 @@ fn unsigned_right_shift_assign() {
 
 #[test]
 fn logical_assignment() {
-    assert_eq!(tokens("&&= ||= ??="), vec![
-        TokenKind::Punct(Punct::LogicalAndAssign),
-        TokenKind::Punct(Punct::LogicalOrAssign),
-        TokenKind::Punct(Punct::NullishAssign),
-    ]);
+    assert_eq!(
+        tokens("&&= ||= ??="),
+        vec![
+            TokenKind::Punct(Punct::LogicalAndAssign),
+            TokenKind::Punct(Punct::LogicalOrAssign),
+            TokenKind::Punct(Punct::NullishAssign),
+        ]
+    );
 }
 
 #[test]
@@ -347,10 +438,13 @@ fn spread_punct() {
 #[test]
 fn optional_chain_vs_decimal() {
     // `?.5` is `?` then `.5` (per spec — no optional-chain when followed by digit)
-    assert_eq!(tokens("?.5"), vec![
-        TokenKind::Punct(Punct::Question),
-        TokenKind::Number(0.5, NumberKind::Decimal),
-    ]);
+    assert_eq!(
+        tokens("?.5"),
+        vec![
+            TokenKind::Punct(Punct::Question),
+            TokenKind::Number(0.5, NumberKind::Decimal),
+        ]
+    );
 }
 
 // ─────────── Composed ───────────
@@ -358,30 +452,36 @@ fn optional_chain_vs_decimal() {
 #[test]
 fn import_declaration_token_stream() {
     let t = tokens("import { x as 'm-search' } from 'pkg';");
-    assert_eq!(t, vec![
-        TokenKind::Ident("import".into()),
-        TokenKind::Punct(Punct::LBrace),
-        TokenKind::Ident("x".into()),
-        TokenKind::Ident("as".into()),
-        TokenKind::String("m-search".into()),
-        TokenKind::Punct(Punct::RBrace),
-        TokenKind::Ident("from".into()),
-        TokenKind::String("pkg".into()),
-        TokenKind::Punct(Punct::Semicolon),
-    ]);
+    assert_eq!(
+        t,
+        vec![
+            TokenKind::Ident("import".into()),
+            TokenKind::Punct(Punct::LBrace),
+            TokenKind::Ident("x".into()),
+            TokenKind::Ident("as".into()),
+            TokenKind::String("m-search".into()),
+            TokenKind::Punct(Punct::RBrace),
+            TokenKind::Ident("from".into()),
+            TokenKind::String("pkg".into()),
+            TokenKind::Punct(Punct::Semicolon),
+        ]
+    );
 }
 
 #[test]
 fn export_default_function() {
     let t = tokens("export default function fetch() {}");
-    assert_eq!(t, vec![
-        TokenKind::Ident("export".into()),
-        TokenKind::Ident("default".into()),
-        TokenKind::Ident("function".into()),
-        TokenKind::Ident("fetch".into()),
-        TokenKind::Punct(Punct::LParen),
-        TokenKind::Punct(Punct::RParen),
-        TokenKind::Punct(Punct::LBrace),
-        TokenKind::Punct(Punct::RBrace),
-    ]);
+    assert_eq!(
+        t,
+        vec![
+            TokenKind::Ident("export".into()),
+            TokenKind::Ident("default".into()),
+            TokenKind::Ident("function".into()),
+            TokenKind::Ident("fetch".into()),
+            TokenKind::Punct(Punct::LParen),
+            TokenKind::Punct(Punct::RParen),
+            TokenKind::Punct(Punct::LBrace),
+            TokenKind::Punct(Punct::RBrace),
+        ]
+    );
 }

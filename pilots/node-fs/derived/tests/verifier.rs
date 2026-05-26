@@ -212,8 +212,11 @@ fn spec_stat_sync_is_directory() {
 fn spec_stat_sync_mtime_modern_timestamp() {
     let p = make_fixture_file("stat-mtime", b"x");
     let stats = stat_sync(&p).unwrap();
-    assert!(stats.mtime_ms > 1_700_000_000_000,
-        "expected modern mtime in ms, got {}", stats.mtime_ms);
+    assert!(
+        stats.mtime_ms > 1_700_000_000_000,
+        "expected modern mtime in ms, got {}",
+        stats.mtime_ms
+    );
     cleanup(&p);
 }
 

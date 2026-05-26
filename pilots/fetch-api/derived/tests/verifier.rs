@@ -11,7 +11,9 @@ use rusty_fetch_api::*;
 
 // CD-H HEAD1: typeof Headers !== "undefined"
 #[test]
-fn cd_h_class_exists() { let _ = Headers::new(); }
+fn cd_h_class_exists() {
+    let _ = Headers::new();
+}
 
 // CD-H HEAD1: empty headers count is 0
 #[test]
@@ -49,7 +51,10 @@ fn spec_h_get_combines_repeated_with_comma_space() {
     let mut h = Headers::new();
     h.append("Accept", "text/html").unwrap();
     h.append("Accept", "application/json").unwrap();
-    assert_eq!(h.get("accept"), Some("text/html, application/json".to_string()));
+    assert_eq!(
+        h.get("accept"),
+        Some("text/html, application/json".to_string())
+    );
 }
 
 #[test]
@@ -126,10 +131,14 @@ fn spec_q_default_method_is_get() {
 
 #[test]
 fn spec_q_method_from_init() {
-    let r = Request::new("https://example.com", RequestInit {
-        method: Some("POST".into()),
-        ..Default::default()
-    }).unwrap();
+    let r = Request::new(
+        "https://example.com",
+        RequestInit {
+            method: Some("POST".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
     assert_eq!(r.method(), "POST");
 }
 
@@ -150,11 +159,15 @@ fn spec_q_default_mode_credentials_cache_redirect() {
 
 #[test]
 fn spec_q_text_body_consumed_once() {
-    let r = Request::new("https://example.com", RequestInit {
-        method: Some("POST".into()),
-        body: Some(Body::Text("payload".into())),
-        ..Default::default()
-    }).unwrap();
+    let r = Request::new(
+        "https://example.com",
+        RequestInit {
+            method: Some("POST".into()),
+            body: Some(Body::Text("payload".into())),
+            ..Default::default()
+        },
+    )
+    .unwrap();
     assert_eq!(r.text().unwrap(), "payload");
     assert!(r.body_used());
     let r2 = r.text();
@@ -163,10 +176,14 @@ fn spec_q_text_body_consumed_once() {
 
 #[test]
 fn spec_q_clone_throws_when_body_used() {
-    let r = Request::new("https://example.com", RequestInit {
-        body: Some(Body::Text("x".into())),
-        ..Default::default()
-    }).unwrap();
+    let r = Request::new(
+        "https://example.com",
+        RequestInit {
+            body: Some(Body::Text("x".into())),
+            ..Default::default()
+        },
+    )
+    .unwrap();
     let _ = r.text().unwrap();
     let r2 = r.clone_request();
     assert!(r2.is_err());
@@ -174,11 +191,15 @@ fn spec_q_clone_throws_when_body_used() {
 
 #[test]
 fn spec_q_clone_preserves_state_when_body_unused() {
-    let r = Request::new("https://example.com", RequestInit {
-        method: Some("POST".into()),
-        body: Some(Body::Text("x".into())),
-        ..Default::default()
-    }).unwrap();
+    let r = Request::new(
+        "https://example.com",
+        RequestInit {
+            method: Some("POST".into()),
+            body: Some(Body::Text("x".into())),
+            ..Default::default()
+        },
+    )
+    .unwrap();
     let r2 = r.clone_request().unwrap();
     assert_eq!(r2.method(), "POST");
     assert_eq!(r2.url(), "https://example.com");
@@ -209,17 +230,21 @@ fn cd_s_ok_for_200() {
 
 #[test]
 fn cd_s_ok_false_for_404() {
-    let r = Response::new(None, ResponseInit { status: Some(404), ..Default::default() }).unwrap();
+    let r = Response::new(
+        None,
+        ResponseInit {
+            status: Some(404),
+            ..Default::default()
+        },
+    )
+    .unwrap();
     assert!(!r.ok());
 }
 
 // CD-S: text() returns body as string
 #[test]
 fn cd_s_text_returns_body() {
-    let r = Response::new(
-        Some(Body::Text("hello world".into())),
-        Default::default(),
-    ).unwrap();
+    let r = Response::new(Some(Body::Text("hello world".into())), Default::default()).unwrap();
     assert_eq!(r.text().unwrap(), "hello world");
 }
 
@@ -230,8 +255,12 @@ fn cd_s_headers_accessible() {
     headers.set("Content-Type", "text/plain").unwrap();
     let r = Response::new(
         Some(Body::Text("x".into())),
-        ResponseInit { headers: Some(headers), ..Default::default() },
-    ).unwrap();
+        ResponseInit {
+            headers: Some(headers),
+            ..Default::default()
+        },
+    )
+    .unwrap();
     assert_eq!(
         r.headers().get("content-type"),
         Some("text/plain".to_string())
@@ -250,9 +279,21 @@ fn cd_s_json_sets_content_type() {
 
 #[test]
 fn spec_s_status_out_of_range_errors() {
-    let r = Response::new(None, ResponseInit { status: Some(99), ..Default::default() });
+    let r = Response::new(
+        None,
+        ResponseInit {
+            status: Some(99),
+            ..Default::default()
+        },
+    );
     assert!(matches!(r, Err(ResponseError::StatusOutOfRange(_))));
-    let r = Response::new(None, ResponseInit { status: Some(600), ..Default::default() });
+    let r = Response::new(
+        None,
+        ResponseInit {
+            status: Some(600),
+            ..Default::default()
+        },
+    );
     assert!(matches!(r, Err(ResponseError::StatusOutOfRange(_))));
 }
 
@@ -263,8 +304,11 @@ fn spec_s_redirect_only_valid_codes() {
     }
     for bad in [200, 304, 305, 306, 309, 400] {
         let r = Response::redirect("https://example.com", bad);
-        assert!(matches!(r, Err(ResponseError::InvalidRedirectStatus(_))),
-            "code {} should be invalid redirect", bad);
+        assert!(
+            matches!(r, Err(ResponseError::InvalidRedirectStatus(_))),
+            "code {} should be invalid redirect",
+            bad
+        );
     }
 }
 
@@ -302,7 +346,8 @@ fn spec_s_clone_preserves_status_and_body() {
             status_text: Some("Created".into()),
             ..Default::default()
         },
-    ).unwrap();
+    )
+    .unwrap();
     let r2 = r.clone_response().unwrap();
     assert_eq!(r2.status(), 201);
     assert_eq!(r2.status_text(), "Created");

@@ -8,10 +8,14 @@
 use bun_serve::*;
 
 fn req(method: &str, url: &str) -> Request {
-    Request::new(url, RequestInit {
-        method: Some(method.into()),
-        ..Default::default()
-    }).unwrap()
+    Request::new(
+        url,
+        RequestInit {
+            method: Some(method.into()),
+            ..Default::default()
+        },
+    )
+    .unwrap()
 }
 
 // ════════════════════ CONSTRUCTION ════════════════════
@@ -46,10 +50,7 @@ fn spec_serve_pending_requests_zero_initially() {
 fn cd_fetch_catchall_handler() {
     let mut s = serve(ServeOptions {
         fetch: Some(Box::new(|_req, _params| {
-            Response::new(
-                Some(Body::Text("hello".into())),
-                Default::default(),
-            ).unwrap()
+            Response::new(Some(Body::Text("hello".into())), Default::default()).unwrap()
         })),
         ..Default::default()
     });
@@ -79,10 +80,7 @@ fn spec_fetch_after_stop_returns_error() {
 fn cd_route_static_path_match() {
     let mut s = serve(ServeOptions {
         routes: vec![Route::any("/health", |_req, _params| {
-            Response::new(
-                Some(Body::Text("ok".into())),
-                Default::default(),
-            ).unwrap()
+            Response::new(Some(Body::Text("ok".into())), Default::default()).unwrap()
         })],
         ..Default::default()
     });
@@ -96,10 +94,7 @@ fn cd_route_param_capture() {
     let mut s = serve(ServeOptions {
         routes: vec![Route::any("/users/:id", |_req, params| {
             let id = params.get("id").unwrap_or("?");
-            Response::new(
-                Some(Body::Text(format!("user-{}", id))),
-                Default::default(),
-            ).unwrap()
+            Response::new(Some(Body::Text(format!("user-{}", id))), Default::default()).unwrap()
         })],
         ..Default::default()
     });
@@ -110,16 +105,20 @@ fn cd_route_param_capture() {
 #[test]
 fn cd_route_multi_param_capture() {
     let mut s = serve(ServeOptions {
-        routes: vec![Route::any("/posts/:postId/comments/:commentId", |_req, params| {
-            Response::new(
-                Some(Body::Text(format!(
-                    "{}-{}",
-                    params.get("postId").unwrap_or(""),
-                    params.get("commentId").unwrap_or(""),
-                ))),
-                Default::default(),
-            ).unwrap()
-        })],
+        routes: vec![Route::any(
+            "/posts/:postId/comments/:commentId",
+            |_req, params| {
+                Response::new(
+                    Some(Body::Text(format!(
+                        "{}-{}",
+                        params.get("postId").unwrap_or(""),
+                        params.get("commentId").unwrap_or(""),
+                    ))),
+                    Default::default(),
+                )
+                .unwrap()
+            },
+        )],
         ..Default::default()
     });
     let r = s.fetch(&req("GET", "http://localhost/posts/abc/comments/xyz"));
@@ -130,16 +129,10 @@ fn cd_route_multi_param_capture() {
 fn spec_route_no_match_falls_through_to_fetch() {
     let mut s = serve(ServeOptions {
         routes: vec![Route::any("/users/:id", |_req, _params| {
-            Response::new(
-                Some(Body::Text("user-handler".into())),
-                Default::default(),
-            ).unwrap()
+            Response::new(Some(Body::Text("user-handler".into())), Default::default()).unwrap()
         })],
         fetch: Some(Box::new(|_req, _params| {
-            Response::new(
-                Some(Body::Text("catchall".into())),
-                Default::default(),
-            ).unwrap()
+            Response::new(Some(Body::Text("catchall".into())), Default::default()).unwrap()
         })),
         ..Default::default()
     });
@@ -152,10 +145,7 @@ fn spec_route_segment_count_must_match() {
     // /users/:id should NOT match /users/42/extra
     let mut s = serve(ServeOptions {
         routes: vec![Route::any("/users/:id", |_req, _params| {
-            Response::new(
-                Some(Body::Text("matched".into())),
-                Default::default(),
-            ).unwrap()
+            Response::new(Some(Body::Text("matched".into())), Default::default()).unwrap()
         })],
         ..Default::default()
     });
@@ -167,16 +157,19 @@ fn spec_route_segment_count_must_match() {
 fn spec_route_trailing_slash_normalized() {
     let mut s = serve(ServeOptions {
         routes: vec![Route::any("/health", |_req, _params| {
-            Response::new(
-                Some(Body::Text("ok".into())),
-                Default::default(),
-            ).unwrap()
+            Response::new(Some(Body::Text("ok".into())), Default::default()).unwrap()
         })],
         ..Default::default()
     });
     // Both /health and /health/ should match
-    assert_eq!(s.fetch(&req("GET", "http://localhost/health")).status(), 200);
-    assert_eq!(s.fetch(&req("GET", "http://localhost/health/")).status(), 200);
+    assert_eq!(
+        s.fetch(&req("GET", "http://localhost/health")).status(),
+        200
+    );
+    assert_eq!(
+        s.fetch(&req("GET", "http://localhost/health/")).status(),
+        200
+    );
 }
 
 // ════════════════════ METHOD-KEYED ROUTES ════════════════════
@@ -184,22 +177,21 @@ fn spec_route_trailing_slash_normalized() {
 #[test]
 fn cd_method_keyed_get_only() {
     let mut s = serve(ServeOptions {
-        routes: vec![
-            Route::methods("/api/items")
-                .on("GET", |_req, _params| {
-                    Response::new(
-                        Some(Body::Text("list".into())),
-                        Default::default(),
-                    ).unwrap()
-                })
-                .on("POST", |_req, _params| {
-                    Response::new(
-                        Some(Body::Text("create".into())),
-                        ResponseInit { status: Some(201), ..Default::default() },
-                    ).unwrap()
-                })
-                .build(),
-        ],
+        routes: vec![Route::methods("/api/items")
+            .on("GET", |_req, _params| {
+                Response::new(Some(Body::Text("list".into())), Default::default()).unwrap()
+            })
+            .on("POST", |_req, _params| {
+                Response::new(
+                    Some(Body::Text("create".into())),
+                    ResponseInit {
+                        status: Some(201),
+                        ..Default::default()
+                    },
+                )
+                .unwrap()
+            })
+            .build()],
         ..Default::default()
     });
     let get = s.fetch(&req("GET", "http://localhost/api/items"));
@@ -212,16 +204,11 @@ fn cd_method_keyed_get_only() {
 #[test]
 fn spec_method_keyed_unknown_method_returns_405() {
     let mut s = serve(ServeOptions {
-        routes: vec![
-            Route::methods("/api/items")
-                .on("GET", |_req, _params| {
-                    Response::new(
-                        Some(Body::Text("list".into())),
-                        Default::default(),
-                    ).unwrap()
-                })
-                .build(),
-        ],
+        routes: vec![Route::methods("/api/items")
+            .on("GET", |_req, _params| {
+                Response::new(Some(Body::Text("list".into())), Default::default()).unwrap()
+            })
+            .build()],
         ..Default::default()
     });
     let delete = s.fetch(&req("DELETE", "http://localhost/api/items"));
@@ -234,15 +221,23 @@ fn spec_route_priority_first_match_wins() {
         routes: vec![
             Route::any("/a/:x", |_req, params| {
                 Response::new(
-                    Some(Body::Text(format!("first-{}", params.get("x").unwrap_or("")))),
+                    Some(Body::Text(format!(
+                        "first-{}",
+                        params.get("x").unwrap_or("")
+                    ))),
                     Default::default(),
-                ).unwrap()
+                )
+                .unwrap()
             }),
             Route::any("/a/:y", |_req, params| {
                 Response::new(
-                    Some(Body::Text(format!("second-{}", params.get("y").unwrap_or("")))),
+                    Some(Body::Text(format!(
+                        "second-{}",
+                        params.get("y").unwrap_or("")
+                    ))),
                     Default::default(),
-                ).unwrap()
+                )
+                .unwrap()
             }),
         ],
         ..Default::default()
@@ -259,8 +254,12 @@ fn spec_error_handler_invoked_when_no_fetch_and_no_route() {
         error: Some(Box::new(|_msg| {
             Response::new(
                 Some(Body::Text("custom-error".into())),
-                ResponseInit { status: Some(500), ..Default::default() },
-            ).unwrap()
+                ResponseInit {
+                    status: Some(500),
+                    ..Default::default()
+                },
+            )
+            .unwrap()
         })),
         ..Default::default()
     });
@@ -275,25 +274,25 @@ fn spec_error_handler_invoked_when_no_fetch_and_no_route() {
 fn spec_reload_swaps_handler() {
     let mut s = serve(ServeOptions {
         fetch: Some(Box::new(|_req, _params| {
-            Response::new(
-                Some(Body::Text("v1".into())),
-                Default::default(),
-            ).unwrap()
+            Response::new(Some(Body::Text("v1".into())), Default::default()).unwrap()
         })),
         ..Default::default()
     });
-    assert_eq!(s.fetch(&req("GET", "http://localhost/")).text().unwrap(), "v1");
+    assert_eq!(
+        s.fetch(&req("GET", "http://localhost/")).text().unwrap(),
+        "v1"
+    );
 
     s.reload(ServeOptions {
         fetch: Some(Box::new(|_req, _params| {
-            Response::new(
-                Some(Body::Text("v2".into())),
-                Default::default(),
-            ).unwrap()
+            Response::new(Some(Body::Text("v2".into())), Default::default()).unwrap()
         })),
         ..Default::default()
     });
-    assert_eq!(s.fetch(&req("GET", "http://localhost/")).text().unwrap(), "v2");
+    assert_eq!(
+        s.fetch(&req("GET", "http://localhost/")).text().unwrap(),
+        "v2"
+    );
 }
 
 #[test]
@@ -304,7 +303,7 @@ fn spec_reload_preserves_port_and_hostname() {
         ..Default::default()
     });
     s.reload(ServeOptions {
-        port: 1234,        // pilot ignores per spec
+        port: 1234, // pilot ignores per spec
         hostname: "x".into(),
         ..Default::default()
     });

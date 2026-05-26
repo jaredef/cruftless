@@ -61,10 +61,14 @@ fn spec_sha256_deterministic() {
 fn spec_sha256_avalanche() {
     // Tiny input change must cascade to many output bits.
     let a = digest_sha256(b"hello world");
-    let b = digest_sha256(b"hello worle");  // changed one byte
+    let b = digest_sha256(b"hello worle"); // changed one byte
     let differing_bytes = a.iter().zip(b.iter()).filter(|(x, y)| x != y).count();
     // Expect roughly half the bytes to differ
-    assert!(differing_bytes > 16, "avalanche too weak: {} bytes differ", differing_bytes);
+    assert!(
+        differing_bytes > 16,
+        "avalanche too weak: {} bytes differ",
+        differing_bytes
+    );
 }
 
 // ════════════════════ subtle.digest ════════════════════
@@ -73,7 +77,10 @@ fn spec_sha256_avalanche() {
 fn cd_subtle_digest_sha256_basic() {
     let r = subtle::digest("SHA-256", b"abc").unwrap();
     let hex: String = r.iter().map(|b| format!("{:02x}", b)).collect();
-    assert_eq!(hex, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+    assert_eq!(
+        hex,
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    );
 }
 
 #[test]
@@ -120,8 +127,11 @@ fn spec_uuid_v4_variant_field() {
     let u = random_uuid_v4();
     let parts: Vec<&str> = u.split('-').collect();
     let v = parts[3].chars().next().unwrap();
-    assert!(matches!(v, '8' | '9' | 'a' | 'b'),
-        "variant should be 8/9/a/b, got {}", v);
+    assert!(
+        matches!(v, '8' | '9' | 'a' | 'b'),
+        "variant should be 8/9/a/b, got {}",
+        v
+    );
 }
 
 #[test]
@@ -198,8 +208,13 @@ fn hmac_sha256_short_key() {
     let data = b"Hi There";
     let out = rusty_web_crypto::hmac_sha256(&key, data);
     let mut hex = String::new();
-    for b in &out { hex.push_str(&format!("{:02x}", b)); }
-    assert_eq!(hex, "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7");
+    for b in &out {
+        hex.push_str(&format!("{:02x}", b));
+    }
+    assert_eq!(
+        hex,
+        "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7"
+    );
 }
 
 #[test]
@@ -212,8 +227,13 @@ fn hmac_sha256_oversize_key_gets_hashed() {
     let data = vec![0xcdu8; 50];
     let out = rusty_web_crypto::hmac_sha256(&key, &data);
     let mut hex = String::new();
-    for b in &out { hex.push_str(&format!("{:02x}", b)); }
-    assert_eq!(hex, "82558a389a443c0ea4cc819899f2083a85f0faa3e578f8077a2e3ff46729665b");
+    for b in &out {
+        hex.push_str(&format!("{:02x}", b));
+    }
+    assert_eq!(
+        hex,
+        "82558a389a443c0ea4cc819899f2083a85f0faa3e578f8077a2e3ff46729665b"
+    );
 }
 
 #[test]
@@ -233,7 +253,7 @@ fn hmac_sha256_long_key_truncated_via_hash() {
 fn hmac_sha256_differs_for_one_bit_message_change() {
     let key = b"shared-secret-key";
     let a = rusty_web_crypto::hmac_sha256(key, b"hello");
-    let b = rusty_web_crypto::hmac_sha256(key, b"hellp");  // one bit different
+    let b = rusty_web_crypto::hmac_sha256(key, b"hellp"); // one bit different
     assert_ne!(a, b);
 }
 
@@ -255,9 +275,7 @@ fn sha1_abc() {
 
 #[test]
 fn sha1_quick_brown_fox() {
-    let out = rusty_web_crypto::digest_sha1_hex(
-        b"The quick brown fox jumps over the lazy dog"
-    );
+    let out = rusty_web_crypto::digest_sha1_hex(b"The quick brown fox jumps over the lazy dog");
     assert_eq!(out, "2fd4e1c67a2d28fced849ee1bb76e7391b93eb12");
 }
 
@@ -281,7 +299,9 @@ fn hmac_sha1_rfc2202_test1() {
     let data = b"Hi There";
     let out = rusty_web_crypto::hmac_sha1(&key, data);
     let mut hex = String::new();
-    for b in &out { hex.push_str(&format!("{:02x}", b)); }
+    for b in &out {
+        hex.push_str(&format!("{:02x}", b));
+    }
     assert_eq!(hex, "b617318655057264e28bc0b6fb378c8ef146be00");
 }
 
@@ -293,7 +313,9 @@ fn hmac_sha1_rfc2202_test2() {
     //   HMAC = effcdf6ae5eb2fa2d27416d5f184df9c259a7c79
     let out = rusty_web_crypto::hmac_sha1(b"Jefe", b"what do ya want for nothing?");
     let mut hex = String::new();
-    for b in &out { hex.push_str(&format!("{:02x}", b)); }
+    for b in &out {
+        hex.push_str(&format!("{:02x}", b));
+    }
     assert_eq!(hex, "effcdf6ae5eb2fa2d27416d5f184df9c259a7c79");
 }
 
@@ -342,7 +364,9 @@ fn hmac_sha512_rfc4231_test1() {
     let data = b"Hi There";
     let out = rusty_web_crypto::hmac_sha512(&key, data);
     let mut hex = String::new();
-    for b in &out { hex.push_str(&format!("{:02x}", b)); }
+    for b in &out {
+        hex.push_str(&format!("{:02x}", b));
+    }
     assert_eq!(hex, "87aa7cdea5ef619d4ff0b4241a1d6cb02379f4e2ce4ec2787ad0b30545e17cdedaa833b7d6b8a702038b274eaea3f4e4be9d914eeb61f1702e696c203a126854");
 }
 
@@ -357,7 +381,9 @@ fn hmac_sha384_rfc4231_test1() {
     let data = b"Hi There";
     let out = rusty_web_crypto::hmac_sha384(&key, data);
     let mut hex = String::new();
-    for b in &out { hex.push_str(&format!("{:02x}", b)); }
+    for b in &out {
+        hex.push_str(&format!("{:02x}", b));
+    }
     assert_eq!(hex, "afd03944d84895626b0825f4ab46907f15f9dadbe4101ec682aa034c7cebc59cfaea9ea9076ede7f4af152e8b2fa9cb6");
 }
 
@@ -370,7 +396,9 @@ fn hmac_sha512_rfc4231_test2() {
     //          9758bf75c05a994a6d034f65f8f0e6fdcaeab1a34d4a6b4b636e070a38bce737
     let out = rusty_web_crypto::hmac_sha512(b"Jefe", b"what do ya want for nothing?");
     let mut hex = String::new();
-    for b in &out { hex.push_str(&format!("{:02x}", b)); }
+    for b in &out {
+        hex.push_str(&format!("{:02x}", b));
+    }
     assert_eq!(hex, "164b7a7bfcf819e2e395fbe73b56e0a387bd64222e831fd610270cd7ea2505549758bf75c05a994a6d034f65f8f0e6fdcaeab1a34d4a6b4b636e070a38bce737");
 }
 
@@ -382,7 +410,9 @@ fn pbkdf2_hmac_sha1_rfc6070_test1() {
     // DK = 0c 60 c8 0f 96 1f 0e 71 f3 a9 b5 24 af 60 12 06 2f e0 37 a6
     let out = rusty_web_crypto::pbkdf2_hmac_sha1(b"password", b"salt", 1, 20);
     let mut hex = String::new();
-    for b in &out { hex.push_str(&format!("{:02x}", b)); }
+    for b in &out {
+        hex.push_str(&format!("{:02x}", b));
+    }
     assert_eq!(hex, "0c60c80f961f0e71f3a9b524af6012062fe037a6");
 }
 
@@ -392,7 +422,9 @@ fn pbkdf2_hmac_sha1_rfc6070_test2() {
     // DK = ea 6c 01 4d c7 2d 6f 8c cd 1e d9 2a ce 1d 41 f0 d8 de 89 57
     let out = rusty_web_crypto::pbkdf2_hmac_sha1(b"password", b"salt", 2, 20);
     let mut hex = String::new();
-    for b in &out { hex.push_str(&format!("{:02x}", b)); }
+    for b in &out {
+        hex.push_str(&format!("{:02x}", b));
+    }
     assert_eq!(hex, "ea6c014dc72d6f8ccd1ed92ace1d41f0d8de8957");
 }
 
@@ -402,7 +434,9 @@ fn pbkdf2_hmac_sha1_rfc6070_test3() {
     // DK = 4b 00 79 01 b7 65 48 9a be ad 49 d9 26 f7 21 d0 65 a4 29 c1
     let out = rusty_web_crypto::pbkdf2_hmac_sha1(b"password", b"salt", 4096, 20);
     let mut hex = String::new();
-    for b in &out { hex.push_str(&format!("{:02x}", b)); }
+    for b in &out {
+        hex.push_str(&format!("{:02x}", b));
+    }
     assert_eq!(hex, "4b007901b765489abead49d926f721d065a429c1");
 }
 
@@ -416,7 +450,9 @@ fn pbkdf2_hmac_sha256_rfc7914_test_vector() {
     //      7c 71 b8 45 b1 e3 0b d5 09 11 20 41 d3 a1 97 83
     let out = rusty_web_crypto::pbkdf2_hmac_sha256(b"passwd", b"salt", 1, 64);
     let mut hex = String::new();
-    for b in &out { hex.push_str(&format!("{:02x}", b)); }
+    for b in &out {
+        hex.push_str(&format!("{:02x}", b));
+    }
     assert_eq!(hex, "55ac046e56e3089fec1691c22544b605f94185216dde0465e68b9d57c20dacbc49ca9cccf179b645991664b39d77ef317c71b845b1e30bd509112041d3a19783");
 }
 
@@ -439,13 +475,16 @@ fn pbkdf2_dk_len_spans_multiple_blocks() {
 
 fn hex_decode(s: &str) -> Vec<u8> {
     let s: String = s.chars().filter(|c| !c.is_whitespace()).collect();
-    (0..s.len()).step_by(2)
-        .map(|i| u8::from_str_radix(&s[i..i+2], 16).unwrap())
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
         .collect()
 }
 fn hex_encode(b: &[u8]) -> String {
     let mut s = String::with_capacity(b.len() * 2);
-    for byte in b { s.push_str(&format!("{:02x}", byte)); }
+    for byte in b {
+        s.push_str(&format!("{:02x}", byte));
+    }
     s
 }
 
@@ -453,7 +492,9 @@ fn hex_encode(b: &[u8]) -> String {
 fn aes128_fips_197_appendix_c1() {
     // FIPS 197 §C.1: AES-128 with key 000102...0f, input 00112233...ff.
     let key = hex_decode("000102030405060708090a0b0c0d0e0f");
-    let pt: [u8; 16] = hex_decode("00112233445566778899aabbccddeeff").try_into().unwrap();
+    let pt: [u8; 16] = hex_decode("00112233445566778899aabbccddeeff")
+        .try_into()
+        .unwrap();
     let ct = rusty_web_crypto::aes_encrypt_block_with_key(&key, &pt);
     assert_eq!(hex_encode(&ct), "69c4e0d86a7b0430d8cdb78070b4c55a");
 }
@@ -462,7 +503,9 @@ fn aes128_fips_197_appendix_c1() {
 fn aes256_fips_197_appendix_c3() {
     // FIPS 197 §C.3: AES-256.
     let key = hex_decode("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
-    let pt: [u8; 16] = hex_decode("00112233445566778899aabbccddeeff").try_into().unwrap();
+    let pt: [u8; 16] = hex_decode("00112233445566778899aabbccddeeff")
+        .try_into()
+        .unwrap();
     let ct = rusty_web_crypto::aes_encrypt_block_with_key(&key, &pt);
     assert_eq!(hex_encode(&ct), "8ea2b7ca516745bfeafc49904b496089");
 }
@@ -471,18 +514,20 @@ fn aes256_fips_197_appendix_c3() {
 fn aes_gcm_sp800_38d_test_case_2() {
     // SP 800-38D Appendix B Test Case 2: K=zero, IV=zero, P=16 zero bytes, A=empty.
     let key = hex_decode("00000000000000000000000000000000");
-    let iv  = hex_decode("000000000000000000000000");
-    let pt  = hex_decode("00000000000000000000000000000000");
+    let iv = hex_decode("000000000000000000000000");
+    let pt = hex_decode("00000000000000000000000000000000");
     let out = rusty_web_crypto::aes_gcm_encrypt(&key, &iv, &[], &pt).unwrap();
-    assert_eq!(hex_encode(&out),
-        "0388dace60b6a392f328c2b971b2fe78ab6e47d42cec13bdf53a67b21257bddf");
+    assert_eq!(
+        hex_encode(&out),
+        "0388dace60b6a392f328c2b971b2fe78ab6e47d42cec13bdf53a67b21257bddf"
+    );
 }
 
 #[test]
 fn aes_gcm_sp800_38d_test_case_3() {
     // SP 800-38D Appendix B Test Case 3.
     let key = hex_decode("feffe9928665731c6d6a8f9467308308");
-    let iv  = hex_decode("cafebabefacedbaddecaf888");
+    let iv = hex_decode("cafebabefacedbaddecaf888");
     let pt  = hex_decode("d9313225f88406e5a55909c5aff5269a86a7a9531534f7da2e4c303d8a318a721c3c0c95956809532fcf0e2449a6b525b16aedf5aa0de657ba637b391aafd255");
     let out = rusty_web_crypto::aes_gcm_encrypt(&key, &iv, &[], &pt).unwrap();
     let expect_ct = "42831ec2217774244b7221b784d0d49ce3aa212f2c02a4e035c17e2329aca12e21d514b25466931c7d8f6a5aac84aa051ba30b396a0aac973d58e091473f5985";
@@ -494,7 +539,7 @@ fn aes_gcm_sp800_38d_test_case_3() {
 fn aes_gcm_sp800_38d_test_case_4() {
     // SP 800-38D Appendix B Test Case 4 — with AAD + truncated plaintext.
     let key = hex_decode("feffe9928665731c6d6a8f9467308308");
-    let iv  = hex_decode("cafebabefacedbaddecaf888");
+    let iv = hex_decode("cafebabefacedbaddecaf888");
     let pt  = hex_decode("d9313225f88406e5a55909c5aff5269a86a7a9531534f7da2e4c303d8a318a721c3c0c95956809532fcf0e2449a6b525b16aedf5aa0de657ba637b39");
     let aad = hex_decode("feedfacedeadbeeffeedfacedeadbeefabaddad2");
     let out = rusty_web_crypto::aes_gcm_encrypt(&key, &iv, &aad, &pt).unwrap();
@@ -506,8 +551,8 @@ fn aes_gcm_sp800_38d_test_case_4() {
 #[test]
 fn aes_gcm_roundtrip() {
     let key = hex_decode("feffe9928665731c6d6a8f9467308308");
-    let iv  = hex_decode("cafebabefacedbaddecaf888");
-    let pt  = b"hello world, this is a roundtrip test of arbitrary length";
+    let iv = hex_decode("cafebabefacedbaddecaf888");
+    let pt = b"hello world, this is a roundtrip test of arbitrary length";
     let aad = b"associated-data";
     let ct = rusty_web_crypto::aes_gcm_encrypt(&key, &iv, aad, pt).unwrap();
     let dec = rusty_web_crypto::aes_gcm_decrypt(&key, &iv, aad, &ct).unwrap();
@@ -517,8 +562,8 @@ fn aes_gcm_roundtrip() {
 #[test]
 fn aes_gcm_tag_mismatch_rejected() {
     let key = hex_decode("feffe9928665731c6d6a8f9467308308");
-    let iv  = hex_decode("cafebabefacedbaddecaf888");
-    let pt  = b"some plaintext";
+    let iv = hex_decode("cafebabefacedbaddecaf888");
+    let pt = b"some plaintext";
     let mut ct = rusty_web_crypto::aes_gcm_encrypt(&key, &iv, &[], pt).unwrap();
     let n = ct.len();
     ct[n - 1] ^= 0x01;
@@ -528,8 +573,8 @@ fn aes_gcm_tag_mismatch_rejected() {
 #[test]
 fn aes_gcm_aad_tampered_rejected() {
     let key = hex_decode("feffe9928665731c6d6a8f9467308308");
-    let iv  = hex_decode("cafebabefacedbaddecaf888");
-    let pt  = b"some plaintext";
+    let iv = hex_decode("cafebabefacedbaddecaf888");
+    let pt = b"some plaintext";
     let aad = b"original-aad";
     let ct = rusty_web_crypto::aes_gcm_encrypt(&key, &iv, aad, pt).unwrap();
     assert!(rusty_web_crypto::aes_gcm_decrypt(&key, &iv, b"tampered-aad", &ct).is_err());
@@ -538,8 +583,8 @@ fn aes_gcm_aad_tampered_rejected() {
 #[test]
 fn aes256_gcm_roundtrip() {
     let key = hex_decode("0000000000000000000000000000000000000000000000000000000000000000");
-    let iv  = hex_decode("000000000000000000000000");
-    let pt  = b"AES-256-GCM smoke test payload of arbitrary length";
+    let iv = hex_decode("000000000000000000000000");
+    let pt = b"AES-256-GCM smoke test payload of arbitrary length";
     let aad = b"some-aad";
     let ct = rusty_web_crypto::aes_gcm_encrypt(&key, &iv, aad, pt).unwrap();
     let dec = rusty_web_crypto::aes_gcm_decrypt(&key, &iv, aad, &ct).unwrap();
@@ -555,8 +600,10 @@ fn hkdf_sha256_rfc5869_test1() {
     let salt = hex_decode("000102030405060708090a0b0c");
     let info = hex_decode("f0f1f2f3f4f5f6f7f8f9");
     let okm = rusty_web_crypto::hkdf_sha256(&ikm, &salt, &info, 42).unwrap();
-    assert_eq!(hex_encode(&okm),
-        "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865");
+    assert_eq!(
+        hex_encode(&okm),
+        "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865"
+    );
 }
 
 #[test]
@@ -565,20 +612,27 @@ fn hkdf_sha256_rfc5869_test2() {
     let ikm = hex_decode(
         "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f\
          202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f\
-         404142434445464748494a4b4c4d4e4f");
+         404142434445464748494a4b4c4d4e4f",
+    );
     let salt = hex_decode(
         "606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f\
          808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f\
-         a0a1a2a3a4a5a6a7a8a9aaabacadaeaf");
+         a0a1a2a3a4a5a6a7a8a9aaabacadaeaf",
+    );
     let info = hex_decode(
         "b0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecf\
          d0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeef\
-         f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff");
+         f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff",
+    );
     let okm = rusty_web_crypto::hkdf_sha256(&ikm, &salt, &info, 82).unwrap();
-    assert_eq!(hex_encode(&okm),
+    assert_eq!(
+        hex_encode(&okm),
         "b11e398dc80327a1c8e7f78c596a49344f012eda2d4efad8a050cc4c19afa97c\
          59045a99cac7827271cb41c65e590e09da3275600c2f09b8367793a9aca3db71\
-         cc30c58179ec3e87c14c01d5c1f3434f1d87".replace("\n", "").replace(" ", ""));
+         cc30c58179ec3e87c14c01d5c1f3434f1d87"
+            .replace("\n", "")
+            .replace(" ", "")
+    );
 }
 
 #[test]
@@ -586,8 +640,10 @@ fn hkdf_sha256_rfc5869_test3_empty_salt_and_info() {
     // RFC 5869 A.3: SHA-256 with zero-length salt + info.
     let ikm = hex_decode("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b");
     let okm = rusty_web_crypto::hkdf_sha256(&ikm, &[], &[], 42).unwrap();
-    assert_eq!(hex_encode(&okm),
-        "8da4e775a563c18f715f802a063c5a31b8a11f5c5ee1879ec3454e5f3c738d2d9d201395faa4b61a96c8");
+    assert_eq!(
+        hex_encode(&okm),
+        "8da4e775a563c18f715f802a063c5a31b8a11f5c5ee1879ec3454e5f3c738d2d9d201395faa4b61a96c8"
+    );
 }
 
 #[test]
@@ -597,8 +653,10 @@ fn hkdf_sha1_rfc5869_test4() {
     let salt = hex_decode("000102030405060708090a0b0c");
     let info = hex_decode("f0f1f2f3f4f5f6f7f8f9");
     let okm = rusty_web_crypto::hkdf_sha1(&ikm, &salt, &info, 42).unwrap();
-    assert_eq!(hex_encode(&okm),
-        "085a01ea1b10f36933068b56efa5ad81a4f14b822f5b091568a9cdd4f155fda2c22e422478d305f3f896");
+    assert_eq!(
+        hex_encode(&okm),
+        "085a01ea1b10f36933068b56efa5ad81a4f14b822f5b091568a9cdd4f155fda2c22e422478d305f3f896"
+    );
 }
 
 #[test]
@@ -627,7 +685,9 @@ fn hkdf_sha512_roundtrip_smoke() {
 fn aes128_decrypt_inverts_encrypt_appendix_c1() {
     // FIPS 197 §C.1 inverse direction.
     let key = hex_decode("000102030405060708090a0b0c0d0e0f");
-    let ct: [u8; 16] = hex_decode("69c4e0d86a7b0430d8cdb78070b4c55a").try_into().unwrap();
+    let ct: [u8; 16] = hex_decode("69c4e0d86a7b0430d8cdb78070b4c55a")
+        .try_into()
+        .unwrap();
     let pt = rusty_web_crypto::aes_decrypt_block_with_key(&key, &ct);
     assert_eq!(hex_encode(&pt), "00112233445566778899aabbccddeeff");
 }
@@ -635,7 +695,9 @@ fn aes128_decrypt_inverts_encrypt_appendix_c1() {
 #[test]
 fn aes256_decrypt_inverts_encrypt_appendix_c3() {
     let key = hex_decode("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
-    let ct: [u8; 16] = hex_decode("8ea2b7ca516745bfeafc49904b496089").try_into().unwrap();
+    let ct: [u8; 16] = hex_decode("8ea2b7ca516745bfeafc49904b496089")
+        .try_into()
+        .unwrap();
     let pt = rusty_web_crypto::aes_decrypt_block_with_key(&key, &ct);
     assert_eq!(hex_encode(&pt), "00112233445566778899aabbccddeeff");
 }
@@ -648,14 +710,15 @@ fn aes128_cbc_sp800_38a_f21_no_padding() {
     // AES-CBC always PKCS#7-pads, so the encrypted output is 5 blocks.
     // Decrypt of the 5-block output gives back the 64-byte plaintext.
     let key = hex_decode("2b7e151628aed2a6abf7158809cf4f3c");
-    let iv  = hex_decode("000102030405060708090a0b0c0d0e0f");
-    let pt  = hex_decode(
+    let iv = hex_decode("000102030405060708090a0b0c0d0e0f");
+    let pt = hex_decode(
         "6bc1bee22e409f96e93d7e117393172a\
          ae2d8a571e03ac9c9eb76fac45af8e51\
          30c81c46a35ce411e5fbc1191a0a52ef\
-         f69f2445df4f9b17ad2b417be66c3710");
+         f69f2445df4f9b17ad2b417be66c3710",
+    );
     let ct = rusty_web_crypto::aes_cbc_encrypt(&key, &iv, &pt).unwrap();
-    assert_eq!(ct.len(), 80);  // 64 + 16 (PKCS#7-padded full block)
+    assert_eq!(ct.len(), 80); // 64 + 16 (PKCS#7-padded full block)
     let dec = rusty_web_crypto::aes_cbc_decrypt(&key, &iv, &ct).unwrap();
     assert_eq!(dec, pt);
 }
@@ -663,7 +726,7 @@ fn aes128_cbc_sp800_38a_f21_no_padding() {
 #[test]
 fn aes_cbc_roundtrip_arbitrary_length() {
     let key = hex_decode("2b7e151628aed2a6abf7158809cf4f3c");
-    let iv  = hex_decode("000102030405060708090a0b0c0d0e0f");
+    let iv = hex_decode("000102030405060708090a0b0c0d0e0f");
     let pt = b"short message that is not block-aligned";
     let ct = rusty_web_crypto::aes_cbc_encrypt(&key, &iv, pt).unwrap();
     assert_eq!(ct.len() % 16, 0);
@@ -674,12 +737,12 @@ fn aes_cbc_roundtrip_arbitrary_length() {
 #[test]
 fn aes_cbc_bad_padding_rejected() {
     let key = hex_decode("2b7e151628aed2a6abf7158809cf4f3c");
-    let iv  = hex_decode("000102030405060708090a0b0c0d0e0f");
+    let iv = hex_decode("000102030405060708090a0b0c0d0e0f");
     // 16-byte plaintext → 32 bytes ciphertext (data block + pad block).
     let pt = b"AAAAAAAAAAAAAAAA";
     let mut ct = rusty_web_crypto::aes_cbc_encrypt(&key, &iv, pt).unwrap();
     let n = ct.len();
-    ct[n - 1] ^= 0x01;  // Flips last plaintext byte (the padding value).
+    ct[n - 1] ^= 0x01; // Flips last plaintext byte (the padding value).
     let r = rusty_web_crypto::aes_cbc_decrypt(&key, &iv, &ct);
     assert!(r.is_err());
 }
@@ -696,13 +759,18 @@ fn aes128_ctr_sp800_38a_f51() {
         "6bc1bee22e409f96e93d7e117393172a\
          ae2d8a571e03ac9c9eb76fac45af8e51\
          30c81c46a35ce411e5fbc1191a0a52ef\
-         f69f2445df4f9b17ad2b417be66c3710");
+         f69f2445df4f9b17ad2b417be66c3710",
+    );
     let ct = rusty_web_crypto::aes_ctr_xor_with_key(&key, &counter, 128, &pt).unwrap();
-    assert_eq!(hex_encode(&ct),
+    assert_eq!(
+        hex_encode(&ct),
         "874d6191b620e3261bef6864990db6ce\
          9806f66b7970fdff8617187bb9fffdff\
          5ae4df3edbd5d35e5b4f09020db03eab\
-         1e031dda2fbe03d1792170a0f3009cee".replace("\n", "").replace(" ", ""));
+         1e031dda2fbe03d1792170a0f3009cee"
+            .replace("\n", "")
+            .replace(" ", "")
+    );
 }
 
 #[test]
@@ -723,8 +791,10 @@ fn aes_kw_rfc3394_test_4_1() {
     let kek = hex_decode("000102030405060708090a0b0c0d0e0f");
     let key_data = hex_decode("00112233445566778899aabbccddeeff");
     let wrapped = rusty_web_crypto::aes_kw_wrap(&kek, &key_data).unwrap();
-    assert_eq!(hex_encode(&wrapped),
-        "1fa68b0a8112b447aef34bd8fb5a7b829d3e862371d2cfe5");
+    assert_eq!(
+        hex_encode(&wrapped),
+        "1fa68b0a8112b447aef34bd8fb5a7b829d3e862371d2cfe5"
+    );
     let unwrapped = rusty_web_crypto::aes_kw_unwrap(&kek, &wrapped).unwrap();
     assert_eq!(unwrapped, key_data);
 }
@@ -735,8 +805,10 @@ fn aes_kw_rfc3394_test_4_3() {
     let kek = hex_decode("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
     let key_data = hex_decode("00112233445566778899aabbccddeeff");
     let wrapped = rusty_web_crypto::aes_kw_wrap(&kek, &key_data).unwrap();
-    assert_eq!(hex_encode(&wrapped),
-        "64e8c3f9ce0f5ba263e9777905818a2a93c8191e7d6e8ae7");
+    assert_eq!(
+        hex_encode(&wrapped),
+        "64e8c3f9ce0f5ba263e9777905818a2a93c8191e7d6e8ae7"
+    );
 }
 
 #[test]
@@ -745,8 +817,10 @@ fn aes_kw_rfc3394_test_4_6() {
     let kek = hex_decode("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
     let key_data = hex_decode("00112233445566778899aabbccddeeff000102030405060708090a0b0c0d0e0f");
     let wrapped = rusty_web_crypto::aes_kw_wrap(&kek, &key_data).unwrap();
-    assert_eq!(hex_encode(&wrapped),
-        "28c9f404c4b810f4cbccb35cfb87f8263f5786e2d80ed326cbc7f0e71a99f43bfb988b9b7a02dd21");
+    assert_eq!(
+        hex_encode(&wrapped),
+        "28c9f404c4b810f4cbccb35cfb87f8263f5786e2d80ed326cbc7f0e71a99f43bfb988b9b7a02dd21"
+    );
     let unwrapped = rusty_web_crypto::aes_kw_unwrap(&kek, &wrapped).unwrap();
     assert_eq!(unwrapped, key_data);
 }
@@ -764,7 +838,9 @@ fn aes_kw_integrity_check_rejects_tampered() {
 
 use rusty_web_crypto::BigUInt;
 
-fn b(hex: &str) -> BigUInt { BigUInt::from_be_bytes(&hex_decode(hex)) }
+fn b(hex: &str) -> BigUInt {
+    BigUInt::from_be_bytes(&hex_decode(hex))
+}
 
 #[test]
 fn bigint_roundtrip_be_bytes() {
@@ -831,13 +907,21 @@ fn bigint_modpow_2048_bit_smoke() {
         "00a56e4a0e701017589a5187dc7ea841d156f2ec0e36ad52a44dfeb1e61f7ad991\
          d8c51056ffedb162b4c0f283a12a88a394dff526ab7291cbb307ceabfce0b1dfd5\
          cd9508096d5b2b8b6df5d671ef6377c0921cb23c270a70e2598e6ff89d19f105ac\
-         c2d3f0cb35f29280e1386b6f64c4ef22e1e1f20d0ce8cffb2249bd9a2137".replace("\n", "").replace(" ", "").as_str());
+         c2d3f0cb35f29280e1386b6f64c4ef22e1e1f20d0ce8cffb2249bd9a2137"
+            .replace("\n", "")
+            .replace(" ", "")
+            .as_str(),
+    );
     let e = BigUInt::from_be_bytes(&hex_decode("010001"));
     let d = b(
         "33a5042a90b27d4f5451ca9bbbd0b44771a101af884340aef9885f2a4bbe92e894\
          a724ac3c568c8f97853ad07c0266c8c6a3ca0929f1e8f11231884429fc4d9ae55f\
          ee896a10ce707c3ed7e734e44727a39574501a532683109c2abacaba283c31b4b\
-         d2f53c3ee37e352cee34f9e503bd80c0622ad79c6dcee883547c6a3b325".replace("\n", "").replace(" ", "").as_str());
+         d2f53c3ee37e352cee34f9e503bd80c0622ad79c6dcee883547c6a3b325"
+            .replace("\n", "")
+            .replace(" ", "")
+            .as_str(),
+    );
     let m = BigUInt::from_be_bytes(&[42]);
     let c = m.mod_pow(&e, &n);
     let m_back = c.mod_pow(&d, &n);
@@ -877,7 +961,9 @@ fn rsaep_rejects_out_of_range_message() {
 
 // ─────────────── RSA-OAEP (RFC 8017 §7.1) ──────────────────────────
 
-fn sha256_vec(b: &[u8]) -> Vec<u8> { rusty_web_crypto::digest_sha256(b).to_vec() }
+fn sha256_vec(b: &[u8]) -> Vec<u8> {
+    rusty_web_crypto::digest_sha256(b).to_vec()
+}
 
 #[test]
 fn mgf1_sha256_known_output() {
@@ -922,7 +1008,8 @@ fn rsa_oaep_sha256_roundtrip_2048() {
     let message = b"hello rsa-oaep";
     let label = b"";
     let seed = vec![0x42u8; 32];
-    let ct = rusty_web_crypto::rsa_oaep_encrypt(&n, &e, message, label, &seed, sha256_vec, 32).unwrap();
+    let ct =
+        rusty_web_crypto::rsa_oaep_encrypt(&n, &e, message, label, &seed, sha256_vec, 32).unwrap();
     assert_eq!(ct.len(), n.len());
     let pt = rusty_web_crypto::rsa_oaep_decrypt(&n, &d, &ct, label, sha256_vec, 32).unwrap();
     assert_eq!(&pt, message);
@@ -934,23 +1021,30 @@ fn rsa_oaep_sha256_label_round_trip() {
     let message = b"secret";
     let label = b"context-binding-label";
     let seed = vec![0x01u8; 32];
-    let ct = rusty_web_crypto::rsa_oaep_encrypt(&n, &e, message, label, &seed, sha256_vec, 32).unwrap();
+    let ct =
+        rusty_web_crypto::rsa_oaep_encrypt(&n, &e, message, label, &seed, sha256_vec, 32).unwrap();
     let pt = rusty_web_crypto::rsa_oaep_decrypt(&n, &d, &ct, label, sha256_vec, 32).unwrap();
     assert_eq!(&pt, message);
     // Wrong label must fail decrypt.
-    assert!(rusty_web_crypto::rsa_oaep_decrypt(&n, &d, &ct, b"wrong-label", sha256_vec, 32).is_err());
+    assert!(
+        rusty_web_crypto::rsa_oaep_decrypt(&n, &d, &ct, b"wrong-label", sha256_vec, 32).is_err()
+    );
 }
 
 #[test]
 fn rsa_oaep_sha256_rejects_message_too_long() {
     let (n, e, _d) = test_rsa_2048();
-    let k = n.len();  // 256
-    // Max message length = k - 2*hLen - 2 = 256 - 64 - 2 = 190 bytes.
+    let k = n.len(); // 256
+                     // Max message length = k - 2*hLen - 2 = 256 - 64 - 2 = 190 bytes.
     let too_long = vec![0x00u8; 191];
     let seed = vec![0x00u8; 32];
-    assert!(rusty_web_crypto::rsa_oaep_encrypt(&n, &e, &too_long, b"", &seed, sha256_vec, 32).is_err());
+    assert!(
+        rusty_web_crypto::rsa_oaep_encrypt(&n, &e, &too_long, b"", &seed, sha256_vec, 32).is_err()
+    );
     let at_limit = vec![0x00u8; 190];
-    assert!(rusty_web_crypto::rsa_oaep_encrypt(&n, &e, &at_limit, b"", &seed, sha256_vec, 32).is_ok());
+    assert!(
+        rusty_web_crypto::rsa_oaep_encrypt(&n, &e, &at_limit, b"", &seed, sha256_vec, 32).is_ok()
+    );
     let _ = k;
 }
 
@@ -971,7 +1065,9 @@ fn rsa_pss_verify_rejects_wrong_message() {
     let (n, e, d) = test_rsa_2048();
     let salt = vec![0x55u8; 32];
     let sig = rusty_web_crypto::rsa_pss_sign(&n, &d, b"original", &salt, sha256_vec, 32).unwrap();
-    assert!(rusty_web_crypto::rsa_pss_verify(&n, &e, b"tampered", &sig, 32, sha256_vec, 32).is_err());
+    assert!(
+        rusty_web_crypto::rsa_pss_verify(&n, &e, b"tampered", &sig, 32, sha256_vec, 32).is_err()
+    );
 }
 
 #[test]
@@ -997,7 +1093,7 @@ fn rsa_pss_zero_salt_length_is_deterministic() {
 fn test_ecdsa_p256() -> (Vec<u8>, Vec<u8>, Vec<u8>) {
     // Real keypair generated via Bun's crypto.subtle.generateKey for this
     // test corpus. NOT used in production.
-    let d  = hex_decode("9d54708c83230f09c38f5958c55f9fd48bade9606ba5c57786fed793e2a7595b");
+    let d = hex_decode("9d54708c83230f09c38f5958c55f9fd48bade9606ba5c57786fed793e2a7595b");
     let qx = hex_decode("d04f885b9b44a493212c14ba09b6164bdf979fc6fde2d5ea9d6be140cff187bf");
     let qy = hex_decode("1ba85fda4c55efe16747296487f35ba18e2e63d5846a14515f14c46b17104778");
     (d, qx, qy)
@@ -1035,7 +1131,7 @@ fn ecdsa_p256_rejects_off_curve_public_key() {
     let (_, qx, _qy) = test_ecdsa_p256();
     // Use a fake y by perturbing it — not on the curve.
     let bad_qy = vec![0x00u8; 32];
-    let sig = vec![0x01u8; 64];  // Any signature; verification stops at curve check.
+    let sig = vec![0x01u8; 64]; // Any signature; verification stops at curve check.
     assert!(rusty_web_crypto::ecdsa_p256_sha256_verify(&qx, &bad_qy, b"msg", &sig).is_err());
 }
 
@@ -1056,10 +1152,24 @@ fn ecdsa_p256_double_g() {
     let one = rusty_web_crypto::BigUInt::from_be_bytes(&[2]);
     let result = rusty_web_crypto::p256_scalar_mul(&one, &rusty_web_crypto::p256_g());
     if let rusty_web_crypto::P256Point::Affine { x, y } = result {
-        let x_hex: String = x.to_be_bytes(32).iter().map(|b| format!("{:02x}", b)).collect();
-        let y_hex: String = y.to_be_bytes(32).iter().map(|b| format!("{:02x}", b)).collect();
-        assert_eq!(x_hex, "7cf27b188d034f7e8a52380304b51ac3c08969e277f21b35a60b48fc47669978");
-        assert_eq!(y_hex, "07775510db8ed040293d9ac69f7430dbba7dade63ce982299e04b79d227873d1");
+        let x_hex: String = x
+            .to_be_bytes(32)
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect();
+        let y_hex: String = y
+            .to_be_bytes(32)
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect();
+        assert_eq!(
+            x_hex,
+            "7cf27b188d034f7e8a52380304b51ac3c08969e277f21b35a60b48fc47669978"
+        );
+        assert_eq!(
+            y_hex,
+            "07775510db8ed040293d9ac69f7430dbba7dade63ce982299e04b79d227873d1"
+        );
     } else {
         panic!("2G is identity?!");
     }
@@ -1071,9 +1181,15 @@ fn ecdsa_p256_g_on_curve() {
     use rusty_web_crypto::BigUInt;
     let p_bytes = hex_decode("ffffffff00000001000000000000000000000000ffffffffffffffffffffffff");
     let p = BigUInt::from_be_bytes(&p_bytes);
-    let gx = BigUInt::from_be_bytes(&hex_decode("6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296"));
-    let gy = BigUInt::from_be_bytes(&hex_decode("4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5"));
-    let b  = BigUInt::from_be_bytes(&hex_decode("5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604b"));
+    let gx = BigUInt::from_be_bytes(&hex_decode(
+        "6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296",
+    ));
+    let gy = BigUInt::from_be_bytes(&hex_decode(
+        "4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+    ));
+    let b = BigUInt::from_be_bytes(&hex_decode(
+        "5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604b",
+    ));
     let three = BigUInt::from_be_bytes(&[3]);
     let lhs = gy.mul(&gy).modulo(&p);
     let gx2 = gx.mul(&gx).modulo(&p);
@@ -1097,8 +1213,12 @@ fn ecdsa_p256_g_on_curve() {
 #[test]
 fn debug_p256_mod_consistency() {
     use rusty_web_crypto::BigUInt;
-    let p = BigUInt::from_be_bytes(&hex_decode("ffffffff00000001000000000000000000000000ffffffffffffffffffffffff"));
-    let gx = BigUInt::from_be_bytes(&hex_decode("6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296"));
+    let p = BigUInt::from_be_bytes(&hex_decode(
+        "ffffffff00000001000000000000000000000000ffffffffffffffffffffffff",
+    ));
+    let gx = BigUInt::from_be_bytes(&hex_decode(
+        "6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296",
+    ));
     // Gx < p, so Gx mod p = Gx.
     let r = gx.modulo(&p);
     assert_eq!(r.to_be_bytes(32), gx.to_be_bytes(32), "Gx mod p ≠ Gx");
@@ -1124,14 +1244,16 @@ fn ecdh_p256_diffie_hellman_property() {
     // Use the same test key as ECDSA for Alice, and derive Bob's keys.
     let (d_a, qax, qay) = test_ecdsa_p256();
     // Bob: generated separately with Bun.
-    let d_b  = hex_decode("4242424242424242424242424242424242424242424242424242424242424242");
+    let d_b = hex_decode("4242424242424242424242424242424242424242424242424242424242424242");
     let q_b = rusty_web_crypto::p256_scalar_mul(
         &rusty_web_crypto::BigUInt::from_be_bytes(&d_b),
         &rusty_web_crypto::p256_g(),
     );
     let (qbx, qby) = if let rusty_web_crypto::P256Point::Affine { x, y } = q_b {
         (x.to_be_bytes(32), y.to_be_bytes(32))
-    } else { panic!("Bob's public key is identity"); };
+    } else {
+        panic!("Bob's public key is identity");
+    };
     // Shared secret from each side.
     let s_a = rusty_web_crypto::ecdh_p256(&d_a, &qbx, &qby).unwrap();
     let s_b = rusty_web_crypto::ecdh_p256(&d_b, &qax, &qay).unwrap();
@@ -1174,10 +1296,15 @@ fn ecdh_p384_diffie_hellman() {
     // Bob: derive from a different d, with d·G producing pub key.
     let d_b  = hex_decode("424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424c");
     let q_b = rusty_web_crypto::ec_scalar_mul(
-        &curve, &rusty_web_crypto::BigUInt::from_be_bytes(&d_b), &curve.g);
+        &curve,
+        &rusty_web_crypto::BigUInt::from_be_bytes(&d_b),
+        &curve.g,
+    );
     let (qbx, qby) = if let rusty_web_crypto::P256Point::Affine { x, y } = q_b {
         (x.to_be_bytes(48), y.to_be_bytes(48))
-    } else { panic!("identity"); };
+    } else {
+        panic!("identity");
+    };
     let s1 = rusty_web_crypto::ecdh(&curve, &d_a, &qbx, &qby).unwrap();
     let s2 = rusty_web_crypto::ecdh(&curve, &d_b, &qax, &qay).unwrap();
     assert_eq!(s1, s2);
@@ -1207,10 +1334,15 @@ fn ecdh_p521_diffie_hellman() {
     let qay = hex_decode("01c057ba8d7724a5d27360161960a7963c9de10029b336f6cf4125ab972b4ef3f896998f2074201149dcfc71e4d10b367cc14ba7ab7c4e4597958c0019dba81d51f5");
     let d_b = hex_decode("004242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242");
     let q_b = rusty_web_crypto::ec_scalar_mul(
-        &curve, &rusty_web_crypto::BigUInt::from_be_bytes(&d_b), &curve.g);
+        &curve,
+        &rusty_web_crypto::BigUInt::from_be_bytes(&d_b),
+        &curve.g,
+    );
     let (qbx, qby) = if let rusty_web_crypto::P256Point::Affine { x, y } = q_b {
         (x.to_be_bytes(66), y.to_be_bytes(66))
-    } else { panic!("identity"); };
+    } else {
+        panic!("identity");
+    };
     let s1 = rusty_web_crypto::ecdh(&curve, &d_a, &qbx, &qby).unwrap();
     let s2 = rusty_web_crypto::ecdh(&curve, &d_b, &qax, &qay).unwrap();
     assert_eq!(s1, s2);
@@ -1224,7 +1356,7 @@ fn debug_p521_g_on_curve() {
     let gy_bytes = hex_decode("011839296a789a3bc0045c8a5fb42c7d1bd998f54449579b446817afbd17273e662c97ee72995ef42640c550b9013fad0761353c7086a272c24088be94769fd16650");
     // Use the on_curve check via ecdh: it validates Q on curve before scalar mul.
     // If G is not on curve per my code, ecdh will error.
-    let d = vec![1u8; 66];  // anything in range
+    let d = vec![1u8; 66]; // anything in range
     let r = rusty_web_crypto::ecdh(&curve, &d, &gx_bytes, &gy_bytes);
     assert!(r.is_ok(), "G not on curve per my code: {:?}", r);
 }
@@ -1303,7 +1435,8 @@ fn blake2b_rfc7693_abc() {
     let out = rusty_web_crypto::blake2b(b"abc", &[], 64).unwrap();
     let expected = hex_to_bytes(
         "BA80A53F981C4D0D6A2797B69F12F6E94C212F14685AC4B74B12BB6FDBFFA2D1\
-         7D87C5392AAB792DC252D5DE4533CC9518D38AA8DBF1925AB92386EDD4009923");
+         7D87C5392AAB792DC252D5DE4533CC9518D38AA8DBF1925AB92386EDD4009923",
+    );
     assert_eq!(out, expected);
 }
 
@@ -1314,7 +1447,8 @@ fn blake2b_empty_input() {
     let out = rusty_web_crypto::blake2b(b"", &[], 64).unwrap();
     let expected = hex_to_bytes(
         "786A02F742015903C6C6FD852552D272912F4740E15847618A86E217F71F5419\
-         D25E1031AFEE585313896444934EB04B903A685B1448B755D56F701AFE9BE2CE");
+         D25E1031AFEE585313896444934EB04B903A685B1448B755D56F701AFE9BE2CE",
+    );
     assert_eq!(out, expected);
 }
 
@@ -1362,9 +1496,16 @@ fn blake2b_rejects_invalid_length() {
 #[test]
 fn argon2id_matches_upstream_p1_64kib_t2() {
     let out = argon2id_hash(
-        b"pw", b"saltsaltsalt",
-        &Argon2idParams { t_cost: 2, m_kib: 64, parallelism: 1, tau: 32 },
-    ).expect("argon2id hash");
+        b"pw",
+        b"saltsaltsalt",
+        &Argon2idParams {
+            t_cost: 2,
+            m_kib: 64,
+            parallelism: 1,
+            tau: 32,
+        },
+    )
+    .expect("argon2id hash");
     let hex: String = out.iter().map(|b| format!("{:02x}", b)).collect();
     assert_eq!(
         hex,

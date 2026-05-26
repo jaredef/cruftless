@@ -106,14 +106,19 @@ fn synthesize_step_id(stack: &[(usize, u32)], _current: u32) -> String {
 }
 
 fn alpha_suffix(n: u32) -> String {
-    if n == 0 { return String::new(); }
+    if n == 0 {
+        return String::new();
+    }
     let n = n - 1;
     if n < 26 {
         ((b'a' + n as u8) as char).to_string()
     } else {
         // Spec rarely needs > 26 sub-steps; fall back to "aa", "ab", ...
-        format!("{}{}", ((b'a' + (n / 26 - 1) as u8) as char),
-                ((b'a' + (n % 26) as u8) as char))
+        format!(
+            "{}{}",
+            ((b'a' + (n / 26 - 1) as u8) as char),
+            ((b'a' + (n % 26) as u8) as char)
+        )
     }
 }
 
@@ -121,9 +126,19 @@ fn roman_lower(n: u32) -> String {
     let mut s = String::new();
     let mut n = n;
     let pairs = [
-        (1000, "m"), (900, "cm"), (500, "d"), (400, "cd"),
-        (100, "c"), (90, "xc"), (50, "l"), (40, "xl"),
-        (10, "x"), (9, "ix"), (5, "v"), (4, "iv"), (1, "i"),
+        (1000, "m"),
+        (900, "cm"),
+        (500, "d"),
+        (400, "cd"),
+        (100, "c"),
+        (90, "xc"),
+        (50, "l"),
+        (40, "xl"),
+        (10, "x"),
+        (9, "ix"),
+        (5, "v"),
+        (4, "iv"),
+        (1, "i"),
     ];
     for &(v, sym) in &pairs {
         while n >= v {
@@ -144,17 +159,40 @@ fn extract_calls(prose: &str) -> (Vec<&'static str>, Option<&'static str>) {
     // pattern `OpName(...)` in the prose. The list is curated to match the
     // IR alphabet plus the runtime-builtin helpers cruftless exposes.
     let known_ops: &[&'static str] = &[
-        "ToObject", "ToPrimitive", "ToString", "ToNumber", "ToInteger",
-        "ToLength", "ToUint32", "ToBoolean", "ToPropertyKey",
-        "IsCallable", "IsConstructor", "IsArray", "IsRegExp",
+        "ToObject",
+        "ToPrimitive",
+        "ToString",
+        "ToNumber",
+        "ToInteger",
+        "ToLength",
+        "ToUint32",
+        "ToBoolean",
+        "ToPropertyKey",
+        "IsCallable",
+        "IsConstructor",
+        "IsArray",
+        "IsRegExp",
         "RequireObjectCoercible",
-        "SameValue", "SameValueZero", "IsStrictlyEqual",
-        "Get", "GetV", "Set", "HasProperty", "HasOwnProperty",
-        "Call", "Construct", "Invoke",
-        "LengthOfArrayLike", "ArraySpeciesCreate", "SpeciesConstructor",
-        "OrdinaryObjectCreate", "OrdinaryDefineOwnProperty",
-        "CreateDataPropertyOrThrow", "DeletePropertyOrThrow",
-        "EnumerableOwnPropertyNames", "NewPromiseCapability",
+        "SameValue",
+        "SameValueZero",
+        "IsStrictlyEqual",
+        "Get",
+        "GetV",
+        "Set",
+        "HasProperty",
+        "HasOwnProperty",
+        "Call",
+        "Construct",
+        "Invoke",
+        "LengthOfArrayLike",
+        "ArraySpeciesCreate",
+        "SpeciesConstructor",
+        "OrdinaryObjectCreate",
+        "OrdinaryDefineOwnProperty",
+        "CreateDataPropertyOrThrow",
+        "DeletePropertyOrThrow",
+        "EnumerableOwnPropertyNames",
+        "NewPromiseCapability",
     ];
 
     for op in known_ops {
@@ -221,14 +259,20 @@ mod tests {
         let steps = parse_emu_alg(MAP_EMU_ALG);
         // Top-level step count should be 7.
         let top_level: Vec<_> = steps.iter().filter(|s| !s.step_id.contains('.')).collect();
-        assert_eq!(top_level.len(), 7,
+        assert_eq!(
+            top_level.len(),
+            7,
             "expected 7 top-level steps, got {}: {:?}",
             top_level.len(),
-            top_level.iter().map(|s| &s.step_id).collect::<Vec<_>>());
+            top_level.iter().map(|s| &s.step_id).collect::<Vec<_>>()
+        );
 
         // Step 1: ToObject
         let s1 = steps.iter().find(|s| s.step_id == "1").expect("step 1");
-        assert!(s1.abstract_ops.contains(&"ToObject"), "step 1 must invoke ToObject");
+        assert!(
+            s1.abstract_ops.contains(&"ToObject"),
+            "step 1 must invoke ToObject"
+        );
 
         // Step 3: IsCallable + Throw + TypeError
         let s3 = steps.iter().find(|s| s.step_id == "3").expect("step 3");
@@ -237,15 +281,26 @@ mod tests {
         assert_eq!(s3.throws, Some("TypeError"));
 
         // Step 6.c.i: Get
-        let s_6_c_i = steps.iter().find(|s| s.step_id == "6.c.i").expect("step 6.c.i");
+        let s_6_c_i = steps
+            .iter()
+            .find(|s| s.step_id == "6.c.i")
+            .expect("step 6.c.i");
         assert!(s_6_c_i.abstract_ops.contains(&"Get"));
 
         // Step 6.c.ii: Call
-        let s_6_c_ii = steps.iter().find(|s| s.step_id == "6.c.ii").expect("step 6.c.ii");
+        let s_6_c_ii = steps
+            .iter()
+            .find(|s| s.step_id == "6.c.ii")
+            .expect("step 6.c.ii");
         assert!(s_6_c_ii.abstract_ops.contains(&"Call"));
 
         // Step 6.c.iii: CreateDataPropertyOrThrow
-        let s_6_c_iii = steps.iter().find(|s| s.step_id == "6.c.iii").expect("step 6.c.iii");
-        assert!(s_6_c_iii.abstract_ops.contains(&"CreateDataPropertyOrThrow"));
+        let s_6_c_iii = steps
+            .iter()
+            .find(|s| s.step_id == "6.c.iii")
+            .expect("step 6.c.iii");
+        assert!(s_6_c_iii
+            .abstract_ops
+            .contains(&"CreateDataPropertyOrThrow"));
     }
 }

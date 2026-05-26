@@ -7,27 +7,27 @@
 //! opcodes (stack ops, arithmetic, comparison, local-slot variables).
 //! Control flow + function frames + intrinsics in subsequent sub-rounds.
 
-pub mod value;
-pub mod bigint;
 pub mod abstract_ops;
+pub mod bigint;
+pub mod caps;
 pub mod interp;
 pub mod interp_ic_table;
 pub mod intrinsics;
-pub mod module;
+pub mod iterator;
 pub mod job_queue;
+pub mod module;
+pub mod napi;
 pub mod promise;
 pub mod prototype;
-pub mod iterator;
-pub mod regexp;
 pub mod regex_hand;
-pub mod napi;
-pub mod caps;
+pub mod regexp;
+pub mod value;
 
-pub use module::{HostHook, ModuleKind, ModuleStatus, detect_module_kind};
 pub use job_queue::{Job, JobKind, JobQueue};
+pub use module::{detect_module_kind, HostHook, ModuleKind, ModuleStatus};
 
-pub use value::{Value, Object, ObjectRef, PropertyDescriptor, InternalKind};
 pub use interp::{Runtime, RuntimeError};
+pub use value::{InternalKind, Object, ObjectRef, PropertyDescriptor, Value};
 
 /// Convenience: parse + compile + run a module source string, with v1
 /// intrinsics pre-installed.

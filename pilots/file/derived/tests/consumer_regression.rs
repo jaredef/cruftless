@@ -13,7 +13,11 @@ use rusty_file::*;
 
 #[test]
 fn consumer_multer_file_name_preserved() {
-    let f = File::new(&[BlobPart::Bytes(b"upload")], "report.pdf", Default::default());
+    let f = File::new(
+        &[BlobPart::Bytes(b"upload")],
+        "report.pdf",
+        Default::default(),
+    );
     assert_eq!(f.name(), "report.pdf");
 }
 
@@ -64,7 +68,11 @@ fn consumer_formidable_last_modified_preserved() {
 
 #[test]
 fn consumer_html_form_submission_file_name_used_as_filename() {
-    let f = File::new(&[BlobPart::Str("document")], "report-q3.pdf", Default::default());
+    let f = File::new(
+        &[BlobPart::Str("document")],
+        "report-q3.pdf",
+        Default::default(),
+    );
     // The downstream form-data builder reads .name() to populate the
     // multipart filename parameter.
     assert_eq!(f.name(), "report-q3.pdf");
@@ -81,7 +89,11 @@ fn consumer_html_form_submission_file_name_used_as_filename() {
 
 #[test]
 fn consumer_uppy_chunked_upload_slice_returns_blob() {
-    let f = File::new(&[BlobPart::Bytes(b"large file content")], "big.bin", Default::default());
+    let f = File::new(
+        &[BlobPart::Bytes(b"large file content")],
+        "big.bin",
+        Default::default(),
+    );
     let chunk = f.slice(0, Some(5), None);
     // Chunk is a Blob; consumer must wrap it in a fresh File for upload.
     // The type system enforces this — chunk has no .name() method.

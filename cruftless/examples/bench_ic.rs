@@ -31,17 +31,23 @@ use rusty_js_bytecode::compiler::{FunctionProto, LocalDescriptor, UpvalueDescrip
 use rusty_js_bytecode::constants::ConstantsPool;
 use rusty_js_bytecode::op::Op;
 use rusty_js_bytecode::Constant;
-use rusty_js_runtime::{Runtime, Value};
 use rusty_js_runtime::value::{ClosureInternals, InternalKind, Object};
+use rusty_js_runtime::{Runtime, Value};
 use std::time::Instant;
 
-fn encode_op(bc: &mut Vec<u8>, op: Op) { bc.push(op as u8); }
-fn encode_u16(bc: &mut Vec<u8>, v: u16) { bc.extend_from_slice(&v.to_le_bytes()); }
+fn encode_op(bc: &mut Vec<u8>, op: Op) {
+    bc.push(op as u8);
+}
+fn encode_u16(bc: &mut Vec<u8>, v: u16) {
+    bc.extend_from_slice(&v.to_le_bytes());
+}
 
 fn build_getx_proto(prop_name: &str) -> FunctionProto {
     let mut bc = Vec::new();
-    encode_op(&mut bc, Op::LoadLocal); encode_u16(&mut bc, 0);
-    encode_op(&mut bc, Op::GetPropOnObject); encode_u16(&mut bc, 0);
+    encode_op(&mut bc, Op::LoadLocal);
+    encode_u16(&mut bc, 0);
+    encode_op(&mut bc, Op::GetPropOnObject);
+    encode_u16(&mut bc, 0);
     encode_op(&mut bc, Op::Return);
 
     let mut constants = ConstantsPool::new();
@@ -92,7 +98,7 @@ fn main() {
         is_arrow: false,
         call_count: std::cell::Cell::new(0),
         jit_disabled: std::cell::Cell::new(false),
-    tb_metadata_ptr: std::cell::Cell::new(None),
+        tb_metadata_ptr: std::cell::Cell::new(None),
     };
     let closure_obj = Object {
         proto: None,
@@ -107,8 +113,7 @@ fn main() {
 
     // Warm-up: JIT compile happens on first call (jit_threshold=1).
     for _ in 0..10 {
-        let _ = rt.call_function(closure_v.clone(), Value::Undefined,
-            vec![obj_v.clone()]);
+        let _ = rt.call_function(closure_v.clone(), Value::Undefined, vec![obj_v.clone()]);
     }
 
     // Bench: N = 1_000_000 IC dispatches through the current extern-call path.
@@ -116,8 +121,9 @@ fn main() {
     let t0 = Instant::now();
     let mut last = Value::Undefined;
     for _ in 0..N {
-        last = rt.call_function(closure_v.clone(), Value::Undefined,
-            vec![obj_v.clone()]).expect("call_function should succeed");
+        last = rt
+            .call_function(closure_v.clone(), Value::Undefined, vec![obj_v.clone()])
+            .expect("call_function should succeed");
     }
     let elapsed = t0.elapsed();
     let total_ns = elapsed.as_nanos() as f64;
@@ -130,13 +136,19 @@ fn main() {
 
     println!("LeJIT-Σ StubE-EXT 1 — pre-stub IC bench baseline");
     println!("--------------------------------------------");
-    println!("workload:    {} iterations of getx(obj) where obj.x = 42", N);
+    println!(
+        "workload:    {} iterations of getx(obj) where obj.x = 42",
+        N
+    );
     println!("dispatch:    Op::GetPropOnObject -> Cranelift call -> extern jit_getprop_on_object -> runtime_getprop_on_object (object_get)");
     println!("ic-form:     monomorphic, single receiver shape (Shape::None pre-CMig-EXT 8)");
     println!();
     println!("elapsed:     {:.3} ms", elapsed.as_secs_f64() * 1000.0);
     println!("per-iter:    {:.1} ns", per_iter_ns);
     println!();
-    println!("Pred-stub.1 target: stub-emitted dispatch ≥3× faster (≤{:.1} ns/iter).", per_iter_ns / 3.0);
+    println!(
+        "Pred-stub.1 target: stub-emitted dispatch ≥3× faster (≤{:.1} ns/iter).",
+        per_iter_ns / 3.0
+    );
     println!("Re-measure post-StubE-EXT 5 to corroborate or falsify.");
 }

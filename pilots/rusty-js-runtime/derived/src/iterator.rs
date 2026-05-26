@@ -36,13 +36,21 @@ pub fn make_array_iterator(rt: &mut Runtime, src: ObjectRef) -> ObjectRef {
     rt.set_engine_sentinel(iter, "__arr", Value::Object(src));
     rt.set_engine_sentinel(iter, "__i", Value::Number(0.0));
     // §23.1.5.2 %ArrayIteratorPrototype%[@@toStringTag] = "Array Iterator".
-    rt.set_engine_sentinel(iter, "@@toStringTag", Value::String(Rc::new("Array Iterator".into())));
+    rt.set_engine_sentinel(
+        iter,
+        "@@toStringTag",
+        Value::String(Rc::new("Array Iterator".into())),
+    );
     // §23.1.5.2.2 the iterator IS itself iterable — [@@iterator]() returns this.
     install_self_returning_iterator(rt, iter);
     install_next(rt, iter, |rt, _args| {
         let it = match rt.current_this() {
             Value::Object(id) => id,
-            _ => return Err(RuntimeError::TypeError("array iterator next: this is not an iterator".into())),
+            _ => {
+                return Err(RuntimeError::TypeError(
+                    "array iterator next: this is not an iterator".into(),
+                ))
+            }
         };
         let src_id = match rt.object_get(it, "__arr") {
             Value::Object(id) => id,
@@ -75,7 +83,11 @@ pub fn make_string_iterator(rt: &mut Runtime, s: String) -> ObjectRef {
     rt.object_set(arr, "length".into(), Value::Number(chars.len() as f64));
     let it = make_array_iterator(rt, arr);
     // String iterator's @@toStringTag overrides Array Iterator label.
-    rt.set_engine_sentinel(it, "@@toStringTag", Value::String(Rc::new("String Iterator".into())));
+    rt.set_engine_sentinel(
+        it,
+        "@@toStringTag",
+        Value::String(Rc::new("String Iterator".into())),
+    );
     it
 }
 
@@ -87,8 +99,13 @@ fn install_self_returning_iterator(rt: &mut Runtime, host: ObjectRef) {
         proto: None,
         extensible: true,
         properties,
-        internal_kind: InternalKind::Function(FunctionInternals { name: "[Symbol.iterator]".into(), length: 0, native, is_constructor: false }),
-    
+        internal_kind: InternalKind::Function(FunctionInternals {
+            name: "[Symbol.iterator]".into(),
+            length: 0,
+            native,
+            is_constructor: false,
+        }),
+
         ..Default::default()
     };
     let fn_id = rt.alloc_object(fn_obj);
@@ -99,7 +116,9 @@ fn install_self_returning_iterator(rt: &mut Runtime, host: ObjectRef) {
 }
 
 fn install_next<F>(rt: &mut Runtime, host: ObjectRef, f: F)
-where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
+where
+    F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static,
+{
     let native: NativeFn = Rc::new(f);
     let mut properties = indexmap::IndexMap::new();
     crate::value::install_function_meta_props(&mut properties, "next", 0.0);
@@ -107,7 +126,12 @@ where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
         proto: None,
         extensible: true,
         properties,
-        internal_kind: InternalKind::Function(FunctionInternals { name: "next".into(), length: 0, native, is_constructor: true }),
+        internal_kind: InternalKind::Function(FunctionInternals {
+            name: "next".into(),
+            length: 0,
+            native,
+            is_constructor: true,
+        }),
 
         ..Default::default()
     };
@@ -119,23 +143,55 @@ where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
 /// Build `{ value, done: false }`.
 pub fn iter_result_value(rt: &mut Runtime, v: Value) -> Value {
     let id = rt.alloc_object(Object::new_ordinary());
-    rt.obj_mut(id).dict_mut().insert("value".into(), PropertyDescriptor {
-        value: v, writable: true, enumerable: true, configurable: true, getter: None, setter: None,
-    });
-    rt.obj_mut(id).dict_mut().insert("done".into(), PropertyDescriptor {
-        value: Value::Boolean(false), writable: true, enumerable: true, configurable: true, getter: None, setter: None,
-    });
+    rt.obj_mut(id).dict_mut().insert(
+        "value".into(),
+        PropertyDescriptor {
+            value: v,
+            writable: true,
+            enumerable: true,
+            configurable: true,
+            getter: None,
+            setter: None,
+        },
+    );
+    rt.obj_mut(id).dict_mut().insert(
+        "done".into(),
+        PropertyDescriptor {
+            value: Value::Boolean(false),
+            writable: true,
+            enumerable: true,
+            configurable: true,
+            getter: None,
+            setter: None,
+        },
+    );
     Value::Object(id)
 }
 
 /// Build `{ value: undefined, done: true }`.
 pub fn iter_result_done(rt: &mut Runtime) -> Value {
     let id = rt.alloc_object(Object::new_ordinary());
-    rt.obj_mut(id).dict_mut().insert("value".into(), PropertyDescriptor {
-        value: Value::Undefined, writable: true, enumerable: true, configurable: true, getter: None, setter: None,
-    });
-    rt.obj_mut(id).dict_mut().insert("done".into(), PropertyDescriptor {
-        value: Value::Boolean(true), writable: true, enumerable: true, configurable: true, getter: None, setter: None,
-    });
+    rt.obj_mut(id).dict_mut().insert(
+        "value".into(),
+        PropertyDescriptor {
+            value: Value::Undefined,
+            writable: true,
+            enumerable: true,
+            configurable: true,
+            getter: None,
+            setter: None,
+        },
+    );
+    rt.obj_mut(id).dict_mut().insert(
+        "done".into(),
+        PropertyDescriptor {
+            value: Value::Boolean(true),
+            writable: true,
+            enumerable: true,
+            configurable: true,
+            getter: None,
+            setter: None,
+        },
+    );
     Value::Object(id)
 }

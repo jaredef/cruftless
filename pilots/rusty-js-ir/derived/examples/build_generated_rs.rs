@@ -5,19 +5,18 @@
 
 use rusty_js_ir::lower_to_rust;
 use rusty_js_ir::sections::array_prototype_mutators as mutators;
-use rusty_js_ir::sections::object_prototype as objproto;
-use rusty_js_ir::sections::misc_static as misc;
-use rusty_js_ir::sections::object_descriptors as desc;
 use rusty_js_ir::sections::array_set_length;
 use rusty_js_ir::sections::json_serialize;
+use rusty_js_ir::sections::misc_static as misc;
 use rusty_js_ir::sections::object_assign as obj_assign;
+use rusty_js_ir::sections::object_descriptors as desc;
+use rusty_js_ir::sections::object_prototype as objproto;
 use rusty_js_ir::sections::to_primitive;
 use rusty_js_ir::sections::{
     array_prototype_find as find, array_prototype_index_search as index_search,
-    array_prototype_iteration as iter, array_prototype_map,
-    array_prototype_reduce as reduce, global_predicates, math_binary_variadic,
-    math_unary, number_prototype, number_static, object_integrity,
-    object_proto_ops, object_static, promise_static, reflect_static,
+    array_prototype_iteration as iter, array_prototype_map, array_prototype_reduce as reduce,
+    global_predicates, math_binary_variadic, math_unary, number_prototype, number_static,
+    object_integrity, object_proto_ops, object_static, promise_static, reflect_static,
     string_prototype,
 };
 
@@ -128,14 +127,27 @@ fn main() {
         misc::build_date_get_year(),
         misc::build_date_set_year(),
         misc::build_object_group_by(),
-        misc::build_map_get(), misc::build_map_set(), misc::build_map_has(),
-        misc::build_map_delete(), misc::build_map_clear(), misc::build_map_for_each(),
-        misc::build_map_values(), misc::build_map_keys(), misc::build_map_entries(),
-        misc::build_set_add(), misc::build_set_has(), misc::build_set_delete(),
-        misc::build_set_clear(), misc::build_set_for_each(),
-        misc::build_set_union(), misc::build_set_intersection(), misc::build_set_difference(),
-        misc::build_set_symmetric_difference(), misc::build_set_is_subset_of(),
-        misc::build_set_is_superset_of(), misc::build_set_is_disjoint_from(),
+        misc::build_map_get(),
+        misc::build_map_set(),
+        misc::build_map_has(),
+        misc::build_map_delete(),
+        misc::build_map_clear(),
+        misc::build_map_for_each(),
+        misc::build_map_values(),
+        misc::build_map_keys(),
+        misc::build_map_entries(),
+        misc::build_set_add(),
+        misc::build_set_has(),
+        misc::build_set_delete(),
+        misc::build_set_clear(),
+        misc::build_set_for_each(),
+        misc::build_set_union(),
+        misc::build_set_intersection(),
+        misc::build_set_difference(),
+        misc::build_set_symmetric_difference(),
+        misc::build_set_is_subset_of(),
+        misc::build_set_is_superset_of(),
+        misc::build_set_is_disjoint_from(),
         object_static::build_keys(),
         object_static::build_values(),
         object_static::build_entries(),
@@ -190,13 +202,24 @@ fn main() {
         math_unary::build_sqrt(),
         math_unary::build_cbrt(),
         math_unary::build_sign(),
-        math_unary::build_exp(), math_unary::build_expm1(),
-        math_unary::build_log(), math_unary::build_log1p(),
-        math_unary::build_log2(), math_unary::build_log10(),
-        math_unary::build_sin(), math_unary::build_cos(), math_unary::build_tan(),
-        math_unary::build_asin(), math_unary::build_acos(), math_unary::build_atan(),
-        math_unary::build_sinh(), math_unary::build_cosh(), math_unary::build_tanh(),
-        math_unary::build_asinh(), math_unary::build_acosh(), math_unary::build_atanh(),
+        math_unary::build_exp(),
+        math_unary::build_expm1(),
+        math_unary::build_log(),
+        math_unary::build_log1p(),
+        math_unary::build_log2(),
+        math_unary::build_log10(),
+        math_unary::build_sin(),
+        math_unary::build_cos(),
+        math_unary::build_tan(),
+        math_unary::build_asin(),
+        math_unary::build_acos(),
+        math_unary::build_atan(),
+        math_unary::build_sinh(),
+        math_unary::build_cosh(),
+        math_unary::build_tanh(),
+        math_unary::build_asinh(),
+        math_unary::build_acosh(),
+        math_unary::build_atanh(),
         reflect_static::build_has(),
         reflect_static::build_get(),
         reflect_static::build_set(),

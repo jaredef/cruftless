@@ -70,7 +70,9 @@ fn boolean_true_false() {
 fn oid_rsa_encryption() {
     // 1.2.840.113549.1.1.1 (rsaEncryption) DER encoding:
     // 06 09 2A 86 48 86 F7 0D 01 01 01
-    let buf = [0x06, 0x09, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01];
+    let buf = [
+        0x06, 0x09, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01,
+    ];
     let v = parse_single(&buf).unwrap();
     assert_eq!(v.tag, TAG_OID);
     let arcs = v.as_oid().unwrap();
@@ -82,7 +84,9 @@ fn oid_rsa_encryption() {
 fn oid_sha256_with_rsa() {
     // 1.2.840.113549.1.1.11 (sha256WithRSAEncryption):
     // 06 09 2A 86 48 86 F7 0D 01 01 0B
-    let buf = [0x06, 0x09, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x0B];
+    let buf = [
+        0x06, 0x09, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x0B,
+    ];
     let v = parse_single(&buf).unwrap();
     let arcs = v.as_oid().unwrap();
     assert_eq!(oid_to_string(&arcs), "1.2.840.113549.1.1.11");
@@ -128,9 +132,7 @@ fn algorithm_identifier_rsa_encryption() {
     // AlgorithmIdentifier ::= SEQUENCE { OID 1.2.840.113549.1.1.1, NULL }
     // 30 0D 06 09 2A 86 48 86 F7 0D 01 01 01 05 00
     let buf = [
-        0x30, 0x0D,
-        0x06, 0x09, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01,
-        0x05, 0x00,
+        0x30, 0x0D, 0x06, 0x09, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01, 0x05, 0x00,
     ];
     let v = parse_single(&buf).unwrap();
     let mut inner = v.into_reader().unwrap();

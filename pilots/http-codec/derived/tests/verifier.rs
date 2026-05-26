@@ -3,7 +3,9 @@
 use rusty_http_codec::*;
 
 // Helper: build a request byte buffer from a string with explicit CRLFs.
-fn b(s: &str) -> Vec<u8> { s.as_bytes().to_vec() }
+fn b(s: &str) -> Vec<u8> {
+    s.as_bytes().to_vec()
+}
 
 #[test]
 fn parse_simple_get() {
@@ -12,7 +14,10 @@ fn parse_simple_get() {
     assert_eq!(r.method, "GET");
     assert_eq!(r.target, "/");
     assert_eq!(r.version, "HTTP/1.1");
-    assert_eq!(r.headers, vec![("Host".to_string(), "example.com".to_string())]);
+    assert_eq!(
+        r.headers,
+        vec![("Host".to_string(), "example.com".to_string())]
+    );
     assert!(r.body.is_empty());
 }
 
@@ -63,13 +68,19 @@ fn parse_truncated_is_error() {
 #[test]
 fn parse_bad_version_is_error() {
     let bytes = b("GET / FTP/3.0\r\n\r\n");
-    assert!(matches!(parse_request(&bytes), Err(CodecError::BadVersion(_))));
+    assert!(matches!(
+        parse_request(&bytes),
+        Err(CodecError::BadVersion(_))
+    ));
 }
 
 #[test]
 fn parse_invalid_status_is_error() {
     let bytes = b("HTTP/1.1 NOT_A_NUMBER OK\r\n\r\n");
-    assert!(matches!(parse_response(&bytes), Err(CodecError::BadStatus(_))));
+    assert!(matches!(
+        parse_response(&bytes),
+        Err(CodecError::BadStatus(_))
+    ));
 }
 
 #[test]
@@ -78,7 +89,10 @@ fn serialize_simple_response() {
     let body = b"hello";
     let out = serialize_response(200, "OK", &headers, body);
     // Auto-injected Content-Length.
-    assert_eq!(out, b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 5\r\n\r\nhello");
+    assert_eq!(
+        out,
+        b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 5\r\n\r\nhello"
+    );
 }
 
 #[test]
@@ -88,14 +102,23 @@ fn serialize_request_with_existing_content_length() {
         ("Content-Length".to_string(), "0".to_string()),
     ];
     let out = serialize_request("DELETE", "/r/1", &headers, b"");
-    assert_eq!(out, b"DELETE /r/1 HTTP/1.1\r\nHost: x\r\nContent-Length: 0\r\n\r\n");
+    assert_eq!(
+        out,
+        b"DELETE /r/1 HTTP/1.1\r\nHost: x\r\nContent-Length: 0\r\n\r\n"
+    );
 }
 
 #[test]
 fn roundtrip_request() {
-    let original = b("POST /api HTTP/1.1\r\nHost: example.com\r\nContent-Length: 11\r\n\r\nhello world");
+    let original =
+        b("POST /api HTTP/1.1\r\nHost: example.com\r\nContent-Length: 11\r\n\r\nhello world");
     let parsed = parse_request(&original).unwrap();
-    let reserialized = serialize_request(&parsed.method, &parsed.target, &parsed.headers, &parsed.body);
+    let reserialized = serialize_request(
+        &parsed.method,
+        &parsed.target,
+        &parsed.headers,
+        &parsed.body,
+    );
     // Reserialized bytes have headers in same order; should match original.
     assert_eq!(reserialized, original);
 }

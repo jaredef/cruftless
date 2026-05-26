@@ -133,10 +133,7 @@ pub fn couple(
     let mut by_surface: BTreeMap<String, Vec<&SignalCluster>> = BTreeMap::new();
     for cluster in &seams.signal_clusters {
         for surface in &cluster.surfaces_touched {
-            by_surface
-                .entry(surface.clone())
-                .or_default()
-                .push(cluster);
+            by_surface.entry(surface.clone()).or_default().push(cluster);
         }
     }
 
@@ -177,21 +174,19 @@ pub fn couple(
     surfaces.sort_by(|a, b| {
         let a_priority = a.mismatch.is_some() as u8;
         let b_priority = b.mismatch.is_some() as u8;
-        b_priority
-            .cmp(&a_priority)
-            .then_with(|| {
-                let a_z = a
-                    .welch_summary
-                    .as_ref()
-                    .and_then(|w| w.max_z)
-                    .unwrap_or(0.0);
-                let b_z = b
-                    .welch_summary
-                    .as_ref()
-                    .and_then(|w| w.max_z)
-                    .unwrap_or(0.0);
-                b_z.partial_cmp(&a_z).unwrap_or(std::cmp::Ordering::Equal)
-            })
+        b_priority.cmp(&a_priority).then_with(|| {
+            let a_z = a
+                .welch_summary
+                .as_ref()
+                .and_then(|w| w.max_z)
+                .unwrap_or(0.0);
+            let b_z = b
+                .welch_summary
+                .as_ref()
+                .and_then(|w| w.max_z)
+                .unwrap_or(0.0);
+            b_z.partial_cmp(&a_z).unwrap_or(std::cmp::Ordering::Equal)
+        })
     });
 
     let stats = CoupledStats {
@@ -269,7 +264,9 @@ fn seams_summary_of(clusters: &[&SignalCluster]) -> SeamsSummary {
         .max_by_key(|c| c.cardinality_total)
         .map(|c| signal_name_terse(&c.signal_vector))
         .unwrap_or_else(|| "none".into());
-    let any_architectural = clusters.iter().any(|c| has_architectural_signal(&c.signal_vector));
+    let any_architectural = clusters
+        .iter()
+        .any(|c| has_architectural_signal(&c.signal_vector));
 
     SeamsSummary {
         clusters_count: clusters.len() as u64,
@@ -421,8 +418,7 @@ fn classify_mismatch(
         Some(w) => w,
         None => return (None, None),
     };
-    let welch_hot = welch.any_unbounded_upward
-        || welch.max_z.map(|z| z >= 5.0).unwrap_or(false);
+    let welch_hot = welch.any_unbounded_upward || welch.max_z.map(|z| z >= 5.0).unwrap_or(false);
     let seams_hot = seams.any_architectural_signal && seams.cardinality_total >= 50;
 
     if welch_hot && !seams_hot {
@@ -439,10 +435,7 @@ fn classify_mismatch(
                  partition. Candidate implementation-internal seam.",
                 surface,
                 max_z,
-                welch
-                    .max_z_kind
-                    .clone()
-                    .unwrap_or_else(|| "?".into()),
+                welch.max_z_kind.clone().unwrap_or_else(|| "?".into()),
                 welch.any_unbounded_upward,
                 seams.clusters_count,
                 seams.cardinality_total

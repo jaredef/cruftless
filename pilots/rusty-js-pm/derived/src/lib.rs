@@ -31,14 +31,14 @@
 //! aarch64-linux Pi target builds and runs the toolchain crates before
 //! any registry-facing substrate lands.
 
-pub mod smoke;
-pub mod integrity;
-pub mod http;
-pub mod resolver;
 pub mod fetcher;
+pub mod http;
+pub mod install;
+pub mod integrity;
 pub mod linker;
 pub mod lockfile;
-pub mod install;
+pub mod resolver;
+pub mod smoke;
 
 #[cfg(test)]
 mod tests {

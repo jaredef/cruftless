@@ -19,8 +19,6 @@ pub mod readable;
 pub mod transform;
 pub mod writable;
 
-pub use readable::{
-    Controller, ReadResult, ReadableStream, Reader, StreamError, UnderlyingSource,
-};
+pub use readable::{Controller, ReadResult, ReadableStream, Reader, StreamError, UnderlyingSource};
 pub use transform::{TransformStream, Transformer};
 pub use writable::{UnderlyingSink, WritableStream, Writer};

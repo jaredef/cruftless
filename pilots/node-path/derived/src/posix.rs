@@ -59,7 +59,11 @@ pub fn extname(path: &str) -> String {
     // Skip leading dots; `.bashrc` has no extension per Node semantics.
     let mut start = 0;
     for c in base.chars() {
-        if c == '.' { start += 1; } else { break; }
+        if c == '.' {
+            start += 1;
+        } else {
+            break;
+        }
     }
     let scan = &base[start..];
     match scan.rfind('.') {
@@ -75,7 +79,11 @@ pub fn parse(path: &str) -> PathParsed {
     if path.is_empty() {
         return p;
     }
-    p.root = if path.starts_with('/') { "/".to_string() } else { String::new() };
+    p.root = if path.starts_with('/') {
+        "/".to_string()
+    } else {
+        String::new()
+    };
     p.dir = dirname(path);
     p.base = basename(path, None);
     p.ext = extname(path);
@@ -91,7 +99,11 @@ pub fn parse(path: &str) -> PathParsed {
 /// CD format: builds a path string from a parsed object. dir + sep + base if
 /// dir is set; otherwise root + base; otherwise just name + ext.
 pub fn format(p: &PathParsed) -> String {
-    let dir = if !p.dir.is_empty() { p.dir.as_str() } else { p.root.as_str() };
+    let dir = if !p.dir.is_empty() {
+        p.dir.as_str()
+    } else {
+        p.root.as_str()
+    };
     let base = if !p.base.is_empty() {
         p.base.clone()
     } else {
@@ -117,7 +129,9 @@ pub fn is_absolute(path: &str) -> bool {
 pub fn join(parts: &[&str]) -> String {
     let mut joined = String::new();
     for part in parts {
-        if part.is_empty() { continue; }
+        if part.is_empty() {
+            continue;
+        }
         if !joined.is_empty() && !joined.ends_with('/') {
             joined.push('/');
         }
@@ -143,23 +157,34 @@ pub fn normalize(path: &str) -> String {
             "" | "." => continue,
             ".." => {
                 let pop = match segs.last() {
-                    Some(&".." ) => false,
+                    Some(&"..") => false,
                     Some(_) => true,
                     None => false,
                 };
-                if pop { segs.pop(); }
-                else if !is_abs { segs.push(".."); }
+                if pop {
+                    segs.pop();
+                } else if !is_abs {
+                    segs.push("..");
+                }
             }
             other => segs.push(other),
         }
     }
     let mut out = String::new();
-    if is_abs { out.push('/'); }
+    if is_abs {
+        out.push('/');
+    }
     out.push_str(&segs.join("/"));
     if out.is_empty() {
-        return if is_abs { "/".to_string() } else { ".".to_string() };
+        return if is_abs {
+            "/".to_string()
+        } else {
+            ".".to_string()
+        };
     }
-    if trailing_sep && !out.ends_with('/') { out.push('/'); }
+    if trailing_sep && !out.ends_with('/') {
+        out.push('/');
+    }
     out
 }
 
@@ -167,7 +192,9 @@ pub fn normalize(path: &str) -> String {
 /// Both paths must be absolute for POSIX; if not, resolve against pilot's
 /// fixed CWD ("/" by default).
 pub fn relative(from: &str, to: &str) -> String {
-    if from == to { return String::new(); }
+    if from == to {
+        return String::new();
+    }
     let from_abs = if is_absolute(from) {
         normalize(from)
     } else {
@@ -178,10 +205,24 @@ pub fn relative(from: &str, to: &str) -> String {
     } else {
         normalize(&format!("/{}", to))
     };
-    if from_abs == to_abs { return String::new(); }
-    let from_segs: Vec<&str> = from_abs.trim_start_matches('/').split('/').filter(|s| !s.is_empty()).collect();
-    let to_segs: Vec<&str> = to_abs.trim_start_matches('/').split('/').filter(|s| !s.is_empty()).collect();
-    let common = from_segs.iter().zip(to_segs.iter()).take_while(|(a, b)| a == b).count();
+    if from_abs == to_abs {
+        return String::new();
+    }
+    let from_segs: Vec<&str> = from_abs
+        .trim_start_matches('/')
+        .split('/')
+        .filter(|s| !s.is_empty())
+        .collect();
+    let to_segs: Vec<&str> = to_abs
+        .trim_start_matches('/')
+        .split('/')
+        .filter(|s| !s.is_empty())
+        .collect();
+    let common = from_segs
+        .iter()
+        .zip(to_segs.iter())
+        .take_while(|(a, b)| a == b)
+        .count();
     let up_count = from_segs.len() - common;
     let mut parts: Vec<&str> = vec![".."; up_count];
     parts.extend_from_slice(&to_segs[common..]);
@@ -195,7 +236,9 @@ pub fn resolve(parts: &[&str], cwd: &str) -> String {
     let mut resolved = String::new();
     let mut resolved_absolute = false;
     for part in parts.iter().rev() {
-        if part.is_empty() { continue; }
+        if part.is_empty() {
+            continue;
+        }
         if resolved.is_empty() {
             resolved = part.to_string();
         } else {
@@ -215,7 +258,11 @@ pub fn resolve(parts: &[&str], cwd: &str) -> String {
         };
     }
     let normalized = normalize(&resolved);
-    if normalized == "." || normalized.is_empty() { "/".to_string() } else { normalized }
+    if normalized == "." || normalized.is_empty() {
+        "/".to_string()
+    } else {
+        normalized
+    }
 }
 
 fn strip_trailing_seps(path: &str) -> &str {

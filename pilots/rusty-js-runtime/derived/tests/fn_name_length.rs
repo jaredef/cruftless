@@ -11,7 +11,11 @@ fn run(src: &str) -> Value {
 }
 
 fn as_str(v: Value) -> String {
-    if let Value::String(s) = v { s.as_str().to_string() } else { panic!("not a string: {:?}", v) }
+    if let Value::String(s) = v {
+        s.as_str().to_string()
+    } else {
+        panic!("not a string: {:?}", v)
+    }
 }
 
 #[test]

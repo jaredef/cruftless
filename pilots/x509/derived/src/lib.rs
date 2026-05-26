@@ -35,7 +35,9 @@ pub enum X509Error {
 }
 
 impl From<DerError> for X509Error {
-    fn from(e: DerError) -> Self { X509Error::DerParse(e) }
+    fn from(e: DerError) -> Self {
+        X509Error::DerParse(e)
+    }
 }
 
 impl std::fmt::Display for X509Error {
@@ -44,7 +46,9 @@ impl std::fmt::Display for X509Error {
             X509Error::DerParse(e) => write!(f, "DER parse: {}", e),
             X509Error::UnsupportedVersion(v) => write!(f, "unsupported X.509 version {}", v),
             X509Error::UnsupportedSigAlg(o) => write!(f, "unsupported signature algorithm {}", o),
-            X509Error::UnsupportedPubKeyAlg(o) => write!(f, "unsupported public key algorithm {}", o),
+            X509Error::UnsupportedPubKeyAlg(o) => {
+                write!(f, "unsupported public key algorithm {}", o)
+            }
             X509Error::InvalidSpki => write!(f, "invalid SubjectPublicKeyInfo"),
             X509Error::InvalidValidity => write!(f, "invalid validity period"),
             X509Error::InvalidSignature => write!(f, "signature verification failed"),
@@ -162,8 +166,12 @@ pub struct Certificate {
 /// Parse a DER-encoded X.509 certificate.
 pub fn parse_certificate(der: &[u8]) -> Result<Certificate, X509Error> {
     let outer = parse_single(der)?;
-    if outer.tag != TAG_SEQUENCE { return Err(X509Error::DerParse(
-        DerError::WrongTag { expected: TAG_SEQUENCE, actual: outer.tag })); }
+    if outer.tag != TAG_SEQUENCE {
+        return Err(X509Error::DerParse(DerError::WrongTag {
+            expected: TAG_SEQUENCE,
+            actual: outer.tag,
+        }));
+    }
 
     // The outer SEQUENCE wraps three things: tbsCertificate (SEQUENCE),
     // signatureAlgorithm (SEQUENCE), signatureValue (BIT STRING).
@@ -182,8 +190,12 @@ pub fn parse_certificate(der: &[u8]) -> Result<Certificate, X509Error> {
     // Read tbsCertificate as a TLV; capture the full TLV bytes including
     // the header. Re-derive from der using the position.
     let tbs_value = outer_reader.read_tlv()?;
-    if tbs_value.tag != TAG_SEQUENCE { return Err(X509Error::DerParse(
-        DerError::WrongTag { expected: TAG_SEQUENCE, actual: tbs_value.tag })); }
+    if tbs_value.tag != TAG_SEQUENCE {
+        return Err(X509Error::DerParse(DerError::WrongTag {
+            expected: TAG_SEQUENCE,
+            actual: tbs_value.tag,
+        }));
+    }
     // tbsCertificate's full bytes are tag+length+content. Length-prefix
     // size is variable; rebuild by walking the DER form.
     let tbs_end_in_der = {
@@ -297,7 +309,13 @@ fn parse_tbs(tbs_content: &[u8]) -> Result<TbsFields, X509Error> {
     }
 
     Ok(TbsFields {
-        version, serial_number, issuer, validity, subject, spki, extensions,
+        version,
+        serial_number,
+        issuer,
+        validity,
+        subject,
+        spki,
+        extensions,
     })
 }
 
@@ -305,7 +323,9 @@ fn parse_algorithm_identifier(v: &DerValue) -> Result<AlgorithmIdentifier, X509E
     let mut r = DerReader::new(v.content);
     let oid_val = r.read_tag(TAG_OID)?;
     let oid = oid_to_string(&oid_val.as_oid()?);
-    let params = if r.is_empty() { Vec::new() } else {
+    let params = if r.is_empty() {
+        Vec::new()
+    } else {
         r.remaining().to_vec()
     };
     Ok(AlgorithmIdentifier { oid, params })
@@ -340,7 +360,10 @@ fn parse_name(v: &DerValue) -> Result<DistinguishedName, X509Error> {
             attrs.push((oid, val_s));
         }
     }
-    Ok(DistinguishedName { attributes: attrs, raw_der })
+    Ok(DistinguishedName {
+        attributes: attrs,
+        raw_der,
+    })
 }
 
 fn parse_validity(v: &DerValue) -> Result<Validity, X509Error> {
@@ -373,12 +396,16 @@ fn parse_spki(v: &DerValue) -> Result<SubjectPublicKeyInfo, X509Error> {
     let alg = parse_algorithm_identifier(&alg_v)?;
     let bs = r.read_tag(TAG_BIT_STRING)?;
     let (unused, key_bytes) = bs.as_bit_string()?;
-    if unused != 0 { return Err(X509Error::InvalidSpki); }
+    if unused != 0 {
+        return Err(X509Error::InvalidSpki);
+    }
     let key = match alg.oid.as_str() {
         OID_RSA_ENCRYPTION => {
             // SubjectPublicKey for RSA is RSAPublicKey ::= SEQUENCE { n INTEGER, e INTEGER }.
             let rsa_seq = parse_single(key_bytes)?;
-            if rsa_seq.tag != TAG_SEQUENCE { return Err(X509Error::InvalidSpki); }
+            if rsa_seq.tag != TAG_SEQUENCE {
+                return Err(X509Error::InvalidSpki);
+            }
             let mut rsa_reader = DerReader::new(rsa_seq.content);
             let n_val = rsa_reader.read_tag(TAG_INTEGER)?;
             let n = n_val.as_unsigned_integer()?.to_vec();
@@ -389,16 +416,25 @@ fn parse_spki(v: &DerValue) -> Result<SubjectPublicKeyInfo, X509Error> {
         OID_EC_PUBLIC_KEY => {
             // params is the curve OID.
             let params_value = parse_single(&alg.params)?;
-            if params_value.tag != TAG_OID { return Err(X509Error::InvalidSpki); }
+            if params_value.tag != TAG_OID {
+                return Err(X509Error::InvalidSpki);
+            }
             let curve_arcs = params_value.as_oid()?;
             let curve_oid = oid_to_string(&curve_arcs);
             // subjectPublicKey BIT STRING is the uncompressed point
             // 0x04 || X || Y.
-            PublicKey::Ec { curve_oid, point: key_bytes.to_vec() }
+            PublicKey::Ec {
+                curve_oid,
+                point: key_bytes.to_vec(),
+            }
         }
         _ => return Err(X509Error::UnsupportedPubKeyAlg(alg.oid.clone())),
     };
-    Ok(SubjectPublicKeyInfo { algorithm: alg, key, raw_der })
+    Ok(SubjectPublicKeyInfo {
+        algorithm: alg,
+        key,
+        raw_der,
+    })
 }
 
 fn parse_extension(v: &DerValue) -> Result<Extension, X509Error> {
@@ -412,7 +448,11 @@ fn parse_extension(v: &DerValue) -> Result<Extension, X509Error> {
         critical = cv.as_bool()?;
     }
     let val_v = r.read_tag(TAG_OCTET_STRING)?;
-    Ok(Extension { oid, critical, value: val_v.content.to_vec() })
+    Ok(Extension {
+        oid,
+        critical,
+        value: val_v.content.to_vec(),
+    })
 }
 
 fn append_length(n: usize, out: &mut Vec<u8>) {
@@ -421,7 +461,10 @@ fn append_length(n: usize, out: &mut Vec<u8>) {
     } else {
         let mut len_bytes = Vec::new();
         let mut tmp = n;
-        while tmp > 0 { len_bytes.push((tmp & 0xFF) as u8); tmp >>= 8; }
+        while tmp > 0 {
+            len_bytes.push((tmp & 0xFF) as u8);
+            tmp >>= 8;
+        }
         len_bytes.reverse();
         out.push(0x80 | (len_bytes.len() as u8));
         out.extend_from_slice(&len_bytes);
@@ -443,17 +486,28 @@ pub fn verify_signature(
     let _t0 = std::time::Instant::now();
     let sig_oid = cert.signature_algorithm.oid.as_str();
     match sig_oid {
-        OID_SHA256_WITH_RSA | OID_SHA384_WITH_RSA | OID_SHA512_WITH_RSA |
-        OID_SHA1_WITH_RSA => {
+        OID_SHA256_WITH_RSA | OID_SHA384_WITH_RSA | OID_SHA512_WITH_RSA | OID_SHA1_WITH_RSA => {
             let (n, e) = match &issuer_spki.key {
                 PublicKey::Rsa { n, e } => (n, e),
                 _ => return Err(X509Error::UnsupportedSigAlg(sig_oid.into())),
             };
             let (hash, hash_name) = compute_hash_for_rsa(sig_oid, &cert.tbs_certificate)?;
-            let r = rusty_web_crypto::rsa_pkcs1_v15_verify(n, e, &hash, &cert.signature_value, hash_name)
-                .map_err(X509Error::CryptoFail);
-            if _profile { eprintln!("[wc-ext-14] verify_signature RSA {} → {:?} in {:?}",
-                sig_oid, r.is_ok(), _t0.elapsed()); }
+            let r = rusty_web_crypto::rsa_pkcs1_v15_verify(
+                n,
+                e,
+                &hash,
+                &cert.signature_value,
+                hash_name,
+            )
+            .map_err(X509Error::CryptoFail);
+            if _profile {
+                eprintln!(
+                    "[wc-ext-14] verify_signature RSA {} → {:?} in {:?}",
+                    sig_oid,
+                    r.is_ok(),
+                    _t0.elapsed()
+                );
+            }
             r
         }
         OID_ECDSA_WITH_SHA256 | OID_ECDSA_WITH_SHA384 | OID_ECDSA_WITH_SHA512 => {
@@ -471,12 +525,16 @@ pub fn verify_signature(
                 return Err(X509Error::InvalidSpki);
             }
             let coord = curve.coord_bytes;
-            if point.len() != 1 + 2 * coord { return Err(X509Error::InvalidSpki); }
+            if point.len() != 1 + 2 * coord {
+                return Err(X509Error::InvalidSpki);
+            }
             let qx = &point[1..1 + coord];
             let qy = &point[1 + coord..];
             // ECDSA signature is encoded as SEQUENCE { INTEGER r, INTEGER s }.
             let sig_seq = parse_single(&cert.signature_value)?;
-            if sig_seq.tag != TAG_SEQUENCE { return Err(X509Error::InvalidSignature); }
+            if sig_seq.tag != TAG_SEQUENCE {
+                return Err(X509Error::InvalidSignature);
+            }
             let mut sig_reader = DerReader::new(sig_seq.content);
             let r_val = sig_reader.read_tag(TAG_INTEGER)?;
             let s_val = sig_reader.read_tag(TAG_INTEGER)?;
@@ -487,15 +545,27 @@ pub fn verify_signature(
             sig_raw[coord - r.len()..coord].copy_from_slice(r);
             sig_raw[2 * coord - s.len()..].copy_from_slice(s);
             let hash = match sig_oid {
-                OID_ECDSA_WITH_SHA256 => rusty_web_crypto::digest_sha256(&cert.tbs_certificate).to_vec(),
-                OID_ECDSA_WITH_SHA384 => rusty_web_crypto::digest_sha384(&cert.tbs_certificate).to_vec(),
-                OID_ECDSA_WITH_SHA512 => rusty_web_crypto::digest_sha512(&cert.tbs_certificate).to_vec(),
+                OID_ECDSA_WITH_SHA256 => {
+                    rusty_web_crypto::digest_sha256(&cert.tbs_certificate).to_vec()
+                }
+                OID_ECDSA_WITH_SHA384 => {
+                    rusty_web_crypto::digest_sha384(&cert.tbs_certificate).to_vec()
+                }
+                OID_ECDSA_WITH_SHA512 => {
+                    rusty_web_crypto::digest_sha512(&cert.tbs_certificate).to_vec()
+                }
                 _ => unreachable!(),
             };
             let r = rusty_web_crypto::ecdsa_verify(&curve, qx, qy, &hash, &sig_raw)
                 .map_err(X509Error::CryptoFail);
-            if _profile { eprintln!("[wc-ext-14] verify_signature ECDSA {} → {:?} in {:?}",
-                sig_oid, r.is_ok(), _t0.elapsed()); }
+            if _profile {
+                eprintln!(
+                    "[wc-ext-14] verify_signature ECDSA {} → {:?} in {:?}",
+                    sig_oid,
+                    r.is_ok(),
+                    _t0.elapsed()
+                );
+            }
             r
         }
         _ => Err(X509Error::UnsupportedSigAlg(sig_oid.into())),
@@ -524,9 +594,13 @@ const END: &str = "-----END CERTIFICATE-----";
 pub fn pem_to_der(pem: &str) -> Result<Vec<u8>, X509Error> {
     let begin_pos = pem.find(BEGIN).ok_or(X509Error::PemBadHeader)?;
     let after_begin = begin_pos + BEGIN.len();
-    let end_pos = pem[after_begin..].find(END).ok_or(X509Error::PemBadHeader)?;
+    let end_pos = pem[after_begin..]
+        .find(END)
+        .ok_or(X509Error::PemBadHeader)?;
     let b64_block: String = pem[after_begin..after_begin + end_pos]
-        .chars().filter(|c| !c.is_whitespace()).collect();
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect();
     base64_decode(&b64_block)
 }
 
@@ -553,7 +627,10 @@ pub fn pem_all_to_der(pem: &str) -> Vec<Vec<u8>> {
 fn base64_decode(s: &str) -> Result<Vec<u8>, X509Error> {
     const BAD: u8 = 255;
     let mut table = [BAD; 256];
-    for (i, c) in b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/".iter().enumerate() {
+    for (i, c) in b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+        .iter()
+        .enumerate()
+    {
         table[*c as usize] = i as u8;
     }
     let mut out = Vec::with_capacity((s.len() * 3) / 4);
@@ -565,19 +642,25 @@ fn base64_decode(s: &str) -> Result<Vec<u8>, X509Error> {
         let c = table[bytes[i + 2] as usize];
         let d = table[bytes[i + 3] as usize];
         i += 4;
-        if a == BAD || b == BAD { return Err(X509Error::PemBadBase64); }
+        if a == BAD || b == BAD {
+            return Err(X509Error::PemBadBase64);
+        }
         if bytes[i - 4 + 2] == b'=' {
             // Two-byte block with two padding chars (only `a b = =`).
             out.push((a << 2) | (b >> 4));
             break;
         }
-        if c == BAD { return Err(X509Error::PemBadBase64); }
+        if c == BAD {
+            return Err(X509Error::PemBadBase64);
+        }
         if bytes[i - 4 + 3] == b'=' {
             out.push((a << 2) | (b >> 4));
             out.push((b << 4) | (c >> 2));
             break;
         }
-        if d == BAD { return Err(X509Error::PemBadBase64); }
+        if d == BAD {
+            return Err(X509Error::PemBadBase64);
+        }
         out.push((a << 2) | (b >> 4));
         out.push((b << 4) | (c >> 2));
         out.push((c << 6) | d);

@@ -46,9 +46,15 @@ pub struct JobQueue {
 }
 
 impl JobQueue {
-    pub fn new() -> Self { Self::default() }
-    pub fn microtask_count(&self) -> usize { self.microtasks.len() }
-    pub fn macrotask_count(&self) -> usize { self.macrotasks.len() }
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn microtask_count(&self) -> usize {
+        self.microtasks.len()
+    }
+    pub fn macrotask_count(&self) -> usize {
+        self.macrotasks.len()
+    }
     pub fn is_empty(&self) -> bool {
         self.microtasks.is_empty() && self.macrotasks.is_empty()
     }
@@ -59,18 +65,24 @@ impl Runtime {
     /// between macrotasks; a microtask enqueued during a drain is
     /// processed in the same drain phase.
     pub fn enqueue_microtask<F>(&mut self, label: &'static str, f: F)
-    where F: FnOnce(&mut Runtime) -> Result<(), RuntimeError> + 'static {
+    where
+        F: FnOnce(&mut Runtime) -> Result<(), RuntimeError> + 'static,
+    {
         self.job_queue.microtasks.push_back(Job {
-            label, kind: JobKind::Closure(Box::new(f)),
+            label,
+            kind: JobKind::Closure(Box::new(f)),
         });
     }
 
     /// Enqueue a macrotask. Per HTML §8, one macrotask runs to
     /// completion per event-loop iteration.
     pub fn enqueue_macrotask<F>(&mut self, label: &'static str, f: F)
-    where F: FnOnce(&mut Runtime) -> Result<(), RuntimeError> + 'static {
+    where
+        F: FnOnce(&mut Runtime) -> Result<(), RuntimeError> + 'static,
+    {
         self.job_queue.macrotasks.push_back(Job {
-            label, kind: JobKind::Closure(Box::new(f)),
+            label,
+            kind: JobKind::Closure(Box::new(f)),
         });
     }
 
@@ -92,7 +104,7 @@ impl Runtime {
             iter += 1;
             if iter > max_iterations {
                 return Err(RuntimeError::TypeError(
-                    "run_to_completion: max-iteration safety bound exceeded".into()
+                    "run_to_completion: max-iteration safety bound exceeded".into(),
                 ));
             }
             // Phase 1: drain microtasks to quiescence per §9.4.1.
@@ -115,7 +127,9 @@ impl Runtime {
             if let Some(poll) = self.host_hooks.poll_io.take() {
                 let progressed = poll(self)?;
                 self.host_hooks.poll_io = Some(poll);
-                if progressed { continue; }
+                if progressed {
+                    continue;
+                }
             }
             return Ok(());
         }

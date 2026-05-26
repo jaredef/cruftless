@@ -17,7 +17,9 @@ pub enum LineEndings {
 }
 
 impl Default for LineEndings {
-    fn default() -> Self { LineEndings::Transparent }
+    fn default() -> Self {
+        LineEndings::Transparent
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -43,13 +45,19 @@ pub enum BlobPart<'a> {
 impl Blob {
     /// SPEC §3.constructor: empty Blob, no type, size 0.
     pub fn empty() -> Self {
-        Self { bytes: Vec::new(), mime_type: String::new() }
+        Self {
+            bytes: Vec::new(),
+            mime_type: String::new(),
+        }
     }
 
     /// SPEC §3.constructor with a single part and no options.
     /// Convenience shorthand around `from_parts`.
     pub fn from_bytes(bytes: impl Into<Vec<u8>>) -> Self {
-        Self { bytes: bytes.into(), mime_type: String::new() }
+        Self {
+            bytes: bytes.into(),
+            mime_type: String::new(),
+        }
     }
 
     /// SPEC §3.constructor.
@@ -73,18 +81,25 @@ impl Blob {
     }
 
     /// SPEC §3: byte-length of the blob.
-    pub fn size(&self) -> usize { self.bytes.len() }
+    pub fn size(&self) -> usize {
+        self.bytes.len()
+    }
 
     /// SPEC §3: MIME type, lowercased ASCII; empty string when none provided.
-    pub fn mime_type(&self) -> &str { &self.mime_type }
+    pub fn mime_type(&self) -> &str {
+        &self.mime_type
+    }
 
     /// SPEC §3.slice. start/end clamp to 0..=size; negative offsets become
     /// `size + offset` clamped to 0. Optional content-type override.
     pub fn slice(&self, start: i64, end: Option<i64>, content_type: Option<&str>) -> Self {
         let size = self.bytes.len() as i64;
         let resolve = |i: i64| -> usize {
-            if i < 0 { (size + i).max(0) as usize }
-            else { i.min(size) as usize }
+            if i < 0 {
+                (size + i).max(0) as usize
+            } else {
+                i.min(size) as usize
+            }
         };
         let lo = resolve(start);
         let hi = match end {
@@ -111,10 +126,14 @@ impl Blob {
 
     /// SPEC §3.arrayBuffer: raw bytes (in JS, would be an ArrayBuffer
     /// resolving via Promise; in Rust, we expose the raw byte slice).
-    pub fn array_buffer(&self) -> Vec<u8> { self.bytes.clone() }
+    pub fn array_buffer(&self) -> Vec<u8> {
+        self.bytes.clone()
+    }
 
     /// SPEC §3.bytes: alias of arrayBuffer in pilot scope.
-    pub fn bytes(&self) -> Vec<u8> { self.bytes.clone() }
+    pub fn bytes(&self) -> Vec<u8> {
+        self.bytes.clone()
+    }
 }
 
 // ────────────────────────── Helpers ───────────────────────────────────
@@ -124,7 +143,13 @@ impl Blob {
 /// through unchanged (per spec — only ASCII upper→lower is required).
 fn normalize_type(s: &str) -> String {
     s.chars()
-        .map(|c| if c.is_ascii() { c.to_ascii_lowercase() } else { c })
+        .map(|c| {
+            if c.is_ascii() {
+                c.to_ascii_lowercase()
+            } else {
+                c
+            }
+        })
         .collect()
 }
 

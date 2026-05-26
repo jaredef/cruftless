@@ -224,7 +224,10 @@ pub enum ExportBinding {
     Star { source_specifier: String },
     /// `export * as ns from "..."`. The runtime writes the source's whole
     /// namespace object to this namespace under `exported`.
-    StarAs { exported: String, source_specifier: String },
+    StarAs {
+        exported: String,
+        source_specifier: String,
+    },
 }
 
 pub struct Compiler {
@@ -416,8 +419,13 @@ struct LabelFrame {
 fn directive_has_use_strict(body: &[Stmt]) -> bool {
     for stmt in body {
         match stmt {
-            Stmt::Expression { expr: Expr::StringLiteral { value, .. }, .. } => {
-                if value == "use strict" { return true; }
+            Stmt::Expression {
+                expr: Expr::StringLiteral { value, .. },
+                ..
+            } => {
+                if value == "use strict" {
+                    return true;
+                }
             }
             _ => return false,
         }
@@ -432,14 +440,17 @@ impl Compiler {
             constants: ConstantsPool::new(),
             locals: Vec::new(),
             source_map: Vec::new(),
-            loop_stack: Vec::new(), label_stack: Vec::new(), pending_label: None,
+            loop_stack: Vec::new(),
+            label_stack: Vec::new(),
+            pending_label: None,
             enclosing: Vec::new(),
             upvalues: Vec::new(),
             class_stack: Vec::new(),
             class_seq: 0,
             imports: Vec::new(),
             exports: Vec::new(),
-            reexport_sources: Vec::new(), side_effect_imports: Vec::new(),
+            reexport_sources: Vec::new(),
+            side_effect_imports: Vec::new(),
             pending_named_exports: Vec::new(),
             pre_allocated_slots: std::collections::HashMap::new(),
             source_line_starts: Vec::new(),
@@ -487,7 +498,9 @@ impl Compiler {
         // Dedupe consecutive identical tags at the same offset (nested
         // constructs that share an entry point only need one tag).
         if let Some(&(prev_off, prev_name)) = self.construct_tags.last() {
-            if prev_off == off && prev_name == name { return; }
+            if prev_off == off && prev_name == name {
+                return;
+            }
         }
         self.construct_tags.push((off, name));
     }
@@ -514,11 +527,21 @@ impl Compiler {
         // routes both through this same entry, so we only auto-enable
         // strict when the top of the body actually carries the directive
         // OR when imports/exports are present (a syntactic module).
-        let has_module_syntax = m.body.iter().any(|i| matches!(i,
-            ModuleItem::Import(_) | ModuleItem::Export(_)));
-        let leading_stmts: Vec<Stmt> = m.body.iter().filter_map(|i|
-            if let ModuleItem::Statement(s) = i { Some(s.clone()) } else { None }
-        ).collect();
+        let has_module_syntax = m
+            .body
+            .iter()
+            .any(|i| matches!(i, ModuleItem::Import(_) | ModuleItem::Export(_)));
+        let leading_stmts: Vec<Stmt> = m
+            .body
+            .iter()
+            .filter_map(|i| {
+                if let ModuleItem::Statement(s) = i {
+                    Some(s.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
         // Ω.5.P05.L0.module-mjs-strict: .mjs files are ECMAScript modules
         // by file-extension convention (Node + browsers + Bun all enforce
         // this); ES modules are strict by default per ECMA-262 §15.5
@@ -550,30 +573,29 @@ impl Compiler {
         // global creation (icalendar's bare `PROP_NAME = 0` at module
         // top; ethereumjs-* family; many older npm packages) crashed on
         // ReferenceError after Ω.5.P04.E2.strict-write-enforcement.
-        let is_cjs_wrapper = m.body.len() == 1 && match m.body.first() {
-            Some(ModuleItem::Export(rusty_js_ast::ExportDeclaration::Default {
-                body: rusty_js_ast::DefaultExportBody::Expression { expr },
-                ..
-            })) => {
-                // Peel one Parenthesized layer — the wrap is
-                // `export default (function ...)` and the parser
-                // preserves the parens around the function expression.
-                let inner = match expr {
-                    rusty_js_ast::Expr::Parenthesized { expr: e, .. } => e.as_ref(),
-                    other => other,
-                };
-                matches!(inner, rusty_js_ast::Expr::Function { params, .. }
+        let is_cjs_wrapper = m.body.len() == 1
+            && match m.body.first() {
+                Some(ModuleItem::Export(rusty_js_ast::ExportDeclaration::Default {
+                    body: rusty_js_ast::DefaultExportBody::Expression { expr },
+                    ..
+                })) => {
+                    // Peel one Parenthesized layer — the wrap is
+                    // `export default (function ...)` and the parser
+                    // preserves the parens around the function expression.
+                    let inner = match expr {
+                        rusty_js_ast::Expr::Parenthesized { expr: e, .. } => e.as_ref(),
+                        other => other,
+                    };
+                    matches!(inner, rusty_js_ast::Expr::Function { params, .. }
                     if params.len() == 5
                     && params.iter().zip(["exports","module","require","__filename","__dirname"].iter())
                         .all(|(p, expected)| matches!(&p.target,
                             rusty_js_ast::BindingPattern::Identifier(id) if id.name == **expected)))
-            }
-            _ => false,
-        };
+                }
+                _ => false,
+            };
         self.strict = (!is_cjs_wrapper)
-            && (is_mjs_url
-                || has_module_syntax
-                || directive_has_use_strict(&leading_stmts));
+            && (is_mjs_url || has_module_syntax || directive_has_use_strict(&leading_stmts));
         // Tier-Ω.5.b phase A: pre-allocate locals for every import binding
         // so references to imported names in the body resolve to LoadLocal
         // (not LoadGlobal). The runtime populates these slots before
@@ -590,19 +612,25 @@ impl Compiler {
                 }
                 if let Some(def) = &imp.default_binding {
                     let slot = self.alloc_local(LocalDescriptor {
-                        name: def.name.clone(), kind: VariableKind::Const, depth: 0,
+                        name: def.name.clone(),
+                        kind: VariableKind::Const,
+                        depth: 0,
                     });
                     self.imports.push(ImportBinding {
-                        slot, module_request: module_request.clone(),
+                        slot,
+                        module_request: module_request.clone(),
                         kind: ImportBindingKind::Default,
                     });
                 }
                 if let Some(ns) = &imp.namespace_binding {
                     let slot = self.alloc_local(LocalDescriptor {
-                        name: ns.name.clone(), kind: VariableKind::Const, depth: 0,
+                        name: ns.name.clone(),
+                        kind: VariableKind::Const,
+                        depth: 0,
                     });
                     self.imports.push(ImportBinding {
-                        slot, module_request: module_request.clone(),
+                        slot,
+                        module_request: module_request.clone(),
                         kind: ImportBindingKind::Namespace,
                     });
                 }
@@ -612,10 +640,13 @@ impl Compiler {
                         ModuleExportName::String { value, .. } => value.clone(),
                     };
                     let slot = self.alloc_local(LocalDescriptor {
-                        name: spec.local.name.clone(), kind: VariableKind::Const, depth: 0,
+                        name: spec.local.name.clone(),
+                        kind: VariableKind::Const,
+                        depth: 0,
                     });
                     self.imports.push(ImportBinding {
-                        slot, module_request: module_request.clone(),
+                        slot,
+                        module_request: module_request.clone(),
                         kind: ImportBindingKind::Named(imported_name),
                     });
                 }
@@ -645,7 +676,8 @@ impl Compiler {
         //        emits MakeClosure + StoreLocal into its A.4 slot.
         //
         //   Phase A.6 (Ω.5.qq) is now folded into A.4.
-        let mut fn_pre_slots: std::collections::HashMap<String, u16> = std::collections::HashMap::new();
+        let mut fn_pre_slots: std::collections::HashMap<String, u16> =
+            std::collections::HashMap::new();
         // Helper: collect function-decl name from a body item, including
         // export-wrapped form `export function f(){}`.
         for item in &m.body {
@@ -655,15 +687,24 @@ impl Compiler {
             // f as a local upvalue rather than a missing global.
             let fn_name: Option<&BindingIdentifier> = match item {
                 ModuleItem::Statement(Stmt::FunctionDecl { name: Some(n), .. }) => Some(n),
-                ModuleItem::Export(ExportDeclaration::Declaration { decl_stmt: Some(stmt), .. }) => {
-                    if let Stmt::FunctionDecl { name: Some(n), .. } = stmt.as_ref() { Some(n) } else { None }
+                ModuleItem::Export(ExportDeclaration::Declaration {
+                    decl_stmt: Some(stmt),
+                    ..
+                }) => {
+                    if let Stmt::FunctionDecl { name: Some(n), .. } = stmt.as_ref() {
+                        Some(n)
+                    } else {
+                        None
+                    }
                 }
                 _ => None,
             };
             if let Some(n) = fn_name {
                 if !fn_pre_slots.contains_key(&n.name) {
                     let slot = self.alloc_local(LocalDescriptor {
-                        name: n.name.clone(), kind: VariableKind::Var, depth: 0,
+                        name: n.name.clone(),
+                        kind: VariableKind::Var,
+                        depth: 0,
                     });
                     fn_pre_slots.insert(n.name.clone(), slot);
                 }
@@ -679,8 +720,15 @@ impl Compiler {
             // pre-allocated here (no MakeClosure / class-build emit).
             let class_name: Option<&BindingIdentifier> = match item {
                 ModuleItem::Statement(Stmt::ClassDecl { name: Some(n), .. }) => Some(n),
-                ModuleItem::Export(ExportDeclaration::Declaration { decl_stmt: Some(stmt), .. }) => {
-                    if let Stmt::ClassDecl { name: Some(n), .. } = stmt.as_ref() { Some(n) } else { None }
+                ModuleItem::Export(ExportDeclaration::Declaration {
+                    decl_stmt: Some(stmt),
+                    ..
+                }) => {
+                    if let Stmt::ClassDecl { name: Some(n), .. } = stmt.as_ref() {
+                        Some(n)
+                    } else {
+                        None
+                    }
                 }
                 _ => None,
             };
@@ -690,7 +738,9 @@ impl Compiler {
                     && self.resolve_local(&n.name).is_none()
                 {
                     let slot = self.alloc_local(LocalDescriptor {
-                        name: n.name.clone(), kind: VariableKind::Let, depth: 0,
+                        name: n.name.clone(),
+                        kind: VariableKind::Let,
+                        depth: 0,
                     });
                     self.pre_allocated_slots.insert(n.name.clone(), slot);
                 }
@@ -699,8 +749,15 @@ impl Compiler {
             // Top-level variable bindings (incl. under `export`).
             let v_opt: Option<&rusty_js_ast::VariableStatement> = match item {
                 ModuleItem::Statement(Stmt::Variable(v)) => Some(v),
-                ModuleItem::Export(ExportDeclaration::Declaration { decl_stmt: Some(stmt), .. }) => {
-                    if let Stmt::Variable(v) = stmt.as_ref() { Some(v) } else { None }
+                ModuleItem::Export(ExportDeclaration::Declaration {
+                    decl_stmt: Some(stmt),
+                    ..
+                }) => {
+                    if let Stmt::Variable(v) = stmt.as_ref() {
+                        Some(v)
+                    } else {
+                        None
+                    }
                 }
                 _ => None,
             };
@@ -719,7 +776,9 @@ impl Compiler {
                             && self.resolve_local(&id.name).is_none()
                         {
                             let slot = self.alloc_local(LocalDescriptor {
-                                name: id.name.clone(), kind: v.kind, depth: 0,
+                                name: id.name.clone(),
+                                kind: v.kind,
+                                depth: 0,
                             });
                             self.pre_allocated_slots.insert(id.name.clone(), slot);
                         }
@@ -727,29 +786,63 @@ impl Compiler {
                 }
             }
         }
-        self.pre_allocated_slots.extend(fn_pre_slots.iter().map(|(k,v)| (k.clone(), *v)));
+        self.pre_allocated_slots
+            .extend(fn_pre_slots.iter().map(|(k, v)| (k.clone(), *v)));
         for item in &m.body {
             // Pull the inner FunctionDecl out (whether direct or
             // wrapped under `export function f(){}`).
-            let fn_parts: Option<(&Option<BindingIdentifier>, bool, bool, &Vec<Parameter>, &Vec<Stmt>)> = match item {
-                ModuleItem::Statement(Stmt::FunctionDecl { name, is_async, is_generator, params, body, .. }) =>
-                    Some((name, *is_async, *is_generator, params, body)),
-                ModuleItem::Export(ExportDeclaration::Declaration { decl_stmt: Some(stmt), .. }) => {
-                    if let Stmt::FunctionDecl { name, is_async, is_generator, params, body, .. } = stmt.as_ref() {
+            let fn_parts: Option<(
+                &Option<BindingIdentifier>,
+                bool,
+                bool,
+                &Vec<Parameter>,
+                &Vec<Stmt>,
+            )> = match item {
+                ModuleItem::Statement(Stmt::FunctionDecl {
+                    name,
+                    is_async,
+                    is_generator,
+                    params,
+                    body,
+                    ..
+                }) => Some((name, *is_async, *is_generator, params, body)),
+                ModuleItem::Export(ExportDeclaration::Declaration {
+                    decl_stmt: Some(stmt),
+                    ..
+                }) => {
+                    if let Stmt::FunctionDecl {
+                        name,
+                        is_async,
+                        is_generator,
+                        params,
+                        body,
+                        ..
+                    } = stmt.as_ref()
+                    {
                         Some((name, *is_async, *is_generator, params, body))
-                    } else { None }
+                    } else {
+                        None
+                    }
                 }
                 _ => None,
             };
             if let Some((name, is_async, is_generator, params, body)) = fn_parts {
                 if let Some(n) = name {
-                    let proto = self.compile_function_proto(Some(n.clone()), is_async, is_generator, params, body)?;
+                    let proto = self.compile_function_proto(
+                        Some(n.clone()),
+                        is_async,
+                        is_generator,
+                        params,
+                        body,
+                    )?;
                     let captures = proto.upvalues.clone();
                     let idx = self.constants.intern(Constant::Function(Box::new(proto)));
                     encode_op(&mut self.bytecode, Op::MakeClosure);
                     encode_u16(&mut self.bytecode, idx);
                     emit_captures(&mut self.bytecode, &captures);
-                    let slot = *fn_pre_slots.get(&n.name).expect("function-decl slot pre-allocated above");
+                    let slot = *fn_pre_slots
+                        .get(&n.name)
+                        .expect("function-decl slot pre-allocated above");
                     encode_op(&mut self.bytecode, Op::StoreLocal);
                     encode_u16(&mut self.bytecode, slot);
                 }
@@ -768,22 +861,33 @@ impl Compiler {
                 ModuleItem::Statement(Stmt::Variable(v)) => {
                     for d in &v.declarators {
                         if let rusty_js_ast::BindingPattern::Identifier(id) = &d.target {
-                            if !self.pre_allocated_slots.contains_key(&id.name) && self.resolve_local(&id.name).is_none() {
+                            if !self.pre_allocated_slots.contains_key(&id.name)
+                                && self.resolve_local(&id.name).is_none()
+                            {
                                 let slot = self.alloc_local(LocalDescriptor {
-                                    name: id.name.clone(), kind: v.kind, depth: 0,
+                                    name: id.name.clone(),
+                                    kind: v.kind,
+                                    depth: 0,
                                 });
                                 self.pre_allocated_slots.insert(id.name.clone(), slot);
                             }
                         }
                     }
                 }
-                ModuleItem::Export(ExportDeclaration::Declaration { decl_stmt: Some(stmt), .. }) => {
+                ModuleItem::Export(ExportDeclaration::Declaration {
+                    decl_stmt: Some(stmt),
+                    ..
+                }) => {
                     if let Stmt::Variable(v) = stmt.as_ref() {
                         for d in &v.declarators {
                             if let rusty_js_ast::BindingPattern::Identifier(id) = &d.target {
-                                if !self.pre_allocated_slots.contains_key(&id.name) && self.resolve_local(&id.name).is_none() {
+                                if !self.pre_allocated_slots.contains_key(&id.name)
+                                    && self.resolve_local(&id.name).is_none()
+                                {
                                     let slot = self.alloc_local(LocalDescriptor {
-                                        name: id.name.clone(), kind: v.kind, depth: 0,
+                                        name: id.name.clone(),
+                                        kind: v.kind,
+                                        depth: 0,
                                     });
                                     self.pre_allocated_slots.insert(id.name.clone(), slot);
                                 }
@@ -811,15 +915,20 @@ impl Compiler {
         for item in &m.body {
             match item {
                 ModuleItem::Statement(s) => collect_hoisted_var_names(s, &mut nested_var_names),
-                ModuleItem::Export(ExportDeclaration::Declaration { decl_stmt: Some(stmt), .. }) =>
-                    collect_hoisted_var_names(stmt.as_ref(), &mut nested_var_names),
+                ModuleItem::Export(ExportDeclaration::Declaration {
+                    decl_stmt: Some(stmt),
+                    ..
+                }) => collect_hoisted_var_names(stmt.as_ref(), &mut nested_var_names),
                 _ => {}
             }
         }
         for (name, kind) in nested_var_names {
-            if !self.pre_allocated_slots.contains_key(&name) && self.resolve_local(&name).is_none() {
+            if !self.pre_allocated_slots.contains_key(&name) && self.resolve_local(&name).is_none()
+            {
                 let slot = self.alloc_local(LocalDescriptor {
-                    name: name.clone(), kind, depth: 0,
+                    name: name.clone(),
+                    kind,
+                    depth: 0,
                 });
                 self.pre_allocated_slots.insert(name, slot);
             }
@@ -844,7 +953,10 @@ impl Compiler {
         // local previously bound by the declaration.
         for (exported, local_name) in std::mem::take(&mut self.pending_named_exports) {
             if let Some(slot) = self.resolve_local(&local_name) {
-                self.exports.push(ExportBinding::Local { exported, local: slot });
+                self.exports.push(ExportBinding::Local {
+                    exported,
+                    local: slot,
+                });
             }
             // Silently drop unresolved names; the namespace builder yields
             // Undefined for missing exports.
@@ -874,7 +986,11 @@ impl Compiler {
     /// deferred to a follow-on round per the scope ceiling.
     fn compile_export(&mut self, e: &ExportDeclaration) -> Result<(), CompileError> {
         match e {
-            ExportDeclaration::Named { specifiers, source: None, .. } => {
+            ExportDeclaration::Named {
+                specifiers,
+                source: None,
+                ..
+            } => {
                 for spec in specifiers {
                     let local_name = match &spec.local {
                         ModuleExportName::Ident(b) => b.name.clone(),
@@ -892,7 +1008,11 @@ impl Compiler {
             // dependency eagerly, then emits one or more ExportBinding
             // entries that the namespace-build phase resolves against the
             // source module's namespace.
-            ExportDeclaration::Named { source: Some(src), specifiers, .. } => {
+            ExportDeclaration::Named {
+                source: Some(src),
+                specifiers,
+                ..
+            } => {
                 let source_specifier = src.value.clone();
                 if !self.reexport_sources.iter().any(|s| s == &source_specifier) {
                     self.reexport_sources.push(source_specifier.clone());
@@ -907,7 +1027,9 @@ impl Compiler {
                         ModuleExportName::String { value, .. } => value.clone(),
                     };
                     self.exports.push(ExportBinding::Named {
-                        exported, source_specifier: source_specifier.clone(), imported,
+                        exported,
+                        source_specifier: source_specifier.clone(),
+                        imported,
                     });
                 }
             }
@@ -918,7 +1040,9 @@ impl Compiler {
                 }
                 self.exports.push(ExportBinding::Star { source_specifier });
             }
-            ExportDeclaration::StarAsFrom { source, exported, .. } => {
+            ExportDeclaration::StarAsFrom {
+                source, exported, ..
+            } => {
                 let source_specifier = source.value.clone();
                 if !self.reexport_sources.iter().any(|s| s == &source_specifier) {
                     self.reexport_sources.push(source_specifier.clone());
@@ -928,7 +1052,8 @@ impl Compiler {
                     ModuleExportName::String { value, .. } => value.clone(),
                 };
                 self.exports.push(ExportBinding::StarAs {
-                    exported: exported_name, source_specifier,
+                    exported: exported_name,
+                    source_specifier,
                 });
             }
             ExportDeclaration::Default { body, span } => {
@@ -937,14 +1062,27 @@ impl Compiler {
                 // but we accept duplicate slot allocation (the last write wins).
                 let slot = self.alloc_local(LocalDescriptor {
                     name: "<module.default>".to_string(),
-                    kind: VariableKind::Const, depth: 0,
+                    kind: VariableKind::Const,
+                    depth: 0,
                 });
                 match body {
                     DefaultExportBody::Expression { expr } => {
                         self.compile_expr(expr)?;
                     }
-                    DefaultExportBody::HoistableFunction { name, is_async, is_generator, params, body } => {
-                        let proto = self.compile_function_proto(name.clone(), *is_async, *is_generator, params, body)?;
+                    DefaultExportBody::HoistableFunction {
+                        name,
+                        is_async,
+                        is_generator,
+                        params,
+                        body,
+                    } => {
+                        let proto = self.compile_function_proto(
+                            name.clone(),
+                            *is_async,
+                            *is_generator,
+                            params,
+                            body,
+                        )?;
                         let captures = proto.upvalues.clone();
                         let idx = self.constants.intern(Constant::Function(Box::new(proto)));
                         encode_op(&mut self.bytecode, Op::MakeClosure);
@@ -965,7 +1103,8 @@ impl Compiler {
                             } else {
                                 self.alloc_local(LocalDescriptor {
                                     name: name_str,
-                                    kind: VariableKind::Var, depth: 0,
+                                    kind: VariableKind::Var,
+                                    depth: 0,
                                 })
                             };
                             encode_op(&mut self.bytecode, Op::Dup);
@@ -973,7 +1112,11 @@ impl Compiler {
                             encode_u16(&mut self.bytecode, name_slot);
                         }
                     }
-                    DefaultExportBody::Class { name, super_class, members } => {
+                    DefaultExportBody::Class {
+                        name,
+                        super_class,
+                        members,
+                    } => {
                         // Tier-Ω.5.v: lower `export default class [Name?] ...`
                         // by synthesizing a class expression and letting the
                         // existing compile_expr path emit it; the resulting
@@ -991,10 +1134,13 @@ impl Compiler {
                 encode_op(&mut self.bytecode, Op::StoreLocal);
                 encode_u16(&mut self.bytecode, slot);
                 self.exports.push(ExportBinding::Local {
-                    exported: "default".to_string(), local: slot,
+                    exported: "default".to_string(),
+                    local: slot,
                 });
             }
-            ExportDeclaration::Declaration { names, decl_stmt, .. } => {
+            ExportDeclaration::Declaration {
+                names, decl_stmt, ..
+            } => {
                 // Tier-Ω.5.kk: if the parser captured the typed inner
                 // declaration, compile it as a normal statement so its
                 // initializers / function bodies / class bodies run and
@@ -1019,7 +1165,8 @@ impl Compiler {
                     }
                 }
                 for n in names {
-                    self.pending_named_exports.push((n.name.clone(), n.name.clone()));
+                    self.pending_named_exports
+                        .push((n.name.clone(), n.name.clone()));
                 }
             }
         }
@@ -1058,14 +1205,17 @@ impl Compiler {
                 // `r` and `i` via destructuring.
                 let snapshot = self.locals.len();
                 self.block_depth += 1;
-                for s in body { self.compile_stmt(s)?; }
+                for s in body {
+                    self.compile_stmt(s)?;
+                }
                 self.block_depth -= 1;
                 for i in snapshot..self.locals.len() {
                     // Don't rename pre-allocated names (let/const var
                     // hoisted from outer); they're meant to outlive.
                     let nm = &self.locals[i].name;
                     if !nm.starts_with('<') {
-                        self.locals[i].name = format!("<scoped@{}>{}", i, nm); self.locals_snapshot = None;
+                        self.locals[i].name = format!("<scoped@{}>{}", i, nm);
+                        self.locals_snapshot = None;
                     }
                 }
             }
@@ -1080,7 +1230,8 @@ impl Compiler {
                 // Babel's for-of transpilation hits this exact pattern at
                 // every iteration site (`var _iter = arr, _isArr = ..., _i =
                 // 0, _iter = _isArr ? _iter : getIterator(_iter)`).
-                let mut local_slots: std::collections::HashMap<String, u16> = std::collections::HashMap::new();
+                let mut local_slots: std::collections::HashMap<String, u16> =
+                    std::collections::HashMap::new();
                 for d in &v.declarators {
                     match &d.target {
                         rusty_js_ast::BindingPattern::Identifier(id) => {
@@ -1099,8 +1250,8 @@ impl Compiler {
                             // existing Stmt::Block rename-on-exit machinery.
                             // var always hoists to function scope, so its
                             // reuse remains correct at any depth.
-                            let pre_reuse_ok = self.block_depth == 0
-                                || matches!(v.kind, VariableKind::Var);
+                            let pre_reuse_ok =
+                                self.block_depth == 0 || matches!(v.kind, VariableKind::Var);
                             let slot = if pre_reuse_ok {
                                 if let Some(s) = self.pre_allocated_slots.get(&id.name).copied() {
                                     s
@@ -1138,7 +1289,7 @@ impl Compiler {
                             encode_u16(&mut self.bytecode, slot);
                         }
                         pat @ (rusty_js_ast::BindingPattern::Array(_)
-                              | rusty_js_ast::BindingPattern::Object(_)) => {
+                        | rusty_js_ast::BindingPattern::Object(_)) => {
                             // Tier-Ω.5.g.3: destructure declarator. Evaluate
                             // init into a hidden source slot, allocate every
                             // bound name as a local under v.kind, then walk
@@ -1155,8 +1306,8 @@ impl Compiler {
                             // let/const destructure introduces fresh bindings
                             // per spec — pre-allocated slot reuse would
                             // shadow-write the outer slot.
-                            let pre_reuse_ok = self.block_depth == 0
-                                || matches!(v.kind, VariableKind::Var);
+                            let pre_reuse_ok =
+                                self.block_depth == 0 || matches!(v.kind, VariableKind::Var);
                             for id in pat.collect_names() {
                                 if pre_reuse_ok && self.pre_allocated_slots.contains_key(&id.name) {
                                     // Slot already exists; skip re-alloc.
@@ -1188,7 +1339,12 @@ impl Compiler {
             Stmt::Debugger { .. } => {
                 encode_op(&mut self.bytecode, Op::Debugger);
             }
-            Stmt::If { test, consequent, alternate, .. } => {
+            Stmt::If {
+                test,
+                consequent,
+                alternate,
+                ..
+            } => {
                 self.compile_expr(test)?;
                 let jump_if_false = self.emit_jump(Op::JumpIfFalse);
                 self.compile_stmt(consequent)?;
@@ -1204,8 +1360,12 @@ impl Compiler {
             Stmt::While { test, body, .. } => {
                 let loop_start = self.bytecode.len();
                 self.loop_stack.push(LoopFrame {
-                    continue_target: loop_start, continue_pending: false,
-                    continue_patches: Vec::new(), break_patches: Vec::new(), is_switch: false, label: self.pending_label.take(),
+                    continue_target: loop_start,
+                    continue_pending: false,
+                    continue_patches: Vec::new(),
+                    break_patches: Vec::new(),
+                    is_switch: false,
+                    label: self.pending_label.take(),
                 });
                 self.compile_expr(test)?;
                 let jump_if_false = self.emit_jump(Op::JumpIfFalse);
@@ -1213,13 +1373,19 @@ impl Compiler {
                 self.emit_back_jump(loop_start);
                 self.patch_jump(jump_if_false);
                 let frame = self.loop_stack.pop().unwrap();
-                for site in frame.break_patches { self.patch_jump_at(site); }
+                for site in frame.break_patches {
+                    self.patch_jump_at(site);
+                }
             }
             Stmt::DoWhile { body, test, .. } => {
                 let loop_start = self.bytecode.len();
                 self.loop_stack.push(LoopFrame {
-                    continue_target: 0, continue_pending: true,
-                    continue_patches: Vec::new(), break_patches: Vec::new(), is_switch: false, label: self.pending_label.take(),
+                    continue_target: 0,
+                    continue_pending: true,
+                    continue_patches: Vec::new(),
+                    break_patches: Vec::new(),
+                    is_switch: false,
+                    label: self.pending_label.take(),
                 });
                 self.compile_stmt(body)?;
                 let test_pos = self.bytecode.len();
@@ -1230,15 +1396,26 @@ impl Compiler {
                     frame.continue_target = test_pos;
                     frame.continue_pending = false;
                 }
-                let patches = std::mem::take(&mut self.loop_stack.last_mut().unwrap().continue_patches);
-                for site in patches { self.patch_jump_at(site); }
+                let patches =
+                    std::mem::take(&mut self.loop_stack.last_mut().unwrap().continue_patches);
+                for site in patches {
+                    self.patch_jump_at(site);
+                }
                 self.compile_expr(test)?;
                 let jump_back = self.emit_jump(Op::JumpIfTrue);
                 self.patch_jump_to(jump_back, loop_start);
                 let frame = self.loop_stack.pop().unwrap();
-                for site in frame.break_patches { self.patch_jump_at(site); }
+                for site in frame.break_patches {
+                    self.patch_jump_at(site);
+                }
             }
-            Stmt::For { init, test, update, body, .. } => {
+            Stmt::For {
+                init,
+                test,
+                update,
+                body,
+                ..
+            } => {
                 // Ω.5.P52.E4: scope let/const declared in the for-header to
                 // the entire for-statement, not the enclosing function.
                 // Mirrors Stmt::Block's snapshot+rename pattern so resolve_local
@@ -1251,8 +1428,10 @@ impl Compiler {
                 if let Some(init) = init {
                     match init {
                         ForInit::Variable(v) => {
-                            let needs_per_iter = matches!(v.kind,
-                                rusty_js_ast::VariableKind::Let | rusty_js_ast::VariableKind::Const);
+                            let needs_per_iter = matches!(
+                                v.kind,
+                                rusty_js_ast::VariableKind::Let | rusty_js_ast::VariableKind::Const
+                            );
                             self.compile_stmt(&Stmt::Variable(v.clone()))?;
                             if needs_per_iter {
                                 // Header bindings were just appended to locals.
@@ -1269,13 +1448,19 @@ impl Compiler {
                 }
                 let test_pos = self.bytecode.len();
                 self.loop_stack.push(LoopFrame {
-                    continue_target: 0, continue_pending: true,
-                    continue_patches: Vec::new(), break_patches: Vec::new(), is_switch: false, label: self.pending_label.take(),
+                    continue_target: 0,
+                    continue_pending: true,
+                    continue_patches: Vec::new(),
+                    break_patches: Vec::new(),
+                    is_switch: false,
+                    label: self.pending_label.take(),
                 });
                 let jump_if_false = if let Some(t) = test {
                     self.compile_expr(t)?;
                     Some(self.emit_jump(Op::JumpIfFalse))
-                } else { None };
+                } else {
+                    None
+                };
                 self.compile_stmt(body)?;
                 // ECMA-262 §13.7.4 step 11 PerIterationBindings: at end of
                 // iteration body, for each let/const header binding,
@@ -1301,25 +1486,39 @@ impl Compiler {
                     frame.continue_target = update_pos;
                     frame.continue_pending = false;
                 }
-                let patches = std::mem::take(&mut self.loop_stack.last_mut().unwrap().continue_patches);
-                for site in patches { self.patch_jump_at(site); }
+                let patches =
+                    std::mem::take(&mut self.loop_stack.last_mut().unwrap().continue_patches);
+                for site in patches {
+                    self.patch_jump_at(site);
+                }
                 if let Some(u) = update {
                     self.compile_expr(u)?;
                     encode_op(&mut self.bytecode, Op::Pop);
                 }
                 self.emit_back_jump(test_pos);
-                if let Some(j) = jump_if_false { self.patch_jump(j); }
+                if let Some(j) = jump_if_false {
+                    self.patch_jump(j);
+                }
                 let frame = self.loop_stack.pop().unwrap();
-                for site in frame.break_patches { self.patch_jump_at(site); }
+                for site in frame.break_patches {
+                    self.patch_jump_at(site);
+                }
                 self.block_depth -= 1;
                 for i in scope_snapshot..self.locals.len() {
                     let nm = &self.locals[i].name;
                     if !nm.starts_with('<') {
-                        self.locals[i].name = format!("<scoped@{}>{}", i, nm); self.locals_snapshot = None;
+                        self.locals[i].name = format!("<scoped@{}>{}", i, nm);
+                        self.locals_snapshot = None;
                     }
                 }
             }
-            Stmt::ForOf { left, right, body, await_, .. } => {
+            Stmt::ForOf {
+                left,
+                right,
+                body,
+                await_,
+                ..
+            } => {
                 // PPAE-EXT 1: §14.7.1.2 Static Semantics:Early Errors —
                 // BoundNames of ForDeclaration must not also occur in
                 // VarDeclaredNames of Statement. Reject at compile
@@ -1327,15 +1526,22 @@ impl Compiler {
                 // CompileError->SyntaxError mapping per PPA-EXT 1).
                 if let rusty_js_ast::ForBinding::Decl { kind, target, .. } = left {
                     if matches!(kind, VariableKind::Let | VariableKind::Const) {
-                        let head_names: Vec<String> = target.collect_names().iter().map(|id| id.name.clone()).collect();
+                        let head_names: Vec<String> = target
+                            .collect_names()
+                            .iter()
+                            .map(|id| id.name.clone())
+                            .collect();
                         // PPAE-EXT 3 (§14.7.1.2): BoundNames of ForDeclaration
                         // must not contain duplicates (the destructure-leaf-
                         // duplicate variant — for (const [x, x] of [])).
-                        let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+                        let mut seen: std::collections::HashSet<&str> =
+                            std::collections::HashSet::new();
                         for n in &head_names {
                             if !seen.insert(n.as_str()) {
-                                return Err(self.err(span, &format!(
-                                    "duplicate lexical binding `{}` in for-of head", n)));
+                                return Err(self.err(
+                                    span,
+                                    &format!("duplicate lexical binding `{}` in for-of head", n),
+                                ));
                             }
                         }
                         let mut body_vars: Vec<(String, rusty_js_ast::VariableKind)> = Vec::new();
@@ -1357,7 +1563,9 @@ impl Compiler {
                 // Allocate hidden slot for the iterator and a binding slot
                 // for the loop variable.
                 let iter_slot = self.alloc_local(LocalDescriptor {
-                    name: "<iter>".into(), kind: VariableKind::Let, depth: 0,
+                    name: "<iter>".into(),
+                    kind: VariableKind::Let,
+                    depth: 0,
                 });
                 // Per ECMA-262 §14.7.5.5, `let`/`const` heads receive a fresh
                 // binding per iteration; `var` heads remain function-scoped
@@ -1369,23 +1577,31 @@ impl Compiler {
                 // When destructure_pattern is Some, the body prologue will
                 // run the pattern lowering using slot_to_store_value_into
                 // as the hidden source.
-                let (bind_slot, destr_pat, per_iter_fresh): (u16, Option<rusty_js_ast::BindingPattern>, bool) = match left {
+                let (bind_slot, destr_pat, per_iter_fresh): (
+                    u16,
+                    Option<rusty_js_ast::BindingPattern>,
+                    bool,
+                ) = match left {
                     rusty_js_ast::ForBinding::Decl { kind, target, .. } => {
                         match target {
                             rusty_js_ast::BindingPattern::Identifier(id) => {
                                 let s = self.alloc_local(LocalDescriptor {
-                                    name: id.name.clone(), kind: *kind, depth: 0,
+                                    name: id.name.clone(),
+                                    kind: *kind,
+                                    depth: 0,
                                 });
                                 let fresh = matches!(kind, VariableKind::Let | VariableKind::Const);
                                 (s, None, fresh)
                             }
                             pat @ (rusty_js_ast::BindingPattern::Array(_)
-                                  | rusty_js_ast::BindingPattern::Object(_)) => {
+                            | rusty_js_ast::BindingPattern::Object(_)) => {
                                 // Allocate every bound name as a local under kind,
                                 // then a hidden source slot for the per-iter value.
                                 for id in pat.collect_names() {
                                     self.alloc_local(LocalDescriptor {
-                                        name: id.name.clone(), kind: *kind, depth: 0,
+                                        name: id.name.clone(),
+                                        kind: *kind,
+                                        depth: 0,
                                     });
                                 }
                                 let s = self.alloc_temp("<forof.src>");
@@ -1397,10 +1613,13 @@ impl Compiler {
                     rusty_js_ast::ForBinding::Pattern(pat) => {
                         match pat {
                             rusty_js_ast::BindingPattern::Identifier(id) => {
-                                if let Some(s) = self.resolve_local(&id.name) { (s, None, false) }
-                                else {
+                                if let Some(s) = self.resolve_local(&id.name) {
+                                    (s, None, false)
+                                } else {
                                     let s = self.alloc_local(LocalDescriptor {
-                                        name: id.name.clone(), kind: VariableKind::Let, depth: 0,
+                                        name: id.name.clone(),
+                                        kind: VariableKind::Let,
+                                        depth: 0,
                                     });
                                     (s, None, false)
                                 }
@@ -1445,8 +1664,12 @@ impl Compiler {
 
                 let loop_start = self.bytecode.len();
                 self.loop_stack.push(LoopFrame {
-                    continue_target: loop_start, continue_pending: false,
-                    continue_patches: Vec::new(), break_patches: Vec::new(), is_switch: false, label: self.pending_label.take(),
+                    continue_target: loop_start,
+                    continue_pending: false,
+                    continue_patches: Vec::new(),
+                    break_patches: Vec::new(),
+                    is_switch: false,
+                    label: self.pending_label.take(),
                 });
                 // IPBR-EXT 2 (2026-05-24, iter-protocol-bytecode-rewrite
                 // locale): emit Op::ForOfFastNext as the first op of the
@@ -1466,8 +1689,8 @@ impl Compiler {
                     encode_op(&mut self.bytecode, Op::ForOfFastNext);
                     encode_u16(&mut self.bytecode, iter_slot);
                     encode_u16(&mut self.bytecode, bind_slot);
-                    encode_i32(&mut self.bytecode, 0);  // done_offset patch site
-                    self.bytecode.extend_from_slice(&[0u8, 0u8]);  // next_iter_offset patch site (i16)
+                    encode_i32(&mut self.bytecode, 0); // done_offset patch site
+                    self.bytecode.extend_from_slice(&[0u8, 0u8]); // next_iter_offset patch site (i16)
                     Some(off)
                 };
                 // result = iter.next()
@@ -1536,9 +1759,13 @@ impl Compiler {
                     // ReferenceError per §9.1.1.4.4). The decl-path
                     // (var/let/const) continues to use emit_destructure
                     // since pre-allocated locals are correct there.
-                    let is_assignment_pattern = matches!(left,
+                    let is_assignment_pattern = matches!(
+                        left,
                         rusty_js_ast::ForBinding::Pattern(rusty_js_ast::BindingPattern::Array(_))
-                        | rusty_js_ast::ForBinding::Pattern(rusty_js_ast::BindingPattern::Object(_)));
+                            | rusty_js_ast::ForBinding::Pattern(
+                                rusty_js_ast::BindingPattern::Object(_)
+                            )
+                    );
                     if is_assignment_pattern {
                         let target_expr = binding_pattern_to_assignment_expr(pat);
                         match target_expr {
@@ -1572,12 +1799,15 @@ impl Compiler {
                         .copy_from_slice(&done_disp.to_le_bytes());
                 }
                 let frame = self.loop_stack.pop().unwrap();
-                for site in frame.break_patches { self.patch_jump_at(site); }
+                for site in frame.break_patches {
+                    self.patch_jump_at(site);
+                }
                 self.block_depth -= 1;
                 for i in scope_snapshot..self.locals.len() {
                     let nm = &self.locals[i].name;
                     if !nm.starts_with('<') {
-                        self.locals[i].name = format!("<scoped@{}>{}", i, nm); self.locals_snapshot = None;
+                        self.locals[i].name = format!("<scoped@{}>{}", i, nm);
+                        self.locals_snapshot = None;
                     }
                 }
             }
@@ -1597,27 +1827,44 @@ impl Compiler {
                         // top-down for a frame whose `label` matches, then
                         // fall back to label_stack (labelled non-loop).
                         let needle = name.name.clone();
-                        if let Some(idx) = self.loop_stack.iter()
+                        if let Some(idx) = self
+                            .loop_stack
+                            .iter()
                             .rposition(|f| f.label.as_deref() == Some(needle.as_str()))
                         {
                             let patch_site = encode_op(&mut self.bytecode, Op::Jump);
                             encode_i32(&mut self.bytecode, 0);
                             self.loop_stack[idx].break_patches.push(patch_site);
-                        } else if let Some(idx) = self.label_stack.iter()
-                            .rposition(|f| f.label == needle)
+                        } else if let Some(idx) =
+                            self.label_stack.iter().rposition(|f| f.label == needle)
                         {
                             let patch_site = encode_op(&mut self.bytecode, Op::Jump);
                             encode_i32(&mut self.bytecode, 0);
                             self.label_stack[idx].break_patches.push(patch_site);
                         } else {
-                            return Err(self.err(span,
-                                &format!("break label '{}' not found in enclosing scopes", needle)));
+                            return Err(self.err(
+                                span,
+                                &format!("break label '{}' not found in enclosing scopes", needle),
+                            ));
                         }
                     }
                 }
             }
-            Stmt::FunctionDecl { name, is_async, is_generator, params, body, .. } => {
-                let proto = self.compile_function_proto(name.clone(), *is_async, *is_generator, params, body)?;
+            Stmt::FunctionDecl {
+                name,
+                is_async,
+                is_generator,
+                params,
+                body,
+                ..
+            } => {
+                let proto = self.compile_function_proto(
+                    name.clone(),
+                    *is_async,
+                    *is_generator,
+                    params,
+                    body,
+                )?;
                 let captures = proto.upvalues.clone();
                 let idx = self.constants.intern(Constant::Function(Box::new(proto)));
                 encode_op(&mut self.bytecode, Op::MakeClosure);
@@ -1627,7 +1874,7 @@ impl Compiler {
                 if let Some(n) = name {
                     let slot = self.alloc_local(LocalDescriptor {
                         name: n.name.clone(),
-                        kind: VariableKind::Var,  // functions are var-scoped per spec
+                        kind: VariableKind::Var, // functions are var-scoped per spec
                         depth: 0,
                     });
                     encode_op(&mut self.bytecode, Op::StoreLocal);
@@ -1636,7 +1883,12 @@ impl Compiler {
                     encode_op(&mut self.bytecode, Op::Pop);
                 }
             }
-            Stmt::Try { block, handler, finalizer, .. } => {
+            Stmt::Try {
+                block,
+                handler,
+                finalizer,
+                ..
+            } => {
                 self.emit_construct_tag("try-block");
                 // v1 minimal: encode TRY_ENTER with catch offset, compile block,
                 // TRY_EXIT, jump past handler/finalizer; emit handler/finalizer
@@ -1680,7 +1932,8 @@ impl Compiler {
                     for i in scope_snapshot..self.locals.len() {
                         let nm = &self.locals[i].name;
                         if !nm.starts_with('<') {
-                            self.locals[i].name = format!("<scoped@{}>{}", i, nm); self.locals_snapshot = None;
+                            self.locals[i].name = format!("<scoped@{}>{}", i, nm);
+                            self.locals_snapshot = None;
                         }
                     }
                 }
@@ -1700,11 +1953,17 @@ impl Compiler {
                     None => self.loop_stack.iter().rposition(|f| !f.is_switch),
                     Some(name) => {
                         let needle = name.name.clone();
-                        let r = self.loop_stack.iter()
-                            .rposition(|f| !f.is_switch && f.label.as_deref() == Some(needle.as_str()));
+                        let r = self.loop_stack.iter().rposition(|f| {
+                            !f.is_switch && f.label.as_deref() == Some(needle.as_str())
+                        });
                         if r.is_none() {
-                            return Err(self.err(span,
-                                &format!("continue label '{}' does not match an enclosing loop", needle)));
+                            return Err(self.err(
+                                span,
+                                &format!(
+                                    "continue label '{}' does not match an enclosing loop",
+                                    needle
+                                ),
+                            ));
                         }
                         r
                     }
@@ -1722,7 +1981,12 @@ impl Compiler {
                     self.emit_back_jump(target);
                 }
             }
-            Stmt::ClassDecl { name, super_class, members, span } => {
+            Stmt::ClassDecl {
+                name,
+                super_class,
+                members,
+                span,
+            } => {
                 // Tier-Ω.5.x: pre-allocate the class-name local BEFORE
                 // compile_class emits the method bodies. Method bodies that
                 // reference the class by name (e.g. `static get() { return
@@ -1741,7 +2005,9 @@ impl Compiler {
                             depth: 0,
                         }))
                     }
-                } else { None };
+                } else {
+                    None
+                };
                 self.compile_class(*span, name.as_ref(), super_class.as_ref(), members)?;
                 if let Some(slot) = class_slot {
                     encode_op(&mut self.bytecode, Op::StoreLocal);
@@ -1750,7 +2016,11 @@ impl Compiler {
                     encode_op(&mut self.bytecode, Op::Pop);
                 }
             }
-            Stmt::Switch { discriminant, cases, .. } => {
+            Stmt::Switch {
+                discriminant,
+                cases,
+                ..
+            } => {
                 // Tier-Ω.5.m: switch lowering per ECMA-262 §14.12.4.
                 // 1. Spill the discriminant into a hidden local so the
                 //    per-case StrictEq compares always use the same value.
@@ -1777,7 +2047,9 @@ impl Compiler {
                         }
                         None => {
                             if default_idx.is_some() {
-                                return Err(self.err(span, "switch has more than one default clause"));
+                                return Err(
+                                    self.err(span, "switch has more than one default clause")
+                                );
                             }
                             default_idx = Some(i);
                             // Body label patched after default fall-through
@@ -1795,9 +2067,12 @@ impl Compiler {
                 //    leave continue_pending=false and continue_target=0:
                 //    Continue handling skips switch frames explicitly.
                 self.loop_stack.push(LoopFrame {
-                    continue_target: 0, continue_pending: false,
-                    continue_patches: Vec::new(), break_patches: Vec::new(),
-                    is_switch: true, label: None,
+                    continue_target: 0,
+                    continue_pending: false,
+                    continue_patches: Vec::new(),
+                    break_patches: Vec::new(),
+                    is_switch: true,
+                    label: None,
                 });
 
                 // 5. Emit each case body in textual order. Patch its
@@ -1821,20 +2096,31 @@ impl Compiler {
                     self.patch_jump(default_jump);
                 }
                 let frame = self.loop_stack.pop().unwrap();
-                for site in frame.break_patches { self.patch_jump_at(site); }
+                for site in frame.break_patches {
+                    self.patch_jump_at(site);
+                }
             }
-            Stmt::ForIn { left, right, body, .. } => {
+            Stmt::ForIn {
+                left, right, body, ..
+            } => {
                 // PPAE-EXT 1: §14.7.1.2 Early Errors (same as for-of).
                 if let rusty_js_ast::ForBinding::Decl { kind, target, .. } = left {
                     if matches!(kind, VariableKind::Let | VariableKind::Const) {
-                        let head_names: Vec<String> = target.collect_names().iter().map(|id| id.name.clone()).collect();
+                        let head_names: Vec<String> = target
+                            .collect_names()
+                            .iter()
+                            .map(|id| id.name.clone())
+                            .collect();
                         // PPAE-EXT 3 (§14.7.1.2): BoundNames-dup check (same
                         // as for-of branch above; symmetric across head shapes).
-                        let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+                        let mut seen: std::collections::HashSet<&str> =
+                            std::collections::HashSet::new();
                         for n in &head_names {
                             if !seen.insert(n.as_str()) {
-                                return Err(self.err(span, &format!(
-                                    "duplicate lexical binding `{}` in for-in head", n)));
+                                return Err(self.err(
+                                    span,
+                                    &format!("duplicate lexical binding `{}` in for-in head", n),
+                                ));
                             }
                         }
                         let mut body_vars: Vec<(String, rusty_js_ast::VariableKind)> = Vec::new();
@@ -1867,40 +2153,42 @@ impl Compiler {
                 // Decide the per-iteration binding slot (and per_iter_fresh
                 // for let/const heads, mirroring Ω.5.g.1 for-of semantics).
                 // ForBinding::Pattern with non-Identifier is deferred.
-                let (bind_slot, per_iter_fresh): (u16, bool) = match left {
-                    rusty_js_ast::ForBinding::Decl { kind, target, .. } => {
-                        match target {
+                let (bind_slot, per_iter_fresh): (u16, bool) =
+                    match left {
+                        rusty_js_ast::ForBinding::Decl { kind, target, .. } => match target {
                             rusty_js_ast::BindingPattern::Identifier(id) => {
                                 let s = self.alloc_local(LocalDescriptor {
-                                    name: id.name.clone(), kind: *kind, depth: 0,
+                                    name: id.name.clone(),
+                                    kind: *kind,
+                                    depth: 0,
                                 });
                                 let fresh = matches!(kind, VariableKind::Let | VariableKind::Const);
                                 (s, fresh)
                             }
-                            _ => return Err(self.err(
-                                span,
-                                "for-in with destructure head not yet supported",
-                            )),
-                        }
-                    }
-                    rusty_js_ast::ForBinding::Pattern(pat) => {
-                        match pat {
+                            _ => {
+                                return Err(self
+                                    .err(span, "for-in with destructure head not yet supported"))
+                            }
+                        },
+                        rusty_js_ast::ForBinding::Pattern(pat) => match pat {
                             rusty_js_ast::BindingPattern::Identifier(id) => {
-                                if let Some(s) = self.resolve_local(&id.name) { (s, false) }
-                                else {
+                                if let Some(s) = self.resolve_local(&id.name) {
+                                    (s, false)
+                                } else {
                                     let s = self.alloc_local(LocalDescriptor {
-                                        name: id.name.clone(), kind: VariableKind::Let, depth: 0,
+                                        name: id.name.clone(),
+                                        kind: VariableKind::Let,
+                                        depth: 0,
                                     });
                                     (s, false)
                                 }
                             }
-                            _ => return Err(self.err(
-                                span,
-                                "for-in with destructure head not yet supported",
-                            )),
-                        }
-                    }
-                };
+                            _ => {
+                                return Err(self
+                                    .err(span, "for-in with destructure head not yet supported"))
+                            }
+                        },
+                    };
 
                 // Ω.5.P04.E1.for-in-nullish-skip: route through
                 // __for_in_keys helper instead of Object.keys directly.
@@ -1909,8 +2197,9 @@ impl Compiler {
                 // and mask the spec-mandated short-circuit. The cluster of
                 // packages depending on `for (const k in maybeUndef)` (joi,
                 // 14 packages on the post-substrate top500 sweep) hit this.
-                let helper = self.constants.intern(
-                    Constant::String("__for_in_keys".into()));
+                let helper = self
+                    .constants
+                    .intern(Constant::String("__for_in_keys".into()));
                 encode_op(&mut self.bytecode, Op::LoadGlobal);
                 encode_u16(&mut self.bytecode, helper);
                 self.compile_expr(right)?;
@@ -1937,9 +2226,12 @@ impl Compiler {
                 // loop_start: if (i >= len) break
                 let loop_start = self.bytecode.len();
                 self.loop_stack.push(LoopFrame {
-                    continue_target: 0, continue_pending: true,
-                    continue_patches: Vec::new(), break_patches: Vec::new(),
-                    is_switch: false, label: self.pending_label.take(),
+                    continue_target: 0,
+                    continue_pending: true,
+                    continue_patches: Vec::new(),
+                    break_patches: Vec::new(),
+                    is_switch: false,
+                    label: self.pending_label.take(),
                 });
                 encode_op(&mut self.bytecode, Op::LoadLocal);
                 encode_u16(&mut self.bytecode, idx_slot);
@@ -1970,8 +2262,11 @@ impl Compiler {
                     frame.continue_target = cont_pos;
                     frame.continue_pending = false;
                 }
-                let patches = std::mem::take(&mut self.loop_stack.last_mut().unwrap().continue_patches);
-                for site in patches { self.patch_jump_at(site); }
+                let patches =
+                    std::mem::take(&mut self.loop_stack.last_mut().unwrap().continue_patches);
+                for site in patches {
+                    self.patch_jump_at(site);
+                }
                 encode_op(&mut self.bytecode, Op::LoadLocal);
                 encode_u16(&mut self.bytecode, idx_slot);
                 encode_op(&mut self.bytecode, Op::PushI32);
@@ -1982,12 +2277,15 @@ impl Compiler {
                 self.emit_back_jump(loop_start);
                 self.patch_jump(j_done);
                 let frame = self.loop_stack.pop().unwrap();
-                for site in frame.break_patches { self.patch_jump_at(site); }
+                for site in frame.break_patches {
+                    self.patch_jump_at(site);
+                }
                 self.block_depth -= 1;
                 for i in scope_snapshot..self.locals.len() {
                     let nm = &self.locals[i].name;
                     if !nm.starts_with('<') {
-                        self.locals[i].name = format!("<scoped@{}>{}", i, nm); self.locals_snapshot = None;
+                        self.locals[i].name = format!("<scoped@{}>{}", i, nm);
+                        self.locals_snapshot = None;
                     }
                 }
             }
@@ -1998,9 +2296,14 @@ impl Compiler {
                 // non-loop body, push a LabelFrame so labelled `break`
                 // still works; labelled `continue` is rejected at the
                 // continue site.
-                let is_loop_body = matches!(&**body,
-                    Stmt::While { .. } | Stmt::DoWhile { .. }
-                    | Stmt::For { .. } | Stmt::ForIn { .. } | Stmt::ForOf { .. });
+                let is_loop_body = matches!(
+                    &**body,
+                    Stmt::While { .. }
+                        | Stmt::DoWhile { .. }
+                        | Stmt::For { .. }
+                        | Stmt::ForIn { .. }
+                        | Stmt::ForOf { .. }
+                );
                 if is_loop_body {
                     self.pending_label = Some(label.name.clone());
                     self.compile_stmt(body)?;
@@ -2012,7 +2315,9 @@ impl Compiler {
                     });
                     self.compile_stmt(body)?;
                     let frame = self.label_stack.pop().unwrap();
-                    for site in frame.break_patches { self.patch_jump_at(site); }
+                    for site in frame.break_patches {
+                        self.patch_jump_at(site);
+                    }
                 }
             }
             Stmt::Opaque { .. } => {
@@ -2028,8 +2333,13 @@ impl Compiler {
                 // generator dispatch.
             }
             other => {
-                let tag = match other { _ => "<other>" };
-                return Err(self.err(span, &format!("statement form not yet supported in compiler v1: {}", tag)));
+                let tag = match other {
+                    _ => "<other>",
+                };
+                return Err(self.err(
+                    span,
+                    &format!("statement form not yet supported in compiler v1: {}", tag),
+                ));
             }
         }
         Ok(())
@@ -2048,7 +2358,8 @@ impl Compiler {
     ) -> Result<(), CompileError> {
         match pat {
             rusty_js_ast::BindingPattern::Identifier(id) => {
-                let slot = self.resolve_local(&id.name)
+                let slot = self
+                    .resolve_local(&id.name)
                     .expect("destructure leaf: binding slot pre-allocated by caller");
                 encode_op(&mut self.bytecode, Op::LoadLocal);
                 encode_u16(&mut self.bytecode, src_slot);
@@ -2066,7 +2377,9 @@ impl Compiler {
                 // for-of-dstr iterator-protocol cluster traces here.
                 let iter_slot = self.alloc_temp("<destr.iter>");
                 let done_slot = self.alloc_temp("<destr.iter.done>");
-                let open_idx = self.constants.intern(Constant::String("__destr_iter_open".into()));
+                let open_idx = self
+                    .constants
+                    .intern(Constant::String("__destr_iter_open".into()));
                 encode_op(&mut self.bytecode, Op::LoadGlobal);
                 encode_u16(&mut self.bytecode, open_idx);
                 encode_op(&mut self.bytecode, Op::LoadLocal);
@@ -2082,12 +2395,18 @@ impl Compiler {
                 for slot_opt in arr.elements.iter() {
                     self.emit_iter_step_value(iter_slot, Some(done_slot))?;
                     match slot_opt {
-                        Some(elem) => self.emit_element_with_default(&elem.target, elem.default.as_ref())?,
-                        None => { encode_op(&mut self.bytecode, Op::Pop); } // elision: advance iter, discard
+                        Some(elem) => {
+                            self.emit_element_with_default(&elem.target, elem.default.as_ref())?
+                        }
+                        None => {
+                            encode_op(&mut self.bytecode, Op::Pop);
+                        } // elision: advance iter, discard
                     }
                 }
                 if let Some(rest_pat) = &arr.rest {
-                    let rest_idx = self.constants.intern(Constant::String("__destr_iter_rest".into()));
+                    let rest_idx = self
+                        .constants
+                        .intern(Constant::String("__destr_iter_rest".into()));
                     encode_op(&mut self.bytecode, Op::LoadGlobal);
                     encode_u16(&mut self.bytecode, rest_idx);
                     encode_op(&mut self.bytecode, Op::LoadLocal);
@@ -2121,7 +2440,11 @@ impl Compiler {
                             static_excluded.push((**s).clone());
                         }
                         rusty_js_ast::PropertyKey::Number(n) => {
-                            let name = if n.fract() == 0.0 { format!("{}", *n as i64) } else { format!("{}", n) };
+                            let name = if n.fract() == 0.0 {
+                                format!("{}", *n as i64)
+                            } else {
+                                format!("{}", n)
+                            };
                             let k = self.constants.intern(Constant::String(name.clone()));
                             encode_op(&mut self.bytecode, Op::GetProp);
                             encode_u16(&mut self.bytecode, k);
@@ -2136,11 +2459,16 @@ impl Compiler {
                             // well-supported in our subset.
                         }
                     }
-                    self.emit_element_with_default(&prop.value.target, prop.value.default.as_ref())?;
+                    self.emit_element_with_default(
+                        &prop.value.target,
+                        prop.value.default.as_ref(),
+                    )?;
                 }
                 if let Some(rest_id) = &obj.rest {
                     // Call shape: [callee, src, excluded_array]
-                    let name_idx = self.constants.intern(Constant::String("__destr_object_rest".into()));
+                    let name_idx = self
+                        .constants
+                        .intern(Constant::String("__destr_object_rest".into()));
                     encode_op(&mut self.bytecode, Op::LoadGlobal);
                     encode_u16(&mut self.bytecode, name_idx);
                     encode_op(&mut self.bytecode, Op::LoadLocal);
@@ -2156,7 +2484,8 @@ impl Compiler {
                     }
                     encode_op(&mut self.bytecode, Op::Call);
                     encode_u8(&mut self.bytecode, 2);
-                    let slot = self.resolve_local(&rest_id.name)
+                    let slot = self
+                        .resolve_local(&rest_id.name)
                         .expect("object-rest binding slot pre-allocated by caller");
                     encode_op(&mut self.bytecode, Op::StoreLocal);
                     encode_u16(&mut self.bytecode, slot);
@@ -2172,8 +2501,14 @@ impl Compiler {
     /// ICOA-EXT 1: optional done_slot records the most-recent step's
     /// .done value so the caller can decide whether to emit
     /// IteratorClose per §13.15.5.3 step 5.
-    fn emit_iter_step_value(&mut self, iter_slot: u16, done_slot: Option<u16>) -> Result<(), CompileError> {
-        let step_idx = self.constants.intern(Constant::String("__destr_iter_step".into()));
+    fn emit_iter_step_value(
+        &mut self,
+        iter_slot: u16,
+        done_slot: Option<u16>,
+    ) -> Result<(), CompileError> {
+        let step_idx = self
+            .constants
+            .intern(Constant::String("__destr_iter_step".into()));
         encode_op(&mut self.bytecode, Op::LoadGlobal);
         encode_u16(&mut self.bytecode, step_idx);
         encode_op(&mut self.bytecode, Op::LoadLocal);
@@ -2209,12 +2544,18 @@ impl Compiler {
     /// ICOA-EXT 1: emit IteratorClose check + call per §13.15.5.3 step 5.
     /// If done_slot is false at end-of-destructure (iter was not exhausted),
     /// call __destr_iter_close(iter_slot) to invoke iter.return().
-    fn emit_iter_close_if_not_done(&mut self, iter_slot: u16, done_slot: u16) -> Result<(), CompileError> {
+    fn emit_iter_close_if_not_done(
+        &mut self,
+        iter_slot: u16,
+        done_slot: u16,
+    ) -> Result<(), CompileError> {
         // if (done_slot) skip
         encode_op(&mut self.bytecode, Op::LoadLocal);
         encode_u16(&mut self.bytecode, done_slot);
         let j_skip = self.emit_jump(Op::JumpIfTrue);
-        let close_idx = self.constants.intern(Constant::String("__destr_iter_close".into()));
+        let close_idx = self
+            .constants
+            .intern(Constant::String("__destr_iter_close".into()));
         encode_op(&mut self.bytecode, Op::LoadGlobal);
         encode_u16(&mut self.bytecode, close_idx);
         encode_op(&mut self.bytecode, Op::LoadLocal);
@@ -2250,7 +2591,9 @@ impl Compiler {
             // across the dstr cluster as 50 fn-name-inference failures.
             let name_hint = if let rusty_js_ast::BindingPattern::Identifier(id) = target {
                 Some(id.name.as_str())
-            } else { None };
+            } else {
+                None
+            };
             if name_hint.is_some() {
                 self.compile_expr_with_name_hint(def_expr, name_hint)?;
             } else {
@@ -2260,7 +2603,8 @@ impl Compiler {
         }
         match target {
             rusty_js_ast::BindingPattern::Identifier(id) => {
-                let slot = self.resolve_local(&id.name)
+                let slot = self
+                    .resolve_local(&id.name)
                     .expect("destructure leaf: binding slot pre-allocated by caller");
                 encode_op(&mut self.bytecode, Op::StoreLocal);
                 encode_u16(&mut self.bytecode, slot);
@@ -2326,7 +2670,9 @@ impl Compiler {
     /// Resolve an identifier to a local-slot index, if any.
     fn resolve_local(&self, name: &str) -> Option<u16> {
         for (i, l) in self.locals.iter().enumerate().rev() {
-            if l.name == name { return Some(i as u16); }
+            if l.name == name {
+                return Some(i as u16);
+            }
         }
         None
     }
@@ -2359,15 +2705,22 @@ impl Compiler {
     ///
     /// Returns the upvalue index in `self.upvalues` (0-based).
     fn resolve_upvalue(&mut self, name: &str) -> Option<u16> {
-        if self.enclosing.is_empty() { return None; }
+        if self.enclosing.is_empty() {
+            return None;
+        }
         // Walk from innermost enclosing (back) to outermost (front).
         // Innermost-first lets us emit the chain of transitive upvalues
         // in the right order.
         let levels = self.enclosing.len();
         for depth in (0..levels).rev() {
             // Check locals of this enclosing level.
-            let local_slot = self.enclosing[depth].locals.iter().enumerate().rev()
-                .find(|(_, l)| l.name == name).map(|(i, _)| i as u16);
+            let local_slot = self.enclosing[depth]
+                .locals
+                .iter()
+                .enumerate()
+                .rev()
+                .find(|(_, l)| l.name == name)
+                .map(|(i, _)| i as u16);
             if let Some(slot) = local_slot {
                 // Build the upvalue chain top-down from `depth` toward
                 // current proto. Topmost (this proto) ends up referencing
@@ -2377,7 +2730,8 @@ impl Compiler {
                 let mut src = UpvalueSource::Local(slot);
                 let name_s = name.to_string();
                 for d in (depth + 1)..levels {
-                    let up_idx = add_upvalue_to(&mut self.enclosing[d].upvalues, src, name_s.clone());
+                    let up_idx =
+                        add_upvalue_to(&mut self.enclosing[d].upvalues, src, name_s.clone());
                     src = UpvalueSource::Upvalue(up_idx);
                 }
                 let idx = add_upvalue_to(&mut self.upvalues, src, name.to_string());
@@ -2385,8 +2739,12 @@ impl Compiler {
             }
             // Else check upvalues of this enclosing level — name might be
             // already-captured at this depth from an even-outer level.
-            let up_at_depth = self.enclosing[depth].upvalues.iter().enumerate()
-                .find(|(_, u)| u.name == name).map(|(i, _)| i as u16);
+            let up_at_depth = self.enclosing[depth]
+                .upvalues
+                .iter()
+                .enumerate()
+                .find(|(_, u)| u.name == name)
+                .map(|(i, _)| i as u16);
             if let Some(up_idx) = up_at_depth {
                 let mut src = UpvalueSource::Upvalue(up_idx);
                 for d in (depth + 1)..levels {
@@ -2404,12 +2762,29 @@ impl Compiler {
     /// Anonymous function-expression / arrow on the RHS of a binding take
     /// the binding name as their .name property per ECMA-262 §13.2.5.5;
     /// every other expression falls through to plain compile_expr.
-    fn compile_expr_with_name_hint(&mut self, e: &Expr, hint: Option<&str>) -> Result<(), CompileError> {
+    fn compile_expr_with_name_hint(
+        &mut self,
+        e: &Expr,
+        hint: Option<&str>,
+    ) -> Result<(), CompileError> {
         match e {
-            Expr::Function { name: None, is_async, is_generator, params, body, span } => {
+            Expr::Function {
+                name: None,
+                is_async,
+                is_generator,
+                params,
+                body,
+                span,
+            } => {
                 self.record_span(*span);
                 let proto = self.compile_function_proto_with_name_hint(
-                    None, hint, *is_async, *is_generator, params, body)?;
+                    None,
+                    hint,
+                    *is_async,
+                    *is_generator,
+                    params,
+                    body,
+                )?;
                 let captures = proto.upvalues.clone();
                 let idx = self.constants.intern(Constant::Function(Box::new(proto)));
                 encode_op(&mut self.bytecode, Op::MakeClosure);
@@ -2417,7 +2792,12 @@ impl Compiler {
                 emit_captures(&mut self.bytecode, &captures);
                 Ok(())
             }
-            Expr::Arrow { is_async, params, body, span } => {
+            Expr::Arrow {
+                is_async,
+                params,
+                body,
+                span,
+            } => {
                 self.record_span(*span);
                 let body_stmts: Vec<Stmt> = match body {
                     ArrowBody::Block(stmts) => stmts.clone(),
@@ -2427,7 +2807,13 @@ impl Compiler {
                     }],
                 };
                 let proto = self.compile_function_proto_with_name_hint(
-                    None, hint, *is_async, false, params, &body_stmts)?;
+                    None,
+                    hint,
+                    *is_async,
+                    false,
+                    params,
+                    &body_stmts,
+                )?;
                 let captures = proto.upvalues.clone();
                 let idx = self.constants.intern(Constant::Function(Box::new(proto)));
                 encode_op(&mut self.bytecode, Op::MakeArrow);
@@ -2435,14 +2821,22 @@ impl Compiler {
                 emit_captures(&mut self.bytecode, &captures);
                 Ok(())
             }
-            Expr::Class { name: None, super_class, members, span } => {
+            Expr::Class {
+                name: None,
+                super_class,
+                members,
+                span,
+            } => {
                 self.record_span(*span);
                 self.compile_class_with_name_hint(
-                    *span, None, hint, super_class.as_ref().map(|b| b.as_ref()), members)
+                    *span,
+                    None,
+                    hint,
+                    super_class.as_ref().map(|b| b.as_ref()),
+                    members,
+                )
             }
-            Expr::Parenthesized { expr, .. } => {
-                self.compile_expr_with_name_hint(expr, hint)
-            }
+            Expr::Parenthesized { expr, .. } => self.compile_expr_with_name_hint(expr, hint),
             _ => self.compile_expr(e),
         }
     }
@@ -2450,9 +2844,14 @@ impl Compiler {
     fn compile_expr(&mut self, e: &Expr) -> Result<(), CompileError> {
         self.record_span(e.span());
         match e {
-            Expr::NullLiteral { .. } => { encode_op(&mut self.bytecode, Op::PushNull); }
+            Expr::NullLiteral { .. } => {
+                encode_op(&mut self.bytecode, Op::PushNull);
+            }
             Expr::BoolLiteral { value, .. } => {
-                encode_op(&mut self.bytecode, if *value { Op::PushTrue } else { Op::PushFalse });
+                encode_op(
+                    &mut self.bytecode,
+                    if *value { Op::PushTrue } else { Op::PushFalse },
+                );
             }
             Expr::NumberLiteral { value, .. } => {
                 // Integer-fast-path: if the number fits in i32 exactly, emit PushI32.
@@ -2489,7 +2888,9 @@ impl Compiler {
                     encode_u16(&mut self.bytecode, name_idx);
                 }
             }
-            Expr::Unary { operator, argument, .. } => {
+            Expr::Unary {
+                operator, argument, ..
+            } => {
                 // Tier-Ω.5.gggggg: yield / yield* lower to a call into
                 // the host __yield_push__ / __yield_delegate__ globals.
                 // The runtime maintains a thread-local yields vector
@@ -2499,7 +2900,9 @@ impl Compiler {
                 // returns undefined in this v1; real coroutines would
                 // return the value passed to .next()).
                 if matches!(operator, UnaryOp::Yield) {
-                    let nm = self.constants.intern(Constant::String("__yield_push__".into()));
+                    let nm = self
+                        .constants
+                        .intern(Constant::String("__yield_push__".into()));
                     encode_op(&mut self.bytecode, Op::LoadGlobal);
                     encode_u16(&mut self.bytecode, nm);
                     self.compile_expr(argument)?;
@@ -2508,7 +2911,9 @@ impl Compiler {
                     return Ok(());
                 }
                 if matches!(operator, UnaryOp::YieldDelegate) {
-                    let nm = self.constants.intern(Constant::String("__yield_delegate__".into()));
+                    let nm = self
+                        .constants
+                        .intern(Constant::String("__yield_delegate__".into()));
                     encode_op(&mut self.bytecode, Op::LoadGlobal);
                     encode_u16(&mut self.bytecode, nm);
                     self.compile_expr(argument)?;
@@ -2522,7 +2927,10 @@ impl Compiler {
                 // DeleteIndex instead of the stub Op::Delete which always
                 // returns true without mutating.
                 if matches!(operator, UnaryOp::Delete) {
-                    if let Expr::Member { object, property, .. } = argument.as_ref() {
+                    if let Expr::Member {
+                        object, property, ..
+                    } = argument.as_ref()
+                    {
                         match property.as_ref() {
                             rusty_js_ast::MemberProperty::Identifier { name, .. }
                             | rusty_js_ast::MemberProperty::Private { name, .. } => {
@@ -2550,11 +2958,17 @@ impl Compiler {
                 // compilation produces by default.
                 if matches!(operator, UnaryOp::Typeof | UnaryOp::Delete) {
                     if let Expr::Identifier { name, .. } = argument.as_ref() {
-                        if self.resolve_local(name).is_none() && self.resolve_upvalue(name).is_none() {
+                        if self.resolve_local(name).is_none()
+                            && self.resolve_upvalue(name).is_none()
+                        {
                             let name_idx = self.constants.intern(Constant::String(name.clone()));
                             encode_op(&mut self.bytecode, Op::LoadGlobalOrUndef);
                             encode_u16(&mut self.bytecode, name_idx);
-                            let op = if matches!(operator, UnaryOp::Typeof) { Op::Typeof } else { Op::Delete };
+                            let op = if matches!(operator, UnaryOp::Typeof) {
+                                Op::Typeof
+                            } else {
+                                Op::Delete
+                            };
                             encode_op(&mut self.bytecode, op);
                             return Ok(());
                         }
@@ -2588,7 +3002,12 @@ impl Compiler {
                 };
                 encode_op(&mut self.bytecode, op);
             }
-            Expr::Binary { operator, left, right, .. } => {
+            Expr::Binary {
+                operator,
+                left,
+                right,
+                ..
+            } => {
                 match operator {
                     BinaryOp::LogicalAnd => {
                         // emit left; JumpIfFalseKeep end; Pop; emit right; end:
@@ -2630,17 +3049,27 @@ impl Compiler {
                         self.compile_expr(left)?;
                         self.compile_expr(right)?;
                         let op = match operator {
-                            BinaryOp::Add => Op::Add, BinaryOp::Sub => Op::Sub,
-                            BinaryOp::Mul => Op::Mul, BinaryOp::Div => Op::Div,
-                            BinaryOp::Mod => Op::Mod, BinaryOp::Pow => Op::Pow,
-                            BinaryOp::Shl => Op::Shl, BinaryOp::Shr => Op::Shr,
+                            BinaryOp::Add => Op::Add,
+                            BinaryOp::Sub => Op::Sub,
+                            BinaryOp::Mul => Op::Mul,
+                            BinaryOp::Div => Op::Div,
+                            BinaryOp::Mod => Op::Mod,
+                            BinaryOp::Pow => Op::Pow,
+                            BinaryOp::Shl => Op::Shl,
+                            BinaryOp::Shr => Op::Shr,
                             BinaryOp::UShr => Op::UShr,
-                            BinaryOp::Lt => Op::Lt, BinaryOp::Gt => Op::Gt,
-                            BinaryOp::Le => Op::Le, BinaryOp::Ge => Op::Ge,
-                            BinaryOp::Eq => Op::Eq, BinaryOp::Ne => Op::Ne,
-                            BinaryOp::StrictEq => Op::StrictEq, BinaryOp::StrictNe => Op::StrictNe,
-                            BinaryOp::Instanceof => Op::Instanceof, BinaryOp::In => Op::In,
-                            BinaryOp::BitAnd => Op::BitAnd, BinaryOp::BitOr => Op::BitOr,
+                            BinaryOp::Lt => Op::Lt,
+                            BinaryOp::Gt => Op::Gt,
+                            BinaryOp::Le => Op::Le,
+                            BinaryOp::Ge => Op::Ge,
+                            BinaryOp::Eq => Op::Eq,
+                            BinaryOp::Ne => Op::Ne,
+                            BinaryOp::StrictEq => Op::StrictEq,
+                            BinaryOp::StrictNe => Op::StrictNe,
+                            BinaryOp::Instanceof => Op::Instanceof,
+                            BinaryOp::In => Op::In,
+                            BinaryOp::BitAnd => Op::BitAnd,
+                            BinaryOp::BitOr => Op::BitOr,
                             BinaryOp::BitXor => Op::BitXor,
                             _ => unreachable!(),
                         };
@@ -2649,7 +3078,12 @@ impl Compiler {
                 }
             }
             Expr::Parenthesized { expr, .. } => self.compile_expr(expr)?,
-            Expr::Conditional { test, consequent, alternate, .. } => {
+            Expr::Conditional {
+                test,
+                consequent,
+                alternate,
+                ..
+            } => {
                 self.compile_expr(test)?;
                 let j_else = self.emit_jump(Op::JumpIfFalse);
                 self.compile_expr(consequent)?;
@@ -2673,14 +3107,24 @@ impl Compiler {
                     }
                 }
             }
-            Expr::Assign { operator, target, value, .. } => {
+            Expr::Assign {
+                operator,
+                target,
+                value,
+                ..
+            } => {
                 self.compile_assign(e.span(), *operator, target, value)?;
             }
             Expr::This { .. } => {
                 // Tier-Ω.5.a: this now threads through the frame.
                 encode_op(&mut self.bytecode, Op::PushThis);
             }
-            Expr::Member { object, property, optional, .. } => {
+            Expr::Member {
+                object,
+                property,
+                optional,
+                ..
+            } => {
                 // Tier-Ω.5.f: super.x read — load from the parent prototype
                 // (or parent constructor in a static context). The lookup
                 // does NOT thread `this` for a bare member read; only when
@@ -2689,7 +3133,9 @@ impl Compiler {
                     self.compile_super_member_load(e.span(), property)?;
                     return Ok(());
                 }
-                if *optional { self.emit_construct_tag("optional-chain member"); }
+                if *optional {
+                    self.emit_construct_tag("optional-chain member");
+                }
                 self.compile_expr(object)?;
                 // Tier-Ω.5.cc: optional chaining (`obj?.prop`). If `obj` is
                 // null or undefined, short-circuit: pop it, push undefined,
@@ -2710,7 +3156,9 @@ impl Compiler {
                     encode_op(&mut self.bytecode, Op::StrictEq);
                     sinks.push(self.emit_jump(Op::JumpIfTrue));
                     Some(sinks)
-                } else { None };
+                } else {
+                    None
+                };
                 match property.as_ref() {
                     MemberProperty::Identifier { name, .. } => {
                         let idx = self.constants.intern(Constant::String(name.clone()));
@@ -2722,14 +3170,18 @@ impl Compiler {
                         encode_op(&mut self.bytecode, Op::GetIndex);
                     }
                     MemberProperty::Private { name, .. } => {
-                        let idx = self.constants.intern(Constant::String(format!("#{}", name)));
+                        let idx = self
+                            .constants
+                            .intern(Constant::String(format!("#{}", name)));
                         encode_op(&mut self.bytecode, Op::GetProp);
                         encode_u16(&mut self.bytecode, idx);
                     }
                 }
                 if let Some(sinks) = short_jumps {
                     let end = self.emit_jump(Op::Jump);
-                    for site in sinks { self.patch_jump_at(site); }
+                    for site in sinks {
+                        self.patch_jump_at(site);
+                    }
                     // Short-circuit landing: pop the leftover object,
                     // push undefined.
                     encode_op(&mut self.bytecode, Op::Pop);
@@ -2737,8 +3189,15 @@ impl Compiler {
                     self.patch_jump_at(end);
                 }
             }
-            Expr::Call { callee, arguments, optional: call_optional, .. } => {
-                if *call_optional { self.emit_construct_tag("optional-chain call"); }
+            Expr::Call {
+                callee,
+                arguments,
+                optional: call_optional,
+                ..
+            } => {
+                if *call_optional {
+                    self.emit_construct_tag("optional-chain call");
+                }
                 let n = arguments.len();
                 if n > 255 {
                     return Err(self.err(e.span(), "too many call arguments (>255)"));
@@ -2754,7 +3213,10 @@ impl Compiler {
                 // static method. Lowers to a method-call on the parent
                 // prototype's (or parent constructor's) named slot with
                 // the current `this` as receiver.
-                if let Expr::Member { object, property, .. } = callee.as_ref() {
+                if let Expr::Member {
+                    object, property, ..
+                } = callee.as_ref()
+                {
                     if matches!(object.as_ref(), Expr::Super { .. }) {
                         self.compile_super_member_call(e.span(), property, arguments)?;
                         return Ok(());
@@ -2765,7 +3227,13 @@ impl Compiler {
                 let is_method = matches!(callee.as_ref(), Expr::Member { .. });
                 let has_spread = Self::args_has_spread(arguments);
                 if is_method {
-                    if let Expr::Member { object, property, optional: mem_optional, .. } = callee.as_ref() {
+                    if let Expr::Member {
+                        object,
+                        property,
+                        optional: mem_optional,
+                        ..
+                    } = callee.as_ref()
+                    {
                         if has_spread {
                             // Tier-Ω.5.k: lower `obj.f(...args)` as
                             //   __apply(method, receiver, argsArray)
@@ -2777,8 +3245,9 @@ impl Compiler {
                             //   Swap                      [__apply, method, recv]
                             //   <argsArray>               [__apply, method, recv, arr]
                             //   Call 3                    [result]
-                            let apply_name = self.constants.intern(
-                                Constant::String("__apply".to_string()));
+                            let apply_name = self
+                                .constants
+                                .intern(Constant::String("__apply".to_string()));
                             encode_op(&mut self.bytecode, Op::LoadGlobal);
                             encode_u16(&mut self.bytecode, apply_name);
                             self.compile_expr(object)?;
@@ -2794,8 +3263,9 @@ impl Compiler {
                                     encode_op(&mut self.bytecode, Op::GetIndex);
                                 }
                                 MemberProperty::Private { name, .. } => {
-                                    let idx = self.constants.intern(
-                                        Constant::String(format!("#{}", name)));
+                                    let idx = self
+                                        .constants
+                                        .intern(Constant::String(format!("#{}", name)));
                                     encode_op(&mut self.bytecode, Op::GetProp);
                                     encode_u16(&mut self.bytecode, idx);
                                 }
@@ -2823,7 +3293,9 @@ impl Compiler {
                                 encode_op(&mut self.bytecode, Op::StrictEq);
                                 let s2 = self.emit_jump(Op::JumpIfTrue);
                                 vec![s1, s2]
-                            } else { Vec::new() };
+                            } else {
+                                Vec::new()
+                            };
                             // Duplicate receiver so we can use it for the method
                             // lookup without losing it for the CallMethod consumer.
                             encode_op(&mut self.bytecode, Op::Dup);
@@ -2838,7 +3310,9 @@ impl Compiler {
                                     encode_op(&mut self.bytecode, Op::GetIndex);
                                 }
                                 MemberProperty::Private { name, .. } => {
-                                    let idx = self.constants.intern(Constant::String(format!("#{}", name)));
+                                    let idx = self
+                                        .constants
+                                        .intern(Constant::String(format!("#{}", name)));
                                     encode_op(&mut self.bytecode, Op::GetProp);
                                     encode_u16(&mut self.bytecode, idx);
                                 }
@@ -2866,7 +3340,9 @@ impl Compiler {
                                 encode_op(&mut self.bytecode, Op::StrictEq);
                                 let s2 = self.emit_jump(Op::JumpIfTrue);
                                 vec![s1, s2]
-                            } else { Vec::new() };
+                            } else {
+                                Vec::new()
+                            };
                             // Now stack: [receiver, method]. Compile args.
                             for a in arguments {
                                 match a {
@@ -2897,7 +3373,9 @@ impl Compiler {
                                 let done = self.emit_jump(Op::Jump);
                                 // Member-?. landing: stack here is [receiver].
                                 if has_mem_sinks {
-                                    for s in opt_sinks { self.patch_jump_at(s); }
+                                    for s in opt_sinks {
+                                        self.patch_jump_at(s);
+                                    }
                                     encode_op(&mut self.bytecode, Op::Pop); // receiver
                                     encode_op(&mut self.bytecode, Op::PushUndef);
                                 }
@@ -2909,12 +3387,18 @@ impl Compiler {
                                         // which would pop a non-existent
                                         // method. Jump past it.
                                         Some(self.emit_jump(Op::Jump))
-                                    } else { None };
-                                    for s in call_opt_sinks { self.patch_jump_at(s); }
+                                    } else {
+                                        None
+                                    };
+                                    for s in call_opt_sinks {
+                                        self.patch_jump_at(s);
+                                    }
                                     encode_op(&mut self.bytecode, Op::Pop); // method
                                     encode_op(&mut self.bytecode, Op::Pop); // receiver
                                     encode_op(&mut self.bytecode, Op::PushUndef);
-                                    if let Some(j) = skip_call_pad { self.patch_jump_at(j); }
+                                    if let Some(j) = skip_call_pad {
+                                        self.patch_jump_at(j);
+                                    }
                                 }
                                 self.patch_jump_at(done);
                             }
@@ -2923,8 +3407,9 @@ impl Compiler {
                 } else if has_spread {
                     // Tier-Ω.5.k: lower `f(...args)` as
                     //   __apply(callee, undefined, argsArray)
-                    let apply_name = self.constants.intern(
-                        Constant::String("__apply".to_string()));
+                    let apply_name = self
+                        .constants
+                        .intern(Constant::String("__apply".to_string()));
                     encode_op(&mut self.bytecode, Op::LoadGlobal);
                     encode_u16(&mut self.bytecode, apply_name);
                     self.compile_expr(callee)?;
@@ -2951,7 +3436,9 @@ impl Compiler {
                         encode_op(&mut self.bytecode, Op::StrictEq);
                         let s2 = self.emit_jump(Op::JumpIfTrue);
                         vec![s1, s2]
-                    } else { Vec::new() };
+                    } else {
+                        Vec::new()
+                    };
                     for a in arguments {
                         match a {
                             Argument::Expr(e) => self.compile_expr(e)?,
@@ -2962,7 +3449,9 @@ impl Compiler {
                     encode_u8(&mut self.bytecode, n as u8);
                     if !opt_call_sinks.is_empty() {
                         let done = self.emit_jump(Op::Jump);
-                        for s in opt_call_sinks { self.patch_jump_at(s); }
+                        for s in opt_call_sinks {
+                            self.patch_jump_at(s);
+                        }
                         // Short-circuit landing: pop the leftover callee,
                         // push undefined.
                         encode_op(&mut self.bytecode, Op::Pop);
@@ -2971,7 +3460,9 @@ impl Compiler {
                     }
                 }
             }
-            Expr::New { callee, arguments, .. } => {
+            Expr::New {
+                callee, arguments, ..
+            } => {
                 let n = arguments.len();
                 if n > 255 {
                     return Err(self.err(e.span(), "too many new arguments (>255)"));
@@ -2979,8 +3470,9 @@ impl Compiler {
                 if Self::args_has_spread(arguments) {
                     // Tier-Ω.5.k: lower `new C(...args)` as
                     //   __construct(callee, argsArray)
-                    let ctor_name = self.constants.intern(
-                        Constant::String("__construct".to_string()));
+                    let ctor_name = self
+                        .constants
+                        .intern(Constant::String("__construct".to_string()));
                     encode_op(&mut self.bytecode, Op::LoadGlobal);
                     encode_u16(&mut self.bytecode, ctor_name);
                     self.compile_expr(callee)?;
@@ -3000,7 +3492,9 @@ impl Compiler {
                 }
             }
             Expr::Array { elements, .. } => {
-                let has_spread = elements.iter().any(|el| matches!(el, ArrayElement::Spread { .. }));
+                let has_spread = elements
+                    .iter()
+                    .any(|el| matches!(el, ArrayElement::Spread { .. }));
                 if !has_spread {
                     let len = elements.len();
                     encode_op(&mut self.bytecode, Op::NewArray);
@@ -3008,7 +3502,9 @@ impl Compiler {
                     let mut idx = 0u32;
                     for el in elements {
                         match el {
-                            ArrayElement::Elision { .. } => { idx += 1; }
+                            ArrayElement::Elision { .. } => {
+                                idx += 1;
+                            }
                             ArrayElement::Expr(ex) => {
                                 self.compile_expr(ex)?;
                                 encode_op(&mut self.bytecode, Op::InitIndex);
@@ -3024,8 +3520,12 @@ impl Compiler {
                     // shape of emit_args_array (Ω.5.k).
                     encode_op(&mut self.bytecode, Op::NewArray);
                     encode_u16(&mut self.bytecode, 0);
-                    let push_name = self.constants.intern(Constant::String("__array_push_single".to_string()));
-                    let extend_name = self.constants.intern(Constant::String("__array_extend".to_string()));
+                    let push_name = self
+                        .constants
+                        .intern(Constant::String("__array_push_single".to_string()));
+                    let extend_name = self
+                        .constants
+                        .intern(Constant::String("__array_extend".to_string()));
                     for el in elements {
                         match el {
                             ArrayElement::Elision { .. } => {
@@ -3060,7 +3560,9 @@ impl Compiler {
                 encode_op(&mut self.bytecode, Op::NewObject);
                 for p in properties {
                     match p {
-                        ObjectProperty::Property { key, value, kind, .. } => {
+                        ObjectProperty::Property {
+                            key, value, kind, ..
+                        } => {
                             // Ω.5.P52.E1: getter/setter object-literal shorthand
                             // (`{get name(){...}, set name(v){...}}`) installs an
                             // accessor descriptor pair on the target via the
@@ -3070,39 +3572,53 @@ impl Compiler {
                             // Ω.5.kkkkkk; consumers writing `o.name = v` now hit
                             // the setter instead of overwriting the accessor with
                             // a fresh data property.
-                            if matches!(kind, rusty_js_ast::ObjectPropertyKind::Get
-                                            | rusty_js_ast::ObjectPropertyKind::Set) {
+                            if matches!(
+                                kind,
+                                rusty_js_ast::ObjectPropertyKind::Get
+                                    | rusty_js_ast::ObjectPropertyKind::Set
+                            ) {
                                 // Object-literal accessors are enumerable per
                                 // ECMA-262 sec 13.2.5.5; class accessors are
                                 // not. Use the obj-specific helper so the
                                 // resulting descriptor is enumerable: true.
-                                let helper = self.constants.intern(
-                                    Constant::String("__install_accessor_obj__".into()));
-                                let kind_str = if matches!(kind, rusty_js_ast::ObjectPropertyKind::Get) { "get" } else { "set" };
-                                let kind_idx = self.constants.intern(Constant::String(kind_str.into()));
+                                let helper = self
+                                    .constants
+                                    .intern(Constant::String("__install_accessor_obj__".into()));
+                                let kind_str =
+                                    if matches!(kind, rusty_js_ast::ObjectPropertyKind::Get) {
+                                        "get"
+                                    } else {
+                                        "set"
+                                    };
+                                let kind_idx =
+                                    self.constants.intern(Constant::String(kind_str.into()));
                                 // Stack: [target] -> dup so target survives the call.
-                                encode_op(&mut self.bytecode, Op::Dup);                  // [t, t]
-                                encode_op(&mut self.bytecode, Op::LoadGlobal);           // [t, t, helper]
+                                encode_op(&mut self.bytecode, Op::Dup); // [t, t]
+                                encode_op(&mut self.bytecode, Op::LoadGlobal); // [t, t, helper]
                                 encode_u16(&mut self.bytecode, helper);
-                                encode_op(&mut self.bytecode, Op::Swap);                 // [t, helper, t]
-                                // Push the key — static keys as a PushConst string;
-                                // computed keys via compile_expr (the key value at
-                                // runtime gets ToString'd by __install_accessor__).
+                                encode_op(&mut self.bytecode, Op::Swap); // [t, helper, t]
+                                                                         // Push the key — static keys as a PushConst string;
+                                                                         // computed keys via compile_expr (the key value at
+                                                                         // runtime gets ToString'd by __install_accessor__).
                                 match key {
                                     ObjectKey::Identifier { name, .. } => {
-                                        let key_idx = self.constants.intern(Constant::String(name.clone()));
+                                        let key_idx =
+                                            self.constants.intern(Constant::String(name.clone()));
                                         encode_op(&mut self.bytecode, Op::PushConst);
                                         encode_u16(&mut self.bytecode, key_idx);
                                     }
                                     ObjectKey::String { value: name, .. } => {
-                                        let key_idx = self.constants.intern(Constant::String(name.clone()));
+                                        let key_idx =
+                                            self.constants.intern(Constant::String(name.clone()));
                                         encode_op(&mut self.bytecode, Op::PushConst);
                                         encode_u16(&mut self.bytecode, key_idx);
                                     }
                                     ObjectKey::Number { value: num, .. } => {
                                         let s = if num.fract() == 0.0 {
                                             format!("{}", *num as i64)
-                                        } else { format!("{}", num) };
+                                        } else {
+                                            format!("{}", num)
+                                        };
                                         let key_idx = self.constants.intern(Constant::String(s));
                                         encode_op(&mut self.bytecode, Op::PushConst);
                                         encode_u16(&mut self.bytecode, key_idx);
@@ -3111,16 +3627,17 @@ impl Compiler {
                                         self.compile_expr(key_expr)?;
                                     }
                                 }
-                                encode_op(&mut self.bytecode, Op::PushConst);            // [t, helper, t, key, kind]
+                                encode_op(&mut self.bytecode, Op::PushConst); // [t, helper, t, key, kind]
                                 encode_u16(&mut self.bytecode, kind_idx);
-                                self.compile_expr(value)?;                                // [t, helper, t, key, kind, fn]
-                                encode_op(&mut self.bytecode, Op::Call);                 // [t, result]
+                                self.compile_expr(value)?; // [t, helper, t, key, kind, fn]
+                                encode_op(&mut self.bytecode, Op::Call); // [t, result]
                                 encode_u8(&mut self.bytecode, 4);
-                                encode_op(&mut self.bytecode, Op::Pop);                  // [t]
+                                encode_op(&mut self.bytecode, Op::Pop); // [t]
                                 continue;
                             }
                             match key {
-                                ObjectKey::Identifier { name, .. } | ObjectKey::String { value: name, .. } => {
+                                ObjectKey::Identifier { name, .. }
+                                | ObjectKey::String { value: name, .. } => {
                                     // Tier-Ω.5.ssssss: `{__proto__: X}` sets
                                     // [[Prototype]] per ECMA-262 §13.2.5.5
                                     // (not a normal own property). graceful-fs
@@ -3135,7 +3652,8 @@ impl Compiler {
                                         // for method shorthand + anonymous
                                         // function-valued properties.
                                         self.compile_expr_with_name_hint(value, Some(name))?;
-                                        let idx = self.constants.intern(Constant::String(name.clone()));
+                                        let idx =
+                                            self.constants.intern(Constant::String(name.clone()));
                                         encode_op(&mut self.bytecode, Op::InitProp);
                                         encode_u16(&mut self.bytecode, idx);
                                     }
@@ -3144,7 +3662,9 @@ impl Compiler {
                                     self.compile_expr(value)?;
                                     let name = if num.fract() == 0.0 {
                                         format!("{}", *num as i64)
-                                    } else { format!("{}", num) };
+                                    } else {
+                                        format!("{}", num)
+                                    };
                                     let idx = self.constants.intern(Constant::String(name));
                                     encode_op(&mut self.bytecode, Op::InitProp);
                                     encode_u16(&mut self.bytecode, idx);
@@ -3172,8 +3692,9 @@ impl Compiler {
                             // copies own-enumerable props of src into
                             // target left-to-right and returns target.
                             encode_op(&mut self.bytecode, Op::Dup);
-                            let helper = self.constants.intern(
-                                Constant::String("__object_spread".to_string()));
+                            let helper = self
+                                .constants
+                                .intern(Constant::String("__object_spread".to_string()));
                             encode_op(&mut self.bytecode, Op::LoadGlobal);
                             encode_u16(&mut self.bytecode, helper);
                             encode_op(&mut self.bytecode, Op::Swap);
@@ -3185,15 +3706,33 @@ impl Compiler {
                     }
                 }
             }
-            Expr::Function { name, is_async, is_generator, params, body, .. } => {
-                let proto = self.compile_function_proto(name.clone(), *is_async, *is_generator, params, body)?;
+            Expr::Function {
+                name,
+                is_async,
+                is_generator,
+                params,
+                body,
+                ..
+            } => {
+                let proto = self.compile_function_proto(
+                    name.clone(),
+                    *is_async,
+                    *is_generator,
+                    params,
+                    body,
+                )?;
                 let captures = proto.upvalues.clone();
                 let idx = self.constants.intern(Constant::Function(Box::new(proto)));
                 encode_op(&mut self.bytecode, Op::MakeClosure);
                 encode_u16(&mut self.bytecode, idx);
                 emit_captures(&mut self.bytecode, &captures);
             }
-            Expr::Arrow { is_async, params, body, .. } => {
+            Expr::Arrow {
+                is_async,
+                params,
+                body,
+                ..
+            } => {
                 let body_stmts: Vec<Stmt> = match body {
                     ArrowBody::Block(stmts) => stmts.clone(),
                     ArrowBody::Expression(expr) => vec![Stmt::Return {
@@ -3201,17 +3740,28 @@ impl Compiler {
                         span: expr.span(),
                     }],
                 };
-                let proto = self.compile_function_proto(None, *is_async, false, params, &body_stmts)?;
+                let proto =
+                    self.compile_function_proto(None, *is_async, false, params, &body_stmts)?;
                 let captures = proto.upvalues.clone();
                 let idx = self.constants.intern(Constant::Function(Box::new(proto)));
                 encode_op(&mut self.bytecode, Op::MakeArrow);
                 encode_u16(&mut self.bytecode, idx);
                 emit_captures(&mut self.bytecode, &captures);
             }
-            Expr::Update { operator, argument, prefix, .. } => {
+            Expr::Update {
+                operator,
+                argument,
+                prefix,
+                ..
+            } => {
                 self.compile_update(e.span(), *operator, argument, *prefix)?;
             }
-            Expr::Class { name, super_class, members, span } => {
+            Expr::Class {
+                name,
+                super_class,
+                members,
+                span,
+            } => {
                 // Class expression: lower exactly like ClassDecl but leave
                 // the constructor on the stack as the expression's value.
                 self.compile_class(
@@ -3222,23 +3772,33 @@ impl Compiler {
                 )?;
             }
             Expr::Super { span } => {
-                return Err(self.err(*span,
-                    "bare `super` reference is only valid as `super(...)` or `super.method(...)`"));
+                return Err(self.err(
+                    *span,
+                    "bare `super` reference is only valid as `super(...)` or `super.method(...)`",
+                ));
             }
-            Expr::TemplateLiteral { quasis, expressions, .. } => {
+            Expr::TemplateLiteral {
+                quasis,
+                expressions,
+                ..
+            } => {
                 // Tier-Ω.5.g.3: lower to left-to-right Add chain. op_add
                 // coerces non-string operands when the LHS is a String, so
                 // explicit ToString is unnecessary: the first quasi (a
                 // String constant) seeds the chain, after which every Add
                 // produces a String result.
                 debug_assert_eq!(quasis.len(), expressions.len() + 1);
-                let first = self.constants.intern(Constant::String((**quasis.first().unwrap()).clone()));
+                let first = self
+                    .constants
+                    .intern(Constant::String((**quasis.first().unwrap()).clone()));
                 encode_op(&mut self.bytecode, Op::PushConst);
                 encode_u16(&mut self.bytecode, first);
                 for (i, expr) in expressions.iter().enumerate() {
                     self.compile_expr(expr)?;
                     encode_op(&mut self.bytecode, Op::Add);
-                    let q = self.constants.intern(Constant::String((*quasis[i + 1]).clone()));
+                    let q = self
+                        .constants
+                        .intern(Constant::String((*quasis[i + 1]).clone()));
                     encode_op(&mut self.bytecode, Op::PushConst);
                     encode_u16(&mut self.bytecode, q);
                     encode_op(&mut self.bytecode, Op::Add);
@@ -3251,7 +3811,9 @@ impl Compiler {
                 // lookups at install_intrinsics time. The runtime helper
                 // allocates an Object with InternalKind::RegExp wired to
                 // %RegExp.prototype% via the alloc-time proto seam.
-                let helper_name = self.constants.intern(Constant::String("__createRegExp".to_string()));
+                let helper_name = self
+                    .constants
+                    .intern(Constant::String("__createRegExp".to_string()));
                 encode_op(&mut self.bytecode, Op::LoadGlobal);
                 encode_u16(&mut self.bytecode, helper_name);
                 let pat_idx = self.constants.intern(Constant::String((**pattern).clone()));
@@ -3278,9 +3840,15 @@ impl Compiler {
                 // the slot None and PushNewTarget yields Undefined.
                 encode_op(&mut self.bytecode, Op::PushNewTarget);
             }
-            Expr::MetaProperty { meta, property, span } => {
-                return Err(self.err(*span, &format!(
-                    "unsupported MetaProperty: {}.{}", meta, property)));
+            Expr::MetaProperty {
+                meta,
+                property,
+                span,
+            } => {
+                return Err(self.err(
+                    *span,
+                    &format!("unsupported MetaProperty: {}.{}", meta, property),
+                ));
             }
             other => {
                 let tag = match other {
@@ -3294,7 +3862,10 @@ impl Compiler {
                     Expr::Arrow { .. } => "Arrow",
                     _ => "<other>",
                 };
-                return Err(self.err(e.span(), &format!("expression form not yet supported in compiler v1: {}", tag)));
+                return Err(self.err(
+                    e.span(),
+                    &format!("expression form not yet supported in compiler v1: {}", tag),
+                ));
             }
         }
         Ok(())
@@ -3311,7 +3882,14 @@ impl Compiler {
         params: &[Parameter],
         body: &[Stmt],
     ) -> Result<FunctionProto, CompileError> {
-        self.compile_function_proto_with_name_hint(name, None, _is_async, is_generator, params, body)
+        self.compile_function_proto_with_name_hint(
+            name,
+            None,
+            _is_async,
+            is_generator,
+            params,
+            body,
+        )
     }
 
     /// Tier-Ω.5.P15.E1: NamedEvaluation pathway per ECMA-262 §13.2.5.5 +
@@ -3348,14 +3926,17 @@ impl Compiler {
             constants: ConstantsPool::new(),
             locals: Vec::new(),
             source_map: Vec::new(),
-            loop_stack: Vec::new(), label_stack: Vec::new(), pending_label: None,
+            loop_stack: Vec::new(),
+            label_stack: Vec::new(),
+            pending_label: None,
             enclosing: sub_enclosing,
             upvalues: Vec::new(),
             class_stack: self.class_stack.clone(),
             class_seq: self.class_seq,
             imports: Vec::new(),
             exports: Vec::new(),
-            reexport_sources: Vec::new(), side_effect_imports: Vec::new(),
+            reexport_sources: Vec::new(),
+            side_effect_imports: Vec::new(),
             pending_named_exports: Vec::new(),
             pre_allocated_slots: std::collections::HashMap::new(),
             // Ω.5.P51.E1: share the parent's source-line index. Sub-compilers
@@ -3417,7 +3998,7 @@ impl Compiler {
                     }
                 }
                 pat @ (rusty_js_ast::BindingPattern::Array(_)
-                      | rusty_js_ast::BindingPattern::Object(_)) => {
+                | rusty_js_ast::BindingPattern::Object(_)) => {
                     let slot = sub.alloc_local(LocalDescriptor {
                         name: format!("<param${}>", i),
                         kind: VariableKind::Let,
@@ -3445,7 +4026,8 @@ impl Compiler {
         // to these by name, which resolves via the locals table.
         for p in params.iter() {
             if let pat @ (rusty_js_ast::BindingPattern::Array(_)
-                        | rusty_js_ast::BindingPattern::Object(_)) = &p.target {
+            | rusty_js_ast::BindingPattern::Object(_)) = &p.target
+            {
                 for id in pat.collect_names() {
                     sub.alloc_local(LocalDescriptor {
                         name: id.name.clone(),
@@ -3493,10 +4075,16 @@ impl Compiler {
             let already = sub.locals.iter().any(|l| l.name == n.name);
             if !already {
                 Some(sub.alloc_local(LocalDescriptor {
-                    name: n.name.clone(), kind: VariableKind::Var, depth: 0,
+                    name: n.name.clone(),
+                    kind: VariableKind::Var,
+                    depth: 0,
                 }))
-            } else { None }
-        } else { None };
+            } else {
+                None
+            }
+        } else {
+            None
+        };
         // Tier-Ω.5.ee: function-declaration hoisting per ECMA-262 §10.2.1.3.
         // Two-phase to preserve upvalue resolution: phase H1 pre-allocates
         // ALL top-level var/let/const slots so nested function bodies that
@@ -3527,7 +4115,11 @@ impl Compiler {
                         }
                     }
                     Stmt::Block { body, .. } => collect_var_hoists(body, out),
-                    Stmt::If { consequent, alternate, .. } => {
+                    Stmt::If {
+                        consequent,
+                        alternate,
+                        ..
+                    } => {
                         collect_var_hoists(std::slice::from_ref(consequent.as_ref()), out);
                         if let Some(a) = alternate {
                             collect_var_hoists(std::slice::from_ref(a.as_ref()), out);
@@ -3563,7 +4155,12 @@ impl Compiler {
                         collect_var_hoists(std::slice::from_ref(body.as_ref()), out);
                     }
                     Stmt::ForIn { left, body, .. } | Stmt::ForOf { left, body, .. } => {
-                        if let ForBinding::Decl { kind: VariableKind::Var, target, .. } = left {
+                        if let ForBinding::Decl {
+                            kind: VariableKind::Var,
+                            target,
+                            ..
+                        } = left
+                        {
                             for id in target.collect_names() {
                                 out.push((id.name.clone(), VariableKind::Var));
                             }
@@ -3571,9 +4168,16 @@ impl Compiler {
                         collect_var_hoists(std::slice::from_ref(body.as_ref()), out);
                     }
                     Stmt::Switch { cases, .. } => {
-                        for c in cases { collect_var_hoists(&c.consequent, out); }
+                        for c in cases {
+                            collect_var_hoists(&c.consequent, out);
+                        }
                     }
-                    Stmt::Try { block, handler, finalizer, .. } => {
+                    Stmt::Try {
+                        block,
+                        handler,
+                        finalizer,
+                        ..
+                    } => {
                         collect_var_hoists(std::slice::from_ref(block.as_ref()), out);
                         if let Some(h) = handler {
                             collect_var_hoists(std::slice::from_ref(&h.body), out);
@@ -3621,7 +4225,11 @@ impl Compiler {
                 // statement itself (already handled above).
                 match s {
                     Stmt::Block { body, .. } => collect_var_hoists(body, &mut out),
-                    Stmt::If { consequent, alternate, .. } => {
+                    Stmt::If {
+                        consequent,
+                        alternate,
+                        ..
+                    } => {
                         collect_var_hoists(std::slice::from_ref(consequent.as_ref()), &mut out);
                         if let Some(a) = alternate {
                             collect_var_hoists(std::slice::from_ref(a.as_ref()), &mut out);
@@ -3647,7 +4255,12 @@ impl Compiler {
                         collect_var_hoists(std::slice::from_ref(body.as_ref()), &mut out);
                     }
                     Stmt::ForIn { left, body, .. } | Stmt::ForOf { left, body, .. } => {
-                        if let ForBinding::Decl { kind: VariableKind::Var, target, .. } = left {
+                        if let ForBinding::Decl {
+                            kind: VariableKind::Var,
+                            target,
+                            ..
+                        } = left
+                        {
                             for id in target.collect_names() {
                                 out.push((id.name.clone(), VariableKind::Var));
                             }
@@ -3655,9 +4268,16 @@ impl Compiler {
                         collect_var_hoists(std::slice::from_ref(body.as_ref()), &mut out);
                     }
                     Stmt::Switch { cases, .. } => {
-                        for c in cases { collect_var_hoists(&c.consequent, &mut out); }
+                        for c in cases {
+                            collect_var_hoists(&c.consequent, &mut out);
+                        }
                     }
-                    Stmt::Try { block, handler, finalizer, .. } => {
+                    Stmt::Try {
+                        block,
+                        handler,
+                        finalizer,
+                        ..
+                    } => {
                         collect_var_hoists(std::slice::from_ref(block.as_ref()), &mut out);
                         if let Some(h) = handler {
                             collect_var_hoists(std::slice::from_ref(&h.body), &mut out);
@@ -3674,11 +4294,14 @@ impl Compiler {
             }
             out
         };
-        let mut pre_slots: std::collections::HashMap<String, u16> = std::collections::HashMap::new();
+        let mut pre_slots: std::collections::HashMap<String, u16> =
+            std::collections::HashMap::new();
         for (n, kind) in &pre_alloc_names {
             if !pre_slots.contains_key(n) && sub.resolve_local(n).is_none() {
                 let slot = sub.alloc_local(LocalDescriptor {
-                    name: n.clone(), kind: *kind, depth: 0,
+                    name: n.clone(),
+                    kind: *kind,
+                    depth: 0,
                 });
                 pre_slots.insert(n.clone(), slot);
             }
@@ -3686,8 +4309,22 @@ impl Compiler {
         // Phase H2: emit closure-bind for each FunctionDecl into its
         // pre-allocated slot.
         for s in body {
-            if let Stmt::FunctionDecl { name: Some(n), is_async, is_generator, params, body: fn_body, .. } = s {
-                let proto = sub.compile_function_proto(Some(n.clone()), *is_async, *is_generator, params, fn_body)?;
+            if let Stmt::FunctionDecl {
+                name: Some(n),
+                is_async,
+                is_generator,
+                params,
+                body: fn_body,
+                ..
+            } = s
+            {
+                let proto = sub.compile_function_proto(
+                    Some(n.clone()),
+                    *is_async,
+                    *is_generator,
+                    params,
+                    fn_body,
+                )?;
                 let captures = proto.upvalues.clone();
                 let idx = sub.constants.intern(Constant::Function(Box::new(proto)));
                 encode_op(&mut sub.bytecode, Op::MakeClosure);
@@ -3704,7 +4341,9 @@ impl Compiler {
         // pre-allocated slot rather than allocating a fresh one.
         sub.pre_allocated_slots = pre_slots;
         for s in body {
-            if matches!(s, Stmt::FunctionDecl { name: Some(_), .. }) { continue; }
+            if matches!(s, Stmt::FunctionDecl { name: Some(_), .. }) {
+                continue;
+            }
             sub.compile_stmt(s)?;
         }
         sub.pre_allocated_slots.clear();
@@ -3725,10 +4364,14 @@ impl Compiler {
         // parameters unless they carry a default.
         let mut function_length: u16 = 0;
         for p in params {
-            if p.rest || p.default.is_some() { break; }
+            if p.rest || p.default.is_some() {
+                break;
+            }
             function_length += 1;
         }
-        let display_name = name.as_ref().map(|n| n.name.clone())
+        let display_name = name
+            .as_ref()
+            .map(|n| n.name.clone())
             .unwrap_or_else(|| display_name_hint.map(|s| s.to_string()).unwrap_or_default());
         Ok(FunctionProto {
             bytecode: sub.bytecode,
@@ -3759,7 +4402,10 @@ impl Compiler {
     }
 
     fn err(&self, span: Span, msg: &str) -> CompileError {
-        CompileError { span, message: msg.to_string() }
+        CompileError {
+            span,
+            message: msg.to_string(),
+        }
     }
 
     // ───────────────── Tier-Ω.5.k: spread-argument lowering ─────────────────
@@ -3768,7 +4414,9 @@ impl Compiler {
     /// the direct Op::Call/Op::CallMethod/Op::New emit path and the
     /// __apply / __construct helper path.
     fn args_has_spread(arguments: &[Argument]) -> bool {
-        arguments.iter().any(|a| matches!(a, Argument::Spread { .. }))
+        arguments
+            .iter()
+            .any(|a| matches!(a, Argument::Spread { .. }))
     }
 
     /// Emit code that builds a fresh Array containing the call arguments,
@@ -3777,10 +4425,12 @@ impl Compiler {
     fn emit_args_array(&mut self, arguments: &[Argument]) -> Result<(), CompileError> {
         encode_op(&mut self.bytecode, Op::NewArray);
         encode_u16(&mut self.bytecode, 0);
-        let push_name = self.constants.intern(
-            Constant::String("__array_push_single".to_string()));
-        let extend_name = self.constants.intern(
-            Constant::String("__array_extend".to_string()));
+        let push_name = self
+            .constants
+            .intern(Constant::String("__array_push_single".to_string()));
+        let extend_name = self
+            .constants
+            .intern(Constant::String("__array_extend".to_string()));
         for a in arguments {
             match a {
                 Argument::Expr(expr) => {
@@ -3812,17 +4462,17 @@ impl Compiler {
     /// short-circuit logical/nullish variants, which are lowered separately.
     fn assign_op_binop(op: AssignOp) -> Option<Op> {
         Some(match op {
-            AssignOp::AddAssign    => Op::Add,
-            AssignOp::SubAssign    => Op::Sub,
-            AssignOp::MulAssign    => Op::Mul,
-            AssignOp::DivAssign    => Op::Div,
-            AssignOp::ModAssign    => Op::Mod,
-            AssignOp::PowAssign    => Op::Pow,
-            AssignOp::ShlAssign    => Op::Shl,
-            AssignOp::ShrAssign    => Op::Shr,
-            AssignOp::UShrAssign   => Op::UShr,
+            AssignOp::AddAssign => Op::Add,
+            AssignOp::SubAssign => Op::Sub,
+            AssignOp::MulAssign => Op::Mul,
+            AssignOp::DivAssign => Op::Div,
+            AssignOp::ModAssign => Op::Mod,
+            AssignOp::PowAssign => Op::Pow,
+            AssignOp::ShlAssign => Op::Shl,
+            AssignOp::ShrAssign => Op::Shr,
+            AssignOp::UShrAssign => Op::UShr,
             AssignOp::BitAndAssign => Op::BitAnd,
-            AssignOp::BitOrAssign  => Op::BitOr,
+            AssignOp::BitOrAssign => Op::BitOr,
             AssignOp::BitXorAssign => Op::BitXor,
             AssignOp::Assign
             | AssignOp::LogicalAndAssign
@@ -3861,7 +4511,9 @@ impl Compiler {
     /// CompileError. Leaves nothing on the stack (Throw consumes its
     /// operand and unwinds).
     fn emit_throw_typeerror(&mut self, msg: &str) {
-        let ctor_name = self.constants.intern(Constant::String("TypeError".to_string()));
+        let ctor_name = self
+            .constants
+            .intern(Constant::String("TypeError".to_string()));
         let msg_idx = self.constants.intern(Constant::String(msg.to_string()));
         encode_op(&mut self.bytecode, Op::LoadGlobal);
         encode_u16(&mut self.bytecode, ctor_name);
@@ -3899,9 +4551,10 @@ impl Compiler {
         }
 
         // ── Logical / nullish: short-circuit lowering. ──
-        if matches!(operator, AssignOp::LogicalAndAssign
-                            | AssignOp::LogicalOrAssign
-                            | AssignOp::NullishAssign) {
+        if matches!(
+            operator,
+            AssignOp::LogicalAndAssign | AssignOp::LogicalOrAssign | AssignOp::NullishAssign
+        ) {
             return self.compile_logical_assign(span, operator, target, value);
         }
 
@@ -3916,18 +4569,22 @@ impl Compiler {
                     self.compile_expr(value)?;
                     encode_op(&mut self.bytecode, Op::Pop);
                     self.emit_throw_typeerror(&format!(
-                        "Assignment to constant variable '{}'", name));
+                        "Assignment to constant variable '{}'",
+                        name
+                    ));
                     encode_op(&mut self.bytecode, Op::PushUndef);
                     let _ = span;
                     return Ok(());
                 }
-                self.emit_load_ident(name);          // [old]
-                self.compile_expr(value)?;            // [old, v]
+                self.emit_load_ident(name); // [old]
+                self.compile_expr(value)?; // [old, v]
                 encode_op(&mut self.bytecode, binop); // [new]
                 encode_op(&mut self.bytecode, Op::Dup); // [new, new]
-                self.emit_store_ident(name);          // [new]
+                self.emit_store_ident(name); // [new]
             }
-            Expr::Member { object, property, .. } => {
+            Expr::Member {
+                object, property, ..
+            } => {
                 self.compile_compound_member(span, &**object, property, value, binop)?;
             }
             _ => return Err(self.err(span, "complex assignment target not yet supported")),
@@ -3951,9 +4608,11 @@ impl Compiler {
                 // at parse time).
                 if self.is_const_binding(name) {
                     self.compile_expr(value)?;
-                    encode_op(&mut self.bytecode, Op::Pop);  // discard value
+                    encode_op(&mut self.bytecode, Op::Pop); // discard value
                     self.emit_throw_typeerror(&format!(
-                        "Assignment to constant variable '{}'", name));
+                        "Assignment to constant variable '{}'",
+                        name
+                    ));
                     // Push undefined so any stack-balance assumption downstream
                     // (assign-as-expression yields the assigned value) holds.
                     encode_op(&mut self.bytecode, Op::PushUndef);
@@ -3964,7 +4623,9 @@ impl Compiler {
                 encode_op(&mut self.bytecode, Op::Dup);
                 self.emit_store_ident(name);
             }
-            Expr::Member { object, property, .. } => {
+            Expr::Member {
+                object, property, ..
+            } => {
                 // Tier-Ω.5.f: super.x = v — receiver is `this` (spec: lookup
                 // walks HomeObject's proto but the [[Set]] receiver is the
                 // calling `this`). Mirror compile_super_member_load's
@@ -3973,7 +4634,10 @@ impl Compiler {
                 // which doesn't invoke getters with the proper receiver.
                 if matches!(object.as_ref(), Expr::Super { .. }) {
                     // Validate we're inside a class with a super reference.
-                    let _frame = self.class_stack.last().cloned()
+                    let _frame = self
+                        .class_stack
+                        .last()
+                        .cloned()
                         .ok_or_else(|| self.err(span, "super reference outside of a class"))?;
                     encode_op(&mut self.bytecode, Op::PushThis);
                 } else {
@@ -3993,7 +4657,9 @@ impl Compiler {
                     }
                     MemberProperty::Private { name, .. } => {
                         self.compile_expr(value)?;
-                        let idx = self.constants.intern(Constant::String(format!("#{}", name)));
+                        let idx = self
+                            .constants
+                            .intern(Constant::String(format!("#{}", name)));
                         encode_op(&mut self.bytecode, Op::SetProp);
                         encode_u16(&mut self.bytecode, idx);
                     }
@@ -4035,9 +4701,7 @@ impl Compiler {
         src_slot: u16,
     ) -> Result<(), CompileError> {
         match target {
-            Expr::Parenthesized { expr, .. } => {
-                self.emit_destructure_assign(expr, src_slot)
-            }
+            Expr::Parenthesized { expr, .. } => self.emit_destructure_assign(expr, src_slot),
             Expr::Array { elements, .. } => {
                 use rusty_js_ast::ArrayElement;
                 // IPEP-EXT 1: open iterator from src via __destr_iter_open;
@@ -4045,7 +4709,9 @@ impl Compiler {
                 // emit_destructure Array path). §13.15.5.3 RS:DAE.
                 let iter_slot = self.alloc_temp("<destr-assign.iter>");
                 let done_slot = self.alloc_temp("<destr-assign.iter.done>");
-                let open_idx = self.constants.intern(Constant::String("__destr_iter_open".into()));
+                let open_idx = self
+                    .constants
+                    .intern(Constant::String("__destr_iter_open".into()));
                 encode_op(&mut self.bytecode, Op::LoadGlobal);
                 encode_u16(&mut self.bytecode, open_idx);
                 encode_op(&mut self.bytecode, Op::LoadLocal);
@@ -4066,7 +4732,13 @@ impl Compiler {
                         }
                         ArrayElement::Expr(leaf) => {
                             self.emit_iter_step_value(iter_slot, Some(done_slot))?;
-                            if let Expr::Assign { target: lt, value: dv, operator, .. } = leaf {
+                            if let Expr::Assign {
+                                target: lt,
+                                value: dv,
+                                operator,
+                                ..
+                            } = leaf
+                            {
                                 if matches!(operator, AssignOp::Assign) {
                                     encode_op(&mut self.bytecode, Op::Dup);
                                     encode_op(&mut self.bytecode, Op::PushUndef);
@@ -4074,8 +4746,16 @@ impl Compiler {
                                     let j_skip = self.emit_jump(Op::JumpIfFalse);
                                     encode_op(&mut self.bytecode, Op::Pop);
                                     // §13.15.5.3 NamedEvaluation hint.
-                                    let hint = if let Expr::Identifier { name, .. } = lt.as_ref() { Some(name.as_str()) } else { None };
-                                    if hint.is_some() { self.compile_expr_with_name_hint(dv, hint)?; } else { self.compile_expr(dv)?; }
+                                    let hint = if let Expr::Identifier { name, .. } = lt.as_ref() {
+                                        Some(name.as_str())
+                                    } else {
+                                        None
+                                    };
+                                    if hint.is_some() {
+                                        self.compile_expr_with_name_hint(dv, hint)?;
+                                    } else {
+                                        self.compile_expr(dv)?;
+                                    }
                                     self.patch_jump(j_skip);
                                     self.assign_target_from_stack(lt)?;
                                     continue;
@@ -4083,9 +4763,13 @@ impl Compiler {
                             }
                             self.assign_target_from_stack(leaf)?;
                         }
-                        ArrayElement::Spread { expr: rest_target, .. } => {
+                        ArrayElement::Spread {
+                            expr: rest_target, ..
+                        } => {
                             has_rest = true;
-                            let rest_idx = self.constants.intern(Constant::String("__destr_iter_rest".into()));
+                            let rest_idx = self
+                                .constants
+                                .intern(Constant::String("__destr_iter_rest".into()));
                             encode_op(&mut self.bytecode, Op::LoadGlobal);
                             encode_u16(&mut self.bytecode, rest_idx);
                             encode_op(&mut self.bytecode, Op::LoadLocal);
@@ -4102,11 +4786,13 @@ impl Compiler {
                 Ok(())
             }
             Expr::Object { properties, .. } => {
-                use rusty_js_ast::{ObjectProperty, ObjectKey};
+                use rusty_js_ast::{ObjectKey, ObjectProperty};
                 let mut static_excluded: Vec<String> = Vec::new();
                 for prop in properties {
                     match prop {
-                        ObjectProperty::Property { key, value: leaf, .. } => {
+                        ObjectProperty::Property {
+                            key, value: leaf, ..
+                        } => {
                             // value = src[key]
                             encode_op(&mut self.bytecode, Op::LoadLocal);
                             encode_u16(&mut self.bytecode, src_slot);
@@ -4124,7 +4810,11 @@ impl Compiler {
                                     static_excluded.push(value.clone());
                                 }
                                 ObjectKey::Number { value, .. } => {
-                                    let name = if value.fract() == 0.0 { format!("{}", *value as i64) } else { format!("{}", value) };
+                                    let name = if value.fract() == 0.0 {
+                                        format!("{}", *value as i64)
+                                    } else {
+                                        format!("{}", value)
+                                    };
                                     let k = self.constants.intern(Constant::String(name.clone()));
                                     encode_op(&mut self.bytecode, Op::GetProp);
                                     encode_u16(&mut self.bytecode, k);
@@ -4136,7 +4826,13 @@ impl Compiler {
                                 }
                             }
                             // Default-value support on the leaf.
-                            if let Expr::Assign { target: lt, value: dv, operator, .. } = leaf {
+                            if let Expr::Assign {
+                                target: lt,
+                                value: dv,
+                                operator,
+                                ..
+                            } = leaf
+                            {
                                 if matches!(operator, AssignOp::Assign) {
                                     encode_op(&mut self.bytecode, Op::Dup);
                                     encode_op(&mut self.bytecode, Op::PushUndef);
@@ -4144,8 +4840,16 @@ impl Compiler {
                                     let j_skip = self.emit_jump(Op::JumpIfFalse);
                                     encode_op(&mut self.bytecode, Op::Pop);
                                     // §13.15.5.3 NamedEvaluation, symmetric with array path.
-                                    let hint = if let Expr::Identifier { name, .. } = lt.as_ref() { Some(name.as_str()) } else { None };
-                                    if hint.is_some() { self.compile_expr_with_name_hint(dv, hint)?; } else { self.compile_expr(dv)?; }
+                                    let hint = if let Expr::Identifier { name, .. } = lt.as_ref() {
+                                        Some(name.as_str())
+                                    } else {
+                                        None
+                                    };
+                                    if hint.is_some() {
+                                        self.compile_expr_with_name_hint(dv, hint)?;
+                                    } else {
+                                        self.compile_expr(dv)?;
+                                    }
                                     self.patch_jump(j_skip);
                                     self.assign_target_from_stack(lt)?;
                                     continue;
@@ -4153,9 +4857,13 @@ impl Compiler {
                             }
                             self.assign_target_from_stack(leaf)?;
                         }
-                        ObjectProperty::Spread { expr: rest_target, .. } => {
+                        ObjectProperty::Spread {
+                            expr: rest_target, ..
+                        } => {
                             // rest = __destr_object_rest(src, excluded)
-                            let name_idx = self.constants.intern(Constant::String("__destr_object_rest".into()));
+                            let name_idx = self
+                                .constants
+                                .intern(Constant::String("__destr_object_rest".into()));
                             encode_op(&mut self.bytecode, Op::LoadGlobal);
                             encode_u16(&mut self.bytecode, name_idx);
                             encode_op(&mut self.bytecode, Op::LoadLocal);
@@ -4192,7 +4900,9 @@ impl Compiler {
                 self.emit_store_ident(name);
                 Ok(())
             }
-            Expr::Member { object, property, .. } => {
+            Expr::Member {
+                object, property, ..
+            } => {
                 // stack on entry: [value]. We need [object, key?, value] to
                 // emit SetProp/SetIndex. Spill value into a temp first.
                 let tmp_v = self.alloc_temp("<assign-tgt.v>");
@@ -4216,7 +4926,9 @@ impl Compiler {
                     MemberProperty::Private { name, .. } => {
                         encode_op(&mut self.bytecode, Op::LoadLocal);
                         encode_u16(&mut self.bytecode, tmp_v);
-                        let idx = self.constants.intern(Constant::String(format!("#{}", name)));
+                        let idx = self
+                            .constants
+                            .intern(Constant::String(format!("#{}", name)));
                         encode_op(&mut self.bytecode, Op::SetProp);
                         encode_u16(&mut self.bytecode, idx);
                     }
@@ -4302,7 +5014,9 @@ impl Compiler {
                 encode_op(&mut self.bytecode, Op::SetIndex);
             }
             MemberProperty::Private { name, .. } => {
-                let key_idx = self.constants.intern(Constant::String(format!("#{}", name)));
+                let key_idx = self
+                    .constants
+                    .intern(Constant::String(format!("#{}", name)));
                 encode_op(&mut self.bytecode, Op::LoadLocal);
                 encode_u16(&mut self.bytecode, tmp_obj);
                 encode_op(&mut self.bytecode, Op::GetProp);
@@ -4365,9 +5079,7 @@ impl Compiler {
                         // callee). For &&= the assign branch fires on truthy.
                         Some(self.emit_jump(Op::JumpIfFalseKeep))
                     }
-                    AssignOp::LogicalOrAssign => {
-                        Some(self.emit_jump(Op::JumpIfTrueKeep))
-                    }
+                    AssignOp::LogicalOrAssign => Some(self.emit_jump(Op::JumpIfTrueKeep)),
                     AssignOp::NullishAssign => None, // handled below with custom flow
                     _ => unreachable!(),
                 };
@@ -4401,7 +5113,9 @@ impl Compiler {
                     self.patch_jump(j_end2);
                 }
             }
-            Expr::Member { object, property, .. } => {
+            Expr::Member {
+                object, property, ..
+            } => {
                 self.compile_logical_assign_member(span, operator, object, property, value)?;
             }
             _ => return Err(self.err(span, "complex assignment target not yet supported")),
@@ -4426,7 +5140,11 @@ impl Compiler {
 
         // After this block, the old-value is on the stack as the result
         // on the short-circuit (keep-old) path. We'll then branch.
-        enum Key { Static(u16), Computed(u16), Private(u16) }
+        enum Key {
+            Static(u16),
+            Computed(u16),
+            Private(u16),
+        }
         let key = match property {
             MemberProperty::Identifier { name, .. } => {
                 let idx = self.constants.intern(Constant::String(name.clone()));
@@ -4449,7 +5167,9 @@ impl Compiler {
                 Key::Computed(tmp_key)
             }
             MemberProperty::Private { name, .. } => {
-                let idx = self.constants.intern(Constant::String(format!("#{}", name)));
+                let idx = self
+                    .constants
+                    .intern(Constant::String(format!("#{}", name)));
                 encode_op(&mut self.bytecode, Op::LoadLocal);
                 encode_u16(&mut self.bytecode, tmp_obj);
                 encode_op(&mut self.bytecode, Op::GetProp);
@@ -4463,48 +5183,49 @@ impl Compiler {
 
         let j_skip_assign = match operator {
             AssignOp::LogicalAndAssign => Some(self.emit_jump(Op::JumpIfFalseKeep)),
-            AssignOp::LogicalOrAssign  => Some(self.emit_jump(Op::JumpIfTrueKeep)),
-            AssignOp::NullishAssign    => None,
+            AssignOp::LogicalOrAssign => Some(self.emit_jump(Op::JumpIfTrueKeep)),
+            AssignOp::NullishAssign => None,
             _ => unreachable!(),
         };
 
         // Emit one "assign branch": pop the kept old copy, eval RHS, write
         // through the member. Leaves the new value on the stack.
-        let emit_assign_branch = |c: &mut Self, value: &Expr, key: &Key, tmp_obj: u16| -> Result<(), CompileError> {
-            encode_op(&mut c.bytecode, Op::Pop);
-            c.compile_expr(value)?;
-            let tmp_new = c.alloc_temp("<lcompound.new>");
-            encode_op(&mut c.bytecode, Op::StoreLocal);
-            encode_u16(&mut c.bytecode, tmp_new);
-            match key {
-                Key::Static(idx) => {
-                    encode_op(&mut c.bytecode, Op::LoadLocal);
-                    encode_u16(&mut c.bytecode, tmp_obj);
-                    encode_op(&mut c.bytecode, Op::LoadLocal);
-                    encode_u16(&mut c.bytecode, tmp_new);
-                    encode_op(&mut c.bytecode, Op::SetProp);
-                    encode_u16(&mut c.bytecode, *idx);
+        let emit_assign_branch =
+            |c: &mut Self, value: &Expr, key: &Key, tmp_obj: u16| -> Result<(), CompileError> {
+                encode_op(&mut c.bytecode, Op::Pop);
+                c.compile_expr(value)?;
+                let tmp_new = c.alloc_temp("<lcompound.new>");
+                encode_op(&mut c.bytecode, Op::StoreLocal);
+                encode_u16(&mut c.bytecode, tmp_new);
+                match key {
+                    Key::Static(idx) => {
+                        encode_op(&mut c.bytecode, Op::LoadLocal);
+                        encode_u16(&mut c.bytecode, tmp_obj);
+                        encode_op(&mut c.bytecode, Op::LoadLocal);
+                        encode_u16(&mut c.bytecode, tmp_new);
+                        encode_op(&mut c.bytecode, Op::SetProp);
+                        encode_u16(&mut c.bytecode, *idx);
+                    }
+                    Key::Computed(tmp_key) => {
+                        encode_op(&mut c.bytecode, Op::LoadLocal);
+                        encode_u16(&mut c.bytecode, tmp_obj);
+                        encode_op(&mut c.bytecode, Op::LoadLocal);
+                        encode_u16(&mut c.bytecode, *tmp_key);
+                        encode_op(&mut c.bytecode, Op::LoadLocal);
+                        encode_u16(&mut c.bytecode, tmp_new);
+                        encode_op(&mut c.bytecode, Op::SetIndex);
+                    }
+                    Key::Private(idx) => {
+                        encode_op(&mut c.bytecode, Op::LoadLocal);
+                        encode_u16(&mut c.bytecode, tmp_obj);
+                        encode_op(&mut c.bytecode, Op::LoadLocal);
+                        encode_u16(&mut c.bytecode, tmp_new);
+                        encode_op(&mut c.bytecode, Op::SetProp);
+                        encode_u16(&mut c.bytecode, *idx);
+                    }
                 }
-                Key::Computed(tmp_key) => {
-                    encode_op(&mut c.bytecode, Op::LoadLocal);
-                    encode_u16(&mut c.bytecode, tmp_obj);
-                    encode_op(&mut c.bytecode, Op::LoadLocal);
-                    encode_u16(&mut c.bytecode, *tmp_key);
-                    encode_op(&mut c.bytecode, Op::LoadLocal);
-                    encode_u16(&mut c.bytecode, tmp_new);
-                    encode_op(&mut c.bytecode, Op::SetIndex);
-                }
-                Key::Private(idx) => {
-                    encode_op(&mut c.bytecode, Op::LoadLocal);
-                    encode_u16(&mut c.bytecode, tmp_obj);
-                    encode_op(&mut c.bytecode, Op::LoadLocal);
-                    encode_u16(&mut c.bytecode, tmp_new);
-                    encode_op(&mut c.bytecode, Op::SetProp);
-                    encode_u16(&mut c.bytecode, *idx);
-                }
-            }
-            Ok(())
-        };
+                Ok(())
+            };
 
         if let Some(j) = j_skip_assign {
             emit_assign_branch(self, value, &key, tmp_obj)?;
@@ -4535,18 +5256,20 @@ impl Compiler {
         };
         match argument {
             Expr::Identifier { name, .. } => {
-                self.emit_load_ident(name);              // [old]
+                self.emit_load_ident(name); // [old]
                 if !prefix {
                     encode_op(&mut self.bytecode, Op::Dup); // [old, old]
                 }
-                encode_op(&mut self.bytecode, op);        // prefix:[new]  postfix:[old, new]
+                encode_op(&mut self.bytecode, op); // prefix:[new]  postfix:[old, new]
                 if prefix {
                     encode_op(&mut self.bytecode, Op::Dup); // [new, new]
                 }
                 // Store consumes top: prefix leaves [new]; postfix leaves [old].
                 self.emit_store_ident(name);
             }
-            Expr::Member { object, property, .. } => {
+            Expr::Member {
+                object, property, ..
+            } => {
                 let tmp_obj = self.alloc_temp("<update.obj>");
                 self.compile_expr(object)?;
                 encode_op(&mut self.bytecode, Op::StoreLocal);
@@ -4616,7 +5339,9 @@ impl Compiler {
                         encode_u16(&mut self.bytecode, if prefix { tmp_new } else { tmp_old });
                     }
                     MemberProperty::Private { name, .. } => {
-                        let key_idx = self.constants.intern(Constant::String(format!("#{}", name)));
+                        let key_idx = self
+                            .constants
+                            .intern(Constant::String(format!("#{}", name)));
                         encode_op(&mut self.bytecode, Op::LoadLocal);
                         encode_u16(&mut self.bytecode, tmp_obj);
                         encode_op(&mut self.bytecode, Op::GetProp);
@@ -4643,7 +5368,12 @@ impl Compiler {
                     }
                 }
             }
-            _ => return Err(self.err(span, "update on non-identifier non-member target not yet supported")),
+            _ => {
+                return Err(self.err(
+                    span,
+                    "update on non-identifier non-member target not yet supported",
+                ))
+            }
         }
         Ok(())
     }
@@ -4726,14 +5456,18 @@ impl Compiler {
             // and write to the outer binding; here we only handle class
             // EXPRESSIONS, where caller doesn't pre-bind.
             let slot = self.alloc_local(LocalDescriptor {
-                name: n.name.clone(), kind: VariableKind::Const, depth: 0,
+                name: n.name.clone(),
+                kind: VariableKind::Const,
+                depth: 0,
             });
             // Initialize to Undefined; final ctor written later.
             encode_op(&mut self.bytecode, Op::PushUndef);
             encode_op(&mut self.bytecode, Op::StoreLocal);
             encode_u16(&mut self.bytecode, slot);
             Some(slot)
-        } else { None };
+        } else {
+            None
+        };
 
         // ── 1. extends evaluation ──────────────────────────────────
         let super_ctor_slot = if let Some(sc) = super_class {
@@ -4783,7 +5517,13 @@ impl Compiler {
         let mut ctor_body: Vec<Stmt> = Vec::new();
         let mut has_explicit_ctor = false;
         for m in members {
-            if let ClassMember::Method { kind: MethodKind::Constructor, params, body, .. } = m {
+            if let ClassMember::Method {
+                kind: MethodKind::Constructor,
+                params,
+                body,
+                ..
+            } = m
+            {
                 ctor_params = params.clone();
                 ctor_body = body.clone();
                 has_explicit_ctor = true;
@@ -4798,23 +5538,39 @@ impl Compiler {
         // constructor (and its own field inits) runs first.
         let mut field_init_stmts: Vec<Stmt> = Vec::new();
         for m in members {
-            if let ClassMember::Field { name: f_name, is_static, init, span: f_span } = m {
-                if *is_static { continue; }
+            if let ClassMember::Field {
+                name: f_name,
+                is_static,
+                init,
+                span: f_span,
+            } = m
+            {
+                if *is_static {
+                    continue;
+                }
                 let key_expr_prop: MemberProperty = match f_name {
-                    ClassMemberName::Identifier { name, span } =>
-                        MemberProperty::Identifier { name: name.clone(), span: *span },
-                    ClassMemberName::String { value, span } =>
-                        MemberProperty::Computed {
-                            expr: Expr::StringLiteral { value: value.clone(), span: *span },
+                    ClassMemberName::Identifier { name, span } => MemberProperty::Identifier {
+                        name: name.clone(),
+                        span: *span,
+                    },
+                    ClassMemberName::String { value, span } => MemberProperty::Computed {
+                        expr: Expr::StringLiteral {
+                            value: value.clone(),
                             span: *span,
                         },
-                    ClassMemberName::Number { value, span } =>
-                        MemberProperty::Computed {
-                            expr: Expr::NumberLiteral { value: *value, span: *span },
+                        span: *span,
+                    },
+                    ClassMemberName::Number { value, span } => MemberProperty::Computed {
+                        expr: Expr::NumberLiteral {
+                            value: *value,
                             span: *span,
                         },
-                    ClassMemberName::Computed { expr, span } =>
-                        MemberProperty::Computed { expr: expr.clone(), span: *span },
+                        span: *span,
+                    },
+                    ClassMemberName::Computed { expr, span } => MemberProperty::Computed {
+                        expr: expr.clone(),
+                        span: *span,
+                    },
                     ClassMemberName::Private { name, span } => {
                         // Tier-Ω.5.w: private fields v1 — name-mangled to
                         // "__private$<name>" so they're addressable from
@@ -4836,7 +5592,10 @@ impl Compiler {
                 };
                 let value = match init {
                     Some(e) => e.clone(),
-                    None => Expr::Identifier { name: "undefined".to_string(), span: *f_span },
+                    None => Expr::Identifier {
+                        name: "undefined".to_string(),
+                        span: *f_span,
+                    },
                 };
                 let assign = Expr::Assign {
                     operator: AssignOp::Assign,
@@ -4844,13 +5603,19 @@ impl Compiler {
                     value: Box::new(value),
                     span: *f_span,
                 };
-                field_init_stmts.push(Stmt::Expression { expr:assign, span: *f_span });
+                field_init_stmts.push(Stmt::Expression {
+                    expr: assign,
+                    span: *f_span,
+                });
             }
         }
         if !has_explicit_ctor && super_class.is_some() {
             // Synthesize `constructor(...__args) { super(...__args); <fields>; }`.
             let s = span;
-            let args_id = BindingIdentifier { name: "__args".to_string(), span: s };
+            let args_id = BindingIdentifier {
+                name: "__args".to_string(),
+                span: s,
+            };
             ctor_params = vec![Parameter {
                 target: BindingPattern::Identifier(args_id.clone()),
                 default: None,
@@ -4860,14 +5625,20 @@ impl Compiler {
             let super_call = Expr::Call {
                 callee: Box::new(Expr::Super { span: s }),
                 arguments: vec![Argument::Spread {
-                    expr: Expr::Identifier { name: "__args".to_string(), span: s },
+                    expr: Expr::Identifier {
+                        name: "__args".to_string(),
+                        span: s,
+                    },
                     span: s,
                 }],
                 optional: false,
                 span: s,
             };
             let mut synth: Vec<Stmt> = Vec::new();
-            synth.push(Stmt::Expression { expr:super_call, span: s });
+            synth.push(Stmt::Expression {
+                expr: super_call,
+                span: s,
+            });
             synth.extend(field_init_stmts.clone());
             ctor_body = synth;
         } else if !field_init_stmts.is_empty() {
@@ -4910,8 +5681,8 @@ impl Compiler {
                     }
                 }
                 let mut inserted = false;
-                let mut new_body: Vec<Stmt> = Vec::with_capacity(
-                    ctor_body.len() + field_init_stmts.len());
+                let mut new_body: Vec<Stmt> =
+                    Vec::with_capacity(ctor_body.len() + field_init_stmts.len());
                 for s in ctor_body.into_iter() {
                     let is_super = !inserted && stmt_contains_super_call(&s);
                     new_body.push(s);
@@ -4947,10 +5718,18 @@ impl Compiler {
             .map(|n| n.name.clone())
             .or_else(|| display_name_hint.map(|s| s.to_string()));
         let ctor_proto = self.compile_function_proto_with_name_hint(
-            None, class_display_name.as_deref(), false, false, &ctor_params, &ctor_body)?;
+            None,
+            class_display_name.as_deref(),
+            false,
+            false,
+            &ctor_params,
+            &ctor_body,
+        )?;
         self.class_stack.pop();
         let ctor_captures = ctor_proto.upvalues.clone();
-        let ctor_idx = self.constants.intern(Constant::Function(Box::new(ctor_proto)));
+        let ctor_idx = self
+            .constants
+            .intern(Constant::Function(Box::new(ctor_proto)));
         encode_op(&mut self.bytecode, Op::MakeClosure);
         encode_u16(&mut self.bytecode, ctor_idx);
         emit_captures(&mut self.bytecode, &ctor_captures);
@@ -4993,9 +5772,12 @@ impl Compiler {
         // Ω.5.P03.E2.class-method-non-enumerable: constructor is also
         // non-enumerable on a class prototype per ECMA §15.7. Use the
         // __install_method__ helper.
-        let key_constructor = self.constants.intern(Constant::String("constructor".into()));
-        let install_helper = self.constants.intern(
-            Constant::String("__install_method__".into()));
+        let key_constructor = self
+            .constants
+            .intern(Constant::String("constructor".into()));
+        let install_helper = self
+            .constants
+            .intern(Constant::String("__install_method__".into()));
         encode_op(&mut self.bytecode, Op::LoadGlobal);
         encode_u16(&mut self.bytecode, install_helper);
         encode_op(&mut self.bytecode, Op::LoadLocal);
@@ -5037,238 +5819,307 @@ impl Compiler {
         // Two-pass: pass=0 installs methods, pass=1 evaluates static
         // fields + static blocks in source order. Skips at the arm head.
         for pass in 0u8..2 {
-        for m in members {
-            // Pass-A skip for non-methods; pass-B skip for methods.
-            match m {
-                ClassMember::Method { .. } => { if pass != 0 { continue; } }
-                ClassMember::Field { .. } | ClassMember::StaticBlock { .. } => { if pass != 1 { continue; } }
-            }
-            match m {
-                ClassMember::Method { kind, params, body, name: m_name, is_static, is_async, is_generator, span: m_span } => {
-                    if matches!(kind, MethodKind::Constructor) { continue; }
-                    // Tier-Ω.5.u (v1 deviation): getter / setter class members
-                    // are lowered as plain function-valued properties on the
-                    // prototype (instance) or constructor (static). Real
-                    // accessor-descriptor semantics — calling the getter on
-                    // property read, calling the setter on property write —
-                    // are deferred to the substrate round that wires
-                    // Object.defineProperty's get/set fields end-to-end.
-                    // Mirrors the object-literal treatment landed in Ω.5.p.parse.
-                    // Tier-Ω.5.w: async / generator class methods lower as
-                    // ordinary methods. v1 deviation: await / yield inside
-                    // the body still error at compile time at those specific
-                    // statements; but the method itself parses + compiles
-                    // so the surrounding class shape is reachable.
-                    let _ = (is_async, is_generator);
-                    let method_key: Option<String> = match m_name {
-                        ClassMemberName::Identifier { name, .. } => Some(name.clone()),
-                        ClassMemberName::String { value, .. } => Some(value.clone()),
-                        ClassMemberName::Number { value, .. } => {
-                            Some(if value.fract() == 0.0 { format!("{}", *value as i64) }
-                            else { format!("{}", value) })
-                        }
-                        ClassMemberName::Private { name, .. } => {
-                            // Tier-Ω.5.w: private method names use the same
-                            // "#name" key convention as private fields. The
-                            // member-access path on Private already reads
-                            // via this key (see MemberProperty::Private
-                            // compile sites).
-                            Some(format!("#{}", name))
-                        }
-                        ClassMemberName::Computed { .. } => None,
-                    };
-
-                    // Push class context: not the constructor, so super(...)
-                    // is forbidden inside the method; super.x is allowed
-                    // and resolves through the prototype.
-                    self.class_stack.push(ClassFrame {
-                        super_ctor_name: super_ctor_slot.map(|_| super_ctor_name.clone()),
-                        super_proto_name: super_ctor_slot.map(|_| super_proto_name.clone()),
-                        in_constructor: false,
-                        is_static: *is_static,
-                    });
-                    let m_proto = self.compile_function_proto_with_name_hint(
-                        None, method_key.as_deref(), false, false, params, body)?;
-                    self.class_stack.pop();
-                    let captures = m_proto.upvalues.clone();
-                    let m_idx = self.constants.intern(Constant::Function(Box::new(m_proto)));
-
-                    // Push the target object on the stack first, then the
-                    // method closure, then SetProp / SetIndex.
-                    let target_slot = if *is_static { ctor_slot } else { proto_slot };
-                    // Tier-Ω.5.kkkkkk: getter / setter class members install
-                    // as real accessor descriptors via __install_accessor__.
-                    // Previously they were SetProp'd as data values; reading
-                    // `c.value` returned the function instead of calling it.
-                    let is_accessor = matches!(kind, MethodKind::Getter | MethodKind::Setter);
-                    if is_accessor {
-                        if let Some(key) = method_key.as_ref() {
-                            // __install_accessor__(target, key, "get"|"set", fn)
-                            let helper = self.constants.intern(Constant::String("__install_accessor__".into()));
-                            encode_op(&mut self.bytecode, Op::LoadGlobal);
-                            encode_u16(&mut self.bytecode, helper);
-                            encode_op(&mut self.bytecode, Op::LoadLocal);
-                            encode_u16(&mut self.bytecode, target_slot);
-                            let key_idx = self.constants.intern(Constant::String(key.clone()));
-                            encode_op(&mut self.bytecode, Op::PushConst);
-                            encode_u16(&mut self.bytecode, key_idx);
-                            let kind_str = if matches!(kind, MethodKind::Getter) { "get" } else { "set" };
-                            let kind_idx = self.constants.intern(Constant::String(kind_str.into()));
-                            encode_op(&mut self.bytecode, Op::PushConst);
-                            encode_u16(&mut self.bytecode, kind_idx);
-                            encode_op(&mut self.bytecode, Op::MakeClosure);
-                            encode_u16(&mut self.bytecode, m_idx);
-                            emit_captures(&mut self.bytecode, &captures);
-                            encode_op(&mut self.bytecode, Op::Call);
-                            encode_u8(&mut self.bytecode, 4);
-                            encode_op(&mut self.bytecode, Op::Pop);
+            for m in members {
+                // Pass-A skip for non-methods; pass-B skip for methods.
+                match m {
+                    ClassMember::Method { .. } => {
+                        if pass != 0 {
                             continue;
                         }
                     }
-                    // Ω.5.P03.E2.class-method-non-enumerable: install via
-                    // __install_method__(target, key, fn) so the resulting
-                    // property descriptor is {w:true, e:false, c:true} per
-                    // ECMA-262 §15.7. Pre-substrate, SetProp / SetIndex
-                    // installed with enumerable=true, so Object.keys on a
-                    // class prototype returned all method names instead of
-                    // [], and any code iterating a class prototype's
-                    // enumerables picked up methods the spec excludes —
-                    // the proximate cause of arktype's wall-4 prototype-as-
-                    // this state (Object.values over a registry whose
-                    // values were classes would leak the prototype's own
-                    // method functions as iteration items).
-                    let install_helper = self.constants.intern(
-                        Constant::String("__install_method__".into()));
-                    encode_op(&mut self.bytecode, Op::LoadGlobal);
-                    encode_u16(&mut self.bytecode, install_helper);
-                    encode_op(&mut self.bytecode, Op::LoadLocal);
-                    encode_u16(&mut self.bytecode, target_slot);
-                    match method_key {
-                        Some(key) => {
-                            let key_idx = self.constants.intern(Constant::String(key));
-                            encode_op(&mut self.bytecode, Op::PushConst);
-                            encode_u16(&mut self.bytecode, key_idx);
-                        }
-                        None => {
-                            if let ClassMemberName::Computed { expr, .. } = m_name {
-                                self.compile_expr(expr)?;
-                            } else { unreachable!(); }
+                    ClassMember::Field { .. } | ClassMember::StaticBlock { .. } => {
+                        if pass != 1 {
+                            continue;
                         }
                     }
-                    encode_op(&mut self.bytecode, Op::MakeClosure);
-                    encode_u16(&mut self.bytecode, m_idx);
-                    emit_captures(&mut self.bytecode, &captures);
-                    encode_op(&mut self.bytecode, Op::Call);
-                    encode_u8(&mut self.bytecode, 3);
-                    encode_op(&mut self.bytecode, Op::Pop);
                 }
-                ClassMember::Field { name: f_name, is_static, init, span: _ } => {
-                    // Ω.5.P58.E10 pass B start (see end of pass A's loop
-                    // for the spec rationale). Static fields run AFTER
-                    // all static methods are installed, in source order.
-                    // The pass A→B split keeps the original code below
-                    // intact; the same body runs unchanged. Per
-                    // ECMA §15.7.10 step 30 (methods) precedes step 31
-                    // (fields/blocks).
-                    if !*is_static { continue; }
-                    encode_op(&mut self.bytecode, Op::LoadLocal);
-                    encode_u16(&mut self.bytecode, ctor_slot);
-                    let static_key: Option<String> = match f_name {
-                        ClassMemberName::Identifier { name, .. }
-                        | ClassMemberName::String { value: name, .. } => Some(name.clone()),
-                        ClassMemberName::Private { name, .. } => Some(format!("#{}", name)),
-                        ClassMemberName::Number { value, .. } => {
-                            Some(if value.fract() == 0.0 {
-                                format!("{}", *value as i64)
-                            } else { format!("{}", value) })
+                match m {
+                    ClassMember::Method {
+                        kind,
+                        params,
+                        body,
+                        name: m_name,
+                        is_static,
+                        is_async,
+                        is_generator,
+                        span: m_span,
+                    } => {
+                        if matches!(kind, MethodKind::Constructor) {
+                            continue;
                         }
-                        ClassMemberName::Computed { .. } => None,
-                    };
-                    match static_key {
-                        Some(key) => {
-                            // Order: ctor on stack, then value, then SetProp.
-                            // Per ECMA-262 §15.7.10 step 31.b, `this` inside
-                            // a static field initializer is the class itself.
-                            // Lower the init expression as a 0-arg method
-                            // called on the ctor so `this` (and any arrow
-                            // capture of `this` therein) resolves correctly.
-                            // Mirrors the static-block lowering at L4884.
-                            match init {
-                                Some(e) => {
-                                    self.class_stack.push(ClassFrame {
-                                        super_ctor_name: super_ctor_slot.map(|_| super_ctor_name.clone()),
-                                        super_proto_name: super_ctor_slot.map(|_| super_proto_name.clone()),
-                                        in_constructor: false,
-                                        is_static: true,
-                                    });
-                                    let init_body = vec![rusty_js_ast::Stmt::Return {
-                                        argument: Some(e.clone()),
-                                        span: e.span(),
-                                    }];
-                                    let init_proto = self.compile_function_proto(None, false, false, &[], &init_body)?;
-                                    self.class_stack.pop();
-                                    let captures = init_proto.upvalues.clone();
-                                    let idx_proto = self.constants.intern(Constant::Function(Box::new(init_proto)));
-                                    encode_op(&mut self.bytecode, Op::LoadLocal);
-                                    encode_u16(&mut self.bytecode, ctor_slot);
-                                    encode_op(&mut self.bytecode, Op::MakeClosure);
-                                    encode_u16(&mut self.bytecode, idx_proto);
-                                    emit_captures(&mut self.bytecode, &captures);
-                                    encode_op(&mut self.bytecode, Op::CallMethod);
-                                    encode_u8(&mut self.bytecode, 0);
+                        // Tier-Ω.5.u (v1 deviation): getter / setter class members
+                        // are lowered as plain function-valued properties on the
+                        // prototype (instance) or constructor (static). Real
+                        // accessor-descriptor semantics — calling the getter on
+                        // property read, calling the setter on property write —
+                        // are deferred to the substrate round that wires
+                        // Object.defineProperty's get/set fields end-to-end.
+                        // Mirrors the object-literal treatment landed in Ω.5.p.parse.
+                        // Tier-Ω.5.w: async / generator class methods lower as
+                        // ordinary methods. v1 deviation: await / yield inside
+                        // the body still error at compile time at those specific
+                        // statements; but the method itself parses + compiles
+                        // so the surrounding class shape is reachable.
+                        let _ = (is_async, is_generator);
+                        let method_key: Option<String> = match m_name {
+                            ClassMemberName::Identifier { name, .. } => Some(name.clone()),
+                            ClassMemberName::String { value, .. } => Some(value.clone()),
+                            ClassMemberName::Number { value, .. } => {
+                                Some(if value.fract() == 0.0 {
+                                    format!("{}", *value as i64)
+                                } else {
+                                    format!("{}", value)
+                                })
+                            }
+                            ClassMemberName::Private { name, .. } => {
+                                // Tier-Ω.5.w: private method names use the same
+                                // "#name" key convention as private fields. The
+                                // member-access path on Private already reads
+                                // via this key (see MemberProperty::Private
+                                // compile sites).
+                                Some(format!("#{}", name))
+                            }
+                            ClassMemberName::Computed { .. } => None,
+                        };
+
+                        // Push class context: not the constructor, so super(...)
+                        // is forbidden inside the method; super.x is allowed
+                        // and resolves through the prototype.
+                        self.class_stack.push(ClassFrame {
+                            super_ctor_name: super_ctor_slot.map(|_| super_ctor_name.clone()),
+                            super_proto_name: super_ctor_slot.map(|_| super_proto_name.clone()),
+                            in_constructor: false,
+                            is_static: *is_static,
+                        });
+                        let m_proto = self.compile_function_proto_with_name_hint(
+                            None,
+                            method_key.as_deref(),
+                            false,
+                            false,
+                            params,
+                            body,
+                        )?;
+                        self.class_stack.pop();
+                        let captures = m_proto.upvalues.clone();
+                        let m_idx = self.constants.intern(Constant::Function(Box::new(m_proto)));
+
+                        // Push the target object on the stack first, then the
+                        // method closure, then SetProp / SetIndex.
+                        let target_slot = if *is_static { ctor_slot } else { proto_slot };
+                        // Tier-Ω.5.kkkkkk: getter / setter class members install
+                        // as real accessor descriptors via __install_accessor__.
+                        // Previously they were SetProp'd as data values; reading
+                        // `c.value` returned the function instead of calling it.
+                        let is_accessor = matches!(kind, MethodKind::Getter | MethodKind::Setter);
+                        if is_accessor {
+                            if let Some(key) = method_key.as_ref() {
+                                // __install_accessor__(target, key, "get"|"set", fn)
+                                let helper = self
+                                    .constants
+                                    .intern(Constant::String("__install_accessor__".into()));
+                                encode_op(&mut self.bytecode, Op::LoadGlobal);
+                                encode_u16(&mut self.bytecode, helper);
+                                encode_op(&mut self.bytecode, Op::LoadLocal);
+                                encode_u16(&mut self.bytecode, target_slot);
+                                let key_idx = self.constants.intern(Constant::String(key.clone()));
+                                encode_op(&mut self.bytecode, Op::PushConst);
+                                encode_u16(&mut self.bytecode, key_idx);
+                                let kind_str = if matches!(kind, MethodKind::Getter) {
+                                    "get"
+                                } else {
+                                    "set"
+                                };
+                                let kind_idx =
+                                    self.constants.intern(Constant::String(kind_str.into()));
+                                encode_op(&mut self.bytecode, Op::PushConst);
+                                encode_u16(&mut self.bytecode, kind_idx);
+                                encode_op(&mut self.bytecode, Op::MakeClosure);
+                                encode_u16(&mut self.bytecode, m_idx);
+                                emit_captures(&mut self.bytecode, &captures);
+                                encode_op(&mut self.bytecode, Op::Call);
+                                encode_u8(&mut self.bytecode, 4);
+                                encode_op(&mut self.bytecode, Op::Pop);
+                                continue;
+                            }
+                        }
+                        // Ω.5.P03.E2.class-method-non-enumerable: install via
+                        // __install_method__(target, key, fn) so the resulting
+                        // property descriptor is {w:true, e:false, c:true} per
+                        // ECMA-262 §15.7. Pre-substrate, SetProp / SetIndex
+                        // installed with enumerable=true, so Object.keys on a
+                        // class prototype returned all method names instead of
+                        // [], and any code iterating a class prototype's
+                        // enumerables picked up methods the spec excludes —
+                        // the proximate cause of arktype's wall-4 prototype-as-
+                        // this state (Object.values over a registry whose
+                        // values were classes would leak the prototype's own
+                        // method functions as iteration items).
+                        let install_helper = self
+                            .constants
+                            .intern(Constant::String("__install_method__".into()));
+                        encode_op(&mut self.bytecode, Op::LoadGlobal);
+                        encode_u16(&mut self.bytecode, install_helper);
+                        encode_op(&mut self.bytecode, Op::LoadLocal);
+                        encode_u16(&mut self.bytecode, target_slot);
+                        match method_key {
+                            Some(key) => {
+                                let key_idx = self.constants.intern(Constant::String(key));
+                                encode_op(&mut self.bytecode, Op::PushConst);
+                                encode_u16(&mut self.bytecode, key_idx);
+                            }
+                            None => {
+                                if let ClassMemberName::Computed { expr, .. } = m_name {
+                                    self.compile_expr(expr)?;
+                                } else {
+                                    unreachable!();
                                 }
-                                None => { encode_op(&mut self.bytecode, Op::PushUndef); }
                             }
-                            let idx = self.constants.intern(Constant::String(key));
-                            encode_op(&mut self.bytecode, Op::SetProp);
-                            encode_u16(&mut self.bytecode, idx);
                         }
-                        None => {
-                            // Tier-Ω.5.y: computed class field name —
-                            // `class C { static [k] = v }`. SetIndex order:
-                            // [ctor, key, value]. ctor is already on stack.
-                            if let ClassMemberName::Computed { expr, .. } = f_name {
-                                self.compile_expr(expr)?;
-                            } else { unreachable!(); }
-                            match init {
-                                Some(e) => self.compile_expr(e)?,
-                                None => { encode_op(&mut self.bytecode, Op::PushUndef); }
-                            }
-                            encode_op(&mut self.bytecode, Op::SetIndex);
-                        }
+                        encode_op(&mut self.bytecode, Op::MakeClosure);
+                        encode_u16(&mut self.bytecode, m_idx);
+                        emit_captures(&mut self.bytecode, &captures);
+                        encode_op(&mut self.bytecode, Op::Call);
+                        encode_u8(&mut self.bytecode, 3);
+                        encode_op(&mut self.bytecode, Op::Pop);
                     }
-                    encode_op(&mut self.bytecode, Op::Pop);
-                }
-                ClassMember::StaticBlock { body, span: _b_span } => {
-                    // Ω.5.P49.E5: static initializer blocks per ECMA 2022.
-                    // Spec: body runs once at class-evaluation time with `this`
-                    // bound to the class constructor. Lower as an anonymous
-                    // 0-arg closure called with the ctor as receiver via
-                    // CallMethod; this routes the body's `this`-references
-                    // (e.g. playwright's `static { this.Events = {...} }`)
-                    // through the standard CallMethod receiver path.
-                    self.class_stack.push(ClassFrame {
-                        super_ctor_name: super_ctor_slot.map(|_| super_ctor_name.clone()),
-                        super_proto_name: super_ctor_slot.map(|_| super_proto_name.clone()),
-                        in_constructor: false,
-                        is_static: true,
-                    });
-                    let block_proto = self.compile_function_proto(None, false, false, &[], body)?;
-                    self.class_stack.pop();
-                    let captures = block_proto.upvalues.clone();
-                    let idx = self.constants.intern(Constant::Function(Box::new(block_proto)));
-                    // Stack layout for CallMethod: [receiver, method, ...args].
-                    encode_op(&mut self.bytecode, Op::LoadLocal);
-                    encode_u16(&mut self.bytecode, ctor_slot);
-                    encode_op(&mut self.bytecode, Op::MakeClosure);
-                    encode_u16(&mut self.bytecode, idx);
-                    emit_captures(&mut self.bytecode, &captures);
-                    encode_op(&mut self.bytecode, Op::CallMethod);
-                    encode_u8(&mut self.bytecode, 0);
-                    encode_op(&mut self.bytecode, Op::Pop);
+                    ClassMember::Field {
+                        name: f_name,
+                        is_static,
+                        init,
+                        span: _,
+                    } => {
+                        // Ω.5.P58.E10 pass B start (see end of pass A's loop
+                        // for the spec rationale). Static fields run AFTER
+                        // all static methods are installed, in source order.
+                        // The pass A→B split keeps the original code below
+                        // intact; the same body runs unchanged. Per
+                        // ECMA §15.7.10 step 30 (methods) precedes step 31
+                        // (fields/blocks).
+                        if !*is_static {
+                            continue;
+                        }
+                        encode_op(&mut self.bytecode, Op::LoadLocal);
+                        encode_u16(&mut self.bytecode, ctor_slot);
+                        let static_key: Option<String> = match f_name {
+                            ClassMemberName::Identifier { name, .. }
+                            | ClassMemberName::String { value: name, .. } => Some(name.clone()),
+                            ClassMemberName::Private { name, .. } => Some(format!("#{}", name)),
+                            ClassMemberName::Number { value, .. } => {
+                                Some(if value.fract() == 0.0 {
+                                    format!("{}", *value as i64)
+                                } else {
+                                    format!("{}", value)
+                                })
+                            }
+                            ClassMemberName::Computed { .. } => None,
+                        };
+                        match static_key {
+                            Some(key) => {
+                                // Order: ctor on stack, then value, then SetProp.
+                                // Per ECMA-262 §15.7.10 step 31.b, `this` inside
+                                // a static field initializer is the class itself.
+                                // Lower the init expression as a 0-arg method
+                                // called on the ctor so `this` (and any arrow
+                                // capture of `this` therein) resolves correctly.
+                                // Mirrors the static-block lowering at L4884.
+                                match init {
+                                    Some(e) => {
+                                        self.class_stack.push(ClassFrame {
+                                            super_ctor_name: super_ctor_slot
+                                                .map(|_| super_ctor_name.clone()),
+                                            super_proto_name: super_ctor_slot
+                                                .map(|_| super_proto_name.clone()),
+                                            in_constructor: false,
+                                            is_static: true,
+                                        });
+                                        let init_body = vec![rusty_js_ast::Stmt::Return {
+                                            argument: Some(e.clone()),
+                                            span: e.span(),
+                                        }];
+                                        let init_proto = self.compile_function_proto(
+                                            None,
+                                            false,
+                                            false,
+                                            &[],
+                                            &init_body,
+                                        )?;
+                                        self.class_stack.pop();
+                                        let captures = init_proto.upvalues.clone();
+                                        let idx_proto = self
+                                            .constants
+                                            .intern(Constant::Function(Box::new(init_proto)));
+                                        encode_op(&mut self.bytecode, Op::LoadLocal);
+                                        encode_u16(&mut self.bytecode, ctor_slot);
+                                        encode_op(&mut self.bytecode, Op::MakeClosure);
+                                        encode_u16(&mut self.bytecode, idx_proto);
+                                        emit_captures(&mut self.bytecode, &captures);
+                                        encode_op(&mut self.bytecode, Op::CallMethod);
+                                        encode_u8(&mut self.bytecode, 0);
+                                    }
+                                    None => {
+                                        encode_op(&mut self.bytecode, Op::PushUndef);
+                                    }
+                                }
+                                let idx = self.constants.intern(Constant::String(key));
+                                encode_op(&mut self.bytecode, Op::SetProp);
+                                encode_u16(&mut self.bytecode, idx);
+                            }
+                            None => {
+                                // Tier-Ω.5.y: computed class field name —
+                                // `class C { static [k] = v }`. SetIndex order:
+                                // [ctor, key, value]. ctor is already on stack.
+                                if let ClassMemberName::Computed { expr, .. } = f_name {
+                                    self.compile_expr(expr)?;
+                                } else {
+                                    unreachable!();
+                                }
+                                match init {
+                                    Some(e) => self.compile_expr(e)?,
+                                    None => {
+                                        encode_op(&mut self.bytecode, Op::PushUndef);
+                                    }
+                                }
+                                encode_op(&mut self.bytecode, Op::SetIndex);
+                            }
+                        }
+                        encode_op(&mut self.bytecode, Op::Pop);
+                    }
+                    ClassMember::StaticBlock {
+                        body,
+                        span: _b_span,
+                    } => {
+                        // Ω.5.P49.E5: static initializer blocks per ECMA 2022.
+                        // Spec: body runs once at class-evaluation time with `this`
+                        // bound to the class constructor. Lower as an anonymous
+                        // 0-arg closure called with the ctor as receiver via
+                        // CallMethod; this routes the body's `this`-references
+                        // (e.g. playwright's `static { this.Events = {...} }`)
+                        // through the standard CallMethod receiver path.
+                        self.class_stack.push(ClassFrame {
+                            super_ctor_name: super_ctor_slot.map(|_| super_ctor_name.clone()),
+                            super_proto_name: super_ctor_slot.map(|_| super_proto_name.clone()),
+                            in_constructor: false,
+                            is_static: true,
+                        });
+                        let block_proto =
+                            self.compile_function_proto(None, false, false, &[], body)?;
+                        self.class_stack.pop();
+                        let captures = block_proto.upvalues.clone();
+                        let idx = self
+                            .constants
+                            .intern(Constant::Function(Box::new(block_proto)));
+                        // Stack layout for CallMethod: [receiver, method, ...args].
+                        encode_op(&mut self.bytecode, Op::LoadLocal);
+                        encode_u16(&mut self.bytecode, ctor_slot);
+                        encode_op(&mut self.bytecode, Op::MakeClosure);
+                        encode_u16(&mut self.bytecode, idx);
+                        emit_captures(&mut self.bytecode, &captures);
+                        encode_op(&mut self.bytecode, Op::CallMethod);
+                        encode_u8(&mut self.bytecode, 0);
+                        encode_op(&mut self.bytecode, Op::Pop);
+                    }
                 }
             }
-        }
         } // end two-pass loop
 
         // Tier-Ω.5.uuuuu: write the finalized constructor into the
@@ -5296,16 +6147,21 @@ impl Compiler {
         span: Span,
         arguments: &[Argument],
     ) -> Result<(), CompileError> {
-        let frame = self.class_stack.last().cloned()
+        let frame = self
+            .class_stack
+            .last()
+            .cloned()
             .ok_or_else(|| self.err(span, "super(...) outside of a class"))?;
         if !frame.in_constructor {
-            return Err(self.err(span,
-                "super(...) is only valid inside a derived-class constructor"));
+            return Err(self.err(
+                span,
+                "super(...) is only valid inside a derived-class constructor",
+            ));
         }
-        let super_ctor_name = frame.super_ctor_name.clone().ok_or_else(|| {
-            self.err(span,
-                "super(...) used in a class with no `extends` clause")
-        })?;
+        let super_ctor_name = frame
+            .super_ctor_name
+            .clone()
+            .ok_or_else(|| self.err(span, "super(...) used in a class with no `extends` clause"))?;
         let n = arguments.len();
         if n > 255 {
             return Err(self.err(span, "too many super-call arguments (>255)"));
@@ -5318,8 +6174,9 @@ impl Compiler {
             // PropagateNewTarget op below seeds __super_apply's own
             // current_new_target at frame entry; __super_apply re-emits
             // it into pending_new_target before its inner dispatch.
-            let apply_name = self.constants.intern(
-                Constant::String("__super_apply".to_string()));
+            let apply_name = self
+                .constants
+                .intern(Constant::String("__super_apply".to_string()));
             encode_op(&mut self.bytecode, Op::LoadGlobal);
             encode_u16(&mut self.bytecode, apply_name);
             self.emit_load_ident(&super_ctor_name);
@@ -5373,14 +6230,17 @@ impl Compiler {
         span: Span,
         property: &MemberProperty,
     ) -> Result<(), CompileError> {
-        let frame = self.class_stack.last().cloned()
+        let frame = self
+            .class_stack
+            .last()
+            .cloned()
             .ok_or_else(|| self.err(span, "super reference outside of a class"))?;
         let target_name = if frame.is_static {
             frame.super_ctor_name.clone()
         } else {
             frame.super_proto_name.clone()
-        }.ok_or_else(|| self.err(span,
-            "super reference in a class with no `extends` clause"))?;
+        }
+        .ok_or_else(|| self.err(span, "super reference in a class with no `extends` clause"))?;
         // Ω.5.P03.E2.super-get-this: super.X reads dispatch through
         // __super_get(this, super_base, key) so any accessor on the
         // super-base's chain runs with `this = original method's this`
@@ -5389,8 +6249,9 @@ impl Compiler {
         // the popped object as the accessor receiver — a `get x() {
         // return super.x; }` pattern produced this = super-base inside
         // the inherited getter instead of this = the instance.
-        let helper = self.constants.intern(
-            Constant::String("__super_get".into()));
+        let helper = self
+            .constants
+            .intern(Constant::String("__super_get".into()));
         encode_op(&mut self.bytecode, Op::LoadGlobal);
         encode_u16(&mut self.bytecode, helper);
         encode_op(&mut self.bytecode, Op::PushThis);
@@ -5411,7 +6272,9 @@ impl Compiler {
                 return Ok(());
             }
             MemberProperty::Private { name, .. } => {
-                let idx = self.constants.intern(Constant::String(format!("#{}", name)));
+                let idx = self
+                    .constants
+                    .intern(Constant::String(format!("#{}", name)));
                 encode_op(&mut self.bytecode, Op::PushConst);
                 encode_u16(&mut self.bytecode, idx);
                 encode_op(&mut self.bytecode, Op::Call);
@@ -5437,8 +6300,9 @@ impl Compiler {
         }
         if Self::args_has_spread(arguments) {
             // Tier-Ω.5.k: spread super.m(...) → __apply(method, this, args).
-            let apply_name = self.constants.intern(
-                Constant::String("__apply".to_string()));
+            let apply_name = self
+                .constants
+                .intern(Constant::String("__apply".to_string()));
             encode_op(&mut self.bytecode, Op::LoadGlobal);
             encode_u16(&mut self.bytecode, apply_name);
             self.compile_super_member_load(span, property)?;
@@ -5472,7 +6336,9 @@ impl Compiler {
 /// the BindingPattern semantics (emit_destructure). Returns None when
 /// the conversion cannot be safely performed (e.g. nested defaults
 /// with rest — rule 14 conservative bail).
-fn binding_pattern_to_assignment_expr(pat: &rusty_js_ast::BindingPattern) -> Option<rusty_js_ast::Expr> {
+fn binding_pattern_to_assignment_expr(
+    pat: &rusty_js_ast::BindingPattern,
+) -> Option<rusty_js_ast::Expr> {
     use rusty_js_ast::*;
     match pat {
         BindingPattern::Identifier(id) => Some(Expr::Identifier {
@@ -5493,16 +6359,25 @@ fn binding_pattern_to_assignment_expr(pat: &rusty_js_ast::BindingPattern) -> Opt
                                 value: Box::new(default.clone()),
                                 span: be.span,
                             }
-                        } else { leaf };
+                        } else {
+                            leaf
+                        };
                         elements.push(ArrayElement::Expr(expr));
                     }
                 }
             }
             if let Some(rest_pat) = &arr.rest {
                 let rest_expr = binding_pattern_to_assignment_expr(rest_pat)?;
-                elements.push(ArrayElement::Spread { expr: rest_expr, span: arr.span });
+                elements.push(ArrayElement::Spread {
+                    expr: rest_expr,
+                    span: arr.span,
+                });
             }
-            Some(Expr::Array { elements, trailing_comma_after_spread: false, span: arr.span })
+            Some(Expr::Array {
+                elements,
+                trailing_comma_after_spread: false,
+                span: arr.span,
+            })
         }
         BindingPattern::Object(obj) => {
             let mut properties: Vec<ObjectProperty> = Vec::with_capacity(obj.properties.len());
@@ -5515,17 +6390,25 @@ fn binding_pattern_to_assignment_expr(pat: &rusty_js_ast::BindingPattern) -> Opt
                         value: Box::new(default.clone()),
                         span: prop.value.span,
                     }
-                } else { value_expr };
+                } else {
+                    value_expr
+                };
                 let key = match &prop.key {
                     PropertyKey::Identifier(id) => ObjectKey::Identifier {
-                        name: id.name.clone(), span: id.span,
+                        name: id.name.clone(),
+                        span: id.span,
                     },
                     PropertyKey::String(s) => ObjectKey::String {
-                        value: s.as_str().to_string(), span: prop.span,
+                        value: s.as_str().to_string(),
+                        span: prop.span,
                     },
-                    PropertyKey::Number(n) => ObjectKey::Number { value: *n, span: prop.span },
+                    PropertyKey::Number(n) => ObjectKey::Number {
+                        value: *n,
+                        span: prop.span,
+                    },
                     PropertyKey::Computed(expr) => ObjectKey::Computed {
-                        expr: expr.clone(), span: prop.span,
+                        expr: expr.clone(),
+                        span: prop.span,
                     },
                 };
                 properties.push(ObjectProperty::Property {
@@ -5541,9 +6424,15 @@ fn binding_pattern_to_assignment_expr(pat: &rusty_js_ast::BindingPattern) -> Opt
                     name: rest_id.name.clone(),
                     span: rest_id.span,
                 };
-                properties.push(ObjectProperty::Spread { expr: rest_expr, span: obj.span });
+                properties.push(ObjectProperty::Spread {
+                    expr: rest_expr,
+                    span: obj.span,
+                });
             }
-            Some(Expr::Object { properties, span: obj.span })
+            Some(Expr::Object {
+                properties,
+                span: obj.span,
+            })
         }
     }
 }
@@ -5553,8 +6442,11 @@ fn binding_pattern_to_assignment_expr(pat: &rusty_js_ast::BindingPattern) -> Opt
 /// Recurses through every non-function syntactic boundary. Skips
 /// FunctionDecl + class bodies (those start fresh hoisting scopes) and
 /// `let`/`const` (block-scoped, not hoisted).
-fn collect_hoisted_var_names(stmt: &rusty_js_ast::Stmt, out: &mut Vec<(String, rusty_js_ast::VariableKind)>) {
-    use rusty_js_ast::{Stmt, ForInit, ForBinding, VariableKind};
+fn collect_hoisted_var_names(
+    stmt: &rusty_js_ast::Stmt,
+    out: &mut Vec<(String, rusty_js_ast::VariableKind)>,
+) {
+    use rusty_js_ast::{ForBinding, ForInit, Stmt, VariableKind};
     match stmt {
         Stmt::Variable(v) if matches!(v.kind, VariableKind::Var) => {
             for d in &v.declarators {
@@ -5564,35 +6456,69 @@ fn collect_hoisted_var_names(stmt: &rusty_js_ast::Stmt, out: &mut Vec<(String, r
             }
         }
         Stmt::Variable(_) => { /* let/const are block-scoped */ }
-        Stmt::Block { body, .. } => { for s in body { collect_hoisted_var_names(s, out); } }
-        Stmt::If { consequent, alternate, .. } => {
+        Stmt::Block { body, .. } => {
+            for s in body {
+                collect_hoisted_var_names(s, out);
+            }
+        }
+        Stmt::If {
+            consequent,
+            alternate,
+            ..
+        } => {
             collect_hoisted_var_names(consequent, out);
-            if let Some(a) = alternate { collect_hoisted_var_names(a, out); }
+            if let Some(a) = alternate {
+                collect_hoisted_var_names(a, out);
+            }
         }
         Stmt::For { init, body, .. } => {
             if let Some(ForInit::Variable(v)) = init {
                 if matches!(v.kind, VariableKind::Var) {
                     for d in &v.declarators {
-                        for id in d.target.collect_names() { out.push((id.name.clone(), v.kind)); }
+                        for id in d.target.collect_names() {
+                            out.push((id.name.clone(), v.kind));
+                        }
                     }
                 }
             }
             collect_hoisted_var_names(body, out);
         }
         Stmt::ForIn { left, body, .. } | Stmt::ForOf { left, body, .. } => {
-            if let ForBinding::Decl { kind: VariableKind::Var, target, .. } = left {
-                for id in target.collect_names() { out.push((id.name.clone(), VariableKind::Var)); }
+            if let ForBinding::Decl {
+                kind: VariableKind::Var,
+                target,
+                ..
+            } = left
+            {
+                for id in target.collect_names() {
+                    out.push((id.name.clone(), VariableKind::Var));
+                }
             }
             collect_hoisted_var_names(body, out);
         }
-        Stmt::While { body, .. } | Stmt::DoWhile { body, .. } => collect_hoisted_var_names(body, out),
-        Stmt::Switch { cases, .. } => {
-            for c in cases { for s in &c.consequent { collect_hoisted_var_names(s, out); } }
+        Stmt::While { body, .. } | Stmt::DoWhile { body, .. } => {
+            collect_hoisted_var_names(body, out)
         }
-        Stmt::Try { block, handler, finalizer, .. } => {
+        Stmt::Switch { cases, .. } => {
+            for c in cases {
+                for s in &c.consequent {
+                    collect_hoisted_var_names(s, out);
+                }
+            }
+        }
+        Stmt::Try {
+            block,
+            handler,
+            finalizer,
+            ..
+        } => {
             collect_hoisted_var_names(block, out);
-            if let Some(h) = handler { collect_hoisted_var_names(&h.body, out); }
-            if let Some(f) = finalizer { collect_hoisted_var_names(f, out); }
+            if let Some(h) = handler {
+                collect_hoisted_var_names(&h.body, out);
+            }
+            if let Some(f) = finalizer {
+                collect_hoisted_var_names(f, out);
+            }
         }
         Stmt::Labelled { body, .. } => collect_hoisted_var_names(body, out),
         // FunctionDecl + ClassDecl start fresh hoisting scopes; do not recurse.

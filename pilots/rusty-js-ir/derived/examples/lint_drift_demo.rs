@@ -19,9 +19,7 @@ fn main() {
     f.body.retain(|s| s.spec_step != "3");
 
     let report = lint(&f, &spec);
-    println!(
-        "After dropping IR step 3 (IsCallable check), linter findings:"
-    );
+    println!("After dropping IR step 3 (IsCallable check), linter findings:");
     for finding in &report.findings {
         println!("  step {}: {}", finding.spec_step, finding.message);
     }
@@ -29,10 +27,6 @@ fn main() {
         eprintln!("BUG: linter should have caught the missing step");
         std::process::exit(1);
     }
-    println!(
-        "\n✓ Drift detected at resolver-instance #0b boundary, before reaching the runtime."
-    );
-    println!(
-        "  This is exactly the bug class that took ~30 commits to close in the P62 stretch."
-    );
+    println!("\n✓ Drift detected at resolver-instance #0b boundary, before reaching the runtime.");
+    println!("  This is exactly the bug class that took ~30 commits to close in the P62 stretch.");
 }

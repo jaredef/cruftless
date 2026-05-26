@@ -33,11 +33,22 @@ const TIMEOUT_SECS: u64 = 5;
 #[derive(Debug, Clone, PartialEq)]
 enum Outcome {
     Match,
-    Diverge { bun_first_line: String, cruft_first_line: String },
-    BunFail { msg: String },
-    CruftFail { msg: String },
-    SetupFail { msg: String },
-    Timeout { which: &'static str },
+    Diverge {
+        bun_first_line: String,
+        cruft_first_line: String,
+    },
+    BunFail {
+        msg: String,
+    },
+    CruftFail {
+        msg: String,
+    },
+    SetupFail {
+        msg: String,
+    },
+    Timeout {
+        which: &'static str,
+    },
 }
 
 fn outcome_kind(o: &Outcome) -> &'static str {
@@ -116,12 +127,20 @@ fn measure_file(file: &Path, cruft_bin: &Path, bun_bin: &Path) -> Outcome {
     let (bun_status, _bun_stdout, bun_stderr) = match bun_res {
         Ok(t) => t,
         Err(e) if e == "timeout" => return Outcome::Timeout { which: "bun" },
-        Err(e) => return Outcome::SetupFail { msg: format!("bun run: {}", e) },
+        Err(e) => {
+            return Outcome::SetupFail {
+                msg: format!("bun run: {}", e),
+            }
+        }
     };
     let (cruft_status, _cruft_stdout, cruft_stderr) = match cruft_res {
         Ok(t) => t,
         Err(e) if e == "timeout" => return Outcome::Timeout { which: "cruft" },
-        Err(e) => return Outcome::SetupFail { msg: format!("cruft run: {}", e) },
+        Err(e) => {
+            return Outcome::SetupFail {
+                msg: format!("cruft run: {}", e),
+            }
+        }
     };
 
     let bun_ok = bun_status == Some(0);
@@ -130,12 +149,24 @@ fn measure_file(file: &Path, cruft_bin: &Path, bun_bin: &Path) -> Outcome {
     if !bun_ok {
         // File unrunnable under oracle — not actionable for cruft.
         return Outcome::BunFail {
-            msg: bun_stderr.lines().next().unwrap_or("").chars().take(120).collect::<String>(),
+            msg: bun_stderr
+                .lines()
+                .next()
+                .unwrap_or("")
+                .chars()
+                .take(120)
+                .collect::<String>(),
         };
     }
     if !cruft_ok {
         return Outcome::CruftFail {
-            msg: cruft_stderr.lines().next().unwrap_or("").chars().take(120).collect::<String>(),
+            msg: cruft_stderr
+                .lines()
+                .next()
+                .unwrap_or("")
+                .chars()
+                .take(120)
+                .collect::<String>(),
         };
     }
     Outcome::Match
@@ -153,19 +184,35 @@ fn tempfile() -> std::io::Result<PathBuf> {
 }
 
 fn main() {
-    let pilot_dir = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().to_path_buf();
+    let pilot_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .to_path_buf();
     let repo_root = pilot_dir.parent().unwrap().parent().unwrap().to_path_buf();
     let fixtures = repo_root.join("pilots/ts-consumer-corpus/fixtures");
     if !fixtures.exists() {
-        eprintln!("txc: fixtures missing at {} — run TCC install first", fixtures.display());
+        eprintln!(
+            "txc: fixtures missing at {} — run TCC install first",
+            fixtures.display()
+        );
         std::process::exit(1);
     }
     let cruft_bin = std::env::var("CRUFT_BIN")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(format!("{}/bin/cruft", std::env::var("HOME").unwrap_or_default())));
+        .unwrap_or_else(|_| {
+            PathBuf::from(format!(
+                "{}/bin/cruft",
+                std::env::var("HOME").unwrap_or_default()
+            ))
+        });
     let bun_bin = std::env::var("BUN_BIN")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(format!("{}/.bun/bin/bun", std::env::var("HOME").unwrap_or_default())));
+        .unwrap_or_else(|_| {
+            PathBuf::from(format!(
+                "{}/.bun/bin/bun",
+                std::env::var("HOME").unwrap_or_default()
+            ))
+        });
     if !cruft_bin.exists() {
         eprintln!("txc: cruft binary missing at {}", cruft_bin.display());
         std::process::exit(1);
@@ -191,16 +238,27 @@ fn main() {
         .map(|e| e.path().to_path_buf())
         .collect();
     files.sort();
-    if let Some(n) = limit { files.truncate(n); }
+    if let Some(n) = limit {
+        files.truncate(n);
+    }
 
-    eprintln!("txc: measuring {} files (bun={}, cruft={})",
-        files.len(), bun_bin.display(), cruft_bin.display());
+    eprintln!(
+        "txc: measuring {} files (bun={}, cruft={})",
+        files.len(),
+        bun_bin.display(),
+        cruft_bin.display()
+    );
 
     let t0 = Instant::now();
     let mut results: Vec<(PathBuf, Outcome)> = Vec::with_capacity(files.len());
     for (idx, f) in files.iter().enumerate() {
         if idx % 25 == 0 && idx > 0 {
-            eprintln!("  ... {}/{} ({} s elapsed)", idx, files.len(), t0.elapsed().as_secs());
+            eprintln!(
+                "  ... {}/{} ({} s elapsed)",
+                idx,
+                files.len(),
+                t0.elapsed().as_secs()
+            );
         }
         let o = measure_file(f, &cruft_bin, &bun_bin);
         results.push((f.clone(), o));
@@ -210,9 +268,15 @@ fn main() {
     // Aggregate.
     let total = results.len();
     let mut counts: HashMap<&'static str, usize> = HashMap::new();
-    for (_, o) in &results { *counts.entry(outcome_kind(o)).or_insert(0) += 1; }
+    for (_, o) in &results {
+        *counts.entry(outcome_kind(o)).or_insert(0) += 1;
+    }
     let n_match = counts.get("MATCH").copied().unwrap_or(0);
-    let parity = if total > 0 { 100.0 * n_match as f64 / total as f64 } else { 0.0 };
+    let parity = if total > 0 {
+        100.0 * n_match as f64 / total as f64
+    } else {
+        0.0
+    };
 
     // Per-file JSONL.
     let mut jsonl = String::new();
@@ -221,10 +285,17 @@ fn main() {
         let kind = outcome_kind(o);
         let detail = match o {
             Outcome::Match => String::new(),
-            Outcome::Diverge { bun_first_line, cruft_first_line } =>
-                format!("bun={} cruft={}", esc(bun_first_line), esc(cruft_first_line)),
-            Outcome::BunFail { msg } | Outcome::CruftFail { msg } | Outcome::SetupFail { msg } =>
-                esc(msg),
+            Outcome::Diverge {
+                bun_first_line,
+                cruft_first_line,
+            } => format!(
+                "bun={} cruft={}",
+                esc(bun_first_line),
+                esc(cruft_first_line)
+            ),
+            Outcome::BunFail { msg } | Outcome::CruftFail { msg } | Outcome::SetupFail { msg } => {
+                esc(msg)
+            }
             Outcome::Timeout { which } => format!("which={}", which),
         };
         jsonl.push_str(&format!(
@@ -246,7 +317,10 @@ fn main() {
         - TIMEOUT: {}\n\
         - elapsed: {:.1} s ({:.2} s/file)\n\n\
         Per-file: `results.jsonl`. Divergence table: `divergence-table.md`.\n",
-        date, total, n_match, parity,
+        date,
+        total,
+        n_match,
+        parity,
         counts.get("DIVERGE").copied().unwrap_or(0),
         counts.get("BUN_FAIL").copied().unwrap_or(0),
         counts.get("CRUFT_FAIL").copied().unwrap_or(0),
@@ -261,26 +335,49 @@ fn main() {
     let mut tag_counts: HashMap<String, (usize, PathBuf, String)> = HashMap::new();
     for (f, o) in &results {
         let (tag, sample) = match o {
-            Outcome::CruftFail { msg } => (format!("CRUFT_FAIL: {}", first_words(msg, 6)), msg.clone()),
-            Outcome::Diverge { bun_first_line, cruft_first_line } =>
-                (format!("DIVERGE: bun={} cruft={}", first_words(bun_first_line, 3), first_words(cruft_first_line, 3)),
-                 format!("bun={} cruft={}", bun_first_line, cruft_first_line)),
+            Outcome::CruftFail { msg } => {
+                (format!("CRUFT_FAIL: {}", first_words(msg, 6)), msg.clone())
+            }
+            Outcome::Diverge {
+                bun_first_line,
+                cruft_first_line,
+            } => (
+                format!(
+                    "DIVERGE: bun={} cruft={}",
+                    first_words(bun_first_line, 3),
+                    first_words(cruft_first_line, 3)
+                ),
+                format!("bun={} cruft={}", bun_first_line, cruft_first_line),
+            ),
             _ => continue,
         };
-        let e = tag_counts.entry(tag).or_insert((0, f.clone(), sample.clone()));
+        let e = tag_counts
+            .entry(tag)
+            .or_insert((0, f.clone(), sample.clone()));
         e.0 += 1;
     }
     let mut ranked: Vec<_> = tag_counts.iter().collect();
-    ranked.sort_by(|a, b| b.1.0.cmp(&a.1.0));
+    ranked.sort_by(|a, b| b.1 .0.cmp(&a.1 .0));
     let mut table = String::new();
-    table.push_str(&format!("# TXC divergence-frequency table — {}\n\nTotal files: {}. MATCH: {} ({:.1}%).\n\n",
-        date, total, n_match, parity));
+    table.push_str(&format!(
+        "# TXC divergence-frequency table — {}\n\nTotal files: {}. MATCH: {} ({:.1}%).\n\n",
+        date, total, n_match, parity
+    ));
     table.push_str("| Rank | Tag | Files | Example | Sample |\n|---:|---|---:|---|---|\n");
     for (i, (tag, (cnt, ex, sample))) in ranked.iter().enumerate().take(30) {
-        let rel = ex.strip_prefix(&fixtures).map(|p| p.display().to_string()).unwrap_or_default();
+        let rel = ex
+            .strip_prefix(&fixtures)
+            .map(|p| p.display().to_string())
+            .unwrap_or_default();
         let s: String = sample.chars().take(80).collect();
-        table.push_str(&format!("| {} | `{}` | {} | `{}` | `{}` |\n",
-            i + 1, tag, cnt, rel, s.replace('|', "\\|")));
+        table.push_str(&format!(
+            "| {} | `{}` | {} | `{}` | `{}` |\n",
+            i + 1,
+            tag,
+            cnt,
+            rel,
+            s.replace('|', "\\|")
+        ));
     }
     fs::write(out_dir.join("divergence-table.md"), &table).expect("write table");
 
@@ -291,7 +388,12 @@ fn main() {
 }
 
 fn esc(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', " ").chars().take(160).collect()
+    s.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', " ")
+        .chars()
+        .take(160)
+        .collect()
 }
 
 fn first_words(s: &str, n: usize) -> String {
@@ -300,24 +402,45 @@ fn first_words(s: &str, n: usize) -> String {
 
 fn chrono_today() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let secs = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
     let days = (secs / 86400) as i64;
     let (mut y, mut m, mut d) = (1970i64, 1i64, 1i64);
     let mut rem = days;
     while rem > 0 {
         let leap = (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0);
         let yd = if leap { 366 } else { 365 };
-        if rem >= yd { rem -= yd; y += 1; } else { break; }
+        if rem >= yd {
+            rem -= yd;
+            y += 1;
+        } else {
+            break;
+        }
     }
     let md = |yy: i64, mm: i64| -> i64 {
         match mm {
-            1|3|5|7|8|10|12 => 31,
-            4|6|9|11 => 30,
-            2 => if (yy % 4 == 0 && yy % 100 != 0) || (yy % 400 == 0) { 29 } else { 28 },
+            1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+            4 | 6 | 9 | 11 => 30,
+            2 => {
+                if (yy % 4 == 0 && yy % 100 != 0) || (yy % 400 == 0) {
+                    29
+                } else {
+                    28
+                }
+            }
             _ => 30,
         }
     };
-    while rem >= md(y, m) { rem -= md(y, m); m += 1; if m > 12 { m = 1; y += 1; } }
+    while rem >= md(y, m) {
+        rem -= md(y, m);
+        m += 1;
+        if m > 12 {
+            m = 1;
+            y += 1;
+        }
+    }
     d += rem;
     format!("{:04}-{:02}-{:02}", y, m, d)
 }

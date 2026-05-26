@@ -13,11 +13,11 @@
 use std::io::{Cursor, Read, Write};
 use std::path::PathBuf;
 
-use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as B64_STANDARD;
-use flate2::{write::GzEncoder, read::GzDecoder, Compression};
-use sha2::{Sha512, Digest as _};
-use tar::{Builder, Archive, Header};
+use base64::Engine as _;
+use flate2::{read::GzDecoder, write::GzEncoder, Compression};
+use sha2::{Digest as _, Sha512};
+use tar::{Archive, Builder, Header};
 
 use crate::integrity;
 
@@ -29,17 +29,24 @@ pub enum SmokeError {
 }
 
 impl From<std::io::Error> for SmokeError {
-    fn from(e: std::io::Error) -> Self { SmokeError::Io(e) }
+    fn from(e: std::io::Error) -> Self {
+        SmokeError::Io(e)
+    }
 }
 impl From<integrity::IntegrityError> for SmokeError {
-    fn from(e: integrity::IntegrityError) -> Self { SmokeError::Integrity(e) }
+    fn from(e: integrity::IntegrityError) -> Self {
+        SmokeError::Integrity(e)
+    }
 }
 
 pub fn roundtrip_synthetic_tarball() -> Result<(), SmokeError> {
     // (1) Build a tarball in memory with three known files. Mirrors
     // the npm tarball convention of files living under `package/`.
     let files: &[(&str, &[u8])] = &[
-        ("package/package.json", br#"{"name":"smoke","version":"0.0.0"}"#),
+        (
+            "package/package.json",
+            br#"{"name":"smoke","version":"0.0.0"}"#,
+        ),
         ("package/index.js", b"module.exports = 42;\n"),
         ("package/README.md", b"# smoke\n"),
     ];
@@ -99,7 +106,9 @@ pub fn roundtrip_synthetic_tarball() -> Result<(), SmokeError> {
         if got != *expected {
             return Err(SmokeError::Mismatch(format!(
                 "content mismatch at {}: expected {} bytes, got {} bytes",
-                path, expected.len(), got.len()
+                path,
+                expected.len(),
+                got.len()
             )));
         }
     }

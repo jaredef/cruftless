@@ -46,10 +46,18 @@ impl HandshakeType {
     pub fn from_u8(b: u8) -> Option<HandshakeType> {
         use HandshakeType::*;
         Some(match b {
-            1 => ClientHello, 2 => ServerHello, 4 => NewSessionTicket,
-            5 => EndOfEarlyData, 8 => EncryptedExtensions, 11 => Certificate,
-            13 => CertificateRequest, 15 => CertificateVerify, 20 => Finished,
-            24 => KeyUpdate, 254 => MessageHash, _ => return None,
+            1 => ClientHello,
+            2 => ServerHello,
+            4 => NewSessionTicket,
+            5 => EndOfEarlyData,
+            8 => EncryptedExtensions,
+            11 => Certificate,
+            13 => CertificateRequest,
+            15 => CertificateVerify,
+            20 => Finished,
+            24 => KeyUpdate,
+            254 => MessageHash,
+            _ => return None,
         })
     }
 }
@@ -77,11 +85,14 @@ pub fn encode_handshake(msg: &HandshakeMessage) -> Vec<u8> {
 /// Decode a single handshake message from a byte buffer. Returns the
 /// message plus bytes consumed.
 pub fn decode_handshake(buf: &[u8]) -> Result<(HandshakeMessage, usize), TlsError> {
-    if buf.len() < 4 { return Err(TlsError::UnexpectedEnd); }
-    let msg_type = HandshakeType::from_u8(buf[0])
-        .ok_or(TlsError::UnknownContentType(buf[0]))?;
+    if buf.len() < 4 {
+        return Err(TlsError::UnexpectedEnd);
+    }
+    let msg_type = HandshakeType::from_u8(buf[0]).ok_or(TlsError::UnknownContentType(buf[0]))?;
     let len = ((buf[1] as usize) << 16) | ((buf[2] as usize) << 8) | (buf[3] as usize);
-    if buf.len() < 4 + len { return Err(TlsError::UnexpectedEnd); }
+    if buf.len() < 4 + len {
+        return Err(TlsError::UnexpectedEnd);
+    }
     let body = buf[4..4 + len].to_vec();
     Ok((HandshakeMessage { msg_type, body }, 4 + len))
 }
@@ -101,11 +112,17 @@ pub fn decode_handshake(buf: &[u8]) -> Result<(HandshakeMessage, usize), TlsErro
 //   HKDF-Expand-Label(secret, label, Transcript-Hash(messages), Hash.length)
 
 #[derive(Debug, Clone, Copy)]
-pub enum HashAlgorithm { Sha256, Sha384 }
+pub enum HashAlgorithm {
+    Sha256,
+    Sha384,
+}
 
 impl HashAlgorithm {
     pub fn output_len(&self) -> usize {
-        match self { HashAlgorithm::Sha256 => 32, HashAlgorithm::Sha384 => 48 }
+        match self {
+            HashAlgorithm::Sha256 => 32,
+            HashAlgorithm::Sha384 => 48,
+        }
     }
 
     pub fn digest(&self, data: &[u8]) -> Vec<u8> {
@@ -115,7 +132,9 @@ impl HashAlgorithm {
         }
     }
 
-    pub fn empty_hash(&self) -> Vec<u8> { self.digest(&[]) }
+    pub fn empty_hash(&self) -> Vec<u8> {
+        self.digest(&[])
+    }
 
     pub fn hkdf_extract(&self, salt: &[u8], ikm: &[u8]) -> Vec<u8> {
         // HKDF-Extract uses HMAC with `salt` as key, `ikm` as message.
@@ -160,10 +179,12 @@ pub fn hkdf_expand_label(
     length: u16,
 ) -> Result<Vec<u8>, TlsError> {
     let full_label_len = b"tls13 ".len() + label.len();
-    if full_label_len > 255 { return Err(TlsError::SignatureFail(
-        "label too long".into())); }
-    if context.len() > 255 { return Err(TlsError::SignatureFail(
-        "context too long".into())); }
+    if full_label_len > 255 {
+        return Err(TlsError::SignatureFail("label too long".into()));
+    }
+    if context.len() > 255 {
+        return Err(TlsError::SignatureFail("context too long".into()));
+    }
     let mut info = Vec::with_capacity(2 + 1 + full_label_len + 1 + context.len());
     info.push((length >> 8) as u8);
     info.push((length & 0xFF) as u8);
@@ -184,7 +205,13 @@ pub fn derive_secret(
     label: &[u8],
     transcript_hash: &[u8],
 ) -> Result<Vec<u8>, TlsError> {
-    hkdf_expand_label(hash, secret, label, transcript_hash, hash.output_len() as u16)
+    hkdf_expand_label(
+        hash,
+        secret,
+        label,
+        transcript_hash,
+        hash.output_len() as u16,
+    )
 }
 
 /// TLS 1.3 key schedule helper.
@@ -210,35 +237,82 @@ impl KeySchedule {
         //   Transcript-Hash(""), Hash.length).
         let empty_hash = hash.empty_hash();
         let derived_early = hkdf_expand_label(
-            hash, &early_secret, b"derived", &empty_hash, hash.output_len() as u16)?;
+            hash,
+            &early_secret,
+            b"derived",
+            &empty_hash,
+            hash.output_len() as u16,
+        )?;
         // Handshake secret = HKDF-Extract(derived_early, dhe).
         let handshake_secret = hash.hkdf_extract(&derived_early, dhe);
         // Derived handshake = HKDF-Expand-Label(handshake_secret,
         //   "derived", empty_hash).
         let derived_handshake = hkdf_expand_label(
-            hash, &handshake_secret, b"derived", &empty_hash, hash.output_len() as u16)?;
+            hash,
+            &handshake_secret,
+            b"derived",
+            &empty_hash,
+            hash.output_len() as u16,
+        )?;
         // Master secret = HKDF-Extract(derived_handshake, 0).
         let master_secret = hash.hkdf_extract(&derived_handshake, &zeros);
-        let _ = transcript_hello;  // consumer derives the per-secret labels with their own transcript.
-        Ok(KeySchedule { hash, early_secret, handshake_secret, master_secret })
+        let _ = transcript_hello; // consumer derives the per-secret labels with their own transcript.
+        Ok(KeySchedule {
+            hash,
+            early_secret,
+            handshake_secret,
+            master_secret,
+        })
     }
 
     /// Derive client_handshake_traffic_secret (label "c hs traffic")
     /// using the supplied transcript hash through ServerHello.
-    pub fn client_handshake_traffic(&self, transcript_through_sh: &[u8]) -> Result<Vec<u8>, TlsError> {
-        derive_secret(self.hash, &self.handshake_secret, b"c hs traffic", transcript_through_sh)
+    pub fn client_handshake_traffic(
+        &self,
+        transcript_through_sh: &[u8],
+    ) -> Result<Vec<u8>, TlsError> {
+        derive_secret(
+            self.hash,
+            &self.handshake_secret,
+            b"c hs traffic",
+            transcript_through_sh,
+        )
     }
 
-    pub fn server_handshake_traffic(&self, transcript_through_sh: &[u8]) -> Result<Vec<u8>, TlsError> {
-        derive_secret(self.hash, &self.handshake_secret, b"s hs traffic", transcript_through_sh)
+    pub fn server_handshake_traffic(
+        &self,
+        transcript_through_sh: &[u8],
+    ) -> Result<Vec<u8>, TlsError> {
+        derive_secret(
+            self.hash,
+            &self.handshake_secret,
+            b"s hs traffic",
+            transcript_through_sh,
+        )
     }
 
-    pub fn client_application_traffic(&self, transcript_through_sf: &[u8]) -> Result<Vec<u8>, TlsError> {
-        derive_secret(self.hash, &self.master_secret, b"c ap traffic", transcript_through_sf)
+    pub fn client_application_traffic(
+        &self,
+        transcript_through_sf: &[u8],
+    ) -> Result<Vec<u8>, TlsError> {
+        derive_secret(
+            self.hash,
+            &self.master_secret,
+            b"c ap traffic",
+            transcript_through_sf,
+        )
     }
 
-    pub fn server_application_traffic(&self, transcript_through_sf: &[u8]) -> Result<Vec<u8>, TlsError> {
-        derive_secret(self.hash, &self.master_secret, b"s ap traffic", transcript_through_sf)
+    pub fn server_application_traffic(
+        &self,
+        transcript_through_sf: &[u8],
+    ) -> Result<Vec<u8>, TlsError> {
+        derive_secret(
+            self.hash,
+            &self.master_secret,
+            b"s ap traffic",
+            transcript_through_sf,
+        )
     }
 }
 
@@ -318,11 +392,17 @@ pub fn aead_decrypt_record(
     aad.push((ct_fragment.len() & 0xFF) as u8);
     let inner = rusty_web_crypto::aes_gcm_decrypt(&keys.key, &nonce, &aad, ct_fragment)
         .map_err(|e| TlsError::SignatureFail(e))?;
-    if inner.is_empty() { return Err(TlsError::UnexpectedEnd); }
+    if inner.is_empty() {
+        return Err(TlsError::UnexpectedEnd);
+    }
     // Strip trailing zero-padding (if any) and recover content type.
     let mut end = inner.len();
-    while end > 0 && inner[end - 1] == 0 { end -= 1; }
-    if end == 0 { return Err(TlsError::UnexpectedEnd); }
+    while end > 0 && inner[end - 1] == 0 {
+        end -= 1;
+    }
+    if end == 0 {
+        return Err(TlsError::UnexpectedEnd);
+    }
     let content_type = inner[end - 1];
     let plaintext = inner[..end - 1].to_vec();
     Ok((content_type, plaintext))
@@ -338,7 +418,11 @@ pub fn finished_mac(
 ) -> Result<Vec<u8>, TlsError> {
     let finished_key = hkdf_expand_label(hash, secret, b"finished", &[], hash.output_len() as u16)?;
     Ok(match hash {
-        HashAlgorithm::Sha256 => rusty_web_crypto::hmac_sha256(&finished_key, transcript_hash).to_vec(),
-        HashAlgorithm::Sha384 => rusty_web_crypto::hmac_sha384(&finished_key, transcript_hash).to_vec(),
+        HashAlgorithm::Sha256 => {
+            rusty_web_crypto::hmac_sha256(&finished_key, transcript_hash).to_vec()
+        }
+        HashAlgorithm::Sha384 => {
+            rusty_web_crypto::hmac_sha384(&finished_key, transcript_hash).to_vec()
+        }
     })
 }

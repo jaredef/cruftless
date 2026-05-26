@@ -10,12 +10,16 @@ fn run_rt(src: &str) -> Runtime {
         .unwrap_or_else(|e| panic!("compile {:?}: {:?}", src, e));
     let mut rt = Runtime::new();
     rt.install_intrinsics();
-    rt.run_module(&module).unwrap_or_else(|e| panic!("run {:?}: {:?}", src, e));
+    rt.run_module(&module)
+        .unwrap_or_else(|e| panic!("run {:?}: {:?}", src, e));
     rt
 }
 
 fn last(rt: &Runtime) -> Value {
-    rt.globals.get("__last_recorded").cloned().unwrap_or(Value::Undefined)
+    rt.globals
+        .get("__last_recorded")
+        .cloned()
+        .unwrap_or(Value::Undefined)
 }
 
 #[test]
@@ -26,7 +30,9 @@ fn rest_parameter_collects() {
 
 #[test]
 fn rest_parameter_after_named() {
-    let rt = run_rt("function f(a, b, ...rest) { return a + b + rest.length; } __record(f(10, 20, 1, 2, 3));");
+    let rt = run_rt(
+        "function f(a, b, ...rest) { return a + b + rest.length; } __record(f(10, 20, 1, 2, 3));",
+    );
     assert_eq!(last(&rt), Value::Number(33.0));
 }
 

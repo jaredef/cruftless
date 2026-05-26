@@ -34,7 +34,12 @@ thread_local! {
 }
 
 fn next_id() -> u64 {
-    NEXT_TIMER_ID.with(|c| { let mut c = c.borrow_mut(); let id = *c; *c += 1; id })
+    NEXT_TIMER_ID.with(|c| {
+        let mut c = c.borrow_mut();
+        let id = *c;
+        *c += 1;
+        id
+    })
 }
 
 fn register(callback: Value, args: Vec<Value>, delay_ms: u64, repeat: bool) -> u64 {
@@ -42,7 +47,13 @@ fn register(callback: Value, args: Vec<Value>, delay_ms: u64, repeat: bool) -> u
     let due_at = Instant::now() + Duration::from_millis(delay_ms);
     let repeat_ms = if repeat { Some(delay_ms.max(1)) } else { None };
     TIMERS.with(|t| {
-        t.borrow_mut().push(TimerEntry { id, callback, args, due_at, repeat_ms });
+        t.borrow_mut().push(TimerEntry {
+            id,
+            callback,
+            args,
+            due_at,
+            repeat_ms,
+        });
     });
     id
 }
@@ -62,9 +73,16 @@ pub fn has_pending() -> bool {
 pub fn next_due_ms() -> Option<u64> {
     let now = Instant::now();
     TIMERS.with(|t| {
-        t.borrow().iter().map(|e| {
-            if e.due_at <= now { 0 } else { (e.due_at - now).as_millis() as u64 }
-        }).min()
+        t.borrow()
+            .iter()
+            .map(|e| {
+                if e.due_at <= now {
+                    0
+                } else {
+                    (e.due_at - now).as_millis() as u64
+                }
+            })
+            .min()
     })
 }
 
@@ -114,40 +132,70 @@ pub fn install(rt: &mut Runtime) {
         register_method(rt, o, "refresh", |rt, _args| Ok(rt.current_this()));
         // toPrimitive returns the numeric id so `+t === id`.
         let id_for_prim = id as f64;
-        register_method(rt, o, "@@toPrimitive", move |_rt, _args| Ok(Value::Number(id_for_prim)));
-        register_method(rt, o, "valueOf", move |_rt, _args| Ok(Value::Number(id_for_prim)));
+        register_method(rt, o, "@@toPrimitive", move |_rt, _args| {
+            Ok(Value::Number(id_for_prim))
+        });
+        register_method(rt, o, "valueOf", move |_rt, _args| {
+            Ok(Value::Number(id_for_prim))
+        });
         o
     }
     let set_timeout = make_callable(rt, "setTimeout", |rt, args| {
         let cb = args.first().cloned().unwrap_or(Value::Undefined);
-        let delay = args.get(1).and_then(|v| if let Value::Number(n) = v { Some(*n as u64) } else { None }).unwrap_or(0);
+        let delay = args
+            .get(1)
+            .and_then(|v| {
+                if let Value::Number(n) = v {
+                    Some(*n as u64)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0);
         let cb_args: Vec<Value> = args.iter().skip(2).cloned().collect();
         let id = register(cb, cb_args, delay, false);
         Ok(Value::Object(make_timeout_obj(rt, id)))
     });
-    rt.globals.insert("setTimeout".into(), Value::Object(set_timeout));
+    rt.globals
+        .insert("setTimeout".into(), Value::Object(set_timeout));
 
     let set_interval = make_callable(rt, "setInterval", |rt, args| {
         let cb = args.first().cloned().unwrap_or(Value::Undefined);
-        let delay = args.get(1).and_then(|v| if let Value::Number(n) = v { Some(*n as u64) } else { None }).unwrap_or(0);
+        let delay = args
+            .get(1)
+            .and_then(|v| {
+                if let Value::Number(n) = v {
+                    Some(*n as u64)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0);
         let cb_args: Vec<Value> = args.iter().skip(2).cloned().collect();
         let id = register(cb, cb_args, delay, true);
         Ok(Value::Object(make_timeout_obj(rt, id)))
     });
-    rt.globals.insert("setInterval".into(), Value::Object(set_interval));
+    rt.globals
+        .insert("setInterval".into(), Value::Object(set_interval));
 
     let clear_t = make_callable(rt, "clearTimeout", |rt, args| {
         let id = timer_id_from(rt, args.first().cloned().unwrap_or(Value::Undefined));
-        if let Some(id) = id { cancel(id); }
+        if let Some(id) = id {
+            cancel(id);
+        }
         Ok(Value::Undefined)
     });
-    rt.globals.insert("clearTimeout".into(), Value::Object(clear_t));
+    rt.globals
+        .insert("clearTimeout".into(), Value::Object(clear_t));
     let clear_i = make_callable(rt, "clearInterval", |rt, args| {
         let id = timer_id_from(rt, args.first().cloned().unwrap_or(Value::Undefined));
-        if let Some(id) = id { cancel(id); }
+        if let Some(id) = id {
+            cancel(id);
+        }
         Ok(Value::Undefined)
     });
-    rt.globals.insert("clearInterval".into(), Value::Object(clear_i));
+    rt.globals
+        .insert("clearInterval".into(), Value::Object(clear_i));
 
     // queueMicrotask(cb) — direct microtask enqueue per HTML §8.1.5.6.
     let qmt = make_callable(rt, "queueMicrotask", |rt, args| {
@@ -158,7 +206,8 @@ pub fn install(rt: &mut Runtime) {
         });
         Ok(Value::Undefined)
     });
-    rt.globals.insert("queueMicrotask".into(), Value::Object(qmt));
+    rt.globals
+        .insert("queueMicrotask".into(), Value::Object(qmt));
 
     // setImmediate(cb, ...args) — Node-flavored macrotask scheduling.
     // Implemented as setTimeout with 0ms delay.
@@ -168,13 +217,17 @@ pub fn install(rt: &mut Runtime) {
         let id = register(cb, cb_args, 0, false);
         Ok(Value::Object(make_timeout_obj(rt, id)))
     });
-    rt.globals.insert("setImmediate".into(), Value::Object(set_immediate));
+    rt.globals
+        .insert("setImmediate".into(), Value::Object(set_immediate));
     let clear_im = make_callable(rt, "clearImmediate", |rt, args| {
         let id = timer_id_from(rt, args.first().cloned().unwrap_or(Value::Undefined));
-        if let Some(id) = id { cancel(id); }
+        if let Some(id) = id {
+            cancel(id);
+        }
         Ok(Value::Undefined)
     });
-    rt.globals.insert("clearImmediate".into(), Value::Object(clear_im));
+    rt.globals
+        .insert("clearImmediate".into(), Value::Object(clear_im));
 }
 
 fn timer_id_from(rt: &Runtime, v: Value) -> Option<u64> {
@@ -187,4 +240,3 @@ fn timer_id_from(rt: &Runtime, v: Value) -> Option<u64> {
         _ => None,
     }
 }
-

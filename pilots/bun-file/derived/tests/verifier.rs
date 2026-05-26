@@ -140,15 +140,24 @@ fn spec_array_buffer_alias_of_bytes() {
 
 #[test]
 fn spec_mime_type_inferred_from_extension() {
-    assert_eq!(BunFile::open("test.html").mime_type(), "text/html;charset=utf-8");
-    assert_eq!(BunFile::open("test.json").mime_type(), "application/json;charset=utf-8");
+    assert_eq!(
+        BunFile::open("test.html").mime_type(),
+        "text/html;charset=utf-8"
+    );
+    assert_eq!(
+        BunFile::open("test.json").mime_type(),
+        "application/json;charset=utf-8"
+    );
     assert_eq!(BunFile::open("test.png").mime_type(), "image/png");
     assert_eq!(BunFile::open("test.svg").mime_type(), "image/svg+xml");
 }
 
 #[test]
 fn spec_mime_type_octet_stream_for_unknown_extension() {
-    assert_eq!(BunFile::open("test.xyzunknown").mime_type(), "application/octet-stream");
+    assert_eq!(
+        BunFile::open("test.xyzunknown").mime_type(),
+        "application/octet-stream"
+    );
 }
 
 #[test]
@@ -169,7 +178,11 @@ fn spec_last_modified_returns_ms_since_epoch() {
     let p = make_fixture("lastmod", b"x");
     let f = BunFile::open(&p);
     let ms = f.last_modified().unwrap();
-    assert!(ms > 1_700_000_000_000, "expected modern timestamp, got {}", ms);
+    assert!(
+        ms > 1_700_000_000_000,
+        "expected modern timestamp, got {}",
+        ms
+    );
     cleanup(&p);
 }
 

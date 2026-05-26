@@ -14,8 +14,8 @@
 //! benching Rust internals directly — keeps the bench within the same
 //! dispatch path the realistic CRB workload uses.
 
-use std::time::Instant;
 use std::process::{Command, Stdio};
+use std::time::Instant;
 
 const FIXTURES_DIR: &str = "/tmp/jsf-bench";
 
@@ -34,7 +34,8 @@ fn run_bench(name: &str, fixture_path: &str, runs: u32) -> u128 {
             .arg(fixture_path)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
-            .status().expect("cruft run");
+            .status()
+            .expect("cruft run");
         if !status.success() {
             eprintln!("[{}] cruft exited non-zero", name);
             return u128::MAX;
@@ -43,8 +44,13 @@ fn run_bench(name: &str, fixture_path: &str, runs: u32) -> u128 {
     }
     times.sort();
     let median = times[times.len() / 2];
-    println!("  {:<26} median: {:>7} us  (min={:>6} max={:>6})",
-        name, median, times[0], times[times.len() - 1]);
+    println!(
+        "  {:<26} median: {:>7} us  (min={:>6} max={:>6})",
+        name,
+        median,
+        times[0],
+        times[times.len() - 1]
+    );
     median
 }
 
@@ -101,10 +107,10 @@ fn main() {
 
     println!("CRUFT:");
     let ma = run_bench("A: small-object 100k", &path_a, 3);
-    let mb = run_bench("B: deep-nested 100k",  &path_b, 3);
-    let mc = run_bench("C: array-of-obj 5k",   &path_c, 3);
-    let md = run_bench("D: number-only 1M",    &path_d, 3);
-    let me = run_bench("E: string-only 1M",    &path_e, 3);
+    let mb = run_bench("B: deep-nested 100k", &path_b, 3);
+    let mc = run_bench("C: array-of-obj 5k", &path_c, 3);
+    let md = run_bench("D: number-only 1M", &path_d, 3);
+    let me = run_bench("E: string-only 1M", &path_e, 3);
 
     // For comparison, run node baseline.
     println!();
@@ -113,22 +119,45 @@ fn main() {
         let mut times = Vec::with_capacity(3);
         for _ in 0..3 {
             let t0 = Instant::now();
-            let _ = Command::new("/usr/bin/node").arg(path)
-                .stdout(Stdio::null()).stderr(Stdio::null())
-                .status().expect("node run");
+            let _ = Command::new("/usr/bin/node")
+                .arg(path)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .expect("node run");
             times.push(t0.elapsed().as_micros());
         }
         times.sort();
-        times[times.len()/2]
+        times[times.len() / 2]
     };
     let na = node_run(&path_a);
     let nb = node_run(&path_b);
     let nc = node_run(&path_c);
     let nd = node_run(&path_d);
     let ne = node_run(&path_e);
-    println!("  A: small-object 100k       node median: {} us  (cruft/node = {:.2}x)", na, ma as f64 / na as f64);
-    println!("  B: deep-nested 100k        node median: {} us  (cruft/node = {:.2}x)", nb, mb as f64 / nb as f64);
-    println!("  C: array-of-obj 5k         node median: {} us  (cruft/node = {:.2}x)", nc, mc as f64 / nc as f64);
-    println!("  D: number-only 1M          node median: {} us  (cruft/node = {:.2}x)", nd, md as f64 / nd as f64);
-    println!("  E: string-only 1M          node median: {} us  (cruft/node = {:.2}x)", ne, me as f64 / ne as f64);
+    println!(
+        "  A: small-object 100k       node median: {} us  (cruft/node = {:.2}x)",
+        na,
+        ma as f64 / na as f64
+    );
+    println!(
+        "  B: deep-nested 100k        node median: {} us  (cruft/node = {:.2}x)",
+        nb,
+        mb as f64 / nb as f64
+    );
+    println!(
+        "  C: array-of-obj 5k         node median: {} us  (cruft/node = {:.2}x)",
+        nc,
+        mc as f64 / nc as f64
+    );
+    println!(
+        "  D: number-only 1M          node median: {} us  (cruft/node = {:.2}x)",
+        nd,
+        md as f64 / nd as f64
+    );
+    println!(
+        "  E: string-only 1M          node median: {} us  (cruft/node = {:.2}x)",
+        ne,
+        me as f64 / ne as f64
+    );
 }

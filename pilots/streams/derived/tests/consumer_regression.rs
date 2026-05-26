@@ -16,10 +16,12 @@ fn consumer_undici_stream_chunks_in_enqueue_order() {
     ctrl.enqueue(b"world".to_vec()).unwrap();
     ctrl.close().unwrap();
     let mut reader = s.get_reader().unwrap();
-    let chunks: Vec<Vec<u8>> = (0..4).filter_map(|_| match reader.read() {
-        ReadResult::Chunk(c) => Some(c),
-        _ => None,
-    }).collect();
+    let chunks: Vec<Vec<u8>> = (0..4)
+        .filter_map(|_| match reader.read() {
+            ReadResult::Chunk(c) => Some(c),
+            _ => None,
+        })
+        .collect();
     let combined: Vec<u8> = chunks.into_iter().flatten().collect();
     assert_eq!(combined, b"hello world".to_vec());
 }
@@ -34,7 +36,9 @@ fn consumer_undici_stream_chunks_in_enqueue_order() {
 fn consumer_blob_stream_emits_bytes_then_closes() {
     let payload = vec![1u8, 2, 3, 4, 5, 6, 7, 8];
     let (s, ctrl) = ReadableStream::<u8>::manual(16);
-    for b in &payload { ctrl.enqueue(*b).unwrap(); }
+    for b in &payload {
+        ctrl.enqueue(*b).unwrap();
+    }
     ctrl.close().unwrap();
     let mut reader = s.get_reader().unwrap();
     let mut collected = Vec::new();
@@ -67,8 +71,12 @@ fn consumer_postmessage_tee_independent_readers() {
     let mut va = Vec::new();
     let mut vb = Vec::new();
     for _ in 0..4 {
-        if let ReadResult::Chunk(c) = ra.read() { va.push(c); }
-        if let ReadResult::Chunk(c) = rb.read() { vb.push(c); }
+        if let ReadResult::Chunk(c) = ra.read() {
+            va.push(c);
+        }
+        if let ReadResult::Chunk(c) = rb.read() {
+            vb.push(c);
+        }
     }
     assert_eq!(va, vec![10, 20, 30]);
     assert_eq!(vb, vec![10, 20, 30]);
@@ -85,7 +93,8 @@ fn consumer_textdecoder_stream_pattern() {
     struct AsciiDecoder;
     impl Transformer<Vec<u8>, String> for AsciiDecoder {
         fn transform(&mut self, chunk: Vec<u8>, ctrl: &Controller<String>) {
-            ctrl.enqueue(String::from_utf8_lossy(&chunk).into_owned()).unwrap();
+            ctrl.enqueue(String::from_utf8_lossy(&chunk).into_owned())
+                .unwrap();
         }
     }
     let ts = TransformStream::<Vec<u8>, String>::new(Box::new(AsciiDecoder));
@@ -96,7 +105,9 @@ fn consumer_textdecoder_stream_pattern() {
     writer.close().unwrap();
     let mut reader = readable.get_reader().unwrap();
     let mut s = String::new();
-    while let ReadResult::Chunk(c) = reader.read() { s.push_str(&c); }
+    while let ReadResult::Chunk(c) = reader.read() {
+        s.push_str(&c);
+    }
     assert_eq!(s, "hello world");
 }
 
@@ -118,7 +129,8 @@ fn consumer_pipe_to_pattern_manual_loop() {
     struct Sink(std::rc::Rc<std::cell::RefCell<Vec<u32>>>);
     impl UnderlyingSink<u32> for Sink {
         fn write(&mut self, chunk: u32) -> Result<(), String> {
-            self.0.borrow_mut().push(chunk); Ok(())
+            self.0.borrow_mut().push(chunk);
+            Ok(())
         }
     }
     let dst = WritableStream::new(Box::new(Sink(collected.clone())));
@@ -155,7 +167,9 @@ fn consumer_undici_cancel_propagates_to_source() {
     }
     let cancelled = Rc::new(Cell::new(false));
     let s = ReadableStream::new(
-        Box::new(CancellableSource { cancelled: cancelled.clone() }),
+        Box::new(CancellableSource {
+            cancelled: cancelled.clone(),
+        }),
         1,
     );
     let mut r = s.get_reader().unwrap();
@@ -173,7 +187,10 @@ fn consumer_source_error_visible_to_reader() {
     let mut r = s.get_reader().unwrap();
     let mut got_error = false;
     for _ in 0..4 {
-        if let ReadResult::Error(_) = r.read() { got_error = true; break; }
+        if let ReadResult::Error(_) = r.read() {
+            got_error = true;
+            break;
+        }
     }
     assert!(got_error);
 }
@@ -203,7 +220,9 @@ fn wpt_streams_pull_called_lazily() {
     }
     let pulls = Rc::new(Cell::new(0u32));
     let s = ReadableStream::new(
-        Box::new(LazySource { pull_count: pulls.clone() }),
+        Box::new(LazySource {
+            pull_count: pulls.clone(),
+        }),
         1,
     );
     // Construction should NOT invoke pull (only start, which we don't define here).

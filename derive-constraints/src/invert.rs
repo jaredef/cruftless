@@ -25,9 +25,7 @@ use std::path::{Path, PathBuf};
 /// actual architectural form (the formalization-frame artifact).
 pub enum InvertGrouping {
     BySurface,
-    BySeam {
-        corpus_root: Option<PathBuf>,
-    },
+    BySeam { corpus_root: Option<PathBuf> },
 }
 
 #[derive(Debug)]
@@ -83,20 +81,15 @@ pub fn invert(
                     keep
                 })
                 .collect();
-            let groups = crate::seams::group_properties_by_seam(
-                &report.properties,
-                corpus_root.as_deref(),
-            );
+            let groups =
+                crate::seams::group_properties_by_seam(&report.properties, corpus_root.as_deref());
             // Re-filter by is_emittable: groups still include all
             // properties (the seams crate doesn't apply invert's emit
             // filter); we want only emittable properties to land in
             // .constraints.md output.
             let _ = emittable; // (the loop above already counted skipped)
             for (seam_name, props) in groups {
-                let kept: Vec<&Property> = props
-                    .into_iter()
-                    .filter(|p| is_emittable(p))
-                    .collect();
+                let kept: Vec<&Property> = props.into_iter().filter(|p| is_emittable(p)).collect();
                 if !kept.is_empty() {
                     by_group.insert(seam_name, kept);
                 }
@@ -150,8 +143,7 @@ pub fn invert(
         let total_witness = props.iter().map(|p| p.constraints_in).sum::<u64>();
         let path = out_dir.join(format!("{}.constraints.md", filename_safe(&surface)));
         let content = render_surface(&surface, &props);
-        std::fs::write(&path, content)
-            .with_context(|| format!("write {}", path.display()))?;
+        std::fs::write(&path, content).with_context(|| format!("write {}", path.display()))?;
         surfaces_emitted += 1;
         constraints_emitted += props.len() as u32;
         surface_order.push((surface, total_witness));
@@ -345,11 +337,7 @@ fn is_emittable_surface_name(surface: &str) -> bool {
 }
 
 fn surface_of(subject: &str) -> String {
-    subject
-        .split('.')
-        .next()
-        .unwrap_or(subject)
-        .to_string()
+    subject.split('.').next().unwrap_or(subject).to_string()
 }
 
 /// Sanitize a surface name into a portable filename: lowercase ASCII,
@@ -440,7 +428,11 @@ fn render_constraint(surface_safe: &str, idx: usize, p: &Property) -> String {
     let prefix = surface_id_prefix(surface_safe);
     let id = format!("{}{}", prefix, idx);
     let kind = constraint_type_of(p);
-    let scope = if p.construction_style { "module" } else { "module" };
+    let scope = if p.construction_style {
+        "module"
+    } else {
+        "module"
+    };
     let mut out = String::new();
     out.push_str(&format!("## {}\n", id));
     out.push_str(&format!("type: {}\n", kind));
@@ -494,10 +486,16 @@ fn render_representative(r: &RepresentativeConstraint) -> String {
 fn verb_narrative(v: VerbClass) -> &'static str {
     match v {
         VerbClass::TypeInstance => "exposes values of the expected type or class.",
-        VerbClass::Existence => "is defined and resolves to a non-nullish value at the documented call site.",
+        VerbClass::Existence => {
+            "is defined and resolves to a non-nullish value at the documented call site."
+        }
         VerbClass::Error => "throws or rejects with a documented error shape on invalid inputs.",
-        VerbClass::Equivalence => "produces values matching the documented patterns under the documented inputs.",
-        VerbClass::Containment => "satisfies the documented containment / structural-shape invariants.",
+        VerbClass::Equivalence => {
+            "produces values matching the documented patterns under the documented inputs."
+        }
+        VerbClass::Containment => {
+            "satisfies the documented containment / structural-shape invariants."
+        }
         VerbClass::Ordering => "satisfies the documented ordering / proximity invariants.",
         VerbClass::GenericAssertion => "satisfies the documented invariant.",
         VerbClass::Other => "exhibits the property captured in the witnessing test.",
@@ -571,9 +569,7 @@ target-language derivation operates over this composition; the constraint set is
 and target-language implementations are ephemeral cache.\n\n",
         surfaces.len()
     ));
-    out.push_str(
-        "Top surfaces by witnessing-clause count:\n\n",
-    );
+    out.push_str("Top surfaces by witnessing-clause count:\n\n");
     for (surface, witness) in surfaces.iter().take(20) {
         out.push_str(&format!("- **{}** — {} clauses\n", surface, witness));
     }

@@ -52,7 +52,9 @@ enum SmallOrLargeSlotMap {
 }
 
 impl SmallOrLargeSlotMap {
-    fn new() -> Self { Self::Small(SmallVec::new()) }
+    fn new() -> Self {
+        Self::Small(SmallVec::new())
+    }
 
     fn len(&self) -> usize {
         match self {
@@ -85,8 +87,14 @@ impl SmallOrLargeSlotMap {
             }
             Self::Small(_) => {
                 // Promote to Large at SLOTS_INLINE_CAP + 1.
-                let Self::Small(old) = std::mem::replace(self, Self::Large(Vec::new(), HashMap::new())) else { unreachable!() };
-                let Self::Large(vec, map) = self else { unreachable!() };
+                let Self::Small(old) =
+                    std::mem::replace(self, Self::Large(Vec::new(), HashMap::new()))
+                else {
+                    unreachable!()
+                };
+                let Self::Large(vec, map) = self else {
+                    unreachable!()
+                };
                 for (n, s) in old {
                     map.insert(n.clone(), s);
                     vec.push((n, s));
@@ -119,7 +127,9 @@ enum SmallOrLargeTransitionMap {
 }
 
 impl SmallOrLargeTransitionMap {
-    fn new() -> Self { Self::Small(SmallVec::new()) }
+    fn new() -> Self {
+        Self::Small(SmallVec::new())
+    }
 
     fn len(&self) -> usize {
         match self {
@@ -141,7 +151,9 @@ impl SmallOrLargeTransitionMap {
                 v.push((name, shape));
             }
             Self::Small(_) => {
-                let Self::Small(old) = std::mem::replace(self, Self::Large(HashMap::new())) else { unreachable!() };
+                let Self::Small(old) = std::mem::replace(self, Self::Large(HashMap::new())) else {
+                    unreachable!()
+                };
                 let Self::Large(h) = self else { unreachable!() };
                 for (n, s) in old {
                     h.insert(n, s);
@@ -196,7 +208,9 @@ impl Shape {
             slot_count: self.slot_count + 1,
         });
         // Register in this shape's transition table.
-        self.transitions.borrow_mut().insert(name.to_string(), Rc::clone(&child));
+        self.transitions
+            .borrow_mut()
+            .insert(name.to_string(), Rc::clone(&child));
         child
     }
 
@@ -281,7 +295,10 @@ mod tests {
         let root = Shape::root();
         let a = root.transition_to("x");
         let b = root.transition_to("x");
-        assert!(Rc::ptr_eq(&a, &b), "same transition must reuse shape (Pred-shape.2)");
+        assert!(
+            Rc::ptr_eq(&a, &b),
+            "same transition must reuse shape (Pred-shape.2)"
+        );
     }
 
     /// Different-name transitions produce distinct shapes.
@@ -302,8 +319,14 @@ mod tests {
     #[test]
     fn chain_preserves_insertion_order_and_identity() {
         let root = Shape::root();
-        let path_a = root.transition_to("x").transition_to("y").transition_to("z");
-        let path_b = root.transition_to("x").transition_to("y").transition_to("z");
+        let path_a = root
+            .transition_to("x")
+            .transition_to("y")
+            .transition_to("z");
+        let path_b = root
+            .transition_to("x")
+            .transition_to("y")
+            .transition_to("z");
         assert!(Rc::ptr_eq(&path_a, &path_b));
         assert_eq!(path_a.slot_count(), 3);
         assert_eq!(path_a.slot_of("x"), Some(0));
@@ -343,7 +366,9 @@ mod tests {
         }
         // Insertion order preserved through the promotion.
         let names: Vec<String> = cur.iter_slots().map(|(n, _)| n.to_string()).collect();
-        let expected: Vec<String> = (0..(SLOTS_INLINE_CAP + 2)).map(|i| format!("p{}", i)).collect();
+        let expected: Vec<String> = (0..(SLOTS_INLINE_CAP + 2))
+            .map(|i| format!("p{}", i))
+            .collect();
         assert_eq!(names, expected);
     }
 
@@ -360,7 +385,10 @@ mod tests {
         // Re-request each transition; identity must hold.
         for (i, child) in children.iter().enumerate() {
             let again = root.transition_to(&format!("k{}", i));
-            assert!(Rc::ptr_eq(child, &again), "identity must hold across map promotion");
+            assert!(
+                Rc::ptr_eq(child, &again),
+                "identity must hold across map promotion"
+            );
         }
         assert_eq!(root.transition_count(), TRANSITIONS_INLINE_CAP + 2);
     }
@@ -397,10 +425,15 @@ mod tests {
             }
         }
         // 5 distinct sequences → at most 5 distinct leaf shapes.
-        let mut distinct_leaves: Vec<*const Shape> = leaf_shapes.iter().map(|s| Rc::as_ptr(s)).collect();
+        let mut distinct_leaves: Vec<*const Shape> =
+            leaf_shapes.iter().map(|s| Rc::as_ptr(s)).collect();
         distinct_leaves.sort();
         distinct_leaves.dedup();
-        assert_eq!(distinct_leaves.len(), 5, "leaf shape count must equal distinct-sequence count (Pred-shape.3)");
+        assert_eq!(
+            distinct_leaves.len(),
+            5,
+            "leaf shape count must equal distinct-sequence count (Pred-shape.3)"
+        );
     }
 
     /// IC consumer API: as_raw_ptr returns the Rc's pointer; stable

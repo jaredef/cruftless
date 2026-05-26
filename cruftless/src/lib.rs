@@ -10,16 +10,16 @@ pub mod assert;
 pub mod crypto;
 pub mod events;
 pub mod fs;
-pub mod module_ns;
-pub mod node_stubs;
 pub mod http;
 pub mod https;
+pub mod module_ns;
+pub mod node_stubs;
 pub mod os;
 pub mod path;
-pub mod timer;
 pub mod process;
 pub mod register;
 pub mod stream;
+pub mod timer;
 pub mod tty;
 pub mod url;
 pub mod util;
@@ -62,11 +62,16 @@ pub fn install_bun_host(rt: &mut Runtime, argv: Vec<String>) {
     // Done as a post-step rather than reordering events-before-stream
     // because earlier installs (http, crypto, etc.) depend on stream being
     // resolved at their times.
-    if let (Some(Value::Object(ee_ctor)), Some(Value::Object(stream_ns))) =
-        (rt.globals.get("events").cloned(), rt.globals.get("stream").cloned())
-    {
+    if let (Some(Value::Object(ee_ctor)), Some(Value::Object(stream_ns))) = (
+        rt.globals.get("events").cloned(),
+        rt.globals.get("stream").cloned(),
+    ) {
         rt.object_set(stream_ns, "EventEmitter".into(), Value::Object(ee_ctor));
-        rt.object_set(stream_ns, "EventEmitterAsyncResource".into(), Value::Object(ee_ctor));
+        rt.object_set(
+            stream_ns,
+            "EventEmitterAsyncResource".into(),
+            Value::Object(ee_ctor),
+        );
     }
     node_stubs::install_all(rt);
     install_builtin_module_resolver(rt);
@@ -104,7 +109,14 @@ pub fn install_builtin_module_resolver(rt: &mut Runtime) {
             // Tier-Ω.5.s: assert / https / stream / url / util stubs.
             "node:assert" | "assert" => "__node_assert",
             "node:https" | "https" => "https",
-            "node:stream" | "stream" | "node:stream/promises" | "stream/promises" | "node:stream/web" | "stream/web" | "node:stream/consumers" | "stream/consumers" => "stream",
+            "node:stream"
+            | "stream"
+            | "node:stream/promises"
+            | "stream/promises"
+            | "node:stream/web"
+            | "stream/web"
+            | "node:stream/consumers"
+            | "stream/consumers" => "stream",
             "node:url" | "url" => "url",
             "node:util" | "util" => "util",
             // Tier-Ω.5.y: zlib + tty stubs.

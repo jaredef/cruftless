@@ -139,14 +139,21 @@ fn spec_underlying_source_pull_invoked_when_queue_empty() {
     }
     let pulls = Rc::new(Cell::new(0u32));
     let remaining = Rc::new(Cell::new(2u32));
-    let s = ReadableStream::new(Box::new(PullSource {
-        pulls: pulls.clone(),
-        chunks_remaining: remaining.clone(),
-    }), 1);
+    let s = ReadableStream::new(
+        Box::new(PullSource {
+            pulls: pulls.clone(),
+            chunks_remaining: remaining.clone(),
+        }),
+        1,
+    );
     let mut r = s.get_reader().unwrap();
     let chunks = read_chunks(&mut r, 4);
     assert_eq!(chunks, vec![42, 42]);
-    assert!(pulls.get() >= 2, "pull must be called per chunk; got {}", pulls.get());
+    assert!(
+        pulls.get() >= 2,
+        "pull must be called per chunk; got {}",
+        pulls.get()
+    );
 }
 
 #[test]
@@ -297,11 +304,17 @@ fn spec_writer_abort_propagates() {
         aborted: Rc<Cell<bool>>,
     }
     impl UnderlyingSink<u32> for AbortableSink {
-        fn write(&mut self, _: u32) -> Result<(), String> { Ok(()) }
-        fn abort(&mut self, _: Option<String>) { self.aborted.set(true); }
+        fn write(&mut self, _: u32) -> Result<(), String> {
+            Ok(())
+        }
+        fn abort(&mut self, _: Option<String>) {
+            self.aborted.set(true);
+        }
     }
     let aborted = Rc::new(Cell::new(false));
-    let s = WritableStream::new(Box::new(AbortableSink { aborted: aborted.clone() }));
+    let s = WritableStream::new(Box::new(AbortableSink {
+        aborted: aborted.clone(),
+    }));
     let mut w = s.get_writer().unwrap();
     w.abort(Some("user cancel".into())).unwrap();
     assert!(aborted.get());
@@ -311,7 +324,9 @@ fn spec_writer_abort_propagates() {
 fn spec_writer_sink_error_transitions_to_errored() {
     struct FailingSink;
     impl UnderlyingSink<u32> for FailingSink {
-        fn write(&mut self, _: u32) -> Result<(), String> { Err("write failed".into()) }
+        fn write(&mut self, _: u32) -> Result<(), String> {
+            Err("write failed".into())
+        }
     }
     let s = WritableStream::new(Box::new(FailingSink));
     let mut w = s.get_writer().unwrap();

@@ -34,8 +34,8 @@ use std::str;
 pub struct ParsedRequest {
     pub method: String,
     pub target: String,
-    pub version: String,             // "HTTP/1.1"
-    pub headers: Vec<(String, String)>,  // case as-received; lookup is case-insensitive
+    pub version: String,                // "HTTP/1.1"
+    pub headers: Vec<(String, String)>, // case as-received; lookup is case-insensitive
     pub body: Vec<u8>,
 }
 
@@ -52,7 +52,7 @@ pub struct ParsedResponse {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CodecError {
-    Truncated,                  // not enough bytes
+    Truncated, // not enough bytes
     BadStartLine(String),
     BadHeader(String),
     BadVersion(String),
@@ -80,7 +80,9 @@ impl std::fmt::Display for CodecError {
 // Find b"\r\n\r\n" — the end of the header section. Returns position
 // where the body would start (after CRLFCRLF).
 fn find_header_end(bytes: &[u8]) -> Option<usize> {
-    if bytes.len() < 4 { return None; }
+    if bytes.len() < 4 {
+        return None;
+    }
     let needle = b"\r\n\r\n";
     for i in 0..=bytes.len().saturating_sub(4) {
         if &bytes[i..i + 4] == needle {
@@ -92,15 +94,23 @@ fn find_header_end(bytes: &[u8]) -> Option<usize> {
 
 fn case_insensitive_get<'a>(headers: &'a [(String, String)], name: &str) -> Option<&'a str> {
     let lower = name.to_ascii_lowercase();
-    headers.iter().find(|(n, _)| n.to_ascii_lowercase() == lower).map(|(_, v)| v.as_str())
+    headers
+        .iter()
+        .find(|(n, _)| n.to_ascii_lowercase() == lower)
+        .map(|(_, v)| v.as_str())
 }
 
 fn parse_headers(section: &[u8]) -> Result<Vec<(String, String)>, CodecError> {
-    let s = str::from_utf8(section).map_err(|_| CodecError::BadHeader("non-UTF-8 header bytes".into()))?;
+    let s = str::from_utf8(section)
+        .map_err(|_| CodecError::BadHeader("non-UTF-8 header bytes".into()))?;
     let mut out = Vec::new();
     for line in s.split("\r\n") {
-        if line.is_empty() { continue; }
-        let colon = line.find(':').ok_or_else(|| CodecError::BadHeader(line.into()))?;
+        if line.is_empty() {
+            continue;
+        }
+        let colon = line
+            .find(':')
+            .ok_or_else(|| CodecError::BadHeader(line.into()))?;
         let name = line[..colon].trim().to_string();
         if name.is_empty() {
             return Err(CodecError::BadHeader("empty header name".into()));
@@ -140,7 +150,13 @@ pub fn parse_request(bytes: &[u8]) -> Result<ParsedRequest, CodecError> {
 
     let headers = parse_headers(headers_bytes)?;
     let body = decode_body(&headers, body_section)?;
-    Ok(ParsedRequest { method, target, version, headers, body })
+    Ok(ParsedRequest {
+        method,
+        target,
+        version,
+        headers,
+        body,
+    })
 }
 
 // ─────────────────────── Response parser ───────────────────────────
@@ -165,13 +181,24 @@ pub fn parse_response(bytes: &[u8]) -> Result<ParsedResponse, CodecError> {
     if !version.starts_with("HTTP/") {
         return Err(CodecError::BadVersion(version));
     }
-    let status: u16 = parts[1].parse()
+    let status: u16 = parts[1]
+        .parse()
         .map_err(|_| CodecError::BadStatus(parts[1].into()))?;
-    let reason = if parts.len() == 3 { parts[2].to_string() } else { String::new() };
+    let reason = if parts.len() == 3 {
+        parts[2].to_string()
+    } else {
+        String::new()
+    };
 
     let headers = parse_headers(headers_bytes)?;
     let body = decode_body(&headers, body_section)?;
-    Ok(ParsedResponse { version, status, reason, headers, body })
+    Ok(ParsedResponse {
+        version,
+        status,
+        reason,
+        headers,
+        body,
+    })
 }
 
 // Decode body using Content-Length or Transfer-Encoding: chunked.
@@ -183,8 +210,12 @@ fn decode_body(headers: &[(String, String)], body_bytes: &[u8]) -> Result<Vec<u8
         }
     }
     if let Some(cl) = case_insensitive_get(headers, "content-length") {
-        let n: usize = cl.parse().map_err(|_| CodecError::BadHeader(format!("invalid content-length {}", cl)))?;
-        if body_bytes.len() < n { return Err(CodecError::ContentLengthMismatch); }
+        let n: usize = cl
+            .parse()
+            .map_err(|_| CodecError::BadHeader(format!("invalid content-length {}", cl)))?;
+        if body_bytes.len() < n {
+            return Err(CodecError::ContentLengthMismatch);
+        }
         return Ok(body_bytes[..n].to_vec());
     }
     Ok(body_bytes.to_vec())
@@ -193,7 +224,10 @@ fn decode_body(headers: &[(String, String)], body_bytes: &[u8]) -> Result<Vec<u8
 // ─────────────────────── Serializers ───────────────────────────────
 
 pub fn serialize_request(
-    method: &str, target: &str, headers: &[(String, String)], body: &[u8],
+    method: &str,
+    target: &str,
+    headers: &[(String, String)],
+    body: &[u8],
 ) -> Vec<u8> {
     let mut out = Vec::new();
     out.extend_from_slice(method.as_bytes());
@@ -207,7 +241,10 @@ pub fn serialize_request(
 }
 
 pub fn serialize_response(
-    status: u16, reason: &str, headers: &[(String, String)], body: &[u8],
+    status: u16,
+    reason: &str,
+    headers: &[(String, String)],
+    body: &[u8],
 ) -> Vec<u8> {
     let mut out = Vec::new();
     out.extend_from_slice(b"HTTP/1.1 ");
@@ -226,8 +263,12 @@ fn write_headers(out: &mut Vec<u8>, headers: &[(String, String)], body_len: usiz
     let mut has_te = false;
     for (n, v) in headers {
         let lower = n.to_ascii_lowercase();
-        if lower == "content-length" { has_cl = true; }
-        if lower == "transfer-encoding" { has_te = true; }
+        if lower == "content-length" {
+            has_cl = true;
+        }
+        if lower == "transfer-encoding" {
+            has_te = true;
+        }
         out.extend_from_slice(n.as_bytes());
         out.extend_from_slice(b": ");
         out.extend_from_slice(v.as_bytes());
@@ -260,8 +301,11 @@ pub fn chunked_decode(bytes: &[u8]) -> Result<Vec<u8>, CodecError> {
     let mut i = 0;
     while i < bytes.len() {
         // Read chunk-size line.
-        let line_end = bytes[i..].windows(2).position(|w| w == b"\r\n")
-            .ok_or_else(|| CodecError::BadChunkEncoding("missing chunk-size CRLF".into()))? + i;
+        let line_end = bytes[i..]
+            .windows(2)
+            .position(|w| w == b"\r\n")
+            .ok_or_else(|| CodecError::BadChunkEncoding("missing chunk-size CRLF".into()))?
+            + i;
         let size_str = str::from_utf8(&bytes[i..line_end])
             .map_err(|_| CodecError::BadChunkEncoding("non-UTF-8 chunk size".into()))?;
         // Strip optional chunk-ext after ';'.
@@ -275,7 +319,9 @@ pub fn chunked_decode(bytes: &[u8]) -> Result<Vec<u8>, CodecError> {
             if !bytes[i..].starts_with(b"\r\n") {
                 // Could have trailers; for pilot, accept any bytes followed
                 // by "\r\n" as terminator.
-                let term = bytes[i..].windows(2).position(|w| w == b"\r\n")
+                let term = bytes[i..]
+                    .windows(2)
+                    .position(|w| w == b"\r\n")
                     .ok_or_else(|| CodecError::BadChunkEncoding("missing terminator".into()))?;
                 i += term + 2;
             } else {
@@ -284,15 +330,21 @@ pub fn chunked_decode(bytes: &[u8]) -> Result<Vec<u8>, CodecError> {
             return Ok(out);
         }
         if i + size > bytes.len() {
-            return Err(CodecError::BadChunkEncoding("chunk size exceeds remaining bytes".into()));
+            return Err(CodecError::BadChunkEncoding(
+                "chunk size exceeds remaining bytes".into(),
+            ));
         }
         out.extend_from_slice(&bytes[i..i + size]);
         i += size;
         // Each chunk ends with CRLF.
         if &bytes[i..i + 2] != b"\r\n" {
-            return Err(CodecError::BadChunkEncoding("chunk not followed by CRLF".into()));
+            return Err(CodecError::BadChunkEncoding(
+                "chunk not followed by CRLF".into(),
+            ));
         }
         i += 2;
     }
-    Err(CodecError::BadChunkEncoding("no zero-chunk terminator".into()))
+    Err(CodecError::BadChunkEncoding(
+        "no zero-chunk terminator".into(),
+    ))
 }

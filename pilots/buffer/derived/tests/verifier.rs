@@ -73,8 +73,14 @@ fn spec_buffer_byte_length_utf16le() {
 
 #[test]
 fn spec_buffer_is_encoding_known_names() {
-    for name in ["utf-8", "utf8", "UTF-8", "latin1", "binary", "ascii", "base64", "hex", "utf-16le"] {
-        assert!(Buffer::is_encoding(name), "{} should be a known encoding", name);
+    for name in [
+        "utf-8", "utf8", "UTF-8", "latin1", "binary", "ascii", "base64", "hex", "utf-16le",
+    ] {
+        assert!(
+            Buffer::is_encoding(name),
+            "{} should be a known encoding",
+            name
+        );
     }
 }
 

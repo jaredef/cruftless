@@ -10,8 +10,14 @@ fn bin() -> &'static str {
 }
 
 fn run() -> std::process::Output {
-    let fixture = concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/builtin_stubs_extended.mjs");
-    Command::new(bin()).arg(fixture).output().expect("run host-v2")
+    let fixture = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/fixtures/builtin_stubs_extended.mjs"
+    );
+    Command::new(bin())
+        .arg(fixture)
+        .output()
+        .expect("run host-v2")
 }
 
 #[test]
@@ -27,7 +33,10 @@ fn t02_https_request_typeof_function() {
     let out = run();
     assert!(out.status.success(), "binary failed: {:?}", out);
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(stdout.contains("https.request typeof: function"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("https.request typeof: function"),
+        "stdout: {stdout}"
+    );
 }
 
 #[test]
@@ -35,7 +44,10 @@ fn t03_stream_readable_typeof_function() {
     let out = run();
     assert!(out.status.success(), "binary failed: {:?}", out);
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(stdout.contains("stream.Readable typeof: function"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("stream.Readable typeof: function"),
+        "stdout: {stdout}"
+    );
 }
 
 #[test]

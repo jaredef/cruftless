@@ -53,13 +53,19 @@ impl File {
     }
 
     /// SPEC §4.name.
-    pub fn name(&self) -> &str { &self.name }
+    pub fn name(&self) -> &str {
+        &self.name
+    }
 
     /// SPEC §4.lastModified — milliseconds since Unix epoch.
-    pub fn last_modified(&self) -> i64 { self.last_modified }
+    pub fn last_modified(&self) -> i64 {
+        self.last_modified
+    }
 
     /// SPEC §4.webkitRelativePath.
-    pub fn webkit_relative_path(&self) -> &str { &self.webkit_relative_path }
+    pub fn webkit_relative_path(&self) -> &str {
+        &self.webkit_relative_path
+    }
 
     // ─────────── Blob delegation methods ────────────
     //
@@ -67,17 +73,29 @@ impl File {
     // method. Pilot delegates to the inner Blob via composition, which
     // is the Rust-idiomatic translation of IDL inheritance.
 
-    pub fn size(&self) -> usize { self.blob.size() }
-    pub fn mime_type(&self) -> &str { self.blob.mime_type() }
+    pub fn size(&self) -> usize {
+        self.blob.size()
+    }
+    pub fn mime_type(&self) -> &str {
+        self.blob.mime_type()
+    }
     pub fn slice(&self, start: i64, end: Option<i64>, content_type: Option<&str>) -> Blob {
         self.blob.slice(start, end, content_type)
     }
-    pub fn text(&self) -> String { self.blob.text() }
-    pub fn array_buffer(&self) -> Vec<u8> { self.blob.array_buffer() }
-    pub fn bytes(&self) -> Vec<u8> { self.blob.bytes() }
+    pub fn text(&self) -> String {
+        self.blob.text()
+    }
+    pub fn array_buffer(&self) -> Vec<u8> {
+        self.blob.array_buffer()
+    }
+    pub fn bytes(&self) -> Vec<u8> {
+        self.blob.bytes()
+    }
 
     /// Coerce the File to a Blob view. JS's `instanceof Blob` is satisfied
     /// for any File because File extends Blob; Rust's type-system analog
     /// is explicit access to the inner Blob.
-    pub fn as_blob(&self) -> &Blob { &self.blob }
+    pub fn as_blob(&self) -> &Blob {
+        &self.blob
+    }
 }

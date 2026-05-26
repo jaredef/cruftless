@@ -23,7 +23,10 @@ fn bin() -> &'static str {
 #[test]
 fn t01_http_namespace_has_keys() {
     let fixture = concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/builtin_stubs.mjs");
-    let out = Command::new(bin()).arg(fixture).output().expect("run host-v2");
+    let out = Command::new(bin())
+        .arg(fixture)
+        .output()
+        .expect("run host-v2");
     assert!(out.status.success(), "binary failed: {:?}", out);
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
@@ -38,7 +41,10 @@ fn t01_http_namespace_has_keys() {
 #[test]
 fn t02_crypto_create_hash_is_function() {
     let fixture = concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/builtin_stubs.mjs");
-    let out = Command::new(bin()).arg(fixture).output().expect("run host-v2");
+    let out = Command::new(bin())
+        .arg(fixture)
+        .output()
+        .expect("run host-v2");
     assert!(out.status.success(), "binary failed: {:?}", out);
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
@@ -50,7 +56,10 @@ fn t02_crypto_create_hash_is_function() {
 #[test]
 fn t03_crypto_random_uuid_returns_string() {
     let fixture = concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/builtin_stubs.mjs");
-    let out = Command::new(bin()).arg(fixture).output().expect("run host-v2");
+    let out = Command::new(bin())
+        .arg(fixture)
+        .output()
+        .expect("run host-v2");
     assert!(out.status.success(), "binary failed: {:?}", out);
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
@@ -62,7 +71,11 @@ fn t03_crypto_random_uuid_returns_string() {
         .find_map(|line| line.strip_prefix("uuid sample: "))
         .expect("uuid sample line");
     assert_eq!(uuid.len(), 36, "expected UUID length; stdout: {stdout}");
-    assert_eq!(uuid.as_bytes()[14], b'4', "expected UUID v4 marker; stdout: {stdout}");
+    assert_eq!(
+        uuid.as_bytes()[14],
+        b'4',
+        "expected UUID v4 marker; stdout: {stdout}"
+    );
     assert!(
         uuid.chars().enumerate().all(|(i, c)| {
             matches!(i, 8 | 13 | 18 | 23) && c == '-'
@@ -74,8 +87,14 @@ fn t03_crypto_random_uuid_returns_string() {
 
 #[test]
 fn t04_http_request_throws_documented_stub_message() {
-    let fixture = concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/builtin_stubs_throw.mjs");
-    let out = Command::new(bin()).arg(fixture).output().expect("run host-v2");
+    let fixture = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/fixtures/builtin_stubs_throw.mjs"
+    );
+    let out = Command::new(bin())
+        .arg(fixture)
+        .output()
+        .expect("run host-v2");
     // Expected: non-success exit; stderr names the stub message.
     assert!(
         !out.status.success(),

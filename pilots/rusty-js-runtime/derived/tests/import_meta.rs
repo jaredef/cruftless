@@ -30,7 +30,10 @@ fn write_file(dir: &PathBuf, name: &str, contents: &str) -> PathBuf {
 }
 
 fn entry_url(path: &PathBuf) -> String {
-    format!("file://{}", path.canonicalize().expect("canonicalize").display())
+    format!(
+        "file://{}",
+        path.canonicalize().expect("canonicalize").display()
+    )
 }
 
 fn fresh_runtime() -> Runtime {
@@ -51,7 +54,11 @@ fn load(rt: &mut Runtime, dir: &PathBuf, entry: &str) -> (rusty_js_runtime::Obje
 #[test]
 fn t01_import_meta_url() {
     let dir = fixture_dir("url");
-    write_file(&dir, "main.mjs", "const u = import.meta.url; export { u };\n");
+    write_file(
+        &dir,
+        "main.mjs",
+        "const u = import.meta.url; export { u };\n",
+    );
     let mut rt = fresh_runtime();
     let (ns, url) = load(&mut rt, &dir, "main.mjs");
     match rt.object_get(ns, "u") {
@@ -64,7 +71,11 @@ fn t01_import_meta_url() {
 #[test]
 fn t02_import_meta_dir() {
     let dir = fixture_dir("dir");
-    write_file(&dir, "main.mjs", "const d = import.meta.dir; export { d };\n");
+    write_file(
+        &dir,
+        "main.mjs",
+        "const d = import.meta.dir; export { d };\n",
+    );
     let mut rt = fresh_runtime();
     let (ns, _url) = load(&mut rt, &dir, "main.mjs");
     let canonical_dir = dir.canonicalize().expect("canonicalize");
@@ -72,8 +83,11 @@ fn t02_import_meta_dir() {
         Value::String(s) => {
             // dir should be the parent directory of main.mjs, no file:// prefix.
             assert_eq!(s.as_str(), canonical_dir.display().to_string());
-            assert!(!s.as_str().starts_with("file://"),
-                "import.meta.dir should not carry the file:// prefix; got {}", s);
+            assert!(
+                !s.as_str().starts_with("file://"),
+                "import.meta.dir should not carry the file:// prefix; got {}",
+                s
+            );
         }
         v => panic!("expected dir string, got {:?}", v),
     }
@@ -83,19 +97,29 @@ fn t02_import_meta_dir() {
 #[test]
 fn t03_import_meta_unknown_property() {
     let dir = fixture_dir("unknown");
-    write_file(&dir, "main.mjs", "const x = import.meta.unknown_property; export { x };\n");
+    write_file(
+        &dir,
+        "main.mjs",
+        "const x = import.meta.unknown_property; export { x };\n",
+    );
     let mut rt = fresh_runtime();
     let (ns, _url) = load(&mut rt, &dir, "main.mjs");
-    assert!(matches!(rt.object_get(ns, "x"), Value::Undefined),
-        "import.meta.unknown should be Undefined, got {:?}", rt.object_get(ns, "x"));
+    assert!(
+        matches!(rt.object_get(ns, "x"), Value::Undefined),
+        "import.meta.unknown should be Undefined, got {:?}",
+        rt.object_get(ns, "x")
+    );
 }
 
 // ─── 4. import.meta as an object identity — bind, then read. ───────────
 #[test]
 fn t04_import_meta_object_binding() {
     let dir = fixture_dir("binding");
-    write_file(&dir, "main.mjs",
-        "const m = import.meta;\nconst u = m.url;\nexport { u };\n");
+    write_file(
+        &dir,
+        "main.mjs",
+        "const m = import.meta;\nconst u = m.url;\nexport { u };\n",
+    );
     let mut rt = fresh_runtime();
     let (ns, url) = load(&mut rt, &dir, "main.mjs");
     match rt.object_get(ns, "u") {

@@ -122,10 +122,7 @@ pub fn lint(f: &IRFunction, spec: &[SpecStepRecord]) -> LintReport {
             report.findings.push(LintFinding {
                 spec_step: id.to_string(),
                 kind: FindingKind::ExtraStep,
-                message: format!(
-                    "IR for §{} step {} not in spec",
-                    f.spec_section, id
-                ),
+                message: format!("IR for §{} step {} not in spec", f.spec_section, id),
             });
         }
     }
@@ -133,10 +130,7 @@ pub fn lint(f: &IRFunction, spec: &[SpecStepRecord]) -> LintReport {
     report
 }
 
-fn collect_steps<'a>(
-    body: &'a [Step],
-    out: &mut std::collections::HashMap<&'a str, &'a Step>,
-) {
+fn collect_steps<'a>(body: &'a [Step], out: &mut std::collections::HashMap<&'a str, &'a Step>) {
     for s in body {
         // Convention: sub-step IDs of the form "<parent>.throw" or
         // "<parent>.guard" are *inline-throw consequents* — the spec
@@ -144,19 +138,22 @@ fn collect_steps<'a>(
         // doesn't either. They're already collected by walk_step_collecting
         // for the abstract-op set of the parent step. Skip them here so
         // they don't appear as "ExtraStep" findings.
-        let is_synthetic_inline =
-            s.spec_step.ends_with(".throw") ||
-            s.spec_step.ends_with(".guard") ||
-            s.spec_step.ends_with(".return") ||
-            s.spec_step.ends_with(".adj") ||
-            s.spec_step.ends_with(".seed");
+        let is_synthetic_inline = s.spec_step.ends_with(".throw")
+            || s.spec_step.ends_with(".guard")
+            || s.spec_step.ends_with(".return")
+            || s.spec_step.ends_with(".adj")
+            || s.spec_step.ends_with(".seed");
         if !is_synthetic_inline {
             out.insert(s.spec_step.as_str(), s);
         }
         // Recurse into If/While bodies — the inner steps may have their
         // own spec-step IDs like "6.a", "6.c.i".
         match &s.node {
-            IRNode::If { then_body, else_body, .. } => {
+            IRNode::If {
+                then_body,
+                else_body,
+                ..
+            } => {
                 collect_steps(then_body, out);
                 collect_steps(else_body, out);
             }
@@ -171,7 +168,10 @@ fn collect_steps<'a>(
     }
 }
 
-fn collect_steps_from_node<'a>(node: &'a IRNode, out: &mut std::collections::HashMap<&'a str, &'a Step>) {
+fn collect_steps_from_node<'a>(
+    node: &'a IRNode,
+    out: &mut std::collections::HashMap<&'a str, &'a Step>,
+) {
     match node {
         IRNode::Let { value, .. }
         | IRNode::LetIndex { value, .. }
@@ -183,7 +183,11 @@ fn collect_steps_from_node<'a>(node: &'a IRNode, out: &mut std::collections::Has
             collect_steps_from_expr(cell, out);
             collect_steps_from_expr(value, out);
         }
-        IRNode::If { cond, then_body, else_body } => {
+        IRNode::If {
+            cond,
+            then_body,
+            else_body,
+        } => {
             collect_steps_from_expr(cond, out);
             collect_steps(then_body, out);
             collect_steps(else_body, out);
@@ -196,7 +200,10 @@ fn collect_steps_from_node<'a>(node: &'a IRNode, out: &mut std::collections::Has
     }
 }
 
-fn collect_steps_from_expr<'a>(e: &'a Expr, out: &mut std::collections::HashMap<&'a str, &'a Step>) {
+fn collect_steps_from_expr<'a>(
+    e: &'a Expr,
+    out: &mut std::collections::HashMap<&'a str, &'a Step>,
+) {
     if let Expr::Closure { body, .. } = e {
         collect_steps(body, out);
     }
@@ -230,7 +237,11 @@ fn walk_step_collecting(node: &IRNode, set: &mut std::collections::HashSet<&'sta
         IRNode::Throw { .. } => {
             set.insert("Throw");
         }
-        IRNode::If { cond, then_body, else_body } => {
+        IRNode::If {
+            cond,
+            then_body,
+            else_body,
+        } => {
             collect_abstract_ops_in_expr(cond, set);
             // Inline-throw recognition: if the then_body is a single Throw
             // step (or contains only a Throw at top level), surface it as
@@ -257,10 +268,7 @@ fn walk_step_collecting(node: &IRNode, set: &mut std::collections::HashSet<&'sta
     }
 }
 
-fn collect_abstract_ops_in_expr(
-    e: &Expr,
-    set: &mut std::collections::HashSet<&'static str>,
-) {
+fn collect_abstract_ops_in_expr(e: &Expr, set: &mut std::collections::HashSet<&'static str>) {
     match e {
         Expr::RequireObjectCoercible(v) => {
             set.insert("RequireObjectCoercible");
@@ -360,7 +368,11 @@ fn collect_abstract_ops_in_expr(
             collect_abstract_ops_in_expr(o, set);
             collect_abstract_ops_in_expr(length, set);
         }
-        Expr::Call { function, this, args } => {
+        Expr::Call {
+            function,
+            this,
+            args,
+        } => {
             set.insert("Call");
             collect_abstract_ops_in_expr(function, set);
             collect_abstract_ops_in_expr(this, set);
@@ -375,7 +387,11 @@ fn collect_abstract_ops_in_expr(
                 collect_abstract_ops_in_expr(a, set);
             }
         }
-        Expr::Invoke { object, method, args } => {
+        Expr::Invoke {
+            object,
+            method,
+            args,
+        } => {
             set.insert("Invoke");
             collect_abstract_ops_in_expr(object, set);
             collect_abstract_ops_in_expr(method, set);
@@ -408,11 +424,16 @@ fn collect_abstract_ops_in_expr(
             collect_abstract_ops_in_expr(a, set);
             collect_abstract_ops_in_expr(b, set);
         }
-        Expr::OpAdd(a, b) | Expr::OpSub(a, b) | Expr::OpMul(a, b) |
-        Expr::NumberAdd(a, b) | Expr::NumberSub(a, b) |
-        Expr::NumberLt(a, b) | Expr::NumberGe(a, b) |
-        Expr::LooseEq(a, b) |
-        Expr::Lt(a, b) | Expr::Le(a, b) => {
+        Expr::OpAdd(a, b)
+        | Expr::OpSub(a, b)
+        | Expr::OpMul(a, b)
+        | Expr::NumberAdd(a, b)
+        | Expr::NumberSub(a, b)
+        | Expr::NumberLt(a, b)
+        | Expr::NumberGe(a, b)
+        | Expr::LooseEq(a, b)
+        | Expr::Lt(a, b)
+        | Expr::Le(a, b) => {
             collect_abstract_ops_in_expr(a, set);
             collect_abstract_ops_in_expr(b, set);
         }
@@ -421,12 +442,23 @@ fn collect_abstract_ops_in_expr(
             set.insert("HasSlot");
             collect_abstract_ops_in_expr(v, set);
         }
-        Expr::Var(_) | Expr::Undefined | Expr::Null | Expr::Bool(_) |
-        Expr::Number(_) | Expr::Str(_) | Expr::Arg(_) | Expr::This |
-        Expr::HasArg(_) | Expr::AllArgs | Expr::ArgsRest(_) | Expr::IntConst(_) => {}
+        Expr::Var(_)
+        | Expr::Undefined
+        | Expr::Null
+        | Expr::Bool(_)
+        | Expr::Number(_)
+        | Expr::Str(_)
+        | Expr::Arg(_)
+        | Expr::This
+        | Expr::HasArg(_)
+        | Expr::AllArgs
+        | Expr::ArgsRest(_)
+        | Expr::IntConst(_) => {}
         Expr::CallBuiltin { name, args } => {
             set.insert(name);
-            for a in args { collect_abstract_ops_in_expr(a, set); }
+            for a in args {
+                collect_abstract_ops_in_expr(a, set);
+            }
         }
         Expr::AsIndex(v) => collect_abstract_ops_in_expr(v, set),
         Expr::IndexAsValue(v) => collect_abstract_ops_in_expr(v, set),
@@ -457,7 +489,11 @@ fn collect_abstract_ops_in_expr(
 fn find_throw_class(step: &Step) -> Option<&'static str> {
     match &step.node {
         IRNode::Throw { class, .. } => Some(class.rust_variant()),
-        IRNode::If { then_body, else_body, .. } => then_body
+        IRNode::If {
+            then_body,
+            else_body,
+            ..
+        } => then_body
             .iter()
             .find_map(find_throw_class)
             .or_else(|| else_body.iter().find_map(find_throw_class)),

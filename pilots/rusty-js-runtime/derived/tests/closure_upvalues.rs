@@ -12,18 +12,23 @@ fn run(src: &str) -> Value {
 }
 
 fn run_rt(src: &str) -> (Runtime, Value) {
-    let module = rusty_js_bytecode::compile_module(src)
-        .unwrap_or_else(|e| panic!("compile: {:?}", e));
+    let module =
+        rusty_js_bytecode::compile_module(src).unwrap_or_else(|e| panic!("compile: {:?}", e));
     let mut rt = Runtime::new();
     rt.install_intrinsics();
-    let v = rt.run_module(&module).unwrap_or_else(|e| panic!("run: {:?}", e));
+    let v = rt
+        .run_module(&module)
+        .unwrap_or_else(|e| panic!("run: {:?}", e));
     (rt, v)
 }
 
 // 1. Inner arrow reads outer local.
 #[test]
 fn t01_arrow_reads_outer_local() {
-    assert_eq!(run("let n = 7; let f = () => n; return f();"), Value::Number(7.0));
+    assert_eq!(
+        run("let n = 7; let f = () => n; return f();"),
+        Value::Number(7.0)
+    );
 }
 
 // 2. Inner function reads outer parameter.
@@ -46,7 +51,11 @@ fn t03_foreach_accumulator() {
     // arrow does NOT propagate to the outer `n` for v1. This deviation is
     // documented; the test verifies engine *runs* this code without panic
     // and the recorded value is the snapshot result.
-    let recorded = rt.globals.get("__last_recorded").cloned().unwrap_or(Value::Undefined);
+    let recorded = rt
+        .globals
+        .get("__last_recorded")
+        .cloned()
+        .unwrap_or(Value::Undefined);
     // Binding-shared: arrow's writes propagate to outer `n`. 0+1+2+3 = 6.
     assert_eq!(recorded, Value::Number(6.0));
 }
@@ -90,7 +99,9 @@ fn t06_map_with_outer_factor() {
     "#;
     if let Value::String(s) = run(src) {
         assert_eq!(s.as_str(), "3,6,9");
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 // 7. Captured value lives independently per closure invocation.
@@ -100,7 +111,11 @@ fn t07_per_call_capture() {
         function make(v) { return () => v; }
         return make("a")() + make("b")();
     "#;
-    if let Value::String(s) = run(src) { assert_eq!(s.as_str(), "ab"); } else { panic!(); }
+    if let Value::String(s) = run(src) {
+        assert_eq!(s.as_str(), "ab");
+    } else {
+        panic!();
+    }
 }
 
 // 8. Closure capturing nothing — degenerate case still works.

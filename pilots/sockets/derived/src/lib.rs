@@ -26,14 +26,14 @@
 // passing raw socket fds (which the OS may reuse) across the boundary and
 // avoids the rquickjs lifetime concerns with owning network types.
 
+use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::net::{TcpListener, TcpStream, SocketAddr};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread::JoinHandle;
 use std::time::Duration;
-use std::collections::HashMap;
 
 enum Handle {
     Listener(TcpListener),
@@ -76,7 +76,12 @@ struct Registry {
 
 fn registry() -> &'static Mutex<Registry> {
     static REG: OnceLock<Mutex<Registry>> = OnceLock::new();
-    REG.get_or_init(|| Mutex::new(Registry { next_id: 1, handles: HashMap::new() }))
+    REG.get_or_init(|| {
+        Mutex::new(Registry {
+            next_id: 1,
+            handles: HashMap::new(),
+        })
+    })
 }
 
 fn put(h: Handle) -> u64 {
@@ -120,7 +125,9 @@ impl std::fmt::Display for SocketError {
 /// chosen.
 pub fn listener_bind(addr: &str) -> Result<(u64, String), SocketError> {
     let listener = TcpListener::bind(addr).map_err(|e| SocketError::Bind(e.to_string()))?;
-    let local = listener.local_addr().map_err(|e| SocketError::Bind(e.to_string()))?;
+    let local = listener
+        .local_addr()
+        .map_err(|e| SocketError::Bind(e.to_string()))?;
     let id = put(Handle::Listener(listener));
     Ok((id, local.to_string()))
 }
@@ -134,11 +141,15 @@ pub fn listener_accept(id: u64) -> Result<(u64, String), SocketError> {
         let r = registry().lock().expect("sockets: registry poisoned");
         let h = r.handles.get(&id).ok_or(SocketError::NotFound)?;
         match h {
-            Handle::Listener(l) => l.try_clone().map_err(|e| SocketError::Accept(e.to_string()))?,
+            Handle::Listener(l) => l
+                .try_clone()
+                .map_err(|e| SocketError::Accept(e.to_string()))?,
             _ => return Err(SocketError::WrongKind),
         }
     };
-    let (stream, peer) = listener_clone.accept().map_err(|e| SocketError::Accept(e.to_string()))?;
+    let (stream, peer) = listener_clone
+        .accept()
+        .map_err(|e| SocketError::Accept(e.to_string()))?;
     let stream_id = put(Handle::Stream(stream));
     Ok((stream_id, peer.to_string()))
 }
@@ -155,7 +166,8 @@ pub fn listener_set_accept_timeout(id: u64, ms: u64) -> Result<(), SocketError> 
             // set non-blocking + use a separate poll loop. For the substrate
             // pilot, we expose set_nonblocking only (timeout is informational).
             let _ = ms;
-            l.set_nonblocking(false).map_err(|e| SocketError::Accept(e.to_string()))
+            l.set_nonblocking(false)
+                .map_err(|e| SocketError::Accept(e.to_string()))
         }
         _ => Err(SocketError::WrongKind),
     }
@@ -176,7 +188,8 @@ pub fn stream_connect_timeout(addr: &str, timeout_ms: u64) -> Result<u64, Socket
     // Resolve via to_socket_addrs (handles "localhost:N", "127.0.0.1:N",
     // and IPv6). std::net::SocketAddr::parse only accepts pre-resolved
     // IP:port forms; HTTP clients commonly pass hostnames.
-    let sa: SocketAddr = addr.to_socket_addrs()
+    let sa: SocketAddr = addr
+        .to_socket_addrs()
         .map_err(|e| SocketError::Connect(e.to_string()))?
         .next()
         .ok_or_else(|| SocketError::Connect("no addresses resolved".into()))?;
@@ -194,12 +207,16 @@ pub fn stream_read(id: u64, max: usize) -> Result<Vec<u8>, SocketError> {
         let r = registry().lock().expect("sockets: registry poisoned");
         let h = r.handles.get(&id).ok_or(SocketError::NotFound)?;
         match h {
-            Handle::Stream(s) => s.try_clone().map_err(|e| SocketError::Read(e.to_string()))?,
+            Handle::Stream(s) => s
+                .try_clone()
+                .map_err(|e| SocketError::Read(e.to_string()))?,
             _ => return Err(SocketError::WrongKind),
         }
     };
     let mut buf = vec![0u8; max];
-    let n = stream.read(&mut buf).map_err(|e| SocketError::Read(e.to_string()))?;
+    let n = stream
+        .read(&mut buf)
+        .map_err(|e| SocketError::Read(e.to_string()))?;
     buf.truncate(n);
     Ok(buf)
 }
@@ -210,11 +227,15 @@ pub fn stream_write(id: u64, data: &[u8]) -> Result<usize, SocketError> {
         let r = registry().lock().expect("sockets: registry poisoned");
         let h = r.handles.get(&id).ok_or(SocketError::NotFound)?;
         match h {
-            Handle::Stream(s) => s.try_clone().map_err(|e| SocketError::Write(e.to_string()))?,
+            Handle::Stream(s) => s
+                .try_clone()
+                .map_err(|e| SocketError::Write(e.to_string()))?,
             _ => return Err(SocketError::WrongKind),
         }
     };
-    let n = stream.write(data).map_err(|e| SocketError::Write(e.to_string()))?;
+    let n = stream
+        .write(data)
+        .map_err(|e| SocketError::Write(e.to_string()))?;
     Ok(n)
 }
 
@@ -224,11 +245,15 @@ pub fn stream_write_all(id: u64, data: &[u8]) -> Result<(), SocketError> {
         let r = registry().lock().expect("sockets: registry poisoned");
         let h = r.handles.get(&id).ok_or(SocketError::NotFound)?;
         match h {
-            Handle::Stream(s) => s.try_clone().map_err(|e| SocketError::Write(e.to_string()))?,
+            Handle::Stream(s) => s
+                .try_clone()
+                .map_err(|e| SocketError::Write(e.to_string()))?,
             _ => return Err(SocketError::WrongKind),
         }
     };
-    stream.write_all(data).map_err(|e| SocketError::Write(e.to_string()))?;
+    stream
+        .write_all(data)
+        .map_err(|e| SocketError::Write(e.to_string()))?;
     Ok(())
 }
 
@@ -236,7 +261,9 @@ pub fn stream_peer_addr(id: u64) -> Result<String, SocketError> {
     let r = registry().lock().expect("sockets: registry poisoned");
     let h = r.handles.get(&id).ok_or(SocketError::NotFound)?;
     match h {
-        Handle::Stream(s) => s.peer_addr().map(|a| a.to_string())
+        Handle::Stream(s) => s
+            .peer_addr()
+            .map(|a| a.to_string())
             .map_err(|e| SocketError::Read(e.to_string())),
         _ => Err(SocketError::WrongKind),
     }
@@ -246,7 +273,9 @@ pub fn stream_local_addr(id: u64) -> Result<String, SocketError> {
     let r = registry().lock().expect("sockets: registry poisoned");
     let h = r.handles.get(&id).ok_or(SocketError::NotFound)?;
     match h {
-        Handle::Stream(s) => s.local_addr().map(|a| a.to_string())
+        Handle::Stream(s) => s
+            .local_addr()
+            .map(|a| a.to_string())
             .map_err(|e| SocketError::Read(e.to_string())),
         _ => Err(SocketError::WrongKind),
     }
@@ -260,11 +289,15 @@ pub fn stream_set_nonblocking(id: u64, on: bool) -> Result<(), SocketError> {
         let r = registry().lock().expect("sockets: registry poisoned");
         let h = r.handles.get(&id).ok_or(SocketError::NotFound)?;
         match h {
-            Handle::Stream(s) => s.try_clone().map_err(|e| SocketError::Read(e.to_string()))?,
+            Handle::Stream(s) => s
+                .try_clone()
+                .map_err(|e| SocketError::Read(e.to_string()))?,
             _ => return Err(SocketError::WrongKind),
         }
     };
-    stream.set_nonblocking(on).map_err(|e| SocketError::Read(e.to_string()))
+    stream
+        .set_nonblocking(on)
+        .map_err(|e| SocketError::Read(e.to_string()))
 }
 
 /// Π2.6.b: non-blocking read. Returns Ok(Some(bytes)) on data,
@@ -276,13 +309,18 @@ pub fn stream_try_read(id: u64, max: usize) -> Result<Option<Vec<u8>>, SocketErr
         let r = registry().lock().expect("sockets: registry poisoned");
         let h = r.handles.get(&id).ok_or(SocketError::NotFound)?;
         match h {
-            Handle::Stream(s) => s.try_clone().map_err(|e| SocketError::Read(e.to_string()))?,
+            Handle::Stream(s) => s
+                .try_clone()
+                .map_err(|e| SocketError::Read(e.to_string()))?,
             _ => return Err(SocketError::WrongKind),
         }
     };
     let mut buf = vec![0u8; max];
     match stream.read(&mut buf) {
-        Ok(n) => { buf.truncate(n); Ok(Some(buf)) }
+        Ok(n) => {
+            buf.truncate(n);
+            Ok(Some(buf))
+        }
         Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
         Err(e) => Err(SocketError::Read(e.to_string())),
     }
@@ -336,7 +374,8 @@ pub fn listener_set_nonblocking(id: u64, on: bool) -> Result<(), SocketError> {
     let r = registry().lock().expect("sockets: registry poisoned");
     let h = r.handles.get(&id).ok_or(SocketError::NotFound)?;
     match h {
-        Handle::Listener(l) => l.set_nonblocking(on)
+        Handle::Listener(l) => l
+            .set_nonblocking(on)
             .map_err(|e| SocketError::Bind(e.to_string())),
         _ => Err(SocketError::WrongKind),
     }
@@ -347,7 +386,9 @@ pub fn listener_try_accept(id: u64) -> Result<Option<(u64, String)>, SocketError
         let r = registry().lock().expect("sockets: registry poisoned");
         let h = r.handles.get(&id).ok_or(SocketError::NotFound)?;
         match h {
-            Handle::Listener(l) => l.try_clone().map_err(|e| SocketError::Accept(e.to_string()))?,
+            Handle::Listener(l) => l
+                .try_clone()
+                .map_err(|e| SocketError::Accept(e.to_string()))?,
             _ => return Err(SocketError::WrongKind),
         }
     };
@@ -397,9 +438,13 @@ pub fn handle_kind(id: u64) -> Result<&'static str, SocketError> {
 /// Returns the async-listener handle id + the bound local addr.
 pub fn listener_bind_async(addr: &str) -> Result<(u64, String), SocketError> {
     let listener = TcpListener::bind(addr).map_err(|e| SocketError::Bind(e.to_string()))?;
-    let local = listener.local_addr().map_err(|e| SocketError::Bind(e.to_string()))?;
+    let local = listener
+        .local_addr()
+        .map_err(|e| SocketError::Bind(e.to_string()))?;
     let local_str = local.to_string();
-    listener.set_nonblocking(true).map_err(|e| SocketError::Bind(e.to_string()))?;
+    listener
+        .set_nonblocking(true)
+        .map_err(|e| SocketError::Bind(e.to_string()))?;
     let shutdown = Arc::new(AtomicBool::new(false));
     let (tx, rx): (Sender<AsyncEvent>, Receiver<AsyncEvent>) = mpsc::channel();
     let thread_shutdown = shutdown.clone();
@@ -431,7 +476,13 @@ fn accept_loop(listener: TcpListener, tx: Sender<AsyncEvent>, shutdown: Arc<Atom
                     continue;
                 }
                 let stream_id = put(Handle::Stream(stream));
-                if tx.send(AsyncEvent::Connection { stream_id, peer: peer.to_string() }).is_err() {
+                if tx
+                    .send(AsyncEvent::Connection {
+                        stream_id,
+                        peer: peer.to_string(),
+                    })
+                    .is_err()
+                {
                     // Receiver dropped; exit loop.
                     break;
                 }
@@ -462,7 +513,7 @@ pub fn listener_poll(id: u64, max_wait_ms: u64) -> Result<Option<AsyncEvent>, So
             Handle::AsyncListener(al) => al.rx.clone(),
             _ => return Err(SocketError::WrongKind),
         }
-    };  // registry lock released here
+    }; // registry lock released here
     let guard = rx.lock().expect("sockets: rx mutex poisoned");
     match guard.recv_timeout(Duration::from_millis(max_wait_ms)) {
         Ok(ev) => Ok(Some(ev)),

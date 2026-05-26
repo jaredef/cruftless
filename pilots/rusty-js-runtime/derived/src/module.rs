@@ -53,11 +53,20 @@ pub mod phase_profile {
     pub fn add(c: &'static AtomicU64, ns: u64) {
         c.fetch_add(ns, Ordering::Relaxed);
     }
-    pub fn read(c: &'static AtomicU64) -> u64 { c.load(Ordering::Relaxed) }
+    pub fn read(c: &'static AtomicU64) -> u64 {
+        c.load(Ordering::Relaxed)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ModuleStatus { Unlinked, Linking, Linked, Evaluating, Evaluated, Failed }
+pub enum ModuleStatus {
+    Unlinked,
+    Linking,
+    Linked,
+    Evaluating,
+    Evaluated,
+    Failed,
+}
 
 /// Tier-Ω.5.P23.E1.live-import-bindings: a deferred import-binding awaiting
 /// the source module's evaluation to complete so its cell can be populated
@@ -79,7 +88,10 @@ pub struct DeferredImportBinding {
 /// wrapper-synthesis path in `evaluate_cjs_module`. ESM-importing-CJS
 /// reads `module.exports` instead of a spec namespace.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ModuleKind { ESM, CJS }
+pub enum ModuleKind {
+    ESM,
+    CJS,
+}
 
 pub struct ModuleRecord {
     pub url: String,
@@ -133,7 +145,9 @@ pub fn detect_module_kind(resolved_url: &str) -> ModuleKind {
             // package.json type field. Closes the 9-package
             // "expected '(' after import" cluster in cjs-wrapper parse.
             if let Ok(head) = read_source_head(path, 65536) {
-                if source_has_esm_markers(&head) { return ModuleKind::ESM; }
+                if source_has_esm_markers(&head) {
+                    return ModuleKind::ESM;
+                }
             }
             // Fall back to the package.json walk.
             let mut cur = path.parent();
@@ -146,7 +160,11 @@ pub fn detect_module_kind(resolved_url: &str) -> ModuleKind {
                         // `"commonjs"` in textual order. False positives
                         // on comments-in-strings are tolerable for v1.
                         if let Some(t) = scan_package_type(&text) {
-                            return if t == "module" { ModuleKind::ESM } else { ModuleKind::CJS };
+                            return if t == "module" {
+                                ModuleKind::ESM
+                            } else {
+                                ModuleKind::CJS
+                            };
                         }
                         // package.json with no "type" → CJS per Node.
                         return ModuleKind::CJS;
@@ -179,7 +197,9 @@ fn source_has_esm_markers(text: &str) -> bool {
     // Strip a leading shebang line if present.
     let mut t = text;
     if t.starts_with("#!") {
-        if let Some(nl) = t.find('\n') { t = &t[nl+1..]; }
+        if let Some(nl) = t.find('\n') {
+            t = &t[nl + 1..];
+        }
     }
     // Look for line-start `import` or `export` keywords with a word
     // boundary after (to avoid matching `importFoo`). Allow leading
@@ -188,15 +208,21 @@ fn source_has_esm_markers(text: &str) -> bool {
         let trimmed = line.trim_start();
         if trimmed.starts_with("import") {
             let rest = &trimmed[6..];
-            if rest.is_empty() { return true; }
+            if rest.is_empty() {
+                return true;
+            }
             let c = rest.chars().next().unwrap();
             if c.is_whitespace() || c == '{' || c == '*' || c == '"' || c == '\'' || c == '(' {
-                if c != '(' { return true; }
+                if c != '(' {
+                    return true;
+                }
             }
         }
         if trimmed.starts_with("export") {
             let rest = &trimmed[6..];
-            if rest.is_empty() { return true; }
+            if rest.is_empty() {
+                return true;
+            }
             let c = rest.chars().next().unwrap();
             if c.is_whitespace() || c == '{' || c == '*' || c == '"' || c == '\'' {
                 return true;
@@ -210,10 +236,27 @@ fn source_has_esm_markers(text: &str) -> bool {
     // many other npm packages with rollup/terser minified ESM builds
     // exhibit the same shape). Without this the per-line scan misses
     // them and we mis-classify the file as CJS.
-    for pat in [";export{", ";export ", ";export*", "}export{", "}export ", "}export*",
-                ";import{", ";import ", ";import*", ";import\"", ";import'",
-                "}import{", "}import ", "}import*", "}import\"", "}import'"] {
-        if t.contains(pat) { return true; }
+    for pat in [
+        ";export{",
+        ";export ",
+        ";export*",
+        "}export{",
+        "}export ",
+        "}export*",
+        ";import{",
+        ";import ",
+        ";import*",
+        ";import\"",
+        ";import'",
+        "}import{",
+        "}import ",
+        "}import*",
+        "}import\"",
+        "}import'",
+    ] {
+        if t.contains(pat) {
+            return true;
+        }
     }
     false
 }
@@ -232,7 +275,9 @@ fn scan_package_type(text: &str) -> Option<String> {
     while let Some(rel) = text[cursor..].find("\"type\"") {
         let key_pos = cursor + rel;
         let after = &text[key_pos + 6..];
-        let Some(colon) = after.find(':') else { return None; };
+        let Some(colon) = after.find(':') else {
+            return None;
+        };
         let after = &after[colon + 1..];
         let after = after.trim_start();
         if let Some(rest) = after.strip_prefix('"') {
@@ -267,7 +312,9 @@ pub enum HostHook {
     /// namespace + the AST. The hook can mutate the namespace to add
     /// synthetic bindings (Tuple A: default = namespace; Tuple B: named
     /// exports synthesized from default's own properties).
-    FinalizeModuleNamespace(Box<dyn Fn(&mut Runtime, &AstModule, ObjectRef, &str) -> Result<(), RuntimeError>>),
+    FinalizeModuleNamespace(
+        Box<dyn Fn(&mut Runtime, &AstModule, ObjectRef, &str) -> Result<(), RuntimeError>>,
+    ),
     /// Called at run_to_completion's idle phase (phase 3) when both
     /// microtask and macrotask queues are empty. The host should:
     /// (a) consult its OS I/O multiplexer (mio Poll, libuv, io_uring,
@@ -287,14 +334,18 @@ pub enum HostHook {
     /// Installed by host-v2::install_bun_host to route `node:fs`,
     /// `node:path`, `node:os`, `node:process` to the pre-installed
     /// intrinsic objects.
-    ResolveBuiltinModule(Box<dyn Fn(&mut Runtime, &str) -> Result<Option<ObjectRef>, RuntimeError>>),
+    ResolveBuiltinModule(
+        Box<dyn Fn(&mut Runtime, &str) -> Result<Option<ObjectRef>, RuntimeError>>,
+    ),
 }
 
 #[derive(Default)]
 pub struct HostHooks {
-    pub finalize_namespace: Option<Box<dyn Fn(&mut Runtime, &AstModule, ObjectRef, &str) -> Result<(), RuntimeError>>>,
+    pub finalize_namespace:
+        Option<Box<dyn Fn(&mut Runtime, &AstModule, ObjectRef, &str) -> Result<(), RuntimeError>>>,
     pub poll_io: Option<Box<dyn Fn(&mut Runtime) -> Result<bool, RuntimeError>>>,
-    pub resolve_builtin: Option<Box<dyn Fn(&mut Runtime, &str) -> Result<Option<ObjectRef>, RuntimeError>>>,
+    pub resolve_builtin:
+        Option<Box<dyn Fn(&mut Runtime, &str) -> Result<Option<ObjectRef>, RuntimeError>>>,
 }
 
 impl Runtime {
@@ -398,8 +449,11 @@ impl Runtime {
         // hit subtle correctness gaps. Aliasing closes a cluster of
         // packages whose only fault is depending on these polyfills.
         let aliased = match specifier {
-            "readable-stream" | "readable-stream/duplex" | "readable-stream/readable"
-            | "readable-stream/writable" | "readable-stream/transform"
+            "readable-stream"
+            | "readable-stream/duplex"
+            | "readable-stream/readable"
+            | "readable-stream/writable"
+            | "readable-stream/transform"
             | "readable-stream/passthrough" => Some("node:stream"),
             "safe-buffer" => Some("node:buffer"),
             "stream-browserify" => Some("node:stream"),
@@ -436,7 +490,9 @@ impl Runtime {
         if specifier.starts_with('#') {
             let parent_path_str = parent_url.strip_prefix("file://").unwrap_or(parent_url);
             let parent_path = std::path::Path::new(parent_path_str);
-            let start_dir = parent_path.parent().unwrap_or_else(|| std::path::Path::new("/"));
+            let start_dir = parent_path
+                .parent()
+                .unwrap_or_else(|| std::path::Path::new("/"));
             let mut cur: Option<&std::path::Path> = Some(start_dir);
             while let Some(d) = cur {
                 let candidate = d.join("package.json");
@@ -544,7 +600,11 @@ impl Runtime {
         if candidate.extension().and_then(|s| s.to_str()) == Some("json") {
             if candidate.is_file() {
                 let canonical = std::fs::canonicalize(&candidate).map_err(|e| {
-                    RuntimeError::TypeError(format!("canonicalize '{}': {}", candidate.display(), e))
+                    RuntimeError::TypeError(format!(
+                        "canonicalize '{}': {}",
+                        candidate.display(),
+                        e
+                    ))
                 })?;
                 return Ok(format!("file://{}", canonical.display()));
             }
@@ -558,23 +618,37 @@ impl Runtime {
         let rule = {
             let has_exports = pkg.raw.get("exports").is_some();
             let chosen_str = candidate.display().to_string();
-            let from_module_field = pkg.module_field.as_ref()
+            let from_module_field = pkg
+                .module_field
+                .as_ref()
                 .map(|m| chosen_str.contains(m.trim_start_matches("./")))
                 .unwrap_or(false);
-            let from_main = pkg.main.as_ref()
+            let from_main = pkg
+                .main
+                .as_ref()
                 .map(|m| chosen_str.contains(m.trim_start_matches("./")))
                 .unwrap_or(false);
-            if has_exports { "exports" }
-            else if from_module_field { "module-field" }
-            else if from_main { "main" }
-            else { "index-fallback" }
+            if has_exports {
+                "exports"
+            } else if from_module_field {
+                "module-field"
+            } else if from_main {
+                "main"
+            } else {
+                "index-fallback"
+            }
         };
         let trace = format!(
             "spec='{}' chose={} via={} (alternatives: main={:?} module={:?} type={:?})",
-            specifier, candidate.display(), rule,
-            pkg.main, pkg.module_field, pkg.type_field,
+            specifier,
+            candidate.display(),
+            rule,
+            pkg.main,
+            pkg.module_field,
+            pkg.type_field,
         );
-        self.module_resolution_trace.insert(resolved_url.clone(), trace);
+        self.module_resolution_trace
+            .insert(resolved_url.clone(), trace);
         Ok(resolved_url)
     }
 
@@ -631,10 +705,13 @@ impl Runtime {
                 if let Some(v) = self.napi_module_cache.get(url).cloned() {
                     // Synthesize a transient namespace pointing at the
                     // cached exports (load_module returns ObjectRef).
-                    if let Value::Object(id) = v { return Ok(id); }
+                    if let Value::Object(id) = v {
+                        return Ok(id);
+                    }
                 }
                 let exports = crate::napi::load_napi_module(self, stripped)?;
-                self.napi_module_cache.insert(url.to_string(), exports.clone());
+                self.napi_module_cache
+                    .insert(url.to_string(), exports.clone());
                 // For ESM-style consumers (`import * as m`), return the
                 // exports object; the namespace IS the exports for native
                 // modules.
@@ -642,7 +719,8 @@ impl Runtime {
                     return Ok(id);
                 }
                 return Err(RuntimeError::TypeError(format!(
-                    "napi: load returned non-object from '{}'", stripped
+                    "napi: load returned non-object from '{}'",
+                    stripped
                 )));
             }
             let source = std::fs::read_to_string(stripped).map_err(|e| {
@@ -661,7 +739,7 @@ impl Runtime {
             {
                 match ts_resolve::strip::strip_ts(&source) {
                     Ok((stripped_src, _witnesses)) => stripped_src,
-                    Err(_) => source,  // rule 14: bail to raw bytes; cruft's parser error is the diagnostic
+                    Err(_) => source, // rule 14: bail to raw bytes; cruft's parser error is the diagnostic
                 }
             } else {
                 source
@@ -693,7 +771,8 @@ impl Runtime {
             }
         } else {
             Err(RuntimeError::TypeError(format!(
-                "load_module: unsupported URL scheme '{}'", url
+                "load_module: unsupported URL scheme '{}'",
+                url
             )))
         }
     }
@@ -702,7 +781,9 @@ impl Runtime {
     /// previously-evaluated CJS module. Returns None for ESM/built-in
     /// records.
     pub fn cjs_exports_of(&self, url: &str) -> Option<Value> {
-        self.modules.get(url).and_then(|r| r.borrow().cjs_exports.clone())
+        self.modules
+            .get(url)
+            .and_then(|r| r.borrow().cjs_exports.clone())
     }
 
     /// Tier-Ω.5.j.cjs: kind of a cached module record.
@@ -724,7 +805,11 @@ impl Runtime {
         is_cjs: bool,
         resolved_url: &str,
     ) -> Value {
-        let cjs_raw = if is_cjs { self.cjs_exports_of(resolved_url) } else { None };
+        let cjs_raw = if is_cjs {
+            self.cjs_exports_of(resolved_url)
+        } else {
+            None
+        };
         match (kind, &cjs_raw) {
             (ImportBindingKind::Default, Some(raw)) => raw.clone(),
             (ImportBindingKind::Namespace, Some(raw)) => {
@@ -757,9 +842,14 @@ impl Runtime {
     /// Tier-Ω.5.b: dispatch a `node:*` specifier to the host's
     /// ResolveBuiltinModule hook. Caches the resulting namespace under
     /// the specifier so repeated imports yield identical handles.
-    pub fn resolve_builtin_namespace(&mut self, specifier: &str) -> Result<ObjectRef, RuntimeError> {
+    pub fn resolve_builtin_namespace(
+        &mut self,
+        specifier: &str,
+    ) -> Result<ObjectRef, RuntimeError> {
         if let Some(rec) = self.modules.get(specifier) {
-            if let Some(ns) = rec.borrow().namespace { return Ok(ns); }
+            if let Some(ns) = rec.borrow().namespace {
+                return Ok(ns);
+            }
         }
         let hook = self.host_hooks.resolve_builtin.take();
         let result = match &hook {
@@ -769,10 +859,12 @@ impl Runtime {
         self.host_hooks.resolve_builtin = hook;
         let ns = match result? {
             Some(o) => o,
-            None => return Err(RuntimeError::TypeError(format!(
-                "unknown built-in module '{}' (no host hook installed or hook returned None)",
-                specifier
-            ))),
+            None => {
+                return Err(RuntimeError::TypeError(format!(
+                    "unknown built-in module '{}' (no host hook installed or hook returned None)",
+                    specifier
+                )))
+            }
         };
         // Cache a synthetic record so repeated imports share the namespace.
         // We don't have an AST/bytecode for built-ins; store an empty
@@ -787,16 +879,30 @@ impl Runtime {
             star_export_entries: Vec::new(),
         });
         let empty_bc = Rc::new(CompiledModule {
-            bytecode: Vec::new(), constants: Default::default(),
-            locals: Vec::new(), source_map: Vec::new(),
-            imports: Vec::new(), exports: Vec::new(),
-            reexport_sources: Vec::new(), side_effect_imports: Vec::new(), construct_tags: Vec::new(), line_starts: Vec::new(), strict: false,
+            bytecode: Vec::new(),
+            constants: Default::default(),
+            locals: Vec::new(),
+            source_map: Vec::new(),
+            imports: Vec::new(),
+            exports: Vec::new(),
+            reexport_sources: Vec::new(),
+            side_effect_imports: Vec::new(),
+            construct_tags: Vec::new(),
+            line_starts: Vec::new(),
+            strict: false,
         });
-        self.modules.insert(specifier.to_string(), Rc::new(RefCell::new(ModuleRecord {
-            url: specifier.to_string(), status: ModuleStatus::Evaluated,
-            ast: empty_ast, bytecode: empty_bc, namespace: Some(ns),
-            kind: ModuleKind::ESM, cjs_exports: None,
-        })));
+        self.modules.insert(
+            specifier.to_string(),
+            Rc::new(RefCell::new(ModuleRecord {
+                url: specifier.to_string(),
+                status: ModuleStatus::Evaluated,
+                ast: empty_ast,
+                bytecode: empty_bc,
+                namespace: Some(ns),
+                kind: ModuleKind::ESM,
+                cjs_exports: None,
+            })),
+        );
         Ok(ns)
     }
 
@@ -806,16 +912,34 @@ impl Runtime {
     pub fn evaluate_module(&mut self, source: &str, url: &str) -> Result<ObjectRef, RuntimeError> {
         let _prof = phase_profile::enabled();
         // Parse + compile.
-        let t0 = if _prof { Some(std::time::Instant::now()) } else { None };
-        let ast = rusty_js_parser::parse_module(source)
-            .map_err(|e| RuntimeError::CompileError(format!("parse: {} @byte{} @url={}", e.message, e.span.start, url)))?;
-        if let Some(t) = t0 { phase_profile::add(&phase_profile::PARSE_NS, t.elapsed().as_nanos() as u64); }
+        let t0 = if _prof {
+            Some(std::time::Instant::now())
+        } else {
+            None
+        };
+        let ast = rusty_js_parser::parse_module(source).map_err(|e| {
+            RuntimeError::CompileError(format!(
+                "parse: {} @byte{} @url={}",
+                e.message, e.span.start, url
+            ))
+        })?;
+        if let Some(t) = t0 {
+            phase_profile::add(&phase_profile::PARSE_NS, t.elapsed().as_nanos() as u64);
+        }
         let ast_rc = Rc::new(ast);
-        let t1 = if _prof { Some(std::time::Instant::now()) } else { None };
+        let t1 = if _prof {
+            Some(std::time::Instant::now())
+        } else {
+            None
+        };
         let bytecode = rusty_js_bytecode::compile_module_with_url(source, url)
             .map_err(|e| RuntimeError::CompileError(format!("compile: {}", e.message)))?;
-        if let Some(t) = t1 { phase_profile::add(&phase_profile::COMPILE_NS, t.elapsed().as_nanos() as u64); }
-        if _prof { phase_profile::MODULE_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed); }
+        if let Some(t) = t1 {
+            phase_profile::add(&phase_profile::COMPILE_NS, t.elapsed().as_nanos() as u64);
+        }
+        if _prof {
+            phase_profile::MODULE_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
         let bytecode_rc = Rc::new(bytecode);
 
         // Pre-allocate this module's namespace + insert a Linking entry
@@ -898,7 +1022,11 @@ impl Runtime {
             // import bindings read `module.exports` per Node interop —
             // default is the raw value, named is a property lookup on
             // the object form, namespace is a synthesized wrapper.
-            let cjs_raw = if is_builtin { None } else { self.cjs_exports_of(&resolved) };
+            let cjs_raw = if is_builtin {
+                None
+            } else {
+                self.cjs_exports_of(&resolved)
+            };
             let v = match (&ib.kind, &cjs_raw) {
                 (ImportBindingKind::Default, Some(raw)) => raw.clone(),
                 (ImportBindingKind::Namespace, Some(raw)) => {
@@ -934,7 +1062,9 @@ impl Runtime {
                     let d = self.object_get(ns, "default");
                     if is_builtin && matches!(d, Value::Undefined) {
                         Value::Object(ns)
-                    } else { d }
+                    } else {
+                        d
+                    }
                 }
                 (ImportBindingKind::Namespace, None) => Value::Object(ns),
                 (ImportBindingKind::Named(n), None) => {
@@ -948,7 +1078,9 @@ impl Runtime {
             let deferred_meta = if needs_live_binding {
                 let is_cjs = matches!(self.module_kind_of(&resolved), Some(ModuleKind::CJS));
                 Some((resolved.clone(), is_cjs, ib.kind.clone()))
-            } else { None };
+            } else {
+                None
+            };
             import_values.push((ib.slot, v, deferred_meta));
         }
 
@@ -958,11 +1090,17 @@ impl Runtime {
         // file:// prefix stripped). The compiler lowers `import.meta` to
         // Op::PushImportMeta which reads from the frame's import_meta slot.
         let meta_obj = self.alloc_object(Object::new_ordinary());
-        self.object_set(meta_obj, "url".to_string(), Value::String(Rc::new(url.to_string())));
+        self.object_set(
+            meta_obj,
+            "url".to_string(),
+            Value::String(Rc::new(url.to_string())),
+        );
         let dir_str = {
             let path = url.strip_prefix("file://").unwrap_or(url);
             let p = std::path::Path::new(path);
-            p.parent().map(|d| d.display().to_string()).unwrap_or_default()
+            p.parent()
+                .map(|d| d.display().to_string())
+                .unwrap_or_default()
         };
         self.object_set(meta_obj, "dir".to_string(), Value::String(Rc::new(dir_str)));
 
@@ -1005,18 +1143,22 @@ impl Runtime {
         // Ω.5.P45.E1: push current module URL so __dynamic_import can
         // resolve relative specifiers against the real caller.
         self.current_module_url.push(url.to_string());
-        let t_eval = if phase_profile::enabled() { Some(std::time::Instant::now()) } else { None };
+        let t_eval = if phase_profile::enabled() {
+            Some(std::time::Instant::now())
+        } else {
+            None
+        };
         let run_result = self.run_frame_module(&mut frame);
-        if let Some(t) = t_eval { phase_profile::add(&phase_profile::EVAL_NS, t.elapsed().as_nanos() as u64); }
+        if let Some(t) = t_eval {
+            phase_profile::add(&phase_profile::EVAL_NS, t.elapsed().as_nanos() as u64);
+        }
         self.current_module_url.pop();
         // Ω.5.P54.E8 (Axis-E probe extension): record throws too.
         // Without this, post_eval_trace was empty for any module that
         // threw during init — the most diagnostically-interesting case.
         if let Err(e) = &run_result {
-            self.module_post_eval_trace.insert(
-                url.to_string(),
-                format!("kind=ESM threw: {:?}", e),
-            );
+            self.module_post_eval_trace
+                .insert(url.to_string(), format!("kind=ESM threw: {:?}", e));
         }
         run_result?;
         // Tier-Ω.5.jjj: read locals through the cell promotion seam.
@@ -1048,10 +1190,17 @@ impl Runtime {
         for eb in &bytecode_rc.exports {
             match eb {
                 ExportBinding::Local { exported, local } => {
-                    let v = locals.get(*local as usize).cloned().unwrap_or(Value::Undefined);
+                    let v = locals
+                        .get(*local as usize)
+                        .cloned()
+                        .unwrap_or(Value::Undefined);
                     self.object_set(namespace, exported.clone(), v);
                 }
-                ExportBinding::Named { exported, source_specifier, imported } => {
+                ExportBinding::Named {
+                    exported,
+                    source_specifier,
+                    imported,
+                } => {
                     // Look up the source namespace loaded earlier. If the
                     // entry is missing the compiler/runtime are out of sync;
                     // treat the export as Undefined to stay closure-shaped.
@@ -1065,22 +1214,26 @@ impl Runtime {
                     // ECMA-262 §16.2.3.7: `export *` re-exports every name
                     // OTHER than `default`. Snapshot the source namespace's
                     // own properties, then copy each non-`default` entry.
-                    let keys_values: Vec<(String, Value)> = match reexport_namespaces.get(source_specifier) {
-                        Some(src_ns) => {
-                            let o = self.obj(*src_ns);
-                            o.properties
-                                .iter()
-                                .filter(|(k, _)| k.as_str() != "default")
-                                .map(|(k, d)| (k.to_string_content(), d.value.clone()))
-                                .collect()
-                        }
-                        None => Vec::new(),
-                    };
+                    let keys_values: Vec<(String, Value)> =
+                        match reexport_namespaces.get(source_specifier) {
+                            Some(src_ns) => {
+                                let o = self.obj(*src_ns);
+                                o.properties
+                                    .iter()
+                                    .filter(|(k, _)| k.as_str() != "default")
+                                    .map(|(k, d)| (k.to_string_content(), d.value.clone()))
+                                    .collect()
+                            }
+                            None => Vec::new(),
+                        };
                     for (k, v) in keys_values {
                         self.object_set(namespace, k, v);
                     }
                 }
-                ExportBinding::StarAs { exported, source_specifier } => {
+                ExportBinding::StarAs {
+                    exported,
+                    source_specifier,
+                } => {
                     // `export * as ns from "..."` binds the source's whole
                     // namespace object under `exported`.
                     let v = match reexport_namespaces.get(source_specifier) {
@@ -1107,7 +1260,9 @@ impl Runtime {
         let needs_default_synth = matches!(self.object_get(namespace, "default"), Value::Undefined);
         if needs_default_synth {
             // Walk up from the module URL to the nearest package.json.
-            let walk_path = url.strip_prefix("file://").map(|p| std::path::PathBuf::from(p));
+            let walk_path = url
+                .strip_prefix("file://")
+                .map(|p| std::path::PathBuf::from(p));
             let mut pkg_dual_shape = false;
             if let Some(mut p) = walk_path {
                 p.pop(); // drop filename → start at the module's directory
@@ -1129,7 +1284,9 @@ impl Runtime {
                         }
                         break;
                     }
-                    if !p.pop() { break; }
+                    if !p.pop() {
+                        break;
+                    }
                     steps += 1;
                 }
             }
@@ -1143,16 +1300,21 @@ impl Runtime {
                     let mut out: Vec<(String, Value)> = Vec::new();
                     if let Some(shape) = o.shape.as_ref() {
                         for (name, slot) in shape.iter_slots() {
-                            if name == "default" { continue; }
+                            if name == "default" {
+                                continue;
+                            }
                             let idx = slot as usize;
                             if let Some(v) = o.shape_values.get(idx) {
                                 out.push((name.to_string(), v.clone()));
                             }
                         }
                     }
-                    out.extend(o.properties.iter()
-                        .filter(|(k, _)| k.as_str() != "default")
-                        .map(|(k, d)| (k.to_string_content(), d.value.clone())));
+                    out.extend(
+                        o.properties
+                            .iter()
+                            .filter(|(k, _)| k.as_str() != "default")
+                            .map(|(k, d)| (k.to_string_content(), d.value.clone())),
+                    );
                     out
                 };
                 let synth = self.alloc_object(Object::new_ordinary());
@@ -1208,7 +1370,11 @@ impl Runtime {
     /// v1 deviation: line numbers in CJS parse/runtime errors are off by
     /// one line — the synthesized prefix adds one newline. Documented in
     /// pilots/rusty-js-runtime/trajectory.md row Ω.5.j.cjs.
-    pub fn evaluate_cjs_module(&mut self, source: &str, url: &str) -> Result<ObjectRef, RuntimeError> {
+    pub fn evaluate_cjs_module(
+        &mut self,
+        source: &str,
+        url: &str,
+    ) -> Result<ObjectRef, RuntimeError> {
         // Pre-allocate the placeholder namespace view so cyclic
         // require() observes *something* during evaluation. We'll
         // refresh it after the wrapper returns.
@@ -1226,10 +1392,17 @@ impl Runtime {
             star_export_entries: Vec::new(),
         });
         let empty_bc = Rc::new(CompiledModule {
-            bytecode: Vec::new(), constants: Default::default(),
-            locals: Vec::new(), source_map: Vec::new(),
-            imports: Vec::new(), exports: Vec::new(),
-            reexport_sources: Vec::new(), side_effect_imports: Vec::new(), construct_tags: Vec::new(), line_starts: Vec::new(), strict: false,
+            bytecode: Vec::new(),
+            constants: Default::default(),
+            locals: Vec::new(),
+            source_map: Vec::new(),
+            imports: Vec::new(),
+            exports: Vec::new(),
+            reexport_sources: Vec::new(),
+            side_effect_imports: Vec::new(),
+            construct_tags: Vec::new(),
+            line_starts: Vec::new(),
+            strict: false,
         });
         let record = Rc::new(RefCell::new(ModuleRecord {
             url: url.to_string(),
@@ -1270,16 +1443,35 @@ impl Runtime {
 
         // Parse + compile the wrapper. Reuse the existing ESM pipeline.
         let _prof = phase_profile::enabled();
-        let t0 = if _prof { Some(std::time::Instant::now()) } else { None };
-        let ast = rusty_js_parser::parse_module(&wrapped)
-            .map_err(|e| RuntimeError::CompileError(format!("parse (cjs wrapper): {} @byte{} @url={}", e.message, e.span.start, url)))?;
-        if let Some(t) = t0 { phase_profile::add(&phase_profile::PARSE_NS, t.elapsed().as_nanos() as u64); }
+        let t0 = if _prof {
+            Some(std::time::Instant::now())
+        } else {
+            None
+        };
+        let ast = rusty_js_parser::parse_module(&wrapped).map_err(|e| {
+            RuntimeError::CompileError(format!(
+                "parse (cjs wrapper): {} @byte{} @url={}",
+                e.message, e.span.start, url
+            ))
+        })?;
+        if let Some(t) = t0 {
+            phase_profile::add(&phase_profile::PARSE_NS, t.elapsed().as_nanos() as u64);
+        }
         let _ast_rc = Rc::new(ast);
-        let t1 = if _prof { Some(std::time::Instant::now()) } else { None };
-        let bytecode = rusty_js_bytecode::compile_module_with_url(&wrapped, url)
-            .map_err(|e| RuntimeError::CompileError(format!("compile (cjs wrapper): {}", e.message)))?;
-        if let Some(t) = t1 { phase_profile::add(&phase_profile::COMPILE_NS, t.elapsed().as_nanos() as u64); }
-        if _prof { phase_profile::MODULE_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed); }
+        let t1 = if _prof {
+            Some(std::time::Instant::now())
+        } else {
+            None
+        };
+        let bytecode = rusty_js_bytecode::compile_module_with_url(&wrapped, url).map_err(|e| {
+            RuntimeError::CompileError(format!("compile (cjs wrapper): {}", e.message))
+        })?;
+        if let Some(t) = t1 {
+            phase_profile::add(&phase_profile::COMPILE_NS, t.elapsed().as_nanos() as u64);
+        }
+        if _prof {
+            phase_profile::MODULE_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
         let bytecode_rc = Rc::new(bytecode);
 
         // Run the wrapper's outer module body. No imports/re-exports
@@ -1291,15 +1483,19 @@ impl Runtime {
         let mut frame = Frame::new_module(&bytecode_rc);
         frame.source_url = url;
         self.current_module_url.push(url.to_string());
-        let t_eval = if phase_profile::enabled() { Some(std::time::Instant::now()) } else { None };
+        let t_eval = if phase_profile::enabled() {
+            Some(std::time::Instant::now())
+        } else {
+            None
+        };
         let run_result = self.run_frame_module(&mut frame);
-        if let Some(t) = t_eval { phase_profile::add(&phase_profile::EVAL_NS, t.elapsed().as_nanos() as u64); }
+        if let Some(t) = t_eval {
+            phase_profile::add(&phase_profile::EVAL_NS, t.elapsed().as_nanos() as u64);
+        }
         self.current_module_url.pop();
         if let Err(e) = &run_result {
-            self.module_post_eval_trace.insert(
-                url.to_string(),
-                format!("kind=CJS-wrapper threw: {:?}", e),
-            );
+            self.module_post_eval_trace
+                .insert(url.to_string(), format!("kind=CJS-wrapper threw: {:?}", e));
         }
         run_result?;
         let locals = frame.locals.clone();
@@ -1307,14 +1503,18 @@ impl Runtime {
         // Find the wrapper function: it's the `default` local. The
         // compiler stored it under the "<module.default>" slot whose
         // index is recorded in the exports list.
-        let wrapper_fn: Value = bytecode_rc.exports.iter().find_map(|eb| {
-            if let rusty_js_bytecode::ExportBinding::Local { exported, local } = eb {
-                if exported == "default" {
-                    return locals.get(*local as usize).cloned();
+        let wrapper_fn: Value = bytecode_rc
+            .exports
+            .iter()
+            .find_map(|eb| {
+                if let rusty_js_bytecode::ExportBinding::Local { exported, local } = eb {
+                    if exported == "default" {
+                        return locals.get(*local as usize).cloned();
+                    }
                 }
-            }
-            None
-        }).unwrap_or(Value::Undefined);
+                None
+            })
+            .unwrap_or(Value::Undefined);
 
         // Build synthesized __filename / __dirname.
         let (filename, dirname) = filename_dirname_from_url(url);
@@ -1326,8 +1526,11 @@ impl Runtime {
         let require_fn: crate::value::NativeFn = Rc::new(move |rt, args| {
             let spec = match args.first() {
                 Some(Value::String(s)) => s.as_str().to_string(),
-                _ => return Err(RuntimeError::TypeError(
-                    "require: argument must be a string specifier".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "require: argument must be a string specifier".into(),
+                    ))
+                }
             };
             rt.cjs_require(&require_url, &spec)
         });
@@ -1337,12 +1540,13 @@ impl Runtime {
             proto: None,
             extensible: true,
             properties: require_props,
-            internal_kind: crate::value::InternalKind::Function(
-                crate::value::FunctionInternals { name: "require".to_string(),
-                    length: 1,
-                    native: require_fn, is_constructor: true }
-            ),
-        
+            internal_kind: crate::value::InternalKind::Function(crate::value::FunctionInternals {
+                name: "require".to_string(),
+                length: 1,
+                native: require_fn,
+                is_constructor: true,
+            }),
+
             ..Default::default()
         };
         let require_id = self.alloc_object(require_obj);
@@ -1356,24 +1560,36 @@ impl Runtime {
         let require_resolve_fn: crate::value::NativeFn = std::rc::Rc::new(move |rt, args| {
             let spec = match args.first() {
                 Some(Value::String(s)) => s.as_str().to_string(),
-                _ => return Err(RuntimeError::TypeError(
-                    "require.resolve: argument must be a string specifier".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "require.resolve: argument must be a string specifier".into(),
+                    ))
+                }
             };
             // Best-effort: ask the resolver for the URL, fallback to spec.
-            let resolved = rt.resolve_module_full(&require_resolve_url, &spec, ModuleKind::CJS)
+            let resolved = rt
+                .resolve_module_full(&require_resolve_url, &spec, ModuleKind::CJS)
                 .unwrap_or(spec.clone());
             // Strip file:// prefix per Node's resolve-returns-filesystem-path convention.
-            let path = resolved.strip_prefix("file://").unwrap_or(&resolved).to_string();
+            let path = resolved
+                .strip_prefix("file://")
+                .unwrap_or(&resolved)
+                .to_string();
             Ok(Value::String(std::rc::Rc::new(path)))
         });
         let mut resolve_props = indexmap::IndexMap::new();
         crate::value::install_function_meta_props(&mut resolve_props, "resolve", 1.0);
         let require_resolve_obj = Object {
-            proto: None, extensible: true, properties: resolve_props,
-            internal_kind: crate::value::InternalKind::Function(
-                crate::value::FunctionInternals { name: "resolve".to_string(), length: 1, native: require_resolve_fn, is_constructor: true }
-            ),
-        
+            proto: None,
+            extensible: true,
+            properties: resolve_props,
+            internal_kind: crate::value::InternalKind::Function(crate::value::FunctionInternals {
+                name: "resolve".to_string(),
+                length: 1,
+                native: require_resolve_fn,
+                is_constructor: true,
+            }),
+
             ..Default::default()
         };
         let require_resolve_id = self.alloc_object(require_resolve_obj);
@@ -1386,22 +1602,39 @@ impl Runtime {
         let mut paths_props = indexmap::IndexMap::new();
         crate::value::install_function_meta_props(&mut paths_props, "paths", 1.0);
         let require_paths_obj = Object {
-            proto: None, extensible: true, properties: paths_props,
-            internal_kind: crate::value::InternalKind::Function(
-                crate::value::FunctionInternals { name: "paths".to_string(), length: 1, native: require_paths_fn, is_constructor: true }
-            ),
-        
+            proto: None,
+            extensible: true,
+            properties: paths_props,
+            internal_kind: crate::value::InternalKind::Function(crate::value::FunctionInternals {
+                name: "paths".to_string(),
+                length: 1,
+                native: require_paths_fn,
+                is_constructor: true,
+            }),
+
             ..Default::default()
         };
         let require_paths_id = self.alloc_object(require_paths_obj);
-        self.object_set(require_resolve_id, "paths".into(), Value::Object(require_paths_id));
-        self.object_set(require_id, "resolve".into(), Value::Object(require_resolve_id));
+        self.object_set(
+            require_resolve_id,
+            "paths".into(),
+            Value::Object(require_paths_id),
+        );
+        self.object_set(
+            require_id,
+            "resolve".into(),
+            Value::Object(require_resolve_id),
+        );
         // require.cache — empty module cache for compatibility probes.
         let require_cache = self.alloc_object(Object::new_ordinary());
         self.object_set(require_id, "cache".into(), Value::Object(require_cache));
         // require.extensions — legacy, returns empty object.
         let require_extensions = self.alloc_object(Object::new_ordinary());
-        self.object_set(require_id, "extensions".into(), Value::Object(require_extensions));
+        self.object_set(
+            require_id,
+            "extensions".into(),
+            Value::Object(require_extensions),
+        );
         let require_v = Value::Object(require_id);
 
         // Build the `module` object: { exports: <initial_exports_obj> }.
@@ -1468,13 +1701,21 @@ impl Runtime {
         // Refresh the placeholder namespace view in place so any cached
         // ObjectRef (e.g. an ESM importer holding `ns`) sees the final
         // exports shape.
-        self.populate_cjs_namespace_view_at(placeholder, &final_exports, exports_reassigned, Some(url));
+        self.populate_cjs_namespace_view_at(
+            placeholder,
+            &final_exports,
+            exports_reassigned,
+            Some(url),
+        );
 
         // Ω.5.P54.E2 (Axis-E probe): post-eval observation for CJS path.
         let key_count = self.obj(placeholder).properties.len();
         self.module_post_eval_trace.insert(
             url.to_string(),
-            format!("kind=CJS key_count={} exports_reassigned={}", key_count, exports_reassigned),
+            format!(
+                "kind=CJS key_count={} exports_reassigned={}",
+                key_count, exports_reassigned
+            ),
         );
 
         Ok(placeholder)
@@ -1501,7 +1742,11 @@ impl Runtime {
     /// Tier-Ω.5.ss: JSON module — produce a namespace with a single
     /// `default` export holding the parsed value, mirroring Node's
     /// import-attributes JSON module semantics.
-    pub fn evaluate_json_module(&mut self, source: &str, url: &str) -> Result<ObjectRef, RuntimeError> {
+    pub fn evaluate_json_module(
+        &mut self,
+        source: &str,
+        url: &str,
+    ) -> Result<ObjectRef, RuntimeError> {
         let value = crate::intrinsics::json_parse(self, source).map_err(|e| {
             RuntimeError::CompileError(format!("parse (json module): {:?} @url={}", e, url))
         })?;
@@ -1534,8 +1779,11 @@ impl Runtime {
                         }
                     }
                 }
-                out.extend(o.properties.iter()
-                    .map(|(k, d)| (k.to_string_content(), d.value.clone())));
+                out.extend(
+                    o.properties
+                        .iter()
+                        .map(|(k, d)| (k.to_string_content(), d.value.clone())),
+                );
                 out
             };
             for (k, v) in pairs {
@@ -1551,24 +1799,49 @@ impl Runtime {
             star_export_entries: Vec::new(),
         });
         let empty_bc = Rc::new(CompiledModule {
-            bytecode: Vec::new(), constants: Default::default(),
-            locals: Vec::new(), source_map: Vec::new(),
-            imports: Vec::new(), exports: Vec::new(),
-            reexport_sources: Vec::new(), side_effect_imports: Vec::new(), construct_tags: Vec::new(), line_starts: Vec::new(), strict: false,
+            bytecode: Vec::new(),
+            constants: Default::default(),
+            locals: Vec::new(),
+            source_map: Vec::new(),
+            imports: Vec::new(),
+            exports: Vec::new(),
+            reexport_sources: Vec::new(),
+            side_effect_imports: Vec::new(),
+            construct_tags: Vec::new(),
+            line_starts: Vec::new(),
+            strict: false,
         });
-        self.modules.insert(url.to_string(), Rc::new(RefCell::new(ModuleRecord {
-            url: url.to_string(), status: ModuleStatus::Evaluated,
-            ast: empty_ast, bytecode: empty_bc, namespace: Some(ns),
-            kind: ModuleKind::ESM, cjs_exports: Some(value),
-        })));
+        self.modules.insert(
+            url.to_string(),
+            Rc::new(RefCell::new(ModuleRecord {
+                url: url.to_string(),
+                status: ModuleStatus::Evaluated,
+                ast: empty_ast,
+                bytecode: empty_bc,
+                namespace: Some(ns),
+                kind: ModuleKind::ESM,
+                cjs_exports: Some(value),
+            })),
+        );
         Ok(ns)
     }
 
-    fn populate_cjs_namespace_view(&mut self, ns: ObjectRef, exports: &Value, exports_reassigned: bool) {
+    fn populate_cjs_namespace_view(
+        &mut self,
+        ns: ObjectRef,
+        exports: &Value,
+        exports_reassigned: bool,
+    ) {
         self.populate_cjs_namespace_view_at(ns, exports, exports_reassigned, None)
     }
 
-    fn populate_cjs_namespace_view_at(&mut self, ns: ObjectRef, exports: &Value, exports_reassigned: bool, url: Option<&str>) {
+    fn populate_cjs_namespace_view_at(
+        &mut self,
+        ns: ObjectRef,
+        exports: &Value,
+        exports_reassigned: bool,
+        url: Option<&str>,
+    ) {
         match exports {
             Value::Object(oid) => {
                 // Mirror own properties + a `default` pointer at the
@@ -1599,8 +1872,8 @@ impl Runtime {
                 let exports_is_fn = matches!(
                     self.obj(*oid).internal_kind,
                     crate::value::InternalKind::Function(_)
-                    | crate::value::InternalKind::Closure(_)
-                    | crate::value::InternalKind::BoundFunction(_)
+                        | crate::value::InternalKind::Closure(_)
+                        | crate::value::InternalKind::BoundFunction(_)
                 );
                 // Top-500 cluster: bun strips `prototype` (and the other
                 // function intrinsics) when the package.json declares an
@@ -1654,46 +1927,57 @@ impl Runtime {
                 let exports_is_callable = matches!(
                     self.obj(*oid).internal_kind,
                     crate::value::InternalKind::Function(_)
-                    | crate::value::InternalKind::Closure(_)
-                    | crate::value::InternalKind::BoundFunction(_)
+                        | crate::value::InternalKind::Closure(_)
+                        | crate::value::InternalKind::BoundFunction(_)
                 );
-                let super_proto_names: Option<std::collections::HashSet<String>> = if exports_is_callable {
-                    let super_ctor = self.obj(*oid).proto;
-                    match super_ctor {
-                        Some(sid) => {
-                            let super_proto_v = self.object_get(sid, "prototype");
-                            match super_proto_v {
-                                Value::Object(spid) => {
-                                    let names: std::collections::HashSet<String> = self
-                                        .obj(spid)
-                                        .properties
-                                        .iter()
-                                        .map(|(k, _)| k.to_string_content())
-                                        .collect();
-                                    // Only apply the filter if the
-                                    // superclass actually contributes
-                                    // distinct prototype methods. If
-                                    // super_proto is just `{constructor}`
-                                    // (i.e. the bare Function.prototype or
-                                    // an empty user-class proto), there's
-                                    // no meaningful filter signal — fall
-                                    // back to unfiltered to preserve
-                                    // lodash/debug/ms-style cases.
-                                    if names.len() > 1 { Some(names) } else { None }
+                let super_proto_names: Option<std::collections::HashSet<String>> =
+                    if exports_is_callable {
+                        let super_ctor = self.obj(*oid).proto;
+                        match super_ctor {
+                            Some(sid) => {
+                                let super_proto_v = self.object_get(sid, "prototype");
+                                match super_proto_v {
+                                    Value::Object(spid) => {
+                                        let names: std::collections::HashSet<String> = self
+                                            .obj(spid)
+                                            .properties
+                                            .iter()
+                                            .map(|(k, _)| k.to_string_content())
+                                            .collect();
+                                        // Only apply the filter if the
+                                        // superclass actually contributes
+                                        // distinct prototype methods. If
+                                        // super_proto is just `{constructor}`
+                                        // (i.e. the bare Function.prototype or
+                                        // an empty user-class proto), there's
+                                        // no meaningful filter signal — fall
+                                        // back to unfiltered to preserve
+                                        // lodash/debug/ms-style cases.
+                                        if names.len() > 1 {
+                                            Some(names)
+                                        } else {
+                                            None
+                                        }
+                                    }
+                                    _ => None,
                                 }
-                                _ => None,
                             }
+                            None => None,
                         }
-                        None => None,
-                    }
-                } else { None };
+                    } else {
+                        None
+                    };
                 let triples: Vec<(String, Value, Option<Value>)> = {
                     let o = self.obj(*oid);
                     let mut out: Vec<(String, Value, Option<Value>)> = Vec::new();
                     if let Some(shape) = o.shape.as_ref() {
                         for (name, slot) in shape.iter_slots() {
-                            if name == "__esModule" { continue; }
-                            if strip_fn_intrinsics && matches!(name, "name" | "length" | "prototype") {
+                            if name == "__esModule" {
+                                continue;
+                            }
+                            if strip_fn_intrinsics
+                                && matches!(name, "name" | "length" | "prototype")
+                            {
                                 continue;
                             }
                             if strip_prototype_only && name == "prototype" {
@@ -1705,29 +1989,39 @@ impl Runtime {
                             }
                         }
                     }
-                    out.extend(o.properties.iter()
-                        .filter(|(k, d)| {
-                            if k.as_str() == "__esModule" { return false; }
-                            if strip_fn_intrinsics && matches!(k.as_str(), "name" | "length" | "prototype") {
-                                return false;
-                            }
-                            if strip_prototype_only && k.as_str() == "prototype" {
-                                return false;
-                            }
-                            // Rung-7 enumerability filter (only when a
-                            // meaningful superclass prototype was found).
-                            if let Some(super_names) = &super_proto_names {
-                                if !d.enumerable {
-                                    let kn = k.as_str();
-                                    let is_fn_intrinsic = matches!(kn, "name" | "length" | "prototype");
-                                    if !is_fn_intrinsic && !super_names.contains(kn) {
-                                        return false;
+                    out.extend(
+                        o.properties
+                            .iter()
+                            .filter(|(k, d)| {
+                                if k.as_str() == "__esModule" {
+                                    return false;
+                                }
+                                if strip_fn_intrinsics
+                                    && matches!(k.as_str(), "name" | "length" | "prototype")
+                                {
+                                    return false;
+                                }
+                                if strip_prototype_only && k.as_str() == "prototype" {
+                                    return false;
+                                }
+                                // Rung-7 enumerability filter (only when a
+                                // meaningful superclass prototype was found).
+                                if let Some(super_names) = &super_proto_names {
+                                    if !d.enumerable {
+                                        let kn = k.as_str();
+                                        let is_fn_intrinsic =
+                                            matches!(kn, "name" | "length" | "prototype");
+                                        if !is_fn_intrinsic && !super_names.contains(kn) {
+                                            return false;
+                                        }
                                     }
                                 }
-                            }
-                            true
-                        })
-                        .map(|(k, d)| (k.to_string_content(), d.value.clone(), d.getter.clone())));
+                                true
+                            })
+                            .map(|(k, d)| {
+                                (k.to_string_content(), d.value.clone(), d.getter.clone())
+                            }),
+                    );
                     out
                 };
                 let mut pairs: Vec<(String, Value)> = Vec::with_capacity(triples.len());
@@ -1735,7 +2029,9 @@ impl Runtime {
                     let resolved = if let Some(g) = getter {
                         self.call_function(g, Value::Object(*oid), Vec::new())
                             .unwrap_or(Value::Undefined)
-                    } else { v };
+                    } else {
+                        v
+                    };
                     pairs.push((k, resolved));
                 }
                 for (k, v) in pairs {
@@ -1749,11 +2045,9 @@ impl Runtime {
                 // empty types-only stubs like ts-toolbelt). Bun's namespace
                 // matches: those packages have no default; populated CJS
                 // exports do.
-                let exports_has_user_keys = self
-                    .obj(*oid)
-                    .string_keys()
-                    .any(|k| k != "__esModule");
-                let has_explicit_default = !matches!(self.object_get(*oid, "default"), Value::Undefined);
+                let exports_has_user_keys = self.obj(*oid).string_keys().any(|k| k != "__esModule");
+                let has_explicit_default =
+                    !matches!(self.object_get(*oid, "default"), Value::Undefined);
                 // Ω.5.P53.E10: when the source flags itself as a
                 // transpiled ES module (__esModule===true) and explicitly
                 // set `exports.default = X`, the loop above already copied
@@ -1767,7 +2061,9 @@ impl Runtime {
                 // event-iterator all hit this path).
                 let is_transpiled_esm = matches!(esmod_v, Value::Boolean(true));
                 let preserve_explicit_default = is_transpiled_esm && has_explicit_default;
-                if !preserve_explicit_default && (exports_reassigned || exports_has_user_keys || has_explicit_default) {
+                if !preserve_explicit_default
+                    && (exports_reassigned || exports_has_user_keys || has_explicit_default)
+                {
                     self.object_set(ns, "default".to_string(), exports.clone());
                 }
             }
@@ -1836,7 +2132,8 @@ impl Runtime {
                 return Ok(v);
             }
             let exports = crate::napi::load_napi_module(self, resolved_path)?;
-            self.napi_module_cache.insert(resolved.clone(), exports.clone());
+            self.napi_module_cache
+                .insert(resolved.clone(), exports.clone());
             return Ok(exports);
         }
         // Load. For CJS the return is module.exports; for ESM,
@@ -1854,7 +2151,9 @@ impl Runtime {
     fn try_resolve_builtin(&mut self, spec: &str) -> Result<Option<ObjectRef>, RuntimeError> {
         // Cache hit?
         if let Some(rec) = self.modules.get(spec) {
-            if let Some(ns) = rec.borrow().namespace { return Ok(Some(ns)); }
+            if let Some(ns) = rec.borrow().namespace {
+                return Ok(Some(ns));
+            }
         }
         let hook = self.host_hooks.resolve_builtin.take();
         let result = match &hook {
@@ -1876,16 +2175,30 @@ impl Runtime {
             star_export_entries: Vec::new(),
         });
         let empty_bc = Rc::new(CompiledModule {
-            bytecode: Vec::new(), constants: Default::default(),
-            locals: Vec::new(), source_map: Vec::new(),
-            imports: Vec::new(), exports: Vec::new(),
-            reexport_sources: Vec::new(), side_effect_imports: Vec::new(), construct_tags: Vec::new(), line_starts: Vec::new(), strict: false,
+            bytecode: Vec::new(),
+            constants: Default::default(),
+            locals: Vec::new(),
+            source_map: Vec::new(),
+            imports: Vec::new(),
+            exports: Vec::new(),
+            reexport_sources: Vec::new(),
+            side_effect_imports: Vec::new(),
+            construct_tags: Vec::new(),
+            line_starts: Vec::new(),
+            strict: false,
         });
-        self.modules.insert(spec.to_string(), Rc::new(RefCell::new(ModuleRecord {
-            url: spec.to_string(), status: ModuleStatus::Evaluated,
-            ast: empty_ast, bytecode: empty_bc, namespace: Some(ns),
-            kind: ModuleKind::ESM, cjs_exports: None,
-        })));
+        self.modules.insert(
+            spec.to_string(),
+            Rc::new(RefCell::new(ModuleRecord {
+                url: spec.to_string(),
+                status: ModuleStatus::Evaluated,
+                ast: empty_ast,
+                bytecode: empty_bc,
+                namespace: Some(ns),
+                kind: ModuleKind::ESM,
+                cjs_exports: None,
+            })),
+        );
         Ok(Some(ns))
     }
 
@@ -1910,7 +2223,7 @@ impl Object {
             extensible: false,
             properties: indexmap::IndexMap::new(),
             internal_kind: crate::value::InternalKind::ModuleNamespace,
-        
+
             ..Default::default()
         }
     }
@@ -1919,7 +2232,10 @@ impl Object {
 /// Probe a candidate filesystem path against the v1 extension list:
 ///   {path}, {path}.mjs, {path}.js, {path}/index.mjs, {path}/index.js.
 /// Returns the first hit as a canonical file:// URL.
-fn probe_with_extensions(candidate: &std::path::Path, original: &str) -> Result<String, RuntimeError> {
+fn probe_with_extensions(
+    candidate: &std::path::Path,
+    original: &str,
+) -> Result<String, RuntimeError> {
     let mut attempts: Vec<std::path::PathBuf> = vec![
         candidate.to_path_buf(),
         // TRMLE-EXT 1 (2026-05-24, ts-resolve-module-loader-extension
@@ -1935,7 +2251,7 @@ fn probe_with_extensions(candidate: &std::path::Path, original: &str) -> Result<
         with_suffix(candidate, ".cjs"),
         with_suffix(candidate, ".js"),
         with_suffix(candidate, ".json"),
-        with_suffix(candidate, ".node"),  // Ω.5.P46.E1.napi-v1
+        with_suffix(candidate, ".node"), // Ω.5.P46.E1.napi-v1
     ];
     // Node's directory-resolution algorithm (CJS): if candidate IS a
     // directory, read candidate/package.json's `main` field and try that
@@ -1988,7 +2304,10 @@ fn probe_with_extensions(candidate: &std::path::Path, original: &str) -> Result<
     Err(RuntimeError::TypeError(format!(
         "module not found: '{}' (tried {:?})",
         original,
-        attempts.iter().map(|p| p.display().to_string()).collect::<Vec<_>>()
+        attempts
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>()
     )))
 }
 
@@ -2003,7 +2322,10 @@ fn probe_with_extensions(candidate: &std::path::Path, original: &str) -> Result<
 fn filename_dirname_from_url(url: &str) -> (String, String) {
     let path = url.strip_prefix("file://").unwrap_or(url);
     let p = std::path::Path::new(path);
-    let dir = p.parent().map(|d| d.display().to_string()).unwrap_or_default();
+    let dir = p
+        .parent()
+        .map(|d| d.display().to_string())
+        .unwrap_or_default();
     (path.to_string(), dir)
 }
 
@@ -2025,7 +2347,10 @@ fn with_suffix(p: &std::path::Path, suffix: &str) -> std::path::PathBuf {
 /// it declares an `exports` field. Cheap text scan; full JSON parse would
 /// pull in the cached package.json (which requires &mut self).
 fn package_has_exports_field_walk(url: &str) -> bool {
-    let path_str = match url.strip_prefix("file://") { Some(p) => p, None => return false };
+    let path_str = match url.strip_prefix("file://") {
+        Some(p) => p,
+        None => return false,
+    };
     let path = std::path::Path::new(path_str);
     let mut cur = path.parent();
     let mut steps = 0;
@@ -2040,7 +2365,9 @@ fn package_has_exports_field_walk(url: &str) -> bool {
         }
         cur = d.parent();
         steps += 1;
-        if steps > 16 { break; }
+        if steps > 16 {
+            break;
+        }
     }
     false
 }
@@ -2056,11 +2383,29 @@ pub struct ParsedPackageJson {
 fn parse_package_json(text: &str) -> Result<ParsedPackageJson, String> {
     let raw: serde_json::Value =
         serde_json::from_str(text).map_err(|e| format!("JSON parse: {}", e))?;
-    let name = raw.get("name").and_then(|v| v.as_str()).map(|s| s.to_string());
-    let main = raw.get("main").and_then(|v| v.as_str()).map(|s| s.to_string());
-    let module_field = raw.get("module").and_then(|v| v.as_str()).map(|s| s.to_string());
-    let type_field = raw.get("type").and_then(|v| v.as_str()).map(|s| s.to_string());
-    Ok(ParsedPackageJson { raw, name, main, module_field, type_field })
+    let name = raw
+        .get("name")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let main = raw
+        .get("main")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let module_field = raw
+        .get("module")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let type_field = raw
+        .get("type")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    Ok(ParsedPackageJson {
+        raw,
+        name,
+        main,
+        module_field,
+        type_field,
+    })
 }
 
 /// Tier-Ω.5.r: known Node builtin module names. Used by
@@ -2070,15 +2415,50 @@ fn parse_package_json(text: &str) -> Result<ParsedPackageJson, String> {
 /// without a hook return Ok(None) and the caller surfaces a clean
 /// "unknown built-in" error.
 fn is_node_builtin(name: &str) -> bool {
-    matches!(name,
-        "assert" | "async_hooks" | "buffer" | "child_process" | "cluster"
-        | "console" | "constants" | "crypto" | "dgram" | "diagnostics_channel"
-        | "dns" | "domain" | "events" | "fs" | "http" | "http2" | "https"
-        | "inspector" | "module" | "net" | "os" | "path" | "perf_hooks"
-        | "process" | "punycode" | "querystring" | "readline" | "repl"
-        | "stream" | "string_decoder" | "sys" | "timers" | "tls" | "trace_events"
-        | "tty" | "url" | "util" | "v8" | "vm" | "wasi" | "worker_threads"
-        | "zlib"
+    matches!(
+        name,
+        "assert"
+            | "async_hooks"
+            | "buffer"
+            | "child_process"
+            | "cluster"
+            | "console"
+            | "constants"
+            | "crypto"
+            | "dgram"
+            | "diagnostics_channel"
+            | "dns"
+            | "domain"
+            | "events"
+            | "fs"
+            | "http"
+            | "http2"
+            | "https"
+            | "inspector"
+            | "module"
+            | "net"
+            | "os"
+            | "path"
+            | "perf_hooks"
+            | "process"
+            | "punycode"
+            | "querystring"
+            | "readline"
+            | "repl"
+            | "stream"
+            | "string_decoder"
+            | "sys"
+            | "timers"
+            | "tls"
+            | "trace_events"
+            | "tty"
+            | "url"
+            | "util"
+            | "v8"
+            | "vm"
+            | "wasi"
+            | "worker_threads"
+            | "zlib"
     )
 }
 
@@ -2091,12 +2471,16 @@ fn is_node_builtin(name: &str) -> bool {
 ///   "@org/pkg"       → ("@org/pkg", "")
 ///   "@org/pkg/sub"   → ("@org/pkg", "./sub")
 fn split_bare_specifier(specifier: &str) -> Option<(String, String)> {
-    if specifier.is_empty() { return None; }
+    if specifier.is_empty() {
+        return None;
+    }
     if specifier.starts_with('@') {
         let mut parts = specifier.splitn(3, '/');
         let scope = parts.next()?;
         let name = parts.next()?;
-        if scope.len() < 2 || name.is_empty() { return None; }
+        if scope.len() < 2 || name.is_empty() {
+            return None;
+        }
         let pkg = format!("{}/{}", scope, name);
         let subpath = match parts.next() {
             Some(rest) if !rest.is_empty() => format!("./{}", rest),
@@ -2106,7 +2490,9 @@ fn split_bare_specifier(specifier: &str) -> Option<(String, String)> {
     } else {
         let mut parts = specifier.splitn(2, '/');
         let name = parts.next()?;
-        if name.is_empty() { return None; }
+        if name.is_empty() {
+            return None;
+        }
         let subpath = match parts.next() {
             Some(rest) if !rest.is_empty() => format!("./{}", rest),
             _ => String::new(),
@@ -2211,7 +2597,8 @@ fn resolve_within_package(
                     if let Some(star_pos) = k.find('*') {
                         let prefix = &k[..star_pos];
                         let suffix = &k[star_pos + 1..];
-                        if attempt.starts_with(prefix) && attempt.ends_with(suffix)
+                        if attempt.starts_with(prefix)
+                            && attempt.ends_with(suffix)
                             && attempt.len() >= prefix.len() + suffix.len()
                         {
                             let captured = &attempt[prefix.len()..attempt.len() - suffix.len()];
@@ -2251,9 +2638,7 @@ fn resolve_exports_target(
     importer_kind: ModuleKind,
 ) -> Option<String> {
     match target {
-        serde_json::Value::String(s) => {
-            Some(substitute_wildcard(s, capture))
-        }
+        serde_json::Value::String(s) => Some(substitute_wildcard(s, capture)),
         serde_json::Value::Array(arr) => {
             // First entry that resolves wins (per Node spec).
             for item in arr {

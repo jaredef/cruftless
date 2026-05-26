@@ -12,8 +12,12 @@
 use crate::ir::{ErrorClass, Expr, IRFunction, IRNode, Step};
 use crate::lint::SpecStepRecord;
 
-fn v(name: &str) -> Expr { Expr::Var(name.to_string()) }
-fn b(e: Expr) -> Box<Expr> { Box::new(e) }
+fn v(name: &str) -> Expr {
+    Expr::Var(name.to_string())
+}
+fn b(e: Expr) -> Box<Expr> {
+    Box::new(e)
+}
 
 pub fn build_array_set_length() -> IRFunction {
     let body = vec![
@@ -262,45 +266,245 @@ pub fn build_array_set_length() -> IRFunction {
 
 pub fn spec_steps_array_set_length() -> Vec<SpecStepRecord> {
     vec![
-        SpecStepRecord { step_id: "1.config".into(), abstract_ops: vec![], throws: None, prose: "If descriptor has configurable, prepare to check it." },
-        SpecStepRecord { step_id: "1.config.check".into(), abstract_ops: vec![], throws: None, prose: "If descriptor.configurable is true, throw." },
-        SpecStepRecord { step_id: "1.config.throw".into(), abstract_ops: vec![], throws: Some("TypeError"), prose: "Array length is non-configurable; reject promotion." },
-        SpecStepRecord { step_id: "2.enum".into(), abstract_ops: vec![], throws: None, prose: "If descriptor has enumerable, check it." },
-        SpecStepRecord { step_id: "2.enum.check".into(), abstract_ops: vec![], throws: None, prose: "If enumerable is true, throw." },
-        SpecStepRecord { step_id: "2.enum.throw".into(), abstract_ops: vec![], throws: Some("TypeError"), prose: "Array length is non-enumerable; reject promotion." },
-        SpecStepRecord { step_id: "2.get_throw".into(), abstract_ops: vec![], throws: None, prose: "If descriptor has get, throw." },
-        SpecStepRecord { step_id: "2.get.throw".into(), abstract_ops: vec![], throws: Some("TypeError"), prose: "Array length cannot be accessor (get)." },
-        SpecStepRecord { step_id: "2.set_throw".into(), abstract_ops: vec![], throws: None, prose: "If descriptor has set, throw." },
-        SpecStepRecord { step_id: "2.set.throw".into(), abstract_ops: vec![], throws: Some("TypeError"), prose: "Array length cannot be accessor (set)." },
-        SpecStepRecord { step_id: "3.cur_writable".into(), abstract_ops: vec!["array_length_writable_via"], throws: None, prose: "Read current length writable attribute." },
-        SpecStepRecord { step_id: "3.old_len".into(), abstract_ops: vec!["array_length_value_via"], throws: None, prose: "Read current length value." },
-        SpecStepRecord { step_id: "4.no_value".into(), abstract_ops: vec![], throws: None, prose: "If descriptor lacks [[Value]], degenerate path." },
-        SpecStepRecord { step_id: "4.a.writable_provided".into(), abstract_ops: vec![], throws: None, prose: "If writable provided, apply it." },
-        SpecStepRecord { step_id: "4.a.read".into(), abstract_ops: vec![], throws: None, prose: "Read new writable." },
-        SpecStepRecord { step_id: "4.a.promote_check".into(), abstract_ops: vec![], throws: None, prose: "If current non-writable, prepare check." },
-        SpecStepRecord { step_id: "4.a.promote_inner".into(), abstract_ops: vec![], throws: None, prose: "If want-writable, throw." },
-        SpecStepRecord { step_id: "4.a.promote.throw".into(), abstract_ops: vec![], throws: Some("TypeError"), prose: "Cannot promote Array length to writable." },
-        SpecStepRecord { step_id: "4.a.apply".into(), abstract_ops: vec!["array_length_set_internal_via"], throws: None, prose: "Apply new writable while keeping current length." },
-        SpecStepRecord { step_id: "4.return".into(), abstract_ops: vec![], throws: None, prose: "Return target after degenerate path." },
-        SpecStepRecord { step_id: "5.raw_value".into(), abstract_ops: vec![], throws: None, prose: "Read descriptor's value." },
-        SpecStepRecord { step_id: "6.new_len".into(), abstract_ops: vec!["to_uint32_strict_via"], throws: None, prose: "ToUint32 + round-trip validation (throws RangeError inside the builtin)." },
-        SpecStepRecord { step_id: "10.writable_check".into(), abstract_ops: vec![], throws: None, prose: "If current non-writable, check value diff." },
-        SpecStepRecord { step_id: "10.diff_check".into(), abstract_ops: vec![], throws: None, prose: "If new_len differs from old_len, throw." },
-        SpecStepRecord { step_id: "10.throw".into(), abstract_ops: vec![], throws: Some("TypeError"), prose: "Cannot change non-writable Array length." },
-        SpecStepRecord { step_id: "11.init_writable".into(), abstract_ops: vec![], throws: None, prose: "Initialize new_writable to current." },
-        SpecStepRecord { step_id: "11.override".into(), abstract_ops: vec![], throws: None, prose: "If descriptor.writable present, override." },
-        SpecStepRecord { step_id: "11.real".into(), abstract_ops: vec![], throws: None, prose: "Assign new_writable from descriptor." },
-        SpecStepRecord { step_id: "12.maybe_shrink".into(), abstract_ops: vec![], throws: None, prose: "If new_len < old_len, walk indices down deleting." },
-        SpecStepRecord { step_id: "12.idx.init".into(), abstract_ops: vec![], throws: None, prose: "Start at old_len - 1." },
-        SpecStepRecord { step_id: "12.loop".into(), abstract_ops: vec![], throws: None, prose: "Loop while idx >= new_len." },
-        SpecStepRecord { step_id: "13.idx_key".into(), abstract_ops: vec!["number_to_string_key_via"], throws: None, prose: "Stringify idx to key form." },
-        SpecStepRecord { step_id: "13.try_delete".into(), abstract_ops: vec!["delete_own_via"], throws: None, prose: "Attempt delete of arr[idx]." },
-        SpecStepRecord { step_id: "13.delete_check".into(), abstract_ops: vec![], throws: None, prose: "If deletion failed, set stuck length and throw." },
-        SpecStepRecord { step_id: "13.stuck.idx_plus".into(), abstract_ops: vec![], throws: None, prose: "Compute idx+1 for stuck length." },
-        SpecStepRecord { step_id: "13.stuck.length".into(), abstract_ops: vec!["array_length_set_internal_via"], throws: None, prose: "Set length to idx+1 (stop point)." },
-        SpecStepRecord { step_id: "13.stuck.throw".into(), abstract_ops: vec![], throws: Some("TypeError"), prose: "Cannot truncate Array: non-configurable element." },
-        SpecStepRecord { step_id: "14.decrement".into(), abstract_ops: vec![], throws: None, prose: "Decrement idx." },
-        SpecStepRecord { step_id: "15.install".into(), abstract_ops: vec!["array_length_set_internal_via"], throws: None, prose: "Install final new_len + new_writable." },
-        SpecStepRecord { step_id: "16.return".into(), abstract_ops: vec![], throws: None, prose: "Return target." },
+        SpecStepRecord {
+            step_id: "1.config".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "If descriptor has configurable, prepare to check it.",
+        },
+        SpecStepRecord {
+            step_id: "1.config.check".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "If descriptor.configurable is true, throw.",
+        },
+        SpecStepRecord {
+            step_id: "1.config.throw".into(),
+            abstract_ops: vec![],
+            throws: Some("TypeError"),
+            prose: "Array length is non-configurable; reject promotion.",
+        },
+        SpecStepRecord {
+            step_id: "2.enum".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "If descriptor has enumerable, check it.",
+        },
+        SpecStepRecord {
+            step_id: "2.enum.check".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "If enumerable is true, throw.",
+        },
+        SpecStepRecord {
+            step_id: "2.enum.throw".into(),
+            abstract_ops: vec![],
+            throws: Some("TypeError"),
+            prose: "Array length is non-enumerable; reject promotion.",
+        },
+        SpecStepRecord {
+            step_id: "2.get_throw".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "If descriptor has get, throw.",
+        },
+        SpecStepRecord {
+            step_id: "2.get.throw".into(),
+            abstract_ops: vec![],
+            throws: Some("TypeError"),
+            prose: "Array length cannot be accessor (get).",
+        },
+        SpecStepRecord {
+            step_id: "2.set_throw".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "If descriptor has set, throw.",
+        },
+        SpecStepRecord {
+            step_id: "2.set.throw".into(),
+            abstract_ops: vec![],
+            throws: Some("TypeError"),
+            prose: "Array length cannot be accessor (set).",
+        },
+        SpecStepRecord {
+            step_id: "3.cur_writable".into(),
+            abstract_ops: vec!["array_length_writable_via"],
+            throws: None,
+            prose: "Read current length writable attribute.",
+        },
+        SpecStepRecord {
+            step_id: "3.old_len".into(),
+            abstract_ops: vec!["array_length_value_via"],
+            throws: None,
+            prose: "Read current length value.",
+        },
+        SpecStepRecord {
+            step_id: "4.no_value".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "If descriptor lacks [[Value]], degenerate path.",
+        },
+        SpecStepRecord {
+            step_id: "4.a.writable_provided".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "If writable provided, apply it.",
+        },
+        SpecStepRecord {
+            step_id: "4.a.read".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "Read new writable.",
+        },
+        SpecStepRecord {
+            step_id: "4.a.promote_check".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "If current non-writable, prepare check.",
+        },
+        SpecStepRecord {
+            step_id: "4.a.promote_inner".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "If want-writable, throw.",
+        },
+        SpecStepRecord {
+            step_id: "4.a.promote.throw".into(),
+            abstract_ops: vec![],
+            throws: Some("TypeError"),
+            prose: "Cannot promote Array length to writable.",
+        },
+        SpecStepRecord {
+            step_id: "4.a.apply".into(),
+            abstract_ops: vec!["array_length_set_internal_via"],
+            throws: None,
+            prose: "Apply new writable while keeping current length.",
+        },
+        SpecStepRecord {
+            step_id: "4.return".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "Return target after degenerate path.",
+        },
+        SpecStepRecord {
+            step_id: "5.raw_value".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "Read descriptor's value.",
+        },
+        SpecStepRecord {
+            step_id: "6.new_len".into(),
+            abstract_ops: vec!["to_uint32_strict_via"],
+            throws: None,
+            prose: "ToUint32 + round-trip validation (throws RangeError inside the builtin).",
+        },
+        SpecStepRecord {
+            step_id: "10.writable_check".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "If current non-writable, check value diff.",
+        },
+        SpecStepRecord {
+            step_id: "10.diff_check".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "If new_len differs from old_len, throw.",
+        },
+        SpecStepRecord {
+            step_id: "10.throw".into(),
+            abstract_ops: vec![],
+            throws: Some("TypeError"),
+            prose: "Cannot change non-writable Array length.",
+        },
+        SpecStepRecord {
+            step_id: "11.init_writable".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "Initialize new_writable to current.",
+        },
+        SpecStepRecord {
+            step_id: "11.override".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "If descriptor.writable present, override.",
+        },
+        SpecStepRecord {
+            step_id: "11.real".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "Assign new_writable from descriptor.",
+        },
+        SpecStepRecord {
+            step_id: "12.maybe_shrink".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "If new_len < old_len, walk indices down deleting.",
+        },
+        SpecStepRecord {
+            step_id: "12.idx.init".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "Start at old_len - 1.",
+        },
+        SpecStepRecord {
+            step_id: "12.loop".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "Loop while idx >= new_len.",
+        },
+        SpecStepRecord {
+            step_id: "13.idx_key".into(),
+            abstract_ops: vec!["number_to_string_key_via"],
+            throws: None,
+            prose: "Stringify idx to key form.",
+        },
+        SpecStepRecord {
+            step_id: "13.try_delete".into(),
+            abstract_ops: vec!["delete_own_via"],
+            throws: None,
+            prose: "Attempt delete of arr[idx].",
+        },
+        SpecStepRecord {
+            step_id: "13.delete_check".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "If deletion failed, set stuck length and throw.",
+        },
+        SpecStepRecord {
+            step_id: "13.stuck.idx_plus".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "Compute idx+1 for stuck length.",
+        },
+        SpecStepRecord {
+            step_id: "13.stuck.length".into(),
+            abstract_ops: vec!["array_length_set_internal_via"],
+            throws: None,
+            prose: "Set length to idx+1 (stop point).",
+        },
+        SpecStepRecord {
+            step_id: "13.stuck.throw".into(),
+            abstract_ops: vec![],
+            throws: Some("TypeError"),
+            prose: "Cannot truncate Array: non-configurable element.",
+        },
+        SpecStepRecord {
+            step_id: "14.decrement".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "Decrement idx.",
+        },
+        SpecStepRecord {
+            step_id: "15.install".into(),
+            abstract_ops: vec!["array_length_set_internal_via"],
+            throws: None,
+            prose: "Install final new_len + new_writable.",
+        },
+        SpecStepRecord {
+            step_id: "16.return".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "Return target.",
+        },
     ]
 }

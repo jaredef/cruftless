@@ -13,8 +13,8 @@
 use crate::parser::{ParseError, Parser};
 use crate::token::{Punct, TokenKind};
 use rusty_js_ast::{
-    Argument, ArrayElement, ArrowBody, AssignOp, BinaryOp, Expr, MemberProperty,
-    ObjectKey, ObjectProperty, ObjectPropertyKind, Span, UnaryOp, UpdateOp,
+    Argument, ArrayElement, ArrowBody, AssignOp, BinaryOp, Expr, MemberProperty, ObjectKey,
+    ObjectProperty, ObjectPropertyKind, Span, UnaryOp, UpdateOp,
 };
 
 impl<'src> Parser<'src> {
@@ -29,15 +29,17 @@ impl<'src> Parser<'src> {
             let pos = self.lookahead_span().end;
             let bytes = self.source().as_bytes();
             let mut p = pos;
-            while p < bytes.len() && bytes[p].is_ascii_whitespace() { p += 1; }
+            while p < bytes.len() && bytes[p].is_ascii_whitespace() {
+                p += 1;
+            }
             if bytes[p..].starts_with(b"function") {
                 self.bump()?; // consume `async`
                 let f = self.parse_function_expression(true)?;
                 return self.continue_lhs_continuation(f);
             }
             let starts_paren = bytes.get(p) == Some(&b'(');
-            let starts_ident = p < bytes.len() &&
-                (bytes[p].is_ascii_alphabetic() || bytes[p] == b'_' || bytes[p] == b'$');
+            let starts_ident = p < bytes.len()
+                && (bytes[p].is_ascii_alphabetic() || bytes[p] == b'_' || bytes[p] == b'$');
             // Only treat as async-arrow if the next token after the
             // `(...)` / Identifier head is `=>` — avoids capturing the
             // bare `async()` call expression.
@@ -55,9 +57,17 @@ impl<'src> Parser<'src> {
                         q += 1;
                     }
                 } else {
-                    while q < bytes.len() && (bytes[q].is_ascii_alphanumeric() || bytes[q] == b'_' || bytes[q] == b'$') { q += 1; }
+                    while q < bytes.len()
+                        && (bytes[q].is_ascii_alphanumeric()
+                            || bytes[q] == b'_'
+                            || bytes[q] == b'$')
+                    {
+                        q += 1;
+                    }
                 }
-                while q < bytes.len() && (bytes[q] == b' ' || bytes[q] == b'\t') { q += 1; }
+                while q < bytes.len() && (bytes[q] == b' ' || bytes[q] == b'\t') {
+                    q += 1;
+                }
                 if bytes.get(q) == Some(&b'=') && bytes.get(q + 1) == Some(&b'>') {
                     self.bump()?; // consume `async`
                     return self.parse_arrow_function(true);
@@ -85,7 +95,12 @@ impl<'src> Parser<'src> {
             self.bump()?;
             let value = self.parse_assignment_expression()?;
             let span = Span::new(left.span().start, value.span().end);
-            return Ok(Expr::Assign { operator: op, target: Box::new(left), value: Box::new(value), span });
+            return Ok(Expr::Assign {
+                operator: op,
+                target: Box::new(left),
+                value: Box::new(value),
+                span,
+            });
         }
         Ok(left)
     }
@@ -139,13 +154,22 @@ impl<'src> Parser<'src> {
     fn parse_binary_expression(&mut self, min_prec: u8) -> Result<Expr, ParseError> {
         let mut left = self.parse_unary_expression()?;
         loop {
-            let Some((op, prec, right_assoc)) = self.peek_binary_op() else { break };
-            if prec < min_prec { break; }
+            let Some((op, prec, right_assoc)) = self.peek_binary_op() else {
+                break;
+            };
+            if prec < min_prec {
+                break;
+            }
             self.bump()?;
             let next_min = if right_assoc { prec } else { prec + 1 };
             let right = self.parse_binary_expression(next_min)?;
             let span = Span::new(left.span().start, right.span().end);
-            left = Expr::Binary { operator: op, left: Box::new(left), right: Box::new(right), span };
+            left = Expr::Binary {
+                operator: op,
+                left: Box::new(left),
+                right: Box::new(right),
+                span,
+            };
         }
         Ok(left)
     }
@@ -200,43 +224,71 @@ impl<'src> Parser<'src> {
                 self.bump()?;
                 let arg = self.parse_unary_expression()?;
                 let span = Span::new(start, arg.span().end);
-                Ok(Expr::Unary { operator: UnaryOp::Plus, argument: Box::new(arg), span })
+                Ok(Expr::Unary {
+                    operator: UnaryOp::Plus,
+                    argument: Box::new(arg),
+                    span,
+                })
             }
             TokenKind::Punct(Punct::Minus) => {
                 self.bump()?;
                 let arg = self.parse_unary_expression()?;
                 let span = Span::new(start, arg.span().end);
-                Ok(Expr::Unary { operator: UnaryOp::Minus, argument: Box::new(arg), span })
+                Ok(Expr::Unary {
+                    operator: UnaryOp::Minus,
+                    argument: Box::new(arg),
+                    span,
+                })
             }
             TokenKind::Punct(Punct::BitNot) => {
                 self.bump()?;
                 let arg = self.parse_unary_expression()?;
                 let span = Span::new(start, arg.span().end);
-                Ok(Expr::Unary { operator: UnaryOp::BitNot, argument: Box::new(arg), span })
+                Ok(Expr::Unary {
+                    operator: UnaryOp::BitNot,
+                    argument: Box::new(arg),
+                    span,
+                })
             }
             TokenKind::Punct(Punct::LogicalNot) => {
                 self.bump()?;
                 let arg = self.parse_unary_expression()?;
                 let span = Span::new(start, arg.span().end);
-                Ok(Expr::Unary { operator: UnaryOp::LogicalNot, argument: Box::new(arg), span })
+                Ok(Expr::Unary {
+                    operator: UnaryOp::LogicalNot,
+                    argument: Box::new(arg),
+                    span,
+                })
             }
             TokenKind::Ident(s) if s == "typeof" => {
                 self.bump()?;
                 let arg = self.parse_unary_expression()?;
                 let span = Span::new(start, arg.span().end);
-                Ok(Expr::Unary { operator: UnaryOp::Typeof, argument: Box::new(arg), span })
+                Ok(Expr::Unary {
+                    operator: UnaryOp::Typeof,
+                    argument: Box::new(arg),
+                    span,
+                })
             }
             TokenKind::Ident(s) if s == "void" => {
                 self.bump()?;
                 let arg = self.parse_unary_expression()?;
                 let span = Span::new(start, arg.span().end);
-                Ok(Expr::Unary { operator: UnaryOp::Void, argument: Box::new(arg), span })
+                Ok(Expr::Unary {
+                    operator: UnaryOp::Void,
+                    argument: Box::new(arg),
+                    span,
+                })
             }
             TokenKind::Ident(s) if s == "delete" => {
                 self.bump()?;
                 let arg = self.parse_unary_expression()?;
                 let span = Span::new(start, arg.span().end);
-                Ok(Expr::Unary { operator: UnaryOp::Delete, argument: Box::new(arg), span })
+                Ok(Expr::Unary {
+                    operator: UnaryOp::Delete,
+                    argument: Box::new(arg),
+                    span,
+                })
             }
             TokenKind::Ident(s) if s == "yield" && (self.in_generator || self.strict_mode) => {
                 // SMPT-EXT 3: yield is YieldExpression only inside a
@@ -265,7 +317,9 @@ impl<'src> Parser<'src> {
                 }
                 self.bump()?;
                 let delegate = matches!(self.current_kind(), TokenKind::Punct(Punct::Star));
-                if delegate { self.bump()?; }
+                if delegate {
+                    self.bump()?;
+                }
                 // yield with no argument: next token is statement terminator.
                 // Ω.5.P53.E9: yield's argument is an AssignmentExpression
                 // per spec — recurse at the assignment level so
@@ -278,30 +332,55 @@ impl<'src> Parser<'src> {
                     | TokenKind::Punct(Punct::RBrace)
                     | TokenKind::Punct(Punct::RBracket)
                     | TokenKind::Punct(Punct::Comma)
-                    | TokenKind::Eof => Expr::Identifier { name: "undefined".into(), span: Span::new(start, start) },
+                    | TokenKind::Eof => Expr::Identifier {
+                        name: "undefined".into(),
+                        span: Span::new(start, start),
+                    },
                     _ => self.parse_assignment_expression()?,
                 };
-                let op = if delegate { UnaryOp::YieldDelegate } else { UnaryOp::Yield };
+                let op = if delegate {
+                    UnaryOp::YieldDelegate
+                } else {
+                    UnaryOp::Yield
+                };
                 let span = Span::new(start, arg.span().end);
-                return Ok(Expr::Unary { operator: op, argument: Box::new(arg), span });
+                return Ok(Expr::Unary {
+                    operator: op,
+                    argument: Box::new(arg),
+                    span,
+                });
             }
             TokenKind::Ident(s) if s == "await" => {
                 self.bump()?;
                 let arg = self.parse_unary_expression()?;
                 let span = Span::new(start, arg.span().end);
-                Ok(Expr::Unary { operator: UnaryOp::Await, argument: Box::new(arg), span })
+                Ok(Expr::Unary {
+                    operator: UnaryOp::Await,
+                    argument: Box::new(arg),
+                    span,
+                })
             }
             TokenKind::Punct(Punct::Inc) => {
                 self.bump()?;
                 let arg = self.parse_unary_expression()?;
                 let span = Span::new(start, arg.span().end);
-                Ok(Expr::Update { operator: UpdateOp::Inc, argument: Box::new(arg), prefix: true, span })
+                Ok(Expr::Update {
+                    operator: UpdateOp::Inc,
+                    argument: Box::new(arg),
+                    prefix: true,
+                    span,
+                })
             }
             TokenKind::Punct(Punct::Dec) => {
                 self.bump()?;
                 let arg = self.parse_unary_expression()?;
                 let span = Span::new(start, arg.span().end);
-                Ok(Expr::Update { operator: UpdateOp::Dec, argument: Box::new(arg), prefix: true, span })
+                Ok(Expr::Update {
+                    operator: UpdateOp::Dec,
+                    argument: Box::new(arg),
+                    prefix: true,
+                    span,
+                })
             }
             _ => self.parse_postfix_expression(),
         }
@@ -426,7 +505,9 @@ impl<'src> Parser<'src> {
                     let p_clone = p.to_string();
                     self.bump()?;
                     return Ok(Expr::MetaProperty {
-                        meta: "new".into(), property: p_clone, span: Span::new(start, end),
+                        meta: "new".into(),
+                        property: p_clone,
+                        span: Span::new(start, end),
                     });
                 }
             }
@@ -458,12 +539,22 @@ impl<'src> Parser<'src> {
         // Optional argument list.
         let arguments = if matches!(self.current_kind(), TokenKind::Punct(Punct::LParen)) {
             self.parse_arguments()?
-        } else { vec![] };
+        } else {
+            vec![]
+        };
         let end = self.last_span_end();
-        Ok(Expr::New { callee: Box::new(callee), arguments, span: Span::new(start, end) })
+        Ok(Expr::New {
+            callee: Box::new(callee),
+            arguments,
+            span: Span::new(start, end),
+        })
     }
 
-    fn consume_member_property(&mut self, object: Expr, optional: bool) -> Result<Expr, ParseError> {
+    fn consume_member_property(
+        &mut self,
+        object: Expr,
+        optional: bool,
+    ) -> Result<Expr, ParseError> {
         let start = object.span().start;
         let prop = match self.current_kind().clone() {
             TokenKind::Ident(name) => {
@@ -491,7 +582,11 @@ impl<'src> Parser<'src> {
         })
     }
 
-    fn consume_computed_member(&mut self, object: Expr, optional: bool) -> Result<Expr, ParseError> {
+    fn consume_computed_member(
+        &mut self,
+        object: Expr,
+        optional: bool,
+    ) -> Result<Expr, ParseError> {
         let start = object.span().start;
         self.expect_punct(Punct::LBracket)?;
         let computed = self.parse_assignment_expression()?;
@@ -500,7 +595,10 @@ impl<'src> Parser<'src> {
         let end = self.last_span_end();
         Ok(Expr::Member {
             object: Box::new(object),
-            property: Box::new(MemberProperty::Computed { expr: computed, span: computed_span }),
+            property: Box::new(MemberProperty::Computed {
+                expr: computed,
+                span: computed_span,
+            }),
             optional,
             span: Span::new(start, end),
         })
@@ -515,13 +613,18 @@ impl<'src> Parser<'src> {
                 self.bump()?;
                 let expr = self.parse_assignment_expression()?;
                 let end = expr.span().end;
-                out.push(Argument::Spread { expr, span: Span::new(start, end) });
+                out.push(Argument::Spread {
+                    expr,
+                    span: Span::new(start, end),
+                });
             } else {
                 out.push(Argument::Expr(self.parse_assignment_expression()?));
             }
             if matches!(self.current_kind(), TokenKind::Punct(Punct::Comma)) {
                 self.bump()?;
-            } else { break; }
+            } else {
+                break;
+            }
         }
         self.expect_punct(Punct::RParen)?;
         Ok(out)
@@ -534,17 +637,34 @@ impl<'src> Parser<'src> {
         match self.current_kind().clone() {
             TokenKind::Ident(name) => {
                 match name.as_str() {
-                    "null" => { self.bump()?; Ok(Expr::NullLiteral { span }) }
-                    "true" => { self.bump()?; Ok(Expr::BoolLiteral { value: true, span }) }
-                    "false" => { self.bump()?; Ok(Expr::BoolLiteral { value: false, span }) }
-                    "this" => { self.bump()?; Ok(Expr::This { span }) }
-                    "super" => { self.bump()?; Ok(Expr::Super { span }) }
+                    "null" => {
+                        self.bump()?;
+                        Ok(Expr::NullLiteral { span })
+                    }
+                    "true" => {
+                        self.bump()?;
+                        Ok(Expr::BoolLiteral { value: true, span })
+                    }
+                    "false" => {
+                        self.bump()?;
+                        Ok(Expr::BoolLiteral { value: false, span })
+                    }
+                    "this" => {
+                        self.bump()?;
+                        Ok(Expr::This { span })
+                    }
+                    "super" => {
+                        self.bump()?;
+                        Ok(Expr::Super { span })
+                    }
                     "import" => {
                         // import.meta or fall through to opaque for dynamic import.
                         let look_end = span.end;
                         let bytes = self.source().as_bytes();
                         let mut p = look_end;
-                        while p < bytes.len() && bytes[p].is_ascii_whitespace() { p += 1; }
+                        while p < bytes.len() && bytes[p].is_ascii_whitespace() {
+                            p += 1;
+                        }
                         if bytes.get(p) == Some(&b'.') {
                             self.bump()?; // consume `import`
                             self.bump()?; // consume `.`
@@ -554,7 +674,9 @@ impl<'src> Parser<'src> {
                                     let end = self.lookahead_span().end;
                                     self.bump()?;
                                     return Ok(Expr::MetaProperty {
-                                        meta: "import".into(), property: prop, span: Span::new(span.start, end),
+                                        meta: "import".into(),
+                                        property: prop,
+                                        span: Span::new(span.start, end),
                                     });
                                 }
                             }
@@ -605,7 +727,9 @@ impl<'src> Parser<'src> {
                         // as a value is valid at lower precedence.
                         let bytes = self.source().as_bytes();
                         let mut p = span.end;
-                        while p < bytes.len() && bytes[p].is_ascii_whitespace() { p += 1; }
+                        while p < bytes.len() && bytes[p].is_ascii_whitespace() {
+                            p += 1;
+                        }
                         if bytes[p..].starts_with(b"function") {
                             self.bump()?; // consume `async`
                             self.parse_function_expression(true)
@@ -614,7 +738,10 @@ impl<'src> Parser<'src> {
                             Ok(Expr::Identifier { name, span })
                         }
                     }
-                    _ => { self.bump()?; Ok(Expr::Identifier { name, span }) }
+                    _ => {
+                        self.bump()?;
+                        Ok(Expr::Identifier { name, span })
+                    }
                 }
             }
             TokenKind::PrivateIdent(_name) => {
@@ -635,7 +762,10 @@ impl<'src> Parser<'src> {
                 self.bump()?;
                 Ok(Expr::BoolLiteral { value: false, span })
             }
-            TokenKind::Number(value, _) => { self.bump()?; Ok(Expr::NumberLiteral { value, span }) }
+            TokenKind::Number(value, _) => {
+                self.bump()?;
+                Ok(Expr::NumberLiteral { value, span })
+            }
             TokenKind::BigInt(digits, kind) => {
                 self.bump()?;
                 // Tier-Ω.5.CCCCCCCC follow-up: preserve radix prefix in the
@@ -648,9 +778,15 @@ impl<'src> Parser<'src> {
                     NumberKind::Binary => format!("0b{}", digits),
                     NumberKind::Decimal => digits,
                 };
-                Ok(Expr::BigIntLiteral { digits: normalized, span })
+                Ok(Expr::BigIntLiteral {
+                    digits: normalized,
+                    span,
+                })
             }
-            TokenKind::String(value) => { self.bump()?; Ok(Expr::StringLiteral { value, span }) }
+            TokenKind::String(value) => {
+                self.bump()?;
+                Ok(Expr::StringLiteral { value, span })
+            }
             TokenKind::Template { cooked, part, .. } => {
                 use crate::token::TemplatePart;
                 match part {
@@ -660,20 +796,27 @@ impl<'src> Parser<'src> {
                         Ok(Expr::StringLiteral { value, span })
                     }
                     TemplatePart::Head => self.parse_template_with_substitutions(span.start),
-                    TemplatePart::Middle | TemplatePart::Tail =>
-                        Err(self.err_here("unexpected template middle/tail in expression position".into())),
+                    TemplatePart::Middle | TemplatePart::Tail => Err(self
+                        .err_here("unexpected template middle/tail in expression position".into())),
                 }
             }
             TokenKind::Regex { body, flags } => {
                 let pattern = std::rc::Rc::new(body.clone());
                 let flags = std::rc::Rc::new(flags.clone());
                 self.bump()?;
-                Ok(Expr::RegExp { pattern, flags, span })
+                Ok(Expr::RegExp {
+                    pattern,
+                    flags,
+                    span,
+                })
             }
             TokenKind::Punct(Punct::LBracket) => self.parse_array_literal(),
             TokenKind::Punct(Punct::LBrace) => self.parse_object_literal(),
             TokenKind::Punct(Punct::LParen) => self.parse_parenthesized(),
-            _ => Err(self.err_here(format!("unexpected token in expression: {:?}", self.current_kind()))),
+            _ => Err(self.err_here(format!(
+                "unexpected token in expression: {:?}",
+                self.current_kind()
+            ))),
         }
     }
 
@@ -699,7 +842,10 @@ impl<'src> Parser<'src> {
                 self.bump()?;
                 let expr = self.parse_assignment_expression()?;
                 let end = expr.span().end;
-                elements.push(ArrayElement::Spread { expr, span: Span::new(sp_start, end) });
+                elements.push(ArrayElement::Spread {
+                    expr,
+                    span: Span::new(sp_start, end),
+                });
             } else {
                 elements.push(ArrayElement::Expr(self.parse_assignment_expression()?));
             }
@@ -713,7 +859,11 @@ impl<'src> Parser<'src> {
         }
         self.expect_punct(Punct::RBracket)?;
         let end = self.last_span_end();
-        Ok(Expr::Array { elements, trailing_comma_after_spread, span: Span::new(start, end) })
+        Ok(Expr::Array {
+            elements,
+            trailing_comma_after_spread,
+            span: Span::new(start, end),
+        })
     }
 
     fn parse_object_literal(&mut self) -> Result<Expr, ParseError> {
@@ -726,7 +876,10 @@ impl<'src> Parser<'src> {
                 self.bump()?;
                 let expr = self.parse_assignment_expression()?;
                 let end = expr.span().end;
-                properties.push(ObjectProperty::Spread { expr, span: Span::new(sp_start, end) });
+                properties.push(ObjectProperty::Spread {
+                    expr,
+                    span: Span::new(sp_start, end),
+                });
             } else if matches!(self.current_kind(), TokenKind::Punct(Punct::Star)) {
                 // Tier-Ω.5.p.parse: generator method shorthand `*name(params) { body }`.
                 // Lower to a plain property with a generator-flagged
@@ -736,7 +889,8 @@ impl<'src> Parser<'src> {
                 self.bump()?; // consume `*`
                 let key = self.parse_object_key()?;
                 let params = self.parse_function_parameters_g(true)?;
-                let body = self.parse_function_body_gs(Some(true), Self::is_simple_param_list(&params))?;
+                let body =
+                    self.parse_function_body_gs(Some(true), Self::is_simple_param_list(&params))?;
                 let end = self.last_span_end();
                 let func = Expr::Function {
                     name: None,
@@ -747,7 +901,11 @@ impl<'src> Parser<'src> {
                     span: Span::new(prop_start, end),
                 };
                 properties.push(ObjectProperty::Property {
-                    key, value: func, shorthand: false, kind: ObjectPropertyKind::Init, span: Span::new(prop_start, end),
+                    key,
+                    value: func,
+                    shorthand: false,
+                    kind: ObjectPropertyKind::Init,
+                    span: Span::new(prop_start, end),
                 });
             } else if self.looks_like_async_method_shorthand() {
                 // Tier-Ω.5.vv: `async name(...) { body }` object method
@@ -763,10 +921,15 @@ impl<'src> Parser<'src> {
                 let is_generator = if matches!(self.current_kind(), TokenKind::Punct(Punct::Star)) {
                     self.bump()?; // consume `*`
                     true
-                } else { false };
+                } else {
+                    false
+                };
                 let key = self.parse_object_key()?;
                 let params = self.parse_function_parameters_g(is_generator)?;
-                let body = self.parse_function_body_gs(Some(is_generator), Self::is_simple_param_list(&params))?;
+                let body = self.parse_function_body_gs(
+                    Some(is_generator),
+                    Self::is_simple_param_list(&params),
+                )?;
                 let end = self.last_span_end();
                 let func = Expr::Function {
                     name: None,
@@ -777,7 +940,11 @@ impl<'src> Parser<'src> {
                     span: Span::new(prop_start, end),
                 };
                 properties.push(ObjectProperty::Property {
-                    key, value: func, shorthand: false, kind: ObjectPropertyKind::Init, span: Span::new(prop_start, end),
+                    key,
+                    value: func,
+                    shorthand: false,
+                    kind: ObjectPropertyKind::Init,
+                    span: Span::new(prop_start, end),
                 });
             } else if self.looks_like_accessor_shorthand() {
                 // Ω.5.P52.E1: getter/setter shorthand `get name() {body}` /
@@ -790,12 +957,15 @@ impl<'src> Parser<'src> {
                 let kind = match self.current_kind() {
                     TokenKind::Ident(n) if n == "get" => ObjectPropertyKind::Get,
                     TokenKind::Ident(n) if n == "set" => ObjectPropertyKind::Set,
-                    _ => unreachable!("looks_like_accessor_shorthand returned true without get/set token"),
+                    _ => unreachable!(
+                        "looks_like_accessor_shorthand returned true without get/set token"
+                    ),
                 };
                 self.bump()?; // consume `get` or `set`
                 let key = self.parse_object_key()?;
                 let params = self.parse_function_parameters()?;
-                let body = self.parse_function_body_gs(Some(false), Self::is_simple_param_list(&params))?;
+                let body =
+                    self.parse_function_body_gs(Some(false), Self::is_simple_param_list(&params))?;
                 let end = self.last_span_end();
                 let func = Expr::Function {
                     name: None,
@@ -806,7 +976,11 @@ impl<'src> Parser<'src> {
                     span: Span::new(prop_start, end),
                 };
                 properties.push(ObjectProperty::Property {
-                    key, value: func, shorthand: false, kind, span: Span::new(prop_start, end),
+                    key,
+                    value: func,
+                    shorthand: false,
+                    kind,
+                    span: Span::new(prop_start, end),
                 });
             } else {
                 let prop_start = self.lookahead_span().start;
@@ -816,7 +990,11 @@ impl<'src> Parser<'src> {
                     let value = self.parse_assignment_expression()?;
                     let end = value.span().end;
                     properties.push(ObjectProperty::Property {
-                        key, value, shorthand: false, kind: ObjectPropertyKind::Init, span: Span::new(prop_start, end),
+                        key,
+                        value,
+                        shorthand: false,
+                        kind: ObjectPropertyKind::Init,
+                        span: Span::new(prop_start, end),
                     });
                 } else if matches!(self.current_kind(), TokenKind::Punct(Punct::LParen)) {
                     // Tier-Ω.5.l: method shorthand `{ name(params) { body } }` —
@@ -826,7 +1004,8 @@ impl<'src> Parser<'src> {
                     // an anonymous name (the method name is the property key,
                     // not the function's [[Name]] in v1).
                     let params = self.parse_function_parameters()?;
-                    let body = self.parse_function_body_gs(Some(false), Self::is_simple_param_list(&params))?;
+                    let body = self
+                        .parse_function_body_gs(Some(false), Self::is_simple_param_list(&params))?;
                     let end = self.last_span_end();
                     let func = Expr::Function {
                         name: None,
@@ -837,7 +1016,11 @@ impl<'src> Parser<'src> {
                         span: Span::new(prop_start, end),
                     };
                     properties.push(ObjectProperty::Property {
-                        key, value: func, shorthand: false, kind: ObjectPropertyKind::Init, span: Span::new(prop_start, end),
+                        key,
+                        value: func,
+                        shorthand: false,
+                        kind: ObjectPropertyKind::Init,
+                        span: Span::new(prop_start, end),
                     });
                 } else {
                     // Bare shorthand `{ x }` — value is Identifier with same name.
@@ -850,9 +1033,16 @@ impl<'src> Parser<'src> {
                     // p-limit / many libs depend on this.
                     let (name, key_span) = match &key {
                         ObjectKey::Identifier { name, span } => (name.clone(), *span),
-                        _ => return Err(self.err_here("only identifier keys support shorthand".into())),
+                        _ => {
+                            return Err(
+                                self.err_here("only identifier keys support shorthand".into())
+                            )
+                        }
                     };
-                    let ident = Expr::Identifier { name: name.clone(), span: key_span };
+                    let ident = Expr::Identifier {
+                        name: name.clone(),
+                        span: key_span,
+                    };
                     let value = if matches!(self.current_kind(), TokenKind::Punct(Punct::Assign)) {
                         self.bump()?;
                         let default = self.parse_assignment_expression()?;
@@ -868,31 +1058,52 @@ impl<'src> Parser<'src> {
                     };
                     let val_end = value.span().end;
                     properties.push(ObjectProperty::Property {
-                        key, value, shorthand: true, kind: ObjectPropertyKind::Init, span: Span::new(prop_start, val_end),
+                        key,
+                        value,
+                        shorthand: true,
+                        kind: ObjectPropertyKind::Init,
+                        span: Span::new(prop_start, val_end),
                     });
                 }
             }
             if matches!(self.current_kind(), TokenKind::Punct(Punct::Comma)) {
                 self.bump()?;
-            } else { break; }
+            } else {
+                break;
+            }
         }
         self.expect_punct(Punct::RBrace)?;
         let end = self.last_span_end();
-        Ok(Expr::Object { properties, span: Span::new(start, end) })
+        Ok(Expr::Object {
+            properties,
+            span: Span::new(start, end),
+        })
     }
 
     fn parse_object_key(&mut self) -> Result<ObjectKey, ParseError> {
         let span = self.lookahead_span();
         match self.current_kind().clone() {
-            TokenKind::Ident(name) => { self.bump()?; Ok(ObjectKey::Identifier { name, span }) }
-            TokenKind::String(value) => { self.bump()?; Ok(ObjectKey::String { value, span }) }
-            TokenKind::Number(value, _) => { self.bump()?; Ok(ObjectKey::Number { value, span }) }
+            TokenKind::Ident(name) => {
+                self.bump()?;
+                Ok(ObjectKey::Identifier { name, span })
+            }
+            TokenKind::String(value) => {
+                self.bump()?;
+                Ok(ObjectKey::String { value, span })
+            }
+            TokenKind::Number(value, _) => {
+                self.bump()?;
+                Ok(ObjectKey::Number { value, span })
+            }
             TokenKind::Punct(Punct::LBracket) => {
                 self.bump()?;
                 let expr = self.parse_assignment_expression()?;
                 self.expect_punct(Punct::RBracket)?;
                 let end = self.last_span_end();
-                Ok(ObjectKey::Computed { expr, span: Span::new(span.start, end) })
+                Ok(ObjectKey::Computed {
+                    expr,
+                    span: Span::new(span.start, end),
+                })
             }
             _ => Err(self.err_here("expected object key".into())),
         }
@@ -904,7 +1115,10 @@ impl<'src> Parser<'src> {
         let expr = self.parse_expression()?;
         self.expect_punct(Punct::RParen)?;
         let end = self.last_span_end();
-        Ok(Expr::Parenthesized { expr: Box::new(expr), span: Span::new(start, end) })
+        Ok(Expr::Parenthesized {
+            expr: Box::new(expr),
+            span: Span::new(start, end),
+        })
     }
 
     /// Comma-separated sequence (a, b, c).
@@ -920,7 +1134,10 @@ impl<'src> Parser<'src> {
             expressions.push(self.parse_assignment_expression()?);
         }
         let end = expressions.last().unwrap().span().end;
-        Ok(Expr::Sequence { expressions, span: Span::new(start, end) })
+        Ok(Expr::Sequence {
+            expressions,
+            span: Span::new(start, end),
+        })
     }
 
     // ───────────────── Helpers ─────────────────
@@ -933,7 +1150,7 @@ impl<'src> Parser<'src> {
     /// If followed by `(`, `:`, `,`, `}`, or `=`, it's a plain key.
     fn parse_tagged_template(&mut self, tag: Expr, start: usize) -> Result<Expr, ParseError> {
         use crate::token::TemplatePart;
-        use rusty_js_ast::{ArrayElement, Argument};
+        use rusty_js_ast::{Argument, ArrayElement};
         // Parse the template literal into an Expr::TemplateLiteral first,
         // then convert into a Call with [Array(quasis), ...expressions].
         let tpl = match self.current_kind().clone() {
@@ -956,14 +1173,23 @@ impl<'src> Parser<'src> {
             _ => return Err(self.err_here("expected template after tag".into())),
         };
         let (quasis, expressions, end) = match tpl {
-            Expr::TemplateLiteral { quasis, expressions, span } => (quasis, expressions, span.end),
+            Expr::TemplateLiteral {
+                quasis,
+                expressions,
+                span,
+            } => (quasis, expressions, span.end),
             _ => unreachable!(),
         };
         let strings_arr = Expr::Array {
-            elements: quasis.iter().map(|q| ArrayElement::Expr(Expr::StringLiteral {
-                value: (**q).clone(),
-                span: Span::new(start, end),
-            })).collect(),
+            elements: quasis
+                .iter()
+                .map(|q| {
+                    ArrayElement::Expr(Expr::StringLiteral {
+                        value: (**q).clone(),
+                        span: Span::new(start, end),
+                    })
+                })
+                .collect(),
             trailing_comma_after_spread: false,
             span: Span::new(start, end),
         };
@@ -981,7 +1207,9 @@ impl<'src> Parser<'src> {
 
     fn looks_like_async_method_shorthand(&self) -> bool {
         let is_async_ident = matches!(self.current_kind(), TokenKind::Ident(n) if n == "async");
-        if !is_async_ident { return false; }
+        if !is_async_ident {
+            return false;
+        }
         let src = self.source().as_bytes();
         let span = self.lookahead_span();
         let mut j = span.end;
@@ -1018,7 +1246,9 @@ impl<'src> Parser<'src> {
             TokenKind::Ident(n) => n == "get" || n == "set",
             _ => false,
         };
-        if !is_accessor_ident { return false; }
+        if !is_accessor_ident {
+            return false;
+        }
         let src = self.source().as_bytes();
         let span = self.lookahead_span();
         // Skip whitespace and line terminators after the identifier.
@@ -1049,20 +1279,55 @@ impl<'src> Parser<'src> {
         match self.current_kind() {
             TokenKind::Ident(name) => {
                 // Reject obvious non-arrow-head reserved words.
-                if matches!(name.as_str(),
-                    "typeof" | "void" | "delete" | "await" | "yield" | "new"
-                    | "function" | "class" | "this" | "super" | "null"
-                    | "true" | "false" | "return" | "throw" | "if" | "else"
-                    | "for" | "while" | "do" | "switch" | "case" | "default"
-                    | "break" | "continue" | "try" | "catch" | "finally"
-                    | "var" | "let" | "const" | "import" | "export") {
+                if matches!(
+                    name.as_str(),
+                    "typeof"
+                        | "void"
+                        | "delete"
+                        | "await"
+                        | "yield"
+                        | "new"
+                        | "function"
+                        | "class"
+                        | "this"
+                        | "super"
+                        | "null"
+                        | "true"
+                        | "false"
+                        | "return"
+                        | "throw"
+                        | "if"
+                        | "else"
+                        | "for"
+                        | "while"
+                        | "do"
+                        | "switch"
+                        | "case"
+                        | "default"
+                        | "break"
+                        | "continue"
+                        | "try"
+                        | "catch"
+                        | "finally"
+                        | "var"
+                        | "let"
+                        | "const"
+                        | "import"
+                        | "export"
+                ) {
                     return false;
                 }
                 // Skip past the identifier's bytes.
                 let mut j = start;
-                while j < src.len() && (src[j].is_ascii_alphanumeric() || src[j] == b'_' || src[j] == b'$') { j += 1; }
+                while j < src.len()
+                    && (src[j].is_ascii_alphanumeric() || src[j] == b'_' || src[j] == b'$')
+                {
+                    j += 1;
+                }
                 // Then whitespace.
-                while j < src.len() && (src[j] == b' ' || src[j] == b'\t') { j += 1; }
+                while j < src.len() && (src[j] == b' ' || src[j] == b'\t') {
+                    j += 1;
+                }
                 src.get(j) == Some(&b'=') && src.get(j + 1) == Some(&b'>')
             }
             TokenKind::Punct(Punct::LParen) => {
@@ -1085,13 +1350,17 @@ impl<'src> Parser<'src> {
                         b'/' if src.get(j + 1) == Some(&b'/') => {
                             // Line comment: skip to next line terminator.
                             j += 2;
-                            while j < src.len() && src[j] != b'\n' && src[j] != b'\r' { j += 1; }
+                            while j < src.len() && src[j] != b'\n' && src[j] != b'\r' {
+                                j += 1;
+                            }
                             continue;
                         }
                         b'/' if src.get(j + 1) == Some(&b'*') => {
                             // Block comment: skip to closing `*/`.
                             j += 2;
-                            while j + 1 < src.len() && !(src[j] == b'*' && src[j + 1] == b'/') { j += 1; }
+                            while j + 1 < src.len() && !(src[j] == b'*' && src[j + 1] == b'/') {
+                                j += 1;
+                            }
                             j = (j + 2).min(src.len());
                             continue;
                         }
@@ -1102,14 +1371,19 @@ impl<'src> Parser<'src> {
                             let q = src[j];
                             j += 1;
                             while j < src.len() && src[j] != q {
-                                if src[j] == b'\\' && j + 1 < src.len() { j += 2; continue; }
+                                if src[j] == b'\\' && j + 1 < src.len() {
+                                    j += 2;
+                                    continue;
+                                }
                                 j += 1;
                             }
                         }
                         b'`' => {
                             // Walk past a template literal (no substitutions handled).
                             j += 1;
-                            while j < src.len() && src[j] != b'`' { j += 1; }
+                            while j < src.len() && src[j] != b'`' {
+                                j += 1;
+                            }
                         }
                         _ => {}
                     }
@@ -1117,15 +1391,21 @@ impl<'src> Parser<'src> {
                 }
                 // After matching `)`, skip whitespace + comments, then check `=>`.
                 loop {
-                    while j < src.len() && matches!(src[j], b' ' | b'\t' | b'\n' | b'\r') { j += 1; }
+                    while j < src.len() && matches!(src[j], b' ' | b'\t' | b'\n' | b'\r') {
+                        j += 1;
+                    }
                     if j + 1 < src.len() && src[j] == b'/' && src[j + 1] == b'/' {
                         j += 2;
-                        while j < src.len() && src[j] != b'\n' && src[j] != b'\r' { j += 1; }
+                        while j < src.len() && src[j] != b'\n' && src[j] != b'\r' {
+                            j += 1;
+                        }
                         continue;
                     }
                     if j + 1 < src.len() && src[j] == b'/' && src[j + 1] == b'*' {
                         j += 2;
-                        while j + 1 < src.len() && !(src[j] == b'*' && src[j + 1] == b'/') { j += 1; }
+                        while j + 1 < src.len() && !(src[j] == b'*' && src[j + 1] == b'/') {
+                            j += 1;
+                        }
                         j = (j + 2).min(src.len());
                         continue;
                     }
@@ -1149,26 +1429,36 @@ impl<'src> Parser<'src> {
             match kind {
                 TokenKind::Punct(Punct::LParen) => depth_paren += 1,
                 TokenKind::Punct(Punct::RParen) => {
-                    if depth_paren == 0 { break; }
+                    if depth_paren == 0 {
+                        break;
+                    }
                     depth_paren -= 1;
                 }
                 TokenKind::Punct(Punct::LBrace) => depth_brace += 1,
                 TokenKind::Punct(Punct::RBrace) => {
-                    if depth_brace == 0 { break; }
+                    if depth_brace == 0 {
+                        break;
+                    }
                     depth_brace -= 1;
                 }
                 TokenKind::Punct(Punct::LBracket) => depth_bracket += 1,
                 TokenKind::Punct(Punct::RBracket) => {
-                    if depth_bracket == 0 { break; }
+                    if depth_bracket == 0 {
+                        break;
+                    }
                     depth_bracket -= 1;
                 }
                 TokenKind::Punct(Punct::Comma) | TokenKind::Punct(Punct::Semicolon) => {
-                    if depth_paren == 0 && depth_brace == 0 && depth_bracket == 0 { break; }
+                    if depth_paren == 0 && depth_brace == 0 && depth_bracket == 0 {
+                        break;
+                    }
                 }
                 _ => {}
             }
             // ASI break: top-level token preceded by line terminator.
-            if depth_paren == 0 && depth_brace == 0 && depth_bracket == 0
+            if depth_paren == 0
+                && depth_brace == 0
+                && depth_bracket == 0
                 && self.lookahead_preceded_by_lt()
                 && self.lookahead_span().start != start
             {
@@ -1177,7 +1467,9 @@ impl<'src> Parser<'src> {
             self.bump()?;
         }
         let end = self.last_span_end();
-        Ok(Expr::Opaque { span: Span::new(start, end) })
+        Ok(Expr::Opaque {
+            span: Span::new(start, end),
+        })
     }
 
     fn opaque_until_top_terminator_within_braces(&mut self) -> Result<Expr, ParseError> {
@@ -1189,7 +1481,9 @@ impl<'src> Parser<'src> {
             self.skip_balanced_public(Punct::LBrace, Punct::RBrace)?;
         }
         let end = self.last_span_end();
-        Ok(Expr::Opaque { span: Span::new(start, end) })
+        Ok(Expr::Opaque {
+            span: Span::new(start, end),
+        })
     }
 
     // ───────────────── FunctionExpression / ClassExpression / ArrowFunction ─────────────────
@@ -1198,20 +1492,32 @@ impl<'src> Parser<'src> {
         let start = self.lookahead_span().start;
         self.expect_keyword("function")?;
         let is_generator = if matches!(self.current_kind(), TokenKind::Punct(Punct::Star)) {
-            self.bump()?; true
-        } else { false };
+            self.bump()?;
+            true
+        } else {
+            false
+        };
         let name = if let TokenKind::Ident(n) = self.current_kind().clone() {
             if !matches!(n.as_str(), "(") {
                 let span = self.lookahead_span();
                 self.bump()?;
                 Some(rusty_js_ast::BindingIdentifier { name: n, span })
-            } else { None }
-        } else { None };
+            } else {
+                None
+            }
+        } else {
+            None
+        };
         let params = self.parse_function_parameters_g(is_generator)?;
-        let body = self.parse_function_body_gs(Some(is_generator), Self::is_simple_param_list(&params))?;
+        let body =
+            self.parse_function_body_gs(Some(is_generator), Self::is_simple_param_list(&params))?;
         let end = self.last_span_end();
         Ok(Expr::Function {
-            name, is_async, is_generator, params, body,
+            name,
+            is_async,
+            is_generator,
+            params,
+            body,
             span: Span::new(start, end),
         })
     }
@@ -1224,16 +1530,24 @@ impl<'src> Parser<'src> {
                 let span = self.lookahead_span();
                 self.bump()?;
                 Some(rusty_js_ast::BindingIdentifier { name: n, span })
-            } else { None }
-        } else { None };
+            } else {
+                None
+            }
+        } else {
+            None
+        };
         let super_class = if self.is_ident("extends") {
             self.bump()?;
             Some(Box::new(self.parse_left_hand_side_expression()?))
-        } else { None };
+        } else {
+            None
+        };
         let members = self.parse_class_body()?;
         let end = self.last_span_end();
         Ok(Expr::Class {
-            name, super_class, members,
+            name,
+            super_class,
+            members,
             span: Span::new(start, end),
         })
     }
@@ -1249,7 +1563,11 @@ impl<'src> Parser<'src> {
         let mut expressions: Vec<Expr> = Vec::new();
         // Consume Head, capturing its cooked text as the first quasi.
         let head_cooked = match self.current_kind().clone() {
-            TokenKind::Template { cooked, part: TemplatePart::Head, .. } => cooked.unwrap_or_default(),
+            TokenKind::Template {
+                cooked,
+                part: TemplatePart::Head,
+                ..
+            } => cooked.unwrap_or_default(),
             _ => return Err(self.err_here("expected template head".into())),
         };
         quasis.push(std::rc::Rc::new(head_cooked));
@@ -1264,21 +1582,37 @@ impl<'src> Parser<'src> {
             // Middle/Tail token.
             self.refetch_lookahead_with_goal(crate::lexer::LexerGoal::TemplateTail)?;
             match self.current_kind().clone() {
-                TokenKind::Template { cooked, part: TemplatePart::Middle, .. } => {
+                TokenKind::Template {
+                    cooked,
+                    part: TemplatePart::Middle,
+                    ..
+                } => {
                     quasis.push(std::rc::Rc::new(cooked.unwrap_or_default()));
                     self.bump()?;
                     continue;
                 }
-                TokenKind::Template { cooked, part: TemplatePart::Tail, .. } => {
+                TokenKind::Template {
+                    cooked,
+                    part: TemplatePart::Tail,
+                    ..
+                } => {
                     quasis.push(std::rc::Rc::new(cooked.unwrap_or_default()));
                     self.bump()?;
                     break;
                 }
-                _ => return Err(self.err_here("expected template middle/tail after substitution".into())),
+                _ => {
+                    return Err(
+                        self.err_here("expected template middle/tail after substitution".into())
+                    )
+                }
             }
         }
         let end = self.last_span_end();
-        Ok(Expr::TemplateLiteral { quasis, expressions, span: Span::new(start, end) })
+        Ok(Expr::TemplateLiteral {
+            quasis,
+            expressions,
+            span: Span::new(start, end),
+        })
     }
 
     fn parse_arrow_function(&mut self, is_async: bool) -> Result<Expr, ParseError> {
@@ -1291,9 +1625,11 @@ impl<'src> Parser<'src> {
                 self.bump()?;
                 vec![rusty_js_ast::Parameter {
                     target: rusty_js_ast::BindingPattern::Identifier(
-                        rusty_js_ast::BindingIdentifier { name: n, span }
+                        rusty_js_ast::BindingIdentifier { name: n, span },
                     ),
-                    default: None, rest: false, span,
+                    default: None,
+                    rest: false,
+                    span,
                 }]
             } else if matches!(self.current_kind(), TokenKind::Punct(Punct::LParen)) {
                 self.parse_function_parameters()?
@@ -1305,8 +1641,9 @@ impl<'src> Parser<'src> {
         if matches!(self.current_kind(), TokenKind::Punct(Punct::Arrow))
             && self.lookahead_preceded_by_lt()
         {
-            return Err(self.err_here(
-                "No line terminator allowed before `=>` in arrow function".into()));
+            return Err(
+                self.err_here("No line terminator allowed before `=>` in arrow function".into())
+            );
         }
         self.expect_punct(Punct::Arrow)?;
         // PPAE-EXT 1 + APDD-EXT 1: §15.2.1 Static Semantics:Early Errors —
@@ -1320,8 +1657,10 @@ impl<'src> Parser<'src> {
         for p in &params {
             for id in p.target.collect_names() {
                 if seen.iter().any(|(s, _)| s == &id.name) {
-                    return Err(self.err_at(id.span, format!(
-                        "arrow function has duplicate parameter name `{}`", id.name)));
+                    return Err(self.err_at(
+                        id.span,
+                        format!("arrow function has duplicate parameter name `{}`", id.name),
+                    ));
                 }
                 // APRW-EXT 1 + SMPT-EXT 2: §11.6.2 ReservedWord — arrow
                 // function parameters cannot be Keyword unconditionally
@@ -1331,14 +1670,24 @@ impl<'src> Parser<'src> {
                 // arguments per §13.1.1.1.
                 let mode_gate = if self.strict_mode {
                     crate::parser::is_reserved_word(&id.name)
-                        || id.name == "eval" || id.name == "arguments"
+                        || id.name == "eval"
+                        || id.name == "arguments"
                 } else {
                     crate::parser::is_unconditional_reserved_word(&id.name)
                 };
                 if mode_gate {
-                    return Err(self.err_at(id.span, format!(
-                        "arrow function parameter `{}` is a reserved word{}",
-                        id.name, if self.strict_mode { " in strict mode" } else { "" })));
+                    return Err(self.err_at(
+                        id.span,
+                        format!(
+                            "arrow function parameter `{}` is a reserved word{}",
+                            id.name,
+                            if self.strict_mode {
+                                " in strict mode"
+                            } else {
+                                ""
+                            }
+                        ),
+                    ));
                 }
                 seen.push((id.name.clone(), id.span));
             }
@@ -1350,7 +1699,9 @@ impl<'src> Parser<'src> {
         // function ConciseBody is not [Yield]-parameterized). Force
         // in_generator=false for the body's duration.
         let body = if matches!(self.current_kind(), TokenKind::Punct(Punct::LBrace)) {
-            ArrowBody::Block(self.parse_function_body_gs(Some(false), Self::is_simple_param_list(&params))?)
+            ArrowBody::Block(
+                self.parse_function_body_gs(Some(false), Self::is_simple_param_list(&params))?,
+            )
         } else {
             self.function_body_depth += 1;
             let prior_gen = self.in_generator;
@@ -1361,7 +1712,11 @@ impl<'src> Parser<'src> {
             ArrowBody::Expression(Box::new(e))
         };
         let end = self.last_span_end();
-        Ok(Expr::Arrow { is_async, params, body, span: Span::new(start, end) })
+        Ok(Expr::Arrow {
+            is_async,
+            params,
+            body,
+            span: Span::new(start, end),
+        })
     }
 }
-

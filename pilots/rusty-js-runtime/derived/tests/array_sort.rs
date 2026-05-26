@@ -7,7 +7,11 @@ fn run(src: &str) -> Value {
 }
 
 fn as_str(v: Value) -> String {
-    if let Value::String(s) = v { s.as_str().to_string() } else { panic!("not a string: {:?}", v) }
+    if let Value::String(s) = v {
+        s.as_str().to_string()
+    } else {
+        panic!("not a string: {:?}", v)
+    }
 }
 
 #[test]
@@ -19,12 +23,18 @@ fn t1_default_lexicographic() {
 
 #[test]
 fn t2_numeric_ascending_comparator() {
-    assert_eq!(as_str(run("return [3,1,2].sort((a,b)=>a-b).join(',');")), "1,2,3");
+    assert_eq!(
+        as_str(run("return [3,1,2].sort((a,b)=>a-b).join(',');")),
+        "1,2,3"
+    );
 }
 
 #[test]
 fn t3_numeric_descending_comparator() {
-    assert_eq!(as_str(run("return [3,1,2].sort((a,b)=>b-a).join(',');")), "3,2,1");
+    assert_eq!(
+        as_str(run("return [3,1,2].sort((a,b)=>b-a).join(',');")),
+        "3,2,1"
+    );
 }
 
 #[test]
@@ -54,5 +64,8 @@ fn t6_mutates_in_place_returns_same() {
 
 #[test]
 fn t7_strings() {
-    assert_eq!(as_str(run("return ['banana','apple','cherry'].sort().join(',');")), "apple,banana,cherry");
+    assert_eq!(
+        as_str(run("return ['banana','apple','cherry'].sort().join(',');")),
+        "apple,banana,cherry"
+    );
 }

@@ -34,7 +34,10 @@ fn write_file(dir: &PathBuf, name: &str, contents: &str) -> PathBuf {
 }
 
 fn entry_url(path: &PathBuf) -> String {
-    format!("file://{}", path.canonicalize().expect("canonicalize").display())
+    format!(
+        "file://{}",
+        path.canonicalize().expect("canonicalize").display()
+    )
 }
 
 fn fresh_runtime() -> Runtime {
@@ -59,15 +62,28 @@ fn t01_bare_simple_esm_main() {
         "node_modules/foo/package.json",
         r#"{"name":"foo","main":"index.js","type":"module"}"#,
     );
-    write_file(&dir, "node_modules/foo/index.js", "const x = 1; export { x };");
+    write_file(
+        &dir,
+        "node_modules/foo/index.js",
+        "const x = 1; export { x };",
+    );
     let entry = write_file(
         &dir,
         "entry.mjs",
         "import { x } from \"foo\"; const result = x; export { result };",
     );
     let mut rt = fresh_runtime();
-    let v = run_entry(&mut rt, &fs::read_to_string(&entry).unwrap(), &entry_url(&entry)).unwrap();
-    assert!(matches!(v, Value::Number(n) if (n - 1.0).abs() < 1e-9), "got {:?}", v);
+    let v = run_entry(
+        &mut rt,
+        &fs::read_to_string(&entry).unwrap(),
+        &entry_url(&entry),
+    )
+    .unwrap();
+    assert!(
+        matches!(v, Value::Number(n) if (n - 1.0).abs() < 1e-9),
+        "got {:?}",
+        v
+    );
 }
 
 // ─── 2. `module` field preferred for ESM ────────────────────────────
@@ -79,7 +95,11 @@ fn t02_module_field_esm_preferred() {
         "node_modules/foo/package.json",
         r#"{"name":"foo","main":"index.cjs","module":"index.mjs"}"#,
     );
-    write_file(&dir, "node_modules/foo/index.mjs", "const x = 42; export { x };");
+    write_file(
+        &dir,
+        "node_modules/foo/index.mjs",
+        "const x = 42; export { x };",
+    );
     write_file(
         &dir,
         "node_modules/foo/index.cjs",
@@ -91,7 +111,12 @@ fn t02_module_field_esm_preferred() {
         "import { x } from \"foo\"; const result = x; export { result };",
     );
     let mut rt = fresh_runtime();
-    let v = run_entry(&mut rt, &fs::read_to_string(&entry).unwrap(), &entry_url(&entry)).unwrap();
+    let v = run_entry(
+        &mut rt,
+        &fs::read_to_string(&entry).unwrap(),
+        &entry_url(&entry),
+    )
+    .unwrap();
     assert!(matches!(v, Value::Number(n) if (n - 42.0).abs() < 1e-9));
 }
 
@@ -104,7 +129,11 @@ fn t03_exports_dot_import_condition() {
         "node_modules/foo/package.json",
         r#"{"name":"foo","exports":{".":{"import":"./esm.js","require":"./cjs.js"}},"type":"module"}"#,
     );
-    write_file(&dir, "node_modules/foo/esm.js", "const x = 10; export { x };");
+    write_file(
+        &dir,
+        "node_modules/foo/esm.js",
+        "const x = 10; export { x };",
+    );
     write_file(
         &dir,
         "node_modules/foo/cjs.js",
@@ -116,7 +145,12 @@ fn t03_exports_dot_import_condition() {
         "import { x } from \"foo\"; const result = x; export { result };",
     );
     let mut rt = fresh_runtime();
-    let v = run_entry(&mut rt, &fs::read_to_string(&entry).unwrap(), &entry_url(&entry)).unwrap();
+    let v = run_entry(
+        &mut rt,
+        &fs::read_to_string(&entry).unwrap(),
+        &entry_url(&entry),
+    )
+    .unwrap();
     assert!(matches!(v, Value::Number(n) if (n - 10.0).abs() < 1e-9));
 }
 
@@ -129,14 +163,23 @@ fn t04_exports_dot_default_fallback() {
         "node_modules/foo/package.json",
         r#"{"name":"foo","exports":{".":{"default":"./entry.js"}},"type":"module"}"#,
     );
-    write_file(&dir, "node_modules/foo/entry.js", "const x = 7; export { x };");
+    write_file(
+        &dir,
+        "node_modules/foo/entry.js",
+        "const x = 7; export { x };",
+    );
     let entry = write_file(
         &dir,
         "entry.mjs",
         "import { x } from \"foo\"; const result = x; export { result };",
     );
     let mut rt = fresh_runtime();
-    let v = run_entry(&mut rt, &fs::read_to_string(&entry).unwrap(), &entry_url(&entry)).unwrap();
+    let v = run_entry(
+        &mut rt,
+        &fs::read_to_string(&entry).unwrap(),
+        &entry_url(&entry),
+    )
+    .unwrap();
     assert!(matches!(v, Value::Number(n) if (n - 7.0).abs() < 1e-9));
 }
 
@@ -149,14 +192,23 @@ fn t05_subpath_import_via_exports() {
         "node_modules/foo/package.json",
         r#"{"name":"foo","exports":{"./sub":"./lib/sub.js"},"type":"module"}"#,
     );
-    write_file(&dir, "node_modules/foo/lib/sub.js", "const x = 99; export { x };");
+    write_file(
+        &dir,
+        "node_modules/foo/lib/sub.js",
+        "const x = 99; export { x };",
+    );
     let entry = write_file(
         &dir,
         "entry.mjs",
         "import { x } from \"foo/sub\"; const result = x; export { result };",
     );
     let mut rt = fresh_runtime();
-    let v = run_entry(&mut rt, &fs::read_to_string(&entry).unwrap(), &entry_url(&entry)).unwrap();
+    let v = run_entry(
+        &mut rt,
+        &fs::read_to_string(&entry).unwrap(),
+        &entry_url(&entry),
+    )
+    .unwrap();
     assert!(matches!(v, Value::Number(n) if (n - 99.0).abs() < 1e-9));
 }
 
@@ -169,14 +221,23 @@ fn t06_wildcard_subpath() {
         "node_modules/foo/package.json",
         r#"{"name":"foo","exports":{"./fp/*":"./dist/fp/*.js"},"type":"module"}"#,
     );
-    write_file(&dir, "node_modules/foo/dist/fp/get.js", "const x = 123; export { x };");
+    write_file(
+        &dir,
+        "node_modules/foo/dist/fp/get.js",
+        "const x = 123; export { x };",
+    );
     let entry = write_file(
         &dir,
         "entry.mjs",
         "import { x } from \"foo/fp/get\"; const result = x; export { result };",
     );
     let mut rt = fresh_runtime();
-    let v = run_entry(&mut rt, &fs::read_to_string(&entry).unwrap(), &entry_url(&entry)).unwrap();
+    let v = run_entry(
+        &mut rt,
+        &fs::read_to_string(&entry).unwrap(),
+        &entry_url(&entry),
+    )
+    .unwrap();
     assert!(matches!(v, Value::Number(n) if (n - 123.0).abs() < 1e-9));
 }
 
@@ -200,7 +261,12 @@ fn t07_scoped_package() {
         "import { x } from \"@org/pkg\"; const result = x; export { result };",
     );
     let mut rt = fresh_runtime();
-    let v = run_entry(&mut rt, &fs::read_to_string(&entry).unwrap(), &entry_url(&entry)).unwrap();
+    let v = run_entry(
+        &mut rt,
+        &fs::read_to_string(&entry).unwrap(),
+        &entry_url(&entry),
+    )
+    .unwrap();
     assert!(matches!(v, Value::Number(n) if (n - 55.0).abs() < 1e-9));
 }
 
@@ -213,14 +279,23 @@ fn t08_walk_up_two_levels() {
         "node_modules/foo/package.json",
         r#"{"name":"foo","main":"index.js","type":"module"}"#,
     );
-    write_file(&dir, "node_modules/foo/index.js", "const x = 8; export { x };");
+    write_file(
+        &dir,
+        "node_modules/foo/index.js",
+        "const x = 8; export { x };",
+    );
     let entry = write_file(
         &dir,
         "src/deep/entry.mjs",
         "import { x } from \"foo\"; const result = x; export { result };",
     );
     let mut rt = fresh_runtime();
-    let v = run_entry(&mut rt, &fs::read_to_string(&entry).unwrap(), &entry_url(&entry)).unwrap();
+    let v = run_entry(
+        &mut rt,
+        &fs::read_to_string(&entry).unwrap(),
+        &entry_url(&entry),
+    )
+    .unwrap();
     assert!(matches!(v, Value::Number(n) if (n - 8.0).abs() < 1e-9));
 }
 
@@ -233,19 +308,34 @@ fn t09_package_json_cached() {
         "node_modules/foo/package.json",
         r#"{"name":"foo","main":"index.js","type":"module"}"#,
     );
-    write_file(&dir, "node_modules/foo/index.js", "const x = 2; export { x };");
+    write_file(
+        &dir,
+        "node_modules/foo/index.js",
+        "const x = 2; export { x };",
+    );
     let entry = write_file(
         &dir,
         "entry.mjs",
         "import { x } from \"foo\"; const result = x; export { result };",
     );
     let mut rt = fresh_runtime();
-    let _ = run_entry(&mut rt, &fs::read_to_string(&entry).unwrap(), &entry_url(&entry)).unwrap();
+    let _ = run_entry(
+        &mut rt,
+        &fs::read_to_string(&entry).unwrap(),
+        &entry_url(&entry),
+    )
+    .unwrap();
     // Cache must contain at least the package's package.json.
-    let pkg_json_path = dir.join("node_modules/foo/package.json").canonicalize().unwrap();
+    let pkg_json_path = dir
+        .join("node_modules/foo/package.json")
+        .canonicalize()
+        .unwrap();
     assert!(
         rt.pkg_json_cache.contains_key(&pkg_json_path)
-            || rt.pkg_json_cache.keys().any(|k| k.ends_with("node_modules/foo/package.json")),
+            || rt
+                .pkg_json_cache
+                .keys()
+                .any(|k| k.ends_with("node_modules/foo/package.json")),
         "pkg_json_cache should have an entry; got keys = {:?}",
         rt.pkg_json_cache.keys().collect::<Vec<_>>()
     );
@@ -260,7 +350,11 @@ fn t10_cjs_require_bare_via_require_condition() {
         "node_modules/foo/package.json",
         r#"{"name":"foo","exports":{".":{"import":"./esm.js","require":"./cjs.js"}}}"#,
     );
-    write_file(&dir, "node_modules/foo/esm.js", "const x = -1; export { x };");
+    write_file(
+        &dir,
+        "node_modules/foo/esm.js",
+        "const x = -1; export { x };",
+    );
     write_file(
         &dir,
         "node_modules/foo/cjs.js",
@@ -273,10 +367,9 @@ fn t10_cjs_require_bare_via_require_condition() {
         "const foo = require('foo'); module.exports = { result: foo.x };",
     );
     let mut rt = fresh_runtime();
-    let ns = rt.evaluate_cjs_module(
-        &fs::read_to_string(&entry).unwrap(),
-        &entry_url(&entry),
-    ).unwrap();
+    let ns = rt
+        .evaluate_cjs_module(&fs::read_to_string(&entry).unwrap(), &entry_url(&entry))
+        .unwrap();
     let result = rt.object_get(ns, "result");
     assert!(
         matches!(result, Value::Number(n) if (n - 33.0).abs() < 1e-9),
@@ -305,7 +398,12 @@ fn t11_esm_imports_cjs_bare_package() {
         "import foo from \"foo\"; const result = foo.x; export { result };",
     );
     let mut rt = fresh_runtime();
-    let v = run_entry(&mut rt, &fs::read_to_string(&entry).unwrap(), &entry_url(&entry)).unwrap();
+    let v = run_entry(
+        &mut rt,
+        &fs::read_to_string(&entry).unwrap(),
+        &entry_url(&entry),
+    )
+    .unwrap();
     assert!(matches!(v, Value::Number(n) if (n - 17.0).abs() < 1e-9));
 }
 
@@ -319,9 +417,13 @@ fn t12_bare_spec_not_installed_clear_error() {
         "import x from \"nonexistent-pkg\"; const result = x; export { result };",
     );
     let mut rt = fresh_runtime();
-    let err = run_entry(&mut rt, &fs::read_to_string(&entry).unwrap(), &entry_url(&entry))
-        .err()
-        .expect("expected TypeError for unresolved bare specifier");
+    let err = run_entry(
+        &mut rt,
+        &fs::read_to_string(&entry).unwrap(),
+        &entry_url(&entry),
+    )
+    .err()
+    .expect("expected TypeError for unresolved bare specifier");
     let msg = format!("{:?}", err);
     assert!(
         msg.contains("nonexistent-pkg"),

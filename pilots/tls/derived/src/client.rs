@@ -7,8 +7,8 @@
 // host integration (fetch HTTPS) lands in the follow-on Π1.4.f round.
 // This round supplies the on-the-wire message building blocks.
 
+use crate::handshake::{encode_handshake, HandshakeMessage, HandshakeType};
 use crate::record::TlsError;
-use crate::handshake::{HandshakeMessage, HandshakeType, encode_handshake};
 
 // ─────────────────────────────────────────────────────────────────────
 // Cipher suites + named groups + signature algorithms (RFC 8446 §B.4)
@@ -53,12 +53,12 @@ pub const EXT_KEY_SHARE: u16 = 0x0033;
 
 pub struct ClientHelloParams<'a> {
     pub random: &'a [u8; 32],
-    pub legacy_session_id: &'a [u8],     // 0 or 32 bytes
+    pub legacy_session_id: &'a [u8], // 0 or 32 bytes
     pub cipher_suites: &'a [u16],
-    pub server_name: Option<&'a str>,    // for SNI
+    pub server_name: Option<&'a str>, // for SNI
     pub supported_groups: &'a [u16],
     pub signature_algorithms: &'a [u16],
-    pub key_shares: &'a [(u16, Vec<u8>)],  // (group, pubkey_bytes)
+    pub key_shares: &'a [(u16, Vec<u8>)], // (group, pubkey_bytes)
     pub alpn: Option<&'a [&'a [u8]]>,
 }
 
@@ -91,7 +91,10 @@ pub fn encode_client_hello(p: &ClientHelloParams) -> Result<Vec<u8>, TlsError> {
     body.push((exts.len() & 0xFF) as u8);
     body.extend_from_slice(&exts);
 
-    let msg = HandshakeMessage { msg_type: HandshakeType::ClientHello, body };
+    let msg = HandshakeMessage {
+        msg_type: HandshakeType::ClientHello,
+        body,
+    };
     Ok(encode_handshake(&msg))
 }
 
@@ -107,7 +110,7 @@ fn encode_client_extensions(p: &ClientHelloParams) -> Result<Vec<u8>, TlsError> 
         let entry_len = 1 + 2 + host_bytes.len();
         sn_ext.push((entry_len >> 8) as u8);
         sn_ext.push((entry_len & 0xFF) as u8);
-        sn_ext.push(0x00);  // host_name
+        sn_ext.push(0x00); // host_name
         sn_ext.push(((host_bytes.len() >> 8) & 0xFF) as u8);
         sn_ext.push((host_bytes.len() & 0xFF) as u8);
         sn_ext.extend_from_slice(host_bytes);
@@ -115,11 +118,12 @@ fn encode_client_extensions(p: &ClientHelloParams) -> Result<Vec<u8>, TlsError> 
     }
 
     // supported_versions: vec_u8 of u16s; for ClientHello only.
-    let sv_count = 1 + 2 * 1;  // 1 byte length prefix + (TLS 1.3 only here)
+    let sv_count = 1 + 2 * 1; // 1 byte length prefix + (TLS 1.3 only here)
     let _ = sv_count;
     let mut sv = Vec::new();
-    sv.push(2);          // 1-byte length: one u16 follows
-    sv.push(0x03); sv.push(0x04); // TLS 1.3
+    sv.push(2); // 1-byte length: one u16 follows
+    sv.push(0x03);
+    sv.push(0x04); // TLS 1.3
     push_extension(&mut exts, EXT_SUPPORTED_VERSIONS, &sv);
 
     // supported_groups
@@ -200,56 +204,82 @@ pub struct ServerHello {
 
 impl ServerHello {
     pub fn find_extension(&self, ext_type: u16) -> Option<&[u8]> {
-        self.extensions.iter().find(|(t, _)| *t == ext_type).map(|(_, v)| v.as_slice())
+        self.extensions
+            .iter()
+            .find(|(t, _)| *t == ext_type)
+            .map(|(_, v)| v.as_slice())
     }
 
     /// supported_versions extension in ServerHello carries a single
     /// selected ProtocolVersion (u16). Returns 0x0304 for TLS 1.3.
     pub fn selected_version(&self) -> Option<u16> {
         let v = self.find_extension(EXT_SUPPORTED_VERSIONS)?;
-        if v.len() != 2 { return None; }
+        if v.len() != 2 {
+            return None;
+        }
         Some(((v[0] as u16) << 8) | (v[1] as u16))
     }
 
     /// key_share extension in ServerHello carries a single KeyShareEntry.
     pub fn server_key_share(&self) -> Option<(u16, &[u8])> {
         let v = self.find_extension(EXT_KEY_SHARE)?;
-        if v.len() < 4 { return None; }
+        if v.len() < 4 {
+            return None;
+        }
         let group = ((v[0] as u16) << 8) | (v[1] as u16);
         let len = ((v[2] as usize) << 8) | (v[3] as usize);
-        if v.len() < 4 + len { return None; }
+        if v.len() < 4 + len {
+            return None;
+        }
         Some((group, &v[4..4 + len]))
     }
 }
 
 pub fn decode_server_hello(body: &[u8]) -> Result<ServerHello, TlsError> {
-    if body.len() < 2 + 32 + 1 { return Err(TlsError::UnexpectedEnd); }
+    if body.len() < 2 + 32 + 1 {
+        return Err(TlsError::UnexpectedEnd);
+    }
     // Skip legacy_version (2 bytes), should be 0x0303.
     let mut pos = 2;
     let mut random = [0u8; 32];
     random.copy_from_slice(&body[pos..pos + 32]);
     pos += 32;
     // legacy_session_id_echo
-    let sid_len = body[pos] as usize; pos += 1;
-    if body.len() < pos + sid_len { return Err(TlsError::UnexpectedEnd); }
+    let sid_len = body[pos] as usize;
+    pos += 1;
+    if body.len() < pos + sid_len {
+        return Err(TlsError::UnexpectedEnd);
+    }
     let legacy_session_id_echo = body[pos..pos + sid_len].to_vec();
     pos += sid_len;
     // cipher_suite
-    if body.len() < pos + 2 { return Err(TlsError::UnexpectedEnd); }
+    if body.len() < pos + 2 {
+        return Err(TlsError::UnexpectedEnd);
+    }
     let cipher_suite = ((body[pos] as u16) << 8) | (body[pos + 1] as u16);
     pos += 2;
     // legacy_compression_method (1 byte)
-    if body.len() < pos + 1 { return Err(TlsError::UnexpectedEnd); }
+    if body.len() < pos + 1 {
+        return Err(TlsError::UnexpectedEnd);
+    }
     let legacy_compression_method = body[pos];
     pos += 1;
     // extensions: u16 length + entries
-    if body.len() < pos + 2 { return Err(TlsError::UnexpectedEnd); }
+    if body.len() < pos + 2 {
+        return Err(TlsError::UnexpectedEnd);
+    }
     let exts_len = ((body[pos] as usize) << 8) | (body[pos + 1] as usize);
     pos += 2;
-    if body.len() < pos + exts_len { return Err(TlsError::UnexpectedEnd); }
+    if body.len() < pos + exts_len {
+        return Err(TlsError::UnexpectedEnd);
+    }
     let extensions = decode_extensions(&body[pos..pos + exts_len])?;
     Ok(ServerHello {
-        random, legacy_session_id_echo, cipher_suite, legacy_compression_method, extensions,
+        random,
+        legacy_session_id_echo,
+        cipher_suite,
+        legacy_compression_method,
+        extensions,
     })
 }
 
@@ -257,11 +287,15 @@ fn decode_extensions(buf: &[u8]) -> Result<Vec<(u16, Vec<u8>)>, TlsError> {
     let mut out = Vec::new();
     let mut pos = 0;
     while pos < buf.len() {
-        if buf.len() < pos + 4 { return Err(TlsError::UnexpectedEnd); }
+        if buf.len() < pos + 4 {
+            return Err(TlsError::UnexpectedEnd);
+        }
         let ext_type = ((buf[pos] as u16) << 8) | (buf[pos + 1] as u16);
         let len = ((buf[pos + 2] as usize) << 8) | (buf[pos + 3] as usize);
         pos += 4;
-        if buf.len() < pos + len { return Err(TlsError::UnexpectedEnd); }
+        if buf.len() < pos + len {
+            return Err(TlsError::UnexpectedEnd);
+        }
         let body = buf[pos..pos + len].to_vec();
         out.push((ext_type, body));
         pos += len;

@@ -20,8 +20,13 @@ fn consumer_undici_response_default_status_200() {
 fn consumer_undici_response_status_text_preserved() {
     let r = Response::new(
         None,
-        ResponseInit { status: Some(204), status_text: Some("No Content".into()), ..Default::default() },
-    ).unwrap();
+        ResponseInit {
+            status: Some(204),
+            status_text: Some("No Content".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
     assert_eq!(r.status_text(), "No Content");
 }
 
@@ -36,7 +41,10 @@ fn consumer_undici_response_status_text_preserved() {
 #[test]
 fn consumer_ky_response_json_static_sets_content_type() {
     let r = Response::json(r#"{"k":1}"#, Default::default()).unwrap();
-    assert_eq!(r.headers().get("content-type"), Some("application/json".to_string()));
+    assert_eq!(
+        r.headers().get("content-type"),
+        Some("application/json".to_string())
+    );
     assert_eq!(r.text().unwrap(), r#"{"k":1}"#);
 }
 
@@ -115,8 +123,11 @@ fn consumer_cloudflare_redirect_rejects_non_redirect_status() {
 #[test]
 fn consumer_cloudflare_redirect_accepts_canonical_redirect_codes() {
     for code in [301, 302, 303, 307, 308] {
-        assert!(Response::redirect("https://x.example", code).is_ok(),
-            "code {} should be a valid redirect", code);
+        assert!(
+            Response::redirect("https://x.example", code).is_ok(),
+            "code {} should be a valid redirect",
+            code
+        );
     }
 }
 
@@ -129,10 +140,7 @@ fn consumer_cloudflare_redirect_accepts_canonical_redirect_codes() {
 #[test]
 fn consumer_proxy_body_bytes_passthrough() {
     let payload = vec![0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0xFF];
-    let r = Response::new(
-        Some(Body::Bytes(payload.clone())),
-        Default::default(),
-    ).unwrap();
+    let r = Response::new(Some(Body::Bytes(payload.clone())), Default::default()).unwrap();
     assert_eq!(r.bytes().unwrap(), payload);
 }
 
@@ -144,8 +152,13 @@ fn consumer_proxy_body_bytes_passthrough() {
 fn wpt_response_constructor_init_status_text() {
     let r = Response::new(
         None,
-        ResponseInit { status: Some(418), status_text: Some("I'm a teapot".into()), ..Default::default() },
-    ).unwrap();
+        ResponseInit {
+            status: Some(418),
+            status_text: Some("I'm a teapot".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
     assert_eq!(r.status(), 418);
     assert_eq!(r.status_text(), "I'm a teapot");
 }
@@ -184,7 +197,8 @@ fn integration_request_headers_round_trip_through_clone() {
             body: Some(Body::Text("{}".into())),
             ..Default::default()
         },
-    ).unwrap();
+    )
+    .unwrap();
     let r2 = r.clone_request().unwrap();
     assert_eq!(
         r2.headers().get("authorization"),
@@ -205,9 +219,16 @@ fn integration_response_with_headers_constructed_externally() {
             headers: Some(headers),
             ..Default::default()
         },
-    ).unwrap();
-    assert_eq!(r.headers().get("cache-control"), Some("max-age=3600".to_string()));
-    assert_eq!(r.headers().get("content-type"), Some("text/html".to_string()));
+    )
+    .unwrap();
+    assert_eq!(
+        r.headers().get("cache-control"),
+        Some("max-age=3600".to_string())
+    );
+    assert_eq!(
+        r.headers().get("content-type"),
+        Some("text/html".to_string())
+    );
 }
 
 #[test]

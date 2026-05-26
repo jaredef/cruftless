@@ -21,12 +21,17 @@ fn fixture_dir(tag: &str) -> PathBuf {
 
 fn write_file(dir: &PathBuf, name: &str, contents: &str) {
     let p = dir.join(name);
-    if let Some(parent) = p.parent() { let _ = fs::create_dir_all(parent); }
+    if let Some(parent) = p.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
     fs::write(&p, contents).expect("write fixture");
 }
 
 fn entry_url(path: &PathBuf) -> String {
-    format!("file://{}", path.canonicalize().expect("canonicalize").display())
+    format!(
+        "file://{}",
+        path.canonicalize().expect("canonicalize").display()
+    )
 }
 
 fn fresh_runtime_with_host() -> Runtime {
@@ -40,13 +45,17 @@ fn fresh_runtime_with_host() -> Runtime {
 #[test]
 fn t01_require_path_fallback() {
     let dir = fixture_dir("path");
-    write_file(&dir, "main.cjs",
-        "const p = require(\"path\");\nconst j = p.join(\"a\", \"b\");\nmodule.exports = { j };\n");
+    write_file(
+        &dir,
+        "main.cjs",
+        "const p = require(\"path\");\nconst j = p.join(\"a\", \"b\");\nmodule.exports = { j };\n",
+    );
     let mut rt = fresh_runtime_with_host();
     let entry = dir.join("main.cjs");
     let url = entry_url(&entry);
     let src = fs::read_to_string(&entry).unwrap();
-    rt.evaluate_cjs_module(&src, &url).expect("evaluate_cjs_module");
+    rt.evaluate_cjs_module(&src, &url)
+        .expect("evaluate_cjs_module");
     let exports = rt.cjs_exports_of(&url).expect("cjs exports");
     let oid = match exports {
         Value::Object(o) => o,
@@ -62,13 +71,17 @@ fn t01_require_path_fallback() {
 #[test]
 fn t02_require_crypto_fallback() {
     let dir = fixture_dir("crypto");
-    write_file(&dir, "main.cjs",
-        "const c = require(\"crypto\");\nconst u = c.randomUUID();\nmodule.exports = { u };\n");
+    write_file(
+        &dir,
+        "main.cjs",
+        "const c = require(\"crypto\");\nconst u = c.randomUUID();\nmodule.exports = { u };\n",
+    );
     let mut rt = fresh_runtime_with_host();
     let entry = dir.join("main.cjs");
     let url = entry_url(&entry);
     let src = fs::read_to_string(&entry).unwrap();
-    rt.evaluate_cjs_module(&src, &url).expect("evaluate_cjs_module");
+    rt.evaluate_cjs_module(&src, &url)
+        .expect("evaluate_cjs_module");
     let exports = rt.cjs_exports_of(&url).expect("cjs exports");
     let oid = match exports {
         Value::Object(o) => o,
@@ -76,8 +89,11 @@ fn t02_require_crypto_fallback() {
     };
     match rt.object_get(oid, "u") {
         Value::String(s) => {
-            assert!(s.as_str().contains("-"),
-                "randomUUID stub should return a dashed placeholder string, got {}", s);
+            assert!(
+                s.as_str().contains("-"),
+                "randomUUID stub should return a dashed placeholder string, got {}",
+                s
+            );
         }
         v => panic!("expected uuid string, got {:?}", v),
     }
@@ -87,8 +103,11 @@ fn t02_require_crypto_fallback() {
 #[test]
 fn t03_unresolvable_bare_specifier_errors() {
     let dir = fixture_dir("missing");
-    write_file(&dir, "main.cjs",
-        "const x = require(\"not-a-builtin-and-not-installed\");\nmodule.exports = { x };\n");
+    write_file(
+        &dir,
+        "main.cjs",
+        "const x = require(\"not-a-builtin-and-not-installed\");\nmodule.exports = { x };\n",
+    );
     let mut rt = fresh_runtime_with_host();
     let entry = dir.join("main.cjs");
     let url = entry_url(&entry);
@@ -102,6 +121,9 @@ fn t03_unresolvable_bare_specifier_errors() {
                 msg
             );
         }
-        other => panic!("expected TypeError for unresolvable bare spec, got {:?}", other),
+        other => panic!(
+            "expected TypeError for unresolvable bare spec, got {:?}",
+            other
+        ),
     }
 }

@@ -48,7 +48,9 @@ impl std::fmt::Display for DecodeError {
             DecodeError::InvalidDistanceCode => write!(f, "invalid distance code"),
             DecodeError::DistanceTooFar => write!(f, "back-reference distance exceeds output"),
             DecodeError::InvalidGzipMagic => write!(f, "invalid gzip magic bytes"),
-            DecodeError::UnsupportedGzipMethod => write!(f, "unsupported gzip compression method (only deflate=8)"),
+            DecodeError::UnsupportedGzipMethod => {
+                write!(f, "unsupported gzip compression method (only deflate=8)")
+            }
             DecodeError::GzipReservedFlags => write!(f, "gzip reserved flags set"),
             DecodeError::GzipCrcMismatch => write!(f, "gzip CRC32 mismatch"),
             DecodeError::GzipSizeMismatch => write!(f, "gzip ISIZE mismatch"),
@@ -74,7 +76,11 @@ struct BitReader<'a> {
 
 impl<'a> BitReader<'a> {
     fn new(data: &'a [u8]) -> Self {
-        Self { data, byte_pos: 0, bit_pos: 0 }
+        Self {
+            data,
+            byte_pos: 0,
+            bit_pos: 0,
+        }
     }
 
     fn read_bits(&mut self, n: u32) -> Result<u32, DecodeError> {
@@ -134,19 +140,21 @@ struct HuffmanTable {
     // ordered by symbol value (ascending). This is the canonical form.
     // We decode by reading bits MSB-first within the code value, accumulating
     // bit-by-bit and checking against the canonical numeric base for each L.
-    counts: [u16; 16],   // counts[L] = number of symbols with code length L
-    symbols: Vec<u16>,   // symbols in canonical order (length-major, ascending)
+    counts: [u16; 16], // counts[L] = number of symbols with code length L
+    symbols: Vec<u16>, // symbols in canonical order (length-major, ascending)
 }
 
 impl HuffmanTable {
     fn from_lengths(lengths: &[u8]) -> Result<Self, DecodeError> {
         let mut counts = [0u16; 16];
         for &l in lengths {
-            if l as usize >= 16 { return Err(DecodeError::InvalidHuffmanCode); }
+            if l as usize >= 16 {
+                return Err(DecodeError::InvalidHuffmanCode);
+            }
             counts[l as usize] += 1;
         }
         counts[0] = 0; // 0-length symbols don't participate
-        // Symbols sorted by (length, symbol).
+                       // Symbols sorted by (length, symbol).
         let mut offsets = [0u16; 17];
         for i in 1..16 {
             offsets[i + 1] = offsets[i] + counts[i];
@@ -169,8 +177,8 @@ impl HuffmanTable {
     /// reads stream bits LSB-first; canonical Huffman codes are MSB-first.
     fn decode(&self, br: &mut BitReader) -> Result<u16, DecodeError> {
         let mut code: u32 = 0;
-        let mut first: u32 = 0;   // first canonical code at this length
-        let mut index: u32 = 0;   // index into self.symbols for this length
+        let mut first: u32 = 0; // first canonical code at this length
+        let mut index: u32 = 0; // index into self.symbols for this length
         for l in 1..16u32 {
             code = (code << 1) | br.read_bits(1)?;
             let count = self.counts[l as usize] as u32;
@@ -192,10 +200,18 @@ impl HuffmanTable {
 fn fixed_literal_lengths() -> [u8; 288] {
     let mut l = [0u8; 288];
     // 0..=143 → 8 bits; 144..=255 → 9 bits; 256..=279 → 7 bits; 280..=287 → 8 bits.
-    for i in 0..=143 { l[i] = 8; }
-    for i in 144..=255 { l[i] = 9; }
-    for i in 256..=279 { l[i] = 7; }
-    for i in 280..=287 { l[i] = 8; }
+    for i in 0..=143 {
+        l[i] = 8;
+    }
+    for i in 144..=255 {
+        l[i] = 9;
+    }
+    for i in 256..=279 {
+        l[i] = 7;
+    }
+    for i in 280..=287 {
+        l[i] = 8;
+    }
     l
 }
 
@@ -208,21 +224,19 @@ fn fixed_distance_lengths() -> [u8; 30] {
 // ─────────────────────────────────────────────────────────────────────────
 
 const LENGTH_BASE: [u16; 29] = [
-    3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31,
-    35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258,
+    3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131,
+    163, 195, 227, 258,
 ];
 const LENGTH_EXTRA: [u8; 29] = [
-    0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2,
-    3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0,
 ];
 const DISTANCE_BASE: [u16; 30] = [
-    1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193,
-    257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193,
-    12289, 16385, 24577,
+    1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537,
+    2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577,
 ];
 const DISTANCE_EXTRA: [u8; 30] = [
-    0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6,
-    7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13,
+    0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13,
+    13,
 ];
 
 // Code-length code ordering (RFC 1951 §3.2.7)
@@ -234,9 +248,7 @@ const CODE_LENGTH_ORDER: [usize; 19] = [
 // Dynamic-Huffman block header parsing (RFC 1951 §3.2.7)
 // ─────────────────────────────────────────────────────────────────────────
 
-fn read_dynamic_tables(br: &mut BitReader)
-    -> Result<(HuffmanTable, HuffmanTable), DecodeError>
-{
+fn read_dynamic_tables(br: &mut BitReader) -> Result<(HuffmanTable, HuffmanTable), DecodeError> {
     let hlit = br.read_bits(5)? as usize + 257;
     let hdist = br.read_bits(5)? as usize + 1;
     let hclen = br.read_bits(4)? as usize + 4;
@@ -252,28 +264,42 @@ fn read_dynamic_tables(br: &mut BitReader)
     while i < combined.len() {
         let sym = cl_table.decode(br)?;
         match sym {
-            0..=15 => { combined[i] = sym as u8; i += 1; }
+            0..=15 => {
+                combined[i] = sym as u8;
+                i += 1;
+            }
             16 => {
-                if i == 0 { return Err(DecodeError::InvalidHuffmanCode); }
+                if i == 0 {
+                    return Err(DecodeError::InvalidHuffmanCode);
+                }
                 let prev = combined[i - 1];
                 let repeat = br.read_bits(2)? as usize + 3;
                 for _ in 0..repeat {
-                    if i >= combined.len() { return Err(DecodeError::InvalidHuffmanCode); }
-                    combined[i] = prev; i += 1;
+                    if i >= combined.len() {
+                        return Err(DecodeError::InvalidHuffmanCode);
+                    }
+                    combined[i] = prev;
+                    i += 1;
                 }
             }
             17 => {
                 let repeat = br.read_bits(3)? as usize + 3;
                 for _ in 0..repeat {
-                    if i >= combined.len() { return Err(DecodeError::InvalidHuffmanCode); }
-                    combined[i] = 0; i += 1;
+                    if i >= combined.len() {
+                        return Err(DecodeError::InvalidHuffmanCode);
+                    }
+                    combined[i] = 0;
+                    i += 1;
                 }
             }
             18 => {
                 let repeat = br.read_bits(7)? as usize + 11;
                 for _ in 0..repeat {
-                    if i >= combined.len() { return Err(DecodeError::InvalidHuffmanCode); }
-                    combined[i] = 0; i += 1;
+                    if i >= combined.len() {
+                        return Err(DecodeError::InvalidHuffmanCode);
+                    }
+                    combined[i] = 0;
+                    i += 1;
                 }
             }
             _ => return Err(DecodeError::InvalidHuffmanCode),
@@ -296,7 +322,9 @@ fn decompress_block(
     dist: &HuffmanTable,
 ) -> Result<(), DecodeError> {
     loop {
-        if out.len() > MAX_OUTPUT { return Err(DecodeError::OutputTooLarge); }
+        if out.len() > MAX_OUTPUT {
+            return Err(DecodeError::OutputTooLarge);
+        }
         let sym = lit.decode(br)?;
         if sym < 256 {
             out.push(sym as u8);
@@ -304,19 +332,27 @@ fn decompress_block(
             return Ok(());
         } else {
             let code = (sym - 257) as usize;
-            if code >= 29 { return Err(DecodeError::InvalidLengthCode); }
-            let length = LENGTH_BASE[code] as usize
-                + br.read_bits(LENGTH_EXTRA[code] as u32)? as usize;
+            if code >= 29 {
+                return Err(DecodeError::InvalidLengthCode);
+            }
+            let length =
+                LENGTH_BASE[code] as usize + br.read_bits(LENGTH_EXTRA[code] as u32)? as usize;
             let dist_sym = dist.decode(br)? as usize;
-            if dist_sym >= 30 { return Err(DecodeError::InvalidDistanceCode); }
+            if dist_sym >= 30 {
+                return Err(DecodeError::InvalidDistanceCode);
+            }
             let distance = DISTANCE_BASE[dist_sym] as usize
                 + br.read_bits(DISTANCE_EXTRA[dist_sym] as u32)? as usize;
-            if distance > out.len() { return Err(DecodeError::DistanceTooFar); }
+            if distance > out.len() {
+                return Err(DecodeError::DistanceTooFar);
+            }
             let start = out.len() - distance;
             for i in 0..length {
                 let b = out[start + i];
                 out.push(b);
-                if out.len() > MAX_OUTPUT { return Err(DecodeError::OutputTooLarge); }
+                if out.len() > MAX_OUTPUT {
+                    return Err(DecodeError::OutputTooLarge);
+                }
             }
         }
     }
@@ -334,10 +370,14 @@ pub fn inflate(data: &[u8]) -> Result<Vec<u8>, DecodeError> {
                 br.align_to_byte();
                 let len = br.read_aligned_u16_le()?;
                 let nlen = br.read_aligned_u16_le()?;
-                if len ^ nlen != 0xFFFF { return Err(DecodeError::InvalidStoredLen); }
+                if len ^ nlen != 0xFFFF {
+                    return Err(DecodeError::InvalidStoredLen);
+                }
                 let bytes = br.read_aligned_bytes(len as usize)?;
                 out.extend_from_slice(bytes);
-                if out.len() > MAX_OUTPUT { return Err(DecodeError::OutputTooLarge); }
+                if out.len() > MAX_OUTPUT {
+                    return Err(DecodeError::OutputTooLarge);
+                }
             }
             1 => {
                 let lit = HuffmanTable::from_lengths(&fixed_literal_lengths())?;
@@ -350,7 +390,9 @@ pub fn inflate(data: &[u8]) -> Result<Vec<u8>, DecodeError> {
             }
             _ => return Err(DecodeError::InvalidBlockType),
         }
-        if bfinal != 0 { break; }
+        if bfinal != 0 {
+            break;
+        }
     }
     Ok(out)
 }
@@ -364,7 +406,11 @@ fn crc32(data: &[u8]) -> u32 {
     for n in 0..256u32 {
         let mut c = n;
         for _ in 0..8 {
-            c = if c & 1 != 0 { 0xEDB88320 ^ (c >> 1) } else { c >> 1 };
+            c = if c & 1 != 0 {
+                0xEDB88320 ^ (c >> 1)
+            } else {
+                c >> 1
+            };
         }
         table[n as usize] = c;
     }
@@ -381,39 +427,63 @@ fn crc32(data: &[u8]) -> u32 {
 
 /// Decompress a gzip-wrapped DEFLATE stream and verify CRC32 + ISIZE.
 pub fn gunzip(data: &[u8]) -> Result<Vec<u8>, DecodeError> {
-    if data.len() < 18 { return Err(DecodeError::UnexpectedEnd); }
-    if data[0] != 0x1f || data[1] != 0x8b { return Err(DecodeError::InvalidGzipMagic); }
-    if data[2] != 8 { return Err(DecodeError::UnsupportedGzipMethod); }
+    if data.len() < 18 {
+        return Err(DecodeError::UnexpectedEnd);
+    }
+    if data[0] != 0x1f || data[1] != 0x8b {
+        return Err(DecodeError::InvalidGzipMagic);
+    }
+    if data[2] != 8 {
+        return Err(DecodeError::UnsupportedGzipMethod);
+    }
     let flg = data[3];
-    if flg & 0xE0 != 0 { return Err(DecodeError::GzipReservedFlags); }
+    if flg & 0xE0 != 0 {
+        return Err(DecodeError::GzipReservedFlags);
+    }
     // 4..8: MTIME (ignored). 8: XFL (ignored). 9: OS (ignored).
     let mut p: usize = 10;
     // FEXTRA bit 2
     if flg & 0x04 != 0 {
-        if p + 2 > data.len() { return Err(DecodeError::UnexpectedEnd); }
+        if p + 2 > data.len() {
+            return Err(DecodeError::UnexpectedEnd);
+        }
         let xlen = (data[p] as usize) | ((data[p + 1] as usize) << 8);
         p += 2 + xlen;
-        if p > data.len() { return Err(DecodeError::UnexpectedEnd); }
+        if p > data.len() {
+            return Err(DecodeError::UnexpectedEnd);
+        }
     }
     // FNAME bit 3 — zero-terminated string
     if flg & 0x08 != 0 {
-        while p < data.len() && data[p] != 0 { p += 1; }
-        if p >= data.len() { return Err(DecodeError::UnexpectedEnd); }
+        while p < data.len() && data[p] != 0 {
+            p += 1;
+        }
+        if p >= data.len() {
+            return Err(DecodeError::UnexpectedEnd);
+        }
         p += 1;
     }
     // FCOMMENT bit 4 — zero-terminated
     if flg & 0x10 != 0 {
-        while p < data.len() && data[p] != 0 { p += 1; }
-        if p >= data.len() { return Err(DecodeError::UnexpectedEnd); }
+        while p < data.len() && data[p] != 0 {
+            p += 1;
+        }
+        if p >= data.len() {
+            return Err(DecodeError::UnexpectedEnd);
+        }
         p += 1;
     }
     // FHCRC bit 1 — 2-byte header CRC (we skip verification)
     if flg & 0x02 != 0 {
-        if p + 2 > data.len() { return Err(DecodeError::UnexpectedEnd); }
+        if p + 2 > data.len() {
+            return Err(DecodeError::UnexpectedEnd);
+        }
         p += 2;
     }
     // The trailer is the last 8 bytes; DEFLATE payload sits between p and len-8.
-    if data.len() < p + 8 { return Err(DecodeError::UnexpectedEnd); }
+    if data.len() < p + 8 {
+        return Err(DecodeError::UnexpectedEnd);
+    }
     let payload = &data[p..data.len() - 8];
     let trailer = &data[data.len() - 8..];
 
@@ -427,8 +497,12 @@ pub fn gunzip(data: &[u8]) -> Result<Vec<u8>, DecodeError> {
         | ((trailer[5] as u32) << 8)
         | ((trailer[6] as u32) << 16)
         | ((trailer[7] as u32) << 24);
-    if crc32(&out) != crc_expected { return Err(DecodeError::GzipCrcMismatch); }
-    if (out.len() as u32) != isize_expected { return Err(DecodeError::GzipSizeMismatch); }
+    if crc32(&out) != crc_expected {
+        return Err(DecodeError::GzipCrcMismatch);
+    }
+    if (out.len() as u32) != isize_expected {
+        return Err(DecodeError::GzipSizeMismatch);
+    }
     Ok(out)
 }
 
@@ -452,10 +526,14 @@ fn adler32(data: &[u8]) -> u32 {
 
 /// Decompress a zlib-wrapped DEFLATE stream (Content-Encoding: deflate).
 pub fn zlib_inflate(data: &[u8]) -> Result<Vec<u8>, DecodeError> {
-    if data.len() < 6 { return Err(DecodeError::UnexpectedEnd); }
+    if data.len() < 6 {
+        return Err(DecodeError::UnexpectedEnd);
+    }
     let cmf = data[0];
     let flg = data[1];
-    if (cmf & 0x0F) != 8 { return Err(DecodeError::UnsupportedGzipMethod); }
+    if (cmf & 0x0F) != 8 {
+        return Err(DecodeError::UnsupportedGzipMethod);
+    }
     if ((cmf as u16) << 8 | flg as u16) % 31 != 0 {
         return Err(DecodeError::InvalidHuffmanCode);
     }
@@ -543,8 +621,8 @@ pub fn zlib_deflate_stored(data: &[u8]) -> Vec<u8> {
     let a = adler32(data);
     out.push((a >> 24) as u8);
     out.push((a >> 16) as u8);
-    out.push((a >>  8) as u8);
-    out.push((a >>  0) as u8);
+    out.push((a >> 8) as u8);
+    out.push((a >> 0) as u8);
     out
 }
 
@@ -552,22 +630,22 @@ pub fn zlib_deflate_stored(data: &[u8]) -> Vec<u8> {
 pub fn gzip_deflate_stored(data: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(data.len() + 18);
     out.extend_from_slice(&[
-        0x1f, 0x8b,       // ID1, ID2
-        0x08,             // CM = deflate
-        0x00,             // FLG: no fields
+        0x1f, 0x8b, // ID1, ID2
+        0x08, // CM = deflate
+        0x00, // FLG: no fields
         0x00, 0x00, 0x00, 0x00, // MTIME = 0
-        0x00,             // XFL
-        0xff,             // OS = unknown
+        0x00, // XFL
+        0xff, // OS = unknown
     ]);
     out.extend_from_slice(&deflate_stored(data));
     let c = crc32(data);
-    out.push((c >>  0) as u8);
-    out.push((c >>  8) as u8);
+    out.push((c >> 0) as u8);
+    out.push((c >> 8) as u8);
     out.push((c >> 16) as u8);
     out.push((c >> 24) as u8);
     let isize_le = (data.len() as u32) & 0xFFFFFFFF;
-    out.push((isize_le >>  0) as u8);
-    out.push((isize_le >>  8) as u8);
+    out.push((isize_le >> 0) as u8);
+    out.push((isize_le >> 8) as u8);
     out.push((isize_le >> 16) as u8);
     out.push((isize_le >> 24) as u8);
     out
@@ -581,7 +659,8 @@ pub fn brotli_decode(data: &[u8]) -> Result<Vec<u8>, DecodeError> {
     use std::io::Read;
     let mut decoder = brotli_decompressor::Decompressor::new(data, 4096);
     let mut out = Vec::new();
-    decoder.read_to_end(&mut out)
+    decoder
+        .read_to_end(&mut out)
         .map_err(|e| DecodeError::Brotli(format!("{}", e)))?;
     Ok(out)
 }
@@ -606,8 +685,8 @@ mod brotli_tests {
         // Encoded "Hello, World!" via Python brotli.compress (default level).
         // Bytes hand-verified against `python3 -c "import brotli; print(brotli.compress(b'Hello, World!').hex())"`.
         let encoded = [
-            0x0b, 0x06, 0x80, 0x48, 0x65, 0x6c, 0x6c, 0x6f,
-            0x2c, 0x20, 0x57, 0x6f, 0x72, 0x6c, 0x64, 0x21, 0x03,
+            0x0b, 0x06, 0x80, 0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x2c, 0x20, 0x57, 0x6f, 0x72, 0x6c,
+            0x64, 0x21, 0x03,
         ];
         let r = brotli_decode(&encoded).expect("brotli decode");
         assert_eq!(r, b"Hello, World!");

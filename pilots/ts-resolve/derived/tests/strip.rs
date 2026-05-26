@@ -54,10 +54,7 @@ fn interface_declaration_stripped() {
 
 #[test]
 fn type_alias_stripped() {
-    assert!(shape_equiv(
-        "type Name = string;\nlet a = 1;",
-        "let a = 1;"
-    ));
+    assert!(shape_equiv("type Name = string;\nlet a = 1;", "let a = 1;"));
 }
 
 #[test]
@@ -70,10 +67,7 @@ fn as_cast_stripped() {
 
 #[test]
 fn non_null_postfix_stripped() {
-    assert!(shape_equiv(
-        "let x = foo!.bar;",
-        "let x = foo.bar;"
-    ));
+    assert!(shape_equiv("let x = foo!.bar;", "let x = foo.bar;"));
 }
 
 #[test]
@@ -110,18 +104,12 @@ fn array_generic_annotation_stripped() {
 
 #[test]
 fn union_type_stripped() {
-    assert!(shape_equiv(
-        "let x: string | number = 1;",
-        "let x = 1;"
-    ));
+    assert!(shape_equiv("let x: string | number = 1;", "let x = 1;"));
 }
 
 #[test]
 fn intersection_type_stripped() {
-    assert!(shape_equiv(
-        "let x: A & B = ({} as any);",
-        "let x = ({});"
-    ));
+    assert!(shape_equiv("let x: A & B = ({} as any);", "let x = ({});"));
 }
 
 #[test]
@@ -177,7 +165,10 @@ fn template_literal_with_substitution_then_tail_text_lexes() {
     // under LexerGoal::Div, then the `"` and `` ` `` after would
     // mis-lex (UnterminatedString reported elsewhere).
     let src = r#"function f(a, b) { return `${a.slice(0, -1)}${b}"`; }"#;
-    assert!(parses(src), "template with multiple substitutions + literal text should parse");
+    assert!(
+        parses(src),
+        "template with multiple substitutions + literal text should parse"
+    );
 }
 
 #[test]
@@ -367,10 +358,7 @@ fn regex_call_arg_not_mis_treated_as_overload() {
 
 #[test]
 fn plain_enum_stripped() {
-    assert!(shape_equiv(
-        "enum K { A, B, C }\nlet a = 1;",
-        "let a = 1;"
-    ));
+    assert!(shape_equiv("enum K { A, B, C }\nlet a = 1;", "let a = 1;"));
 }
 
 #[test]

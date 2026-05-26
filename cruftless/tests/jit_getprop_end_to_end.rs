@@ -12,13 +12,17 @@
 //! workstream).
 
 use rusty_js_bytecode::compiler::{FunctionProto, LocalDescriptor, UpvalueDescriptor};
-use rusty_js_bytecode::op::Op;
 use rusty_js_bytecode::constants::{Constant, ConstantsPool};
-use rusty_js_runtime::{Runtime, Value};
+use rusty_js_bytecode::op::Op;
 use rusty_js_runtime::value::Object;
+use rusty_js_runtime::{Runtime, Value};
 
-fn encode_op(bc: &mut Vec<u8>, op: Op) { bc.push(op as u8); }
-fn encode_u16(bc: &mut Vec<u8>, v: u16) { bc.extend_from_slice(&v.to_le_bytes()); }
+fn encode_op(bc: &mut Vec<u8>, op: Op) {
+    bc.push(op as u8);
+}
+fn encode_u16(bc: &mut Vec<u8>, v: u16) {
+    bc.extend_from_slice(&v.to_le_bytes());
+}
 
 /// Hand-build `function getx(obj) { return obj.x; }` with GetPropOnObject.
 fn build_getx_proto(prop_name: &str) -> FunctionProto {
@@ -28,8 +32,10 @@ fn build_getx_proto(prop_name: &str) -> FunctionProto {
     // bytecode work in both the JIT path (success path) and the interp
     // fall-through (deopt path) without needing LoadArg interp support.
     let mut bc = Vec::new();
-    encode_op(&mut bc, Op::LoadLocal); encode_u16(&mut bc, 0);
-    encode_op(&mut bc, Op::GetPropOnObject); encode_u16(&mut bc, 0);  // constant idx 0
+    encode_op(&mut bc, Op::LoadLocal);
+    encode_u16(&mut bc, 0);
+    encode_op(&mut bc, Op::GetPropOnObject);
+    encode_u16(&mut bc, 0); // constant idx 0
     encode_op(&mut bc, Op::Return);
 
     let mut constants = ConstantsPool::new();
@@ -82,7 +88,11 @@ fn jit_compiled_getprop_deopts_on_non_number_result() {
 
     // .x is a String, not a Number. The JIT helper will deopt.
     let obj_id = rt.alloc_object(Object::new_ordinary());
-    rt.object_set(obj_id, "x".into(), Value::String(std::rc::Rc::new("hello".to_string())));
+    rt.object_set(
+        obj_id,
+        "x".into(),
+        Value::String(std::rc::Rc::new("hello".to_string())),
+    );
 
     let proto = build_getx_proto("x");
     let proto_rc = std::rc::Rc::new(proto);
@@ -113,15 +123,20 @@ fn jit_compiled_getprop_deopts_on_non_number_result() {
     // is populated, JIT invokes again, deopts again, dispatcher
     // falls through again. Both calls return the same correct value.
     for trial in 0..2 {
-        let result = rt.call_function(
-            Value::Object(closure_id),
-            Value::Undefined,
-            vec![Value::Object(obj_id)],
-        ).expect("call_function should succeed");
+        let result = rt
+            .call_function(
+                Value::Object(closure_id),
+                Value::Undefined,
+                vec![Value::Object(obj_id)],
+            )
+            .expect("call_function should succeed");
 
         match &result {
-            Value::String(s) => assert_eq!(s.as_str(), "hello",
-                "trial={trial}: getx(obj) where obj.x='hello' should return 'hello'; got {s:?}"),
+            Value::String(s) => assert_eq!(
+                s.as_str(),
+                "hello",
+                "trial={trial}: getx(obj) where obj.x='hello' should return 'hello'; got {s:?}"
+            ),
             other => panic!("trial={trial}: expected String('hello'); got {other:?}"),
         }
     }
@@ -167,15 +182,19 @@ fn jit_compiled_getprop_returns_object_property_value() {
     // Invoke twice: first call JIT-compiles (threshold=1); second
     // exercises the cached JIT path through the runtime helper.
     for trial in 0..2 {
-        let result = rt.call_function(
-            Value::Object(closure_id),
-            Value::Undefined,
-            vec![Value::Object(obj_id)],
-        ).expect("call_function should succeed");
+        let result = rt
+            .call_function(
+                Value::Object(closure_id),
+                Value::Undefined,
+                vec![Value::Object(obj_id)],
+            )
+            .expect("call_function should succeed");
 
         match result {
-            Value::Number(n) => assert_eq!(n, 42.0,
-                "getx(obj) where obj.x=42 should return 42; trial={trial}, got {n}"),
+            Value::Number(n) => assert_eq!(
+                n, 42.0,
+                "getx(obj) where obj.x=42 should return 42; trial={trial}, got {n}"
+            ),
             other => panic!("trial={trial}: expected Number(42); got {other:?}"),
         }
     }

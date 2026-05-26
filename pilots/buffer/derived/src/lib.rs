@@ -49,31 +49,47 @@ impl Buffer {
 
     /// SPEC: Buffer.alloc(size, fill?). Zeroed by default.
     pub fn alloc(size: usize) -> Self {
-        Self { bytes: vec![0; size] }
+        Self {
+            bytes: vec![0; size],
+        }
     }
 
     /// SPEC: Buffer.alloc(size, fill, encoding?). Fills with the given byte
     /// pattern; if fill is a string, encodes per encoding (utf-8 default).
     pub fn alloc_filled(size: usize, fill: &[u8]) -> Self {
-        if fill.is_empty() { return Self::alloc(size); }
+        if fill.is_empty() {
+            return Self::alloc(size);
+        }
         let mut bytes = Vec::with_capacity(size);
-        for i in 0..size { bytes.push(fill[i % fill.len()]); }
+        for i in 0..size {
+            bytes.push(fill[i % fill.len()]);
+        }
         Self { bytes }
     }
 
     /// SPEC: Buffer.allocUnsafe(size). Pilot zeros (Rust-safe analog).
-    pub fn alloc_unsafe(size: usize) -> Self { Self::alloc(size) }
+    pub fn alloc_unsafe(size: usize) -> Self {
+        Self::alloc(size)
+    }
 
     /// SPEC: Buffer.from(string, encoding?).
     pub fn from_string(s: &str, encoding: Encoding) -> Self {
-        Self { bytes: encode(s, encoding) }
+        Self {
+            bytes: encode(s, encoding),
+        }
     }
 
     /// SPEC: Buffer.from(arrayLike).
-    pub fn from_bytes(bytes: &[u8]) -> Self { Self { bytes: bytes.to_vec() } }
+    pub fn from_bytes(bytes: &[u8]) -> Self {
+        Self {
+            bytes: bytes.to_vec(),
+        }
+    }
 
     /// SPEC: Buffer.from(buffer). Pilot's Clone covers this.
-    pub fn from_buffer(b: &Buffer) -> Self { b.clone() }
+    pub fn from_buffer(b: &Buffer) -> Self {
+        b.clone()
+    }
 
     /// SPEC: Buffer.byteLength(string, encoding?).
     pub fn byte_length(s: &str, encoding: Encoding) -> usize {
@@ -97,7 +113,9 @@ impl Buffer {
             let remaining = total.saturating_sub(bytes.len());
             let take = remaining.min(b.bytes.len());
             bytes.extend_from_slice(&b.bytes[..take]);
-            if bytes.len() >= total { break; }
+            if bytes.len() >= total {
+                break;
+            }
         }
         // Pad with zeros if total exceeds combined length.
         bytes.resize(total, 0);
@@ -105,14 +123,22 @@ impl Buffer {
     }
 
     /// SPEC: Buffer.isEncoding(name).
-    pub fn is_encoding(name: &str) -> bool { Encoding::from_name(name).is_some() }
+    pub fn is_encoding(name: &str) -> bool {
+        Encoding::from_name(name).is_some()
+    }
 
     // ─────────── Instance methods ────────────
 
     /// SPEC: buf.length.
-    pub fn len(&self) -> usize { self.bytes.len() }
-    pub fn is_empty(&self) -> bool { self.bytes.is_empty() }
-    pub fn as_bytes(&self) -> &[u8] { &self.bytes }
+    pub fn len(&self) -> usize {
+        self.bytes.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.bytes.is_empty()
+    }
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.bytes
+    }
 
     /// SPEC: buf.toString(encoding?, start?, end?).
     pub fn to_string(&self, encoding: Encoding, start: usize, end: Option<usize>) -> String {
@@ -123,8 +149,16 @@ impl Buffer {
     }
 
     /// SPEC: buf.write(string, offset, length, encoding) — returns bytes written.
-    pub fn write(&mut self, s: &str, offset: usize, length: Option<usize>, encoding: Encoding) -> usize {
-        if offset >= self.bytes.len() { return 0; }
+    pub fn write(
+        &mut self,
+        s: &str,
+        offset: usize,
+        length: Option<usize>,
+        encoding: Encoding,
+    ) -> usize {
+        if offset >= self.bytes.len() {
+            return 0;
+        }
         let encoded = encode(s, encoding);
         let max_room = self.bytes.len() - offset;
         let cap = length.unwrap_or(max_room).min(max_room).min(encoded.len());
@@ -135,29 +169,44 @@ impl Buffer {
     /// SPEC: buf.fill(value, start?, end?, encoding?).
     pub fn fill_byte(&mut self, value: u8, start: usize, end: Option<usize>) {
         let end = end.unwrap_or(self.bytes.len()).min(self.bytes.len());
-        if start >= end { return; }
-        for b in &mut self.bytes[start..end] { *b = value; }
+        if start >= end {
+            return;
+        }
+        for b in &mut self.bytes[start..end] {
+            *b = value;
+        }
     }
 
     pub fn fill_bytes(&mut self, pattern: &[u8], start: usize, end: Option<usize>) {
-        if pattern.is_empty() { return; }
+        if pattern.is_empty() {
+            return;
+        }
         let end = end.unwrap_or(self.bytes.len()).min(self.bytes.len());
-        if start >= end { return; }
+        if start >= end {
+            return;
+        }
         for (i, b) in self.bytes[start..end].iter_mut().enumerate() {
             *b = pattern[i % pattern.len()];
         }
     }
 
     /// SPEC: buf.equals(other).
-    pub fn equals(&self, other: &Buffer) -> bool { self.bytes == other.bytes }
+    pub fn equals(&self, other: &Buffer) -> bool {
+        self.bytes == other.bytes
+    }
 
     /// SPEC: buf.compare(other, ...). Returns -1/0/1 over the relevant ranges.
     pub fn compare(
-        &self, other: &Buffer,
-        target_start: usize, target_end: Option<usize>,
-        source_start: usize, source_end: Option<usize>,
+        &self,
+        other: &Buffer,
+        target_start: usize,
+        target_end: Option<usize>,
+        source_start: usize,
+        source_end: Option<usize>,
     ) -> i32 {
-        let te = target_end.unwrap_or(other.bytes.len()).min(other.bytes.len());
+        let te = target_end
+            .unwrap_or(other.bytes.len())
+            .min(other.bytes.len());
         let ts = target_start.min(te);
         let se = source_end.unwrap_or(self.bytes.len()).min(self.bytes.len());
         let ss = source_start.min(se);
@@ -174,7 +223,9 @@ impl Buffer {
     pub fn subarray(&self, start: usize, end: Option<usize>) -> Self {
         let end = end.unwrap_or(self.bytes.len()).min(self.bytes.len());
         let start = start.min(end);
-        Self { bytes: self.bytes[start..end].to_vec() }
+        Self {
+            bytes: self.bytes[start..end].to_vec(),
+        }
     }
 
     /// SPEC: buf.slice(start?, end?). Identical to subarray since v8+.
@@ -185,20 +236,32 @@ impl Buffer {
     /// SPEC: buf.indexOf(value, byteOffset?, encoding?). Returns isize: -1
     /// when not found.
     pub fn index_of_bytes(&self, needle: &[u8], byte_offset: usize) -> isize {
-        if needle.is_empty() { return byte_offset as isize; }
-        if byte_offset >= self.bytes.len() { return -1; }
+        if needle.is_empty() {
+            return byte_offset as isize;
+        }
+        if byte_offset >= self.bytes.len() {
+            return -1;
+        }
         for i in byte_offset..=self.bytes.len().saturating_sub(needle.len()) {
-            if self.bytes[i..i + needle.len()] == *needle { return i as isize; }
+            if self.bytes[i..i + needle.len()] == *needle {
+                return i as isize;
+            }
         }
         -1
     }
 
     pub fn last_index_of_bytes(&self, needle: &[u8]) -> isize {
-        if needle.is_empty() { return self.bytes.len() as isize; }
-        if needle.len() > self.bytes.len() { return -1; }
+        if needle.is_empty() {
+            return self.bytes.len() as isize;
+        }
+        if needle.len() > self.bytes.len() {
+            return -1;
+        }
         let upper = self.bytes.len() - needle.len();
         for i in (0..=upper).rev() {
-            if self.bytes[i..i + needle.len()] == *needle { return i as isize; }
+            if self.bytes[i..i + needle.len()] == *needle {
+                return i as isize;
+            }
         }
         -1
     }
@@ -210,18 +273,21 @@ impl Buffer {
     /// SPEC: buf.copy(target, targetStart?, sourceStart?, sourceEnd?). Returns
     /// bytes copied.
     pub fn copy(
-        &self, target: &mut Buffer,
+        &self,
+        target: &mut Buffer,
         target_start: usize,
-        source_start: usize, source_end: Option<usize>,
+        source_start: usize,
+        source_end: Option<usize>,
     ) -> usize {
         let se = source_end.unwrap_or(self.bytes.len()).min(self.bytes.len());
         let ss = source_start.min(se);
-        if target_start >= target.bytes.len() { return 0; }
+        if target_start >= target.bytes.len() {
+            return 0;
+        }
         let target_room = target.bytes.len() - target_start;
         let source_avail = se - ss;
         let n = source_avail.min(target_room);
-        target.bytes[target_start..target_start + n]
-            .copy_from_slice(&self.bytes[ss..ss + n]);
+        target.bytes[target_start..target_start + n].copy_from_slice(&self.bytes[ss..ss + n]);
         n
     }
 }
@@ -277,10 +343,14 @@ fn base64_encode(bytes: &[u8]) -> String {
         out.push(B64_ALPHABET[(((b0 << 4) | (b1 >> 4)) & 0x3F) as usize] as char);
         if chunk.len() > 1 {
             out.push(B64_ALPHABET[(((b1 << 2) | (b2 >> 6)) & 0x3F) as usize] as char);
-        } else { out.push('='); }
+        } else {
+            out.push('=');
+        }
         if chunk.len() > 2 {
             out.push(B64_ALPHABET[(b2 & 0x3F) as usize] as char);
-        } else { out.push('='); }
+        } else {
+            out.push('=');
+        }
     }
     out
 }
@@ -296,19 +366,36 @@ fn base64_decode(s: &str) -> Vec<u8> {
             _ => None,
         }
     }
-    let cleaned: Vec<u8> = s.bytes()
+    let cleaned: Vec<u8> = s
+        .bytes()
         .filter(|&b| !matches!(b, b' ' | b'\t' | b'\n' | b'\r' | b'='))
         .collect();
     let mut out = Vec::with_capacity(cleaned.len() * 3 / 4);
     for chunk in cleaned.chunks(4) {
         let v0 = idx(chunk[0]).unwrap_or(0) as u32;
-        let v1 = if chunk.len() > 1 { idx(chunk[1]).unwrap_or(0) as u32 } else { 0 };
-        let v2 = if chunk.len() > 2 { idx(chunk[2]).unwrap_or(0) as u32 } else { 0 };
-        let v3 = if chunk.len() > 3 { idx(chunk[3]).unwrap_or(0) as u32 } else { 0 };
+        let v1 = if chunk.len() > 1 {
+            idx(chunk[1]).unwrap_or(0) as u32
+        } else {
+            0
+        };
+        let v2 = if chunk.len() > 2 {
+            idx(chunk[2]).unwrap_or(0) as u32
+        } else {
+            0
+        };
+        let v3 = if chunk.len() > 3 {
+            idx(chunk[3]).unwrap_or(0) as u32
+        } else {
+            0
+        };
         let combined = (v0 << 18) | (v1 << 12) | (v2 << 6) | v3;
         out.push((combined >> 16) as u8);
-        if chunk.len() > 2 { out.push(((combined >> 8) & 0xFF) as u8); }
-        if chunk.len() > 3 { out.push((combined & 0xFF) as u8); }
+        if chunk.len() > 2 {
+            out.push(((combined >> 8) & 0xFF) as u8);
+        }
+        if chunk.len() > 3 {
+            out.push((combined & 0xFF) as u8);
+        }
     }
     out
 }
@@ -336,8 +423,14 @@ fn hex_decode(s: &str) -> Vec<u8> {
     let mut out = Vec::with_capacity(bytes.len() / 2);
     let mut i = 0;
     while i + 1 < bytes.len() {
-        let hi = match nyb(bytes[i]) { Some(v) => v, None => break };
-        let lo = match nyb(bytes[i + 1]) { Some(v) => v, None => break };
+        let hi = match nyb(bytes[i]) {
+            Some(v) => v,
+            None => break,
+        };
+        let lo = match nyb(bytes[i + 1]) {
+            Some(v) => v,
+            None => break,
+        };
         out.push((hi << 4) | lo);
         i += 2;
     }

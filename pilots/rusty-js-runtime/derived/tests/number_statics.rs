@@ -17,9 +17,13 @@ fn fresh() -> Runtime {
 }
 
 fn run_eval(rt: &mut Runtime, src: &str) -> Value {
-    let url = format!("file:///tmp/number_statics_{}.mjs",
+    let url = format!(
+        "file:///tmp/number_statics_{}.mjs",
         std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos());
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    );
     let wrapped = format!("const __r = {};\nexport {{ __r }};\n", src);
     let ns = rt.evaluate_module(&wrapped, &url).expect("evaluate_module");
     rt.object_get(ns, "__r")
@@ -42,8 +46,10 @@ fn t02_epsilon_positive_small() {
 #[test]
 fn t03_is_integer_semantics() {
     let mut rt = fresh();
-    let v = run_eval(&mut rt,
-        "Number.isInteger(42) && !Number.isInteger(42.5) && !Number.isInteger(\"42\")");
+    let v = run_eval(
+        &mut rt,
+        "Number.isInteger(42) && !Number.isInteger(42.5) && !Number.isInteger(\"42\")",
+    );
     assert!(matches!(v, Value::Boolean(true)), "got {:?}", v);
 }
 
@@ -51,8 +57,10 @@ fn t03_is_integer_semantics() {
 fn t04_is_safe_integer_boundary() {
     let mut rt = fresh();
     // 2**53 - 1 is safe; 2**53 is not.
-    let v = run_eval(&mut rt,
-        "Number.isSafeInteger(9007199254740991) && !Number.isSafeInteger(9007199254740992)");
+    let v = run_eval(
+        &mut rt,
+        "Number.isSafeInteger(9007199254740991) && !Number.isSafeInteger(9007199254740992)",
+    );
     assert!(matches!(v, Value::Boolean(true)), "got {:?}", v);
 }
 
@@ -67,7 +75,9 @@ fn t05_is_finite_typeof_gated() {
 #[test]
 fn t06_is_nan_typeof_gated() {
     let mut rt = fresh();
-    let v = run_eval(&mut rt,
-        "Number.isNaN(Number.NaN) && !Number.isNaN(\"NaN\")");
+    let v = run_eval(
+        &mut rt,
+        "Number.isNaN(Number.NaN) && !Number.isNaN(\"NaN\")",
+    );
     assert!(matches!(v, Value::Boolean(true)), "got {:?}", v);
 }

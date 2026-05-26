@@ -22,21 +22,32 @@ pub struct BodyHolder {
 
 impl BodyHolder {
     pub fn new(body: Body) -> Self {
-        Self { body, used: Cell::new(false) }
+        Self {
+            body,
+            used: Cell::new(false),
+        }
     }
 
     pub fn empty() -> Self {
         Self::new(Body::Empty)
     }
 
-    pub fn used(&self) -> bool { self.used.get() }
-    pub fn is_null(&self) -> bool { matches!(self.body, Body::Empty) }
-    pub fn body(&self) -> &Body { &self.body }
+    pub fn used(&self) -> bool {
+        self.used.get()
+    }
+    pub fn is_null(&self) -> bool {
+        matches!(self.body, Body::Empty)
+    }
+    pub fn body(&self) -> &Body {
+        &self.body
+    }
 
     /// SPEC §6.2/§6.4 body-consuming methods reject when bodyUsed is already
     /// true. Pilot's Result analog returns Err.
     pub fn consume_text(&self) -> Result<String, BodyError> {
-        if self.used.get() { return Err(BodyError::AlreadyUsed); }
+        if self.used.get() {
+            return Err(BodyError::AlreadyUsed);
+        }
         self.used.set(true);
         match &self.body {
             Body::Empty => Ok(String::new()),
@@ -46,7 +57,9 @@ impl BodyHolder {
     }
 
     pub fn consume_bytes(&self) -> Result<Vec<u8>, BodyError> {
-        if self.used.get() { return Err(BodyError::AlreadyUsed); }
+        if self.used.get() {
+            return Err(BodyError::AlreadyUsed);
+        }
         self.used.set(true);
         match &self.body {
             Body::Empty => Ok(Vec::new()),
@@ -71,13 +84,17 @@ impl BodyHolder {
     /// marked used. SPEC: clone() throws TypeError when bodyUsed; pilot
     /// returns Err.
     pub fn tee(&self) -> Result<Self, BodyError> {
-        if self.used.get() { return Err(BodyError::AlreadyUsed); }
+        if self.used.get() {
+            return Err(BodyError::AlreadyUsed);
+        }
         Ok(Self::new(self.body.clone()))
     }
 }
 
 impl Default for BodyHolder {
-    fn default() -> Self { Self::empty() }
+    fn default() -> Self {
+        Self::empty()
+    }
 }
 
 impl Clone for BodyHolder {

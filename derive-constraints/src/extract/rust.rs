@@ -37,9 +37,7 @@ pub fn extract(path: &str, src: &str) -> Result<TestFile> {
             });
         }
     };
-    let mut v = Visitor {
-        tests: Vec::new(),
-    };
+    let mut v = Visitor { tests: Vec::new() };
     v.visit_file(&file);
     Ok(TestFile {
         path: path.to_string(),
@@ -55,7 +53,13 @@ struct Visitor {
 }
 
 impl Visitor {
-    fn try_record_fn(&mut self, name: &str, attrs: &[Attribute], block: &syn::Block, kind_span: proc_macro2::Span) {
+    fn try_record_fn(
+        &mut self,
+        name: &str,
+        attrs: &[Attribute],
+        block: &syn::Block,
+        kind_span: proc_macro2::Span,
+    ) {
         if !is_test_fn(attrs) {
             return;
         }

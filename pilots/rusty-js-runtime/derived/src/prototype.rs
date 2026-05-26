@@ -16,9 +16,8 @@
 use crate::abstract_ops;
 use crate::interp::{Runtime, RuntimeError};
 use crate::value::{
-    FunctionInternals, InternalKind, NativeFn, Object, ObjectRef,
+    BoundFunctionInternals, FunctionInternals, InternalKind, NativeFn, Object, ObjectRef,
     PromiseReaction, PromiseStatus, Value,
-    BoundFunctionInternals,
 };
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -40,16 +39,16 @@ impl Runtime {
         // its `proto` automatically via the alloc-time wiring, which is
         // exactly what Array/Function/Promise/String/Number prototypes
         // want per spec (every prototype inherits from Object.prototype).
-        let array_proto    = self.alloc_object(Object::new_ordinary());
+        let array_proto = self.alloc_object(Object::new_ordinary());
         let function_proto = self.alloc_object(Object::new_ordinary());
-        let promise_proto  = self.alloc_object(Object::new_ordinary());
-        let string_proto   = self.alloc_object(Object::new_ordinary());
-        let number_proto   = self.alloc_object(Object::new_ordinary());
-        self.array_prototype    = Some(array_proto);
+        let promise_proto = self.alloc_object(Object::new_ordinary());
+        let string_proto = self.alloc_object(Object::new_ordinary());
+        let number_proto = self.alloc_object(Object::new_ordinary());
+        self.array_prototype = Some(array_proto);
         self.function_prototype = Some(function_proto);
-        self.promise_prototype  = Some(promise_proto);
-        self.string_prototype   = Some(string_proto);
-        self.number_prototype   = Some(number_proto);
+        self.promise_prototype = Some(promise_proto);
+        self.string_prototype = Some(string_proto);
+        self.number_prototype = Some(number_proto);
 
         // RS-EXT 2b: mirror into realm 0 (the primordial RealmRecord).
         // Later commits will flip the dispatch direction so that the
@@ -57,11 +56,11 @@ impl Runtime {
         // realm, but for now both views are kept in sync; the realm-
         // record is the canonical source-of-truth once enter_realm /
         // exit_realm swap them in RS-EXT 2e.
-        self.realms[0].object_prototype   = Some(object_proto);
-        self.realms[0].array_prototype    = Some(array_proto);
+        self.realms[0].object_prototype = Some(object_proto);
+        self.realms[0].array_prototype = Some(array_proto);
         self.realms[0].function_prototype = Some(function_proto);
-        self.realms[0].promise_prototype  = Some(promise_proto);
-        self.realms[0].string_prototype   = Some(string_proto);
+        self.realms[0].promise_prototype = Some(promise_proto);
+        self.realms[0].string_prototype = Some(string_proto);
 
         install_object_proto(self, object_proto);
         install_array_proto(self, array_proto);
@@ -93,8 +92,11 @@ impl Runtime {
             "prototype".into(),
             crate::value::PropertyDescriptor {
                 value: Value::Object(gen_proto),
-                writable: false, enumerable: false, configurable: false,
-                getter: None, setter: None,
+                writable: false,
+                enumerable: false,
+                configurable: false,
+                getter: None,
+                setter: None,
             },
         );
         self.iterator_prototype = Some(iter_proto);
@@ -109,8 +111,11 @@ impl Runtime {
             "prototype".into(),
             crate::value::PropertyDescriptor {
                 value: Value::Object(async_gen_proto),
-                writable: false, enumerable: false, configurable: false,
-                getter: None, setter: None,
+                writable: false,
+                enumerable: false,
+                configurable: false,
+                getter: None,
+                setter: None,
             },
         );
         self.async_iterator_prototype = Some(async_iter_proto);
@@ -349,9 +354,7 @@ fn is_regexp_like(rt: &mut Runtime, v: &Value) -> Result<bool, RuntimeError> {
     };
     let matcher = rt.read_property(id, "@@match")?;
     match matcher {
-        Value::Undefined => {
-            Ok(matches!(rt.obj(id).internal_kind, InternalKind::RegExp(_)))
-        }
+        Value::Undefined => Ok(matches!(rt.obj(id).internal_kind, InternalKind::RegExp(_))),
         _ => Ok(crate::abstract_ops::to_boolean(&matcher)),
     }
 }
@@ -505,14 +508,19 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
         let regex_v = args.first().cloned().unwrap_or(Value::Undefined);
         let regex_id = match &regex_v {
             Value::Object(id) => *id,
-            _ => return Err(crate::interp::RuntimeError::TypeError("matchAll requires a regex".into())),
+            _ => {
+                return Err(crate::interp::RuntimeError::TypeError(
+                    "matchAll requires a regex".into(),
+                ))
+            }
         };
         // SMGR-EXT 1: ECMA-262 §22.1.3.13 step 4 — TypeError when first
         // argument is a RegExp without the global (`/g`) flag.
         if let crate::value::InternalKind::RegExp(re) = &rt.obj(regex_id).internal_kind {
             if !re.flags.contains('g') {
                 return Err(crate::interp::RuntimeError::TypeError(
-                    "String.prototype.matchAll called with a non-global RegExp argument".into()));
+                    "String.prototype.matchAll called with a non-global RegExp argument".into(),
+                ));
             }
         }
         let out = rt.alloc_object(Object::new_array());
@@ -520,11 +528,17 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
         rt.object_set(regex_id, "lastIndex".into(), Value::Number(0.0));
         let exec = rt.object_get(regex_id, "exec");
         if !matches!(exec, Value::Object(_)) {
-            return Err(RuntimeError::TypeError("matchAll: regex.exec not callable".into()));
+            return Err(RuntimeError::TypeError(
+                "matchAll: regex.exec not callable".into(),
+            ));
         }
         let mut idx = 0usize;
         loop {
-            let r = rt.call_function(exec.clone(), regex_v.clone(), vec![Value::String(Rc::new(s.clone()))])?;
+            let r = rt.call_function(
+                exec.clone(),
+                regex_v.clone(),
+                vec![Value::String(Rc::new(s.clone()))],
+            )?;
             match r {
                 Value::Null | Value::Undefined => break,
                 Value::Object(match_id) => {
@@ -533,7 +547,9 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
                 }
                 _ => break,
             }
-            if idx > 100000 { break; } // safety
+            if idx > 100000 {
+                break;
+            } // safety
         }
         rt.object_set(out, "length".into(), Value::Number(idx as f64));
         Ok(Value::Object(out))
@@ -576,7 +592,9 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
         let t = rt.unwrap_primitive(&this);
         match t {
             Value::String(s) => Ok(Value::String(s)),
-            _ => Err(RuntimeError::TypeError("String.prototype.toString: this is not a String".into())),
+            _ => Err(RuntimeError::TypeError(
+                "String.prototype.toString: this is not a String".into(),
+            )),
         }
     });
     register_intrinsic_method(rt, host, "valueOf", 0, |rt, _args| {
@@ -584,12 +602,16 @@ fn install_string_proto(rt: &mut Runtime, host: ObjectRef) {
         let t = rt.unwrap_primitive(&this);
         match t {
             Value::String(s) => Ok(Value::String(s)),
-            _ => Err(RuntimeError::TypeError("String.prototype.valueOf: this is not a String".into())),
+            _ => Err(RuntimeError::TypeError(
+                "String.prototype.valueOf: this is not a String".into(),
+            )),
         }
     });
     register_intrinsic_method(rt, host, "@@iterator", 0, |rt, _args| {
         let this = rt.current_this();
-        let s = abstract_ops::to_string(&rt.unwrap_primitive(&this)).as_str().to_string();
+        let s = abstract_ops::to_string(&rt.unwrap_primitive(&this))
+            .as_str()
+            .to_string();
         Ok(Value::Object(crate::iterator::make_string_iterator(rt, s)))
     });
 }
@@ -619,10 +641,16 @@ fn install_function_proto(rt: &mut Runtime, host: ObjectRef) {
         let call_args: Vec<Value> = match arr_v {
             Value::Object(aid) => {
                 let len = rt.array_length(aid);
-                (0..len).map(|i| rt.object_get(aid, &i.to_string())).collect()
+                (0..len)
+                    .map(|i| rt.object_get(aid, &i.to_string()))
+                    .collect()
             }
             Value::Null | Value::Undefined => Vec::new(),
-            _ => return Err(RuntimeError::TypeError("apply: argsArray must be an Array".into())),
+            _ => {
+                return Err(RuntimeError::TypeError(
+                    "apply: argsArray must be an Array".into(),
+                ))
+            }
         };
         rt.call_function(f, this_arg, call_args)
     });
@@ -662,7 +690,7 @@ fn install_function_proto(rt: &mut Runtime, host: ObjectRef) {
                 this: bound_this,
                 args: bound_args,
             }),
-        
+
             ..Default::default()
         };
         let id = rt.alloc_object(bf);
@@ -706,15 +734,25 @@ fn promise_then_impl(
         let s = rt.obj(source);
         match &s.internal_kind {
             InternalKind::Promise(ps) => (ps.status, ps.value.clone()),
-            _ => return Err(RuntimeError::TypeError("then: source is not a Promise".into())),
+            _ => {
+                return Err(RuntimeError::TypeError(
+                    "then: source is not a Promise".into(),
+                ))
+            }
         }
     };
     match status {
         PromiseStatus::Pending => {
             let src = rt.obj_mut(source);
             if let InternalKind::Promise(ps) = &mut src.internal_kind {
-                ps.fulfill_reactions.push(PromiseReaction { handler: on_fulfilled, chain });
-                ps.reject_reactions.push(PromiseReaction { handler: on_rejected, chain });
+                ps.fulfill_reactions.push(PromiseReaction {
+                    handler: on_fulfilled,
+                    chain,
+                });
+                ps.reject_reactions.push(PromiseReaction {
+                    handler: on_rejected,
+                    chain,
+                });
             }
         }
         PromiseStatus::Fulfilled => {
@@ -738,7 +776,9 @@ fn enqueue_handler(
     rt.enqueue_microtask("PromiseReactionJob", move |rt| {
         match handler {
             Some(h) => match rt.call_function(h, Value::Undefined, vec![value]) {
-                Ok(r) => { crate::promise::resolve_promise(rt, chain, r); }
+                Ok(r) => {
+                    crate::promise::resolve_promise(rt, chain, r);
+                }
                 Err(e) => {
                     let thrown = match e {
                         RuntimeError::Thrown(v) => v,
@@ -746,11 +786,13 @@ fn enqueue_handler(
                     };
                     crate::promise::reject_promise(rt, chain, thrown);
                 }
-            }
-            None => if is_rejected {
-                crate::promise::reject_promise(rt, chain, value);
-            } else {
-                crate::promise::resolve_promise(rt, chain, value);
+            },
+            None => {
+                if is_rejected {
+                    crate::promise::reject_promise(rt, chain, value);
+                } else {
+                    crate::promise::resolve_promise(rt, chain, value);
+                }
             }
         }
         Ok(())
@@ -800,11 +842,15 @@ fn install_number_proto(rt: &mut Runtime, host: ObjectRef) {
 // ──────────────── helpers ────────────────
 
 fn arg_string(args: &[Value], i: usize) -> String {
-    args.get(i).map(|v| abstract_ops::to_string(v).as_str().to_string()).unwrap_or_default()
+    args.get(i)
+        .map(|v| abstract_ops::to_string(v).as_str().to_string())
+        .unwrap_or_default()
 }
 
 fn register_method<F>(rt: &mut Runtime, host: ObjectRef, name: &str, f: F)
-where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
+where
+    F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static,
+{
     let native: NativeFn = Rc::new(f);
     let mut properties = indexmap::IndexMap::new();
     crate::value::install_function_meta_props(&mut properties, name, 0.0);
@@ -812,8 +858,13 @@ where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
         proto: None, // function_prototype not yet installed when called from install_prototypes
         extensible: true,
         properties,
-        internal_kind: InternalKind::Function(FunctionInternals { name: name.to_string(), length: 0, native, is_constructor: true }),
-    
+        internal_kind: InternalKind::Function(FunctionInternals {
+            name: name.to_string(),
+            length: 0,
+            native,
+            is_constructor: true,
+        }),
+
         ..Default::default()
     };
     let fn_id = rt.alloc_object(fn_obj);
@@ -832,7 +883,8 @@ pub(crate) fn to_array_this(rt: &mut Runtime) -> Result<ObjectRef, RuntimeError>
     match rt.current_this() {
         Value::Object(id) => Ok(id),
         Value::Undefined | Value::Null => Err(RuntimeError::TypeError(
-            "Array.prototype method called on null or undefined".into())),
+            "Array.prototype method called on null or undefined".into(),
+        )),
         Value::Boolean(b) => {
             // Ω.5.P61.E13: Box as Boolean wrapper. Per ECMA §7.1.18
             // ToObject, the box has [[BooleanData]] internal slot and
@@ -855,7 +907,9 @@ pub(crate) fn to_array_this(rt: &mut Runtime) -> Result<ObjectRef, RuntimeError>
         Value::Number(n) => {
             let mut o = Object::new_ordinary();
             o.set_own_internal("__primitive".into(), Value::Number(n));
-            if let Some(p) = rt.number_prototype { o.proto = Some(p); }
+            if let Some(p) = rt.number_prototype {
+                o.proto = Some(p);
+            }
             Ok(rt.alloc_object(o))
         }
         Value::String(s) => {
@@ -866,11 +920,14 @@ pub(crate) fn to_array_this(rt: &mut Runtime) -> Result<ObjectRef, RuntimeError>
             for (i, c) in s.chars().enumerate() {
                 o.set_own(i.to_string(), Value::String(Rc::new(c.to_string())));
             }
-            if let Some(p) = rt.string_prototype { o.proto = Some(p); }
+            if let Some(p) = rt.string_prototype {
+                o.proto = Some(p);
+            }
             Ok(rt.alloc_object(o))
         }
         Value::BigInt(_) | Value::Symbol(_) => Err(RuntimeError::TypeError(
-            "Array.prototype method called on BigInt/Symbol".into())),
+            "Array.prototype method called on BigInt/Symbol".into(),
+        )),
     }
 }
 
@@ -879,7 +936,9 @@ pub(crate) fn to_array_this(rt: &mut Runtime) -> Result<ObjectRef, RuntimeError>
 /// with the prototype.rs install paths that pre-date intrinsics.rs's
 /// availability. Sets length, marks non-constructor, installs non-enum.
 fn register_intrinsic_method<F>(rt: &mut Runtime, host: ObjectRef, name: &str, length: u32, f: F)
-where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
+where
+    F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static,
+{
     let native: NativeFn = Rc::new(f);
     let mut properties = indexmap::IndexMap::new();
     crate::value::install_function_meta_props(&mut properties, name, length as f64);
@@ -888,15 +947,24 @@ where F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static {
         extensible: true,
         properties,
         internal_kind: InternalKind::Function(FunctionInternals {
-            name: name.to_string(), length, native, is_constructor: false,
+            name: name.to_string(),
+            length,
+            native,
+            is_constructor: false,
         }),
-    
+
         ..Default::default()
     };
     let fn_id = rt.alloc_object(fn_obj);
-    rt.obj_mut(host).dict_mut().insert(crate::value::PropertyKey::String(name.to_string()), crate::value::PropertyDescriptor {
-        value: Value::Object(fn_id),
-        writable: true, enumerable: false, configurable: true,
-        getter: None, setter: None,
-    });
+    rt.obj_mut(host).dict_mut().insert(
+        crate::value::PropertyKey::String(name.to_string()),
+        crate::value::PropertyDescriptor {
+            value: Value::Object(fn_id),
+            writable: true,
+            enumerable: false,
+            configurable: true,
+            getter: None,
+            setter: None,
+        },
+    );
 }

@@ -30,7 +30,10 @@ fn cd_ac_abor1_abort_sets_signal_aborted() {
 fn cd_ac_abor1_default_reason_code_is_20() {
     let ac = AbortController::new();
     ac.abort();
-    let r = ac.signal().reason().expect("aborted signal must have reason");
+    let r = ac
+        .signal()
+        .reason()
+        .expect("aborted signal must have reason");
     assert_eq!(r.code(), 20);
 }
 
@@ -146,8 +149,13 @@ fn spec_listener_registered_after_abort_fires_immediately() {
     let s = AbortSignal::abort_default();
     let fired = Rc::new(Cell::new(false));
     let f = fired.clone();
-    s.add_event_listener(move |_| { f.set(true); });
-    assert!(fired.get(), "post-abort listener should fire on registration");
+    s.add_event_listener(move |_| {
+        f.set(true);
+    });
+    assert!(
+        fired.get(),
+        "post-abort listener should fire on registration"
+    );
 }
 
 // ─────────── throw_if_aborted ──────────
@@ -193,7 +201,9 @@ fn spec_any_subsequent_input_aborts_dont_re_fire() {
     let any = AbortSignal::any(&[ac1.signal().clone(), ac2.signal().clone()]);
     let count = Rc::new(Cell::new(0u32));
     let c = count.clone();
-    any.add_event_listener(move |_| { c.set(c.get() + 1); });
+    any.add_event_listener(move |_| {
+        c.set(c.get() + 1);
+    });
     ac1.abort();
     ac2.abort(); // second input also aborts; result already aborted
     assert_eq!(count.get(), 1);
@@ -213,7 +223,10 @@ fn spec_signal_clone_shares_state_with_original() {
     let s = ac.signal().clone();
     assert!(!s.aborted());
     ac.abort();
-    assert!(s.aborted(), "cloned signal should reflect abort on the controller");
+    assert!(
+        s.aborted(),
+        "cloned signal should reflect abort on the controller"
+    );
 }
 
 #[test]

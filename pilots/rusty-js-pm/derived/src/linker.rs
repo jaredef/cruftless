@@ -61,8 +61,12 @@ pub fn link_package(
             std::fs::remove_dir_all(&pkg.staging_dir)
                 .map_err(|e| LinkError::Io(format!("rm staging {:?}: {e}", pkg.staging_dir)))?;
         }
-        Err(e) => return Err(LinkError::Io(format!(
-            "rename {:?} → {:?}: {e}", pkg.staging_dir, install_dir))),
+        Err(e) => {
+            return Err(LinkError::Io(format!(
+                "rename {:?} → {:?}: {e}",
+                pkg.staging_dir, install_dir
+            )))
+        }
     }
 
     Ok(LinkedPackage { install_dir })
@@ -76,7 +80,8 @@ fn resolve_install_path(root: &Path, name: &str) -> Result<PathBuf, LinkError> {
         return Err(LinkError::InvalidPackageName(name.to_string()));
     }
     if let Some(rest) = name.strip_prefix('@') {
-        let slash = rest.find('/')
+        let slash = rest
+            .find('/')
             .ok_or_else(|| LinkError::InvalidPackageName(name.to_string()))?;
         let scope = &rest[..slash];
         let bare = &rest[slash + 1..];
@@ -98,11 +103,14 @@ fn is_cross_device(e: &std::io::Error) -> bool {
 }
 
 fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), LinkError> {
-    std::fs::create_dir_all(dst)
-        .map_err(|e| LinkError::Io(format!("mkdir {dst:?}: {e}")))?;
-    for entry in std::fs::read_dir(src).map_err(|e| LinkError::Io(format!("readdir {src:?}: {e}")))? {
+    std::fs::create_dir_all(dst).map_err(|e| LinkError::Io(format!("mkdir {dst:?}: {e}")))?;
+    for entry in
+        std::fs::read_dir(src).map_err(|e| LinkError::Io(format!("readdir {src:?}: {e}")))?
+    {
         let entry = entry.map_err(|e| LinkError::Io(format!("{e}")))?;
-        let ty = entry.file_type().map_err(|e| LinkError::Io(format!("{e}")))?;
+        let ty = entry
+            .file_type()
+            .map_err(|e| LinkError::Io(format!("{e}")))?;
         let from = entry.path();
         let to = dst.join(entry.file_name());
         if ty.is_dir() {
@@ -126,8 +134,14 @@ mod tests {
 
     fn tmp(suffix: &str) -> PathBuf {
         let mut p = std::env::temp_dir();
-        p.push(format!("cruftless-pm-link-{}-{}", suffix,
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        p.push(format!(
+            "cruftless-pm-link-{}-{}",
+            suffix,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         p
     }
 
@@ -167,19 +181,27 @@ mod tests {
     fn link_smoke_same_fs() {
         let staging = tmp("staging");
         std::fs::create_dir_all(&staging).unwrap();
-        std::fs::write(staging.join("package.json"),
-            br#"{"name":"x","version":"0.0.1"}"#).unwrap();
+        std::fs::write(
+            staging.join("package.json"),
+            br#"{"name":"x","version":"0.0.1"}"#,
+        )
+        .unwrap();
         std::fs::create_dir_all(staging.join("lib")).unwrap();
         std::fs::write(staging.join("lib/index.js"), b"module.exports=1;").unwrap();
 
         let root = tmp("nm");
         let dep = ResolvedDep {
-            name: "x".into(), version: "0.0.1".into(),
+            name: "x".into(),
+            version: "0.0.1".into(),
             tarball_url: "ignored".into(),
-            integrity: None, shasum: None,
+            integrity: None,
+            shasum: None,
             dependencies: Default::default(),
         };
-        let pkg = FetchedPackage { staging_dir: staging.clone(), file_count: 2 };
+        let pkg = FetchedPackage {
+            staging_dir: staging.clone(),
+            file_count: 2,
+        };
         let linked = link_package(&dep, pkg, &root).expect("link");
 
         assert!(linked.install_dir.join("package.json").exists());
@@ -200,12 +222,17 @@ mod tests {
         std::fs::write(staging.join("fresh.txt"), b"new").unwrap();
 
         let dep = ResolvedDep {
-            name: "x".into(), version: "0.0.2".into(),
+            name: "x".into(),
+            version: "0.0.2".into(),
             tarball_url: "ignored".into(),
-            integrity: None, shasum: None,
+            integrity: None,
+            shasum: None,
             dependencies: Default::default(),
         };
-        let pkg = FetchedPackage { staging_dir: staging, file_count: 1 };
+        let pkg = FetchedPackage {
+            staging_dir: staging,
+            file_count: 1,
+        };
         let linked = link_package(&dep, pkg, &root).unwrap();
 
         assert!(linked.install_dir.join("fresh.txt").exists());
@@ -218,11 +245,10 @@ mod tests {
     #[test]
     #[ignore]
     fn install_lodash_end_to_end() {
-        use crate::resolver::{resolve_specifier, DEFAULT_REGISTRY};
         use crate::fetcher::fetch_and_extract;
+        use crate::resolver::{resolve_specifier, DEFAULT_REGISTRY};
 
-        let dep = resolve_specifier(DEFAULT_REGISTRY, "lodash", "4.17.21")
-            .expect("resolve");
+        let dep = resolve_specifier(DEFAULT_REGISTRY, "lodash", "4.17.21").expect("resolve");
         let staging = tmp("lodash-stage");
         let pkg = fetch_and_extract(&dep, &staging).expect("fetch");
 

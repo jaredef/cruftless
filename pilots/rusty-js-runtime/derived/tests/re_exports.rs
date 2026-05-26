@@ -38,7 +38,10 @@ fn write_file(dir: &PathBuf, name: &str, contents: &str) -> PathBuf {
 }
 
 fn entry_url(path: &PathBuf) -> String {
-    format!("file://{}", path.canonicalize().expect("canonicalize").display())
+    format!(
+        "file://{}",
+        path.canonicalize().expect("canonicalize").display()
+    )
 }
 
 fn fresh_runtime() -> Runtime {
@@ -65,15 +68,21 @@ fn expect_num(rt: &Runtime, ns: rusty_js_runtime::ObjectRef, key: &str, expected
 #[test]
 fn t01_named_reexport() {
     let dir = fixture_dir("named");
-    write_file(&dir, "mod.mjs",
-        "function add() { return 1 }\nexport { add };\n");
-    write_file(&dir, "index.mjs",
-        "export { add } from \"./mod.mjs\";\n");
-    write_file(&dir, "main.mjs", r#"
+    write_file(
+        &dir,
+        "mod.mjs",
+        "function add() { return 1 }\nexport { add };\n",
+    );
+    write_file(&dir, "index.mjs", "export { add } from \"./mod.mjs\";\n");
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import { add } from "./index.mjs";
         const result = add();
         export { result };
-    "#);
+    "#,
+    );
     let mut rt = fresh_runtime();
     let ns = load(&mut rt, &dir, "main.mjs");
     expect_num(&rt, ns, "result", 1.0);
@@ -83,15 +92,25 @@ fn t01_named_reexport() {
 #[test]
 fn t02_named_reexport_rename() {
     let dir = fixture_dir("rename");
-    write_file(&dir, "mod.mjs",
-        "function add() { return 7 }\nexport { add };\n");
-    write_file(&dir, "index.mjs",
-        "export { add as sum } from \"./mod.mjs\";\n");
-    write_file(&dir, "main.mjs", r#"
+    write_file(
+        &dir,
+        "mod.mjs",
+        "function add() { return 7 }\nexport { add };\n",
+    );
+    write_file(
+        &dir,
+        "index.mjs",
+        "export { add as sum } from \"./mod.mjs\";\n",
+    );
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import { sum } from "./index.mjs";
         const result = sum();
         export { result };
-    "#);
+    "#,
+    );
     let mut rt = fresh_runtime();
     let ns = load(&mut rt, &dir, "main.mjs");
     expect_num(&rt, ns, "result", 7.0);
@@ -101,21 +120,28 @@ fn t02_named_reexport_rename() {
 #[test]
 fn t03_star_reexport() {
     let dir = fixture_dir("star");
-    write_file(&dir, "mod.mjs", r#"
+    write_file(
+        &dir,
+        "mod.mjs",
+        r#"
         function a() { return 10 }
         function b() { return 20 }
         function c() { return 30 }
         export { a, b, c };
-    "#);
-    write_file(&dir, "index.mjs",
-        "export * from \"./mod.mjs\";\n");
-    write_file(&dir, "main.mjs", r#"
+    "#,
+    );
+    write_file(&dir, "index.mjs", "export * from \"./mod.mjs\";\n");
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import { a, b, c } from "./index.mjs";
         const ra = a();
         const rb = b();
         const rc = c();
         export { ra, rb, rc };
-    "#);
+    "#,
+    );
     let mut rt = fresh_runtime();
     let ns = load(&mut rt, &dir, "main.mjs");
     expect_num(&rt, ns, "ra", 10.0);
@@ -127,19 +153,26 @@ fn t03_star_reexport() {
 #[test]
 fn t04_star_reexport_skips_default() {
     let dir = fixture_dir("star-no-default");
-    write_file(&dir, "mod.mjs", r#"
+    write_file(
+        &dir,
+        "mod.mjs",
+        r#"
         function named() { return 42 }
         export { named };
         export default function() { return 99 }
-    "#);
-    write_file(&dir, "index.mjs",
-        "export * from \"./mod.mjs\";\n");
-    write_file(&dir, "main.mjs", r#"
+    "#,
+    );
+    write_file(&dir, "index.mjs", "export * from \"./mod.mjs\";\n");
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import * as ns from "./index.mjs";
         const named_v = ns.named();
         const default_kind = typeof ns.default;
         export { named_v, default_kind };
-    "#);
+    "#,
+    );
     let mut rt = fresh_runtime();
     let ns = load(&mut rt, &dir, "main.mjs");
     expect_num(&rt, ns, "named_v", 42.0);
@@ -153,17 +186,24 @@ fn t04_star_reexport_skips_default() {
 #[test]
 fn t05_star_as_reexport() {
     let dir = fixture_dir("star-as");
-    write_file(&dir, "mod.mjs", r#"
+    write_file(
+        &dir,
+        "mod.mjs",
+        r#"
         function add(a, b) { return a + b }
         export { add };
-    "#);
-    write_file(&dir, "index.mjs",
-        "export * as utils from \"./mod.mjs\";\n");
-    write_file(&dir, "main.mjs", r#"
+    "#,
+    );
+    write_file(&dir, "index.mjs", "export * as utils from \"./mod.mjs\";\n");
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import { utils } from "./index.mjs";
         const result = utils.add(2, 3);
         export { result };
-    "#);
+    "#,
+    );
     let mut rt = fresh_runtime();
     let ns = load(&mut rt, &dir, "main.mjs");
     expect_num(&rt, ns, "result", 5.0);
@@ -173,15 +213,21 @@ fn t05_star_as_reexport() {
 #[test]
 fn t06_default_reexport() {
     let dir = fixture_dir("default");
-    write_file(&dir, "mod.mjs",
-        "export default function() { return 42 }\n");
-    write_file(&dir, "index.mjs",
-        "export { default } from \"./mod.mjs\";\n");
-    write_file(&dir, "main.mjs", r#"
+    write_file(&dir, "mod.mjs", "export default function() { return 42 }\n");
+    write_file(
+        &dir,
+        "index.mjs",
+        "export { default } from \"./mod.mjs\";\n",
+    );
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import f from "./index.mjs";
         const result = f();
         export { result };
-    "#);
+    "#,
+    );
     let mut rt = fresh_runtime();
     let ns = load(&mut rt, &dir, "main.mjs");
     expect_num(&rt, ns, "result", 42.0);
@@ -191,15 +237,21 @@ fn t06_default_reexport() {
 #[test]
 fn t07_default_as_named() {
     let dir = fixture_dir("default-as-named");
-    write_file(&dir, "mod.mjs",
-        "export default function() { return 8 }\n");
-    write_file(&dir, "index.mjs",
-        "export { default as add } from \"./mod.mjs\";\n");
-    write_file(&dir, "main.mjs", r#"
+    write_file(&dir, "mod.mjs", "export default function() { return 8 }\n");
+    write_file(
+        &dir,
+        "index.mjs",
+        "export { default as add } from \"./mod.mjs\";\n",
+    );
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import { add } from "./index.mjs";
         const result = add();
         export { result };
-    "#);
+    "#,
+    );
     let mut rt = fresh_runtime();
     let ns = load(&mut rt, &dir, "main.mjs");
     expect_num(&rt, ns, "result", 8.0);
@@ -209,17 +261,28 @@ fn t07_default_as_named() {
 #[test]
 fn t08_named_as_default() {
     let dir = fixture_dir("named-as-default");
-    write_file(&dir, "mod.mjs", r#"
+    write_file(
+        &dir,
+        "mod.mjs",
+        r#"
         function add() { return 13 }
         export { add };
-    "#);
-    write_file(&dir, "index.mjs",
-        "export { add as default } from \"./mod.mjs\";\n");
-    write_file(&dir, "main.mjs", r#"
+    "#,
+    );
+    write_file(
+        &dir,
+        "index.mjs",
+        "export { add as default } from \"./mod.mjs\";\n",
+    );
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
         import f from "./index.mjs";
         const result = f();
         export { result };
-    "#);
+    "#,
+    );
     let mut rt = fresh_runtime();
     let ns = load(&mut rt, &dir, "main.mjs");
     expect_num(&rt, ns, "result", 13.0);

@@ -12,11 +12,20 @@ fn bin() -> &'static str {
 #[test]
 fn fs_smoke_full_stack() {
     let fixture = concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/fs_smoke.mjs");
-    let out = Command::new(bin()).arg(fixture).output().expect("run host-v2");
+    let out = Command::new(bin())
+        .arg(fixture)
+        .output()
+        .expect("run host-v2");
     assert!(out.status.success(), "binary failed: {:?}", out);
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("sync: sync-roundtrip"), "stdout: {stdout}");
-    assert!(stdout.contains("async read: sync-roundtrip"), "stdout: {stdout}");
-    assert!(stdout.contains("async chain: chained-write"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("async read: sync-roundtrip"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("async chain: chained-write"),
+        "stdout: {stdout}"
+    );
     assert!(stdout.contains("done"), "stdout: {stdout}");
 }

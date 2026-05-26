@@ -7,5 +7,9 @@ edition = "2021"
 name = "t262c"
 path = "src/bin/categorize.rs"
 
+[[bin]]
+name = "t262-full-pinart"
+path = "src/bin/full_pinart.rs"
+
 [dependencies]
 serde_json = { version = "1", features = ["preserve_order"] }

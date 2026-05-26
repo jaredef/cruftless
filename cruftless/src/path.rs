@@ -10,22 +10,34 @@ pub fn install(rt: &mut Runtime) {
     register_method(rt, path, "basename", |_rt, args| {
         let p = arg_string(args, 0);
         let ext = args.get(1).map(|v| {
-            rusty_js_runtime::abstract_ops::to_string(v).as_str().to_string()
+            rusty_js_runtime::abstract_ops::to_string(v)
+                .as_str()
+                .to_string()
         });
         let base = p.rsplit('/').next().unwrap_or(&p).to_string();
         let result = if let Some(ext) = ext {
             if !ext.is_empty() && base.ends_with(&ext) {
                 base[..base.len() - ext.len()].to_string()
-            } else { base }
-        } else { base };
+            } else {
+                base
+            }
+        } else {
+            base
+        };
         Ok(Value::String(Rc::new(result)))
     });
 
     register_method(rt, path, "dirname", |_rt, args| {
         let p = arg_string(args, 0);
         let result = if let Some(idx) = p.rfind('/') {
-            if idx == 0 { "/".to_string() } else { p[..idx].to_string() }
-        } else { ".".to_string() };
+            if idx == 0 {
+                "/".to_string()
+            } else {
+                p[..idx].to_string()
+            }
+        } else {
+            ".".to_string()
+        };
         Ok(Value::String(Rc::new(result)))
     });
 
@@ -33,8 +45,14 @@ pub fn install(rt: &mut Runtime) {
         let p = arg_string(args, 0);
         let base = p.rsplit('/').next().unwrap_or(&p);
         let result = if let Some(idx) = base.rfind('.') {
-            if idx == 0 { String::new() } else { base[idx..].to_string() }
-        } else { String::new() };
+            if idx == 0 {
+                String::new()
+            } else {
+                base[idx..].to_string()
+            }
+        } else {
+            String::new()
+        };
         Ok(Value::String(Rc::new(result)))
     });
 
@@ -43,7 +61,9 @@ pub fn install(rt: &mut Runtime) {
         for (i, v) in args.iter().enumerate() {
             let s = rusty_js_runtime::abstract_ops::to_string(v);
             let part = s.as_str();
-            if part.is_empty() { continue; }
+            if part.is_empty() {
+                continue;
+            }
             if i > 0 && !out.ends_with('/') && !part.starts_with('/') {
                 out.push('/');
             } else if i > 0 && out.ends_with('/') && part.starts_with('/') {
@@ -52,21 +72,33 @@ pub fn install(rt: &mut Runtime) {
             }
             out.push_str(part);
         }
-        if out.is_empty() { out = ".".to_string(); }
+        if out.is_empty() {
+            out = ".".to_string();
+        }
         Ok(Value::String(Rc::new(out)))
     });
 
     register_method(rt, path, "normalize", |_rt, args| {
         let p = arg_string(args, 0);
-        if p.is_empty() { return Ok(Value::String(Rc::new(".".into()))); }
+        if p.is_empty() {
+            return Ok(Value::String(Rc::new(".".into())));
+        }
         let absolute = p.starts_with('/');
-        let parts: Vec<&str> = p.split('/').filter(|s| !s.is_empty() && *s != ".").collect();
+        let parts: Vec<&str> = p
+            .split('/')
+            .filter(|s| !s.is_empty() && *s != ".")
+            .collect();
         let mut out: Vec<&str> = Vec::new();
         for part in parts {
             if part == ".." {
-                if !out.is_empty() && out.last() != Some(&"..") { out.pop(); }
-                else if !absolute { out.push(".."); }
-            } else { out.push(part); }
+                if !out.is_empty() && out.last() != Some(&"..") {
+                    out.pop();
+                } else if !absolute {
+                    out.push("..");
+                }
+            } else {
+                out.push(part);
+            }
         }
         let joined = out.join("/");
         let result = match (absolute, joined.as_str()) {
@@ -89,9 +121,14 @@ pub fn install(rt: &mut Runtime) {
         for v in args.iter().rev() {
             let s = rusty_js_runtime::abstract_ops::to_string(v);
             let part = s.as_str().to_string();
-            if part.is_empty() { continue; }
+            if part.is_empty() {
+                continue;
+            }
             parts.insert(0, part.clone());
-            if part.starts_with('/') { hit_absolute = true; break; }
+            if part.starts_with('/') {
+                hit_absolute = true;
+                break;
+            }
         }
         if !hit_absolute {
             let cwd = std::env::current_dir()
@@ -102,15 +139,25 @@ pub fn install(rt: &mut Runtime) {
         }
         let joined = parts.join("/");
         let absolute = joined.starts_with('/');
-        let segs: Vec<&str> = joined.split('/').filter(|s| !s.is_empty() && *s != ".").collect();
+        let segs: Vec<&str> = joined
+            .split('/')
+            .filter(|s| !s.is_empty() && *s != ".")
+            .collect();
         let mut out: Vec<&str> = Vec::new();
         for s in segs {
-            if s == ".." { if !out.is_empty() { out.pop(); } }
-            else { out.push(s); }
+            if s == ".." {
+                if !out.is_empty() {
+                    out.pop();
+                }
+            } else {
+                out.push(s);
+            }
         }
         let result = if absolute {
             format!("/{}", out.join("/"))
-        } else { out.join("/") };
+        } else {
+            out.join("/")
+        };
         Ok(Value::String(Rc::new(result)))
     });
 
@@ -124,13 +171,17 @@ pub fn install(rt: &mut Runtime) {
             Some(Value::String(s)) => s.as_str().to_string(),
             _ => String::new(),
         };
-        let root = if p.starts_with('/') { "/".to_string() } else { String::new() };
+        let root = if p.starts_with('/') {
+            "/".to_string()
+        } else {
+            String::new()
+        };
         let dir = match p.rfind('/') {
             Some(i) => p[..i].to_string(),
             None => String::new(),
         };
         let base = match p.rfind('/') {
-            Some(i) => p[i+1..].to_string(),
+            Some(i) => p[i + 1..].to_string(),
             None => p.clone(),
         };
         let (name, ext) = match base.rfind('.') {
@@ -166,7 +217,9 @@ pub fn install(rt: &mut Runtime) {
         };
         let out = if to.starts_with(&from) {
             to[from.len()..].trim_start_matches('/').to_string()
-        } else { to };
+        } else {
+            to
+        };
         Ok(Value::String(Rc::new(out)))
     });
     register_method(rt, path, "toNamespacedPath", |_rt, args| {
@@ -199,8 +252,13 @@ pub fn install(rt: &mut Runtime) {
     let posix = new_object(rt);
     let win32 = new_object(rt);
     for &(name, _) in &[
-        ("basename", 0u8), ("dirname", 0), ("extname", 0), ("join", 0),
-        ("normalize", 0), ("isAbsolute", 0), ("resolve", 0),
+        ("basename", 0u8),
+        ("dirname", 0),
+        ("extname", 0),
+        ("join", 0),
+        ("normalize", 0),
+        ("isAbsolute", 0),
+        ("resolve", 0),
     ] {
         // Re-read the method off `path` and copy onto posix/win32 so the
         // same function object is shared.
@@ -217,9 +275,17 @@ pub fn install(rt: &mut Runtime) {
         rt.object_set(win32, (*nm).into(), v);
     }
     rt.object_set(posix, "sep".into(), Value::String(Rc::new("/".into())));
-    rt.object_set(posix, "delimiter".into(), Value::String(Rc::new(":".into())));
+    rt.object_set(
+        posix,
+        "delimiter".into(),
+        Value::String(Rc::new(":".into())),
+    );
     rt.object_set(win32, "sep".into(), Value::String(Rc::new("\\".into())));
-    rt.object_set(win32, "delimiter".into(), Value::String(Rc::new(";".into())));
+    rt.object_set(
+        win32,
+        "delimiter".into(),
+        Value::String(Rc::new(";".into())),
+    );
     rt.object_set(path, "posix".into(), Value::Object(posix));
     rt.object_set(path, "win32".into(), Value::Object(win32));
 
@@ -231,31 +297,51 @@ pub fn install(rt: &mut Runtime) {
 /// non-`/`; everything else is literal. Sufficient for v20-shape probes.
 fn glob_match(pat: &[u8], s: &[u8]) -> bool {
     fn rec(p: &[u8], pi: usize, s: &[u8], si: usize) -> bool {
-        if pi == p.len() { return si == s.len(); }
+        if pi == p.len() {
+            return si == s.len();
+        }
         let c = p[pi];
         if c == b'*' {
             if pi + 1 < p.len() && p[pi + 1] == b'*' {
                 // `**` — match any (including empty / cross-slash) suffix.
                 let mut j = si;
                 loop {
-                    if rec(p, pi + 2, s, j) { return true; }
-                    if j == s.len() { return false; }
+                    if rec(p, pi + 2, s, j) {
+                        return true;
+                    }
+                    if j == s.len() {
+                        return false;
+                    }
                     j += 1;
                 }
             } else {
                 // `*` — zero or more non-slash.
                 let mut j = si;
                 loop {
-                    if rec(p, pi + 1, s, j) { return true; }
-                    if j == s.len() { return false; }
-                    if s[j] == b'/' { return false; }
+                    if rec(p, pi + 1, s, j) {
+                        return true;
+                    }
+                    if j == s.len() {
+                        return false;
+                    }
+                    if s[j] == b'/' {
+                        return false;
+                    }
                     j += 1;
                 }
             }
         } else if c == b'?' {
-            if si < s.len() && s[si] != b'/' { rec(p, pi + 1, s, si + 1) } else { false }
+            if si < s.len() && s[si] != b'/' {
+                rec(p, pi + 1, s, si + 1)
+            } else {
+                false
+            }
         } else {
-            if si < s.len() && s[si] == c { rec(p, pi + 1, s, si + 1) } else { false }
+            if si < s.len() && s[si] == c {
+                rec(p, pi + 1, s, si + 1)
+            } else {
+                false
+            }
         }
     }
     rec(pat, 0, s, 0)

@@ -6,5 +6,8 @@ fn main() {
     t.add_pem_bundle(&pem).expect("add");
     println!("[ec-probe] connecting...");
     let r = tls_connect("localhost", 4443, &t);
-    println!("[ec-probe] result: {:?}", r.map(|_| "OK").map_err(|e| format!("{:?}", e)));
+    println!(
+        "[ec-probe] result: {:?}",
+        r.map(|_| "OK").map_err(|e| format!("{:?}", e))
+    );
 }

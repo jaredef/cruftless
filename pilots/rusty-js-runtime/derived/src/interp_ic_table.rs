@@ -74,7 +74,9 @@ pub enum IhiCachedField {
 // CharCode-EXT 2 first-cut). ASCII fast-path mirrors CharCode-EXT 1.
 
 fn fast_string_char_code_at(recv: &Value, args: &[Value]) -> Option<Value> {
-    if args.len() != 1 { return None; }
+    if args.len() != 1 {
+        return None;
+    }
     if let Value::String(s) = recv {
         let pos = &args[0];
         let i_n = match pos {
@@ -102,7 +104,9 @@ fn fast_string_char_code_at(recv: &Value, args: &[Value]) -> Option<Value> {
         // NaN/negative: bail (canonical slow path produces NaN; the
         // edge case is rare; keep ad-hoc's behavior).
         None
-    } else { None }
+    } else {
+        None
+    }
 }
 
 // ─── ENTRY 1: String.prototype.toLowerCase (MethodCall arity 0) ───
@@ -115,13 +119,19 @@ fn fast_string_char_code_at(recv: &Value, args: &[Value]) -> Option<Value> {
 // already-lowercase input if measurements justify.
 
 fn fast_string_to_lower_case(recv: &Value, args: &[Value]) -> Option<Value> {
-    if !args.is_empty() { return None; }
+    if !args.is_empty() {
+        return None;
+    }
     if let Value::String(s) = recv {
         if s.is_ascii() {
             let bytes = s.as_bytes();
             let mut out = Vec::with_capacity(bytes.len());
             for &b in bytes {
-                out.push(if (b'A'..=b'Z').contains(&b) { b + 32 } else { b });
+                out.push(if (b'A'..=b'Z').contains(&b) {
+                    b + 32
+                } else {
+                    b
+                });
             }
             // SAFETY: out contains only ASCII (1-byte UTF-8 codepoints).
             let lowered = unsafe { String::from_utf8_unchecked(out) };
@@ -130,7 +140,9 @@ fn fast_string_to_lower_case(recv: &Value, args: &[Value]) -> Option<Value> {
         // Non-ASCII: bail (s.to_lowercase() is Unicode-aware; complex; let
         // slow path handle).
         None
-    } else { None }
+    } else {
+        None
+    }
 }
 
 // ─── ENTRY 2: String.prototype.trim (MethodCall arity 0) ───
@@ -146,10 +158,12 @@ fn fast_string_to_lower_case(recv: &Value, args: &[Value]) -> Option<Value> {
 // any fixture surfaces dependence on reference inequality.
 
 fn fast_string_trim(recv: &Value, args: &[Value]) -> Option<Value> {
-    if !args.is_empty() { return None; }
+    if !args.is_empty() {
+        return None;
+    }
     if let Value::String(s) = recv {
         let bytes = s.as_bytes();
-        let is_ws = |b: u8| matches!(b, b' '|b'\t'|b'\n'|b'\r'|0x0B|0x0C);
+        let is_ws = |b: u8| matches!(b, b' ' | b'\t' | b'\n' | b'\r' | 0x0B | 0x0C);
         // SPTW-EXT 1 carve-back: bail to slow path on any non-ASCII byte
         // BEFORE checking trim outcome, because non-ASCII strings may
         // contain Unicode whitespace (NBSP U+00A0, BOM U+FEFF, USP set)
@@ -161,16 +175,22 @@ fn fast_string_trim(recv: &Value, args: &[Value]) -> Option<Value> {
             return None;
         }
         let mut start = 0;
-        while start < bytes.len() && is_ws(bytes[start]) { start += 1; }
+        while start < bytes.len() && is_ws(bytes[start]) {
+            start += 1;
+        }
         let mut end = bytes.len();
-        while end > start && is_ws(bytes[end - 1]) { end -= 1; }
+        while end > start && is_ws(bytes[end - 1]) {
+            end -= 1;
+        }
         if start == 0 && end == bytes.len() {
             // No trim needed; return self (no allocation).
             return Some(Value::String(s.clone()));
         }
         let trimmed = unsafe { std::str::from_utf8_unchecked(&bytes[start..end]) }.to_owned();
         Some(Value::String(std::rc::Rc::new(trimmed)))
-    } else { None }
+    } else {
+        None
+    }
 }
 
 // ─── ENTRY 3: String.prototype.indexOf (MethodCall arity 1) ───
@@ -182,13 +202,19 @@ fn fast_string_trim(recv: &Value, args: &[Value]) -> Option<Value> {
 // haystack) where char-index ≠ byte-index.
 
 fn fast_string_index_of_1(recv: &Value, args: &[Value]) -> Option<Value> {
-    if args.len() != 1 { return None; }
+    if args.len() != 1 {
+        return None;
+    }
     if let (Value::String(s), Value::String(needle)) = (recv, &args[0]) {
         if s.is_ascii() && needle.is_ascii() {
             let s_bytes = s.as_bytes();
             let n_bytes = needle.as_bytes();
-            if n_bytes.is_empty() { return Some(Value::Number(0.0)); }
-            if n_bytes.len() > s_bytes.len() { return Some(Value::Number(-1.0)); }
+            if n_bytes.is_empty() {
+                return Some(Value::Number(0.0));
+            }
+            if n_bytes.len() > s_bytes.len() {
+                return Some(Value::Number(-1.0));
+            }
             match s_bytes.windows(n_bytes.len()).position(|w| w == n_bytes) {
                 Some(p) => Some(Value::Number(p as f64)),
                 None => Some(Value::Number(-1.0)),
@@ -197,7 +223,9 @@ fn fast_string_index_of_1(recv: &Value, args: &[Value]) -> Option<Value> {
             // Non-ASCII: bail; existing impl's char-index conversion is needed.
             None
         }
-    } else { None }
+    } else {
+        None
+    }
 }
 
 // ─── ENTRIES 4-8 (IHI-EXT 9): String prototype methods batch ───
@@ -207,63 +235,93 @@ fn fast_string_index_of_1(recv: &Value, args: &[Value]) -> Option<Value> {
 
 // toUpperCase: ASCII byte upper-shift; mirror of toLowerCase.
 fn fast_string_to_upper_case(recv: &Value, args: &[Value]) -> Option<Value> {
-    if !args.is_empty() { return None; }
+    if !args.is_empty() {
+        return None;
+    }
     if let Value::String(s) = recv {
         if s.is_ascii() {
             let bytes = s.as_bytes();
             let mut out = Vec::with_capacity(bytes.len());
             for &b in bytes {
-                out.push(if (b'a'..=b'z').contains(&b) { b - 32 } else { b });
+                out.push(if (b'a'..=b'z').contains(&b) {
+                    b - 32
+                } else {
+                    b
+                });
             }
             let upper = unsafe { String::from_utf8_unchecked(out) };
             return Some(Value::String(std::rc::Rc::new(upper)));
         }
         None
-    } else { None }
+    } else {
+        None
+    }
 }
 
 // startsWith (1-arg): byte prefix check; ASCII-only fast-path.
 fn fast_string_starts_with(recv: &Value, args: &[Value]) -> Option<Value> {
-    if args.len() != 1 { return None; }
+    if args.len() != 1 {
+        return None;
+    }
     if let (Value::String(s), Value::String(prefix)) = (recv, &args[0]) {
         if s.is_ascii() && prefix.is_ascii() {
             let s_bytes = s.as_bytes();
             let p_bytes = prefix.as_bytes();
-            if p_bytes.len() > s_bytes.len() { return Some(Value::Boolean(false)); }
+            if p_bytes.len() > s_bytes.len() {
+                return Some(Value::Boolean(false));
+            }
             return Some(Value::Boolean(&s_bytes[..p_bytes.len()] == p_bytes));
         }
         None
-    } else { None }
+    } else {
+        None
+    }
 }
 
 // endsWith (1-arg): byte suffix check; ASCII-only fast-path.
 fn fast_string_ends_with(recv: &Value, args: &[Value]) -> Option<Value> {
-    if args.len() != 1 { return None; }
+    if args.len() != 1 {
+        return None;
+    }
     if let (Value::String(s), Value::String(suffix)) = (recv, &args[0]) {
         if s.is_ascii() && suffix.is_ascii() {
             let s_bytes = s.as_bytes();
             let f_bytes = suffix.as_bytes();
-            if f_bytes.len() > s_bytes.len() { return Some(Value::Boolean(false)); }
+            if f_bytes.len() > s_bytes.len() {
+                return Some(Value::Boolean(false));
+            }
             let off = s_bytes.len() - f_bytes.len();
             return Some(Value::Boolean(&s_bytes[off..] == f_bytes));
         }
         None
-    } else { None }
+    } else {
+        None
+    }
 }
 
 // includes (1-arg): byte substring scan; ASCII-only fast-path.
 fn fast_string_includes(recv: &Value, args: &[Value]) -> Option<Value> {
-    if args.len() != 1 { return None; }
+    if args.len() != 1 {
+        return None;
+    }
     if let (Value::String(s), Value::String(needle)) = (recv, &args[0]) {
         if s.is_ascii() && needle.is_ascii() {
             let s_bytes = s.as_bytes();
             let n_bytes = needle.as_bytes();
-            if n_bytes.is_empty() { return Some(Value::Boolean(true)); }
-            if n_bytes.len() > s_bytes.len() { return Some(Value::Boolean(false)); }
-            return Some(Value::Boolean(s_bytes.windows(n_bytes.len()).any(|w| w == n_bytes)));
+            if n_bytes.is_empty() {
+                return Some(Value::Boolean(true));
+            }
+            if n_bytes.len() > s_bytes.len() {
+                return Some(Value::Boolean(false));
+            }
+            return Some(Value::Boolean(
+                s_bytes.windows(n_bytes.len()).any(|w| w == n_bytes),
+            ));
         }
         None
-    } else { None }
+    } else {
+        None
+    }
 }
 
 // ─── IC_TABLE static registry ───
@@ -277,7 +335,7 @@ fn fast_string_includes(recv: &Value, args: &[Value]) -> Option<Value> {
 pub enum CachedDispatch {
     NotCached,
     NoMatch,
-    Entry(u8),  // IHI_TABLE index
+    Entry(u8), // IHI_TABLE index
 }
 
 pub static IHI_TABLE: &[IhiEntry] = &[
@@ -314,7 +372,7 @@ pub static IHI_TABLE: &[IhiEntry] = &[
         receiver: IhiReceiverKind::String,
         arity: Some(1),
         cached_id_field: IhiCachedField::StringCodePointAt,
-        fast: fast_string_char_code_at,  // shape-identical per cruft interp
+        fast: fast_string_char_code_at, // shape-identical per cruft interp
     },
     IhiEntry {
         key: "toUpperCase",
@@ -349,11 +407,9 @@ pub static IHI_TABLE: &[IhiEntry] = &[
 /// IHI-EXT 2 (2026-05-24): table lookup by (key, receiver-kind, arity).
 /// Returns the matching entry or None.
 pub fn lookup(key: &str, receiver: IhiReceiverKind, arity: u8) -> Option<&'static IhiEntry> {
-    IHI_TABLE.iter().find(|e| {
-        e.key == key
-            && e.receiver == receiver
-            && e.arity == Some(arity)
-    })
+    IHI_TABLE
+        .iter()
+        .find(|e| e.key == key && e.receiver == receiver && e.arity == Some(arity))
 }
 
 /// IHI-EXT 2 (2026-05-24): map a receiver Value to its IhiReceiverKind.

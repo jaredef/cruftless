@@ -10,7 +10,11 @@ use std::io::Write;
 
 fn make_fixture(name: &str, contents: &[u8]) -> std::path::PathBuf {
     let mut p = std::env::temp_dir();
-    p.push(format!("cruftless-file-cons-{}-{}", name, std::process::id()));
+    p.push(format!(
+        "cruftless-file-cons-{}-{}",
+        name,
+        std::process::id()
+    ));
     let mut f = fs::File::create(&p).unwrap();
     f.write_all(contents).unwrap();
     p

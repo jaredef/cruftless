@@ -7,7 +7,10 @@ pub enum Constant {
     Number(f64),
     BigInt(String),
     String(String),
-    Regex { body: String, flags: String },
+    Regex {
+        body: String,
+        flags: String,
+    },
     /// Nested function prototype. Holds its own CompiledModule shape.
     Function(Box<crate::compiler::FunctionProto>),
 }
@@ -56,7 +59,8 @@ impl DedupKey {
             Constant::BigInt(x) => Some(DedupKey::BigInt(x.clone())),
             Constant::String(x) => Some(DedupKey::String(x.clone())),
             Constant::Regex { body, flags } => Some(DedupKey::Regex {
-                body: body.clone(), flags: flags.clone(),
+                body: body.clone(),
+                flags: flags.clone(),
             }),
             Constant::Function(_) => None,
         }
@@ -64,7 +68,9 @@ impl DedupKey {
 }
 
 impl ConstantsPool {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Intern a constant. Equal constants return the same index. Numbers
     /// compare bit-for-bit (NaN bit-patterns are distinguished — caller
@@ -91,9 +97,13 @@ impl ConstantsPool {
         self.entries.get(idx as usize)
     }
 
-    pub fn entries(&self) -> &[Constant] { &self.entries }
+    pub fn entries(&self) -> &[Constant] {
+        &self.entries
+    }
 
-    pub fn len(&self) -> usize { self.entries.len() }
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
 }
 
 fn same_constant(a: &Constant, b: &Constant) -> bool {
@@ -101,8 +111,16 @@ fn same_constant(a: &Constant, b: &Constant) -> bool {
         (Constant::Number(x), Constant::Number(y)) => x.to_bits() == y.to_bits(),
         (Constant::BigInt(x), Constant::BigInt(y)) => x == y,
         (Constant::String(x), Constant::String(y)) => x == y,
-        (Constant::Regex { body: b1, flags: f1 }, Constant::Regex { body: b2, flags: f2 }) =>
-            b1 == b2 && f1 == f2,
+        (
+            Constant::Regex {
+                body: b1,
+                flags: f1,
+            },
+            Constant::Regex {
+                body: b2,
+                flags: f2,
+            },
+        ) => b1 == b2 && f1 == f2,
         // Functions are unique per declaration site; never deduplicated.
         (Constant::Function(_), Constant::Function(_)) => false,
         _ => false,

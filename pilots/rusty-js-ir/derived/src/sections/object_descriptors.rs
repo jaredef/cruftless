@@ -14,17 +14,40 @@
 use crate::ir::{Expr, IRFunction, IRNode, Step};
 use crate::lint::SpecStepRecord;
 
-fn v(name: &str) -> Expr { Expr::Var(name.to_string()) }
+fn v(name: &str) -> Expr {
+    Expr::Var(name.to_string())
+}
 
 pub fn build_define_property() -> IRFunction {
     let body = vec![
-        Step { spec_step: "param.target".into(), node: IRNode::Let { name: "target".into(), value: Expr::Arg(0) } },
-        Step { spec_step: "param.key".into(),    node: IRNode::Let { name: "key".into(),    value: Expr::Arg(1) } },
-        Step { spec_step: "param.desc".into(),   node: IRNode::Let { name: "desc".into(),   value: Expr::Arg(2) } },
-        Step { spec_step: "1".into(), node: IRNode::Return(Expr::CallBuiltin {
-            name: "object_define_property_via",
-            args: vec![v("target"), v("key"), v("desc")],
-        })},
+        Step {
+            spec_step: "param.target".into(),
+            node: IRNode::Let {
+                name: "target".into(),
+                value: Expr::Arg(0),
+            },
+        },
+        Step {
+            spec_step: "param.key".into(),
+            node: IRNode::Let {
+                name: "key".into(),
+                value: Expr::Arg(1),
+            },
+        },
+        Step {
+            spec_step: "param.desc".into(),
+            node: IRNode::Let {
+                name: "desc".into(),
+                value: Expr::Arg(2),
+            },
+        },
+        Step {
+            spec_step: "1".into(),
+            node: IRNode::Return(Expr::CallBuiltin {
+                name: "object_define_property_via",
+                args: vec![v("target"), v("key"), v("desc")],
+            }),
+        },
     ];
     IRFunction {
         spec_section: "20.1.2.4".into(),
@@ -43,12 +66,27 @@ pub fn spec_steps_define_property() -> Vec<SpecStepRecord> {
 
 pub fn build_define_properties() -> IRFunction {
     let body = vec![
-        Step { spec_step: "param.target".into(), node: IRNode::Let { name: "target".into(), value: Expr::Arg(0) } },
-        Step { spec_step: "param.props".into(),  node: IRNode::Let { name: "props".into(),  value: Expr::Arg(1) } },
-        Step { spec_step: "1".into(), node: IRNode::Return(Expr::CallBuiltin {
-            name: "object_define_properties_via",
-            args: vec![v("target"), v("props")],
-        })},
+        Step {
+            spec_step: "param.target".into(),
+            node: IRNode::Let {
+                name: "target".into(),
+                value: Expr::Arg(0),
+            },
+        },
+        Step {
+            spec_step: "param.props".into(),
+            node: IRNode::Let {
+                name: "props".into(),
+                value: Expr::Arg(1),
+            },
+        },
+        Step {
+            spec_step: "1".into(),
+            node: IRNode::Return(Expr::CallBuiltin {
+                name: "object_define_properties_via",
+                args: vec![v("target"), v("props")],
+            }),
+        },
     ];
     IRFunction {
         spec_section: "20.1.2.5".into(),
@@ -67,12 +105,27 @@ pub fn spec_steps_define_properties() -> Vec<SpecStepRecord> {
 
 pub fn build_get_own_property_descriptor() -> IRFunction {
     let body = vec![
-        Step { spec_step: "param.obj".into(), node: IRNode::Let { name: "obj".into(), value: Expr::Arg(0) } },
-        Step { spec_step: "param.key".into(), node: IRNode::Let { name: "key".into(), value: Expr::Arg(1) } },
-        Step { spec_step: "1".into(), node: IRNode::Return(Expr::CallBuiltin {
-            name: "object_get_own_property_descriptor_via",
-            args: vec![v("obj"), v("key")],
-        })},
+        Step {
+            spec_step: "param.obj".into(),
+            node: IRNode::Let {
+                name: "obj".into(),
+                value: Expr::Arg(0),
+            },
+        },
+        Step {
+            spec_step: "param.key".into(),
+            node: IRNode::Let {
+                name: "key".into(),
+                value: Expr::Arg(1),
+            },
+        },
+        Step {
+            spec_step: "1".into(),
+            node: IRNode::Return(Expr::CallBuiltin {
+                name: "object_get_own_property_descriptor_via",
+                args: vec![v("obj"), v("key")],
+            }),
+        },
     ];
     IRFunction {
         spec_section: "20.1.2.9".into(),
@@ -91,11 +144,20 @@ pub fn spec_steps_get_own_property_descriptor() -> Vec<SpecStepRecord> {
 
 pub fn build_get_own_property_descriptors() -> IRFunction {
     let body = vec![
-        Step { spec_step: "param.obj".into(), node: IRNode::Let { name: "obj".into(), value: Expr::Arg(0) } },
-        Step { spec_step: "1".into(), node: IRNode::Return(Expr::CallBuiltin {
-            name: "object_get_own_property_descriptors_via",
-            args: vec![v("obj")],
-        })},
+        Step {
+            spec_step: "param.obj".into(),
+            node: IRNode::Let {
+                name: "obj".into(),
+                value: Expr::Arg(0),
+            },
+        },
+        Step {
+            spec_step: "1".into(),
+            node: IRNode::Return(Expr::CallBuiltin {
+                name: "object_get_own_property_descriptors_via",
+                args: vec![v("obj")],
+            }),
+        },
     ];
     IRFunction {
         spec_section: "20.1.2.10".into(),
@@ -114,12 +176,27 @@ pub fn spec_steps_get_own_property_descriptors() -> Vec<SpecStepRecord> {
 
 pub fn build_create() -> IRFunction {
     let body = vec![
-        Step { spec_step: "param.proto".into(), node: IRNode::Let { name: "proto".into(), value: Expr::Arg(0) } },
-        Step { spec_step: "param.props".into(), node: IRNode::Let { name: "props".into(), value: Expr::Arg(1) } },
-        Step { spec_step: "1".into(), node: IRNode::Return(Expr::CallBuiltin {
-            name: "object_create_via",
-            args: vec![v("proto"), v("props")],
-        })},
+        Step {
+            spec_step: "param.proto".into(),
+            node: IRNode::Let {
+                name: "proto".into(),
+                value: Expr::Arg(0),
+            },
+        },
+        Step {
+            spec_step: "param.props".into(),
+            node: IRNode::Let {
+                name: "props".into(),
+                value: Expr::Arg(1),
+            },
+        },
+        Step {
+            spec_step: "1".into(),
+            node: IRNode::Return(Expr::CallBuiltin {
+                name: "object_create_via",
+                args: vec![v("proto"), v("props")],
+            }),
+        },
     ];
     IRFunction {
         spec_section: "20.1.2.2".into(),
@@ -138,13 +215,34 @@ pub fn spec_steps_create() -> Vec<SpecStepRecord> {
 
 pub fn build_proto_define_getter() -> IRFunction {
     let body = vec![
-        Step { spec_step: "param.this".into(), node: IRNode::Let { name: "this_".into(), value: Expr::This } },
-        Step { spec_step: "param.key".into(),  node: IRNode::Let { name: "key".into(),   value: Expr::Arg(0) } },
-        Step { spec_step: "param.fn".into(),   node: IRNode::Let { name: "fn_".into(),   value: Expr::Arg(1) } },
-        Step { spec_step: "1".into(), node: IRNode::Return(Expr::CallBuiltin {
-            name: "object_proto_define_getter_via",
-            args: vec![v("this_"), v("key"), v("fn_")],
-        })},
+        Step {
+            spec_step: "param.this".into(),
+            node: IRNode::Let {
+                name: "this_".into(),
+                value: Expr::This,
+            },
+        },
+        Step {
+            spec_step: "param.key".into(),
+            node: IRNode::Let {
+                name: "key".into(),
+                value: Expr::Arg(0),
+            },
+        },
+        Step {
+            spec_step: "param.fn".into(),
+            node: IRNode::Let {
+                name: "fn_".into(),
+                value: Expr::Arg(1),
+            },
+        },
+        Step {
+            spec_step: "1".into(),
+            node: IRNode::Return(Expr::CallBuiltin {
+                name: "object_proto_define_getter_via",
+                args: vec![v("this_"), v("key"), v("fn_")],
+            }),
+        },
     ];
     IRFunction {
         spec_section: "B.2.2.2".into(),
@@ -163,13 +261,34 @@ pub fn spec_steps_proto_define_getter() -> Vec<SpecStepRecord> {
 
 pub fn build_proto_define_setter() -> IRFunction {
     let body = vec![
-        Step { spec_step: "param.this".into(), node: IRNode::Let { name: "this_".into(), value: Expr::This } },
-        Step { spec_step: "param.key".into(),  node: IRNode::Let { name: "key".into(),   value: Expr::Arg(0) } },
-        Step { spec_step: "param.fn".into(),   node: IRNode::Let { name: "fn_".into(),   value: Expr::Arg(1) } },
-        Step { spec_step: "1".into(), node: IRNode::Return(Expr::CallBuiltin {
-            name: "object_proto_define_setter_via",
-            args: vec![v("this_"), v("key"), v("fn_")],
-        })},
+        Step {
+            spec_step: "param.this".into(),
+            node: IRNode::Let {
+                name: "this_".into(),
+                value: Expr::This,
+            },
+        },
+        Step {
+            spec_step: "param.key".into(),
+            node: IRNode::Let {
+                name: "key".into(),
+                value: Expr::Arg(0),
+            },
+        },
+        Step {
+            spec_step: "param.fn".into(),
+            node: IRNode::Let {
+                name: "fn_".into(),
+                value: Expr::Arg(1),
+            },
+        },
+        Step {
+            spec_step: "1".into(),
+            node: IRNode::Return(Expr::CallBuiltin {
+                name: "object_proto_define_setter_via",
+                args: vec![v("this_"), v("key"), v("fn_")],
+            }),
+        },
     ];
     IRFunction {
         spec_section: "B.2.2.3".into(),
@@ -188,12 +307,27 @@ pub fn spec_steps_proto_define_setter() -> Vec<SpecStepRecord> {
 
 pub fn build_proto_lookup_getter() -> IRFunction {
     let body = vec![
-        Step { spec_step: "param.this".into(), node: IRNode::Let { name: "this_".into(), value: Expr::This } },
-        Step { spec_step: "param.key".into(),  node: IRNode::Let { name: "key".into(),   value: Expr::Arg(0) } },
-        Step { spec_step: "1".into(), node: IRNode::Return(Expr::CallBuiltin {
-            name: "object_proto_lookup_getter_via",
-            args: vec![v("this_"), v("key")],
-        })},
+        Step {
+            spec_step: "param.this".into(),
+            node: IRNode::Let {
+                name: "this_".into(),
+                value: Expr::This,
+            },
+        },
+        Step {
+            spec_step: "param.key".into(),
+            node: IRNode::Let {
+                name: "key".into(),
+                value: Expr::Arg(0),
+            },
+        },
+        Step {
+            spec_step: "1".into(),
+            node: IRNode::Return(Expr::CallBuiltin {
+                name: "object_proto_lookup_getter_via",
+                args: vec![v("this_"), v("key")],
+            }),
+        },
     ];
     IRFunction {
         spec_section: "B.2.2.4".into(),
@@ -212,12 +346,27 @@ pub fn spec_steps_proto_lookup_getter() -> Vec<SpecStepRecord> {
 
 pub fn build_proto_lookup_setter() -> IRFunction {
     let body = vec![
-        Step { spec_step: "param.this".into(), node: IRNode::Let { name: "this_".into(), value: Expr::This } },
-        Step { spec_step: "param.key".into(),  node: IRNode::Let { name: "key".into(),   value: Expr::Arg(0) } },
-        Step { spec_step: "1".into(), node: IRNode::Return(Expr::CallBuiltin {
-            name: "object_proto_lookup_setter_via",
-            args: vec![v("this_"), v("key")],
-        })},
+        Step {
+            spec_step: "param.this".into(),
+            node: IRNode::Let {
+                name: "this_".into(),
+                value: Expr::This,
+            },
+        },
+        Step {
+            spec_step: "param.key".into(),
+            node: IRNode::Let {
+                name: "key".into(),
+                value: Expr::Arg(0),
+            },
+        },
+        Step {
+            spec_step: "1".into(),
+            node: IRNode::Return(Expr::CallBuiltin {
+                name: "object_proto_lookup_setter_via",
+                args: vec![v("this_"), v("key")],
+            }),
+        },
     ];
     IRFunction {
         spec_section: "B.2.2.5".into(),

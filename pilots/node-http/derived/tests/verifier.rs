@@ -64,7 +64,11 @@ fn spec_server_response_default_status_200() {
 #[test]
 fn spec_server_response_write_head_sets_status_and_headers() {
     let mut r = ServerResponse::new();
-    r.write_head(404, Some("Not Found"), Some(&[("Content-Type", "text/plain")]));
+    r.write_head(
+        404,
+        Some("Not Found"),
+        Some(&[("Content-Type", "text/plain")]),
+    );
     assert_eq!(r.status_code, 404);
     assert_eq!(r.status_message, "Not Found");
     assert_eq!(r.get_header("content-type"), Some("text/plain"));
@@ -204,10 +208,14 @@ fn spec_server_dispatch_404_with_no_handler_match() {
 
 #[test]
 fn spec_request_factory_with_headers() {
-    let req = request("POST", "/api", Some(&[
-        ("Content-Type", "application/json"),
-        ("Accept", "application/json"),
-    ]));
+    let req = request(
+        "POST",
+        "/api",
+        Some(&[
+            ("Content-Type", "application/json"),
+            ("Accept", "application/json"),
+        ]),
+    );
     assert_eq!(req.method, "POST");
     assert_eq!(req.headers().get("content-type"), Some("application/json"));
 }

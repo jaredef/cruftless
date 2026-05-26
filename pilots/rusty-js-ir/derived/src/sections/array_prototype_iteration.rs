@@ -133,11 +133,7 @@ pub fn build_for_each() -> IRFunction {
                                 node: IRNode::Expr(Expr::Call {
                                     function: b(v("callbackfn")),
                                     this: b(v("this_arg")),
-                                    args: vec![
-                                        v("k_value"),
-                                        Expr::IndexAsValue(b(v("k"))),
-                                        v("o"),
-                                    ],
+                                    args: vec![v("k_value"), Expr::IndexAsValue(b(v("k"))), v("o")],
                                 }),
                             },
                         ],
@@ -161,7 +157,10 @@ pub fn build_for_each() -> IRFunction {
     });
 
     // Override step 3's throw message.
-    fixup_throw_message(&mut body, "Array.prototype.forEach: callback is not callable");
+    fixup_throw_message(
+        &mut body,
+        "Array.prototype.forEach: callback is not callable",
+    );
 
     IRFunction {
         spec_section: "23.1.3.15".into(),
@@ -336,7 +335,10 @@ pub fn build_filter() -> IRFunction {
                                             spec_step: "7.c.iii.2".into(),
                                             node: IRNode::AssignIndex {
                                                 name: "to".into(),
-                                                value: Expr::IndexAdd(b(v("to")), b(Expr::IntConst(1))),
+                                                value: Expr::IndexAdd(
+                                                    b(v("to")),
+                                                    b(Expr::IntConst(1)),
+                                                ),
                                             },
                                         },
                                     ],
@@ -362,7 +364,10 @@ pub fn build_filter() -> IRFunction {
         node: IRNode::Return(v("a")),
     });
 
-    fixup_throw_message(&mut body, "Array.prototype.filter: callback is not callable");
+    fixup_throw_message(
+        &mut body,
+        "Array.prototype.filter: callback is not callable",
+    );
 
     IRFunction {
         spec_section: "23.1.3.7".into(),
@@ -374,23 +379,108 @@ pub fn build_filter() -> IRFunction {
 
 pub fn spec_steps_filter() -> Vec<SpecStepRecord> {
     vec![
-        SpecStepRecord { step_id: "1".into(),     abstract_ops: vec!["ToObject"],            throws: None,             prose: "Let O be ? ToObject(this value)." },
-        SpecStepRecord { step_id: "2".into(),     abstract_ops: vec!["LengthOfArrayLike"],   throws: None,             prose: "Let len be ? LengthOfArrayLike(O)." },
-        SpecStepRecord { step_id: "3".into(),     abstract_ops: vec!["IsCallable"],          throws: None,             prose: "If IsCallable(callbackfn) is false, throw TypeError." },
-        SpecStepRecord { step_id: "3.throw".into(),abstract_ops: vec!["Throw"],              throws: Some("TypeError"),prose: "throw a TypeError exception." },
-        SpecStepRecord { step_id: "4".into(),     abstract_ops: vec!["ArraySpeciesCreate"],  throws: None,             prose: "Let A be ? ArraySpeciesCreate(O, 0)." },
-        SpecStepRecord { step_id: "5".into(),     abstract_ops: vec![],                      throws: None,             prose: "Let k be 0." },
-        SpecStepRecord { step_id: "6".into(),     abstract_ops: vec![],                      throws: None,             prose: "Let to be 0." },
-        SpecStepRecord { step_id: "7".into(),     abstract_ops: vec![],                      throws: None,             prose: "Repeat, while k < len, …" },
-        SpecStepRecord { step_id: "7.a".into(),   abstract_ops: vec!["ToString"],            throws: None,             prose: "Let Pk be ! ToString(𝔽(k))." },
-        SpecStepRecord { step_id: "7.b".into(),   abstract_ops: vec!["HasProperty"],         throws: None,             prose: "Let kPresent be ? HasProperty(O, Pk)." },
-        SpecStepRecord { step_id: "7.c.i".into(), abstract_ops: vec!["Get"],                 throws: None,             prose: "Let kValue be ? Get(O, Pk)." },
-        SpecStepRecord { step_id: "7.c.ii".into(),abstract_ops: vec!["Call", "ToBoolean"],   throws: None,             prose: "Let selected be ToBoolean(? Call(callbackfn, thisArg, « kValue, 𝔽(k), O »))." },
-        SpecStepRecord { step_id: "7.c.iii".into(),abstract_ops: vec![],                     throws: None,             prose: "If selected is true, then …" },
-        SpecStepRecord { step_id: "7.c.iii.1".into(),abstract_ops: vec!["CreateDataPropertyOrThrow"],throws:None,      prose: "Perform ? CreateDataPropertyOrThrow(A, ! ToString(𝔽(to)), kValue)." },
-        SpecStepRecord { step_id: "7.c.iii.2".into(),abstract_ops: vec![],                   throws: None,             prose: "Set to to to + 1." },
-        SpecStepRecord { step_id: "7.d".into(),   abstract_ops: vec![],                      throws: None,             prose: "Set k to k + 1." },
-        SpecStepRecord { step_id: "8".into(),     abstract_ops: vec![],                      throws: None,             prose: "Return A." },
+        SpecStepRecord {
+            step_id: "1".into(),
+            abstract_ops: vec!["ToObject"],
+            throws: None,
+            prose: "Let O be ? ToObject(this value).",
+        },
+        SpecStepRecord {
+            step_id: "2".into(),
+            abstract_ops: vec!["LengthOfArrayLike"],
+            throws: None,
+            prose: "Let len be ? LengthOfArrayLike(O).",
+        },
+        SpecStepRecord {
+            step_id: "3".into(),
+            abstract_ops: vec!["IsCallable"],
+            throws: None,
+            prose: "If IsCallable(callbackfn) is false, throw TypeError.",
+        },
+        SpecStepRecord {
+            step_id: "3.throw".into(),
+            abstract_ops: vec!["Throw"],
+            throws: Some("TypeError"),
+            prose: "throw a TypeError exception.",
+        },
+        SpecStepRecord {
+            step_id: "4".into(),
+            abstract_ops: vec!["ArraySpeciesCreate"],
+            throws: None,
+            prose: "Let A be ? ArraySpeciesCreate(O, 0).",
+        },
+        SpecStepRecord {
+            step_id: "5".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "Let k be 0.",
+        },
+        SpecStepRecord {
+            step_id: "6".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "Let to be 0.",
+        },
+        SpecStepRecord {
+            step_id: "7".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "Repeat, while k < len, …",
+        },
+        SpecStepRecord {
+            step_id: "7.a".into(),
+            abstract_ops: vec!["ToString"],
+            throws: None,
+            prose: "Let Pk be ! ToString(𝔽(k)).",
+        },
+        SpecStepRecord {
+            step_id: "7.b".into(),
+            abstract_ops: vec!["HasProperty"],
+            throws: None,
+            prose: "Let kPresent be ? HasProperty(O, Pk).",
+        },
+        SpecStepRecord {
+            step_id: "7.c.i".into(),
+            abstract_ops: vec!["Get"],
+            throws: None,
+            prose: "Let kValue be ? Get(O, Pk).",
+        },
+        SpecStepRecord {
+            step_id: "7.c.ii".into(),
+            abstract_ops: vec!["Call", "ToBoolean"],
+            throws: None,
+            prose: "Let selected be ToBoolean(? Call(callbackfn, thisArg, « kValue, 𝔽(k), O »)).",
+        },
+        SpecStepRecord {
+            step_id: "7.c.iii".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "If selected is true, then …",
+        },
+        SpecStepRecord {
+            step_id: "7.c.iii.1".into(),
+            abstract_ops: vec!["CreateDataPropertyOrThrow"],
+            throws: None,
+            prose: "Perform ? CreateDataPropertyOrThrow(A, ! ToString(𝔽(to)), kValue).",
+        },
+        SpecStepRecord {
+            step_id: "7.c.iii.2".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "Set to to to + 1.",
+        },
+        SpecStepRecord {
+            step_id: "7.d".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "Set k to k + 1.",
+        },
+        SpecStepRecord {
+            step_id: "8".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "Return A.",
+        },
     ]
 }
 
@@ -486,20 +576,90 @@ pub fn build_every() -> IRFunction {
 
 pub fn spec_steps_every() -> Vec<SpecStepRecord> {
     vec![
-        SpecStepRecord { step_id: "1".into(),     abstract_ops: vec!["ToObject"],          throws: None, prose: "Let O be ? ToObject(this value)." },
-        SpecStepRecord { step_id: "2".into(),     abstract_ops: vec!["LengthOfArrayLike"], throws: None, prose: "Let len be ? LengthOfArrayLike(O)." },
-        SpecStepRecord { step_id: "3".into(),     abstract_ops: vec!["IsCallable"],        throws: None, prose: "If IsCallable(callbackfn) is false, throw TypeError." },
-        SpecStepRecord { step_id: "3.throw".into(),abstract_ops: vec!["Throw"],            throws: Some("TypeError"), prose: "throw a TypeError exception." },
-        SpecStepRecord { step_id: "4".into(),     abstract_ops: vec![],                    throws: None, prose: "Let k be 0." },
-        SpecStepRecord { step_id: "5".into(),     abstract_ops: vec![],                    throws: None, prose: "Repeat, while k < len, …" },
-        SpecStepRecord { step_id: "5.a".into(),   abstract_ops: vec!["ToString"],          throws: None, prose: "Let Pk be ! ToString(𝔽(k))." },
-        SpecStepRecord { step_id: "5.b".into(),   abstract_ops: vec!["HasProperty"],       throws: None, prose: "Let kPresent be ? HasProperty(O, Pk)." },
-        SpecStepRecord { step_id: "5.c.i".into(), abstract_ops: vec!["Get"],               throws: None, prose: "Let kValue be ? Get(O, Pk)." },
-        SpecStepRecord { step_id: "5.c.ii".into(),abstract_ops: vec!["Call", "ToBoolean"], throws: None, prose: "Let testResult be ToBoolean(? Call(callbackfn, thisArg, « kValue, 𝔽(k), O »))." },
-        SpecStepRecord { step_id: "5.c.iii".into(),abstract_ops: vec![],                   throws: None, prose: "If testResult is false, return false." },
-        SpecStepRecord { step_id: "5.c.iii.1".into(),abstract_ops: vec![],                 throws: None, prose: "Return false." },
-        SpecStepRecord { step_id: "5.d".into(),   abstract_ops: vec![],                    throws: None, prose: "Set k to k + 1." },
-        SpecStepRecord { step_id: "6".into(),     abstract_ops: vec![],                    throws: None, prose: "Return true." },
+        SpecStepRecord {
+            step_id: "1".into(),
+            abstract_ops: vec!["ToObject"],
+            throws: None,
+            prose: "Let O be ? ToObject(this value).",
+        },
+        SpecStepRecord {
+            step_id: "2".into(),
+            abstract_ops: vec!["LengthOfArrayLike"],
+            throws: None,
+            prose: "Let len be ? LengthOfArrayLike(O).",
+        },
+        SpecStepRecord {
+            step_id: "3".into(),
+            abstract_ops: vec!["IsCallable"],
+            throws: None,
+            prose: "If IsCallable(callbackfn) is false, throw TypeError.",
+        },
+        SpecStepRecord {
+            step_id: "3.throw".into(),
+            abstract_ops: vec!["Throw"],
+            throws: Some("TypeError"),
+            prose: "throw a TypeError exception.",
+        },
+        SpecStepRecord {
+            step_id: "4".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "Let k be 0.",
+        },
+        SpecStepRecord {
+            step_id: "5".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "Repeat, while k < len, …",
+        },
+        SpecStepRecord {
+            step_id: "5.a".into(),
+            abstract_ops: vec!["ToString"],
+            throws: None,
+            prose: "Let Pk be ! ToString(𝔽(k)).",
+        },
+        SpecStepRecord {
+            step_id: "5.b".into(),
+            abstract_ops: vec!["HasProperty"],
+            throws: None,
+            prose: "Let kPresent be ? HasProperty(O, Pk).",
+        },
+        SpecStepRecord {
+            step_id: "5.c.i".into(),
+            abstract_ops: vec!["Get"],
+            throws: None,
+            prose: "Let kValue be ? Get(O, Pk).",
+        },
+        SpecStepRecord {
+            step_id: "5.c.ii".into(),
+            abstract_ops: vec!["Call", "ToBoolean"],
+            throws: None,
+            prose: "Let testResult be ToBoolean(? Call(callbackfn, thisArg, « kValue, 𝔽(k), O »)).",
+        },
+        SpecStepRecord {
+            step_id: "5.c.iii".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "If testResult is false, return false.",
+        },
+        SpecStepRecord {
+            step_id: "5.c.iii.1".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "Return false.",
+        },
+        SpecStepRecord {
+            step_id: "5.d".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "Set k to k + 1.",
+        },
+        SpecStepRecord {
+            step_id: "6".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "Return true.",
+        },
     ]
 }
 
@@ -596,20 +756,90 @@ pub fn build_some() -> IRFunction {
 pub fn spec_steps_some() -> Vec<SpecStepRecord> {
     // Same as every but returns true on first truthy, false at end.
     vec![
-        SpecStepRecord { step_id: "1".into(),     abstract_ops: vec!["ToObject"],          throws: None, prose: "Let O be ? ToObject(this value)." },
-        SpecStepRecord { step_id: "2".into(),     abstract_ops: vec!["LengthOfArrayLike"], throws: None, prose: "Let len be ? LengthOfArrayLike(O)." },
-        SpecStepRecord { step_id: "3".into(),     abstract_ops: vec!["IsCallable"],        throws: None, prose: "If IsCallable(callbackfn) is false, throw TypeError." },
-        SpecStepRecord { step_id: "3.throw".into(),abstract_ops: vec!["Throw"],            throws: Some("TypeError"), prose: "throw a TypeError exception." },
-        SpecStepRecord { step_id: "4".into(),     abstract_ops: vec![],                    throws: None, prose: "Let k be 0." },
-        SpecStepRecord { step_id: "5".into(),     abstract_ops: vec![],                    throws: None, prose: "Repeat, while k < len, …" },
-        SpecStepRecord { step_id: "5.a".into(),   abstract_ops: vec!["ToString"],          throws: None, prose: "Let Pk be ! ToString(𝔽(k))." },
-        SpecStepRecord { step_id: "5.b".into(),   abstract_ops: vec!["HasProperty"],       throws: None, prose: "Let kPresent be ? HasProperty(O, Pk)." },
-        SpecStepRecord { step_id: "5.c.i".into(), abstract_ops: vec!["Get"],               throws: None, prose: "Let kValue be ? Get(O, Pk)." },
-        SpecStepRecord { step_id: "5.c.ii".into(),abstract_ops: vec!["Call", "ToBoolean"], throws: None, prose: "Let testResult be ToBoolean(? Call(callbackfn, thisArg, « kValue, 𝔽(k), O »))." },
-        SpecStepRecord { step_id: "5.c.iii".into(),abstract_ops: vec![],                   throws: None, prose: "If testResult is true, return true." },
-        SpecStepRecord { step_id: "5.c.iii.1".into(),abstract_ops: vec![],                 throws: None, prose: "Return true." },
-        SpecStepRecord { step_id: "5.d".into(),   abstract_ops: vec![],                    throws: None, prose: "Set k to k + 1." },
-        SpecStepRecord { step_id: "6".into(),     abstract_ops: vec![],                    throws: None, prose: "Return false." },
+        SpecStepRecord {
+            step_id: "1".into(),
+            abstract_ops: vec!["ToObject"],
+            throws: None,
+            prose: "Let O be ? ToObject(this value).",
+        },
+        SpecStepRecord {
+            step_id: "2".into(),
+            abstract_ops: vec!["LengthOfArrayLike"],
+            throws: None,
+            prose: "Let len be ? LengthOfArrayLike(O).",
+        },
+        SpecStepRecord {
+            step_id: "3".into(),
+            abstract_ops: vec!["IsCallable"],
+            throws: None,
+            prose: "If IsCallable(callbackfn) is false, throw TypeError.",
+        },
+        SpecStepRecord {
+            step_id: "3.throw".into(),
+            abstract_ops: vec!["Throw"],
+            throws: Some("TypeError"),
+            prose: "throw a TypeError exception.",
+        },
+        SpecStepRecord {
+            step_id: "4".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "Let k be 0.",
+        },
+        SpecStepRecord {
+            step_id: "5".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "Repeat, while k < len, …",
+        },
+        SpecStepRecord {
+            step_id: "5.a".into(),
+            abstract_ops: vec!["ToString"],
+            throws: None,
+            prose: "Let Pk be ! ToString(𝔽(k)).",
+        },
+        SpecStepRecord {
+            step_id: "5.b".into(),
+            abstract_ops: vec!["HasProperty"],
+            throws: None,
+            prose: "Let kPresent be ? HasProperty(O, Pk).",
+        },
+        SpecStepRecord {
+            step_id: "5.c.i".into(),
+            abstract_ops: vec!["Get"],
+            throws: None,
+            prose: "Let kValue be ? Get(O, Pk).",
+        },
+        SpecStepRecord {
+            step_id: "5.c.ii".into(),
+            abstract_ops: vec!["Call", "ToBoolean"],
+            throws: None,
+            prose: "Let testResult be ToBoolean(? Call(callbackfn, thisArg, « kValue, 𝔽(k), O »)).",
+        },
+        SpecStepRecord {
+            step_id: "5.c.iii".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "If testResult is true, return true.",
+        },
+        SpecStepRecord {
+            step_id: "5.c.iii.1".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "Return true.",
+        },
+        SpecStepRecord {
+            step_id: "5.d".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "Set k to k + 1.",
+        },
+        SpecStepRecord {
+            step_id: "6".into(),
+            abstract_ops: vec![],
+            throws: None,
+            prose: "Return false.",
+        },
     ]
 }
 

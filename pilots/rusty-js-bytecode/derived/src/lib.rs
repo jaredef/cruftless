@@ -5,15 +5,18 @@
 //! variable access via global slot. Control flow + scope resolution +
 //! function bodies + try/catch follow in 3.c.c and 3.c.d.
 
-pub mod op;
-pub mod constants;
 pub mod compiler;
+pub mod constants;
 pub mod disasm;
+pub mod op;
 
-pub use op::{Op, encode_op};
+pub use compiler::{
+    CompileError, CompiledModule, Compiler, ExportBinding, ImportBinding, ImportBindingKind,
+    LocalDescriptor, UpvalueDescriptor, UpvalueSource,
+};
 pub use constants::{Constant, ConstantsPool};
-pub use compiler::{CompiledModule, Compiler, CompileError, LocalDescriptor, UpvalueDescriptor, UpvalueSource, ImportBinding, ImportBindingKind, ExportBinding};
 pub use disasm::disassemble;
+pub use op::{encode_op, Op};
 
 /// Convenience: parse + compile a module source string.
 pub fn compile_module(src: &str) -> Result<CompiledModule, CompileError> {
@@ -25,8 +28,10 @@ pub fn compile_module(src: &str) -> Result<CompiledModule, CompileError> {
 /// has long since returned. evaluate_module / evaluate_cjs_module call this
 /// directly to wire the resource locator.
 pub fn compile_module_with_url(src: &str, url: &str) -> Result<CompiledModule, CompileError> {
-    let ast = rusty_js_parser::parse_module(src)
-        .map_err(|e| CompileError { span: e.span, message: format!("parse: {} @byte{}", e.message, e.span.start) })?;
+    let ast = rusty_js_parser::parse_module(src).map_err(|e| CompileError {
+        span: e.span,
+        message: format!("parse: {} @byte{}", e.message, e.span.start),
+    })?;
     let mut c = Compiler::new();
     c.set_source_line_starts(compute_line_starts(src));
     c.set_source_url(url.to_string());
@@ -50,7 +55,9 @@ pub fn compute_line_starts(src: &str) -> Vec<u32> {
 /// Convert a byte offset to (line, column), both 1-indexed for editor
 /// conventions. Returns (1, 1) on empty input.
 pub fn byte_offset_to_line_col(line_starts: &[u32], offset: u32) -> (u32, u32) {
-    if line_starts.is_empty() { return (1, 1); }
+    if line_starts.is_empty() {
+        return (1, 1);
+    }
     let idx = line_starts.partition_point(|&start| start <= offset);
     let line = idx as u32; // 1-indexed because partition_point returns count <= offset
     let col = offset + 1 - line_starts[idx - 1];

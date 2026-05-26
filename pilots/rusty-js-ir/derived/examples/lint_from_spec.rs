@@ -56,12 +56,17 @@ fn main() {
     let ir = array_prototype_map::build();
     let report = lint(&ir, &parsed_records);
 
-    let real_findings: Vec<_> = report.findings.iter()
+    let real_findings: Vec<_> = report
+        .findings
+        .iter()
         .filter(|f| !f.spec_step.starts_with("param."))
         .collect();
 
     if real_findings.is_empty() {
-        println!("✓ §{} — IR matches parser-derived spec records.", ir.spec_section);
+        println!(
+            "✓ §{} — IR matches parser-derived spec records.",
+            ir.spec_section
+        );
         println!("\nResolver-instance #0b operational: the spec source");
         println!("produces SpecStepRecord lists structurally equivalent");
         println!("to the hand-authored ones. Drift detection now runs");

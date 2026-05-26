@@ -83,7 +83,10 @@ fn consumer_http_proxy_header_iteration_order() {
     h.append("X-Forwarded-Proto", "https");
     h.append("X-Real-IP", "5.6.7.8");
     let names: Vec<&str> = h.entries().map(|(n, _)| n).collect();
-    assert_eq!(names, vec!["x-forwarded-for", "x-forwarded-proto", "x-real-ip"]);
+    assert_eq!(
+        names,
+        vec!["x-forwarded-for", "x-forwarded-proto", "x-real-ip"]
+    );
 }
 
 // ────────── helmet — security headers via setHeader ──────────

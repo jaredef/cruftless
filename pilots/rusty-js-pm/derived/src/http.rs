@@ -14,9 +14,9 @@
 //!
 //! Public surface: `pm_http_get(url) -> Result<Vec<u8>, HttpError>`.
 
+use rusty_http_codec::{parse_response, serialize_request};
 use rusty_tls::driver::tls_connect;
 use rusty_tls::store::TrustStore;
-use rusty_http_codec::{parse_response, serialize_request};
 
 #[derive(Debug)]
 pub enum HttpError {
@@ -36,7 +36,8 @@ struct ParsedUrl {
 
 fn parse_url(url: &str) -> Result<ParsedUrl, HttpError> {
     // First cut: https only.
-    let rest = url.strip_prefix("https://")
+    let rest = url
+        .strip_prefix("https://")
         .ok_or_else(|| HttpError::UnsupportedScheme(url.to_string()))?;
     let (authority, path) = match rest.find('/') {
         Some(i) => (&rest[..i], &rest[i..]),
@@ -47,7 +48,8 @@ fn parse_url(url: &str) -> Result<ParsedUrl, HttpError> {
     }
     let (host, port) = match authority.find(':') {
         Some(i) => {
-            let p: u16 = authority[i + 1..].parse()
+            let p: u16 = authority[i + 1..]
+                .parse()
                 .map_err(|_| HttpError::MalformedUrl(url.to_string()))?;
             (&authority[..i], p)
         }
@@ -56,7 +58,11 @@ fn parse_url(url: &str) -> Result<ParsedUrl, HttpError> {
     Ok(ParsedUrl {
         host: host.to_string(),
         port,
-        path: if path.is_empty() { "/".to_string() } else { path.to_string() },
+        path: if path.is_empty() {
+            "/".to_string()
+        } else {
+            path.to_string()
+        },
     })
 }
 
@@ -77,21 +83,24 @@ pub fn pm_http_get_follow(url: &str, max_hops: u8) -> Result<Vec<u8>, HttpError>
     for _ in 0..=max_hops {
         let resp = pm_http_get_raw(&current)?;
         if (300..400).contains(&resp.status) {
-            let loc = header_value(&resp.headers, "location")
-                .ok_or_else(|| HttpError::Status {
-                    code: resp.status,
-                    body_prefix: "3xx without Location header".into(),
-                })?;
+            let loc = header_value(&resp.headers, "location").ok_or_else(|| HttpError::Status {
+                code: resp.status,
+                body_prefix: "3xx without Location header".into(),
+            })?;
             current = resolve_location(&current, &loc)?;
             continue;
         }
         return finalize_raw(resp);
     }
-    Err(HttpError::Status { code: 310, body_prefix: format!("too many redirects from {url}") })
+    Err(HttpError::Status {
+        code: 310,
+        body_prefix: format!("too many redirects from {url}"),
+    })
 }
 
 fn header_value(headers: &[(String, String)], name: &str) -> Option<String> {
-    headers.iter()
+    headers
+        .iter()
         .find(|(k, _)| k.eq_ignore_ascii_case(name))
         .map(|(_, v)| v.clone())
 }
@@ -104,32 +113,49 @@ fn resolve_location(base: &str, loc: &str) -> Result<String, HttpError> {
     } else if loc.starts_with('/') {
         // path-absolute on same authority
         let b = parse_url(base)?;
-        let port_suffix = if b.port == 443 { String::new() } else { format!(":{}", b.port) };
+        let port_suffix = if b.port == 443 {
+            String::new()
+        } else {
+            format!(":{}", b.port)
+        };
         Ok(format!("https://{}{}{}", b.host, port_suffix, loc))
     } else {
-        Err(HttpError::MalformedUrl(format!("relative redirect not supported: {loc}")))
+        Err(HttpError::MalformedUrl(format!(
+            "relative redirect not supported: {loc}"
+        )))
     }
 }
 
 fn finalize_raw(resp: rusty_http_codec::ParsedResponse) -> Result<Vec<u8>, HttpError> {
     if !(200..300).contains(&resp.status) {
         let prefix: String = String::from_utf8_lossy(&resp.body)
-            .chars().take(200).collect();
-        return Err(HttpError::Status { code: resp.status, body_prefix: prefix });
+            .chars()
+            .take(200)
+            .collect();
+        return Err(HttpError::Status {
+            code: resp.status,
+            body_prefix: prefix,
+        });
     }
     Ok(resp.body)
 }
 
 fn pm_http_get_raw(url: &str) -> Result<rusty_http_codec::ParsedResponse, HttpError> {
     let dbg = std::env::var("CRUFTLESS_TLS_DEBUG").is_ok();
-    if dbg { eprintln!("[pm_http_get] start {}", url); }
+    if dbg {
+        eprintln!("[pm_http_get] start {}", url);
+    }
     let u = parse_url(url)?;
-    let trust_store = TrustStore::load_system_default()
-        .map_err(|e| HttpError::TrustStore(format!("{e:?}")))?;
-    if dbg { eprintln!("[pm_http_get] connecting → {}:{}", u.host, u.port); }
+    let trust_store =
+        TrustStore::load_system_default().map_err(|e| HttpError::TrustStore(format!("{e:?}")))?;
+    if dbg {
+        eprintln!("[pm_http_get] connecting → {}:{}", u.host, u.port);
+    }
     let mut session = tls_connect(&u.host, u.port, &trust_store)
         .map_err(|e| HttpError::Tls(format!("connect {}:{}: {e:?}", u.host, u.port)))?;
-    if dbg { eprintln!("[pm_http_get] handshake OK"); }
+    if dbg {
+        eprintln!("[pm_http_get] handshake OK");
+    }
 
     let request = serialize_request(
         "GET",
@@ -143,10 +169,15 @@ fn pm_http_get_raw(url: &str) -> Result<rusty_http_codec::ParsedResponse, HttpEr
         ],
         &[],
     );
-    if dbg { eprintln!("[pm_http_get] sending {} request bytes", request.len()); }
-    session.send_application_data(&request)
+    if dbg {
+        eprintln!("[pm_http_get] sending {} request bytes", request.len());
+    }
+    session
+        .send_application_data(&request)
         .map_err(|e| HttpError::Tls(format!("send: {e:?}")))?;
-    if dbg { eprintln!("[pm_http_get] send OK; entering drain loop"); }
+    if dbg {
+        eprintln!("[pm_http_get] send OK; entering drain loop");
+    }
 
     // Drain the response. With Connection: close the server sends its
     // close_notify after the body; receive_application_data now
@@ -158,13 +189,17 @@ fn pm_http_get_raw(url: &str) -> Result<rusty_http_codec::ParsedResponse, HttpEr
     loop {
         match session.receive_application_data(&mut accumulator) {
             Ok(chunk) => {
-                if chunk.is_empty() && accumulator.is_empty() { break; }
+                if chunk.is_empty() && accumulator.is_empty() {
+                    break;
+                }
                 raw.extend_from_slice(&chunk);
                 // Early termination once we have a complete parseable
                 // response, so we don't hang waiting for close_notify
                 // on servers that drop the connection without one.
                 if let Ok(resp) = parse_response(&raw) {
-                    if resp.status >= 100 { return Ok(resp); }
+                    if resp.status >= 100 {
+                        return Ok(resp);
+                    }
                 }
             }
             Err(rusty_tls::record::TlsError::CloseNotify) => break,
@@ -202,7 +237,10 @@ mod tests {
 
     #[test]
     fn url_parse_rejects_http() {
-        assert!(matches!(parse_url("http://x/y"), Err(HttpError::UnsupportedScheme(_))));
+        assert!(matches!(
+            parse_url("http://x/y"),
+            Err(HttpError::UnsupportedScheme(_))
+        ));
     }
 
     /// Network-dependent. Gated behind --ignored. Run via:
@@ -213,9 +251,15 @@ mod tests {
         let body = pm_http_get("https://registry.npmjs.org/lodash/4.17.21")
             .expect("registry fetch failed");
         let text = std::str::from_utf8(&body).expect("body not utf-8");
-        assert!(text.contains("\"version\":\"4.17.21\""),
+        assert!(
+            text.contains("\"version\":\"4.17.21\""),
             "expected version in response, got {} bytes; first 200: {}",
-            text.len(), &text[..text.len().min(200)]);
-        assert!(text.contains("\"tarball\""), "expected dist.tarball in response");
+            text.len(),
+            &text[..text.len().min(200)]
+        );
+        assert!(
+            text.contains("\"tarball\""),
+            "expected dist.tarball in response"
+        );
     }
 }

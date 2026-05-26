@@ -22,7 +22,9 @@ pub struct Headers {
 }
 
 impl Headers {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     pub fn from_pairs(pairs: &[(&str, &str)]) -> Result<Self, HeaderError> {
         let mut h = Self::new();
@@ -57,7 +59,10 @@ impl Headers {
             if n == &lower {
                 match &mut combined {
                     None => combined = Some(v.clone()),
-                    Some(c) => { c.push_str(", "); c.push_str(v); }
+                    Some(c) => {
+                        c.push_str(", ");
+                        c.push_str(v);
+                    }
                 }
             }
         }
@@ -103,7 +108,9 @@ impl Headers {
         Ok(())
     }
 
-    pub fn count(&self) -> usize { self.entries.len() }
+    pub fn count(&self) -> usize {
+        self.entries.len()
+    }
 
     pub fn entries(&self) -> impl Iterator<Item = (&str, &str)> {
         // SPEC §5.2.entries: name + value pairs ordered by lexicographic
@@ -122,7 +129,9 @@ impl Headers {
     pub fn for_each<F: FnMut(&str, &str)>(&self, mut f: F) {
         let mut sorted = self.entries.iter().collect::<Vec<_>>();
         sorted.sort_by(|a, b| a.0.cmp(&b.0));
-        for (n, v) in sorted { f(n, v); }
+        for (n, v) in sorted {
+            f(n, v);
+        }
     }
 }
 

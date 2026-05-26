@@ -33,7 +33,8 @@ pub fn install(rt: &mut Runtime) {
     register_method(rt, util, "debuglog", |rt, _args| {
         // Return a callable native function that ignores its args.
         // Reuse the global Function ctor pattern via make-stub-fn.
-        let f = crate::register::make_callable(rt, "debuglog_fn", |_rt, _args| Ok(Value::Undefined));
+        let f =
+            crate::register::make_callable(rt, "debuglog_fn", |_rt, _args| Ok(Value::Undefined));
         rt.object_set(f, "enabled".into(), Value::Boolean(false));
         Ok(Value::Object(f))
     });
@@ -188,13 +189,19 @@ pub fn install(rt: &mut Runtime) {
     register_method(rt, util, "inherits", |rt, args| {
         let ctor_id = match args.first() {
             Some(Value::Object(id)) => *id,
-            _ => return Err(RuntimeError::TypeError(
-                "util.inherits: ctor must be an object".into())),
+            _ => {
+                return Err(RuntimeError::TypeError(
+                    "util.inherits: ctor must be an object".into(),
+                ))
+            }
         };
         let super_id = match args.get(1) {
             Some(Value::Object(id)) => *id,
-            _ => return Err(RuntimeError::TypeError(
-                "util.inherits: super must be an object".into())),
+            _ => {
+                return Err(RuntimeError::TypeError(
+                    "util.inherits: super must be an object".into(),
+                ))
+            }
         };
         rt.object_set(ctor_id, "super_".into(), Value::Object(super_id));
         let super_proto = rt.object_get(super_id, "prototype");
@@ -204,8 +211,10 @@ pub fn install(rt: &mut Runtime) {
             let _ = rt.obj_mut(new_proto);
             rt.obj_mut(new_proto).proto = Some(sp);
         }
-        rt.obj_mut(new_proto).set_own_internal("constructor".into(), Value::Object(ctor_id));
-        rt.obj_mut(ctor_id).set_own_frozen("prototype".into(), Value::Object(new_proto));
+        rt.obj_mut(new_proto)
+            .set_own_internal("constructor".into(), Value::Object(ctor_id));
+        rt.obj_mut(ctor_id)
+            .set_own_frozen("prototype".into(), Value::Object(new_proto));
         Ok(Value::Undefined)
     });
 
@@ -242,8 +251,12 @@ pub fn install(rt: &mut Runtime) {
         Ok(Value::Boolean(matches!(args.first(),
             Some(Value::Object(id)) if matches!(rt.obj(*id).internal_kind, InternalKind::Error))))
     });
-    register_method(rt, types, "isArrayBuffer", |_rt, _args| Ok(Value::Boolean(false)));
-    register_method(rt, types, "isTypedArray", |_rt, _args| Ok(Value::Boolean(false)));
+    register_method(rt, types, "isArrayBuffer", |_rt, _args| {
+        Ok(Value::Boolean(false))
+    });
+    register_method(rt, types, "isTypedArray", |_rt, _args| {
+        Ok(Value::Boolean(false))
+    });
     set_constant(rt, util, "types", Value::Object(types));
 
     set_constant(rt, util, "default", Value::Object(util));

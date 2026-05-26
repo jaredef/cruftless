@@ -13,13 +13,17 @@
 //! from-pc-0).
 
 use rusty_js_bytecode::compiler::{FunctionProto, LocalDescriptor, UpvalueDescriptor};
-use rusty_js_bytecode::op::Op;
 use rusty_js_bytecode::constants::ConstantsPool;
-use rusty_js_jit::{DeoptRecoveredState, DeoptReason};
+use rusty_js_bytecode::op::Op;
+use rusty_js_jit::{DeoptReason, DeoptRecoveredState};
 use rusty_js_runtime::{Runtime, Value};
 
-fn encode_op(bc: &mut Vec<u8>, op: Op) { bc.push(op as u8); }
-fn encode_u16(bc: &mut Vec<u8>, v: u16) { bc.extend_from_slice(&v.to_le_bytes()); }
+fn encode_op(bc: &mut Vec<u8>, op: Op) {
+    bc.push(op as u8);
+}
+fn encode_u16(bc: &mut Vec<u8>, v: u16) {
+    bc.extend_from_slice(&v.to_le_bytes());
+}
 
 fn make_proto(bytecode: Vec<u8>, params: u16, name: &str) -> FunctionProto {
     let mut locals = Vec::<LocalDescriptor>::new();
@@ -58,8 +62,10 @@ fn add_proto() -> FunctionProto {
     //   pc=6 Add        (1 byte)
     //   pc=7 Return     (1 byte)
     let mut bc = Vec::new();
-    encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 0);
-    encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 1);
+    encode_op(&mut bc, Op::LoadArg);
+    encode_u16(&mut bc, 0);
+    encode_op(&mut bc, Op::LoadArg);
+    encode_u16(&mut bc, 1);
     encode_op(&mut bc, Op::Add);
     encode_op(&mut bc, Op::Return);
     make_proto(bc, 2, "add")
@@ -83,16 +89,20 @@ fn resume_from_deopt_state_runs_remaining_bytecode() {
         stack_values: vec![(0, 10), (1, 32)],
     };
 
-    let result = rt.resume_from_deopt_state(
-        &proto,
-        Value::Undefined,
-        vec![Value::Number(10.0), Value::Number(32.0)],
-        &state,
-    ).expect("resume_from_deopt_state");
+    let result = rt
+        .resume_from_deopt_state(
+            &proto,
+            Value::Undefined,
+            vec![Value::Number(10.0), Value::Number(32.0)],
+            &state,
+        )
+        .expect("resume_from_deopt_state");
 
     match result {
-        Value::Number(n) => assert_eq!(n, 42.0,
-            "Add of 10 + 32 from recovered stack should yield 42; got {n}"),
+        Value::Number(n) => assert_eq!(
+            n, 42.0,
+            "Add of 10 + 32 from recovered stack should yield 42; got {n}"
+        ),
         other => panic!("expected Number(42); got {other:?}"),
     }
 }
@@ -104,7 +114,8 @@ fn resume_from_deopt_state_widens_i64_to_f64() {
     //   pc=0 LoadArg 0
     //   pc=3 Return
     let mut bc = Vec::new();
-    encode_op(&mut bc, Op::LoadArg); encode_u16(&mut bc, 0);
+    encode_op(&mut bc, Op::LoadArg);
+    encode_u16(&mut bc, 0);
     encode_op(&mut bc, Op::Return);
     let proto = make_proto(bc, 1, "identity");
 
@@ -121,16 +132,20 @@ fn resume_from_deopt_state_widens_i64_to_f64() {
         stack_values: vec![(0, 12345)],
     };
 
-    let result = rt.resume_from_deopt_state(
-        &proto,
-        Value::Undefined,
-        vec![Value::Number(0.0)],   // discarded; recovered state wins
-        &state,
-    ).expect("resume_from_deopt_state");
+    let result = rt
+        .resume_from_deopt_state(
+            &proto,
+            Value::Undefined,
+            vec![Value::Number(0.0)], // discarded; recovered state wins
+            &state,
+        )
+        .expect("resume_from_deopt_state");
 
     match result {
-        Value::Number(n) => assert_eq!(n, 12345.0,
-            "recovered i64 should widen to Number(12345.0); got {n}"),
+        Value::Number(n) => assert_eq!(
+            n, 12345.0,
+            "recovered i64 should widen to Number(12345.0); got {n}"
+        ),
         other => panic!("expected Number(12345); got {other:?}"),
     }
 }
