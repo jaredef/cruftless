@@ -811,6 +811,14 @@ impl<'src> Parser<'src> {
             body.push(self.parse_statement()?);
         }
         self.expect_punct(Punct::RBrace)?;
+        // BBND-EXT 1: §13.2.1 Block early errors —
+        //  - LexicallyDeclaredNames must not contain duplicates
+        //  - LexicallyDeclaredNames ∩ VarDeclaredNames must be empty
+        // LDN = let/const/class/async-function/generator/async-generator,
+        //       plus function in strict mode (Annex B B.3.2 carves out
+        //       function-in-block as VDN in non-strict).
+        // VDN = var, plus function in non-strict.
+        self.check_block_bound_names(&body)?;
         let end = self.last_span_end();
         Ok(Stmt::Block {
             body,
@@ -1566,6 +1574,69 @@ impl<'src> Parser<'src> {
 
     fn parse_block_statement_public(&mut self) -> Result<Stmt, ParseError> {
         self.parse_block_statement()
+    }
+
+    /// BBND-EXT 1: §13.2.1 Block static-semantics early errors.
+    /// LexicallyDeclaredNames duplicate detection + LDN ∩ VDN check.
+    pub(crate) fn check_block_bound_names(&self, body: &[Stmt]) -> Result<(), ParseError> {
+        use rusty_js_ast::{Stmt as S, VariableKind};
+        let mut lex: Vec<(String, Span)> = Vec::new();
+        let mut var: Vec<(String, Span)> = Vec::new();
+        for s in body {
+            match s {
+                S::Variable(vs) => {
+                    let target_list: &mut Vec<(String, Span)> = match vs.kind {
+                        VariableKind::Let | VariableKind::Const => &mut lex,
+                        VariableKind::Var => &mut var,
+                    };
+                    for d in &vs.declarators {
+                        for id in d.target.collect_names() {
+                            target_list.push((id.name.clone(), id.span));
+                        }
+                    }
+                }
+                // Per spec §13.2.6 + Annex B.3.2: AsyncFunction /
+                // Generator / AsyncGenerator declarations always contribute
+                // to LexicallyDeclaredNames. Plain FunctionDeclaration is
+                // LDN in strict mode; in non-strict the Annex B carve-out
+                // demotes it to VDN, allowing function-function block dup.
+                S::FunctionDecl { name: Some(n), is_async, is_generator, .. } => {
+                    let is_plain_function = !is_async && !is_generator;
+                    if is_plain_function && !self.strict_mode {
+                        var.push((n.name.clone(), n.span));
+                    } else {
+                        lex.push((n.name.clone(), n.span));
+                    }
+                }
+                S::ClassDecl { name: Some(n), .. } => {
+                    lex.push((n.name.clone(), n.span));
+                }
+                _ => {}
+            }
+        }
+        // Dup within LDN.
+        for i in 0..lex.len() {
+            for j in (i+1)..lex.len() {
+                if lex[i].0 == lex[j].0 {
+                    return Err(ParseError {
+                        span: lex[j].1,
+                        message: format!("Identifier `{}` has already been declared in this block", lex[j].0),
+                    });
+                }
+            }
+        }
+        // LDN ∩ VDN.
+        for (ln, lspan) in &lex {
+            for (vn, _) in &var {
+                if ln == vn {
+                    return Err(ParseError {
+                        span: *lspan,
+                        message: format!("Identifier `{}` cannot be redeclared (lexical/var conflict)", ln),
+                    });
+                }
+            }
+        }
+        Ok(())
     }
 
     /// SBAP-EXT 1: walk a BindingPattern's leaf binding-identifiers and
