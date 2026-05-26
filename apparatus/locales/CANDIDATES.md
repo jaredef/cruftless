@@ -220,6 +220,11 @@ Apparatus-pilot candidates that extend PCR's coordinate-refinement discipline to
 **Pool**: focused PNL private-name grammar/static set residuals: `arguments` in private field initializer, undeclared private name in computed property, and potential duplicate/private-name assertion rows.
 **Status**: FOUNDED. CESS-EXT 1 targets the six remaining `expected SyntaxError, got String` rows from PNL's focused probe; runtime private-brand semantics and async harness skips are out of scope.
 
+### (aab) `private-field-runtime-slots` — **SPAWNED** 2026-05-26 as [`pilots/private-field-runtime-slots/`](../../pilots/private-field-runtime-slots/seed.md)
+**Telos**: runtime storage for private class fields/methods that does not leak through ordinary string-key property reflection.
+**Pool**: focused PNL residuals after CESS-EXT 1, especially `test 3` rows where `hasOwnProperty(instance, "#x")` observed name-mangled private fields.
+**Status**: FOUNDED. PFRS-EXT 1 installs a narrow private slot map and closes the ordinary-property leak family; full brand semantics remain deferred.
+
 ---
 
 ## Tier H — top-10 spawn batch from 2026-05-25 matrix (post-hoc registration)

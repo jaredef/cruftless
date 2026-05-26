@@ -9484,6 +9484,9 @@ impl Runtime {
     }
 
     pub fn object_get(&self, id: ObjectRef, key: &str) -> Value {
+        if key.starts_with('#') {
+            return self.object_get_private(id, key).unwrap_or(Value::Undefined);
+        }
         if key == "length" {
             if let Some(len) = self.typed_array_view_len(id) {
                 return Value::Number(len as f64);
@@ -9602,6 +9605,10 @@ impl Runtime {
 
     /// OrdinaryDefineOwnProperty — own-key set on the named object.
     pub fn object_set(&mut self, id: ObjectRef, key: String, value: Value) {
+        if key.starts_with('#') {
+            self.obj_mut(id).set_private(&key, value);
+            return;
+        }
         // Lift (rung-18): String-keyed OrdinarySet routes through the
         // PropertyKey-typed primitive so non-writable / preserve-existing-
         // attrs logic lives in one place. Pre-lift, object_set and
@@ -9609,6 +9616,18 @@ impl Runtime {
         // branches; rung-17 fixed the pk branch but the divergence remained
         // a maintenance hazard.
         self.object_set_pk(id, crate::value::PropertyKey::String(key), value);
+    }
+
+    fn object_get_private(&self, id: ObjectRef, key: &str) -> Option<Value> {
+        let mut cur = Some(id);
+        while let Some(c) = cur {
+            let o = self.obj(c);
+            if let Some(v) = o.get_private(key) {
+                return Some(v.clone());
+            }
+            cur = o.proto;
+        }
+        None
     }
 
     /// Typeof with heap deref for Object/function discrimination.
@@ -10640,60 +10659,76 @@ impl Runtime {
                     // receiver before calling so re-entrant access works.
                     let v = match &obj_v {
                         Value::Object(id) => {
+                            if key.starts_with('#') {
+                                match self.object_get_private(*id, &key) {
+                                    Some(v) => v,
+                                    None => {
+                                        if let Some(getter) = self.find_getter(*id, &key) {
+                                            self.call_function(getter, obj_v.clone(), Vec::new())?
+                                        } else {
+                                            return Err(RuntimeError::TypeError(format!(
+                                                "Cannot read private field '{}' of object",
+                                                key
+                                            )));
+                                        }
+                                    }
+                                }
+                            } else {
                             // Ω.5.P60.E1: Proxy get-trap dispatch. If obj
                             // is a Proxy and handler.get is callable, call
                             // handler.get(target, key, receiver) and use
                             // its return value. Missing trap falls through
                             // to target.
                             let proxy_dispatch = self.proxy_target_handler_checked(*id)?;
-                            if let Some((target, handler)) = proxy_dispatch {
-                                let trap = self.object_get(handler, "get");
-                                if matches!(trap, Value::Object(_)) {
-                                    let receiver = obj_v.clone();
-                                    let trap_result = self.call_function(
-                                        trap,
-                                        Value::Object(handler),
-                                        vec![
-                                            Value::Object(target),
-                                            Value::String(Rc::new(key.clone())),
-                                            receiver,
-                                        ],
-                                    )?;
-                                    // EXT 88b: §10.5.8 invariant.
-                                    self.apply_proxy_get_invariant(target, &key, &trap_result)?;
-                                    trap_result
-                                } else {
-                                    self.object_get(target, &key)
-                                }
-                            } else {
-                                // Tier-Ω.5.nnn: only check for accessor when the
-                                // descriptor actually has one. Walking find_getter
-                                // for every prop access has a cost; gate on
-                                // direct-property existence first.
-                                let has_accessor = {
-                                    let mut cur = Some(*id);
-                                    let mut found = false;
-                                    while let Some(c) = cur {
-                                        if let Some(d) = self.obj(c).get_own(&key) {
-                                            // GOPD-EXT 1: only count callable getters
-                                            // (Some(Undefined) means accessor-with-no-
-                                            // getter; OrdinaryGet returns undefined).
-                                            if let Some(g) = &d.getter {
-                                                if !matches!(g, Value::Undefined) {
-                                                    found = true;
-                                                }
-                                            }
-                                            break;
-                                        }
-                                        cur = self.obj(c).proto;
+                                if let Some((target, handler)) = proxy_dispatch {
+                                    let trap = self.object_get(handler, "get");
+                                    if matches!(trap, Value::Object(_)) {
+                                        let receiver = obj_v.clone();
+                                        let trap_result = self.call_function(
+                                            trap,
+                                            Value::Object(handler),
+                                            vec![
+                                                Value::Object(target),
+                                                Value::String(Rc::new(key.clone())),
+                                                receiver,
+                                            ],
+                                        )?;
+                                        // EXT 88b: §10.5.8 invariant.
+                                        self.apply_proxy_get_invariant(target, &key, &trap_result)?;
+                                        trap_result
+                                    } else {
+                                        self.object_get(target, &key)
                                     }
-                                    found
-                                };
-                                if has_accessor {
-                                    let getter = self.find_getter(*id, &key).unwrap();
-                                    self.call_function(getter, obj_v.clone(), Vec::new())?
                                 } else {
-                                    self.object_get(*id, &key)
+                                    // Tier-Ω.5.nnn: only check for accessor when the
+                                    // descriptor actually has one. Walking find_getter
+                                    // for every prop access has a cost; gate on
+                                    // direct-property existence first.
+                                    let has_accessor = {
+                                        let mut cur = Some(*id);
+                                        let mut found = false;
+                                        while let Some(c) = cur {
+                                            if let Some(d) = self.obj(c).get_own(&key) {
+                                                // GOPD-EXT 1: only count callable getters
+                                                // (Some(Undefined) means accessor-with-no-
+                                                // getter; OrdinaryGet returns undefined).
+                                                if let Some(g) = &d.getter {
+                                                    if !matches!(g, Value::Undefined) {
+                                                        found = true;
+                                                    }
+                                                }
+                                                break;
+                                            }
+                                            cur = self.obj(c).proto;
+                                        }
+                                        found
+                                    };
+                                    if has_accessor {
+                                        let getter = self.find_getter(*id, &key).unwrap();
+                                        self.call_function(getter, obj_v.clone(), Vec::new())?
+                                    } else {
+                                        self.object_get(*id, &key)
+                                    }
                                 }
                             }
                         }
@@ -10806,6 +10841,15 @@ impl Runtime {
                     let value = frame.pop()?;
                     let obj_v = frame.pop()?;
                     if let Value::Object(id) = &obj_v {
+                        if key.starts_with('#') {
+                            if let Some(setter) = self.find_setter(*id, &key) {
+                                self.call_function(setter, Value::Object(*id), vec![value.clone()])?;
+                            } else {
+                                self.obj_mut(*id).set_private(&key, value.clone());
+                            }
+                            frame.push(value);
+                            continue;
+                        }
                         // Ω.5.P60.E2: Proxy set-trap dispatch.
                         let proxy_dispatch = self.proxy_target_handler_checked(*id)?;
                         if let Some((target, handler)) = proxy_dispatch {

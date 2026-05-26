@@ -59,6 +59,11 @@ impl rusty_js_gc::Trace for Object {
                 ids.push(*id);
             }
         }
+        for v in self.private_fields.values() {
+            if let Value::Object(id) = v {
+                ids.push(*id);
+            }
+        }
         match &self.internal_kind {
             InternalKind::Closure(c) => {
                 for cell in &c.upvalues {
@@ -377,6 +382,7 @@ impl Default for Object {
             internal_kind: InternalKind::Ordinary,
             shape: None,
             shape_values: Vec::new(),
+            private_fields: IndexMap::new(),
         }
     }
 }
@@ -404,6 +410,10 @@ pub struct Object {
     /// `shape_values[s.slot_of(name).unwrap() as usize]` is the value
     /// for that property name.
     pub shape_values: Vec<Value>,
+    /// Spec-private class elements. This is intentionally disjoint from
+    /// ordinary string-keyed properties so `#x` does not appear through
+    /// hasOwnProperty, ownKeys, or descriptor reflection.
+    pub private_fields: IndexMap<String, Value>,
 }
 
 impl Object {
@@ -427,6 +437,7 @@ impl Object {
                 None
             },
             shape_values: Vec::new(),
+            private_fields: IndexMap::new(),
         }
     }
 
@@ -451,6 +462,7 @@ impl Object {
             internal_kind: InternalKind::Ordinary,
             shape: None,
             shape_values: Vec::new(),
+            private_fields: IndexMap::new(),
         }
     }
 
@@ -471,7 +483,21 @@ impl Object {
             internal_kind: InternalKind::Array,
             shape: None,
             shape_values: Vec::new(),
+            private_fields: IndexMap::new(),
         }
+    }
+
+    pub fn get_private(&self, key: &str) -> Option<&Value> {
+        key.strip_prefix('#')
+            .and_then(|name| self.private_fields.get(name))
+    }
+
+    pub fn set_private(&mut self, key: &str, value: Value) -> bool {
+        let Some(name) = key.strip_prefix('#') else {
+            return false;
+        };
+        self.private_fields.insert(name.to_string(), value);
+        true
     }
 
     /// Shape-EXT 4: is this object currently in Shaped storage form?

@@ -873,7 +873,11 @@ impl Runtime {
                 _ => return Ok(Value::Undefined),
             };
             let fn_v = args.get(2).cloned().unwrap_or(Value::Undefined);
-            rt.obj_mut(target).set_own_internal(key, fn_v);
+            if key.starts_with('#') {
+                rt.obj_mut(target).set_private(&key, fn_v);
+            } else {
+                rt.obj_mut(target).set_own_internal(key, fn_v);
+            }
             Ok(Value::Undefined)
         });
         // Ω.5.P03.E2.super-get-this: __super_get(this_val, super_base, key)
