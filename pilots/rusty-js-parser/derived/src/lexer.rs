@@ -432,6 +432,19 @@ impl<'src> Lexer<'src> {
                         "invalid numeric separator",
                     ));
                 }
+                // LEP-EXT 2 / NLC follow-on: §12.8.1 — separators are not
+                // allowed inside legacy-octal-like leading-zero forms
+                // (`0_0`, `0_8`, `00_1`, `08_0`, etc.). Detect via:
+                // first byte is `0`, and we encounter `_` at any position.
+                // Since legacy-octal forms have NO separators in the spec
+                // grammar, any `_` after a leading `0` is invalid.
+                if c == b'_' && first == b'0' {
+                    return Err(self.err(
+                        LexErrorKind::InvalidNumeric,
+                        start,
+                        "numeric separator not allowed in legacy-octal-like leading-zero form",
+                    ));
+                }
                 if c.is_ascii_digit() {
                     has_digits_before_dot = true;
                 }
@@ -583,6 +596,22 @@ impl<'src> Lexer<'src> {
                 start,
                 "invalid radix-prefixed literal",
             ));
+        }
+        // LEP-EXT 2 / NLC follow-on: §12.8.3 — after the radix-prefixed
+        // digit run ends, a following ASCII digit (e.g. `0b14` where `4`
+        // is invalid for binary, or `0o89` where `8/9` invalid for octal)
+        // OR a following identifier-start char (`0b1abc`) must be
+        // rejected as InvalidNumeric. Carve-out: `n` is the BigIntLiteral
+        // suffix (`0xffn`, `0b1n`) — handled by the next branch below,
+        // not rejected here.
+        if let Some(b) = self.peek_byte() {
+            if b != b'n' && (b.is_ascii_digit() || is_identifier_start_byte(b)) {
+                return Err(self.err(
+                    LexErrorKind::InvalidNumeric,
+                    start,
+                    "invalid character after radix-prefixed literal",
+                ));
+            }
         }
         let digits = std::str::from_utf8(&self.src[digits_start..self.pos])
             .unwrap()

@@ -91,6 +91,66 @@ The `let _ = self.bump_regexp();` discards bump_regexp's `Result<Token, ParseErr
 
 **Status**: LEP-EXT 1 CLOSED. The swallow site is closed; lex errors propagate correctly from consume_semicolon paths to the eval surface. LEP-EXT 2 (additional swallow sites if any) and LEP-EXT 3 (engagement-wide re-baseline after subsequent substrate work) remain open as opportunistic rungs. Locale's primary purpose achieved.
 
+---
+
+## LEP-EXT 2 — lex-tier substrate moves enabled by EXT 1 propagation (2026-05-25)
+
+**Trigger**: Keeper directive (Telegram 9838) "continue as coherent."
+
+**Pre-EXT-2 audit per LEP.1 standing rec**: grep for additional `let _ = .*` swallow patterns across parser/stmt/expr/lexer crates — **zero additional swallows found**. LEP-EXT 1's consume_semicolon was the only such site in the parser crate. Standing recommendation discharged.
+
+**Pivot**: with the swallow site closed, NLC residual fails are now visible as actual substrate gaps (not propagation losses). Re-survey of NLC residuals identified two clean lex-tier substrate moves:
+
+### LEP-EXT 2.a — invalid character after radix-prefixed literal
+
+`0b14`, `0o89`, `0b1abc` (etc.) — cruft's read_radix_int loop broke silently on the first invalid byte; the parser then saw `0b1 4` as two consecutive expression tokens. After LEP-EXT 1 those slipped through as parse errors via ASI, but the underlying lex was permissive. Spec §12.8.3 requires SyntaxError when a numeric literal ends with a continuation that's not a valid digit or BigInt suffix.
+
+**Edit**: at end of `read_radix_int` (after the digit loop), if `peek_byte()` is ASCII digit OR identifier-start (and NOT `n` for BigInt), return InvalidNumeric.
+
+### LEP-EXT 2.b — numeric separator in legacy-octal leading-zero form
+
+`0_0`, `00_1`, `08_0`, `0_8` — separators inside legacy-octal-like forms (leading `0`). Spec §12.8.1 grammar excludes separators from legacy-octal forms; cruft accepted them.
+
+**Edit**: in `read_numeric_literal` main loop, when consuming `_` and the FIRST byte was `0`, return InvalidNumeric.
+
+**Regression-during-development** (recorded per Doc 727 basin-stability of trajectory append-only):
+
+EXT 2.a's first cut REJECTED `0xffn` (hex BigInt with `n` suffix) because `n` is_identifier_start_byte. diff-prod regressed 41/42 (bigint-ops fixture broke). Fixed by adding `b != b'n'` carve-out (BigInt suffix is the next branch's responsibility). Re-verified: 0xffn ACCEPT preserved, 0b14 REJECT ✓.
+
+**Verification (probes)**:
+
+| Probe | Pre-EXT-2 | Post-EXT-2 |
+|---|---|---|
+| `0b14;` | ACCEPT | **REJECT SyntaxError** ✓ |
+| `0o89;` | ACCEPT | **REJECT SyntaxError** ✓ |
+| `0b1abc;` | ACCEPT | **REJECT SyntaxError** ✓ |
+| `0b1n;` (BigInt suffix) | ACCEPT | ACCEPT ✓ (carve-out preserved) |
+| `0xffn;` (BigInt suffix) | ACCEPT | ACCEPT ✓ (carve-out preserved) |
+| `0_0;` (separator + leading zero) | ACCEPT | **REJECT SyntaxError** ✓ |
+| `00_1;` | ACCEPT | **REJECT SyntaxError** ✓ |
+| `08_0;` (non-octal-decimal + sep) | ACCEPT | **REJECT SyntaxError** ✓ |
+| `1_0;`, `123_456;`, `0.5_0;` (valid separators) | ACCEPT | ACCEPT ✓ (preserved) |
+
+**Gates**:
+- diff-prod: **42/42 PASS, 0 FAIL** (after BigInt carve-out fix)
+- Random 300 prev-PASS: **300/300, 0 regressions**
+- SyntaxError curated cluster: **45/45 (held)**
+
+**Yield**:
+
+| Locale | Pre-EXT-2 | Post-EXT-2 |
+|---|---:|---:|
+| NLC (numeric-literal-conformance) | 136/157 | **147/157 (+11; 93.6% pool)** |
+| IDT, SLEC, SE | (held) | (held) |
+
+**Findings**
+
+**Finding LEP.4 (LEP-EXT 1 was the unblock; LEP-EXT 2 is the harvest)**: with the propagation gap closed, NLC's actual substrate gaps became visible and addressable. LEP-EXT 1 alone delivered +36 cross-locale via behavior already correct at the lex tier (cruft was rejecting, just losing the Err). LEP-EXT 2 added +11 by closing actual lex-tier rejection rules that were missing. The pattern: a propagation fix UNBLOCKS visibility of downstream substrate gaps; the downstream gaps were always present but invisible. Standing recommendation: after a propagation/swallow fix lands, immediately re-survey affected locales' residuals — the previously-invisible gaps surface and become tractable.
+
+**Finding LEP.5 (the BigInt-suffix regression illustrates Rule-23 verification-probe value at landing)**: my first-cut EXT-2.a check rejected `0xffn` because `n` matches `is_identifier_start_byte`. Caught immediately by diff-prod (42/41 regression — diff-prod's `bigint-ops` fixture broke). Without diff-prod gating, this would have shipped silently. Standing recommendation: every lex-tier substrate move's gating MUST include diff-prod (not just locale-specific probes); diff-prod's cross-cutting nature catches carve-out misses that locale-probes don't.
+
+**Status**: LEP-EXT 2 CLOSED. Locale's substrate scope expanded to include the lex-tier rejection moves the EXT 1 propagation enabled. NLC at 93.6% pool pass. LEP-EXT 3 remains: opportunistic engagement-wide re-baseline after further substrate work.
+
 **Findings**
 
 **Finding LEP.0 (Rule 23's verification-probe surfaces engagement-wide gaps)**: NLC's baseline-inspection produced NLC.0 (now-retracted; eval-class-wrapping was already correct). IDT's baseline-inspection refined Rule 23 with the verification-probe step (Finding IDT.0). NLC-EXT 1-revised then APPLIED the verification-probe at substrate landing (eprintln in lexer to confirm reach + Err return) and surfaced NLC.3 — a meta-substrate gap that affects every lex-tier strict-mode rejection. Standing recommendation extends the Rule-23 verification-probe discipline to substrate-landing time, not just baseline-inspection time: when a substrate move depends on cross-tier state (here: parser's strict_mode → lexer's strict_mode → lex Err → eval catch), instrument the substrate move with debug-probes at each tier-crossing to verify reach before declaring landed. The probe is the discipline; the eprintln is the instrument.
