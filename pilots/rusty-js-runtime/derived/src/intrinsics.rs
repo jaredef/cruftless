@@ -5709,6 +5709,99 @@ impl Runtime {
             .set_own_internal("constructor".into(), Value::Object(pdt_ctor));
         self.obj_mut(pdt_ctor)
             .set_own_frozen("prototype".into(), Value::Object(pdt_proto));
+        // PDTSC-EXT 1 (plain-date-time-string-conversion): toString/toJSON.
+        // Format: 'YYYY-MM-DDTHH:MM:SS[.fff]' per §11.5.5.
+        fn pdt_read_all(rt: &mut Runtime, this_id: ObjectRef) -> Result<[i64; 9], RuntimeError> {
+            let names = ["year","month","day","hour","minute","second","millisecond","microsecond","nanosecond"];
+            let mut u = [0i64; 9];
+            for (i, n) in names.iter().enumerate() {
+                let key = format!("__pdt_{}", n);
+                match rt.object_get(this_id, &key) {
+                    Value::Number(v) => u[i] = v as i64,
+                    Value::Undefined if i == 0 => return Err(RuntimeError::TypeError(
+                        "Temporal.PlainDateTime: this is not a Temporal.PlainDateTime".into()
+                    )),
+                    _ => {}
+                }
+            }
+            Ok(u)
+        }
+        fn pdt_to_iso_string(rt: &mut Runtime, this_id: ObjectRef) -> Result<String, RuntimeError> {
+            let u = pdt_read_all(rt, this_id)?;
+            let year_str = if (0..=9999).contains(&u[0]) {
+                format!("{:04}", u[0])
+            } else if u[0] < 0 {
+                format!("-{:06}", -u[0])
+            } else {
+                format!("+{:06}", u[0])
+            };
+            let frac_ns = u[6] * 1_000_000 + u[7] * 1_000 + u[8];
+            let mut s = format!(
+                "{}-{:02}-{:02}T{:02}:{:02}:{:02}",
+                year_str, u[1], u[2], u[3], u[4], u[5]
+            );
+            if frac_ns > 0 {
+                let f = format!("{:09}", frac_ns);
+                s.push('.');
+                s.push_str(f.trim_end_matches('0'));
+            }
+            Ok(s)
+        }
+        for method in &["toString", "toJSON", "toLocaleString"] {
+            let m: &'static str = method;
+            register_intrinsic_method(self, pdt_proto, method, 0, move |rt, _args| {
+                let id = match rt.current_this() {
+                    Value::Object(o) => o,
+                    _ => return Err(RuntimeError::TypeError(format!(
+                        "Temporal.PlainDateTime.prototype.{}: this not object", m
+                    ))),
+                };
+                Ok(Value::String(Rc::new(pdt_to_iso_string(rt, id)?)))
+            });
+        }
+        // PDTE-EXT 1 (plain-date-time-equals): compare all 9 fields.
+        register_intrinsic_method(self, pdt_proto, "equals", 1, |rt, args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("PDT.equals: this not object".into())),
+            };
+            let this_u = pdt_read_all(rt, id)?;
+            let other = args.first().cloned().unwrap_or(Value::Undefined);
+            let other_u = match other {
+                Value::String(s) => {
+                    // Parse as ISO datetime; PDT accepts datetime form without offset.
+                    // Reuse parse_iso_datetime but extract y/m/d/H/M/S/.ffffff
+                    let (epoch_sec, frac_ns) = parse_iso_datetime(&s).ok_or_else(|| RuntimeError::RangeError(format!(
+                        "Temporal.PlainDateTime.prototype.equals: invalid ISO 8601 datetime: {:?}", s
+                    )))?;
+                    // Decompose epoch_sec to y/m/d/h/m/s.
+                    let secs_per_day = 86_400i64;
+                    let days = epoch_sec.div_euclid(secs_per_day);
+                    let secs_of_day = epoch_sec.rem_euclid(secs_per_day);
+                    let (y, mo, d) = pda_civil_from_days(days);
+                    let h = secs_of_day / 3600;
+                    let mi = (secs_of_day % 3600) / 60;
+                    let se = secs_of_day % 60;
+                    let ms = frac_ns / 1_000_000;
+                    let us = (frac_ns / 1_000) % 1_000;
+                    let ns = frac_ns % 1_000;
+                    [y, mo, d, h, mi, se, ms, us, ns]
+                }
+                Value::Object(o) => {
+                    if !matches!(rt.object_get(o, "__pdt_year"), Value::Undefined) {
+                        pdt_read_all(rt, o)?
+                    } else {
+                        return Err(RuntimeError::TypeError(
+                            "Temporal.PlainDateTime.prototype.equals: argument not a PlainDateTime (property-bag deferred)".into()
+                        ));
+                    }
+                }
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainDateTime.prototype.equals: argument must be PlainDateTime or string".into()
+                )),
+            };
+            Ok(Value::Boolean(this_u == other_u))
+        });
         self.obj_mut(temporal)
             .set_own_internal("PlainDateTime".into(), Value::Object(pdt_ctor));
         self.globals.insert("Temporal".into(), Value::Object(temporal));

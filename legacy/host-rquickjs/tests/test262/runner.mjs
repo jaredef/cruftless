@@ -283,6 +283,11 @@ function runOne(path) {
       '/Temporal/PlainDateTime/prototype/constructor.js',
       '/Temporal/PlainDateTime/prototype/prop-desc.js',
       '/Temporal/PlainDateTime/prototype/toStringTag/',
+      // PDTSC-EXT 1 + PDTE-EXT 1: PDT string-conversion + equals
+      '/Temporal/PlainDateTime/prototype/toString/',
+      '/Temporal/PlainDateTime/prototype/toJSON/',
+      '/Temporal/PlainDateTime/prototype/toLocaleString/',
+      '/Temporal/PlainDateTime/prototype/equals/',
       // Foundation tests that pass without per-class implementation.
       '/Temporal/getOwnPropertyNames.js',
       '/Temporal/keys.js',
