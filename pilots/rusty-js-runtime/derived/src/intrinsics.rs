@@ -5028,6 +5028,73 @@ impl Runtime {
             let diff_days = pda_days_from_civil(oy, om, od) - pda_days_from_civil(y, m, d);
             pda_make_duration_days(rt, dur_proto_for_pd_arith, diff_days, &largest)
         });
+        // PDW-EXT 1 (plain-date-with): with(dateLike) partial-update.
+        let pd_proto_for_with = pd_proto;
+        register_intrinsic_method(self, pd_proto, "with", 1, move |rt, args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("PlainDate.with: this not object".into())),
+            };
+            let (mut y, mut m, mut d) = pd_read_ymd(rt, id, "with")?;
+            let arg = args.first().cloned().unwrap_or(Value::Undefined);
+            let arg_id = match arg {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainDate.prototype.with: argument must be an object".into()
+                )),
+            };
+            // Reject if arg is a Temporal class instance (per spec).
+            for marker in &["__pd_year", "__pt_hour", "__td_years", "__ti_ns"] {
+                if !matches!(rt.object_get(arg_id, marker), Value::Undefined) {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.PlainDate.prototype.with: argument cannot be a Temporal instance".into()
+                    ));
+                }
+            }
+            let mut has_any = false;
+            for (name, slot) in [("year", 0u8), ("month", 1), ("day", 2)] {
+                let v = rt.object_get(arg_id, name);
+                if matches!(v, Value::Undefined) { continue; }
+                has_any = true;
+                let n = crate::abstract_ops::to_number(&v);
+                if !n.is_finite() || n != n.trunc() {
+                    return Err(RuntimeError::RangeError(format!(
+                        "Temporal.PlainDate.prototype.with: {} must be integer", name
+                    )));
+                }
+                let ni = n as i64;
+                match slot {
+                    0 => y = ni,
+                    1 => m = ni,
+                    2 => d = ni,
+                    _ => unreachable!(),
+                }
+            }
+            if !has_any {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.PlainDate.prototype.with: argument must have at least one date unit property".into()
+                ));
+            }
+            // Range checks after merge.
+            if !(1..=12).contains(&m) {
+                return Err(RuntimeError::RangeError(format!(
+                    "Temporal.PlainDate.prototype.with: month {} out of range [1, 12]", m
+                )));
+            }
+            let leap = (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0);
+            let max_day = match m {
+                1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+                4 | 6 | 9 | 11 => 30,
+                2 => if leap { 29 } else { 28 },
+                _ => unreachable!(),
+            };
+            if !(1..=max_day).contains(&d) {
+                return Err(RuntimeError::RangeError(format!(
+                    "Temporal.PlainDate.prototype.with: day {} out of range", d
+                )));
+            }
+            Ok(make_plain_date(rt, pd_proto_for_with, y, m, d))
+        });
         // PDDP-EXT 1 (plain-date-derived-properties): dayOfWeek / dayOfYear /
         // daysInMonth / daysInWeek / daysInYear / inLeapYear / monthsInYear /
         // weekOfYear / yearOfWeek / era / eraYear. ISO calendar only.
