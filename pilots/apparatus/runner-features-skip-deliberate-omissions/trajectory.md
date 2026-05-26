@@ -49,3 +49,53 @@ Initial deny-list had `import-source` (the guessed flag name from the proposal).
 ### Status
 
 RFSDO-EXT 1 CLOSED. Apparatus-pilot ready for future deny-list extensions per the standing protocol.
+
+## RFSDO-EXT 2 — Temporal + Atomics + DisposableStack family + ShadowRealm (2026-05-26)
+
+### Trigger
+
+Keeper directive (Telegram 9871) after the post-Tier-K landscape survey. The 7,532 "X is not defined @file://<eval:" records engagement-wide concentrated on a few large standard-but-deliberately-deferred subsystems:
+- 6,162 Temporal
+- 161 Atomics
+- 93 + 71 DisposableStack / AsyncDisposableStack
+- 57 ShadowRealm
+- 18 SuppressedError
+
+These are ratified ECMA-262 / ECMA-402 features, but cruft v1 deliberately defers them — keeper judgment per the standing RFSDO protocol ("a feature flag is added only when cruft has DELIBERATELY excluded the proposal").
+
+### Mapping identifiers to feature flags
+
+Survey across test262 source: each identifier maps unambiguously to one feature flag:
+- `Temporal` → `Temporal`
+- `Atomics` → `Atomics` (+ `Atomics.waitAsync` for the async waiter subset; + `SharedArrayBuffer` for SAB-dependent tests)
+- `DisposableStack` / `AsyncDisposableStack` / `SuppressedError` / `using` → `explicit-resource-management`
+- `ShadowRealm` → `ShadowRealm`
+
+### Edit (~9 LOC added to DELIBERATELY_OMITTED Set)
+
+Added: `Temporal`, `Atomics`, `Atomics.waitAsync`, `SharedArrayBuffer`, `explicit-resource-management`, `ShadowRealm`.
+
+### Yield (against the 2026-05-25-full matrix)
+
+| Feature flag | Records moved FAIL → SKIP |
+|---|---:|
+| Temporal | 6,694 |
+| Atomics | 321 |
+| explicit-resource-management | 302 |
+| SharedArrayBuffer | 201 |
+| ShadowRealm | 60 |
+| **TOTAL NEW SKIPs** | **7,578** |
+
+Matrix compression: ~14% of all engagement-wide FAIL records (7,578 of ~53,000) now correctly SKIP rather than masquerading as engine bugs. The dominant Temporal coordinate (6,694) was previously absorbing measurement attention across multiple downstream categorizer rules; sharpening it drains availability/missing-global-or-binding (was 7,033 → projected ~340 post-rerun).
+
+Diff-prod: 42/42 maintained (apparatus-only edit, engine unchanged).
+
+### Findings
+
+**Finding RFSDO.3 (matrix sharpening from a single apparatus edit can drain multiple downstream coordinates)**: The 6,694 Temporal records were the dominant pool of `availability/missing-global-or-binding` (7,033 → ~340 projected). The categorizer's downstream coordinates inherit the apparatus's discrimination power; sharpening a feature-skip decision UPSTREAM compresses every downstream coordinate that was inheriting the noise. Standing recommendation: when surveying for next-substrate-work, sharpen apparatus deny-lists BEFORE picking from the matrix — otherwise prioritization decisions absorb the noise.
+
+**Finding RFSDO.4 (keeper-judgment apparatus moves require explicit invocation)**: RFSDO-EXT 2's additions are STANDARD features (Temporal is in ECMA-262 since 2025). The standing protocol's "deliberately excluded" gate requires keeper judgment — these aren't stage-X proposals like RFSDO-EXT 1's import-defer. The substrate worker should NOT add ratified-standard features to the deny-list without explicit keeper authorization. Standing recommendation: distinguish ext-1-shape (stage-X auto-deny, no judgment needed) from ext-2-shape (ratified-standard deferral, keeper judgment required).
+
+### Status
+
+RFSDO-EXT 2 CLOSED. 7,578 records moved FAIL → SKIP. Apparatus matrix sharpened substantially; subsequent substrate prioritization works against the cleaner residual surface.

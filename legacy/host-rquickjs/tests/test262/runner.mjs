@@ -69,6 +69,17 @@ function runOne(path) {
     'import-defer',                       // stage-3 deferred dynamic import (import.defer)
     'source-phase-imports',               // stage-3 source-phase import (import.source)
     'source-phase-imports-module-source', // sibling flag for source-phase imports
+    // RFSDO-EXT 2: large standard-but-deliberately-deferred subsystems.
+    // cruft v1 has no implementation of these; tests requiring them
+    // would all FAIL with "X is not defined" runtime errors. Keeper
+    // judgment per the standing protocol: SKIP rather than implement
+    // — cruft v1 deliberately defers these large surfaces.
+    'Temporal',                           // ECMA-402 / ECMA-262 Temporal API
+    'Atomics',                            // SharedArrayBuffer/Atomics subsystem
+    'Atomics.waitAsync',                  // Atomics async waiter
+    'SharedArrayBuffer',                  // shared memory buffer
+    'explicit-resource-management',       // DisposableStack/AsyncDisposableStack/SuppressedError/using
+    'ShadowRealm',                        // stage-3 cross-realm execution boundary
   ]);
   for (const f of meta.features) {
     if (DELIBERATELY_OMITTED.has(f)) {
