@@ -2316,7 +2316,7 @@ impl Runtime {
         // do not crash. Real prototype + ctor land in per-class sub-locales.
         // Stubs for classes whose per-class rung hasn't landed yet.
         // Duration+Instant+PlainTime+PlainDate+PlainDateTime+PlainMonthDay REAL.
-        for class_name in &["PlainYearMonth", "ZonedDateTime"] {
+        for class_name in &["ZonedDateTime"] {
             let stub = self.alloc_object(Object::new_ordinary());
             let cn = (*class_name).to_string();
             self.obj_mut(stub).dict_mut().insert(
@@ -6588,6 +6588,246 @@ impl Runtime {
             .set_own_frozen("prototype".into(), Value::Object(pmd_proto));
         self.obj_mut(temporal)
             .set_own_internal("PlainMonthDay".into(), Value::Object(pmd_ctor));
+        // PYMCF-EXT 1 (plain-year-month-ctor-fields): Temporal.PlainYearMonth.
+        // Stores year + month + referenceISODay (default 1) + calendar.
+        let pym_proto = self.alloc_object(Object::new_ordinary());
+        // year/month getters.
+        for field in &["year", "month"] {
+            let unit_name: &'static str = field;
+            let key = format!("__pym_{}", field);
+            let k = key.clone();
+            let getter_obj = make_native_non_ctor(
+                &format!("get {}", unit_name),
+                0,
+                move |rt, _args| {
+                    let id = match rt.current_this() {
+                        Value::Object(o) => o,
+                        _ => return Err(RuntimeError::TypeError(format!(
+                            "Temporal.PlainYearMonth.prototype.{}: this not object", unit_name
+                        ))),
+                    };
+                    match rt.object_get(id, &k) {
+                        Value::Undefined => Err(RuntimeError::TypeError(format!(
+                            "Temporal.PlainYearMonth.prototype.{}: this is not a Temporal.PlainYearMonth",
+                            unit_name
+                        ))),
+                        v => Ok(v),
+                    }
+                },
+            );
+            let getter_id = self.alloc_object(getter_obj);
+            self.obj_mut(pym_proto).dict_mut().insert(
+                unit_name.into(),
+                PropertyDescriptor {
+                    value: Value::Undefined, writable: false,
+                    enumerable: false, configurable: true,
+                    getter: Some(Value::Object(getter_id)), setter: None,
+                },
+            );
+        }
+        // monthCode + calendarId + daysInMonth + daysInYear + monthsInYear + inLeapYear + era + eraYear.
+        macro_rules! pym_getter {
+            ($name:expr, $body:expr) => {{
+                let g = make_native_non_ctor(&format!("get {}", $name), 0, $body);
+                let gid = self.alloc_object(g);
+                self.obj_mut(pym_proto).dict_mut().insert(
+                    $name.into(),
+                    PropertyDescriptor {
+                        value: Value::Undefined, writable: false,
+                        enumerable: false, configurable: true,
+                        getter: Some(Value::Object(gid)), setter: None,
+                    },
+                );
+            }};
+        }
+        fn pym_read_ym(rt: &mut Runtime, id: ObjectRef, name: &str) -> Result<(i64, i64), RuntimeError> {
+            let y = match rt.object_get(id, "__pym_year") {
+                Value::Number(n) => n as i64,
+                _ => return Err(RuntimeError::TypeError(format!(
+                    "Temporal.PlainYearMonth.prototype.{}: this is not a Temporal.PlainYearMonth", name
+                ))),
+            };
+            let m = match rt.object_get(id, "__pym_month") { Value::Number(n) => n as i64, _ => 0 };
+            Ok((y, m))
+        }
+        pym_getter!("monthCode", |rt, _| {
+            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("PYM.monthCode".into())) };
+            let (_, m) = pym_read_ym(rt, id, "monthCode")?;
+            Ok(Value::String(Rc::new(format!("M{:02}", m))))
+        });
+        pym_getter!("calendarId", |rt, _| {
+            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("PYM.calendarId".into())) };
+            match rt.object_get(id, "__pym_calendar") {
+                Value::Undefined => Err(RuntimeError::TypeError(
+                    "Temporal.PlainYearMonth.prototype.calendarId: this is not a Temporal.PlainYearMonth".into()
+                )),
+                v => Ok(v),
+            }
+        });
+        pym_getter!("daysInMonth", |rt, _| {
+            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("PYM.daysInMonth".into())) };
+            let (y, m) = pym_read_ym(rt, id, "daysInMonth")?;
+            Ok(Value::Number(pda_days_in_month(y, m) as f64))
+        });
+        pym_getter!("daysInYear", |rt, _| {
+            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("PYM.daysInYear".into())) };
+            let (y, _) = pym_read_ym(rt, id, "daysInYear")?;
+            Ok(Value::Number(if pda_is_leap(y) { 366.0 } else { 365.0 }))
+        });
+        pym_getter!("monthsInYear", |rt, _| {
+            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("PYM.monthsInYear".into())) };
+            let _ = pym_read_ym(rt, id, "monthsInYear")?;
+            Ok(Value::Number(12.0))
+        });
+        pym_getter!("inLeapYear", |rt, _| {
+            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("PYM.inLeapYear".into())) };
+            let (y, _) = pym_read_ym(rt, id, "inLeapYear")?;
+            Ok(Value::Boolean(pda_is_leap(y)))
+        });
+        pym_getter!("era", |rt, _| {
+            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("PYM.era".into())) };
+            let _ = pym_read_ym(rt, id, "era")?;
+            Ok(Value::Undefined)
+        });
+        pym_getter!("eraYear", |rt, _| {
+            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("PYM.eraYear".into())) };
+            let _ = pym_read_ym(rt, id, "eraYear")?;
+            Ok(Value::Undefined)
+        });
+        register_intrinsic_method(self, pym_proto, "valueOf", 0, |_rt, _args| {
+            Err(RuntimeError::TypeError("Temporal.PlainYearMonth valueOf cannot be used".into()))
+        });
+        // toString: 'YYYY-MM' for default refDay+calendar; else 'YYYY-MM-DD'.
+        register_intrinsic_method(self, pym_proto, "toString", 0, |rt, _args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("PYM.toString".into())),
+            };
+            let (y, m) = pym_read_ym(rt, id, "toString")?;
+            let rd = match rt.object_get(id, "__pym_refday") { Value::Number(n) => n as i64, _ => 1 };
+            let cal = match rt.object_get(id, "__pym_calendar") {
+                Value::String(s) => (*s).to_string(),
+                _ => "iso8601".to_string(),
+            };
+            let year_str = if (0..=9999).contains(&y) {
+                format!("{:04}", y)
+            } else if y < 0 { format!("-{:06}", -y) } else { format!("+{:06}", y) };
+            let s = if rd == 1 && cal == "iso8601" {
+                format!("{}-{:02}", year_str, m)
+            } else {
+                format!("{}-{:02}-{:02}", year_str, m, rd)
+            };
+            Ok(Value::String(Rc::new(s)))
+        });
+        register_intrinsic_method(self, pym_proto, "toJSON", 0, |rt, _args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("PYM.toJSON".into())),
+            };
+            let (y, m) = pym_read_ym(rt, id, "toJSON")?;
+            let rd = match rt.object_get(id, "__pym_refday") { Value::Number(n) => n as i64, _ => 1 };
+            let cal = match rt.object_get(id, "__pym_calendar") {
+                Value::String(s) => (*s).to_string(),
+                _ => "iso8601".to_string(),
+            };
+            let year_str = if (0..=9999).contains(&y) {
+                format!("{:04}", y)
+            } else if y < 0 { format!("-{:06}", -y) } else { format!("+{:06}", y) };
+            let s = if rd == 1 && cal == "iso8601" {
+                format!("{}-{:02}", year_str, m)
+            } else {
+                format!("{}-{:02}-{:02}", year_str, m, rd)
+            };
+            Ok(Value::String(Rc::new(s)))
+        });
+        self.obj_mut(pym_proto).dict_mut().insert(
+            "@@toStringTag".into(),
+            PropertyDescriptor {
+                value: Value::String(Rc::new("Temporal.PlainYearMonth".into())),
+                writable: false, enumerable: false, configurable: true,
+                getter: None, setter: None,
+            },
+        );
+        let pym_proto_for_ctor = pym_proto;
+        let pym_ctor_obj = make_native_with_length("PlainYearMonth", 2, move |rt, args| {
+            if rt.current_new_target.is_none() {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.PlainYearMonth constructor cannot be called as a function".into()
+                ));
+            }
+            let year = crate::abstract_ops::to_number(&args.get(0).cloned().unwrap_or(Value::Undefined));
+            let month = crate::abstract_ops::to_number(&args.get(1).cloned().unwrap_or(Value::Undefined));
+            let calendar = match args.get(2).cloned().unwrap_or(Value::Undefined) {
+                Value::Undefined => "iso8601".to_string(),
+                Value::String(s) => s.to_lowercase(),
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainYearMonth: calendar must be a string or undefined".into()
+                )),
+            };
+            if calendar != "iso8601" {
+                return Err(RuntimeError::RangeError(format!(
+                    "Temporal.PlainYearMonth: only iso8601 calendar supported; got {:?}", calendar
+                )));
+            }
+            let ref_day = match args.get(3).cloned().unwrap_or(Value::Undefined) {
+                Value::Undefined => 1i64,
+                v => {
+                    let n = crate::abstract_ops::to_number(&v);
+                    if !n.is_finite() || n != n.trunc() {
+                        return Err(RuntimeError::RangeError(
+                            "Temporal.PlainYearMonth: referenceISODay must be integer".into()
+                        ));
+                    }
+                    n as i64
+                }
+            };
+            for (n, name) in [(year, "year"), (month, "month")] {
+                if !n.is_finite() || n != n.trunc() {
+                    return Err(RuntimeError::RangeError(format!(
+                        "Temporal.PlainYearMonth: {} must be integer", name
+                    )));
+                }
+            }
+            let y = year as i64;
+            let m = month as i64;
+            if !(1..=12).contains(&m) {
+                return Err(RuntimeError::RangeError(format!(
+                    "Temporal.PlainYearMonth: month {} out of range", m
+                )));
+            }
+            let leap = (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0);
+            let max_day = match m {
+                1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+                4 | 6 | 9 | 11 => 30,
+                2 => if leap { 29 } else { 28 },
+                _ => unreachable!(),
+            };
+            if !(1..=max_day).contains(&ref_day) {
+                return Err(RuntimeError::RangeError(format!(
+                    "Temporal.PlainYearMonth: referenceISODay {} out of range for {}-{:02}", ref_day, y, m
+                )));
+            }
+            if y.abs() > 999_999 {
+                return Err(RuntimeError::RangeError(format!(
+                    "Temporal.PlainYearMonth: year {} out of range", y
+                )));
+            }
+            let mut o = Object::new_ordinary();
+            o.proto = Some(pym_proto_for_ctor);
+            let id = rt.alloc_object(o);
+            rt.set_engine_sentinel(id, "__pym_year", Value::Number(y as f64));
+            rt.set_engine_sentinel(id, "__pym_month", Value::Number(m as f64));
+            rt.set_engine_sentinel(id, "__pym_refday", Value::Number(ref_day as f64));
+            rt.set_engine_sentinel(id, "__pym_calendar", Value::String(Rc::new(calendar)));
+            Ok(Value::Object(id))
+        });
+        let pym_ctor = self.alloc_object(pym_ctor_obj);
+        self.obj_mut(pym_proto)
+            .set_own_internal("constructor".into(), Value::Object(pym_ctor));
+        self.obj_mut(pym_ctor)
+            .set_own_frozen("prototype".into(), Value::Object(pym_proto));
+        self.obj_mut(temporal)
+            .set_own_internal("PlainYearMonth".into(), Value::Object(pym_ctor));
         self.globals.insert("Temporal".into(), Value::Object(temporal));
     }
 
