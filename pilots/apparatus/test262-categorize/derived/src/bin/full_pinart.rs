@@ -252,6 +252,43 @@ fn resolver_instance(rel: &str, surface: &str) -> String {
         "runtime/array-exotic".into()
     } else if rel.starts_with("built-ins/") {
         "runtime/spec-builtins".into()
+    // PCR-EXT 1: annexB tests are legacy web-compat web-browser intrinsics
+    // (per ECMA-262 Annex B). They were routed to uncategorized/resolver
+    // because they live under `annexB/` not `built-ins/`. Re-route to the
+    // appropriate resolver by walking the inner surface.
+    } else if rel.starts_with("annexB/built-ins/") {
+        let inner = &rel["annexB/built-ins/".len()..];
+        if inner.starts_with("Date/")
+            || inner.starts_with("String/")
+            || inner.starts_with("Object/")
+            || inner.starts_with("Function/")
+            || inner.starts_with("RegExp/")
+        {
+            // Annex B legacy methods on these intrinsics.
+            "runtime/spec-builtins".into()
+        } else if inner.starts_with("escape/")
+            || inner.starts_with("unescape/")
+            || inner.starts_with("global/")
+        {
+            "runtime/spec-builtins".into()
+        } else {
+            "runtime/spec-builtins".into()
+        }
+    // PCR-EXT 1: annexB/language/ tests are the Annex B web-compat language
+    // tweaks (B.3.* sections). Route to the language-tier resolver.
+    } else if rel.starts_with("annexB/language/") {
+        "ast-to-bytecode/language-lowering".into()
+    // PCR-EXT 1: staging/ tests are stage-3 proposals not yet in core spec.
+    // The resolver depends on the proposal; default to spec-builtins for
+    // intrinsic-adding proposals, ast-to-bytecode for syntax proposals.
+    } else if rel.starts_with("staging/") {
+        if rel.contains("/Iterator/") || rel.contains("/AsyncIterator/") {
+            "runtime/spec-builtins".into()
+        } else if rel.contains("/language/") {
+            "ast-to-bytecode/language-lowering".into()
+        } else {
+            "runtime/spec-builtins".into()
+        }
     } else {
         "uncategorized/resolver".into()
     }
@@ -365,6 +402,39 @@ fn projection_axis(rel: &str, reason: &str, surface: &str) -> String {
         "realm-prototype/prototype-chain".into()
     } else if r.contains("samevalue") || r.contains("expected") {
         "value-semantics/wrong-result".into()
+    // PCR-EXT 1: cruft parser failures on test source (e.g., TypeScript
+    // generics syntax, decorators, other parser-feature gaps). The reason
+    // text begins with "parse: ..." and includes a byte offset in the
+    // eval'd test source. These are cruft's own parser-feature gaps, not
+    // test262 assertions; route to availability/missing-parser-feature so
+    // substrate work targets the parser tier.
+    } else if r.starts_with("parse: ") || r.contains("parse error") {
+        "availability/missing-parser-feature".into()
+    // PCR-EXT 1: cruft runtime errors of the shape "Cannot read property
+    // of null/undefined" — these are missing-internal-slot or missing-
+    // method-access patterns in the cruft runtime, not test262 wrong-
+    // result assertions. Route to availability/missing-internal-slot so
+    // substrate work targets the runtime tier.
+    } else if r.contains("cannot read property") {
+        "availability/missing-internal-slot".into()
+    // PCR-EXT 1: descriptor-shape assertions that didn't match the earlier
+    // descriptor-shape rule because they don't mention enumerable/
+    // configurable/writable directly. Common test262 phrasing.
+    } else if r.contains("should be an own property") || r.contains("should have own property") {
+        "descriptor-shape/missing-own-property".into()
+    // PCR-EXT 1: isConstructor invocation failures — the test checked
+    // whether a value is a constructor; cruft's response was wrong.
+    } else if r.contains("isconstructor invoked") {
+        "availability/missing-method-or-intrinsic".into()
+    // PCR-EXT 1: regex-engine partial-implementation carve-outs. cruft's
+    // v1 regex engine refuses certain pattern features; this is documented
+    // partial-engine behavior, not a wrong-result.
+    } else if r.contains("unsupported by the v1 regex engine") {
+        "partial/regex-features-missing".into()
+    // PCR-EXT 1: regex lex errors (unterminated regex, missing char class
+    // elements) — regexp-semantics at the lex tier.
+    } else if r.contains("unterminated regex") || r.contains("lex error") && surface.contains("RegExp") {
+        "regexp-semantics/lex-error".into()
     } else if surface.contains("RegExp") {
         "regexp-semantics".into()
     } else {
