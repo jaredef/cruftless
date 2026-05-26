@@ -2395,6 +2395,23 @@ impl Runtime {
         // abs + negated methods. Brand-check via __td_years sentinel
         // presence (all Duration instances carry it).
         let proto_for_derived = dur_proto;
+        // DSV-EXT 1 (duration-sign-validation): per spec §11.4.2.1
+        // ToTemporalDuration step "validate uniform sign", all non-zero
+        // units must share the same sign. Returns RangeError if mixed.
+        fn validate_uniform_sign(units: &[f64; 10]) -> Result<(), RuntimeError> {
+            let mut sign: f64 = 0.0;
+            for &u in units {
+                if u == 0.0 { continue; }
+                let s = u.signum();
+                if sign == 0.0 { sign = s; }
+                else if sign != s {
+                    return Err(RuntimeError::RangeError(
+                        "Temporal.Duration: all non-zero unit fields must share sign".into()
+                    ));
+                }
+            }
+            Ok(())
+        }
         // Helper: read all 10 unit sentinels from `this`. Returns
         // [years..nanoseconds] or TypeError if `this` isn't a Duration.
         fn read_units(rt: &mut Runtime, this_id: ObjectRef) -> Result<[f64; 10], RuntimeError> {
@@ -2531,6 +2548,9 @@ impl Runtime {
                     "Temporal.Duration.prototype.with: argument must have at least one unit property".into()
                 ));
             }
+            // DSV-EXT 1: uniform-sign after the merge (the merged-in fields
+            // might conflict with retained ones).
+            validate_uniform_sign(&units)?;
             Ok(make_duration(rt, proto_for_derived, units))
         });
         // negated() method: new Duration with -unit for each.
@@ -2581,6 +2601,8 @@ impl Runtime {
                 // Normalize -0 to 0.
                 *slot = if n == 0.0 { 0.0 } else { n };
             }
+            // DSV-EXT 1: uniform-sign invariant.
+            validate_uniform_sign(&units)?;
             let mut o = Object::new_ordinary();
             o.proto = Some(proto_for_ctor);
             let id = rt.alloc_object(o);
@@ -2652,6 +2674,9 @@ impl Runtime {
                     ));
                 }
             }
+            // DSV-EXT 1: uniform-sign invariant on the property-bag path.
+            // (The Duration-clone path inherits the source's validation.)
+            validate_uniform_sign(&units)?;
             Ok(make_duration(rt, proto_for_from, units))
         });
         register_intrinsic_method(self, dur_ctor, "compare", 2, move |rt, args| {

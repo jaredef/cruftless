@@ -1,0 +1,1 @@
+# duration-sign-validation has no exemplar surface — measured via sibling-rung yield deltas.
