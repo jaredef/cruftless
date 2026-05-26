@@ -279,7 +279,7 @@ impl<'src> Parser<'src> {
         if self.is_ident("debugger") {
             let span = self.lookahead_span();
             self.bump()?;
-            self.consume_semicolon_pub();
+            self.consume_semicolon_pub()?;
             return Ok(Stmt::Debugger { span });
         }
         // `with` forbidden in modules; falls back to Stmt::Opaque.
@@ -323,7 +323,7 @@ impl<'src> Parser<'src> {
         }
         // ExpressionStatement
         let expr = self.parse_expression()?;
-        self.consume_semicolon_pub();
+        self.consume_semicolon_pub()?;
         let end = self.last_span_end();
         Ok(Stmt::Expression {
             expr,
@@ -364,7 +364,7 @@ impl<'src> Parser<'src> {
                 break;
             }
         }
-        self.consume_semicolon_pub();
+        self.consume_semicolon_pub()?;
         let end = self.last_span_end();
         Ok(VariableStatement {
             kind,
@@ -764,7 +764,7 @@ impl<'src> Parser<'src> {
             } else {
                 None
             };
-            self.consume_semicolon_pub();
+            self.consume_semicolon_pub()?;
             let end = self.last_span_end();
             out.push(ClassMember::Field {
                 name,
@@ -1392,7 +1392,7 @@ impl<'src> Parser<'src> {
         self.expect_punct(Punct::LParen)?;
         let test = self.parse_expression()?;
         self.expect_punct(Punct::RParen)?;
-        self.consume_semicolon_pub();
+        self.consume_semicolon_pub()?;
         let end = self.last_span_end();
         Ok(Stmt::DoWhile {
             body: Box::new(body),
@@ -1514,7 +1514,7 @@ impl<'src> Parser<'src> {
         } else {
             Some(self.parse_expression()?)
         };
-        self.consume_semicolon_pub();
+        self.consume_semicolon_pub()?;
         let end = self.last_span_end();
         Ok(Stmt::Return {
             argument,
@@ -1530,7 +1530,7 @@ impl<'src> Parser<'src> {
                 .err_here("no line terminator permitted between `throw` and its argument".into()));
         }
         let argument = self.parse_expression()?;
-        self.consume_semicolon_pub();
+        self.consume_semicolon_pub()?;
         let end = self.last_span_end();
         Ok(Stmt::Throw {
             argument,
@@ -1542,7 +1542,7 @@ impl<'src> Parser<'src> {
         let start = self.lookahead_span().start;
         self.expect_keyword("break")?;
         let label = self.parse_optional_label()?;
-        self.consume_semicolon_pub();
+        self.consume_semicolon_pub()?;
         let end = self.last_span_end();
         Ok(Stmt::Break {
             label,
@@ -1554,7 +1554,7 @@ impl<'src> Parser<'src> {
         let start = self.lookahead_span().start;
         self.expect_keyword("continue")?;
         let label = self.parse_optional_label()?;
-        self.consume_semicolon_pub();
+        self.consume_semicolon_pub()?;
         let end = self.last_span_end();
         Ok(Stmt::Continue {
             label,

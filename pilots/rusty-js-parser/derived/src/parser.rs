@@ -174,7 +174,7 @@ impl<'src> Parser<'src> {
         if matches!(self.lookahead.kind, TokenKind::String(_)) {
             let specifier = self.parse_module_specifier()?;
             let attributes = self.parse_optional_attributes()?;
-            self.consume_semicolon();
+            self.consume_semicolon()?;
             return Ok(ImportDeclaration {
                 span: Span::new(start, self.last_span_end()),
                 specifier,
@@ -210,7 +210,7 @@ impl<'src> Parser<'src> {
         self.expect_ident("from")?;
         let specifier = self.parse_module_specifier()?;
         let attributes = self.parse_optional_attributes()?;
-        self.consume_semicolon();
+        self.consume_semicolon()?;
 
         Ok(ImportDeclaration {
             span: Span::new(start, self.last_span_end()),
@@ -298,7 +298,7 @@ impl<'src> Parser<'src> {
                 self.expect_ident("from")?;
                 let source = self.parse_module_specifier()?;
                 let attributes = self.parse_optional_attributes()?;
-                self.consume_semicolon();
+                self.consume_semicolon()?;
                 return Ok(ExportDeclaration::StarAsFrom {
                     span: Span::new(start, self.last_span_end()),
                     exported,
@@ -309,7 +309,7 @@ impl<'src> Parser<'src> {
             self.expect_ident("from")?;
             let source = self.parse_module_specifier()?;
             let attributes = self.parse_optional_attributes()?;
-            self.consume_semicolon();
+            self.consume_semicolon()?;
             return Ok(ExportDeclaration::StarFrom {
                 span: Span::new(start, self.last_span_end()),
                 source,
@@ -330,7 +330,7 @@ impl<'src> Parser<'src> {
             } else {
                 vec![]
             };
-            self.consume_semicolon();
+            self.consume_semicolon()?;
             return Ok(ExportDeclaration::Named {
                 span: Span::new(start, self.last_span_end()),
                 specifiers,
@@ -399,7 +399,7 @@ impl<'src> Parser<'src> {
         }
         // export default <AssignmentExpression> ;
         let expr = self.parse_assignment_expression()?;
-        self.consume_semicolon();
+        self.consume_semicolon()?;
         Ok(DefaultExportBody::Expression { expr })
     }
 
@@ -989,12 +989,19 @@ impl<'src> Parser<'src> {
         }
     }
 
-    fn consume_semicolon(&mut self) {
+    fn consume_semicolon(&mut self) -> Result<(), ParseError> {
+        // LEP-EXT 1: propagate the bump's Err. Pre-fix used `let _ = ...`
+        // which silently discarded LexErr returns; that swallowed every
+        // lex-tier rejection (legacy-octal-in-strict, etc.) when the
+        // rejected token came right after a `;`. Finding NLC.3 surfaced
+        // the gap; this propagation closes it. Call sites updated to
+        // `consume_semicolon()?` (sibling pub_pub wrapper too).
         if self.is_punct(Punct::Semicolon) {
-            let _ = self.bump_regexp();
+            self.bump_regexp()?;
         }
         // Otherwise rely on ASI — the next iteration's `at_eof` / line-
         // terminator-before-next-keyword check handles it.
+        Ok(())
     }
 
     // ─── Crate-visible accessors used by the expression-grammar module ───
@@ -1063,7 +1070,7 @@ impl<'src> Parser<'src> {
     //
     // The lexer↔parser feedback edge's intent-named carrier count drops
     // from 2 to 1; only `enter_template_tail` remains.
-    pub(crate) fn consume_semicolon_pub(&mut self) {
+    pub(crate) fn consume_semicolon_pub(&mut self) -> Result<(), ParseError> {
         self.consume_semicolon()
     }
     // ─── Tier-Ω.5.g.2: typed BindingPattern parsers ───
