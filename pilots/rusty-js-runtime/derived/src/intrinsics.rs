@@ -2315,10 +2315,8 @@ impl Runtime {
         // so `Temporal.PlainDate` etc. is defined and `instanceof` checks
         // do not crash. Real prototype + ctor land in per-class sub-locales.
         // Stubs for classes whose per-class rung hasn't landed yet.
-        // Duration + Instant + PlainTime + PlainDate are REAL; others remain stubs.
-        for class_name in &["PlainDateTime",
-                            "PlainMonthDay", "PlainYearMonth",
-                            "ZonedDateTime"] {
+        // Duration + Instant + PlainTime + PlainDate + PlainDateTime REAL.
+        for class_name in &["PlainMonthDay", "PlainYearMonth", "ZonedDateTime"] {
             let stub = self.alloc_object(Object::new_ordinary());
             let cn = (*class_name).to_string();
             self.obj_mut(stub).dict_mut().insert(
@@ -5515,6 +5513,204 @@ impl Runtime {
         });
         self.obj_mut(temporal)
             .set_own_internal("PlainDate".into(), Value::Object(pd_ctor));
+        // PDTCF-EXT 1 (plain-date-time-ctor-fields): Temporal.PlainDateTime.
+        // 9 numeric fields (year, month, day, hour, minute, second, ms,
+        // microsecond, nanosecond) + calendar. Stored as __pdt_<field>
+        // sentinels. Spec §11.5.1: length=3 (year/month/day required).
+        let pdt_proto = self.alloc_object(Object::new_ordinary());
+        // 9 unit field getters + calendarId + monthCode.
+        const PDT_NUMERIC_FIELDS: &[&str] = &[
+            "year", "month", "day",
+            "hour", "minute", "second",
+            "millisecond", "microsecond", "nanosecond",
+        ];
+        for field in PDT_NUMERIC_FIELDS {
+            let unit_name: &'static str = field;
+            let key = format!("__pdt_{}", field);
+            let k = key.clone();
+            let getter_obj = make_native_non_ctor(
+                &format!("get {}", unit_name),
+                0,
+                move |rt, _args| {
+                    let id = match rt.current_this() {
+                        Value::Object(o) => o,
+                        _ => return Err(RuntimeError::TypeError(format!(
+                            "Temporal.PlainDateTime.prototype.{}: this is not an object", unit_name
+                        ))),
+                    };
+                    match rt.object_get(id, &k) {
+                        Value::Undefined => Err(RuntimeError::TypeError(format!(
+                            "Temporal.PlainDateTime.prototype.{}: this is not a Temporal.PlainDateTime", unit_name
+                        ))),
+                        v => Ok(v),
+                    }
+                },
+            );
+            let getter_id = self.alloc_object(getter_obj);
+            self.obj_mut(pdt_proto).dict_mut().insert(
+                unit_name.into(),
+                PropertyDescriptor {
+                    value: Value::Undefined, writable: false,
+                    enumerable: false, configurable: true,
+                    getter: Some(Value::Object(getter_id)), setter: None,
+                },
+            );
+        }
+        // calendarId.
+        {
+            let getter_obj = make_native_non_ctor("get calendarId", 0, |rt, _args| {
+                let id = match rt.current_this() {
+                    Value::Object(o) => o,
+                    _ => return Err(RuntimeError::TypeError(
+                        "Temporal.PlainDateTime.prototype.calendarId: this not object".into()
+                    )),
+                };
+                match rt.object_get(id, "__pdt_calendar") {
+                    Value::Undefined => Err(RuntimeError::TypeError(
+                        "Temporal.PlainDateTime.prototype.calendarId: this is not a Temporal.PlainDateTime".into()
+                    )),
+                    v => Ok(v),
+                }
+            });
+            let getter_id = self.alloc_object(getter_obj);
+            self.obj_mut(pdt_proto).dict_mut().insert(
+                "calendarId".into(),
+                PropertyDescriptor {
+                    value: Value::Undefined, writable: false,
+                    enumerable: false, configurable: true,
+                    getter: Some(Value::Object(getter_id)), setter: None,
+                },
+            );
+        }
+        // monthCode.
+        {
+            let getter_obj = make_native_non_ctor("get monthCode", 0, |rt, _args| {
+                let id = match rt.current_this() {
+                    Value::Object(o) => o,
+                    _ => return Err(RuntimeError::TypeError(
+                        "Temporal.PlainDateTime.prototype.monthCode: this not object".into()
+                    )),
+                };
+                let m = match rt.object_get(id, "__pdt_month") {
+                    Value::Number(n) => n as i64,
+                    _ => return Err(RuntimeError::TypeError(
+                        "Temporal.PlainDateTime.prototype.monthCode: this is not a Temporal.PlainDateTime".into()
+                    )),
+                };
+                Ok(Value::String(Rc::new(format!("M{:02}", m))))
+            });
+            let getter_id = self.alloc_object(getter_obj);
+            self.obj_mut(pdt_proto).dict_mut().insert(
+                "monthCode".into(),
+                PropertyDescriptor {
+                    value: Value::Undefined, writable: false,
+                    enumerable: false, configurable: true,
+                    getter: Some(Value::Object(getter_id)), setter: None,
+                },
+            );
+        }
+        register_intrinsic_method(self, pdt_proto, "valueOf", 0, |_rt, _args| {
+            Err(RuntimeError::TypeError(
+                "Temporal.PlainDateTime valueOf cannot be used".into()
+            ))
+        });
+        self.obj_mut(pdt_proto).dict_mut().insert(
+            "@@toStringTag".into(),
+            PropertyDescriptor {
+                value: Value::String(Rc::new("Temporal.PlainDateTime".into())),
+                writable: false, enumerable: false, configurable: true,
+                getter: None, setter: None,
+            },
+        );
+        let pdt_proto_for_ctor = pdt_proto;
+        let pdt_ctor_obj = make_native_with_length("PlainDateTime", 3, move |rt, args| {
+            if rt.current_new_target.is_none() {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.PlainDateTime constructor cannot be called as a function".into()
+                ));
+            }
+            // 9 numeric args; first 3 (year/month/day) required, rest default 0.
+            let mut vals = [0i64; 9];
+            for i in 0..9 {
+                let v = args.get(i).cloned().unwrap_or(Value::Undefined);
+                let n = match v {
+                    Value::Undefined => 0.0,
+                    _ => crate::abstract_ops::to_number(&v),
+                };
+                if !n.is_finite() {
+                    return Err(RuntimeError::RangeError(format!(
+                        "Temporal.PlainDateTime: {} must be finite", PDT_NUMERIC_FIELDS[i]
+                    )));
+                }
+                if n != n.trunc() {
+                    return Err(RuntimeError::RangeError(format!(
+                        "Temporal.PlainDateTime: {} must be an integer", PDT_NUMERIC_FIELDS[i]
+                    )));
+                }
+                vals[i] = n as i64;
+            }
+            let calendar = match args.get(9).cloned().unwrap_or(Value::Undefined) {
+                Value::Undefined => "iso8601".to_string(),
+                Value::String(s) => s.to_lowercase(),
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainDateTime: calendar must be a string or undefined".into()
+                )),
+            };
+            if calendar != "iso8601" {
+                return Err(RuntimeError::RangeError(format!(
+                    "Temporal.PlainDateTime: only iso8601 calendar supported; got {:?}", calendar
+                )));
+            }
+            let (y, m, d) = (vals[0], vals[1], vals[2]);
+            if !(1..=12).contains(&m) {
+                return Err(RuntimeError::RangeError(format!(
+                    "Temporal.PlainDateTime: month {} out of range", m
+                )));
+            }
+            let leap = (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0);
+            let max_day = match m {
+                1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+                4 | 6 | 9 | 11 => 30,
+                2 => if leap { 29 } else { 28 },
+                _ => unreachable!(),
+            };
+            if !(1..=max_day).contains(&d) {
+                return Err(RuntimeError::RangeError(format!(
+                    "Temporal.PlainDateTime: day {} out of range", d
+                )));
+            }
+            if y.abs() > 999_999 {
+                return Err(RuntimeError::RangeError(format!(
+                    "Temporal.PlainDateTime: year {} out of range", y
+                )));
+            }
+            // Time range checks per PlainTime.
+            let time_ranges = [(0,23), (0,59), (0,59), (0,999), (0,999), (0,999)];
+            for (i, (lo, hi)) in time_ranges.iter().enumerate() {
+                let v = vals[3 + i];
+                if v < *lo || v > *hi {
+                    return Err(RuntimeError::RangeError(format!(
+                        "Temporal.PlainDateTime: {} {} out of range [{}, {}]",
+                        PDT_NUMERIC_FIELDS[3 + i], v, lo, hi
+                    )));
+                }
+            }
+            let mut o = Object::new_ordinary();
+            o.proto = Some(pdt_proto_for_ctor);
+            let id = rt.alloc_object(o);
+            for (i, name) in PDT_NUMERIC_FIELDS.iter().enumerate() {
+                rt.set_engine_sentinel(id, &format!("__pdt_{}", name), Value::Number(vals[i] as f64));
+            }
+            rt.set_engine_sentinel(id, "__pdt_calendar", Value::String(Rc::new(calendar)));
+            Ok(Value::Object(id))
+        });
+        let pdt_ctor = self.alloc_object(pdt_ctor_obj);
+        self.obj_mut(pdt_proto)
+            .set_own_internal("constructor".into(), Value::Object(pdt_ctor));
+        self.obj_mut(pdt_ctor)
+            .set_own_frozen("prototype".into(), Value::Object(pdt_proto));
+        self.obj_mut(temporal)
+            .set_own_internal("PlainDateTime".into(), Value::Object(pdt_ctor));
         self.globals.insert("Temporal".into(), Value::Object(temporal));
     }
 
