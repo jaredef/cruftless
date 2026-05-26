@@ -154,6 +154,10 @@ function runOne(path) {
       '/Temporal/Instant/fromEpochMilliseconds/',
       '/Temporal/Instant/fromEpochNanoseconds/',
       '/Temporal/Instant/compare/',
+      // ISC-EXT 1: instant-string-conversion
+      '/Temporal/Instant/prototype/toString/',
+      '/Temporal/Instant/prototype/toJSON/',
+      '/Temporal/Instant/prototype/toLocaleString/',
       // PTCF-EXT 1: plain-time-ctor-fields
       '/Temporal/PlainTime/constructor.js',
       '/Temporal/PlainTime/name.js',

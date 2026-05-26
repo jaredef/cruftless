@@ -3279,6 +3279,122 @@ impl Runtime {
             let b = extract_ns(rt, args.get(1).cloned().unwrap_or(Value::Undefined))?;
             Ok(Value::Number(if a < b { -1.0 } else if a > b { 1.0 } else { 0.0 }))
         });
+        // ISC-EXT 1 (instant-string-conversion): toString/toJSON/toLocaleString.
+        // Format: 'YYYY-MM-DDTHH:MM:SS[.fff]Z' per §11.6.4 (UTC; second-arg
+        // timeZone options deferred). Inverse of IDTP parser; uses
+        // civil_from_days as the inverse of days_from_civil.
+        fn civil_from_days(days: i64) -> (i64, i64, i64) {
+            // Howard Hinnant civil_from_days: returns (y, m, d) in [1, 12]
+            // and Gregorian year for proleptic Gregorian.
+            let z = days + 719468;
+            let era = if z >= 0 { z } else { z - 146096 } / 146097;
+            let doe = z - era * 146097;
+            let yoe = (doe - doe/1460 + doe/36524 - doe/146096) / 365;
+            let y = yoe + era * 400;
+            let doy = doe - (365*yoe + yoe/4 - yoe/100);
+            let mp = (5*doy + 2) / 153;
+            let d = doy - (153*mp + 2)/5 + 1;
+            let m = if mp < 10 { mp + 3 } else { mp - 9 };
+            let y_final = if m <= 2 { y + 1 } else { y };
+            (y_final, m, d)
+        }
+        fn instant_to_iso_string(rt: &mut Runtime, this_id: ObjectRef) -> Result<String, RuntimeError> {
+            let big = match rt.object_get(this_id, "__ti_ns") {
+                Value::BigInt(b) => b,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.Instant: this is not a Temporal.Instant".into()
+                )),
+            };
+            // Decompose: epoch_sec (i64) + frac_ns (0..1e9).
+            // Use the BigInt's decimal-string form to extract digits.
+            let s = big.to_decimal();
+            // For range up to ±8.64e21 the digit count is at most ~22.
+            let neg = s.starts_with('-');
+            let abs_str = if neg { &s[1..] } else { &s[..] };
+            // Pad to at least 10 digits so we can split last 9 as nanoseconds.
+            let padded = if abs_str.len() < 10 {
+                format!("{:0>10}", abs_str)
+            } else { abs_str.to_string() };
+            let split = padded.len() - 9;
+            let sec_str = &padded[..split];
+            let ns_str = &padded[split..];
+            let mut epoch_sec: i64 = sec_str.parse().map_err(|_| RuntimeError::RangeError(
+                "Temporal.Instant.toString: epoch_sec overflow".into()
+            ))?;
+            let mut frac_ns: i64 = ns_str.parse().map_err(|_| RuntimeError::RangeError(
+                "Temporal.Instant.toString: nanos overflow".into()
+            ))?;
+            if neg {
+                // For negative epoch_ns, abs gave us |total|. The split is
+                // |sec|.|frac|. To get spec'd value:
+                //   total_ns = -(sec*1e9 + frac)
+                //   epoch_sec_real = -(sec + (frac > 0 ? 1 : 0))
+                //   frac_real = (frac > 0 ? 1e9 - frac : 0)
+                if frac_ns > 0 {
+                    epoch_sec = -(epoch_sec + 1);
+                    frac_ns = 1_000_000_000 - frac_ns;
+                } else {
+                    epoch_sec = -epoch_sec;
+                    frac_ns = 0;
+                }
+            }
+            // Convert epoch_sec to date + time-of-day.
+            let secs_per_day = 86_400i64;
+            let days = epoch_sec.div_euclid(secs_per_day);
+            let secs_of_day = epoch_sec.rem_euclid(secs_per_day);
+            let (y, mo, d) = civil_from_days(days);
+            let hour = secs_of_day / 3600;
+            let minute = (secs_of_day % 3600) / 60;
+            let second = secs_of_day % 60;
+            // Compose ISO string. Year handling: per spec, 4-digit zero-pad
+            // for [0000, 9999]; expanded ±YYYYYY for outside.
+            let year_str = if (0..=9999).contains(&y) {
+                format!("{:04}", y)
+            } else if y < 0 {
+                format!("-{:06}", -y)
+            } else {
+                format!("+{:06}", y)
+            };
+            let mut out = format!(
+                "{}-{:02}-{:02}T{:02}:{:02}:{:02}",
+                year_str, mo, d, hour, minute, second
+            );
+            if frac_ns > 0 {
+                let frac = format!("{:09}", frac_ns);
+                let trimmed = frac.trim_end_matches('0');
+                out.push('.');
+                out.push_str(trimmed);
+            }
+            out.push('Z');
+            Ok(out)
+        }
+        register_intrinsic_method(self, inst_proto, "toString", 0, |rt, _args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.Instant.prototype.toString: this is not an object".into()
+                )),
+            };
+            Ok(Value::String(Rc::new(instant_to_iso_string(rt, id)?)))
+        });
+        register_intrinsic_method(self, inst_proto, "toJSON", 0, |rt, _args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.Instant.prototype.toJSON: this is not an object".into()
+                )),
+            };
+            Ok(Value::String(Rc::new(instant_to_iso_string(rt, id)?)))
+        });
+        register_intrinsic_method(self, inst_proto, "toLocaleString", 0, |rt, _args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.Instant.prototype.toLocaleString: this is not an object".into()
+                )),
+            };
+            Ok(Value::String(Rc::new(instant_to_iso_string(rt, id)?)))
+        });
         self.obj_mut(temporal)
             .set_own_internal("Instant".into(), Value::Object(inst_ctor));
         // PTCF-EXT 1 (plain-time-ctor-fields): Temporal.PlainTime class.
