@@ -2974,16 +2974,63 @@ impl Runtime {
             // Must have consumed at least one designator AND reached end.
             if !any_designator { return None; }
             if i != bytes.len() { return None; }
-            // Fractional on smallest enforcement: parse_number set
-            // fractional_taken to the unit's slot; verify no subsequent
-            // designator could have followed. consume_part already
-            // ensures no more designators after fractional, so this is OK.
-            // Fractional must round to integer when stored in non-second
-            // units — for now we accept the fraction in units array; the
-            // caller's integer-validation will reject.
-            // EXCEPT: spec actually allows fractional in HOUR / MINUTE
-            // to be propagated to seconds; we don't do that here; tests
-            // that use fractional H/M will fail with integer-validation.
+            // IFP-EXT 1 (iso-fractional-propagation): per §13.27, fractional
+            // on H/M/S propagates DOWNWARD into smaller units. Fractional H
+            // = (int hours, frac_h*3600 seconds); same for M (frac*60 sec)
+            // and S (frac*1e9 ns split into ms/μs/ns).
+            // Y/M/W/D fractional is rejected if present (needs calendar; spec
+            // forbids without relativeTo).
+            if let Some(slot) = fractional_taken {
+                // Date-portion fractional (Y/M/W/D) not supported.
+                if slot < 4 {
+                    return None;
+                }
+                // Read the fractional portion from the stored value.
+                // The stored value is signed sum of int_val + frac_val
+                // (both already signed). Extract |int| and |frac| from
+                // the original abs value: |units[slot]| = |int| + |frac|.
+                let v = units[slot].abs();
+                let int_part = v.trunc();
+                let frac = v - int_part;
+                // Reset the slot to the integer part with sign.
+                units[slot] = if units[slot] < 0.0 { -int_part } else { int_part };
+                let sign_propagate: f64 = sign;
+                // Cascade fractional down: HOURS -> MINUTES, MINUTES -> SECONDS,
+                // SECONDS -> ms/μs/ns. Each step: frac * 60 (or *1e9 for sub-sec).
+                if slot == 4 {
+                    // Fractional hours -> total minutes.
+                    let total_min = frac * 60.0;
+                    let int_min = total_min.trunc();
+                    let sub_min = total_min - int_min;
+                    units[5] += sign_propagate * int_min;
+                    // Then sub_min -> seconds.
+                    let total_sec = sub_min * 60.0;
+                    let int_sec = total_sec.trunc();
+                    let sub_sec = total_sec - int_sec;
+                    units[6] += sign_propagate * int_sec;
+                    let sub_ns = (sub_sec * 1e9).round() as i64;
+                    units[7] += sign_propagate * ((sub_ns / 1_000_000) as f64);
+                    units[8] += sign_propagate * (((sub_ns / 1_000) % 1_000) as f64);
+                    units[9] += sign_propagate * ((sub_ns % 1_000) as f64);
+                } else if slot == 5 {
+                    // Fractional minutes -> seconds.
+                    let total_sec = frac * 60.0;
+                    let int_sec = total_sec.trunc();
+                    let sub_sec = total_sec - int_sec;
+                    units[6] += sign_propagate * int_sec;
+                    let sub_ns = (sub_sec * 1e9).round() as i64;
+                    units[7] += sign_propagate * ((sub_ns / 1_000_000) as f64);
+                    units[8] += sign_propagate * (((sub_ns / 1_000) % 1_000) as f64);
+                    units[9] += sign_propagate * ((sub_ns % 1_000) as f64);
+                } else if slot == 6 {
+                    // Fractional seconds -> ms/μs/ns.
+                    let sub_ns = (frac * 1e9).round() as i64;
+                    units[7] += sign_propagate * ((sub_ns / 1_000_000) as f64);
+                    units[8] += sign_propagate * (((sub_ns / 1_000) % 1_000) as f64);
+                    units[9] += sign_propagate * ((sub_ns % 1_000) as f64);
+                }
+                // slot 7/8/9 fractional doesn't propagate (already smallest).
+            }
             let _ = (sign, consumed_date);
             Some(units)
         }
