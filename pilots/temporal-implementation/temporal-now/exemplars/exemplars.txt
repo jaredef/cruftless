@@ -1,0 +1,3 @@
+/home/jaredef/test262/test/intl402/Temporal/Now/plainDateTimeISO/timezone-string-datetime.js
+/home/jaredef/test262/test/intl402/Temporal/Now/zonedDateTimeISO/timezone-string.js
+/home/jaredef/test262/test/intl402/Temporal/Now/zonedDateTimeISO/timezone-string-datetime.js

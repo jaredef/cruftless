@@ -291,6 +291,30 @@ Substrate move IS WBMS-EXT 2 (real with-runtime-semantics: Stmt::With AST + byte
 
 ---
 
+## Tier L — Temporal implementation (2026-05-26, multi-session program)
+
+Spawned per keeper directive (Telegram 9873) immediately after RFSDO-EXT 2 SKIPped 6,694 Temporal records. Parent locale articulates the program; sub-locales are the unit of substrate work. Multi-session, multi-rung.
+
+| Ref | Locale | Tests | Status |
+|---|---|---:|---|
+| (TI) | `temporal-implementation/` (parent) | 2,028 | FOUNDED |
+| (TN) | `temporal-implementation/temporal-now/` | 3 | FOUNDED |
+| (TF) | `temporal-foundation/` (planned) | — | NOT SPAWNED |
+| (TInst) | `temporal-instant/` (planned) | 17 | NOT SPAWNED |
+| (TPT) | `temporal-plain-time/` (planned) | 12 | NOT SPAWNED |
+| (TDur) | `temporal-duration/` (planned) | 21 | NOT SPAWNED |
+| (TPD) | `temporal-plain-date/` (planned) | 493 | NOT SPAWNED |
+| (TPDT) | `temporal-plain-date-time/` (planned) | 483 | NOT SPAWNED |
+| (TPMD) | `temporal-plain-month-day/` (planned) | 90 | NOT SPAWNED |
+| (TPYM) | `temporal-plain-year-month/` (planned) | 327 | NOT SPAWNED |
+| (TZDT) | `temporal-zoned-date-time/` (planned) | 582 | NOT SPAWNED |
+
+Rung order per parent seed: foundation → now → instant → plain-time → duration → plain-date → plain-date-time → plain-month-day/year-month → zoned-date-time.
+
+RFSDO-EXT 2's `Temporal` flag stays in the deny-list until critical mass of class-coverage exists (per parent seed's RFSDO sync section). The deny-list entry is the bridge — without it the matrix would show 6,694 records as failing while the program is mid-flight.
+
+---
+
 ## Standing edits
 
 - When a locale is founded, **move its entry from this file to its own `pilots/<name>/seed.md`**; leave a one-line "**SPAWNED** as `pilots/<name>/` at YYYY-MM-DD" stub here for the audit trail.
