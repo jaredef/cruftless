@@ -182,7 +182,7 @@ Internal corpus:
 In-engagement apparatus:
 
 - `apparatus/docs/ecma-conformance-parity-as-exhaustive-language-behavior-dag.md` — the engagement-tier apparatus articulation this document supplies the operating-conditions layer for.
-- `pilots/test262-categorize/full-suite/debugging-heuristics.md` — the row-coherence + partition discipline this document supplies the corpus articulation for.
+- `pilots/apparatus/test262-categorize/full-suite/debugging-heuristics.md` — the row-coherence + partition discipline this document supplies the corpus articulation for.
 - `pilots/parser-early-error-residual/block-bound-names-dup/findings.md` — the BBND-locale findings document this document promotes to corpus-tier articulation.
 - `apparatus/docs/predictive-ruleset.md` — the standing-rule scaffolding the five conditions compose against (R4, R11.A2, R13, R15).
 

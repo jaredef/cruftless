@@ -26,7 +26,7 @@ The ruleset compounds: rules higher-numbered build on prior rules + their predic
 
 **Predicts**: single-run claims will be noise-dominated below a ~10% effect; reversed-sign measurements are observed routinely at N=1.
 
-**Evidence**: findings.md §I.1; engagement-wide convention enforced via `pilots/cross-runtime-bench/scripts/run-bench.sh --runs N`.
+**Evidence**: findings.md §I.1; engagement-wide convention enforced via `pilots/apparatus/cross-runtime-bench/scripts/run-bench.sh --runs N`.
 
 ---
 
@@ -178,12 +178,12 @@ The ruleset is supported by standing instruments that rules 5, 10, 11, 14, 15 ex
 
 | Instrument | Path | Supports |
 |---|---|---|
-| Multi-run bench harness | `pilots/cross-runtime-bench/scripts/run-bench.sh` | Rules 1, 2, 3 |
+| Multi-run bench harness | `pilots/apparatus/cross-runtime-bench/scripts/run-bench.sh` | Rules 1, 2, 3 |
 | Canonical fuzz | `pilots/rusty-js-shapes/consumer-migration/fixtures/fuzz-canonical.mjs` | Rules 5, 10 |
 | JSF component-A/B probe | `pilots/rusty-js-json-fast/fixtures/component-ab-probe.mjs` | Rule 11 (A1) |
-| `string_url_sweep` component-A/B probe | `pilots/cross-runtime-bench/fixtures/string_url_sweep/component-ab-probe.mjs` | Rule 11 (A1) |
-| TCC parse-parity corpus | `pilots/ts-consumer-corpus/` | Rules 14, 15 (TS-tier) |
-| TXC execute-parity corpus | `pilots/ts-execute-corpus/` | Rules 14, 15 (TS-tier) |
+| `string_url_sweep` component-A/B probe | `pilots/apparatus/cross-runtime-bench/fixtures/string_url_sweep/component-ab-probe.mjs` | Rule 11 (A1) |
+| TCC parse-parity corpus | `pilots/apparatus/ts-consumer-corpus/` | Rules 14, 15 (TS-tier) |
+| TXC execute-parity corpus | `pilots/apparatus/ts-execute-corpus/` | Rules 14, 15 (TS-tier) |
 | diff-prod | `scripts/diff-prod/` | Cross-cutting correctness gate (all rules) |
 | test262 sample | `scripts/test262-sample/` | Cross-cutting correctness gate |
 | Locale manifest | `apparatus/locales/manifest.json` | Rule 11 spawn-discipline anchor |

@@ -108,7 +108,7 @@ edit's size. Static-semantics rules have higher reach by default.
 Today's earlier closures were driven by inspecting the curated 45-test
 SyntaxError cluster sample and chasing individual test bodies. BBND was
 driven by reading the canonical full-suite Pin-Art matrix
-(`pilots/test262-categorize/full-suite/.../matrix.md`) and the PEER
+(`pilots/apparatus/test262-categorize/full-suite/.../matrix.md`) and the PEER
 exemplar suite's family marginal (heuristics §V row-coherence: 3/3
 inspected fails share `block-scope/syntax/redeclaration/`).
 

@@ -96,7 +96,7 @@ Three independent empirical anchors converge on this amendment (all logged 2026-
 - **CMig-EXT 15** entry: surfaced the narrow-vs-realistic split via the parallel-Claude out-of-band measurement.
 - **CRB-EXT 1-7**: the realistic-workload baseline itself, robust at N=30 (sd/median ≤3.5%).
 
-The supporting reading is at `pilots/cross-runtime-bench/docs/composition-reading-vs-lejit-i3.md`.
+The supporting reading is at `pilots/apparatus/cross-runtime-bench/docs/composition-reading-vs-lejit-i3.md`.
 
 ### I.4 First-cut composition empirically met at engagement-tier default (2026-05-23 close)
 

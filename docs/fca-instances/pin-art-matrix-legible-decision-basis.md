@@ -4,7 +4,7 @@
 
 A full-suite test262 run with ~23,520 FAIL records **compresses to ~246 distinct Pin-Art coordinates** that name where in the engine's DAG each failure class sits. The induced property is the matrix as a **legible decision basis**: a substrate worker can read the matrix top, partition by availability + cut-kind per the debugging heuristics §III, and select the next substrate move from a partition-comparable row set rather than from raw counts.
 
-Anchor: `pilots/test262-categorize/full-suite/results/test262-full-2026-05-25-165734-p2/matrix.md` (current measurement: 246 coordinates, 12 resolver instances, 9 rungs, 9 axes, 8 availability classes, 7 cut kinds, 785 surfaces). Apparatus articulation: `apparatus/docs/ecma-conformance-parity-as-exhaustive-language-behavior-dag.md`. Reading discipline: `pilots/test262-categorize/full-suite/debugging-heuristics.md`.
+Anchor: `pilots/apparatus/test262-categorize/full-suite/results/test262-full-2026-05-25-165734-p2/matrix.md` (current measurement: 246 coordinates, 12 resolver instances, 9 rungs, 9 axes, 8 availability classes, 7 cut kinds, 785 surfaces). Apparatus articulation: `apparatus/docs/ecma-conformance-parity-as-exhaustive-language-behavior-dag.md`. Reading discipline: `pilots/apparatus/test262-categorize/full-suite/debugging-heuristics.md`.
 
 ## The accumulation
 
@@ -47,7 +47,7 @@ Today's BBND closure (BBND-EXT 1+2, +95 tests) was driven by this matrix's PEER 
 ## Composes-with
 
 - `apparatus/docs/ecma-conformance-parity-as-exhaustive-language-behavior-dag.md` — primary articulation.
-- `pilots/test262-categorize/full-suite/debugging-heuristics.md` — reading discipline.
+- `pilots/apparatus/test262-categorize/full-suite/debugging-heuristics.md` — reading discipline.
 - [`docs/fca-instances/diff-prod-cross-runtime-engine-diff-oracle.md`](diff-prod-cross-runtime-engine-diff-oracle.md) — behavioral-parity dual.
 - Doc 715 — Consumer-Substrate Dependency Graph as the load-bearing object.
 - Doc 716 — Stubs as Named Cuts (cut-kind taxonomy).

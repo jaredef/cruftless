@@ -9,7 +9,7 @@ runtime/spec-builtins :: E3/intrinsic-object:ecma-262 :: value-semantics/wrong-r
 ```
 
 This coordinate ranks **#10** in the full-suite Pin-Art matrix
-(`pilots/test262-categorize/full-suite/results/test262-full-2026-05-25-165734-p2/matrix.md`),
+(`pilots/apparatus/test262-categorize/full-suite/results/test262-full-2026-05-25-165734-p2/matrix.md`),
 **389 fails** in the canonical full-suite run. Per the apparatus
 articulation (`apparatus/docs/ecma-conformance-parity-as-exhaustive-language-behavior-dag.md`),
 the telos is the explicit DAG coordinate that had to exist for the result
@@ -51,7 +51,7 @@ coordinate must satisfy:
 Per heuristics §V, before any substrate edit:
 
 ```
-rg '"pin":"<pin>"' pilots/test262-categorize/full-suite/results/test262-full-2026-05-25-165734-p2/interpreted.jsonl | head -5
+rg '"pin":"<pin>"' pilots/apparatus/test262-categorize/full-suite/results/test262-full-2026-05-25-165734-p2/interpreted.jsonl | head -5
 ```
 
 Inspect availability + cut_kind + abstract_op + surface + reason on the
@@ -71,7 +71,7 @@ first 5; if mechanism is shared, proceed; if not, split before editing.
 - `apparatus/docs/ecma-conformance-parity-as-exhaustive-language-behavior-dag.md`
 - `apparatus/docs/predictive-ruleset.md` (rules 4, 5, 11, 13, 14, 15
   particularly relevant)
-- `pilots/test262-categorize/full-suite/debugging-heuristics.md` (§IV
+- `pilots/apparatus/test262-categorize/full-suite/debugging-heuristics.md` (§IV
   work-shape classification this locale enacts)
 - `pilots/temporal-availability/` (sibling spawn 2026-05-25 from the same
   top-10 batch)

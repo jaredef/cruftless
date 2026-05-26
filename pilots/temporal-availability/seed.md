@@ -9,7 +9,7 @@ runtime/spec-builtins :: E3/intrinsic-object:temporal :: availability/missing-gl
 ```
 
 This coordinate sits at the top of the full-suite Pin-Art matrix
-(`pilots/test262-categorize/full-suite/results/test262-full-2026-05-25-165734-p2/matrix.md`
+(`pilots/apparatus/test262-categorize/full-suite/results/test262-full-2026-05-25-165734-p2/matrix.md`
 rank #1, **4,152 fails**, ~17.4% of the 23,768 interpreted non-pass
 records). Per the new apparatus articulation
 (`apparatus/docs/ecma-conformance-parity-as-exhaustive-language-behavior-dag.md`),
@@ -85,7 +85,7 @@ Multi-rung shape per Doc 737 §II:
 
 - `apparatus/docs/ecma-conformance-parity-as-exhaustive-language-behavior-dag.md`
   — the framing of conformance as decision-basis extraction.
-- `pilots/test262-categorize/full-suite/` — the canonical full-suite
+- `pilots/apparatus/test262-categorize/full-suite/` — the canonical full-suite
   measurement that surfaces this coordinate.
 - `pilots/intl402-availability/` (future) — rank #2 sibling coordinate.
 - Standing rule 13 prospective application (C1-C4 above).

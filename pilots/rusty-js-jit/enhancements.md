@@ -276,11 +276,11 @@ Plus 5 spread-variant cases (nested/override/multi-source/empty/spread-into-popu
 
 ## 2026-05-23 — CRB-EXT 1-6 (cross-pilot): cruft 8-20× node, 14-26× bun on realistic JS **[UNANTICIPATED]**
 
-**Locale**: `pilots/cross-runtime-bench/trajectory.md` → CRB-EXT 1-6.
+**Locale**: `pilots/apparatus/cross-runtime-bench/trajectory.md` → CRB-EXT 1-6.
 
 *Cross-pilot entry: the cross-runtime-bench pilot's first measurement reading directly recalibrates LeJIT seed §I.3's "3× target" composition reading. The third empirical anchor (after VTI-EXT 3a's variance reservation + CMig-EXT 15's narrow-vs-realistic split) for a pending §I.3 amendment.*
 
-**Substrate change**: Founded `pilots/cross-runtime-bench/` (standalone top-level locale), built runner + three fixtures (json_parse_transform, string_url_sweep, crypto_sha256_batch), produced N=10 canonical baseline.
+**Substrate change**: Founded `pilots/apparatus/cross-runtime-bench/` (standalone top-level locale), built runner + three fixtures (json_parse_transform, string_url_sweep, crypto_sha256_batch), produced N=10 canonical baseline.
 
 **Measurement (N=10, Pi, 2026-05-23)**:
 
@@ -314,16 +314,16 @@ Multiplicative composition: (1) × (2) × (3) × (4) × (5) ≈ realistic-worklo
 
 - **The structural conclusion**: closing the cruft-vs-node gap to single digits requires substrate work *beyond LeJIT*. JSON.parse needs a faster implementation. Array.filter/map need fast-path allocation. Callback dispatch needs the tiny-baseline pilot AND a tighter inline-call substrate. These are multiple new pilots' worth of work.
 
-- **The cross-runtime-bench is itself the framework**: future LeJIT-tier substrate moves should run against `pilots/cross-runtime-bench/` to surface their actual realistic-workload impact, not just the narrow bench_ic / bench_call_overhead readings. The bench_ic loop is a microbench; CRB fixtures are the load-bearing competitive position reading.
+- **The cross-runtime-bench is itself the framework**: future LeJIT-tier substrate moves should run against `pilots/apparatus/cross-runtime-bench/` to surface their actual realistic-workload impact, not just the narrow bench_ic / bench_call_overhead readings. The bench_ic loop is a microbench; CRB fixtures are the load-bearing competitive position reading.
 
 - **SubtleCrypto surface gap** is a separate substrate move queued at CRB-EXT 11. Real Node packages routinely use SubtleCrypto for hashing; the gap blocks them.
 
 **Provenance**:
-- New pilot: `pilots/cross-runtime-bench/`
-- Runner: `pilots/cross-runtime-bench/scripts/run-bench.sh`
-- Fixtures: `pilots/cross-runtime-bench/fixtures/{json_parse_transform,string_url_sweep,crypto_sha256_batch}/main.mjs`
-- Baseline: `pilots/cross-runtime-bench/results/2026-05-23/{summary.md,results.jsonl}`
-- Trajectory: `pilots/cross-runtime-bench/trajectory.md` CRB-EXT 1-6 (close)
+- New pilot: `pilots/apparatus/cross-runtime-bench/`
+- Runner: `pilots/apparatus/cross-runtime-bench/scripts/run-bench.sh`
+- Fixtures: `pilots/apparatus/cross-runtime-bench/fixtures/{json_parse_transform,string_url_sweep,crypto_sha256_batch}/main.mjs`
+- Baseline: `pilots/apparatus/cross-runtime-bench/results/2026-05-23/{summary.md,results.jsonl}`
+- Trajectory: `pilots/apparatus/cross-runtime-bench/trajectory.md` CRB-EXT 1-6 (close)
 - Empirical anchor for: pending LeJIT seed §I.3 amendment
 - Cross-reference: this file's VTI-EXT 3a entry (variance reservation) + CMig-EXT 15 entry (narrow-vs-realistic split). Three empirical anchors now stand for the §I.3 amendment
 
@@ -331,11 +331,11 @@ Multiplicative composition: (1) × (2) × (3) × (4) × (5) ≈ realistic-worklo
 
 ## 2026-05-23 — CRB-EXT 8: LeJIT seed §I.3 amendment landed (per-workload disambiguation) **[ANTICIPATED]**
 
-**Locale**: `pilots/cross-runtime-bench/trajectory.md` → CRB-EXT 8 (composition reading vs LeJIT §I.3; amendment landed).
+**Locale**: `pilots/apparatus/cross-runtime-bench/trajectory.md` → CRB-EXT 8 (composition reading vs LeJIT §I.3; amendment landed).
 
 *Cross-pilot entry: this round's deliverable is a direct amendment to the parent LeJIT seed. The enhancements log records the amendment for cross-pilot visibility.*
 
-**Substrate change**: `pilots/rusty-js-jit/seed.md` §I.3 amended in-place with explicit per-workload composition disambiguation. Existing §I.3 prediction (2-2.5× cruft self-improvement reaching bun-parity at bench_ic) preserved unchanged; amendment adds parallel realistic-workload reading (cruft 14-26× off bun on CRB fixtures; LeJIT first-cut composed expected to close to ~5-15×, not to par; par requires non-LeJIT substrate work). Supporting reading at `pilots/cross-runtime-bench/docs/composition-reading-vs-lejit-i3.md` (~150 lines).
+**Substrate change**: `pilots/rusty-js-jit/seed.md` §I.3 amended in-place with explicit per-workload composition disambiguation. Existing §I.3 prediction (2-2.5× cruft self-improvement reaching bun-parity at bench_ic) preserved unchanged; amendment adds parallel realistic-workload reading (cruft 14-26× off bun on CRB fixtures; LeJIT first-cut composed expected to close to ~5-15×, not to par; par requires non-LeJIT substrate work). Supporting reading at `pilots/apparatus/cross-runtime-bench/docs/composition-reading-vs-lejit-i3.md` (~150 lines).
 
 **Predicted-by**: this enhancements log's prior three entries — VTI-EXT 3a (variance reservation on the 26% shape claim), CMig-EXT 15 (narrow-vs-realistic split surfaced out-of-band), CRB-EXT 1-7 (empirical realistic-workload baseline). All three flagged the pending §I.3 amendment as their downstream forward-work item; CRB-EXT 8 lands it.
 
@@ -348,15 +348,15 @@ Multiplicative composition: (1) × (2) × (3) × (4) × (5) ≈ realistic-worklo
 
 **Provenance**:
 - Amendment text: `pilots/rusty-js-jit/seed.md` §I.3 (additive; under existing text; marked "CRB-EXT 8 amendment, 2026-05-23")
-- Supporting reading: `pilots/cross-runtime-bench/docs/composition-reading-vs-lejit-i3.md`
-- Trajectory: `pilots/cross-runtime-bench/trajectory.md` CRB-EXT 8 (close)
+- Supporting reading: `pilots/apparatus/cross-runtime-bench/docs/composition-reading-vs-lejit-i3.md`
+- Trajectory: `pilots/apparatus/cross-runtime-bench/trajectory.md` CRB-EXT 8 (close)
 - Three converging anchors: this file's VTI-EXT 3a entry + CMig-EXT 15 entry + CRB-EXT 1-7 entry
 
 ---
 
 ## 2026-05-23 — CRB-EXT 9: 12× per-workload spread; LeJIT JIT works on its eligible workloads **[ANTICIPATED]**
 
-**Locale**: `pilots/cross-runtime-bench/trajectory.md` → CRB-EXT 9.
+**Locale**: `pilots/apparatus/cross-runtime-bench/trajectory.md` → CRB-EXT 9.
 
 *Cross-pilot entry: the per-workload spread reading directly informs LeJIT pilot-priority decisions.*
 
@@ -387,10 +387,10 @@ Multiplicative composition: (1) × (2) × (3) × (4) × (5) ≈ realistic-worklo
 **Implication for current LeJIT pilots**: LeJIT-Τ remains the largest-arm pilot per the seed §I.3 multiplicative composition reading; this round confirms its CRB-side benefit is structurally bounded (callback-dispatch workloads only, not the JIT-tight or JSON-bound ends). The pilot should proceed but the keeper should know CRB-side gains are bounded ahead of TB-EXT 4's measurement.
 
 **Provenance**:
-- New fixture: `pilots/cross-runtime-bench/fixtures/arith_tight_loop/main.mjs`
-- Reading doc: `pilots/cross-runtime-bench/docs/jit-eligible-vs-realistic.md`
-- Trajectory: `pilots/cross-runtime-bench/trajectory.md` CRB-EXT 9 (close)
-- Unified baseline: `pilots/cross-runtime-bench/results/2026-05-23/{summary.md, results.jsonl}`
+- New fixture: `pilots/apparatus/cross-runtime-bench/fixtures/arith_tight_loop/main.mjs`
+- Reading doc: `pilots/apparatus/cross-runtime-bench/docs/jit-eligible-vs-realistic.md`
+- Trajectory: `pilots/apparatus/cross-runtime-bench/trajectory.md` CRB-EXT 9 (close)
+- Unified baseline: `pilots/apparatus/cross-runtime-bench/results/2026-05-23/{summary.md, results.jsonl}`
 - Cross-reference: this file's CRB-EXT 8 entry (§I.3 amendment); the amendment's "5-15× off bun" range is now refined to "3-15×" spectrum end-to-end
 
 ---
@@ -445,7 +445,7 @@ diff-prod 42/42 PASS under TB=1. 46/46 JIT lib + 35/35 runtime lib tests PASS.
 **Provenance**:
 - Substrate: `pilots/rusty-js-runtime/derived/src/value.rs` (Cell field) + `pilots/rusty-js-runtime/derived/src/interp.rs` (fast path + cell populate)
 - Trajectory: `pilots/rusty-js-jit/tiny-baseline/trajectory.md` TB-EXT 3b (close)
-- Snapshot: `pilots/cross-runtime-bench/results/2026-05-23-post-tb-ext-3b/{summary.md, results.jsonl}`
+- Snapshot: `pilots/apparatus/cross-runtime-bench/results/2026-05-23-post-tb-ext-3b/{summary.md, results.jsonl}`
 - Cross-reference: this file's prior entries — VTI-EXT 3b ((P2.d) lesson), TB-EXT 2 (decomposition gap), TB-EXT 3a (substrate-introduction), CRB-EXT 8 (§I.3 amendment), CRB-EXT 9 (per-workload spread)
 - Findings validation: `pilots/rusty-js-jit/findings.md` V.1 + II.2 + II.3 confirmed empirically
 

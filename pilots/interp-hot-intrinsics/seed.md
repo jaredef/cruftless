@@ -83,7 +83,7 @@ intrinsic-ObjectId-cache).
 - **Per-entry shape**: IcEntry struct adapted from HI's JIT-tier shape; replace `extern_ptr` + `lower fn` with a direct Rust fn pointer that takes `(&mut Runtime, &Value receiver, &[Value] args) -> Option<Result<Value, RuntimeError>>` (None = bail to slow path).
 - **Dispatch integration**: Op::CallMethod handler at interp.rs:8007 consults the table BEFORE the call_function slow path. Lookup by method_name (already captured at pending_method_name) + receiver kind + arity.
 - **Override-safety**: per-entry `intrinsic_X_id: Option<ObjectId>` cache on Runtime; populated lazily at first eligible call; bail on mismatch.
-- **Bench instruments**: `pilots/cross-runtime-bench/fixtures/string_url_sweep/component-ab-probe.mjs` (re-run each round); CRB string_url_sweep at IHI-EXT N close.
+- **Bench instruments**: `pilots/apparatus/cross-runtime-bench/fixtures/string_url_sweep/component-ab-probe.mjs` (re-run each round); CRB string_url_sweep at IHI-EXT N close.
 - **Correctness instruments** (rule 5 + rule 10 + rule 11): canonical fuzz + diff-prod + per-entry test at each round.
 
 ## III. Methodology

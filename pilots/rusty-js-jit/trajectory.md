@@ -1644,7 +1644,7 @@ Default-cruft users get both gains without env flag.
 
 - **`pilots/rusty-js-jit/findings.md`** — substrate-improvement guidance doc (per keeper 2026-05-23 14:09-local directive). Six sections + standing rules. Has been validated empirically at four+ applications during the same session it was created.
 - **`pilots/rusty-js-jit/enhancements.md`** — cross-locale append-only event log. Verbose UNANTICIPATED entries (now ~10) preserve substrate-amortization-cascade signals + (P2.d)/(P2.c) findings.
-- **`pilots/cross-runtime-bench/`** — standalone top-level pilot founded mid-session per keeper directive. 15 locales total post-spawn (10 top-level + 5 nested).
+- **`pilots/apparatus/cross-runtime-bench/`** — standalone top-level pilot founded mid-session per keeper directive. 15 locales total post-spawn (10 top-level + 5 nested).
 - **LeJIT seed §I.3 amendment** (CRB-EXT 8) — per-workload composition disambiguation as standing framework vocabulary.
 - **TB-EXT 7 segfault discovery** — engagement-class HashMap-value-slot raw-pointer-cache bug class named + fixed via Box-wrap pattern.
 
@@ -1758,7 +1758,7 @@ Cumulative across the session (post Φ + Doc 739):
 
 - `pilots/rusty-js-jit/findings.md`: substrate-improvement guidance doc. Now contains 6 original sections + 8 standing rules + addendum (5 promoted/new findings + standing rule 9 + 1 new standing rule from Φ-EXT 7) + addendum II (Finding II.5 gap-closure-as-cascade-revival).
 - `pilots/rusty-js-jit/enhancements.md`: cross-locale append-only event log. ~14 verbose UNANTICIPATED entries.
-- `pilots/cross-runtime-bench/`: standalone top-level pilot founded mid-session.
+- `pilots/apparatus/cross-runtime-bench/`: standalone top-level pilot founded mid-session.
 - `pilots/rusty-js-jit/f64-calling-convention/`: nested LeJIT-tier pilot founded + first-cut chapter closed mid-session.
 - LeJIT seed §I.3 amendment (CRB-EXT 8 per-workload disambiguation).
 - LeJIT seed §I.4 first-cut composition empirically met at engagement default.

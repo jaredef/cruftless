@@ -58,7 +58,7 @@ Living document; append-only at the bottom (newest at top within a section). Eac
 
 ## Tier D — strategic / language-tier (new 2026-05-24)
 
-### (l) `ts-consumer-corpus` — **SPAWNED** 2026-05-24 as [`pilots/ts-consumer-corpus/`](../../pilots/ts-consumer-corpus/seed.md)
+### (l) `ts-consumer-corpus` — **SPAWNED** 2026-05-24 as [`pilots/apparatus/ts-consumer-corpus/`](../../pilots/apparatus/ts-consumer-corpus/seed.md)
 **Telos**: empirical measurement instrument for TSR's coverage of real consumer `.ts` source on npm. Failure-table drives priority order for the downstream TSR sub-locale arc (enums, classes, generics-calls, decorators, namespaces, conditional-types, JSX).
 **Status**: SPAWNED. TCC-EXT 1 (corpus assembly) is the next round.
 
@@ -95,7 +95,7 @@ Living document; append-only at the bottom (newest at top within a section). Eac
 
 ### (i) `crypto-sha256-batch-investigation` — ⚪ HYPOTHETICAL
 **Telos**: CRB crypto_sha256_batch FAIL is pre-existing (CRB-EXT 0-6 baseline bb212c3c). Investigate root cause; could be missing host stub or `Buffer` API gap.
-**Anchor**: stderr from `cruft pilots/cross-runtime-bench/fixtures/crypto_sha256_batch/main.mjs`.
+**Anchor**: stderr from `cruft pilots/apparatus/cross-runtime-bench/fixtures/crypto_sha256_batch/main.mjs`.
 
 ---
 
