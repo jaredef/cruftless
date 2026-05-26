@@ -127,6 +127,9 @@ function runOne(path) {
       '/Temporal/Duration/prototype/blank/',
       '/Temporal/Duration/prototype/abs/',
       '/Temporal/Duration/prototype/negated/',
+      // DStat-EXT 1: duration-static (from / compare)
+      '/Temporal/Duration/from/',
+      '/Temporal/Duration/compare/',
       // Foundation tests that pass without per-class implementation.
       '/Temporal/getOwnPropertyNames.js',
       '/Temporal/keys.js',

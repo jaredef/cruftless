@@ -2554,6 +2554,133 @@ impl Runtime {
         // and `Temporal.Duration.prototype` is the dur_proto object.
         self.obj_mut(dur_ctor)
             .set_own_frozen("prototype".into(), Value::Object(dur_proto));
+        // DStat-EXT 1 (duration-static): Temporal.Duration.from + compare.
+        let proto_for_from = dur_proto;
+        register_intrinsic_method(self, dur_ctor, "from", 1, move |rt, args| {
+            let item = args.first().cloned().unwrap_or(Value::Undefined);
+            // String form: defer ISO 8601 duration parsing to a future
+            // shared substrate (temporal-iso-string-parse).
+            if let Value::String(s) = &item {
+                return Err(RuntimeError::TypeError(format!(
+                    "Temporal.Duration.from(string): ISO 8601 duration string parsing not yet implemented (Tier-L stub); got {:?}",
+                    s
+                )));
+            }
+            let id = match item {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.Duration.from: argument must be a Duration, object, or string".into()
+                )),
+            };
+            let units_names = ["years", "months", "weeks", "days", "hours",
+                               "minutes", "seconds", "milliseconds",
+                               "microseconds", "nanoseconds"];
+            let mut units = [0.0f64; 10];
+            // If the object is already a Temporal.Duration, clone its
+            // internal slots. Brand-check via __td_years sentinel.
+            let is_duration = !matches!(rt.object_get(id, "__td_years"), Value::Undefined);
+            if is_duration {
+                for (i, u) in units_names.iter().enumerate() {
+                    let key = format!("__td_{}", u);
+                    if let Value::Number(n) = rt.object_get(id, &key) {
+                        units[i] = n;
+                    }
+                }
+            } else {
+                // Property bag: read each unit name; undefined / missing -> 0.
+                // Per spec, an empty property bag throws TypeError; tracked
+                // by has_any_unit below.
+                let mut has_any_unit = false;
+                for (i, u) in units_names.iter().enumerate() {
+                    let v = rt.object_get(id, u);
+                    if matches!(v, Value::Undefined) { continue; }
+                    has_any_unit = true;
+                    let n = crate::abstract_ops::to_number(&v);
+                    if !n.is_finite() || n != n.trunc() {
+                        return Err(RuntimeError::RangeError(format!(
+                            "Temporal.Duration.from: {} must be a finite integer", u
+                        )));
+                    }
+                    units[i] = if n == 0.0 { 0.0 } else { n };
+                }
+                if !has_any_unit {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.Duration.from: object must have at least one duration unit property".into()
+                    ));
+                }
+            }
+            Ok(make_duration(rt, proto_for_from, units))
+        });
+        register_intrinsic_method(self, dur_ctor, "compare", 2, move |rt, args| {
+            let a = args.first().cloned().unwrap_or(Value::Undefined);
+            let b = args.get(1).cloned().unwrap_or(Value::Undefined);
+            // Both args must be coercible to Duration. Reuse from() logic
+            // inline: if it's a string, defer; if object, brand-or-bag.
+            fn coerce(rt: &mut Runtime, v: Value) -> Result<[f64; 10], RuntimeError> {
+                if let Value::String(_) = &v {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.Duration.compare: ISO string parsing not yet implemented (Tier-L stub)".into()
+                    ));
+                }
+                let id = match v {
+                    Value::Object(o) => o,
+                    _ => return Err(RuntimeError::TypeError(
+                        "Temporal.Duration.compare: argument must be Duration, object, or string".into()
+                    )),
+                };
+                let units_names = ["years", "months", "weeks", "days", "hours",
+                                   "minutes", "seconds", "milliseconds",
+                                   "microseconds", "nanoseconds"];
+                let mut out = [0.0f64; 10];
+                let is_dur = !matches!(rt.object_get(id, "__td_years"), Value::Undefined);
+                for (i, u) in units_names.iter().enumerate() {
+                    let key = if is_dur { format!("__td_{}", u) } else { (*u).to_string() };
+                    if let Value::Number(n) = rt.object_get(id, &key) {
+                        out[i] = n;
+                    }
+                }
+                Ok(out)
+            }
+            let ua = coerce(rt, a)?;
+            let ub = coerce(rt, b)?;
+            // If any year/month/week present in either, relativeTo is
+            // required. Without it (and without our temporal-relative-to
+            // substrate), throw RangeError per spec.
+            let needs_relative = ua[0] != 0.0 || ua[1] != 0.0 || ua[2] != 0.0
+                              || ub[0] != 0.0 || ub[1] != 0.0 || ub[2] != 0.0;
+            if needs_relative {
+                // Check options.relativeTo; if present, defer (not implemented).
+                let opts = args.get(2).cloned().unwrap_or(Value::Undefined);
+                let has_rel = match opts {
+                    Value::Object(o) => !matches!(rt.object_get(o, "relativeTo"), Value::Undefined),
+                    _ => false,
+                };
+                if has_rel {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.Duration.compare with relativeTo not yet implemented (Tier-L stub)".into()
+                    ));
+                }
+                return Err(RuntimeError::RangeError(
+                    "Temporal.Duration.compare: a starting point (relativeTo) is required for years/months/weeks".into()
+                ));
+            }
+            // Below years/months/weeks: convert to approximate nanoseconds
+            // (1 day = 86400e9 ns; this is exact in the absence of DST,
+            // which is fine here because there's no calendar/TZ context
+            // and the spec defines this path as the no-relativeTo case).
+            fn to_ns(u: [f64; 10]) -> f64 {
+                u[3] * 86_400e9
+                + u[4] * 3600e9
+                + u[5] * 60e9
+                + u[6] * 1e9
+                + u[7] * 1e6
+                + u[8] * 1e3
+                + u[9]
+            }
+            let na = to_ns(ua);
+            let nb = to_ns(ub);
+            Ok(Value::Number(if na < nb { -1.0 } else if na > nb { 1.0 } else { 0.0 }))
+        });
         // Overwrite the Duration stub on the Temporal namespace with the real ctor.
         self.obj_mut(temporal)
             .set_own_internal("Duration".into(), Value::Object(dur_ctor));
