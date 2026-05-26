@@ -82,6 +82,12 @@ pub struct Parser<'src> {
     /// around for-head LHS parsing. This is the spec-aligned alternative
     /// to the bare-ident fast-path + rewind workaround.
     pub(crate) in_disallowed: bool,
+    /// HDSB-EXT 1: when true, `parse_substatement` accepts a plain
+    /// `FunctionDeclaration` as the Statement body under sloppy mode
+    /// per Annex B B.3.4. Set only around `if` / `else` substatement
+    /// parses; cleared everywhere else (for / while / do / with /
+    /// labelled bodies are NOT in the carve-out).
+    pub(crate) allow_annex_b_function_in_substatement: bool,
 }
 
 impl<'src> Parser<'src> {
@@ -99,6 +105,7 @@ impl<'src> Parser<'src> {
             in_function_params: false,
             current_lex_goal,
             in_disallowed: false,
+            allow_annex_b_function_in_substatement: false,
         })
     }
 

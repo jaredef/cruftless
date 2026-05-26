@@ -241,6 +241,47 @@ Spawned 2026-05-25 from the full-suite Pin-Art matrix's top-10 coordinates (comm
 5. Commit founding + manifest in one change.
 6. Per standing rule 13: design the deeper-layer closure from the founding round if known.
 
+## Tier K — missing-syntax-feature concentration (2026-05-26, post TECR-EXT 2 lift)
+
+Spawned from the post-TECR-EXT-2 matrix's `availability/missing-syntax-feature` projection class (1,017 records). Drilled by reason-shape clustering: 17 distinct shapes total, top 5 account for 937 records (92%). Extreme cluster-coherence per the multiplier conditions in BBND findings §IV — each candidate is a coherent single-mechanism substrate target.
+
+| Ref | Cluster | Records | Mechanism | Status |
+|---|---|---:|---|---|
+| (vv) | `hoistable-declaration-as-statement-body` (HDSB) | 475 | Annex B B.3.4 — `if (x) function f(){}` parser rule | 🟢 RIPE |
+| (ww) | `with-body-multi-statement-parse` (WBMS) | ~150 | parse_with_stmt fails on multi-stmt body across LT | 🟢 RIPE |
+| (xx) | `import-meta-metaproperty` (IMM) | 76 | §13.3.13 ImportMeta — parser + IR + runtime stub | 🟢 RIPE |
+| (yy) | `dynamic-import-attributes` (DIA) | 41 | stage-4 import-attributes — ImportCall second-param | 🟢 RIPE |
+| (zz) | `compound-assignment-rbrace` (CAR) | 44 | parser quirk in CompoundAssignment LHS (drill-pending) | 🟡 PROBED |
+
+### (vv) `hoistable-declaration-as-statement-body` (HDSB) — 🟢 RIPE
+**Telos**: §13.6 IfStatement / Annex B B.3.4 — accept FunctionDeclaration as the Statement body of `if`/`else` in sloppy mode (and certain Annex B function-code contexts). cruft currently rejects with `parse: HoistableDeclaration is not allowed as Statement body`.
+**Pool**: 475 records (190 annexB/language/eval-code/direct, 100 annexB/language/eval-code/indirect, 185 annexB/language/function-code/*).
+**Verified probe**: `if (true) function f(){ return 1; } f();` → CompileError (cruft); spec says accept in sloppy mode.
+**LOC estimate**: ~10-20 LOC at parser's Statement / IfStatement production + strict-mode carve-out.
+**R13 prospective C1-C4**: C1 sibling (existing FunctionDeclaration parse path), C2 shape-compat (additive grammar rule), C3 cost-positive (single rule), C4 bail-safe (parser-only).
+
+### (ww) `with-body-multi-statement-parse` (WBMS) — 🟢 RIPE
+**Telos**: §14.11 WithStatement — accept Statement body that spans multiple lines / contains multiple statements. cruft parses `with(p){x;}` but rejects `with(p){\n console.log(x); \n}` with `parse: unexpected token in expression: Punct(RBrace)`.
+**Pool**: ~150 records (130 in language/statements/with/, ~20 in Proxy/has + sm/lexical-environment).
+**LOC estimate**: ~5-15 LOC at parse_with_stmt (likely the body is parsed via a single-expression path instead of Statement → BlockStatement).
+**Carve-out**: strict mode forbids WithStatement entirely; cruft already rejects in strict — this only addresses the sloppy-mode body-parse bug.
+
+### (xx) `import-meta-metaproperty` (IMM) — 🟢 RIPE
+**Telos**: §13.3.13 ImportMeta — the `import.meta` MetaProperty distinct from ImportCall `import(...)`. cruft rejects with `expected meta after import.` (parser already enters the MetaProperty path but rejects the meta keyword).
+**Pool**: 76 records (language/expressions/dynamic-import/syntax/valid/* and sibling dirs).
+**LOC estimate**: parser rule (~5 LOC) + new IR op `ImportMeta` (~15 LOC) + runtime stub returning host-provided object (~10 LOC).
+
+### (yy) `dynamic-import-attributes` (DIA) — 🟢 RIPE
+**Telos**: stage-4 import-attributes — `import(specifier, { with: { type: 'json' } })` second-param syntax. cruft rejects with `expected ')' in dynamic import()` because it stops at the first comma.
+**Pool**: 41 records (language/expressions/dynamic-import/import-attributes/*).
+**LOC estimate**: parser extension to ImportCall production (~10 LOC); runtime can stub the attributes pending real implementation.
+
+### (zz) `compound-assignment-rbrace` (CAR) — 🟡 PROBED
+**Telos**: 44 records in language/expressions/compound-assignment/ failing with `parse: unexpected token in expression: Punct(RBrace)`. Mechanism not yet drilled — needs Rule 23 baseline-inspection before substrate commit.
+**Status**: requires founding probe to identify whether this is a parser-precedence issue, an LHS-validity issue, or a parser-state-machine bug.
+
+---
+
 ## Standing edits
 
 - When a locale is founded, **move its entry from this file to its own `pilots/<name>/seed.md`**; leave a one-line "**SPAWNED** as `pilots/<name>/` at YYYY-MM-DD" stub here for the audit trail.

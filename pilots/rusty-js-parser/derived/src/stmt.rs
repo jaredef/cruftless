@@ -181,12 +181,26 @@ impl<'src> Parser<'src> {
             return Err(self.err_here("ClassDeclaration is not allowed as Statement body".into()));
         }
         // FunctionDeclaration / GeneratorDeclaration / AsyncFunctionDeclaration /
-        // AsyncGeneratorDeclaration. Annex B B.3.2 carves out some narrow
-        // cases (if-then, if-then-else with sloppy non-strict-mode plain
-        // function); for-loop bodies are NOT in the Annex B carve-out, so
-        // reject all four flavors. Per spec strictly, this should also reject
-        // sloppy plain-function in for body — we follow spec.
+        // AsyncGeneratorDeclaration. Annex B B.3.4 permits a plain
+        // FunctionDeclaration as the Statement body of `if` / `else` in
+        // sloppy mode (web-compat). HDSB-EXT 1: when the caller signals
+        // an Annex-B-eligible context AND we are not in strict mode AND
+        // the function token is NOT `function*` (generator), accept it
+        // and let parse_statement handle the FunctionDeclaration.
+        // for/while/do-while/with/labelled bodies are NOT in the carve-out.
         if self.is_ident("function") {
+            if self.allow_annex_b_function_in_substatement && !self.strict_mode {
+                // Carve out generator: `function *` is NOT permitted by B.3.4.
+                let pos = self.lookahead_span().end;
+                let bytes = self.source().as_bytes();
+                let mut p = pos;
+                while p < bytes.len() && bytes[p].is_ascii_whitespace() {
+                    p += 1;
+                }
+                if p >= bytes.len() || bytes[p] != b'*' {
+                    return self.parse_statement();
+                }
+            }
             return Err(
                 self.err_here("HoistableDeclaration is not allowed as Statement body".into())
             );
@@ -870,6 +884,21 @@ impl<'src> Parser<'src> {
                         break;
                     }
                     depth_brace -= 1;
+                    // WBMS-EXT 1: if this `}` closes a brace opened inside
+                    // this skip (depth_brace drops to 0) AND the statement
+                    // was a brace-bodied form like `with(p){...}`, the
+                    // statement is complete here — bump the `}` and return
+                    // so the outer statement-list loop does not see it as a
+                    // stray RBrace. Without this, the ASI fallback below
+                    // breaks BEFORE bumping the `}` (because the `}` itself
+                    // is LT-preceded once `with(p){\n ... \n}` body has a
+                    // line terminator before the close), leaving the `}` as
+                    // lookahead and tripping the expression parser.
+                    if depth_brace == 0 && depth_paren == 0 && depth_bracket == 0 {
+                        let end = self.lookahead_span().end;
+                        self.bump()?;
+                        return Ok(Span::new(start, end));
+                    }
                 }
                 TokenKind::Punct(Punct::LBracket) => depth_bracket += 1,
                 TokenKind::Punct(Punct::RBracket) => depth_bracket -= 1,
@@ -904,6 +933,11 @@ impl<'src> Parser<'src> {
         self.expect_punct(Punct::LParen)?;
         let test = self.parse_expression()?;
         self.expect_punct(Punct::RParen)?;
+        // HDSB-EXT 1: Annex B B.3.4 permits FunctionDeclaration as the
+        // Statement body of `if` / `else` under sloppy mode. Enable the
+        // carve-out only across these two parses; restore around.
+        let prev_allow = self.allow_annex_b_function_in_substatement;
+        self.allow_annex_b_function_in_substatement = true;
         let consequent = self.parse_substatement()?;
         let alternate = if self.is_ident("else") {
             self.bump()?;
@@ -911,6 +945,7 @@ impl<'src> Parser<'src> {
         } else {
             None
         };
+        self.allow_annex_b_function_in_substatement = prev_allow;
         let end = self.last_span_end();
         Ok(Stmt::If {
             test,
