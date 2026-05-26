@@ -5709,6 +5709,243 @@ impl Runtime {
             .set_own_internal("constructor".into(), Value::Object(pdt_ctor));
         self.obj_mut(pdt_ctor)
             .set_own_frozen("prototype".into(), Value::Object(pdt_proto));
+        // PDTA-EXT 1 (plain-date-time-arithmetic): add / subtract / since / until.
+        // Composes PD calendar arithmetic + PT time arithmetic.
+        fn pdt_duration_units(rt: &mut Runtime, v: Value) -> Result<[i64; 10], RuntimeError> {
+            let names = ["years","months","weeks","days","hours","minutes","seconds","milliseconds","microseconds","nanoseconds"];
+            let mut units = [0i64; 10];
+            if let Value::String(s) = &v {
+                let parsed = parse_iso_duration(s).ok_or_else(|| RuntimeError::RangeError(format!(
+                    "Temporal.PlainDateTime arithmetic: invalid ISO duration: {:?}", s
+                )))?;
+                for (i, &u) in parsed.iter().enumerate() {
+                    if !u.is_finite() || u != u.trunc() {
+                        return Err(RuntimeError::RangeError(
+                            "Temporal.PlainDateTime arithmetic: fractional unit out of position".into()
+                        ));
+                    }
+                    units[i] = u as i64;
+                }
+            } else if let Value::Object(id) = v {
+                let is_dur = !matches!(rt.object_get(id, "__td_years"), Value::Undefined);
+                for (i, n) in names.iter().enumerate() {
+                    let key = if is_dur { format!("__td_{}", n) } else { (*n).to_string() };
+                    if let Value::Number(v) = rt.object_get(id, &key) {
+                        units[i] = v as i64;
+                    }
+                }
+            } else {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.PlainDateTime arithmetic: argument must be Duration, object, or string".into()
+                ));
+            }
+            Ok(units)
+        }
+        fn pdt_add_apply(rt: &mut Runtime, proto: ObjectRef, u: [i64; 9], dur: [i64; 10]) -> Result<Value, RuntimeError> {
+            // Step 1: date part (years + months + weeks + days).
+            let (mut y, m_in, d_in) = (u[0], u[1], u[2]);
+            let mut new_y = y + dur[0];
+            let total_months = (m_in - 1) + dur[1];
+            new_y += total_months.div_euclid(12);
+            let new_m = total_months.rem_euclid(12) + 1;
+            let mut new_d = d_in.min(pda_days_in_month(new_y, new_m));
+            // Apply weeks*7 + days as day offset.
+            let day_offset = dur[2] * 7 + dur[3];
+            if day_offset != 0 {
+                let base_days = pda_days_from_civil(new_y, new_m, new_d);
+                let (yy, mm, dd) = pda_civil_from_days(base_days + day_offset);
+                new_y = yy; let _ = (new_m, new_d);
+                let mut date_days_total_y = yy; let mm_v = mm; let dd_v = dd;
+                // Step 2: time part (h/m/s/ms/μs/ns).
+                let cur_time_ns: i64 = u[3] * 3_600_000_000_000
+                    + u[4] * 60_000_000_000
+                    + u[5] * 1_000_000_000
+                    + u[6] * 1_000_000
+                    + u[7] * 1_000
+                    + u[8];
+                let dur_time_ns: i64 = dur[4] * 3_600_000_000_000
+                    + dur[5] * 60_000_000_000
+                    + dur[6] * 1_000_000_000
+                    + dur[7] * 1_000_000
+                    + dur[8] * 1_000
+                    + dur[9];
+                let total_time_ns = cur_time_ns + dur_time_ns;
+                let extra_days = total_time_ns.div_euclid(86_400_000_000_000);
+                let mut time_ns = total_time_ns.rem_euclid(86_400_000_000_000);
+                let hh = time_ns / 3_600_000_000_000; time_ns %= 3_600_000_000_000;
+                let mi = time_ns / 60_000_000_000; time_ns %= 60_000_000_000;
+                let se = time_ns / 1_000_000_000; time_ns %= 1_000_000_000;
+                let ms = time_ns / 1_000_000; time_ns %= 1_000_000;
+                let us = time_ns / 1_000;
+                let ns = time_ns % 1_000;
+                if extra_days != 0 {
+                    let final_days = pda_days_from_civil(yy, mm, dd) + extra_days;
+                    let (y2, m2, d2) = pda_civil_from_days(final_days);
+                    return Ok(make_pdt(rt, proto, [y2, m2, d2, hh, mi, se, ms, us, ns]));
+                }
+                let _ = date_days_total_y;
+                return Ok(make_pdt(rt, proto, [yy, mm_v, dd_v, hh, mi, se, ms, us, ns]));
+            }
+            // No date offset; only time arithmetic.
+            let cur_time_ns: i64 = u[3] * 3_600_000_000_000
+                + u[4] * 60_000_000_000
+                + u[5] * 1_000_000_000
+                + u[6] * 1_000_000
+                + u[7] * 1_000
+                + u[8];
+            let dur_time_ns: i64 = dur[4] * 3_600_000_000_000
+                + dur[5] * 60_000_000_000
+                + dur[6] * 1_000_000_000
+                + dur[7] * 1_000_000
+                + dur[8] * 1_000
+                + dur[9];
+            let total_time_ns = cur_time_ns + dur_time_ns;
+            let extra_days = total_time_ns.div_euclid(86_400_000_000_000);
+            let mut time_ns = total_time_ns.rem_euclid(86_400_000_000_000);
+            let hh = time_ns / 3_600_000_000_000; time_ns %= 3_600_000_000_000;
+            let mi = time_ns / 60_000_000_000; time_ns %= 60_000_000_000;
+            let se = time_ns / 1_000_000_000; time_ns %= 1_000_000_000;
+            let ms = time_ns / 1_000_000; time_ns %= 1_000_000;
+            let us = time_ns / 1_000;
+            let ns = time_ns % 1_000;
+            let _ = y;
+            if extra_days != 0 {
+                let final_days = pda_days_from_civil(new_y, new_m, new_d) + extra_days;
+                let (y2, m2, d2) = pda_civil_from_days(final_days);
+                return Ok(make_pdt(rt, proto, [y2, m2, d2, hh, mi, se, ms, us, ns]));
+            }
+            Ok(make_pdt(rt, proto, [new_y, new_m, new_d, hh, mi, se, ms, us, ns]))
+        }
+        let pdt_proto_for_arith = pdt_proto;
+        let dur_proto_for_pdt_arith = dur_proto;
+        register_intrinsic_method(self, pdt_proto, "add", 1, move |rt, args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("PDT.add: this not object".into())),
+            };
+            let u = pdt_read_all(rt, id)?;
+            let dur = pdt_duration_units(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
+            pdt_add_apply(rt, pdt_proto_for_arith, u, dur)
+        });
+        register_intrinsic_method(self, pdt_proto, "subtract", 1, move |rt, args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("PDT.subtract: this not object".into())),
+            };
+            let u = pdt_read_all(rt, id)?;
+            let mut dur = pdt_duration_units(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
+            for x in dur.iter_mut() { *x = -*x; }
+            pdt_add_apply(rt, pdt_proto_for_arith, u, dur)
+        });
+        register_intrinsic_method(self, pdt_proto, "since", 1, move |rt, args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("PDT.since: this not object".into())),
+            };
+            let u = pdt_read_all(rt, id)?;
+            // Coerce other.
+            let other = args.first().cloned().unwrap_or(Value::Undefined);
+            let ou = match other {
+                Value::String(s) => parse_iso_pdt(&s).ok_or_else(|| RuntimeError::RangeError(format!(
+                    "Temporal.PlainDateTime.prototype.since(string): invalid: {:?}", s
+                )))?,
+                Value::Object(o) => {
+                    if !matches!(rt.object_get(o, "__pdt_year"), Value::Undefined) { pdt_read_all(rt, o)? }
+                    else { return Err(RuntimeError::TypeError("PDT.since: argument not PDT".into())); }
+                }
+                _ => return Err(RuntimeError::TypeError("PDT.since: argument must be PDT or string".into())),
+            };
+            // Compute diff in nanoseconds-since-epoch-day-zero.
+            let this_days = pda_days_from_civil(u[0], u[1], u[2]);
+            let this_ns = this_days * 86_400_000_000_000
+                + u[3] * 3_600_000_000_000 + u[4] * 60_000_000_000 + u[5] * 1_000_000_000
+                + u[6] * 1_000_000 + u[7] * 1_000 + u[8];
+            let other_days = pda_days_from_civil(ou[0], ou[1], ou[2]);
+            let other_ns = other_days * 86_400_000_000_000
+                + ou[3] * 3_600_000_000_000 + ou[4] * 60_000_000_000 + ou[5] * 1_000_000_000
+                + ou[6] * 1_000_000 + ou[7] * 1_000 + ou[8];
+            let diff = this_ns - other_ns;
+            // Output Duration with hours+m+s+sub-second (default largestUnit
+            // for PlainDateTime since/until is "day"; v1 returns time-only
+            // unless diff exceeds 24h then days carry).
+            let neg = diff < 0;
+            let abs = diff.abs();
+            let days = abs / 86_400_000_000_000;
+            let r1 = abs % 86_400_000_000_000;
+            let hours = r1 / 3_600_000_000_000;
+            let r2 = r1 % 3_600_000_000_000;
+            let minutes = r2 / 60_000_000_000;
+            let r3 = r2 % 60_000_000_000;
+            let seconds = r3 / 1_000_000_000;
+            let r4 = r3 % 1_000_000_000;
+            let ms = r4 / 1_000_000;
+            let r5 = r4 % 1_000_000;
+            let us = r5 / 1_000;
+            let ns = r5 % 1_000;
+            let signed = |x: i64| if neg { -(x as f64) } else { x as f64 };
+            let units = [0.0, 0.0, 0.0, signed(days), signed(hours), signed(minutes),
+                         signed(seconds), signed(ms), signed(us), signed(ns)];
+            let names = ["years","months","weeks","days","hours","minutes","seconds","milliseconds","microseconds","nanoseconds"];
+            let mut o = Object::new_ordinary();
+            o.proto = Some(dur_proto_for_pdt_arith);
+            let id_new = rt.alloc_object(o);
+            for (i, n) in names.iter().enumerate() {
+                rt.set_engine_sentinel(id_new, &format!("__td_{}", n), Value::Number(units[i]));
+            }
+            Ok(Value::Object(id_new))
+        });
+        register_intrinsic_method(self, pdt_proto, "until", 1, move |rt, args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("PDT.until: this not object".into())),
+            };
+            let u = pdt_read_all(rt, id)?;
+            let other = args.first().cloned().unwrap_or(Value::Undefined);
+            let ou = match other {
+                Value::String(s) => parse_iso_pdt(&s).ok_or_else(|| RuntimeError::RangeError(format!(
+                    "Temporal.PlainDateTime.prototype.until(string): invalid: {:?}", s
+                )))?,
+                Value::Object(o) => {
+                    if !matches!(rt.object_get(o, "__pdt_year"), Value::Undefined) { pdt_read_all(rt, o)? }
+                    else { return Err(RuntimeError::TypeError("PDT.until: argument not PDT".into())); }
+                }
+                _ => return Err(RuntimeError::TypeError("PDT.until: argument must be PDT or string".into())),
+            };
+            let this_days = pda_days_from_civil(u[0], u[1], u[2]);
+            let this_ns = this_days * 86_400_000_000_000
+                + u[3] * 3_600_000_000_000 + u[4] * 60_000_000_000 + u[5] * 1_000_000_000
+                + u[6] * 1_000_000 + u[7] * 1_000 + u[8];
+            let other_days = pda_days_from_civil(ou[0], ou[1], ou[2]);
+            let other_ns = other_days * 86_400_000_000_000
+                + ou[3] * 3_600_000_000_000 + ou[4] * 60_000_000_000 + ou[5] * 1_000_000_000
+                + ou[6] * 1_000_000 + ou[7] * 1_000 + ou[8];
+            let diff = other_ns - this_ns;
+            let neg = diff < 0;
+            let abs = diff.abs();
+            let days = abs / 86_400_000_000_000;
+            let r1 = abs % 86_400_000_000_000;
+            let hours = r1 / 3_600_000_000_000;
+            let r2 = r1 % 3_600_000_000_000;
+            let minutes = r2 / 60_000_000_000;
+            let r3 = r2 % 60_000_000_000;
+            let seconds = r3 / 1_000_000_000;
+            let r4 = r3 % 1_000_000_000;
+            let ms = r4 / 1_000_000;
+            let r5 = r4 % 1_000_000;
+            let us = r5 / 1_000;
+            let ns = r5 % 1_000;
+            let signed = |x: i64| if neg { -(x as f64) } else { x as f64 };
+            let units = [0.0, 0.0, 0.0, signed(days), signed(hours), signed(minutes),
+                         signed(seconds), signed(ms), signed(us), signed(ns)];
+            let names = ["years","months","weeks","days","hours","minutes","seconds","milliseconds","microseconds","nanoseconds"];
+            let mut o = Object::new_ordinary();
+            o.proto = Some(dur_proto_for_pdt_arith);
+            let id_new = rt.alloc_object(o);
+            for (i, n) in names.iter().enumerate() {
+                rt.set_engine_sentinel(id_new, &format!("__td_{}", n), Value::Number(units[i]));
+            }
+            Ok(Value::Object(id_new))
+        });
         // PDTW-EXT 1 (plain-date-time-with): with(dateTimeLike).
         let pdt_proto_for_with = pdt_proto;
         register_intrinsic_method(self, pdt_proto, "with", 1, move |rt, args| {

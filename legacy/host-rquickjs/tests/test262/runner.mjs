@@ -293,6 +293,11 @@ function runOne(path) {
       '/Temporal/PlainDateTime/compare/',
       // PDTW-EXT 1: PDT with
       '/Temporal/PlainDateTime/prototype/with/',
+      // PDTA-EXT 1: PDT arithmetic
+      '/Temporal/PlainDateTime/prototype/add/',
+      '/Temporal/PlainDateTime/prototype/subtract/',
+      '/Temporal/PlainDateTime/prototype/since/',
+      '/Temporal/PlainDateTime/prototype/until/',
       // PDTDP-EXT 1: PDT derived-properties (11 getters)
       '/Temporal/PlainDateTime/prototype/dayOfWeek/',
       '/Temporal/PlainDateTime/prototype/dayOfYear/',
