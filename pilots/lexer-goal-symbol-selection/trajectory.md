@@ -97,6 +97,66 @@ No external (non-parser-crate) caller constructs a `LexerGoal` literal. The pars
 
 **Status**: LGSS-EXT 2 CLOSED. Parser-tier boundary is lex-call-goal-invariant. LGSS-EXT 3 (eliminate the rewind site and fold TemplateTail into derive_lex_goal_after via Parser-side template-substitution-depth) is the final cleanup rung; reduces the apparatus to one named predicate at one named hook with zero special-case methods.
 
+---
+
+## LGSS-EXT 3 — analysis closure: two carriers are irreducible within LGSS scope (2026-05-25)
+
+**Trigger**: Keeper directive (Telegram 9790) "continue."
+
+**Posture**: No code changes. EXT 3 was sketched at LGSS-EXT 0 as "eliminate the rewind site + fold TemplateTail into derive_lex_goal_after." On close investigation, both reductions require architectural moves outside LGSS's tokenization-coordinate scope. Per standing rule 4 (no half-landed moves), this trajectory entry closes the locale with an honest analysis rather than landing a partial reduction that wouldn't yield.
+
+### Why `enter_template_tail` cannot fold into `derive_lex_goal_after`
+
+The proposed fold: track `template_subst_depth` on Parser; in `derive_lex_goal_after`, return TemplateTail when depth>0 AND lookahead is RBrace; the next `bump` automatically re-lexes the would-be-RBrace as Template{Middle/Tail}.
+
+The structural obstruction: cruft's lexer emits Template{Middle/Tail} **starting at the `}` byte itself**. The `}` is the leading delimiter of a TemplateMiddle/Tail token, not its predecessor. If the parser bumps the RBrace and then asks the lexer to fetch a Template{Middle/Tail} from the AFTER-`}` position, the lexer emits a Template token without its leading `}` — wrong shape, wrong cooked-string boundaries.
+
+The only correct sequence is: while lookahead is RBrace (in template-substitution-close context), **re-lex at the same byte position** under TemplateTail goal. The re-lex replaces the RBrace lookahead with a Template{Middle/Tail} token; the parser then bumps that. `enter_template_tail` is exactly this operation.
+
+The re-lex-at-same-position is structurally distinct from bump's normal forward fetch. It cannot be performed as a side-effect of `after_bump` because `after_bump` runs AFTER the bump has already replaced the lookahead via forward fetch. The decision-and-action ordering is: "while inspecting the current lookahead (still RBrace), conditionally re-lex at its position before any further bump."
+
+Folding `enter_template_tail` into `derive_lex_goal_after` therefore requires either (a) restructuring the lexer's TemplateMiddle/Tail emission to not include `}` as the leading byte (deep lexer change; affects raw/cooked-string byte boundaries), or (b) introducing a "pre-bump hook" that runs before bump's forward fetch and can re-lex the current lookahead (deep parser-machinery change). Both are outside LGSS scope.
+
+### Why `rewind_lexer_to` cannot be eliminated without a non-LGSS substrate move
+
+The proposed elimination: don't optimistically bump the bare-identifier at `stmt.rs:1251`; instead, peek-without-bumping, then bump only after the `in`/`of` is confirmed.
+
+The structural obstruction: cruft has one-token lookahead. The bare-ident fast-path needs to inspect the token AFTER the ident to decide between fast-path (ident IS the for-binding) and slow-path (ident is the start of a more complex expression). Without two-token lookahead, the parser must commit to bumping the ident before it can see what follows. If the follow turns out to be wrong, the rewind is the recovery.
+
+The spec-aligned alternative is the [+In] grammar parameter (§13.7.5 ForStatement). With [+In] threaded through the precedence climber, `parse_expression` inside a for-head's LHS position would refuse to consume `id in obj` as a RelationalExpression; the bare-ident-then-`in` shape would parse naturally without the fast-path. But [+In] threading is its own architectural move:
+
+- Touches every parser entry that takes precedence: `parse_assignment_expression`, `parse_conditional_expression`, the binary-op climber.
+- Adds an `in_disallowed: bool` state-field or method-parameter.
+- Affects parse-error messages at the in-disallowed boundary.
+- Has its own correctness surface (every `in` usage cross the parse).
+
+This is the right substrate move long-term; it's outside LGSS's tokenization-coordinate scope and warrants its own locale.
+
+### Spinoff locale candidate
+
+**`parser-precedence-in-flag`** — implement the spec's `[+In]` / `[-In]` parameter on AssignmentExpression / ConditionalExpression / BinaryOpClimber productions. Telos: eliminate the bare-ident-for-head fast-path + its rewind, plus close any other sites where the precedence climber's lack of [In] tracking forces ad-hoc workarounds. Pre-spawn check: enumerate every cruft-parser site that conditionalizes on whether `in` is a binary op vs a for-binding keyword; sample 5-10 cases; confirm shared mechanism per heuristics §V. CANDIDATES queue at apparatus/locales/.
+
+### What LGSS reduces the apparatus to
+
+After EXT 1 + EXT 2:
+
+| Surface | Mechanism | Count |
+|---|---|---:|
+| Named predicate for Div/RegExp | `derive_lex_goal_after` free function | 1 |
+| Parser-state field maintaining current goal | `Parser::current_lex_goal` | 1 field |
+| Per-bump hook that updates the state field | inline tail of `bump_regexp` | 1 hook |
+| Intent-named methods for special re-lex | `enter_template_tail` + `rewind_lexer_to` | 2 methods |
+| External callers constructing LexerGoal literals | (none outside parser crate) | 0 |
+| Bootstrap fetch with explicit RegExp goal | `Parser::new` (legitimate "no prior context" base case) | 1 |
+
+This is the minimum the lexer↔parser feedback edge can be reduced to within cruft's current parser architecture. The two intent-named methods (`enter_template_tail`, `rewind_lexer_to`) are the irreducible structural carriers per the analyses above. Their irreducibility is genuine (not laziness); each has a documented obstruction whose removal is its own substrate work.
+
+**Finding LGSS.5 (structural irreducibility within scope marks the locale boundary)**: a tokenization-coordinate locale's closure condition is reduction to the minimum mechanism set; when remaining carriers are blocked by orthogonal substrate constraints (here: lexer byte-boundaries for templates, single-token lookahead for the for-fast-path), the honest closure documents the obstructions, surfaces the spinoff locale candidates that would address them, and marks the locale CLOSED. Standing recommendation: pre-spawn checks (rule 11) should include "what carries the locale's scope, what borders sit on other locales' scopes"; locale boundaries are themselves coordinates worth naming.
+
+**Finding LGSS.6 (the §XI.1 back-edge has irreducible carriers; the apparatus doc should reflect this)**: the apparatus-doc amendment at §XI.1 articulated the lexer↔parser back-edge as resolved by goal-as-directive-parameter, with the resolver-instance discipline making each lex call stage-deterministic. The empirical close of LGSS shows the resolution holds at the bump-loop tier but TWO sites legitimately carry the back-edge via intent-named methods (template re-entry; for-fast-path bail). A follow-on apparatus-doc edit could refine §XI.1 to name these as the bounded irreducible carriers, distinguishing them from the unbounded ad-hoc goal-passing the amendment was originally guarding against. (Pending keeper review; not landed unilaterally per the apparatus tier-separation discipline.)
+
+**Status**: LGSS-EXT 3 CLOSED (analysis only; no code). **Locale LGSS CLOSED** after 3 rungs. The lexer↔parser feedback edge in cruft is now expressed as one named predicate + one named field + one named hook + two intent-named special-case methods, with no external callers constructing LexerGoal literals. The construction simplification predicted at LGSS-EXT 0 (keeper's conjecture) lands fully: the implicit constraint is named, the carriers are bounded, the irreducible-carrier obstructions are documented and surface as spinoff locale candidates.
+
 **Findings**
 
 **Finding LGSS.0 (the substrate already carries the discipline partially)**: cruft's parser at `pilots/rusty-js-parser/derived/src/parser.rs:847-863` (`bump_regexp`) already derives goal from prior-token completion status via `token_completes_expression`. The discipline is partially in place but inconsistently applied — three call sites that do NOT route through `bump_regexp` reveal the gap: `parser.rs:70` (initial-lookahead bootstrap, hardcodes RegExp), `stmt.rs:1251` (for-statement bail uses rewind with explicit RegExp goal), `expr.rs:1583` (template-substitution close uses refetch with explicit TemplateTail goal). Each is a different ad-hoc instance of the same decision the canonical predicate would centralize. Standing recommendation: when a discipline is partially in place at one call site, the gap at other call sites is the load-bearing finding; the substrate move is centralization, not extension.
