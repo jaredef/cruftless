@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 107,
-    "top_level": 94,
+    "locales": 108,
+    "top_level": 95,
     "nested": 13,
     "warnings": 0
   },
@@ -348,7 +348,7 @@
       "parent": null,
       "scope": "lexer-goal-symbol-selection",
       "depth": 1,
-      "rung_count": 1,
+      "rung_count": 4,
       "status": null
     },
     {
@@ -422,6 +422,15 @@
       "depth": 1,
       "rung_count": 4,
       "status": "**CLOSED at PPAE-EXT 1**."
+    },
+    {
+      "coord": "parser-precedence-in-flag",
+      "tag": "L.parser-precedence-in-flag",
+      "parent": null,
+      "scope": "parser-precedence-in-flag",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
     },
     {
       "coord": "promise-executor-functions-meta",
