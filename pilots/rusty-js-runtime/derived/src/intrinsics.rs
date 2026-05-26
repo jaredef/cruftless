@@ -2309,8 +2309,8 @@ impl Runtime {
         // so `Temporal.PlainDate` etc. is defined and `instanceof` checks
         // do not crash. Real prototype + ctor land in per-class sub-locales.
         // Stubs for classes whose per-class rung hasn't landed yet.
-        // Duration + Instant are REAL (installed below); others remain stubs.
-        for class_name in &["PlainDate", "PlainTime", "PlainDateTime",
+        // Duration + Instant + PlainTime are REAL (installed below); others remain stubs.
+        for class_name in &["PlainDate", "PlainDateTime",
                             "PlainMonthDay", "PlainYearMonth",
                             "ZonedDateTime"] {
             let stub = self.alloc_object(Object::new_ordinary());
@@ -3259,6 +3259,111 @@ impl Runtime {
         });
         self.obj_mut(temporal)
             .set_own_internal("Instant".into(), Value::Object(inst_ctor));
+        // PTCF-EXT 1 (plain-time-ctor-fields): Temporal.PlainTime class.
+        // 6 unit fields (hour, minute, second, millisecond, microsecond,
+        // nanosecond) stored as __pt_<unit> sentinels. Range-validated per
+        // §11.7.2 (hour 0-23, minute/second 0-59, ms/μs/ns 0-999).
+        const PT_UNITS: &[(&str, i64, i64)] = &[
+            ("hour", 0, 23),
+            ("minute", 0, 59),
+            ("second", 0, 59),
+            ("millisecond", 0, 999),
+            ("microsecond", 0, 999),
+            ("nanosecond", 0, 999),
+        ];
+        let pt_proto = self.alloc_object(Object::new_ordinary());
+        // 6 unit field getters via accessor PropertyDescriptors.
+        for (unit, _min, _max) in PT_UNITS {
+            let unit_name: &'static str = unit;
+            let key = format!("__pt_{}", unit);
+            let k = key.clone();
+            let getter_obj = make_native_non_ctor(
+                &format!("get {}", unit_name),
+                0,
+                move |rt, _args| {
+                    let id = match rt.current_this() {
+                        Value::Object(o) => o,
+                        _ => return Err(RuntimeError::TypeError(format!(
+                            "Temporal.PlainTime.prototype.{}: this is not an object",
+                            unit_name
+                        ))),
+                    };
+                    match rt.object_get(id, &k) {
+                        Value::Undefined => Err(RuntimeError::TypeError(format!(
+                            "Temporal.PlainTime.prototype.{}: this is not a Temporal.PlainTime",
+                            unit_name
+                        ))),
+                        v => Ok(v),
+                    }
+                },
+            );
+            let getter_id = self.alloc_object(getter_obj);
+            self.obj_mut(pt_proto).dict_mut().insert(
+                unit_name.into(),
+                PropertyDescriptor {
+                    value: Value::Undefined, writable: false,
+                    enumerable: false, configurable: true,
+                    getter: Some(Value::Object(getter_id)), setter: None,
+                },
+            );
+        }
+        register_intrinsic_method(self, pt_proto, "valueOf", 0, |_rt, _args| {
+            Err(RuntimeError::TypeError(
+                "Temporal.PlainTime valueOf cannot be used; use compare() or equals()".into()
+            ))
+        });
+        self.obj_mut(pt_proto).set_own_frozen(
+            "@@toStringTag".into(),
+            Value::String(Rc::new("Temporal.PlainTime".into())),
+        );
+        let pt_proto_for_ctor = pt_proto;
+        let pt_ctor_obj = make_native_with_length("PlainTime", 0, move |rt, args| {
+            if rt.current_new_target.is_none() {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.PlainTime constructor cannot be called as a function".into()
+                ));
+            }
+            let mut units = [0i64; 6];
+            for (i, (unit, min, max)) in PT_UNITS.iter().enumerate() {
+                let v = args.get(i).cloned().unwrap_or(Value::Undefined);
+                let n = match v {
+                    Value::Undefined => 0.0,
+                    _ => crate::abstract_ops::to_number(&v),
+                };
+                if !n.is_finite() {
+                    return Err(RuntimeError::RangeError(format!(
+                        "Temporal.PlainTime: {} must be finite", unit
+                    )));
+                }
+                if n != n.trunc() {
+                    return Err(RuntimeError::RangeError(format!(
+                        "Temporal.PlainTime: {} must be an integer", unit
+                    )));
+                }
+                let ni = n as i64;
+                if ni < *min || ni > *max {
+                    return Err(RuntimeError::RangeError(format!(
+                        "Temporal.PlainTime: {} {} out of range [{}, {}]", unit, ni, min, max
+                    )));
+                }
+                units[i] = ni;
+            }
+            let mut o = Object::new_ordinary();
+            o.proto = Some(pt_proto_for_ctor);
+            let id = rt.alloc_object(o);
+            for (i, (unit, _, _)) in PT_UNITS.iter().enumerate() {
+                let key = format!("__pt_{}", unit);
+                rt.set_engine_sentinel(id, &key, Value::Number(units[i] as f64));
+            }
+            Ok(Value::Object(id))
+        });
+        let pt_ctor = self.alloc_object(pt_ctor_obj);
+        self.obj_mut(pt_proto)
+            .set_own_internal("constructor".into(), Value::Object(pt_ctor));
+        self.obj_mut(pt_ctor)
+            .set_own_frozen("prototype".into(), Value::Object(pt_proto));
+        self.obj_mut(temporal)
+            .set_own_internal("PlainTime".into(), Value::Object(pt_ctor));
         self.globals.insert("Temporal".into(), Value::Object(temporal));
     }
 
