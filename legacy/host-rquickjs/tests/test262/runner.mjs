@@ -236,6 +236,18 @@ function runOne(path) {
       '/Temporal/PlainDate/prototype/toLocaleString/',
       // PDE-EXT 1: plain-date-equals
       '/Temporal/PlainDate/prototype/equals/',
+      // PDDP-EXT 1: plain-date-derived-properties
+      '/Temporal/PlainDate/prototype/dayOfWeek/',
+      '/Temporal/PlainDate/prototype/dayOfYear/',
+      '/Temporal/PlainDate/prototype/daysInMonth/',
+      '/Temporal/PlainDate/prototype/daysInWeek/',
+      '/Temporal/PlainDate/prototype/daysInYear/',
+      '/Temporal/PlainDate/prototype/inLeapYear/',
+      '/Temporal/PlainDate/prototype/monthsInYear/',
+      '/Temporal/PlainDate/prototype/weekOfYear/',
+      '/Temporal/PlainDate/prototype/yearOfWeek/',
+      '/Temporal/PlainDate/prototype/era/',
+      '/Temporal/PlainDate/prototype/eraYear/',
       // Foundation tests that pass without per-class implementation.
       '/Temporal/getOwnPropertyNames.js',
       '/Temporal/keys.js',

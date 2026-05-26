@@ -4826,6 +4826,148 @@ impl Runtime {
             .set_own_internal("constructor".into(), Value::Object(pd_ctor));
         self.obj_mut(pd_ctor)
             .set_own_frozen("prototype".into(), Value::Object(pd_proto));
+        // PDDP-EXT 1 (plain-date-derived-properties): dayOfWeek / dayOfYear /
+        // daysInMonth / daysInWeek / daysInYear / inLeapYear / monthsInYear /
+        // weekOfYear / yearOfWeek / era / eraYear. ISO calendar only.
+        fn pd_days_from_civil(y: i64, m: i64, d: i64) -> i64 {
+            let y_adj = if m <= 2 { y - 1 } else { y };
+            let m_adj = if m > 2 { m - 3 } else { m + 9 };
+            let era = (if y_adj >= 0 { y_adj } else { y_adj - 399 }) / 400;
+            let yoe = y_adj - era * 400;
+            let doy = (153 * m_adj + 2) / 5 + d - 1;
+            let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+            era * 146097 + doe - 719468
+        }
+        fn pd_is_leap(y: i64) -> bool {
+            (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0)
+        }
+        fn pd_days_in_month(y: i64, m: i64) -> i64 {
+            match m {
+                1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+                4 | 6 | 9 | 11 => 30,
+                2 => if pd_is_leap(y) { 29 } else { 28 },
+                _ => 0,
+            }
+        }
+        fn pd_read_ymd(rt: &mut Runtime, id: ObjectRef, name: &str) -> Result<(i64, i64, i64), RuntimeError> {
+            let y = match rt.object_get(id, "__pd_year") {
+                Value::Number(n) => n as i64,
+                _ => return Err(RuntimeError::TypeError(format!(
+                    "Temporal.PlainDate.prototype.{}: this is not a Temporal.PlainDate", name
+                ))),
+            };
+            let m = match rt.object_get(id, "__pd_month") { Value::Number(n) => n as i64, _ => 0 };
+            let d = match rt.object_get(id, "__pd_day") { Value::Number(n) => n as i64, _ => 0 };
+            Ok((y, m, d))
+        }
+        // Install simple-getter accessors via a helper closure.
+        macro_rules! pd_getter {
+            ($name:expr, $body:expr) => {{
+                let getter_obj = make_native_non_ctor(&format!("get {}", $name), 0, $body);
+                let getter_id = self.alloc_object(getter_obj);
+                self.obj_mut(pd_proto).dict_mut().insert(
+                    $name.into(),
+                    PropertyDescriptor {
+                        value: Value::Undefined, writable: false,
+                        enumerable: false, configurable: true,
+                        getter: Some(Value::Object(getter_id)), setter: None,
+                    },
+                );
+            }};
+        }
+        pd_getter!("dayOfWeek", |rt, _| {
+            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("dayOfWeek: this not object".into())) };
+            let (y, m, d) = pd_read_ymd(rt, id, "dayOfWeek")?;
+            let days = pd_days_from_civil(y, m, d);
+            // 1970-01-01 was a Thursday (4). Map (days + 3) mod 7 -> [0..7),
+            // with 0 = Mon. Then output Mon=1..Sun=7.
+            let dow0 = (days + 3).rem_euclid(7);  // 0..7 with Thu=3, Fri=4, Sat=5, Sun=6, Mon=0
+            Ok(Value::Number((dow0 + 1) as f64))
+        });
+        pd_getter!("dayOfYear", |rt, _| {
+            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("dayOfYear: this not object".into())) };
+            let (y, m, d) = pd_read_ymd(rt, id, "dayOfYear")?;
+            let mut doy = d;
+            for mm in 1..m { doy += pd_days_in_month(y, mm); }
+            Ok(Value::Number(doy as f64))
+        });
+        pd_getter!("daysInMonth", |rt, _| {
+            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("daysInMonth: this not object".into())) };
+            let (y, m, _) = pd_read_ymd(rt, id, "daysInMonth")?;
+            Ok(Value::Number(pd_days_in_month(y, m) as f64))
+        });
+        pd_getter!("daysInWeek", |rt, _| {
+            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("daysInWeek: this not object".into())) };
+            let _ = pd_read_ymd(rt, id, "daysInWeek")?;
+            Ok(Value::Number(7.0))
+        });
+        pd_getter!("daysInYear", |rt, _| {
+            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("daysInYear: this not object".into())) };
+            let (y, _, _) = pd_read_ymd(rt, id, "daysInYear")?;
+            Ok(Value::Number(if pd_is_leap(y) { 366.0 } else { 365.0 }))
+        });
+        pd_getter!("monthsInYear", |rt, _| {
+            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("monthsInYear: this not object".into())) };
+            let _ = pd_read_ymd(rt, id, "monthsInYear")?;
+            Ok(Value::Number(12.0))
+        });
+        pd_getter!("inLeapYear", |rt, _| {
+            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("inLeapYear: this not object".into())) };
+            let (y, _, _) = pd_read_ymd(rt, id, "inLeapYear")?;
+            Ok(Value::Boolean(pd_is_leap(y)))
+        });
+        pd_getter!("era", |rt, _| {
+            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("era: this not object".into())) };
+            let _ = pd_read_ymd(rt, id, "era")?;
+            // ISO calendar has no eras per spec.
+            Ok(Value::Undefined)
+        });
+        pd_getter!("eraYear", |rt, _| {
+            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("eraYear: this not object".into())) };
+            let _ = pd_read_ymd(rt, id, "eraYear")?;
+            Ok(Value::Undefined)
+        });
+        // ISO week computation: ISO 8601 §3.1.4.
+        // Week 01 is the week containing Jan 4 (or equivalently, the first
+        // week with a majority in the year). Weeks Mon-Sun.
+        fn pd_iso_week(y: i64, m: i64, d: i64) -> (i64, i64) {
+            let days = pd_days_from_civil(y, m, d);
+            // Thursday of this week: days + (4 - dow) where dow is Mon=1..Sun=7.
+            let dow0 = (days + 3).rem_euclid(7); // Mon=0
+            let thursday_days = days - dow0 as i64 + 3;
+            // Year-of-week is the year containing thursday.
+            // Find Y from thursday_days by reverse Howard Hinnant.
+            // Quick: iterate possible Y candidates ±1 from input year.
+            for cand_y in [y - 1, y, y + 1] {
+                let jan4_days = pd_days_from_civil(cand_y, 1, 4);
+                let jan4_dow0 = (jan4_days + 3).rem_euclid(7);
+                let week1_mon_days = jan4_days - jan4_dow0 as i64;
+                let week_diff = thursday_days - 3 - week1_mon_days;  // mon-of-week - mon-of-week-1
+                if week_diff >= 0 {
+                    let week = week_diff / 7 + 1;
+                    // Verify week is in range [1, 52 or 53].
+                    let next_jan4 = pd_days_from_civil(cand_y + 1, 1, 4);
+                    let next_jan4_dow0 = (next_jan4 + 3).rem_euclid(7);
+                    let next_week1_mon = next_jan4 - next_jan4_dow0 as i64;
+                    if thursday_days - 3 < next_week1_mon {
+                        return (cand_y, week);
+                    }
+                }
+            }
+            (y, 1) // fallback
+        }
+        pd_getter!("weekOfYear", |rt, _| {
+            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("weekOfYear: this not object".into())) };
+            let (y, m, d) = pd_read_ymd(rt, id, "weekOfYear")?;
+            let (_, w) = pd_iso_week(y, m, d);
+            Ok(Value::Number(w as f64))
+        });
+        pd_getter!("yearOfWeek", |rt, _| {
+            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("yearOfWeek: this not object".into())) };
+            let (y, m, d) = pd_read_ymd(rt, id, "yearOfWeek")?;
+            let (yw, _) = pd_iso_week(y, m, d);
+            Ok(Value::Number(yw as f64))
+        });
         // PDSC-EXT 1 (plain-date-string-conversion): toString/toJSON/toLocaleString.
         // Format: "YYYY-MM-DD" per §11.5.4 (no calendar annotation for
         // iso8601 calendar with calendarName default).
