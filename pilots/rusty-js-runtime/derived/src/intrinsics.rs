@@ -2315,8 +2315,8 @@ impl Runtime {
         // so `Temporal.PlainDate` etc. is defined and `instanceof` checks
         // do not crash. Real prototype + ctor land in per-class sub-locales.
         // Stubs for classes whose per-class rung hasn't landed yet.
-        // Duration + Instant + PlainTime are REAL (installed below); others remain stubs.
-        for class_name in &["PlainDate", "PlainDateTime",
+        // Duration + Instant + PlainTime + PlainDate are REAL; others remain stubs.
+        for class_name in &["PlainDateTime",
                             "PlainMonthDay", "PlainYearMonth",
                             "ZonedDateTime"] {
             let stub = self.alloc_object(Object::new_ordinary());
@@ -4642,6 +4642,192 @@ impl Runtime {
         });
         self.obj_mut(temporal)
             .set_own_internal("PlainTime".into(), Value::Object(pt_ctor));
+        // PDCF-EXT 1 (plain-date-ctor-fields): Temporal.PlainDate.
+        // Stores year/month/day + calendarId (default "iso8601") as
+        // __pd_<field> sentinels. v1 supports only iso8601 calendar.
+        let pd_proto = self.alloc_object(Object::new_ordinary());
+        // year / month / day accessor getters.
+        for field in &["year", "month", "day"] {
+            let unit_name: &'static str = field;
+            let key = format!("__pd_{}", field);
+            let k = key.clone();
+            let getter_obj = make_native_non_ctor(
+                &format!("get {}", unit_name),
+                0,
+                move |rt, _args| {
+                    let id = match rt.current_this() {
+                        Value::Object(o) => o,
+                        _ => return Err(RuntimeError::TypeError(format!(
+                            "Temporal.PlainDate.prototype.{}: this is not an object",
+                            unit_name
+                        ))),
+                    };
+                    match rt.object_get(id, &k) {
+                        Value::Undefined => Err(RuntimeError::TypeError(format!(
+                            "Temporal.PlainDate.prototype.{}: this is not a Temporal.PlainDate",
+                            unit_name
+                        ))),
+                        v => Ok(v),
+                    }
+                },
+            );
+            let getter_id = self.alloc_object(getter_obj);
+            self.obj_mut(pd_proto).dict_mut().insert(
+                unit_name.into(),
+                PropertyDescriptor {
+                    value: Value::Undefined, writable: false,
+                    enumerable: false, configurable: true,
+                    getter: Some(Value::Object(getter_id)), setter: None,
+                },
+            );
+        }
+        // calendarId accessor (reads __pd_calendar sentinel; default "iso8601").
+        {
+            let getter_obj = make_native_non_ctor("get calendarId", 0, |rt, _args| {
+                let id = match rt.current_this() {
+                    Value::Object(o) => o,
+                    _ => return Err(RuntimeError::TypeError(
+                        "Temporal.PlainDate.prototype.calendarId: this is not an object".into()
+                    )),
+                };
+                match rt.object_get(id, "__pd_calendar") {
+                    Value::Undefined => Err(RuntimeError::TypeError(
+                        "Temporal.PlainDate.prototype.calendarId: this is not a Temporal.PlainDate".into()
+                    )),
+                    v => Ok(v),
+                }
+            });
+            let getter_id = self.alloc_object(getter_obj);
+            self.obj_mut(pd_proto).dict_mut().insert(
+                "calendarId".into(),
+                PropertyDescriptor {
+                    value: Value::Undefined, writable: false,
+                    enumerable: false, configurable: true,
+                    getter: Some(Value::Object(getter_id)), setter: None,
+                },
+            );
+        }
+        // monthCode: ISO calendar formats as "M" + 2-digit month (e.g., "M12").
+        {
+            let getter_obj = make_native_non_ctor("get monthCode", 0, |rt, _args| {
+                let id = match rt.current_this() {
+                    Value::Object(o) => o,
+                    _ => return Err(RuntimeError::TypeError(
+                        "Temporal.PlainDate.prototype.monthCode: this is not an object".into()
+                    )),
+                };
+                let m = match rt.object_get(id, "__pd_month") {
+                    Value::Number(n) => n as i64,
+                    _ => return Err(RuntimeError::TypeError(
+                        "Temporal.PlainDate.prototype.monthCode: this is not a Temporal.PlainDate".into()
+                    )),
+                };
+                Ok(Value::String(Rc::new(format!("M{:02}", m))))
+            });
+            let getter_id = self.alloc_object(getter_obj);
+            self.obj_mut(pd_proto).dict_mut().insert(
+                "monthCode".into(),
+                PropertyDescriptor {
+                    value: Value::Undefined, writable: false,
+                    enumerable: false, configurable: true,
+                    getter: Some(Value::Object(getter_id)), setter: None,
+                },
+            );
+        }
+        // valueOf throws TypeError.
+        register_intrinsic_method(self, pd_proto, "valueOf", 0, |_rt, _args| {
+            Err(RuntimeError::TypeError(
+                "Temporal.PlainDate valueOf cannot be used; use compare() or equals()".into()
+            ))
+        });
+        self.obj_mut(pd_proto).dict_mut().insert(
+            "@@toStringTag".into(),
+            PropertyDescriptor {
+                value: Value::String(Rc::new("Temporal.PlainDate".into())),
+                writable: false, enumerable: false, configurable: true,
+                getter: None, setter: None,
+            },
+        );
+        let pd_proto_for_ctor = pd_proto;
+        let pd_ctor_obj = make_native_with_length("PlainDate", 3, move |rt, args| {
+            if rt.current_new_target.is_none() {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.PlainDate constructor cannot be called as a function".into()
+                ));
+            }
+            // year, month, day are required (length=3); calendar optional default "iso8601".
+            let year = crate::abstract_ops::to_number(&args.get(0).cloned().unwrap_or(Value::Undefined));
+            let month = crate::abstract_ops::to_number(&args.get(1).cloned().unwrap_or(Value::Undefined));
+            let day = crate::abstract_ops::to_number(&args.get(2).cloned().unwrap_or(Value::Undefined));
+            let calendar = match args.get(3).cloned().unwrap_or(Value::Undefined) {
+                Value::Undefined => "iso8601".to_string(),
+                Value::String(s) => s.to_lowercase(),
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainDate: calendar must be a string or undefined".into()
+                )),
+            };
+            if calendar != "iso8601" {
+                return Err(RuntimeError::RangeError(format!(
+                    "Temporal.PlainDate: only 'iso8601' calendar supported in v1; got {:?}", calendar
+                )));
+            }
+            // Validate y/m/d: must be finite integers.
+            for (n, name) in [(year, "year"), (month, "month"), (day, "day")] {
+                if !n.is_finite() {
+                    return Err(RuntimeError::RangeError(format!(
+                        "Temporal.PlainDate: {} must be finite", name
+                    )));
+                }
+                if n != n.trunc() {
+                    return Err(RuntimeError::RangeError(format!(
+                        "Temporal.PlainDate: {} must be an integer", name
+                    )));
+                }
+            }
+            let y = year as i64;
+            let m = month as i64;
+            let d = day as i64;
+            // Range checks per ISO calendar.
+            if !(1..=12).contains(&m) {
+                return Err(RuntimeError::RangeError(format!(
+                    "Temporal.PlainDate: month {} out of range [1, 12]", m
+                )));
+            }
+            // Day range depends on month + leap year.
+            let leap = (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0);
+            let max_day = match m {
+                1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+                4 | 6 | 9 | 11 => 30,
+                2 => if leap { 29 } else { 28 },
+                _ => unreachable!(),
+            };
+            if !(1..=max_day).contains(&d) {
+                return Err(RuntimeError::RangeError(format!(
+                    "Temporal.PlainDate: day {} out of range [1, {}] for {}-{:02}", d, max_day, y, m
+                )));
+            }
+            // Year range per spec: ±271820 approximately. Use a wide bound.
+            if y.abs() > 999_999 {
+                return Err(RuntimeError::RangeError(format!(
+                    "Temporal.PlainDate: year {} out of range", y
+                )));
+            }
+            let mut o = Object::new_ordinary();
+            o.proto = Some(pd_proto_for_ctor);
+            let id = rt.alloc_object(o);
+            rt.set_engine_sentinel(id, "__pd_year", Value::Number(y as f64));
+            rt.set_engine_sentinel(id, "__pd_month", Value::Number(m as f64));
+            rt.set_engine_sentinel(id, "__pd_day", Value::Number(d as f64));
+            rt.set_engine_sentinel(id, "__pd_calendar", Value::String(Rc::new(calendar)));
+            Ok(Value::Object(id))
+        });
+        let pd_ctor = self.alloc_object(pd_ctor_obj);
+        self.obj_mut(pd_proto)
+            .set_own_internal("constructor".into(), Value::Object(pd_ctor));
+        self.obj_mut(pd_ctor)
+            .set_own_frozen("prototype".into(), Value::Object(pd_proto));
+        self.obj_mut(temporal)
+            .set_own_internal("PlainDate".into(), Value::Object(pd_ctor));
         self.globals.insert("Temporal".into(), Value::Object(temporal));
     }
 
