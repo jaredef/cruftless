@@ -201,6 +201,123 @@ the rule-13 prospective-application discipline.
 
 ---
 
-*Authored under BBND-EXT 2 close. Read this file before founding the
-next test262-directory-shaped locale; the conditions named here predict
-its yield.*
+## VI. The Fielding correspondence — constraint accumulation as induced property
+
+Per keeper directive 2026-05-25 (Telegram 9776): the five-condition
+multiplier reads directly against Roy Fielding's constraint-accumulation
+thesis (REST dissertation, ch. 5). Fielding derives REST not by naming
+what REST *is* but by stacking architectural constraints in sequence —
+client-server, statelessness, cacheability, uniform interface, layered
+system, code-on-demand — and observing that each added constraint
+*induces* an architectural property (visibility, scalability,
+reliability, simplicity, extensibility) that the previous configuration
+did not have.
+
+The construction is isomorphic to what the five conditions name here:
+
+| Fielding | BBND |
+|---|---|
+| Architectural style derived by composing constraints | Locale yield derived by composing the five conditions |
+| Each constraint, alone, narrows the design space | Each condition, alone, narrows what counts as a "well-shaped cluster locale" |
+| Each constraint *induces* a property absent from prior configurations | Each condition *induces* a yield property absent from a non-coordinate-shaped locale |
+| The induced property set GROWS with each added constraint | The yield grows multiplicatively as conditions stack |
+| REST = the named composition of six constraints | A high-yield cluster locale = the named composition of the five conditions |
+| Removing one constraint reduces the induced property class | Removing one condition contracts the multiplier proportionally |
+
+Fielding's central move is that **architectural properties are not
+intrinsic to components**; they are *induced* by the constraint stack
+the components inhabit. Cruftless's central move (per the apparatus
+articulation doc) is that **conformance yield is not intrinsic to
+substrate edits**; it is *induced* by the coordinate the edit addresses,
+which is itself constituted by the constraint stack the locale inhabits.
+
+The two are the same structural claim at different abstraction levels:
+
+- **Fielding**: architectural property as constraint-induced.
+- **BBND finding**: cluster yield as constraint-induced.
+- **Standing-rule-13 prospective application**: closure-roundtrip-count
+  as constraint-induced (C1-C4 constitute the conditions; their
+  conjunction induces ≤3-round closure).
+- **Doc 736 capability-passing runtime**: supply-chain-attack-
+  impossibility as constraint-induced (no ambient authority + sealed
+  handles + no env access ⇒ architecturally impossible attack).
+- **Doc 729 resolver-instance pattern**: directive-free downstream
+  artifact as constraint-induced (per-tier directive consumption +
+  no-residue-carry ⇒ stage-determinism).
+- **Standing ruleset itself**: predictive-coverage map as constraint-
+  induced (15 rules compose to PREVENT 11 named bug classes per the
+  ruleset's §Predictive coverage map; removing any rule contracts the
+  prevented bug-class set).
+
+The cruftless apparatus is **a Fielding-style constraint-accumulation
+pattern instantiated at the substrate-engineering tier** rather than at
+the network-architecture tier. The corpus has been articulating this
+implicitly across multiple docs (729, 730, 736, 737, 740, 741, 742); the
+explicit Fielding correspondence makes the inductive structure visible.
+
+### The thesis sharpened
+
+State the correspondence as a single proposition:
+
+> **The accumulation-of-constraints thesis** (working title; corpus
+> candidate). For any well-shaped engagement substrate, the
+> material-yield property of a substrate move is induced by the
+> composition of named constraints the move inhabits, not by the move
+> itself. Adding a constraint to the move's inhabited stack induces a
+> new yield property; removing one contracts the yield-property set.
+> Multi-condition substrate work is multiplicatively-yielding because
+> the induced-property set is the product of per-condition contributions,
+> not the sum.
+
+This generalizes:
+- Fielding's REST derivation (constraints → architectural properties).
+- Cruftless's standing-rule-13 prospective application (C1-C4 →
+  ≤3-round closure).
+- BBND's five-condition multiplier (5 conditions → 95-test single-
+  locale yield).
+- Doc 736 capability-passing (constraint stack → impossibility-class
+  property).
+
+The corollary for engagement-discipline:
+
+> **Constraint visibility is yield discipline.** A locale's seed.md
+> should name the constraints its inhabited stack imposes; absent that
+> naming, the induced-property set cannot be predicted before the work
+> lands, and locale-spawn decisions degrade to count-driven heuristics
+> (heuristics §III explicitly warns against this — "compare rows only
+> inside a partition" is a statement about constraint partitions, not
+> count partitions).
+
+### Implication for next-locale-spawn discipline
+
+When considering spawning a locale, enumerate the constraints the locale
+will inhabit BEFORE committing the apparatus tax (seed + trajectory +
+manifest + agent-feedback). If three or more named constraints from a
+shared catalog hold, the locale will yield multiplicatively. If fewer,
+land as a nested rung. The catalog for cluster-shaped locales is the
+five conditions above; for performance-shaped locales the catalog is
+rule 11's five coverage axes; for capability-shaped locales it is Doc
+736's authority-composition predicates.
+
+The naming itself is the discipline. A locale that names its constraint
+stack at seed time exposes its induced-property set to falsification at
+trajectory time — which is what the cybernetic loop requires.
+
+### Corpus candidate
+
+Promote to corpus doc 743 (working title: "The accumulation-of-
+constraints thesis: induced-property composition as the substrate-
+engineering analog of Fielding's REST derivation"). Locate alongside
+Doc 730 (vertical recurrence) and Doc 736 (capability-passing) — both
+of which the new doc generalizes. Cross-reference Fielding's REST
+dissertation chapter 5 as the original-domain articulation.
+
+Pending keeper review.
+
+---
+
+*Authored under BBND-EXT 2 close, extended under keeper directive 9776
+linking the multiplier to Fielding constraint-accumulation. Read this
+file before founding the next test262-directory-shaped locale; the
+conditions named here predict its yield, and the §VI articulation
+predicts the conditions' general form.*
