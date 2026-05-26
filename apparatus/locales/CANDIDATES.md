@@ -291,27 +291,57 @@ Substrate move IS WBMS-EXT 2 (real with-runtime-semantics: Stmt::With AST + byte
 
 ---
 
-## Tier L — Temporal implementation (2026-05-26, multi-session program)
+## Tier L — Temporal implementation (2026-05-26, multi-session program; restructured TI-EXT 1)
 
-Spawned per keeper directive (Telegram 9873) immediately after RFSDO-EXT 2 SKIPped 6,694 Temporal records. Parent locale articulates the program; sub-locales are the unit of substrate work. Multi-session, multi-rung.
+Spawned per keeper directive (Telegram 9873) immediately after RFSDO-EXT 2 SKIPped 6,694 Temporal records. Restructured per keeper directive (Telegram 9879): per-class work has its own multi-rung shape, so each class is a PARENT locale with nested sub-rungs.
 
-| Ref | Locale | Tests | Status |
+True surface (built-ins + intl402 + staging): ~6,700 tests across 9 classes. Per-class substrate cost ~900-1100 LOC across 5-7 sub-rungs each. Total program ~8-10k LOC, dozens of sessions.
+
+### Spawned
+
+| Ref | Locale | Status |
+|---|---|---|
+| (TI) | `temporal-implementation/` (parent) | FOUNDED + restructured |
+| (TF) | `temporal-implementation/temporal-foundation/` | LANDED — namespace + class stubs |
+| (TN) | `temporal-implementation/temporal-now/` (parent) | FOUNDED — execution blocked on temporal-tz-string-parse |
+
+### Planned per-class parent locales (each with 4-7 nested sub-rungs of its own)
+
+| Ref | Parent locale | Surface | First rung to spawn |
 |---|---|---:|---|
-| (TI) | `temporal-implementation/` (parent) | 2,028 | FOUNDED |
-| (TN) | `temporal-implementation/temporal-now/` | 3 | FOUNDED |
-| (TF) | `temporal-foundation/` (planned) | — | NOT SPAWNED |
-| (TInst) | `temporal-instant/` (planned) | 17 | NOT SPAWNED |
-| (TPT) | `temporal-plain-time/` (planned) | 12 | NOT SPAWNED |
-| (TDur) | `temporal-duration/` (planned) | 21 | NOT SPAWNED |
-| (TPD) | `temporal-plain-date/` (planned) | 493 | NOT SPAWNED |
-| (TPDT) | `temporal-plain-date-time/` (planned) | 483 | NOT SPAWNED |
-| (TPMD) | `temporal-plain-month-day/` (planned) | 90 | NOT SPAWNED |
-| (TPYM) | `temporal-plain-year-month/` (planned) | 327 | NOT SPAWNED |
-| (TZDT) | `temporal-zoned-date-time/` (planned) | 582 | NOT SPAWNED |
+| (TDur) | `temporal-duration/` | ~559 | `duration-ctor-fields/` |
+| (TInst) | `temporal-instant/` | ~482 | `instant-ctor-fields/` |
+| (TPT) | `temporal-plain-time/` | ~505 | `plain-time-ctor-fields/` |
+| (TPD) | `temporal-plain-date/` | ~1143 | `plain-date-ctor-fields/` (after ISO calendar) |
+| (TPDT) | `temporal-plain-date-time/` | ~1254 | (after PlainDate + PlainTime) |
+| (TPMD) | `temporal-plain-month-day/` | ~289 | (after ISO calendar) |
+| (TPYM) | `temporal-plain-year-month/` | ~834 | (after ISO calendar) |
+| (TZDT) | `temporal-zoned-date-time/` | ~1481 | LAST — needs IANA TZ database |
 
-Rung order per parent seed: foundation → now → instant → plain-time → duration → plain-date → plain-date-time → plain-month-day/year-month → zoned-date-time.
+### Planned shared sub-substrate locales
 
-RFSDO-EXT 2's `Temporal` flag stays in the deny-list until critical mass of class-coverage exists (per parent seed's RFSDO sync section). The deny-list entry is the bridge — without it the matrix would show 6,694 records as failing while the program is mid-flight.
+| Ref | Locale | Needed by |
+|---|---|---|
+| (TISP) | `temporal-iso-string-parse/` | every per-class string conversion + from() |
+| (TTZP) | `temporal-tz-string-parse/` | Now, ZonedDateTime |
+| (TBN) | `temporal-bigint-nanoseconds/` | Instant, ZonedDateTime |
+| (TIC) | `temporal-iso-calendar/` | PlainDate, PlainDateTime, PlainMonthDay, PlainYearMonth, ZonedDateTime |
+
+### Execution order (restructured TI-EXT 1)
+
+1. temporal-foundation ✓ LANDED
+2. duration-ctor-fields (lowest entanglement: no calendar, no TZ)
+3. instant-ctor-fields (BigInt nanoseconds — sibling shape)
+4. plain-time-ctor-fields (wall-clock, no calendar)
+5. arithmetic / string-conversion sub-rungs for Duration / Instant / PlainTime
+6. temporal-iso-calendar (shared substrate)
+7. PlainDate / PlainDateTime / PlainMonthDay / PlainYearMonth ctor + arithmetic rungs
+8. temporal-tz-string-parse + temporal-now
+9. ZonedDateTime LAST
+
+### RFSDO sync protocol (TI.4)
+
+Single `Temporal` flag is too coarse. When first per-class ctor rung lands, RFSDO needs `PARTIALLY_IMPLEMENTED` map (feature → path-prefix-allowlist). Tests matching an allowlist entry opt OUT of the SKIP. This change lands with `duration-ctor-fields`.
 
 ---
 

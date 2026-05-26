@@ -6,9 +6,11 @@ type: project
 
 # temporal-now — Seed
 
-## Nested sub-locale under `pilots/temporal-implementation/`.
+## Nested PARENT locale under `pilots/temporal-implementation/`.
 
-First rung in the Temporal program. 3-test surface; smallest viable subset.
+**Scope correction (TI-EXT 1)**: founded as a single-rung sub-locale ("3-test surface, smallest viable"). Rule 23 verification at founding refuted that — all 3 tests require IANA-TZ-string parsing, which is itself a multi-LOC substrate (temporal-tz-string-parse). True surface is 66 tests in built-ins/Temporal/Now + 3 in intl402/Temporal/Now. This locale is now a parent that depends on temporal-tz-string-parse + class implementations for Instant/PlainDateTime/ZonedDateTime; per-rung work nests under here when prerequisites land.
+
+Per execution order: temporal-now is deferred until temporal-tz-string-parse + the relevant per-class ctor rungs land first.
 
 ## Telos
 
