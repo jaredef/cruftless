@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/Users/jaredfoy/Developer/cruftless/pilots",
   "totals": {
-    "locales": 123,
-    "top_level": 101,
+    "locales": 124,
+    "top_level": 102,
     "nested": 22,
     "warnings": 0
   },
@@ -221,6 +221,15 @@
       "tag": "L.ast-bytecode-wrong-result",
       "parent": null,
       "scope": "ast-bytecode-wrong-result",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
+    },
+    {
+      "coord": "class-elements-static-semantics",
+      "tag": "L.class-elements-static-semantics",
+      "parent": null,
+      "scope": "class-elements-static-semantics",
       "depth": 1,
       "rung_count": 1,
       "status": null
@@ -573,7 +582,7 @@
       "parent": null,
       "scope": "private-name-lexing",
       "depth": 1,
-      "rung_count": 1,
+      "rung_count": 2,
       "status": null
     },
     {

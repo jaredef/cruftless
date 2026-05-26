@@ -788,7 +788,228 @@ impl<'src> Parser<'src> {
             });
         }
         self.expect_punct(Punct::RBrace)?;
+        self.validate_class_static_semantics(&out)?;
         Ok(out)
+    }
+
+    fn validate_class_static_semantics(
+        &self,
+        members: &[rusty_js_ast::ClassMember],
+    ) -> Result<(), ParseError> {
+        use rusty_js_ast::{ClassMember, ClassMemberName};
+        let mut private_names = std::collections::HashSet::new();
+        for m in members {
+            match m {
+                ClassMember::Method { name, .. } | ClassMember::Field { name, .. } => {
+                    if let ClassMemberName::Private { name, .. } = name {
+                        private_names.insert(name.as_str());
+                    }
+                }
+                ClassMember::StaticBlock { .. } => {}
+            }
+        }
+        for m in members {
+            match m {
+                ClassMember::Field { name, init, span, .. } => {
+                    if let Some(init) = init {
+                        if self.expr_contains_arguments(init) {
+                            return Err(ParseError {
+                                message: "class field initializer cannot contain arguments".into(),
+                                span: *span,
+                            });
+                        }
+                    }
+                    if let ClassMemberName::Computed { expr, span } = name {
+                        if let Some(missing) = self.first_unbound_private_name(expr, &private_names)
+                        {
+                            return Err(ParseError {
+                                message: format!("PrivateName #{} is not declared", missing),
+                                span: *span,
+                            });
+                        }
+                    }
+                }
+                ClassMember::Method { name, .. } => {
+                    if let ClassMemberName::Computed { expr, span } = name {
+                        if let Some(missing) = self.first_unbound_private_name(expr, &private_names)
+                        {
+                            return Err(ParseError {
+                                message: format!("PrivateName #{} is not declared", missing),
+                                span: *span,
+                            });
+                        }
+                    }
+                }
+                ClassMember::StaticBlock { .. } => {}
+            }
+        }
+        Ok(())
+    }
+
+    fn expr_contains_arguments(&self, expr: &rusty_js_ast::Expr) -> bool {
+        use rusty_js_ast::{Argument, ArrowBody, Expr, MemberProperty, ObjectKey, ObjectProperty};
+        match expr {
+            Expr::Identifier { name, .. } => name == "arguments",
+            Expr::Array { elements, .. } => elements.iter().any(|e| match e {
+                rusty_js_ast::ArrayElement::Expr(e)
+                | rusty_js_ast::ArrayElement::Spread { expr: e, .. } => {
+                    self.expr_contains_arguments(e)
+                }
+                rusty_js_ast::ArrayElement::Elision { .. } => false,
+            }),
+            Expr::Object { properties, .. } => properties.iter().any(|p| match p {
+                ObjectProperty::Property { key, value, .. } => {
+                    matches!(key, ObjectKey::Computed { expr, .. } if self.expr_contains_arguments(expr))
+                        || self.expr_contains_arguments(value)
+                }
+                ObjectProperty::Spread { expr, .. } => self.expr_contains_arguments(expr),
+            }),
+            Expr::Parenthesized { expr, .. }
+            | Expr::Update { argument: expr, .. }
+            | Expr::Unary { argument: expr, .. } => self.expr_contains_arguments(expr),
+            Expr::Member {
+                object, property, ..
+            } => {
+                self.expr_contains_arguments(object)
+                    || matches!(
+                        property.as_ref(),
+                        MemberProperty::Computed { expr, .. } if self.expr_contains_arguments(expr)
+                    )
+            }
+            Expr::Call {
+                callee, arguments, ..
+            }
+            | Expr::New {
+                callee, arguments, ..
+            } => {
+                self.expr_contains_arguments(callee)
+                    || arguments.iter().any(|a| match a {
+                        Argument::Expr(e) | Argument::Spread { expr: e, .. } => {
+                            self.expr_contains_arguments(e)
+                        }
+                    })
+            }
+            Expr::Binary { left, right, .. } | Expr::Assign { target: left, value: right, .. } => {
+                self.expr_contains_arguments(left) || self.expr_contains_arguments(right)
+            }
+            Expr::Conditional {
+                test,
+                consequent,
+                alternate,
+                ..
+            } => {
+                self.expr_contains_arguments(test)
+                    || self.expr_contains_arguments(consequent)
+                    || self.expr_contains_arguments(alternate)
+            }
+            Expr::Sequence { expressions, .. } => {
+                expressions.iter().any(|e| self.expr_contains_arguments(e))
+            }
+            Expr::Arrow { body, .. } => match body {
+                ArrowBody::Expression(e) => self.expr_contains_arguments(e),
+                ArrowBody::Block(stmts) => self.stmts_contain_arguments(stmts),
+            },
+            Expr::TemplateLiteral { expressions, .. } => {
+                expressions.iter().any(|e| self.expr_contains_arguments(e))
+            }
+            Expr::Function { .. }
+            | Expr::Class { .. }
+            | Expr::NullLiteral { .. }
+            | Expr::BoolLiteral { .. }
+            | Expr::NumberLiteral { .. }
+            | Expr::BigIntLiteral { .. }
+            | Expr::StringLiteral { .. }
+            | Expr::This { .. }
+            | Expr::Super { .. }
+            | Expr::MetaProperty { .. }
+            | Expr::RegExp { .. }
+            | Expr::Opaque { .. } => false,
+        }
+    }
+
+    fn stmts_contain_arguments(&self, stmts: &[rusty_js_ast::Stmt]) -> bool {
+        use rusty_js_ast::Stmt;
+        stmts.iter().any(|s| match s {
+            Stmt::Expression { expr, .. } => self.expr_contains_arguments(expr),
+            Stmt::Block { body, .. } => self.stmts_contain_arguments(body),
+            Stmt::If {
+                test,
+                consequent,
+                alternate,
+                ..
+            } => {
+                self.expr_contains_arguments(test)
+                    || self.stmt_contains_arguments(consequent)
+                    || alternate
+                        .as_deref()
+                        .is_some_and(|s| self.stmt_contains_arguments(s))
+            }
+            Stmt::Return { argument, .. } => argument
+                .as_ref()
+                .is_some_and(|e| self.expr_contains_arguments(e)),
+            Stmt::Throw { argument, .. } => self.expr_contains_arguments(argument),
+            _ => false,
+        })
+    }
+
+    fn stmt_contains_arguments(&self, stmt: &rusty_js_ast::Stmt) -> bool {
+        self.stmts_contain_arguments(std::slice::from_ref(stmt))
+    }
+
+    fn first_unbound_private_name<'a>(
+        &self,
+        expr: &'a rusty_js_ast::Expr,
+        private_names: &std::collections::HashSet<&str>,
+    ) -> Option<&'a str> {
+        use rusty_js_ast::{Argument, Expr, MemberProperty};
+        match expr {
+            Expr::Member {
+                object, property, ..
+            } => self.first_unbound_private_name(object, private_names).or_else(|| {
+                if let MemberProperty::Private { name, .. } = property.as_ref() {
+                    if !private_names.contains(name.as_str()) {
+                        return Some(name.as_str());
+                    }
+                }
+                None
+            }),
+            Expr::Call {
+                callee, arguments, ..
+            }
+            | Expr::New {
+                callee, arguments, ..
+            } => self.first_unbound_private_name(callee, private_names).or_else(|| {
+                arguments.iter().find_map(|a| match a {
+                    Argument::Expr(e) | Argument::Spread { expr: e, .. } => {
+                        self.first_unbound_private_name(e, private_names)
+                    }
+                })
+            }),
+            Expr::Parenthesized { expr, .. }
+            | Expr::Update { argument: expr, .. }
+            | Expr::Unary { argument: expr, .. } => {
+                self.first_unbound_private_name(expr, private_names)
+            }
+            Expr::Binary { left, right, .. } | Expr::Assign { target: left, value: right, .. } => {
+                self.first_unbound_private_name(left, private_names)
+                    .or_else(|| self.first_unbound_private_name(right, private_names))
+            }
+            Expr::Conditional {
+                test,
+                consequent,
+                alternate,
+                ..
+            } => self
+                .first_unbound_private_name(test, private_names)
+                .or_else(|| self.first_unbound_private_name(consequent, private_names))
+                .or_else(|| self.first_unbound_private_name(alternate, private_names)),
+            Expr::Sequence { expressions, .. } | Expr::TemplateLiteral { expressions, .. } => {
+                expressions
+                    .iter()
+                    .find_map(|e| self.first_unbound_private_name(e, private_names))
+            }
+            _ => None,
+        }
     }
 
     fn consume_class_field_terminator(&mut self) -> Result<(), ParseError> {
