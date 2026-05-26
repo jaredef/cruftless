@@ -2637,6 +2637,125 @@ impl Runtime {
         // and `Temporal.Duration.prototype` is the dur_proto object.
         self.obj_mut(dur_ctor)
             .set_own_frozen("prototype".into(), Value::Object(dur_proto));
+        // DA-EXT 1 (duration-arithmetic): add / subtract with sub-day balancing.
+        // No relativeTo support yet; year/month/week stay un-balanced; days
+        // and sub-day units balance via total-ns carry.
+        // Spec: Duration.prototype.add(other) returns a new Duration.
+        fn read_duration_units(rt: &mut Runtime, v: Value) -> Result<[f64; 10], RuntimeError> {
+            let names = ["years", "months", "weeks", "days", "hours",
+                         "minutes", "seconds", "milliseconds",
+                         "microseconds", "nanoseconds"];
+            let mut units = [0.0f64; 10];
+            if let Value::String(s) = &v {
+                let parsed = parse_iso_duration(s).ok_or_else(|| RuntimeError::RangeError(format!(
+                    "Temporal.Duration arithmetic: invalid ISO 8601 duration: {:?}", s
+                )))?;
+                for (i, &u) in parsed.iter().enumerate() {
+                    if !u.is_finite() || u != u.trunc() {
+                        return Err(RuntimeError::RangeError(
+                            "Temporal.Duration arithmetic: fractional unit out of position".into()
+                        ));
+                    }
+                    units[i] = u;
+                }
+            } else if let Value::Object(id) = v {
+                let is_dur = !matches!(rt.object_get(id, "__td_years"), Value::Undefined);
+                for (i, n) in names.iter().enumerate() {
+                    let key = if is_dur { format!("__td_{}", n) } else { (*n).to_string() };
+                    if let Value::Number(v) = rt.object_get(id, &key) {
+                        units[i] = v;
+                    }
+                }
+            } else {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.Duration arithmetic: argument must be Duration, object, or string".into()
+                ));
+            }
+            Ok(units)
+        }
+        fn duration_add_impl(rt: &mut Runtime, dur_proto: ObjectRef, a: [f64; 10], b: [f64; 10]) -> Result<Value, RuntimeError> {
+            let mut sum = [0.0f64; 10];
+            for i in 0..10 { sum[i] = a[i] + b[i]; }
+            // Sub-day balancing per §11.4.4: compose total ns from days
+            // through nanoseconds; if result has uniform sign and is
+            // representable, redistribute into days/hours/min/sec/ms/μs/ns.
+            // Year/month/week stay as-is (no calendar context).
+            let total_subday_ns: i64 = (sum[3] as i64).saturating_mul(86_400_000_000_000)
+                + (sum[4] as i64).saturating_mul(3_600_000_000_000)
+                + (sum[5] as i64).saturating_mul(60_000_000_000)
+                + (sum[6] as i64).saturating_mul(1_000_000_000)
+                + (sum[7] as i64).saturating_mul(1_000_000)
+                + (sum[8] as i64).saturating_mul(1_000)
+                + (sum[9] as i64);
+            let sign_subday: i64 = if total_subday_ns > 0 { 1 } else if total_subday_ns < 0 { -1 } else { 0 };
+            // Decompose abs total into days+hours+min+sec+ms+μs+ns.
+            let mut rem = total_subday_ns.abs();
+            let days = rem / 86_400_000_000_000;
+            rem %= 86_400_000_000_000;
+            let hours = rem / 3_600_000_000_000;
+            rem %= 3_600_000_000_000;
+            let minutes = rem / 60_000_000_000;
+            rem %= 60_000_000_000;
+            let seconds = rem / 1_000_000_000;
+            rem %= 1_000_000_000;
+            let ms = rem / 1_000_000;
+            rem %= 1_000_000;
+            let us = rem / 1_000;
+            let ns = rem % 1_000;
+            let signed = |x: i64| (sign_subday as f64) * (x as f64);
+            sum[3] = signed(days);
+            sum[4] = signed(hours);
+            sum[5] = signed(minutes);
+            sum[6] = signed(seconds);
+            sum[7] = signed(ms);
+            sum[8] = signed(us);
+            sum[9] = signed(ns);
+            // Sign-uniformity validation between year/month/week and the
+            // sub-day group: if both groups present and signs differ -> RangeError
+            // (cannot balance without relativeTo).
+            let date_sign: f64 = [sum[0], sum[1], sum[2]].iter()
+                .find(|&&u| u != 0.0).map_or(0.0, |&u| u.signum());
+            let sub_sign = sign_subday as f64;
+            if date_sign != 0.0 && sub_sign != 0.0 && date_sign != sub_sign {
+                return Err(RuntimeError::RangeError(
+                    "Temporal.Duration arithmetic: year/month/week and sub-day units have mixed sign; relativeTo required".into()
+                ));
+            }
+            validate_uniform_sign(&[sum[0], sum[1], sum[2], 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])?;
+            Ok(make_duration(rt, dur_proto, sum))
+        }
+        let dur_proto_for_arith = dur_proto;
+        register_intrinsic_method(self, dur_proto, "add", 1, move |rt, args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.Duration.prototype.add: this is not an object".into()
+                )),
+            };
+            let this_units = read_units(rt, id).map(|u| {
+                let mut out = [0.0f64; 10];
+                for i in 0..10 { out[i] = u[i]; }
+                out
+            })?;
+            let other_units = read_duration_units(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
+            duration_add_impl(rt, dur_proto_for_arith, this_units, other_units)
+        });
+        register_intrinsic_method(self, dur_proto, "subtract", 1, move |rt, args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.Duration.prototype.subtract: this is not an object".into()
+                )),
+            };
+            let this_units = read_units(rt, id).map(|u| {
+                let mut out = [0.0f64; 10];
+                for i in 0..10 { out[i] = u[i]; }
+                out
+            })?;
+            let mut other_units = read_duration_units(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
+            for u in other_units.iter_mut() { *u = -*u; }
+            duration_add_impl(rt, dur_proto_for_arith, this_units, other_units)
+        });
         // DSC-EXT 1 (duration-string-conversion): toString / toJSON /
         // toLocaleString. Format per §11.4.2.x:
         //   [-]P[nY][nM][nW][nD][T[nH][nM][nS]]

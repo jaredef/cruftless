@@ -127,6 +127,9 @@ function runOne(path) {
       '/Temporal/Duration/prototype/toString/',
       '/Temporal/Duration/prototype/toJSON/',
       '/Temporal/Duration/prototype/toLocaleString/',
+      // DA-EXT 1: duration-arithmetic (add / subtract)
+      '/Temporal/Duration/prototype/add/',
+      '/Temporal/Duration/prototype/subtract/',
       // DDP-EXT 1: duration-derived-properties (sign / blank / abs / negated)
       '/Temporal/Duration/prototype/sign/',
       '/Temporal/Duration/prototype/blank/',
