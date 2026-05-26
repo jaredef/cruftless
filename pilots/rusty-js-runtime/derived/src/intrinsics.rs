@@ -3610,6 +3610,91 @@ impl Runtime {
             };
             Ok(Value::String(Rc::new(pt_to_iso_string(rt, id)?)))
         });
+        // PTE-EXT 1 (plain-time-equals): equals(other) returns true iff
+        // every unit equals. Coerces `other` via PlainTime.from-like logic.
+        register_intrinsic_method(self, pt_proto, "equals", 1, |rt, args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainTime.prototype.equals: this is not an object".into()
+                )),
+            };
+            if matches!(rt.object_get(id, "__pt_hour"), Value::Undefined) {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.PlainTime.prototype.equals: this is not a Temporal.PlainTime".into()
+                ));
+            }
+            let other = args.first().cloned().unwrap_or(Value::Undefined);
+            // Coerce `other` to a PlainTime via from-like logic: string or
+            // brand-checked PlainTime or property-bag.
+            let unit_names = ["hour", "minute", "second", "millisecond",
+                              "microsecond", "nanosecond"];
+            let unit_maxes = [23i64, 59, 59, 999, 999, 999];
+            let mut other_units = [0i64; 6];
+            // String form: use parse_iso_time (hoisted via block-scoped fn).
+            if let Value::String(s) = &other {
+                let parsed = parse_iso_time(s).ok_or_else(|| RuntimeError::RangeError(format!(
+                    "Temporal.PlainTime.prototype.equals: invalid ISO 8601 time: {:?}", s
+                )))?;
+                other_units = parsed;
+                // Skip the object-coercion path below.
+                let mut eq = true;
+                for (i, u) in unit_names.iter().enumerate() {
+                    let key = format!("__pt_{}", u);
+                    let this_val = if let Value::Number(n) = rt.object_get(id, &key) { n as i64 } else { 0 };
+                    if this_val != other_units[i] { eq = false; break; }
+                }
+                return Ok(Value::Boolean(eq));
+            }
+            let other_id = match other {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainTime.prototype.equals: argument must be a PlainTime, object, or string".into()
+                )),
+            };
+            let is_pt = !matches!(rt.object_get(other_id, "__pt_hour"), Value::Undefined);
+            if is_pt {
+                for (i, u) in unit_names.iter().enumerate() {
+                    let key = format!("__pt_{}", u);
+                    if let Value::Number(n) = rt.object_get(other_id, &key) {
+                        other_units[i] = n as i64;
+                    }
+                }
+            } else {
+                let mut has_any = false;
+                for (i, u) in unit_names.iter().enumerate() {
+                    let v = rt.object_get(other_id, u);
+                    if matches!(v, Value::Undefined) { continue; }
+                    has_any = true;
+                    let n = crate::abstract_ops::to_number(&v);
+                    if !n.is_finite() || n != n.trunc() {
+                        return Err(RuntimeError::RangeError(format!(
+                            "Temporal.PlainTime.prototype.equals: {} must be integer", u
+                        )));
+                    }
+                    let ni = n as i64;
+                    if ni < 0 || ni > unit_maxes[i] {
+                        return Err(RuntimeError::RangeError(format!(
+                            "Temporal.PlainTime.prototype.equals: {} {} out of range", u, ni
+                        )));
+                    }
+                    other_units[i] = ni;
+                }
+                if !has_any {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.PlainTime.prototype.equals: argument must have at least one time unit property".into()
+                    ));
+                }
+            }
+            // Compare against `this`.
+            let mut eq = true;
+            for (i, u) in unit_names.iter().enumerate() {
+                let key = format!("__pt_{}", u);
+                let this_val = if let Value::Number(n) = rt.object_get(id, &key) { n as i64 } else { 0 };
+                if this_val != other_units[i] { eq = false; break; }
+            }
+            Ok(Value::Boolean(eq))
+        });
         // PTW-EXT 1 (plain-time-with): with(durationLike) overrides any
         // provided unit fields, keeps the rest. Sibling shape to DWith.
         let pt_proto_for_with = pt_proto;
