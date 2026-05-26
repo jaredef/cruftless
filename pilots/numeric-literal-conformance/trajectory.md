@@ -44,3 +44,30 @@ cruft correctly REJECTS the malformed literals. The 53 fails aren't "cruft is to
 **Finding NLC.1 (locale-as-probe pattern)**: NLC was spawned as a cluster-coherence-multiplier-shaped locale targeting §12.8 NumericLiteral. The founding inspection revealed that the load-bearing substrate move is at a different tier (runtime eval-error wrapping) than the locale's declared coordinate (lex-tier). The locale-as-probe pattern: when a locale spawned at coordinate X reveals via baseline-inspection that the move-shape is at coordinate Y, the right discipline is to land the Y move first (per R13 prospective) and treat X as the test surface that VALIDATES the Y move. Standing recommendation: every locale's founding should include a baseline-inspection rung that audits where the locale's failure-shape actually traces to; spawning the locale is the probe, not the target.
 
 **Status**: NLC-EXT 0 FOUNDED. NLC-EXT 1 (eval-error-class wrapping fix) is the immediate substrate move per the founding finding; expected engagement-wide yield. Substrate touches runtime; scope warrants keeper review before landing. NLC-EXT 2+3 (strict-mode legacy octal + edge cases) follow after EXT 1.
+
+---
+
+## NLC-EXT 0 CORRECTION (2026-05-25; post identifier-tokenization Rule-23 self-correction)
+
+**Trigger**: spawning identifier-tokenization the same session ran Rule 23 baseline-inspection on its 268-fixture pool. The verification-probe step (direct probe `(0,eval)("0b2;")` → ctor=SyntaxError) revealed that cruft's eval-error-class wrapping was ALREADY CORRECT. The "got String" shape originates from test262's `$DONOTEVALUATE()` harness throwing a literal string when `<bad source>` is incorrectly accepted — NOT from cruft mis-wrapping CompileError.
+
+**Finding NLC.0 (as originally stated above) is RETRACTED.** Per findings.md Addendum XV. The "engagement-wide eval-error-class wrapping issue" claim was wrong.
+
+**The actual mechanism** (Finding NLC.0-revised, per Addendum XV): cruft's parser is incorrectly permissive on the affected source shapes. Test262's `$DONOTEVALUATE()` (a string-throwing harness function) runs only when cruft fails to reject at parse; the string it throws is what gets caught and reported as "got String." The diagnostic identifies parser-permissiveness, NOT error-class-mis-wrapping.
+
+**Re-scoping NLC's substrate work**:
+
+- **NLC-EXT 1 (as originally scoped, "eval-error-class wrapping fix"): RETRACTED.** No such fix is needed; cruft's eval already wraps correctly.
+- **NLC-EXT 1-revised**: lex-tier substrate fixes for the specific malformed-numeric shapes cruft currently accepts. Per the original baseline-inspection sample (53 fails), the actual shapes are:
+  - Binary literal acceptance of non-binary chars (`0b2`)
+  - Legacy octal acceptance in strict mode (`"use strict"; 00`)
+  - Non-octal-decimal-integer (`08`, `09`) in strict
+  - Numeric-separator placement edge cases (`0b_1` may already reject — verify)
+
+Each is a focused lex-tier check addition in `pilots/rusty-js-parser/derived/src/lexer.rs::read_radix_int` / `read_numeric_literal`. Substrate scope ~30-50 LOC; properly within NLC's original locale-tier per Rule 11.
+
+**NLC.1 STANDS as a recommendation in modified form**: the locale-as-probe pattern (Rule 23) caught NLC.0's mis-read. The first-read inspection failed; the verification-probe step would have caught it. Refined recommendation in Finding IDT.0: Rule 23 inspection MUST include direct verification-probe in the substrate, not just re-reading the failure reasons.
+
+**Per Doc 727 §X basin-stability**: the prior NLC-EXT 0 trajectory entry (above the divider) is preserved as the inspection-at-the-time record; this correction appends rather than edits.
+
+**Status (corrected)**: NLC's locale-tier substrate work is well-scoped per the lex-tier shapes identified in NLC-EXT 1-revised. The engagement-wide fix proposal is RETRACTED. NLC's substrate work follows the IDT pattern when keeper directs.

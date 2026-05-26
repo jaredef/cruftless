@@ -1202,3 +1202,69 @@ Total: **44 findings**; **23 standing rules**.
 
 **Corpus publication candidates from this addendum**:
 - NLC.1 + Rule 23 (locale-as-probe discipline) is a candidate for a corpus articulation on "spawning the locale IS the probe" — extends Doc 581's resume-vector discipline with the founding-tier probe-then-decide protocol. Pending keeper review.
+
+---
+
+## Addendum XV — CORRECTION to Addendum XIV's Findings NLC.0 and NLC.1 (2026-05-25; post identifier-tokenization baseline)
+
+**Trigger**: identifier-tokenization locale spawned 2026-05-25 per keeper directive (Telegram 9824) "continue with candidate tokenization." Per Rule 23 (just promoted in Addendum XIV), founding baseline-inspection ran: 153/268 PASS, 115 fail with shape "expected SyntaxError, got String." Initial reading attributed this to Finding NLC.0 (the engagement-wide eval-error-class wrapping). Deeper inspection of the actual failure mechanism **refuted that reading**.
+
+### What I had wrong in Addendum XIV
+
+Finding NLC.0 claimed: cruft's eval throws a String (CompileError text) for parse-tier failures instead of a SyntaxError instance; the test262 runner's `thrown.constructor.name === "String"` check is the mechanism producing "got String."
+
+That claim was **wrong**. Direct verification:
+
+```
+$ cruft -e '(0,eval)("0b2;")'
+catches typeof=object ctor=SyntaxError
+```
+
+Cruft's eval correctly throws a SyntaxError instance when its lexer rejects malformed source. The eval-error-class wrapping was ALREADY WORKING; NLC-EXT 1 as scoped was a substrate move targeting a non-existent gap.
+
+### What's actually happening
+
+The "got String" reason traces to a different mechanism entirely. test262 negative-parse tests include a `$DONOTEVALUATE()` harness call before the bad source; the harness's `$DONOTEVALUATE` implementation throws a STRING sentinel:
+
+```
+function $DONOTEVALUATE() { throw 'Test262: This statement should not be evaluated.'; }
+```
+
+For a negative-parse test, the assembled source is `<harness>; $DONOTEVALUATE(); <bad source>`. If cruft's PARSE FAILS at `<bad source>`, the runner catches the SyntaxError before `$DONOTEVALUATE` runs — the test passes. If cruft's PARSE SUCCEEDS at `<bad source>` (incorrectly permissive), then `$DONOTEVALUATE()` runs first, throws its sentinel STRING, the runner catches the string — `thrown.constructor.name === "String"` — and reports "expected SyntaxError, got String."
+
+**"expected SyntaxError, got String" actually means: cruft's parser accepted source that the spec requires it to reject. The substrate gap is at the lex/parse tier, not at the eval-class-wrapping tier.**
+
+### Corrected findings
+
+**Finding NLC.0 RETRACTED** as stated in Addendum XIV. The engagement-wide eval-error-class issue does not exist; cruft's eval already wraps lex-rejected source as SyntaxError correctly.
+
+**Finding NLC.0-revised (the actual mechanism)**: test262 negative-parse fails diagnosed as "expected SyntaxError, got String" identify cases where cruft's parser is **incorrectly permissive** (accepts source that the spec mandates be rejected). The substrate gap is at the lex/parse tier; the eval-class-wrapping tier is already correct. Per-coordinate substrate locales targeting the specific permissiveness shape (numeric-literal-conformance for §12.8; identifier-tokenization for §11.6 ReservedWord exclusion; etc.) close the actual gaps.
+
+**Finding NLC.1 STANDS as a recommendation**: the locale-as-probe pattern (Rule 23) WORKED here — it surfaced the symptom "got String" in 100% concentration in identifier-tokenization's baseline. The interpretation of the symptom was wrong on first read, but the discipline of baseline-inspection caught the disagreement; deeper investigation produced the correct interpretation. Rule 23's value is the inspection HAPPENS, not that the first interpretation is correct. The check-and-correct cycle IS the discipline.
+
+**New Finding NLC.2 (identifier-tokenization's actual scope)**: cruft accepts ReservedWord tokens as BindingIdentifier in virtually every binding context per direct audit:
+
+```
+var break = 1;       → ACCEPT  (spec: reject in non-strict per §11.6.2)
+let break = 1;       → ACCEPT
+const break = 1;     → ACCEPT
+function break() {}  → ACCEPT
+class break {}       → ACCEPT
+function f(break) {} → ACCEPT
+({break: 1}).break   → ACCEPT  (correct; property names allow ReservedWord)
+x.break              → REJECT (only because `x` is undefined; member access otherwise correct)
+```
+
+The substrate work is multi-site: every BindingIdentifier consumption needs a ReservedWord check. Either centralize in `parse_binding_identifier` or thread per-call-site. Centralization is preferred (per LGSS.1 "name the constraint at one tier"). Closes the 115 identifier-tokenization failures + many additional fails in adjacent locales (function/class declaration tests, parameter-name tests).
+
+### Rule 23 reflection
+
+Rule 23 fired correctly. The inspection rung surfaced the disagreement; the first interpretation was wrong; iteration corrected it. This is the discipline working as designed — the founding-baseline-inspection is NOT a guarantee of first-reading correctness; it is a guarantee that mis-readings are caught BEFORE substrate work commits to them. NLC-EXT 1 was never landed; only its scoping document existed. Rule 23 prevented the wasted substrate cycles. Addendum XIV's claim "the apparatus now operationally integrates baseline-inspection" stands; this Addendum XV is the first instance of Rule 23 catching its own first-read mistake and self-correcting.
+
+### Status updates
+
+- NLC-EXT 1 (as scoped in Addendum XIV) **RETRACTED**. NLC's substrate work is at the lex/parse tier per the corrected NLC.0-revised + Finding NLC.2 shape.
+- identifier-tokenization-EXT 1 is now well-scoped per Finding NLC.2: centralize ReservedWord check in `parse_binding_identifier` (or sibling site). 115 tests waiting.
+- Per Doc 727 §X basin-stability, Addendum XIV remains in place with this correction appended.
+
+Total: **45 findings** (44 + NLC.0-revised + NLC.2; NLC.0 retracted in place); **23 standing rules** (unchanged; Rule 23 stands).
