@@ -1810,3 +1810,138 @@ The refreshed residual is therefore the next live parent target, even
 though this extension still records the closed pre-pull tranche.
 
 **Status**: TA-EXT 21 CLOSED locally. No manifest refresh was required.
+
+## TA-EXT 22 — Refreshed ZonedDateTime RFSDO synchronization (2026-05-27)
+
+**Trigger**: After `7f991b5e`, the refreshed Temporal availability exemplar
+suite remained at:
+
+```text
+Temporal exemplars: PASS=59 FAIL=41 / 100 (59.0%)
+```
+
+The residual was not yet a clean runtime-failure frontier. All 41 remaining
+rows still reported:
+
+```text
+feature deliberately omitted: Temporal
+```
+
+The largest surface was ZonedDateTime:
+
+```text
+19 ZonedDateTime
+5 PlainYearMonth
+5 Duration
+4 PlainDateTime
+3 Instant
+2 PlainTime
+2 PlainDate
+1 Now
+```
+
+**Probe**:
+
+Ran the 19 refreshed ZonedDateTime rows through a temporary runner with only
+the coarse `Temporal` omission gate removed. All 19 passed. That makes this
+rung an RFSDO synchronization move, not a new ZonedDateTime substrate move.
+
+**Change**:
+
+- Added precise path allowlist entries for the 19 refreshed ZonedDateTime
+  exemplar rows that already pass against runtime.
+- Kept the allowlist row-specific rather than method-prefix broad, so the
+  apparatus does not accidentally unhide off-sample ZonedDateTime tests whose
+  substrate has not yet been probed.
+
+**Verification**:
+
+```text
+T262_TEST_PATH=<each refreshed ZonedDateTime exemplar> \
+  T262_HARNESS_DIR=$T262_ROOT/harness \
+  $CRUFT_BIN /tmp/runner-no-temporal-skip.mjs
+pilots/temporal-availability/exemplars/run-exemplars.sh
+```
+
+**Exemplar movement**:
+
+```text
+Before TA-EXT 22: PASS=59 FAIL=41 / 100 (59.0%)
+After TA-EXT 22: PASS=78 FAIL=22 / 100 (78.0%)
+```
+
+**Residual**:
+
+The ZDT bucket is now empty in the refreshed exemplar residual. Remaining
+surfaces:
+
+```text
+5 PlainYearMonth
+5 Duration
+4 PlainDateTime
+3 Instant
+2 PlainTime
+2 PlainDate
+1 Now
+```
+
+**Finding TA.24 (ZDT was apparatus-stale, not runtime-stale)**:
+The largest refreshed bucket was produced by stale path-level RFSDO sync.
+The next coherent Temporal move should probe the tied PlainYearMonth /
+Duration frontier before adding substrate, because at least part of the
+remaining residual may be the same allowlist lag.
+
+**Status**: TA-EXT 22 CLOSED.
+
+## TA-EXT 23 — Refreshed Temporal parent RFSDO closure (2026-05-27)
+
+**Trigger**: After TA-EXT 22 synchronized the refreshed ZonedDateTime bucket,
+the parent exemplar residual was:
+
+```text
+Temporal exemplars: PASS=78 FAIL=22 / 100 (78.0%)
+5 PlainYearMonth
+5 Duration
+4 PlainDateTime
+3 Instant
+2 PlainTime
+2 PlainDate
+1 Now
+```
+
+**Probe**:
+
+Ran all 22 residual rows through the temporary no-Temporal-skip runner. Every
+row passed. Like TA-EXT 22, this was not a runtime semantics gap; it was stale
+path-level RFSDO synchronization after prior Temporal substrate landings.
+
+**Change**:
+
+- Added precise path allowlist entries for the 22 remaining refreshed parent
+  rows across PlainYearMonth, Duration, PlainDateTime, Instant, PlainTime,
+  PlainDate, and Now.
+- Kept entries row-specific to avoid claiming off-sample Temporal coverage.
+
+**Verification**:
+
+```text
+T262_TEST_PATH=<each remaining refreshed Temporal exemplar> \
+  T262_HARNESS_DIR=$T262_ROOT/harness \
+  $CRUFT_BIN /tmp/runner-no-temporal-skip.mjs
+pilots/temporal-availability/exemplars/run-exemplars.sh
+```
+
+**Exemplar movement**:
+
+```text
+Before TA-EXT 23: PASS=78 FAIL=22 / 100 (78.0%)
+After TA-EXT 23: PASS=100 FAIL=0 / 100 (100.0%)
+```
+
+**Finding TA.25 (refreshed parent sample is an RFSDO audit before substrate)**:
+The refreshed parent suite first appeared as a 41-row Temporal residual, but
+all 41 rows were already runtime-green. The correct next step was path-level
+apparatus synchronization, not substrate expansion. Future refreshed Temporal
+samples should be probed with a no-skip runner before selecting a class locale.
+
+**Status**: TA-EXT 23 CLOSED.
