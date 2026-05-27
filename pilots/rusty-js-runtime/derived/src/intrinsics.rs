@@ -634,6 +634,9 @@ fn install_temporal_method(
         if kind == "Instant" && (method_name == "since" || method_name == "until") {
             return temporal_instant_difference(rt, &method_name, args);
         }
+        if kind == "Instant" && method_name == "round" {
+            return temporal_instant_round(rt, args);
+        }
         if kind == "ZonedDateTime" && method_name == "round" {
             return temporal_zoned_date_time_round(rt, proto, args);
         }
@@ -1359,6 +1362,52 @@ fn temporal_split_ns_by_largest_unit(
         microseconds,
         nanoseconds,
     )
+}
+
+fn temporal_instant_round(rt: &mut Runtime, args: &[Value]) -> Result<Value, RuntimeError> {
+    let this_id = temporal_require_this_kind(rt, "Instant")?;
+    let ns = temporal_bigint_slot_i128(rt, this_id, "__temporal_epochNanoseconds").unwrap_or(0);
+    let mut smallest_unit = "nanosecond".to_string();
+    let mut rounding_mode = "halfExpand".to_string();
+    if let Some(Value::Object(options)) = args.first() {
+        if let Some(unit) = temporal_option_string_value(rt, *options, "smallestUnit") {
+            smallest_unit = unit.as_ref().clone();
+        }
+        if let Some(mode) = temporal_option_string_value(rt, *options, "roundingMode") {
+            rounding_mode = mode.as_ref().clone();
+        }
+    }
+    let quantum = match smallest_unit.as_str() {
+        "hour" | "hours" => 3_600_000_000_000_i128,
+        "minute" | "minutes" => 60_000_000_000_i128,
+        "second" | "seconds" => 1_000_000_000_i128,
+        "millisecond" | "milliseconds" => 1_000_000_i128,
+        "microsecond" | "microseconds" => 1_000_i128,
+        _ => 1_i128,
+    };
+    let rounded = if quantum == 1 {
+        ns
+    } else if rounding_mode == "ceil" {
+        ns.div_euclid(quantum) * quantum
+            + if ns.rem_euclid(quantum) == 0 {
+                0
+            } else {
+                quantum
+            }
+    } else {
+        temporal_round_ns_to_unit(ns, &format!("{smallest_unit}s"), &rounding_mode)
+    };
+    let proto = temporal_constructor_proto(rt, "Instant")
+        .ok_or_else(|| RuntimeError::TypeError("Temporal.Instant unavailable".into()))?;
+    let id = temporal_stub_instance(rt, "Instant", proto);
+    rt.obj_mut(id).set_own_internal(
+        "__temporal_epochNanoseconds".into(),
+        Value::BigInt(Rc::new(
+            crate::bigint::JsBigInt::from_decimal(&rounded.to_string())
+                .unwrap_or_else(crate::bigint::JsBigInt::zero),
+        )),
+    );
+    Ok(Value::Object(id))
 }
 
 fn temporal_zoned_date_time_round(

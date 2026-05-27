@@ -354,11 +354,29 @@ Candidates surfaced by `pilots/apparatus/locale-positioning-audit/findings/resol
 **Methodology**: build a focused 24-fixture exemplar list, group by namespace (`DataView`, `Buffer`, `util`, `assert`, `stream`, `process`, `console`), classify each as absent install, descriptor-shape mismatch, wrong return type, or wrong error object.
 **Status**: baseline-first. Redirect namespace rows to existing surface locales if Rule-23 inspection shows ownership already exists.
 
-### (abh) `ast-bytecode-boundary-integrity-audit` — 🟡 AUDIT-FIRST
+### (abh) `ast-bytecode-boundary-integrity-audit` — ✅ AUDITED / SPLIT
 **Telos**: repartition Instance 4 x Axis R boundary leaks before spawning substrate work. The shared signal is AST-to-bytecode boundary underspecification: emitted artifacts fail to preserve semantic directives into runtime-visible behavior.
 **Pool**: 13 Axis R gaps. Named examples include private fields leaking into `Object.keys`, tagged-template `strings.raw`, direct `eval` outer-const capture, destructuring via iterator protocol, generator suspension, and RegExp named capture groups.
 **Methodology**: split by boundary family (private slots, template objects, lexical environment capture, iterator-protocol lowering, generator suspension, RegExp match metadata), then check active locale absorption before founding any broad child.
-**Status**: audit-first. If more than half of rows are absorbed by active locales, record scope extensions instead of founding a broad AST-boundary locale.
+**Status**: audited by `pilots/apparatus/locale-positioning-audit/findings/spec-boundary-integrity-audit.md`. Do not found as a broad locale. Private fields are absorbed by PFRS/CESS; generator suspension is an AGFA scope-extension; RegExp named captures route under RC. Three fresh baseline-first child candidates are listed below.
+
+### (abj) `tagged-template-object-boundary` — 🟡 BASELINE-FIRST
+**Telos**: close tagged-template object construction at the AST-to-bytecode/runtime boundary. The visible failure is `strings.raw` not populated, which means the template-object directive did not survive into the call artifact.
+**Pool**: Instance 4 x Axis R tagged-template boundary rows, plus focused fixtures from `language/expressions/tagged-template/` and `language/template-literals/`.
+**Methodology**: baseline must distinguish parser escape/cooked-string issues, raw-source preservation, template-object allocation, `.raw` descriptor shape, and call argument ordering. Redirect lex/raw-source failures to a string/template literal locale; spawn only if object allocation/descriptor shape dominates.
+**Status**: baseline-first.
+
+### (abk) `direct-eval-lexical-capture` — 🟡 BASELINE-FIRST
+**Telos**: close direct eval lexical environment capture, especially outer `const`/`let` visibility. This is distinct from lex-error propagation through eval; it is about selecting the caller lexical environment for direct eval execution.
+**Pool**: Instance 4 x Axis R direct-eval capture rows plus direct/indirect eval contrast probes.
+**Methodology**: baseline strict/sloppy direct eval reads, shadowing, and indirect eval contrast; classify owner as parser direct-eval marking, bytecode call lowering, runtime eval entry environment, or environment-record lookup. Redirect lex/parse error propagation to `lex-error-propagation-to-eval-surface/`.
+**Status**: baseline-first.
+
+### (abl) `destructuring-iterator-protocol-boundary` — 🟡 BASELINE-FIRST
+**Telos**: close destructuring lowering that bypasses the iterator protocol. Array binding/assignment patterns must consume iterators, including `return`/close and abrupt `next` behavior, rather than array-indexing the source.
+**Pool**: Instance 4 x Axis R destructuring iterator rows, plus focused synchronous destructuring fixtures and for-of/for-await destructuring contrast rows.
+**Methodology**: baseline custom iterable, abrupt `next`, `return`, elision, rest, binding, and assignment cases. If async-only rows dominate, keep under `async-generator-and-for-await-lowering/`; if synchronous rows dominate, found a general destructuring boundary locale.
+**Status**: baseline-first.
 
 ### (abi) `operator-directive-completion` — 🟡 BASELINE-FIRST
 **Telos**: close Instance 4 x Axis O operator-level unconsumed spec directives. These have narrower fan-out than Axis R and likely close as single-rung substrate fixes or small runtime-builtin extensions.

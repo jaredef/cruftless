@@ -313,3 +313,39 @@ Added Tier N, "resolver-axis heuristics partition":
 **Finding LPA.16 (implicit probe-collision constraints are first-class apparatus output)**: 25 of the 49 gaps were implicit constraints discovered by fixture collision. These rows are not merely failures; they are newly surfaced decision-basis edges. Future repartition artifacts should preserve the explicit/implicit marker instead of collapsing both into the same count.
 
 **Status**: LPA-EXT 7 CLOSED. Resolver-axis partition recorded; no substrate locale spawned.
+
+---
+
+## LPA-EXT 8 — spec boundary integrity audit (2026-05-27)
+
+**Trigger**: Keeper directive to continue with the spec boundary audit after LPA-EXT 7 queued `ast-bytecode-boundary-integrity-audit` as `audit-first`.
+
+**Produced**: `pilots/apparatus/locale-positioning-audit/findings/spec-boundary-integrity-audit.md`.
+
+**Method**:
+
+1. Read the Instance 4 x Axis R examples from the resolver-axis partition.
+2. Search existing locale seeds and trajectory tails for ownership of private fields, tagged templates, eval, destructuring, generator suspension, and RegExp named captures.
+3. Classify each family as absorbed, scope-extension, or fresh baseline-first candidate.
+
+**Result**:
+
+- Private fields reflection leak: absorbed by `private-field-runtime-slots/` and `class-elements-static-semantics/`.
+- Generator suspension deferred: scope-extension under `async-generator-and-for-await-lowering/` or a future generator-specific child.
+- RegExp named captures: scope-extension under `regexp-conformance/`.
+- Tagged-template `strings.raw`: fresh baseline-first candidate.
+- Direct eval outer lexical capture: fresh baseline-first candidate.
+- Destructuring iterator protocol: fresh baseline-first candidate, with async rows redirecting to AGFA if dominant.
+
+**CANDIDATES.md update**:
+
+- Marked `ast-bytecode-boundary-integrity-audit` as audited/split.
+- Added `tagged-template-object-boundary`, `direct-eval-lexical-capture`, and `destructuring-iterator-protocol-boundary` as baseline-first children.
+
+**Finding LPA.17 (boundary-integrity is a parent signal, not a substrate locale by itself)**: Instance 4 x Axis R correctly identified a design-level boundary-integrity smell, but its named examples map to distinct resolver boundaries. The right apparatus move is ownership partition, not a broad substrate locale.
+
+**Finding LPA.18 (more than half of the boundary examples are already owned)**: private fields are absorbed by PFRS/CESS, generator suspension is an AGFA scope-extension, and RegExp named captures belong under RC. The `audit-first` disposition prevented duplicate locale founding.
+
+**Finding LPA.19 (three fresh boundary candidates remain after absorption)**: tagged-template object construction, direct eval lexical capture, and destructuring iterator protocol each have a plausible single boundary mechanism and a concrete baseline probe. They should proceed independently, not as one AST-boundary locale.
+
+**Status**: LPA-EXT 8 CLOSED. Spec boundary audit recorded; no substrate locale spawned.
