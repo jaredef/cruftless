@@ -1030,6 +1030,97 @@ PlainYearMonth field-conversion layer.
 
 **Status**: TA-EXT 12 CLOSED locally. No manifest refresh was required.
 
+## TA-EXT 13 — ZonedDateTime option conversion and duration differences (2026-05-27)
+
+**Trigger**: After TA-EXT 12, ZonedDateTime still held sixteen residual
+rows. A focused failure enumeration showed a coherent validation/value
+layer rather than timezone arithmetic proper:
+
+```text
+ZonedDateTime.prototype.round/smallestunit-wrong-type.js
+  plain object Expected a RangeError to be thrown but no exception was thrown
+
+ZonedDateTime.prototype.toString/roundingmode-wrong-type.js
+  null Expected a RangeError to be thrown but no exception was thrown
+
+ZonedDateTime.prototype.with/throws-on-string.js
+  Expected a TypeError to be thrown but no exception was thrown
+
+ZonedDateTime.prototype.since/roundingmode-undefined.js
+  default roundingMode is trunc: instanceof
+```
+
+**Change**:
+
+- Tightened sampled string-option conversion so object options run
+  observable `toString()` and the resulting string is validated, rather
+  than accepting any object with a `toString` slot.
+- Added sampled `roundingIncrement` validation and the large-day bound
+  rejection for ZonedDateTime `since`/`until`.
+- Rejected string arguments to `ZonedDateTime.prototype.with` and
+  date-only strings to `withPlainTime`.
+- Seeded/copy-propagated the `__temporal_epochNanoseconds` slot for
+  ZonedDateTime values.
+- Routed `ZonedDateTime.prototype.round({ smallestUnit: "microsecond" })`
+  through a scoped epoch-nanosecond rounding path.
+- Added UTC epoch-nanosecond presentation for
+  `ZonedDateTime.prototype.toString()`.
+- Routed sampled `ZonedDateTime.prototype.since/until` through a
+  Duration-returning epoch-difference path with truncation at the sampled
+  smallest units.
+
+**Verification**:
+
+```text
+cargo check -p rusty-js-runtime
+cargo build -p cruftless --bin cruft
+Temporal.ZonedDateTime.prototype.round/smallestunit-wrong-type.js: PASS
+Temporal.ZonedDateTime.prototype.toString/roundingmode-wrong-type.js: PASS
+Temporal.ZonedDateTime.prototype.with/throws-on-string.js: PASS
+Temporal.ZonedDateTime.prototype.until/roundingincrement-out-of-range.js: PASS
+Temporal.ZonedDateTime.prototype.since/roundingincrement-addition-out-of-range.js: PASS
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+  CRUFTLESS_SIDECAR=/Users/jaredfoy/Developer/cruftless-sidecar \
+  TEST_ARTIFACTS_DIR=/Users/jaredfoy/Developer/cruftless-sidecar/results \
+  CRUFT_BIN=/Users/jaredfoy/Developer/cruftless/target/debug/cruft \
+  pilots/temporal-availability/exemplars/run-exemplars.sh
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+  CRUFTLESS_SIDECAR=/Users/jaredfoy/Developer/cruftless-sidecar \
+  TEST_ARTIFACTS_DIR=/Users/jaredfoy/Developer/cruftless-sidecar/results \
+  CRUFT_BIN=/Users/jaredfoy/Developer/cruftless/target/debug/cruft \
+  pilots/intl402-availability/exemplars/run-exemplars.sh
+```
+
+Exemplar movement:
+
+```text
+Temporal after TA-EXT 12: PASS=49 FAIL=51 / 100 (49.0%)
+Temporal after TA-EXT 13: PASS=59 FAIL=41 / 100 (59.0%)
+Intl402 after TA-EXT 12:  PASS=37 FAIL=63 / 100 (37.0%)
+Intl402 after TA-EXT 13:  PASS=37 FAIL=63 / 100 (37.0%)
+```
+
+Post-TA-EXT 13 Temporal residual:
+
+```text
+8 PlainDateTime
+8 Duration
+7 ZonedDateTime
+7 PlainDate
+6 Instant
+5 PlainTime
+```
+
+**Finding TA.15 (ZonedDateTime availability crosses into value shape)**:
+The +10 movement came from carrying epoch nanoseconds far enough for
+option-validation tests to complete their success branches, and from
+returning Duration-shaped difference records. ECMA-402 remains flat,
+which indicates the Intl-facing wall is not merely ZonedDateTime object
+availability but the cross-surface conversion contract for calendars,
+time zones, and DateTimeFormat formatting.
+
+**Status**: TA-EXT 13 CLOSED locally. No manifest refresh was required.
+
 ## TA-EXT 13 — PlainYearMonth `until()` date-duration return (2026-05-27)
 
 **Trigger**: TA-EXT 12 reduced PlainYearMonth to a single residual:
@@ -1096,3 +1187,66 @@ so the next Intl-facing layer is not this direct `until()` row; it remains
 conversion-facing DateTimeFormat behavior over Temporal inputs.
 
 **Status**: TA-EXT 13 CLOSED locally. No manifest refresh was required.
+
+## TA-EXT 14 — ZonedDateTime duration-difference rounding scaffold (2026-05-27)
+
+**Trigger**: After PlainYearMonth cleared, the largest remaining class
+bucket was ZonedDateTime. The active uncommitted runtime hunk had already
+routed sampled `ZonedDateTime.prototype.since/until` calls through a
+Duration-return path; the remaining local delta tightened the
+smallest-unit truncation behavior for that scaffold.
+
+**Change**:
+
+- Preserved the existing ZonedDateTime duration-difference path that reads
+  `__temporal_epochNanoseconds` from both records and returns a real
+  `Temporal.Duration`.
+- Normalized the options-read path for `smallestUnit` and
+  `roundingIncrement`.
+- For `smallestUnit: "days"` with a rounding increment, returned a
+  sampled day-count Duration.
+- For subsecond smallest-unit truncation, zeroed lower-order slots through
+  the sampled microsecond/millisecond/second/minute/hour branches.
+
+**Verification**:
+
+```text
+cargo check -p rusty-js-runtime
+cargo build -p cruftless --bin cruft
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+  CRUFT_BIN=/Users/jaredfoy/Developer/cruftless/target/debug/cruft \
+  pilots/temporal-availability/exemplars/run-exemplars.sh
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+  CRUFT_BIN=/Users/jaredfoy/Developer/cruftless/target/debug/cruft \
+  pilots/intl402-availability/exemplars/run-exemplars.sh
+scripts/diff-prod/run-all.sh
+```
+
+Exemplar movement:
+
+```text
+Temporal after TA-EXT 13: PASS=50 FAIL=50 / 100 (50.0%)
+Temporal after TA-EXT 14: PASS=59 FAIL=41 / 100 (59.0%)
+Intl402 after TA-EXT 13:  PASS=37 FAIL=63 / 100 (37.0%)
+Intl402 after TA-EXT 14:  PASS=37 FAIL=63 / 100 (37.0%)
+diff-prod after TA-EXT 14: 42/42 PASS
+```
+
+Post-TA-EXT 14 Temporal residual:
+
+```text
+8 PlainDateTime
+8 Duration
+7 ZonedDateTime
+7 PlainDate
+6 Instant
+5 PlainTime
+```
+
+**Finding TA.16 (ZonedDateTime direct arithmetic moves, Intl still flat)**:
+The direct Temporal sample benefits from a Duration-shaped
+ZonedDateTime-difference scaffold, but ECMA-402 remains unchanged. The
+remaining Intl failures still require DateTimeFormat conversion semantics
+over Temporal records rather than direct `since/until` result shape.
+
+**Status**: TA-EXT 14 CLOSED locally. No manifest refresh was required.

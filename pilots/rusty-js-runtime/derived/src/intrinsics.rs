@@ -1011,7 +1011,8 @@ fn temporal_zoned_date_time_difference(
             ))
         }
     };
-    let this_ns = temporal_bigint_slot_i128(rt, this_id, "__temporal_epochNanoseconds").unwrap_or(0);
+    let this_ns =
+        temporal_bigint_slot_i128(rt, this_id, "__temporal_epochNanoseconds").unwrap_or(0);
     let other_ns =
         temporal_bigint_slot_i128(rt, other_id, "__temporal_epochNanoseconds").unwrap_or(0);
     let mut diff = if method == "since" {
@@ -1032,21 +1033,35 @@ fn temporal_zoned_date_time_difference(
     let mut nanoseconds = 0.0;
 
     if let Some(Value::Object(options)) = args.get(1) {
-        let smallest_unit =
-            temporal_option_string_value(rt, *options, "smallestUnit").unwrap_or_else(|| Rc::new(String::new()));
-        let rounding_increment =
-            match temporal_spec_get_or_undefined(rt, Value::Object(*options), "roundingIncrement")
-            {
-                Value::Number(n) if n.is_finite() => n,
-                _ => 1.0,
-            };
+        let smallest_unit = temporal_option_string_value(rt, *options, "smallestUnit")
+            .unwrap_or_else(|| Rc::new(String::new()));
+        let rounding_increment = match temporal_spec_get_or_undefined(
+            rt,
+            Value::Object(*options),
+            "roundingIncrement",
+        ) {
+            Value::Number(n) if n.is_finite() => n,
+            _ => 1.0,
+        };
         if smallest_unit.as_str() == "days" && rounding_increment >= 1.0 {
             days = if diff < 0 {
                 -rounding_increment
             } else {
                 rounding_increment
             };
-            return temporal_duration_value(rt, years, months, weeks, days, hours, minutes, seconds, milliseconds, microseconds, nanoseconds);
+            return temporal_duration_value(
+                rt,
+                years,
+                months,
+                weeks,
+                days,
+                hours,
+                minutes,
+                seconds,
+                milliseconds,
+                microseconds,
+                nanoseconds,
+            );
         }
     }
 
@@ -1067,9 +1082,12 @@ fn temporal_zoned_date_time_difference(
     nanoseconds = diff as f64 * sign;
 
     if let Some(Value::Object(options)) = args.get(1) {
-        let smallest_unit =
-            temporal_option_string_value(rt, *options, "smallestUnit").unwrap_or_else(|| Rc::new(String::new()));
+        let smallest_unit = temporal_option_string_value(rt, *options, "smallestUnit")
+            .unwrap_or_else(|| Rc::new(String::new()));
         match smallest_unit.as_str() {
+            "microsecond" => {
+                nanoseconds = 0.0;
+            }
             "millisecond" => {
                 microseconds = 0.0;
                 nanoseconds = 0.0;
@@ -1082,7 +1100,19 @@ fn temporal_zoned_date_time_difference(
             _ => {}
         }
     }
-    temporal_duration_value(rt, years, months, weeks, days, hours, minutes, seconds, milliseconds, microseconds, nanoseconds)
+    temporal_duration_value(
+        rt,
+        years,
+        months,
+        weeks,
+        days,
+        hours,
+        minutes,
+        seconds,
+        milliseconds,
+        microseconds,
+        nanoseconds,
+    )
 }
 
 fn temporal_duration_value(
