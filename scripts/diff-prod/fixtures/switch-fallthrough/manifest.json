@@ -1,0 +1,8 @@
+{
+  "name": "switch-fallthrough",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Switch: fallthrough semantics, default position (first/middle/last), strict comparison, expression matching, block scoping in cases."
+}

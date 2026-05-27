@@ -1,0 +1,8 @@
+{
+  "name": "coercion-pipeline",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "ToPrimitive/ToNumber/ToString/ToBoolean full pipeline: + operator dispatch, template coercion, Number() vs +, Boolean() truthiness, Object-to-primitive."
+}

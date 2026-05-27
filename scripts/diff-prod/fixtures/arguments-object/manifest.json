@@ -1,0 +1,8 @@
+{
+  "name": "arguments-object",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Arguments object: length, indexing, callee (sloppy), no arguments in arrow, arguments vs rest, arguments aliasing in sloppy mode."
+}

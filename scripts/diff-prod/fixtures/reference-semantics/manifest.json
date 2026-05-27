@@ -1,0 +1,8 @@
+{
+  "name": "reference-semantics",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Reference semantics: strict reference errors, compound assignment to member, increment on property, delete on references, this binding in various contexts."
+}

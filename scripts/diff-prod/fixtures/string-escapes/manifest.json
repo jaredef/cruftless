@@ -1,0 +1,8 @@
+{
+  "name": "string-escapes",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "String escape sequences: \\n \\r \\t \\0, hex \\xNN, unicode \\uNNNN, braced \\u{NNNN}, line continuations, null byte, octal rejection in strict."
+}

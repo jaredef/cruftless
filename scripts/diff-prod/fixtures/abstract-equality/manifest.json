@@ -1,0 +1,8 @@
+{
+  "name": "abstract-equality",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Abstract equality (==) full algorithm: null/undefined, number/string, boolean coercion, object ToPrimitive, all type-pair matrix."
+}

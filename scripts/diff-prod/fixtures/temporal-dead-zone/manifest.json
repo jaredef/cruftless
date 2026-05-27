@@ -1,0 +1,8 @@
+{
+  "name": "temporal-dead-zone",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Temporal dead zone: let/const access before init throws ReferenceError, TDZ in switch, TDZ in default params, class TDZ, typeof in TDZ."
+}

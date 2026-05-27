@@ -1,0 +1,8 @@
+{
+  "name": "closure-capture-order",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Closure capture: for-loop let per-iteration binding, transitive upvalue capture, shared vs fresh cells, IIFE capture, mutation visibility."
+}

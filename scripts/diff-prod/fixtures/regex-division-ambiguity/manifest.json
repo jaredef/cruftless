@@ -1,0 +1,8 @@
+{
+  "name": "regex-division-ambiguity",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Regex vs division disambiguation: /regex/ after keywords vs operators, regex in various expression contexts, edge cases with ++ -- ) ]."
+}

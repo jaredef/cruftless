@@ -1,0 +1,8 @@
+{
+  "name": "optional-chaining-nullish",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Optional chaining (?.) and nullish coalescing (??): property access, method call, computed, stacking, assignment (??= &&= ||=)."
+}

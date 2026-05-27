@@ -1,0 +1,8 @@
+{
+  "name": "directive-prologues",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Directive prologue: 'use strict' effects on this coercion, arguments, eval scoping, octal rejection, duplicate params, writable errors."
+}

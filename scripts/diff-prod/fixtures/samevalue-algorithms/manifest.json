@@ -1,0 +1,8 @@
+{
+  "name": "samevalue-algorithms",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "SameValue (Object.is), SameValueZero (Map/Set/includes), strict equality (===): NaN, -0, edge cases."
+}

@@ -1,0 +1,8 @@
+{
+  "name": "abstract-relational",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Abstract relational comparison: < > <= >= with type coercion, string comparison (lexicographic), NaN behavior, BigInt vs Number."
+}

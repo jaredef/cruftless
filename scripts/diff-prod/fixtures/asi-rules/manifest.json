@@ -1,0 +1,8 @@
+{
+  "name": "asi-rules",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Automatic Semicolon Insertion: restricted productions (return/throw/continue/break + newline), no-LineTerminator-here, for/if/while bodies, ++/-- across newlines."
+}
