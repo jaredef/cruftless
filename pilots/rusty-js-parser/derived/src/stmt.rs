@@ -150,6 +150,22 @@ fn is_valid_for_assignment_target(e: &Expr) -> bool {
 }
 
 impl<'src> Parser<'src> {
+    fn parse_assignment_expression_no_in(&mut self) -> Result<Expr, ParseError> {
+        let saved_in_disallowed = self.in_disallowed;
+        self.in_disallowed = true;
+        let result = self.parse_assignment_expression();
+        self.in_disallowed = saved_in_disallowed;
+        result
+    }
+
+    fn parse_expression_no_in(&mut self) -> Result<Expr, ParseError> {
+        let saved_in_disallowed = self.in_disallowed;
+        self.in_disallowed = true;
+        let result = self.parse_expression();
+        self.in_disallowed = saved_in_disallowed;
+        result
+    }
+
     /// SDIBP-EXT 1: parse a Statement in a position where Declaration is
     /// forbidden (the body of for / for-in / for-of / if / else / while /
     /// do-while / with / labelled). Per ECMA-262 §13.1 Statement grammar,
@@ -1341,7 +1357,7 @@ impl<'src> Parser<'src> {
                 // C-style for with destructure declarator initializer.
                 let init = if matches!(self.current_kind(), TokenKind::Punct(Punct::Assign)) {
                     self.bump()?;
-                    Some(self.parse_assignment_expression()?)
+                    Some(self.parse_assignment_expression_no_in()?)
                 } else {
                     None
                 };
@@ -1357,7 +1373,7 @@ impl<'src> Parser<'src> {
                     Self::check_no_let_bound_name(kind, &dt)?;
                     let di = if matches!(self.current_kind(), TokenKind::Punct(Punct::Assign)) {
                         self.bump()?;
-                        Some(self.parse_assignment_expression()?)
+                        Some(self.parse_assignment_expression_no_in()?)
                     } else {
                         None
                     };
@@ -1476,7 +1492,7 @@ impl<'src> Parser<'src> {
                     });
                     let init = if matches!(self.current_kind(), TokenKind::Punct(Punct::Assign)) {
                         self.bump()?;
-                        Some(self.parse_assignment_expression()?)
+                        Some(self.parse_assignment_expression_no_in()?)
                     } else {
                         None
                     };
@@ -1513,7 +1529,7 @@ impl<'src> Parser<'src> {
                     };
                     let init = if matches!(self.current_kind(), TokenKind::Punct(Punct::Assign)) {
                         self.bump()?;
-                        Some(self.parse_assignment_expression()?)
+                        Some(self.parse_assignment_expression_no_in()?)
                     } else {
                         None
                     };
@@ -1586,10 +1602,7 @@ impl<'src> Parser<'src> {
             // precedence climber refuse to consume `in` as a
             // RelationalExpression operator, so the LHS parse returns
             // before `in` is reached.
-            let saved_in_disallowed = self.in_disallowed;
-            self.in_disallowed = true;
-            let e = self.parse_expression()?;
-            self.in_disallowed = saved_in_disallowed;
+            let e = self.parse_expression_no_in()?;
             // Check for `in`/`of` after a LeftHandSideExpression head.
             if self.is_ident("in") || self.is_contextual_keyword("of") {
                 let is_of = self.is_contextual_keyword("of");
