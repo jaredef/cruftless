@@ -18,8 +18,10 @@ Conflating the two breaks the dyadic operating model: `apparatus/` is rung-1 (ma
 - [`apparatus/docs/predictive-ruleset.md`](apparatus/docs/predictive-ruleset.md) — consolidated 15-rule predictive view.
 - [`apparatus/docs/standing-rule-13-prospective-application.md`](apparatus/docs/standing-rule-13-prospective-application.md) — revert-then-deeper-layer-closure thesis.
 - [`apparatus/docs/agent-feedback-schema.md`](apparatus/docs/agent-feedback-schema.md) — schema for per-locale cross-resolver review (`pilots/<locale>/agent-feedback.md`).
+- [`apparatus/docs/arc-as-coordinate.md`](apparatus/docs/arc-as-coordinate.md) — formalization of the arc as the multi-locale operational unit (above locale, below tier). When a keeper directive spans multiple locales, spawn an arc at `apparatus/arcs/YYYY-MM-DD-<slug>/`.
 - [`apparatus/locales/manifest.json`](apparatus/locales/manifest.json) — enumerated locale instances.
 - [`apparatus/locales/CANDIDATES.md`](apparatus/locales/CANDIDATES.md) — consult before founding any new locale.
+- [`apparatus/arcs/`](apparatus/arcs/) — registry of multi-locale arcs (operational units above locale).
 
 ## Project identity
 
@@ -41,13 +43,21 @@ pilots/                — per-surface Pin-Art pilot crates (each under derived/
                        — hidden classes substrate
   rusty-js-pm/derived/ — package manager (resolver-instance #0)
   rusty-js-caps/       — capability-passing runtime
-  diff-prod/           — differential prod-test methodology + fixtures
   tls/derived/         — TLS 1.3 substrate
   web-crypto/derived/  — WebCrypto primitives
   ... (per-surface pilots for fetch, http-codec, sockets, blob, file,
        buffer, bun-serve, bun-spawn, bun-file, compression, streams,
        structured-clone, textencoder, urlsearchparams, websocket,
        x509, node-fs, node-http, node-path, asn1-der)
+  apparatus/           — apparatus-pilots (cybernetic-loop instruments) per
+                         the bilateral pilot tier; see apparatus/docs/
+                         repository-apparatus.md §0 Bilateral pilot tier.
+    test262-categorize/      — Pin-Art matrix categorizer + full-suite results
+    diff-prod/               — differential prod-test methodology (fixtures+runner at scripts/diff-prod)
+    cross-runtime-bench/     — CRB harness + per-fixture probes
+    ts-consumer-corpus/      — TCC parse-parity measurement instrument
+    ts-execute-corpus/       — TXC execute-parity measurement instrument
+    locale-positioning-audit/ — meta-apparatus: locale-graph coherence audit
 legacy/host-rquickjs/  — rquickjs-backed reference ceiling (no new feature
                          work; retained for parity-measurement reference)
 scripts/               — operational scaffolding
