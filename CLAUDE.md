@@ -18,8 +18,10 @@ Conflating the two breaks the dyadic operating model: `apparatus/` is rung-1 (ma
 - [`apparatus/docs/predictive-ruleset.md`](apparatus/docs/predictive-ruleset.md) — consolidated 15-rule predictive view.
 - [`apparatus/docs/standing-rule-13-prospective-application.md`](apparatus/docs/standing-rule-13-prospective-application.md) — revert-then-deeper-layer-closure thesis.
 - [`apparatus/docs/agent-feedback-schema.md`](apparatus/docs/agent-feedback-schema.md) — schema for per-locale cross-resolver review (`pilots/<locale>/agent-feedback.md`).
+- [`apparatus/docs/arc-as-coordinate.md`](apparatus/docs/arc-as-coordinate.md) — formalization of the arc as the multi-locale operational unit (above locale, below tier). When a keeper directive spans multiple locales, spawn an arc at `apparatus/arcs/YYYY-MM-DD-<slug>/`.
 - [`apparatus/locales/manifest.json`](apparatus/locales/manifest.json) — enumerated locale instances.
 - [`apparatus/locales/CANDIDATES.md`](apparatus/locales/CANDIDATES.md) — consult before founding any new locale.
+- [`apparatus/arcs/`](apparatus/arcs/) — registry of multi-locale arcs (operational units above locale).
 
 ## Project identity
 
