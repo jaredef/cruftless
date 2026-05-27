@@ -16552,6 +16552,87 @@ impl Runtime {
         self.obj_mut(ta_proto).proto = Some(ta_proto_proto);
 
         let array_buffer_proto = self.alloc_object(Object::new_ordinary());
+        // TAMM-EXT 1: ArrayBuffer.prototype accessor surface per ECMA-262
+        // §25.1.5 (resizable/transferable buffers + byteLength). Register
+        // getters as real accessor descriptors so
+        // Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, name)
+        // reports them correctly. The getter body for byteLength /
+        // maxByteLength / resizable / detached reads through the runtime's
+        // ArrayBufferRecord registry; absent record means the receiver
+        // doesn't have the [[ArrayBufferData]] internal slot.
+        let install_ab_accessor = |rt: &mut Runtime, proto: ObjectRef, name: &str, body: fn(&mut Runtime) -> Result<Value, RuntimeError>| {
+            let getter_name = format!("get {}", name);
+            let getter = make_native_with_length(&getter_name, 0, move |rt, _args| body(rt));
+            let getter_id = rt.alloc_object(getter);
+            rt.obj_mut(proto).dict_mut().insert(
+                crate::value::PropertyKey::String(name.to_string()),
+                crate::value::PropertyDescriptor {
+                    value: Value::Undefined,
+                    writable: false,
+                    enumerable: false,
+                    configurable: true,
+                    getter: Some(Value::Object(getter_id)),
+                    setter: None,
+                },
+            );
+        };
+        install_ab_accessor(self, array_buffer_proto, "byteLength", |rt| {
+            let this_id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "ArrayBuffer.prototype.byteLength getter: receiver must be an ArrayBuffer".into(),
+                )),
+            };
+            match rt.array_buffers.get(&this_id) {
+                Some(buf) => Ok(Value::Number(buf.byte_length as f64)),
+                None => Err(RuntimeError::TypeError(
+                    "ArrayBuffer.prototype.byteLength getter: receiver has no [[ArrayBufferData]] slot".into(),
+                )),
+            }
+        });
+        install_ab_accessor(self, array_buffer_proto, "maxByteLength", |rt| {
+            let this_id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "ArrayBuffer.prototype.maxByteLength getter: receiver must be an ArrayBuffer".into(),
+                )),
+            };
+            match rt.array_buffers.get(&this_id) {
+                Some(buf) => Ok(Value::Number(buf.max_byte_length as f64)),
+                None => Err(RuntimeError::TypeError(
+                    "ArrayBuffer.prototype.maxByteLength getter: receiver has no [[ArrayBufferData]] slot".into(),
+                )),
+            }
+        });
+        install_ab_accessor(self, array_buffer_proto, "resizable", |rt| {
+            let this_id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "ArrayBuffer.prototype.resizable getter: receiver must be an ArrayBuffer".into(),
+                )),
+            };
+            match rt.array_buffers.get(&this_id) {
+                Some(buf) => Ok(Value::Boolean(buf.max_byte_length > buf.byte_length)),
+                None => Err(RuntimeError::TypeError(
+                    "ArrayBuffer.prototype.resizable getter: receiver has no [[ArrayBufferData]] slot".into(),
+                )),
+            }
+        });
+        install_ab_accessor(self, array_buffer_proto, "detached", |rt| {
+            let this_id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "ArrayBuffer.prototype.detached getter: receiver must be an ArrayBuffer".into(),
+                )),
+            };
+            if rt.array_buffers.contains_key(&this_id) {
+                Ok(Value::Boolean(false))
+            } else {
+                Err(RuntimeError::TypeError(
+                    "ArrayBuffer.prototype.detached getter: receiver has no [[ArrayBufferData]] slot".into(),
+                ))
+            }
+        });
         register_method(self, array_buffer_proto, "resize", |rt, args| {
             let this_id = match rt.current_this() {
                 Value::Object(o) => o,
@@ -16604,6 +16685,26 @@ impl Runtime {
         let ab_id = self.alloc_object(array_buffer_ctor);
         self.obj_mut(ab_id)
             .set_own_frozen("prototype".into(), Value::Object(array_buffer_proto));
+        // TAMM-EXT 1: ArrayBuffer[Symbol.species] per ECMA-262 §25.1.4.3.
+        // Returns the constructor itself; subclasses can override. The
+        // accessor surfaces as a real getter property keyed under
+        // @@species — register via the well-known-Symbol name convention
+        // that the engine's GetProp fast-path maps to Symbol.species.
+        let ab_species_getter = make_native_with_length("get [Symbol.species]", 0, move |_rt, _args| {
+            Ok(Value::Object(ab_id))
+        });
+        let ab_species_getter_id = self.alloc_object(ab_species_getter);
+        self.obj_mut(ab_id).dict_mut().insert(
+            crate::value::PropertyKey::String("@@species".to_string()),
+            crate::value::PropertyDescriptor {
+                value: Value::Undefined,
+                writable: false,
+                enumerable: false,
+                configurable: true,
+                getter: Some(Value::Object(ab_species_getter_id)),
+                setter: None,
+            },
+        );
         self.define_global_property("ArrayBuffer", Value::Object(ab_id));
 
         for name in &[

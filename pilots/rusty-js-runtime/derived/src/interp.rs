@@ -9959,6 +9959,41 @@ impl Runtime {
                 return Value::Number(buf.byte_length as f64);
             }
         }
+        // TAMM-EXT 1: ArrayBuffer.prototype.{maxByteLength, resizable,
+        // detached, immutable} accessor surface. Per ECMA-262 §25.1
+        // ArrayBuffer extensions (ES2024 resizable/transferable buffers):
+        // - maxByteLength reports the maximum byte length the buffer can
+        //   grow to via .resize(); for non-resizable buffers this equals
+        //   byteLength (per §25.1.5.1 IsFixedLengthArrayBuffer step 2).
+        // - resizable is true iff max_byte_length > byte_length OR was
+        //   constructed with the maxByteLength option (cruft tracks the
+        //   latter by storing max_byte_length distinct from byte_length).
+        // - detached is true iff the underlying record was dropped; cruft
+        //   does not implement detachment yet, so always false.
+        // - immutable reflects the (newer) immutable-ArrayBuffer proposal;
+        //   not implemented, always false.
+        if key == "maxByteLength" {
+            if let Some(buf) = self.array_buffers.get(&id) {
+                return Value::Number(buf.max_byte_length as f64);
+            }
+        }
+        if key == "resizable" {
+            if self.array_buffers.contains_key(&id) {
+                let buf = self.array_buffers.get(&id).unwrap();
+                return Value::Boolean(buf.max_byte_length > buf.byte_length
+                    || self.obj(id).has_own_str("__cruft_was_resizable"));
+            }
+        }
+        if key == "detached" {
+            if self.array_buffers.contains_key(&id) {
+                return Value::Boolean(false);
+            }
+        }
+        if key == "immutable" {
+            if self.array_buffers.contains_key(&id) {
+                return Value::Boolean(false);
+            }
+        }
         if let Some(idx) = Self::canonical_array_index_key(key) {
             if let Some(v) = self.typed_array_get_index(id, idx) {
                 return v;
