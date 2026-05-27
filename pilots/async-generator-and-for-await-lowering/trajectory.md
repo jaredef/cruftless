@@ -45,3 +45,45 @@
 first substrate target. Current evidence argues against a single broad lowering
 edit: at minimum, split parser early-error/destructuring validity from
 AsyncFromSync/job-continuation and async-generator protocol execution.
+
+## AGFA-EXT 1 — for-await next/value await bridge (2026-05-26)
+
+**Target selected**: the measured `for-await-of` failures included a concrete
+lowering bug: `Stmt::ForOf.await_` was parsed but discarded by bytecode
+generation. The loop always used the synchronous `for-of` result-object path,
+so async-generator `.next()` Promise results were read directly for `done` and
+`value`.
+
+**Substrate move**:
+
+- `rusty-js-bytecode` now routes `for await` loop `next()` results through the
+  existing `__await` helper before reading `done` / `value`.
+- `rusty-js-bytecode` also awaits the extracted `value` component before
+  assigning it to the loop binding. This is a partial AsyncFromSync bridge,
+  not the full wrapper protocol.
+- `rusty-js-runtime` now gives async-generator instances
+  `%AsyncGeneratorPrototype%` and installs `@@asyncIterator` as identity,
+  matching the async-iterator surface expected by `for await`.
+
+**Verification**:
+
+- `cargo check -p rusty-js-bytecode -p rusty-js-runtime` passed with existing
+  warnings.
+- `cargo build --release --bin cruft -p cruftless` passed with existing
+  warnings.
+- `scripts/diff-prod/run-all.sh` remained `42/42 PASS`.
+- Exemplar suite:
+  `T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 pilots/async-generator-and-for-await-lowering/exemplars/run-exemplars.sh`
+  moved from `PASS=47 FAIL=53 / 100 (47.0%)` to
+  `PASS=58 FAIL=42 / 100 (58.0%)`.
+
+**Residual split after move**:
+
+- 22 `language/expressions/async-generator`
+- 11 `language/statements/async-generator`
+- 9 `language/statements/for-await-of`
+
+**Next**: remaining failures should not be treated as more generic for-await
+lowering. The surface has split: async-generator expression/statement protocol
+is now dominant, while the reduced for-await residual points at assignment
+pattern coverage and full AsyncFromSync abrupt-completion semantics.

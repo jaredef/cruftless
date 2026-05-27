@@ -13352,7 +13352,11 @@ impl Runtime {
             // Iterator Helpers installed on %IteratorPrototype% were invisible
             // to `g().map(...)` patterns.
             let mut iter = Object::new_ordinary();
-            iter.proto = self.generator_prototype;
+            iter.proto = if proto.is_async {
+                self.async_generator_prototype
+            } else {
+                self.generator_prototype
+            };
             let it_id = self.alloc_object(iter);
             // ESNE-EXT 3: hide engine sentinels + iterator methods. State
             // (__gen_*) via set_engine_sentinel; methods (next/return/throw/
@@ -13458,6 +13462,19 @@ impl Runtime {
             });
             let iter_fn_id = self.alloc_object(iter_fn);
             self.set_engine_sentinel(it_id, "@@iterator", Value::Object(iter_fn_id));
+            if proto.is_async {
+                let async_iter = it_id;
+                let async_iter_fn =
+                    crate::intrinsics::make_native("@@asyncIterator", move |_rt, _args| {
+                        Ok(Value::Object(async_iter))
+                    });
+                let async_iter_fn_id = self.alloc_object(async_iter_fn);
+                self.set_engine_sentinel(
+                    it_id,
+                    "@@asyncIterator",
+                    Value::Object(async_iter_fn_id),
+                );
+            }
             return Ok(Value::Object(it_id));
         }
         let body_result_v = body_result;

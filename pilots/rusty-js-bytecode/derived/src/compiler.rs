@@ -1600,7 +1600,6 @@ impl Compiler {
                         }
                     }
                 }
-                let _ = await_;
                 // Ω.5.P52.E4: scope the for-of binding (`for (const x of arr)`)
                 // to the for-statement, not the function. Snapshot + rename
                 // mirrors Stmt::Block.
@@ -1613,6 +1612,11 @@ impl Compiler {
                     kind: VariableKind::Let,
                     depth: 0,
                 });
+                let forawait_tmp = if *await_ {
+                    Some(self.alloc_temp("<forawait.await>"))
+                } else {
+                    None
+                };
                 // Per ECMA-262 §14.7.5.5, `let`/`const` heads receive a fresh
                 // binding per iteration; `var` heads remain function-scoped
                 // and share a single slot across iterations. We track this
@@ -1748,6 +1752,23 @@ impl Compiler {
                 encode_u16(&mut self.bytecode, next_key);
                 encode_op(&mut self.bytecode, Op::CallMethod);
                 encode_u8(&mut self.bytecode, 0);
+                // AGFA-EXT 1: for-await-of consumes an async iterator result
+                // promise before reading `done` / `value`. This is still a
+                // synchronous await stand-in via the existing __await helper,
+                // but it routes async-generator `.next()` results through the
+                // correct observable shape instead of reading properties from
+                // the Promise object itself.
+                if let Some(slot) = forawait_tmp {
+                    encode_op(&mut self.bytecode, Op::StoreLocal);
+                    encode_u16(&mut self.bytecode, slot);
+                    let await_nm = self.constants.intern(Constant::String("__await".into()));
+                    encode_op(&mut self.bytecode, Op::LoadGlobal);
+                    encode_u16(&mut self.bytecode, await_nm);
+                    encode_op(&mut self.bytecode, Op::LoadLocal);
+                    encode_u16(&mut self.bytecode, slot);
+                    encode_op(&mut self.bytecode, Op::Call);
+                    encode_u8(&mut self.bytecode, 1);
+                }
                 // [result]
                 encode_op(&mut self.bytecode, Op::Dup);
                 let done_key = self.constants.intern(Constant::String("done".into()));
@@ -1759,6 +1780,22 @@ impl Compiler {
                 let value_key = self.constants.intern(Constant::String("value".into()));
                 encode_op(&mut self.bytecode, Op::GetProp);
                 encode_u16(&mut self.bytecode, value_key);
+                // AsyncFromSyncIteratorContinuation awaits the `value`
+                // component. The full wrapper protocol remains a deeper
+                // runtime target, but awaiting here covers already-Promise
+                // values and keeps for-await lowering from storing raw
+                // pending Promise objects into the loop binding.
+                if let Some(slot) = forawait_tmp {
+                    encode_op(&mut self.bytecode, Op::StoreLocal);
+                    encode_u16(&mut self.bytecode, slot);
+                    let await_nm = self.constants.intern(Constant::String("__await".into()));
+                    encode_op(&mut self.bytecode, Op::LoadGlobal);
+                    encode_u16(&mut self.bytecode, await_nm);
+                    encode_op(&mut self.bytecode, Op::LoadLocal);
+                    encode_u16(&mut self.bytecode, slot);
+                    encode_op(&mut self.bytecode, Op::Call);
+                    encode_u8(&mut self.bytecode, 1);
+                }
                 // Per-iteration fresh binding for let/const heads: detach the
                 // previous iteration's upvalue cell from this frame slot so
                 // the body's CaptureLocal promotes to a new one. ECMA-262
