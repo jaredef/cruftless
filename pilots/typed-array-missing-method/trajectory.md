@@ -195,3 +195,28 @@ TAMM cluster POST-EXT 7: PASS=74 FAIL=26 / 100 (74.0%)
 **Standing rec TAMM.6 (@@species is always receiver-returning)**: every well-known @@species accessor must read its receiver, never close over a fixed ctor id. The id-captured shape gives correct answers in the common direct-access path but silently breaks when the accessor is extracted via getOwnPropertyDescriptor and called against a foreign receiver. Pattern applies uniformly: Array, ArrayBuffer, %TypedArray%, Map, Set, Promise, RegExp.
 
 **Status**: TAMM-EXT 7 CLOSED locally.
+
+## TAMM-EXT 8 — LANDED (2026-05-27) — ValidateTypedArray + IsCallable + ToIntegerOrInfinity throws
+
+Per keeper directive Telegram 10083 ("Continue").
+
+**Substrate** (~50 LOC across four TypedArray prototype methods):
+- `find`, `findLastIndex`, `includes`, `copyWithin` now:
+  - Check `__ta_kind` internal slot existence on `this` and throw TypeError if absent (ValidateTypedArray per §23.2.3.intro). Pre-EXT 8 these silently returned a sentinel value on non-TypedArray `this`.
+  - `find` + `findLastIndex` also check `IsCallable(predicate)` and throw TypeError if non-callable.
+  - `copyWithin` index args now coerce via `coerce_to_number` which propagates the spec-mandated TypeError when the input is a Symbol (ToIntegerOrInfinity step 1 / ToNumber rejection).
+
+**Yield**:
+```text
+TAMM cluster POST-EXT 7: PASS=74 FAIL=26 / 100 (74.0%)
+TAMM cluster POST-EXT 8: PASS=79 FAIL=21 / 100 (79.0%)
+```
+**+5 PASS** this rung. TypedArray family residual **6 → 1**. Remaining families: TAC 9, AB 8, DV 3, TA 1.
+
+**Cumulative TAMM yield since EXT 0 baseline: 3 → 79 / 100 (+76 across eight rungs)**.
+
+**Gates**: build clean; diff-prod 59/53 (parity).
+
+**Standing rec TAMM.7 (TypedArray method discipline)**: every TypedArray.prototype method needs three uniform checks at entry: (a) `this` is an Object, (b) `__ta_kind` slot exists, (c) any predicate arg is callable. Index args must propagate Symbol-→-TypeError via the real ToNumber path. Methods that silently return sentinel values on bad `this` silently break under test262 receiver-validation probes. Applies to: every, some, forEach, map, filter, reduce, reduceRight, find, findIndex, findLast, findLastIndex, includes, indexOf, lastIndexOf, copyWithin, fill, set, slice, subarray, sort, toReversed, toSorted, with, at, join, keys, values, entries.
+
+**Status**: TAMM-EXT 8 CLOSED locally.

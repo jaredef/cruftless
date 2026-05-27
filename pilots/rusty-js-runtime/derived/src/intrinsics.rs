@@ -16545,10 +16545,14 @@ impl Runtime {
             Ok(Value::Number(-1.0))
         });
         register_method(self, ta_proto, "includes", |rt, args| {
+            // TAMM-EXT 8: ValidateTypedArray per §23.2.3.{14,16,17,…}.
             let this_id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Ok(Value::Boolean(false)),
+                _ => return Err(RuntimeError::TypeError("includes: this must be a TypedArray".into())),
             };
+            if matches!(rt.object_get(this_id, "__ta_kind"), Value::Undefined) {
+                return Err(RuntimeError::TypeError("includes: this is not a TypedArray".into()));
+            }
             let needle = args.first().cloned().unwrap_or(Value::Undefined);
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
@@ -16586,14 +16590,21 @@ impl Runtime {
             Ok(Value::Undefined)
         });
         register_method(self, ta_proto, "find", |rt, args| {
+            // TAMM-EXT 8: ValidateTypedArray + IsCallable per §23.2.3.{11,12}.
             let this_id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Ok(Value::Undefined),
+                _ => return Err(RuntimeError::TypeError("find: this must be a TypedArray".into())),
             };
+            if matches!(rt.object_get(this_id, "__ta_kind"), Value::Undefined) {
+                return Err(RuntimeError::TypeError("find: this is not a TypedArray".into()));
+            }
             let cb = args
                 .first()
                 .cloned()
                 .ok_or_else(|| RuntimeError::TypeError("find: callback required".into()))?;
+            if !rt.is_callable(&cb) {
+                return Err(RuntimeError::TypeError("find: predicate is not callable".into()));
+            }
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
                 _ => 0,
@@ -16951,25 +16962,27 @@ impl Runtime {
             Ok(Value::Number(-1.0))
         });
         register_method(self, ta_proto, "copyWithin", |rt, args| {
+            // TAMM-EXT 8: ValidateTypedArray + index args run through
+            // ToIntegerOrInfinity per §23.2.3.6, which must throw on Symbol.
             let this_id = match rt.current_this() {
                 Value::Object(o) => o,
                 _ => return Err(RuntimeError::TypeError("copyWithin: this must be a TypedArray".into())),
             };
+            if matches!(rt.object_get(this_id, "__ta_kind"), Value::Undefined) {
+                return Err(RuntimeError::TypeError("copyWithin: this is not a TypedArray".into()));
+            }
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as i64,
                 _ => 0,
             };
-            let to_idx = |v: &Value, default: i64| -> i64 {
-                let n = match v {
-                    Value::Number(n) => *n as i64,
-                    Value::Undefined => return default,
-                    _ => return default,
-                };
-                if n < 0 { (len + n).max(0) } else { n.min(len) }
+            let to_idx = |rt: &mut Runtime, v: Value, default: i64| -> Result<i64, RuntimeError> {
+                if matches!(v, Value::Undefined) { return Ok(default); }
+                let n = rt.coerce_to_number(&v)? as i64;
+                Ok(if n < 0 { (len + n).max(0) } else { n.min(len) })
             };
-            let target = to_idx(&args.first().cloned().unwrap_or(Value::Undefined), 0);
-            let start = to_idx(&args.get(1).cloned().unwrap_or(Value::Undefined), 0);
-            let end = to_idx(&args.get(2).cloned().unwrap_or(Value::Undefined), len);
+            let target = to_idx(rt, args.first().cloned().unwrap_or(Value::Undefined), 0)?;
+            let start = to_idx(rt, args.get(1).cloned().unwrap_or(Value::Undefined), 0)?;
+            let end = to_idx(rt, args.get(2).cloned().unwrap_or(Value::Undefined), len)?;
             let count = (end - start).min(len - target).max(0);
             // Buffer the slice first to avoid in-place aliasing.
             let mut buf = Vec::with_capacity(count as usize);
@@ -17003,12 +17016,19 @@ impl Runtime {
             Ok(Value::Undefined)
         });
         register_method(self, ta_proto, "findLastIndex", |rt, args| {
+            // TAMM-EXT 8: ValidateTypedArray + IsCallable per §23.2.3.13.
             let this_id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Ok(Value::Number(-1.0)),
+                _ => return Err(RuntimeError::TypeError("findLastIndex: this must be a TypedArray".into())),
             };
+            if matches!(rt.object_get(this_id, "__ta_kind"), Value::Undefined) {
+                return Err(RuntimeError::TypeError("findLastIndex: this is not a TypedArray".into()));
+            }
             let cb = args.first().cloned()
                 .ok_or_else(|| RuntimeError::TypeError("findLastIndex: callback required".into()))?;
+            if !rt.is_callable(&cb) {
+                return Err(RuntimeError::TypeError("findLastIndex: predicate is not callable".into()));
+            }
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
                 _ => 0,
