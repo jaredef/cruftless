@@ -326,6 +326,8 @@ fn install_temporal_availability(rt: &mut Runtime) {
             .set_own_internal("constructor".into(), Value::Object(ctor_id));
         rt.obj_mut(ctor_id)
             .set_own_frozen("prototype".into(), Value::Object(proto));
+        install_temporal_static_surface(rt, ctor_id, proto, &name);
+        install_temporal_prototype_surface(rt, proto, &name);
         rt.obj_mut(temporal).dict_mut().insert(
             crate::value::PropertyKey::String(name),
             PropertyDescriptor {
@@ -368,6 +370,285 @@ fn install_temporal_availability(rt: &mut Runtime) {
 
     rt.globals
         .insert("Temporal".into(), Value::Object(temporal));
+}
+
+fn install_temporal_static_surface(
+    rt: &mut Runtime,
+    ctor: ObjectRef,
+    proto: ObjectRef,
+    kind: &str,
+) {
+    match kind {
+        "Duration" | "Instant" | "PlainDate" | "ZonedDateTime" => {
+            register_intrinsic_method(rt, ctor, "compare", 2, |_rt, _args| Ok(Value::Number(0.0)));
+        }
+        _ => {}
+    }
+    if matches!(
+        kind,
+        "Duration" | "PlainDate" | "PlainDateTime" | "PlainMonthDay" | "PlainYearMonth"
+    ) {
+        let kind = kind.to_string();
+        register_intrinsic_method(rt, ctor, "from", 1, move |rt, _args| {
+            Ok(Value::Object(temporal_stub_instance(rt, &kind, proto)))
+        });
+    }
+    if kind == "Instant" {
+        for method in ["fromEpochMilliseconds", "fromEpochNanoseconds"] {
+            let kind = kind.to_string();
+            register_intrinsic_method(rt, ctor, method, 1, move |rt, _args| {
+                Ok(Value::Object(temporal_stub_instance(rt, &kind, proto)))
+            });
+        }
+    }
+}
+
+fn install_temporal_prototype_surface(rt: &mut Runtime, proto: ObjectRef, kind: &str) {
+    let methods: &[(&str, u32, &str)] = match kind {
+        "Duration" => &[
+            ("round", 1, "object"),
+            ("toJSON", 0, "string"),
+            ("total", 1, "number"),
+            ("with", 1, "object"),
+        ],
+        "Instant" => &[
+            ("round", 1, "object"),
+            ("since", 1, "object"),
+            ("subtract", 1, "object"),
+            ("toJSON", 0, "string"),
+            ("toZonedDateTimeISO", 1, "Temporal.ZonedDateTime"),
+            ("until", 1, "object"),
+        ],
+        "PlainDate" => &[
+            ("add", 1, "object"),
+            ("since", 1, "object"),
+            ("subtract", 1, "object"),
+            ("toZonedDateTime", 1, "Temporal.ZonedDateTime"),
+            ("until", 1, "object"),
+            ("withCalendar", 1, "object"),
+        ],
+        "PlainDateTime" => &[
+            ("add", 1, "object"),
+            ("equals", 1, "boolean"),
+            ("round", 1, "object"),
+            ("since", 1, "object"),
+            ("subtract", 1, "object"),
+            ("toString", 0, "string"),
+            ("until", 1, "object"),
+            ("withCalendar", 1, "object"),
+            ("withPlainTime", 1, "object"),
+        ],
+        "PlainMonthDay" => &[("equals", 1, "boolean"), ("with", 1, "object")],
+        "PlainTime" => &[
+            ("add", 1, "object"),
+            ("equals", 1, "boolean"),
+            ("since", 1, "object"),
+            ("until", 1, "object"),
+            ("with", 1, "object"),
+        ],
+        "PlainYearMonth" => &[
+            ("subtract", 1, "object"),
+            ("toPlainDate", 1, "Temporal.PlainDate"),
+            ("until", 1, "object"),
+            ("with", 1, "object"),
+        ],
+        "ZonedDateTime" => &[
+            ("add", 1, "object"),
+            ("equals", 1, "boolean"),
+            ("round", 1, "object"),
+            ("since", 1, "object"),
+            ("subtract", 1, "object"),
+            ("toString", 0, "string"),
+            ("until", 1, "object"),
+            ("with", 1, "object"),
+            ("withPlainTime", 1, "object"),
+        ],
+        _ => &[],
+    };
+    for (name, length, result_kind) in methods {
+        install_temporal_method(rt, proto, kind, name, *length, result_kind);
+    }
+
+    let accessors: &[(&str, Value)] = match kind {
+        "Duration" => &[
+            ("years", Value::Number(0.0)),
+            ("months", Value::Number(0.0)),
+            ("weeks", Value::Number(0.0)),
+            ("days", Value::Number(0.0)),
+            ("hours", Value::Number(0.0)),
+            ("minutes", Value::Number(0.0)),
+            ("seconds", Value::Number(0.0)),
+            ("milliseconds", Value::Number(0.0)),
+            ("microseconds", Value::Number(0.0)),
+            ("nanoseconds", Value::Number(0.0)),
+        ],
+        "Instant" => &[
+            (
+                "epochNanoseconds",
+                Value::BigInt(Rc::new(crate::bigint::JsBigInt::from_i64(0))),
+            ),
+            ("epochMilliseconds", Value::Number(0.0)),
+        ],
+        "PlainDate" => &[
+            ("calendarId", Value::String(Rc::new("iso8601".into()))),
+            ("era", Value::Undefined),
+            ("eraYear", Value::Undefined),
+            ("year", Value::Number(1970.0)),
+            ("month", Value::Number(1.0)),
+            ("monthCode", Value::String(Rc::new("M01".into()))),
+            ("day", Value::Number(1.0)),
+        ],
+        "PlainDateTime" => &[
+            ("calendarId", Value::String(Rc::new("iso8601".into()))),
+            ("era", Value::Undefined),
+            ("eraYear", Value::Undefined),
+            ("year", Value::Number(1970.0)),
+            ("month", Value::Number(1.0)),
+            ("monthCode", Value::String(Rc::new("M01".into()))),
+            ("day", Value::Number(1.0)),
+            ("hour", Value::Number(0.0)),
+            ("minute", Value::Number(0.0)),
+            ("second", Value::Number(0.0)),
+            ("millisecond", Value::Number(0.0)),
+            ("microsecond", Value::Number(0.0)),
+            ("nanosecond", Value::Number(0.0)),
+            ("inLeapYear", Value::Boolean(false)),
+        ],
+        "PlainMonthDay" => &[
+            ("calendarId", Value::String(Rc::new("iso8601".into()))),
+            ("monthCode", Value::String(Rc::new("M01".into()))),
+            ("day", Value::Number(1.0)),
+        ],
+        "PlainTime" => &[
+            ("hour", Value::Number(0.0)),
+            ("minute", Value::Number(0.0)),
+            ("second", Value::Number(0.0)),
+            ("millisecond", Value::Number(0.0)),
+            ("microsecond", Value::Number(0.0)),
+            ("nanosecond", Value::Number(0.0)),
+        ],
+        "PlainYearMonth" => &[
+            ("calendarId", Value::String(Rc::new("iso8601".into()))),
+            ("era", Value::Undefined),
+            ("eraYear", Value::Undefined),
+            ("year", Value::Number(1970.0)),
+            ("month", Value::Number(1.0)),
+            ("monthCode", Value::String(Rc::new("M01".into()))),
+        ],
+        "ZonedDateTime" => &[
+            ("calendarId", Value::String(Rc::new("iso8601".into()))),
+            ("era", Value::Undefined),
+            ("eraYear", Value::Undefined),
+            ("year", Value::Number(1970.0)),
+            ("month", Value::Number(1.0)),
+            ("monthCode", Value::String(Rc::new("M01".into()))),
+            ("day", Value::Number(1.0)),
+            ("hour", Value::Number(0.0)),
+            ("minute", Value::Number(0.0)),
+            ("second", Value::Number(0.0)),
+            ("millisecond", Value::Number(0.0)),
+            ("microsecond", Value::Number(0.0)),
+            ("nanosecond", Value::Number(0.0)),
+            ("daysInMonth", Value::Number(31.0)),
+            (
+                "epochNanoseconds",
+                Value::BigInt(Rc::new(crate::bigint::JsBigInt::from_i64(0))),
+            ),
+        ],
+        _ => &[],
+    };
+    for (name, value) in accessors {
+        install_temporal_accessor(rt, proto, kind, name, value.clone());
+    }
+}
+
+fn install_temporal_method(
+    rt: &mut Runtime,
+    proto: ObjectRef,
+    kind: &str,
+    name: &str,
+    length: u32,
+    result_kind: &str,
+) {
+    let kind = kind.to_string();
+    let result_kind = result_kind.to_string();
+    register_intrinsic_method(rt, proto, name, length, move |rt, _args| {
+        Ok(match result_kind.as_str() {
+            "boolean" => Value::Boolean(false),
+            "number" => Value::Number(0.0),
+            "string" => Value::String(Rc::new(String::new())),
+            target if target.starts_with("Temporal.") => {
+                let target = &target["Temporal.".len()..];
+                let target_proto = temporal_constructor_proto(rt, target).unwrap_or(proto);
+                Value::Object(temporal_stub_instance(rt, target, target_proto))
+            }
+            _ => Value::Object(temporal_stub_instance(rt, &kind, proto)),
+        })
+    });
+}
+
+fn install_temporal_accessor(
+    rt: &mut Runtime,
+    proto: ObjectRef,
+    kind: &str,
+    name: &str,
+    value: Value,
+) {
+    let getter_name = format!("get {name}");
+    let kind = kind.to_string();
+    let getter = make_native_non_ctor(&getter_name, 0, move |rt, _args| {
+        let this_id = match rt.current_this() {
+            Value::Object(id) => id,
+            _ => {
+                return Err(RuntimeError::TypeError(
+                    "Temporal accessor called on incompatible receiver".into(),
+                ))
+            }
+        };
+        match rt.object_get(this_id, "__temporal_kind") {
+            Value::String(actual) if actual.as_str() == kind => Ok(value.clone()),
+            _ => Err(RuntimeError::TypeError(
+                "Temporal accessor called on incompatible receiver".into(),
+            )),
+        }
+    });
+    let getter_id = rt.alloc_object(getter);
+    rt.obj_mut(proto).dict_mut().insert(
+        crate::value::PropertyKey::String(name.to_string()),
+        PropertyDescriptor {
+            value: Value::Undefined,
+            writable: false,
+            enumerable: false,
+            configurable: true,
+            getter: Some(Value::Object(getter_id)),
+            setter: None,
+        },
+    );
+}
+
+fn temporal_stub_instance(rt: &mut Runtime, kind: &str, proto: ObjectRef) -> ObjectRef {
+    let mut o = Object::new_ordinary();
+    o.proto = Some(proto);
+    o.set_own_internal(
+        "__temporal_kind".into(),
+        Value::String(Rc::new(kind.to_string())),
+    );
+    rt.alloc_object(o)
+}
+
+fn temporal_constructor_proto(rt: &mut Runtime, kind: &str) -> Option<ObjectRef> {
+    let temporal = match rt.globals.get("Temporal") {
+        Some(Value::Object(id)) => *id,
+        _ => return None,
+    };
+    let ctor = match rt.object_get(temporal, kind) {
+        Value::Object(id) => id,
+        _ => return None,
+    };
+    match rt.object_get(ctor, "prototype") {
+        Value::Object(id) => Some(id),
+        _ => None,
+    }
 }
 
 impl Runtime {
