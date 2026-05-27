@@ -1198,12 +1198,8 @@ impl<'src> Parser<'src> {
     fn parse_tagged_template(&mut self, tag: Expr, start: usize) -> Result<Expr, ParseError> {
         use crate::token::TemplatePart;
         use rusty_js_ast::{Argument, ArrayElement};
-        // Parse the template literal into an Expr::TemplateLiteral first,
-        // then convert into a Call with [__template_object__(Array(quasis)),
-        // ...expressions]. The helper materializes the frozen template
-        // object + `.raw` array expected by tagged-template call sites.
         let tpl = match self.current_kind().clone() {
-            TokenKind::Template { cooked, part, .. } => {
+            TokenKind::Template { cooked, raw, part } => {
                 let tspan = self.lookahead_span();
                 match part {
                     TemplatePart::NoSubstitution => {
@@ -1211,6 +1207,7 @@ impl<'src> Parser<'src> {
                         self.bump()?;
                         Expr::TemplateLiteral {
                             quasis: vec![std::rc::Rc::new(value)],
+                            raw_quasis: vec![std::rc::Rc::new(raw)],
                             expressions: Vec::new(),
                             span: tspan,
                         }
@@ -1221,16 +1218,30 @@ impl<'src> Parser<'src> {
             }
             _ => return Err(self.err_here("expected template after tag".into())),
         };
-        let (quasis, expressions, end) = match tpl {
+        let (quasis, raw_quasis, expressions, end) = match tpl {
             Expr::TemplateLiteral {
                 quasis,
+                raw_quasis,
                 expressions,
                 span,
-            } => (quasis, expressions, span.end),
+            } => (quasis, raw_quasis, expressions, span.end),
             _ => unreachable!(),
         };
         let strings_arr = Expr::Array {
             elements: quasis
+                .iter()
+                .map(|q| {
+                    ArrayElement::Expr(Expr::StringLiteral {
+                        value: (**q).clone(),
+                        span: Span::new(start, end),
+                    })
+                })
+                .collect(),
+            trailing_comma_after_spread: false,
+            span: Span::new(start, end),
+        };
+        let raw_arr = Expr::Array {
+            elements: raw_quasis
                 .iter()
                 .map(|q| {
                     ArrayElement::Expr(Expr::StringLiteral {
@@ -1247,7 +1258,7 @@ impl<'src> Parser<'src> {
                 name: "__template_object__".into(),
                 span: Span::new(start, end),
             }),
-            arguments: vec![Argument::Expr(strings_arr)],
+            arguments: vec![Argument::Expr(strings_arr), Argument::Expr(raw_arr)],
             optional: false,
             span: Span::new(start, end),
         };
@@ -1665,43 +1676,41 @@ impl<'src> Parser<'src> {
     fn parse_template_with_substitutions(&mut self, start: usize) -> Result<Expr, ParseError> {
         use crate::token::TemplatePart;
         let mut quasis: Vec<std::rc::Rc<String>> = Vec::new();
+        let mut raw_quasis: Vec<std::rc::Rc<String>> = Vec::new();
         let mut expressions: Vec<Expr> = Vec::new();
-        // Consume Head, capturing its cooked text as the first quasi.
-        let head_cooked = match self.current_kind().clone() {
+        let (head_cooked, head_raw) = match self.current_kind().clone() {
             TokenKind::Template {
                 cooked,
+                raw,
                 part: TemplatePart::Head,
-                ..
-            } => cooked.unwrap_or_default(),
+            } => (cooked.unwrap_or_default(), raw),
             _ => return Err(self.err_here("expected template head".into())),
         };
         quasis.push(std::rc::Rc::new(head_cooked));
-        self.bump()?; // consume Head
+        raw_quasis.push(std::rc::Rc::new(head_raw));
+        self.bump()?;
         loop {
-            // Parse the substitution expression.
             let expr = self.parse_expression()?;
             expressions.push(expr);
-            // After the substitution, the lookahead is `}` (under Div goal
-            // since the substitution completes an expression). Re-lex
-            // starting at that `}` with TemplateTail goal to emit a
-            // Middle/Tail token.
             self.enter_template_tail()?;
             match self.current_kind().clone() {
                 TokenKind::Template {
                     cooked,
+                    raw,
                     part: TemplatePart::Middle,
-                    ..
                 } => {
                     quasis.push(std::rc::Rc::new(cooked.unwrap_or_default()));
+                    raw_quasis.push(std::rc::Rc::new(raw));
                     self.bump()?;
                     continue;
                 }
                 TokenKind::Template {
                     cooked,
+                    raw,
                     part: TemplatePart::Tail,
-                    ..
                 } => {
                     quasis.push(std::rc::Rc::new(cooked.unwrap_or_default()));
+                    raw_quasis.push(std::rc::Rc::new(raw));
                     self.bump()?;
                     break;
                 }
@@ -1715,6 +1724,7 @@ impl<'src> Parser<'src> {
         let end = self.last_span_end();
         Ok(Expr::TemplateLiteral {
             quasis,
+            raw_quasis,
             expressions,
             span: Span::new(start, end),
         })

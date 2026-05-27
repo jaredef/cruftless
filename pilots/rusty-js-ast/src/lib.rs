@@ -159,6 +159,7 @@ pub enum Expr {
     /// lands in Ω.5.g.3.
     TemplateLiteral {
         quasis: Vec<std::rc::Rc<String>>,
+        raw_quasis: Vec<std::rc::Rc<String>>,
         expressions: Vec<Expr>,
         span: Span,
     },

@@ -2925,21 +2925,28 @@ impl Runtime {
         // ABMT-EXT 13: tagged-template call lowering hands the first
         // argument through this hidden helper so the template object and
         // its `.raw` twin are frozen before user code observes them. The
-        // parser currently preserves cooked strings only; for the
-        // no-substitution singleton closed here, cooked and raw coincide.
+        // TTOC-EXT 1: §13.2.8.3 GetTemplateObject. The parser now passes
+        // both cooked and raw arrays. The raw array carries the literal
+        // source text (backslash sequences preserved); the cooked array
+        // carries escape-resolved strings.
         register_engine_helper(self, "__template_object__", |rt, args| {
             let template_id = match args.first() {
                 Some(Value::Object(id)) => *id,
                 _ => return Ok(Value::Undefined),
             };
-            let len = rt.array_length(template_id);
-            let raw_id = rt.alloc_object(Object::new_array());
-            for i in 0..len {
-                let v = rt.object_get(template_id, &i.to_string());
-                rt.obj_mut(raw_id).set_own(i.to_string(), v);
-            }
-            rt.obj_mut(raw_id)
-                .set_own("length".into(), Value::Number(len as f64));
+            let raw_id = if let Some(Value::Object(rid)) = args.get(1) {
+                *rid
+            } else {
+                let len = rt.array_length(template_id);
+                let fallback = rt.alloc_object(Object::new_array());
+                for i in 0..len {
+                    let v = rt.object_get(template_id, &i.to_string());
+                    rt.obj_mut(fallback).set_own(i.to_string(), v);
+                }
+                rt.obj_mut(fallback)
+                    .set_own("length".into(), Value::Number(len as f64));
+                fallback
+            };
             let raw_value = Value::Object(raw_id);
             rt.object_freeze_via(&raw_value)?;
             rt.obj_mut(template_id)
