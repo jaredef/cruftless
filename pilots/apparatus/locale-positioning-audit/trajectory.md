@@ -248,3 +248,34 @@ Added Tier M, "language-lowering partition outputs":
 **Finding LPA.12 (candidate queue now distinguishes spawn-ready from audit-first arcs)**: the language-lowering bucket contains both large counts and stale/blurred sub-surfaces. Recording all six arcs with status distinctions prevents the next worker from reading raw count as spawn priority. In particular, class rows are largest but audit-first, while async-generator/for-await is smaller but cleaner for a fresh baseline.
 
 **Status**: LPA-EXT 5 CLOSED. The language-lowering layer now has a first apparatus partition and candidate queue entries; no substrate locale spawned in this round.
+
+---
+
+## LPA-EXT 6 — repartition audit algorithm (2026-05-26)
+
+**Trigger**: Keeper directive after choosing an AST-to-bytecode / language-lowering candidate partition: the apparatus needs a tier-level audit algorithm for repartition, not just an ad hoc partition doc.
+
+**Produced**: `pilots/apparatus/locale-positioning-audit/findings/repartition-audit-algorithm.md`.
+
+**Seed update**:
+
+- Promoted LPA methodology from three rungs to four.
+- Added Rung 4: repartition audit algorithm.
+- Added trigger: when a top matrix bucket is broad or mixed, run repartition audit before spawning new substrate locales from that bucket.
+
+**Algorithm summary**:
+
+1. Select a reproducible bucket from `interpreted.jsonl`.
+2. Aggregate surface, projection, and surface×projection marginals.
+3. Classify top cells by mechanism class.
+4. Read existing locale coverage for absorption, exclusion, staleness, and duplication.
+5. Emit arcs, not isolated rows.
+6. Assign disposition: `spawn-ready`, `baseline-first`, `scope-extension`, `audit-first`, or `redirect/defer`.
+7. Update `CANDIDATES.md` only for stable arcs.
+8. Record the move in LPA trajectory.
+
+**Finding LPA.13 (repartition is a reusable apparatus algorithm, not a one-off analysis)**: LPA-EXT 5's language-lowering partition exposed a recurring method. The method is independent of the specific bucket: any broad matrix coordinate can be treated as a selector over `interpreted.jsonl`, then reduced through the same surface/projection/existing-locale/ disposition pipeline. This moves "partition-before-rank" from judgment into an apparatus-tier algorithm.
+
+**Finding LPA.14 (candidate disposition is the load-bearing output)**: the important result of repartition is not just counts; it is the disposition attached to each arc. Counts alone would select class lowering first. Disposition-aware repartition selected async-generator/for-await as cleaner for baseline, class as audit-first, and dynamic import as apparatus-first. The algorithm therefore prevents raw-count priority inversions.
+
+**Status**: LPA-EXT 6 CLOSED. Repartition audit is now part of LPA methodology.
