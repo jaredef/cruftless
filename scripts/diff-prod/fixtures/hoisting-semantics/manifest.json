@@ -1,0 +1,8 @@
+{
+  "name": "hoisting-semantics",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Hoisting: function declaration hoisting over var, block-level function (sloppy vs strict), var hoisting across blocks, function expression vs declaration."
+}

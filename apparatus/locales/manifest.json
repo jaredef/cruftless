@@ -3,12 +3,21 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 189,
-    "top_level": 106,
-    "nested": 83,
+    "locales": 202,
+    "top_level": 118,
+    "nested": 84,
     "warnings": 0
   },
   "locales": [
+    {
+      "coord": "annexB-runtime-quirks",
+      "tag": "L.annexB-runtime-quirks",
+      "parent": null,
+      "scope": "annexB-runtime-quirks",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
+    },
     {
       "coord": "apparatus/cross-runtime-bench",
       "tag": "L.apparatus.cross-runtime-bench",
@@ -33,7 +42,7 @@
       "parent": "L.apparatus",
       "scope": "locale-positioning-audit",
       "depth": 2,
-      "rung_count": 4,
+      "rung_count": 12,
       "status": null
     },
     {
@@ -195,7 +204,7 @@
       "parent": null,
       "scope": "ast-bytecode-missing-throw-typeerror",
       "depth": 1,
-      "rung_count": 1,
+      "rung_count": 20,
       "status": null
     },
     {
@@ -223,6 +232,24 @@
       "scope": "ast-bytecode-wrong-result",
       "depth": 1,
       "rung_count": 1,
+      "status": null
+    },
+    {
+      "coord": "async-generator-and-for-await-lowering",
+      "tag": "L.async-generator-and-for-await-lowering",
+      "parent": null,
+      "scope": "async-generator-and-for-await-lowering",
+      "depth": 1,
+      "rung_count": 7,
+      "status": null
+    },
+    {
+      "coord": "class-elements-static-semantics",
+      "tag": "L.class-elements-static-semantics",
+      "parent": null,
+      "scope": "class-elements-static-semantics",
+      "depth": 1,
+      "rung_count": 2,
       "status": null
     },
     {
@@ -298,6 +325,15 @@
       "status": null
     },
     {
+      "coord": "eval-function-arguments-binding-semantics",
+      "tag": "L.eval-function-arguments-binding-semantics",
+      "parent": null,
+      "scope": "eval-function-arguments-binding-semantics",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
+    },
+    {
       "coord": "eval-scope-binding-chain",
       "tag": "L.eval-scope-binding-chain",
       "parent": null,
@@ -316,6 +352,15 @@
       "status": null
     },
     {
+      "coord": "finally-abrupt-completion-lowering",
+      "tag": "L.finally-abrupt-completion-lowering",
+      "parent": null,
+      "scope": "finally-abrupt-completion-lowering",
+      "depth": 1,
+      "rung_count": 2,
+      "status": null
+    },
+    {
       "coord": "for-head-assignment-pattern-validity",
       "tag": "L.for-head-assignment-pattern-validity",
       "parent": null,
@@ -330,7 +375,7 @@
       "parent": null,
       "scope": "for-head-non-binding-lhs",
       "depth": 1,
-      "rung_count": 1,
+      "rung_count": 3,
       "status": null
     },
     {
@@ -383,6 +428,15 @@
       "tag": "L.for-of-rhs-is-assignment-expression",
       "parent": null,
       "scope": "for-of-rhs-is-assignment-expression",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
+    },
+    {
+      "coord": "generator-coroutine-suspension",
+      "tag": "L.generator-coroutine-suspension",
+      "parent": null,
+      "scope": "generator-coroutine-suspension",
       "depth": 1,
       "rung_count": 1,
       "status": null
@@ -460,6 +514,15 @@
       "status": "**CHAPTER CLOSED at IHI-EXT 11 (P2.a at deeper-layer closure tier)**. Apparatus operational + extensible; 9 IHI_TABLE entries; bytecode rewrite path (Op::CallMethodIcCached) materializes the deeper-layer cache closure. CRB string_url_sweep -3.6% (743 \u2192 716.5 ms); cruft/node 8.21\u00d7 \u2192 7.83\u00d7 (first sub-8\u00d7 on this fixture); A/B header_loop -14% vs original (332 \u2192 284.5 ms). Doc 740 \u00a7IV.2 substrate-introduction signature reading empirically vindicated across the IHI-EXT 7\u219211 trajectory; the keeper-named revert-then-deeper-layer-closure pattern codified as standing rule 13 at findings.md Addendum IX."
     },
     {
+      "coord": "intl402-availability",
+      "tag": "L.intl402-availability",
+      "parent": null,
+      "scope": "intl402-availability",
+      "depth": 1,
+      "rung_count": 18,
+      "status": "FOUNDED 2026-05-26. Spawned from the full-suite Pin-Art"
+    },
+    {
       "coord": "iter-protocol-bytecode-rewrite",
       "tag": "L.iter-protocol-bytecode-rewrite",
       "parent": null,
@@ -473,6 +536,15 @@
       "tag": "L.iterable-primitive-tobject",
       "parent": null,
       "scope": "iterable-primitive-tobject",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
+    },
+    {
+      "coord": "iterator-close-emission-sites",
+      "tag": "L.iterator-close-emission-sites",
+      "parent": null,
+      "scope": "iterator-close-emission-sites",
       "depth": 1,
       "rung_count": 1,
       "status": null
@@ -627,7 +699,25 @@
       "parent": null,
       "scope": "parser-precedence-in-flag",
       "depth": 1,
-      "rung_count": 3,
+      "rung_count": 4,
+      "status": null
+    },
+    {
+      "coord": "private-field-runtime-slots",
+      "tag": "L.private-field-runtime-slots",
+      "parent": null,
+      "scope": "private-field-runtime-slots",
+      "depth": 1,
+      "rung_count": 5,
+      "status": null
+    },
+    {
+      "coord": "private-name-lexing",
+      "tag": "L.private-name-lexing",
+      "parent": null,
+      "scope": "private-name-lexing",
+      "depth": 1,
+      "rung_count": 2,
       "status": null
     },
     {
@@ -1000,12 +1090,30 @@
       "status": "**CLOSED at SPTW-EXT 1**."
     },
     {
+      "coord": "tagged-template-object-construction",
+      "tag": "L.tagged-template-object-construction",
+      "parent": null,
+      "scope": "tagged-template-object-construction",
+      "depth": 1,
+      "rung_count": 2,
+      "status": null
+    },
+    {
       "coord": "temporal-availability",
       "tag": "L.temporal-availability",
       "parent": null,
       "scope": "temporal-availability",
       "depth": 1,
-      "rung_count": 1,
+      "rung_count": 20,
+      "status": null
+    },
+    {
+      "coord": "temporal-availability/plain-datetime-semantics",
+      "tag": "L.temporal-availability.plain-datetime-semantics",
+      "parent": "L.temporal-availability",
+      "scope": "plain-datetime-semantics",
+      "depth": 2,
+      "rung_count": 2,
       "status": null
     },
     {
@@ -1698,7 +1806,16 @@
       "parent": null,
       "scope": "with-body-multi-statement-parse",
       "depth": 1,
-      "rung_count": 2,
+      "rung_count": 3,
+      "status": null
+    },
+    {
+      "coord": "with-unscopables-proxy-has",
+      "tag": "L.with-unscopables-proxy-has",
+      "parent": null,
+      "scope": "with-unscopables-proxy-has",
+      "depth": 1,
+      "rung_count": 3,
       "status": null
     },
     {

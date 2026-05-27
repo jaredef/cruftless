@@ -1,0 +1,8 @@
+{
+  "name": "array-from-of",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Array.from with string, Set, Map, generator, arguments-like, mapFn, thisArg; Array.of; Array.from with length-only object."
+}

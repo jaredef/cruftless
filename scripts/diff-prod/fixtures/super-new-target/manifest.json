@@ -1,0 +1,8 @@
+{
+  "name": "super-new-target",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "super() in constructors, super.method in methods, super in static, new.target in constructors, new.target undefined in regular calls, new.target propagation."
+}

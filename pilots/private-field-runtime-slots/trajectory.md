@@ -1,0 +1,160 @@
+# private-field-runtime-slots — Trajectory
+
+## PFRS-EXT 0 — 2026-05-26 (founded from PNL/CESS residual)
+
+Founded from the post-CESS focused private-name probe.
+
+Prior state:
+
+- PNL direct smoke: `40/40`.
+- Focused PNL after CESS-EXT 1: `140/194`.
+- Residual `test 3` family showed private fields leaking as ordinary own string properties (`hasOwnProperty(instance, "#x")` true).
+
+The existing runtime acceptance file already documented the defect: private fields were name-mangled to ordinary `"#name"` properties.
+
+## PFRS-EXT 1 — 2026-05-26 (private slot map, transitional method bridge)
+
+Added `Object.private_fields` and routed compiler-generated `#name` property ops into it.
+
+Implementation notes:
+
+- `Object.private_fields` is traced by GC and excluded from ordinary `properties`, shape slots, `hasOwnProperty`, `Object.keys`, and descriptor paths.
+- `Runtime::object_set` and `Op::SetProp` write `#name` keys to private storage.
+- `Runtime::object_get` and `Op::GetProp` read `#name` keys from private storage.
+- Private reads walk prototype private storage after own storage to preserve current private-method lowering.
+- `__install_method__` writes `#name` methods into private storage.
+- Private accessors continue to use the existing accessor descriptor path as a transitional bridge.
+
+Verification:
+
+- `cargo check -p rusty-js-runtime`
+- `cargo build --release --bin cruft -p cruftless`
+- `pilots/private-name-lexing/exemplars/run-exemplars.sh`
+  - `PASS=40 FAIL=0 / 40`
+- `PNL_EXEMPLARS_LIST=/private/tmp/pnl-focused.txt pilots/private-name-lexing/exemplars/run-exemplars.sh`
+  - `PASS=160 FAIL=34 / 194`
+- Representative formerly failing row:
+  - `language/statements/class/elements/multiple-definitions-private-names.js` now `PASS`.
+
+Movement:
+
+- Focused PNL probe moved from `140/194` to `160/194`.
+- The private-field ordinary-property leak family closed.
+
+Residuals:
+
+- optional-chain private-field runtime path,
+- async/generator private method runtime semantics,
+- remaining statement/expression duplicated rows around those runtime families.
+
+## PFRS-EXT 2 — 2026-05-26 (optional-chain private continuation)
+
+Closed the two surfaced `private-field-after-optional-chain` rows.
+
+Problem shape:
+
+- Parser/compiler represented `o?.c.#f` as a normal private member read over an optional-chain subexpression.
+- If `o` was nullish, the inner optional member produced `undefined`, then the outer private read attempted `undefined.#f` and threw.
+
+Implementation:
+
+- Added `expr_contains_optional_chain` in the bytecode compiler.
+- When compiling a private member read whose receiver expression contains an optional chain, emit construct tag `optional-chain private-continuation`.
+- In runtime `Op::GetProp`, a `#name` read over `undefined` at that construct tag returns `undefined`.
+- Non-nullish ordinary objects without the private slot still throw TypeError, preserving the tested brand-miss path.
+
+Verification:
+
+- `cargo check -p rusty-js-bytecode`
+- `cargo check -p rusty-js-runtime`
+- `cargo build --release --bin cruft -p cruftless`
+- Direct optional-chain rows:
+  - `language/statements/class/elements/private-field-after-optional-chain.js` → `PASS`
+  - `language/expressions/class/elements/private-field-after-optional-chain.js` → `PASS`
+- `pilots/private-name-lexing/exemplars/run-exemplars.sh`
+  - `PASS=40 FAIL=0 / 40`
+- `PNL_EXEMPLARS_LIST=/private/tmp/pnl-focused.txt pilots/private-name-lexing/exemplars/run-exemplars.sh`
+  - `PASS=162 FAIL=32 / 194`
+
+Movement:
+
+- Focused PNL probe moved from `160/194` to `162/194`.
+
+Residuals:
+
+- 16 generator-method runtime rows (`.next` on a returned Number),
+- 16 async harness SKIPs.
+
+## PFRS-EXT 3 — 2026-05-26 (generator class methods preserve generator flag)
+
+Closed the 16 generator-method runtime rows in the focused PNL probe.
+
+Problem shape:
+
+- Class method lowering discarded `is_generator`, even though ordinary function lowering and runtime generator wrappers already existed.
+- After preserving the flag, the runtime returned a generator iterator, but the eager generator model discarded a non-undefined body `return` when there were no `yield` values.
+
+Implementation:
+
+- Class method lowering now passes `*is_generator` into `compile_function_proto_with_name_hint`.
+- The eager generator wrapper seeds its yielded-value array with a non-undefined body return when no yields were collected.
+
+Verification:
+
+- `cargo check -p rusty-js-bytecode`
+- `cargo check -p rusty-js-runtime`
+- `cargo build --release --bin cruft -p cruftless`
+- Representative formerly failing row:
+  - `language/statements/class/elements/same-line-gen-private-names.js` → `PASS`
+- `pilots/private-name-lexing/exemplars/run-exemplars.sh`
+  - `PASS=40 FAIL=0 / 40`
+- `PNL_EXEMPLARS_LIST=/private/tmp/pnl-focused.txt pilots/private-name-lexing/exemplars/run-exemplars.sh`
+  - `PASS=178 FAIL=16 / 194`
+
+Movement:
+
+- Focused PNL probe moved from `162/194` to `178/194`.
+
+Residuals:
+
+- 16 async / async-generator rows, all harness SKIPs (`async-flag tests need the async-test harness; deferred`).
+
+## PFRS-EXT 4 — 2026-05-26 (async class methods and async test262 runner)
+
+Closed the final 16 focused PNL rows, all async or async-generator class-element cases.
+
+Problem shape:
+
+- Class method lowering still discarded `is_async`, so `async m() { return 42 }` became an ordinary method returning `42`.
+- Async-generator class methods need `.next()` to return a Promise of the iterator result object.
+- The test262 runner skipped every `flags: [async]` test to avoid the noisy `doneprintHandle.js` harness protocol.
+- Once async-flag execution was enabled, chained async continuations exposed that `resolve_promise` fulfilled with returned Promise objects instead of assimilating them.
+
+Implementation:
+
+- Class method lowering now preserves both `is_async` and `is_generator` through `compile_function_proto_with_name_hint`.
+- The eager generator iterator records terminal body returns as `done: true` values when no yields were collected.
+- Async-generator iterator `next()` wraps each iterator-result object in a resolved Promise.
+- `resolve_promise` now assimilates internal Promise values, including pending source promises via forwarded fulfill/reject reactions.
+- The test262 runner now injects a quiet `$DONE` state shim for async-flag tests, drains a short Promise-turn ladder through `__await`, and keeps stdout to the existing one-line JSON result protocol.
+
+Verification:
+
+- `cargo check -p rusty-js-bytecode`
+- `cargo check -p rusty-js-runtime`
+- `cargo build --release --bin cruft -p cruftless`
+- Representative async rows:
+  - `language/statements/class/elements/same-line-async-method-private-names.js` → `PASS`
+  - `language/statements/class/elements/same-line-async-gen-private-names.js` → `PASS`
+- `pilots/private-name-lexing/exemplars/run-exemplars.sh`
+  - `PASS=40 FAIL=0 / 40`
+- `PNL_EXEMPLARS_LIST=/private/tmp/pnl-focused.txt pilots/private-name-lexing/exemplars/run-exemplars.sh`
+  - `PASS=194 FAIL=0 / 194`
+
+Movement:
+
+- Focused PNL probe moved from `178/194` to `194/194`.
+
+Residuals:
+
+- Full async-generator semantics remain transitional: this closes the surfaced eager class-method/no-yield return shape, not parked async-generator execution.

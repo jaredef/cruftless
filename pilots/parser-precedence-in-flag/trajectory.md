@@ -99,3 +99,80 @@ All four conditions hold prospectively. Per R13 thirteenth-corroboration discipl
 **Finding PPIF.4 (the LGSS §XI.1.b carrier count drops to 1)**: LGSS-EXT 3 documented two intent-named methods as the irreducible carriers in cruft's lexer↔parser feedback edge (apparatus §XI.1.b): `enter_template_tail` (forced by lexer byte-boundaries) and `rewind_lexer_to` (forced by absence of [In] grammar parameter). PPIF-EXT 1 named the [In] grammar parameter; PPIF-EXT 2 deletes `rewind_lexer_to`. The carrier count for the back-edge drops from 2 to 1. The apparatus §XI.1.b articulation should be re-read in light of this — what was "irreducible within LGSS scope" became reducible once a sibling locale (PPIF) named the orthogonal constraint that LGSS had identified as outside its scope. This is the FCA amortization conjecture corroborated mechanically: each named-constraint locale reduces the apparent irreducibility of sibling locales.
 
 **Status**: PPIF-EXT 2 CLOSED. PPIF-EXT 3 (audit other for-* positions taking [-In], particularly `for (var/let/const VariableDeclarationList ...)` initializers) remains; PPIF locale closes after EXT 3 verifies the audit returns no additional sites needing the threading.
+
+---
+
+## PPIF-EXT 3 — for-init VariableDeclarationList [~In] audit (2026-05-27)
+
+**Trigger**: Keeper directed next-locale selection after FHNB closed. PPIF was
+chosen as the quiet upstream sibling in the LGSS → PPIF → FHNB chain, avoiding
+the active Temporal / Intl402 / async-generator lanes.
+
+**Audit result**: the remaining seed prediction was real. ECMA-262's C-style
+`for` initializer `VariableDeclarationList` is parsed under `[~In]`; cruft's
+for-head declaration initializer paths still parsed with the default `[+In]`.
+
+Reference probes:
+
+```text
+node /tmp/ppif-invalid-var.js
+  for (var x = 'a' in {a:1}; false; ) {}
+  => SyntaxError
+
+node /tmp/ppif-invalid-let.js
+  for (let x = 'a' in {a:1}; false; ) {}
+  => SyntaxError
+
+node /tmp/ppif-valid-paren.js
+  for (var x = ('a' in {a:1}); false; ) {}
+  => ok
+
+node /tmp/ppif-normal-in.js
+  console.log('a' in {a:1});
+  => true
+```
+
+Pre-fix cruft accepted both invalid for-init cases. Post-fix cruft rejects the
+unparenthesized forms, preserves the parenthesized form, and preserves normal
+`in` expressions.
+
+**Substrate move**:
+
+- Added parser helpers that parse assignment/expression under `[~In]` with
+  save/restore discipline.
+- Routed C-style `for (var/let/const ...; ...; ...)` declaration initializers
+  through the `[~In]` assignment-expression helper.
+- Reused the helper for the expression-headed for-in/of LHS parse so error
+  exits restore parser state.
+- Made `parse_parenthesized` temporarily re-enter `[+In]`, preserving the
+  spec escape hatch where `for (var x = ("a" in obj);;)` is valid.
+
+**Verification**:
+
+```text
+cargo check -p rusty-js-parser
+cargo build -p cruftless --bin cruft
+target/debug/cruft /tmp/ppif-invalid-var.js  # rejects
+target/debug/cruft /tmp/ppif-invalid-let.js  # rejects
+target/debug/cruft /tmp/ppif-valid-paren.js  # ok
+target/debug/cruft /tmp/ppif-normal-in.js    # true
+```
+
+Parser regression tests added:
+
+```text
+for_var_initializer_disallows_unparenthesized_in
+for_var_initializer_allows_parenthesized_in
+```
+
+**Finding PPIF.5 (parentheses are the bounded re-entry to [+In])**: the same
+`in_disallowed` state that makes for-head LHS parsing single-path also covers
+C-style variable initializers, but ParenthesizedExpression must deliberately
+clear it while parsing its inner expression. The grammar parameter is therefore
+not a global "for-head mode"; it is a scoped directive with a syntactic re-entry
+point. Naming it as parser state made the final audit precise.
+
+**Status**: PPIF-EXT 3 CLOSED. Locale PPIF is CLOSED: `in_disallowed` is now
+threaded through the for-head LHS and for-init declaration initializer surfaces,
+the fast-path/rewind carrier is deleted, and normal `[+In]` expression contexts
+remain preserved.

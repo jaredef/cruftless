@@ -31,7 +31,7 @@ This is not a code-substrate locale. It produces no test262 yield, no diff-prod 
 
 ## Methodology
 
-Three rungs.
+Four rungs.
 
 ### Rung 1 — Stale-claim survey (LPA-EXT 1)
 
@@ -65,11 +65,18 @@ Cross-reference the current full-suite Pin-Art matrix (`pilots/test262-categoriz
 
 Produce `pilots/locale-positioning-audit/findings/positioning-gaps.md` enumerating each gap.
 
+### Rung 4 — Repartition audit algorithm (LPA-EXT 6)
+
+When a matrix bucket is too broad to become one locale, repartition it before spawning. The audit takes a concrete `interpreted.jsonl` selector, aggregates by surface/projection/surface×projection, checks existing locale absorption, assigns dispositions (`spawn-ready`, `baseline-first`, `scope-extension`, `audit-first`, `redirect/defer`), and records candidate queue edits.
+
+Produce `pilots/apparatus/locale-positioning-audit/findings/repartition-audit-algorithm.md` as the reusable method, then per-bucket partition docs such as `language-lowering-partition.md`.
+
 ## Triggers (when the audit runs)
 
 - **After any deletion** lands per `apparatus/docs/deletions-ledger.md`: re-check whether the deleted carrier was claimed-irreducible elsewhere.
 - **After any locale CLOSES**: re-check whether the close invalidates sibling locales' claimed-orthogonal constraints.
 - **After any full-suite categorize re-run**: re-check positioning gaps per Rung 3.
+- **When a top matrix bucket is broad or mixed**: run repartition audit per Rung 4 before spawning new substrate locales from that bucket.
 - **On keeper directive**: explicit re-audit.
 
 The audit is **opportunistically run, not scheduled**. Its purpose is to maintain coherence at boundaries where coherence has been observed to drift; running it without a trigger event is wasted work.

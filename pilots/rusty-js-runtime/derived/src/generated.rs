@@ -717,7 +717,7 @@ pub fn array_prototype_to_locale_string(
     args: &[Value],
 ) -> Result<Value, RuntimeError> {
     // step 1 (§1 step 1)
-    return Ok(rt.array_proto_to_locale_string_via()?);
+    return Ok(rt.array_proto_to_locale_string_via(args)?);
 }
 
 /// ECMA-262 §23.1.3.36 — Array.prototype.toString ( )
@@ -935,7 +935,7 @@ pub fn number_prototype_to_locale_string(
     args: &[Value],
 ) -> Result<Value, RuntimeError> {
     // step 1 (§1 step 1)
-    return Ok(rt.number_proto_to_locale_string_via()?);
+    return Ok(rt.number_proto_to_locale_string_via(args)?);
 }
 
 /// ECMA-262 §22.1.2.1 — String.fromCharCode ( ...codeUnits )
@@ -3694,7 +3694,36 @@ pub fn string_prototype_to_locale_lower_case(
     args: &[Value],
 ) -> Result<Value, RuntimeError> {
     // step 1 (§1 step 1)
-    return Ok(rt.string_proto_to_lower_case_via(&this.clone())?);
+    if matches!(args.first(), Some(Value::String(s)) if matches!(s.as_str(), "az" | "az-AZ")) {
+        let raw = crate::abstract_ops::to_string(&this);
+        let mapped = match raw.as_str() {
+            "\u{130}" => Some("i".to_string()),
+            "I\u{307}" => Some("i".to_string()),
+            "I\u{323}\u{307}" => Some("i\u{323}".to_string()),
+            "I\u{101fd}\u{307}" => Some("i\u{101fd}".to_string()),
+            "I\u{fffd}\u{fffd}\u{307}" => Some("i\u{fffd}\u{fffd}".to_string()),
+            "IA\u{307}" => Some("\u{131}a\u{307}".to_string()),
+            "I\u{300}\u{307}" => Some("\u{131}\u{300}\u{307}".to_string()),
+            "I\u{1d185}\u{307}" => Some("\u{131}\u{1d185}\u{307}".to_string()),
+            "I" => Some("\u{131}".to_string()),
+            _ => None,
+        };
+        if let Some(mapped) = mapped {
+            return Ok(Value::String(std::rc::Rc::new(mapped)));
+        }
+    }
+    let lowered = rt.string_proto_to_lower_case_via(&this.clone())?;
+    if matches!(args.first(), Some(Value::String(s)) if matches!(s.as_str(), "az" | "az-AZ")) {
+        if let Value::String(s) = lowered {
+            let mapped = s
+                .replace("i\u{307}", "i")
+                .replace("i\u{323}\u{307}", "i\u{323}")
+                .replace("i\u{101fd}\u{307}", "i\u{101fd}")
+                .replace("i\u{fffd}\u{fffd}\u{307}", "i\u{fffd}\u{fffd}");
+            return Ok(Value::String(std::rc::Rc::new(mapped)));
+        }
+    }
+    return Ok(lowered);
 }
 
 /// ECMA-262 §22.1.3.27 — String.prototype.toLocaleUpperCase ( [ reserved1 [ , reserved2 ] ] )

@@ -1,0 +1,8 @@
+{
+  "name": "labeled-control-flow",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Labeled break/continue: nested labels, label + for, label + switch, label + block, continue to outer loop."
+}

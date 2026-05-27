@@ -71,6 +71,11 @@ pub struct FunctionProto {
     /// closure object on entry. just-curry-it's recursive `function curried()
     /// { ... curried.apply(...) }` pattern depends on this.
     pub self_name_slot: Option<u16>,
+    /// Byte offset immediately after the formal-parameter initialization
+    /// prologue. Generator calls execute this prefix at call time before
+    /// returning the generator object, then resume eager body collection
+    /// after the boundary.
+    pub param_prologue_end: usize,
     /// Tier-Ω.5.eeeeee: marker for generator functions. The runtime
     /// returns an iterator over an eagerly-collected yields array
     /// instead of running the body to its return. v1 deviation: real
@@ -239,6 +244,15 @@ pub struct Compiler {
     /// jumps and the bytecode offset of the loop's continue target.
     /// Push on loop entry, pop on loop exit.
     loop_stack: Vec<LoopFrame>,
+    /// FACL-EXT 1: function-level stack of pending finalizer AST nodes.
+    /// Pushed at try-finally entry, popped at try-finally exit. Return
+    /// statements compile each pending finalizer inline (TryExit + body)
+    /// before the Return opcode so that finally blocks execute on return.
+    fn_finalizer_stack: Vec<rusty_js_ast::Stmt>,
+    /// FACL-EXT 1: true while compiling an inline-duplicated finally body
+    /// for a break/continue/return. Prevents re-entrant finalizer emission
+    /// when a return inside a finally block would otherwise recurse.
+    in_finalizer_emission: bool,
     /// Tier-Ω.5.o: frames for LabelledStatement wrapping non-loop bodies
     /// (e.g. `outer: { ... break outer; }`). Loop labels live on the
     /// LoopFrame's `label` field instead.
@@ -313,6 +327,9 @@ pub struct Compiler {
     /// reused the outer slot index from pre_allocated_slots, writing the
     /// inner value into the outer's slot and breaking shadow semantics.
     block_depth: u32,
+    /// WBMS-EXT 2: dynamic identifier mode for statement bodies executing
+    /// inside one or more `with` object environments.
+    with_depth: u32,
     /// EXT 73: strict-mode context for this compiler scope. Modules are
     /// always strict; a function body inherits the enclosing strictness
     /// and may upgrade itself to strict via a `"use strict"` directive
@@ -404,6 +421,17 @@ struct LoopFrame {
     /// frame, but `continue` skips past it to the enclosing loop —
     /// switch is a break-only construct per ECMA-262 §14.12.4.
     is_switch: bool,
+    /// FACL-EXT 1: count of active try blocks between this loop's entry
+    /// and the current compilation point. Incremented at TryEnter inside
+    /// the loop body; decremented at TryExit. When break/continue exits
+    /// this loop, emit TryExit + inline finally bodies before the jump
+    /// so that finally blocks execute per §14.15.3.
+    try_depth: u32,
+    /// FACL-EXT 1: pending finalizer AST nodes for active try-finally
+    /// blocks enclosing this loop's body. Pushed at try-entry, popped
+    /// at try-exit. On break/continue, each is compiled inline before
+    /// the jump (duplicating the finally body in bytecode).
+    pending_finalizers: Vec<rusty_js_ast::Stmt>,
     /// Tier-Ω.5.o: label name attached to this frame by an enclosing
     /// LabelledStatement. `break LABEL` / `continue LABEL` match the
     /// innermost frame with this label. None for unlabelled loops.
@@ -441,6 +469,40 @@ fn directive_has_use_strict(body: &[Stmt]) -> bool {
     false
 }
 
+fn expr_contains_optional_chain(expr: &Expr) -> bool {
+    match expr {
+        Expr::Member {
+            object, optional, ..
+        } => *optional || expr_contains_optional_chain(object),
+        Expr::Call {
+            callee, optional, ..
+        } => *optional || expr_contains_optional_chain(callee),
+        Expr::Parenthesized { expr, .. }
+        | Expr::Update { argument: expr, .. }
+        | Expr::Unary { argument: expr, .. } => expr_contains_optional_chain(expr),
+        Expr::Binary { left, right, .. }
+        | Expr::Assign {
+            target: left,
+            value: right,
+            ..
+        } => expr_contains_optional_chain(left) || expr_contains_optional_chain(right),
+        Expr::Conditional {
+            test,
+            consequent,
+            alternate,
+            ..
+        } => {
+            expr_contains_optional_chain(test)
+                || expr_contains_optional_chain(consequent)
+                || expr_contains_optional_chain(alternate)
+        }
+        Expr::Sequence { expressions, .. } | Expr::TemplateLiteral { expressions, .. } => {
+            expressions.iter().any(expr_contains_optional_chain)
+        }
+        _ => false,
+    }
+}
+
 impl Compiler {
     pub fn new() -> Self {
         Self {
@@ -449,6 +511,8 @@ impl Compiler {
             locals: Vec::new(),
             source_map: Vec::new(),
             loop_stack: Vec::new(),
+            fn_finalizer_stack: Vec::new(),
+            in_finalizer_emission: false,
             label_stack: Vec::new(),
             pending_label: None,
             enclosing: Vec::new(),
@@ -464,6 +528,7 @@ impl Compiler {
             source_line_starts: Vec::new(),
             source_url: String::new(),
             block_depth: 0,
+            with_depth: 0,
             construct_tags: Vec::new(),
             strict: false,
             locals_snapshot: None,
@@ -1230,10 +1295,19 @@ impl Compiler {
             Stmt::Return { argument, .. } => {
                 if let Some(e) = argument {
                     self.compile_expr(e)?;
-                    encode_op(&mut self.bytecode, Op::Return);
                 } else {
-                    encode_op(&mut self.bytecode, Op::ReturnUndef);
+                    encode_op(&mut self.bytecode, Op::PushUndef);
                 }
+                if !self.in_finalizer_emission {
+                    let finalizers = self.fn_finalizer_stack.clone();
+                    self.in_finalizer_emission = true;
+                    for fin in finalizers.iter().rev() {
+                        encode_op(&mut self.bytecode, Op::TryExit);
+                        self.compile_stmt(fin)?;
+                    }
+                    self.in_finalizer_emission = false;
+                }
+                encode_op(&mut self.bytecode, Op::Return);
             }
             Stmt::Empty { .. } => {}
             Stmt::Block { body, .. } => {
@@ -1434,6 +1508,8 @@ impl Compiler {
                     continue_patches: Vec::new(),
                     break_patches: Vec::new(),
                     is_switch: false,
+                    try_depth: 0,
+                    pending_finalizers: Vec::new(),
                     label: self.pending_label.take(),
                 });
                 self.compile_expr(test)?;
@@ -1446,6 +1522,14 @@ impl Compiler {
                     self.patch_jump_at(site);
                 }
             }
+            Stmt::With { object, body, .. } => {
+                self.compile_expr(object)?;
+                encode_op(&mut self.bytecode, Op::EnterWith);
+                self.with_depth += 1;
+                self.compile_stmt(body)?;
+                self.with_depth -= 1;
+                encode_op(&mut self.bytecode, Op::ExitWith);
+            }
             Stmt::DoWhile { body, test, .. } => {
                 let loop_start = self.bytecode.len();
                 self.loop_stack.push(LoopFrame {
@@ -1454,6 +1538,8 @@ impl Compiler {
                     continue_patches: Vec::new(),
                     break_patches: Vec::new(),
                     is_switch: false,
+                    try_depth: 0,
+                    pending_finalizers: Vec::new(),
                     label: self.pending_label.take(),
                 });
                 self.compile_stmt(body)?;
@@ -1522,6 +1608,8 @@ impl Compiler {
                     continue_patches: Vec::new(),
                     break_patches: Vec::new(),
                     is_switch: false,
+                    try_depth: 0,
+                    pending_finalizers: Vec::new(),
                     label: self.pending_label.take(),
                 });
                 let jump_if_false = if let Some(t) = test {
@@ -1623,7 +1711,6 @@ impl Compiler {
                         }
                     }
                 }
-                let _ = await_;
                 // Ω.5.P52.E4: scope the for-of binding (`for (const x of arr)`)
                 // to the for-statement, not the function. Snapshot + rename
                 // mirrors Stmt::Block.
@@ -1636,6 +1723,11 @@ impl Compiler {
                     kind: VariableKind::Let,
                     depth: 0,
                 });
+                let forawait_tmp = if *await_ {
+                    Some(self.alloc_temp("<forawait.await>"))
+                } else {
+                    None
+                };
                 // Per ECMA-262 §14.7.5.5, `let`/`const` heads receive a fresh
                 // binding per iteration; `var` heads remain function-scoped
                 // and share a single slot across iterations. We track this
@@ -1646,10 +1738,11 @@ impl Compiler {
                 // When destructure_pattern is Some, the body prologue will
                 // run the pattern lowering using slot_to_store_value_into
                 // as the hidden source.
-                let (bind_slot, destr_pat, per_iter_fresh): (
+                let (bind_slot, destr_pat, per_iter_fresh, assign_target): (
                     u16,
                     Option<rusty_js_ast::BindingPattern>,
                     bool,
+                    Option<rusty_js_ast::Expr>,
                 ) = match left {
                     rusty_js_ast::ForBinding::Decl { kind, target, .. } => {
                         match target {
@@ -1660,7 +1753,7 @@ impl Compiler {
                                     depth: 0,
                                 });
                                 let fresh = matches!(kind, VariableKind::Let | VariableKind::Const);
-                                (s, None, fresh)
+                                (s, None, fresh, None)
                             }
                             pat @ (rusty_js_ast::BindingPattern::Array(_)
                             | rusty_js_ast::BindingPattern::Object(_)) => {
@@ -1675,7 +1768,7 @@ impl Compiler {
                                 }
                                 let s = self.alloc_temp("<forof.src>");
                                 let fresh = matches!(kind, VariableKind::Let | VariableKind::Const);
-                                (s, Some(pat.clone()), fresh)
+                                (s, Some(pat.clone()), fresh, None)
                             }
                         }
                     }
@@ -1683,14 +1776,14 @@ impl Compiler {
                         match pat {
                             rusty_js_ast::BindingPattern::Identifier(id) => {
                                 if let Some(s) = self.resolve_local(&id.name) {
-                                    (s, None, false)
+                                    (s, None, false, None)
                                 } else {
                                     let s = self.alloc_local(LocalDescriptor {
                                         name: id.name.clone(),
                                         kind: VariableKind::Let,
                                         depth: 0,
                                     });
-                                    (s, None, false)
+                                    (s, None, false, None)
                                 }
                             }
                             other => {
@@ -1715,9 +1808,13 @@ impl Compiler {
                                 // `destr_assign_pat` carrying the
                                 // BindingPattern-as-Expr conversion.
                                 let s = self.alloc_temp("<forof.src>");
-                                (s, Some(other.clone()), false)
+                                (s, Some(other.clone()), false, None)
                             }
                         }
+                    }
+                    rusty_js_ast::ForBinding::AssignmentTarget(target) => {
+                        let s = self.alloc_temp("<forof.assignment>");
+                        (s, None, false, Some(target.clone()))
                     }
                 };
                 // Compute iterable[@@iterator]() and store into iter_slot.
@@ -1738,6 +1835,8 @@ impl Compiler {
                     continue_patches: Vec::new(),
                     break_patches: Vec::new(),
                     is_switch: false,
+                    try_depth: 0,
+                    pending_finalizers: Vec::new(),
                     label: self.pending_label.take(),
                 });
                 // IPBR-EXT 2 (2026-05-24, iter-protocol-bytecode-rewrite
@@ -1747,11 +1846,12 @@ impl Compiler {
                 // mismatch. Two patch sites: done_offset (i32 at +4) and
                 // next_iter_offset (i16 at +8). Patched after the slow
                 // path + body are emitted.
-                let ipbr_op_off = if per_iter_fresh {
+                let ipbr_op_off = if per_iter_fresh || assign_target.is_some() {
                     // The fused fast path writes the loop binding and jumps
                     // directly to the body. Lexical for-of heads need the
                     // ResetLocalCell prologue below so closures capture a
-                    // fresh per-iteration cell; keep them on the slow path.
+                    // fresh per-iteration cell; assignment targets need the
+                    // post-store PutValue bridge below.
                     None
                 } else {
                     let off = self.bytecode.len();
@@ -1771,6 +1871,23 @@ impl Compiler {
                 encode_u16(&mut self.bytecode, next_key);
                 encode_op(&mut self.bytecode, Op::CallMethod);
                 encode_u8(&mut self.bytecode, 0);
+                // AGFA-EXT 1: for-await-of consumes an async iterator result
+                // promise before reading `done` / `value`. This is still a
+                // synchronous await stand-in via the existing __await helper,
+                // but it routes async-generator `.next()` results through the
+                // correct observable shape instead of reading properties from
+                // the Promise object itself.
+                if let Some(slot) = forawait_tmp {
+                    encode_op(&mut self.bytecode, Op::StoreLocal);
+                    encode_u16(&mut self.bytecode, slot);
+                    let await_nm = self.constants.intern(Constant::String("__await".into()));
+                    encode_op(&mut self.bytecode, Op::LoadGlobal);
+                    encode_u16(&mut self.bytecode, await_nm);
+                    encode_op(&mut self.bytecode, Op::LoadLocal);
+                    encode_u16(&mut self.bytecode, slot);
+                    encode_op(&mut self.bytecode, Op::Call);
+                    encode_u8(&mut self.bytecode, 1);
+                }
                 // [result]
                 encode_op(&mut self.bytecode, Op::Dup);
                 let done_key = self.constants.intern(Constant::String("done".into()));
@@ -1782,6 +1899,22 @@ impl Compiler {
                 let value_key = self.constants.intern(Constant::String("value".into()));
                 encode_op(&mut self.bytecode, Op::GetProp);
                 encode_u16(&mut self.bytecode, value_key);
+                // AsyncFromSyncIteratorContinuation awaits the `value`
+                // component. The full wrapper protocol remains a deeper
+                // runtime target, but awaiting here covers already-Promise
+                // values and keeps for-await lowering from storing raw
+                // pending Promise objects into the loop binding.
+                if let Some(slot) = forawait_tmp {
+                    encode_op(&mut self.bytecode, Op::StoreLocal);
+                    encode_u16(&mut self.bytecode, slot);
+                    let await_nm = self.constants.intern(Constant::String("__await".into()));
+                    encode_op(&mut self.bytecode, Op::LoadGlobal);
+                    encode_u16(&mut self.bytecode, await_nm);
+                    encode_op(&mut self.bytecode, Op::LoadLocal);
+                    encode_u16(&mut self.bytecode, slot);
+                    encode_op(&mut self.bytecode, Op::Call);
+                    encode_u8(&mut self.bytecode, 1);
+                }
                 // Per-iteration fresh binding for let/const heads: detach the
                 // previous iteration's upvalue cell from this frame slot so
                 // the body's CaptureLocal promotes to a new one. ECMA-262
@@ -1806,6 +1939,11 @@ impl Compiler {
                 }
                 encode_op(&mut self.bytecode, Op::StoreLocal);
                 encode_u16(&mut self.bytecode, bind_slot);
+                if let Some(target) = &assign_target {
+                    encode_op(&mut self.bytecode, Op::LoadLocal);
+                    encode_u16(&mut self.bytecode, bind_slot);
+                    self.assign_target_from_stack(target)?;
+                }
                 // IPBR-EXT 2: patch ForOfFastNext's next_iter_offset to
                 // this point (after slow-path StoreLocal completes; body
                 // expects empty stack).
@@ -1883,24 +2021,35 @@ impl Compiler {
             Stmt::Break { label, .. } => {
                 match label {
                     None => {
-                        if let Some(frame) = self.loop_stack.last_mut() {
+                        if let Some(frame) = self.loop_stack.last() {
+                            let finalizers = frame.pending_finalizers.clone();
+                            if !self.in_finalizer_emission {
+                                self.in_finalizer_emission = true;
+                                for fin in finalizers.iter().rev() {
+                                    encode_op(&mut self.bytecode, Op::TryExit);
+                                    self.compile_stmt(fin)?;
+                                }
+                                self.in_finalizer_emission = false;
+                            }
                             let patch_site = encode_op(&mut self.bytecode, Op::Jump);
                             encode_i32(&mut self.bytecode, 0);
-                            frame.break_patches.push(patch_site);
+                            self.loop_stack.last_mut().unwrap().break_patches.push(patch_site);
                         } else {
                             return Err(self.err(span, "break outside of loop"));
                         }
                     }
                     Some(name) => {
-                        // Tier-Ω.5.o: labelled break — walk loop_stack
-                        // top-down for a frame whose `label` matches, then
-                        // fall back to label_stack (labelled non-loop).
                         let needle = name.name.clone();
                         if let Some(idx) = self
                             .loop_stack
                             .iter()
                             .rposition(|f| f.label.as_deref() == Some(needle.as_str()))
                         {
+                            let finalizers = self.loop_stack[idx].pending_finalizers.clone();
+                            for fin in finalizers.iter().rev() {
+                                encode_op(&mut self.bytecode, Op::TryExit);
+                                self.compile_stmt(fin)?;
+                            }
                             let patch_site = encode_op(&mut self.bytecode, Op::Jump);
                             encode_i32(&mut self.bytecode, 0);
                             self.loop_stack[idx].break_patches.push(patch_site);
@@ -1968,7 +2117,20 @@ impl Compiler {
                 encode_op(&mut self.bytecode, Op::TryEnter);
                 let catch_off_patch = self.bytecode.len();
                 encode_u32(&mut self.bytecode, 0);
+                if let Some(fin) = finalizer {
+                    let fin_clone = fin.as_ref().clone();
+                    self.fn_finalizer_stack.push(fin_clone.clone());
+                    for lf in self.loop_stack.iter_mut() {
+                        lf.try_depth += 1;
+                        lf.pending_finalizers.push(fin_clone.clone());
+                    }
+                } else {
+                    for lf in self.loop_stack.iter_mut() { lf.try_depth += 1; }
+                }
                 self.compile_stmt(block)?;
+                if finalizer.is_none() {
+                    for lf in self.loop_stack.iter_mut() { lf.try_depth = lf.try_depth.saturating_sub(1); }
+                }
                 encode_op(&mut self.bytecode, Op::TryExit);
                 let jump_to_end = self.emit_jump(Op::Jump);
                 // Patch the catch offset to point here (start of handler).
@@ -1983,16 +2145,37 @@ impl Compiler {
                     // resolve_local lookups.
                     let scope_snapshot = self.locals.len();
                     self.block_depth += 1;
-                    // Binding the catch param to a local: v1 pops the thrown
-                    // value into a fresh slot if param present, else discards.
+                    // Bind the thrown value to the catch parameter. Identifier
+                    // params store directly; patterned params spill to a
+                    // hidden source slot and use the shared binding-pattern
+                    // destructuring path so nullish object patterns throw
+                    // at handler entry.
                     if let Some(p) = &h.param {
-                        let slot = self.alloc_local(LocalDescriptor {
-                            name: p.name.clone(),
-                            kind: VariableKind::Let,
-                            depth: 0,
-                        });
-                        encode_op(&mut self.bytecode, Op::StoreLocal);
-                        encode_u16(&mut self.bytecode, slot);
+                        match p {
+                            rusty_js_ast::BindingPattern::Identifier(id) => {
+                                let slot = self.alloc_local(LocalDescriptor {
+                                    name: id.name.clone(),
+                                    kind: VariableKind::Let,
+                                    depth: 0,
+                                });
+                                encode_op(&mut self.bytecode, Op::StoreLocal);
+                                encode_u16(&mut self.bytecode, slot);
+                            }
+                            pat @ (rusty_js_ast::BindingPattern::Array(_)
+                            | rusty_js_ast::BindingPattern::Object(_)) => {
+                                for id in pat.collect_names() {
+                                    self.alloc_local(LocalDescriptor {
+                                        name: id.name.clone(),
+                                        kind: VariableKind::Let,
+                                        depth: 0,
+                                    });
+                                }
+                                let src_slot = self.alloc_temp("<catch.destr.src>");
+                                encode_op(&mut self.bytecode, Op::StoreLocal);
+                                encode_u16(&mut self.bytecode, src_slot);
+                                self.emit_destructure(pat, src_slot)?;
+                            }
+                        }
                     } else {
                         encode_op(&mut self.bytecode, Op::Pop);
                     }
@@ -2008,6 +2191,11 @@ impl Compiler {
                 }
                 self.patch_jump(jump_to_end);
                 if let Some(fin) = finalizer {
+                    self.fn_finalizer_stack.pop();
+                    for lf in self.loop_stack.iter_mut() {
+                        lf.try_depth = lf.try_depth.saturating_sub(1);
+                        lf.pending_finalizers.pop();
+                    }
                     self.compile_stmt(fin)?;
                 }
             }
@@ -2040,6 +2228,11 @@ impl Compiler {
                 let Some(idx) = loop_idx else {
                     return Err(self.err(span, "continue outside of loop"));
                 };
+                let finalizers = self.loop_stack[idx].pending_finalizers.clone();
+                for fin in finalizers.iter().rev() {
+                    encode_op(&mut self.bytecode, Op::TryExit);
+                    self.compile_stmt(fin)?;
+                }
                 let pending = self.loop_stack[idx].continue_pending;
                 if pending {
                     let patch_site = encode_op(&mut self.bytecode, Op::Jump);
@@ -2141,6 +2334,8 @@ impl Compiler {
                     continue_patches: Vec::new(),
                     break_patches: Vec::new(),
                     is_switch: true,
+                    try_depth: 0,
+                    pending_finalizers: Vec::new(),
                     label: None,
                 });
 
@@ -2221,8 +2416,11 @@ impl Compiler {
 
                 // Decide the per-iteration binding slot (and per_iter_fresh
                 // for let/const heads, mirroring Ω.5.g.1 for-of semantics).
-                // ForBinding::Pattern with non-Identifier is deferred.
-                let (bind_slot, per_iter_fresh): (u16, bool) =
+                let (bind_slot, per_iter_fresh, assign_target): (
+                    u16,
+                    bool,
+                    Option<rusty_js_ast::Expr>,
+                ) =
                     match left {
                         rusty_js_ast::ForBinding::Decl { kind, target, .. } => match target {
                             rusty_js_ast::BindingPattern::Identifier(id) => {
@@ -2232,7 +2430,7 @@ impl Compiler {
                                     depth: 0,
                                 });
                                 let fresh = matches!(kind, VariableKind::Let | VariableKind::Const);
-                                (s, fresh)
+                                (s, fresh, None)
                             }
                             _ => {
                                 return Err(self
@@ -2242,14 +2440,14 @@ impl Compiler {
                         rusty_js_ast::ForBinding::Pattern(pat) => match pat {
                             rusty_js_ast::BindingPattern::Identifier(id) => {
                                 if let Some(s) = self.resolve_local(&id.name) {
-                                    (s, false)
+                                    (s, false, None)
                                 } else {
                                     let s = self.alloc_local(LocalDescriptor {
                                         name: id.name.clone(),
                                         kind: VariableKind::Let,
                                         depth: 0,
                                     });
-                                    (s, false)
+                                    (s, false, None)
                                 }
                             }
                             _ => {
@@ -2257,6 +2455,10 @@ impl Compiler {
                                     .err(span, "for-in with destructure head not yet supported"))
                             }
                         },
+                        rusty_js_ast::ForBinding::AssignmentTarget(target) => {
+                            let s = self.alloc_temp("<forin.assignment>");
+                            (s, false, Some(target.clone()))
+                        }
                     };
 
                 // Ω.5.P04.E1.for-in-nullish-skip: route through
@@ -2300,6 +2502,8 @@ impl Compiler {
                     continue_patches: Vec::new(),
                     break_patches: Vec::new(),
                     is_switch: false,
+                    try_depth: 0,
+                    pending_finalizers: Vec::new(),
                     label: self.pending_label.take(),
                 });
                 encode_op(&mut self.bytecode, Op::LoadLocal);
@@ -2321,6 +2525,11 @@ impl Compiler {
                 encode_op(&mut self.bytecode, Op::GetIndex);
                 encode_op(&mut self.bytecode, Op::StoreLocal);
                 encode_u16(&mut self.bytecode, bind_slot);
+                if let Some(target) = &assign_target {
+                    encode_op(&mut self.bytecode, Op::LoadLocal);
+                    encode_u16(&mut self.bytecode, bind_slot);
+                    self.assign_target_from_stack(target)?;
+                }
 
                 self.compile_stmt(body)?;
 
@@ -2490,6 +2699,7 @@ impl Compiler {
                 }
             }
             rusty_js_ast::BindingPattern::Object(obj) => {
+                self.emit_destructure_object_check(src_slot);
                 let mut static_excluded: Vec<String> = Vec::new();
                 for prop in &obj.properties {
                     // Push src on stack and get the property.
@@ -2767,6 +2977,33 @@ impl Compiler {
         false
     }
 
+    fn upvalue_is_const(&self, idx: u16) -> bool {
+        let Some(desc) = self.upvalues.get(idx as usize) else {
+            return false;
+        };
+        let Some(parent_idx) = self.enclosing.len().checked_sub(1) else {
+            return false;
+        };
+        self.upvalue_source_is_const_at(parent_idx, &desc.source)
+    }
+
+    fn upvalue_source_is_const_at(&self, frame_idx: usize, source: &UpvalueSource) -> bool {
+        let Some(frame) = self.enclosing.get(frame_idx) else {
+            return false;
+        };
+        match source {
+            UpvalueSource::Local(slot) => frame
+                .locals
+                .get(*slot as usize)
+                .is_some_and(|l| matches!(l.kind, VariableKind::Const)),
+            UpvalueSource::Upvalue(idx) => frame.upvalues.get(*idx as usize).is_some_and(|u| {
+                frame_idx.checked_sub(1).is_some_and(|parent_idx| {
+                    self.upvalue_source_is_const_at(parent_idx, &u.source)
+                })
+            }),
+        }
+    }
+
     /// Tier-Ω.5.c: resolve an identifier to an upvalue slot in this proto.
     /// Walks the enclosing chain bottom-up. If the name resolves to a local
     /// in an outer frame, an upvalue is created in this proto (and in every
@@ -2945,7 +3182,11 @@ impl Compiler {
                 encode_u16(&mut self.bytecode, idx);
             }
             Expr::Identifier { name, .. } => {
-                if let Some(slot) = self.resolve_local(name) {
+                if self.with_depth > 0 {
+                    let name_idx = self.constants.intern(Constant::String(name.clone()));
+                    encode_op(&mut self.bytecode, Op::LoadWithName);
+                    encode_u16(&mut self.bytecode, name_idx);
+                } else if let Some(slot) = self.resolve_local(name) {
                     encode_op(&mut self.bytecode, Op::LoadLocal);
                     encode_u16(&mut self.bytecode, slot);
                 } else if let Some(up) = self.resolve_upvalue(name) {
@@ -3239,6 +3480,9 @@ impl Compiler {
                         encode_op(&mut self.bytecode, Op::GetIndex);
                     }
                     MemberProperty::Private { name, .. } => {
+                        if expr_contains_optional_chain(object) {
+                            self.emit_construct_tag("optional-chain private-continuation");
+                        }
                         let idx = self
                             .constants
                             .intern(Constant::String(format!("#{}", name)));
@@ -3996,6 +4240,8 @@ impl Compiler {
             locals: Vec::new(),
             source_map: Vec::new(),
             loop_stack: Vec::new(),
+            fn_finalizer_stack: Vec::new(),
+            in_finalizer_emission: false,
             label_stack: Vec::new(),
             pending_label: None,
             enclosing: sub_enclosing,
@@ -4017,6 +4263,7 @@ impl Compiler {
             // Ω.5.P52.E3: sub-compilers reset block_depth — the function body
             // is its own top level for scope tracking.
             block_depth: 0,
+            with_depth: 0,
             // Ω.5.P53.E2: each function has its own tag list.
             construct_tags: Vec::new(),
             // EXT 73: inherit enclosing strictness; upgrade below if the
@@ -4128,6 +4375,7 @@ impl Compiler {
                 sub.emit_destructure(pat, *slot)?;
             }
         }
+        let param_prologue_end = sub.bytecode.len();
         // Tier-Ω.5.zzz: allocate the `arguments` slot. Populated by
         // call_function at invocation with an Array of the actual
         // received arguments. Per ECMA-262 §10.2.4 the slot exists
@@ -4149,7 +4397,7 @@ impl Compiler {
             if !already {
                 Some(sub.alloc_local(LocalDescriptor {
                     name: n.name.clone(),
-                    kind: VariableKind::Var,
+                    kind: VariableKind::Const,
                     depth: 0,
                 }))
             } else {
@@ -4198,7 +4446,9 @@ impl Compiler {
                             collect_var_hoists(std::slice::from_ref(a.as_ref()), out);
                         }
                     }
-                    Stmt::While { body, .. } | Stmt::DoWhile { body, .. } => {
+                    Stmt::While { body, .. }
+                    | Stmt::With { body, .. }
+                    | Stmt::DoWhile { body, .. } => {
                         collect_var_hoists(std::slice::from_ref(body.as_ref()), out);
                     }
                     Stmt::For { init, body, .. } => {
@@ -4457,6 +4707,7 @@ impl Compiler {
             rest_param_slot,
             arguments_slot,
             self_name_slot,
+            param_prologue_end,
             is_generator,
             line_starts: sub.source_line_starts,
             source_map: sub.source_map,
@@ -4565,7 +4816,11 @@ impl Compiler {
     /// Emit load/store for a bare identifier resolved against locals,
     /// upvalues, then globals (in that order).
     fn emit_load_ident(&mut self, name: &str) {
-        if let Some(s) = self.resolve_local(name) {
+        if self.with_depth > 0 {
+            let idx = self.constants.intern(Constant::String(name.to_string()));
+            encode_op(&mut self.bytecode, Op::LoadWithName);
+            encode_u16(&mut self.bytecode, idx);
+        } else if let Some(s) = self.resolve_local(name) {
             encode_op(&mut self.bytecode, Op::LoadLocal);
             encode_u16(&mut self.bytecode, s);
         } else if let Some(u) = self.resolve_upvalue(name) {
@@ -4598,7 +4853,14 @@ impl Compiler {
     }
 
     fn emit_store_ident(&mut self, name: &str) {
-        if let Some(s) = self.resolve_local(name) {
+        // with-scoping (remote): with-binding lookup takes precedence over
+        // lexical resolution per ECMA-262 §13.11; remote's WithScoping arc
+        // introduced Op::StoreWithName for this.
+        if self.with_depth > 0 {
+            let idx = self.constants.intern(Constant::String(name.to_string()));
+            encode_op(&mut self.bytecode, Op::StoreWithName);
+            encode_u16(&mut self.bytecode, idx);
+        } else if let Some(s) = self.resolve_local(name) {
             // CSC-EXT 2 (compartment-spec-conformance factor 8; also closes
             // ESBC standing-rec ARC.M.7): when in script_mode and the
             // resolved local is a top-level `var` slot, mirror the store
@@ -4670,11 +4932,21 @@ impl Compiler {
                     let _ = span;
                     return Ok(());
                 }
-                self.emit_load_ident(name); // [old]
-                self.compile_expr(value)?; // [old, v]
-                encode_op(&mut self.bytecode, binop); // [new]
-                encode_op(&mut self.bytecode, Op::Dup); // [new, new]
-                self.emit_store_ident(name); // [new]
+                if self.with_depth > 0 {
+                    let idx = self.constants.intern(Constant::String(name.clone()));
+                    encode_op(&mut self.bytecode, Op::LoadWithNameRef);
+                    encode_u16(&mut self.bytecode, idx); // [base, old]
+                    self.compile_expr(value)?; // [base, old, v]
+                    encode_op(&mut self.bytecode, binop); // [base, new]
+                    encode_op(&mut self.bytecode, Op::StoreWithNameRef);
+                    encode_u16(&mut self.bytecode, idx); // [new]
+                } else {
+                    self.emit_load_ident(name); // [old]
+                    self.compile_expr(value)?; // [old, v]
+                    encode_op(&mut self.bytecode, binop); // [new]
+                    encode_op(&mut self.bytecode, Op::Dup); // [new, new]
+                    self.emit_store_ident(name); // [new]
+                }
             }
             Expr::Member {
                 object, property, ..
@@ -4713,9 +4985,37 @@ impl Compiler {
                     let _ = span;
                     return Ok(());
                 }
-                self.compile_expr(value)?;
-                encode_op(&mut self.bytecode, Op::Dup);
-                self.emit_store_ident(name);
+                if self.with_depth > 0 {
+                    let idx = self.constants.intern(Constant::String(name.clone()));
+                    encode_op(&mut self.bytecode, Op::ResolveWithName);
+                    encode_u16(&mut self.bytecode, idx);
+                    self.compile_expr(value)?;
+                    encode_op(&mut self.bytecode, Op::StoreWithNameRef);
+                    encode_u16(&mut self.bytecode, idx);
+                } else {
+                    self.compile_expr(value)?;
+                    encode_op(&mut self.bytecode, Op::Dup);
+                    if let Some(slot) = self.resolve_local(name) {
+                        encode_op(&mut self.bytecode, Op::StoreLocal);
+                        encode_u16(&mut self.bytecode, slot);
+                    } else if let Some(up) = self.resolve_upvalue(name) {
+                        if self.upvalue_is_const(up) {
+                            encode_op(&mut self.bytecode, Op::Pop);
+                            self.emit_throw_typeerror(&format!(
+                                "Assignment to constant variable '{}'",
+                                name
+                            ));
+                            encode_op(&mut self.bytecode, Op::PushUndef);
+                        } else {
+                            encode_op(&mut self.bytecode, Op::StoreUpvalue);
+                            encode_u16(&mut self.bytecode, up);
+                        }
+                    } else {
+                        let idx = self.constants.intern(Constant::String(name.to_string()));
+                        encode_op(&mut self.bytecode, Op::StoreGlobal);
+                        encode_u16(&mut self.bytecode, idx);
+                    }
+                }
             }
             Expr::Member {
                 object, property, ..
@@ -4881,6 +5181,7 @@ impl Compiler {
             }
             Expr::Object { properties, .. } => {
                 use rusty_js_ast::{ObjectKey, ObjectProperty};
+                self.emit_destructure_object_check(src_slot);
                 let mut static_excluded: Vec<String> = Vec::new();
                 for prop in properties {
                     match prop {
@@ -4983,6 +5284,19 @@ impl Compiler {
             // — the caller dispatches on the literal forms. Defensive store.
             _ => self.assign_target_from_stack(target),
         }
+    }
+
+    fn emit_destructure_object_check(&mut self, src_slot: u16) {
+        let check_idx = self
+            .constants
+            .intern(Constant::String("__destr_object_check".into()));
+        encode_op(&mut self.bytecode, Op::LoadGlobal);
+        encode_u16(&mut self.bytecode, check_idx);
+        encode_op(&mut self.bytecode, Op::LoadLocal);
+        encode_u16(&mut self.bytecode, src_slot);
+        encode_op(&mut self.bytecode, Op::Call);
+        encode_u8(&mut self.bytecode, 1);
+        encode_op(&mut self.bytecode, Op::Pop);
     }
 
     /// Consume the value on top of the operand stack and assign it to the
@@ -5642,6 +5956,36 @@ impl Compiler {
                 if *is_static {
                     continue;
                 }
+                if let ClassMemberName::Private { name, .. } = f_name {
+                    let value = match init {
+                        Some(e) => e.clone(),
+                        None => Expr::Identifier {
+                            name: "undefined".to_string(),
+                            span: *f_span,
+                        },
+                    };
+                    let helper_call = Expr::Call {
+                        callee: Box::new(Expr::Identifier {
+                            name: "__init_private_field__".to_string(),
+                            span: *f_span,
+                        }),
+                        arguments: vec![
+                            Argument::Expr(Expr::This { span: *f_span }),
+                            Argument::Expr(Expr::StringLiteral {
+                                value: format!("#{}", name),
+                                span: *f_span,
+                            }),
+                            Argument::Expr(value),
+                        ],
+                        optional: false,
+                        span: *f_span,
+                    };
+                    field_init_stmts.push(Stmt::Expression {
+                        expr: helper_call,
+                        span: *f_span,
+                    });
+                    continue;
+                }
                 let key_expr_prop: MemberProperty = match f_name {
                     ClassMemberName::Identifier { name, span } => MemberProperty::Identifier {
                         name: name.clone(),
@@ -5949,12 +6293,10 @@ impl Compiler {
                         // are deferred to the substrate round that wires
                         // Object.defineProperty's get/set fields end-to-end.
                         // Mirrors the object-literal treatment landed in Ω.5.p.parse.
-                        // Tier-Ω.5.w: async / generator class methods lower as
-                        // ordinary methods. v1 deviation: await / yield inside
-                        // the body still error at compile time at those specific
-                        // statements; but the method itself parses + compiles
-                        // so the surrounding class shape is reachable.
-                        let _ = (is_async, is_generator);
+                        // PFRS-EXT 4: class methods preserve async and
+                        // generator flags through the shared function-proto
+                        // path so async class methods return Promises and
+                        // async generators surface the async-generator bridge.
                         let method_key: Option<String> = match m_name {
                             ClassMemberName::Identifier { name, .. } => Some(name.clone()),
                             ClassMemberName::String { value, .. } => Some(value.clone()),
@@ -5988,8 +6330,8 @@ impl Compiler {
                         let m_proto = self.compile_function_proto_with_name_hint(
                             None,
                             method_key.as_deref(),
-                            false,
-                            false,
+                            *is_async,
+                            *is_generator,
                             params,
                             body,
                         )?;
@@ -6109,6 +6451,60 @@ impl Compiler {
                         };
                         match static_key {
                             Some(key) => {
+                                if key.starts_with('#') {
+                                    let helper = self
+                                        .constants
+                                        .intern(Constant::String("__init_private_field__".into()));
+                                    encode_op(&mut self.bytecode, Op::LoadGlobal);
+                                    encode_u16(&mut self.bytecode, helper);
+                                    encode_op(&mut self.bytecode, Op::LoadLocal);
+                                    encode_u16(&mut self.bytecode, ctor_slot);
+                                    let key_idx = self.constants.intern(Constant::String(key));
+                                    encode_op(&mut self.bytecode, Op::PushConst);
+                                    encode_u16(&mut self.bytecode, key_idx);
+                                    match init {
+                                        Some(e) => {
+                                            self.class_stack.push(ClassFrame {
+                                                super_ctor_name: super_ctor_slot
+                                                    .map(|_| super_ctor_name.clone()),
+                                                super_proto_name: super_ctor_slot
+                                                    .map(|_| super_proto_name.clone()),
+                                                in_constructor: false,
+                                                is_static: true,
+                                            });
+                                            let init_body = vec![rusty_js_ast::Stmt::Return {
+                                                argument: Some(e.clone()),
+                                                span: e.span(),
+                                            }];
+                                            let init_proto = self.compile_function_proto(
+                                                None,
+                                                false,
+                                                false,
+                                                &[],
+                                                &init_body,
+                                            )?;
+                                            self.class_stack.pop();
+                                            let captures = init_proto.upvalues.clone();
+                                            let idx_proto = self
+                                                .constants
+                                                .intern(Constant::Function(Box::new(init_proto)));
+                                            encode_op(&mut self.bytecode, Op::LoadLocal);
+                                            encode_u16(&mut self.bytecode, ctor_slot);
+                                            encode_op(&mut self.bytecode, Op::MakeClosure);
+                                            encode_u16(&mut self.bytecode, idx_proto);
+                                            emit_captures(&mut self.bytecode, &captures);
+                                            encode_op(&mut self.bytecode, Op::CallMethod);
+                                            encode_u8(&mut self.bytecode, 0);
+                                        }
+                                        None => {
+                                            encode_op(&mut self.bytecode, Op::PushUndef);
+                                        }
+                                    }
+                                    encode_op(&mut self.bytecode, Op::Call);
+                                    encode_u8(&mut self.bytecode, 3);
+                                    encode_op(&mut self.bytecode, Op::Pop);
+                                    continue;
+                                }
                                 // Order: ctor on stack, then value, then SetProp.
                                 // Per ECMA-262 §15.7.10 step 31.b, `this` inside
                                 // a static field initializer is the class itself.
@@ -6590,7 +6986,7 @@ fn collect_hoisted_var_names(
             }
             collect_hoisted_var_names(body, out);
         }
-        Stmt::While { body, .. } | Stmt::DoWhile { body, .. } => {
+        Stmt::While { body, .. } | Stmt::With { body, .. } | Stmt::DoWhile { body, .. } => {
             collect_hoisted_var_names(body, out)
         }
         Stmt::Switch { cases, .. } => {

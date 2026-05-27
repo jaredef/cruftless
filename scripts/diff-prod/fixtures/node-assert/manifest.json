@@ -1,0 +1,8 @@
+{
+  "name": "node-assert",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "node:assert surface: assert.fail produces AssertionError, assert.ok, assert.strictEqual, assert.deepStrictEqual, assert.throws."
+}

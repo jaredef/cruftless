@@ -1,0 +1,8 @@
+{
+  "name": "node-util",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "node:util surface: isDeepStrictEqual, util.types.isDate/isRegExp/isMap/isSet/isPromise, util.format, util.inspect basics."
+}

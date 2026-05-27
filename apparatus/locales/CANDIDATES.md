@@ -124,11 +124,8 @@ Candidates surfaced by the LPA-EXT 3 positioning-gap audit (`pilots/apparatus/lo
 **Methodology**: enumerate `compile: ...` reasons; cluster by lowering-tier mechanism; close per-mechanism rungs.
 **Status**: queued, post-PCR.
 
-### (x) `annexB-runtime-quirks` — 🟢 RIPE
-**Telos**: implement Annex B legacy intrinsics surfaced by PCR-EXT 1's annexB-resolver routing (~398 fails @ post-PCR rank 12 + ~202 fails in String.prototype html-methods cluster). Annex B covers Date.prototype.{getYear/setYear/toGMTString/toUTCString}, String.prototype.{anchor/big/blink/bold/etc.}, RegExp.prototype.compile, and the global escape/unescape.
-**Anchor**: PCR-EXT 1's annexB/built-ins/* resolver routing made these legible as a class.
-**Methodology**: surface-by-surface implementation; many are small per-method.
-**Status**: queued, post-PCR.
+### (x) `annexB-runtime-quirks` — **SPAWNED** 2026-05-26 as [`pilots/annexB-runtime-quirks/`](../../pilots/annexB-runtime-quirks/seed.md)
+**Status**: FOUNDED. Runtime built-ins scope only: Date legacy methods, String HTML methods, RegExp.prototype.compile, global escape/unescape. Annex B grammar/lowering surfaces remain excluded to avoid collision with HDSB/WBMS/regexp-conformance.
 
 ### (y) Class-D scope extensions (LPA-EXT 3 recommendation 4) — ⚪ HYPOTHETICAL
 **Telos**: extend existing top-10-batch locales to absorb sibling matrix coordinates at next chapter close. NOT new locale spawns; rung extensions to existing locales per R4-discipline (cluster-coherence multiplier's apparatus-tax non-amortization avoidance).
@@ -176,17 +173,17 @@ Candidates surfaced by `docs/engagement/tokenization-above-ir-candidate-brief.md
 ### (pp) `numeric-literal-conformance` — **SPAWNED** 2026-05-25 as [`pilots/numeric-literal-conformance/`](../../pilots/numeric-literal-conformance/seed.md)
 **Status**: FOUNDED. NLC-EXT 0 baseline-inspection corrected post-IDT Rule-23 verification; NLC-EXT 1-revised is lex-tier malformed numeric rejection.
 
-### (qq) `identifier-tokenization` — 🟢 RIPE
+### (qq) `identifier-tokenization` — **SPAWNED** 2026-05-25 as [`pilots/identifier-tokenization/`](../../pilots/identifier-tokenization/seed.md)
 **Telos**: §11.6 IdentifierName + ReservedWord + UnicodeID ranges + **had-escape preservation** (the A3 axis from prior parser-permissiveness work — the lexer must preserve a "had-escape" bit on identifier tokens so the parser's reserved-word gate can reject escaped reserved-words like `let in`).
 **Pool**: 268 fixtures in `language/identifiers/` (largest single lex-tier sub-dir).
 **LOC estimate**: ~30-50 for had-escape; variable for unicode-id range extension.
-**Status**: queued.
+**Status**: FOUNDED. Rule-23 baseline-inspection corrected the move shape: IDT-EXT 1 targets ReservedWord rejection at BindingIdentifier consumption, with escaped-form verification as IDT-EXT 2.
 
-### (rr) `string-literal-and-escape-conformance` — 🟢 RIPE
+### (rr) `string-literal-and-escape-conformance` — **SPAWNED** 2026-05-25 as [`pilots/string-literal-and-escape-conformance/`](../../pilots/string-literal-and-escape-conformance/seed.md)
 **Telos**: §12.9 StringLiteral cooked/raw separation, escape decoding (\u{XXXX}, surrogate pairs, lone surrogates, hex escapes, line continuations).
 **Pool**: 73 fixtures in `language/literals/string/` + downstream wrong-value tests.
 **LOC estimate**: ~40-80.
-**Status**: queued.
+**Status**: ACTIVE. SLEC-EXT 1 landed the first escape-form rejection bundle; directive-prologue retro-reject and non-ASCII string handling remain deferred rungs.
 
 ### (ss) `regex-literal-lexing` — 🟡 PROBED
 **Telos**: §12.9.5 RegularExpressionLiteral lex production — pattern + flags accumulator + line-terminator rejection inside literal. Separate from regex-engine semantics.
@@ -194,10 +191,10 @@ Candidates surfaced by `docs/engagement/tokenization-above-ir-candidate-brief.md
 **LOC estimate**: ~20-40.
 **Status**: deferred as nested candidate under `regexp-conformance/`; RC-EXT 0 baseline-inspection decides whether the lexing partition has multi-rung shape.
 
-### (tt) `private-name-lexing` — ⚪ HYPOTHETICAL
+### (tt) `private-name-lexing` — **SPAWNED** 2026-05-26 as [`pilots/private-name-lexing/`](../../pilots/private-name-lexing/seed.md)
 **Telos**: §13.3 PrivateIdentifier `#name` tokenization for class private members.
 **Pool**: small visible surface (1 in PCR's parse: bucket) but large potential in class-elements test262 sub-dirs.
-**Status**: deferred until class-elements work is on the critical path.
+**Status**: FOUNDED. Founding survey shows cruft already has `TokenKind::PrivateIdent` plus class-member/member-access parser consumers; PNL-EXT 0 baseline-inspection decides whether the residual pool is truly lex-tier or redirects to class-elements parser/static semantics.
 
 ---
 
@@ -205,11 +202,25 @@ Candidates surfaced by `docs/engagement/tokenization-above-ir-candidate-brief.md
 
 Apparatus-pilot candidates that extend PCR's coordinate-refinement discipline to additional tiers. Each is small (~15-30 LOC) and produces named coordinates that substrate locales can target with clear move shapes.
 
-### (uu) `tokenizer-error-classification-refinement` (TECR) — 🟢 RIPE
+### (uu) `tokenizer-error-classification-refinement` (TECR) — **SPAWNED** 2026-05-25 as [`pilots/apparatus/tokenizer-error-classification-refinement/`](../../pilots/apparatus/tokenizer-error-classification-refinement/seed.md)
 **Telos**: extend PCR's categorizer (`pilots/apparatus/test262-categorize/derived/src/bin/full_pinart.rs`) to split the `availability/missing-parser-feature` projection class into lex-tier vs syntax-tier sub-classes. Today these collapse together; sharpening them surfaces lex-tier substrate work explicitly per the apparatus §XI lexical-grammar coordinate class.
 **Composes with**: PCR-EXT 2's `missing-lowering-feature` pattern — same shape applied at the lex tier.
 **LOC estimate**: ~15 LOC in `full_pinart.rs::projection_axis`.
-**Status**: queued, FIRST apparatus-tier spawn from tokenization-above-IR brief; **lands BEFORE Tier-I substrate locales** per LPA-EXT 3 Finding LPA.5 (apparatus-tier refinement precedes substrate-tier spawns).
+**Status**: CLOSED at TECR-EXT 2. The missing-X-feature family now splits lex, syntax, lowering, and runtime coordinates before generic value-semantics catch-alls.
+
+---
+
+## Tier L — Rule-23 redirects surfaced by tokenization locales
+
+### (aaa) `class-elements-static-semantics` — **SPAWNED** 2026-05-26 as [`pilots/class-elements-static-semantics/`](../../pilots/class-elements-static-semantics/seed.md)
+**Telos**: class element parse-time static semantics for private names and field initializers, surfaced by `private-name-lexing` after direct PrivateIdentifier lexing proved healthy.
+**Pool**: focused PNL private-name grammar/static set residuals: `arguments` in private field initializer, undeclared private name in computed property, and potential duplicate/private-name assertion rows.
+**Status**: FOUNDED. CESS-EXT 1 targets the six remaining `expected SyntaxError, got String` rows from PNL's focused probe; runtime private-brand semantics and async harness skips are out of scope.
+
+### (aab) `private-field-runtime-slots` — **SPAWNED** 2026-05-26 as [`pilots/private-field-runtime-slots/`](../../pilots/private-field-runtime-slots/seed.md)
+**Telos**: runtime storage for private class fields/methods that does not leak through ordinary string-key property reflection.
+**Pool**: focused PNL residuals after CESS-EXT 1, especially `test 3` rows where `hasOwnProperty(instance, "#x")` observed name-mangled private fields.
+**Status**: FOUNDED. PFRS-EXT 1 installs a narrow private slot map and closes the ordinary-property leak family; full brand semantics remain deferred.
 
 ---
 
@@ -248,10 +259,10 @@ Spawned from the post-TECR-EXT-2 matrix's `availability/missing-syntax-feature` 
 | Ref | Cluster | Records | Mechanism | Status |
 |---|---|---:|---|---|
 | (vv) | `hoistable-declaration-as-statement-body` (HDSB) | 475 | Annex B B.3.4 — `if (x) function f(){}` parser rule | 🟢 RIPE |
-| (ww) | `with-body-multi-statement-parse` (WBMS) | ~150 | parse_with_stmt fails on multi-stmt body across LT | 🟢 RIPE |
+| (ww) | `with-body-multi-statement-parse` (WBMS) | 264 | parse WithStatement body + first runtime object-environment rung | ✅ LANDED |
 | (xx) | `import-meta-metaproperty` (IMM) | 76 | §13.3.13 ImportMeta — parser + IR + runtime stub | 🟢 RIPE |
 | (yy) | `dynamic-import-attributes` (DIA) | 41 | stage-4 import-attributes — ImportCall second-param | 🟢 RIPE |
-| (zz) | `compound-assignment-rbrace` (CAR) | 44 | parser quirk in CompoundAssignment LHS (drill-pending) | 🟡 PROBED |
+| (zz) | `compound-assignment-rbrace` (CAR) | 44 | absorbed by WBMS-EXT 2 reference-preserving with assignment | ✅ ABSORBED |
 
 ### (vv) `hoistable-declaration-as-statement-body` (HDSB) — 🟢 RIPE
 **Telos**: §13.6 IfStatement / Annex B B.3.4 — accept FunctionDeclaration as the Statement body of `if`/`else` in sloppy mode (and certain Annex B function-code contexts). cruft currently rejects with `parse: HoistableDeclaration is not allowed as Statement body`.
@@ -260,11 +271,15 @@ Spawned from the post-TECR-EXT-2 matrix's `availability/missing-syntax-feature` 
 **LOC estimate**: ~10-20 LOC at parser's Statement / IfStatement production + strict-mode carve-out.
 **R13 prospective C1-C4**: C1 sibling (existing FunctionDeclaration parse path), C2 shape-compat (additive grammar rule), C3 cost-positive (single rule), C4 bail-safe (parser-only).
 
-### (ww) `with-body-multi-statement-parse` (WBMS) — 🟢 RIPE
-**Telos**: §14.11 WithStatement — accept Statement body that spans multiple lines / contains multiple statements. cruft parses `with(p){x;}` but rejects `with(p){\n console.log(x); \n}` with `parse: unexpected token in expression: Punct(RBrace)`.
-**Pool**: ~150 records (130 in language/statements/with/, ~20 in Proxy/has + sm/lexical-environment).
-**LOC estimate**: ~5-15 LOC at parse_with_stmt (likely the body is parsed via a single-expression path instead of Statement → BlockStatement).
-**Carve-out**: strict mode forbids WithStatement entirely; cruft already rejects in strict — this only addresses the sloppy-mode body-parse bug.
+### (ww) `with-body-multi-statement-parse` (WBMS) — ✅ LANDED 2026-05-26
+**Telos**: §14.11 WithStatement — first close the line-terminator-preceded RBrace parser bug, then promote `with` from a no-op `Stmt::Opaque` into a typed statement plus first runtime object-environment rung.
+**Pool**: 264 records (130 language/statements/with/, Proxy/has, sm/lexical-environment, compound-assignment, and related with-environment tests).
+**Landing**:
+- WBMS-EXT 1: parser `skip_to_top_terminator` brace completion fix, 0/264 -> 37/264 PASS.
+- WBMS-EXT 2: `Stmt::With`, `EnterWith` / `ExitWith`, dynamic with-name lookup/store, and reference-preserving with assignment, 37/264 -> 73/264 PASS.
+**Residual**: 183 FAIL / 8 SKIP at WBMS-EXT 2. Remaining families are deeper environment-record surfaces: global-this/global-object aliasing, `@@unscopables`, Proxy `has`, direct/indirect eval, call-base `this`, destructuring order, and abrupt-completion cleanup.
+
+**Follow-on locale**: `pilots/with-unscopables-proxy-has/` spawned 2026-05-26 for the Object Environment Record `HasBinding` rung (`HasProperty` via Proxy `has`, then `Symbol.unscopables` exclusion). WUPH-EXT 2 moves the parent pool to 80/264 PASS. Remaining WUPH-local blockers are well-known Symbol stringification in proxy trap logs, Array.prototype `length`, function-closure capture of active with-environments, update-expression reference preservation, and full Proxy `Set`/`DefineProperty` sequencing.
 
 ### (xx) `import-meta-metaproperty` (IMM) — ★ REDIAGNOSED 2026-05-26 → apparatus
 
@@ -281,13 +296,94 @@ Cluster redirected to apparatus-pilot: `pilots/apparatus/runner-features-skip-de
 **Pool**: 41 records (language/expressions/dynamic-import/import-attributes/*).
 **LOC estimate**: parser extension to ImportCall production (~10 LOC); runtime can stub the attributes pending real implementation.
 
-### (zz) `compound-assignment-rbrace` (CAR) — ★ REDIRECTED 2026-05-26 → WBMS-EXT 2
+### (zz) `compound-assignment-rbrace` (CAR) — ✅ ABSORBED 2026-05-26 by WBMS-EXT 2
 
 **Rule 23 baseline-inspection (post WBMS-EXT 1 landing)**: all 44 records now fail at RUNTIME with `scope.x === N. Actual: undefined`, not at parse. The compound-assignment tests use `with(scope) { x ^= 3 }` to exercise binding semantics under a `with`-extended scope chain. WBMS-EXT 1's parse-tier fix unblocked the parser; the residual is identical in mechanism to WBMS's 227 runtime-semantic residuals.
 
-Substrate move IS WBMS-EXT 2 (real with-runtime-semantics: Stmt::With AST + bytecode emission + ScopeChain extension). No separate locale spawn. WBMS-EXT 2's pool when spawned will include these 44 CAR records.
+Substrate move WAS WBMS-EXT 2. The first dynamic-name implementation still missed the reference-preserving PutValue shape, then Test262's delete-during-RHS and getter-deletes-property rows forced `ResolveWithName` / `LoadWithNameRef` / `StoreWithNameRef`. Representative CAR probe `language/expressions/compound-assignment/S11.13.2_A5.10_T1.js` now PASS.
 
 **Standing lesson**: when a matrix-coordinate cluster's reason-text matches a parser-tier failure shape, baseline-inspect AFTER any sibling parser-tier moves have landed — Rule 23 may surface that the cluster is already absorbed by a sibling locale's deferred deeper-tier extension.
+
+## Tier M — language-lowering partition outputs (2026-05-26, LPA-EXT 5)
+
+Candidates surfaced by `pilots/apparatus/locale-positioning-audit/findings/language-lowering-partition.md`, which partitioned the 10,839-row `ast-to-bytecode/language-lowering` bucket by surface + projection. This tier exists to prevent the anti-pattern of spawning one broad "language lowering" locale.
+
+### (aba) `async-generator-and-for-await-lowering` — SPAWNED
+**Status**: SPAWNED as `pilots/async-generator-and-for-await-lowering/` at 2026-05-26.
+
+### (abb) `annexB-language-semantics` — 🟢 RIPE FOR BASELINE
+**Telos**: Annex B language/lowering semantics, distinct from `annexB-runtime-quirks/` (Date/String/RegExp/global runtime built-ins). Focuses on `annexB/language/**`.
+**Pool**: 734 visible records in the latest language-lowering bucket.
+**Dominant shapes**: missing syntax feature 474 (`if (x) function f(){}` and related block-level function declaration forms), missing binding/global 135, wrong result 60, runner residue 43.
+**Methodology**: founding baseline must partition block-level function declarations in sloppy mode, direct/indirect eval declaration instantiation, HTML comment lexical behavior, and web-legacy compatibility rules. Preserve runtime Annex B scope in `annexB-runtime-quirks/`; do not merge these surfaces.
+**Status**: queued from LPA-EXT 5; likely clean substrate locale after baseline inspection.
+
+### (abc) `class-lowering-residual-repartition` — 🟡 AUDIT-FIRST
+**Telos**: re-partition class statement/expression residuals after recent `class-elements-static-semantics/` and `private-field-runtime-slots/` movement.
+**Pool**: 4,677 visible records before current class/private-field residual refresh.
+**Reason for audit-first**: this is the largest class of the language-lowering bucket, but existing active locales have recently moved the surface. A broad class locale would likely duplicate current class/private-field work.
+**Methodology**: derive a residual table by async class methods, async-generator class methods, computed class element names, property-key abrupt completion, private brand/slot semantics, and class constructor/prototype realm shape.
+**Status**: audit-first; no spawn until residuals are refreshed.
+
+### (abd) `object-literal-computed-property-semantics` — 🟡 PROBED / sample-needed
+**Telos**: object literal, computed property-name, method/accessor home-object, and `super` lowering semantics.
+**Pool**: ~556 visible records: object expressions 487, computed-property-names 23, super expressions 46.
+**Methodology**: sample before spawn; split `__proto__` duplicate/semantics, ToPropertyKey abrupt completion, home-object / `super` lowering, and object method kind metadata.
+**Status**: deferred until sample inspection.
+
+### (abe) `eval-function-arguments-binding-semantics` — 🟡 PROBED / overlap-check-needed
+**Telos**: direct eval, function declarations, arguments object, function-code/global-code binding instantiation and strict/non-strict parameter interaction.
+**Pool**: ~582 visible records across eval-code, arguments-object, function statement/expression, function-code, global-code.
+**Risk**: overlaps `annexB-language-semantics`, `strict-binding-eval-arguments`, and `non-simple-params-strict-body`.
+**Methodology**: sample and decide whether this is one binding-instantiation locale or scope extensions to existing strict/eval locales.
+**Status**: deferred until overlap check.
+
+### (abf) `dynamic-import-residual-audit` — 🟡 APPARATUS-FIRST
+**Telos**: partition the 296-row `language/expressions/dynamic-import` residual after DIA and RFSDO work.
+**Reason for apparatus-first**: 190/296 rows are still `uncategorized/projection`; spawning substrate work from that label would repeat the pre-PCR blur.
+**Methodology**: reason-text mining and projection refinement before any substrate locale. Likely split import-attributes, dynamic import expression-lowering, Promise/job bridge, and parser ambiguity.
+**Status**: apparatus-first; no substrate spawn yet.
+
+## Tier N — resolver-axis heuristics partition (2026-05-27, LPA-EXT 7)
+
+Candidates surfaced by `pilots/apparatus/locale-positioning-audit/findings/resolver-axis-gap-partition.md`. Source commit was cited as `600afe6` but was not reachable in this checkout at audit time; entries are therefore queued for baseline/audit, not direct founding. The 49-gap snapshot carries explicit (`█`) and implicit (`░`) Pin-Art markers; 25/49 were implicit probe-collision constraints.
+
+### (abg) `bootstrap-host-install-totality` — 🟡 BASELINE-FIRST
+**Telos**: close Instance 2 x Axis H bootstrap resolver totality gaps by completing host built-in install stages. The shared mechanism is missing or low-fidelity bootstrap installation, not isolated host-method bugs.
+**Pool**: 24 Axis H gaps from the resolver-axis snapshot. Named examples include `DataView.prototype.setInt8`, `util.isDeepStrictEqual`, `Readable.from`, `process.ppid`, `console.assert`, `Buffer.concat`, `util.types.isDate`, and `assert.fail`.
+**Methodology**: build a focused 24-fixture exemplar list, group by namespace (`DataView`, `Buffer`, `util`, `assert`, `stream`, `process`, `console`), classify each as absent install, descriptor-shape mismatch, wrong return type, or wrong error object.
+**Status**: baseline-first. Redirect namespace rows to existing surface locales if Rule-23 inspection shows ownership already exists.
+
+### (abh) `ast-bytecode-boundary-integrity-audit` — ✅ AUDITED / SPLIT
+**Telos**: repartition Instance 4 x Axis R boundary leaks before spawning substrate work. The shared signal is AST-to-bytecode boundary underspecification: emitted artifacts fail to preserve semantic directives into runtime-visible behavior.
+**Pool**: 13 Axis R gaps. Named examples include private fields leaking into `Object.keys`, tagged-template `strings.raw`, direct `eval` outer-const capture, destructuring via iterator protocol, generator suspension, and RegExp named capture groups.
+**Methodology**: split by boundary family (private slots, template objects, lexical environment capture, iterator-protocol lowering, generator suspension, RegExp match metadata), then check active locale absorption before founding any broad child.
+**Status**: audited by `pilots/apparatus/locale-positioning-audit/findings/spec-boundary-integrity-audit.md`. Do not found as a broad locale. Private fields are absorbed by PFRS/CESS; generator suspension is an AGFA scope-extension; RegExp named captures route under RC. Three fresh baseline-first child candidates are listed below.
+
+### (abj) `tagged-template-object-boundary` — 🟢 SPAWN-READY
+**Telos**: close tagged-template object construction at the AST-to-bytecode/runtime boundary. The visible failure is `strings.raw` not populated, which means the template-object directive did not survive into the call artifact.
+**Pool**: Instance 4 x Axis R tagged-template boundary rows, plus focused fixtures from `language/expressions/tagged-template/` and `language/template-literals/`.
+**Methodology**: baseline must distinguish parser escape/cooked-string issues, raw-source preservation, template-object allocation, `.raw` descriptor shape, and call argument ordering. Redirect lex/raw-source failures to a string/template literal locale; spawn only if object allocation/descriptor shape dominates.
+**Baseline**: LPA-EXT 9 ran all 27 `language/expressions/tagged-template/` rows. Result: 12 PASS / 13 FAIL / 2 ABORT-no-json. Failures cluster around TemplateStringsArray construction, cache identity, freezing, raw/cooked shape, and eval/realm tag binding. TCO rows (`tco-call.js`, `tco-member.js`) abort and should be initial carve-outs.
+**Status**: spawn-ready. Founding baseline should use the LPA-EXT 9 artifact and set first substrate rung to template-object construction/cache/freeze before TCO.
+
+### (abk) `direct-eval-lexical-capture` — 🟡 BASELINE-FIRST
+**Telos**: close direct eval lexical environment capture, especially outer `const`/`let` visibility. This is distinct from lex-error propagation through eval; it is about selecting the caller lexical environment for direct eval execution.
+**Pool**: Instance 4 x Axis R direct-eval capture rows plus direct/indirect eval contrast probes.
+**Methodology**: baseline strict/sloppy direct eval reads, shadowing, and indirect eval contrast; classify owner as parser direct-eval marking, bytecode call lowering, runtime eval entry environment, or environment-record lookup. Redirect lex/parse error propagation to `lex-error-propagation-to-eval-surface/`.
+**Status**: baseline-first.
+
+### (abl) `destructuring-iterator-protocol-boundary` — 🟡 BASELINE-FIRST
+**Telos**: close destructuring lowering that bypasses the iterator protocol. Array binding/assignment patterns must consume iterators, including `return`/close and abrupt `next` behavior, rather than array-indexing the source.
+**Pool**: Instance 4 x Axis R destructuring iterator rows, plus focused synchronous destructuring fixtures and for-of/for-await destructuring contrast rows.
+**Methodology**: baseline custom iterable, abrupt `next`, `return`, elision, rest, binding, and assignment cases. If async-only rows dominate, keep under `async-generator-and-for-await-lowering/`; if synchronous rows dominate, found a general destructuring boundary locale.
+**Status**: baseline-first.
+
+### (abi) `operator-directive-completion` — 🟡 BASELINE-FIRST
+**Telos**: close Instance 4 x Axis O operator-level unconsumed spec directives. These have narrower fan-out than Axis R and likely close as single-rung substrate fixes or small runtime-builtin extensions.
+**Pool**: 7 Axis O gaps. Named examples include `finally` return override, `Symbol.toPrimitive` hint dispatch, `Object.seal` / `Object.preventExtensions` strict-mode enforcement, `String.prototype.normalize`, and position-argument string methods.
+**Methodology**: build one focused fixture per named operator gap plus sibling fixtures where available; classify each by owning helper/opcode path; route runtime-intrinsic-only rows to the corresponding built-in locale.
+**Status**: baseline-first.
 
 ---
 

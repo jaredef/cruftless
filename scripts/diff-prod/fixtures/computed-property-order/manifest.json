@@ -1,0 +1,8 @@
+{
+  "name": "computed-property-order",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Computed property evaluation order: object literals, class methods, destructuring targets, side effects in key expressions."
+}

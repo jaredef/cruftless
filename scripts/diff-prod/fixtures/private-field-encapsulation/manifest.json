@@ -1,0 +1,8 @@
+{
+  "name": "private-field-encapsulation",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Private class fields: not visible in Object.keys, Object.getOwnPropertyNames; accessible only via class methods; in-check, inheritance."
+}

@@ -1,0 +1,8 @@
+{
+  "name": "string-normalize",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "String.prototype.normalize: NFC, NFD, NFKC, NFKD forms, composed vs decomposed equality, combining characters."
+}

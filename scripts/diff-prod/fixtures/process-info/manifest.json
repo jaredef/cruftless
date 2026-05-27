@@ -1,0 +1,8 @@
+{
+  "name": "process-info",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "process object surface: ppid, pid, arch, platform, env access, exit code shape, hrtime, uptime."
+}

@@ -1,0 +1,8 @@
+{
+  "name": "arrow-edge-cases",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Arrow function edge cases: no-paren single param, destructuring params, default values, rest, this binding (lexical), no arguments, no new.target, no prototype."
+}

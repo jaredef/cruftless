@@ -1,0 +1,8 @@
+{
+  "name": "promise-combinators",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Promise.race, Promise.any, Promise.allSettled, Promise.all edge cases: empty arrays, rejection, mixed resolve/reject, allSettled result shape."
+}

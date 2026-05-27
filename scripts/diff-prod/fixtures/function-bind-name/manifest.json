@@ -1,0 +1,8 @@
+{
+  "name": "function-bind-name",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Function.prototype.bind name/length, partial application, arrow/class/getter/setter name, length with defaults, toString shape."
+}

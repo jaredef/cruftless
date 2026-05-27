@@ -1,0 +1,8 @@
+{
+  "name": "intl-collator-segmenter",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Intl.Collator compare and resolvedOptions, Intl.Segmenter word granularity, Intl.PluralRules select."
+}

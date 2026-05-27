@@ -1,0 +1,8 @@
+{
+  "name": "node-os-timers",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "node:os API shape, timer globals (setTimeout, setImmediate, queueMicrotask), performance.now type."
+}

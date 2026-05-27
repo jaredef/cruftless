@@ -1,0 +1,8 @@
+{
+  "name": "symbol-species",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Symbol.species: Array subclass map/filter/slice use species constructor, Promise subclass then/catch species, RegExp species in split/matchAll."
+}

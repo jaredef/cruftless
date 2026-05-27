@@ -1,0 +1,8 @@
+{
+  "name": "collection-iteration-order",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Map and Set iteration order matches insertion order, Map delete+re-add moves key to end, Map.groupBy, Set union/intersection/difference (ES2025), WeakMap/WeakSet surface."
+}

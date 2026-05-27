@@ -1,0 +1,8 @@
+{
+  "name": "buffer-concat",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Buffer.concat returning a proper Buffer, Buffer.alloc, Buffer.from roundtrips, Buffer.isBuffer, Buffer.byteLength."
+}

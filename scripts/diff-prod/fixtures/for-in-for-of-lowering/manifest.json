@@ -1,0 +1,8 @@
+{
+  "name": "for-in-for-of-lowering",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "for-in enumeration order and prototype chain, for-of with Symbol.iterator, for-of with break/return, for-in with delete during iteration."
+}

@@ -1,0 +1,8 @@
+{
+  "name": "tagged-template-raw",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Tagged template strings.raw population: raw vs cooked, String.raw, frozen template object, identity across calls."
+}

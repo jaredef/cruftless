@@ -1772,6 +1772,7 @@ mod tests {
             rest_param_slot: None,
             arguments_slot: None,
             self_name_slot: None,
+            param_prologue_end: 0,
             is_generator: false,
             is_async: false,
             source_url: String::new(),

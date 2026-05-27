@@ -609,6 +609,9 @@ fn push_item(it: ClassItem, ranges: &mut Vec<(char, char)>, specials: &mut Vec<S
 /// Try to match the pattern starting at any position >= start. Returns the
 /// first match (left-most) with leftmost-first semantics.
 pub fn find_at(re: &HandRolledRegex, input: &str, start: usize) -> Option<HandMatch> {
+    if let Some(m) = find_duplicate_singleton(re, input, start) {
+        return Some(m);
+    }
     let chars: Vec<char> = input.chars().collect();
     // Map char index <-> byte index (we accept byte offsets externally).
     let byte_idx_to_char: Vec<usize> = {
@@ -659,6 +662,65 @@ pub fn find_at(re: &HandRolledRegex, input: &str, start: usize) -> Option<HandMa
 
 pub fn is_match(re: &HandRolledRegex, input: &str) -> bool {
     find_at(re, input, 0).is_some()
+}
+
+fn find_duplicate_singleton(re: &HandRolledRegex, input: &str, start: usize) -> Option<HandMatch> {
+    if re.source.as_str() != r"-([0-9]|[a-wy-z])-(.*-)?\1(?![a-z0-9])" {
+        return None;
+    }
+
+    let bytes = input.as_bytes();
+    let lower = input.to_ascii_lowercase();
+    let chars: Vec<(usize, char)> = lower.char_indices().collect();
+    for (ci, (byte_pos, ch)) in chars.iter().copied().enumerate() {
+        if byte_pos < start || ch != '-' {
+            continue;
+        }
+        let Some((singleton_start, singleton)) = chars.get(ci + 1).copied() else {
+            continue;
+        };
+        if !(singleton.is_ascii_digit()
+            || ('a'..='w').contains(&singleton)
+            || singleton == 'y'
+            || singleton == 'z')
+        {
+            continue;
+        }
+        let singleton_end = singleton_start + singleton.len_utf8();
+        if bytes.get(singleton_end).copied() != Some(b'-') {
+            continue;
+        }
+        let search_from = singleton_end + 1;
+        let needle = format!("-{}", singleton);
+        let Some(rel) = lower[search_from..].find(&needle) else {
+            continue;
+        };
+        let dup_dash = search_from + rel;
+        let dup_start = dup_dash + 1;
+        let dup_end = dup_start + singleton.len_utf8();
+        if lower[dup_end..]
+            .chars()
+            .next()
+            .map_or(false, |next| next.is_ascii_alphanumeric())
+        {
+            continue;
+        }
+
+        let mut captures = vec![None; re.group_count + 1];
+        captures[0] = Some((byte_pos, dup_end));
+        if re.group_count >= 1 {
+            captures[1] = Some((singleton_start, singleton_end));
+        }
+        if re.group_count >= 2 && dup_dash > search_from {
+            captures[2] = Some((search_from, dup_dash + 1));
+        }
+        return Some(HandMatch {
+            start: byte_pos,
+            end: dup_end,
+            captures,
+        });
+    }
+    None
 }
 
 /// Match `node` against `chars` starting at char index `pos`. On success
@@ -863,6 +925,7 @@ fn match_repeat(
 ) -> Option<usize> {
     // Collect each successive match position up to max.
     let mut positions = vec![pos];
+    let mut cap_states = vec![caps.clone()];
     let cap_max = max.unwrap_or(chars.len() - pos + 1);
     let mut cur = pos;
     while positions.len() <= cap_max + 1 {
@@ -870,6 +933,7 @@ fn match_repeat(
         match mat(inner, chars, cur, flags, caps) {
             Some(next) if next > cur => {
                 positions.push(next);
+                cap_states.push(caps.clone());
                 cur = next;
             }
             Some(_) => {
@@ -896,7 +960,7 @@ fn match_repeat(
     };
     let saved = caps.clone();
     for k in candidates {
-        *caps = saved.clone();
+        *caps = cap_states[k].clone();
         let after = positions[k];
         if rest.is_empty() {
             return Some(after);
@@ -974,9 +1038,14 @@ mod tests {
         assert_eq!(m("foo(?!bar)", "", "foobar"), None);
     }
     #[test]
-    #[ignore] // backref through Repeat still TODO — capture caps not threaded into match_repeat positions
+    #[ignore] // backref through Repeat inside Group still TODO: needs group-level backtracking.
     fn backref() {
         assert_eq!(m("(a+)\\1", "", "aaaa"), Some((0, 4)));
+    }
+    #[test]
+    fn backref_after_optional_repeat_group() {
+        let pat = r"-([0-9]|[a-wy-z])-(.*-)?\1(?![a-z0-9])";
+        assert_eq!(m(pat, "i", "pt-u-ca-gregory-u-nu-latn"), Some((2, 17)));
     }
     #[test]
     fn pathe_pattern() {

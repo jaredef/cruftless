@@ -1,0 +1,8 @@
+{
+  "name": "unicode-identifiers",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Unicode identifiers: ID_Start/ID_Continue, \\u escape in identifiers, \\u{} syntax, emoji rejection, reserved word as escaped identifier."
+}

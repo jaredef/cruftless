@@ -8,7 +8,7 @@
 //!
 //! The output is an apparatus interpretation, not a replacement for the raw
 //! benchmark artifact. Raw JSONL stays in the sidecar; derived matrices land in
-//! `pilots/test262-categorize/full-suite/results/<run-id>/`.
+//! `pilots/apparatus/test262-categorize/full-suite/results/<run-id>/`.
 
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
@@ -59,7 +59,7 @@ fn main() {
     }
 
     let repo_root = repo_root();
-    let locale_dir = repo_root.join("pilots/test262-categorize/full-suite");
+    let locale_dir = repo_root.join("pilots/apparatus/test262-categorize/full-suite");
     let run_id = results_path
         .parent()
         .and_then(|p| p.file_name())
@@ -189,6 +189,9 @@ fn classify(record: &Record) -> Coord {
 }
 
 fn rel_path(path: &str) -> String {
+    if let Some(idx) = path.find("/test262/test/") {
+        return path[idx + "/test262/test/".len()..].to_string();
+    }
     path.strip_prefix("/home/jaredef/test262/test/")
         .unwrap_or(path)
         .to_string()
@@ -465,8 +468,10 @@ fn projection_axis(rel: &str, reason: &str, surface: &str) -> String {
     // phrasing (e.g., "testResult !== true", "X === false", "result !==
     // expected"). These are value-semantics wrong-results in test262's
     // older-style phrasing.
-    } else if r.contains("!== true") || r.contains("!== false")
-        || r.contains("=== false") || r.contains("=== true")
+    } else if r.contains("!== true")
+        || r.contains("!== false")
+        || r.contains("=== false")
+        || r.contains("=== true")
     {
         "value-semantics/wrong-result".into()
     // PCR-EXT 2: spec-numbered older-style assertions like "#1: ...".
@@ -891,6 +896,8 @@ fn esc(s: &str) -> String {
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
         .parent()
         .unwrap()
         .parent()

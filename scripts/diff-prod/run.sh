@@ -42,12 +42,20 @@ CATS=$(python3 -c "import json;d=json.load(open('$MANIFEST'));print(' '.join(d.g
 TIMEOUT_MS=$(python3 -c "import json;d=json.load(open('$MANIFEST'));print(d.get('timeout-ms',30000))")
 TIMEOUT_S=$(( TIMEOUT_MS / 1000 + 1 ))
 
+if command -v timeout >/dev/null 2>&1; then
+  TIMEOUT_WRAP=(timeout "$TIMEOUT_S")
+elif command -v gtimeout >/dev/null 2>&1; then
+  TIMEOUT_WRAP=(gtimeout "$TIMEOUT_S")
+else
+  TIMEOUT_WRAP=(python3 "$HERE/timeout.py" "$TIMEOUT_S")
+fi
+
 # Install deps (idempotent — bun add is no-op if already there).
 if [ -n "$DEPS" ]; then
   ( cd "$SBOX" && [ -f package.json ] || echo '{"name":"diff-prod-sbox"}' > package.json )
   for d in $DEPS; do
     if [ ! -d "$SBOX/node_modules/$d" ]; then
-      ( cd "$SBOX" && "${NICE_WRAP[@]}" bun add "$d" --silent 2>/dev/null >/dev/null )
+      ( cd "$SBOX" && "${NICE_WRAP[@]}" "$BUN_BIN" add "$d" --silent 2>/dev/null >/dev/null )
     fi
   done
 fi
@@ -59,15 +67,15 @@ done
 
 # Optional setup (run once under bun; cruftless is the engine under test).
 if [ -f "$SBOX/setup.mjs" ]; then
-  ( cd "$SBOX" && timeout "$TIMEOUT_S" "${NICE_WRAP[@]}" bun setup.mjs >/dev/null 2>&1 || true )
+  ( cd "$SBOX" && "${TIMEOUT_WRAP[@]}" "${NICE_WRAP[@]}" "$BUN_BIN" setup.mjs >/dev/null 2>&1 || true )
 fi
 
 # Run exec under bun.
-bun_out=$(cd "$SBOX" && timeout "$TIMEOUT_S" "${NICE_WRAP[@]}" bun exec.mjs 2>"$TMP/bun.stderr")
+bun_out=$(cd "$SBOX" && "${TIMEOUT_WRAP[@]}" "${NICE_WRAP[@]}" "$BUN_BIN" exec.mjs 2>"$TMP/bun.stderr")
 bun_rc=$?
 
 # Run exec under cruftless.
-rb_out=$(cd "$SBOX" && timeout "$TIMEOUT_S" "${NICE_WRAP[@]}" "$CRUFT_BIN" exec.mjs 2>"$TMP/rb.stderr")
+rb_out=$(cd "$SBOX" && "${TIMEOUT_WRAP[@]}" "${NICE_WRAP[@]}" "$CRUFT_BIN" exec.mjs 2>"$TMP/rb.stderr")
 rb_rc=$?
 
 # Write per-engine snapshots.

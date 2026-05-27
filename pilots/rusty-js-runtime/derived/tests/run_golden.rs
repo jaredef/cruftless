@@ -4,7 +4,7 @@
 //! the operand stack at module exit. Since modules end with ReturnUndef,
 //! we use explicit `return` to surface the result.
 
-use rusty_js_runtime::{run_module, Value};
+use rusty_js_runtime::{run_module, RuntimeError, Value};
 
 fn run(src: &str) -> Value {
     run_module(src).expect(&format!("run failed: {:?}", src))
@@ -157,6 +157,345 @@ fn string_plus_number_coerces_to_string() {
     } else {
         panic!();
     }
+}
+
+#[test]
+fn addition_symbol_numeric_path_throws_type_error() {
+    let err = run_module("return 1 + Symbol('s');").expect_err("expected TypeError");
+    assert!(matches!(err, RuntimeError::TypeError(_)));
+}
+
+#[test]
+fn addition_mixed_bigint_number_throws_type_error() {
+    let err = run_module("return 1n + 1;").expect_err("expected TypeError");
+    assert!(matches!(err, RuntimeError::TypeError(_)));
+}
+
+#[test]
+fn addition_mixed_bigint_symbol_throws_type_error() {
+    let err = run_module("return Symbol('s') + 0n;").expect_err("expected TypeError");
+    assert!(matches!(err, RuntimeError::TypeError(_)));
+}
+
+#[test]
+fn numeric_binary_symbol_throws_type_error() {
+    for src in [
+        "return Symbol('s') - 1;",
+        "return 1 * Symbol('s');",
+        "return Symbol('s') / 1;",
+        "return 1 % Symbol('s');",
+        "return Symbol('s') & 1;",
+        "return 1 << Symbol('s');",
+    ] {
+        let err = run_module(src).expect_err("expected TypeError");
+        assert!(matches!(err, RuntimeError::TypeError(_)), "{src}");
+    }
+}
+
+#[test]
+fn numeric_binary_mixed_bigint_throws_type_error() {
+    for src in [
+        "return 1n - 1;",
+        "return 1n * 1;",
+        "return 1n / 1;",
+        "return 1n % 1;",
+        "return 1n & 1;",
+        "return 1n << 1;",
+        "return 1n >>> 1n;",
+    ] {
+        let err = run_module(src).expect_err("expected TypeError");
+        assert!(matches!(err, RuntimeError::TypeError(_)), "{src}");
+    }
+}
+
+#[test]
+fn relational_symbol_throws_type_error() {
+    for src in [
+        "return Symbol('s') < 1;",
+        "return 1 > Symbol('s');",
+        "return 3n < Symbol('2');",
+        "return 3n > Symbol('2');",
+    ] {
+        let err = run_module(src).expect_err("expected TypeError");
+        assert!(matches!(err, RuntimeError::TypeError(_)), "{src}");
+    }
+}
+
+#[test]
+fn unary_plus_bigint_throws_type_error() {
+    let err = run_module("return +0n;").expect_err("expected TypeError");
+    assert!(matches!(err, RuntimeError::TypeError(_)));
+}
+
+#[test]
+fn instanceof_non_object_prototype_throws_type_error() {
+    let err = run_module(
+        "function F() {} \
+         F.prototype = 1; \
+         return {} instanceof F;",
+    )
+    .expect_err("expected TypeError");
+    assert!(matches!(err, RuntimeError::TypeError(_)));
+}
+
+#[test]
+fn static_computed_prototype_method_throws_type_error() {
+    for src in [
+        "class C { static ['prototype']() {} }",
+        "class C { static get ['prototype']() {} }",
+        "class C { static set ['prototype'](x) {} }",
+    ] {
+        let err = run_module(src).expect_err("expected TypeError");
+        assert!(matches!(err, RuntimeError::TypeError(_)), "{src}");
+    }
+}
+
+#[test]
+fn array_destructure_iterator_close_non_object_throws_type_error() {
+    let err = run_module(
+        "var iterable = {}; \
+         var iterator = { \
+           next: function() { return { done: true }; }, \
+           return: function() { return null; } \
+         }; \
+         iterable[Symbol.iterator] = function() { return iterator; }; \
+         0, [] = iterable;",
+    )
+    .expect_err("expected TypeError");
+    assert!(matches!(err, RuntimeError::TypeError(_)));
+}
+
+#[test]
+fn deleting_array_symbol_iterator_breaks_destructure_iteration() {
+    let err = run_module(
+        "delete Array.prototype[Symbol.iterator]; \
+         var [x, y, z] = [1, 2, 3];",
+    )
+    .expect_err("expected TypeError");
+    assert!(matches!(err, RuntimeError::TypeError(_)));
+}
+
+#[test]
+fn strict_delete_non_configurable_throws_type_error() {
+    let err = run_module(
+        "\"use strict\"; \
+         var o = {}; \
+         Object.defineProperty(o, 'x', { value: 1 }); \
+         delete o.x;",
+    )
+    .expect_err("expected TypeError");
+    assert!(matches!(err, RuntimeError::TypeError(_)));
+}
+
+#[test]
+fn delete_nullish_property_reference_throws_type_error() {
+    let err = run_module("var base = undefined; delete base[0];").expect_err("expected TypeError");
+    assert!(matches!(err, RuntimeError::TypeError(_)));
+}
+
+#[test]
+fn strict_assign_non_extensible_new_property_throws_type_error() {
+    let err = run_module(
+        "\"use strict\"; \
+         var o = {}; \
+         Object.preventExtensions(o); \
+         o.x = 1;",
+    )
+    .expect_err("expected TypeError");
+    assert!(matches!(err, RuntimeError::TypeError(_)));
+}
+
+#[test]
+fn generator_object_param_null_throws_at_call_time() {
+    let err = run_module(
+        "var f = function*({}) { throw new Error('body must not run first'); }; \
+         f(null);",
+    )
+    .expect_err("expected call-time TypeError");
+    assert!(matches!(err, RuntimeError::TypeError(_)));
+}
+
+#[test]
+fn generator_body_throw_is_deferred_to_next() {
+    let value = run_module(
+        "var f = function*() { throw new TypeError('later'); }; \
+         var g = f(); \
+         return typeof g.next;",
+    )
+    .expect("generator construction should not throw body error");
+    match value {
+        Value::String(s) => assert_eq!(s.as_ref(), "function"),
+        _ => panic!("expected function-valued next property"),
+    }
+}
+
+#[test]
+fn catch_object_pattern_null_throws_type_error() {
+    let err = run_module("try { throw null; } catch ({}) {}").expect_err("expected TypeError");
+    assert!(matches!(err, RuntimeError::TypeError(_)));
+}
+
+#[test]
+fn catch_nested_object_pattern_undefined_throws_type_error() {
+    let err = run_module("try { throw { x: undefined }; } catch ({ x: {} }) {}")
+        .expect_err("expected TypeError");
+    assert!(matches!(err, RuntimeError::TypeError(_)));
+}
+
+#[test]
+fn strict_function_caller_read_throws_type_error() {
+    let err = run_module(
+        "function f() { 'use strict'; } \
+         return f.caller;",
+    )
+    .expect_err("expected TypeError");
+    assert!(matches!(err, RuntimeError::TypeError(_)));
+}
+
+#[test]
+fn strict_function_caller_write_throws_type_error() {
+    let err = run_module(
+        "\"use strict\"; \
+         function f() {} \
+         f.caller = 1;",
+    )
+    .expect_err("expected TypeError");
+    assert!(matches!(err, RuntimeError::TypeError(_)));
+}
+
+#[test]
+fn strict_arguments_callee_read_throws_type_error() {
+    let err = run_module(
+        "\"use strict\"; \
+         (function() { return arguments.callee; })();",
+    )
+    .expect_err("expected TypeError");
+    assert!(matches!(err, RuntimeError::TypeError(_)));
+}
+
+#[test]
+fn strict_arguments_callee_write_throws_type_error() {
+    let err = run_module(
+        "\"use strict\"; \
+         let args = (function() { return arguments; })(); \
+         args.callee = 1;",
+    )
+    .expect_err("expected TypeError");
+    assert!(matches!(err, RuntimeError::TypeError(_)));
+}
+
+#[test]
+fn indirect_eval_non_definable_global_function_throws_type_error() {
+    let err = run_module("(0, eval)(\"function NaN() {}\");").expect_err("expected TypeError");
+    assert!(matches!(err, RuntimeError::TypeError(_)));
+}
+
+#[test]
+fn indirect_eval_non_definable_global_generator_throws_type_error() {
+    let err = run_module("(0, eval)(\"function* NaN() {}\");").expect_err("expected TypeError");
+    assert!(matches!(err, RuntimeError::TypeError(_)));
+}
+
+#[test]
+fn indirect_eval_non_extensible_global_var_throws_type_error() {
+    let err = run_module(
+        "Object.preventExtensions(globalThis); \
+         (0, eval)(\"var unlikelyVariableName;\");",
+    )
+    .expect_err("expected TypeError");
+    assert!(matches!(err, RuntimeError::TypeError(_)));
+}
+
+#[test]
+fn mapped_arguments_parameter_and_index_share_binding() {
+    let value = run_module(
+        "function f(a) { \
+           Object.defineProperty(arguments, '0', { configurable: false }); \
+           var args = arguments; \
+           try { (function() { 'use strict'; delete args[0]; })(); } catch (e) {} \
+           a = 2; \
+           if (arguments[0] !== 2) return 'local'; \
+           Object.defineProperty(arguments, '0', { value: 3 }); \
+           if (a !== 3) return 'define'; \
+           arguments[0] = 4; \
+           if (a !== 4) return 'set'; \
+           return 'ok'; \
+         } \
+         return f(1);",
+    )
+    .expect("run");
+    assert!(matches!(value, Value::String(s) if s.as_ref() == "ok"));
+}
+
+#[test]
+fn named_function_expression_self_binding_is_const() {
+    let value = run_module(
+        "\"use strict\"; \
+         let ref = function BindingIdentifier() { \
+           (() => { BindingIdentifier = 1; })(); \
+         }; \
+         try { ref(); } catch (e) { return e.name; } \
+         return 'no throw';",
+    )
+    .expect("run");
+    assert!(matches!(value, Value::String(s) if s.as_ref() == "TypeError"));
+}
+
+#[test]
+fn tagged_template_object_and_raw_are_frozen() {
+    let value = run_module(
+        "\"use strict\"; \
+         let out = ''; \
+         (function(templateObject) { \
+           try { templateObject.test262Prop = true; } catch (e) { out = e.name; } \
+           try { templateObject.raw.test262Prop = true; } catch (e) { out = out + ':' + e.name; } \
+         })``; \
+         return out;",
+    )
+    .expect("run");
+    assert!(matches!(value, Value::String(s) if s.as_ref() == "TypeError:TypeError"));
+}
+
+#[test]
+fn private_method_compound_assignment_throws_type_error() {
+    let value = run_module(
+        "class C { \
+           #m() {} \
+           f() { return this.#m -= 1; } \
+         } \
+         try { new C().f(); } catch (e) { return e.name; } \
+         return 'no throw';",
+    )
+    .expect("run");
+    assert!(matches!(value, Value::String(s) if s.as_ref() == "TypeError"));
+}
+
+#[test]
+fn private_getter_without_setter_assignment_throws_type_error() {
+    let value = run_module(
+        "class C { \
+           get #x() { return 1; } \
+           f() { return this.#x **= 1; } \
+         } \
+         try { new C().f(); } catch (e) { return e.name; } \
+         return 'no throw';",
+    )
+    .expect("run");
+    assert!(matches!(value, Value::String(s) if s.as_ref() == "TypeError"));
+}
+
+#[test]
+fn private_field_set_before_declaration_throws_type_error() {
+    let value = run_module(
+        "class C { \
+           y = this.#x = 1; \
+           #x; \
+         } \
+         try { new C(); } catch (e) { return e.name; } \
+         return 'no throw';",
+    )
+    .expect("run");
+    assert!(matches!(value, Value::String(s) if s.as_ref() == "TypeError"));
 }
 
 // ─────────── Comparison ───────────

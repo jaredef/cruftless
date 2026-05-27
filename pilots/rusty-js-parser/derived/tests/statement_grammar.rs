@@ -388,6 +388,17 @@ fn for_of() {
 }
 
 #[test]
+fn for_var_initializer_disallows_unparenthesized_in() {
+    assert!(parse_module("for (var x = 'a' in {a: 1}; false; ) {}").is_err());
+    assert!(parse_module("for (let x = 'a' in {a: 1}; false; ) {}").is_err());
+}
+
+#[test]
+fn for_var_initializer_allows_parenthesized_in() {
+    assert!(parse_module("for (var x = ('a' in {a: 1}); false; ) {}").is_ok());
+}
+
+#[test]
 fn for_await_of() {
     if let Stmt::ForOf { await_, .. } = first_stmt("for await (const x of asyncIter) f(x);") {
         assert!(await_);
@@ -440,8 +451,21 @@ fn try_catch_finally() {
     } = first_stmt("try { f(); } catch (e) { g(e); } finally { h(); }")
     {
         let h = handler.expect("handler");
-        assert_eq!(h.param.unwrap().name, "e");
+        match h.param.unwrap() {
+            BindingPattern::Identifier(id) => assert_eq!(id.name, "e"),
+            other => panic!("expected identifier catch param, got {other:?}"),
+        }
         assert!(finalizer.is_some());
+    } else {
+        panic!("expected try");
+    }
+}
+
+#[test]
+fn try_catch_object_pattern_binding() {
+    if let Stmt::Try { handler, .. } = first_stmt("try { throw { x: 1 }; } catch ({ x }) { x; }") {
+        let h = handler.expect("handler");
+        assert!(matches!(h.param.unwrap(), BindingPattern::Object(_)));
     } else {
         panic!("expected try");
     }

@@ -1,0 +1,8 @@
+{
+  "name": "regexp-lookbehind-unicode",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "RegExp lookbehind assertions, unicode flag, property escapes, dotAll flag, and hasIndices flag."
+}

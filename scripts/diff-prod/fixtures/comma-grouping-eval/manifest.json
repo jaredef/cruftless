@@ -1,0 +1,8 @@
+{
+  "name": "comma-grouping-eval",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Comma operator, grouping expression, eval completion value, void operator, typeof operator edge cases."
+}

@@ -1,0 +1,8 @@
+{
+  "name": "eval-lexical-capture",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Direct eval capturing outer const/let bindings, var hoisting through eval, strict mode eval scoping, nested eval."
+}

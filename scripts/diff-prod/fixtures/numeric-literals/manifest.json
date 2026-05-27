@@ -1,0 +1,8 @@
+{
+  "name": "numeric-literals",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Numeric literal parsing: binary 0b, octal 0o, hex 0x, numeric separators, BigInt suffix, exponent notation, edge cases (-0, Infinity, MAX_SAFE_INTEGER)."
+}

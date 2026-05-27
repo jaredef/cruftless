@@ -1,0 +1,8 @@
+{
+  "name": "expression-precedence",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Operator precedence and associativity: ** right-assoc, ternary nesting, comma vs assignment, typeof/void/delete precedence, mixed logical/bitwise."
+}

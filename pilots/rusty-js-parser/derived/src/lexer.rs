@@ -94,9 +94,15 @@ impl<'src> Lexer<'src> {
     // or None. Covers LF (1), CR (1), CRLF (2), U+2028/U+2029 (3).
     fn peek_lt_bytes(&self) -> Option<usize> {
         let c = self.peek_byte()?;
-        if c == b'\n' { return Some(1); }
+        if c == b'\n' {
+            return Some(1);
+        }
         if c == b'\r' {
-            return Some(if self.peek_byte_at(1) == Some(b'\n') { 2 } else { 1 });
+            return Some(if self.peek_byte_at(1) == Some(b'\n') {
+                2
+            } else {
+                1
+            });
         }
         if c == 0xE2 && self.peek_byte_at(1) == Some(0x80) {
             return match self.peek_byte_at(2) {
@@ -112,11 +118,19 @@ impl<'src> Lexer<'src> {
     // bytes like 0xE2 (first byte of LS/PS, etc.) would falsely register as
     // identifier-start under the ASCII-fast-path predicate.
     fn peek_is_ident_start_strict(&self) -> bool {
-        let Some(c) = self.peek_byte() else { return false; };
-        if c < 0x80 { return is_identifier_start_byte(c); }
-        if self.peek_lt_bytes().is_some() { return false; }
+        let Some(c) = self.peek_byte() else {
+            return false;
+        };
+        if c < 0x80 {
+            return is_identifier_start_byte(c);
+        }
+        if self.peek_lt_bytes().is_some() {
+            return false;
+        }
         if let Some(cp) = self.peek_codepoint() {
-            if is_unicode_whitespace(cp) { return false; }
+            if is_unicode_whitespace(cp) {
+                return false;
+            }
         }
         true
     }
@@ -678,10 +692,7 @@ impl<'src> Lexer<'src> {
             let high_lt_or_ws = b >= 0x80
                 && (self.peek_lt_bytes().is_some()
                     || self.peek_codepoint().map_or(false, is_unicode_whitespace));
-            if b != b'n'
-                && !high_lt_or_ws
-                && (b.is_ascii_digit() || is_identifier_start_byte(b))
-            {
+            if b != b'n' && !high_lt_or_ws && (b.is_ascii_digit() || is_identifier_start_byte(b)) {
                 return Err(self.err(
                     LexErrorKind::InvalidNumeric,
                     start,
@@ -843,6 +854,21 @@ impl<'src> Lexer<'src> {
                 let cp = self.read_unicode_escape_inner().ok_or_else(|| {
                     self.err(LexErrorKind::InvalidEscape, start, "bad \\u escape")
                 })?;
+                if (0xD800..=0xDBFF).contains(&cp)
+                    && self.peek_byte() == Some(b'\\')
+                    && self.peek_byte_at(1) == Some(b'u')
+                {
+                    let save = self.pos;
+                    self.pos += 2;
+                    if let Some(low) = self.read_unicode_escape_inner() {
+                        if (0xDC00..=0xDFFF).contains(&low) {
+                            let scalar = 0x10000 + ((cp - 0xD800) << 10) + (low - 0xDC00);
+                            push_char(out, scalar);
+                            return Ok(());
+                        }
+                    }
+                    self.pos = save;
+                }
                 push_char(out, cp);
             }
             b'\n' => { /* line continuation — contributes nothing */ }
@@ -1010,7 +1036,9 @@ impl<'src> Lexer<'src> {
             }
             if c == b'\\' {
                 self.pos += 1;
-                if self.peek_byte().map_or(true, |b| is_line_terminator_byte(b))
+                if self
+                    .peek_byte()
+                    .map_or(true, |b| is_line_terminator_byte(b))
                     || self.peek_lt_bytes().is_some()
                 {
                     return Err(self.err(
@@ -1295,8 +1323,15 @@ fn is_id_start(cp: u32) -> bool {
         // will gate against the Unicode ID_Start property table.
         // LTC-EXT 1: exclude LineTerminator code points (U+2028 LS,
         // U+2029 PS) and Unicode whitespace — they are §11.3/§11.2
-        // separators, not identifier characters.
-        cp >= 0xA0 && cp != 0xFEFF && cp != 0x2028 && cp != 0x2029 && !is_unicode_whitespace(cp)
+        // separators, not identifier characters. PNL-EXT 1: ZWNJ/ZWJ
+        // are IdentifierPart but not IdentifierStart.
+        cp >= 0xA0
+            && cp != 0x200C
+            && cp != 0x200D
+            && cp != 0xFEFF
+            && cp != 0x2028
+            && cp != 0x2029
+            && !is_unicode_whitespace(cp)
     }
 }
 

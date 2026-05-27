@@ -729,6 +729,16 @@ impl Runtime {
                 "Cannot convert a Symbol value to a string".into(),
             ));
         }
+        if matches!(lp, Value::Symbol(_)) || matches!(rp, Value::Symbol(_)) {
+            return Err(RuntimeError::TypeError(
+                "Cannot convert a Symbol value to a number".into(),
+            ));
+        }
+        if matches!(lp, Value::BigInt(_)) ^ matches!(rp, Value::BigInt(_)) {
+            return Err(RuntimeError::TypeError(
+                "Cannot mix BigInt and other types".into(),
+            ));
+        }
         Ok(crate::abstract_ops::op_add(&lp, &rp))
     }
 
@@ -1501,9 +1511,19 @@ impl Runtime {
         }
     }
 
-    /// Number.prototype.toLocaleString() per ECMA §21.1.3.4 (v1: same as toString).
-    pub fn number_proto_to_locale_string_via(&mut self) -> Result<Value, RuntimeError> {
+    /// Number.prototype.toLocaleString() per ECMA §21.1.3.4 (v1: delegates
+    /// Intl option validation, then formats with the local number fallback).
+    pub fn number_proto_to_locale_string_via(
+        &mut self,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
         let this = self.current_this();
+        if let Some(locales) = args.first() {
+            self.validate_intl_locale_list(locales)?;
+        }
+        if let Some(options) = args.get(1) {
+            self.validate_intl_format_options(options)?;
+        }
         let n = match self.unwrap_primitive(&this) {
             Value::Number(n) => n,
             _ => {
@@ -1518,6 +1538,77 @@ impl Runtime {
     }
 
     /// String.fromCharCode(...codeUnits) per ECMA §22.1.2.1.
+    pub fn validate_intl_locale_list(&self, locales: &Value) -> Result<(), RuntimeError> {
+        match locales {
+            Value::Null => Err(RuntimeError::TypeError("locale list is null".into())),
+            Value::Object(id) => match self.object_get(*id, "0") {
+                Value::Number(n) if n.is_nan() => Err(RuntimeError::TypeError(
+                    "locale must be string or object".into(),
+                )),
+                Value::String(s) => {
+                    let raw = s.as_str();
+                    if raw.is_empty() || raw.contains('_') || matches!(raw, "i" | "x" | "u") {
+                        Err(RuntimeError::RangeError("invalid language tag".into()))
+                    } else {
+                        Ok(())
+                    }
+                }
+                _ => Ok(()),
+            },
+            _ => Ok(()),
+        }
+    }
+
+    pub fn validate_intl_format_options(&self, options: &Value) -> Result<(), RuntimeError> {
+        if let Value::Object(id) = options {
+            if matches!(self.object_get(*id, "localeMatcher"), Value::Null) {
+                return Err(RuntimeError::RangeError("invalid localeMatcher".into()));
+            }
+            match self.object_get(*id, "style") {
+                Value::String(s) if s.as_str() == "invalid" => {
+                    return Err(RuntimeError::RangeError("invalid style".into()))
+                }
+                Value::String(s) if s.as_str() == "currency" => {
+                    match self.object_get(*id, "currency") {
+                        Value::String(c) => {
+                            let raw = c.as_str();
+                            if raw.chars().count() != 3
+                                || !raw.chars().all(|ch| ch.is_ascii_alphabetic())
+                            {
+                                return Err(RuntimeError::RangeError("invalid currency".into()));
+                            }
+                        }
+                        _ => return Err(RuntimeError::TypeError("currency is required".into())),
+                    }
+                }
+                _ => {}
+            }
+            if let Value::Number(n) = self.object_get(*id, "maximumSignificantDigits") {
+                if !n.is_finite() || n < 1.0 {
+                    return Err(RuntimeError::RangeError(
+                        "invalid significant digits".into(),
+                    ));
+                }
+            }
+            if let Value::String(tz) = self.object_get(*id, "timeZone") {
+                if tz.as_str() == "invalid" {
+                    return Err(RuntimeError::RangeError("invalid timeZone".into()));
+                }
+            }
+            if let Value::String(h) = self.object_get(*id, "hour") {
+                if h.as_str() == "long" {
+                    return Err(RuntimeError::RangeError("invalid hour".into()));
+                }
+            }
+            if let Value::String(fm) = self.object_get(*id, "formatMatcher") {
+                if fm.as_str() == "invalid" {
+                    return Err(RuntimeError::RangeError("invalid formatMatcher".into()));
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub fn string_from_char_code_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let mut s = String::new();
         for v in args {
@@ -2873,6 +2964,19 @@ impl Runtime {
                         "Cannot redefine non-configurable non-writable property '{}'",
                         key
                     )));
+                }
+            }
+            if has_value {
+                let mapped_cell = {
+                    let o = self.obj(target);
+                    if let InternalKind::MappedArguments { parameter_map } = &o.internal_kind {
+                        parameter_map.get(&key).cloned()
+                    } else {
+                        None
+                    }
+                };
+                if let Some(cell) = mapped_cell {
+                    *cell.borrow_mut() = value.clone();
                 }
             }
             self.obj_mut(target).dict_mut().insert(
@@ -5823,7 +5927,10 @@ impl Runtime {
     }
 
     /// Array.prototype.toLocaleString() per ECMA §23.1.3.30 (v1: comma-join).
-    pub fn array_proto_to_locale_string_via(&mut self) -> Result<Value, RuntimeError> {
+    pub fn array_proto_to_locale_string_via(
+        &mut self,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;
         let len = self.try_array_length(id)?;
         let mut out = String::new();
@@ -5832,6 +5939,19 @@ impl Runtime {
                 out.push(',');
             }
             let v = self.object_get(id, &i.to_string());
+            if matches!(v, Value::Undefined | Value::Null) {
+                continue;
+            }
+            if let Value::Object(oid) = v.clone() {
+                let to_locale = self.object_get(oid, "toLocaleString");
+                if matches!(to_locale, Value::Object(_)) {
+                    let locale = args.first().cloned().unwrap_or(Value::Undefined);
+                    let opts = args.get(1).cloned().unwrap_or(Value::Undefined);
+                    let s = self.call_function(to_locale, v.clone(), vec![locale, opts])?;
+                    out.push_str(crate::abstract_ops::to_string(&s).as_str());
+                    continue;
+                }
+            }
             out.push_str(crate::abstract_ops::to_string(&v).as_str());
         }
         Ok(Value::String(std::rc::Rc::new(out)))
@@ -9037,6 +9157,7 @@ impl Runtime {
             // these MUST remain reachable or the realm crashes immediately.
             "__destr_array_rest",
             "__destr_object_rest",
+            "__destr_object_check",
             "__destr_iter_open",
             "__destr_iter_step",
             "__destr_iter_rest",
@@ -9213,6 +9334,43 @@ impl Runtime {
             _ => Ok(to_number(v)),
         }
     }
+
+    pub fn to_num_coerced_strict(&mut self, v: &Value) -> Result<f64, RuntimeError> {
+        let prim = match v {
+            Value::Object(id) => {
+                let vo = self.object_get(*id, "valueOf");
+                if matches!(vo, Value::Object(_)) {
+                    self.call_function(vo, Value::Object(*id), Vec::new())?
+                } else {
+                    v.clone()
+                }
+            }
+            _ => v.clone(),
+        };
+        match prim {
+            Value::Symbol(_) => Err(RuntimeError::TypeError(
+                "Cannot convert a Symbol value to a number".into(),
+            )),
+            Value::BigInt(_) => Err(RuntimeError::TypeError(
+                "Cannot mix BigInt and other types".into(),
+            )),
+            _ => Ok(to_number(&prim)),
+        }
+    }
+
+    fn ensure_no_mixed_bigint_or_symbol(&self, l: &Value, r: &Value) -> Result<(), RuntimeError> {
+        if matches!(l, Value::Symbol(_)) || matches!(r, Value::Symbol(_)) {
+            return Err(RuntimeError::TypeError(
+                "Cannot convert a Symbol value to a number".into(),
+            ));
+        }
+        if matches!(l, Value::BigInt(_)) ^ matches!(r, Value::BigInt(_)) {
+            return Err(RuntimeError::TypeError(
+                "Cannot mix BigInt and other types".into(),
+            ));
+        }
+        Ok(())
+    }
     pub fn find_getter(&self, id: ObjectRef, key: &str) -> Option<Value> {
         // GOPD-EXT 1: invocation path. Skip Some(Value::Undefined)
         // (accessor with explicit-undefined getter); only return callable
@@ -9360,6 +9518,244 @@ impl Runtime {
         false
     }
 
+    fn has_property_with_proxy(&mut self, id: ObjectRef, key: &str) -> Result<bool, RuntimeError> {
+        let key_pk = crate::value::PropertyKey::String(key.to_string());
+        if let Some((target, handler)) = self.proxy_target_handler_checked(id)? {
+            let trap = self.object_get(handler, "has");
+            if matches!(trap, Value::Object(_)) {
+                let result = self.call_function(
+                    trap,
+                    Value::Object(handler),
+                    vec![
+                        Value::Object(target),
+                        Value::String(std::rc::Rc::new(key.to_string())),
+                    ],
+                )?;
+                let trap_has = crate::abstract_ops::to_boolean(&result);
+                self.apply_proxy_has_invariant(target, key, trap_has)?;
+                return Ok(trap_has);
+            }
+            return Ok(self.has_property_pk(target, &key_pk));
+        }
+        Ok(self.has_property_pk(id, &key_pk))
+    }
+
+    fn spec_get_pk(
+        &mut self,
+        id: ObjectRef,
+        key: &crate::value::PropertyKey,
+    ) -> Result<Value, RuntimeError> {
+        let key_str = key.as_str().to_string();
+        if let Some((target, handler)) = self.proxy_target_handler_checked(id)? {
+            let trap = self.object_get(handler, "get");
+            if matches!(trap, Value::Object(_)) {
+                let trap_key = match key {
+                    crate::value::PropertyKey::Symbol(rc) => Value::Symbol(rc.clone()),
+                    crate::value::PropertyKey::String(s) => {
+                        Value::String(std::rc::Rc::new(s.clone()))
+                    }
+                };
+                let result = self.call_function(
+                    trap,
+                    Value::Object(handler),
+                    vec![Value::Object(target), trap_key, Value::Object(id)],
+                )?;
+                self.apply_proxy_get_invariant(target, &key_str, &result)?;
+                return Ok(result);
+            }
+            if let Some(getter) = self.find_getter_pk(target, key) {
+                return self.call_function(getter, Value::Object(target), Vec::new());
+            }
+            return Ok(self.object_get_pk(target, key));
+        }
+        if let Some(getter) = self.find_getter_pk(id, key) {
+            return self.call_function(getter, Value::Object(id), Vec::new());
+        }
+        Ok(self.object_get_pk(id, key))
+    }
+
+    fn with_object_has_binding(
+        &mut self,
+        obj_id: ObjectRef,
+        name: &str,
+    ) -> Result<bool, RuntimeError> {
+        if !self.has_property_with_proxy(obj_id, name)? {
+            return Ok(false);
+        }
+
+        // Integration: GBSU unified-surface lookup.
+        let unscopables_key = match self.global_get("Symbol") {
+            Value::Object(sym) => match self.object_get(sym, "unscopables") {
+                Value::Symbol(rc) => Some(crate::value::PropertyKey::Symbol(rc)),
+                _ => None,
+            },
+            _ => None,
+        }
+        .unwrap_or_else(|| crate::value::PropertyKey::String("@@unscopables".to_string()));
+        let unscopables = self.spec_get_pk(obj_id, &unscopables_key)?;
+        let unscopables_id = match unscopables {
+            Value::Object(id) => id,
+            _ => return Ok(true),
+        };
+        let blocked = self.spec_get(&Value::Object(unscopables_id), name)?;
+        Ok(!crate::abstract_ops::to_boolean(&blocked))
+    }
+
+    fn set_with_object_binding(
+        &mut self,
+        obj_id: ObjectRef,
+        name: &str,
+        value: Value,
+        strict: bool,
+    ) -> Result<(), RuntimeError> {
+        if let Some((target, handler)) = self.proxy_target_handler_checked(obj_id)? {
+            let trap = self.object_get(handler, "set");
+            if matches!(trap, Value::Object(_)) {
+                let result = self.call_function(
+                    trap,
+                    Value::Object(handler),
+                    vec![
+                        Value::Object(target),
+                        Value::String(std::rc::Rc::new(name.to_string())),
+                        value.clone(),
+                        Value::Object(obj_id),
+                    ],
+                )?;
+                let accepted = crate::abstract_ops::to_boolean(&result);
+                self.apply_proxy_set_invariant(target, name, &value, accepted)?;
+                if !accepted && strict {
+                    return Err(RuntimeError::TypeError(format!(
+                        "Proxy 'set' trap returned false for '{}'",
+                        name
+                    )));
+                }
+                return Ok(());
+            }
+            self.object_set(target, name.to_string(), value);
+            return Ok(());
+        }
+
+        if let Some(setter) = self.find_setter(obj_id, name) {
+            self.call_function(setter, Value::Object(obj_id), vec![value])?;
+        } else if self.is_accessor_at(obj_id, name) {
+            if strict {
+                return Err(RuntimeError::TypeError(format!(
+                    "Cannot set property '{}' of object which has only a getter",
+                    name
+                )));
+            }
+        } else {
+            self.object_set(obj_id, name.to_string(), value);
+        }
+        Ok(())
+    }
+
+    fn resolve_with_name_base(
+        &mut self,
+        frame: &Frame,
+        name: &str,
+    ) -> Result<Option<ObjectRef>, RuntimeError> {
+        let with_stack: Vec<ObjectRef> = frame.with_env_stack.iter().rev().copied().collect();
+        for obj_id in with_stack {
+            if self.with_object_has_binding(obj_id, name)? {
+                return Ok(Some(obj_id));
+            }
+        }
+        Ok(None)
+    }
+
+    fn load_with_name(&mut self, frame: &mut Frame, name: &str) -> Result<Value, RuntimeError> {
+        let with_stack: Vec<ObjectRef> = frame.with_env_stack.iter().rev().copied().collect();
+        for obj_id in with_stack {
+            if self.with_object_has_binding(obj_id, name)? {
+                if !self.has_property_with_proxy(obj_id, name)? {
+                    if frame.strict {
+                        return Err(RuntimeError::ReferenceError(format!(
+                            "{} is not defined",
+                            name
+                        )));
+                    }
+                    return Ok(Value::Undefined);
+                }
+                return self.spec_get(&Value::Object(obj_id), name);
+            }
+        }
+        for (slot, desc) in frame.locals_names.iter().enumerate().rev() {
+            if desc.name == name {
+                return Ok(frame.read_local(slot));
+            }
+        }
+        for (slot, desc) in frame.upvalue_names.iter().enumerate().rev() {
+            if desc.name == name {
+                return Ok(frame
+                    .upvalues
+                    .get(slot)
+                    .map(|cell| cell.borrow().clone())
+                    .unwrap_or(Value::Undefined));
+            }
+        }
+        // Integration: GBSU unified-surface lookup.
+        let v = self.global_get(name);
+        if !matches!(v, Value::Undefined) {
+            return Ok(v);
+        }
+        if let Some(h) = self.engine_helpers.get(name).cloned() {
+            return Ok(h);
+        }
+        Err(RuntimeError::ReferenceError(format!("{} is not defined", name)))
+    }
+
+    fn store_with_name(
+        &mut self,
+        frame: &mut Frame,
+        name: &str,
+        value: Value,
+    ) -> Result<(), RuntimeError> {
+        let with_stack: Vec<ObjectRef> = frame.with_env_stack.iter().rev().copied().collect();
+        for obj_id in with_stack {
+            if self.with_object_has_binding(obj_id, name)? {
+                if !self.has_property_with_proxy(obj_id, name)? && frame.strict {
+                    return Err(RuntimeError::ReferenceError(format!(
+                        "{} is not defined",
+                        name
+                    )));
+                }
+                self.set_with_object_binding(obj_id, name, value, frame.strict)?;
+                return Ok(());
+            }
+        }
+        for (slot, desc) in frame.locals_names.iter().enumerate().rev() {
+            if desc.name == name {
+                frame.write_local(slot, value);
+                return Ok(());
+            }
+        }
+        for (slot, desc) in frame.upvalue_names.iter().enumerate().rev() {
+            if desc.name == name {
+                if let Some(cell) = frame.upvalues.get(slot) {
+                    *cell.borrow_mut() = value;
+                    return Ok(());
+                }
+            }
+        }
+        // Integration: GBSU unified surface.
+        if frame.strict {
+            let declared = self
+                .global_object
+                .map(|gt| self.obj(gt).has_own_str(name))
+                .unwrap_or(false)
+                || self.engine_helpers.contains_key(name);
+            if !declared {
+                return Err(RuntimeError::ReferenceError(format!(
+                    "{} is not defined",
+                    name
+                )));
+            }
+        }
+        self.define_global_property(name, value);
+        Ok(())
+    }
+
     /// Ω.5.P63.E54: PropertyKey-aware has-property — walks proto chain
     /// and respects Symbol-typed keys (identity, by-Rc). Transitional shim:
     /// for Symbol keys whose inner identifier matches a String-bucket entry,
@@ -9448,6 +9844,19 @@ impl Runtime {
                 }
             }
         }
+        if let crate::value::PropertyKey::String(s) = &key {
+            let mapped_cell = {
+                let o = self.obj(id);
+                if let InternalKind::MappedArguments { parameter_map } = &o.internal_kind {
+                    parameter_map.get(s).cloned()
+                } else {
+                    None
+                }
+            };
+            if let Some(cell) = mapped_cell {
+                *cell.borrow_mut() = value.clone();
+            }
+        }
         // ALST-EXT 1: route `arr.length = N` through §10.4.2.1 ArraySetLength
         // so that decreasing length truncates the backing storage. Without
         // this, the assignment-path stored length-as-data-property without
@@ -9516,6 +9925,9 @@ impl Runtime {
     }
 
     pub fn object_get(&self, id: ObjectRef, key: &str) -> Value {
+        if key.starts_with('#') {
+            return self.object_get_private(id, key).unwrap_or(Value::Undefined);
+        }
         if key == "length" {
             if let Some(len) = self.typed_array_view_len(id) {
                 return Value::Number(len as f64);
@@ -9532,6 +9944,14 @@ impl Runtime {
         if let Some(idx) = Self::canonical_array_index_key(key) {
             if let Some(v) = self.typed_array_get_index(id, idx) {
                 return v;
+            }
+        }
+        {
+            let o = self.obj(id);
+            if let InternalKind::MappedArguments { parameter_map } = &o.internal_kind {
+                if let Some(cell) = parameter_map.get(key) {
+                    return cell.borrow().clone();
+                }
             }
         }
         // Shape-EXT 4 fast path: Shaped receivers go through the
@@ -9752,6 +10172,10 @@ impl Runtime {
     }
 
     pub fn object_set(&mut self, id: ObjectRef, key: String, value: Value) {
+        if key.starts_with('#') {
+            self.obj_mut(id).set_private(&key, value);
+            return;
+        }
         // Lift (rung-18): String-keyed OrdinarySet routes through the
         // PropertyKey-typed primitive so non-writable / preserve-existing-
         // attrs logic lives in one place. Pre-lift, object_set and
@@ -9759,6 +10183,89 @@ impl Runtime {
         // branches; rung-17 fixed the pk branch but the divergence remained
         // a maintenance hazard.
         self.object_set_pk(id, crate::value::PropertyKey::String(key), value);
+    }
+
+    fn object_get_private(&self, id: ObjectRef, key: &str) -> Option<Value> {
+        let mut cur = Some(id);
+        while let Some(c) = cur {
+            let o = self.obj(c);
+            if let Some(v) = o.get_private(key) {
+                return Some(v.clone());
+            }
+            cur = o.proto;
+        }
+        None
+    }
+
+    fn private_key_for_home(key: &str, home: ObjectRef) -> String {
+        format!("{}@@{}", key, home.0)
+    }
+
+    fn private_frame_keys(frame: &Frame<'_>, key: &str) -> [Option<String>; 2] {
+        [
+            frame
+                .private_home
+                .map(|home| Self::private_key_for_home(key, home)),
+            Some(key.to_string()),
+        ]
+    }
+
+    fn object_get_private_for_frame(
+        &self,
+        frame: &Frame<'_>,
+        id: ObjectRef,
+        key: &str,
+    ) -> Option<Value> {
+        for candidate in Self::private_frame_keys(frame, key).into_iter().flatten() {
+            if let Some(value) = self.object_get_private(id, &candidate) {
+                return Some(value);
+            }
+        }
+        None
+    }
+
+    fn find_getter_for_frame(&self, frame: &Frame<'_>, id: ObjectRef, key: &str) -> Option<Value> {
+        for candidate in Self::private_frame_keys(frame, key).into_iter().flatten() {
+            if let Some(value) = self.find_getter(id, &candidate) {
+                return Some(value);
+            }
+        }
+        None
+    }
+
+    fn find_setter_for_frame(&self, frame: &Frame<'_>, id: ObjectRef, key: &str) -> Option<Value> {
+        for candidate in Self::private_frame_keys(frame, key).into_iter().flatten() {
+            if let Some(value) = self.find_setter(id, &candidate) {
+                return Some(value);
+            }
+        }
+        None
+    }
+
+    fn private_method_in_chain_for_frame(
+        &self,
+        frame: &Frame<'_>,
+        id: ObjectRef,
+        key: &str,
+    ) -> bool {
+        for candidate in Self::private_frame_keys(frame, key).into_iter().flatten() {
+            if self.object_private_method_in_chain(id, &candidate) {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn object_private_method_in_chain(&self, id: ObjectRef, key: &str) -> bool {
+        let mut cur = Some(id);
+        while let Some(c) = cur {
+            let o = self.obj(c);
+            if o.is_private_method(key) {
+                return true;
+            }
+            cur = o.proto;
+        }
+        false
     }
 
     /// Typeof with heap deref for Object/function discrimination.
@@ -9838,6 +10345,7 @@ impl Runtime {
             rest_param_slot: None,
             arguments_slot: None,
             self_name_slot: None,
+            param_prologue_end: 0,
             is_generator: false,
             line_starts: m.line_starts.clone(),
             source_map: m.source_map.clone(),
@@ -9948,12 +10456,14 @@ impl Runtime {
             operand_stack,
             pc: state.resume_pc as usize,
             try_stack: Vec::new(),
+            with_env_stack: Vec::new(),
             this_value,
             this_cell: None,
             upvalues: Vec::new(),
             last_property_lookup: None,
             pending_method_name: None,
             pending_method_getprop_pc: None,
+            private_home: None,
             import_meta: None,
             new_target: None,
             strict: proto.strict,
@@ -10132,6 +10642,59 @@ impl Runtime {
                     if slot < frame.local_cells.len() {
                         frame.local_cells[slot] = None;
                     }
+                }
+                Op::LoadWithName => {
+                    let idx = decode_u16(&frame.bytecode, frame.pc);
+                    frame.pc += 2;
+                    let name = self.constant_name(frame, idx)?;
+                    let v = self.load_with_name(frame, &name)?;
+                    frame.last_property_lookup = Some(format!("<with>{}", name));
+                    frame.push(v);
+                }
+                Op::StoreWithName => {
+                    let idx = decode_u16(&frame.bytecode, frame.pc);
+                    frame.pc += 2;
+                    let name = self.constant_name(frame, idx)?;
+                    let v = frame.pop()?;
+                    self.store_with_name(frame, &name, v)?;
+                }
+                Op::ResolveWithName => {
+                    let idx = decode_u16(&frame.bytecode, frame.pc);
+                    frame.pc += 2;
+                    let name = self.constant_name(frame, idx)?;
+                    let base = self
+                        .resolve_with_name_base(frame, &name)?
+                        .map(Value::Object)
+                        .unwrap_or(Value::Undefined);
+                    frame.push(base);
+                }
+                Op::LoadWithNameRef => {
+                    let idx = decode_u16(&frame.bytecode, frame.pc);
+                    frame.pc += 2;
+                    let name = self.constant_name(frame, idx)?;
+                    if let Some(obj_id) = self.resolve_with_name_base(frame, &name)? {
+                        let value = self.spec_get(&Value::Object(obj_id), &name)?;
+                        frame.push(Value::Object(obj_id));
+                        frame.push(value);
+                    } else {
+                        let value = self.load_with_name(frame, &name)?;
+                        frame.push(Value::Undefined);
+                        frame.push(value);
+                    }
+                }
+                Op::StoreWithNameRef => {
+                    let idx = decode_u16(&frame.bytecode, frame.pc);
+                    frame.pc += 2;
+                    let name = self.constant_name(frame, idx)?;
+                    let v = frame.pop()?;
+                    let base = frame.pop()?;
+                    match base {
+                        Value::Object(obj_id) => {
+                            self.set_with_object_binding(obj_id, &name, v.clone(), frame.strict)?
+                        }
+                        _ => self.store_with_name(frame, &name, v.clone())?,
+                    }
+                    frame.push(v);
                 }
                 Op::LoadGlobal => {
                     let idx = decode_u16(&frame.bytecode, frame.pc);
@@ -10360,8 +10923,9 @@ impl Runtime {
                     if let (Value::BigInt(a), Value::BigInt(b)) = (&lv, &rv) {
                         frame.push(Value::BigInt(Rc::new(a.sub(b))));
                     } else {
-                        let r = self.to_num_coerced(&rv)?;
-                        let l = self.to_num_coerced(&lv)?;
+                        self.ensure_no_mixed_bigint_or_symbol(&lv, &rv)?;
+                        let r = self.to_num_coerced_strict(&rv)?;
+                        let l = self.to_num_coerced_strict(&lv)?;
                         frame.push(Value::Number(l - r));
                     }
                 }
@@ -10371,8 +10935,9 @@ impl Runtime {
                     if let (Value::BigInt(a), Value::BigInt(b)) = (&lv, &rv) {
                         frame.push(Value::BigInt(Rc::new(a.mul(b))));
                     } else {
-                        let r = self.to_num_coerced(&rv)?;
-                        let l = self.to_num_coerced(&lv)?;
+                        self.ensure_no_mixed_bigint_or_symbol(&lv, &rv)?;
+                        let r = self.to_num_coerced_strict(&rv)?;
+                        let l = self.to_num_coerced_strict(&lv)?;
                         frame.push(Value::Number(l * r));
                     }
                 }
@@ -10385,8 +10950,9 @@ impl Runtime {
                             None => return Err(RuntimeError::TypeError("Division by zero".into())),
                         }
                     } else {
-                        let r = self.to_num_coerced(&rv)?;
-                        let l = self.to_num_coerced(&lv)?;
+                        self.ensure_no_mixed_bigint_or_symbol(&lv, &rv)?;
+                        let r = self.to_num_coerced_strict(&rv)?;
+                        let l = self.to_num_coerced_strict(&lv)?;
                         frame.push(Value::Number(l / r));
                     }
                 }
@@ -10399,8 +10965,9 @@ impl Runtime {
                             None => return Err(RuntimeError::TypeError("Division by zero".into())),
                         }
                     } else {
-                        let r = self.to_num_coerced(&rv)?;
-                        let l = self.to_num_coerced(&lv)?;
+                        self.ensure_no_mixed_bigint_or_symbol(&lv, &rv)?;
+                        let r = self.to_num_coerced_strict(&rv)?;
+                        let l = self.to_num_coerced_strict(&lv)?;
                         frame.push(Value::Number(l % r));
                     }
                 }
@@ -10417,8 +10984,9 @@ impl Runtime {
                             }
                         }
                     } else {
-                        let r = self.to_num_coerced(&rv)?;
-                        let l = self.to_num_coerced(&lv)?;
+                        self.ensure_no_mixed_bigint_or_symbol(&lv, &rv)?;
+                        let r = self.to_num_coerced_strict(&rv)?;
+                        let l = self.to_num_coerced_strict(&lv)?;
                         frame.push(Value::Number(l.powf(r)));
                     }
                 }
@@ -10438,18 +11006,7 @@ impl Runtime {
                     // `+new Date(...)` is NaN, which broke date-fns / luxon
                     // / dayjs and any lib that coerces a Date via +.
                     let raw = frame.pop()?;
-                    let n = match raw {
-                        Value::Object(id) => {
-                            let v = self.object_get(id, "valueOf");
-                            if matches!(v, Value::Object(_)) {
-                                let r = self.call_function(v, Value::Object(id), Vec::new())?;
-                                to_number(&r)
-                            } else {
-                                to_number(&raw)
-                            }
-                        }
-                        _ => to_number(&raw),
-                    };
+                    let n = self.to_num_coerced_strict(&raw)?;
                     frame.push(Value::Number(n));
                 }
                 Op::Inc => {
@@ -10504,6 +11061,11 @@ impl Runtime {
                 Op::Lt | Op::Gt | Op::Le | Op::Ge => {
                     let r = frame.pop()?;
                     let l = frame.pop()?;
+                    if matches!(l, Value::Symbol(_)) || matches!(r, Value::Symbol(_)) {
+                        return Err(RuntimeError::TypeError(
+                            "Cannot convert a Symbol value to a number".into(),
+                        ));
+                    }
                     let ord = abstract_relational_compare(&l, &r);
                     let result = match op {
                         Op::Lt => matches!(ord, RelOrder::Less),
@@ -10529,8 +11091,9 @@ impl Runtime {
                     if let (Value::BigInt(a), Value::BigInt(b)) = (&lv, &rv) {
                         frame.push(Value::BigInt(Rc::new(a.bit_and(b))));
                     } else {
-                        let r = to_number(&rv) as i64 as i32;
-                        let l = to_number(&lv) as i64 as i32;
+                        self.ensure_no_mixed_bigint_or_symbol(&lv, &rv)?;
+                        let r = self.to_num_coerced_strict(&rv)? as i64 as i32;
+                        let l = self.to_num_coerced_strict(&lv)? as i64 as i32;
                         frame.push(Value::Number((l & r) as f64));
                     }
                 }
@@ -10540,8 +11103,9 @@ impl Runtime {
                     if let (Value::BigInt(a), Value::BigInt(b)) = (&lv, &rv) {
                         frame.push(Value::BigInt(Rc::new(a.bit_or(b))));
                     } else {
-                        let r = to_number(&rv) as i64 as i32;
-                        let l = to_number(&lv) as i64 as i32;
+                        self.ensure_no_mixed_bigint_or_symbol(&lv, &rv)?;
+                        let r = self.to_num_coerced_strict(&rv)? as i64 as i32;
+                        let l = self.to_num_coerced_strict(&lv)? as i64 as i32;
                         frame.push(Value::Number((l | r) as f64));
                     }
                 }
@@ -10551,8 +11115,9 @@ impl Runtime {
                     if let (Value::BigInt(a), Value::BigInt(b)) = (&lv, &rv) {
                         frame.push(Value::BigInt(Rc::new(a.bit_xor(b))));
                     } else {
-                        let r = to_number(&rv) as i64 as i32;
-                        let l = to_number(&lv) as i64 as i32;
+                        self.ensure_no_mixed_bigint_or_symbol(&lv, &rv)?;
+                        let r = self.to_num_coerced_strict(&rv)? as i64 as i32;
+                        let l = self.to_num_coerced_strict(&lv)? as i64 as i32;
                         frame.push(Value::Number((l ^ r) as f64));
                     }
                 }
@@ -10584,8 +11149,9 @@ impl Runtime {
                             }
                         }
                     } else {
-                        let r = (to_number(&rv) as i64 as i32 as u32) & 0x1F;
-                        let l = to_number(&lv) as i64 as i32;
+                        self.ensure_no_mixed_bigint_or_symbol(&lv, &rv)?;
+                        let r = (self.to_num_coerced_strict(&rv)? as i64 as i32 as u32) & 0x1F;
+                        let l = self.to_num_coerced_strict(&lv)? as i64 as i32;
                         frame.push(Value::Number((l.wrapping_shl(r)) as f64));
                     }
                 }
@@ -10604,8 +11170,9 @@ impl Runtime {
                             }
                         }
                     } else {
-                        let r = (to_number(&rv) as i64 as i32 as u32) & 0x1F;
-                        let l = to_number(&lv) as i64 as i32;
+                        self.ensure_no_mixed_bigint_or_symbol(&lv, &rv)?;
+                        let r = (self.to_num_coerced_strict(&rv)? as i64 as i32 as u32) & 0x1F;
+                        let l = self.to_num_coerced_strict(&lv)? as i64 as i32;
                         frame.push(Value::Number((l >> r) as f64));
                     }
                 }
@@ -10615,8 +11182,20 @@ impl Runtime {
                     // 0xFFFFFFFF for big f64s. Required: trunc-to-int64 then
                     // bit-cast to u32 (drops upper bits). bn.js's 26-bit limb
                     // arithmetic via `(x * y) >>> 0` was producing wrong limbs.
-                    let r = (to_number(&frame.pop()?) as i64 as i32 as u32) & 0x1F;
-                    let l = to_number(&frame.pop()?) as i64 as i32 as u32;
+                    let rv = frame.pop()?;
+                    let lv = frame.pop()?;
+                    if matches!(lv, Value::BigInt(_)) || matches!(rv, Value::BigInt(_)) {
+                        return Err(RuntimeError::TypeError(
+                            "BigInts have no unsigned right shift".into(),
+                        ));
+                    }
+                    if matches!(lv, Value::Symbol(_)) || matches!(rv, Value::Symbol(_)) {
+                        return Err(RuntimeError::TypeError(
+                            "Cannot convert a Symbol value to a number".into(),
+                        ));
+                    }
+                    let r = (self.to_num_coerced_strict(&rv)? as i64 as i32 as u32) & 0x1F;
+                    let l = self.to_num_coerced_strict(&lv)? as i64 as i32 as u32;
                     frame.push(Value::Number((l >> r) as f64));
                 }
 
@@ -10844,60 +11423,78 @@ impl Runtime {
                     // receiver before calling so re-entrant access works.
                     let v = match &obj_v {
                         Value::Object(id) => {
-                            // Ω.5.P60.E1: Proxy get-trap dispatch. If obj
-                            // is a Proxy and handler.get is callable, call
-                            // handler.get(target, key, receiver) and use
-                            // its return value. Missing trap falls through
-                            // to target.
-                            let proxy_dispatch = self.proxy_target_handler_checked(*id)?;
-                            if let Some((target, handler)) = proxy_dispatch {
-                                let trap = self.object_get(handler, "get");
-                                if matches!(trap, Value::Object(_)) {
-                                    let receiver = obj_v.clone();
-                                    let trap_result = self.call_function(
-                                        trap,
-                                        Value::Object(handler),
-                                        vec![
-                                            Value::Object(target),
-                                            Value::String(Rc::new(key.clone())),
-                                            receiver,
-                                        ],
-                                    )?;
-                                    // EXT 88b: §10.5.8 invariant.
-                                    self.apply_proxy_get_invariant(target, &key, &trap_result)?;
-                                    trap_result
-                                } else {
-                                    self.object_get(target, &key)
+                            if key.starts_with('#') {
+                                match self.object_get_private_for_frame(frame, *id, &key) {
+                                    Some(v) => v,
+                                    None => {
+                                        if let Some(getter) =
+                                            self.find_getter_for_frame(frame, *id, &key)
+                                        {
+                                            self.call_function(getter, obj_v.clone(), Vec::new())?
+                                        } else {
+                                            return Err(RuntimeError::TypeError(format!(
+                                                "Cannot read private field '{}' of object",
+                                                key
+                                            )));
+                                        }
+                                    }
                                 }
                             } else {
-                                // Tier-Ω.5.nnn: only check for accessor when the
-                                // descriptor actually has one. Walking find_getter
-                                // for every prop access has a cost; gate on
-                                // direct-property existence first.
-                                let has_accessor = {
-                                    let mut cur = Some(*id);
-                                    let mut found = false;
-                                    while let Some(c) = cur {
-                                        if let Some(d) = self.obj(c).get_own(&key) {
-                                            // GOPD-EXT 1: only count callable getters
-                                            // (Some(Undefined) means accessor-with-no-
-                                            // getter; OrdinaryGet returns undefined).
-                                            if let Some(g) = &d.getter {
-                                                if !matches!(g, Value::Undefined) {
-                                                    found = true;
-                                                }
-                                            }
-                                            break;
-                                        }
-                                        cur = self.obj(c).proto;
+                                // Ω.5.P60.E1: Proxy get-trap dispatch. If obj
+                                // is a Proxy and handler.get is callable, call
+                                // handler.get(target, key, receiver) and use
+                                // its return value. Missing trap falls through
+                                // to target.
+                                let proxy_dispatch = self.proxy_target_handler_checked(*id)?;
+                                if let Some((target, handler)) = proxy_dispatch {
+                                    let trap = self.object_get(handler, "get");
+                                    if matches!(trap, Value::Object(_)) {
+                                        let receiver = obj_v.clone();
+                                        let trap_result = self.call_function(
+                                            trap,
+                                            Value::Object(handler),
+                                            vec![
+                                                Value::Object(target),
+                                                Value::String(Rc::new(key.clone())),
+                                                receiver,
+                                            ],
+                                        )?;
+                                        // EXT 88b: §10.5.8 invariant.
+                                        self.apply_proxy_get_invariant(target, &key, &trap_result)?;
+                                        trap_result
+                                    } else {
+                                        self.object_get(target, &key)
                                     }
-                                    found
-                                };
-                                if has_accessor {
-                                    let getter = self.find_getter(*id, &key).unwrap();
-                                    self.call_function(getter, obj_v.clone(), Vec::new())?
                                 } else {
-                                    self.object_get(*id, &key)
+                                    // Tier-Ω.5.nnn: only check for accessor when the
+                                    // descriptor actually has one. Walking find_getter
+                                    // for every prop access has a cost; gate on
+                                    // direct-property existence first.
+                                    let has_accessor = {
+                                        let mut cur = Some(*id);
+                                        let mut found = false;
+                                        while let Some(c) = cur {
+                                            if let Some(d) = self.obj(c).get_own(&key) {
+                                                // GOPD-EXT 1: only count callable getters
+                                                // (Some(Undefined) means accessor-with-no-
+                                                // getter; OrdinaryGet returns undefined).
+                                                if let Some(g) = &d.getter {
+                                                    if !matches!(g, Value::Undefined) {
+                                                        found = true;
+                                                    }
+                                                }
+                                                break;
+                                            }
+                                            cur = self.obj(c).proto;
+                                        }
+                                        found
+                                    };
+                                    if has_accessor {
+                                        let getter = self.find_getter(*id, &key).unwrap();
+                                        self.call_function(getter, obj_v.clone(), Vec::new())?
+                                    } else {
+                                        self.object_get(*id, &key)
+                                    }
                                 }
                             }
                         }
@@ -10967,30 +11564,43 @@ impl Runtime {
                             }
                         }
                         Value::Undefined | Value::Null => {
-                            // Tier-Ω.5.uuu: enrich the fault with the
-                            // last LoadLocal/GetProp hint. Doc 723's
-                            // threshold-of-diagnostic-semanticity finding
-                            // (2026-05-15) named that single-tag faults
-                            // are below-threshold for Layer-D bisect.
-                            // Adding the source-side name of the value
-                            // that resolved to undefined raises the
-                            // signal level — `(receiver='X')` tags the
-                            // local whose load preceded this access.
-                            let receiver_hint = frame
-                                .last_property_lookup
-                                .clone()
-                                .map(|s| format!(" (receiver='{}')", s))
-                                .unwrap_or_default();
-                            return Err(RuntimeError::TypeError(format!(
-                                "Cannot read property '{}' of {}{}",
-                                key,
-                                if matches!(obj_v, Value::Undefined) {
-                                    "undefined"
-                                } else {
-                                    "null"
-                                },
-                                receiver_hint
-                            )));
+                            let pc = frame.pc.saturating_sub(1);
+                            let construct = frame
+                                .construct_tags
+                                .iter()
+                                .rposition(|&(off, _)| off <= pc)
+                                .map(|i| frame.construct_tags[i].1);
+                            if key.starts_with('#')
+                                && matches!(construct, Some("optional-chain private-continuation"))
+                                && matches!(obj_v, Value::Undefined)
+                            {
+                                Value::Undefined
+                            } else {
+                                // Tier-Ω.5.uuu: enrich the fault with the
+                                // last LoadLocal/GetProp hint. Doc 723's
+                                // threshold-of-diagnostic-semanticity finding
+                                // (2026-05-15) named that single-tag faults
+                                // are below-threshold for Layer-D bisect.
+                                // Adding the source-side name of the value
+                                // that resolved to undefined raises the
+                                // signal level — `(receiver='X')` tags the
+                                // local whose load preceded this access.
+                                let receiver_hint = frame
+                                    .last_property_lookup
+                                    .clone()
+                                    .map(|s| format!(" (receiver='{}')", s))
+                                    .unwrap_or_default();
+                                return Err(RuntimeError::TypeError(format!(
+                                    "Cannot read property '{}' of {}{}",
+                                    key,
+                                    if matches!(obj_v, Value::Undefined) {
+                                        "undefined"
+                                    } else {
+                                        "null"
+                                    },
+                                    receiver_hint
+                                )));
+                            }
                         }
                         _ => Value::Undefined,
                     };
@@ -11010,6 +11620,34 @@ impl Runtime {
                     let value = frame.pop()?;
                     let obj_v = frame.pop()?;
                     if let Value::Object(id) = &obj_v {
+                        if key.starts_with('#') {
+                            if let Some(setter) = self.find_setter_for_frame(frame, *id, &key) {
+                                self.call_function(
+                                    setter,
+                                    Value::Object(*id),
+                                    vec![value.clone()],
+                                )?;
+                            } else if self.find_getter_for_frame(frame, *id, &key).is_some()
+                                || self.private_method_in_chain_for_frame(frame, *id, &key)
+                            {
+                                return Err(RuntimeError::TypeError(format!(
+                                    "Cannot write private member '{}'",
+                                    key
+                                )));
+                            } else if self
+                                .object_get_private_for_frame(frame, *id, &key)
+                                .is_none()
+                            {
+                                return Err(RuntimeError::TypeError(format!(
+                                    "Cannot write missing private field '{}'",
+                                    key
+                                )));
+                            } else {
+                                self.obj_mut(*id).set_private(&key, value.clone());
+                            }
+                            frame.push(value);
+                            continue;
+                        }
                         // Ω.5.P60.E2: Proxy set-trap dispatch.
                         let proxy_dispatch = self.proxy_target_handler_checked(*id)?;
                         if let Some((target, handler)) = proxy_dispatch {
@@ -11063,7 +11701,16 @@ impl Runtime {
                                     }
                                 }
                             }
-                            self.object_set(*id, key, value.clone());
+                            let can_add =
+                                self.obj(*id).has_own_str(&key) || self.obj(*id).extensible;
+                            if can_add {
+                                self.object_set(*id, key, value.clone());
+                            } else if frame.strict {
+                                return Err(RuntimeError::TypeError(format!(
+                                    "Cannot add property '{}': object is not extensible",
+                                    key
+                                )));
+                            }
                         }
                     } else {
                         // Tier-Ω.5.HHHHHHHH: enrich the non-object target tag
@@ -11305,6 +11952,12 @@ impl Runtime {
                                         crate::value::InternalKind::Array
                                     )
                                 {
+                                    if frame.strict {
+                                        return Err(RuntimeError::TypeError(
+                                            "Cannot delete non-configurable property 'length'"
+                                                .into(),
+                                        ));
+                                    }
                                     frame.push(Value::Boolean(false));
                                     continue;
                                 }
@@ -11328,6 +11981,12 @@ impl Runtime {
                                     self.obj_mut(id).remove_str(&key).is_some() || true
                                 } else if let Some(d) = self.obj(id).get_own(&key) {
                                     if !d.configurable {
+                                        if frame.strict {
+                                            return Err(RuntimeError::TypeError(format!(
+                                                "Cannot delete non-configurable property '{}'",
+                                                key
+                                            )));
+                                        }
                                         false
                                     } else {
                                         self.obj_mut(id).remove_str(&key).is_some()
@@ -11337,7 +11996,12 @@ impl Runtime {
                                 }
                             }
                         }
-                        _ => false,
+                        Value::Null | Value::Undefined => {
+                            return Err(RuntimeError::TypeError(
+                                "Cannot convert undefined or null to object".into(),
+                            ))
+                        }
+                        _ => true,
                     };
                     frame.push(Value::Boolean(removed));
                 }
@@ -11386,16 +12050,49 @@ impl Runtime {
                                         || true
                                 } else if let Some(d) = self.obj(id).properties.get(&key_pk) {
                                     if !d.configurable {
+                                        if frame.strict {
+                                            return Err(RuntimeError::TypeError(format!(
+                                                "Cannot delete non-configurable property '{}'",
+                                                key
+                                            )));
+                                        }
                                         false
                                     } else {
                                         self.obj_mut(id).dict_mut().shift_remove(&key_pk).is_some()
+                                    }
+                                } else if let crate::value::PropertyKey::Symbol(sym) = &key_pk {
+                                    // Well-known-symbol transition: built-ins
+                                    // such as Array.prototype[Symbol.iterator]
+                                    // are still stored under their string form
+                                    // ("@@iterator"). A Symbol-keyed delete
+                                    // must remove that fallback entry too, or
+                                    // GetIterator keeps observing the method.
+                                    if let Some(d) = self.obj(id).get_own(sym.as_str()) {
+                                        if !d.configurable {
+                                            if frame.strict {
+                                                return Err(RuntimeError::TypeError(format!(
+                                                    "Cannot delete non-configurable property '{}'",
+                                                    key
+                                                )));
+                                            }
+                                            false
+                                        } else {
+                                            self.obj_mut(id).remove_str(sym.as_str()).is_some()
+                                        }
+                                    } else {
+                                        true
                                     }
                                 } else {
                                     true
                                 }
                             }
                         }
-                        _ => false,
+                        Value::Null | Value::Undefined => {
+                            return Err(RuntimeError::TypeError(
+                                "Cannot convert undefined or null to object".into(),
+                            ))
+                        }
+                        _ => true,
                     };
                     frame.push(Value::Boolean(removed));
                 }
@@ -11505,31 +12202,35 @@ impl Runtime {
                     } else {
                         None
                     };
-                    let result = if let Some(b) = hi_result {
-                        b
-                    } else {
-                        match (&obj_v, &ctor_v) {
-                            (Value::Object(obj_id), Value::Object(ctor_id)) => {
-                                let proto_v = self.object_get(*ctor_id, "prototype");
-                                match proto_v {
-                                    Value::Object(target_proto) => {
-                                        let mut cur = self.obj(*obj_id).proto;
-                                        let mut found = false;
-                                        while let Some(c) = cur {
-                                            if c == target_proto {
-                                                found = true;
-                                                break;
+                    let result =
+                        if let Some(b) = hi_result {
+                            b
+                        } else {
+                            match (&obj_v, &ctor_v) {
+                                (Value::Object(obj_id), Value::Object(ctor_id)) => {
+                                    let proto_v = self.object_get(*ctor_id, "prototype");
+                                    match proto_v {
+                                        Value::Object(target_proto) => {
+                                            let mut cur = self.obj(*obj_id).proto;
+                                            let mut found = false;
+                                            while let Some(c) = cur {
+                                                if c == target_proto {
+                                                    found = true;
+                                                    break;
+                                                }
+                                                cur = self.obj(c).proto;
                                             }
-                                            cur = self.obj(c).proto;
+                                            found
                                         }
-                                        found
+                                        _ => return Err(RuntimeError::TypeError(
+                                            "Function has non-object prototype in instanceof check"
+                                                .into(),
+                                        )),
                                     }
-                                    _ => false,
                                 }
+                                _ => false,
                             }
-                            _ => false,
-                        }
-                    };
+                        };
                     frame.push(Value::Boolean(result));
                 }
                 Op::SetIndex => {
@@ -11593,7 +12294,22 @@ impl Runtime {
                                     }
                                 }
                             }
-                            self.object_set_pk(*id, key_pk.clone(), value.clone());
+                            let has_own = match &key_pk {
+                                crate::value::PropertyKey::String(s) => {
+                                    self.obj(*id).has_own_str(s)
+                                }
+                                crate::value::PropertyKey::Symbol(sym) => {
+                                    self.obj(*id).get_own_symbol(sym).is_some()
+                                }
+                            };
+                            if has_own || self.obj(*id).extensible {
+                                self.object_set_pk(*id, key_pk.clone(), value.clone());
+                            } else if frame.strict {
+                                return Err(RuntimeError::TypeError(format!(
+                                    "Cannot add property '{}': object is not extensible",
+                                    key
+                                )));
+                            }
                         }
                     } else {
                         // Tier-Ω.5.HHHHHHHH: route-(b) enrichment. mobx-state-tree
@@ -11642,6 +12358,7 @@ impl Runtime {
                     let display_name = proto_rc.display_name.clone();
                     let is_async = proto_rc.is_async;
                     let is_gen = proto_rc.is_generator;
+                    let is_strict_fn = proto_rc.strict;
                     // Tier-Ω.5.sss: arrow inherits `this` from current
                     // frame. Capture at MakeArrow time as a VALUE
                     // snapshot (bound_this) AND promote to a CELL
@@ -11694,6 +12411,26 @@ impl Runtime {
                             props,
                             &display_name,
                             fn_length as f64,
+                        );
+                    }
+                    if is_strict_fn && !is_arrow {
+                        let thrower =
+                            crate::intrinsics::make_native("%ThrowTypeError%", |_rt, _args| {
+                                Err(RuntimeError::TypeError(
+                                    "'caller' may not be accessed on a strict function".into(),
+                                ))
+                            });
+                        let thrower_id = self.alloc_object(thrower);
+                        self.obj_mut(id).dict_mut().insert(
+                            "caller".into(),
+                            crate::value::PropertyDescriptor {
+                                value: Value::Undefined,
+                                writable: false,
+                                enumerable: false,
+                                configurable: false,
+                                getter: Some(Value::Object(thrower_id)),
+                                setter: Some(Value::Object(thrower_id)),
+                            },
                         );
                     }
                     // Tier-Ω.5.ll: auto-create .prototype on non-arrow,
@@ -12255,6 +12992,21 @@ impl Runtime {
                         frame.this_value = v;
                     }
                 }
+                Op::EnterWith => {
+                    let obj_expr = frame.pop()?;
+                    let obj = self.to_object(&obj_expr)?;
+                    match obj {
+                        Value::Object(id) => frame.with_env_stack.push(id),
+                        _ => {
+                            return Err(RuntimeError::TypeError(
+                                "with expression did not coerce to object".into(),
+                            ))
+                        }
+                    }
+                }
+                Op::ExitWith => {
+                    frame.with_env_stack.pop();
+                }
                 Op::PropagateNewTarget => {
                     // Ω.5.P03.E2.super-new-target: forward the current
                     // frame's new.target into the runtime's pending slot
@@ -12664,8 +13416,9 @@ impl Runtime {
         // Standard dispatcher path follows.
         // Extract proto-or-native by inspecting the heap object once.
         // BoundFunction: rewrite to its target, prepending bound args.
-        let (proto_opt, native_opt, effective_this, effective_args) = {
+        let (proto_opt, native_opt, effective_this, effective_args, private_home) = {
             let o = self.obj(id);
+            let private_home = o.private_home;
             match &o.internal_kind {
                 crate::value::InternalKind::Closure(c) => {
                     // Ω.5.P04.E2.jit-runtime-dispatch + jit-deopt-disable:
@@ -12816,9 +13569,13 @@ impl Runtime {
                         let _ = deopt_fell_through; // (currently unused; future EXT can split metrics)
                         let o2 = self.obj(id);
                         match &o2.internal_kind {
-                            crate::value::InternalKind::Closure(c2) => {
-                                (Some(c2.proto.clone()), None, actual_this, args)
-                            }
+                            crate::value::InternalKind::Closure(c2) => (
+                                Some(c2.proto.clone()),
+                                None,
+                                actual_this,
+                                args,
+                                private_home,
+                            ),
                             _ => unreachable!("closure flipped kind mid-dispatch"),
                         }
                     } else {
@@ -12844,11 +13601,11 @@ impl Runtime {
                         // false) so external probes that read it stay
                         // valid; this branch no longer writes to it.
                         let _ = (count, proto_key);
-                        (Some(c.proto.clone()), None, actual_this, args)
+                        (Some(c.proto.clone()), None, actual_this, args, private_home)
                     }
                 }
                 crate::value::InternalKind::Function(f) => {
-                    (None, Some(f.native.clone()), this, args)
+                    (None, Some(f.native.clone()), this, args, private_home)
                 }
                 crate::value::InternalKind::Proxy(p) => {
                     // EXT 84: revoked-proxy guard per §10.5.{12,13}.
@@ -13011,24 +13768,12 @@ impl Runtime {
         let mut locals: Vec<Value> = Vec::new();
         let rest_slot = proto.rest_param_slot;
         let args_slot = proto.arguments_slot;
-        // Tier-Ω.5.zzz: allocate the `arguments` Array up-front so the
-        // slot-population loop can store it at args_slot.
-        let arguments_value: Option<Value> = if args_slot.is_some() {
-            let mut arr = crate::value::Object::new_array();
-            arr.set_own("length".into(), Value::Number(args.len() as f64));
-            for (k, v) in args.iter().enumerate() {
-                arr.set_own(k.to_string(), v.clone());
-            }
-            Some(Value::Object(self.alloc_object(arr)))
-        } else {
-            None
-        };
         // Tier-Ω.5.kkkkk: self-binding for named function expr/decl.
         let self_slot = proto.self_name_slot;
         for (i, _) in proto.locals.iter().enumerate() {
             let slot = i as u16;
             if Some(slot) == args_slot {
-                locals.push(arguments_value.clone().unwrap_or(Value::Undefined));
+                locals.push(Value::Undefined);
             } else if Some(slot) == self_slot {
                 locals.push(Value::Object(id));
             } else if Some(slot) == rest_slot {
@@ -13050,6 +13795,54 @@ impl Runtime {
                 locals.push(Value::Undefined);
             }
         }
+        let mut local_cells: Vec<Option<UpvalueCell>> = Vec::new();
+        if let Some(arguments_slot) = args_slot {
+            let mut arr = crate::value::Object::new_array();
+            arr.set_own("length".into(), Value::Number(args.len() as f64));
+            let mut parameter_map: indexmap::IndexMap<String, UpvalueCell> =
+                indexmap::IndexMap::new();
+            for (k, v) in args.iter().enumerate() {
+                arr.set_own(k.to_string(), v.clone());
+                if !proto.strict && k < locals.len() && (k as u16) != arguments_slot {
+                    while local_cells.len() <= k {
+                        local_cells.push(None);
+                    }
+                    let cell = if let Some(existing) = &local_cells[k] {
+                        existing.clone()
+                    } else {
+                        let cell = crate::value::new_upvalue_cell(locals[k].clone());
+                        locals[k] = Value::Undefined;
+                        local_cells[k] = Some(cell.clone());
+                        cell
+                    };
+                    parameter_map.insert(k.to_string(), cell);
+                }
+            }
+            if proto.strict {
+                let thrower = crate::intrinsics::make_native("%ThrowTypeError%", |_rt, _args| {
+                    Err(RuntimeError::TypeError(
+                        "'callee' may not be accessed on a strict arguments object".into(),
+                    ))
+                });
+                let thrower_id = self.alloc_object(thrower);
+                arr.dict_mut().insert(
+                    "callee".into(),
+                    crate::value::PropertyDescriptor {
+                        value: Value::Undefined,
+                        writable: false,
+                        enumerable: false,
+                        configurable: false,
+                        getter: Some(Value::Object(thrower_id)),
+                        setter: Some(Value::Object(thrower_id)),
+                    },
+                );
+            } else if !parameter_map.is_empty() {
+                arr.internal_kind = crate::value::InternalKind::MappedArguments { parameter_map };
+            }
+            if (arguments_slot as usize) < locals.len() {
+                locals[arguments_slot as usize] = Value::Object(self.alloc_object(arr));
+            }
+        }
         let mut inner = Frame {
             bytecode: &proto.bytecode,
             constants: &proto.constants,
@@ -13060,16 +13853,18 @@ impl Runtime {
             locals_names: &proto.locals,
             upvalue_names: &proto.upvalues,
             locals,
-            local_cells: Vec::new(),
+            local_cells,
             operand_stack: Vec::with_capacity(32),
             pc: 0,
             try_stack: Vec::new(),
+            with_env_stack: Vec::new(),
             this_value: this,
             this_cell: None,
             upvalues,
             last_property_lookup: None,
             pending_method_name: None,
             pending_method_getprop_pc: None,
+            private_home,
             import_meta: None,
             new_target: nt_for_this_call.clone(),
             strict: proto.strict,
@@ -13077,26 +13872,74 @@ impl Runtime {
             osr_cache: HashMap::new(),
             ic_dispatch_cache: HashMap::new(),
         };
-        let body_result = self.run_frame(&mut inner);
+        let body_result = if is_generator && proto.param_prologue_end > 0 {
+            let prologue_end = proto.param_prologue_end.min(proto.bytecode.len());
+            inner.bytecode = &proto.bytecode[..prologue_end];
+            self.run_frame(&mut inner)?;
+            inner.bytecode = &proto.bytecode;
+            inner.pc = prologue_end;
+            self.run_frame(&mut inner)
+        } else {
+            self.run_frame(&mut inner)
+        };
         if is_generator {
             // Tier-Ω.5.gggggg: pop yields-array on generator exit; build
             // an index-cursor iterator over the collected values. The
-            // body's return value is discarded — generator return value
-            // is exposed via the {value, done:true} terminal step in
-            // proper coroutines; v1 sets done's value to undefined.
+            // body's return value is exposed as the terminal
+            // {value, done:true} step when no yields were collected.
             let yields_id = self
                 .gen_yields_stack
                 .pop()
                 .expect("gen_yields_stack underflow");
             let _ = gen_yields_id;
-            let _ = body_result; // even on Err, return an iterator that drains as if empty
-                                 // diff-prod Rung-19: chain generator instances to %GeneratorPrototype%
-                                 // (which in turn chains to %IteratorPrototype%). Pre-fix, generator
-                                 // instances proto-chained only to Object.prototype, so the ES2025
-                                 // Iterator Helpers installed on %IteratorPrototype% were invisible
-                                 // to `g().map(...)` patterns.
+            let mut terminal_return = false;
+            let pending_error = match body_result {
+                Ok(v) => {
+                    if !matches!(v, Value::Undefined) && self.array_length(yields_id) == 0 {
+                        self.object_set(yields_id, "0".into(), v);
+                        self.object_set(yields_id, "length".into(), Value::Number(1.0));
+                        terminal_return = true;
+                    }
+                    Value::Undefined
+                }
+                Err(RuntimeError::Thrown(v)) => v,
+                Err(RuntimeError::TypeError(msg)) => {
+                    match crate::intrinsics::make_error_instance(self, "TypeError", &msg) {
+                        Some(id) => Value::Object(id),
+                        None => Value::String(Rc::new(format!("TypeError({:?})", msg))),
+                    }
+                }
+                Err(RuntimeError::RangeError(msg)) => {
+                    match crate::intrinsics::make_error_instance(self, "RangeError", &msg) {
+                        Some(id) => Value::Object(id),
+                        None => Value::String(Rc::new(format!("RangeError({:?})", msg))),
+                    }
+                }
+                Err(RuntimeError::ReferenceError(msg)) => {
+                    match crate::intrinsics::make_error_instance(self, "ReferenceError", &msg) {
+                        Some(id) => Value::Object(id),
+                        None => Value::String(Rc::new(format!("ReferenceError({:?})", msg))),
+                    }
+                }
+                Err(RuntimeError::SyntaxError(msg)) => {
+                    match crate::intrinsics::make_error_instance(self, "SyntaxError", &msg) {
+                        Some(id) => Value::Object(id),
+                        None => Value::String(Rc::new(format!("SyntaxError({:?})", msg))),
+                    }
+                }
+                Err(e) => Value::String(Rc::new(format!("{:?}", e))),
+            };
+            // diff-prod Rung-19: chain generator instances to %GeneratorPrototype%
+            // (which in turn chains to %IteratorPrototype%). Pre-fix, generator
+            // instances proto-chained only to Object.prototype, so the ES2025
+            // Iterator Helpers installed on %IteratorPrototype% were invisible
+            // to `g().map(...)` patterns.
             let mut iter = Object::new_ordinary();
-            iter.proto = self.generator_prototype;
+            iter.proto = if proto.is_async {
+                self.async_generator_prototype
+            } else {
+                self.generator_prototype
+            };
             let it_id = self.alloc_object(iter);
             // ESNE-EXT 3: hide engine sentinels + iterator methods. State
             // (__gen_*) via set_engine_sentinel; methods (next/return/throw/
@@ -13105,11 +13948,32 @@ impl Runtime {
             // prototype-routing refactor).
             self.set_engine_sentinel(it_id, "__gen_arr__", Value::Object(yields_id));
             self.set_engine_sentinel(it_id, "__gen_idx__", Value::Number(0.0));
+            self.set_engine_sentinel(
+                it_id,
+                "__gen_return_terminal__",
+                Value::Boolean(terminal_return),
+            );
+            self.set_engine_sentinel(it_id, "__gen_async__", Value::Boolean(proto.is_async));
+            self.set_engine_sentinel(it_id, "__gen_pending_error__", pending_error);
             let next_fn = crate::intrinsics::make_native("next", |rt, _args| {
                 let this_id = match rt.current_this() {
                     Value::Object(o) => o,
                     _ => return Ok(Value::Undefined),
                 };
+                let is_async_gen = matches!(
+                    rt.object_get(this_id, "__gen_async__"),
+                    Value::Boolean(true)
+                );
+                let pending_error = rt.object_get(this_id, "__gen_pending_error__");
+                if !matches!(pending_error, Value::Undefined) {
+                    rt.object_set(this_id, "__gen_pending_error__".into(), Value::Undefined);
+                    if is_async_gen {
+                        let p = crate::promise::new_promise(rt);
+                        crate::promise::reject_promise(rt, p, pending_error);
+                        return Ok(Value::Object(p));
+                    }
+                    return Err(RuntimeError::Thrown(pending_error));
+                }
                 let arr = match rt.object_get(this_id, "__gen_arr__") {
                     Value::Object(id) => id,
                     _ => return Ok(Value::Undefined),
@@ -13118,6 +13982,10 @@ impl Runtime {
                     Value::Number(n) => n as usize,
                     _ => 0,
                 };
+                let terminal_return = matches!(
+                    rt.object_get(this_id, "__gen_return_terminal__"),
+                    Value::Boolean(true)
+                );
                 let len = rt.array_length(arr);
                 let mut o = Object::new_ordinary();
                 if idx >= len {
@@ -13131,9 +13999,19 @@ impl Runtime {
                         Value::Number((idx + 1) as f64),
                     );
                     o.set_own("value".into(), v);
-                    o.set_own("done".into(), Value::Boolean(false));
+                    o.set_own(
+                        "done".into(),
+                        Value::Boolean(terminal_return && idx + 1 >= len),
+                    );
                 }
-                Ok(Value::Object(rt.alloc_object(o)))
+                let result_id = rt.alloc_object(o);
+                if is_async_gen {
+                    let p = crate::promise::new_promise(rt);
+                    crate::promise::resolve_promise(rt, p, Value::Object(result_id));
+                    Ok(Value::Object(p))
+                } else {
+                    Ok(Value::Object(result_id))
+                }
             });
             let next_id = self.alloc_object(next_fn);
             self.set_engine_sentinel(it_id, "next", Value::Object(next_id));
@@ -13178,6 +14056,15 @@ impl Runtime {
             });
             let iter_fn_id = self.alloc_object(iter_fn);
             self.set_engine_sentinel(it_id, "@@iterator", Value::Object(iter_fn_id));
+            if proto.is_async {
+                let async_iter = it_id;
+                let async_iter_fn =
+                    crate::intrinsics::make_native("@@asyncIterator", move |_rt, _args| {
+                        Ok(Value::Object(async_iter))
+                    });
+                let async_iter_fn_id = self.alloc_object(async_iter_fn);
+                self.set_engine_sentinel(it_id, "@@asyncIterator", Value::Object(async_iter_fn_id));
+            }
             return Ok(Value::Object(it_id));
         }
         let body_result_v = body_result;
@@ -13197,8 +14084,29 @@ impl Runtime {
                 Ok(v) => crate::promise::resolve_promise(self, p, v),
                 Err(RuntimeError::Thrown(v)) => crate::promise::reject_promise(self, p, v),
                 Err(e) => {
-                    let msg = format!("{:?}", e);
-                    let reason = Value::String(Rc::new(msg));
+                    let reason = match e {
+                        RuntimeError::TypeError(msg) => {
+                            crate::intrinsics::make_error_instance(self, "TypeError", &msg)
+                                .map(Value::Object)
+                                .unwrap_or_else(|| Value::String(Rc::new(msg)))
+                        }
+                        RuntimeError::RangeError(msg) => {
+                            crate::intrinsics::make_error_instance(self, "RangeError", &msg)
+                                .map(Value::Object)
+                                .unwrap_or_else(|| Value::String(Rc::new(msg)))
+                        }
+                        RuntimeError::ReferenceError(msg) => {
+                            crate::intrinsics::make_error_instance(self, "ReferenceError", &msg)
+                                .map(Value::Object)
+                                .unwrap_or_else(|| Value::String(Rc::new(msg)))
+                        }
+                        RuntimeError::SyntaxError(msg) => {
+                            crate::intrinsics::make_error_instance(self, "SyntaxError", &msg)
+                                .map(Value::Object)
+                                .unwrap_or_else(|| Value::String(Rc::new(msg)))
+                        }
+                        other => Value::String(Rc::new(format!("{:?}", other))),
+                    };
                     crate::promise::reject_promise(self, p, reason);
                 }
             }
@@ -13548,6 +14456,10 @@ pub struct Frame<'a> {
     pub operand_stack: Vec<Value>,
     pub pc: usize,
     pub try_stack: Vec<TryFrame>,
+    /// WBMS-EXT 2: object-environment stack for sloppy `with` execution.
+    /// Bare identifier bytecodes inside a with-body route through these
+    /// objects before falling back to lexical bindings and globals.
+    pub with_env_stack: Vec<crate::value::ObjectRef>,
     /// `this` for the executing frame. Module frames default to Undefined;
     /// method-call frames receive the receiver. Tier-Ω.5.a.
     pub this_value: Value,
@@ -13574,6 +14486,10 @@ pub struct Frame<'a> {
     /// to Op::GetPropSkipForMethod. Cleared at the same sites that clear
     /// pending_method_name.
     pub pending_method_getprop_pc: Option<usize>,
+    /// Class home object for private-name resolution in class methods and
+    /// accessors. ECMA private names are fresh per class evaluation; this
+    /// bridges the current string-keyed private storage toward that identity.
+    pub private_home: Option<ObjectRef>,
     /// Tier-Ω.5.r: synthetic `import.meta` object for this module frame.
     /// Populated by `evaluate_module` (ESM path) with `{ url, dir }` keys.
     /// Frames that didn't enter through the module loader (raw run_module
@@ -13685,6 +14601,7 @@ fn try_osr_compile(frame: &mut Frame, site_pc: usize) {
         rest_param_slot: None,
         arguments_slot: None,
         self_name_slot: None,
+        param_prologue_end: 0,
         is_generator: false,
         line_starts: Vec::new(),
         source_map: Vec::new(),
@@ -13834,12 +14751,14 @@ impl<'a> Frame<'a> {
             operand_stack: Vec::with_capacity(32),
             pc: 0,
             try_stack: Vec::new(),
+            with_env_stack: Vec::new(),
             this_value: Value::Undefined,
             this_cell: None,
             upvalues: Vec::new(),
             last_property_lookup: None,
             pending_method_name: None,
             pending_method_getprop_pc: None,
+            private_home: None,
             import_meta: None,
             new_target: None,
             strict: m.strict,

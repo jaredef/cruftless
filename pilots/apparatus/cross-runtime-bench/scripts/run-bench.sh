@@ -15,7 +15,7 @@
 set -euo pipefail
 
 PILOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-REPO_ROOT="$(cd "$PILOT_DIR/../.." && pwd)"
+REPO_ROOT="$(cd "$PILOT_DIR/../../.." && pwd)"
 # shellcheck disable=SC1091
 . "$REPO_ROOT/scripts/env.sh"
 FIXTURES_DIR="$PILOT_DIR/fixtures"

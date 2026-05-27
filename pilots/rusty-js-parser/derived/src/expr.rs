@@ -204,7 +204,9 @@ impl<'src> Parser<'src> {
             // (parse_expression in the for-head) returns the LHS without
             // consuming `in`. The for-statement then sees `in` as the
             // ForIn/Of head keyword, as the spec intends.
-            TokenKind::Ident(s) if s == "in" && !self.in_disallowed => Some((BinaryOp::In, 10, false)),
+            TokenKind::Ident(s) if s == "in" && !self.in_disallowed => {
+                Some((BinaryOp::In, 10, false))
+            }
             // Shift
             TokenKind::Punct(Punct::Shl) => Some((BinaryOp::Shl, 11, false)),
             TokenKind::Punct(Punct::Shr) => Some((BinaryOp::Shr, 11, false)),
@@ -915,9 +917,12 @@ impl<'src> Parser<'src> {
                 let prop_start = self.lookahead_span().start;
                 self.bump()?; // consume `*`
                 let key = self.parse_object_key()?;
-                let params = self.parse_function_parameters_g(true)?;
-                let body =
-                    self.parse_function_body_gs(Some(true), Self::is_simple_param_list(&params))?;
+                let params = self.parse_function_parameters_ga(true, false)?;
+                let body = self.parse_function_body_gs(
+                    Some(true),
+                    Some(false),
+                    Self::is_simple_param_list(&params),
+                )?;
                 let end = self.last_span_end();
                 let func = Expr::Function {
                     name: None,
@@ -952,9 +957,10 @@ impl<'src> Parser<'src> {
                     false
                 };
                 let key = self.parse_object_key()?;
-                let params = self.parse_function_parameters_g(is_generator)?;
+                let params = self.parse_function_parameters_ga(is_generator, true)?;
                 let body = self.parse_function_body_gs(
                     Some(is_generator),
+                    Some(true),
                     Self::is_simple_param_list(&params),
                 )?;
                 let end = self.last_span_end();
@@ -991,8 +997,11 @@ impl<'src> Parser<'src> {
                 self.bump()?; // consume `get` or `set`
                 let key = self.parse_object_key()?;
                 let params = self.parse_function_parameters()?;
-                let body =
-                    self.parse_function_body_gs(Some(false), Self::is_simple_param_list(&params))?;
+                let body = self.parse_function_body_gs(
+                    Some(false),
+                    Some(false),
+                    Self::is_simple_param_list(&params),
+                )?;
                 let end = self.last_span_end();
                 let func = Expr::Function {
                     name: None,
@@ -1031,8 +1040,11 @@ impl<'src> Parser<'src> {
                     // an anonymous name (the method name is the property key,
                     // not the function's [[Name]] in v1).
                     let params = self.parse_function_parameters()?;
-                    let body = self
-                        .parse_function_body_gs(Some(false), Self::is_simple_param_list(&params))?;
+                    let body = self.parse_function_body_gs(
+                        Some(false),
+                        Some(false),
+                        Self::is_simple_param_list(&params),
+                    )?;
                     let end = self.last_span_end();
                     let func = Expr::Function {
                         name: None,
@@ -1139,7 +1151,15 @@ impl<'src> Parser<'src> {
     fn parse_parenthesized(&mut self) -> Result<Expr, ParseError> {
         let start = self.lookahead_span().start;
         self.expect_punct(Punct::LParen)?;
-        let expr = self.parse_expression()?;
+        // PPIF-EXT 3: ParenthesizedExpression re-enters the normal
+        // Expression grammar. This lets `for (var x = ("a" in o);;)` remain
+        // valid while the containing for-init VariableDeclarationList parses
+        // under [~In].
+        let saved_in_disallowed = self.in_disallowed;
+        self.in_disallowed = false;
+        let expr = self.parse_expression();
+        self.in_disallowed = saved_in_disallowed;
+        let expr = expr?;
         self.expect_punct(Punct::RParen)?;
         let end = self.last_span_end();
         Ok(Expr::Parenthesized {
@@ -1178,10 +1198,8 @@ impl<'src> Parser<'src> {
     fn parse_tagged_template(&mut self, tag: Expr, start: usize) -> Result<Expr, ParseError> {
         use crate::token::TemplatePart;
         use rusty_js_ast::{Argument, ArrayElement};
-        // Parse the template literal into an Expr::TemplateLiteral first,
-        // then convert into a Call with [Array(quasis), ...expressions].
         let tpl = match self.current_kind().clone() {
-            TokenKind::Template { cooked, part, .. } => {
+            TokenKind::Template { cooked, raw, part } => {
                 let tspan = self.lookahead_span();
                 match part {
                     TemplatePart::NoSubstitution => {
@@ -1189,6 +1207,7 @@ impl<'src> Parser<'src> {
                         self.bump()?;
                         Expr::TemplateLiteral {
                             quasis: vec![std::rc::Rc::new(value)],
+                            raw_quasis: vec![std::rc::Rc::new(raw)],
                             expressions: Vec::new(),
                             span: tspan,
                         }
@@ -1199,12 +1218,13 @@ impl<'src> Parser<'src> {
             }
             _ => return Err(self.err_here("expected template after tag".into())),
         };
-        let (quasis, expressions, end) = match tpl {
+        let (quasis, raw_quasis, expressions, end) = match tpl {
             Expr::TemplateLiteral {
                 quasis,
+                raw_quasis,
                 expressions,
                 span,
-            } => (quasis, expressions, span.end),
+            } => (quasis, raw_quasis, expressions, span.end),
             _ => unreachable!(),
         };
         let strings_arr = Expr::Array {
@@ -1220,7 +1240,29 @@ impl<'src> Parser<'src> {
             trailing_comma_after_spread: false,
             span: Span::new(start, end),
         };
-        let mut arguments: Vec<Argument> = vec![Argument::Expr(strings_arr)];
+        let raw_arr = Expr::Array {
+            elements: raw_quasis
+                .iter()
+                .map(|q| {
+                    ArrayElement::Expr(Expr::StringLiteral {
+                        value: (**q).clone(),
+                        span: Span::new(start, end),
+                    })
+                })
+                .collect(),
+            trailing_comma_after_spread: false,
+            span: Span::new(start, end),
+        };
+        let template_object = Expr::Call {
+            callee: Box::new(Expr::Identifier {
+                name: "__template_object__".into(),
+                span: Span::new(start, end),
+            }),
+            arguments: vec![Argument::Expr(strings_arr), Argument::Expr(raw_arr)],
+            optional: false,
+            span: Span::new(start, end),
+        };
+        let mut arguments: Vec<Argument> = vec![Argument::Expr(template_object)];
         for e in expressions {
             arguments.push(Argument::Expr(e));
         }
@@ -1541,6 +1583,25 @@ impl<'src> Parser<'src> {
                         ),
                     });
                 }
+                if self.strict_mode && (n == "eval" || n == "arguments") {
+                    return Err(ParseError {
+                        span,
+                        message: format!("Function name '{}' is not allowed in strict mode", n),
+                    });
+                }
+                if (is_generator || self.strict_mode) && n == "yield" {
+                    return Err(ParseError {
+                        span,
+                        message: "`yield` is not a valid function name in this context".into(),
+                    });
+                }
+                if is_async && n == "await" {
+                    return Err(ParseError {
+                        span,
+                        message: "`await` is not a valid function name in async function code"
+                            .into(),
+                    });
+                }
                 self.bump()?;
                 Some(rusty_js_ast::BindingIdentifier { name: n, span })
             } else {
@@ -1549,9 +1610,12 @@ impl<'src> Parser<'src> {
         } else {
             None
         };
-        let params = self.parse_function_parameters_g(is_generator)?;
-        let body =
-            self.parse_function_body_gs(Some(is_generator), Self::is_simple_param_list(&params))?;
+        let params = self.parse_function_parameters_ga(is_generator, is_async)?;
+        let body = self.parse_function_body_gs(
+            Some(is_generator),
+            Some(is_async),
+            Self::is_simple_param_list(&params),
+        )?;
         let end = self.last_span_end();
         Ok(Expr::Function {
             name,
@@ -1612,43 +1676,41 @@ impl<'src> Parser<'src> {
     fn parse_template_with_substitutions(&mut self, start: usize) -> Result<Expr, ParseError> {
         use crate::token::TemplatePart;
         let mut quasis: Vec<std::rc::Rc<String>> = Vec::new();
+        let mut raw_quasis: Vec<std::rc::Rc<String>> = Vec::new();
         let mut expressions: Vec<Expr> = Vec::new();
-        // Consume Head, capturing its cooked text as the first quasi.
-        let head_cooked = match self.current_kind().clone() {
+        let (head_cooked, head_raw) = match self.current_kind().clone() {
             TokenKind::Template {
                 cooked,
+                raw,
                 part: TemplatePart::Head,
-                ..
-            } => cooked.unwrap_or_default(),
+            } => (cooked.unwrap_or_default(), raw),
             _ => return Err(self.err_here("expected template head".into())),
         };
         quasis.push(std::rc::Rc::new(head_cooked));
-        self.bump()?; // consume Head
+        raw_quasis.push(std::rc::Rc::new(head_raw));
+        self.bump()?;
         loop {
-            // Parse the substitution expression.
             let expr = self.parse_expression()?;
             expressions.push(expr);
-            // After the substitution, the lookahead is `}` (under Div goal
-            // since the substitution completes an expression). Re-lex
-            // starting at that `}` with TemplateTail goal to emit a
-            // Middle/Tail token.
             self.enter_template_tail()?;
             match self.current_kind().clone() {
                 TokenKind::Template {
                     cooked,
+                    raw,
                     part: TemplatePart::Middle,
-                    ..
                 } => {
                     quasis.push(std::rc::Rc::new(cooked.unwrap_or_default()));
+                    raw_quasis.push(std::rc::Rc::new(raw));
                     self.bump()?;
                     continue;
                 }
                 TokenKind::Template {
                     cooked,
+                    raw,
                     part: TemplatePart::Tail,
-                    ..
                 } => {
                     quasis.push(std::rc::Rc::new(cooked.unwrap_or_default()));
+                    raw_quasis.push(std::rc::Rc::new(raw));
                     self.bump()?;
                     break;
                 }
@@ -1662,6 +1724,7 @@ impl<'src> Parser<'src> {
         let end = self.last_span_end();
         Ok(Expr::TemplateLiteral {
             quasis,
+            raw_quasis,
             expressions,
             span: Span::new(start, end),
         })
@@ -1674,6 +1737,12 @@ impl<'src> Parser<'src> {
             if let TokenKind::Ident(n) = self.current_kind().clone() {
                 // `Identifier =>` — single-parameter arrow.
                 let span = self.lookahead_span();
+                if is_async && n == "await" {
+                    return Err(self.err_at(
+                        span,
+                        "`await` is not a valid binding in async function code".into(),
+                    ));
+                }
                 self.bump()?;
                 vec![rusty_js_ast::Parameter {
                     target: rusty_js_ast::BindingPattern::Identifier(
@@ -1684,7 +1753,7 @@ impl<'src> Parser<'src> {
                     span,
                 }]
             } else if matches!(self.current_kind(), TokenKind::Punct(Punct::LParen)) {
-                self.parse_function_parameters()?
+                self.parse_function_parameters_ga(false, is_async)?
             } else {
                 return Err(self.err_here("expected arrow head".into()));
             };
@@ -1751,9 +1820,11 @@ impl<'src> Parser<'src> {
         // function ConciseBody is not [Yield]-parameterized). Force
         // in_generator=false for the body's duration.
         let body = if matches!(self.current_kind(), TokenKind::Punct(Punct::LBrace)) {
-            ArrowBody::Block(
-                self.parse_function_body_gs(Some(false), Self::is_simple_param_list(&params))?,
-            )
+            ArrowBody::Block(self.parse_function_body_gs(
+                Some(false),
+                Some(is_async),
+                Self::is_simple_param_list(&params),
+            )?)
         } else {
             self.function_body_depth += 1;
             let prior_gen = self.in_generator;

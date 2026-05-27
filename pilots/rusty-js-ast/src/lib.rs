@@ -159,6 +159,7 @@ pub enum Expr {
     /// lands in Ω.5.g.3.
     TemplateLiteral {
         quasis: Vec<std::rc::Rc<String>>,
+        raw_quasis: Vec<std::rc::Rc<String>>,
         expressions: Vec<Expr>,
         span: Span,
     },
@@ -481,6 +482,12 @@ pub enum Stmt {
         body: Box<Stmt>,
         span: Span,
     },
+    /// `with (object) body`
+    With {
+        object: Expr,
+        body: Box<Stmt>,
+        span: Span,
+    },
     /// `do body while (test);`
     DoWhile {
         body: Box<Stmt>,
@@ -556,6 +563,9 @@ pub enum ForBinding {
     /// Pre-existing binding (or pattern) without a decl keyword:
     /// `for (x of arr)` or `for ([a,b] of arrs)`.
     Pattern(BindingPattern),
+    /// Pre-existing non-binding assignment target without a decl keyword:
+    /// `for (obj.key in obj)` or `for (arr[i] of values)`.
+    AssignmentTarget(Expr),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -584,8 +594,9 @@ pub struct Parameter {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CatchClause {
-    /// `Some(...)` for `catch (e)`; `None` for the ES2019 optional-catch-binding `catch { ... }`.
-    pub param: Option<BindingIdentifier>,
+    /// `Some(...)` for `catch (e)` / `catch ({...})`; `None` for the
+    /// ES2019 optional-catch-binding `catch { ... }`.
+    pub param: Option<BindingPattern>,
     pub body: Box<Stmt>,
     pub span: Span,
 }
@@ -604,6 +615,7 @@ impl Stmt {
             | Stmt::ForIn { span, .. }
             | Stmt::ForOf { span, .. }
             | Stmt::While { span, .. }
+            | Stmt::With { span, .. }
             | Stmt::DoWhile { span, .. }
             | Stmt::Switch { span, .. }
             | Stmt::Try { span, .. }

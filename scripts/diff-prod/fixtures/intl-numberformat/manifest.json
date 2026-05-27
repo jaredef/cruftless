@@ -1,0 +1,8 @@
+{
+  "name": "intl-numberformat",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Intl.NumberFormat presence, constructor shape, resolvedOptions, format with en-US, supportedLocalesOf, formatToParts shape."
+}
