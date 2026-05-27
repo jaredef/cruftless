@@ -1,0 +1,8 @@
+{
+  "name": "readable-from",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "stream.Readable.from presence and basic consumption via async iteration."
+}

@@ -1,0 +1,8 @@
+{
+  "name": "generator-suspension",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Generator lazy suspension: step-by-step next(), return value on done, bidirectional send via next(val), throw into suspended generator."
+}

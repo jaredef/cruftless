@@ -1,0 +1,8 @@
+{
+  "name": "regexp-named-groups",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "RegExp named capture groups: match.groups population, named backreferences, replacement with $<name>, matchAll with groups."
+}

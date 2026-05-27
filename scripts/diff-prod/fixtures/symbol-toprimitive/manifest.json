@@ -1,0 +1,8 @@
+{
+  "name": "symbol-toprimitive",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Symbol.toPrimitive hint dispatch: 'number', 'string', 'default' hints, interaction with valueOf/toString, coercion contexts."
+}

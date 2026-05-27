@@ -1,0 +1,8 @@
+{
+  "name": "object-seal-freeze",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Object.seal, Object.preventExtensions, Object.freeze: strict-mode enforcement (TypeError on violation), descriptor invariants, isSealed/isExtensible/isFrozen."
+}

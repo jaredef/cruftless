@@ -1,0 +1,8 @@
+{
+  "name": "destructuring-iterators",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Array destructuring using the iterator protocol: generators, Sets, Maps, custom iterables, rest with iterators."
+}

@@ -1,0 +1,8 @@
+{
+  "name": "string-position-methods",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "String position-argument methods: startsWith/endsWith/includes with position, padStart/padEnd, repeat, at, substring with args."
+}

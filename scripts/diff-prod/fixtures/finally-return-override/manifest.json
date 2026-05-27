@@ -1,0 +1,8 @@
+{
+  "name": "finally-return-override",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "finally block return override: return in finally overrides try/catch return, throw in finally overrides, break/continue interaction."
+}

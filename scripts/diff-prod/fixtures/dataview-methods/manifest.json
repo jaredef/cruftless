@@ -1,0 +1,8 @@
+{
+  "name": "dataview-methods",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "DataView.prototype surface: setInt8/getInt8, setUint16/getUint16, setFloat32/getFloat32, setBigInt64/getBigInt64, byteLength/byteOffset."
+}
