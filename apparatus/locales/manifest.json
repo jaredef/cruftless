@@ -3,9 +3,9 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 177,
+    "locales": 180,
     "top_level": 104,
-    "nested": 73,
+    "nested": 76,
     "warnings": 0
   },
   "locales": [
@@ -1330,6 +1330,33 @@
       "scope": "plain-month-day-ctor-fields",
       "depth": 3,
       "rung_count": 1,
+      "status": null
+    },
+    {
+      "coord": "temporal-implementation/temporal-plain-month-day/plain-month-day-equals",
+      "tag": "L.temporal-implementation.temporal-plain-month-day.plain-month-day-equals",
+      "parent": "L.temporal-implementation.temporal-plain-month-day",
+      "scope": "plain-month-day-equals",
+      "depth": 3,
+      "rung_count": 0,
+      "status": null
+    },
+    {
+      "coord": "temporal-implementation/temporal-plain-month-day/plain-month-day-static",
+      "tag": "L.temporal-implementation.temporal-plain-month-day.plain-month-day-static",
+      "parent": "L.temporal-implementation.temporal-plain-month-day",
+      "scope": "plain-month-day-static",
+      "depth": 3,
+      "rung_count": 0,
+      "status": null
+    },
+    {
+      "coord": "temporal-implementation/temporal-plain-month-day/plain-month-day-with",
+      "tag": "L.temporal-implementation.temporal-plain-month-day.plain-month-day-with",
+      "parent": "L.temporal-implementation.temporal-plain-month-day",
+      "scope": "plain-month-day-with",
+      "depth": 3,
+      "rung_count": 0,
       "status": null
     },
     {

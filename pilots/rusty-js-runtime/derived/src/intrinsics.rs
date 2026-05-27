@@ -6587,6 +6587,180 @@ impl Runtime {
             .set_own_internal("constructor".into(), Value::Object(pmd_ctor));
         self.obj_mut(pmd_ctor)
             .set_own_frozen("prototype".into(), Value::Object(pmd_proto));
+        // PMDS-EXT 1 (plain-month-day-static): from.
+        // Parses "MM-DD" or "YYYY-MM-DD" (full date for non-default refYear).
+        fn parse_iso_pmd(s: &str) -> Option<(i64, i64, i64)> {
+            let b = s.as_bytes();
+            fn rd(b: &[u8], i: usize, n: usize) -> Option<i64> {
+                if i + n > b.len() { return None; }
+                let mut v = 0i64;
+                for k in 0..n {
+                    let c = b[i + k];
+                    if !c.is_ascii_digit() { return None; }
+                    v = v * 10 + (c - b'0') as i64;
+                }
+                Some(v)
+            }
+            // Try short form first: "MM-DD" (5 chars).
+            if b.len() == 5 && b.get(2) == Some(&b'-') {
+                let m = rd(b, 0, 2)?;
+                let d = rd(b, 3, 2)?;
+                if !(1..=12).contains(&m) { return None; }
+                return Some((1972, m, d));
+            }
+            // Full form: YYYY-MM-DD with optional time tail.
+            if b.len() < 10 { return None; }
+            let year = rd(b, 0, 4)?;
+            if b.get(4) != Some(&b'-') { return None; }
+            let month = rd(b, 5, 2)?;
+            if b.get(7) != Some(&b'-') { return None; }
+            let day = rd(b, 8, 2)?;
+            if !(1..=12).contains(&month) { return None; }
+            let mut i = 10;
+            if matches!(b.get(i), Some(b'T') | Some(b't') | Some(b' ')) {
+                i = b.len();
+            }
+            if i != b.len() { return None; }
+            Some((year, month, day))
+        }
+        let pmd_proto_for_static = pmd_proto;
+        fn make_pmd(rt: &mut Runtime, proto: ObjectRef, m: i64, d: i64, ref_year: i64) -> Value {
+            let mut o = Object::new_ordinary();
+            o.proto = Some(proto);
+            let id = rt.alloc_object(o);
+            rt.set_engine_sentinel(id, "__pmd_month", Value::Number(m as f64));
+            rt.set_engine_sentinel(id, "__pmd_day", Value::Number(d as f64));
+            rt.set_engine_sentinel(id, "__pmd_refyear", Value::Number(ref_year as f64));
+            rt.set_engine_sentinel(id, "__pmd_calendar", Value::String(Rc::new("iso8601".into())));
+            Value::Object(id)
+        }
+        register_intrinsic_method(self, pmd_ctor, "from", 1, move |rt, args| {
+            let item = args.first().cloned().unwrap_or(Value::Undefined);
+            if let Value::String(s) = &item {
+                let (ry, m, d) = parse_iso_pmd(s).ok_or_else(|| RuntimeError::RangeError(format!(
+                    "Temporal.PlainMonthDay.from(string): invalid ISO 8601: {:?}", s
+                )))?;
+                return Ok(make_pmd(rt, pmd_proto_for_static, m, d, ry));
+            }
+            let id = match item {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainMonthDay.from: argument must be PMD, object, or string".into()
+                )),
+            };
+            if let Value::Number(m) = rt.object_get(id, "__pmd_month") {
+                let d = match rt.object_get(id, "__pmd_day") { Value::Number(n) => n as i64, _ => 0 };
+                let ry = match rt.object_get(id, "__pmd_refyear") { Value::Number(n) => n as i64, _ => 1972 };
+                return Ok(make_pmd(rt, pmd_proto_for_static, m as i64, d, ry));
+            }
+            // Property bag: {monthCode | month, day, [year]?}.
+            let m = if let Value::String(mc) = rt.object_get(id, "monthCode") {
+                // "MNN" → NN.
+                if mc.len() >= 3 && mc.as_bytes()[0] == b'M' {
+                    mc[1..].parse::<i64>().map_err(|_| RuntimeError::RangeError(
+                        format!("invalid monthCode {:?}", mc.as_str())
+                    ))?
+                } else {
+                    return Err(RuntimeError::RangeError(format!("invalid monthCode {:?}", mc.as_str())));
+                }
+            } else if let Value::Number(n) = rt.object_get(id, "month") {
+                n as i64
+            } else {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.PlainMonthDay.from: object must have month or monthCode".into()
+                ));
+            };
+            let d = match rt.object_get(id, "day") {
+                Value::Number(n) => n as i64,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainMonthDay.from: object must have day".into()
+                )),
+            };
+            if !(1..=12).contains(&m) {
+                return Err(RuntimeError::RangeError(format!("month {} out of range", m)));
+            }
+            Ok(make_pmd(rt, pmd_proto_for_static, m, d, 1972))
+        });
+        // PMDE-EXT 1: equals.
+        register_intrinsic_method(self, pmd_proto, "equals", 1, |rt, args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("PMD.equals: this not object".into())),
+            };
+            let tm = match rt.object_get(id, "__pmd_month") {
+                Value::Number(n) => n as i64,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainMonthDay.prototype.equals: this is not a Temporal.PlainMonthDay".into()
+                )),
+            };
+            let td = match rt.object_get(id, "__pmd_day") { Value::Number(n) => n as i64, _ => 0 };
+            let tr = match rt.object_get(id, "__pmd_refyear") { Value::Number(n) => n as i64, _ => 1972 };
+            let other = args.first().cloned().unwrap_or(Value::Undefined);
+            let (or, om, od) = match other {
+                Value::String(s) => parse_iso_pmd(&s).ok_or_else(|| RuntimeError::RangeError(format!(
+                    "PMD.equals(string): invalid: {:?}", s
+                )))?,
+                Value::Object(o) => {
+                    if let Value::Number(m) = rt.object_get(o, "__pmd_month") {
+                        let d = match rt.object_get(o, "__pmd_day") { Value::Number(n) => n as i64, _ => 0 };
+                        let r = match rt.object_get(o, "__pmd_refyear") { Value::Number(n) => n as i64, _ => 1972 };
+                        (r, m as i64, d)
+                    } else {
+                        return Err(RuntimeError::TypeError("PMD.equals: argument not PMD".into()));
+                    }
+                }
+                _ => return Err(RuntimeError::TypeError("PMD.equals: argument must be PMD or string".into())),
+            };
+            Ok(Value::Boolean(tm == om && td == od && tr == or))
+        });
+        // PMDW-EXT 1: with(monthDayLike).
+        let pmd_proto_for_with = pmd_proto;
+        register_intrinsic_method(self, pmd_proto, "with", 1, move |rt, args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("PMD.with: this not object".into())),
+            };
+            let mut m = match rt.object_get(id, "__pmd_month") {
+                Value::Number(n) => n as i64,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainMonthDay.prototype.with: this is not a Temporal.PlainMonthDay".into()
+                )),
+            };
+            let mut d = match rt.object_get(id, "__pmd_day") { Value::Number(n) => n as i64, _ => 0 };
+            let ry = match rt.object_get(id, "__pmd_refyear") { Value::Number(n) => n as i64, _ => 1972 };
+            let arg = args.first().cloned().unwrap_or(Value::Undefined);
+            let arg_id = match arg {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("PMD.with: argument must be object".into())),
+            };
+            for marker in &["__pmd_month", "__pd_year", "__pt_hour", "__pdt_year", "__pym_year", "__td_years", "__ti_ns"] {
+                if !matches!(rt.object_get(arg_id, marker), Value::Undefined) {
+                    return Err(RuntimeError::TypeError("PMD.with: argument cannot be Temporal instance".into()));
+                }
+            }
+            let mut has_any = false;
+            if let Value::Number(n) = rt.object_get(arg_id, "month") {
+                has_any = true; m = n as i64;
+            }
+            if let Value::String(mc) = rt.object_get(arg_id, "monthCode") {
+                if mc.len() >= 3 && mc.as_bytes()[0] == b'M' {
+                    has_any = true;
+                    m = mc[1..].parse::<i64>().map_err(|_| RuntimeError::RangeError(
+                        format!("invalid monthCode {:?}", mc.as_str())
+                    ))?;
+                }
+            }
+            if let Value::Number(n) = rt.object_get(arg_id, "day") {
+                has_any = true; d = n as i64;
+            }
+            if !has_any {
+                return Err(RuntimeError::TypeError("PMD.with: argument must have month/monthCode/day".into()));
+            }
+            if !(1..=12).contains(&m) {
+                return Err(RuntimeError::RangeError(format!("month {} out of range", m)));
+            }
+            Ok(make_pmd(rt, pmd_proto_for_with, m, d, ry))
+        });
         self.obj_mut(temporal)
             .set_own_internal("PlainMonthDay".into(), Value::Object(pmd_ctor));
         // PYMCF-EXT 1 (plain-year-month-ctor-fields): Temporal.PlainYearMonth.

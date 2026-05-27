@@ -321,6 +321,10 @@ function runOne(path) {
       '/Temporal/PlainMonthDay/prototype/constructor.js',
       '/Temporal/PlainMonthDay/prototype/prop-desc.js',
       '/Temporal/PlainMonthDay/prototype/toStringTag/',
+      // PMDS + PMDE + PMDW: from + equals + with
+      '/Temporal/PlainMonthDay/from/',
+      '/Temporal/PlainMonthDay/prototype/equals/',
+      '/Temporal/PlainMonthDay/prototype/with/',
       // PYMCF-EXT 1: PlainYearMonth ctor + 10 getters + toString/toJSON
       '/Temporal/PlainYearMonth/constructor.js',
       '/Temporal/PlainYearMonth/name.js',
