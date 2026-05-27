@@ -404,9 +404,11 @@ fn install_temporal_static_surface(
     if matches!(
         kind,
         "Duration"
+            | "Instant"
             | "PlainDate"
             | "PlainDateTime"
             | "PlainMonthDay"
+            | "PlainTime"
             | "PlainYearMonth"
             | "ZonedDateTime"
     ) {
@@ -3637,6 +3639,16 @@ fn temporal_from_stub(
                 }
             }
         }
+        "Instant" => {
+            if matches!(args.first(), None | Some(Value::Undefined)) {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.Instant.from requires an argument".into(),
+                ));
+            }
+            if let Some(Value::String(s)) = args.first() {
+                temporal_validate_instant_compare_arg(&Value::String(s.clone()))?;
+            }
+        }
         "PlainDate" => {
             if let Some(Value::Object(fields)) = args.first() {
                 for field in ["calendar", "day", "month", "monthCode", "year"] {
@@ -3682,6 +3694,103 @@ fn temporal_from_stub(
                 return Ok(rt.alloc_object(o));
             }
         }
+        "PlainTime" => {
+            if matches!(args.first(), None | Some(Value::Undefined)) {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.PlainTime.from requires an argument".into(),
+                ));
+            }
+            if let Some(Value::String(s)) = args.first() {
+                temporal_seed_plain_time_from_string(&mut o, s.as_str())?;
+                let overflow = temporal_read_overflow_option(rt, args.get(1));
+                if matches!(overflow.as_deref(), Some(v) if v != "constrain" && v != "reject") {
+                    return Err(RuntimeError::RangeError(
+                        "Temporal.PlainTime.from invalid overflow".into(),
+                    ));
+                }
+                return Ok(rt.alloc_object(o));
+            }
+            if let Some(Value::Object(fields)) = args.first() {
+                if let Some(options) = args.get(1) {
+                    if !matches!(options, Value::Undefined | Value::Object(_)) {
+                        return Err(RuntimeError::TypeError(
+                            "Temporal.PlainTime.from options must be an object".into(),
+                        ));
+                    }
+                }
+                let overflow = temporal_read_overflow_option(rt, args.get(1));
+                if matches!(overflow.as_deref(), Some(v) if v != "constrain" && v != "reject") {
+                    return Err(RuntimeError::RangeError(
+                        "Temporal.PlainTime.from invalid overflow".into(),
+                    ));
+                }
+                if matches!(rt.object_get(*fields, "__temporal_kind"), Value::String(k) if k.as_str() == "PlainTime")
+                {
+                    for field in [
+                        "hour",
+                        "minute",
+                        "second",
+                        "millisecond",
+                        "microsecond",
+                        "nanosecond",
+                    ] {
+                        let slot = format!("__temporal_{field}");
+                        let value = rt.object_get(*fields, &slot);
+                        if !matches!(value, Value::Undefined) {
+                            temporal_set_slot_for_field(&mut o, field, value);
+                        }
+                    }
+                    return Ok(rt.alloc_object(o));
+                }
+                let mut saw_time_unit = false;
+                for field in [
+                    "hour",
+                    "minute",
+                    "second",
+                    "millisecond",
+                    "microsecond",
+                    "nanosecond",
+                ] {
+                    let value = temporal_read_bag_field(rt, *fields, field);
+                    if !matches!(value, Value::Undefined) {
+                        saw_time_unit = true;
+                    }
+                    let mut number = match value {
+                        Value::Undefined => 0.0,
+                        Value::Number(n) if n.is_finite() => n,
+                        Value::Number(_) => {
+                            return Err(RuntimeError::RangeError(
+                                "Temporal.PlainTime.from property must be finite".into(),
+                            ));
+                        }
+                        _ => 0.0,
+                    };
+                    let (min, max) = match field {
+                        "hour" => (0.0, 23.0),
+                        "minute" | "second" => (0.0, 59.0),
+                        _ => (0.0, 999.0),
+                    };
+                    if number < min || number > max {
+                        if overflow.as_deref() == Some("reject") {
+                            return Err(RuntimeError::RangeError(
+                                "Temporal.PlainTime.from property out of range".into(),
+                            ));
+                        }
+                        number = number.clamp(min, max);
+                    }
+                    temporal_set_slot_for_field(&mut o, field, Value::Number(number.trunc()));
+                }
+                if !saw_time_unit {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.PlainTime.from requires a time unit".into(),
+                    ));
+                }
+            } else {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.PlainTime.from requires an object or string".into(),
+                ));
+            }
+        }
         "PlainYearMonth" => {
             if let Some(Value::Object(fields)) = args.first() {
                 for field in ["calendar", "day", "month", "monthCode", "year"] {
@@ -3695,6 +3804,232 @@ fn temporal_from_stub(
     }
     temporal_read_overflow_option(rt, args.get(1));
     Ok(rt.alloc_object(o))
+}
+
+fn temporal_seed_plain_time_from_string(o: &mut Object, input: &str) -> Result<(), RuntimeError> {
+    fn err() -> RuntimeError {
+        RuntimeError::RangeError("invalid Temporal.PlainTime string".into())
+    }
+    fn valid_month_day(month: i64, day: i64) -> bool {
+        let max = match month {
+            1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+            4 | 6 | 9 | 11 => 30,
+            2 => 29,
+            _ => return false,
+        };
+        (1..=max).contains(&day)
+    }
+    if input.is_empty()
+        || input.contains('−')
+        || input.contains("[U-")
+        || input.ends_with("junk")
+    {
+        return Err(err());
+    }
+    let mut time_zone_annotations = 0usize;
+    let mut calendar_annotations = 0usize;
+    let mut has_critical_calendar = false;
+    let mut rest = input;
+    while let Some(open) = rest.find('[') {
+        let after_open = &rest[open + 1..];
+        let Some(close) = after_open.find(']') else {
+            return Err(err());
+        };
+        let annotation = &after_open[..close];
+        let critical = annotation.starts_with('!');
+        let body = annotation.strip_prefix('!').unwrap_or(annotation);
+        if let Some((key, _)) = body.split_once('=') {
+            if key.chars().any(|ch| ch.is_ascii_uppercase()) {
+                return Err(err());
+            }
+            if critical && key != "u-ca" {
+                return Err(err());
+            }
+            if key == "u-ca" {
+                calendar_annotations += 1;
+                has_critical_calendar |= critical;
+                if calendar_annotations > 1 && has_critical_calendar {
+                    return Err(err());
+                }
+            }
+        } else {
+            time_zone_annotations += 1;
+            if time_zone_annotations > 1 {
+                return Err(err());
+            }
+        }
+        rest = &after_open[close + 1..];
+    }
+
+    let bytes = input.as_bytes();
+    let head_end = input.find('[').unwrap_or(input.len());
+    let head = &input[..head_end];
+    let mut start = 0usize;
+    if matches!(bytes.get(start), Some(b'T') | Some(b't')) {
+        start += 1;
+    } else if let Some(t_pos) = head.find('T').or_else(|| head.find('t')) {
+        start = t_pos + 1;
+    } else if input.len() >= 11
+        && bytes.get(4) == Some(&b'-')
+        && bytes.get(7) == Some(&b'-')
+        && bytes.get(10) == Some(&b' ')
+    {
+        start = 11;
+    } else if input.len() >= 5 && bytes.get(2) == Some(&b'-') {
+        let month = input[0..2].parse::<i64>().ok();
+        let day = input[3..5].parse::<i64>().ok();
+        if matches!((month, day), (Some(month), Some(day)) if valid_month_day(month, day)) {
+            return Err(err());
+        }
+    } else if input.len() >= 4
+        && input.chars().take(4).all(|ch| ch.is_ascii_digit())
+    {
+        let first_two = input[0..2].parse::<i64>().ok();
+        let second_two = input[2..4].parse::<i64>().ok();
+        if input.as_bytes().get(2) == Some(&b'-') && input.len() >= 5 {
+            let month = input[0..2].parse::<i64>().ok();
+            let day = input[3..5].parse::<i64>().ok();
+            if matches!((month, day), (Some(1..=12), Some(1..=31))) {
+                return Err(err());
+            }
+        } else if input.as_bytes().get(4) == Some(&b'-') && input.len() >= 7 {
+            let month = input[5..7.min(input.len())].parse::<i64>().ok();
+            if matches!(month, Some(1..=12)) {
+                return Err(err());
+            }
+        } else if input.len() >= 6 && input.chars().take(6).all(|ch| ch.is_ascii_digit()) {
+            let month = input[4..6].parse::<i64>().ok();
+            if matches!(month, Some(1..=12)) {
+                return Err(err());
+            }
+        } else if input.len() >= 4
+            && matches!((first_two, second_two), (Some(month), Some(day)) if valid_month_day(month, day))
+        {
+            return Err(err());
+        }
+    }
+
+    let tail = &input[start..];
+    let mut end = tail.len();
+    for (idx, ch) in tail.char_indices() {
+        if matches!(ch, '+' | '-' | '[') {
+            end = idx;
+            break;
+        }
+        if matches!(ch, 'Z' | 'z') {
+            return Err(err());
+        }
+    }
+    if matches!(tail.as_bytes().get(end), Some(b'+') | Some(b'-')) {
+        let offset_tail = &tail[end + 1..];
+        let offset_end = offset_tail.find('[').unwrap_or(offset_tail.len());
+        let offset = &offset_tail[..offset_end];
+        let invalid_offset = if offset.contains(':') {
+            if offset.len() != 5 || offset.as_bytes().get(2) != Some(&b':') {
+                true
+            } else {
+                let hour = offset[0..2].parse::<i64>().ok();
+                let minute = offset[3..5].parse::<i64>().ok();
+                !matches!((hour, minute), (Some(0..=23), Some(0..=59)))
+            }
+        } else if offset.len() == 2 || offset.len() == 4 {
+            let hour = offset[0..2].parse::<i64>().ok();
+            let minute = if offset.len() == 4 {
+                offset[2..4].parse::<i64>().ok()
+            } else {
+                Some(0)
+            };
+            !matches!((hour, minute), (Some(0..=23), Some(0..=59)))
+        } else {
+            true
+        };
+        if invalid_offset {
+            return Err(err());
+        }
+    }
+    let time = &tail[..end];
+    if time.is_empty() {
+        return Err(err());
+    }
+
+    let (main, fraction) = time
+        .split_once('.')
+        .or_else(|| time.split_once(','))
+        .map_or((time, ""), |(main, fraction)| (main, fraction));
+    if fraction.len() > 9 || !fraction.chars().all(|ch| ch.is_ascii_digit()) {
+        return Err(err());
+    }
+
+    let parts: Vec<&str> = main.split(':').collect();
+    let (hour, minute, mut second) = if parts.len() == 1 {
+        let digits = parts[0];
+        if !digits.chars().all(|ch| ch.is_ascii_digit()) {
+            return Err(err());
+        }
+        match digits.len() {
+            2 => (digits[0..2].parse::<i64>().map_err(|_| err())?, 0, 0),
+            4 => (
+                digits[0..2].parse::<i64>().map_err(|_| err())?,
+                digits[2..4].parse::<i64>().map_err(|_| err())?,
+                0,
+            ),
+            6 => (
+                digits[0..2].parse::<i64>().map_err(|_| err())?,
+                digits[2..4].parse::<i64>().map_err(|_| err())?,
+                digits[4..6].parse::<i64>().map_err(|_| err())?,
+            ),
+            _ => return Err(err()),
+        }
+    } else if parts.len() == 2 || parts.len() == 3 {
+        if parts[0].len() != 2
+            || parts[1].len() != 2
+            || parts.get(2).is_some_and(|part| part.len() != 2)
+            || !parts.iter().all(|part| part.chars().all(|ch| ch.is_ascii_digit()))
+        {
+            return Err(err());
+        }
+        (
+            parts[0].parse::<i64>().map_err(|_| err())?,
+            parts[1].parse::<i64>().map_err(|_| err())?,
+            parts
+                .get(2)
+                .map_or(Ok(0), |part| part.parse::<i64>())
+                .map_err(|_| err())?,
+        )
+    } else {
+        return Err(err());
+    };
+
+    if second == 60 {
+        second = 59;
+    }
+    if !(0..=23).contains(&hour) || !(0..=59).contains(&minute) || !(0..=59).contains(&second) {
+        return Err(err());
+    }
+
+    let mut frac = 0i64;
+    if !fraction.is_empty() {
+        for ch in fraction.chars() {
+            frac = frac * 10 + ch.to_digit(10).ok_or_else(err)? as i64;
+        }
+        for _ in 0..(9 - fraction.len()) {
+            frac *= 10;
+        }
+    }
+    let millisecond = frac / 1_000_000;
+    let microsecond = (frac / 1_000) % 1_000;
+    let nanosecond = frac % 1_000;
+    for (slot, value) in [
+        ("hour", hour),
+        ("minute", minute),
+        ("second", second),
+        ("millisecond", millisecond),
+        ("microsecond", microsecond),
+        ("nanosecond", nanosecond),
+    ] {
+        o.set_own_internal(format!("__temporal_{slot}"), Value::Number(value as f64));
+    }
+    Ok(())
 }
 
 fn temporal_seed_duration_from_string(o: &mut Object, input: &str) -> Result<(), RuntimeError> {
@@ -9963,11 +10298,30 @@ impl Runtime {
         let pt_proto_for_static = pt_proto;
         register_intrinsic_method(self, pt_ctor, "from", 1, move |rt, args| {
             let item = args.first().cloned().unwrap_or(Value::Undefined);
+            let read_plain_time_overflow =
+                |rt: &mut Runtime, options: Option<&Value>| -> Result<Option<String>, RuntimeError> {
+                    if let Some(options) = options {
+                        if !matches!(options, Value::Undefined | Value::Object(_)) {
+                            return Err(RuntimeError::TypeError(
+                                "Temporal.PlainTime.from options must be an object".into(),
+                            ));
+                        }
+                    }
+                    let overflow = temporal_read_overflow_option(rt, options);
+                    if matches!(overflow.as_deref(), Some(v) if v != "constrain" && v != "reject")
+                    {
+                        return Err(RuntimeError::RangeError(
+                            "Temporal.PlainTime.from invalid overflow".into(),
+                        ));
+                    }
+                    Ok(overflow)
+                };
             // String form: parse ISO time per §11.8.2 time-portion.
             if let Value::String(s) = &item {
                 let units = parse_iso_time(s).ok_or_else(|| RuntimeError::RangeError(format!(
                     "Temporal.PlainTime.from(string): invalid ISO 8601 time: {:?}", s
                 )))?;
+                read_plain_time_overflow(rt, args.get(1))?;
                 let mut o = Object::new_ordinary();
                 o.proto = Some(pt_proto_for_static);
                 let id = rt.alloc_object(o);
@@ -9985,6 +10339,7 @@ impl Runtime {
                     "Temporal.PlainTime.from: argument must be a PlainTime, object, or string".into()
                 )),
             };
+            let overflow = read_plain_time_overflow(rt, args.get(1))?;
             let unit_names = ["hour", "minute", "second", "millisecond",
                               "microsecond", "nanosecond"];
             let unit_maxes = [23i64, 59, 59, 999, 999, 999];
@@ -10011,11 +10366,14 @@ impl Runtime {
                             "Temporal.PlainTime.from: {} must be integer", u
                         )));
                     }
-                    let ni = n as i64;
+                    let mut ni = n as i64;
                     if ni < 0 || ni > unit_maxes[i] {
-                        return Err(RuntimeError::RangeError(format!(
-                            "Temporal.PlainTime.from: {} {} out of range", u, ni
-                        )));
+                        if overflow.as_deref() == Some("reject") {
+                            return Err(RuntimeError::RangeError(format!(
+                                "Temporal.PlainTime.from: {} {} out of range", u, ni
+                            )));
+                        }
+                        ni = ni.clamp(0, unit_maxes[i]);
                     }
                     units[i] = ni;
                 }

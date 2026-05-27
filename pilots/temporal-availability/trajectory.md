@@ -1945,3 +1945,281 @@ apparatus synchronization, not substrate expansion. Future refreshed Temporal
 samples should be probed with a no-skip runner before selecting a class locale.
 
 **Status**: TA-EXT 23 CLOSED.
+
+## TA-EXT 24 — Live static `from` surface for Instant and PlainTime (2026-05-27)
+
+**Trigger**: The off-sample Temporal sweep in the sidecar showed that the
+sampled parent closure did not imply off-sample class completeness:
+
+```text
+Temporal offsample paths: 6632
+PASS=953 SKIP=2586 FAIL=3093
+```
+
+The largest real-fail classes were PlainDateTime and PlainDate, but a compact
+bounded cluster appeared in static `from` availability:
+
+```text
+PlainTime/from + Instant/from before: PASS=3 FAIL=80
+```
+
+Representative failures:
+
+```text
+Temporal.PlainTime.from: callee is not callable: undefined
+Temporal.Instant.from: callee is not callable: undefined
+```
+
+**Finding TA.26 (live installer is the compact availability path)**:
+The detailed later `install_temporal` block already had richer static-method
+code, but the live path is `install_temporal_availability` near the top of
+`intrinsics.rs`. The live static surface installed `from` for Duration,
+PlainDate, PlainDateTime, PlainMonthDay, PlainYearMonth, and ZonedDateTime,
+but omitted Instant and PlainTime. This made the off-sample `from` rows fail
+before reaching semantic validation.
+
+**Change**:
+
+- Added `Temporal.Instant.from` and `Temporal.PlainTime.from` to the live
+  static `from` installer.
+- Extended the shared `temporal_from_stub` path:
+  - `Instant` string inputs run the existing instant-string validator before
+    returning an Instant-shaped object.
+  - `PlainTime` property bags copy hour/minute/second/subsecond fields into
+    the live Temporal value slots.
+
+**Verification**:
+
+```text
+cargo build --release -p cruftless
+T262_TEST_PATH=$T262_ROOT/test/built-ins/Temporal/PlainTime/from/argument-plaintime.js \
+  T262_HARNESS_DIR=$T262_ROOT/harness \
+  $CRUFT_BIN legacy/host-rquickjs/tests/test262/runner.mjs
+T262_TEST_PATH=$T262_ROOT/test/built-ins/Temporal/Instant/from/argument-instant.js \
+  T262_HARNESS_DIR=$T262_ROOT/harness \
+  $CRUFT_BIN legacy/host-rquickjs/tests/test262/runner.mjs
+T262_TEST_PATH=$T262_ROOT/test/built-ins/Temporal/Instant/from/argument-string-invalid.js \
+  T262_HARNESS_DIR=$T262_ROOT/harness \
+  $CRUFT_BIN legacy/host-rquickjs/tests/test262/runner.mjs
+```
+
+Focused sidecar sweep:
+
+```text
+PlainTime/from + Instant/from after: PASS=27 FAIL=56
+new passes from prior non-pass: 27
+```
+
+**Residual**:
+
+The remaining static `from` failures are now real semantic work:
+Instant epoch-nanosecond string parsing/slot seeding, PlainTime ISO time
+string parsing, overflow option validation, leap-second handling, and
+annotation validation. The cheap availability/callability gap is closed.
+
+**Status**: TA-EXT 24 CLOSED.
+
+## TA-EXT 25 — PlainTime.from ISO string parsing (2026-05-27)
+
+**Trigger**: TA-EXT 24 turned `Temporal.PlainTime.from` from a missing
+callable into a semantic parser surface. The focused residual made the next
+locale unusually legible: ordinary ISO time strings, leading `T`/`t` time
+designators, leap seconds, malformed offsets, UTC designators, and invalid
+annotation/trailing-junk rows were all failing from the same live stub.
+
+**Change**:
+
+- Added live `PlainTime.from` string seeding for colon and compact forms:
+  `HH`, `HHMM`, `HHMMSS`, `HH:MM`, and `HH:MM:SS`.
+- Accepted time components embedded in date-time strings and in leading
+  `T`/`t` forms, preserving the wall-clock fields on the PlainTime object.
+- Parsed fractional seconds into millisecond, microsecond, and nanosecond
+  slots with a 9-digit maximum.
+- Constrained string leap seconds from `60` to `59`.
+- Rejected UTC designators, malformed offsets, out-of-range offsets,
+  multiple critical annotations, Unicode minus signs, too many fractional
+  digits, implicit-midnight date-only strings, and trailing junk.
+- Constrained PlainTime property-bag `second: 60` to `59`, while preserving
+  `overflow: "reject"` as a RangeError.
+
+**Verification**:
+
+```text
+cargo build --release -p cruftless
+PlainTime/from/argument-string.js: PASS
+PlainTime/from/argument-string-with-time-designator.js: PASS
+PlainTime/from/argument-string-invalid.js: PASS
+PlainTime/from/argument-string-with-utc-designator.js: PASS
+PlainTime/from/leap-second.js: PASS
+```
+
+Focused sidecar sweep:
+
+```text
+before: PASS=27 FAIL=56
+after:  PASS=42 FAIL=41
+new passes from prior non-pass: 15
+regressions: 0
+```
+
+Newly closed rows include `argument-string.js`,
+`argument-string-with-time-designator.js`, `argument-string-invalid.js`,
+`argument-string-with-utc-designator.js`, `argument-string-leap-second.js`,
+`argument-object-leap-second.js`, `argument-string-trailing-junk.js`,
+`argument-string-too-many-decimals.js`, `argument-string-no-implicit-midnight.js`,
+`argument-string-multiple-calendar.js`, `argument-string-minus-sign.js`,
+`observable-get-overflow-argument-string-invalid.js`, and
+`subclassing-ignored.js`.
+
+**Finding TA.27 (matrix legibility after callability closure)**:
+Once the live static surface was installed, the residual stopped looking like
+feature absence and started looking like grammar axes. Test262 made the
+coordinate set explicit: lexical shape, embedded date-time extraction, offset
+admissibility, annotation admissibility, fractional precision, and overflow
+policy were separable enough to close as a compact tranche without touching
+the broader Temporal substrate.
+
+**Residual**:
+
+The focused `from` suite now points at higher-order semantics: Instant epoch
+nanosecond parsing/slot seeding, PlainTime overflow option validation and
+range constraining for non-second fields, option read ordering, non-object
+type errors, calendar/time-zone annotation normalization, and ZonedDateTime
+to PlainTime balancing.
+
+**Status**: TA-EXT 25 CLOSED.
+
+## TA-EXT 26 — PlainTime.from property-bag overflow semantics (2026-05-27)
+
+**Trigger**: After TA-EXT 25 closed the string grammar tranche, the focused
+`PlainTime/from` residual concentrated around property-bag semantics:
+primitive argument rejection, missing time units, finite-number validation,
+default constrain behavior, and `overflow: "reject"` range rejection.
+
+**Change**:
+
+- Added `PlainTime.from` primitive argument TypeErrors in the live availability
+  stub.
+- Added property-bag validation that requires at least one recognized time
+  unit.
+- Defaulted missing time units to zero after the presence check.
+- Rejected non-finite unit values with RangeError.
+- Constrained out-of-range fields by default and preserved
+  `overflow: "reject"` as a RangeError.
+- Mirrored the overflow validation into the later full PlainTime static
+  locale so the two Temporal installation paths stay aligned.
+
+**Verification**:
+
+```text
+cargo build --release -p cruftless
+PlainTime/from/overflow-constrain.js: PASS
+PlainTime/from/overflow-reject.js: PASS
+PlainTime/from/options-invalid.js: PASS
+PlainTime/from/argument-number.js: PASS
+PlainTime/from/plaintime-propertybag-no-time-units.js: PASS
+PlainTime/from/infinity-throws-rangeerror.js: PASS
+Temporal exemplars: PASS=100 FAIL=0 / 100
+```
+
+Focused sidecar sweep:
+
+```text
+before: PASS=42 FAIL=41
+after:  PASS=53 FAIL=30
+new passes from prior non-pass: 11
+regressions: 0
+```
+
+Newly closed rows include `argument-number.js`, `argument-object.js`,
+`argument-wrong-type.js`, `infinity-throws-rangeerror.js`,
+`options-invalid.js`, `options-read-before-algorithmic-validation.js`,
+`options-undefined.js`, `overflow-constrain.js`, `overflow-reject.js`,
+`overflow-undefined.js`, and `plaintime-propertybag-no-time-units.js`.
+
+**Finding TA.28 (overflow option is partially blocked by call-argument
+delivery)**:
+Two option rows remain stubborn: `overflow-invalid-string.js` and
+`options-wrong-type.js`. The Temporal code now reads and validates the second
+argument on both PlainTime static surfaces, but direct probes still show no
+throw for `Temporal.PlainTime.from("12:00", { overflow: "" })` and
+`Temporal.PlainTime.from(new Temporal.PlainTime(12, 34), null)`. That points
+away from the Temporal field logic and toward call-argument delivery or static
+surface shadowing for this locale. The residual should be treated as an
+apparatus/runtime dispatch coordinate before further Temporal-local patches.
+
+**Residual**:
+
+The focused suite is now dominated by Instant epoch nanosecond parsing, the
+two second-argument delivery rows, PlainTime annotation normalization, time
+separator edge cases, `ZonedDateTime` to PlainTime balancing, and
+order-of-operations exactness.
+
+**Status**: TA-EXT 26 CLOSED.
+
+## TA-EXT 27 — PlainTime.from annotation and disambiguation grammar (2026-05-27)
+
+**Trigger**: With property-bag overflow closed, the remaining PlainTime string
+residual concentrated on ISO grammar boundaries: date/time separator variants,
+calendar and time-zone annotations, uppercase annotation-key rejection,
+multiple time-zone annotations, and the ambiguous PlainMonthDay /
+PlainYearMonth-shaped strings that require a `T` prefix to mean PlainTime.
+
+**Change**:
+
+- Accepted date-time strings separated by uppercase `T`, lowercase `t`, or
+  a space.
+- Scoped `T`/`t` detection to the pre-annotation head so time-zone names such
+  as `[UTC]` and `Asia/Kolkata` do not corrupt time-part detection.
+- Accepted non-critical unknown annotations, time-zone annotations, calendar
+  annotations, and critical `u-ca` calendar annotations where the spec ignores
+  them for PlainTime.
+- Rejected uppercase annotation keys, multiple time-zone annotations, critical
+  unknown annotations, and multiple calendar annotations when any calendar
+  annotation is critical.
+- Added PlainTime disambiguation for compact and dashed strings that overlap
+  with PlainMonthDay / PlainYearMonth shapes, including month/day validity
+  checks for the unambiguous invalid-date cases.
+
+**Verification**:
+
+```text
+cargo build --release -p cruftless
+PlainTime/from/argument-string-time-separators.js: PASS
+PlainTime/from/argument-string-calendar-annotation.js: PASS
+PlainTime/from/argument-string-time-zone-annotation.js: PASS
+PlainTime/from/argument-string-calendar-annotation-invalid-key.js: PASS
+PlainTime/from/argument-string-multiple-time-zone.js: PASS
+PlainTime/from/argument-string-time-designator-required-for-disambiguation.js: PASS
+PlainTime/from/argument-string-critical-unknown-annotation.js: PASS
+PlainTime/from/argument-string-multiple-calendar.js: PASS
+Temporal exemplars: PASS=100 FAIL=0 / 100
+```
+
+Focused sidecar sweep:
+
+```text
+before: PASS=53 FAIL=30
+after:  PASS=60 FAIL=23
+new passes from prior non-pass: 7
+regressions: 0
+```
+
+Newly closed rows include `argument-string-calendar-annotation-invalid-key.js`,
+`argument-string-calendar-annotation.js`,
+`argument-string-multiple-time-zone.js`,
+`argument-string-time-designator-required-for-disambiguation.js`,
+`argument-string-time-separators.js`,
+`argument-string-time-zone-annotation.js`, and
+`argument-string-unknown-annotation.js`.
+
+**Finding TA.29 (PlainTime string residual is now mostly non-grammar)**:
+The grammar rows are now largely separated from the remaining residual. The
+live PlainTime string parser covers lexical shape, annotation admission,
+critical annotation rejection, time-zone multiplicity, date/time separator
+variants, and cross-type disambiguation. Remaining PlainTime failures now
+cluster around second-argument delivery, ZonedDateTime balancing, exact
+order-of-operations, and a few non-local string/offset cases rather than the
+basic PlainTime lexical grammar.
+
+**Status**: TA-EXT 27 CLOSED.
