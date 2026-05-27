@@ -1,10 +1,10 @@
 {
   "generated_by": "apparatus/locales/discover.sh",
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
-  "locale_root": "/home/jaredef/rusty-bun/pilots",
+  "locale_root": "/home/jaredef/Developer/cruftless/pilots",
   "totals": {
-    "locales": 204,
-    "top_level": 120,
+    "locales": 205,
+    "top_level": 121,
     "nested": 84,
     "warnings": 0
   },
@@ -280,6 +280,15 @@
       "status": null
     },
     {
+      "coord": "cruft-symbol-key-hasown-bridge",
+      "tag": "L.cruft-symbol-key-hasown-bridge",
+      "parent": null,
+      "scope": "cruft-symbol-key-hasown-bridge",
+      "depth": 1,
+      "rung_count": 2,
+      "status": null
+    },
+    {
       "coord": "date-month-convention-fix",
       "tag": "L.date-month-convention-fix",
       "parent": null,
@@ -528,7 +537,7 @@
       "parent": null,
       "scope": "intl402-availability",
       "depth": 1,
-      "rung_count": 18,
+      "rung_count": 19,
       "status": "FOUNDED 2026-05-26. Spawned from the full-suite Pin-Art"
     },
     {
@@ -1122,7 +1131,7 @@
       "parent": null,
       "scope": "temporal-availability",
       "depth": 1,
-      "rung_count": 20,
+      "rung_count": 29,
       "status": null
     },
     {
@@ -1131,7 +1140,7 @@
       "parent": "L.temporal-availability",
       "scope": "plain-datetime-semantics",
       "depth": 2,
-      "rung_count": 2,
+      "rung_count": 5,
       "status": null
     },
     {
@@ -1752,7 +1761,7 @@
       "parent": null,
       "scope": "typed-array-missing-method",
       "depth": 1,
-      "rung_count": 1,
+      "rung_count": 4,
       "status": null
     },
     {

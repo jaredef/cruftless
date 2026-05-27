@@ -5557,13 +5557,7 @@ impl Runtime {
         };
         let pk = Self::property_key_of(&arg_coerced);
         let owns = match self.current_this() {
-            Value::Object(id) => {
-                let o = self.obj(id);
-                match &pk {
-                    crate::value::PropertyKey::String(s) => o.has_own_str(s.as_str()),
-                    _ => o.properties.contains_key(&pk),
-                }
-            }
+            Value::Object(id) => self.has_own_property_key(id, &pk),
             _ => false,
         };
         Ok(Value::Boolean(owns))
@@ -5579,6 +5573,16 @@ impl Runtime {
             _ => crate::value::PropertyKey::String(
                 crate::abstract_ops::to_string(v).as_str().to_string(),
             ),
+        }
+    }
+
+    fn has_own_property_key(&self, id: ObjectRef, key: &crate::value::PropertyKey) -> bool {
+        let o = self.obj(id);
+        match key {
+            crate::value::PropertyKey::String(s) => o.has_own_str(s.as_str()),
+            crate::value::PropertyKey::Symbol(rc) => {
+                o.properties.contains_key(key) || o.has_own_str(rc.as_str())
+            }
         }
     }
 
@@ -8310,12 +8314,17 @@ impl Runtime {
 
     /// Object.hasOwn(O, P) per ECMA §20.1.2.13.
     pub fn object_has_own_via(&mut self, v: &Value, key: &Value) -> Result<Value, RuntimeError> {
-        let key_s = self.coerce_to_string(key)?;
+        let key_coerced = if matches!(key, Value::Symbol(_)) {
+            key.clone()
+        } else {
+            Value::String(std::rc::Rc::new(self.coerce_to_string(key)?))
+        };
+        let key_pk = Self::property_key_of(&key_coerced);
         let id = match v {
             Value::Object(id) => *id,
             _ => return Ok(Value::Boolean(false)),
         };
-        Ok(Value::Boolean(self.obj(id).has_own_str(&key_s)))
+        Ok(Value::Boolean(self.has_own_property_key(id, &key_pk)))
     }
 
     /// Object.is(a, b) per ECMA §20.1.2.14 — SameValue.

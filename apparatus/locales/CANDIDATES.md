@@ -476,12 +476,12 @@ Identified during the Temporal arc landing review (keeper directive Telegram 996
 **R13 prospective**: C1 holds (every intrinsic that catches CompileError already does Err mapping); C2 holds; C3 modest (~5-20 records initially, may generalize); C4 holds.
 **Status**: identified 2026-05-26 (HLCL.2 standing-rec). Small, untapped.
 
-### (SKHB) `cruft-symbol-key-hasown-bridge` — 🟢 RIPE
+### (SKHB) `cruft-symbol-key-hasown-bridge` — SPAWNED 2026-05-27
 **Telos**: `Object.prototype.hasOwnProperty` does not bridge `Symbol.toStringTag` (and other well-known Symbol keys) to the `@@`-string storage convention. `Object.getOwnPropertyDescriptor` does bridge — the inconsistency was identified in TTSTD-EXT 1 (Finding TTSTD.2). Closes 3+ Temporal prop-desc tests + every Math/JSON/etc. `@@toStringTag` test that's exercised.
 **Substrate site**: `pilots/rusty-js-runtime/derived/src/intrinsics.rs::install_object_static` (Object.prototype.hasOwnProperty implementation) — needs the symbol → `@@name` bridge mirrored from `getOwnPropertyDescriptor`.
 **LOC estimate**: ~30 LOC (mirror existing bridge logic).
 **R13 prospective**: C1 strong (getOwnPropertyDescriptor's bridge is the sibling to mirror); C2 holds; C3 holds (~5-20 immediate records, likely more engagement-wide); C4 holds.
-**Status**: identified 2026-05-26 (TTSTD.2 standing-rec). Small, untapped. Would also activate the spec-correct @@toStringTag descriptor that TTSTD-EXT 1 already installed.
+**Status**: spawned as `pilots/cruft-symbol-key-hasown-bridge/`; SKHB-EXT 1 closed the own-property bridge while preserving ordinary Symbol-key presence.
 
 ### (MATRX) `post-temporal-matrix-rerun` — 🟢 RIPE
 **Telos**: apparatus rerun of the categorizer against a fresh test262 sample after the ~1400-record Temporal yield arc. The 2026-05-25-full matrix is now stale — substantial Tier-L closures have shifted the post-Temporal landscape. Re-categorize to inform the next substrate-prioritization decision (especially the value-semantics/wrong-result coordinate which is the largest non-binding pool at ~4771 records).
