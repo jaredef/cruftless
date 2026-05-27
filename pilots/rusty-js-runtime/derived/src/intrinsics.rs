@@ -5278,6 +5278,29 @@ impl Runtime {
                     }
                     let opts = rt.object_get(this_id, "__opts");
                     if let Value::Object(opts_id) = opts {
+                        if let Value::String(tz_name) = rt.object_get(opts_id, "timeZoneName") {
+                            let value = match tz_name.as_str() {
+                                "long" | "longGeneric" => "Coordinated Universal Time",
+                                "longOffset" => "GMT+00:00",
+                                "shortOffset" => "GMT",
+                                _ => "UTC",
+                            };
+                            let aid = rt.alloc_object(Object::new_array());
+                            let part = rt.alloc_object(Object::new_ordinary());
+                            rt.object_set(
+                                part,
+                                "type".into(),
+                                Value::String(std::rc::Rc::new("timeZoneName".into())),
+                            );
+                            rt.object_set(
+                                part,
+                                "value".into(),
+                                Value::String(std::rc::Rc::new(value.into())),
+                            );
+                            rt.object_set(aid, "0".into(), Value::Object(part));
+                            rt.object_set(aid, "length".into(), Value::Number(1.0));
+                            return Ok(Value::Object(aid));
+                        }
                         if matches!(rt.object_get(opts_id, "dayPeriod"), Value::String(_)) {
                             let ms = match args.first() {
                                 Some(Value::Object(date_id)) => {

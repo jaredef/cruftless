@@ -371,6 +371,10 @@ function runOne(path) {
       '/Temporal/PlainYearMonth/compare/',
       '/Temporal/PlainYearMonth/prototype/equals/',
       '/Temporal/PlainYearMonth/prototype/toPlainDate/',
+      // I402-EXT 18: Intl DateTimeFormat range-formatting bridge for
+      // PlainYearMonth. This fixture is feature-gated on Temporal, but it
+      // exercises Intl's decision not to leak timeZoneName into the range.
+      '/intl402/DateTimeFormat/prototype/formatRange/temporal-plainyearmonth-formatting-timezonename.js',
       // PDTDP-EXT 1: PDT derived-properties (11 getters)
       '/Temporal/PlainDateTime/prototype/dayOfWeek/',
       '/Temporal/PlainDateTime/prototype/dayOfYear/',

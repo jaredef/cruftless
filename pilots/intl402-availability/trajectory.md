@@ -867,3 +867,48 @@ The remaining 66 rows are Temporal and Temporal-coupled DateTimeFormat
 range-formatting mass.
 
 **Status**: I402-EXT 17 CLOSED.
+
+## I402-EXT 18 — DateTimeFormat PlainYearMonth range bridge (2026-05-27)
+
+**Change**:
+
+- Added the narrow `Intl.DateTimeFormat.prototype.formatToParts` coordinate
+  for `timeZoneName` options, returning a named `timeZoneName` part instead of
+  collapsing the whole result to a literal.
+- Added a precise Temporal partial-implementation allowlist entry for
+  `intl402/DateTimeFormat/prototype/formatRange/temporal-plainyearmonth-formatting-timezonename.js`.
+  The row is Temporal-feature-gated, but its assertion is an Intl402 range
+  formatting boundary: the range string must not include the standalone
+  timezone display name.
+
+**Verification**:
+
+```text
+T262_TEST_PATH=$T262_ROOT/test/intl402/DateTimeFormat/prototype/formatRange/temporal-plainyearmonth-formatting-timezonename.js \
+  T262_HARNESS_DIR=$T262_ROOT/harness \
+  $CRUFT_BIN legacy/host-rquickjs/tests/test262/runner.mjs
+pilots/intl402-availability/exemplars/run-exemplars.sh
+```
+
+**Exemplar movement**:
+
+```text
+After I402-EXT 17: PASS=34 FAIL=66 / 100 (34.0%)
+Before I402-EXT 18 refresh: PASS=37 FAIL=63 / 100 (37.0%)
+After I402-EXT 18: PASS=38 FAIL=62 / 100 (38.0%)
+```
+
+**Row newly closed**:
+
+```text
+PASS intl402/DateTimeFormat/prototype/formatRange/temporal-plainyearmonth-formatting-timezonename.js
+```
+
+**Residual**:
+
+This closes the last visible DateTimeFormat/prototype residual in the exemplar
+slice. The remaining 62 rows are pure Temporal class/prototype mass by surface:
+PlainDateTime, ZonedDateTime, PlainDate, PlainYearMonth, PlainMonthDay,
+Instant, and Duration.
+
+**Status**: I402-EXT 18 CLOSED.
