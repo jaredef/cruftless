@@ -304,6 +304,50 @@ Substrate move WAS WBMS-EXT 2. The first dynamic-name implementation still misse
 
 **Standing lesson**: when a matrix-coordinate cluster's reason-text matches a parser-tier failure shape, baseline-inspect AFTER any sibling parser-tier moves have landed — Rule 23 may surface that the cluster is already absorbed by a sibling locale's deferred deeper-tier extension.
 
+## Tier M — language-lowering partition outputs (2026-05-26, LPA-EXT 5)
+
+Candidates surfaced by `pilots/apparatus/locale-positioning-audit/findings/language-lowering-partition.md`, which partitioned the 10,839-row `ast-to-bytecode/language-lowering` bucket by surface + projection. This tier exists to prevent the anti-pattern of spawning one broad "language lowering" locale.
+
+### (aba) `async-generator-and-for-await-lowering` — 🟢 RIPE FOR BASELINE
+**Telos**: close the coherent async iteration / async-generator lowering cluster: `language/statements/for-await-of`, `language/expressions/async-generator`, and `language/statements/async-generator`.
+**Pool**: 1,492 visible records in the latest full-suite interpretation: for-await-of 646, async-generator expressions 568, async-generator statements 278.
+**Dominant shapes**: missing method/intrinsic (1,156 combined across top three sub-shapes), throw-missing in async-generator default-param/abrupt paths, AsyncFromSync iterator continuation wrong-results.
+**Methodology**: founding baseline must split parser early errors, async test harness behavior, async-generator object protocol, AsyncFromSync wrapping, Promise/job queue dependencies, and abrupt completion propagation. If Promise/job queue dominates, redirect to a runtime E4 locale rather than forcing a lowering fix.
+**Status**: queued from LPA-EXT 5; next action is Rule-23 baseline-inspection plus 50-100 path exemplar selection.
+
+### (abb) `annexB-language-semantics` — 🟢 RIPE FOR BASELINE
+**Telos**: Annex B language/lowering semantics, distinct from `annexB-runtime-quirks/` (Date/String/RegExp/global runtime built-ins). Focuses on `annexB/language/**`.
+**Pool**: 734 visible records in the latest language-lowering bucket.
+**Dominant shapes**: missing syntax feature 474 (`if (x) function f(){}` and related block-level function declaration forms), missing binding/global 135, wrong result 60, runner residue 43.
+**Methodology**: founding baseline must partition block-level function declarations in sloppy mode, direct/indirect eval declaration instantiation, HTML comment lexical behavior, and web-legacy compatibility rules. Preserve runtime Annex B scope in `annexB-runtime-quirks/`; do not merge these surfaces.
+**Status**: queued from LPA-EXT 5; likely clean substrate locale after baseline inspection.
+
+### (abc) `class-lowering-residual-repartition` — 🟡 AUDIT-FIRST
+**Telos**: re-partition class statement/expression residuals after recent `class-elements-static-semantics/` and `private-field-runtime-slots/` movement.
+**Pool**: 4,677 visible records before current class/private-field residual refresh.
+**Reason for audit-first**: this is the largest class of the language-lowering bucket, but existing active locales have recently moved the surface. A broad class locale would likely duplicate current class/private-field work.
+**Methodology**: derive a residual table by async class methods, async-generator class methods, computed class element names, property-key abrupt completion, private brand/slot semantics, and class constructor/prototype realm shape.
+**Status**: audit-first; no spawn until residuals are refreshed.
+
+### (abd) `object-literal-computed-property-semantics` — 🟡 PROBED / sample-needed
+**Telos**: object literal, computed property-name, method/accessor home-object, and `super` lowering semantics.
+**Pool**: ~556 visible records: object expressions 487, computed-property-names 23, super expressions 46.
+**Methodology**: sample before spawn; split `__proto__` duplicate/semantics, ToPropertyKey abrupt completion, home-object / `super` lowering, and object method kind metadata.
+**Status**: deferred until sample inspection.
+
+### (abe) `eval-function-arguments-binding-semantics` — 🟡 PROBED / overlap-check-needed
+**Telos**: direct eval, function declarations, arguments object, function-code/global-code binding instantiation and strict/non-strict parameter interaction.
+**Pool**: ~582 visible records across eval-code, arguments-object, function statement/expression, function-code, global-code.
+**Risk**: overlaps `annexB-language-semantics`, `strict-binding-eval-arguments`, and `non-simple-params-strict-body`.
+**Methodology**: sample and decide whether this is one binding-instantiation locale or scope extensions to existing strict/eval locales.
+**Status**: deferred until overlap check.
+
+### (abf) `dynamic-import-residual-audit` — 🟡 APPARATUS-FIRST
+**Telos**: partition the 296-row `language/expressions/dynamic-import` residual after DIA and RFSDO work.
+**Reason for apparatus-first**: 190/296 rows are still `uncategorized/projection`; spawning substrate work from that label would repeat the pre-PCR blur.
+**Methodology**: reason-text mining and projection refinement before any substrate locale. Likely split import-attributes, dynamic import expression-lowering, Promise/job bridge, and parser ambiguity.
+**Status**: apparatus-first; no substrate spawn yet.
+
 ---
 
 ## Standing edits

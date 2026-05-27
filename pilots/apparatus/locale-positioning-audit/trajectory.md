@@ -182,3 +182,69 @@ pilots/locale-positioning-audit/ → pilots/apparatus/locale-positioning-audit/
 **Finding LPA.8 (AST-to-bytecode is now the largest unstratified layer)**: after apparatus refinement and many tokenization/runtime spawns, the largest ECMA-262 pressure is not a missing subsystem but the 10,839-row language-lowering resolver bucket. Treating it as one candidate would violate the partition-before-rank discipline. The next useful apparatus move is a layer-internal partition table by syntactic family and projection class.
 
 **Status**: LPA-EXT 4 CLOSED. Snapshot established. Future LPA re-render should either refresh this document or promote its tabular core into a generated layer manifest.
+
+---
+
+## LPA-EXT 5 — language-lowering partition (2026-05-26)
+
+**Trigger**: Continuation of the resolution-layer snapshot arc. LPA-EXT 4 identified `ast-to-bytecode/language-lowering` as the largest unresolved ECMA-262 layer and explicitly called for partitioning before any new broad spawn.
+
+**Produced**: `pilots/apparatus/locale-positioning-audit/findings/language-lowering-partition.md`.
+
+**Method**:
+
+- Parsed the latest available full-suite `interpreted.jsonl`.
+- Filtered records where `resolver == "ast-to-bytecode/language-lowering"`.
+- Aggregated by surface, projection, and surface+projection.
+- Read existing locale names and CANDIDATES entries to map the aggregate rows against current locale coverage.
+
+**Result**:
+
+- Bucket size: **10,839** records.
+- Dominant surfaces:
+  - `language.statements.class` 2,420
+  - `language.expressions.class` 2,257
+  - `annexB.language` 734
+  - `language.statements.for-await-of` 646
+  - `language.expressions.async-generator` 568
+  - `language.expressions.object` 487
+  - `language.expressions.dynamic-import` 296
+- Dominant projections:
+  - `availability/missing-method-or-intrinsic` 4,338
+  - `value-semantics/wrong-result` 1,622
+  - `parser-form/early-error` 1,324
+  - `abrupt-completion/throw-missing` 1,165
+  - `availability/missing-syntax-feature` 919
+
+**Partitioned arcs**:
+
+1. Class elements and class lowering.
+2. Async iteration and async generators.
+3. Annex B language semantics.
+4. Object literal, computed property, and super.
+5. Dynamic import and module-like lowering.
+6. Direct eval, function declarations, and arguments object.
+7. Assignment, compound assignment, and for-head targets.
+8. With / try / switch / completion records.
+9. Literal and identifier residual routing.
+
+**Finding LPA.9 (class pressure is largest, but not necessarily the next spawn)**: class statement+expression rows account for **4,677** records, but existing class/private-name/private-field locales have recently moved this surface. The right next action is a class residual re-partition against the current focused probes, not a generic class locale.
+
+**Finding LPA.10 (async generator / for-await is the cleanest fresh language-lowering candidate)**: the combined async iteration + async generator surface is **1,492** records, and unlike the class cluster it is not already covered by a focused active conformance locale. A candidate such as `async-generator-and-for-await-lowering` is likely the cleanest fresh substrate arc, provided baseline inspection separates async harness behavior, async generator object protocol, AsyncFromSync wrapping, and abrupt completion propagation.
+
+**Finding LPA.11 (Annex B language must stay separate from Annex B runtime)**: `annexB-runtime-quirks/` is scoped to Date/String/RegExp/global runtime built-ins and explicitly avoids Annex B grammar/lowering. The 734-row `annexB.language` surface is therefore a distinct candidate family (`annexB-language-semantics`), not an extension of the runtime quirks locale.
+
+**CANDIDATES.md update**:
+
+Added Tier M, "language-lowering partition outputs":
+
+- `async-generator-and-for-await-lowering` — ripe for baseline.
+- `annexB-language-semantics` — ripe for baseline.
+- `class-lowering-residual-repartition` — audit-first.
+- `object-literal-computed-property-semantics` — sample-needed.
+- `eval-function-arguments-binding-semantics` — overlap-check-needed.
+- `dynamic-import-residual-audit` — apparatus-first.
+
+**Finding LPA.12 (candidate queue now distinguishes spawn-ready from audit-first arcs)**: the language-lowering bucket contains both large counts and stale/blurred sub-surfaces. Recording all six arcs with status distinctions prevents the next worker from reading raw count as spawn priority. In particular, class rows are largest but audit-first, while async-generator/for-await is smaller but cleaner for a fresh baseline.
+
+**Status**: LPA-EXT 5 CLOSED. The language-lowering layer now has a first apparatus partition and candidate queue entries; no substrate locale spawned in this round.
