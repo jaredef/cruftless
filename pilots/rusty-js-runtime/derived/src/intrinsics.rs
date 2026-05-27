@@ -17345,6 +17345,25 @@ impl Runtime {
                 ))
             }
         });
+        // TAMM-EXT 10: ArrayBuffer.prototype.immutable accessor per the
+        // immutable-arraybuffer proposal. Cruft has no immutable-AB substrate
+        // so the getter always returns false; the RequireInternalSlot check
+        // is what test262's badReceivers harness probes.
+        install_ab_accessor(self, array_buffer_proto, "immutable", |rt| {
+            let this_id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "ArrayBuffer.prototype.immutable getter: receiver must be an ArrayBuffer".into(),
+                )),
+            };
+            if rt.array_buffers.contains_key(&this_id) {
+                Ok(Value::Boolean(false))
+            } else {
+                Err(RuntimeError::TypeError(
+                    "ArrayBuffer.prototype.immutable getter: receiver has no [[ArrayBufferData]] slot".into(),
+                ))
+            }
+        });
         register_method(self, array_buffer_proto, "resize", |rt, args| {
             let this_id = match rt.current_this() {
                 Value::Object(o) => o,

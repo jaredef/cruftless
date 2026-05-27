@@ -243,3 +243,24 @@ TAMM cluster POST-EXT 9: PASS=81 FAIL=19 / 100 (81.0%)
 **Standing rec TAMM.8 (descriptor-synth for exotic indexed slots)**: built-ins whose indexed elements live in a backing store rather than the property dict (TypedArray, Array sometimes via length, Proxy with target) need explicit synth in `[[GetOwnProperty]]`. The default-dict lookup will silently miss them and tools that probe via `Object.getOwnPropertyDescriptor` (debuggers, serializers, immer-style patches) will think the slot doesn't exist.
 
 **Status**: TAMM-EXT 9 CLOSED locally.
+
+## TAMM-EXT 10 — LANDED (2026-05-27) — ArrayBuffer.prototype.immutable accessor
+
+Per keeper directive Telegram 10087 ("Continue").
+
+**Substrate**: added `ArrayBuffer.prototype.immutable` accessor (immutable-arraybuffer proposal). Always returns `false` (cruft has no immutable-AB substrate); the RequireInternalSlot check is what the badReceivers harness probes — receivers without `[[ArrayBufferData]]` throw TypeError. Uses the existing `install_ab_accessor` helper from EXT 1.
+
+**Yield**:
+```text
+TAMM cluster POST-EXT 9: PASS=81 FAIL=19 / 100 (81.0%)
+TAMM cluster POST-EXT 10: PASS=82 FAIL=18 / 100 (82.0%)
+```
+**+1 PASS** this rung. AB residual 8 → 7.
+
+**Cumulative TAMM yield since EXT 0 baseline: 3 → 82 / 100 (+79 across ten rungs)**.
+
+**Gates**: build clean; diff-prod 59/53 (parity).
+
+**Remaining residual shape**: TAC 7 (4 Symbol-keyed defineProperty/getOwnPropertyDescriptor, 1 no-species buffer-proto identity, 2 others), AB 7, DV 3, TA 1. The Symbol-keyed cluster needs cross-cutting Symbol-key property support (cruft currently routes property keys through coerce_to_string, losing Symbol identity); that's a deeper substrate move outside TAMM scope.
+
+**Status**: TAMM-EXT 10 CLOSED locally.
