@@ -17636,16 +17636,59 @@ impl Runtime {
                         return Ok(Value::Object(id));
                     }
                 }
-                let len = match args.first() {
-                    Some(Value::Number(n)) => *n,
-                    Some(Value::Object(arr)) => {
-                        // new Uint8Array(arrayLike) — copy length+contents.
-                        match rt.object_get(*arr, "length") {
-                            Value::Number(n) => n,
-                            _ => 0.0,
+                // TAMM-EXT 9: iterable construction. When the source has
+                // @@iterator and no numeric length, drain the iterator into
+                // a Vec first so the TA gets correct length+contents.
+                let mut iter_values: Option<Vec<Value>> = None;
+                if let Some(Value::Object(arr)) = args.first() {
+                    let has_len = matches!(rt.object_get(*arr, "length"), Value::Number(_));
+                    let iter_fn = rt.object_get(*arr, "@@iterator");
+                    if !has_len && matches!(iter_fn, Value::Object(_)) {
+                        if let Ok(Value::Object(iter_id)) =
+                            rt.call_function(iter_fn, Value::Object(*arr), Vec::new())
+                        {
+                            let next = rt.object_get(iter_id, "next");
+                            if matches!(next, Value::Object(_)) {
+                                let mut out = Vec::new();
+                                loop {
+                                    let step = match rt.call_function(
+                                        next.clone(),
+                                        Value::Object(iter_id),
+                                        Vec::new(),
+                                    ) {
+                                        Ok(v) => v,
+                                        Err(_) => break,
+                                    };
+                                    let step_id = match step {
+                                        Value::Object(id) => id,
+                                        _ => break,
+                                    };
+                                    if matches!(
+                                        rt.object_get(step_id, "done"),
+                                        Value::Boolean(true)
+                                    ) {
+                                        break;
+                                    }
+                                    out.push(rt.object_get(step_id, "value"));
+                                }
+                                iter_values = Some(out);
+                            }
                         }
                     }
-                    _ => 0.0,
+                }
+                let len = if let Some(v) = &iter_values {
+                    v.len() as f64
+                } else {
+                    match args.first() {
+                        Some(Value::Number(n)) => *n,
+                        Some(Value::Object(arr)) => {
+                            match rt.object_get(*arr, "length") {
+                                Value::Number(n) => n,
+                                _ => 0.0,
+                            }
+                        }
+                        _ => 0.0,
+                    }
                 };
                 let byte_length = (len as usize) * bpe;
                 // TAMM-EXT 5: every TypedArray instance must own a `.buffer`
@@ -17696,7 +17739,11 @@ impl Runtime {
                     },
                 );
                 // Copy from source if first arg was an object.
-                if let Some(Value::Object(src)) = args.first() {
+                if let Some(values) = iter_values {
+                    for (i, v) in values.into_iter().enumerate() {
+                        rt.object_set(id, i.to_string(), v);
+                    }
+                } else if let Some(Value::Object(src)) = args.first() {
                     let src_len = len as usize;
                     for i in 0..src_len {
                         let v = rt.object_get(*src, &i.to_string());

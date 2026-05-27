@@ -3220,6 +3220,31 @@ impl Runtime {
                 self.obj(id).internal_kind,
                 crate::value::InternalKind::Array
             );
+        // TAMM-EXT 9: §10.4.5.1 [[GetOwnProperty]] for IntegerIndexedExotic:
+        // when receiver is a TypedArray view and the key is a canonical
+        // array index in [0, length), synthesize a data descriptor with the
+        // element value and (writable:true, enumerable:true, configurable:true)
+        // per ES2023+ semantics. Pre-EXT 9 the descriptor lookup missed
+        // because typed-array indexed elements aren't stored as ordinary
+        // dict properties.
+        if self.typed_array_views.contains_key(&id) {
+            if let Some(idx) = Self::canonical_array_index_key(&key) {
+                let len = match self.object_get(id, "length") {
+                    Value::Number(n) => n as usize,
+                    _ => 0,
+                };
+                if (idx as usize) < len {
+                    let v = self.object_get(id, &key);
+                    let out = self.alloc_object(crate::value::Object::new_ordinary());
+                    self.object_set(out, "value".into(), v);
+                    self.object_set(out, "writable".into(), Value::Boolean(true));
+                    self.object_set(out, "enumerable".into(), Value::Boolean(true));
+                    self.object_set(out, "configurable".into(), Value::Boolean(true));
+                    return Ok(Value::Object(out));
+                }
+                return Ok(Value::Undefined);
+            }
+        }
         let (has, value, writable, enumerable, configurable, getter, setter) = if is_array_length {
             let len_v = self.object_get(id, "length");
             if let Some(d) = self.obj(id).get_own("length") {

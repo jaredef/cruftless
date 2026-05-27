@@ -220,3 +220,26 @@ TAMM cluster POST-EXT 8: PASS=79 FAIL=21 / 100 (79.0%)
 **Standing rec TAMM.7 (TypedArray method discipline)**: every TypedArray.prototype method needs three uniform checks at entry: (a) `this` is an Object, (b) `__ta_kind` slot exists, (c) any predicate arg is callable. Index args must propagate Symbol-→-TypeError via the real ToNumber path. Methods that silently return sentinel values on bad `this` silently break under test262 receiver-validation probes. Applies to: every, some, forEach, map, filter, reduce, reduceRight, find, findIndex, findLast, findLastIndex, includes, indexOf, lastIndexOf, copyWithin, fill, set, slice, subarray, sort, toReversed, toSorted, with, at, join, keys, values, entries.
 
 **Status**: TAMM-EXT 8 CLOSED locally.
+
+## TAMM-EXT 9 — LANDED (2026-05-27) — IntegerIndexedExotic descriptor synth + iterable construction
+
+Per keeper directive Telegram 10085 ("Continue").
+
+**Substrate**:
+- `object_get_own_property_descriptor_via` now special-cases TypedArray receivers (`typed_array_views.contains_key(id)`) with canonical-array-index keys: synthesizes a data descriptor `{value, writable:true, enumerable:true, configurable:true}` per §10.4.5.1 [[GetOwnProperty]] for IntegerIndexedExotic (ES2023+). Pre-EXT 9 typed-array elements weren't stored as ordinary dict properties so descriptor reflection missed them entirely.
+- TypedArray ctor now handles iterable construction: if source has `@@iterator` and no numeric `length`, drain the iterator into a Vec first to get the correct length, then construct backing buffer + populate. Pre-EXT 9 `new TA(iterable)` produced a zero-length TA because `object_get(arr, "length")` returned undefined on pure iterables.
+
+**Yield**:
+```text
+TAMM cluster POST-EXT 8: PASS=79 FAIL=21 / 100 (79.0%)
+TAMM cluster POST-EXT 9: PASS=81 FAIL=19 / 100 (81.0%)
+```
+**+2 PASS** this rung. TAC residual 9 → 7.
+
+**Cumulative TAMM yield since EXT 0 baseline: 3 → 81 / 100 (+78 across nine rungs)**.
+
+**Gates**: build clean; diff-prod 59/53 (parity).
+
+**Standing rec TAMM.8 (descriptor-synth for exotic indexed slots)**: built-ins whose indexed elements live in a backing store rather than the property dict (TypedArray, Array sometimes via length, Proxy with target) need explicit synth in `[[GetOwnProperty]]`. The default-dict lookup will silently miss them and tools that probe via `Object.getOwnPropertyDescriptor` (debuggers, serializers, immer-style patches) will think the slot doesn't exist.
+
+**Status**: TAMM-EXT 9 CLOSED locally.
