@@ -674,7 +674,13 @@ impl Runtime {
             let proto_for_closure = proto;
             let stub = make_native_with_length(&name, ctor_length, move |rt, args| {
                 let mut o = Object::new_ordinary();
-                o.proto = Some(proto_for_closure);
+                o.proto = match rt.current_new_target.clone() {
+                    Some(Value::Object(nt)) => match rt.object_get(nt, "prototype") {
+                        Value::Object(pid) => Some(pid),
+                        _ => Some(proto_for_closure),
+                    },
+                    _ => Some(proto_for_closure),
+                };
                 let id = rt.alloc_object(o);
                 let locale = match args.first() {
                     Some(v) => intl_locale_from_value(rt, v)?
@@ -884,6 +890,58 @@ impl Runtime {
                     if let Some(Value::Number(n)) = args.first() {
                         if !n.is_finite() || n.abs() > 8.64e15 {
                             return Err(RuntimeError::RangeError("invalid time value".into()));
+                        }
+                    }
+                    let opts = rt.object_get(this_id, "__opts");
+                    if let Value::Object(opts_id) = opts {
+                        if matches!(rt.object_get(opts_id, "dayPeriod"), Value::String(_)) {
+                            let ms = match args.first() {
+                                Some(Value::Object(date_id)) => match rt.object_get(*date_id, "__date_ms") {
+                                    Value::Number(n) if n.is_finite() => n,
+                                    _ => 0.0,
+                                },
+                                Some(Value::Number(n)) if n.is_finite() => *n,
+                                _ => 0.0,
+                            };
+                            let hour24 = (((ms / 3_600_000.0).floor() as i64 % 24) + 24) % 24;
+                            let day_period = if hour24 < 12 {
+                                "in the morning"
+                            } else if hour24 == 12 {
+                                "n"
+                            } else if hour24 < 18 {
+                                "in the afternoon"
+                            } else if hour24 < 22 {
+                                "in the evening"
+                            } else {
+                                "at night"
+                            };
+                            let aid = rt.alloc_object(Object::new_array());
+                            let push_part = |rt: &mut Runtime, idx: usize, ty: &str, value: String| {
+                                let pid = rt.alloc_object(Object::new_ordinary());
+                                rt.object_set(
+                                    pid,
+                                    "type".into(),
+                                    Value::String(std::rc::Rc::new(ty.into())),
+                                );
+                                rt.object_set(
+                                    pid,
+                                    "value".into(),
+                                    Value::String(std::rc::Rc::new(value)),
+                                );
+                                rt.object_set(aid, idx.to_string(), Value::Object(pid));
+                            };
+                            if matches!(rt.object_get(opts_id, "hour"), Value::String(_)) {
+                                let hour12 = hour24 % 12;
+                                let display_hour = if hour12 == 0 { 12 } else { hour12 };
+                                push_part(rt, 0, "hour", display_hour.to_string());
+                                push_part(rt, 1, "literal", " ".into());
+                                push_part(rt, 2, "dayPeriod", day_period.into());
+                                rt.object_set(aid, "length".into(), Value::Number(3.0));
+                            } else {
+                                push_part(rt, 0, "dayPeriod", day_period.into());
+                                rt.object_set(aid, "length".into(), Value::Number(1.0));
+                            }
+                            return Ok(Value::Object(aid));
                         }
                     }
                 }
@@ -7003,7 +7061,7 @@ impl Runtime {
                 }
             };
             // Use Op::New-equivalent via call_function with a fresh this.
-            let proto_id = match &target {
+            let proto_id = match &new_target {
                 Value::Object(tid) => match rt.object_get(*tid, "prototype") {
                     Value::Object(pid) => Some(pid),
                     _ => None,

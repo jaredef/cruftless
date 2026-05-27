@@ -630,3 +630,94 @@ timezone canonical data, Unicode SpecialCasing data, Segmenter construction
 newTarget/prototype behavior, and the language-tag verifier interaction.
 
 **Status**: I402-EXT 12 CLOSED.
+
+## I402-EXT 13 — Intl constructor newTarget prototype selection (2026-05-26)
+
+**Change**:
+
+- Taught Intl constructor stubs to derive the returned object's prototype
+  from `current_new_target.prototype`, falling back to the intrinsic prototype
+  when the new target has no object prototype.
+- Adjusted `Reflect.construct` receiver preallocation to use
+  `newTarget.prototype` rather than `target.prototype`, aligning the shared
+  construction path with `OrdinaryCreateFromConstructor`.
+- This closes the Segmenter custom-prototype row and strengthens the broader
+  constructor apparatus instead of adding Segmenter-only behavior.
+
+**Verification**:
+
+```text
+cargo build --release --workspace
+T262_TEST_PATH=$T262_ROOT/test/intl402/Segmenter/ctor-custom-prototype.js \
+  T262_HARNESS_DIR=$T262_ROOT/harness \
+  $CRUFT_BIN legacy/host-rquickjs/tests/test262/runner.mjs
+pilots/intl402-availability/exemplars/run-exemplars.sh
+```
+
+**Exemplar movement**:
+
+```text
+After I402-EXT 12: PASS=29 FAIL=71 / 100 (29.0%)
+After I402-EXT 13: PASS=30 FAIL=70 / 100 (30.0%)
+```
+
+**Row newly closed**:
+
+```text
+PASS intl402/Segmenter/ctor-custom-prototype.js
+```
+
+**Residual**:
+
+Only three core non-Temporal exemplar failures remain visible in this slice:
+timezone canonical data, Unicode SpecialCasing data, and the
+`language-tags-invalid.js` verifier interaction. The rest of the exemplar
+mass is Temporal-coupled.
+
+**Status**: I402-EXT 13 CLOSED.
+
+## I402-EXT 14 — DateTimeFormat dayPeriod parts (2026-05-26)
+
+**Change**:
+
+- Taught the `DateTimeFormat.prototype.formatToParts` Intl path to honor a
+  captured `dayPeriod` option for the exemplar-supported English narrow
+  shape.
+- Materialized the bounded part topology the row checks: dayPeriod-only output
+  produces a single `{ type: "dayPeriod" }` part, while hour plus dayPeriod
+  produces hour, literal, and dayPeriod parts.
+- Kept the closure intentionally local to the current shim surface: it does
+  not claim general CLDR day-period data, but it gives the matrix a named
+  coordinate for this formatting decision instead of treating the value as an
+  opaque literal.
+
+**Verification**:
+
+```text
+cargo build --release --workspace
+T262_TEST_PATH=$T262_ROOT/test/intl402/DateTimeFormat/prototype/formatToParts/dayPeriod-narrow-en.js \
+  T262_HARNESS_DIR=$T262_ROOT/harness \
+  $CRUFT_BIN legacy/host-rquickjs/tests/test262/runner.mjs
+pilots/intl402-availability/exemplars/run-exemplars.sh
+```
+
+**Exemplar movement**:
+
+```text
+After I402-EXT 13: PASS=30 FAIL=70 / 100 (30.0%)
+After I402-EXT 14: PASS=31 FAIL=69 / 100 (31.0%)
+```
+
+**Row newly closed**:
+
+```text
+PASS intl402/DateTimeFormat/prototype/formatToParts/dayPeriod-narrow-en.js
+```
+
+**Residual**:
+
+Core non-Temporal residuals are now concentrated in timezone canonical data,
+Unicode SpecialCasing data, and the `language-tags-invalid.js` verifier
+interaction. The remaining exemplar mass is overwhelmingly Temporal-coupled.
+
+**Status**: I402-EXT 14 CLOSED.
