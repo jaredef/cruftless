@@ -17707,39 +17707,10 @@ impl Runtime {
             register_intrinsic_method(self, id, "isView", 1, |_rt, _args| {
                 Ok(Value::Boolean(false))
             });
-            let from_proto = per_type_proto;
-            let of_proto = per_type_proto;
-            register_intrinsic_method(self, id, "of", 0, move |rt, args| {
-                // TypedArray.of(...items) per ECMA §23.2.2.2 — pack args.
-                let len = args.len();
-                let mut o = Object::new_ordinary();
-                o.set_own("length".into(), Value::Number(len as f64));
-                o.proto = Some(of_proto);
-                let new_id = rt.alloc_object(o);
-                for (i, v) in args.iter().enumerate() {
-                    rt.object_set(new_id, i.to_string(), v.clone());
-                }
-                Ok(Value::Object(new_id))
-            });
-            register_intrinsic_method(self, id, "from", 1, move |rt, args| {
-                let src = args.first().cloned().unwrap_or(Value::Undefined);
-                let len: usize = match &src {
-                    Value::Object(id) => rt.array_length(*id) as usize,
-                    Value::String(s) => s.chars().count(),
-                    _ => 0,
-                };
-                let mut o = Object::new_ordinary();
-                o.set_own("length".into(), Value::Number(len as f64));
-                o.proto = Some(from_proto);
-                let new_id = rt.alloc_object(o);
-                if let Value::Object(sid) = &src {
-                    for i in 0..len {
-                        let v = rt.object_get(*sid, &i.to_string());
-                        rt.object_set(new_id, i.to_string(), v);
-                    }
-                }
-                Ok(Value::Object(new_id))
-            });
+            // TAMM-EXT 6: per-ctor `from`/`of` removed; concrete TypedArray
+            // ctors inherit %TypedArray%.from / .of via the [[Prototype]]
+            // chain wired in EXT 3 so receiver-as-ctor semantics work
+            // uniformly (matters for Int8Array.from.call(CustomCtor, ...)).
             self.obj_mut(id)
                 .set_own_frozen("prototype".into(), Value::Object(per_type_proto));
             self.define_global_property(name, Value::Object(id));
@@ -17763,33 +17734,48 @@ impl Runtime {
             .set_own_frozen("prototype".into(), Value::Object(ta_proto_proto));
         // TAMM-EXT 4: %TypedArray%.from / %TypedArray%.of per §23.2.2.1+§23.2.2.2.
         // Concrete ctors inherit these via the [[Prototype]] chain wired below.
+        // TAMM-EXT 6: %TypedArray%.of / %TypedArray%.from per §23.2.2.1+§23.2.2.2:
+        // invoke `this` as the constructor with [len] (TypedArrayCreate) so
+        // `TA.from.call(CustomCtor, src)` produces a CustomCtor instance,
+        // not a plain object. Receiver-as-ctor is the load-bearing fix the
+        // custom-ctor-returns-other-instance test class probes.
         register_intrinsic_method(self, ta_intrinsic_id, "of", 0, |rt, args| {
+            let this = rt.current_this();
             let len = args.len();
-            let mut o = Object::new_ordinary();
-            o.set_own("length".into(), Value::Number(len as f64));
-            let new_id = rt.alloc_object(o);
-            for (i, v) in args.iter().enumerate() {
-                rt.object_set(new_id, i.to_string(), v.clone());
+            let new_val = rt.call_function(
+                this,
+                Value::Undefined,
+                vec![Value::Number(len as f64)],
+            )?;
+            if let Value::Object(new_id) = &new_val {
+                for (i, v) in args.iter().enumerate() {
+                    rt.object_set(*new_id, i.to_string(), v.clone());
+                }
             }
-            Ok(Value::Object(new_id))
+            Ok(new_val)
         });
         register_intrinsic_method(self, ta_intrinsic_id, "from", 1, |rt, args| {
+            let this = rt.current_this();
             let src = args.first().cloned().unwrap_or(Value::Undefined);
             let len: usize = match &src {
                 Value::Object(id) => rt.array_length(*id) as usize,
                 Value::String(s) => s.chars().count(),
                 _ => 0,
             };
-            let mut o = Object::new_ordinary();
-            o.set_own("length".into(), Value::Number(len as f64));
-            let new_id = rt.alloc_object(o);
-            if let Value::Object(sid) = &src {
-                for i in 0..len {
-                    let v = rt.object_get(*sid, &i.to_string());
-                    rt.object_set(new_id, i.to_string(), v);
+            let new_val = rt.call_function(
+                this,
+                Value::Undefined,
+                vec![Value::Number(len as f64)],
+            )?;
+            if let Value::Object(new_id) = &new_val {
+                if let Value::Object(sid) = &src {
+                    for i in 0..len {
+                        let v = rt.object_get(*sid, &i.to_string());
+                        rt.object_set(*new_id, i.to_string(), v);
+                    }
                 }
             }
-            Ok(Value::Object(new_id))
+            Ok(new_val)
         });
         // TAMM-EXT 3 follow-up: TypedArray[Symbol.species] returns the ctor
         // itself per §23.2.2.4.

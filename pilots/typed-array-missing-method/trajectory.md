@@ -146,3 +146,31 @@ TAMM cluster POST-EXT 5: PASS=68 FAIL=32 / 100 (68.0%)
 **Standing rec TAMM.4 (per-type prototype + shared-buffer invariant)**: substrate rungs that allocate previously-absent per-instance state (here: real `.buffer` ArrayBuffer) must audit all derivation sites that propagate that state. The subarray buffer-sharing fix was uncovered by the diff-prod typed-arrays fixture's `sub_is_view: u.buffer === sub.buffer` check, which trivially held while both were undefined and silently broke once they became real. Standing instrument: when a TAM rung adds an instance own-slot, grep for all sites that copy/derive instance state and ensure the slot propagates.
 
 **Status**: TAMM-EXT 4+5 CLOSED locally.
+
+## TAMM-EXT 6 — LANDED (2026-05-27) — receiver-as-ctor in %TypedArray%.from/of
+
+Per keeper directive Telegram 10079 ("Continue").
+
+**Substrate**:
+- `%TypedArray%.from` / `%TypedArray%.of` now invoke `this` as the constructor with `[len]` per §23.2.2.1 step 7 / §23.2.2.2 step 5 (TypedArrayCreate). Pre-EXT 6 both methods produced plain objects regardless of receiver — collapsed the test class that probes `TA.from.call(CustomCtor, src)`.
+- Removed per-ctor own `from`/`of` registrations on each concrete TypedArray ctor. Concrete ctors now inherit %TypedArray%.from/of via the [[Prototype]] chain wired in EXT 3, so `Int8Array.from(src)` invokes Int8Array as the constructor uniformly.
+
+**Yield**:
+```text
+TAMM cluster POST-EXT 5: PASS=68 FAIL=32 / 100 (68.0%)
+TAMM cluster POST-EXT 6: PASS=72 FAIL=28 / 100 (72.0%)
+```
+**+4 PASS** this rung. TAC residual 13 → 9.
+
+**Cumulative TAMM yield since EXT 0 baseline: 3 → 72 / 100 (+69 across six rungs)**.
+
+**Gates**: build clean; diff-prod 59/53 (parity).
+
+**Direct probes**:
+- `Int8Array.from === Object.getPrototypeOf(Int8Array).from` ✅ (inheritance, not own)
+- `Int8Array.from([1,2,3]) instanceof Int8Array` ✅
+- `Int8Array.from.call(CustomCtor, src)` invokes CustomCtor (receiver-as-ctor) ✅
+
+**Standing rec TAMM.5 (built-in static via abstract-intrinsic inheritance)**: when an abstract intrinsic provides a static that delegates to the receiver as constructor (Array.from, TypedArray.from, Promise.all, Set/Map iterables), the concrete subclasses must NOT carry own copies — they must inherit so `Sub.from.call(OtherCtor, ...)` reaches the receiver-as-ctor logic. Own-copy on the subclass shadows inheritance and silently breaks the receiver-as-ctor contract.
+
+**Status**: TAMM-EXT 6 CLOSED locally.
