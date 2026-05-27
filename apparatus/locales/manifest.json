@@ -1,10 +1,10 @@
 {
   "generated_by": "apparatus/locales/discover.sh",
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
-  "locale_root": "/home/jaredef/Developer/cruftless/pilots",
+  "locale_root": "/Users/jaredfoy/Developer/cruftless/pilots",
   "totals": {
-    "locales": 128,
-    "top_level": 106,
+    "locales": 129,
+    "top_level": 107,
     "nested": 22,
     "warnings": 0
   },
@@ -42,7 +42,7 @@
       "parent": "L.apparatus",
       "scope": "locale-positioning-audit",
       "depth": 2,
-      "rung_count": 4,
+      "rung_count": 7,
       "status": null
     },
     {
@@ -235,6 +235,15 @@
       "status": null
     },
     {
+      "coord": "async-generator-and-for-await-lowering",
+      "tag": "L.async-generator-and-for-await-lowering",
+      "parent": null,
+      "scope": "async-generator-and-for-await-lowering",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
+    },
+    {
       "coord": "class-elements-static-semantics",
       "tag": "L.class-elements-static-semantics",
       "parent": null,
@@ -420,7 +429,7 @@
       "parent": null,
       "scope": "intl402-availability",
       "depth": 1,
-      "rung_count": 1,
+      "rung_count": 18,
       "status": "FOUNDED 2026-05-26. Spawned from the full-suite Pin-Art"
     },
     {

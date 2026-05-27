@@ -308,12 +308,8 @@ Substrate move WAS WBMS-EXT 2. The first dynamic-name implementation still misse
 
 Candidates surfaced by `pilots/apparatus/locale-positioning-audit/findings/language-lowering-partition.md`, which partitioned the 10,839-row `ast-to-bytecode/language-lowering` bucket by surface + projection. This tier exists to prevent the anti-pattern of spawning one broad "language lowering" locale.
 
-### (aba) `async-generator-and-for-await-lowering` — 🟢 RIPE FOR BASELINE
-**Telos**: close the coherent async iteration / async-generator lowering cluster: `language/statements/for-await-of`, `language/expressions/async-generator`, and `language/statements/async-generator`.
-**Pool**: 1,492 visible records in the latest full-suite interpretation: for-await-of 646, async-generator expressions 568, async-generator statements 278.
-**Dominant shapes**: missing method/intrinsic (1,156 combined across top three sub-shapes), throw-missing in async-generator default-param/abrupt paths, AsyncFromSync iterator continuation wrong-results.
-**Methodology**: founding baseline must split parser early errors, async test harness behavior, async-generator object protocol, AsyncFromSync wrapping, Promise/job queue dependencies, and abrupt completion propagation. If Promise/job queue dominates, redirect to a runtime E4 locale rather than forcing a lowering fix.
-**Status**: queued from LPA-EXT 5; next action is Rule-23 baseline-inspection plus 50-100 path exemplar selection.
+### (aba) `async-generator-and-for-await-lowering` — SPAWNED
+**Status**: SPAWNED as `pilots/async-generator-and-for-await-lowering/` at 2026-05-26.
 
 ### (abb) `annexB-language-semantics` — 🟢 RIPE FOR BASELINE
 **Telos**: Annex B language/lowering semantics, distinct from `annexB-runtime-quirks/` (Date/String/RegExp/global runtime built-ins). Focuses on `annexB/language/**`.
