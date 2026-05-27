@@ -71,6 +71,11 @@ pub struct FunctionProto {
     /// closure object on entry. just-curry-it's recursive `function curried()
     /// { ... curried.apply(...) }` pattern depends on this.
     pub self_name_slot: Option<u16>,
+    /// Byte offset immediately after the formal-parameter initialization
+    /// prologue. Generator calls execute this prefix at call time before
+    /// returning the generator object, then resume eager body collection
+    /// after the boundary.
+    pub param_prologue_end: usize,
     /// Tier-Ω.5.eeeeee: marker for generator functions. The runtime
     /// returns an iterator over an eagerly-collected yields array
     /// instead of running the body to its return. v1 deviation: real
@@ -4170,6 +4175,7 @@ impl Compiler {
                 sub.emit_destructure(pat, *slot)?;
             }
         }
+        let param_prologue_end = sub.bytecode.len();
         // Tier-Ω.5.zzz: allocate the `arguments` slot. Populated by
         // call_function at invocation with an Array of the actual
         // received arguments. Per ECMA-262 §10.2.4 the slot exists
@@ -4501,6 +4507,7 @@ impl Compiler {
             rest_param_slot,
             arguments_slot,
             self_name_slot,
+            param_prologue_end,
             is_generator,
             line_starts: sub.source_line_starts,
             source_map: sub.source_map,

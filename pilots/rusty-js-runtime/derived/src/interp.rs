@@ -700,6 +700,16 @@ impl Runtime {
                 "Cannot convert a Symbol value to a string".into(),
             ));
         }
+        if matches!(lp, Value::Symbol(_)) || matches!(rp, Value::Symbol(_)) {
+            return Err(RuntimeError::TypeError(
+                "Cannot convert a Symbol value to a number".into(),
+            ));
+        }
+        if matches!(lp, Value::BigInt(_)) ^ matches!(rp, Value::BigInt(_)) {
+            return Err(RuntimeError::TypeError(
+                "Cannot mix BigInt and other types".into(),
+            ));
+        }
         Ok(crate::abstract_ops::op_add(&lp, &rp))
     }
 
@@ -9274,6 +9284,43 @@ impl Runtime {
             _ => Ok(to_number(v)),
         }
     }
+
+    pub fn to_num_coerced_strict(&mut self, v: &Value) -> Result<f64, RuntimeError> {
+        let prim = match v {
+            Value::Object(id) => {
+                let vo = self.object_get(*id, "valueOf");
+                if matches!(vo, Value::Object(_)) {
+                    self.call_function(vo, Value::Object(*id), Vec::new())?
+                } else {
+                    v.clone()
+                }
+            }
+            _ => v.clone(),
+        };
+        match prim {
+            Value::Symbol(_) => Err(RuntimeError::TypeError(
+                "Cannot convert a Symbol value to a number".into(),
+            )),
+            Value::BigInt(_) => Err(RuntimeError::TypeError(
+                "Cannot mix BigInt and other types".into(),
+            )),
+            _ => Ok(to_number(&prim)),
+        }
+    }
+
+    fn ensure_no_mixed_bigint_or_symbol(&self, l: &Value, r: &Value) -> Result<(), RuntimeError> {
+        if matches!(l, Value::Symbol(_)) || matches!(r, Value::Symbol(_)) {
+            return Err(RuntimeError::TypeError(
+                "Cannot convert a Symbol value to a number".into(),
+            ));
+        }
+        if matches!(l, Value::BigInt(_)) ^ matches!(r, Value::BigInt(_)) {
+            return Err(RuntimeError::TypeError(
+                "Cannot mix BigInt and other types".into(),
+            ));
+        }
+        Ok(())
+    }
     pub fn find_getter(&self, id: ObjectRef, key: &str) -> Option<Value> {
         // GOPD-EXT 1: invocation path. Skip Some(Value::Undefined)
         // (accessor with explicit-undefined getter); only return callable
@@ -10028,6 +10075,7 @@ impl Runtime {
             rest_param_slot: None,
             arguments_slot: None,
             self_name_slot: None,
+            param_prologue_end: 0,
             is_generator: false,
             line_starts: m.line_starts.clone(),
             source_map: m.source_map.clone(),
@@ -10550,8 +10598,9 @@ impl Runtime {
                     if let (Value::BigInt(a), Value::BigInt(b)) = (&lv, &rv) {
                         frame.push(Value::BigInt(Rc::new(a.sub(b))));
                     } else {
-                        let r = self.to_num_coerced(&rv)?;
-                        let l = self.to_num_coerced(&lv)?;
+                        self.ensure_no_mixed_bigint_or_symbol(&lv, &rv)?;
+                        let r = self.to_num_coerced_strict(&rv)?;
+                        let l = self.to_num_coerced_strict(&lv)?;
                         frame.push(Value::Number(l - r));
                     }
                 }
@@ -10561,8 +10610,9 @@ impl Runtime {
                     if let (Value::BigInt(a), Value::BigInt(b)) = (&lv, &rv) {
                         frame.push(Value::BigInt(Rc::new(a.mul(b))));
                     } else {
-                        let r = self.to_num_coerced(&rv)?;
-                        let l = self.to_num_coerced(&lv)?;
+                        self.ensure_no_mixed_bigint_or_symbol(&lv, &rv)?;
+                        let r = self.to_num_coerced_strict(&rv)?;
+                        let l = self.to_num_coerced_strict(&lv)?;
                         frame.push(Value::Number(l * r));
                     }
                 }
@@ -10575,8 +10625,9 @@ impl Runtime {
                             None => return Err(RuntimeError::TypeError("Division by zero".into())),
                         }
                     } else {
-                        let r = self.to_num_coerced(&rv)?;
-                        let l = self.to_num_coerced(&lv)?;
+                        self.ensure_no_mixed_bigint_or_symbol(&lv, &rv)?;
+                        let r = self.to_num_coerced_strict(&rv)?;
+                        let l = self.to_num_coerced_strict(&lv)?;
                         frame.push(Value::Number(l / r));
                     }
                 }
@@ -10589,8 +10640,9 @@ impl Runtime {
                             None => return Err(RuntimeError::TypeError("Division by zero".into())),
                         }
                     } else {
-                        let r = self.to_num_coerced(&rv)?;
-                        let l = self.to_num_coerced(&lv)?;
+                        self.ensure_no_mixed_bigint_or_symbol(&lv, &rv)?;
+                        let r = self.to_num_coerced_strict(&rv)?;
+                        let l = self.to_num_coerced_strict(&lv)?;
                         frame.push(Value::Number(l % r));
                     }
                 }
@@ -10607,8 +10659,9 @@ impl Runtime {
                             }
                         }
                     } else {
-                        let r = self.to_num_coerced(&rv)?;
-                        let l = self.to_num_coerced(&lv)?;
+                        self.ensure_no_mixed_bigint_or_symbol(&lv, &rv)?;
+                        let r = self.to_num_coerced_strict(&rv)?;
+                        let l = self.to_num_coerced_strict(&lv)?;
                         frame.push(Value::Number(l.powf(r)));
                     }
                 }
@@ -10628,18 +10681,7 @@ impl Runtime {
                     // `+new Date(...)` is NaN, which broke date-fns / luxon
                     // / dayjs and any lib that coerces a Date via +.
                     let raw = frame.pop()?;
-                    let n = match raw {
-                        Value::Object(id) => {
-                            let v = self.object_get(id, "valueOf");
-                            if matches!(v, Value::Object(_)) {
-                                let r = self.call_function(v, Value::Object(id), Vec::new())?;
-                                to_number(&r)
-                            } else {
-                                to_number(&raw)
-                            }
-                        }
-                        _ => to_number(&raw),
-                    };
+                    let n = self.to_num_coerced_strict(&raw)?;
                     frame.push(Value::Number(n));
                 }
                 Op::Inc => {
@@ -10694,6 +10736,11 @@ impl Runtime {
                 Op::Lt | Op::Gt | Op::Le | Op::Ge => {
                     let r = frame.pop()?;
                     let l = frame.pop()?;
+                    if matches!(l, Value::Symbol(_)) || matches!(r, Value::Symbol(_)) {
+                        return Err(RuntimeError::TypeError(
+                            "Cannot convert a Symbol value to a number".into(),
+                        ));
+                    }
                     let ord = abstract_relational_compare(&l, &r);
                     let result = match op {
                         Op::Lt => matches!(ord, RelOrder::Less),
@@ -10719,8 +10766,9 @@ impl Runtime {
                     if let (Value::BigInt(a), Value::BigInt(b)) = (&lv, &rv) {
                         frame.push(Value::BigInt(Rc::new(a.bit_and(b))));
                     } else {
-                        let r = to_number(&rv) as i64 as i32;
-                        let l = to_number(&lv) as i64 as i32;
+                        self.ensure_no_mixed_bigint_or_symbol(&lv, &rv)?;
+                        let r = self.to_num_coerced_strict(&rv)? as i64 as i32;
+                        let l = self.to_num_coerced_strict(&lv)? as i64 as i32;
                         frame.push(Value::Number((l & r) as f64));
                     }
                 }
@@ -10730,8 +10778,9 @@ impl Runtime {
                     if let (Value::BigInt(a), Value::BigInt(b)) = (&lv, &rv) {
                         frame.push(Value::BigInt(Rc::new(a.bit_or(b))));
                     } else {
-                        let r = to_number(&rv) as i64 as i32;
-                        let l = to_number(&lv) as i64 as i32;
+                        self.ensure_no_mixed_bigint_or_symbol(&lv, &rv)?;
+                        let r = self.to_num_coerced_strict(&rv)? as i64 as i32;
+                        let l = self.to_num_coerced_strict(&lv)? as i64 as i32;
                         frame.push(Value::Number((l | r) as f64));
                     }
                 }
@@ -10741,8 +10790,9 @@ impl Runtime {
                     if let (Value::BigInt(a), Value::BigInt(b)) = (&lv, &rv) {
                         frame.push(Value::BigInt(Rc::new(a.bit_xor(b))));
                     } else {
-                        let r = to_number(&rv) as i64 as i32;
-                        let l = to_number(&lv) as i64 as i32;
+                        self.ensure_no_mixed_bigint_or_symbol(&lv, &rv)?;
+                        let r = self.to_num_coerced_strict(&rv)? as i64 as i32;
+                        let l = self.to_num_coerced_strict(&lv)? as i64 as i32;
                         frame.push(Value::Number((l ^ r) as f64));
                     }
                 }
@@ -10774,8 +10824,9 @@ impl Runtime {
                             }
                         }
                     } else {
-                        let r = (to_number(&rv) as i64 as i32 as u32) & 0x1F;
-                        let l = to_number(&lv) as i64 as i32;
+                        self.ensure_no_mixed_bigint_or_symbol(&lv, &rv)?;
+                        let r = (self.to_num_coerced_strict(&rv)? as i64 as i32 as u32) & 0x1F;
+                        let l = self.to_num_coerced_strict(&lv)? as i64 as i32;
                         frame.push(Value::Number((l.wrapping_shl(r)) as f64));
                     }
                 }
@@ -10794,8 +10845,9 @@ impl Runtime {
                             }
                         }
                     } else {
-                        let r = (to_number(&rv) as i64 as i32 as u32) & 0x1F;
-                        let l = to_number(&lv) as i64 as i32;
+                        self.ensure_no_mixed_bigint_or_symbol(&lv, &rv)?;
+                        let r = (self.to_num_coerced_strict(&rv)? as i64 as i32 as u32) & 0x1F;
+                        let l = self.to_num_coerced_strict(&lv)? as i64 as i32;
                         frame.push(Value::Number((l >> r) as f64));
                     }
                 }
@@ -10805,8 +10857,20 @@ impl Runtime {
                     // 0xFFFFFFFF for big f64s. Required: trunc-to-int64 then
                     // bit-cast to u32 (drops upper bits). bn.js's 26-bit limb
                     // arithmetic via `(x * y) >>> 0` was producing wrong limbs.
-                    let r = (to_number(&frame.pop()?) as i64 as i32 as u32) & 0x1F;
-                    let l = to_number(&frame.pop()?) as i64 as i32 as u32;
+                    let rv = frame.pop()?;
+                    let lv = frame.pop()?;
+                    if matches!(lv, Value::BigInt(_)) || matches!(rv, Value::BigInt(_)) {
+                        return Err(RuntimeError::TypeError(
+                            "BigInts have no unsigned right shift".into(),
+                        ));
+                    }
+                    if matches!(lv, Value::Symbol(_)) || matches!(rv, Value::Symbol(_)) {
+                        return Err(RuntimeError::TypeError(
+                            "Cannot convert a Symbol value to a number".into(),
+                        ));
+                    }
+                    let r = (self.to_num_coerced_strict(&rv)? as i64 as i32 as u32) & 0x1F;
+                    let l = self.to_num_coerced_strict(&lv)? as i64 as i32 as u32;
                     frame.push(Value::Number((l >> r) as f64));
                 }
 
@@ -11295,7 +11359,15 @@ impl Runtime {
                                     }
                                 }
                             }
-                            self.object_set(*id, key, value.clone());
+                            let can_add = self.obj(*id).has_own_str(&key) || self.obj(*id).extensible;
+                            if can_add {
+                                self.object_set(*id, key, value.clone());
+                            } else if frame.strict {
+                                return Err(RuntimeError::TypeError(format!(
+                                    "Cannot add property '{}': object is not extensible",
+                                    key
+                                )));
+                            }
                         }
                     } else {
                         // Tier-Ω.5.HHHHHHHH: enrich the non-object target tag
@@ -11537,6 +11609,12 @@ impl Runtime {
                                         crate::value::InternalKind::Array
                                     )
                                 {
+                                    if frame.strict {
+                                        return Err(RuntimeError::TypeError(
+                                            "Cannot delete non-configurable property 'length'"
+                                                .into(),
+                                        ));
+                                    }
                                     frame.push(Value::Boolean(false));
                                     continue;
                                 }
@@ -11560,6 +11638,12 @@ impl Runtime {
                                     self.obj_mut(id).remove_str(&key).is_some() || true
                                 } else if let Some(d) = self.obj(id).get_own(&key) {
                                     if !d.configurable {
+                                        if frame.strict {
+                                            return Err(RuntimeError::TypeError(format!(
+                                                "Cannot delete non-configurable property '{}'",
+                                                key
+                                            )));
+                                        }
                                         false
                                     } else {
                                         self.obj_mut(id).remove_str(&key).is_some()
@@ -11569,7 +11653,12 @@ impl Runtime {
                                 }
                             }
                         }
-                        _ => false,
+                        Value::Null | Value::Undefined => {
+                            return Err(RuntimeError::TypeError(
+                                "Cannot convert undefined or null to object".into(),
+                            ))
+                        }
+                        _ => true,
                     };
                     frame.push(Value::Boolean(removed));
                 }
@@ -11618,16 +11707,49 @@ impl Runtime {
                                         || true
                                 } else if let Some(d) = self.obj(id).properties.get(&key_pk) {
                                     if !d.configurable {
+                                        if frame.strict {
+                                            return Err(RuntimeError::TypeError(format!(
+                                                "Cannot delete non-configurable property '{}'",
+                                                key
+                                            )));
+                                        }
                                         false
                                     } else {
                                         self.obj_mut(id).dict_mut().shift_remove(&key_pk).is_some()
+                                    }
+                                } else if let crate::value::PropertyKey::Symbol(sym) = &key_pk {
+                                    // Well-known-symbol transition: built-ins
+                                    // such as Array.prototype[Symbol.iterator]
+                                    // are still stored under their string form
+                                    // ("@@iterator"). A Symbol-keyed delete
+                                    // must remove that fallback entry too, or
+                                    // GetIterator keeps observing the method.
+                                    if let Some(d) = self.obj(id).get_own(sym.as_str()) {
+                                        if !d.configurable {
+                                            if frame.strict {
+                                                return Err(RuntimeError::TypeError(format!(
+                                                    "Cannot delete non-configurable property '{}'",
+                                                    key
+                                                )));
+                                            }
+                                            false
+                                        } else {
+                                            self.obj_mut(id).remove_str(sym.as_str()).is_some()
+                                        }
+                                    } else {
+                                        true
                                     }
                                 } else {
                                     true
                                 }
                             }
                         }
-                        _ => false,
+                        Value::Null | Value::Undefined => {
+                            return Err(RuntimeError::TypeError(
+                                "Cannot convert undefined or null to object".into(),
+                            ))
+                        }
+                        _ => true,
                     };
                     frame.push(Value::Boolean(removed));
                 }
@@ -11755,7 +11877,12 @@ impl Runtime {
                                         }
                                         found
                                     }
-                                    _ => false,
+                                    _ => {
+                                        return Err(RuntimeError::TypeError(
+                                            "Function has non-object prototype in instanceof check"
+                                                .into(),
+                                        ))
+                                    }
                                 }
                             }
                             _ => false,
@@ -11824,7 +11951,20 @@ impl Runtime {
                                     }
                                 }
                             }
-                            self.object_set_pk(*id, key_pk.clone(), value.clone());
+                            let has_own = match &key_pk {
+                                crate::value::PropertyKey::String(s) => self.obj(*id).has_own_str(s),
+                                crate::value::PropertyKey::Symbol(sym) => {
+                                    self.obj(*id).get_own_symbol(sym).is_some()
+                                }
+                            };
+                            if has_own || self.obj(*id).extensible {
+                                self.object_set_pk(*id, key_pk.clone(), value.clone());
+                            } else if frame.strict {
+                                return Err(RuntimeError::TypeError(format!(
+                                    "Cannot add property '{}': object is not extensible",
+                                    key
+                                )));
+                            }
                         }
                     } else {
                         // Tier-Ω.5.HHHHHHHH: route-(b) enrichment. mobx-state-tree
@@ -13328,7 +13468,16 @@ impl Runtime {
             osr_cache: HashMap::new(),
             ic_dispatch_cache: HashMap::new(),
         };
-        let body_result = self.run_frame(&mut inner);
+        let body_result = if is_generator && proto.param_prologue_end > 0 {
+            let prologue_end = proto.param_prologue_end.min(proto.bytecode.len());
+            inner.bytecode = &proto.bytecode[..prologue_end];
+            self.run_frame(&mut inner)?;
+            inner.bytecode = &proto.bytecode;
+            inner.pc = prologue_end;
+            self.run_frame(&mut inner)
+        } else {
+            self.run_frame(&mut inner)
+        };
         if is_generator {
             // Tier-Ω.5.gggggg: pop yields-array on generator exit; build
             // an index-cursor iterator over the collected values. The
@@ -14052,6 +14201,7 @@ fn try_osr_compile(frame: &mut Frame, site_pc: usize) {
         rest_param_slot: None,
         arguments_slot: None,
         self_name_slot: None,
+        param_prologue_end: 0,
         is_generator: false,
         line_starts: Vec::new(),
         source_map: Vec::new(),
