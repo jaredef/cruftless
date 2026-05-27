@@ -189,6 +189,9 @@ fn classify(record: &Record) -> Coord {
 }
 
 fn rel_path(path: &str) -> String {
+    if let Some(idx) = path.find("/test262/test/") {
+        return path[idx + "/test262/test/".len()..].to_string();
+    }
     path.strip_prefix("/home/jaredef/test262/test/")
         .unwrap_or(path)
         .to_string()
