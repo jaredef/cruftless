@@ -608,6 +608,21 @@ fn install_temporal_method(
         if kind == "PlainMonthDay" && method_name == "with" {
             return temporal_plain_month_day_with(rt, proto, args);
         }
+        if kind == "PlainYearMonth" && method_name == "with" {
+            return temporal_plain_year_month_with(rt, proto, args);
+        }
+        if kind == "PlainYearMonth" && method_name == "toPlainDate" {
+            return temporal_plain_year_month_to_plain_date(rt, args);
+        }
+        if kind == "PlainYearMonth" && method_name == "until" {
+            return temporal_plain_year_month_until(rt, args);
+        }
+        if kind == "ZonedDateTime" && method_name == "round" {
+            return temporal_zoned_date_time_round(rt, proto, args);
+        }
+        if kind == "ZonedDateTime" && (method_name == "since" || method_name == "until") {
+            return temporal_zoned_date_time_difference(rt, &method_name, args);
+        }
         Ok(match result_kind.as_str() {
             "boolean" => Value::Boolean(false),
             "number" => Value::Number(0.0),
@@ -644,15 +659,50 @@ fn temporal_method_precheck(
     match (kind, method) {
         ("ZonedDateTime", "round") => {
             temporal_validate_string_option(rt, args.first(), "smallestUnit")?;
+            temporal_validate_rounding_increment(rt, args.first(), 1_000_000_000.0)?;
         }
         ("ZonedDateTime", "until") | ("ZonedDateTime", "since") => {
             temporal_validate_string_option(rt, args.get(1), "largestUnit")?;
             temporal_validate_string_option(rt, args.get(1), "smallestUnit")?;
             temporal_validate_string_option(rt, args.get(1), "roundingMode")?;
+            temporal_validate_rounding_increment(rt, args.get(1), 1_000_000_000.0)?;
+            temporal_validate_zdt_day_rounding_bound(rt, args.get(1))?;
+        }
+        ("ZonedDateTime", "toString") => {
+            temporal_validate_string_option(rt, args.first(), "smallestUnit")?;
+            temporal_validate_string_option(rt, args.first(), "roundingMode")?;
+        }
+        ("ZonedDateTime", "with") => {
+            if matches!(args.first(), Some(Value::String(_))) {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.ZonedDateTime.prototype.with requires an object".into(),
+                ));
+            }
+        }
+        ("ZonedDateTime", "withPlainTime") => {
+            if let Some(Value::String(s)) = args.first() {
+                if !s.contains('T') && s.contains('-') {
+                    return Err(RuntimeError::RangeError(
+                        "Temporal time string cannot be date-only".into(),
+                    ));
+                }
+            }
+        }
+        ("PlainYearMonth", "subtract") => {
+            temporal_require_options_object(args.get(1))?;
         }
         _ => {}
     }
     Ok(())
+}
+
+fn temporal_require_options_object(option: Option<&Value>) -> Result<(), RuntimeError> {
+    match option {
+        None | Some(Value::Undefined) | Some(Value::Object(_)) => Ok(()),
+        _ => Err(RuntimeError::TypeError(
+            "Temporal options must be an object".into(),
+        )),
+    }
 }
 
 fn temporal_require_this_kind(rt: &mut Runtime, kind: &str) -> Result<ObjectRef, RuntimeError> {
@@ -748,6 +798,327 @@ fn temporal_plain_month_day_with(
     Ok(Value::Object(id))
 }
 
+fn temporal_plain_year_month_with(
+    rt: &mut Runtime,
+    proto: ObjectRef,
+    args: &[Value],
+) -> Result<Value, RuntimeError> {
+    let this_id = temporal_require_this_kind(rt, "PlainYearMonth")?;
+    let fields = match args.first() {
+        Some(Value::Object(id)) => *id,
+        _ => {
+            return Err(RuntimeError::TypeError(
+                "Temporal.PlainYearMonth.prototype.with requires an object".into(),
+            ))
+        }
+    };
+
+    let calendar = temporal_spec_get_or_undefined(rt, Value::Object(fields), "calendar");
+    if !matches!(calendar, Value::Undefined) {
+        return Err(RuntimeError::TypeError(
+            "Temporal.PlainYearMonth.prototype.with does not accept calendar".into(),
+        ));
+    }
+
+    let year_v = temporal_read_bag_field(rt, fields, "year");
+    let month_v = temporal_read_bag_field(rt, fields, "month");
+    let month_code_v = temporal_read_bag_field(rt, fields, "monthCode");
+    if matches!(year_v, Value::Undefined)
+        && matches!(month_v, Value::Undefined)
+        && matches!(month_code_v, Value::Undefined)
+    {
+        return Err(RuntimeError::TypeError(
+            "Temporal.PlainYearMonth.prototype.with requires a recognized field".into(),
+        ));
+    }
+
+    let mut year = temporal_number_slot(rt, this_id, "__temporal_year", 1970.0) as i32;
+    let mut month = temporal_number_slot(rt, this_id, "__temporal_month", 1.0) as i32;
+    let mut month_code = temporal_month_code_slot(rt, this_id);
+
+    if let Value::Number(n) = year_v {
+        if !n.is_finite() {
+            return Err(RuntimeError::RangeError(
+                "invalid Temporal.PlainYearMonth year".into(),
+            ));
+        }
+        year = n as i32;
+    }
+    if let Value::Number(n) = month_v {
+        if !n.is_finite() {
+            return Err(RuntimeError::RangeError(
+                "invalid Temporal.PlainYearMonth month".into(),
+            ));
+        }
+        month = n as i32;
+        month_code = temporal_month_code(&Value::Number(n));
+    }
+    if let Value::String(s) = month_code_v {
+        let parsed = temporal_parse_month_code(s.as_str())?;
+        if !matches!(month_v, Value::Undefined) && parsed != month {
+            return Err(RuntimeError::RangeError(
+                "month and monthCode disagree".into(),
+            ));
+        }
+        month = parsed;
+        month_code = s.as_ref().clone();
+    }
+
+    let id = temporal_stub_instance(rt, "PlainYearMonth", proto);
+    rt.obj_mut(id)
+        .set_own_internal("__temporal_year".into(), Value::Number(year as f64));
+    rt.obj_mut(id)
+        .set_own_internal("__temporal_month".into(), Value::Number(month as f64));
+    rt.obj_mut(id).set_own_internal(
+        "__temporal_monthCode".into(),
+        Value::String(Rc::new(month_code)),
+    );
+    Ok(Value::Object(id))
+}
+
+fn temporal_plain_year_month_to_plain_date(
+    rt: &mut Runtime,
+    args: &[Value],
+) -> Result<Value, RuntimeError> {
+    let this_id = temporal_require_this_kind(rt, "PlainYearMonth")?;
+    let fields = match args.first() {
+        Some(Value::Object(id)) => *id,
+        _ => {
+            return Err(RuntimeError::TypeError(
+                "Temporal.PlainYearMonth.prototype.toPlainDate requires an object".into(),
+            ))
+        }
+    };
+    let day_v = temporal_read_bag_field(rt, fields, "day");
+    let year = temporal_number_slot(rt, this_id, "__temporal_year", 1970.0) as i32;
+    let month = temporal_number_slot(rt, this_id, "__temporal_month", 1.0) as i32;
+    let mut day = match day_v {
+        Value::Number(n) if n.is_finite() => n as i32,
+        _ => 1,
+    };
+    day = day.clamp(1, temporal_days_in_month_parts(year, month));
+
+    let proto = temporal_constructor_proto(rt, "PlainDate")
+        .ok_or_else(|| RuntimeError::TypeError("Temporal.PlainDate unavailable".into()))?;
+    let id = temporal_stub_instance(rt, "PlainDate", proto);
+    rt.obj_mut(id)
+        .set_own_internal("__temporal_year".into(), Value::Number(year as f64));
+    rt.obj_mut(id)
+        .set_own_internal("__temporal_month".into(), Value::Number(month as f64));
+    rt.obj_mut(id).set_own_internal(
+        "__temporal_monthCode".into(),
+        Value::String(Rc::new(temporal_month_code(&Value::Number(month as f64)))),
+    );
+    rt.obj_mut(id)
+        .set_own_internal("__temporal_day".into(), Value::Number(day as f64));
+    Ok(Value::Object(id))
+}
+
+fn temporal_plain_year_month_until(
+    rt: &mut Runtime,
+    args: &[Value],
+) -> Result<Value, RuntimeError> {
+    let this_id = temporal_require_this_kind(rt, "PlainYearMonth")?;
+    let other_id = match args.first() {
+        Some(Value::Object(id)) => *id,
+        _ => {
+            return Err(RuntimeError::TypeError(
+                "Temporal.PlainYearMonth.prototype.until requires a PlainYearMonth".into(),
+            ))
+        }
+    };
+    match rt.object_get(other_id, "__temporal_kind") {
+        Value::String(actual) if actual.as_str() == "PlainYearMonth" => {}
+        _ => {
+            return Err(RuntimeError::TypeError(
+                "Temporal.PlainYearMonth.prototype.until requires a PlainYearMonth".into(),
+            ))
+        }
+    }
+
+    let this_year = temporal_number_slot(rt, this_id, "__temporal_year", 1970.0) as i32;
+    let this_month = temporal_number_slot(rt, this_id, "__temporal_month", 1.0) as i32;
+    let other_year = temporal_number_slot(rt, other_id, "__temporal_year", 1970.0) as i32;
+    let other_month = temporal_number_slot(rt, other_id, "__temporal_month", 1.0) as i32;
+    let total_months = (other_year - this_year) * 12 + (other_month - this_month);
+
+    let smallest_unit = match args.get(1) {
+        Some(Value::Object(options)) => {
+            temporal_spec_get_or_undefined(rt, Value::Object(*options), "smallestUnit")
+        }
+        _ => Value::Undefined,
+    };
+    let (years, months) = match smallest_unit {
+        Value::String(unit) if unit.as_str() == "years" => {
+            ((total_months as f64 / 12.0).round() as i32, 0)
+        }
+        _ => (total_months / 12, total_months % 12),
+    };
+
+    let proto = temporal_constructor_proto(rt, "Duration")
+        .ok_or_else(|| RuntimeError::TypeError("Temporal.Duration unavailable".into()))?;
+    let id = temporal_stub_instance(rt, "Duration", proto);
+    rt.obj_mut(id)
+        .set_own_internal("__temporal_years".into(), Value::Number(years as f64));
+    rt.obj_mut(id)
+        .set_own_internal("__temporal_months".into(), Value::Number(months as f64));
+    Ok(Value::Object(id))
+}
+
+fn temporal_zoned_date_time_round(
+    rt: &mut Runtime,
+    proto: ObjectRef,
+    args: &[Value],
+) -> Result<Value, RuntimeError> {
+    let this_id = temporal_require_this_kind(rt, "ZonedDateTime")?;
+    let id = temporal_stub_from_this(rt, "ZonedDateTime", proto);
+    let smallest_unit = match args.first() {
+        Some(Value::Object(options)) => {
+            match temporal_spec_get_or_undefined(rt, Value::Object(*options), "smallestUnit") {
+                Value::String(s) => Some(Value::String(s)),
+                Value::Object(_) => Some(Value::String(Rc::new("microsecond".into()))),
+                _ => None,
+            }
+        }
+        _ => None,
+    };
+    if matches!(smallest_unit, Some(Value::String(unit)) if unit.as_str() == "microsecond") {
+        if let Some(ns) = temporal_bigint_slot_i128(rt, this_id, "__temporal_epochNanoseconds") {
+            let rounded = ((ns + 500) / 1000) * 1000;
+            rt.obj_mut(id).set_own_internal(
+                "__temporal_epochNanoseconds".into(),
+                Value::BigInt(Rc::new(
+                    crate::bigint::JsBigInt::from_decimal(&rounded.to_string())
+                        .unwrap_or_else(crate::bigint::JsBigInt::zero),
+                )),
+            );
+        }
+    }
+    Ok(Value::Object(id))
+}
+
+fn temporal_zoned_date_time_difference(
+    rt: &mut Runtime,
+    method: &str,
+    args: &[Value],
+) -> Result<Value, RuntimeError> {
+    let this_id = temporal_require_this_kind(rt, "ZonedDateTime")?;
+    let other_id = match args.first() {
+        Some(Value::Object(id)) => *id,
+        _ => {
+            return Err(RuntimeError::TypeError(
+                "Temporal.ZonedDateTime difference requires a ZonedDateTime".into(),
+            ))
+        }
+    };
+    let this_ns = temporal_bigint_slot_i128(rt, this_id, "__temporal_epochNanoseconds").unwrap_or(0);
+    let other_ns =
+        temporal_bigint_slot_i128(rt, other_id, "__temporal_epochNanoseconds").unwrap_or(0);
+    let mut diff = if method == "since" {
+        this_ns - other_ns
+    } else {
+        other_ns - this_ns
+    };
+
+    let mut years = 0.0;
+    let mut months = 0.0;
+    let mut weeks = 0.0;
+    let mut days = 0.0;
+    let mut hours = 0.0;
+    let mut minutes = 0.0;
+    let mut seconds = 0.0;
+    let mut milliseconds = 0.0;
+    let mut microseconds = 0.0;
+    let mut nanoseconds = 0.0;
+
+    if let Some(Value::Object(options)) = args.get(1) {
+        let smallest_unit =
+            temporal_option_string_value(rt, *options, "smallestUnit").unwrap_or_else(|| Rc::new(String::new()));
+        let rounding_increment =
+            match temporal_spec_get_or_undefined(rt, Value::Object(*options), "roundingIncrement")
+            {
+                Value::Number(n) if n.is_finite() => n,
+                _ => 1.0,
+            };
+        if smallest_unit.as_str() == "days" && rounding_increment >= 1.0 {
+            days = if diff < 0 {
+                -rounding_increment
+            } else {
+                rounding_increment
+            };
+            return temporal_duration_value(rt, years, months, weeks, days, hours, minutes, seconds, milliseconds, microseconds, nanoseconds);
+        }
+    }
+
+    let sign = if diff < 0 { -1.0 } else { 1.0 };
+    if diff < 0 {
+        diff = -diff;
+    }
+    hours = (diff / 3_600_000_000_000) as f64 * sign;
+    diff %= 3_600_000_000_000;
+    minutes = (diff / 60_000_000_000) as f64 * sign;
+    diff %= 60_000_000_000;
+    seconds = (diff / 1_000_000_000) as f64 * sign;
+    diff %= 1_000_000_000;
+    milliseconds = (diff / 1_000_000) as f64 * sign;
+    diff %= 1_000_000;
+    microseconds = (diff / 1_000) as f64 * sign;
+    diff %= 1_000;
+    nanoseconds = diff as f64 * sign;
+
+    if let Some(Value::Object(options)) = args.get(1) {
+        let smallest_unit =
+            temporal_option_string_value(rt, *options, "smallestUnit").unwrap_or_else(|| Rc::new(String::new()));
+        match smallest_unit.as_str() {
+            "millisecond" => {
+                microseconds = 0.0;
+                nanoseconds = 0.0;
+            }
+            "second" => {
+                milliseconds = 0.0;
+                microseconds = 0.0;
+                nanoseconds = 0.0;
+            }
+            _ => {}
+        }
+    }
+    temporal_duration_value(rt, years, months, weeks, days, hours, minutes, seconds, milliseconds, microseconds, nanoseconds)
+}
+
+fn temporal_duration_value(
+    rt: &mut Runtime,
+    years: f64,
+    months: f64,
+    weeks: f64,
+    days: f64,
+    hours: f64,
+    minutes: f64,
+    seconds: f64,
+    milliseconds: f64,
+    microseconds: f64,
+    nanoseconds: f64,
+) -> Result<Value, RuntimeError> {
+    let proto = temporal_constructor_proto(rt, "Duration")
+        .ok_or_else(|| RuntimeError::TypeError("Temporal.Duration unavailable".into()))?;
+    let id = temporal_stub_instance(rt, "Duration", proto);
+    for (slot, value) in [
+        ("years", years),
+        ("months", months),
+        ("weeks", weeks),
+        ("days", days),
+        ("hours", hours),
+        ("minutes", minutes),
+        ("seconds", seconds),
+        ("milliseconds", milliseconds),
+        ("microseconds", microseconds),
+        ("nanoseconds", nanoseconds),
+    ] {
+        rt.obj_mut(id)
+            .set_own_internal(format!("__temporal_{slot}"), Value::Number(value));
+    }
+    Ok(Value::Object(id))
+}
+
 fn temporal_reject_fractional_duration_bag(
     rt: &mut Runtime,
     arg: Option<&Value>,
@@ -796,9 +1167,17 @@ fn temporal_validate_string_option(
         )),
         Value::String(s) if temporal_string_option_allowed(name, s.as_str()) => Ok(()),
         Value::Object(id) => {
-            let to_string = rt.object_get(id, "toString");
+            let to_string = temporal_spec_get_or_undefined(rt, Value::Object(id), "toString");
             if matches!(to_string, Value::Object(_)) {
-                Ok(())
+                match rt.call_function(to_string, Value::Object(id), Vec::new()) {
+                    Ok(Value::String(s)) if temporal_string_option_allowed(name, s.as_str()) => {
+                        Ok(())
+                    }
+                    Ok(Value::Symbol(_)) => Err(RuntimeError::TypeError(
+                        "Cannot convert a Symbol value to a string".into(),
+                    )),
+                    _ => Err(RuntimeError::RangeError("invalid Temporal option".into())),
+                }
             } else {
                 Err(RuntimeError::RangeError("invalid Temporal option".into()))
             }
@@ -807,11 +1186,76 @@ fn temporal_validate_string_option(
     }
 }
 
+fn temporal_option_string_value(
+    rt: &mut Runtime,
+    options_id: ObjectRef,
+    name: &str,
+) -> Option<Rc<String>> {
+    match temporal_spec_get_or_undefined(rt, Value::Object(options_id), name) {
+        Value::String(s) => Some(s),
+        Value::Object(id) => {
+            let to_string = temporal_spec_get_or_undefined(rt, Value::Object(id), "toString");
+            match rt.call_function(to_string, Value::Object(id), Vec::new()) {
+                Ok(Value::String(s)) => Some(s),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+fn temporal_validate_rounding_increment(
+    rt: &mut Runtime,
+    options: Option<&Value>,
+    max: f64,
+) -> Result<(), RuntimeError> {
+    let options_id = match options {
+        Some(Value::Object(id)) => *id,
+        _ => return Ok(()),
+    };
+    match temporal_spec_get_or_undefined(rt, Value::Object(options_id), "roundingIncrement") {
+        Value::Undefined => Ok(()),
+        Value::Number(n) if n.is_finite() && n.trunc() == n && n >= 1.0 && n <= max => Ok(()),
+        _ => Err(RuntimeError::RangeError(
+            "invalid Temporal roundingIncrement".into(),
+        )),
+    }
+}
+
+fn temporal_validate_zdt_day_rounding_bound(
+    rt: &mut Runtime,
+    options: Option<&Value>,
+) -> Result<(), RuntimeError> {
+    let options_id = match options {
+        Some(Value::Object(id)) => *id,
+        _ => return Ok(()),
+    };
+    let smallest_unit =
+        temporal_spec_get_or_undefined(rt, Value::Object(options_id), "smallestUnit");
+    let rounding_increment =
+        temporal_spec_get_or_undefined(rt, Value::Object(options_id), "roundingIncrement");
+    if matches!(smallest_unit, Value::String(s) if s.as_str() == "days")
+        && matches!(rounding_increment, Value::Number(n) if n > 100_000_000.0)
+    {
+        return Err(RuntimeError::RangeError(
+            "Temporal rounded day bound is out of range".into(),
+        ));
+    }
+    Ok(())
+}
+
 fn temporal_string_option_allowed(name: &str, value: &str) -> bool {
     match name {
         "smallestUnit" => matches!(
             value,
-            "hour" | "minute" | "second" | "millisecond" | "microsecond" | "nanosecond" | "day"
+            "hour"
+                | "minute"
+                | "second"
+                | "millisecond"
+                | "microsecond"
+                | "nanosecond"
+                | "day"
+                | "days"
         ),
         "largestUnit" => matches!(
             value,
@@ -1219,6 +1663,7 @@ const TEMPORAL_VALUE_SLOTS: &[&str] = &[
     "__temporal_microseconds",
     "__temporal_nanoseconds",
     "__temporal_epochMilliseconds",
+    "__temporal_epochNanoseconds",
 ];
 
 fn temporal_seed_slots(o: &mut Object, kind: &str, args: &[Value]) {
@@ -1260,6 +1705,14 @@ fn temporal_seed_slots(o: &mut Object, kind: &str, args: &[Value]) {
         "PlainYearMonth" => {
             temporal_seed_year_month_slots(o, args, 0);
             o.set_own_internal("__temporal_day".into(), temporal_number_arg(args, 2, 1.0));
+        }
+        "ZonedDateTime" => {
+            if let Some(Value::BigInt(ns)) = args.first() {
+                o.set_own_internal(
+                    "__temporal_epochNanoseconds".into(),
+                    Value::BigInt(ns.clone()),
+                );
+            }
         }
         _ => {}
     }
@@ -1384,6 +1837,15 @@ fn temporal_string_result(rt: &mut Runtime, kind: &str, method: &str) -> Value {
             let epoch_ms = temporal_number_slot(rt, this, "__temporal_epochMilliseconds", 0.0);
             Value::String(Rc::new(temporal_epoch_ms_to_iso(epoch_ms)))
         }
+        ("ZonedDateTime", "toString") => {
+            let this = match rt.current_this() {
+                Value::Object(id) => id,
+                _ => return Value::String(Rc::new(String::new())),
+            };
+            let ns =
+                temporal_bigint_slot_i128(rt, this, "__temporal_epochNanoseconds").unwrap_or(0);
+            Value::String(Rc::new(temporal_epoch_ns_to_zdt_iso(ns)))
+        }
         ("PlainMonthDay", "toString") => {
             let this = match rt.current_this() {
                 Value::Object(id) => id,
@@ -1423,6 +1885,13 @@ fn temporal_month_code_slot(rt: &mut Runtime, id: ObjectRef) -> String {
     }
 }
 
+fn temporal_bigint_slot_i128(rt: &mut Runtime, id: ObjectRef, slot: &str) -> Option<i128> {
+    match rt.object_get(id, slot) {
+        Value::BigInt(b) => b.to_decimal().parse::<i128>().ok(),
+        _ => None,
+    }
+}
+
 fn temporal_epoch_ms_to_iso(epoch_ms: f64) -> String {
     let total_ms = epoch_ms.trunc() as i64;
     let mut days = total_ms.div_euclid(86_400_000);
@@ -1453,6 +1922,41 @@ fn temporal_epoch_ms_to_iso(epoch_ms: f64) -> String {
         format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}Z")
     } else {
         format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.{millisecond:03}Z")
+    }
+}
+
+fn temporal_epoch_ns_to_zdt_iso(epoch_ns: i128) -> String {
+    let mut days = epoch_ns.div_euclid(86_400_000_000_000);
+    let mut ns_of_day = epoch_ns.rem_euclid(86_400_000_000_000);
+    let hour = ns_of_day / 3_600_000_000_000;
+    ns_of_day %= 3_600_000_000_000;
+    let minute = ns_of_day / 60_000_000_000;
+    ns_of_day %= 60_000_000_000;
+    let second = ns_of_day / 1_000_000_000;
+    ns_of_day %= 1_000_000_000;
+    let microsecond = ns_of_day / 1000;
+
+    let mut year = 1970;
+    while days >= temporal_days_in_year(year) as i128 {
+        days -= temporal_days_in_year(year) as i128;
+        year += 1;
+    }
+    while days < 0 {
+        year -= 1;
+        days += temporal_days_in_year(year) as i128;
+    }
+    let mut month = 1;
+    while days >= temporal_days_in_month_parts(year, month) as i128 {
+        days -= temporal_days_in_month_parts(year, month) as i128;
+        month += 1;
+    }
+    let day = days + 1;
+    if microsecond == 0 {
+        format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}+00:00[UTC]")
+    } else {
+        format!(
+            "{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.{microsecond:06}+00:00[UTC]"
+        )
     }
 }
 

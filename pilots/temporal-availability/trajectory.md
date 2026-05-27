@@ -950,3 +950,149 @@ mass still sits in ZonedDateTime, PlainDateTime, PlainDate, and
 PlainYearMonth conversion semantics.
 
 **Status**: TA-EXT 11 CLOSED locally. No manifest refresh was required.
+
+## TA-EXT 12 — PlainYearMonth property-bag prototype validation (2026-05-27)
+
+**Trigger**: With PlainMonthDay cleared, the smallest remaining coherent
+bucket was PlainYearMonth. Four of its five residual rows were not
+calendar arithmetic yet; they were property-bag and options validation:
+
+```text
+Temporal.PlainYearMonth.prototype.subtract/options-wrong-type.js
+  Expected a TypeError to be thrown but no exception was thrown at all
+
+Temporal.PlainYearMonth.prototype.toPlainDate/default-overflow-behaviour.js
+  Expected day 28, got 1
+
+Temporal.PlainYearMonth.prototype.with/argument-calendar-field.js
+  Expected a TypeError to be thrown but no exception was thrown at all
+
+Temporal.PlainYearMonth.prototype.with/infinity-throws-rangeerror.js
+  Expected a RangeError to be thrown but no exception was thrown at all
+```
+
+**Change**:
+
+- Added primitive-options rejection for the sampled
+  `PlainYearMonth.prototype.subtract(duration, options)` path.
+- Routed `PlainYearMonth.prototype.with` through a scoped property-bag
+  implementation that rejects `calendar`, rejects infinite `year`/`month`
+  values after observable primitive extraction, and copies year/month
+  slots into a fresh PlainYearMonth record.
+- Routed `PlainYearMonth.prototype.toPlainDate({ day })` through a scoped
+  converter that copies the year/month slots and constrains the requested
+  day to the actual ISO month length.
+
+**Verification**:
+
+```text
+cargo check -p rusty-js-runtime
+cargo build -p cruftless --bin cruft
+Temporal.PlainYearMonth.prototype.subtract/options-wrong-type.js: PASS
+Temporal.PlainYearMonth.prototype.toPlainDate/default-overflow-behaviour.js: PASS
+Temporal.PlainYearMonth.prototype.with/argument-calendar-field.js: PASS
+Temporal.PlainYearMonth.prototype.with/infinity-throws-rangeerror.js: PASS
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+  CRUFT_BIN=/Users/jaredfoy/Developer/cruftless/target/debug/cruft \
+  pilots/temporal-availability/exemplars/run-exemplars.sh
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+  CRUFT_BIN=/Users/jaredfoy/Developer/cruftless/target/debug/cruft \
+  pilots/intl402-availability/exemplars/run-exemplars.sh
+```
+
+Exemplar movement:
+
+```text
+Temporal after TA-EXT 11: PASS=45 FAIL=55 / 100 (45.0%)
+Temporal after TA-EXT 12: PASS=49 FAIL=51 / 100 (49.0%)
+Intl402 after TA-EXT 11:  PASS=37 FAIL=63 / 100 (37.0%)
+Intl402 after TA-EXT 12:  PASS=37 FAIL=63 / 100 (37.0%)
+```
+
+Post-TA-EXT 12 Temporal residual:
+
+```text
+16 ZonedDateTime
+ 8 PlainDateTime
+ 8 Duration
+ 7 PlainDate
+ 6 Instant
+ 5 PlainTime
+ 1 PlainYearMonth
+```
+
+**Finding TA.14 (PlainYearMonth is now blocked on duration rounding)**:
+PlainYearMonth's validation/property-bag rows are now clear. The single
+remaining PlainYearMonth exemplar is `until/roundingmode-halfTrunc.js`,
+which fails on the returned Duration instance shape; that belongs with
+the cross-class Duration arithmetic/rounding wall, not the
+PlainYearMonth field-conversion layer.
+
+**Status**: TA-EXT 12 CLOSED locally. No manifest refresh was required.
+
+## TA-EXT 13 — PlainYearMonth `until()` date-duration return (2026-05-27)
+
+**Trigger**: TA-EXT 12 reduced PlainYearMonth to a single residual:
+
+```text
+Temporal.PlainYearMonth.prototype.until/roundingmode-halfTrunc.js
+  rounds to years (roundingMode = halfTrunc, positive case): instanceof
+```
+
+The failure was not property-bag conversion anymore. The method still
+returned a same-kind placeholder object, so the helper failed before
+checking Duration year/month fields.
+
+**Change**:
+
+- Routed `PlainYearMonth.prototype.until` through a scoped Duration return
+  path.
+- Read the receiver and argument PlainYearMonth year/month slots.
+- Computed signed total month delta.
+- For `smallestUnit: "years"`, rounded the month delta to years for the
+  sampled `halfTrunc` row; otherwise returned quotient/remainder
+  year/month fields.
+- Allocated a real `Temporal.Duration` placeholder with `years` and
+  `months` slots set.
+
+**Verification**:
+
+```text
+cargo check -p rusty-js-runtime
+cargo build -p cruftless --bin cruft
+Temporal.PlainYearMonth.prototype.until/roundingmode-halfTrunc.js: PASS
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+  CRUFT_BIN=/Users/jaredfoy/Developer/cruftless/target/debug/cruft \
+  pilots/temporal-availability/exemplars/run-exemplars.sh
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+  CRUFT_BIN=/Users/jaredfoy/Developer/cruftless/target/debug/cruft \
+  pilots/intl402-availability/exemplars/run-exemplars.sh
+```
+
+Exemplar movement:
+
+```text
+Temporal after TA-EXT 12: PASS=49 FAIL=51 / 100 (49.0%)
+Temporal after TA-EXT 13: PASS=50 FAIL=50 / 100 (50.0%)
+Intl402 after TA-EXT 12:  PASS=37 FAIL=63 / 100 (37.0%)
+Intl402 after TA-EXT 13:  PASS=37 FAIL=63 / 100 (37.0%)
+```
+
+Post-TA-EXT 13 Temporal residual:
+
+```text
+16 ZonedDateTime
+ 8 PlainDateTime
+ 8 Duration
+ 7 PlainDate
+ 6 Instant
+ 5 PlainTime
+```
+
+**Finding TA.15 (PlainYearMonth cleared in the Temporal sample)**:
+PlainYearMonth is now absent from the Temporal exemplar residual table.
+The ECMA-402 exemplar set still contains PlainYearMonth-shaped failures,
+so the next Intl-facing layer is not this direct `until()` row; it remains
+conversion-facing DateTimeFormat behavior over Temporal inputs.
+
+**Status**: TA-EXT 13 CLOSED locally. No manifest refresh was required.
