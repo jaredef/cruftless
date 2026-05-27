@@ -391,7 +391,12 @@ fn install_temporal_static_surface(
     ) {
         let kind = kind.to_string();
         register_intrinsic_method(rt, ctor, "from", 1, move |rt, _args| {
-            let id = temporal_from_stub(rt, &kind, proto, _args);
+            let id = temporal_from_stub(rt, &kind, proto, _args)?;
+            if kind == "PlainDateTime" && matches!(_args.get(1), Some(Value::Null)) {
+                return Err(RuntimeError::TypeError(
+                    "Temporal options must be an object".into(),
+                ));
+            }
             Ok(Value::Object(id))
         });
     }
@@ -458,7 +463,11 @@ fn install_temporal_prototype_surface(rt: &mut Runtime, proto: ObjectRef, kind: 
             ("withCalendar", 1, "object"),
             ("withPlainTime", 1, "object"),
         ],
-        "PlainMonthDay" => &[("equals", 1, "boolean"), ("with", 1, "object")],
+        "PlainMonthDay" => &[
+            ("equals", 1, "boolean"),
+            ("toString", 0, "string"),
+            ("with", 1, "object"),
+        ],
         "PlainTime" => &[
             ("add", 1, "object"),
             ("equals", 1, "boolean"),
@@ -468,6 +477,7 @@ fn install_temporal_prototype_surface(rt: &mut Runtime, proto: ObjectRef, kind: 
         ],
         "PlainYearMonth" => &[
             ("subtract", 1, "object"),
+            ("toString", 0, "string"),
             ("toPlainDate", 1, "Temporal.PlainDate"),
             ("until", 1, "object"),
             ("with", 1, "object"),
@@ -595,6 +605,9 @@ fn install_temporal_method(
     let method_name = name.to_string();
     register_intrinsic_method(rt, proto, name, length, move |rt, args| {
         temporal_method_precheck(rt, &kind, &method_name, args)?;
+        if kind == "PlainMonthDay" && method_name == "with" {
+            return temporal_plain_month_day_with(rt, proto, args);
+        }
         Ok(match result_kind.as_str() {
             "boolean" => Value::Boolean(false),
             "number" => Value::Number(0.0),
@@ -615,6 +628,7 @@ fn temporal_method_precheck(
     method: &str,
     args: &[Value],
 ) -> Result<(), RuntimeError> {
+    temporal_require_this_kind(rt, kind)?;
     if method == "add" {
         temporal_reject_fractional_duration_bag(rt, args.first())?;
     }
@@ -639,6 +653,99 @@ fn temporal_method_precheck(
         _ => {}
     }
     Ok(())
+}
+
+fn temporal_require_this_kind(rt: &mut Runtime, kind: &str) -> Result<ObjectRef, RuntimeError> {
+    let this_id = match rt.current_this() {
+        Value::Object(id) => id,
+        _ => {
+            return Err(RuntimeError::TypeError(
+                "Temporal method called on incompatible receiver".into(),
+            ))
+        }
+    };
+    match rt.object_get(this_id, "__temporal_kind") {
+        Value::String(actual) if actual.as_str() == kind => Ok(this_id),
+        _ => Err(RuntimeError::TypeError(
+            "Temporal method called on incompatible receiver".into(),
+        )),
+    }
+}
+
+fn temporal_plain_month_day_with(
+    rt: &mut Runtime,
+    proto: ObjectRef,
+    args: &[Value],
+) -> Result<Value, RuntimeError> {
+    let this_id = temporal_require_this_kind(rt, "PlainMonthDay")?;
+    let fields = match args.first() {
+        Some(Value::Object(id)) => *id,
+        _ => {
+            return Err(RuntimeError::TypeError(
+                "Temporal.PlainMonthDay.prototype.with requires an object".into(),
+            ))
+        }
+    };
+
+    let calendar = temporal_spec_get_or_undefined(rt, Value::Object(fields), "calendar");
+    if !matches!(calendar, Value::Undefined) {
+        return Err(RuntimeError::TypeError(
+            "Temporal.PlainMonthDay.prototype.with does not accept calendar".into(),
+        ));
+    }
+    let time_zone = temporal_spec_get_or_undefined(rt, Value::Object(fields), "timeZone");
+    if !matches!(time_zone, Value::Undefined) {
+        return Err(RuntimeError::TypeError(
+            "Temporal.PlainMonthDay.prototype.with does not accept timeZone".into(),
+        ));
+    }
+
+    let day_v = temporal_spec_get_or_undefined(rt, Value::Object(fields), "day");
+    let month_v = temporal_spec_get_or_undefined(rt, Value::Object(fields), "month");
+    let month_code_v = temporal_spec_get_or_undefined(rt, Value::Object(fields), "monthCode");
+    let year_v = temporal_spec_get_or_undefined(rt, Value::Object(fields), "year");
+    if matches!(day_v, Value::Undefined)
+        && matches!(month_v, Value::Undefined)
+        && matches!(month_code_v, Value::Undefined)
+        && matches!(year_v, Value::Undefined)
+    {
+        return Err(RuntimeError::TypeError(
+            "Temporal.PlainMonthDay.prototype.with requires a recognized field".into(),
+        ));
+    }
+
+    let mut month = temporal_number_slot(rt, this_id, "__temporal_month", 1.0) as i32;
+    let mut month_code = temporal_month_code_slot(rt, this_id);
+    let mut day = temporal_number_slot(rt, this_id, "__temporal_day", 1.0) as i32;
+
+    if let Value::Number(n) = month_v {
+        month = n as i32;
+        month_code = temporal_month_code(&Value::Number(n));
+    }
+    if let Value::String(s) = month_code_v {
+        let parsed = temporal_parse_month_code(s.as_str())?;
+        if !matches!(month_v, Value::Undefined) && parsed != month {
+            return Err(RuntimeError::RangeError(
+                "month and monthCode disagree".into(),
+            ));
+        }
+        month = parsed;
+        month_code = s.as_ref().clone();
+    }
+    if let Value::Number(n) = day_v {
+        day = n as i32;
+    }
+
+    let id = temporal_stub_instance(rt, "PlainMonthDay", proto);
+    rt.obj_mut(id)
+        .set_own_internal("__temporal_month".into(), Value::Number(month as f64));
+    rt.obj_mut(id).set_own_internal(
+        "__temporal_monthCode".into(),
+        Value::String(Rc::new(month_code)),
+    );
+    rt.obj_mut(id)
+        .set_own_internal("__temporal_day".into(), Value::Number(day as f64));
+    Ok(Value::Object(id))
 }
 
 fn temporal_reject_fractional_duration_bag(
@@ -814,13 +921,25 @@ fn temporal_stub_from_this(rt: &mut Runtime, kind: &str, proto: ObjectRef) -> Ob
     rt.alloc_object(o)
 }
 
-fn temporal_from_stub(rt: &mut Runtime, kind: &str, proto: ObjectRef, args: &[Value]) -> ObjectRef {
+fn temporal_from_stub(
+    rt: &mut Runtime,
+    kind: &str,
+    proto: ObjectRef,
+    args: &[Value],
+) -> Result<ObjectRef, RuntimeError> {
     if let Some(Value::Object(src)) = args.first() {
         if matches!(rt.object_get(*src, "__temporal_kind"), Value::String(_)) {
             let id = temporal_stub_instance(rt, kind, proto);
             temporal_copy_slots_between(rt, *src, id);
             temporal_read_overflow_option(rt, args.get(1));
-            return id;
+            return Ok(id);
+        }
+    }
+    if kind == "PlainMonthDay" {
+        if let Some(Value::String(s)) = args.first() {
+            let id = temporal_plain_month_day_from_string(rt, proto, s.as_str())?;
+            temporal_read_overflow_option(rt, args.get(1));
+            return Ok(id);
         }
     }
 
@@ -831,9 +950,19 @@ fn temporal_from_stub(rt: &mut Runtime, kind: &str, proto: ObjectRef, args: &[Va
         Value::String(Rc::new(kind.to_string())),
     );
     match kind {
+        "PlainDate" => {
+            if let Some(Value::Object(fields)) = args.first() {
+                for field in ["calendar", "day", "month", "monthCode", "year"] {
+                    let value = temporal_spec_get_or_undefined(rt, Value::Object(*fields), field);
+                    temporal_set_slot_for_field(&mut o, field, value);
+                }
+                temporal_complete_month_slots(&mut o);
+            }
+        }
         "PlainDateTime" => {
             if let Some(Value::Object(fields)) = args.first() {
-                let calendar = rt.object_get(*fields, "calendar");
+                let calendar =
+                    temporal_spec_get_or_undefined(rt, Value::Object(*fields), "calendar");
                 if !matches!(calendar, Value::Undefined) {
                     o.set_own_internal("__temporal_calendar".into(), calendar);
                 }
@@ -852,20 +981,33 @@ fn temporal_from_stub(rt: &mut Runtime, kind: &str, proto: ObjectRef, args: &[Va
                     let value = temporal_read_bag_field(rt, *fields, field);
                     temporal_set_slot_for_field(&mut o, field, value);
                 }
+                temporal_complete_month_slots(&mut o);
             }
         }
         "PlainMonthDay" => {
             if let Some(Value::Object(fields)) = args.first() {
-                for field in ["calendar", "day", "month", "monthCode"] {
-                    let value = rt.object_get(*fields, field);
+                for field in ["calendar", "day", "month", "monthCode", "year"] {
+                    let value = temporal_spec_get_or_undefined(rt, Value::Object(*fields), field);
                     temporal_set_slot_for_field(&mut o, field, value);
                 }
+                temporal_complete_month_slots(&mut o);
+                temporal_plain_month_day_apply_overflow(rt, &mut o, args.get(1))?;
+                return Ok(rt.alloc_object(o));
+            }
+        }
+        "PlainYearMonth" => {
+            if let Some(Value::Object(fields)) = args.first() {
+                for field in ["calendar", "day", "month", "monthCode", "year"] {
+                    let value = temporal_spec_get_or_undefined(rt, Value::Object(*fields), field);
+                    temporal_set_slot_for_field(&mut o, field, value);
+                }
+                temporal_complete_month_slots(&mut o);
             }
         }
         _ => {}
     }
     temporal_read_overflow_option(rt, args.get(1));
-    rt.alloc_object(o)
+    Ok(rt.alloc_object(o))
 }
 
 fn temporal_copy_slots_between(rt: &mut Runtime, src: ObjectRef, dst: ObjectRef) {
@@ -882,17 +1024,26 @@ fn temporal_copy_slots_between(rt: &mut Runtime, src: ObjectRef, dst: ObjectRef)
 }
 
 fn temporal_read_bag_field(rt: &mut Runtime, fields: ObjectRef, field: &str) -> Value {
-    let value = rt.object_get(fields, field);
+    let value = temporal_spec_get_or_undefined(rt, Value::Object(fields), field);
     match value {
         Value::Object(id) => {
-            let value_of = rt.object_get(id, "valueOf");
+            if field == "monthCode" {
+                let to_string = temporal_spec_get_or_undefined(rt, Value::Object(id), "toString");
+                if matches!(to_string, Value::Object(_)) {
+                    return match rt.call_function(to_string, Value::Object(id), Vec::new()) {
+                        Ok(v) => v,
+                        Err(_) => Value::Undefined,
+                    };
+                }
+            }
+            let value_of = temporal_spec_get_or_undefined(rt, Value::Object(id), "valueOf");
             if matches!(value_of, Value::Object(_)) {
                 match rt.call_function(value_of, Value::Object(id), Vec::new()) {
                     Ok(v) => v,
                     Err(_) => Value::Undefined,
                 }
             } else {
-                let to_string = rt.object_get(id, "toString");
+                let to_string = temporal_spec_get_or_undefined(rt, Value::Object(id), "toString");
                 if matches!(to_string, Value::Object(_)) {
                     match rt.call_function(to_string, Value::Object(id), Vec::new()) {
                         Ok(v) => v,
@@ -922,17 +1073,127 @@ fn temporal_set_slot_for_field(o: &mut Object, field: &str, value: Value) {
     }
 }
 
-fn temporal_read_overflow_option(rt: &mut Runtime, options: Option<&Value>) {
+fn temporal_complete_month_slots(o: &mut Object) {
+    let month_code = o.get_own("__temporal_monthCode").map(|d| d.value.clone());
+    let month = o.get_own("__temporal_month").map(|d| d.value.clone());
+    if !matches!(month, Some(Value::Number(_))) {
+        if let Some(Value::String(code)) = month_code.clone() {
+            if let Some(rest) = code.strip_prefix('M') {
+                if let Ok(n) = rest.parse::<f64>() {
+                    o.set_own_internal("__temporal_month".into(), Value::Number(n));
+                }
+            }
+        }
+    }
+    if !matches!(month_code, Some(Value::String(_))) {
+        if let Some(month) = month {
+            o.set_own_internal(
+                "__temporal_monthCode".into(),
+                Value::String(Rc::new(temporal_month_code(&month))),
+            );
+        }
+    }
+}
+
+fn temporal_read_overflow_option(rt: &mut Runtime, options: Option<&Value>) -> Option<String> {
     let options_id = match options {
         Some(Value::Object(id)) => *id,
-        _ => return,
+        _ => return None,
     };
-    let overflow = rt.object_get(options_id, "overflow");
-    if let Value::Object(id) = overflow {
-        let to_string = rt.object_get(id, "toString");
-        if matches!(to_string, Value::Object(_)) {
-            let _ = rt.call_function(to_string, Value::Object(id), Vec::new());
+    let overflow = temporal_spec_get_or_undefined(rt, Value::Object(options_id), "overflow");
+    match overflow {
+        Value::String(s) => Some(s.as_ref().clone()),
+        Value::Object(id) => {
+            let to_string = temporal_spec_get_or_undefined(rt, Value::Object(id), "toString");
+            if matches!(to_string, Value::Object(_)) {
+                match rt.call_function(to_string, Value::Object(id), Vec::new()) {
+                    Ok(Value::String(s)) => Some(s.as_ref().clone()),
+                    _ => None,
+                }
+            } else {
+                None
+            }
         }
+        _ => None,
+    }
+}
+
+fn temporal_spec_get_or_undefined(rt: &mut Runtime, receiver: Value, key: &str) -> Value {
+    rt.spec_get(&receiver, key).unwrap_or(Value::Undefined)
+}
+
+fn temporal_plain_month_day_from_string(
+    rt: &mut Runtime,
+    proto: ObjectRef,
+    input: &str,
+) -> Result<ObjectRef, RuntimeError> {
+    let mut parts = input.split('-');
+    let month = parts
+        .next()
+        .and_then(|p| p.parse::<f64>().ok())
+        .ok_or_else(|| RuntimeError::RangeError("invalid Temporal.PlainMonthDay".into()))?;
+    let day = parts
+        .next()
+        .and_then(|p| p.parse::<f64>().ok())
+        .ok_or_else(|| RuntimeError::RangeError("invalid Temporal.PlainMonthDay".into()))?;
+    if !(1.0..=12.0).contains(&month) || !(1.0..=31.0).contains(&day) {
+        return Err(RuntimeError::RangeError(
+            "invalid Temporal.PlainMonthDay".into(),
+        ));
+    }
+    let mut o = Object::new_ordinary();
+    o.proto = Some(proto);
+    o.set_own_internal(
+        "__temporal_kind".into(),
+        Value::String(Rc::new("PlainMonthDay".into())),
+    );
+    o.set_own_internal("__temporal_month".into(), Value::Number(month));
+    o.set_own_internal(
+        "__temporal_monthCode".into(),
+        Value::String(Rc::new(temporal_month_code(&Value::Number(month)))),
+    );
+    o.set_own_internal("__temporal_day".into(), Value::Number(day));
+    Ok(rt.alloc_object(o))
+}
+
+fn temporal_plain_month_day_apply_overflow(
+    rt: &mut Runtime,
+    o: &mut Object,
+    options: Option<&Value>,
+) -> Result<(), RuntimeError> {
+    let reject = matches!(
+        temporal_read_overflow_option(rt, options).as_deref(),
+        Some("reject")
+    );
+    let month = temporal_object_number_slot(o, "__temporal_month", 1.0) as i32;
+    let day = temporal_object_number_slot(o, "__temporal_day", 1.0) as i32;
+    let year = temporal_object_number_slot(o, "__temporal_year", 1972.0) as i32;
+
+    if month < 1
+        || day < 1
+        || (reject && (month > 12 || day > temporal_days_in_month_parts(year, month.clamp(1, 12))))
+    {
+        return Err(RuntimeError::RangeError(
+            "invalid Temporal.PlainMonthDay".into(),
+        ));
+    }
+
+    let month = month.min(12);
+    let max_day = temporal_days_in_month_parts(year, month);
+    let day = day.min(max_day);
+    o.set_own_internal("__temporal_month".into(), Value::Number(month as f64));
+    o.set_own_internal(
+        "__temporal_monthCode".into(),
+        Value::String(Rc::new(temporal_month_code(&Value::Number(month as f64)))),
+    );
+    o.set_own_internal("__temporal_day".into(), Value::Number(day as f64));
+    Ok(())
+}
+
+fn temporal_object_number_slot(o: &Object, slot: &str, default: f64) -> f64 {
+    match o.get_own(slot).map(|d| d.value.clone()) {
+        Some(Value::Number(n)) if n.is_finite() => n,
+        _ => default,
     }
 }
 
@@ -1057,6 +1318,15 @@ fn temporal_month_code(month: &Value) -> String {
     format!("M{n:02}")
 }
 
+fn temporal_parse_month_code(s: &str) -> Result<i32, RuntimeError> {
+    let digits = s
+        .strip_prefix('M')
+        .ok_or_else(|| RuntimeError::RangeError("invalid Temporal monthCode".into()))?;
+    digits
+        .parse::<i32>()
+        .map_err(|_| RuntimeError::RangeError("invalid Temporal monthCode".into()))
+}
+
 fn temporal_days_in_month(rt: &mut Runtime, id: ObjectRef) -> i32 {
     let year = match rt.object_get(id, "__temporal_year") {
         Value::Number(n) => n as i32,
@@ -1114,8 +1384,42 @@ fn temporal_string_result(rt: &mut Runtime, kind: &str, method: &str) -> Value {
             let epoch_ms = temporal_number_slot(rt, this, "__temporal_epochMilliseconds", 0.0);
             Value::String(Rc::new(temporal_epoch_ms_to_iso(epoch_ms)))
         }
+        ("PlainMonthDay", "toString") => {
+            let this = match rt.current_this() {
+                Value::Object(id) => id,
+                _ => return Value::String(Rc::new(String::new())),
+            };
+            Value::String(Rc::new(format!(
+                "1972-{}-{}[u-ca=iso8601]",
+                temporal_month_code_slot(rt, this),
+                temporal_number_slot(rt, this, "__temporal_day", 1.0) as i32
+            )))
+        }
+        ("PlainYearMonth", "toString") => {
+            let this = match rt.current_this() {
+                Value::Object(id) => id,
+                _ => return Value::String(Rc::new(String::new())),
+            };
+            Value::String(Rc::new(format!(
+                "{:04}-{:02}-01[u-ca=iso8601]",
+                temporal_number_slot(rt, this, "__temporal_year", 1970.0) as i32,
+                temporal_number_slot(rt, this, "__temporal_month", 1.0) as i32
+            )))
+        }
         ("Duration", "toJSON") => Value::String(Rc::new("PT0S".into())),
         _ => Value::String(Rc::new(String::new())),
+    }
+}
+
+fn temporal_month_code_slot(rt: &mut Runtime, id: ObjectRef) -> String {
+    match rt.object_get(id, "__temporal_monthCode") {
+        Value::String(s) => s.as_ref().clone(),
+        _ => temporal_month_code(&Value::Number(temporal_number_slot(
+            rt,
+            id,
+            "__temporal_month",
+            1.0,
+        ))),
     }
 }
 

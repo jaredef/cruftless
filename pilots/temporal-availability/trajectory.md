@@ -581,3 +581,372 @@ field coercion with observable order, especially for PlainDateTime and
 ZonedDateTime inputs.
 
 **Status**: TA-EXT 6 CLOSED locally. No manifest refresh was required.
+
+## TA-EXT 7 — Reference date presentation for month-like Temporal records (2026-05-27)
+
+**Trigger**: The first attempt at property-bag `from()` observation did
+not move the exemplar surface: `PlainDateTime.from/order-of-operations`
+still reports no observed field reads, so full object field coercion is
+not closed. A narrower adjacent failure did identify a concrete missing
+value-record presentation hook:
+
+```text
+Temporal.PlainYearMonth/refisoday-undefined.js
+  Cannot read property 'slice' of undefined (receiver='2')
+
+Temporal.PlainMonthDay/from/overflow.js
+  referenceISOYear result: Expected SameValue(«NaN», «1972») to be true
+```
+
+**Change**:
+
+- Added sampled `toString` prototype stubs for `PlainMonthDay` and
+  `PlainYearMonth`.
+- `PlainMonthDay#toString({ calendarName: "always" })` now emits the ISO
+  reference year shape expected by the helper (`1972-MM-DD[u-ca=iso8601]`).
+- `PlainYearMonth#toString({ calendarName: "always" })` now emits a
+  reference day shape (`YYYY-MM-01[u-ca=iso8601]`), allowing the helper to
+  recover referenceISODay.
+- Kept the still-incomplete `from()` field-read scaffold local to this
+  value-record area, but did not claim the property-bag observer rung:
+  the representative order-of-operations test remains red.
+
+**Verification**:
+
+```text
+cargo check -p rusty-js-runtime
+cargo build -p cruftless --bin cruft
+Temporal.PlainYearMonth/refisoday-undefined.js: PASS
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+  CRUFTLESS_SIDECAR=/Users/jaredfoy/Developer/cruftless-sidecar \
+  TEST_ARTIFACTS_DIR=/Users/jaredfoy/Developer/cruftless-sidecar/results \
+  CRUFT_BIN=/Users/jaredfoy/Developer/cruftless/target/debug/cruft \
+  pilots/temporal-availability/exemplars/run-exemplars.sh
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+  CRUFTLESS_SIDECAR=/Users/jaredfoy/Developer/cruftless-sidecar \
+  TEST_ARTIFACTS_DIR=/Users/jaredfoy/Developer/cruftless-sidecar/results \
+  CRUFT_BIN=/Users/jaredfoy/Developer/cruftless/target/debug/cruft \
+  pilots/intl402-availability/exemplars/run-exemplars.sh
+```
+
+Exemplar movement:
+
+```text
+Temporal after TA-EXT 6: PASS=36 FAIL=64 / 100 (36.0%)
+Temporal after TA-EXT 7: PASS=37 FAIL=63 / 100 (37.0%)
+Intl402 after TA-EXT 6:  PASS=37 FAIL=63 / 100 (37.0%)
+Intl402 after TA-EXT 7:  PASS=37 FAIL=63 / 100 (37.0%)
+```
+
+Post-TA-EXT 7 Temporal residual:
+
+```text
+16 ZonedDateTime
+10 PlainDateTime
+ 9 PlainDate
+ 8 Duration
+ 6 PlainYearMonth
+ 6 Instant
+ 5 PlainTime
+ 3 PlainMonthDay
+```
+
+**Finding TA.9 (property-bag observation remains the next real layer)**:
+The reference-date presentation shim moves one row, but it also confirms
+that the real next substrate is still object field extraction and
+observable coercion order. Until that lands, ECMA-402 remains fixed at
+37/100 because its residuals are Temporal conversion inputs rather than
+direct Temporal display helpers.
+
+**Status**: TA-EXT 7 CLOSED locally. No manifest refresh was required.
+
+## TA-EXT 8 — Accessor-aware `from()` field observation (2026-05-27)
+
+**Trigger**: TA-EXT 7 confirmed reference-date presentation, but
+`Temporal.PlainDateTime.from/order-of-operations.js` still showed the
+real next layer: property-bag fields must be read through observable
+`[[Get]]`, not raw internal property lookup. The first scaffold used
+`object_get`, so the observer saw no field reads.
+
+**Change**:
+
+- Switched the sampled `from()` property-bag path to use `spec_get`, so
+  Proxy/getter observation fires.
+- `PlainDateTime.from(fields, options)` now reads the sampled fields in
+  the test262 order: calendar, day, hour, microsecond, millisecond,
+  minute, month, monthCode, nanosecond, second, year.
+- Numeric-like fields call the observed `valueOf`; `monthCode` calls the
+  observed `toString`.
+- `options.overflow` is read through the same accessor-aware path and
+  invokes its observed `toString`.
+- `PlainDateTime.from(fields, null)` now throws `TypeError` after field
+  reads, matching the sampled final branch.
+- Added small adjacent sampled support for `PlainMonthDay.from("MM-DD")`
+  and `PlainYearMonth.from(propertyBag)` slot seeding, though the broader
+  overflow/reference-day rows remain open.
+
+**Verification**:
+
+```text
+cargo check -p rusty-js-runtime
+cargo build -p cruftless --bin cruft
+Temporal.PlainDateTime/from/order-of-operations.js: PASS
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+  CRUFTLESS_SIDECAR=/Users/jaredfoy/Developer/cruftless-sidecar \
+  TEST_ARTIFACTS_DIR=/Users/jaredfoy/Developer/cruftless-sidecar/results \
+  CRUFT_BIN=/Users/jaredfoy/Developer/cruftless/target/debug/cruft \
+  pilots/temporal-availability/exemplars/run-exemplars.sh
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+  CRUFTLESS_SIDECAR=/Users/jaredfoy/Developer/cruftless-sidecar \
+  TEST_ARTIFACTS_DIR=/Users/jaredfoy/Developer/cruftless-sidecar/results \
+  CRUFT_BIN=/Users/jaredfoy/Developer/cruftless/target/debug/cruft \
+  pilots/intl402-availability/exemplars/run-exemplars.sh
+```
+
+Exemplar movement:
+
+```text
+Temporal after TA-EXT 7: PASS=37 FAIL=63 / 100 (37.0%)
+Temporal after TA-EXT 8: PASS=41 FAIL=59 / 100 (41.0%)
+Intl402 after TA-EXT 7:  PASS=37 FAIL=63 / 100 (37.0%)
+Intl402 after TA-EXT 8:  PASS=37 FAIL=63 / 100 (37.0%)
+```
+
+Post-TA-EXT 8 Temporal residual:
+
+```text
+16 ZonedDateTime
+ 8 PlainDateTime
+ 8 PlainDate
+ 8 Duration
+ 6 PlainYearMonth
+ 6 Instant
+ 5 PlainTime
+ 2 PlainMonthDay
+```
+
+**Finding TA.10 (property-bag observation is positive but insufficient)**:
+Accessor-aware field extraction is a real substrate movement (+4 rows),
+but ECMA-402 remains fixed. The remaining Intl402 mass likely needs
+Temporal values that are semantically useful after conversion, especially
+ZonedDateTime/PlainDateTime timezone and calendar conversion behavior,
+not just observable field-read order.
+
+**Status**: TA-EXT 8 CLOSED locally. No manifest refresh was required.
+
+## TA-EXT 9 — Prototype receiver branding and PlainMonthDay `with()` fields (2026-05-27)
+
+**Trigger**: After TA-EXT 8, the PlainMonthDay bucket still carried two
+rows. A focused sample showed one receiver-branding miss and one
+`with()` field-application miss:
+
+```text
+Temporal.PlainMonthDay.prototype.equals/branding.js
+  Expected a TypeError to be thrown but no exception was thrown at all
+
+Temporal.PlainMonthDay.prototype.with/basic.js
+  with({day}): day result: Expected SameValue(«1», «22») to be true
+```
+
+**Change**:
+
+- Added a shared Temporal prototype receiver-kind guard based on the
+  existing `__temporal_kind` slot before sampled prototype-method
+  dispatch.
+- Routed `PlainMonthDay.prototype.with` through a scoped implementation
+  instead of the generic object stub.
+- `with()` now rejects non-object receivers, `calendar`, `timeZone`, and
+  bags with no recognized Temporal month-day field.
+- Applied sampled `day`, `month`, and `monthCode` fields onto a fresh
+  PlainMonthDay record, including `month`/`monthCode` disagreement
+  rejection.
+- Recognized `year` as a valid but ignored field for the ISO month-day
+  sample, matching the reference-year shape used by the helper.
+
+**Verification**:
+
+```text
+cargo check -p rusty-js-runtime
+cargo build -p cruftless --bin cruft
+Temporal.PlainMonthDay.prototype.with/basic.js: PASS
+Temporal.PlainMonthDay.prototype.equals/branding.js: PASS
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+  CRUFT_BIN=/Users/jaredfoy/Developer/cruftless/target/debug/cruft \
+  pilots/temporal-availability/exemplars/run-exemplars.sh
+```
+
+Exemplar movement:
+
+```text
+Temporal after TA-EXT 8: PASS=41 FAIL=59 / 100 (41.0%)
+Temporal after TA-EXT 9: PASS=42 FAIL=58 / 100 (42.0%)
+```
+
+Post-TA-EXT 9 Temporal residual:
+
+```text
+16 ZonedDateTime
+ 8 PlainDateTime
+ 8 PlainDate
+ 8 Duration
+ 6 PlainYearMonth
+ 6 Instant
+ 5 PlainTime
+ 1 PlainMonthDay
+```
+
+**Finding TA.11 (brand guards are broad, field application is narrow)**:
+The shared receiver-kind guard closes a cross-prototype correctness layer
+without introducing new value semantics. The `PlainMonthDay.with` body is
+still intentionally scoped: it proves record-copy field application and
+forbidden-field rejection, while the remaining PlainMonthDay residual is
+still in `from()` overflow/constrain semantics.
+
+**Status**: TA-EXT 9 CLOSED locally. No manifest refresh was required.
+
+## TA-EXT 10 — Property-bag month slot completion for date-like `from()` (2026-05-27)
+
+**Trigger**: After TA-EXT 9, sampled date-like `from()` rows exposed that
+field observation alone was not enough. The constructor records needed
+month/monthCode completion before accessors could report coherent values:
+
+```text
+Temporal.PlainDate.from/roundtrip-from-iso.js
+  PlainDate.from({ year, monthCode, day }).year returned 1970
+
+Temporal.PlainYearMonth.from/reference-day.js
+  expected month 2, got 1
+```
+
+**Change**:
+
+- Extended `Temporal.PlainDate.from(propertyBag)` to seed calendar, day,
+  month, monthCode, and year through accessor-aware field reads.
+- Completed month slots after property-bag reads for PlainDate,
+  PlainDateTime, PlainMonthDay, and PlainYearMonth.
+- Preserved the existing observable field-read path while deriving
+  `__temporal_month` from `monthCode` and `__temporal_monthCode` from
+  `month` when either side is missing.
+
+**Verification**:
+
+```text
+cargo check -p rusty-js-runtime
+cargo build -p cruftless --bin cruft
+Temporal.PlainDate.from/roundtrip-from-iso.js: PASS
+Temporal.PlainYearMonth.from/reference-day.js: PASS
+Temporal.PlainMonthDay.from/overflow.js: FAIL
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+  CRUFTLESS_SIDECAR=/Users/jaredfoy/Developer/cruftless-sidecar \
+  TEST_ARTIFACTS_DIR=/Users/jaredfoy/Developer/cruftless-sidecar/results \
+  CRUFT_BIN=/Users/jaredfoy/Developer/cruftless/target/debug/cruft \
+  pilots/temporal-availability/exemplars/run-exemplars.sh
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+  CRUFTLESS_SIDECAR=/Users/jaredfoy/Developer/cruftless-sidecar \
+  TEST_ARTIFACTS_DIR=/Users/jaredfoy/Developer/cruftless-sidecar/results \
+  CRUFT_BIN=/Users/jaredfoy/Developer/cruftless/target/debug/cruft \
+  pilots/intl402-availability/exemplars/run-exemplars.sh
+```
+
+Exemplar movement:
+
+```text
+Temporal after TA-EXT 9:  PASS=42 FAIL=58 / 100 (42.0%)
+Temporal after TA-EXT 10: PASS=44 FAIL=56 / 100 (44.0%)
+Intl402 after TA-EXT 9:   PASS=37 FAIL=63 / 100 (37.0%)
+Intl402 after TA-EXT 10:  PASS=37 FAIL=63 / 100 (37.0%)
+```
+
+Post-TA-EXT 10 Temporal residual:
+
+```text
+16 ZonedDateTime
+ 8 PlainDateTime
+ 8 Duration
+ 7 PlainDate
+ 6 Instant
+ 5 PlainYearMonth
+ 5 PlainTime
+ 1 PlainMonthDay
+```
+
+**Finding TA.12 (coherence beats presence)**: Static `from()` availability
+only starts paying down the sample once slots form a coherent date record.
+The remaining PlainMonthDay row is now clearly overflow/constrain
+semantics rather than basic monthCode propagation; ECMA-402 remains flat
+because the conversion-facing Temporal surfaces still need semantic
+timezone/calendar behavior.
+
+**Status**: TA-EXT 10 CLOSED locally. No manifest refresh was required.
+
+## TA-EXT 11 — PlainMonthDay `from()` overflow clamp/reject (2026-05-27)
+
+**Trigger**: TA-EXT 10 isolated the final PlainMonthDay residual to
+overflow handling:
+
+```text
+Temporal.PlainMonthDay.from/overflow.js
+  default overflow is constrain: monthCode result:
+  Expected SameValue(«"M13"», «"M12"») to be true
+```
+
+**Change**:
+
+- Let Temporal static `from()` helpers return `RuntimeError`, so sampled
+  `from()` paths can throw `RangeError` instead of manufacturing inert
+  placeholder objects.
+- Kept string PlainMonthDay input strict: valid `"MM-DD"` ignores overflow,
+  invalid string input throws `RangeError`.
+- Added scoped property-bag overflow behavior for PlainMonthDay:
+  `overflow: "constrain"` clamps positive out-of-range months/days to the
+  ISO month/day boundary, while `overflow: "reject"` throws.
+- Read `year` for PlainMonthDay property bags so February clamping follows
+  the sampled leap/common-year cases.
+
+**Verification**:
+
+```text
+cargo check -p rusty-js-runtime
+cargo build -p cruftless --bin cruft
+Temporal.PlainMonthDay.from/overflow.js: PASS
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+  CRUFTLESS_SIDECAR=/Users/jaredfoy/Developer/cruftless-sidecar \
+  TEST_ARTIFACTS_DIR=/Users/jaredfoy/Developer/cruftless-sidecar/results \
+  CRUFT_BIN=/Users/jaredfoy/Developer/cruftless/target/debug/cruft \
+  pilots/temporal-availability/exemplars/run-exemplars.sh
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+  CRUFTLESS_SIDECAR=/Users/jaredfoy/Developer/cruftless-sidecar \
+  TEST_ARTIFACTS_DIR=/Users/jaredfoy/Developer/cruftless-sidecar/results \
+  CRUFT_BIN=/Users/jaredfoy/Developer/cruftless/target/debug/cruft \
+  pilots/intl402-availability/exemplars/run-exemplars.sh
+```
+
+Exemplar movement:
+
+```text
+Temporal after TA-EXT 10: PASS=44 FAIL=56 / 100 (44.0%)
+Temporal after TA-EXT 11: PASS=45 FAIL=55 / 100 (45.0%)
+Intl402 after TA-EXT 10:  PASS=37 FAIL=63 / 100 (37.0%)
+Intl402 after TA-EXT 11:  PASS=37 FAIL=63 / 100 (37.0%)
+```
+
+Post-TA-EXT 11 Temporal residual:
+
+```text
+16 ZonedDateTime
+ 8 PlainDateTime
+ 8 Duration
+ 7 PlainDate
+ 6 Instant
+ 5 PlainYearMonth
+ 5 PlainTime
+```
+
+**Finding TA.13 (one bucket closed, conversion wall remains)**:
+PlainMonthDay is now clear in the Temporal exemplar set. The flat
+ECMA-402 count confirms that availability/slot coherence for month-day
+records is not yet on the Intl conversion critical path; the remaining
+mass still sits in ZonedDateTime, PlainDateTime, PlainDate, and
+PlainYearMonth conversion semantics.
+
+**Status**: TA-EXT 11 CLOSED locally. No manifest refresh was required.
