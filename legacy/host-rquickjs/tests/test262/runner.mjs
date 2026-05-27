@@ -302,6 +302,10 @@ function runOne(path) {
       // PDTC: PDT conversions
       '/Temporal/PlainDateTime/prototype/toPlainDate/',
       '/Temporal/PlainDateTime/prototype/toPlainTime/',
+      // PDTS-EXT 2: PDT withCalendar ASCII canonicalization (parallel-agent
+      // substrate; allowlist entry added by this rung so the runner exercises
+      // the surface instead of SKIPping it).
+      '/Temporal/PlainDateTime/prototype/withCalendar/',
       // PMDCF-EXT 1: PlainMonthDay ctor + getters + toString
       '/Temporal/PlainMonthDay/constructor.js',
       '/Temporal/PlainMonthDay/name.js',

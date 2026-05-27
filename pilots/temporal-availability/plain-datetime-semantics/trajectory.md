@@ -227,3 +227,20 @@ failures, so the next high-yield step should either bridge formatter use of
 PlainDateTime or pick one of the three parent Temporal residual classes.
 
 **Status**: PDTS-EXT 3 CLOSED locally.
+
+## PDTS-EXT 4 (runner-allowlist follow-up) — LANDED (2026-05-27)
+
+Per keeper directive Telegram 10068 ("A" — next-locale work on temporal-availability/plain-datetime-semantics). The parallel agent's PDTS-EXT 2 substrate (ASCII-only calendar canonicalization at PlainDateTime.withCalendar) had landed on origin before this work-stream fetched it. The substrate was correct, but the test262 runner's PARTIALLY_IMPLEMENTED allowlist for the `Temporal` feature flag still SKIPped the `/withCalendar/` subpath — the substring entry `/with/` doesn't match the longer path `/withCalendar/`. The PDTS-EXT 2 closure of the calendar-canonicalization row therefore was not observable via the runner.
+
+**Change**: added `'/Temporal/PlainDateTime/prototype/withCalendar/'` to the runner allowlist alongside the existing `/with/`, `/with/`, `/add/` etc. entries.
+
+**Exemplar movement (against the parallel agent's PDTS-EXT 3 substrate state)**:
+```text
+PlainDateTime focused PRE-allowlist:  PASS=5 FAIL=3 / 8 (62.5%)
+PlainDateTime focused POST-allowlist: PASS=6 FAIL=2 / 8 (75.0%)
+```
+Parent Temporal residual after PDTS-EXT 4: `3 PlainDateTime / 3 Instant / 2 PlainTime / 2 PlainDate / 1 Now`.
+
+**Finding PDTS.5 (allowlist-substring trap, standing rec)**: a substrate closure isn't observable via the runner unless the runner's path-substring allowlist for the deliberately-omitted feature matches the test path. The `/with/` entry doesn't match longer paths like `/withCalendar/`, `/withPlainTime/`. Future per-method substrate rungs should add the allowlist entry in the same commit. A stricter long-term fix: change the allowlist matcher to prefix-match-up-to-next-`/` so a `/with/` entry definitionally cannot opt in `/withCalendar/`-style siblings.
+
+**Status**: PDTS-EXT 4 CLOSED.
