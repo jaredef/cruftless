@@ -9103,6 +9103,7 @@ impl Runtime {
             // these MUST remain reachable or the realm crashes immediately.
             "__destr_array_rest",
             "__destr_object_rest",
+            "__destr_object_check",
             "__destr_iter_open",
             "__destr_iter_step",
             "__destr_iter_rest",
@@ -13339,13 +13340,42 @@ impl Runtime {
                 .expect("gen_yields_stack underflow");
             let _ = gen_yields_id;
             let mut terminal_return = false;
-            if let Ok(v) = body_result {
-                if !matches!(v, Value::Undefined) && self.array_length(yields_id) == 0 {
-                    self.object_set(yields_id, "0".into(), v);
-                    self.object_set(yields_id, "length".into(), Value::Number(1.0));
-                    terminal_return = true;
+            let pending_error = match body_result {
+                Ok(v) => {
+                    if !matches!(v, Value::Undefined) && self.array_length(yields_id) == 0 {
+                        self.object_set(yields_id, "0".into(), v);
+                        self.object_set(yields_id, "length".into(), Value::Number(1.0));
+                        terminal_return = true;
+                    }
+                    Value::Undefined
                 }
-            }
+                Err(RuntimeError::Thrown(v)) => v,
+                Err(RuntimeError::TypeError(msg)) => {
+                    match crate::intrinsics::make_error_instance(self, "TypeError", &msg) {
+                        Some(id) => Value::Object(id),
+                        None => Value::String(Rc::new(format!("TypeError({:?})", msg))),
+                    }
+                }
+                Err(RuntimeError::RangeError(msg)) => {
+                    match crate::intrinsics::make_error_instance(self, "RangeError", &msg) {
+                        Some(id) => Value::Object(id),
+                        None => Value::String(Rc::new(format!("RangeError({:?})", msg))),
+                    }
+                }
+                Err(RuntimeError::ReferenceError(msg)) => {
+                    match crate::intrinsics::make_error_instance(self, "ReferenceError", &msg) {
+                        Some(id) => Value::Object(id),
+                        None => Value::String(Rc::new(format!("ReferenceError({:?})", msg))),
+                    }
+                }
+                Err(RuntimeError::SyntaxError(msg)) => {
+                    match crate::intrinsics::make_error_instance(self, "SyntaxError", &msg) {
+                        Some(id) => Value::Object(id),
+                        None => Value::String(Rc::new(format!("SyntaxError({:?})", msg))),
+                    }
+                }
+                Err(e) => Value::String(Rc::new(format!("{:?}", e))),
+            };
             // diff-prod Rung-19: chain generator instances to %GeneratorPrototype%
             // (which in turn chains to %IteratorPrototype%). Pre-fix, generator
             // instances proto-chained only to Object.prototype, so the ES2025
@@ -13371,11 +13401,30 @@ impl Runtime {
                 Value::Boolean(terminal_return),
             );
             self.set_engine_sentinel(it_id, "__gen_async__", Value::Boolean(proto.is_async));
+            self.set_engine_sentinel(it_id, "__gen_pending_error__", pending_error);
             let next_fn = crate::intrinsics::make_native("next", |rt, _args| {
                 let this_id = match rt.current_this() {
                     Value::Object(o) => o,
                     _ => return Ok(Value::Undefined),
                 };
+                let is_async_gen = matches!(
+                    rt.object_get(this_id, "__gen_async__"),
+                    Value::Boolean(true)
+                );
+                let pending_error = rt.object_get(this_id, "__gen_pending_error__");
+                if !matches!(pending_error, Value::Undefined) {
+                    rt.object_set(
+                        this_id,
+                        "__gen_pending_error__".into(),
+                        Value::Undefined,
+                    );
+                    if is_async_gen {
+                        let p = crate::promise::new_promise(rt);
+                        crate::promise::reject_promise(rt, p, pending_error);
+                        return Ok(Value::Object(p));
+                    }
+                    return Err(RuntimeError::Thrown(pending_error));
+                }
                 let arr = match rt.object_get(this_id, "__gen_arr__") {
                     Value::Object(id) => id,
                     _ => return Ok(Value::Undefined),
@@ -13386,10 +13435,6 @@ impl Runtime {
                 };
                 let terminal_return = matches!(
                     rt.object_get(this_id, "__gen_return_terminal__"),
-                    Value::Boolean(true)
-                );
-                let is_async_gen = matches!(
-                    rt.object_get(this_id, "__gen_async__"),
                     Value::Boolean(true)
                 );
                 let len = rt.array_length(arr);
@@ -13494,8 +13539,29 @@ impl Runtime {
                 Ok(v) => crate::promise::resolve_promise(self, p, v),
                 Err(RuntimeError::Thrown(v)) => crate::promise::reject_promise(self, p, v),
                 Err(e) => {
-                    let msg = format!("{:?}", e);
-                    let reason = Value::String(Rc::new(msg));
+                    let reason = match e {
+                        RuntimeError::TypeError(msg) => {
+                            crate::intrinsics::make_error_instance(self, "TypeError", &msg)
+                                .map(Value::Object)
+                                .unwrap_or_else(|| Value::String(Rc::new(msg)))
+                        }
+                        RuntimeError::RangeError(msg) => {
+                            crate::intrinsics::make_error_instance(self, "RangeError", &msg)
+                                .map(Value::Object)
+                                .unwrap_or_else(|| Value::String(Rc::new(msg)))
+                        }
+                        RuntimeError::ReferenceError(msg) => {
+                            crate::intrinsics::make_error_instance(self, "ReferenceError", &msg)
+                                .map(Value::Object)
+                                .unwrap_or_else(|| Value::String(Rc::new(msg)))
+                        }
+                        RuntimeError::SyntaxError(msg) => {
+                            crate::intrinsics::make_error_instance(self, "SyntaxError", &msg)
+                                .map(Value::Object)
+                                .unwrap_or_else(|| Value::String(Rc::new(msg)))
+                        }
+                        other => Value::String(Rc::new(format!("{:?}", other))),
+                    };
                     crate::promise::reject_promise(self, p, reason);
                 }
             }

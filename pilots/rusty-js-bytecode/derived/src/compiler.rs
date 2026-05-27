@@ -2504,6 +2504,7 @@ impl Compiler {
                 }
             }
             rusty_js_ast::BindingPattern::Object(obj) => {
+                self.emit_destructure_object_check(src_slot);
                 let mut static_excluded: Vec<String> = Vec::new();
                 for prop in &obj.properties {
                     // Push src on stack and get the property.
@@ -4907,6 +4908,7 @@ impl Compiler {
             }
             Expr::Object { properties, .. } => {
                 use rusty_js_ast::{ObjectKey, ObjectProperty};
+                self.emit_destructure_object_check(src_slot);
                 let mut static_excluded: Vec<String> = Vec::new();
                 for prop in properties {
                     match prop {
@@ -5009,6 +5011,19 @@ impl Compiler {
             // — the caller dispatches on the literal forms. Defensive store.
             _ => self.assign_target_from_stack(target),
         }
+    }
+
+    fn emit_destructure_object_check(&mut self, src_slot: u16) {
+        let check_idx = self
+            .constants
+            .intern(Constant::String("__destr_object_check".into()));
+        encode_op(&mut self.bytecode, Op::LoadGlobal);
+        encode_u16(&mut self.bytecode, check_idx);
+        encode_op(&mut self.bytecode, Op::LoadLocal);
+        encode_u16(&mut self.bytecode, src_slot);
+        encode_op(&mut self.bytecode, Op::Call);
+        encode_u8(&mut self.bytecode, 1);
+        encode_op(&mut self.bytecode, Op::Pop);
     }
 
     /// Consume the value on top of the operand stack and assign it to the

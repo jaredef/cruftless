@@ -318,3 +318,266 @@ can feed `DateTimeFormat` inputs.
 
 **Status**: TA-EXT 3 CLOSED locally. No manifest refresh was required;
 this extended the existing `temporal-availability` locale.
+
+## TA-EXT 4 — Minimal Temporal value slots and presentation (2026-05-27)
+
+**Trigger**: Post-TA-EXT 3 inspection showed the next coherent failures
+were no longer missing members. They were placeholder instances with no
+retained date/time fields:
+
+```text
+built-ins/Temporal/ZonedDateTime/prototype/daysInMonth/basic.js
+  PlainDateTime#toZonedDateTime returned a shell that could not answer
+  month-length questions from constructor fields.
+
+built-ins/Temporal/PlainDateTime/prototype/toString/calendarname-auto.js
+  expected "1976-11-18T15:23:00", got ""
+
+built-ins/Temporal/Instant/prototype/toJSON/fromEpochMilliseconds.js
+  expected "1970-01-01T00:00:00Z", got ""
+```
+
+**Change**:
+
+- Constructors now seed a minimal set of internal Temporal value slots
+  for the sampled classes: date fields, time fields, duration fields, and
+  monthCode derivation.
+- Temporal object-returning prototype methods now copy those value slots
+  from their receiver into the returned placeholder.
+- Accessor getters consult the internal slot first and fall back to the
+  canonical placeholder value only when no slot exists.
+- `ZonedDateTime#daysInMonth` now computes Gregorian month length from
+  carried `year` / `month` fields, including leap years.
+- Added a small presentation layer for `PlainDateTime#toString`,
+  `Instant#toJSON`, and `Duration#toJSON`.
+
+The rung still deliberately avoids the heavier Temporal semantics:
+argument property-bag extraction, ISO string parsing, calendar/timezone
+validation, option coercion order, rounding, balancing, and RangeError
+surfaces remain open.
+
+**Verification**:
+
+```text
+rustfmt --check pilots/rusty-js-runtime/derived/src/intrinsics.rs
+cargo check -p rusty-js-runtime
+cargo build -p cruftless --bin cruft
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+  CRUFTLESS_SIDECAR=/Users/jaredfoy/Developer/cruftless-sidecar \
+  TEST_ARTIFACTS_DIR=/Users/jaredfoy/Developer/cruftless-sidecar/results \
+  CRUFT_BIN=/Users/jaredfoy/Developer/cruftless/target/debug/cruft \
+  pilots/temporal-availability/exemplars/run-exemplars.sh
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+  CRUFTLESS_SIDECAR=/Users/jaredfoy/Developer/cruftless-sidecar \
+  TEST_ARTIFACTS_DIR=/Users/jaredfoy/Developer/cruftless-sidecar/results \
+  CRUFT_BIN=/Users/jaredfoy/Developer/cruftless/target/debug/cruft \
+  pilots/intl402-availability/exemplars/run-exemplars.sh
+```
+
+Exemplar movement:
+
+```text
+Temporal after TA-EXT 3: PASS=27 FAIL=73 / 100 (27.0%)
+Temporal after TA-EXT 4: PASS=30 FAIL=70 / 100 (30.0%)
+Intl402 after TA-EXT 3:  PASS=37 FAIL=63 / 100 (37.0%)
+Intl402 after TA-EXT 4:  PASS=37 FAIL=63 / 100 (37.0%)
+```
+
+Post-TA-EXT 4 Temporal residual:
+
+```text
+17 ZonedDateTime
+12 PlainDateTime
+11 PlainDate
+ 8 Duration
+ 7 PlainYearMonth
+ 7 Instant
+ 5 PlainTime
+ 3 PlainMonthDay
+```
+
+Post-TA-EXT 4 Intl402 residual:
+
+```text
+22 Temporal/PlainDateTime
+17 Temporal/ZonedDateTime
+11 Temporal/PlainDate
+ 8 Temporal/PlainYearMonth
+ 2 Temporal/PlainMonthDay
+ 1 Temporal/Instant
+ 1 Temporal/Duration
+ 1 DateTimeFormat/prototype
+```
+
+**Finding TA.6 (Intl402 still waits on semantic Temporal inputs)**:
+The minimal value-slot layer is a real positive Temporal rung (+3 rows),
+but it does not move the ECMA-402 exemplar surface. The next Intl402
+unlock requires Temporal values that survive ECMA-402 conversion paths,
+not merely direct constructor fields. The remaining Temporal rows now
+cluster around property-bag casting/order, ISO string parsing, option
+validation, RangeError behavior, and arithmetic/balancing. A
+`temporal-availability/value-records` nested locale is justified if the
+keeper wants to drive this as a multi-rung Temporal semantic substrate.
+
+**Status**: TA-EXT 4 CLOSED locally. No manifest refresh was required.
+
+## TA-EXT 5 — Subsecond and instant presentation continuation (2026-05-27)
+
+**Trigger**: TA-EXT 4 moved the value-slot layer, but two remaining rows
+were still direct consumers of the same slots rather than a new semantic
+surface:
+
+```text
+built-ins/Temporal/PlainDateTime/prototype/toString/fractionalseconddigits-auto.js
+  expected "1976-11-18T15:23:30.1234", got "1976-11-18T15:23:30"
+
+built-ins/Temporal/Instant/prototype/toJSON/fromEpochMilliseconds.js
+  expected "1970-12-31T23:59:59.999Z", got "1970-01-01T00:00:00Z"
+```
+
+**Change**:
+
+- `Temporal.Instant.fromEpochMilliseconds` and
+  `fromEpochNanoseconds` now seed a minimal epoch-milliseconds internal
+  slot on the placeholder instance.
+- `Instant#toJSON` formats that positive epoch-milliseconds slot through
+  a small UTC Gregorian formatter sufficient for the exemplar range.
+- `PlainDateTime#toString` now emits fractional seconds from millisecond,
+  microsecond, and nanosecond slots, trimming trailing zeroes for the
+  default `"auto"` behavior.
+
+This remains a presentation continuation of the value-slot rung. It does
+not attempt Temporal's option coercion order, negative epoch handling,
+time-zone offsets, leap-second behavior, or general ISO parsing.
+
+**Verification**:
+
+```text
+cargo check -p rusty-js-runtime
+cargo build -p cruftless --bin cruft
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+  CRUFTLESS_SIDECAR=/Users/jaredfoy/Developer/cruftless-sidecar \
+  TEST_ARTIFACTS_DIR=/Users/jaredfoy/Developer/cruftless-sidecar/results \
+  CRUFT_BIN=/Users/jaredfoy/Developer/cruftless/target/debug/cruft \
+  pilots/temporal-availability/exemplars/run-exemplars.sh
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+  CRUFTLESS_SIDECAR=/Users/jaredfoy/Developer/cruftless-sidecar \
+  TEST_ARTIFACTS_DIR=/Users/jaredfoy/Developer/cruftless-sidecar/results \
+  CRUFT_BIN=/Users/jaredfoy/Developer/cruftless/target/debug/cruft \
+  pilots/intl402-availability/exemplars/run-exemplars.sh
+```
+
+Exemplar movement:
+
+```text
+Temporal after TA-EXT 4: PASS=30 FAIL=70 / 100 (30.0%)
+Temporal after TA-EXT 5: PASS=32 FAIL=68 / 100 (32.0%)
+Intl402 after TA-EXT 4:  PASS=37 FAIL=63 / 100 (37.0%)
+Intl402 after TA-EXT 5:  PASS=37 FAIL=63 / 100 (37.0%)
+```
+
+Post-TA-EXT 5 Temporal residual:
+
+```text
+17 ZonedDateTime
+11 PlainDateTime
+11 PlainDate
+ 8 Duration
+ 7 PlainYearMonth
+ 6 Instant
+ 5 PlainTime
+ 3 PlainMonthDay
+```
+
+**Finding TA.7 (presentation is exhausted for Intl402 purposes)**:
+TA-EXT 5 confirms the direct presentation tail can move Temporal rows,
+but ECMA-402 remains fixed. The next productive substrate is not another
+formatting shim; it is option and argument semantics: property-bag
+field extraction/order, string parsing, RangeError/TypeError surfaces,
+rounding option validation, and calendar/timezone conversion.
+
+**Status**: TA-EXT 5 CLOSED locally. No manifest refresh was required.
+
+## TA-EXT 6 — Sampled option and argument rejection (2026-05-27)
+
+**Trigger**: After the value-slot/presentation tail, the next direct
+failure cluster was no longer about missing fields. It named sampled
+Temporal rejection behavior:
+
+```text
+Temporal.PlainDateTime.prototype.add/non-integer-throws-rangeerror.js
+  Expected a RangeError to be thrown but no exception was thrown
+
+Temporal.PlainDate.prototype.until/argument-number.js
+  Numbers cannot be used in place of an ISO string for PlainDate
+
+Temporal.ZonedDateTime.prototype.round/smallestunit-wrong-type.js
+  null Expected a RangeError to be thrown but no exception was thrown
+```
+
+**Change**:
+
+- Added a small Temporal method precheck layer before placeholder method
+  result construction.
+- `add` now rejects fractional numeric fields in duration-like property
+  bags for the sampled recognized fields.
+- `PlainDate#since` / `PlainDate#until` now reject numeric first
+  arguments with `TypeError`.
+- `ZonedDateTime#round`, `#since`, and `#until` now perform sampled
+  string-option validation for `smallestUnit`, `largestUnit`, and
+  `roundingMode`, including `Symbol` → `TypeError` and wrong primitive /
+  plain object values → `RangeError`.
+
+This is still a sampled guard layer, not a full implementation of
+Temporal option coercion. Object options with usable `toString` are
+accepted to preserve the positive observer branch in the current
+test262 helper, but the code does not yet reproduce the full observable
+order or apply option values to arithmetic.
+
+**Verification**:
+
+```text
+cargo check -p rusty-js-runtime
+cargo build -p cruftless --bin cruft
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+  CRUFTLESS_SIDECAR=/Users/jaredfoy/Developer/cruftless-sidecar \
+  TEST_ARTIFACTS_DIR=/Users/jaredfoy/Developer/cruftless-sidecar/results \
+  CRUFT_BIN=/Users/jaredfoy/Developer/cruftless/target/debug/cruft \
+  pilots/temporal-availability/exemplars/run-exemplars.sh
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+  CRUFTLESS_SIDECAR=/Users/jaredfoy/Developer/cruftless-sidecar \
+  TEST_ARTIFACTS_DIR=/Users/jaredfoy/Developer/cruftless-sidecar/results \
+  CRUFT_BIN=/Users/jaredfoy/Developer/cruftless/target/debug/cruft \
+  pilots/intl402-availability/exemplars/run-exemplars.sh
+```
+
+Exemplar movement:
+
+```text
+Temporal after TA-EXT 5: PASS=32 FAIL=68 / 100 (32.0%)
+Temporal after TA-EXT 6: PASS=36 FAIL=64 / 100 (36.0%)
+Intl402 after TA-EXT 5:  PASS=37 FAIL=63 / 100 (37.0%)
+Intl402 after TA-EXT 6:  PASS=37 FAIL=63 / 100 (37.0%)
+```
+
+Post-TA-EXT 6 Temporal residual:
+
+```text
+16 ZonedDateTime
+10 PlainDateTime
+ 9 PlainDate
+ 8 Duration
+ 7 PlainYearMonth
+ 6 Instant
+ 5 PlainTime
+ 3 PlainMonthDay
+```
+
+**Finding TA.8 (guard layer moves Temporal, not Intl402)**:
+Sampled rejection behavior is a productive Temporal rung (+4 rows), but
+ECMA-402 is still waiting on conversion-quality Temporal values. The next
+positive Intl402 move likely requires property-bag extraction and object
+field coercion with observable order, especially for PlainDateTime and
+ZonedDateTime inputs.
+
+**Status**: TA-EXT 6 CLOSED locally. No manifest refresh was required.

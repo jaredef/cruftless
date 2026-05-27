@@ -1553,6 +1553,25 @@ impl<'src> Parser<'src> {
                         ),
                     });
                 }
+                if self.strict_mode && (n == "eval" || n == "arguments") {
+                    return Err(ParseError {
+                        span,
+                        message: format!("Function name '{}' is not allowed in strict mode", n),
+                    });
+                }
+                if (is_generator || self.strict_mode) && n == "yield" {
+                    return Err(ParseError {
+                        span,
+                        message: "`yield` is not a valid function name in this context".into(),
+                    });
+                }
+                if is_async && n == "await" {
+                    return Err(ParseError {
+                        span,
+                        message: "`await` is not a valid function name in async function code"
+                            .into(),
+                    });
+                }
                 self.bump()?;
                 Some(rusty_js_ast::BindingIdentifier { name: n, span })
             } else {

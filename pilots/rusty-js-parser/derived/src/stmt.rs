@@ -320,6 +320,18 @@ impl<'src> Parser<'src> {
                     unreachable!()
                 };
                 let label_span = self.lookahead_span();
+                if (self.in_generator || self.strict_mode) && name == "yield" {
+                    return Err(ParseError {
+                        span: label_span,
+                        message: "`yield` is not a valid label in this context".into(),
+                    });
+                }
+                if self.in_async && name == "await" {
+                    return Err(ParseError {
+                        span: label_span,
+                        message: "`await` is not a valid label in async function code".into(),
+                    });
+                }
                 self.bump()?; // consume label
                 self.expect_punct(Punct::Colon)?;
                 let body = self.parse_substatement()?;
@@ -413,6 +425,24 @@ impl<'src> Parser<'src> {
                         "`{}` is a reserved word and cannot be used as a function name",
                         n
                     ),
+                });
+            }
+            if self.strict_mode && (n == "eval" || n == "arguments") {
+                return Err(ParseError {
+                    span,
+                    message: format!("Function name '{}' is not allowed in strict mode", n),
+                });
+            }
+            if (is_generator || self.strict_mode) && n == "yield" {
+                return Err(ParseError {
+                    span,
+                    message: "`yield` is not a valid function name in this context".into(),
+                });
+            }
+            if is_async && n == "await" {
+                return Err(ParseError {
+                    span,
+                    message: "`await` is not a valid function name in async function code".into(),
                 });
             }
             self.bump()?;
