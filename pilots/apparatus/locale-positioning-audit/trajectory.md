@@ -349,3 +349,43 @@ Added Tier N, "resolver-axis heuristics partition":
 **Finding LPA.19 (three fresh boundary candidates remain after absorption)**: tagged-template object construction, direct eval lexical capture, and destructuring iterator protocol each have a plausible single boundary mechanism and a concrete baseline probe. They should proceed independently, not as one AST-boundary locale.
 
 **Status**: LPA-EXT 8 CLOSED. Spec boundary audit recorded; no substrate locale spawned.
+
+---
+
+## LPA-EXT 9 — tagged-template object boundary baseline (2026-05-27)
+
+**Trigger**: Keeper directive to proceed with fresh baseline after LPA-EXT 8 split `tagged-template-object-boundary` as a baseline-first child candidate.
+
+**Baseline target**:
+
+- Candidate: `tagged-template-object-boundary`.
+- Path set: all 27 fixtures under `language/expressions/tagged-template/`.
+- Results artifact: `/Users/jaredfoy/Developer/cruftless-sidecar/results/spec-boundary-baseline-20260526-224210/`.
+
+**Build**:
+
+- `cargo build --release --bin cruft -p cruftless` passed with existing warnings.
+
+**Result**:
+
+- PASS: 12.
+- FAIL: 13.
+- ABORT/no-json: 2 (`tco-call.js`, `tco-member.js`).
+
+**Failure clusters**:
+
+1. Template cache identity by source site/function/top-level: 4.
+2. Direct eval / realm context around tag binding: 4.
+3. Template-object allocation / map / constructor shape: 3.
+4. Frozen template object / strict write behavior: 2.
+5. Illegal escape cooked value should be `undefined`: 1.
+6. TCO tagged-template call/member aborts: 2.
+
+**CANDIDATES.md update**:
+
+- Promoted `tagged-template-object-boundary` from baseline-first to spawn-ready.
+- Recorded baseline counts and the TCO carve-out.
+
+**Finding LPA.20 (tagged-template baseline confirms a coherent boundary locale)**: the 27-row focused baseline produced 13 ordinary failures all centered on TemplateStringsArray construction, caching, freezing, raw/cooked shape, or eval/realm context. The two no-JSON rows are TCO tagged-template tests and can be carved out initially. This is no longer merely `strings.raw`; it is a coherent template-object boundary locale.
+
+**Status**: LPA-EXT 9 CLOSED. Candidate is spawn-ready; no substrate locale spawned in this audit rung.

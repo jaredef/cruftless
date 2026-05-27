@@ -1,0 +1,8 @@
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/built-ins/Temporal/PlainDateTime/prototype/add/argument-string-fractional-units-rounding-mode.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/built-ins/Temporal/PlainDateTime/prototype/equals/argument-plaindate.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/built-ins/Temporal/PlainDateTime/prototype/round/roundingmode-halfFloor.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/built-ins/Temporal/PlainDateTime/prototype/since/float64-representable-integer.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/built-ins/Temporal/PlainDateTime/prototype/since/roundingmode-halfExpand.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/built-ins/Temporal/PlainDateTime/prototype/since/roundingmode-halfexpand-default-changes.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/built-ins/Temporal/PlainDateTime/prototype/withCalendar/calendar-case-insensitive.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/built-ins/Temporal/PlainDateTime/prototype/withPlainTime/argument-string-without-time-designator.js

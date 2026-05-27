@@ -1476,3 +1476,81 @@ move should target one of the four larger residual buckets, with
 PlainDateTime and ZonedDateTime the highest-count surfaces.
 
 **Status**: TA-EXT 17 CLOSED locally. No manifest refresh was required.
+
+## TA-EXT 18 — PlainTime add/equals closure + Duration.from fractional strings (2026-05-27)
+
+**Trigger**: After TA-EXT 17, the PlainTime exemplar residual had two
+rows:
+
+```text
+Temporal.PlainTime.prototype.add/add-large-subseconds.js
+  hour result: Expected SameValue(«0», «6») to be true
+
+Temporal.PlainTime.prototype.equals/argument-string-time-zone-annotation.js
+  time zone annotation (named, with no offset) Expected SameValue(«false», «true»)
+```
+
+Implementing Duration property-bag slots for the PlainTime add path also
+surfaced the adjacent Duration string counterpart:
+
+```text
+Temporal.Duration.from/argument-string-fractional-precision.js
+  PT0.999999999H: minutes result: Expected SameValue(«0», «59») to be true
+```
+
+**Change**:
+
+- Routed `PlainTime.prototype.add` to a scoped time arithmetic path.
+- Computed PlainTime + Duration over total nanoseconds modulo one day,
+  including large second/millisecond/microsecond/nanosecond values.
+- Seeded `Temporal.Duration.from({ ... })` property bags into Duration
+  slots.
+- Added sampled `Temporal.Duration.from("PT<n>H/M/S")` fractional string
+  parsing with exact integer nanosecond conversion.
+- Routed `PlainTime.prototype.equals` to compare slots against PlainTime
+  objects or parsed string arguments.
+- Parsed sampled PlainTime strings while ignoring optional `T`, date
+  prefixes, offset text, and bracketed time-zone annotations.
+
+**Verification**:
+
+```text
+cargo check -p rusty-js-runtime
+cargo build -p cruftless --bin cruft
+Temporal.PlainTime.prototype.add/add-large-subseconds.js: PASS
+Temporal.PlainTime.prototype.equals/argument-string-time-zone-annotation.js: PASS
+Temporal.Duration.from/argument-string-fractional-precision.js: PASS
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+  CRUFT_BIN=/Users/jaredfoy/Developer/cruftless/target/debug/cruft \
+  pilots/temporal-availability/exemplars/run-exemplars.sh
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+  CRUFT_BIN=/Users/jaredfoy/Developer/cruftless/target/debug/cruft \
+  pilots/intl402-availability/exemplars/run-exemplars.sh
+scripts/diff-prod/run-all.sh
+```
+
+Exemplar movement:
+
+```text
+Temporal after TA-EXT 17: PASS=69 FAIL=31 / 100 (69.0%)
+Temporal after TA-EXT 18: PASS=71 FAIL=29 / 100 (71.0%)
+Intl402 after TA-EXT 18:  PASS=37 FAIL=63 / 100 (37.0%)
+diff-prod after TA-EXT 18: 42/42 PASS
+```
+
+Post-TA-EXT 18 Temporal residual:
+
+```text
+8 PlainDateTime
+7 ZonedDateTime
+7 PlainDate
+7 Duration
+```
+
+**Finding TA.20 (PlainTime bucket closed for the sampled trajectory)**:
+PlainTime is now empty in the exemplar residual. The remaining Temporal
+availability work has consolidated into four larger buckets; the next
+move should target PlainDateTime, ZonedDateTime, PlainDate, or a bounded
+Duration subcluster rather than PlainTime.
+
+**Status**: TA-EXT 18 CLOSED locally. No manifest refresh was required.

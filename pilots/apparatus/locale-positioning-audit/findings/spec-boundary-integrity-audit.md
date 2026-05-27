@@ -76,6 +76,37 @@ the runtime call artifact.
 **Redirect condition**: if failures are malformed escape handling or raw source
 preservation, route to string/template literal lexing instead.
 
+**Fresh baseline (2026-05-27)**:
+
+- Path set: all 27 fixtures under
+  `language/expressions/tagged-template/`.
+- Results artifact:
+  `/Users/jaredfoy/Developer/cruftless-sidecar/results/spec-boundary-baseline-20260526-224210/`.
+- Build: `cargo build --release --bin cruft -p cruftless` passed with existing
+  warnings.
+- Emitted JSON rows: 25/27.
+- PASS: 12.
+- FAIL: 13.
+- ABORT/no-json: 2 (`tco-call.js`, `tco-member.js`).
+
+Failure clusters:
+
+| Cluster | Count | Representative reason |
+|---|---:|---|
+| Template cache identity by source site / function / top-level | 4 | `Expected SameValue(...head,tail...) to be true` |
+| Direct eval / realm context around tag binding | 4 | `tag is not defined`, `$262 is not defined` |
+| Template-object allocation / map / constructor shape | 3 | `The template object is an array`, `Expected true but got false` |
+| Frozen template object / strict write behavior | 2 | object not frozen, strict mutation did not throw |
+| Illegal escape cooked value | 1 | cooked value should be `undefined` |
+| TCO tagged-template call/member | 2 | process abort, no JSON emitted |
+
+Baseline read: the candidate is confirmed as a coherent boundary locale. The
+dominant ordinary failures are template-object construction, freezing,
+identity caching, and realm/eval context. The original `strings.raw` symptom is
+part of the broader TemplateStringsArray boundary. This should be founded as a
+substrate locale before implementation rather than folded into lex-tier string
+work.
+
 ### Arc B: Direct Eval Lexical Capture
 
 **Candidate name**: `direct-eval-lexical-capture`.
@@ -147,3 +178,9 @@ destructuring iterator protocol each have a plausible single boundary
 mechanism and a concrete baseline probe. They should proceed independently,
 not as one AST-boundary locale.
 
+**Finding LPA.20 (tagged-template baseline confirms a coherent boundary
+locale)**: the 27-row focused baseline produced 13 ordinary failures all
+centered on TemplateStringsArray construction, caching, freezing, raw/cooked
+shape, or eval/realm context. The two no-JSON rows are TCO tagged-template
+tests and can be carved out initially. This is no longer merely
+`strings.raw`; it is a coherent template-object boundary locale.

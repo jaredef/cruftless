@@ -360,11 +360,12 @@ Candidates surfaced by `pilots/apparatus/locale-positioning-audit/findings/resol
 **Methodology**: split by boundary family (private slots, template objects, lexical environment capture, iterator-protocol lowering, generator suspension, RegExp match metadata), then check active locale absorption before founding any broad child.
 **Status**: audited by `pilots/apparatus/locale-positioning-audit/findings/spec-boundary-integrity-audit.md`. Do not found as a broad locale. Private fields are absorbed by PFRS/CESS; generator suspension is an AGFA scope-extension; RegExp named captures route under RC. Three fresh baseline-first child candidates are listed below.
 
-### (abj) `tagged-template-object-boundary` — 🟡 BASELINE-FIRST
+### (abj) `tagged-template-object-boundary` — 🟢 SPAWN-READY
 **Telos**: close tagged-template object construction at the AST-to-bytecode/runtime boundary. The visible failure is `strings.raw` not populated, which means the template-object directive did not survive into the call artifact.
 **Pool**: Instance 4 x Axis R tagged-template boundary rows, plus focused fixtures from `language/expressions/tagged-template/` and `language/template-literals/`.
 **Methodology**: baseline must distinguish parser escape/cooked-string issues, raw-source preservation, template-object allocation, `.raw` descriptor shape, and call argument ordering. Redirect lex/raw-source failures to a string/template literal locale; spawn only if object allocation/descriptor shape dominates.
-**Status**: baseline-first.
+**Baseline**: LPA-EXT 9 ran all 27 `language/expressions/tagged-template/` rows. Result: 12 PASS / 13 FAIL / 2 ABORT-no-json. Failures cluster around TemplateStringsArray construction, cache identity, freezing, raw/cooked shape, and eval/realm tag binding. TCO rows (`tco-call.js`, `tco-member.js`) abort and should be initial carve-outs.
+**Status**: spawn-ready. Founding baseline should use the LPA-EXT 9 artifact and set first substrate rung to template-object construction/cache/freeze before TCO.
 
 ### (abk) `direct-eval-lexical-capture` — 🟡 BASELINE-FIRST
 **Telos**: close direct eval lexical environment capture, especially outer `const`/`let` visibility. This is distinct from lex-error propagation through eval; it is about selecting the caller lexical environment for direct eval execution.
