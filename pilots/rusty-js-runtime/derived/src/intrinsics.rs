@@ -7215,6 +7215,109 @@ impl Runtime {
             rt.set_engine_sentinel(new_id, "__pym_calendar", Value::String(Rc::new("iso8601".into())));
             Ok(Value::Object(new_id))
         });
+        // PDTC + PMDTPD + PYMTPD: cross-class conversion methods.
+        // Installed here so all target prototypes are in scope.
+        let pd_for_conv = pd_proto;
+        let pt_for_conv = pt_proto;
+        // PDT.toPlainDate(): extract y/m/d -> PD instance.
+        register_intrinsic_method(self, pdt_proto, "toPlainDate", 0, move |rt, _args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("PDT.toPlainDate: this not object".into())),
+            };
+            let (y, m, d) = match (rt.object_get(id, "__pdt_year"), rt.object_get(id, "__pdt_month"), rt.object_get(id, "__pdt_day")) {
+                (Value::Number(y), Value::Number(m), Value::Number(d)) => (y as i64, m as i64, d as i64),
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainDateTime.prototype.toPlainDate: this is not a Temporal.PlainDateTime".into()
+                )),
+            };
+            Ok(make_plain_date(rt, pd_for_conv, y, m, d))
+        });
+        // PDT.toPlainTime(): extract h/m/s/ms/μs/ns -> PT instance.
+        register_intrinsic_method(self, pdt_proto, "toPlainTime", 0, move |rt, _args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("PDT.toPlainTime: this not object".into())),
+            };
+            let read = |rt: &mut Runtime, name: &str| -> i64 {
+                match rt.object_get(id, &format!("__pdt_{}", name)) {
+                    Value::Number(n) => n as i64,
+                    _ => 0,
+                }
+            };
+            // brand-check via __pdt_year
+            if matches!(rt.object_get(id, "__pdt_year"), Value::Undefined) {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.PlainDateTime.prototype.toPlainTime: this is not a Temporal.PlainDateTime".into()
+                ));
+            }
+            let h = read(rt, "hour"); let mi = read(rt, "minute"); let s = read(rt, "second");
+            let ms = read(rt, "millisecond"); let us = read(rt, "microsecond"); let ns = read(rt, "nanosecond");
+            let mut o = Object::new_ordinary();
+            o.proto = Some(pt_for_conv);
+            let new_id = rt.alloc_object(o);
+            for (k, v) in [("hour", h), ("minute", mi), ("second", s),
+                           ("millisecond", ms), ("microsecond", us), ("nanosecond", ns)] {
+                rt.set_engine_sentinel(new_id, &format!("__pt_{}", k), Value::Number(v as f64));
+            }
+            Ok(Value::Object(new_id))
+        });
+        // PMD.toPlainDate({year}): given year, compose PD.
+        let pd_for_pmd_conv = pd_proto;
+        register_intrinsic_method(self, pmd_proto, "toPlainDate", 1, move |rt, args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("PMD.toPlainDate: this not object".into())),
+            };
+            let m = match rt.object_get(id, "__pmd_month") {
+                Value::Number(n) => n as i64,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainMonthDay.prototype.toPlainDate: this is not a Temporal.PlainMonthDay".into()
+                )),
+            };
+            let d = match rt.object_get(id, "__pmd_day") { Value::Number(n) => n as i64, _ => 0 };
+            let arg = args.first().cloned().unwrap_or(Value::Undefined);
+            let year = match arg {
+                Value::Object(o) => match rt.object_get(o, "year") {
+                    Value::Number(n) => n as i64,
+                    _ => return Err(RuntimeError::TypeError(
+                        "Temporal.PlainMonthDay.prototype.toPlainDate: argument must have year property".into()
+                    )),
+                },
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainMonthDay.prototype.toPlainDate: argument must be an object with year".into()
+                )),
+            };
+            Ok(make_plain_date(rt, pd_for_pmd_conv, year, m, d))
+        });
+        // PYM.toPlainDate({day}): given day, compose PD.
+        let pd_for_pym_conv = pd_proto;
+        register_intrinsic_method(self, pym_proto, "toPlainDate", 1, move |rt, args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("PYM.toPlainDate: this not object".into())),
+            };
+            let y = match rt.object_get(id, "__pym_year") {
+                Value::Number(n) => n as i64,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainYearMonth.prototype.toPlainDate: this is not a Temporal.PlainYearMonth".into()
+                )),
+            };
+            let m = match rt.object_get(id, "__pym_month") { Value::Number(n) => n as i64, _ => 0 };
+            let arg = args.first().cloned().unwrap_or(Value::Undefined);
+            let day = match arg {
+                Value::Object(o) => match rt.object_get(o, "day") {
+                    Value::Number(n) => n as i64,
+                    _ => return Err(RuntimeError::TypeError(
+                        "Temporal.PlainYearMonth.prototype.toPlainDate: argument must have day property".into()
+                    )),
+                },
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainYearMonth.prototype.toPlainDate: argument must be an object with day".into()
+                )),
+            };
+            Ok(make_plain_date(rt, pd_for_pym_conv, y, m, day))
+        });
         self.globals.insert("Temporal".into(), Value::Object(temporal));
     }
 

@@ -3,9 +3,9 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 180,
+    "locales": 183,
     "top_level": 104,
-    "nested": 76,
+    "nested": 79,
     "warnings": 0
   },
   "locales": [
@@ -1189,6 +1189,15 @@
       "status": null
     },
     {
+      "coord": "temporal-implementation/temporal-plain-date-time/plain-date-time-conversion",
+      "tag": "L.temporal-implementation.temporal-plain-date-time.plain-date-time-conversion",
+      "parent": "L.temporal-implementation.temporal-plain-date-time",
+      "scope": "plain-date-time-conversion",
+      "depth": 3,
+      "rung_count": 0,
+      "status": null
+    },
+    {
       "coord": "temporal-implementation/temporal-plain-date-time/plain-date-time-ctor-fields",
       "tag": "L.temporal-implementation.temporal-plain-date-time.plain-date-time-ctor-fields",
       "parent": "L.temporal-implementation.temporal-plain-date-time",
@@ -1324,6 +1333,15 @@
       "status": null
     },
     {
+      "coord": "temporal-implementation/temporal-plain-month-day/plain-month-day-conversion",
+      "tag": "L.temporal-implementation.temporal-plain-month-day.plain-month-day-conversion",
+      "parent": "L.temporal-implementation.temporal-plain-month-day",
+      "scope": "plain-month-day-conversion",
+      "depth": 3,
+      "rung_count": 0,
+      "status": null
+    },
+    {
       "coord": "temporal-implementation/temporal-plain-month-day/plain-month-day-ctor-fields",
       "tag": "L.temporal-implementation.temporal-plain-month-day.plain-month-day-ctor-fields",
       "parent": "L.temporal-implementation.temporal-plain-month-day",
@@ -1429,6 +1447,15 @@
       "scope": "temporal-plain-year-month",
       "depth": 2,
       "rung_count": 1,
+      "status": null
+    },
+    {
+      "coord": "temporal-implementation/temporal-plain-year-month/plain-year-month-conversion",
+      "tag": "L.temporal-implementation.temporal-plain-year-month.plain-year-month-conversion",
+      "parent": "L.temporal-implementation.temporal-plain-year-month",
+      "scope": "plain-year-month-conversion",
+      "depth": 3,
+      "rung_count": 0,
       "status": null
     },
     {

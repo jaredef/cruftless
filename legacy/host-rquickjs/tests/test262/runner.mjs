@@ -302,6 +302,9 @@ function runOne(path) {
       '/Temporal/PlainDateTime/prototype/subtract/',
       '/Temporal/PlainDateTime/prototype/since/',
       '/Temporal/PlainDateTime/prototype/until/',
+      // PDTC: PDT conversions
+      '/Temporal/PlainDateTime/prototype/toPlainDate/',
+      '/Temporal/PlainDateTime/prototype/toPlainTime/',
       // PMDCF-EXT 1: PlainMonthDay ctor + getters + toString
       '/Temporal/PlainMonthDay/constructor.js',
       '/Temporal/PlainMonthDay/name.js',
@@ -325,6 +328,7 @@ function runOne(path) {
       '/Temporal/PlainMonthDay/from/',
       '/Temporal/PlainMonthDay/prototype/equals/',
       '/Temporal/PlainMonthDay/prototype/with/',
+      '/Temporal/PlainMonthDay/prototype/toPlainDate/',
       // PYMCF-EXT 1: PlainYearMonth ctor + 10 getters + toString/toJSON
       '/Temporal/PlainYearMonth/constructor.js',
       '/Temporal/PlainYearMonth/name.js',
@@ -355,6 +359,7 @@ function runOne(path) {
       '/Temporal/PlainYearMonth/from/',
       '/Temporal/PlainYearMonth/compare/',
       '/Temporal/PlainYearMonth/prototype/equals/',
+      '/Temporal/PlainYearMonth/prototype/toPlainDate/',
       // PDTDP-EXT 1: PDT derived-properties (11 getters)
       '/Temporal/PlainDateTime/prototype/dayOfWeek/',
       '/Temporal/PlainDateTime/prototype/dayOfYear/',
