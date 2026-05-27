@@ -362,3 +362,39 @@ Added Tier N, "resolver-axis heuristics partition":
 **Finding LPA.19 (the 13 new PASS fixtures confirm lowering correctness for ASI, Unicode, numeric literals, expression precedence, closures, hoisting, switch, labeled control flow, SameValue, abstract equality, and computed property order)**: these green results are not incidental. They confirm that the lexer, parser, and core bytecode compiler handle these ECMA-262 features correctly and produce byte-identical output to Bun. The engine's lowering pipeline is sound for the expression/statement grammar core; the gaps are at the boundary (eval, finally-on-abrupt, iterator-close) and at the spec's exotic object / abstract operation layer.
 
 **Status**: LPA-EXT 8 CLOSED. Diff-prod cross-check recorded in language-lowering-partition.md §IV. No substrate locale spawned; the empirical leverage ranking is available for the next spawn decision.
+
+---
+
+## LPA-EXT 9 — Lexer substrate gap analysis (2026-05-27)
+
+**Trigger**: Keeper directive to analyze substrate gaps issuing from the highest (most foundational) layer — the tokenization / lexical grammar layer per ECMA-262 §11–§12.
+
+**Method**:
+
+- Full source read of `pilots/rusty-js-parser/derived/src/lexer.rs` (1,302 lines) and `token.rs` (150 lines).
+- Cross-referenced against ECMA-262 §11 (Lexical Grammar) and §12 (ECMAScript Language: Lexical Grammar) production-by-production.
+- Mapped each lexer subsystem against the 112-fixture diff-prod results and the test262 matrix (rank 5: `source-to-ast/parser-early-error` = 903 failures; rank 7: `source-to-ast/parser-early-error` = 798 failures).
+- Consulted seeds of all 7 active tokenization locales (NLC, IDT, SLEC, PNL, LTC, LGSS, LEP).
+
+**Produced**: `pilots/apparatus/locale-positioning-audit/findings/lexer-substrate-gap-analysis.md`.
+
+**Gap inventory**:
+
+| Gap | Description | Diff-prod signal | Test262 signal | Locale |
+|---|---|---|---|---|
+| L.1 | Permissive Unicode ID_Start/ID_Continue | PASS (valid IDs only) | 115 fails | `identifier-tokenization/` |
+| L.2 | strings.raw not threaded to runtime | FAIL (tagged-template-raw, string-escapes) | language-lowering rows | (candidate) |
+| L.3 | Identity escape passthrough in strict | masked by Bun parity | parser-early-error rows | `string-literal-and-escape-conformance/` |
+| L.4 | Regex flag validation absent at lex tier | PASS (valid flags) | regexp conformance rows | `regexp-conformance/` |
+| L.5 | No sloppy script-goal lexing | FAIL (directive-prologues), crash (with-scoping) | 734 Annex B rows | (candidate: `annexB-language-semantics`) |
+| L.6 | No Unicode property escapes / lookbehind in regex | FAIL (regexp-lookbehind-unicode) | regexp rows | `regex-engine-substrate/` |
+
+**Finding LPA.20 (the lexer's core token emission pipeline is sound)**: 7 diff-prod fixtures exercising the lexer's primary surfaces (ASI, Unicode identifiers, numeric literals, regex/division, template literals, string content, punctuators) all PASS. The lexer produces correct tokens for the patterns real code exercises. The 6 gaps are in conformance edges (permissive Unicode tables, strict-mode escape rejection, regex flag validation), not in the core pipeline.
+
+**Finding LPA.21 (the highest-leverage "lexer" gap is actually in the compiler)**: L.2 (strings.raw) is the most user-visible lexer-adjacent gap, but the lexer itself produces the raw data correctly. The gap is in the bytecode compiler (does not emit the raw array) and the runtime (does not construct the frozen `.raw` property on template call-site objects). This is a pattern: the lexer's output is correct, but higher layers don't consume all of it.
+
+**Finding LPA.22 (sloppy script-goal is the deepest architectural gap)**: L.5 blocks 734 Annex B test262 rows and all sloppy-mode-only behaviors. Unlike L.1–L.4 (which are single-rung mechanical fixes), adding script-goal support requires changes to the lexer (HTML comments, legacy octal acceptance), parser (sloppy-mode function hoisting, `with` acceptance without `new Function` workaround), and compiler (binding instantiation differences). This aligns with LPA-EXT 5 Arc C.
+
+**Finding LPA.23 (all 6 gaps have existing locale coverage or candidates)**: no new tokenization locale is needed. The 7 active locales plus 1 CANDIDATES.md entry cover all identified gaps. The recommended next moves are scope extensions, not new spawns.
+
+**Status**: LPA-EXT 9 CLOSED. Lexer substrate gap analysis recorded.
