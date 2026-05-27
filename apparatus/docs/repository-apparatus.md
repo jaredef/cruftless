@@ -224,6 +224,7 @@ Every locale carries its own discipline artifacts per Doc 581 + Doc 733:
 |---|---|---|
 | **seed.md** | `pilots/<locale>/seed.md` | Telos + constraints (Cn) + falsifiers (Pred-n) + methodology + carve-outs + composes-with |
 | **trajectory.md** | `pilots/<locale>/trajectory.md` | Append-only round-by-round record; each round describes a substrate move with empirical outcome |
+| **analysis.md** | `pilots/<locale>/analysis.md` | Contingent: diff-prod empirical cross-reference mapping the locale's scope to the 112-fixture PASS/FAIL vector + named mechanism gaps. Present for all non-apparatus locales (125 total). Agents consult this after seed + trajectory to ground substrate decisions in empirical data. |
 | **docs/design.md** | `pilots/<locale>/docs/design.md` | Per-locale apparatus + LOC budget + open risks (where used) |
 
 ---
@@ -239,6 +240,7 @@ pilots/
   <locale-name>/
     seed.md              ← apparatus + telos + falsifiers
     trajectory.md        ← append-only rounds
+    analysis.md          ← diff-prod empirical cross-reference (contingent)
     docs/                ← per-locale design docs (optional)
     fixtures/            ← per-locale test fixtures (optional)
     derived/             ← Pin-Art-derived Rust crate (where applicable)
@@ -264,7 +266,8 @@ pilots/
 To pick up work on any locale:
 1. Read `seed.md` first (telos + apparatus + methodology).
 2. Read `trajectory.md` tail (most recent rounds).
-3. The pair is sufficient for a fresh reader to become operational on that workstream in one read (Doc 581 resume-vector discipline).
+3. Read `analysis.md` if present (diff-prod empirical cross-reference: which fixtures exercise the scope, PASS/FAIL state, mechanism gaps).
+4. The seed + trajectory pair is sufficient for operational context (Doc 581 resume-vector discipline). The analysis.md adds empirical grounding: it tells the agent whether the engine is correct, divergent, or untested at the locale's surface before any substrate move begins.
 
 ---
 
