@@ -347,6 +347,10 @@ function runOne(path) {
       '/Temporal/PlainYearMonth/prototype/constructor.js',
       '/Temporal/PlainYearMonth/prototype/prop-desc.js',
       '/Temporal/PlainYearMonth/prototype/toStringTag/',
+      // PYMS-EXT 1 + PYME-EXT 1: PYM from + compare + equals
+      '/Temporal/PlainYearMonth/from/',
+      '/Temporal/PlainYearMonth/compare/',
+      '/Temporal/PlainYearMonth/prototype/equals/',
       // PDTDP-EXT 1: PDT derived-properties (11 getters)
       '/Temporal/PlainDateTime/prototype/dayOfWeek/',
       '/Temporal/PlainDateTime/prototype/dayOfYear/',

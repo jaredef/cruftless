@@ -6827,6 +6827,141 @@ impl Runtime {
             .set_own_internal("constructor".into(), Value::Object(pym_ctor));
         self.obj_mut(pym_ctor)
             .set_own_frozen("prototype".into(), Value::Object(pym_proto));
+        // PYMS-EXT 1 (plain-year-month-static): from + compare.
+        // Parses "YYYY-MM" or "YYYY-MM-DD" with optional time/offset tail (ignored).
+        fn parse_iso_pym(s: &str) -> Option<(i64, i64)> {
+            let b = s.as_bytes();
+            if b.len() < 7 { return None; }
+            fn rd(b: &[u8], i: usize, n: usize) -> Option<i64> {
+                if i + n > b.len() { return None; }
+                let mut v = 0i64;
+                for k in 0..n {
+                    let c = b[i + k];
+                    if !c.is_ascii_digit() { return None; }
+                    v = v * 10 + (c - b'0') as i64;
+                }
+                Some(v)
+            }
+            let year = rd(b, 0, 4)?;
+            if b.get(4) != Some(&b'-') { return None; }
+            let month = rd(b, 5, 2)?;
+            if !(1..=12).contains(&month) { return None; }
+            // Optional -DD tail.
+            let mut i = 7;
+            if b.get(i) == Some(&b'-') {
+                if rd(b, i + 1, 2).is_none() { return None; }
+                i += 3;
+            }
+            // Optional time/offset/annotation tail.
+            if matches!(b.get(i), Some(b'T') | Some(b't') | Some(b' ')) {
+                i = b.len(); // accept everything as tail to ignore
+            }
+            if i != b.len() { return None; }
+            Some((year, month))
+        }
+        let pym_proto_for_static = pym_proto;
+        fn make_pym(rt: &mut Runtime, proto: ObjectRef, y: i64, m: i64) -> Value {
+            let mut o = Object::new_ordinary();
+            o.proto = Some(proto);
+            let id = rt.alloc_object(o);
+            rt.set_engine_sentinel(id, "__pym_year", Value::Number(y as f64));
+            rt.set_engine_sentinel(id, "__pym_month", Value::Number(m as f64));
+            rt.set_engine_sentinel(id, "__pym_refday", Value::Number(1.0));
+            rt.set_engine_sentinel(id, "__pym_calendar", Value::String(Rc::new("iso8601".into())));
+            Value::Object(id)
+        }
+        register_intrinsic_method(self, pym_ctor, "from", 1, move |rt, args| {
+            let item = args.first().cloned().unwrap_or(Value::Undefined);
+            if let Value::String(s) = &item {
+                let (y, m) = parse_iso_pym(s).ok_or_else(|| RuntimeError::RangeError(format!(
+                    "Temporal.PlainYearMonth.from(string): invalid ISO 8601: {:?}", s
+                )))?;
+                return Ok(make_pym(rt, pym_proto_for_static, y, m));
+            }
+            let id = match item {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainYearMonth.from: argument must be PYM, object, or string".into()
+                )),
+            };
+            if let Value::Number(y) = rt.object_get(id, "__pym_year") {
+                let m = match rt.object_get(id, "__pym_month") { Value::Number(n) => n as i64, _ => 0 };
+                return Ok(make_pym(rt, pym_proto_for_static, y as i64, m));
+            }
+            // Property bag.
+            let y = match rt.object_get(id, "year") {
+                Value::Number(n) => n as i64,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainYearMonth.from: object must have year".into()
+                )),
+            };
+            let m = match rt.object_get(id, "month") {
+                Value::Number(n) => n as i64,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainYearMonth.from: object must have month".into()
+                )),
+            };
+            if !(1..=12).contains(&m) {
+                return Err(RuntimeError::RangeError(format!("month {} out of range", m)));
+            }
+            Ok(make_pym(rt, pym_proto_for_static, y, m))
+        });
+        register_intrinsic_method(self, pym_ctor, "compare", 2, move |rt, args| {
+            fn extract(rt: &mut Runtime, v: Value) -> Result<(i64, i64), RuntimeError> {
+                if let Value::String(s) = &v {
+                    return parse_iso_pym(&s).ok_or_else(|| RuntimeError::RangeError(format!(
+                        "Temporal.PlainYearMonth.compare(string): invalid ISO 8601: {:?}", s
+                    )));
+                }
+                if let Value::Object(id) = v {
+                    if let Value::Number(y) = rt.object_get(id, "__pym_year") {
+                        let m = match rt.object_get(id, "__pym_month") { Value::Number(n) => n as i64, _ => 0 };
+                        return Ok((y as i64, m));
+                    }
+                }
+                Err(RuntimeError::TypeError("PYM.compare: argument must be PYM or string".into()))
+            }
+            let a = extract(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
+            let b = extract(rt, args.get(1).cloned().unwrap_or(Value::Undefined))?;
+            Ok(Value::Number(if a < b { -1.0 } else if a > b { 1.0 } else { 0.0 }))
+        });
+        // PYME-EXT 1: equals(other) — tuple compare on (year, month).
+        register_intrinsic_method(self, pym_proto, "equals", 1, |rt, args| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("PYM.equals: this not object".into())),
+            };
+            let ty = match rt.object_get(id, "__pym_year") {
+                Value::Number(n) => n as i64,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.PlainYearMonth.prototype.equals: this is not a Temporal.PlainYearMonth".into()
+                )),
+            };
+            let tm = match rt.object_get(id, "__pym_month") { Value::Number(n) => n as i64, _ => 0 };
+            let other = args.first().cloned().unwrap_or(Value::Undefined);
+            let (oy, om) = match other {
+                Value::String(s) => parse_iso_pym(&s).ok_or_else(|| RuntimeError::RangeError(format!(
+                    "Temporal.PlainYearMonth.prototype.equals: invalid: {:?}", s
+                )))?,
+                Value::Object(o) => {
+                    if let Value::Number(y) = rt.object_get(o, "__pym_year") {
+                        (y as i64, match rt.object_get(o, "__pym_month") { Value::Number(n) => n as i64, _ => 0 })
+                    } else {
+                        let y = match rt.object_get(o, "year") {
+                            Value::Number(n) => n as i64,
+                            _ => return Err(RuntimeError::TypeError("PYM.equals: object must have year".into())),
+                        };
+                        let m = match rt.object_get(o, "month") {
+                            Value::Number(n) => n as i64,
+                            _ => return Err(RuntimeError::TypeError("PYM.equals: object must have month".into())),
+                        };
+                        (y, m)
+                    }
+                }
+                _ => return Err(RuntimeError::TypeError("PYM.equals: argument must be PYM, object, or string".into())),
+            };
+            Ok(Value::Boolean(ty == oy && tm == om))
+        });
         self.obj_mut(temporal)
             .set_own_internal("PlainYearMonth".into(), Value::Object(pym_ctor));
         // PDC-EXT 1 (plain-date-conversion): toPlainDateTime / toPlainMonthDay /
