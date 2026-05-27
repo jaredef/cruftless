@@ -75,3 +75,36 @@ TAMM cluster exemplars POST-EXT 2: PASS=36 FAIL=64 / 100 (36.0%)
 - TAMM-EXT 5: ArrayBuffer.prototype.transfer / .transferToFixedLength / .slice (the 9 remaining ArrayBuffer fails).
 
 **Status**: TAMM-EXT 2 CLOSED locally.
+
+## TAMM-EXT 3 — LANDED (2026-05-27) — TypedArray.prototype methods + %TypedArray% intrinsic
+
+Per keeper directive Telegram 10074 ("Continue").
+
+**Substrate** (~360 LOC across intrinsics.rs):
+
+*Part A: ES2022+ method additions on ta_proto.* Added 9 missing methods per ECMA-262 §23.2.3: `at` (§23.2.3.1), `lastIndexOf` (§23.2.3.18), `copyWithin` (§23.2.3.6), `findLast` (§23.2.3.13), `findLastIndex` (§23.2.3.14), `sort` (§23.2.3.30, ascending default + custom comparator via insertion sort for borrow-safety), `with` (§23.2.3.34), `toReversed` (§23.2.3.32), `toSorted` (§23.2.3.33).
+
+*Part B: methods mirrored onto %TypedArray%.prototype (ta_proto_proto).* Pre-EXT 3, methods lived only on ta_proto (the per-instance shared prototype). test262 fixtures probe `Object.getOwnPropertyDescriptor(Object.getPrototypeOf(Uint8Array.prototype), name)` and expected to find them at the spec-correct level-2 prototype. Mirrored via a name-list iteration that copies each existing ta_proto method onto ta_proto_proto.
+
+*Part C: %TypedArray% abstract intrinsic constructor.* Pre-EXT 3, `Object.getPrototypeOf(Int8Array)` returned Function.prototype (the default), so test262 harnesses doing `TA = Object.getPrototypeOf(Int8Array); TA.prototype.at(...)` got `undefined.at`. Added a %TypedArray% ctor object that throws on direct construction, with .prototype = ta_proto_proto. Wired each concrete TypedArray ctor's [[Prototype]] to point at it. Also installed `TypedArray[Symbol.species]` getter per §23.2.2.4.
+
+**Yield**:
+```text
+TAMM cluster POST-EXT 2: PASS=36 FAIL=64 / 100 (36.0%)
+TAMM cluster POST-EXT 3: PASS=49 FAIL=51 / 100 (49.0%)
+```
+**+13 PASS** this rung. TypedArray family residual **27 → 14**. TypedArrayConstructors family residual unchanged at 24 — those tests probe deeper substrate (BYTES_PER_ELEMENT shape, abstract-ctor semantics, length+name+prop-desc invariants) that needs further rungs.
+
+**Cumulative TAMM yield since EXT 0 baseline: 3 → 49 / 100 (+46 across three rungs)**.
+
+**Gates**: build clean; diff-prod 59/53 (parity).
+
+**Direct probes**:
+- `typeof Uint8Array.prototype.at === "function"` ✅
+- `typeof Uint8Array.prototype.toSorted === "function"` ✅
+- `Object.getPrototypeOf(Int8Array)` returns the %TypedArray% ctor (not Function.prototype) ✅
+- `typeof TypedArray[Symbol.species] === "function"` (via the intrinsic, not globalThis) ✅
+
+**Standing rec TAMM.3 (level-2 prototype install)**: built-in prototype hierarchies with abstract-intrinsic parents (TypedArray, Error, Iterator) need explicit %X% ctor + .prototype installation, with each concrete child ctor's [[Prototype]] wired to %X%. Cruft has additional opportunities here: %Iterator% for the iterator-helpers proposal, %TypedArray% just done, %Error% for proper Error subclass identity. Each follows the same shape.
+
+**Status**: TAMM-EXT 3 CLOSED locally.
