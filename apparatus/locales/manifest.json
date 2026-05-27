@@ -1,10 +1,10 @@
 {
   "generated_by": "apparatus/locales/discover.sh",
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
-  "locale_root": "/Users/jaredfoy/Developer/cruftless/pilots",
+  "locale_root": "/home/user/cruftless/pilots",
   "totals": {
-    "locales": 129,
-    "top_level": 107,
+    "locales": 134,
+    "top_level": 112,
     "nested": 22,
     "warnings": 0
   },
@@ -42,7 +42,7 @@
       "parent": "L.apparatus",
       "scope": "locale-positioning-audit",
       "depth": 2,
-      "rung_count": 7,
+      "rung_count": 10,
       "status": null
     },
     {
@@ -240,7 +240,7 @@
       "parent": null,
       "scope": "async-generator-and-for-await-lowering",
       "depth": 1,
-      "rung_count": 1,
+      "rung_count": 7,
       "status": null
     },
     {
@@ -307,6 +307,24 @@
       "status": null
     },
     {
+      "coord": "eval-function-arguments-binding-semantics",
+      "tag": "L.eval-function-arguments-binding-semantics",
+      "parent": null,
+      "scope": "eval-function-arguments-binding-semantics",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
+    },
+    {
+      "coord": "finally-abrupt-completion-lowering",
+      "tag": "L.finally-abrupt-completion-lowering",
+      "parent": null,
+      "scope": "finally-abrupt-completion-lowering",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
+    },
+    {
       "coord": "for-head-assignment-pattern-validity",
       "tag": "L.for-head-assignment-pattern-validity",
       "parent": null,
@@ -365,6 +383,15 @@
       "tag": "L.for-of-rhs-is-assignment-expression",
       "parent": null,
       "scope": "for-of-rhs-is-assignment-expression",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
+    },
+    {
+      "coord": "generator-coroutine-suspension",
+      "tag": "L.generator-coroutine-suspension",
+      "parent": null,
+      "scope": "generator-coroutine-suspension",
       "depth": 1,
       "rung_count": 1,
       "status": null
@@ -446,6 +473,15 @@
       "tag": "L.iterable-primitive-tobject",
       "parent": null,
       "scope": "iterable-primitive-tobject",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
+    },
+    {
+      "coord": "iterator-close-emission-sites",
+      "tag": "L.iterator-close-emission-sites",
+      "parent": null,
+      "scope": "iterator-close-emission-sites",
       "depth": 1,
       "rung_count": 1,
       "status": null
@@ -991,12 +1027,21 @@
       "status": "**CLOSED at SPTW-EXT 1**."
     },
     {
+      "coord": "tagged-template-object-construction",
+      "tag": "L.tagged-template-object-construction",
+      "parent": null,
+      "scope": "tagged-template-object-construction",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
+    },
+    {
       "coord": "temporal-availability",
       "tag": "L.temporal-availability",
       "parent": null,
       "scope": "temporal-availability",
       "depth": 1,
-      "rung_count": 1,
+      "rung_count": 17,
       "status": null
     },
     {
