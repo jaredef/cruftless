@@ -1,0 +1,3 @@
+language/expressions/tagged-template/cache-differing-expressions-eval.js
+language/expressions/tagged-template/cache-eval-inner-function.js
+language/expressions/tagged-template/cache-identical-source-eval.js

@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/Developer/cruftless/pilots",
   "totals": {
-    "locales": 131,
-    "top_level": 108,
+    "locales": 132,
+    "top_level": 109,
     "nested": 23,
     "warnings": 0
   },
@@ -266,6 +266,15 @@
       "tag": "L.console-log-inspect-formatter",
       "parent": null,
       "scope": "console-log-inspect-formatter",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
+    },
+    {
+      "coord": "direct-eval-lexical-capture",
+      "tag": "L.direct-eval-lexical-capture",
+      "parent": null,
+      "scope": "direct-eval-lexical-capture",
       "depth": 1,
       "rung_count": 1,
       "status": null
@@ -996,7 +1005,7 @@
       "parent": null,
       "scope": "tagged-template-object-boundary",
       "depth": 1,
-      "rung_count": 1,
+      "rung_count": 7,
       "status": null
     },
     {

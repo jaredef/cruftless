@@ -158,6 +158,11 @@ pub enum Op {
     /// at the calling derived's super-call sequence. Emit immediately
     /// before the CallMethod (or __apply path) in compile_super_call.
     PropagateNewTarget = 0x79,
+    /// DIRECT_EVAL <u8> — syntactic eval(...) call. Stack layout matches
+    /// CALL: [..., callee, arg0..argN-1]. The interpreter has the caller
+    /// frame in hand, so it can execute PerformEval against caller-visible
+    /// lexical bindings instead of routing through the native global eval ABI.
+    DirectEval = 0x7A,
 
     // Member access
     /// GET_PROP <u16>
@@ -339,7 +344,7 @@ impl Op {
             | IterClose | Nop | Debugger | PushThis | PushImportMeta | PushNewTarget | SetThis
             | PropagateNewTarget | EnterWith | ExitWith | AddI64 | SubI64 | MulI64 | IncI64
             | DecI64 | LtI64 | LeI64 | GtI64 | GeI64 | EqI64 | NeI64 => 0,
-            Call | New | CallMethod | CallMethodIcCached => 1,
+            Call | New | CallMethod | DirectEval | CallMethodIcCached => 1,
             PushConst | LoadLocal | StoreLocal | LoadArg | StoreArg | LoadGlobal
             | LoadGlobalOrUndef | StoreGlobal | LoadUpvalue | StoreUpvalue | DefineLocal
             | ResetLocalCell | LoadWithName | StoreWithName | ResolveWithName | LoadWithNameRef
@@ -460,6 +465,7 @@ pub fn op_from_byte(b: u8) -> Option<Op> {
         0x77 => PushNewTarget,
         0x78 => SetThis,
         0x79 => PropagateNewTarget,
+        0x7A => DirectEval,
         0x80 => GetProp,
         0x81 => SetProp,
         0x82 => GetIndex,

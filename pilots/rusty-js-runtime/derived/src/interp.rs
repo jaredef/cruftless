@@ -12362,6 +12362,23 @@ impl Runtime {
                     )?;
                     frame.push(result);
                 }
+                Op::DirectEval => {
+                    let n = frame.bytecode[frame.pc] as usize;
+                    frame.pc += 1;
+                    let mut args = Vec::with_capacity(n);
+                    for _ in 0..n {
+                        args.push(frame.pop()?);
+                    }
+                    args.reverse();
+                    let callee = frame.pop()?;
+                    let global_eval = self.globals.get("eval").cloned();
+                    let result = if global_eval.as_ref() == Some(&callee) {
+                        self.direct_eval_from_frame(frame, args)?
+                    } else {
+                        self.call_function(callee, Value::Undefined, args)?
+                    };
+                    frame.push(result);
+                }
                 Op::CallMethod => {
                     let site_pc = frame.pc - 1; // IHI-EXT 7: Op byte's pc for cache key
                     let n = frame.bytecode[frame.pc] as usize;
@@ -13078,6 +13095,104 @@ impl Runtime {
     /// across nesting), and set as `Frame::this_value` for closure frames.
     /// BoundFunction unwraps once, prepending bound args and overriding the
     /// caller's `this` with the bound this.
+    pub(crate) fn eval_source_globalish(&mut self, source: String) -> Result<Value, RuntimeError> {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static EVAL_COUNTER: AtomicUsize = AtomicUsize::new(0);
+        let n = EVAL_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let url = format!("file://<eval:{}>", n);
+        crate::intrinsics::eval_global_declaration_instantiation_guard(self, &source)?;
+
+        let stash_key = format!("__eval_out_{}", n);
+        let expr_source = format!("{} = ({});", stash_key, source);
+        let global_this = self
+            .globals
+            .get("globalThis")
+            .cloned()
+            .unwrap_or(Value::Undefined);
+        let saved_this = std::mem::replace(&mut self.current_this, global_this);
+        let expr_ok = self.evaluate_module(&expr_source, &url).is_ok();
+        if expr_ok {
+            self.current_this = saved_this;
+            let result = self
+                .globals
+                .get(&stash_key)
+                .cloned()
+                .unwrap_or(Value::Undefined);
+            self.globals.remove(&stash_key);
+            return Ok(result);
+        }
+
+        let stmt_url = format!("file://<eval:{}:stmt>", n);
+        let result = self.evaluate_module(&source, &stmt_url);
+        self.current_this = saved_this;
+        match result {
+            Ok(_) => Ok(Value::Undefined),
+            Err(RuntimeError::CompileError(msg)) => Err(RuntimeError::SyntaxError(msg)),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn direct_eval_from_frame(
+        &mut self,
+        caller: &mut Frame<'_>,
+        args: Vec<Value>,
+    ) -> Result<Value, RuntimeError> {
+        let source = match args.first() {
+            Some(Value::String(s)) => s.as_str().to_string(),
+            Some(v) => return Ok(v.clone()),
+            None => return Ok(Value::Undefined),
+        };
+
+        let mut overlay: Vec<(String, Value)> = Vec::new();
+        for (slot, desc) in caller.upvalue_names.iter().enumerate() {
+            if let Some(name) = Self::eval_overlay_binding_name(&desc.name) {
+                if let Some(cell) = caller.upvalues.get(slot) {
+                    overlay.push((name, cell.borrow().clone()));
+                }
+            }
+        }
+        for (slot, desc) in caller.locals_names.iter().enumerate() {
+            if let Some(name) = Self::eval_overlay_binding_name(&desc.name) {
+                overlay.push((name, caller.read_local(slot)));
+            }
+        }
+
+        let mut saved = Vec::with_capacity(overlay.len());
+        for (name, value) in overlay {
+            saved.push((name.clone(), self.globals.get(&name).cloned()));
+            self.globals.insert(name, value);
+        }
+        let result = self.eval_source_globalish(source);
+        for (name, old) in saved.into_iter().rev() {
+            if let Some(value) = old {
+                self.globals.insert(name, value);
+            } else {
+                self.globals.remove(&name);
+            }
+        }
+        result
+    }
+
+    fn eval_overlay_binding_name(name: &str) -> Option<String> {
+        let logical = if let Some(rest) = name.strip_prefix("<scoped@") {
+            rest.split_once('>').map(|(_, suffix)| suffix).unwrap_or(name)
+        } else {
+            name
+        };
+        let mut chars = logical.chars();
+        let Some(first) = chars.next() else {
+            return None;
+        };
+        if !(first == '_' || first == '$' || first.is_ascii_alphabetic()) {
+            return None;
+        }
+        if chars.all(|c| c == '_' || c == '$' || c.is_ascii_alphanumeric()) {
+            Some(logical.to_string())
+        } else {
+            None
+        }
+    }
+
     pub fn call_function(
         &mut self,
         callee: Value,

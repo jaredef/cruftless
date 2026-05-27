@@ -2929,7 +2929,14 @@ impl Runtime {
         // no-substitution singleton closed here, cooked and raw coincide.
         register_engine_helper(self, "__template_object__", |rt, args| {
             let site_key = match args.get(1) {
-                Some(Value::String(s)) => Some((**s).clone()),
+                Some(Value::String(s)) => {
+                    let site = s.as_ref();
+                    let key = match rt.current_module_url.last() {
+                        Some(url) if !url.is_empty() => format!("{}:{}", url, site),
+                        _ => site.to_string(),
+                    };
+                    Some(key)
+                }
                 _ => None,
             };
             if let Some(key) = site_key.as_ref() {
@@ -5488,55 +5495,7 @@ impl Runtime {
                 Some(v) => return Ok(v.clone()), // eval(non-string) returns the arg unchanged per §19.2.1.1
                 None => return Ok(Value::Undefined),
             };
-            use std::sync::atomic::{AtomicUsize, Ordering};
-            static EVAL_COUNTER: AtomicUsize = AtomicUsize::new(0);
-            let n = EVAL_COUNTER.fetch_add(1, Ordering::Relaxed);
-            let url = format!("file://<eval:{}>", n);
-            eval_global_declaration_instantiation_guard(rt, &source)?;
-            // Try expression form first: wrap as assignment so the value
-            // is captured in a stash global. If parse fails, fall through
-            // to raw-statements form (no return value).
-            let stash_key = format!("__eval_out_{}", n);
-            let expr_source = format!("{} = ({});", stash_key, source);
-            // EXT 74: ECMA-262 §19.2.1.1 PerformEval. Indirect eval runs the
-            // source as a Script in the global Lexical Environment with
-            // `this` bound to globalThis (not the caller's `this`, which
-            // is the spec direct-eval shape). This matches Script semantics
-            // — `this` at the top level of a Script *is* globalThis —
-            // which a number of test262 fixtures (S15.3.4.3_A3_T1.js et al.)
-            // depend on when they read `this[\"field\"]` after an apply()
-            // assigned to globalThis inside a sloppy function.
-            let saved_this = std::mem::replace(
-                &mut rt.current_this,
-                rt.globals
-                    .get("globalThis")
-                    .cloned()
-                    .unwrap_or(Value::Undefined),
-            );
-            let expr_ok = rt.evaluate_module(&expr_source, &url).is_ok();
-            if expr_ok {
-                rt.current_this = saved_this;
-                let result = rt
-                    .globals
-                    .get(&stash_key)
-                    .cloned()
-                    .unwrap_or(Value::Undefined);
-                rt.globals.remove(&stash_key);
-                return Ok(result);
-            }
-            // Statement form: run as-is, no captured result.
-            let stmt_url = format!("file://<eval:{}:stmt>", n);
-            let r = rt.evaluate_module(&source, &stmt_url);
-            rt.current_this = saved_this;
-            match r {
-                Ok(_) => Ok(Value::Undefined),
-                // §19.2.1.1 PerformEval step 5: if Script parsing fails,
-                // throw a SyntaxError. Surface parse-tier CompileError as
-                // a JS-catchable SyntaxError so test262 negative-phase-parse
-                // tests can observe the throw.
-                Err(RuntimeError::CompileError(msg)) => Err(RuntimeError::SyntaxError(msg)),
-                Err(e) => Err(e),
-            }
+            rt.eval_source_globalish(source)
         });
 
         // Tier-Ω.5.yyy: expose Function.prototype on the Function
@@ -12506,7 +12465,7 @@ fn parse_date_string(s: &str) -> f64 {
     parse_date_string_legacy(s)
 }
 
-fn eval_global_declaration_instantiation_guard(
+pub(crate) fn eval_global_declaration_instantiation_guard(
     rt: &Runtime,
     source: &str,
 ) -> Result<(), RuntimeError> {
