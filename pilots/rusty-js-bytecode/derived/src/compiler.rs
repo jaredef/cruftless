@@ -244,6 +244,15 @@ pub struct Compiler {
     /// jumps and the bytecode offset of the loop's continue target.
     /// Push on loop entry, pop on loop exit.
     loop_stack: Vec<LoopFrame>,
+    /// FACL-EXT 1: function-level stack of pending finalizer AST nodes.
+    /// Pushed at try-finally entry, popped at try-finally exit. Return
+    /// statements compile each pending finalizer inline (TryExit + body)
+    /// before the Return opcode so that finally blocks execute on return.
+    fn_finalizer_stack: Vec<rusty_js_ast::Stmt>,
+    /// FACL-EXT 1: true while compiling an inline-duplicated finally body
+    /// for a break/continue/return. Prevents re-entrant finalizer emission
+    /// when a return inside a finally block would otherwise recurse.
+    in_finalizer_emission: bool,
     /// Tier-Ω.5.o: frames for LabelledStatement wrapping non-loop bodies
     /// (e.g. `outer: { ... break outer; }`). Loop labels live on the
     /// LoopFrame's `label` field instead.
@@ -404,6 +413,17 @@ struct LoopFrame {
     /// frame, but `continue` skips past it to the enclosing loop —
     /// switch is a break-only construct per ECMA-262 §14.12.4.
     is_switch: bool,
+    /// FACL-EXT 1: count of active try blocks between this loop's entry
+    /// and the current compilation point. Incremented at TryEnter inside
+    /// the loop body; decremented at TryExit. When break/continue exits
+    /// this loop, emit TryExit + inline finally bodies before the jump
+    /// so that finally blocks execute per §14.15.3.
+    try_depth: u32,
+    /// FACL-EXT 1: pending finalizer AST nodes for active try-finally
+    /// blocks enclosing this loop's body. Pushed at try-entry, popped
+    /// at try-exit. On break/continue, each is compiled inline before
+    /// the jump (duplicating the finally body in bytecode).
+    pending_finalizers: Vec<rusty_js_ast::Stmt>,
     /// Tier-Ω.5.o: label name attached to this frame by an enclosing
     /// LabelledStatement. `break LABEL` / `continue LABEL` match the
     /// innermost frame with this label. None for unlabelled loops.
@@ -483,6 +503,8 @@ impl Compiler {
             locals: Vec::new(),
             source_map: Vec::new(),
             loop_stack: Vec::new(),
+            fn_finalizer_stack: Vec::new(),
+            in_finalizer_emission: false,
             label_stack: Vec::new(),
             pending_label: None,
             enclosing: Vec::new(),
@@ -1227,10 +1249,19 @@ impl Compiler {
             Stmt::Return { argument, .. } => {
                 if let Some(e) = argument {
                     self.compile_expr(e)?;
-                    encode_op(&mut self.bytecode, Op::Return);
                 } else {
-                    encode_op(&mut self.bytecode, Op::ReturnUndef);
+                    encode_op(&mut self.bytecode, Op::PushUndef);
                 }
+                if !self.in_finalizer_emission {
+                    let finalizers = self.fn_finalizer_stack.clone();
+                    self.in_finalizer_emission = true;
+                    for fin in finalizers.iter().rev() {
+                        encode_op(&mut self.bytecode, Op::TryExit);
+                        self.compile_stmt(fin)?;
+                    }
+                    self.in_finalizer_emission = false;
+                }
+                encode_op(&mut self.bytecode, Op::Return);
             }
             Stmt::Empty { .. } => {}
             Stmt::Block { body, .. } => {
@@ -1408,6 +1439,8 @@ impl Compiler {
                     continue_patches: Vec::new(),
                     break_patches: Vec::new(),
                     is_switch: false,
+                    try_depth: 0,
+                    pending_finalizers: Vec::new(),
                     label: self.pending_label.take(),
                 });
                 self.compile_expr(test)?;
@@ -1436,6 +1469,8 @@ impl Compiler {
                     continue_patches: Vec::new(),
                     break_patches: Vec::new(),
                     is_switch: false,
+                    try_depth: 0,
+                    pending_finalizers: Vec::new(),
                     label: self.pending_label.take(),
                 });
                 self.compile_stmt(body)?;
@@ -1504,6 +1539,8 @@ impl Compiler {
                     continue_patches: Vec::new(),
                     break_patches: Vec::new(),
                     is_switch: false,
+                    try_depth: 0,
+                    pending_finalizers: Vec::new(),
                     label: self.pending_label.take(),
                 });
                 let jump_if_false = if let Some(t) = test {
@@ -1729,6 +1766,8 @@ impl Compiler {
                     continue_patches: Vec::new(),
                     break_patches: Vec::new(),
                     is_switch: false,
+                    try_depth: 0,
+                    pending_finalizers: Vec::new(),
                     label: self.pending_label.take(),
                 });
                 // IPBR-EXT 2 (2026-05-24, iter-protocol-bytecode-rewrite
@@ -1913,24 +1952,35 @@ impl Compiler {
             Stmt::Break { label, .. } => {
                 match label {
                     None => {
-                        if let Some(frame) = self.loop_stack.last_mut() {
+                        if let Some(frame) = self.loop_stack.last() {
+                            let finalizers = frame.pending_finalizers.clone();
+                            if !self.in_finalizer_emission {
+                                self.in_finalizer_emission = true;
+                                for fin in finalizers.iter().rev() {
+                                    encode_op(&mut self.bytecode, Op::TryExit);
+                                    self.compile_stmt(fin)?;
+                                }
+                                self.in_finalizer_emission = false;
+                            }
                             let patch_site = encode_op(&mut self.bytecode, Op::Jump);
                             encode_i32(&mut self.bytecode, 0);
-                            frame.break_patches.push(patch_site);
+                            self.loop_stack.last_mut().unwrap().break_patches.push(patch_site);
                         } else {
                             return Err(self.err(span, "break outside of loop"));
                         }
                     }
                     Some(name) => {
-                        // Tier-Ω.5.o: labelled break — walk loop_stack
-                        // top-down for a frame whose `label` matches, then
-                        // fall back to label_stack (labelled non-loop).
                         let needle = name.name.clone();
                         if let Some(idx) = self
                             .loop_stack
                             .iter()
                             .rposition(|f| f.label.as_deref() == Some(needle.as_str()))
                         {
+                            let finalizers = self.loop_stack[idx].pending_finalizers.clone();
+                            for fin in finalizers.iter().rev() {
+                                encode_op(&mut self.bytecode, Op::TryExit);
+                                self.compile_stmt(fin)?;
+                            }
                             let patch_site = encode_op(&mut self.bytecode, Op::Jump);
                             encode_i32(&mut self.bytecode, 0);
                             self.loop_stack[idx].break_patches.push(patch_site);
@@ -1998,7 +2048,20 @@ impl Compiler {
                 encode_op(&mut self.bytecode, Op::TryEnter);
                 let catch_off_patch = self.bytecode.len();
                 encode_u32(&mut self.bytecode, 0);
+                if let Some(fin) = finalizer {
+                    let fin_clone = fin.as_ref().clone();
+                    self.fn_finalizer_stack.push(fin_clone.clone());
+                    for lf in self.loop_stack.iter_mut() {
+                        lf.try_depth += 1;
+                        lf.pending_finalizers.push(fin_clone.clone());
+                    }
+                } else {
+                    for lf in self.loop_stack.iter_mut() { lf.try_depth += 1; }
+                }
                 self.compile_stmt(block)?;
+                if finalizer.is_none() {
+                    for lf in self.loop_stack.iter_mut() { lf.try_depth = lf.try_depth.saturating_sub(1); }
+                }
                 encode_op(&mut self.bytecode, Op::TryExit);
                 let jump_to_end = self.emit_jump(Op::Jump);
                 // Patch the catch offset to point here (start of handler).
@@ -2059,6 +2122,11 @@ impl Compiler {
                 }
                 self.patch_jump(jump_to_end);
                 if let Some(fin) = finalizer {
+                    self.fn_finalizer_stack.pop();
+                    for lf in self.loop_stack.iter_mut() {
+                        lf.try_depth = lf.try_depth.saturating_sub(1);
+                        lf.pending_finalizers.pop();
+                    }
                     self.compile_stmt(fin)?;
                 }
             }
@@ -2091,6 +2159,11 @@ impl Compiler {
                 let Some(idx) = loop_idx else {
                     return Err(self.err(span, "continue outside of loop"));
                 };
+                let finalizers = self.loop_stack[idx].pending_finalizers.clone();
+                for fin in finalizers.iter().rev() {
+                    encode_op(&mut self.bytecode, Op::TryExit);
+                    self.compile_stmt(fin)?;
+                }
                 let pending = self.loop_stack[idx].continue_pending;
                 if pending {
                     let patch_site = encode_op(&mut self.bytecode, Op::Jump);
@@ -2192,6 +2265,8 @@ impl Compiler {
                     continue_patches: Vec::new(),
                     break_patches: Vec::new(),
                     is_switch: true,
+                    try_depth: 0,
+                    pending_finalizers: Vec::new(),
                     label: None,
                 });
 
@@ -2358,6 +2433,8 @@ impl Compiler {
                     continue_patches: Vec::new(),
                     break_patches: Vec::new(),
                     is_switch: false,
+                    try_depth: 0,
+                    pending_finalizers: Vec::new(),
                     label: self.pending_label.take(),
                 });
                 encode_op(&mut self.bytecode, Op::LoadLocal);
@@ -4094,6 +4171,8 @@ impl Compiler {
             locals: Vec::new(),
             source_map: Vec::new(),
             loop_stack: Vec::new(),
+            fn_finalizer_stack: Vec::new(),
+            in_finalizer_emission: false,
             label_stack: Vec::new(),
             pending_label: None,
             enclosing: sub_enclosing,
