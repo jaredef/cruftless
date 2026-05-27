@@ -16707,9 +16707,154 @@ impl Runtime {
         );
         self.define_global_property("ArrayBuffer", Value::Object(ab_id));
 
+        // TAMM-EXT 2: DataView gets its own prototype + accessor surface
+        // per ECMA-262 §25.3 (separate from TypedArray.prototype which it
+        // pre-EXT 2 shared by accident). The DataView ctor stores buffer +
+        // byte_offset + fixed_length in the typed_array_views map with
+        // bpe=1 (DataView has byte granularity, not element granularity).
+        // Accessors (byteLength, byteOffset, buffer) are installed as real
+        // accessor descriptors on the prototype so
+        // Object.getOwnPropertyDescriptor reports them per §25.3.4.
+        let dv_proto = self.alloc_object(Object::new_ordinary());
+        let install_dv_accessor = |rt: &mut Runtime, proto: ObjectRef, name: &str, body: fn(&mut Runtime) -> Result<Value, RuntimeError>| {
+            let getter_name = format!("get {}", name);
+            let getter = make_native_with_length(&getter_name, 0, move |rt, _args| body(rt));
+            let getter_id = rt.alloc_object(getter);
+            rt.obj_mut(proto).dict_mut().insert(
+                crate::value::PropertyKey::String(name.to_string()),
+                crate::value::PropertyDescriptor {
+                    value: Value::Undefined,
+                    writable: false,
+                    enumerable: false,
+                    configurable: true,
+                    getter: Some(Value::Object(getter_id)),
+                    setter: None,
+                },
+            );
+        };
+        let dv_receiver_check = |rt: &mut Runtime, fn_name: &str| -> Result<crate::value::ObjectRef, RuntimeError> {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(format!(
+                    "DataView.prototype.{} getter: receiver must be a DataView", fn_name
+                ))),
+            };
+            match rt.object_get(id, "__kind") {
+                Value::String(s) if s.as_str() == "DataView" => Ok(id),
+                _ => Err(RuntimeError::TypeError(format!(
+                    "DataView.prototype.{} getter: receiver does not have [[DataView]] internal slot", fn_name
+                ))),
+            }
+        };
+        // Inline-define each accessor — closures can't share dv_receiver_check
+        // by capture since the fn pointer signature is fixed.
+        install_dv_accessor(self, dv_proto, "byteLength", |rt| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "DataView.prototype.byteLength getter: receiver must be a DataView".into(),
+                )),
+            };
+            match rt.object_get(id, "__kind") {
+                Value::String(s) if s.as_str() == "DataView" => {}
+                _ => return Err(RuntimeError::TypeError(
+                    "DataView.prototype.byteLength getter: receiver does not have [[DataView]] internal slot".into(),
+                )),
+            }
+            match rt.typed_array_views.get(&id) {
+                Some(view) => match view.fixed_length {
+                    Some(n) => Ok(Value::Number(n as f64)),
+                    None => match rt.array_buffers.get(&view.buffer) {
+                        Some(buf) => Ok(Value::Number(
+                            buf.byte_length.saturating_sub(view.byte_offset) as f64,
+                        )),
+                        None => Ok(Value::Number(0.0)),
+                    },
+                },
+                None => Ok(Value::Number(0.0)),
+            }
+        });
+        install_dv_accessor(self, dv_proto, "byteOffset", |rt| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "DataView.prototype.byteOffset getter: receiver must be a DataView".into(),
+                )),
+            };
+            match rt.object_get(id, "__kind") {
+                Value::String(s) if s.as_str() == "DataView" => {}
+                _ => return Err(RuntimeError::TypeError(
+                    "DataView.prototype.byteOffset getter: receiver does not have [[DataView]] internal slot".into(),
+                )),
+            }
+            match rt.typed_array_views.get(&id) {
+                Some(view) => Ok(Value::Number(view.byte_offset as f64)),
+                None => Ok(Value::Number(0.0)),
+            }
+        });
+        install_dv_accessor(self, dv_proto, "buffer", |rt| {
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError(
+                    "DataView.prototype.buffer getter: receiver must be a DataView".into(),
+                )),
+            };
+            match rt.object_get(id, "__kind") {
+                Value::String(s) if s.as_str() == "DataView" => {}
+                _ => return Err(RuntimeError::TypeError(
+                    "DataView.prototype.buffer getter: receiver does not have [[DataView]] internal slot".into(),
+                )),
+            }
+            match rt.typed_array_views.get(&id) {
+                Some(view) => Ok(Value::Object(view.buffer)),
+                None => Ok(Value::Undefined),
+            }
+        });
+        // Suppress unused-variable warning for the helper that we inlined
+        // each accessor body to avoid sharing.
+        let _ = dv_receiver_check;
+        // DataView ctor — own constructor with buffer + offset + length
+        // stored in typed_array_views.
+        let dv_proto_for_ctor = dv_proto;
+        let dv_ctor = make_native("DataView", move |rt, args| {
+            let buf_id = match args.first() {
+                Some(Value::Object(id)) if rt.array_buffers.contains_key(id) => *id,
+                _ => return Err(RuntimeError::TypeError(
+                    "DataView constructor: first argument must be an ArrayBuffer".into(),
+                )),
+            };
+            let byte_offset = match args.get(1) {
+                Some(Value::Number(n)) if *n >= 0.0 => *n as usize,
+                Some(v) => rt.coerce_to_number(v)? as usize,
+                None => 0,
+            };
+            let fixed_length = match args.get(2) {
+                Some(Value::Number(n)) if *n >= 0.0 => Some(*n as usize),
+                Some(Value::Undefined) | None => None,
+                Some(v) => Some(rt.coerce_to_number(v)? as usize),
+            };
+            let mut o = Object::new_ordinary();
+            o.set_own_internal("__kind".into(), Value::String(Rc::new("DataView".into())));
+            o.proto = Some(dv_proto_for_ctor);
+            let id = rt.alloc_object(o);
+            rt.typed_array_views.insert(
+                id,
+                crate::interp::TypedArrayViewRecord {
+                    buffer: buf_id,
+                    byte_offset,
+                    fixed_length,
+                    bytes_per_element: 1,
+                },
+            );
+            Ok(Value::Object(id))
+        });
+        let dv_ctor_id = self.alloc_object(dv_ctor);
+        self.obj_mut(dv_ctor_id)
+            .set_own_frozen("prototype".into(), Value::Object(dv_proto));
+        self.define_global_property("DataView", Value::Object(dv_ctor_id));
+
         for name in &[
             "SharedArrayBuffer",
-            "DataView",
             "Uint8Array",
             "Uint8ClampedArray",
             "Int8Array",
