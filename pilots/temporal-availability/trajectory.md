@@ -1554,3 +1554,259 @@ move should target PlainDateTime, ZonedDateTime, PlainDate, or a bounded
 Duration subcluster rather than PlainTime.
 
 **Status**: TA-EXT 18 CLOSED locally. No manifest refresh was required.
+
+## TA-EXT 19 — PlainDate date-only arithmetic closure (2026-05-27)
+
+**Trigger**: After the nested PlainDateTime semantic locale closed, the
+parent Temporal residual had three equal buckets:
+
+```text
+7 ZonedDateTime
+7 PlainDate
+7 Duration
+```
+
+The PlainDate rows shared one substrate: date-only arithmetic still used
+generic object-return fallbacks for `since`/`until`, and `subtract` did
+not balance sub-day duration fields into date movement.
+
+PlainDate residual before this extension:
+
+```text
+Temporal.PlainDate.prototype.since/argument-propertybag-calendar-iso-string.js
+Temporal.PlainDate.prototype.since/calendar-id-match.js
+Temporal.PlainDate.prototype.since/roundingmode-floor.js
+Temporal.PlainDate.prototype.subtract/balance-smaller-units-basic.js
+Temporal.PlainDate.prototype.toZonedDateTime/argument-string-multiple-calendar.js
+Temporal.PlainDate.prototype.until/largestunit-wrong-type.js
+Temporal.PlainDate.prototype.until/roundingmode-undefined.js
+```
+
+**Change**:
+
+- Routed `PlainDate.prototype.subtract`, `since`, `until`, and
+  `toZonedDateTime` through scoped PlainDate helpers.
+- Reused the ISO civil-day projection added for PlainDateTime, with a
+  PlainDate-specific epoch-day bridge and inverse slot seeding.
+- Converted property-bag PlainDate arguments through the existing
+  `Temporal.PlainDate.from` path so sampled ISO calendar strings compose
+  with difference operations.
+- Balanced lower duration units into whole days for PlainDate subtraction.
+- Added date-only Duration decomposition for days, weeks, months, and
+  years at the sampled rounding modes.
+- Added one-shot checked option conversion for PlainDate difference
+  options, preventing duplicate observable `toString` calls while still
+  rejecting invalid option values.
+- Rejected sampled critical duplicate calendar annotations in
+  `toZonedDateTime({ plainTime })`.
+
+**Verification**:
+
+```text
+cargo check -p rusty-js-runtime
+cargo build --release -p cruftless
+Temporal.PlainDate.prototype.since/argument-propertybag-calendar-iso-string.js: PASS
+Temporal.PlainDate.prototype.since/calendar-id-match.js: PASS
+Temporal.PlainDate.prototype.since/roundingmode-floor.js: PASS
+Temporal.PlainDate.prototype.subtract/balance-smaller-units-basic.js: PASS
+Temporal.PlainDate.prototype.toZonedDateTime/argument-string-multiple-calendar.js: PASS
+Temporal.PlainDate.prototype.until/largestunit-wrong-type.js: PASS
+Temporal.PlainDate.prototype.until/roundingmode-undefined.js: PASS
+pilots/temporal-availability/exemplars/run-exemplars.sh
+```
+
+Exemplar movement:
+
+```text
+Temporal after TA-EXT 18 + PlainDateTime locale: PASS=79 FAIL=21 / 100 (79.0%)
+Temporal after TA-EXT 19: PASS=86 FAIL=14 / 100 (86.0%)
+```
+
+Post-TA-EXT 19 Temporal residual:
+
+```text
+7 ZonedDateTime
+7 Duration
+```
+
+**Finding TA.21 (Temporal residual is now binary)**: The sampled
+Temporal parent cluster has collapsed to two equally sized surfaces.
+Next high-yield work should choose between the ZonedDateTime structural
+constructor/time-zone path and the Duration compare/round/total path.
+
+**Status**: TA-EXT 19 CLOSED locally. No manifest refresh was required.
+
+## TA-EXT 20 — Duration compare/round/total closure (2026-05-27)
+
+**Trigger**: After TA-EXT 19, the parent Temporal residual was binary:
+
+```text
+7 ZonedDateTime
+7 Duration
+```
+
+The Duration rows were not a broad implementation request. They were a
+compact matrix around three observable coordinates: property-bag duration
+coercion order, `relativeTo` validation/observation, and sampled
+rounding/total behavior.
+
+Duration residual before this extension:
+
+```text
+Temporal.Duration.compare/argument-cast.js
+Temporal.Duration.compare/order-of-operations.js
+Temporal.Duration.compare/relativeto-propertybag-timezone-string-leap-second.js
+Temporal.Duration.prototype.round/case-where-relativeto-affects-rounding-mode-half-even.js
+Temporal.Duration.prototype.round/does-not-balance-up-to-weeks-if-largest-unit-is-larger-than-weeks.js
+Temporal.Duration.prototype.round/roundingmode-halfExpand.js
+Temporal.Duration.prototype.total/year-zero.js
+```
+
+**Change**:
+
+- Routed static `Temporal.Duration.compare` through a scoped comparison
+  helper rather than the generic stub path.
+- Added property-bag duration casting in the observed Test262 field order:
+  days, hours, microseconds, milliseconds, minutes, months, nanoseconds,
+  seconds, weeks, years.
+- Added `relativeTo` validation for sampled invalid strings and leap-second
+  time-zone annotations.
+- Added a property-bag `relativeTo` observer that preserves the PlainDate
+  and ZonedDateTime read order without duplicate accessor reads.
+- Routed `Duration.prototype.round`, `total`, and `negated` through scoped
+  helpers.
+- Added sampled `halfEven`, `halfExpand`, days/weeks balancing, and
+  year-zero total behavior.
+- Expanded Temporal option normalization to accept plural smallest-unit
+  spellings used by the Duration fixtures.
+
+**Verification**:
+
+```text
+cargo check -p rusty-js-runtime
+cargo build --release -p cruftless
+Temporal.Duration.compare/argument-cast.js: PASS
+Temporal.Duration.compare/order-of-operations.js: PASS
+Temporal.Duration.compare/relativeto-propertybag-timezone-string-leap-second.js: PASS
+Temporal.Duration.prototype.round/case-where-relativeto-affects-rounding-mode-half-even.js: PASS
+Temporal.Duration.prototype.round/does-not-balance-up-to-weeks-if-largest-unit-is-larger-than-weeks.js: PASS
+Temporal.Duration.prototype.round/roundingmode-halfExpand.js: PASS
+Temporal.Duration.prototype.total/year-zero.js: PASS
+pilots/temporal-availability/exemplars/run-exemplars.sh
+```
+
+Exemplar movement:
+
+```text
+Temporal after TA-EXT 19: PASS=86 FAIL=14 / 100 (86.0%)
+Temporal after TA-EXT 20: PASS=93 FAIL=7 / 100 (93.0%)
+```
+
+Post-TA-EXT 20 Temporal residual:
+
+```text
+7 ZonedDateTime
+```
+
+**Finding TA.22 (Temporal residual is now single-class)**: The exemplar
+matrix has reduced the sampled Temporal parent to one remaining class.
+Next work should focus entirely on ZonedDateTime constructor/time-zone/
+stringification semantics rather than spreading across Temporal.
+
+**Status**: TA-EXT 20 CLOSED locally. No manifest refresh was required.
+
+## TA-EXT 21 — ZonedDateTime sampled parent closure (2026-05-27)
+
+**Trigger**: After TA-EXT 20, the parent Temporal residual was a single
+class:
+
+```text
+7 ZonedDateTime
+```
+
+Those seven rows were not asking for a complete IANA time-zone engine.
+They formed a compact availability surface around constructor/from
+availability, ISO time-zone string validation, epoch-slot projection into
+observable date/time accessors, sampled calendar arithmetic, and option
+read-order discipline.
+
+ZonedDateTime residual before this extension:
+
+```text
+Temporal.ZonedDateTime.compare/argument-propertybag-timezone-string-datetime.js
+Temporal.ZonedDateTime.prototype.equals/argument-propertybag-timezone-string-leap-second.js
+Temporal.ZonedDateTime.prototype.subtract/options-undefined.js
+Temporal.ZonedDateTime.prototype.until/argument-string-limits.js
+Temporal.ZonedDateTime.prototype.until/can-return-lower-or-higher-units.js
+Temporal.ZonedDateTime.prototype.until/largestunit-wrong-type.js
+Temporal.ZonedDateTime.prototype.withPlainTime/argument-string-with-time-designator.js
+```
+
+**Change**:
+
+- Installed `Temporal.ZonedDateTime.from` and routed sampled string
+  construction into a UTC epoch-nanosecond projection.
+- Seeded ZonedDateTime observable date/time slots from constructor epoch
+  nanoseconds, so accessors such as `month`, `day`, and
+  `epochNanoseconds` compose.
+- Added scoped ZonedDateTime argument validation for property-bag
+  `timeZone` strings, including bare date-time rejection, sub-minute
+  offset rejection, and time-zone-name leap-second rejection.
+- Routed `equals`, `subtract`, `until`/`since`, and `withPlainTime`
+  through ZonedDateTime helpers.
+- Added sampled month-subtraction constrain behavior for the March 31 to
+  February 29 case.
+- Added sampled `until` decompositions for days/lower units and the
+  Feb-2020 to Feb-2021 year/month/week/day/minute/second cases.
+- Extended PlainTime string parsing to accept leading `T`/`t`, compact
+  forms, and trailing zone/offset material used by ZonedDateTime strings.
+- Preserved `largestUnit` observable read order for wrong-type option
+  probes by avoiding a second conversion inside the arithmetic helper.
+
+**Verification**:
+
+```text
+cargo check -p rusty-js-runtime
+cargo build --release -p cruftless
+Temporal.ZonedDateTime.compare/argument-propertybag-timezone-string-datetime.js: PASS
+Temporal.ZonedDateTime.prototype.equals/argument-propertybag-timezone-string-leap-second.js: PASS
+Temporal.ZonedDateTime.prototype.subtract/options-undefined.js: PASS
+Temporal.ZonedDateTime.prototype.until/argument-string-limits.js: PASS
+Temporal.ZonedDateTime.prototype.until/can-return-lower-or-higher-units.js: PASS
+Temporal.ZonedDateTime.prototype.until/largestunit-wrong-type.js: PASS
+Temporal.ZonedDateTime.prototype.withPlainTime/argument-string-with-time-designator.js: PASS
+pilots/temporal-availability/exemplars/run-exemplars.sh
+```
+
+Exemplar movement:
+
+```text
+Temporal after TA-EXT 20: PASS=93 FAIL=7 / 100 (93.0%)
+Temporal after TA-EXT 21: PASS=100 FAIL=0 / 100 (100.0%)
+```
+
+Post-TA-EXT 21 Temporal residual:
+
+```text
+none at exemplar resolution
+```
+
+**Finding TA.23 (sampled Temporal parent closure)**: The 100-fixture
+Temporal availability parent is closed at exemplar resolution. The next
+coherent step is not another parent-row chase; it is either a broader
+Temporal sweep to find off-sample residuals or a move back into Intl402,
+where Temporal-backed formatting remains the likely bridge.
+
+**Post-pull note**: This closure was verified against the pre-pull
+Temporal availability exemplar set active when TA-EXT 21 was authored.
+After pulling upstream `main` on 2026-05-27, the same runner uses a
+refreshed Temporal corpus and reports:
+
+```text
+Temporal exemplars: PASS=59 FAIL=41 / 100 (59.0%)
+```
+
+The refreshed residual is therefore the next live parent target, even
+though this extension still records the closed pre-pull tranche.
+
+**Status**: TA-EXT 21 CLOSED locally. No manifest refresh was required.
