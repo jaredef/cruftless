@@ -38,6 +38,23 @@ pub fn compile_module_with_url(src: &str, url: &str) -> Result<CompiledModule, C
     c.compile_module(&ast)
 }
 
+/// ES-EXT 1 (eval-scope-binding-chain): Script-mode compilation entry point.
+/// Per ECMA-262 §19.2.1.3 PerformEval indirect-eval branch, the eval source
+/// runs as a Script (not a Module). Scripts attach top-level var declarations
+/// to the realm's variable environment (which IS the global object for
+/// Scripts), whereas Modules keep them as module-local bindings.
+///
+/// ES-EXT 1 (foundation rung): this entry point currently delegates to
+/// compile_module_with_url so the substrate-program structure is in place
+/// without semantic change yet. ES-EXT 2 will flip top-level var emissions
+/// from StoreLocal to StoreGlobal at compile time.
+pub fn compile_script_with_url(src: &str, url: &str) -> Result<CompiledModule, CompileError> {
+    // ES-EXT 1 delegates; ES-EXT 2+ will diverge here with a `script_mode`
+    // flag threaded through Compiler that flips top-level var/function-decl
+    // emissions from local-slot stores to GlobalThis stores.
+    compile_module_with_url(src, url)
+}
+
 /// Byte offsets of the start of each line in `src`. Index 0 is offset 0.
 /// Line i starts at line_starts[i] (inclusive); line i ends at
 /// line_starts[i+1] (exclusive, accounting for the newline byte itself).

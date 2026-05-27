@@ -909,6 +909,18 @@ impl Runtime {
     /// Evaluate a module: parse + compile + resolve imports + run +
     /// build namespace + invoke HostFinalizeModuleNamespace. Returns
     /// the namespace ObjectRef per spec §16.2.1.10.
+    /// ES-EXT 1 (eval-scope-binding-chain): Script-mode evaluation entry.
+    /// Per ECMA-262 §19.2.1.3 PerformEval indirect-eval branch, eval runs
+    /// as Script. ES-EXT 1 (foundation rung) currently delegates to
+    /// evaluate_module so the substrate-program shape is in place without
+    /// semantic change. ES-EXT 2+ will implement Script-mode top-level
+    /// scope (top-level var attaches to globalThis instead of module-local).
+    pub fn evaluate_script(&mut self, source: &str, url: &str) -> Result<ObjectRef, RuntimeError> {
+        // ES-EXT 1 delegates; ES-EXT 3 will diverge here with a script-mode
+        // frame that uses the realm's global env as the top-level scope.
+        self.evaluate_module(source, url)
+    }
+
     pub fn evaluate_module(&mut self, source: &str, url: &str) -> Result<ObjectRef, RuntimeError> {
         let _prof = phase_profile::enabled();
         // Parse + compile.

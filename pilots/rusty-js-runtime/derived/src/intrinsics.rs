@@ -2046,7 +2046,12 @@ impl Runtime {
                     .cloned()
                     .unwrap_or(Value::Undefined),
             );
-            let expr_ok = rt.evaluate_module(&expr_source, &url).is_ok();
+            // ES-EXT 1 (eval-scope-binding-chain): route indirect-eval
+            // through evaluate_script (Script semantics). Currently
+            // evaluate_script delegates to evaluate_module; ES-EXT 2/3
+            // will diverge with Script-mode top-level scope so top-level
+            // var attaches to globalThis per §19.2.1.3.
+            let expr_ok = rt.evaluate_script(&expr_source, &url).is_ok();
             if expr_ok {
                 rt.current_this = saved_this;
                 let result = rt
@@ -2059,7 +2064,7 @@ impl Runtime {
             }
             // Statement form: run as-is, no captured result.
             let stmt_url = format!("file://<eval:{}:stmt>", n);
-            let r = rt.evaluate_module(&source, &stmt_url);
+            let r = rt.evaluate_script(&source, &stmt_url);
             rt.current_this = saved_this;
             match r {
                 Ok(_) => Ok(Value::Undefined),

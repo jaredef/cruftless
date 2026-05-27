@@ -3,9 +3,9 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 185,
-    "top_level": 104,
-    "nested": 81,
+    "locales": 187,
+    "top_level": 105,
+    "nested": 82,
     "warnings": 0
   },
   "locales": [
@@ -285,6 +285,24 @@
       "parent": null,
       "scope": "error-instance-property-descriptors",
       "depth": 1,
+      "rung_count": 1,
+      "status": null
+    },
+    {
+      "coord": "eval-scope-binding-chain",
+      "tag": "L.eval-scope-binding-chain",
+      "parent": null,
+      "scope": "eval-scope-binding-chain",
+      "depth": 1,
+      "rung_count": 2,
+      "status": null
+    },
+    {
+      "coord": "eval-scope-binding-chain/es-foundation",
+      "tag": "L.eval-scope-binding-chain.es-foundation",
+      "parent": "L.eval-scope-binding-chain",
+      "scope": "es-foundation",
+      "depth": 2,
       "rung_count": 1,
       "status": null
     },
