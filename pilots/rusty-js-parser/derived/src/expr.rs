@@ -1151,7 +1151,15 @@ impl<'src> Parser<'src> {
     fn parse_parenthesized(&mut self) -> Result<Expr, ParseError> {
         let start = self.lookahead_span().start;
         self.expect_punct(Punct::LParen)?;
-        let expr = self.parse_expression()?;
+        // PPIF-EXT 3: ParenthesizedExpression re-enters the normal
+        // Expression grammar. This lets `for (var x = ("a" in o);;)` remain
+        // valid while the containing for-init VariableDeclarationList parses
+        // under [~In].
+        let saved_in_disallowed = self.in_disallowed;
+        self.in_disallowed = false;
+        let expr = self.parse_expression();
+        self.in_disallowed = saved_in_disallowed;
+        let expr = expr?;
         self.expect_punct(Punct::RParen)?;
         let end = self.last_span_end();
         Ok(Expr::Parenthesized {

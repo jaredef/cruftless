@@ -4,7 +4,7 @@
 //! the operand stack at module exit. Since modules end with ReturnUndef,
 //! we use explicit `return` to surface the result.
 
-use rusty_js_runtime::{run_module, Value};
+use rusty_js_runtime::{run_module, RuntimeError, Value};
 
 fn run(src: &str) -> Value {
     run_module(src).expect(&format!("run failed: {:?}", src))
@@ -156,6 +156,176 @@ fn string_plus_number_coerces_to_string() {
         assert_eq!(s.as_str(), "x=42");
     } else {
         panic!();
+    }
+}
+
+#[test]
+fn addition_symbol_numeric_path_throws_type_error() {
+    let err = run_module("return 1 + Symbol('s');").expect_err("expected TypeError");
+    assert!(matches!(err, RuntimeError::TypeError(_)));
+}
+
+#[test]
+fn addition_mixed_bigint_number_throws_type_error() {
+    let err = run_module("return 1n + 1;").expect_err("expected TypeError");
+    assert!(matches!(err, RuntimeError::TypeError(_)));
+}
+
+#[test]
+fn addition_mixed_bigint_symbol_throws_type_error() {
+    let err = run_module("return Symbol('s') + 0n;").expect_err("expected TypeError");
+    assert!(matches!(err, RuntimeError::TypeError(_)));
+}
+
+#[test]
+fn numeric_binary_symbol_throws_type_error() {
+    for src in [
+        "return Symbol('s') - 1;",
+        "return 1 * Symbol('s');",
+        "return Symbol('s') / 1;",
+        "return 1 % Symbol('s');",
+        "return Symbol('s') & 1;",
+        "return 1 << Symbol('s');",
+    ] {
+        let err = run_module(src).expect_err("expected TypeError");
+        assert!(matches!(err, RuntimeError::TypeError(_)), "{src}");
+    }
+}
+
+#[test]
+fn numeric_binary_mixed_bigint_throws_type_error() {
+    for src in [
+        "return 1n - 1;",
+        "return 1n * 1;",
+        "return 1n / 1;",
+        "return 1n % 1;",
+        "return 1n & 1;",
+        "return 1n << 1;",
+        "return 1n >>> 1n;",
+    ] {
+        let err = run_module(src).expect_err("expected TypeError");
+        assert!(matches!(err, RuntimeError::TypeError(_)), "{src}");
+    }
+}
+
+#[test]
+fn relational_symbol_throws_type_error() {
+    for src in [
+        "return Symbol('s') < 1;",
+        "return 1 > Symbol('s');",
+        "return 3n < Symbol('2');",
+        "return 3n > Symbol('2');",
+    ] {
+        let err = run_module(src).expect_err("expected TypeError");
+        assert!(matches!(err, RuntimeError::TypeError(_)), "{src}");
+    }
+}
+
+#[test]
+fn unary_plus_bigint_throws_type_error() {
+    let err = run_module("return +0n;").expect_err("expected TypeError");
+    assert!(matches!(err, RuntimeError::TypeError(_)));
+}
+
+#[test]
+fn instanceof_non_object_prototype_throws_type_error() {
+    let err = run_module(
+        "function F() {} \
+         F.prototype = 1; \
+         return {} instanceof F;",
+    )
+    .expect_err("expected TypeError");
+    assert!(matches!(err, RuntimeError::TypeError(_)));
+}
+
+#[test]
+fn static_computed_prototype_method_throws_type_error() {
+    for src in [
+        "class C { static ['prototype']() {} }",
+        "class C { static get ['prototype']() {} }",
+        "class C { static set ['prototype'](x) {} }",
+    ] {
+        let err = run_module(src).expect_err("expected TypeError");
+        assert!(matches!(err, RuntimeError::TypeError(_)), "{src}");
+    }
+}
+
+#[test]
+fn array_destructure_iterator_close_non_object_throws_type_error() {
+    let err = run_module(
+        "var iterable = {}; \
+         var iterator = { \
+           next: function() { return { done: true }; }, \
+           return: function() { return null; } \
+         }; \
+         iterable[Symbol.iterator] = function() { return iterator; }; \
+         0, [] = iterable;",
+    )
+    .expect_err("expected TypeError");
+    assert!(matches!(err, RuntimeError::TypeError(_)));
+}
+
+#[test]
+fn deleting_array_symbol_iterator_breaks_destructure_iteration() {
+    let err = run_module(
+        "delete Array.prototype[Symbol.iterator]; \
+         var [x, y, z] = [1, 2, 3];",
+    )
+    .expect_err("expected TypeError");
+    assert!(matches!(err, RuntimeError::TypeError(_)));
+}
+
+#[test]
+fn strict_delete_non_configurable_throws_type_error() {
+    let err = run_module(
+        "\"use strict\"; \
+         var o = {}; \
+         Object.defineProperty(o, 'x', { value: 1 }); \
+         delete o.x;",
+    )
+    .expect_err("expected TypeError");
+    assert!(matches!(err, RuntimeError::TypeError(_)));
+}
+
+#[test]
+fn delete_nullish_property_reference_throws_type_error() {
+    let err = run_module("var base = undefined; delete base[0];").expect_err("expected TypeError");
+    assert!(matches!(err, RuntimeError::TypeError(_)));
+}
+
+#[test]
+fn strict_assign_non_extensible_new_property_throws_type_error() {
+    let err = run_module(
+        "\"use strict\"; \
+         var o = {}; \
+         Object.preventExtensions(o); \
+         o.x = 1;",
+    )
+    .expect_err("expected TypeError");
+    assert!(matches!(err, RuntimeError::TypeError(_)));
+}
+
+#[test]
+fn generator_object_param_null_throws_at_call_time() {
+    let err = run_module(
+        "var f = function*({}) { throw new Error('body must not run first'); }; \
+         f(null);",
+    )
+    .expect_err("expected call-time TypeError");
+    assert!(matches!(err, RuntimeError::TypeError(_)));
+}
+
+#[test]
+fn generator_body_throw_is_deferred_to_next() {
+    let value = run_module(
+        "var f = function*() { throw new TypeError('later'); }; \
+         var g = f(); \
+         return typeof g.next;",
+    )
+    .expect("generator construction should not throw body error");
+    match value {
+        Value::String(s) => assert_eq!(s.as_ref(), "function"),
+        _ => panic!("expected function-valued next property"),
     }
 }
 

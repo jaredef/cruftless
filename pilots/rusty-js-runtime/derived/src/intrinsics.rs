@@ -4108,6 +4108,11 @@ impl Runtime {
                 _ => return Ok(Value::Undefined),
             };
             let fn_v = args.get(3).cloned().unwrap_or(Value::Undefined);
+            if key.as_str() == "prototype" && rt.obj(target).has_own_str("prototype") {
+                return Err(RuntimeError::TypeError(
+                    "Classes may not define a static property named 'prototype'".into(),
+                ));
+            }
             let o = rt.obj_mut(target);
             // Class accessors install as enumerable:false per ECMA-262 sec
             // 15.7 MethodDefinitionEvaluation. Object-literal accessors
@@ -4213,6 +4218,11 @@ impl Runtime {
                 _ => return Ok(Value::Undefined),
             };
             let fn_v = args.get(2).cloned().unwrap_or(Value::Undefined);
+            if key == "prototype" && rt.obj(target).has_own_str("prototype") {
+                return Err(RuntimeError::TypeError(
+                    "Classes may not define a static property named 'prototype'".into(),
+                ));
+            }
             if key.starts_with('#') {
                 rt.obj_mut(target).set_private(&key, fn_v);
             } else {
@@ -4916,7 +4926,13 @@ impl Runtime {
                 // callable check is implicit via Value::Object above.
                 return Ok(Value::Undefined);
             }
-            rt.call_function(ret, Value::Object(iter_obj), Vec::new())
+            let inner = rt.call_function(ret, Value::Object(iter_obj), Vec::new())?;
+            if !matches!(inner, Value::Object(_)) {
+                return Err(RuntimeError::TypeError(
+                    "IteratorClose return method returned non-object".into(),
+                ));
+            }
+            Ok(inner)
         });
         register_engine_helper(self, "__destr_iter_rest", |rt, args| {
             let iter = args.first().cloned().unwrap_or(Value::Undefined);

@@ -388,6 +388,17 @@ fn for_of() {
 }
 
 #[test]
+fn for_var_initializer_disallows_unparenthesized_in() {
+    assert!(parse_module("for (var x = 'a' in {a: 1}; false; ) {}").is_err());
+    assert!(parse_module("for (let x = 'a' in {a: 1}; false; ) {}").is_err());
+}
+
+#[test]
+fn for_var_initializer_allows_parenthesized_in() {
+    assert!(parse_module("for (var x = ('a' in {a: 1}); false; ) {}").is_ok());
+}
+
+#[test]
 fn for_await_of() {
     if let Stmt::ForOf { await_, .. } = first_stmt("for await (const x of asyncIter) f(x);") {
         assert!(await_);

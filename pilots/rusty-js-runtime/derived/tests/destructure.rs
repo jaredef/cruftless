@@ -122,3 +122,27 @@ fn t13_array_elision() {
     let rt = run_rt("const [, b, , d] = [1, 2, 3, 4]; __record(b === 2 && d === 4);");
     assert_eq!(last(&rt), Value::Boolean(true));
 }
+
+// ABMT-EXT 1: empty object binding patterns still perform
+// RequireObjectCoercible on their source.
+#[test]
+fn t14_empty_object_param_requires_object_coercible_null() {
+    let rt = run_rt(
+        "function f({}) {} \
+         let caught = false; \
+         try { f(null); } catch (e) { caught = e instanceof TypeError; } \
+         __record(caught);",
+    );
+    assert_eq!(last(&rt), Value::Boolean(true));
+}
+
+#[test]
+fn t15_empty_object_param_requires_object_coercible_undefined() {
+    let rt = run_rt(
+        "function f({}) {} \
+         let caught = false; \
+         try { f(); } catch (e) { caught = e instanceof TypeError; } \
+         __record(caught);",
+    );
+    assert_eq!(last(&rt), Value::Boolean(true));
+}
