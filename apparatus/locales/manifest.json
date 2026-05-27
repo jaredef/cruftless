@@ -1005,7 +1005,7 @@
       "parent": "L.temporal-availability",
       "scope": "plain-datetime-semantics",
       "depth": 2,
-      "rung_count": 1,
+      "rung_count": 2,
       "status": null
     },
     {

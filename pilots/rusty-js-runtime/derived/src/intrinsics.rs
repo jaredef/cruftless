@@ -628,6 +628,12 @@ fn install_temporal_method(
         if kind == "PlainYearMonth" && method_name == "until" {
             return temporal_plain_year_month_until(rt, args);
         }
+        if kind == "PlainDateTime" && method_name == "withPlainTime" {
+            return temporal_plain_date_time_with_plain_time(rt, proto, args);
+        }
+        if kind == "PlainDateTime" && method_name == "equals" {
+            return temporal_plain_date_time_equals(rt, args);
+        }
         if kind == "PlainTime" && method_name == "add" {
             return temporal_plain_time_add(rt, proto, args);
         }
@@ -994,6 +1000,80 @@ fn temporal_plain_year_month_until(
     Ok(Value::Object(id))
 }
 
+fn temporal_plain_date_time_with_plain_time(
+    rt: &mut Runtime,
+    proto: ObjectRef,
+    args: &[Value],
+) -> Result<Value, RuntimeError> {
+    temporal_require_this_kind(rt, "PlainDateTime")?;
+    let time_ns = match args.first() {
+        Some(Value::String(s)) => temporal_parse_plain_time_string(s.as_str())?,
+        Some(Value::Object(id)) => match rt.object_get(*id, "__temporal_kind") {
+            Value::String(kind) if kind.as_str() == "PlainTime" => {
+                temporal_time_total_nanoseconds(rt, *id)
+            }
+            _ => {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.PlainDateTime.prototype.withPlainTime requires a PlainTime".into(),
+                ))
+            }
+        },
+        Some(Value::Undefined) | None => 0,
+        _ => {
+            return Err(RuntimeError::TypeError(
+                "Temporal.PlainDateTime.prototype.withPlainTime requires a PlainTime".into(),
+            ))
+        }
+    };
+
+    let id = temporal_stub_from_this(rt, "PlainDateTime", proto);
+    temporal_set_time_slots_from_total_nanoseconds(rt, id, time_ns);
+    Ok(Value::Object(id))
+}
+
+fn temporal_plain_date_time_equals(
+    rt: &mut Runtime,
+    args: &[Value],
+) -> Result<Value, RuntimeError> {
+    let this_id = temporal_require_this_kind(rt, "PlainDateTime")?;
+    let other_id = match args.first() {
+        Some(Value::Object(id)) => *id,
+        _ => return Ok(Value::Boolean(false)),
+    };
+    let other_kind = match rt.object_get(other_id, "__temporal_kind") {
+        Value::String(kind) => kind.as_ref().clone(),
+        _ => return Ok(Value::Boolean(false)),
+    };
+    if other_kind != "PlainDateTime" && other_kind != "PlainDate" {
+        return Ok(Value::Boolean(false));
+    }
+
+    let date_slots = ["year", "month", "day"];
+    for slot in date_slots {
+        let key = format!("__temporal_{slot}");
+        let left =
+            temporal_number_slot(rt, this_id, &key, if slot == "year" { 1970.0 } else { 1.0 });
+        let right = temporal_number_slot(
+            rt,
+            other_id,
+            &key,
+            if slot == "year" { 1970.0 } else { 1.0 },
+        );
+        if left != right {
+            return Ok(Value::Boolean(false));
+        }
+    }
+    if other_kind == "PlainDate" {
+        return Ok(Value::Boolean(
+            temporal_time_total_nanoseconds(rt, this_id) == 0,
+        ));
+    }
+    Ok(Value::Boolean(
+        temporal_time_total_nanoseconds(rt, this_id)
+            == temporal_time_total_nanoseconds(rt, other_id),
+    ))
+}
+
 fn temporal_plain_time_add(
     rt: &mut Runtime,
     proto: ObjectRef,
@@ -1052,9 +1132,14 @@ fn temporal_duration_total_nanoseconds(rt: &mut Runtime, id: ObjectRef) -> i128 
 fn temporal_plain_time_from_total_nanoseconds(
     rt: &mut Runtime,
     proto: ObjectRef,
-    mut ns: i128,
+    ns: i128,
 ) -> ObjectRef {
     let id = temporal_stub_instance(rt, "PlainTime", proto);
+    temporal_set_time_slots_from_total_nanoseconds(rt, id, ns);
+    id
+}
+
+fn temporal_set_time_slots_from_total_nanoseconds(rt: &mut Runtime, id: ObjectRef, mut ns: i128) {
     let hour = ns / 3_600_000_000_000;
     ns %= 3_600_000_000_000;
     let minute = ns / 60_000_000_000;
@@ -1076,7 +1161,6 @@ fn temporal_plain_time_from_total_nanoseconds(
         rt.obj_mut(id)
             .set_own_internal(slot.into(), Value::Number(value as f64));
     }
-    id
 }
 
 fn temporal_parse_plain_time_string(input: &str) -> Result<i128, RuntimeError> {
