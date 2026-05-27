@@ -39,3 +39,15 @@ Per discipline (no destructive shortcuts), Option A is correct but exceeds per-r
 ## 2026-05-27 — checkpoint before substrate commit
 
 Arc opened + founding probe complete. Substrate decision (A vs B) awaits keeper alignment per arc-as-coordinate.md "keeper-directed multi-locale program" rhythm. Probe finding (Module-vs-Script execution-mode mismatch) is larger than original HDSB.2 prediction estimated.
+
+## 2026-05-27 — ES-EXT 1 LANDED (foundation rung; Option A start)
+
+Per keeper directive (Telegram 9975) selecting Option A — structural fix.
+
+* Spawned `pilots/eval-scope-binding-chain/` (top-level substrate locale) + `es-foundation/` nested sub-rung.
+* Added `evaluate_script` (rusty-js-runtime/module.rs) + `compile_script_with_url` (rusty-js-bytecode/lib.rs) entry points, currently delegating to module-path.
+* Wired indirect-eval (`intrinsics.rs` Function('eval') closure, both expression-form and statement-form call sites) through `evaluate_script`.
+
+Yield: 0 (foundation; no semantic change). Diff-prod 42/42 maintained.
+
+ES-EXT 2 (compile-tier `script_mode` flag, top-level VariableDecl → StoreGlobal) and ES-EXT 3 (runtime-tier frame setup with realm's global env as top-level scope) are the semantic-change rungs that will close the predicted 200-400 records.
