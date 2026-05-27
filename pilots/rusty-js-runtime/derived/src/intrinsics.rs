@@ -2316,7 +2316,7 @@ impl Runtime {
         // do not crash. Real prototype + ctor land in per-class sub-locales.
         // Stubs for classes whose per-class rung hasn't landed yet.
         // Duration+Instant+PlainTime+PlainDate+PlainDateTime+PlainMonthDay REAL.
-        for class_name in &["ZonedDateTime"] {
+        for class_name in &[] as &[&str] {
             let stub = self.alloc_object(Object::new_ordinary());
             let cn = (*class_name).to_string();
             self.obj_mut(stub).dict_mut().insert(
@@ -7215,6 +7215,150 @@ impl Runtime {
             rt.set_engine_sentinel(new_id, "__pym_calendar", Value::String(Rc::new("iso8601".into())));
             Ok(Value::Object(new_id))
         });
+        // ZDTCF-EXT 1 (zoned-date-time-ctor-fields): Temporal.ZonedDateTime.
+        // v1 minimal: stores epochNanoseconds (BigInt) + timeZone (string) +
+        // calendar (string default "iso8601"). Methods limited to epochNs/
+        // epochMs/timeZoneId/calendarId getters + valueOf-throws. Full TZ
+        // database deferred to a follow-on rung.
+        let zdt_proto = self.alloc_object(Object::new_ordinary());
+        {
+            let getter_obj = make_native_non_ctor("get epochNanoseconds", 0, |rt, _args| {
+                let id = match rt.current_this() {
+                    Value::Object(o) => o,
+                    _ => return Err(RuntimeError::TypeError("ZDT.epochNanoseconds: this not object".into())),
+                };
+                match rt.object_get(id, "__zdt_ns") {
+                    Value::Undefined => Err(RuntimeError::TypeError(
+                        "Temporal.ZonedDateTime.prototype.epochNanoseconds: this is not a Temporal.ZonedDateTime".into()
+                    )),
+                    v => Ok(v),
+                }
+            });
+            let getter_id = self.alloc_object(getter_obj);
+            self.obj_mut(zdt_proto).dict_mut().insert(
+                "epochNanoseconds".into(),
+                PropertyDescriptor {
+                    value: Value::Undefined, writable: false,
+                    enumerable: false, configurable: true,
+                    getter: Some(Value::Object(getter_id)), setter: None,
+                },
+            );
+        }
+        {
+            let getter_obj = make_native_non_ctor("get epochMilliseconds", 0, |rt, _args| {
+                let id = match rt.current_this() {
+                    Value::Object(o) => o,
+                    _ => return Err(RuntimeError::TypeError("ZDT.epochMilliseconds: this not object".into())),
+                };
+                let ns = match rt.object_get(id, "__zdt_ns") {
+                    Value::BigInt(b) => b,
+                    _ => return Err(RuntimeError::TypeError(
+                        "Temporal.ZonedDateTime.prototype.epochMilliseconds: this is not a Temporal.ZonedDateTime".into()
+                    )),
+                };
+                Ok(Value::Number((ns.to_f64() / 1_000_000.0).floor()))
+            });
+            let getter_id = self.alloc_object(getter_obj);
+            self.obj_mut(zdt_proto).dict_mut().insert(
+                "epochMilliseconds".into(),
+                PropertyDescriptor {
+                    value: Value::Undefined, writable: false,
+                    enumerable: false, configurable: true,
+                    getter: Some(Value::Object(getter_id)), setter: None,
+                },
+            );
+        }
+        for (name, sentinel) in [("timeZoneId", "__zdt_tz"), ("calendarId", "__zdt_calendar")] {
+            let n_static: &'static str = name;
+            let s_key = sentinel.to_string();
+            let getter_obj = make_native_non_ctor(&format!("get {}", n_static), 0, move |rt, _args| {
+                let id = match rt.current_this() {
+                    Value::Object(o) => o,
+                    _ => return Err(RuntimeError::TypeError(format!("ZDT.{}: this not object", n_static))),
+                };
+                match rt.object_get(id, &s_key) {
+                    Value::Undefined => Err(RuntimeError::TypeError(format!(
+                        "Temporal.ZonedDateTime.prototype.{}: this is not a Temporal.ZonedDateTime", n_static
+                    ))),
+                    v => Ok(v),
+                }
+            });
+            let getter_id = self.alloc_object(getter_obj);
+            self.obj_mut(zdt_proto).dict_mut().insert(
+                n_static.into(),
+                PropertyDescriptor {
+                    value: Value::Undefined, writable: false,
+                    enumerable: false, configurable: true,
+                    getter: Some(Value::Object(getter_id)), setter: None,
+                },
+            );
+        }
+        register_intrinsic_method(self, zdt_proto, "valueOf", 0, |_rt, _args| {
+            Err(RuntimeError::TypeError("Temporal.ZonedDateTime valueOf cannot be used".into()))
+        });
+        self.obj_mut(zdt_proto).dict_mut().insert(
+            "@@toStringTag".into(),
+            PropertyDescriptor {
+                value: Value::String(Rc::new("Temporal.ZonedDateTime".into())),
+                writable: false, enumerable: false, configurable: true,
+                getter: None, setter: None,
+            },
+        );
+        let zdt_proto_for_ctor = zdt_proto;
+        let zdt_ctor_obj = make_native_with_length("ZonedDateTime", 2, move |rt, args| {
+            if rt.current_new_target.is_none() {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.ZonedDateTime constructor cannot be called as a function".into()
+                ));
+            }
+            // arg 0: epochNanoseconds (BigInt). arg 1: timeZone string (required).
+            let arg = args.first().cloned().unwrap_or(Value::Undefined);
+            let ns = match arg {
+                Value::BigInt(b) => b,
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.ZonedDateTime: epochNanoseconds must be a BigInt".into()
+                )),
+            };
+            let f = ns.to_f64();
+            if !f.is_finite() || f.abs() > 8.64e21 {
+                return Err(RuntimeError::RangeError(
+                    "Temporal.ZonedDateTime: epochNanoseconds out of range".into()
+                ));
+            }
+            let tz = match args.get(1).cloned().unwrap_or(Value::Undefined) {
+                Value::String(s) => (*s).to_string(),
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.ZonedDateTime: timeZone must be a string".into()
+                )),
+            };
+            // v1: accept any string (don't validate against IANA db; defer).
+            let calendar = match args.get(2).cloned().unwrap_or(Value::Undefined) {
+                Value::Undefined => "iso8601".to_string(),
+                Value::String(s) => s.to_lowercase(),
+                _ => return Err(RuntimeError::TypeError(
+                    "Temporal.ZonedDateTime: calendar must be a string or undefined".into()
+                )),
+            };
+            if calendar != "iso8601" {
+                return Err(RuntimeError::RangeError(format!(
+                    "Temporal.ZonedDateTime: only iso8601 calendar supported; got {:?}", calendar
+                )));
+            }
+            let mut o = Object::new_ordinary();
+            o.proto = Some(zdt_proto_for_ctor);
+            let id = rt.alloc_object(o);
+            rt.set_engine_sentinel(id, "__zdt_ns", Value::BigInt(ns));
+            rt.set_engine_sentinel(id, "__zdt_tz", Value::String(Rc::new(tz)));
+            rt.set_engine_sentinel(id, "__zdt_calendar", Value::String(Rc::new(calendar)));
+            Ok(Value::Object(id))
+        });
+        let zdt_ctor = self.alloc_object(zdt_ctor_obj);
+        self.obj_mut(zdt_proto)
+            .set_own_internal("constructor".into(), Value::Object(zdt_ctor));
+        self.obj_mut(zdt_ctor)
+            .set_own_frozen("prototype".into(), Value::Object(zdt_proto));
+        self.obj_mut(temporal)
+            .set_own_internal("ZonedDateTime".into(), Value::Object(zdt_ctor));
         // PDTC + PMDTPD + PYMTPD: cross-class conversion methods.
         // Installed here so all target prototypes are in scope.
         let pd_for_conv = pd_proto;
