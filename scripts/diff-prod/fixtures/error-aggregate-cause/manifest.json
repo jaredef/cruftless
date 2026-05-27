@@ -1,0 +1,8 @@
+{
+  "name": "error-aggregate-cause",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "AggregateError constructor and .errors, Error cause chaining (ES2022), multiple cause levels, AggregateError with cause, SuppressedError surface."
+}

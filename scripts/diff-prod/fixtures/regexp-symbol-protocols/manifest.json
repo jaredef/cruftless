@@ -1,0 +1,8 @@
+{
+  "name": "regexp-symbol-protocols",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "RegExp Symbol.match/replace/split/search/matchAll protocols and custom objects implementing them."
+}

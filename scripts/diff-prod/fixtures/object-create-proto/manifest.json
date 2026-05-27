@@ -1,0 +1,8 @@
+{
+  "name": "object-create-proto",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Object.create, prototype chains, null prototype, setPrototypeOf, __proto__ literal, Reflect proto methods, non-extensible constraints."
+}

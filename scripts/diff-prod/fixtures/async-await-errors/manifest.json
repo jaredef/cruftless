@@ -1,0 +1,8 @@
+{
+  "name": "async-await-errors",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Async/await error handling: try/catch, rejected promise await, await of primitives and thenables, return value wrapping, error propagation through call chains."
+}

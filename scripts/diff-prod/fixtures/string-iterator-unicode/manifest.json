@@ -1,0 +1,8 @@
+{
+  "name": "string-iterator-unicode",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "String iterator, code point iteration over emoji/surrogates, codePointAt, fromCodePoint, normalize interaction."
+}

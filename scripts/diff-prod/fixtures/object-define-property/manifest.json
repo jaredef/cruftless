@@ -1,0 +1,8 @@
+{
+  "name": "object-define-property",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Object.defineProperty/defineProperties, descriptor shapes, non-configurable constraints, Reflect.defineProperty, getOwnPropertyDescriptors."
+}

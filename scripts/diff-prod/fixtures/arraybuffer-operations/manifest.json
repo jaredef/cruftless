@@ -1,0 +1,8 @@
+{
+  "name": "arraybuffer-operations",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "ArrayBuffer operations: slice, byteLength, isView, transfer, resize, SharedArrayBuffer.slice, detach behavior."
+}

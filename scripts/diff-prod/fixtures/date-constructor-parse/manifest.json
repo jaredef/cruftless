@@ -1,0 +1,8 @@
+{
+  "name": "date-constructor-parse",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Date constructor forms, Date.parse of ISO strings, Date.now type, Date.UTC, getter methods on fixed dates, toISOString, Invalid Date."
+}

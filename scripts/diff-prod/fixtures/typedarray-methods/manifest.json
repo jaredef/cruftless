@@ -1,0 +1,8 @@
+{
+  "name": "typedarray-methods",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "TypedArray methods: from, of, subarray, slice, sort, filter, map, find, findIndex, indexOf, includes, set, every, some, reduce, constructor from array and ArrayBuffer with offset."
+}

@@ -1,0 +1,8 @@
+{
+  "name": "microtask-ordering",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Microtask ordering: Promise.resolve().then() vs queueMicrotask, nested .then() chains, multiple concurrent promise chains, execution order verification."
+}

@@ -1,0 +1,8 @@
+{
+  "name": "array-length-exotic",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Array length exotic behavior: truncation via length, sparse arrays, holes vs undefined, in operator on holes, delete creating holes, prototype methods on sparse arrays."
+}

@@ -1,0 +1,8 @@
+{
+  "name": "global-constructors",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "globalThis identity and typeof checks for all standard built-in constructors and namespace objects."
+}
