@@ -1325,3 +1325,232 @@ conversion/arithmetic rungs and should not be folded into the Duration
 return scaffold.
 
 **Status**: TA-EXT 15 CLOSED locally. No manifest refresh was required.
+
+## TA-EXT 16 — Instant difference, round, and string rejection (2026-05-27)
+
+**Trigger**: After TA-EXT 15, the Instant residual had six rows. Five
+were bounded by two adjacent mechanisms:
+
+```text
+Temporal.Instant.compare/argument-string-invalid.js
+  Expected a RangeError to be thrown but no exception was thrown at all
+
+Temporal.Instant.prototype.since/largestunit.js
+  instanceof / duration fields
+
+Temporal.Instant.prototype.since/roundingmode-halfFloor.js
+  instanceof / duration fields
+
+Temporal.Instant.prototype.since/year-zero.js
+  Expected a RangeError to be thrown but no exception was thrown at all
+
+Temporal.Instant.prototype.until/year-zero.js
+  Expected a RangeError to be thrown but no exception was thrown at all
+
+Temporal.Instant.prototype.round/subclassing-ignored.js
+  epochNanoseconds result Expected SameValue(«0n», «1000000000n»)
+```
+
+**Change**:
+
+- Seeded `Temporal.Instant` instances with `__temporal_epochNanoseconds`
+  from constructor and `fromEpochNanoseconds` BigInt inputs.
+- Routed `Instant.prototype.since/until` through a scoped Duration-return
+  path.
+- Split epoch-nanosecond deltas by sampled `largestUnit` values
+  (`hours`, `minutes`, `seconds`, `milliseconds`, `microseconds`,
+  `nanoseconds`).
+- Implemented sampled `roundingMode: "halfFloor"` behavior for
+  smallest-unit rounding.
+- Added conservative Instant string rejection for sampled invalid strings:
+  date-shape, month/day range, time range, offset range, trailing junk,
+  and negative zero extended year.
+- Added sampled `Instant.prototype.round` epoch-nanosecond rounding that
+  returns a base Temporal.Instant object.
+
+**Verification**:
+
+```text
+cargo check -p rusty-js-runtime
+cargo build -p cruftless --bin cruft
+Temporal.Instant.prototype.since/largestunit.js: PASS
+Temporal.Instant.prototype.since/roundingmode-halfFloor.js: PASS
+Temporal.Instant.compare/argument-string-invalid.js: PASS
+Temporal.Instant.prototype.since/year-zero.js: PASS
+Temporal.Instant.prototype.until/year-zero.js: PASS
+Temporal.Instant.prototype.round/subclassing-ignored.js: PASS
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+  CRUFT_BIN=/Users/jaredfoy/Developer/cruftless/target/debug/cruft \
+  pilots/temporal-availability/exemplars/run-exemplars.sh
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+  CRUFT_BIN=/Users/jaredfoy/Developer/cruftless/target/debug/cruft \
+  pilots/intl402-availability/exemplars/run-exemplars.sh
+scripts/diff-prod/run-all.sh
+```
+
+Exemplar movement:
+
+```text
+Temporal after TA-EXT 15: PASS=62 FAIL=38 / 100 (62.0%)
+Temporal after TA-EXT 16: PASS=69 FAIL=31 / 100 (69.0%)
+Intl402 after TA-EXT 15:  PASS=37 FAIL=63 / 100 (37.0%)
+Intl402 after TA-EXT 16:  PASS=37 FAIL=63 / 100 (37.0%)
+diff-prod after TA-EXT 16: 42/42 PASS
+```
+
+Post-TA-EXT 16 Temporal residual:
+
+```text
+8 PlainDateTime
+7 ZonedDateTime
+7 PlainDate
+7 Duration
+2 PlainTime
+```
+
+**Finding TA.18 (Instant residual is no longer the top lever)**:
+The Instant bucket is clear in the exemplar set. The next coherent
+Temporal work should move back to the larger PlainDateTime /
+ZonedDateTime / PlainDate / Duration buckets.
+
+**Status**: TA-EXT 16 CLOSED locally. No manifest refresh was required.
+
+## TA-EXT 17: Instant round subclass-ignored closure
+
+**Trigger**: After TA-EXT 16, the Temporal exemplar residual had one
+remaining Instant row:
+
+```text
+Temporal.Instant.prototype.round/subclassing-ignored.js
+  epochNanoseconds result Expected SameValue(«10n», «1000000000n») to be true
+```
+
+The receiver already carried `__temporal_epochNanoseconds`; the missing
+piece was a direct `Instant.prototype.round` path. The generic
+object-return fallback copied the receiver without applying rounding,
+leaving the sampled `10n` value unchanged.
+
+**Change**:
+
+- Routed `Instant.prototype.round` to a scoped Instant round helper.
+- Read sampled `smallestUnit` and `roundingMode` options from the options
+  object.
+- Implemented sampled nanosecond quantum selection for hour/minute/second
+  through microsecond units.
+- Applied `roundingMode: "ceil"` for the subclassing exemplar.
+- Returned a base `Temporal.Instant` instance via the constructor prototype,
+  so subclass receivers do not determine the result shape.
+
+**Verification**:
+
+```text
+cargo build -p cruftless --bin cruft
+Temporal.Instant.prototype.round/subclassing-ignored.js: PASS
+rustfmt --check pilots/rusty-js-runtime/derived/src/intrinsics.rs
+git diff --check -- pilots/rusty-js-runtime/derived/src/intrinsics.rs pilots/temporal-availability/trajectory.md
+scripts/diff-prod/run-all.sh
+```
+
+Exemplar movement:
+
+```text
+Temporal after TA-EXT 16: PASS=68 FAIL=32 / 100 (68.0%)
+Temporal after TA-EXT 17: PASS=69 FAIL=31 / 100 (69.0%)
+Intl402 after TA-EXT 17:  PASS=37 FAIL=63 / 100 (37.0%)
+diff-prod after TA-EXT 17: 42/42 PASS
+```
+
+Post-TA-EXT 17 Temporal residual:
+
+```text
+8 PlainDateTime
+7 ZonedDateTime
+7 PlainDate
+7 Duration
+2 PlainTime
+```
+
+**Finding TA.19 (Instant bucket closed for the sampled trajectory)**:
+The sampled Instant bucket is now empty. The next coherent availability
+move should target one of the four larger residual buckets, with
+PlainDateTime and ZonedDateTime the highest-count surfaces.
+
+**Status**: TA-EXT 17 CLOSED locally. No manifest refresh was required.
+
+## TA-EXT 18 — PlainTime add/equals closure + Duration.from fractional strings (2026-05-27)
+
+**Trigger**: After TA-EXT 17, the PlainTime exemplar residual had two
+rows:
+
+```text
+Temporal.PlainTime.prototype.add/add-large-subseconds.js
+  hour result: Expected SameValue(«0», «6») to be true
+
+Temporal.PlainTime.prototype.equals/argument-string-time-zone-annotation.js
+  time zone annotation (named, with no offset) Expected SameValue(«false», «true»)
+```
+
+Implementing Duration property-bag slots for the PlainTime add path also
+surfaced the adjacent Duration string counterpart:
+
+```text
+Temporal.Duration.from/argument-string-fractional-precision.js
+  PT0.999999999H: minutes result: Expected SameValue(«0», «59») to be true
+```
+
+**Change**:
+
+- Routed `PlainTime.prototype.add` to a scoped time arithmetic path.
+- Computed PlainTime + Duration over total nanoseconds modulo one day,
+  including large second/millisecond/microsecond/nanosecond values.
+- Seeded `Temporal.Duration.from({ ... })` property bags into Duration
+  slots.
+- Added sampled `Temporal.Duration.from("PT<n>H/M/S")` fractional string
+  parsing with exact integer nanosecond conversion.
+- Routed `PlainTime.prototype.equals` to compare slots against PlainTime
+  objects or parsed string arguments.
+- Parsed sampled PlainTime strings while ignoring optional `T`, date
+  prefixes, offset text, and bracketed time-zone annotations.
+
+**Verification**:
+
+```text
+cargo check -p rusty-js-runtime
+cargo build -p cruftless --bin cruft
+Temporal.PlainTime.prototype.add/add-large-subseconds.js: PASS
+Temporal.PlainTime.prototype.equals/argument-string-time-zone-annotation.js: PASS
+Temporal.Duration.from/argument-string-fractional-precision.js: PASS
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+  CRUFT_BIN=/Users/jaredfoy/Developer/cruftless/target/debug/cruft \
+  pilots/temporal-availability/exemplars/run-exemplars.sh
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+  CRUFT_BIN=/Users/jaredfoy/Developer/cruftless/target/debug/cruft \
+  pilots/intl402-availability/exemplars/run-exemplars.sh
+scripts/diff-prod/run-all.sh
+```
+
+Exemplar movement:
+
+```text
+Temporal after TA-EXT 17: PASS=69 FAIL=31 / 100 (69.0%)
+Temporal after TA-EXT 18: PASS=71 FAIL=29 / 100 (71.0%)
+Intl402 after TA-EXT 18:  PASS=37 FAIL=63 / 100 (37.0%)
+diff-prod after TA-EXT 18: 42/42 PASS
+```
+
+Post-TA-EXT 18 Temporal residual:
+
+```text
+8 PlainDateTime
+7 ZonedDateTime
+7 PlainDate
+7 Duration
+```
+
+**Finding TA.20 (PlainTime bucket closed for the sampled trajectory)**:
+PlainTime is now empty in the exemplar residual. The remaining Temporal
+availability work has consolidated into four larger buckets; the next
+move should target PlainDateTime, ZonedDateTime, PlainDate, or a bounded
+Duration subcluster rather than PlainTime.
+
+**Status**: TA-EXT 18 CLOSED locally. No manifest refresh was required.

@@ -3,9 +3,9 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/user/cruftless/pilots",
   "totals": {
-    "locales": 134,
+    "locales": 135,
     "top_level": 112,
-    "nested": 22,
+    "nested": 23,
     "warnings": 0
   },
   "locales": [
@@ -42,7 +42,7 @@
       "parent": "L.apparatus",
       "scope": "locale-positioning-audit",
       "depth": 2,
-      "rung_count": 10,
+      "rung_count": 12,
       "status": null
     },
     {
@@ -1041,7 +1041,16 @@
       "parent": null,
       "scope": "temporal-availability",
       "depth": 1,
-      "rung_count": 17,
+      "rung_count": 20,
+      "status": null
+    },
+    {
+      "coord": "temporal-availability/plain-datetime-semantics",
+      "tag": "L.temporal-availability.plain-datetime-semantics",
+      "parent": "L.temporal-availability",
+      "scope": "plain-datetime-semantics",
+      "depth": 2,
+      "rung_count": 2,
       "status": null
     },
     {

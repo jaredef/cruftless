@@ -316,30 +316,89 @@ Added Tier N, "resolver-axis heuristics partition":
 
 ---
 
-## LPA-EXT 8 — diff-prod empirical cross-check of language-lowering partition (2026-05-27)
+## LPA-EXT 8 — spec boundary integrity audit (2026-05-27)
 
-**Trigger**: 50 new diff-prod fixtures (18 gap-partition probes + 8 deep-engine probes + 24 spec-lowering probes) were authored and run against both `cruft` and `bun`, producing byte-for-byte stdout comparisons across the 9 arcs identified in LPA-EXT 5's language-lowering partition. The run triangulates the matrix-derived partition against direct empirical engine behavior.
+**Trigger**: Keeper directive to continue with the spec boundary audit after LPA-EXT 7 queued `ast-bytecode-boundary-integrity-audit` as `audit-first`.
+
+**Produced**: `pilots/apparatus/locale-positioning-audit/findings/spec-boundary-integrity-audit.md`.
 
 **Method**:
 
-- 50 new fixtures targeting every lowering layer: lexer (ASI, Unicode, numeric literals, string escapes, regex/division), parser (expression precedence, arrow edge cases, directive prologues), IR/bytecode (TDZ, hoisting, closures, arguments, super/new.target, computed property order), abstract operations (coercion pipeline, abstract equality, abstract relational, SameValue algorithms), control flow (labeled control flow, switch, for-in/for-of, optional chaining, comma/grouping/eval, reference semantics), deep engine (proxy invariants, proxy prototype chain, property key order, WeakRef/FinalizationRegistry, iterator close, with-scoping, Symbol.species, Atomics), and bootstrap host (DataView, node:util, node:assert, process, console, Buffer.concat, Readable.from).
-- Full suite: 92 fixtures (42 original + 50 new). Run result: **55 PASS / 37 FAIL**.
-- All 42 original fixtures continue to pass.
+1. Read the Instance 4 x Axis R examples from the resolver-axis partition.
+2. Search existing locale seeds and trajectory tails for ownership of private fields, tagged templates, eval, destructuring, generator suspension, and RegExp named captures.
+3. Classify each family as absorbed, scope-extension, or fresh baseline-first candidate.
 
-**Produced**: Updated `pilots/apparatus/locale-positioning-audit/findings/language-lowering-partition.md` §IV with empirical arc-level pass rates, per-fixture divergence details, and 9 cross-cutting mechanism gaps.
+**Result**:
 
-**Arc-level pass rates**:
+- Private fields reflection leak: absorbed by `private-field-runtime-slots/` and `class-elements-static-semantics/`.
+- Generator suspension deferred: scope-extension under `async-generator-and-for-await-lowering/` or a future generator-specific child.
+- RegExp named captures: scope-extension under `regexp-conformance/`.
+- Tagged-template `strings.raw`: fresh baseline-first candidate.
+- Direct eval outer lexical capture: fresh baseline-first candidate.
+- Destructuring iterator protocol: fresh baseline-first candidate, with async rows redirecting to AGFA if dominant.
 
-| Arc | Rows | PASS rate | Disposition update |
-|---|---:|---|---|
-| I — Literal/identifier | 359 | 80% | Lowest leverage; route to existing tokenization locales (confirmed) |
-| C — Annex B language | 734 | 50% | Hoisting green; sloppy-mode-specific gaps remain |
-| H — With/try/switch/completion | 381 | 50% | Switch + labeled green; finally-on-abrupt + with-scoping are gaps |
-| A — Class elements | 4,677 | 33% | Computed property order green; super binding + private brand are gaps |
-| B — Async iter/generators | 1,492 | 33% | Destructuring-iterators green; lazy suspension + iterator-close are gaps |
-| D — Object/computed/super | 556 | 33% | Computed order green; ToPrimitive hint dispatch is root mechanism |
-| F — Eval/function/arguments | 582 | 0% | Direct eval crash; arguments-as-Array shape violation |
-| G — Assignment/for-head | 551 | 0% | Compound member assignment crash; for-in delete behavior |
+**CANDIDATES.md update**:
+
+- Marked `ast-bytecode-boundary-integrity-audit` as audited/split.
+- Added `tagged-template-object-boundary`, `direct-eval-lexical-capture`, and `destructuring-iterator-protocol-boundary` as baseline-first children.
+
+**Finding LPA.17 (boundary-integrity is a parent signal, not a substrate locale by itself)**: Instance 4 x Axis R correctly identified a design-level boundary-integrity smell, but its named examples map to distinct resolver boundaries. The right apparatus move is ownership partition, not a broad substrate locale.
+
+**Finding LPA.18 (more than half of the boundary examples are already owned)**: private fields are absorbed by PFRS/CESS, generator suspension is an AGFA scope-extension, and RegExp named captures belong under RC. The `audit-first` disposition prevented duplicate locale founding.
+
+**Finding LPA.19 (three fresh boundary candidates remain after absorption)**: tagged-template object construction, direct eval lexical capture, and destructuring iterator protocol each have a plausible single boundary mechanism and a concrete baseline probe. They should proceed independently, not as one AST-boundary locale.
+
+**Status**: LPA-EXT 8 CLOSED. Spec boundary audit recorded; no substrate locale spawned.
+
+---
+
+## LPA-EXT 9 — tagged-template object boundary baseline (2026-05-27)
+
+**Trigger**: Keeper directive to proceed with fresh baseline after LPA-EXT 8 split `tagged-template-object-boundary` as a baseline-first child candidate.
+
+**Baseline target**:
+
+- Candidate: `tagged-template-object-boundary`.
+- Path set: all 27 fixtures under `language/expressions/tagged-template/`.
+- Results artifact: `/Users/jaredfoy/Developer/cruftless-sidecar/results/spec-boundary-baseline-20260526-224210/`.
+
+**Build**:
+
+- `cargo build --release --bin cruft -p cruftless` passed with existing warnings.
+
+**Result**:
+
+- PASS: 12.
+- FAIL: 13.
+- ABORT/no-json: 2 (`tco-call.js`, `tco-member.js`).
+
+**Failure clusters**:
+
+1. Template cache identity by source site/function/top-level: 4.
+2. Direct eval / realm context around tag binding: 4.
+3. Template-object allocation / map / constructor shape: 3.
+4. Frozen template object / strict write behavior: 2.
+5. Illegal escape cooked value should be `undefined`: 1.
+6. TCO tagged-template call/member aborts: 2.
+
+**CANDIDATES.md update**:
+
+- Promoted `tagged-template-object-boundary` from baseline-first to spawn-ready.
+- Recorded baseline counts and the TCO carve-out.
+
+**Finding LPA.20 (tagged-template baseline confirms a coherent boundary locale)**: the 27-row focused baseline produced 13 ordinary failures all centered on TemplateStringsArray construction, caching, freezing, raw/cooked shape, or eval/realm context. The two no-JSON rows are TCO tagged-template tests and can be carved out initially. This is no longer merely `strings.raw`; it is a coherent template-object boundary locale.
+
+**Status**: LPA-EXT 9 CLOSED. Candidate is spawn-ready; no substrate locale spawned in this audit rung.
+
+---
+
+## LPA-EXT 10 — diff-prod empirical cross-check of language-lowering partition (2026-05-27)
+
+**Trigger**: 70 new diff-prod fixtures (18 gap-partition probes + 8 deep-engine probes + 24 spec-lowering probes + 20 resolution-layer probes) were authored and run against both `cruft` and `bun`, producing byte-for-byte stdout comparisons across the 9 arcs identified in LPA-EXT 5's language-lowering partition and all 13 resolution layers from LPA-EXT 4. The run triangulates the matrix-derived partition against direct empirical engine behavior.
+
+**Full suite**: 112 fixtures (42 original + 70 new). Run result: **58 PASS / 54 FAIL**.
+
+**Produced**: Updated `pilots/apparatus/locale-positioning-audit/findings/language-lowering-partition.md` §IV with empirical arc-level pass rates, per-fixture divergence details, and 9 cross-cutting mechanism gaps. Added 90 per-locale `analysis.md` files alongside existing seed.md + trajectory.md pairs.
 
 **Cross-cutting mechanism gaps identified**:
 
@@ -353,48 +412,30 @@ Added Tier N, "resolver-axis heuristics partition":
 8. Arguments object shape (affects Arc F)
 9. strings.raw on tagged templates (affects Arcs D, I)
 
-**Leverage ranking update**: empirical pass rates reorder the candidate ranking. Arcs F and G (both 0% pass rate) are now recommended as higher priority than the matrix-count-derived ordering from LPA-EXT 5, which placed class elements and async generators first by row count.
+**Finding LPA.21 (diff-prod empirical pass rates invert the matrix-count priority for 2 arcs)**: Arcs F (eval/function/arguments, 582 rows, 0% pass rate) and G (assignment/for-head, 551 rows, 0% pass rate) are more acutely broken than the matrix-count leaders A and B.
 
-**Finding LPA.17 (diff-prod empirical pass rates invert the matrix-count priority for 2 arcs)**: the language-lowering partition (LPA-EXT 5) ranked Arc A (class, 4,677 rows) and Arc B (async gen, 1,492 rows) as the top two candidates. Empirical diff-prod triangulation shows Arcs F (eval/function/arguments, 582 rows, 0% pass rate) and G (assignment/for-head, 551 rows, 0% pass rate) are more acutely broken — crashes (exit 70) rather than divergent output. Matrix row count measures test262 breadth; diff-prod pass rate measures runtime depth. The two instruments triangulate: Arc A is wide but partially functional; Arc F is narrower but completely non-functional in the engine today.
+**Finding LPA.22 (9 cross-cutting mechanism gaps compress 54 fixture failures into a smaller fix surface)**: the 54 failing fixtures compress into 9 mechanism gaps spanning multiple arcs.
 
-**Finding LPA.18 (9 cross-cutting mechanism gaps compress 37 fixture failures into a smaller fix surface)**: the 37 failing fixtures do not represent 37 independent substrate gaps. They compress into 9 mechanism gaps, several of which span multiple arcs. Fixing ToPrimitive hint dispatch alone would flip fixtures across Arcs A, D, and the abstract operations category. Fixing IteratorClose would flip fixtures across Arcs B and G. The mechanism-gap list is therefore a higher-leverage work-ordering input than the per-fixture failure list.
+**Finding LPA.23 (the lexer's core token emission pipeline is sound)**: 7 lexer-exercising fixtures all PASS. 6 lexer gaps identified (L.1 through L.6), all with existing locale coverage.
 
-**Finding LPA.19 (the 13 new PASS fixtures confirm lowering correctness for ASI, Unicode, numeric literals, expression precedence, closures, hoisting, switch, labeled control flow, SameValue, abstract equality, and computed property order)**: these green results are not incidental. They confirm that the lexer, parser, and core bytecode compiler handle these ECMA-262 features correctly and produce byte-identical output to Bun. The engine's lowering pipeline is sound for the expression/statement grammar core; the gaps are at the boundary (eval, finally-on-abrupt, iterator-close) and at the spec's exotic object / abstract operation layer.
+**Finding LPA.24 (the highest-leverage lexer gap is actually in the compiler)**: L.2 (strings.raw) — the lexer produces raw data correctly, but the compiler doesn't thread it to the runtime.
 
-**Status**: LPA-EXT 8 CLOSED. Diff-prod cross-check recorded in language-lowering-partition.md §IV. No substrate locale spawned; the empirical leverage ranking is available for the next spawn decision.
+**Status**: LPA-EXT 10 CLOSED.
 
 ---
 
-## LPA-EXT 9 — Lexer substrate gap analysis (2026-05-27)
+## LPA-EXT 11 — Compiler-tier locale spawning (2026-05-27)
 
-**Trigger**: Keeper directive to analyze substrate gaps issuing from the highest (most foundational) layer — the tokenization / lexical grammar layer per ECMA-262 §11–§12.
+**Trigger**: LPA-EXT 10's mechanism gap analysis identified 5 compiler-tier gaps without adequate locale coverage.
 
-**Method**:
+**Spawned**:
 
-- Full source read of `pilots/rusty-js-parser/derived/src/lexer.rs` (1,302 lines) and `token.rs` (150 lines).
-- Cross-referenced against ECMA-262 §11 (Lexical Grammar) and §12 (ECMAScript Language: Lexical Grammar) production-by-production.
-- Mapped each lexer subsystem against the 112-fixture diff-prod results and the test262 matrix (rank 5: `source-to-ast/parser-early-error` = 903 failures; rank 7: `source-to-ast/parser-early-error` = 798 failures).
-- Consulted seeds of all 7 active tokenization locales (NLC, IDT, SLEC, PNL, LTC, LGSS, LEP).
+1. `generator-coroutine-suspension/` (GCS) — mechanism gap #3, 1,492 test262 rows
+2. `finally-abrupt-completion-lowering/` (FACL) — mechanism gap #5
+3. `tagged-template-object-construction/` (TTOC) — lexer gap L.2
+4. `eval-function-arguments-binding-semantics/` (EFABS) — mechanism gaps #4 + #8, promoted from CANDIDATES.md (abe)
+5. `iterator-close-emission-sites/` (ICES) — mechanism gap #2
 
-**Produced**: `pilots/apparatus/locale-positioning-audit/findings/lexer-substrate-gap-analysis.md`.
+**Finding LPA.25 (compiler tier has the widest gap between available data and locale coverage)**: the lexer (7 locales, 6 gaps all covered) and parser (12+ locales) have dense locale coverage. The runtime (20+ locales) has broad coverage. The compiler had 0 dedicated mechanism-gap locales despite being the layer where 5 of the 9 mechanism gaps originate.
 
-**Gap inventory**:
-
-| Gap | Description | Diff-prod signal | Test262 signal | Locale |
-|---|---|---|---|---|
-| L.1 | Permissive Unicode ID_Start/ID_Continue | PASS (valid IDs only) | 115 fails | `identifier-tokenization/` |
-| L.2 | strings.raw not threaded to runtime | FAIL (tagged-template-raw, string-escapes) | language-lowering rows | (candidate) |
-| L.3 | Identity escape passthrough in strict | masked by Bun parity | parser-early-error rows | `string-literal-and-escape-conformance/` |
-| L.4 | Regex flag validation absent at lex tier | PASS (valid flags) | regexp conformance rows | `regexp-conformance/` |
-| L.5 | No sloppy script-goal lexing | FAIL (directive-prologues), crash (with-scoping) | 734 Annex B rows | (candidate: `annexB-language-semantics`) |
-| L.6 | No Unicode property escapes / lookbehind in regex | FAIL (regexp-lookbehind-unicode) | regexp rows | `regex-engine-substrate/` |
-
-**Finding LPA.20 (the lexer's core token emission pipeline is sound)**: 7 diff-prod fixtures exercising the lexer's primary surfaces (ASI, Unicode identifiers, numeric literals, regex/division, template literals, string content, punctuators) all PASS. The lexer produces correct tokens for the patterns real code exercises. The 6 gaps are in conformance edges (permissive Unicode tables, strict-mode escape rejection, regex flag validation), not in the core pipeline.
-
-**Finding LPA.21 (the highest-leverage "lexer" gap is actually in the compiler)**: L.2 (strings.raw) is the most user-visible lexer-adjacent gap, but the lexer itself produces the raw data correctly. The gap is in the bytecode compiler (does not emit the raw array) and the runtime (does not construct the frozen `.raw` property on template call-site objects). This is a pattern: the lexer's output is correct, but higher layers don't consume all of it.
-
-**Finding LPA.22 (sloppy script-goal is the deepest architectural gap)**: L.5 blocks 734 Annex B test262 rows and all sloppy-mode-only behaviors. Unlike L.1–L.4 (which are single-rung mechanical fixes), adding script-goal support requires changes to the lexer (HTML comments, legacy octal acceptance), parser (sloppy-mode function hoisting, `with` acceptance without `new Function` workaround), and compiler (binding instantiation differences). This aligns with LPA-EXT 5 Arc C.
-
-**Finding LPA.23 (all 6 gaps have existing locale coverage or candidates)**: no new tokenization locale is needed. The 7 active locales plus 1 CANDIDATES.md entry cover all identified gaps. The recommended next moves are scope extensions, not new spawns.
-
-**Status**: LPA-EXT 9 CLOSED. Lexer substrate gap analysis recorded.
+**Status**: LPA-EXT 11 CLOSED. 5 compiler-tier locales founded; manifest refreshed to 135 locales.
