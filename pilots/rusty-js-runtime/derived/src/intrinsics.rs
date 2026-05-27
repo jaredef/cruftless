@@ -1203,13 +1203,20 @@ fn temporal_parse_plain_time_string(input: &str) -> Result<i128, RuntimeError> {
             digits.push('0');
         }
         let frac = digits.parse::<i128>().unwrap_or(0);
-        (second, frac / 1_000_000, (frac / 1_000) % 1_000, frac % 1_000)
+        (
+            second,
+            frac / 1_000_000,
+            (frac / 1_000) % 1_000,
+            frac % 1_000,
+        )
     } else {
         (0, 0, 0, 0)
     };
-    Ok((((((hour * 60 + minute) * 60 + second) * 1_000 + millisecond) * 1_000 + microsecond)
-        * 1_000)
-        + nanosecond)
+    Ok(
+        (((((hour * 60 + minute) * 60 + second) * 1_000 + millisecond) * 1_000 + microsecond)
+            * 1_000)
+            + nanosecond,
+    )
 }
 
 fn temporal_plain_time_difference(
@@ -2207,7 +2214,11 @@ fn temporal_seed_duration_from_string(o: &mut Object, input: &str) -> Result<(),
         'H' => 3_600_000_000_000_i128,
         'M' => 60_000_000_000_i128,
         'S' => 1_000_000_000_i128,
-        _ => return Err(RuntimeError::RangeError("invalid Temporal.Duration string".into())),
+        _ => {
+            return Err(RuntimeError::RangeError(
+                "invalid Temporal.Duration string".into(),
+            ))
+        }
     };
     let (whole, fraction) = number.split_once('.').unwrap_or((number, ""));
     let whole = whole
@@ -2911,6 +2922,52 @@ impl Runtime {
         self.install_destructure_helpers();
         self.install_destructure_iter_helpers();
         self.install_spread_helpers();
+        // ABMT-EXT 13: tagged-template call lowering hands the first
+        // argument through this hidden helper so the template object and
+        // its `.raw` twin are frozen before user code observes them. The
+        // parser currently preserves cooked strings only; for the
+        // no-substitution singleton closed here, cooked and raw coincide.
+        register_engine_helper(self, "__template_object__", |rt, args| {
+            let template_id = match args.first() {
+                Some(Value::Object(id)) => *id,
+                _ => return Ok(Value::Undefined),
+            };
+            let len = rt.array_length(template_id);
+            let raw_id = rt.alloc_object(Object::new_array());
+            for i in 0..len {
+                let v = rt.object_get(template_id, &i.to_string());
+                rt.obj_mut(raw_id).set_own(i.to_string(), v);
+            }
+            rt.obj_mut(raw_id)
+                .set_own("length".into(), Value::Number(len as f64));
+            let raw_value = Value::Object(raw_id);
+            rt.object_freeze_via(&raw_value)?;
+            rt.obj_mut(template_id)
+                .set_own_frozen("raw".into(), raw_value);
+            let template_value = Value::Object(template_id);
+            rt.object_freeze_via(&template_value)
+        });
+        // ABMT-EXT 15: private field declarations are not ordinary
+        // assignments. The compiler lowers `#x = init` declarations here
+        // so user-code `this.#x = v` can require that the private entry
+        // already exists.
+        register_engine_helper(self, "__init_private_field__", |rt, args| {
+            let target = match args.first() {
+                Some(Value::Object(id)) => *id,
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Cannot initialize private field on non-object".into(),
+                    ))
+                }
+            };
+            let key = match args.get(1) {
+                Some(Value::String(s)) => (**s).clone(),
+                _ => return Ok(Value::Undefined),
+            };
+            let value = args.get(2).cloned().unwrap_or(Value::Undefined);
+            rt.obj_mut(target).set_private(&key, value.clone());
+            Ok(value)
+        });
         self.install_compartment();
         // Tier-Ω.5.P17.E2: dynamic import() walks the real module resolver
         // (was: returned an unconditionally-rejected Promise per Ω.5.CCCCCCC
@@ -3335,6 +3392,24 @@ impl Runtime {
                     writable: true,
                     enumerable: false,
                     configurable: true,
+                    getter: None,
+                    setter: None,
+                },
+            );
+        }
+        // ECMA-262 §19.1.1 value properties are immutable/non-configurable.
+        for (k, v) in &[
+            ("Infinity", Value::Number(f64::INFINITY)),
+            ("NaN", Value::Number(f64::NAN)),
+            ("undefined", Value::Undefined),
+        ] {
+            self.obj_mut(gt).dict_mut().insert(
+                crate::value::PropertyKey::String((*k).to_string()),
+                crate::value::PropertyDescriptor {
+                    value: v.clone(),
+                    writable: false,
+                    enumerable: false,
+                    configurable: false,
                     getter: None,
                     setter: None,
                 },
@@ -4097,7 +4172,7 @@ impl Runtime {
                 Some(Value::Object(id)) => *id,
                 _ => return Ok(Value::Undefined),
             };
-            let key = match args.get(1) {
+            let mut key = match args.get(1) {
                 Some(v @ (Value::String(_) | Value::Symbol(_) | Value::Number(_))) => {
                     crate::interp::property_key(v)
                 }
@@ -4108,10 +4183,18 @@ impl Runtime {
                 _ => return Ok(Value::Undefined),
             };
             let fn_v = args.get(3).cloned().unwrap_or(Value::Undefined);
+            if let Value::Object(fn_id) = &fn_v {
+                rt.obj_mut(*fn_id).set_private_home(target);
+            }
             if key.as_str() == "prototype" && rt.obj(target).has_own_str("prototype") {
                 return Err(RuntimeError::TypeError(
                     "Classes may not define a static property named 'prototype'".into(),
                 ));
+            }
+            if let crate::value::PropertyKey::String(s) = &key {
+                if s.starts_with('#') {
+                    key = crate::value::PropertyKey::String(format!("{}@@{}", s, target.0));
+                }
             }
             let o = rt.obj_mut(target);
             // Class accessors install as enumerable:false per ECMA-262 sec
@@ -4218,13 +4301,17 @@ impl Runtime {
                 _ => return Ok(Value::Undefined),
             };
             let fn_v = args.get(2).cloned().unwrap_or(Value::Undefined);
+            if let Value::Object(fn_id) = &fn_v {
+                rt.obj_mut(*fn_id).set_private_home(target);
+            }
             if key == "prototype" && rt.obj(target).has_own_str("prototype") {
                 return Err(RuntimeError::TypeError(
                     "Classes may not define a static property named 'prototype'".into(),
                 ));
             }
             if key.starts_with('#') {
-                rt.obj_mut(target).set_private(&key, fn_v);
+                rt.obj_mut(target)
+                    .set_private_method(&format!("{}@@{}", key, target.0), fn_v);
             } else {
                 rt.obj_mut(target).set_own_internal(key, fn_v);
             }
@@ -5387,6 +5474,7 @@ impl Runtime {
             static EVAL_COUNTER: AtomicUsize = AtomicUsize::new(0);
             let n = EVAL_COUNTER.fetch_add(1, Ordering::Relaxed);
             let url = format!("file://<eval:{}>", n);
+            eval_global_declaration_instantiation_guard(rt, &source)?;
             // Try expression form first: wrap as assignment so the value
             // is captured in a stash global. If parse fails, fall through
             // to raw-statements form (no return value).
@@ -12398,6 +12486,78 @@ fn parse_date_string(s: &str) -> f64 {
     // Fall through to the legacy hand-rolled parser for shapes the new
     // parser doesn't recognize.
     parse_date_string_legacy(s)
+}
+
+fn eval_global_declaration_instantiation_guard(
+    rt: &Runtime,
+    source: &str,
+) -> Result<(), RuntimeError> {
+    let module = match rusty_js_parser::parse_module(source) {
+        Ok(module) => module,
+        Err(_) => return Ok(()),
+    };
+
+    for item in &module.body {
+        let rusty_js_ast::ModuleItem::Statement(stmt) = item else {
+            continue;
+        };
+        match stmt {
+            rusty_js_ast::Stmt::FunctionDecl {
+                name: Some(name), ..
+            } => {
+                if !can_declare_global_function(rt, name.name.as_ref()) {
+                    return Err(RuntimeError::TypeError(format!(
+                        "Cannot declare global function '{}'",
+                        name.name
+                    )));
+                }
+            }
+            rusty_js_ast::Stmt::Variable(var)
+                if matches!(var.kind, rusty_js_ast::VariableKind::Var) =>
+            {
+                for decl in &var.declarators {
+                    for name in decl.target.collect_names() {
+                        if !can_declare_global_var(rt, name.name.as_ref()) {
+                            return Err(RuntimeError::TypeError(format!(
+                                "Cannot declare global var '{}'",
+                                name.name
+                            )));
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(())
+}
+
+fn can_declare_global_var(rt: &Runtime, name: &str) -> bool {
+    let Some(global_id) = global_this_object(rt) else {
+        return true;
+    };
+    let global = rt.obj(global_id);
+    global.has_own_str(name) || global.extensible
+}
+
+fn can_declare_global_function(rt: &Runtime, name: &str) -> bool {
+    let Some(global_id) = global_this_object(rt) else {
+        return true;
+    };
+    let global = rt.obj(global_id);
+    let Some(desc) = global.get_own(name) else {
+        return global.extensible;
+    };
+    desc.configurable
+        || (desc.getter.is_none() && desc.setter.is_none() && desc.writable && desc.enumerable)
+}
+
+fn global_this_object(rt: &Runtime) -> Option<ObjectRef> {
+    match rt.globals.get("globalThis") {
+        Some(Value::Object(id)) => Some(*id),
+        _ => None,
+    }
 }
 
 fn parse_date_string_legacy(s: &str) -> f64 {

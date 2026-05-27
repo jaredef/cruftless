@@ -2013,16 +2013,37 @@ impl Compiler {
                     // resolve_local lookups.
                     let scope_snapshot = self.locals.len();
                     self.block_depth += 1;
-                    // Binding the catch param to a local: v1 pops the thrown
-                    // value into a fresh slot if param present, else discards.
+                    // Bind the thrown value to the catch parameter. Identifier
+                    // params store directly; patterned params spill to a
+                    // hidden source slot and use the shared binding-pattern
+                    // destructuring path so nullish object patterns throw
+                    // at handler entry.
                     if let Some(p) = &h.param {
-                        let slot = self.alloc_local(LocalDescriptor {
-                            name: p.name.clone(),
-                            kind: VariableKind::Let,
-                            depth: 0,
-                        });
-                        encode_op(&mut self.bytecode, Op::StoreLocal);
-                        encode_u16(&mut self.bytecode, slot);
+                        match p {
+                            rusty_js_ast::BindingPattern::Identifier(id) => {
+                                let slot = self.alloc_local(LocalDescriptor {
+                                    name: id.name.clone(),
+                                    kind: VariableKind::Let,
+                                    depth: 0,
+                                });
+                                encode_op(&mut self.bytecode, Op::StoreLocal);
+                                encode_u16(&mut self.bytecode, slot);
+                            }
+                            pat @ (rusty_js_ast::BindingPattern::Array(_)
+                            | rusty_js_ast::BindingPattern::Object(_)) => {
+                                for id in pat.collect_names() {
+                                    self.alloc_local(LocalDescriptor {
+                                        name: id.name.clone(),
+                                        kind: VariableKind::Let,
+                                        depth: 0,
+                                    });
+                                }
+                                let src_slot = self.alloc_temp("<catch.destr.src>");
+                                encode_op(&mut self.bytecode, Op::StoreLocal);
+                                encode_u16(&mut self.bytecode, src_slot);
+                                self.emit_destructure(pat, src_slot)?;
+                            }
+                        }
                     } else {
                         encode_op(&mut self.bytecode, Op::Pop);
                     }
@@ -2808,6 +2829,33 @@ impl Compiler {
             }
         }
         false
+    }
+
+    fn upvalue_is_const(&self, idx: u16) -> bool {
+        let Some(desc) = self.upvalues.get(idx as usize) else {
+            return false;
+        };
+        let Some(parent_idx) = self.enclosing.len().checked_sub(1) else {
+            return false;
+        };
+        self.upvalue_source_is_const_at(parent_idx, &desc.source)
+    }
+
+    fn upvalue_source_is_const_at(&self, frame_idx: usize, source: &UpvalueSource) -> bool {
+        let Some(frame) = self.enclosing.get(frame_idx) else {
+            return false;
+        };
+        match source {
+            UpvalueSource::Local(slot) => frame
+                .locals
+                .get(*slot as usize)
+                .is_some_and(|l| matches!(l.kind, VariableKind::Const)),
+            UpvalueSource::Upvalue(idx) => frame.upvalues.get(*idx as usize).is_some_and(|u| {
+                frame_idx.checked_sub(1).is_some_and(|parent_idx| {
+                    self.upvalue_source_is_const_at(parent_idx, &u.source)
+                })
+            }),
+        }
     }
 
     /// Tier-Ω.5.c: resolve an identifier to an upvalue slot in this proto.
@@ -4197,7 +4245,7 @@ impl Compiler {
             if !already {
                 Some(sub.alloc_local(LocalDescriptor {
                     name: n.name.clone(),
-                    kind: VariableKind::Var,
+                    kind: VariableKind::Const,
                     depth: 0,
                 }))
             } else {
@@ -4771,7 +4819,26 @@ impl Compiler {
                 } else {
                     self.compile_expr(value)?;
                     encode_op(&mut self.bytecode, Op::Dup);
-                    self.emit_store_ident(name);
+                    if let Some(slot) = self.resolve_local(name) {
+                        encode_op(&mut self.bytecode, Op::StoreLocal);
+                        encode_u16(&mut self.bytecode, slot);
+                    } else if let Some(up) = self.resolve_upvalue(name) {
+                        if self.upvalue_is_const(up) {
+                            encode_op(&mut self.bytecode, Op::Pop);
+                            self.emit_throw_typeerror(&format!(
+                                "Assignment to constant variable '{}'",
+                                name
+                            ));
+                            encode_op(&mut self.bytecode, Op::PushUndef);
+                        } else {
+                            encode_op(&mut self.bytecode, Op::StoreUpvalue);
+                            encode_u16(&mut self.bytecode, up);
+                        }
+                    } else {
+                        let idx = self.constants.intern(Constant::String(name.to_string()));
+                        encode_op(&mut self.bytecode, Op::StoreGlobal);
+                        encode_u16(&mut self.bytecode, idx);
+                    }
                 }
             }
             Expr::Member {
@@ -5713,6 +5780,36 @@ impl Compiler {
                 if *is_static {
                     continue;
                 }
+                if let ClassMemberName::Private { name, .. } = f_name {
+                    let value = match init {
+                        Some(e) => e.clone(),
+                        None => Expr::Identifier {
+                            name: "undefined".to_string(),
+                            span: *f_span,
+                        },
+                    };
+                    let helper_call = Expr::Call {
+                        callee: Box::new(Expr::Identifier {
+                            name: "__init_private_field__".to_string(),
+                            span: *f_span,
+                        }),
+                        arguments: vec![
+                            Argument::Expr(Expr::This { span: *f_span }),
+                            Argument::Expr(Expr::StringLiteral {
+                                value: format!("#{}", name),
+                                span: *f_span,
+                            }),
+                            Argument::Expr(value),
+                        ],
+                        optional: false,
+                        span: *f_span,
+                    };
+                    field_init_stmts.push(Stmt::Expression {
+                        expr: helper_call,
+                        span: *f_span,
+                    });
+                    continue;
+                }
                 let key_expr_prop: MemberProperty = match f_name {
                     ClassMemberName::Identifier { name, span } => MemberProperty::Identifier {
                         name: name.clone(),
@@ -6178,6 +6275,60 @@ impl Compiler {
                         };
                         match static_key {
                             Some(key) => {
+                                if key.starts_with('#') {
+                                    let helper = self
+                                        .constants
+                                        .intern(Constant::String("__init_private_field__".into()));
+                                    encode_op(&mut self.bytecode, Op::LoadGlobal);
+                                    encode_u16(&mut self.bytecode, helper);
+                                    encode_op(&mut self.bytecode, Op::LoadLocal);
+                                    encode_u16(&mut self.bytecode, ctor_slot);
+                                    let key_idx = self.constants.intern(Constant::String(key));
+                                    encode_op(&mut self.bytecode, Op::PushConst);
+                                    encode_u16(&mut self.bytecode, key_idx);
+                                    match init {
+                                        Some(e) => {
+                                            self.class_stack.push(ClassFrame {
+                                                super_ctor_name: super_ctor_slot
+                                                    .map(|_| super_ctor_name.clone()),
+                                                super_proto_name: super_ctor_slot
+                                                    .map(|_| super_proto_name.clone()),
+                                                in_constructor: false,
+                                                is_static: true,
+                                            });
+                                            let init_body = vec![rusty_js_ast::Stmt::Return {
+                                                argument: Some(e.clone()),
+                                                span: e.span(),
+                                            }];
+                                            let init_proto = self.compile_function_proto(
+                                                None,
+                                                false,
+                                                false,
+                                                &[],
+                                                &init_body,
+                                            )?;
+                                            self.class_stack.pop();
+                                            let captures = init_proto.upvalues.clone();
+                                            let idx_proto = self
+                                                .constants
+                                                .intern(Constant::Function(Box::new(init_proto)));
+                                            encode_op(&mut self.bytecode, Op::LoadLocal);
+                                            encode_u16(&mut self.bytecode, ctor_slot);
+                                            encode_op(&mut self.bytecode, Op::MakeClosure);
+                                            encode_u16(&mut self.bytecode, idx_proto);
+                                            emit_captures(&mut self.bytecode, &captures);
+                                            encode_op(&mut self.bytecode, Op::CallMethod);
+                                            encode_u8(&mut self.bytecode, 0);
+                                        }
+                                        None => {
+                                            encode_op(&mut self.bytecode, Op::PushUndef);
+                                        }
+                                    }
+                                    encode_op(&mut self.bytecode, Op::Call);
+                                    encode_u8(&mut self.bytecode, 3);
+                                    encode_op(&mut self.bytecode, Op::Pop);
+                                    continue;
+                                }
                                 // Order: ctor on stack, then value, then SetProp.
                                 // Per ECMA-262 §15.7.10 step 31.b, `this` inside
                                 // a static field initializer is the class itself.

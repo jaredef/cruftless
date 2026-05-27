@@ -1834,19 +1834,7 @@ impl<'src> Parser<'src> {
             self.bump()?;
             let param = if matches!(self.current_kind(), TokenKind::Punct(Punct::LParen)) {
                 self.bump()?;
-                let p = if let TokenKind::Ident(n) = self.current_kind().clone() {
-                    let span = self.lookahead_span();
-                    self.bump()?;
-                    Some(BindingIdentifier { name: n, span })
-                } else {
-                    // Patterned catch parameter — opaque skip for v1.
-                    while !matches!(self.current_kind(), TokenKind::Punct(Punct::RParen))
-                        && !self.at_eof_internal()
-                    {
-                        self.bump()?;
-                    }
-                    None
-                };
+                let p = Some(self.parse_binding_target()?);
                 self.expect_punct(Punct::RParen)?;
                 p
             } else {

@@ -465,8 +465,10 @@ fn projection_axis(rel: &str, reason: &str, surface: &str) -> String {
     // phrasing (e.g., "testResult !== true", "X === false", "result !==
     // expected"). These are value-semantics wrong-results in test262's
     // older-style phrasing.
-    } else if r.contains("!== true") || r.contains("!== false")
-        || r.contains("=== false") || r.contains("=== true")
+    } else if r.contains("!== true")
+        || r.contains("!== false")
+        || r.contains("=== false")
+        || r.contains("=== true")
     {
         "value-semantics/wrong-result".into()
     // PCR-EXT 2: spec-numbered older-style assertions like "#1: ...".

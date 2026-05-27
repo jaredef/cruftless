@@ -1199,7 +1199,9 @@ impl<'src> Parser<'src> {
         use crate::token::TemplatePart;
         use rusty_js_ast::{Argument, ArrayElement};
         // Parse the template literal into an Expr::TemplateLiteral first,
-        // then convert into a Call with [Array(quasis), ...expressions].
+        // then convert into a Call with [__template_object__(Array(quasis)),
+        // ...expressions]. The helper materializes the frozen template
+        // object + `.raw` array expected by tagged-template call sites.
         let tpl = match self.current_kind().clone() {
             TokenKind::Template { cooked, part, .. } => {
                 let tspan = self.lookahead_span();
@@ -1240,7 +1242,16 @@ impl<'src> Parser<'src> {
             trailing_comma_after_spread: false,
             span: Span::new(start, end),
         };
-        let mut arguments: Vec<Argument> = vec![Argument::Expr(strings_arr)];
+        let template_object = Expr::Call {
+            callee: Box::new(Expr::Identifier {
+                name: "__template_object__".into(),
+                span: Span::new(start, end),
+            }),
+            arguments: vec![Argument::Expr(strings_arr)],
+            optional: false,
+            span: Span::new(start, end),
+        };
+        let mut arguments: Vec<Argument> = vec![Argument::Expr(template_object)];
         for e in expressions {
             arguments.push(Argument::Expr(e));
         }

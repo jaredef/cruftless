@@ -593,8 +593,9 @@ pub struct Parameter {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CatchClause {
-    /// `Some(...)` for `catch (e)`; `None` for the ES2019 optional-catch-binding `catch { ... }`.
-    pub param: Option<BindingIdentifier>,
+    /// `Some(...)` for `catch (e)` / `catch ({...})`; `None` for the
+    /// ES2019 optional-catch-binding `catch { ... }`.
+    pub param: Option<BindingPattern>,
     pub body: Box<Stmt>,
     pub span: Span,
 }
