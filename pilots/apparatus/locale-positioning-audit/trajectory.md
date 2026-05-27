@@ -279,3 +279,37 @@ Added Tier M, "language-lowering partition outputs":
 **Finding LPA.14 (candidate disposition is the load-bearing output)**: the important result of repartition is not just counts; it is the disposition attached to each arc. Counts alone would select class lowering first. Disposition-aware repartition selected async-generator/for-await as cleaner for baseline, class as audit-first, and dynamic import as apparatus-first. The algorithm therefore prevents raw-count priority inversions.
 
 **Status**: LPA-EXT 6 CLOSED. Repartition audit is now part of LPA methodology.
+
+---
+
+## LPA-EXT 7 — resolver-axis gap partition (2026-05-27)
+
+**Trigger**: Keeper supplied the recent heuristics-commit read after the cited commit object (`600afe6`) was not locally reachable. The read partitioned a 49-gap snapshot by resolver instance and axis, with explicit (`█`) versus implicit (`░`) Pin-Art markers.
+
+**Produced**: `pilots/apparatus/locale-positioning-audit/findings/resolver-axis-gap-partition.md`.
+
+**Provenance note**:
+
+- Source commit cited by keeper: `600afe6`.
+- Local lookup after `git fetch --all --prune`: object not reachable from `origin/main`, local refs, or reflog.
+- This rung records the keeper-provided partition as apparatus input. A future rerun should replace the provenance with exact commit/run ids once available.
+
+**Partition**:
+
+1. Instance 2 x Axis H: 24 bootstrap host-install gaps, totality-of-consumption violations at the bootstrap resolver.
+2. Instance 4 x Axis R: 13 AST-to-bytecode boundary-integrity gaps, boundary leaks and unconsumed directives.
+3. Instance 4 x Axis O: 7 operator-directive gaps, narrower single-rung substrate fixes.
+
+**CANDIDATES.md update**:
+
+Added Tier N, "resolver-axis heuristics partition":
+
+- `bootstrap-host-install-totality` — baseline-first.
+- `ast-bytecode-boundary-integrity-audit` — audit-first.
+- `operator-directive-completion` — baseline-first.
+
+**Finding LPA.15 (resolver-axis cells expose mechanism coherence beyond raw surface rows)**: the 49-gap snapshot concentrates into two hot cells and one narrow operator queue. Instance 2 x Axis H is bootstrap install totality; Instance 4 x Axis R is boundary integrity; Instance 4 x Axis O is operator directive completion. The resolver-axis view is therefore a useful repartition lens: it distinguishes install-sequence gaps, boundary-spec gaps, and single-rung operator gaps that raw surface labels would blur.
+
+**Finding LPA.16 (implicit probe-collision constraints are first-class apparatus output)**: 25 of the 49 gaps were implicit constraints discovered by fixture collision. These rows are not merely failures; they are newly surfaced decision-basis edges. Future repartition artifacts should preserve the explicit/implicit marker instead of collapsing both into the same count.
+
+**Status**: LPA-EXT 7 CLOSED. Resolver-axis partition recorded; no substrate locale spawned.

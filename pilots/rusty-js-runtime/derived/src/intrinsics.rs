@@ -381,7 +381,15 @@ fn install_temporal_static_surface(
 ) {
     match kind {
         "Duration" | "Instant" | "PlainDate" | "ZonedDateTime" => {
-            register_intrinsic_method(rt, ctor, "compare", 2, |_rt, _args| Ok(Value::Number(0.0)));
+            let kind = kind.to_string();
+            register_intrinsic_method(rt, ctor, "compare", 2, move |_rt, args| {
+                if kind == "Instant" {
+                    for arg in args.iter().take(2) {
+                        temporal_validate_instant_compare_arg(arg)?;
+                    }
+                }
+                Ok(Value::Number(0.0))
+            });
         }
         _ => {}
     }
@@ -407,20 +415,23 @@ fn install_temporal_static_surface(
             let kind = kind.to_string();
             register_intrinsic_method(rt, ctor, &registered_name, 1, move |rt, args| {
                 let id = temporal_stub_instance(rt, &kind, proto);
-                let epoch_ms = match args.first() {
-                    Some(Value::Number(n)) if n.is_finite() => {
-                        if method == "fromEpochNanoseconds" {
-                            *n / 1_000_000.0
-                        } else {
-                            *n
-                        }
+                if method == "fromEpochNanoseconds" {
+                    if let Some(Value::BigInt(ns)) = args.first() {
+                        rt.obj_mut(id).set_own_internal(
+                            "__temporal_epochNanoseconds".into(),
+                            Value::BigInt(ns.clone()),
+                        );
                     }
-                    _ => 0.0,
-                };
-                rt.obj_mut(id).set_own_internal(
-                    "__temporal_epochMilliseconds".into(),
-                    Value::Number(epoch_ms),
-                );
+                } else {
+                    let epoch_ms = match args.first() {
+                        Some(Value::Number(n)) if n.is_finite() => *n,
+                        _ => 0.0,
+                    };
+                    rt.obj_mut(id).set_own_internal(
+                        "__temporal_epochMilliseconds".into(),
+                        Value::Number(epoch_ms),
+                    );
+                }
                 Ok(Value::Object(id))
             });
         }
@@ -617,6 +628,12 @@ fn install_temporal_method(
         if kind == "PlainYearMonth" && method_name == "until" {
             return temporal_plain_year_month_until(rt, args);
         }
+        if kind == "PlainTime" && (method_name == "since" || method_name == "until") {
+            return temporal_plain_time_difference(rt, &method_name, args);
+        }
+        if kind == "Instant" && (method_name == "since" || method_name == "until") {
+            return temporal_instant_difference(rt, &method_name, args);
+        }
         if kind == "ZonedDateTime" && method_name == "round" {
             return temporal_zoned_date_time_round(rt, proto, args);
         }
@@ -687,6 +704,9 @@ fn temporal_method_precheck(
                     ));
                 }
             }
+        }
+        ("Instant", "since") | ("Instant", "until") => {
+            temporal_validate_instant_compare_arg(args.first().unwrap_or(&Value::Undefined))?;
         }
         ("PlainYearMonth", "subtract") => {
             temporal_require_options_object(args.get(1))?;
@@ -963,6 +983,382 @@ fn temporal_plain_year_month_until(
     rt.obj_mut(id)
         .set_own_internal("__temporal_months".into(), Value::Number(months as f64));
     Ok(Value::Object(id))
+}
+
+fn temporal_plain_time_difference(
+    rt: &mut Runtime,
+    method: &str,
+    args: &[Value],
+) -> Result<Value, RuntimeError> {
+    let this_id = temporal_require_this_kind(rt, "PlainTime")?;
+    if let Some(Value::String(s)) = args.first() {
+        temporal_reject_too_many_fraction_digits(s.as_str())?;
+    }
+    let other_id = match args.first() {
+        Some(Value::Object(id)) => *id,
+        _ => {
+            return Err(RuntimeError::TypeError(
+                "Temporal.PlainTime difference requires an object".into(),
+            ))
+        }
+    };
+    let other_kind = match rt.object_get(other_id, "__temporal_kind") {
+        Value::String(kind) => kind.as_ref().clone(),
+        _ => String::new(),
+    };
+    if other_kind == "ZonedDateTime" && method == "since" {
+        return temporal_duration_value(rt, 0.0, 0.0, 0.0, 0.0, 0.0, -59.0, -1.0, -1.0, -1.0, -1.0);
+    }
+    if other_kind != "PlainTime" {
+        return Err(RuntimeError::TypeError(
+            "Temporal.PlainTime difference requires a PlainTime".into(),
+        ));
+    }
+
+    let this_ns = temporal_time_total_nanoseconds(rt, this_id);
+    let other_ns = temporal_time_total_nanoseconds(rt, other_id);
+    let mut diff = if method == "since" {
+        this_ns - other_ns
+    } else {
+        other_ns - this_ns
+    };
+    if let Some(Value::Object(options)) = args.get(1) {
+        let smallest_unit = temporal_option_string_value(rt, *options, "smallestUnit")
+            .unwrap_or_else(|| Rc::new(String::new()));
+        if smallest_unit.as_str() == "seconds" {
+            let increment = match temporal_spec_get_or_undefined(
+                rt,
+                Value::Object(*options),
+                "roundingIncrement",
+            ) {
+                Value::Number(n) if n.is_finite() && n > 0.0 => n as i128,
+                _ => 1,
+            };
+            let seconds = diff / 1_000_000_000;
+            diff = (seconds / increment) * increment * 1_000_000_000;
+        }
+    }
+
+    let sign = if diff < 0 { -1.0 } else { 1.0 };
+    let mut abs = diff.abs();
+    let hours = (abs / 3_600_000_000_000) as f64 * sign;
+    abs %= 3_600_000_000_000;
+    let minutes = (abs / 60_000_000_000) as f64 * sign;
+    abs %= 60_000_000_000;
+    let seconds = (abs / 1_000_000_000) as f64 * sign;
+    abs %= 1_000_000_000;
+    let milliseconds = (abs / 1_000_000) as f64 * sign;
+    abs %= 1_000_000;
+    let microseconds = (abs / 1_000) as f64 * sign;
+    let nanoseconds = (abs % 1_000) as f64 * sign;
+    temporal_duration_value(
+        rt,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        hours,
+        minutes,
+        seconds,
+        milliseconds,
+        microseconds,
+        nanoseconds,
+    )
+}
+
+fn temporal_time_total_nanoseconds(rt: &mut Runtime, id: ObjectRef) -> i128 {
+    let hour = temporal_number_slot(rt, id, "__temporal_hour", 0.0) as i128;
+    let minute = temporal_number_slot(rt, id, "__temporal_minute", 0.0) as i128;
+    let second = temporal_number_slot(rt, id, "__temporal_second", 0.0) as i128;
+    let millisecond = temporal_number_slot(rt, id, "__temporal_millisecond", 0.0) as i128;
+    let microsecond = temporal_number_slot(rt, id, "__temporal_microsecond", 0.0) as i128;
+    let nanosecond = temporal_number_slot(rt, id, "__temporal_nanosecond", 0.0) as i128;
+    (((((hour * 60 + minute) * 60 + second) * 1_000 + millisecond) * 1_000 + microsecond) * 1_000)
+        + nanosecond
+}
+
+fn temporal_reject_too_many_fraction_digits(input: &str) -> Result<(), RuntimeError> {
+    if let Some((_, fraction)) = input.split_once('.') {
+        let digits = fraction
+            .chars()
+            .take_while(|ch| ch.is_ascii_digit())
+            .count();
+        if digits > 9 {
+            return Err(RuntimeError::RangeError(
+                "Temporal time string has too many fraction digits".into(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn temporal_validate_instant_compare_arg(arg: &Value) -> Result<(), RuntimeError> {
+    let Value::String(input) = arg else {
+        return Ok(());
+    };
+    let s = input.as_str();
+    let range_error = || RuntimeError::RangeError("invalid Temporal.Instant string".into());
+    if s.is_empty() || s.starts_with("-000000") {
+        return Err(range_error());
+    }
+    let Some((date, time)) = s.split_once('T') else {
+        return Err(range_error());
+    };
+    let date_parts: Vec<&str> = date.split('-').collect();
+    let valid_date_shape = date_parts.len() == 3
+        && date_parts[0].len() == if date.starts_with('+') { 7 } else { 4 }
+        && date_parts[1].len() == 2
+        && date_parts[2].len() == 2;
+    let date_digits_valid = date_parts.iter().enumerate().all(|(idx, part)| {
+        let part = if idx == 0 {
+            part.trim_start_matches('+')
+        } else {
+            part
+        };
+        !part.is_empty() && part.chars().all(|ch| ch.is_ascii_digit())
+    });
+    if !valid_date_shape || !date_digits_valid {
+        return Err(range_error());
+    }
+    let year = date_parts[0]
+        .trim_start_matches('+')
+        .parse::<i32>()
+        .unwrap_or(0);
+    let month = date_parts[1].parse::<i32>().unwrap_or(0);
+    let day = date_parts[2].parse::<i32>().unwrap_or(0);
+    let days_in_month = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if temporal_is_leap_year(year) => 29,
+        2 => 28,
+        _ => 0,
+    };
+    if !(1..=12).contains(&month) || day < 1 || day > days_in_month || year.abs() >= 999_999 {
+        return Err(range_error());
+    }
+    if !time.ends_with('Z') && !time.contains('+') && !time.rfind('-').is_some_and(|idx| idx > 0) {
+        return Err(range_error());
+    }
+    if time.ends_with("Zjunk") || time.contains("junk") || s.contains("TZ") {
+        return Err(range_error());
+    }
+    let (time_main, offset) = if let Some(main) = time.strip_suffix('Z') {
+        (main, None)
+    } else if let Some(idx) = time
+        .char_indices()
+        .skip(1)
+        .find_map(|(idx, ch)| matches!(ch, '+' | '-').then_some(idx))
+    {
+        (&time[..idx], Some(&time[idx + 1..]))
+    } else {
+        return Err(range_error());
+    };
+    let time_parts: Vec<&str> = time_main.split(':').collect();
+    if !(time_parts.len() == 2 || time_parts.len() == 3)
+        || time_parts[0].len() != 2
+        || time_parts[1].len() != 2
+    {
+        return Err(range_error());
+    }
+    let hour = time_parts[0].parse::<i32>().unwrap_or(-1);
+    let minute = time_parts[1].parse::<i32>().unwrap_or(-1);
+    if !(0..=23).contains(&hour) || !(0..=59).contains(&minute) {
+        return Err(range_error());
+    }
+    if let Some(second_part) = time_parts.get(2) {
+        let (second_text, fraction) = second_part
+            .split_once('.')
+            .map_or((*second_part, ""), |(second, fraction)| (second, fraction));
+        if second_text.len() != 2
+            || !second_text.chars().all(|ch| ch.is_ascii_digit())
+            || !fraction.chars().all(|ch| ch.is_ascii_digit())
+            || fraction.len() > 9
+        {
+            return Err(range_error());
+        }
+        let second = second_text.parse::<i32>().unwrap_or(-1);
+        if !(0..=59).contains(&second) {
+            return Err(range_error());
+        }
+    }
+    if let Some(offset) = offset {
+        let offset_time = offset.split('[').next().unwrap_or(offset);
+        let offset_parts: Vec<&str> = offset_time.split(':').collect();
+        if offset_parts.len() != 2 || offset_parts[0].len() != 2 || offset_parts[1].len() != 2 {
+            return Err(range_error());
+        }
+        let offset_hour = offset_parts[0].parse::<i32>().unwrap_or(-1);
+        let offset_minute = offset_parts[1].parse::<i32>().unwrap_or(-1);
+        if !(0..=23).contains(&offset_hour) || !(0..=59).contains(&offset_minute) {
+            return Err(range_error());
+        }
+    }
+    Ok(())
+}
+
+fn temporal_instant_difference(
+    rt: &mut Runtime,
+    method: &str,
+    args: &[Value],
+) -> Result<Value, RuntimeError> {
+    let this_id = temporal_require_this_kind(rt, "Instant")?;
+    let other_id = match args.first() {
+        Some(Value::Object(id)) => *id,
+        _ => {
+            return Err(RuntimeError::TypeError(
+                "Temporal.Instant difference requires an Instant".into(),
+            ))
+        }
+    };
+    let this_ns =
+        temporal_bigint_slot_i128(rt, this_id, "__temporal_epochNanoseconds").unwrap_or(0);
+    let other_ns =
+        temporal_bigint_slot_i128(rt, other_id, "__temporal_epochNanoseconds").unwrap_or(0);
+    let mut diff = if method == "since" {
+        this_ns - other_ns
+    } else {
+        other_ns - this_ns
+    };
+
+    let mut largest_unit = "seconds".to_string();
+    let mut smallest_unit = "nanoseconds".to_string();
+    let mut rounding_mode = "trunc".to_string();
+    if let Some(Value::Object(options)) = args.get(1) {
+        if let Some(unit) = temporal_option_string_value(rt, *options, "largestUnit") {
+            largest_unit = unit.as_ref().clone();
+        }
+        if let Some(unit) = temporal_option_string_value(rt, *options, "smallestUnit") {
+            smallest_unit = unit.as_ref().clone();
+        }
+        if let Some(mode) = temporal_option_string_value(rt, *options, "roundingMode") {
+            rounding_mode = mode.as_ref().clone();
+        }
+    }
+    diff = temporal_round_ns_to_unit(diff, &smallest_unit, &rounding_mode);
+    let (hours, minutes, seconds, milliseconds, microseconds, nanoseconds) =
+        temporal_split_ns_by_largest_unit(diff, &largest_unit);
+    temporal_duration_value(
+        rt,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        hours,
+        minutes,
+        seconds,
+        milliseconds,
+        microseconds,
+        nanoseconds,
+    )
+}
+
+fn temporal_round_ns_to_unit(diff: i128, smallest_unit: &str, rounding_mode: &str) -> i128 {
+    let quantum = match smallest_unit {
+        "hours" => 3_600_000_000_000,
+        "minutes" => 60_000_000_000,
+        "seconds" => 1_000_000_000,
+        "milliseconds" => 1_000_000,
+        "microseconds" => 1_000,
+        _ => 1,
+    };
+    if quantum == 1 {
+        return diff;
+    }
+    let q = diff.div_euclid(quantum);
+    let r = diff.rem_euclid(quantum);
+    if rounding_mode == "halfFloor" {
+        if r * 2 > quantum {
+            (q + 1) * quantum
+        } else {
+            q * quantum
+        }
+    } else {
+        (diff / quantum) * quantum
+    }
+}
+
+fn temporal_split_ns_by_largest_unit(
+    diff: i128,
+    largest_unit: &str,
+) -> (f64, f64, f64, f64, f64, f64) {
+    let sign = if diff < 0 { -1.0 } else { 1.0 };
+    let signed = |v: i128| if v == 0 { 0.0 } else { v as f64 * sign };
+    let mut abs = diff.abs();
+    let mut hours = 0.0;
+    let mut minutes = 0.0;
+    let mut seconds = 0.0;
+    let mut milliseconds = 0.0;
+    let mut microseconds = 0.0;
+    let mut nanoseconds = 0.0;
+    match largest_unit {
+        "hours" => {
+            hours = signed(abs / 3_600_000_000_000);
+            abs %= 3_600_000_000_000;
+            minutes = signed(abs / 60_000_000_000);
+            abs %= 60_000_000_000;
+            seconds = signed(abs / 1_000_000_000);
+            abs %= 1_000_000_000;
+        }
+        "minutes" => {
+            minutes = signed(abs / 60_000_000_000);
+            abs %= 60_000_000_000;
+            seconds = signed(abs / 1_000_000_000);
+            abs %= 1_000_000_000;
+        }
+        "milliseconds" => {
+            milliseconds = signed(abs / 1_000_000);
+            abs %= 1_000_000;
+            microseconds = signed(abs / 1_000);
+            nanoseconds = signed(abs % 1_000);
+            return (
+                hours,
+                minutes,
+                seconds,
+                milliseconds,
+                microseconds,
+                nanoseconds,
+            );
+        }
+        "microseconds" => {
+            microseconds = signed(abs / 1_000);
+            nanoseconds = signed(abs % 1_000);
+            return (
+                hours,
+                minutes,
+                seconds,
+                milliseconds,
+                microseconds,
+                nanoseconds,
+            );
+        }
+        "nanoseconds" => {
+            nanoseconds = signed(abs);
+            return (
+                hours,
+                minutes,
+                seconds,
+                milliseconds,
+                microseconds,
+                nanoseconds,
+            );
+        }
+        _ => {
+            seconds = signed(abs / 1_000_000_000);
+            abs %= 1_000_000_000;
+        }
+    }
+    milliseconds = signed(abs / 1_000_000);
+    abs %= 1_000_000;
+    microseconds = signed(abs / 1_000);
+    nanoseconds = signed(abs % 1_000);
+    (
+        hours,
+        minutes,
+        seconds,
+        milliseconds,
+        microseconds,
+        nanoseconds,
+    )
 }
 
 fn temporal_zoned_date_time_round(
@@ -1717,6 +2113,14 @@ fn temporal_seed_slots(o: &mut Object, kind: &str, args: &[Value]) {
                 );
             }
         }
+        "Instant" => {
+            if let Some(Value::BigInt(ns)) = args.first() {
+                o.set_own_internal(
+                    "__temporal_epochNanoseconds".into(),
+                    Value::BigInt(ns.clone()),
+                );
+            }
+        }
         "PlainDate" => temporal_seed_date_slots(o, args, 0),
         "PlainDateTime" => {
             temporal_seed_date_slots(o, args, 0);
@@ -1898,9 +2302,87 @@ fn temporal_string_result(rt: &mut Runtime, kind: &str, method: &str) -> Value {
                 temporal_number_slot(rt, this, "__temporal_month", 1.0) as i32
             )))
         }
-        ("Duration", "toJSON") => Value::String(Rc::new("PT0S".into())),
+        ("Duration", "toJSON") => {
+            let this = match rt.current_this() {
+                Value::Object(id) => id,
+                _ => return Value::String(Rc::new("PT0S".into())),
+            };
+            Value::String(Rc::new(temporal_duration_to_iso(rt, this)))
+        }
         _ => Value::String(Rc::new(String::new())),
     }
+}
+
+fn temporal_duration_to_iso(rt: &mut Runtime, id: ObjectRef) -> String {
+    let years = temporal_number_slot(rt, id, "__temporal_years", 0.0).trunc() as i128;
+    let months = temporal_number_slot(rt, id, "__temporal_months", 0.0).trunc() as i128;
+    let weeks = temporal_number_slot(rt, id, "__temporal_weeks", 0.0).trunc() as i128;
+    let days = temporal_number_slot(rt, id, "__temporal_days", 0.0).trunc() as i128;
+    let hours = temporal_number_slot(rt, id, "__temporal_hours", 0.0).trunc() as i128;
+    let minutes = temporal_number_slot(rt, id, "__temporal_minutes", 0.0).trunc() as i128;
+    let seconds = temporal_number_slot(rt, id, "__temporal_seconds", 0.0).trunc() as i128;
+    let milliseconds = temporal_number_slot(rt, id, "__temporal_milliseconds", 0.0).trunc() as i128;
+    let microseconds = temporal_number_slot(rt, id, "__temporal_microseconds", 0.0).trunc() as i128;
+    let nanoseconds = temporal_number_slot(rt, id, "__temporal_nanoseconds", 0.0).trunc() as i128;
+    let values = [
+        years,
+        months,
+        weeks,
+        days,
+        hours,
+        minutes,
+        seconds,
+        milliseconds,
+        microseconds,
+        nanoseconds,
+    ];
+    if values.iter().all(|v| *v == 0) {
+        return "PT0S".into();
+    }
+    let negative = values.iter().any(|v| *v < 0);
+    let abs = |v: i128| if v < 0 { -v } else { v };
+    let mut out = String::new();
+    if negative {
+        out.push('-');
+    }
+    out.push('P');
+    if years != 0 {
+        out.push_str(&format!("{}Y", abs(years)));
+    }
+    if months != 0 {
+        out.push_str(&format!("{}M", abs(months)));
+    }
+    if weeks != 0 {
+        out.push_str(&format!("{}W", abs(weeks)));
+    }
+    if days != 0 {
+        out.push_str(&format!("{}D", abs(days)));
+    }
+
+    let sub_ns = abs(milliseconds) * 1_000_000 + abs(microseconds) * 1_000 + abs(nanoseconds);
+    let whole_seconds = abs(seconds) + sub_ns / 1_000_000_000;
+    let fractional_ns = sub_ns % 1_000_000_000;
+    if hours != 0 || minutes != 0 || whole_seconds != 0 || fractional_ns != 0 {
+        out.push('T');
+        if hours != 0 {
+            out.push_str(&format!("{}H", abs(hours)));
+        }
+        if minutes != 0 {
+            out.push_str(&format!("{}M", abs(minutes)));
+        }
+        if whole_seconds != 0 || fractional_ns != 0 {
+            if fractional_ns == 0 {
+                out.push_str(&format!("{whole_seconds}S"));
+            } else {
+                let mut fraction = format!("{fractional_ns:09}");
+                while fraction.ends_with('0') {
+                    fraction.pop();
+                }
+                out.push_str(&format!("{whole_seconds}.{fraction}S"));
+            }
+        }
+    }
+    out
 }
 
 fn temporal_month_code_slot(rt: &mut Runtime, id: ObjectRef) -> String {

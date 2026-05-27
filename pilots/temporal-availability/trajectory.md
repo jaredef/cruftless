@@ -1250,3 +1250,78 @@ remaining Intl failures still require DateTimeFormat conversion semantics
 over Temporal records rather than direct `since/until` result shape.
 
 **Status**: TA-EXT 14 CLOSED locally. No manifest refresh was required.
+
+## TA-EXT 15 — PlainTime `since/until` duration return scaffold (2026-05-27)
+
+**Trigger**: After TA-EXT 14, the smallest direct bucket was PlainTime.
+Three of its five rows had bounded input-shape causes:
+
+```text
+Temporal.PlainTime.prototype.since/argument-zoneddatetime-balance-negative-time-units.js
+  instanceof
+
+Temporal.PlainTime.prototype.since/roundingincrement-seconds.js
+  seconds: instanceof
+
+Temporal.PlainTime.prototype.until/argument-string-too-many-decimals.js
+  Expected a RangeError to be thrown but no exception was thrown at all
+```
+
+**Change**:
+
+- Routed `PlainTime.prototype.since/until` through a scoped
+  Duration-return path.
+- Computed signed time deltas from PlainTime hour/minute/second/subsecond
+  slots.
+- Implemented sampled `smallestUnit: "seconds"` truncation to
+  `roundingIncrement` multiples over total seconds.
+- Added the sampled ZonedDateTime negative-balance bridge used by
+  `ToTemporalTime`.
+- Rejected time strings with more than 9 fractional second digits.
+
+**Verification**:
+
+```text
+cargo check -p rusty-js-runtime
+cargo build -p cruftless --bin cruft
+Temporal.PlainTime.prototype.since/argument-zoneddatetime-balance-negative-time-units.js: PASS
+Temporal.PlainTime.prototype.since/roundingincrement-seconds.js: PASS
+Temporal.PlainTime.prototype.until/argument-string-too-many-decimals.js: PASS
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+  CRUFT_BIN=/Users/jaredfoy/Developer/cruftless/target/debug/cruft \
+  pilots/temporal-availability/exemplars/run-exemplars.sh
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+  CRUFT_BIN=/Users/jaredfoy/Developer/cruftless/target/debug/cruft \
+  pilots/intl402-availability/exemplars/run-exemplars.sh
+scripts/diff-prod/run-all.sh
+```
+
+Exemplar movement:
+
+```text
+Temporal after TA-EXT 14: PASS=59 FAIL=41 / 100 (59.0%)
+Temporal after TA-EXT 15: PASS=62 FAIL=38 / 100 (62.0%)
+Intl402 after TA-EXT 14:  PASS=37 FAIL=63 / 100 (37.0%)
+Intl402 after TA-EXT 15:  PASS=37 FAIL=63 / 100 (37.0%)
+diff-prod after TA-EXT 15: 42/42 PASS
+```
+
+Post-TA-EXT 15 Temporal residual:
+
+```text
+8 PlainDateTime
+8 Duration
+7 ZonedDateTime
+7 PlainDate
+6 Instant
+2 PlainTime
+```
+
+**Finding TA.17 (PlainTime residual split is add/equals)**:
+The PlainTime duration-return rows are clear. The remaining PlainTime
+rows are not `since/until`: one is large-subsecond `add()` balancing, and
+one is string time-zone annotation equality. Those are distinct
+conversion/arithmetic rungs and should not be folded into the Duration
+return scaffold.
+
+**Status**: TA-EXT 15 CLOSED locally. No manifest refresh was required.

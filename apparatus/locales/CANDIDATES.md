@@ -344,6 +344,28 @@ Candidates surfaced by `pilots/apparatus/locale-positioning-audit/findings/langu
 **Methodology**: reason-text mining and projection refinement before any substrate locale. Likely split import-attributes, dynamic import expression-lowering, Promise/job bridge, and parser ambiguity.
 **Status**: apparatus-first; no substrate spawn yet.
 
+## Tier N — resolver-axis heuristics partition (2026-05-27, LPA-EXT 7)
+
+Candidates surfaced by `pilots/apparatus/locale-positioning-audit/findings/resolver-axis-gap-partition.md`. Source commit was cited as `600afe6` but was not reachable in this checkout at audit time; entries are therefore queued for baseline/audit, not direct founding. The 49-gap snapshot carries explicit (`█`) and implicit (`░`) Pin-Art markers; 25/49 were implicit probe-collision constraints.
+
+### (abg) `bootstrap-host-install-totality` — 🟡 BASELINE-FIRST
+**Telos**: close Instance 2 x Axis H bootstrap resolver totality gaps by completing host built-in install stages. The shared mechanism is missing or low-fidelity bootstrap installation, not isolated host-method bugs.
+**Pool**: 24 Axis H gaps from the resolver-axis snapshot. Named examples include `DataView.prototype.setInt8`, `util.isDeepStrictEqual`, `Readable.from`, `process.ppid`, `console.assert`, `Buffer.concat`, `util.types.isDate`, and `assert.fail`.
+**Methodology**: build a focused 24-fixture exemplar list, group by namespace (`DataView`, `Buffer`, `util`, `assert`, `stream`, `process`, `console`), classify each as absent install, descriptor-shape mismatch, wrong return type, or wrong error object.
+**Status**: baseline-first. Redirect namespace rows to existing surface locales if Rule-23 inspection shows ownership already exists.
+
+### (abh) `ast-bytecode-boundary-integrity-audit` — 🟡 AUDIT-FIRST
+**Telos**: repartition Instance 4 x Axis R boundary leaks before spawning substrate work. The shared signal is AST-to-bytecode boundary underspecification: emitted artifacts fail to preserve semantic directives into runtime-visible behavior.
+**Pool**: 13 Axis R gaps. Named examples include private fields leaking into `Object.keys`, tagged-template `strings.raw`, direct `eval` outer-const capture, destructuring via iterator protocol, generator suspension, and RegExp named capture groups.
+**Methodology**: split by boundary family (private slots, template objects, lexical environment capture, iterator-protocol lowering, generator suspension, RegExp match metadata), then check active locale absorption before founding any broad child.
+**Status**: audit-first. If more than half of rows are absorbed by active locales, record scope extensions instead of founding a broad AST-boundary locale.
+
+### (abi) `operator-directive-completion` — 🟡 BASELINE-FIRST
+**Telos**: close Instance 4 x Axis O operator-level unconsumed spec directives. These have narrower fan-out than Axis R and likely close as single-rung substrate fixes or small runtime-builtin extensions.
+**Pool**: 7 Axis O gaps. Named examples include `finally` return override, `Symbol.toPrimitive` hint dispatch, `Object.seal` / `Object.preventExtensions` strict-mode enforcement, `String.prototype.normalize`, and position-argument string methods.
+**Methodology**: build one focused fixture per named operator gap plus sibling fixtures where available; classify each by owning helper/opcode path; route runtime-intrinsic-only rows to the corresponding built-in locale.
+**Status**: baseline-first.
+
 ---
 
 ## Standing edits
