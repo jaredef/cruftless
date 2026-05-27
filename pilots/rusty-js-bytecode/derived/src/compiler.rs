@@ -1627,10 +1627,11 @@ impl Compiler {
                 // When destructure_pattern is Some, the body prologue will
                 // run the pattern lowering using slot_to_store_value_into
                 // as the hidden source.
-                let (bind_slot, destr_pat, per_iter_fresh): (
+                let (bind_slot, destr_pat, per_iter_fresh, assign_target): (
                     u16,
                     Option<rusty_js_ast::BindingPattern>,
                     bool,
+                    Option<rusty_js_ast::Expr>,
                 ) = match left {
                     rusty_js_ast::ForBinding::Decl { kind, target, .. } => {
                         match target {
@@ -1641,7 +1642,7 @@ impl Compiler {
                                     depth: 0,
                                 });
                                 let fresh = matches!(kind, VariableKind::Let | VariableKind::Const);
-                                (s, None, fresh)
+                                (s, None, fresh, None)
                             }
                             pat @ (rusty_js_ast::BindingPattern::Array(_)
                             | rusty_js_ast::BindingPattern::Object(_)) => {
@@ -1656,7 +1657,7 @@ impl Compiler {
                                 }
                                 let s = self.alloc_temp("<forof.src>");
                                 let fresh = matches!(kind, VariableKind::Let | VariableKind::Const);
-                                (s, Some(pat.clone()), fresh)
+                                (s, Some(pat.clone()), fresh, None)
                             }
                         }
                     }
@@ -1664,14 +1665,14 @@ impl Compiler {
                         match pat {
                             rusty_js_ast::BindingPattern::Identifier(id) => {
                                 if let Some(s) = self.resolve_local(&id.name) {
-                                    (s, None, false)
+                                    (s, None, false, None)
                                 } else {
                                     let s = self.alloc_local(LocalDescriptor {
                                         name: id.name.clone(),
                                         kind: VariableKind::Let,
                                         depth: 0,
                                     });
-                                    (s, None, false)
+                                    (s, None, false, None)
                                 }
                             }
                             other => {
@@ -1696,9 +1697,13 @@ impl Compiler {
                                 // `destr_assign_pat` carrying the
                                 // BindingPattern-as-Expr conversion.
                                 let s = self.alloc_temp("<forof.src>");
-                                (s, Some(other.clone()), false)
+                                (s, Some(other.clone()), false, None)
                             }
                         }
+                    }
+                    rusty_js_ast::ForBinding::AssignmentTarget(target) => {
+                        let s = self.alloc_temp("<forof.assignment>");
+                        (s, None, false, Some(target.clone()))
                     }
                 };
                 // Compute iterable[@@iterator]() and store into iter_slot.
@@ -1728,11 +1733,12 @@ impl Compiler {
                 // mismatch. Two patch sites: done_offset (i32 at +4) and
                 // next_iter_offset (i16 at +8). Patched after the slow
                 // path + body are emitted.
-                let ipbr_op_off = if per_iter_fresh {
+                let ipbr_op_off = if per_iter_fresh || assign_target.is_some() {
                     // The fused fast path writes the loop binding and jumps
                     // directly to the body. Lexical for-of heads need the
                     // ResetLocalCell prologue below so closures capture a
-                    // fresh per-iteration cell; keep them on the slow path.
+                    // fresh per-iteration cell; assignment targets need the
+                    // post-store PutValue bridge below.
                     None
                 } else {
                     let off = self.bytecode.len();
@@ -1820,6 +1826,11 @@ impl Compiler {
                 }
                 encode_op(&mut self.bytecode, Op::StoreLocal);
                 encode_u16(&mut self.bytecode, bind_slot);
+                if let Some(target) = &assign_target {
+                    encode_op(&mut self.bytecode, Op::LoadLocal);
+                    encode_u16(&mut self.bytecode, bind_slot);
+                    self.assign_target_from_stack(target)?;
+                }
                 // IPBR-EXT 2: patch ForOfFastNext's next_iter_offset to
                 // this point (after slow-path StoreLocal completes; body
                 // expects empty stack).
@@ -2235,8 +2246,11 @@ impl Compiler {
 
                 // Decide the per-iteration binding slot (and per_iter_fresh
                 // for let/const heads, mirroring Ω.5.g.1 for-of semantics).
-                // ForBinding::Pattern with non-Identifier is deferred.
-                let (bind_slot, per_iter_fresh): (u16, bool) =
+                let (bind_slot, per_iter_fresh, assign_target): (
+                    u16,
+                    bool,
+                    Option<rusty_js_ast::Expr>,
+                ) =
                     match left {
                         rusty_js_ast::ForBinding::Decl { kind, target, .. } => match target {
                             rusty_js_ast::BindingPattern::Identifier(id) => {
@@ -2246,7 +2260,7 @@ impl Compiler {
                                     depth: 0,
                                 });
                                 let fresh = matches!(kind, VariableKind::Let | VariableKind::Const);
-                                (s, fresh)
+                                (s, fresh, None)
                             }
                             _ => {
                                 return Err(self
@@ -2256,14 +2270,14 @@ impl Compiler {
                         rusty_js_ast::ForBinding::Pattern(pat) => match pat {
                             rusty_js_ast::BindingPattern::Identifier(id) => {
                                 if let Some(s) = self.resolve_local(&id.name) {
-                                    (s, false)
+                                    (s, false, None)
                                 } else {
                                     let s = self.alloc_local(LocalDescriptor {
                                         name: id.name.clone(),
                                         kind: VariableKind::Let,
                                         depth: 0,
                                     });
-                                    (s, false)
+                                    (s, false, None)
                                 }
                             }
                             _ => {
@@ -2271,6 +2285,10 @@ impl Compiler {
                                     .err(span, "for-in with destructure head not yet supported"))
                             }
                         },
+                        rusty_js_ast::ForBinding::AssignmentTarget(target) => {
+                            let s = self.alloc_temp("<forin.assignment>");
+                            (s, false, Some(target.clone()))
+                        }
                     };
 
                 // Ω.5.P04.E1.for-in-nullish-skip: route through
@@ -2335,6 +2353,11 @@ impl Compiler {
                 encode_op(&mut self.bytecode, Op::GetIndex);
                 encode_op(&mut self.bytecode, Op::StoreLocal);
                 encode_u16(&mut self.bytecode, bind_slot);
+                if let Some(target) = &assign_target {
+                    encode_op(&mut self.bytecode, Op::LoadLocal);
+                    encode_u16(&mut self.bytecode, bind_slot);
+                    self.assign_target_from_stack(target)?;
+                }
 
                 self.compile_stmt(body)?;
 

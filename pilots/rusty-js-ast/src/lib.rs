@@ -562,6 +562,9 @@ pub enum ForBinding {
     /// Pre-existing binding (or pattern) without a decl keyword:
     /// `for (x of arr)` or `for ([a,b] of arrs)`.
     Pattern(BindingPattern),
+    /// Pre-existing non-binding assignment target without a decl keyword:
+    /// `for (obj.key in obj)` or `for (arr[i] of values)`.
+    AssignmentTarget(Expr),
 }
 
 #[derive(Debug, Clone, PartialEq)]

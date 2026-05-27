@@ -141,6 +141,14 @@ fn expr_to_binding_pattern(e: Expr) -> Option<BindingPattern> {
     }
 }
 
+fn is_valid_for_assignment_target(e: &Expr) -> bool {
+    match e {
+        Expr::Identifier { .. } | Expr::Member { .. } => true,
+        Expr::Parenthesized { expr, .. } => is_valid_for_assignment_target(expr),
+        _ => false,
+    }
+}
+
 impl<'src> Parser<'src> {
     /// SDIBP-EXT 1: parse a Statement in a position where Declaration is
     /// forbidden (the body of for / for-in / for-of / if / else / while /
@@ -1636,7 +1644,7 @@ impl<'src> Parser<'src> {
                             message: "Invalid left-hand side in for-in/for-of head".into(),
                         });
                     }
-                    match expr_to_binding_pattern(e) {
+                    match expr_to_binding_pattern(e.clone()) {
                         Some(pat) => {
                             // SBAP-EXT 1: §13.15.1 + §13.2 — leaf binding-ids
                             // in the AssignmentPattern must obey strict-mode
@@ -1652,11 +1660,14 @@ impl<'src> Parser<'src> {
                                         .into(),
                             });
                         }
+                        None if is_valid_for_assignment_target(&e) => {
+                            ForBinding::AssignmentTarget(e)
+                        }
                         None => {
-                            ForBinding::Pattern(BindingPattern::Identifier(BindingIdentifier {
-                                name: String::new(),
+                            return Err(ParseError {
                                 span: span_fallback,
-                            }))
+                                message: "Invalid left-hand side in for-in/for-of head".into(),
+                            });
                         }
                     }
                 };

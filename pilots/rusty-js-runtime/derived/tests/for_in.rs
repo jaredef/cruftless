@@ -116,3 +116,15 @@ fn t06_index_via_key() {
     );
     assert_eq!(recorded(&rt), Value::Number(3.0));
 }
+
+#[test]
+fn t07_member_lhs_assignment_target() {
+    let rt = run_rt(
+        r#"
+        const target = {};
+        for (target.key in {p: 1}) {}
+        __record(target.key);
+    "#,
+    );
+    assert_eq!(recorded(&rt), Value::String("p".to_string().into()));
+}

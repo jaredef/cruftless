@@ -96,6 +96,27 @@ fn t06_forof_empty() {
     );
 }
 
+#[test]
+fn t06b_forof_member_lhs_assignment_target() {
+    let rt = run_rt("const o = {}; for (o.x of [10, 20]) {} __record(o.x);");
+    assert_eq!(
+        rt.globals.get("__last_recorded").cloned().unwrap(),
+        Value::Number(20.0)
+    );
+}
+
+#[test]
+fn t06c_forof_computed_lhs_assignment_target() {
+    let rt = run_rt(
+        "const o = {a: []}; let i = 0; for (o.a[i++] of [3, 4]) {} __record(o.a.join(',') + ':' + i);",
+    );
+    if let Some(Value::String(s)) = rt.globals.get("__last_recorded") {
+        assert_eq!(s.as_str(), "3,4:2");
+    } else {
+        panic!();
+    }
+}
+
 // ─────────── 7. Object.keys ───────────
 #[test]
 fn t07_object_keys() {
