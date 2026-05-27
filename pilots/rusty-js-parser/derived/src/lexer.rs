@@ -946,11 +946,21 @@ impl<'src> Lexer<'src> {
             if c == b'\\' {
                 // Raw form preserves the backslash + next char(s) verbatim.
                 let escape_start = self.pos;
+                let template_decimal_escape_invalid_cooked = match self.peek_byte_at(1) {
+                    Some(b'0') => self
+                        .peek_byte_at(2)
+                        .map_or(false, |b| b.is_ascii_digit()),
+                    Some(b'1'..=b'9') => true,
+                    _ => false,
+                };
                 self.pos += 1;
                 let mut buf = String::new();
                 match self.read_string_escape(start, &mut buf) {
                     Ok(()) => cooked.push_str(&buf),
                     Err(_) => cooked_ok = false,
+                }
+                if template_decimal_escape_invalid_cooked {
+                    cooked_ok = false;
                 }
                 raw.push_str(std::str::from_utf8(&self.src[escape_start..self.pos]).unwrap());
                 continue;

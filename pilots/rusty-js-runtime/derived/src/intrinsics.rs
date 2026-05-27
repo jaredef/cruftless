@@ -2928,6 +2928,15 @@ impl Runtime {
         // parser currently preserves cooked strings only; for the
         // no-substitution singleton closed here, cooked and raw coincide.
         register_engine_helper(self, "__template_object__", |rt, args| {
+            let site_key = match args.get(1) {
+                Some(Value::String(s)) => Some((**s).clone()),
+                _ => None,
+            };
+            if let Some(key) = site_key.as_ref() {
+                if let Some(cached) = rt.template_registry.get(key).cloned() {
+                    return Ok(cached);
+                }
+            }
             let template_id = match args.first() {
                 Some(Value::Object(id)) => *id,
                 _ => return Ok(Value::Undefined),
@@ -2935,17 +2944,26 @@ impl Runtime {
             let len = rt.array_length(template_id);
             let raw_id = rt.alloc_object(Object::new_array());
             for i in 0..len {
-                let v = rt.object_get(template_id, &i.to_string());
+                let v = match args.get(2) {
+                    Some(Value::Object(raw_src)) => rt.object_get(*raw_src, &i.to_string()),
+                    _ => rt.object_get(template_id, &i.to_string()),
+                };
                 rt.obj_mut(raw_id).set_own(i.to_string(), v);
             }
             rt.obj_mut(raw_id)
-                .set_own("length".into(), Value::Number(len as f64));
+                .set_own_internal("length".into(), Value::Number(len as f64));
             let raw_value = Value::Object(raw_id);
             rt.object_freeze_via(&raw_value)?;
             rt.obj_mut(template_id)
+                .set_own_internal("length".into(), Value::Number(len as f64));
+            rt.obj_mut(template_id)
                 .set_own_frozen("raw".into(), raw_value);
             let template_value = Value::Object(template_id);
-            rt.object_freeze_via(&template_value)
+            let frozen = rt.object_freeze_via(&template_value)?;
+            if let Some(key) = site_key {
+                rt.template_registry.insert(key, frozen.clone());
+            }
+            Ok(frozen)
         });
         // ABMT-EXT 15: private field declarations are not ordinary
         // assignments. The compiler lowers `#x = init` declarations here

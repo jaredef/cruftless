@@ -116,6 +116,10 @@ pub struct Runtime {
     /// Inserted on first read; never invalidated (filesystem changes during
     /// runtime are out-of-scope for v1).
     pub pkg_json_cache: HashMap<std::path::PathBuf, std::rc::Rc<crate::module::ParsedPackageJson>>,
+    /// TTOB-EXT 2: realm-local tagged-template registry. Parser lowering
+    /// passes a stable source-site key into `__template_object__`; the
+    /// helper canonicalizes the frozen TemplateStringsArray here.
+    pub template_registry: HashMap<String, Value>,
     /// Ω.5.P54.E1 (Axis-M probe — Doc 729 §XII): resolution-decision
     /// trace keyed by resolved URL. Populated by resolve_entry_point
     /// when a bare specifier maps to a file under a node_modules pkg.
@@ -528,6 +532,7 @@ impl Runtime {
             host_hooks: crate::module::HostHooks::default(),
             modules: HashMap::new(),
             pkg_json_cache: HashMap::new(),
+            template_registry: HashMap::new(),
             module_resolution_trace: HashMap::new(),
             module_post_eval_trace: HashMap::new(),
             module_ns_synth_trace: HashMap::new(),
@@ -3175,9 +3180,10 @@ impl Runtime {
             },
         };
         let key = self.coerce_to_string(key_v)?;
-        // §10.4.2 Array exotic: length is always an own property with
-        // writable:true, enumerable:false, configurable:false. cruftless
-        // stores it lazily, but the descriptor shape is fixed.
+        // §10.4.2 Array exotic: length is always an own property. Most
+        // arrays synthesize it lazily as writable:true, but frozen template
+        // arrays install an explicit descriptor before Object.freeze flips
+        // writable/configurable; descriptor reflection must see that state.
         let is_array_length = key == "length"
             && matches!(
                 self.obj(id).internal_kind,
@@ -3185,7 +3191,19 @@ impl Runtime {
             );
         let (has, value, writable, enumerable, configurable, getter, setter) = if is_array_length {
             let len_v = self.object_get(id, "length");
-            (true, len_v, true, false, false, None, None)
+            if let Some(d) = self.obj(id).get_own("length") {
+                (
+                    true,
+                    len_v,
+                    d.writable,
+                    d.enumerable,
+                    d.configurable,
+                    d.getter.clone(),
+                    d.setter.clone(),
+                )
+            } else {
+                (true, len_v, true, false, false, None, None)
+            }
         } else {
             let o = self.obj(id);
             // CMig-EXT 13: shape-aware lookup. Shape-stored entries are
