@@ -174,3 +174,24 @@ TAMM cluster POST-EXT 6: PASS=72 FAIL=28 / 100 (72.0%)
 **Standing rec TAMM.5 (built-in static via abstract-intrinsic inheritance)**: when an abstract intrinsic provides a static that delegates to the receiver as constructor (Array.from, TypedArray.from, Promise.all, Set/Map iterables), the concrete subclasses must NOT carry own copies — they must inherit so `Sub.from.call(OtherCtor, ...)` reaches the receiver-as-ctor logic. Own-copy on the subclass shadows inheritance and silently breaks the receiver-as-ctor contract.
 
 **Status**: TAMM-EXT 6 CLOSED locally.
+
+## TAMM-EXT 7 — LANDED (2026-05-27) — @@species returns `this` (ArrayBuffer + %TypedArray%)
+
+Per keeper directive Telegram 10081 ("Continue").
+
+**Substrate**: ArrayBuffer[@@species] and %TypedArray%[@@species] getters now return `rt.current_this()` per spec sec 23.1.5.2 / §25.1.4.3 / §23.2.2.4. Pre-EXT 7 both captured a fixed ctor id at install time, which gave the right answer for `Class[Symbol.species]` but the wrong answer for `accessor.call(thisVal)` probes (e.g. the test262 `return-value.js` pair that does `Object.getOwnPropertyDescriptor(ArrayBuffer, Symbol.species).get.call({})` and asserts the return value equals the receiver).
+
+**Yield**:
+```text
+TAMM cluster POST-EXT 6: PASS=72 FAIL=28 / 100 (72.0%)
+TAMM cluster POST-EXT 7: PASS=74 FAIL=26 / 100 (74.0%)
+```
+**+2 PASS** this rung (ArrayBuffer/Symbol.species/return-value + TypedArray/Symbol.species/result). ArrayBuffer residual 9 → 8; TypedArray residual 7 → 6.
+
+**Cumulative TAMM yield since EXT 0 baseline: 3 → 74 / 100 (+71 across seven rungs)**.
+
+**Gates**: build clean; diff-prod 59/53 (parity).
+
+**Standing rec TAMM.6 (@@species is always receiver-returning)**: every well-known @@species accessor must read its receiver, never close over a fixed ctor id. The id-captured shape gives correct answers in the common direct-access path but silently breaks when the accessor is extracted via getOwnPropertyDescriptor and called against a foreign receiver. Pattern applies uniformly: Array, ArrayBuffer, %TypedArray%, Map, Set, Promise, RegExp.
+
+**Status**: TAMM-EXT 7 CLOSED locally.

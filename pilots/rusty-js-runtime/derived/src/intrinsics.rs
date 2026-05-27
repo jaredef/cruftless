@@ -17382,8 +17382,11 @@ impl Runtime {
         // accessor surfaces as a real getter property keyed under
         // @@species — register via the well-known-Symbol name convention
         // that the engine's GetProp fast-path maps to Symbol.species.
-        let ab_species_getter = make_native_with_length("get [Symbol.species]", 0, move |_rt, _args| {
-            Ok(Value::Object(ab_id))
+        // TAMM-EXT 7: @@species returns `this` per spec sec 23.1.5.2 / 25.1.4.3
+        // so subclasses + Function.prototype.call(thisVal) work correctly.
+        let _ = ab_id;
+        let ab_species_getter = make_native_with_length("get [Symbol.species]", 0, |rt, _args| {
+            Ok(rt.current_this())
         });
         let ab_species_getter_id = self.alloc_object(ab_species_getter);
         self.obj_mut(ab_id).dict_mut().insert(
@@ -17777,13 +17780,12 @@ impl Runtime {
             }
             Ok(new_val)
         });
-        // TAMM-EXT 3 follow-up: TypedArray[Symbol.species] returns the ctor
-        // itself per §23.2.2.4.
-        let ta_species_id = ta_intrinsic_id;
+        // TAMM-EXT 7: TypedArray[Symbol.species] returns `this` per §23.2.2.4
+        // so subclasses and Function.prototype.call(thisVal) probe pass.
         let ta_species_getter = make_native_with_length(
             "get [Symbol.species]",
             0,
-            move |_rt, _args| Ok(Value::Object(ta_species_id)),
+            |rt, _args| Ok(rt.current_this()),
         );
         let ta_species_getter_id = self.alloc_object(ta_species_getter);
         self.obj_mut(ta_intrinsic_id).dict_mut().insert(
