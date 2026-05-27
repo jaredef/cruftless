@@ -313,3 +313,52 @@ Added Tier N, "resolver-axis heuristics partition":
 **Finding LPA.16 (implicit probe-collision constraints are first-class apparatus output)**: 25 of the 49 gaps were implicit constraints discovered by fixture collision. These rows are not merely failures; they are newly surfaced decision-basis edges. Future repartition artifacts should preserve the explicit/implicit marker instead of collapsing both into the same count.
 
 **Status**: LPA-EXT 7 CLOSED. Resolver-axis partition recorded; no substrate locale spawned.
+
+---
+
+## LPA-EXT 8 — diff-prod empirical cross-check of language-lowering partition (2026-05-27)
+
+**Trigger**: 50 new diff-prod fixtures (18 gap-partition probes + 8 deep-engine probes + 24 spec-lowering probes) were authored and run against both `cruft` and `bun`, producing byte-for-byte stdout comparisons across the 9 arcs identified in LPA-EXT 5's language-lowering partition. The run triangulates the matrix-derived partition against direct empirical engine behavior.
+
+**Method**:
+
+- 50 new fixtures targeting every lowering layer: lexer (ASI, Unicode, numeric literals, string escapes, regex/division), parser (expression precedence, arrow edge cases, directive prologues), IR/bytecode (TDZ, hoisting, closures, arguments, super/new.target, computed property order), abstract operations (coercion pipeline, abstract equality, abstract relational, SameValue algorithms), control flow (labeled control flow, switch, for-in/for-of, optional chaining, comma/grouping/eval, reference semantics), deep engine (proxy invariants, proxy prototype chain, property key order, WeakRef/FinalizationRegistry, iterator close, with-scoping, Symbol.species, Atomics), and bootstrap host (DataView, node:util, node:assert, process, console, Buffer.concat, Readable.from).
+- Full suite: 92 fixtures (42 original + 50 new). Run result: **55 PASS / 37 FAIL**.
+- All 42 original fixtures continue to pass.
+
+**Produced**: Updated `pilots/apparatus/locale-positioning-audit/findings/language-lowering-partition.md` §IV with empirical arc-level pass rates, per-fixture divergence details, and 9 cross-cutting mechanism gaps.
+
+**Arc-level pass rates**:
+
+| Arc | Rows | PASS rate | Disposition update |
+|---|---:|---|---|
+| I — Literal/identifier | 359 | 80% | Lowest leverage; route to existing tokenization locales (confirmed) |
+| C — Annex B language | 734 | 50% | Hoisting green; sloppy-mode-specific gaps remain |
+| H — With/try/switch/completion | 381 | 50% | Switch + labeled green; finally-on-abrupt + with-scoping are gaps |
+| A — Class elements | 4,677 | 33% | Computed property order green; super binding + private brand are gaps |
+| B — Async iter/generators | 1,492 | 33% | Destructuring-iterators green; lazy suspension + iterator-close are gaps |
+| D — Object/computed/super | 556 | 33% | Computed order green; ToPrimitive hint dispatch is root mechanism |
+| F — Eval/function/arguments | 582 | 0% | Direct eval crash; arguments-as-Array shape violation |
+| G — Assignment/for-head | 551 | 0% | Compound member assignment crash; for-in delete behavior |
+
+**Cross-cutting mechanism gaps identified**:
+
+1. ToPrimitive hint dispatch (affects Arcs A, D, abstract ops)
+2. IteratorClose protocol (affects Arcs B, G)
+3. Lazy generator suspension (affects Arc B)
+4. Direct eval lexical capture (affects Arc F)
+5. Finally on abrupt loop exit (affects Arc H)
+6. OrdinaryOwnPropertyKeys ordering (cross-cutting MOP)
+7. Proxy trap invariant enforcement (cross-cutting MOP)
+8. Arguments object shape (affects Arc F)
+9. strings.raw on tagged templates (affects Arcs D, I)
+
+**Leverage ranking update**: empirical pass rates reorder the candidate ranking. Arcs F and G (both 0% pass rate) are now recommended as higher priority than the matrix-count-derived ordering from LPA-EXT 5, which placed class elements and async generators first by row count.
+
+**Finding LPA.17 (diff-prod empirical pass rates invert the matrix-count priority for 2 arcs)**: the language-lowering partition (LPA-EXT 5) ranked Arc A (class, 4,677 rows) and Arc B (async gen, 1,492 rows) as the top two candidates. Empirical diff-prod triangulation shows Arcs F (eval/function/arguments, 582 rows, 0% pass rate) and G (assignment/for-head, 551 rows, 0% pass rate) are more acutely broken — crashes (exit 70) rather than divergent output. Matrix row count measures test262 breadth; diff-prod pass rate measures runtime depth. The two instruments triangulate: Arc A is wide but partially functional; Arc F is narrower but completely non-functional in the engine today.
+
+**Finding LPA.18 (9 cross-cutting mechanism gaps compress 37 fixture failures into a smaller fix surface)**: the 37 failing fixtures do not represent 37 independent substrate gaps. They compress into 9 mechanism gaps, several of which span multiple arcs. Fixing ToPrimitive hint dispatch alone would flip fixtures across Arcs A, D, and the abstract operations category. Fixing IteratorClose would flip fixtures across Arcs B and G. The mechanism-gap list is therefore a higher-leverage work-ordering input than the per-fixture failure list.
+
+**Finding LPA.19 (the 13 new PASS fixtures confirm lowering correctness for ASI, Unicode, numeric literals, expression precedence, closures, hoisting, switch, labeled control flow, SameValue, abstract equality, and computed property order)**: these green results are not incidental. They confirm that the lexer, parser, and core bytecode compiler handle these ECMA-262 features correctly and produce byte-identical output to Bun. The engine's lowering pipeline is sound for the expression/statement grammar core; the gaps are at the boundary (eval, finally-on-abrupt, iterator-close) and at the spec's exotic object / abstract operation layer.
+
+**Status**: LPA-EXT 8 CLOSED. Diff-prod cross-check recorded in language-lowering-partition.md §IV. No substrate locale spawned; the empirical leverage ranking is available for the next spawn decision.

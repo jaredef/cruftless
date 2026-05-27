@@ -352,7 +352,90 @@ Recommended next move:
 
 ---
 
-## IV. Candidate Ordering
+## IV. Diff-Prod Empirical Cross-Check (2026-05-27)
+
+Empirical triangulation against the partition using a 92-fixture diff-prod suite (42 original + 50 new fixtures targeting the arcs). Fixtures run under both `cruft` and `bun`, diffing stdout byte-for-byte. 55 PASS / 37 FAIL.
+
+### Fixture-to-Arc mapping and results
+
+| Arc | LPA rows | Diff-prod fixtures | PASS | FAIL | PASS rate |
+|---|---:|---|---:|---:|---:|
+| A — Class elements | 4,677 | `private-field-encapsulation`, `super-new-target`, `computed-property-order` | 1 | 2 | 33% |
+| B — Async iter / generators | 1,492 | `generator-suspension`, `destructuring-iterators`, `iterator-close` | 1 | 2 | 33% |
+| C — Annex B language | 734 | `directive-prologues`, `hoisting-semantics` | 1 | 1 | 50% |
+| D — Object / computed / super | 556 | `computed-property-order`, `super-new-target`, `coercion-pipeline` | 1 | 2 | 33% |
+| E — Dynamic import | 296 | (not probed; module-loader layer, not bytecode-observable) | — | — | — |
+| F — Eval / function / arguments | 582 | `eval-lexical-capture`, `arguments-object`, `directive-prologues` | 0 | 3 | 0% |
+| G — Assignment / for-head | 551 | `reference-semantics`, `for-in-for-of-lowering`, `optional-chaining-nullish` | 0 | 3 | 0% |
+| H — With / try / switch / completion | 381 | `with-scoping`, `finally-return-override`, `switch-fallthrough`, `labeled-control-flow` | 2 | 2 | 50% |
+| I — Literal / identifier residuals | 359 | `asi-rules`, `unicode-identifiers`, `numeric-literals`, `string-escapes`, `regex-division-ambiguity` | 4 | 1 | 80% |
+
+Additional cross-cutting fixtures not mapped to a single arc:
+
+| Category | Fixtures | PASS | FAIL |
+|---|---|---:|---:|
+| Abstract operations | `coercion-pipeline`, `abstract-equality`, `abstract-relational`, `samevalue-algorithms` | 2 | 2 |
+| Deep engine (MOP) | `proxy-invariants`, `proxy-prototype-chain`, `property-key-order` | 0 | 3 |
+| Deep engine (GC/memory) | `weakref-registry`, `atomics-ordering` | 0 | 2 |
+| Deep engine (protocol) | `iterator-close`, `symbol-species`, `symbol-toprimitive` | 0 | 3 |
+| Deep engine (scope) | `with-scoping` | 0 | 1 |
+| Bootstrap host install | `dataview-methods`, `node-util`, `node-assert`, `process-info`, `console-assert`, `buffer-concat`, `readable-from` | 0 | 7 |
+| Bytecode lowering | `temporal-dead-zone`, `closure-capture-order`, `arrow-edge-cases`, `expression-precedence` | 2 | 2 |
+
+### Arc-level empirical readings
+
+**Arc A — Class Elements (33% pass rate).** `computed-property-order` passes: object/class computed key evaluation order, Symbol keys, accessor/getter computed names all correct. `private-field-encapsulation` diverges on `#brand in obj` (ergonomic brand check returns false instead of true); encapsulation itself (Object.keys exclusion) is correct. `super-new-target` diverges: `new.target` not propagated through arrow (arrow inherits undefined instead of enclosing constructor's new.target); `this-before-super` does not throw ReferenceError. The class-elements arc's primary gap is super binding machinery (PropagateNewTarget + SetThis) and private brand check, not class syntax parsing.
+
+**Arc B — Async Iteration / Generators (33% pass rate).** `destructuring-iterators` passes fully: generators, Sets, Maps, custom iterables, rest, skip, defaults all unpack via the iterator protocol. `generator-suspension` crashes (exit 70): lazy suspension (bidirectional send, throw-into, return value on done) is not implemented; the engine uses eager-collect. `iterator-close` crashes: IteratorClose/`.return()` protocol not wired for `for-of` break/throw/return, destructuring partial consumption, or yield* delegation close.
+
+**Arc C — Annex B Language (50% pass rate).** `hoisting-semantics` passes: function declaration hoisting, var-undefined-init, fn-overrides-var, var-across-blocks, nested function hoisting all correct. `directive-prologues` diverges: module top-level `this` reports `true` for strict check (Bun reports `false` — Bun binds module `this` to `module.exports` per CJS compat rather than `undefined`). Sloppy-mode `arguments` aliasing returns `42` instead of `99`. Strict eval scope returns `"number"` instead of `"undefined"`.
+
+**Arc D — Object / Computed / Super (33% pass rate).** `computed-property-order` passes fully. `coercion-pipeline` diverges: `${bothObj}` calls `valueOf` (returns `"10"`) instead of `toString` (should return `"ten"` for string hint). This is the ToPrimitive hint dispatch bug, same root as `symbol-toprimitive`'s failure. `super-new-target` fails per Arc A reading.
+
+**Arc F — Eval / Function / Arguments (0% pass rate).** `eval-lexical-capture` crashes (exit 70): direct eval cannot resolve outer `const`/`let` bindings at all. `arguments-object` diverges: `Array.isArray(arguments)` returns `true` (should be `false` — arguments is array-like, not an Array); arrow does not inherit outer `arguments` (returns `0` instead of `3`); sloppy aliasing not implemented. `directive-prologues` diverges per Arc C reading.
+
+**Arc G — Assignment / For-Head (0% pass rate).** `reference-semantics` crashes (exit 70): compound member assignment (`getObj().x += 5`) or related reference resolution fails. `for-in-for-of-lowering` diverges: `for-in` with `delete` during iteration does not skip the deleted key (enumerates `d` despite deletion). `optional-chaining-nullish` diverges: `delete obj?.missing?.prop` returns `false` (should return `true` per spec — delete on undefined reference returns `true`).
+
+**Arc H — With / Try / Switch / Completion (50% pass rate).** `switch-fallthrough` and `labeled-control-flow` pass fully: all fallthrough semantics, default position variants, strict === comparison, nested labeled break/continue, triple-nested labels, for-of labeled break. `with-scoping` crashes (exit 70): `with` statement execution not operational. `finally-return-override` diverges: `finally` block does not execute on `break` or `continue` in a loop (missing `finally-1` in the break log; missing `finally-1` in the continue log).
+
+**Arc I — Literal / Identifier Residuals (80% pass rate).** Highest arc pass rate. `asi-rules`, `unicode-identifiers`, `numeric-literals`, `regex-division-ambiguity` all pass fully. `string-escapes` diverges only on `String.raw` output: the tagged template `String.raw` returns the cooked value instead of the raw backslash-escaped source (same root as `tagged-template-raw`'s `strings.raw` gap).
+
+### Cross-cutting mechanism gaps surfaced
+
+1. **ToPrimitive hint dispatch** (affects Arcs A, D, and cross-cutting abstract ops). `+obj` sends `"default"` hint instead of `"number"` to `[Symbol.toPrimitive]`. Template interpolation `${obj}` dispatches `valueOf` instead of `toString`. Root: the `to_primitive.rs` IR section or its runtime caller does not thread the hint correctly.
+
+2. **IteratorClose protocol** (affects Arcs B, G). `.return()` is never called on break, throw, return, or partial destructuring. The IterClose opcode exists but the compiler does not emit it at the required consuming sites.
+
+3. **Lazy generator suspension** (affects Arc B). The engine uses eager-collect (all yields materialized upfront). Bidirectional send (`next(val)`), `throw()` into suspended generator, and return value on the terminal `{done:true}` step all require coroutine-style suspension.
+
+4. **Direct eval lexical capture** (affects Arc F). `eval("x")` where `x` is an outer `const`/`let` crashes. The eval compiler does not resolve against the enclosing declarative environment record.
+
+5. **Finally on abrupt loop exit** (affects Arc H). `finally` block does not run when control leaves `try` via `break` or `continue`. The TryEnter/TryExit lowering does not account for labeled or unlabeled abrupt completions that bypass the normal completion path.
+
+6. **OrdinaryOwnPropertyKeys ordering** (cross-cutting). `Object.getOwnPropertyNames` returns insertion order instead of integer-indexed-first. The property storage layer does not partition integer-indexed keys from string keys.
+
+7. **Proxy trap invariant enforcement** (cross-cutting MOP). Several §10.5 invariants not checked: non-configurable accessor getter, HasProperty on non-extensible target, [[Delete]] on non-configurable. Only `[[Get]]` on non-configurable non-writable data property is enforced.
+
+8. **Arguments object shape** (affects Arc F). `arguments` is implemented as a plain Array rather than an exotic Arguments object. `Array.isArray(arguments)` returns `true`; sloppy-mode parameter aliasing is absent.
+
+9. **strings.raw on tagged templates** (affects Arcs D, I). The template object passed to tag functions has `raw: undefined` instead of a frozen array of raw source strings.
+
+### Leverage ranking update
+
+Empirical pass rates reorder the candidate ranking from §IV. Arcs with 0% pass rate have the highest unmet pressure:
+
+1. **Arc F — Eval / function / arguments** (0%, 582 rows). Direct eval crash is a hard blocker for any eval-dependent ecosystem code. Arguments-as-Array is a shape violation visible to `Array.isArray` checks.
+2. **Arc G — Assignment / for-head** (0%, 551 rows). Compound member assignment crash blocks real-world compound-assignment patterns. for-in delete behavior affects iteration-during-mutation idioms.
+3. **Arc B — Async iteration / generators** (33%, 1,492 rows). Generator suspension is the highest-leverage single mechanism: unlocking lazy generators unblocks async generators, for-await-of, and yield* delegation.
+4. **Arc A — Class elements** (33%, 4,677 rows). Largest row count but most gaps are in super binding and private brand check, not class syntax.
+5. **Arc D — Object / computed / super** (33%, 556 rows). ToPrimitive hint dispatch is the dominant mechanism; the fix propagates across multiple arcs.
+6. **Arc H — With / try / switch / completion** (50%, 381 rows). Finally-on-abrupt-loop-exit is the primary gap; switch and labeled control flow are green.
+7. **Arc C — Annex B language** (50%, 734 rows). Hoisting passes; sloppy-mode-specific behaviors are the gaps.
+8. **Arc I — Literal / identifier residuals** (80%, 359 rows). Nearly green. Only `strings.raw` (shared with tagged-template-raw) diverges.
+
+---
+
+## V. Candidate Ordering
 
 Recommended next arcs by leverage and clarity:
 
