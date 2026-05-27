@@ -42,6 +42,9 @@ impl rusty_js_gc::Trace for Object {
         if let Some(p) = self.proto {
             ids.push(p);
         }
+        if let Some(home) = self.private_home {
+            ids.push(home);
+        }
         // CMig-EXT 16 NEEDS-VERIFY follow-up (2026-05-23): trace
         // shape_values for Object references. Shape-enrolled objects
         // store user-default properties in shape_values (not in
@@ -383,6 +386,8 @@ impl Default for Object {
             shape: None,
             shape_values: Vec::new(),
             private_fields: IndexMap::new(),
+            private_methods: IndexMap::new(),
+            private_home: None,
         }
     }
 }
@@ -414,6 +419,13 @@ pub struct Object {
     /// ordinary string-keyed properties so `#x` does not appear through
     /// hasOwnProperty, ownKeys, or descriptor reflection.
     pub private_fields: IndexMap<String, Value>,
+    /// Names installed as private methods. Private fields are writable;
+    /// private methods are not valid PrivateSet targets.
+    pub private_methods: IndexMap<String, ()>,
+    /// Class home object for closures installed as class methods/accessors.
+    /// Private-name access inside the method brands `#name` by this object
+    /// identity, approximating ECMA PrivateName identity per class evaluation.
+    pub private_home: Option<ObjectRef>,
 }
 
 impl Object {
@@ -438,6 +450,8 @@ impl Object {
             },
             shape_values: Vec::new(),
             private_fields: IndexMap::new(),
+            private_methods: IndexMap::new(),
+            private_home: None,
         }
     }
 
@@ -463,6 +477,8 @@ impl Object {
             shape: None,
             shape_values: Vec::new(),
             private_fields: IndexMap::new(),
+            private_methods: IndexMap::new(),
+            private_home: None,
         }
     }
 
@@ -484,6 +500,8 @@ impl Object {
             shape: None,
             shape_values: Vec::new(),
             private_fields: IndexMap::new(),
+            private_methods: IndexMap::new(),
+            private_home: None,
         }
     }
 
@@ -498,6 +516,24 @@ impl Object {
         };
         self.private_fields.insert(name.to_string(), value);
         true
+    }
+
+    pub fn set_private_method(&mut self, key: &str, value: Value) -> bool {
+        let Some(name) = key.strip_prefix('#') else {
+            return false;
+        };
+        self.private_fields.insert(name.to_string(), value);
+        self.private_methods.insert(name.to_string(), ());
+        true
+    }
+
+    pub fn is_private_method(&self, key: &str) -> bool {
+        key.strip_prefix('#')
+            .is_some_and(|name| self.private_methods.contains_key(name))
+    }
+
+    pub fn set_private_home(&mut self, home: ObjectRef) {
+        self.private_home = Some(home);
     }
 
     /// Shape-EXT 4: is this object currently in Shaped storage form?
@@ -819,6 +855,12 @@ pub enum InternalKind {
     StringWrapper(Value),
     BooleanWrapper(Value),
     BigIntWrapper(Value),
+    /// Sloppy mapped arguments exotic object per ECMA-262 §10.4.4.
+    /// Each mapped index points at the same binding cell as the formal
+    /// parameter, so `a = 2` and `arguments[0] = 2` observe one location.
+    MappedArguments {
+        parameter_map: IndexMap<String, UpvalueCell>,
+    },
 }
 
 #[derive(Debug)]
@@ -1078,6 +1120,7 @@ impl InternalKind {
             InternalKind::StringWrapper(_) => "string-wrapper",
             InternalKind::BooleanWrapper(_) => "boolean-wrapper",
             InternalKind::BigIntWrapper(_) => "bigint-wrapper",
+            InternalKind::MappedArguments { .. } => "mapped-arguments",
         }
     }
 }

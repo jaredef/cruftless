@@ -1483,7 +1483,10 @@ impl Runtime {
 
     /// Number.prototype.toLocaleString() per ECMA §21.1.3.4 (v1: delegates
     /// Intl option validation, then formats with the local number fallback).
-    pub fn number_proto_to_locale_string_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+    pub fn number_proto_to_locale_string_via(
+        &mut self,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
         let this = self.current_this();
         if let Some(locales) = args.first() {
             self.validate_intl_locale_list(locales)?;
@@ -1509,15 +1512,12 @@ impl Runtime {
         match locales {
             Value::Null => Err(RuntimeError::TypeError("locale list is null".into())),
             Value::Object(id) => match self.object_get(*id, "0") {
-                Value::Number(n) if n.is_nan() => {
-                    Err(RuntimeError::TypeError("locale must be string or object".into()))
-                }
+                Value::Number(n) if n.is_nan() => Err(RuntimeError::TypeError(
+                    "locale must be string or object".into(),
+                )),
                 Value::String(s) => {
                     let raw = s.as_str();
-                    if raw.is_empty()
-                        || raw.contains('_')
-                        || matches!(raw, "i" | "x" | "u")
-                    {
+                    if raw.is_empty() || raw.contains('_') || matches!(raw, "i" | "x" | "u") {
                         Err(RuntimeError::RangeError("invalid language tag".into()))
                     } else {
                         Ok(())
@@ -1555,7 +1555,9 @@ impl Runtime {
             }
             if let Value::Number(n) = self.object_get(*id, "maximumSignificantDigits") {
                 if !n.is_finite() || n < 1.0 {
-                    return Err(RuntimeError::RangeError("invalid significant digits".into()));
+                    return Err(RuntimeError::RangeError(
+                        "invalid significant digits".into(),
+                    ));
                 }
             }
             if let Value::String(tz) = self.object_get(*id, "timeZone") {
@@ -2931,6 +2933,19 @@ impl Runtime {
                         "Cannot redefine non-configurable non-writable property '{}'",
                         key
                     )));
+                }
+            }
+            if has_value {
+                let mapped_cell = {
+                    let o = self.obj(target);
+                    if let InternalKind::MappedArguments { parameter_map } = &o.internal_kind {
+                        parameter_map.get(&key).cloned()
+                    } else {
+                        None
+                    }
+                };
+                if let Some(cell) = mapped_cell {
+                    *cell.borrow_mut() = value.clone();
                 }
             }
             self.obj_mut(target).dict_mut().insert(
@@ -5897,7 +5912,10 @@ impl Runtime {
     }
 
     /// Array.prototype.toLocaleString() per ECMA §23.1.3.30 (v1: comma-join).
-    pub fn array_proto_to_locale_string_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+    pub fn array_proto_to_locale_string_via(
+        &mut self,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;
         let len = self.try_array_length(id)?;
         let mut out = String::new();
@@ -9784,6 +9802,19 @@ impl Runtime {
                 }
             }
         }
+        if let crate::value::PropertyKey::String(s) = &key {
+            let mapped_cell = {
+                let o = self.obj(id);
+                if let InternalKind::MappedArguments { parameter_map } = &o.internal_kind {
+                    parameter_map.get(s).cloned()
+                } else {
+                    None
+                }
+            };
+            if let Some(cell) = mapped_cell {
+                *cell.borrow_mut() = value.clone();
+            }
+        }
         // ALST-EXT 1: route `arr.length = N` through §10.4.2.1 ArraySetLength
         // so that decreasing length truncates the backing storage. Without
         // this, the assignment-path stored length-as-data-property without
@@ -9871,6 +9902,14 @@ impl Runtime {
         if let Some(idx) = Self::canonical_array_index_key(key) {
             if let Some(v) = self.typed_array_get_index(id, idx) {
                 return v;
+            }
+        }
+        {
+            let o = self.obj(id);
+            if let InternalKind::MappedArguments { parameter_map } = &o.internal_kind {
+                if let Some(cell) = parameter_map.get(key) {
+                    return cell.borrow().clone();
+                }
             }
         }
         // Shape-EXT 4 fast path: Shaped receivers go through the
@@ -9996,6 +10035,77 @@ impl Runtime {
             cur = o.proto;
         }
         None
+    }
+
+    fn private_key_for_home(key: &str, home: ObjectRef) -> String {
+        format!("{}@@{}", key, home.0)
+    }
+
+    fn private_frame_keys(frame: &Frame<'_>, key: &str) -> [Option<String>; 2] {
+        [
+            frame
+                .private_home
+                .map(|home| Self::private_key_for_home(key, home)),
+            Some(key.to_string()),
+        ]
+    }
+
+    fn object_get_private_for_frame(
+        &self,
+        frame: &Frame<'_>,
+        id: ObjectRef,
+        key: &str,
+    ) -> Option<Value> {
+        for candidate in Self::private_frame_keys(frame, key).into_iter().flatten() {
+            if let Some(value) = self.object_get_private(id, &candidate) {
+                return Some(value);
+            }
+        }
+        None
+    }
+
+    fn find_getter_for_frame(&self, frame: &Frame<'_>, id: ObjectRef, key: &str) -> Option<Value> {
+        for candidate in Self::private_frame_keys(frame, key).into_iter().flatten() {
+            if let Some(value) = self.find_getter(id, &candidate) {
+                return Some(value);
+            }
+        }
+        None
+    }
+
+    fn find_setter_for_frame(&self, frame: &Frame<'_>, id: ObjectRef, key: &str) -> Option<Value> {
+        for candidate in Self::private_frame_keys(frame, key).into_iter().flatten() {
+            if let Some(value) = self.find_setter(id, &candidate) {
+                return Some(value);
+            }
+        }
+        None
+    }
+
+    fn private_method_in_chain_for_frame(
+        &self,
+        frame: &Frame<'_>,
+        id: ObjectRef,
+        key: &str,
+    ) -> bool {
+        for candidate in Self::private_frame_keys(frame, key).into_iter().flatten() {
+            if self.object_private_method_in_chain(id, &candidate) {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn object_private_method_in_chain(&self, id: ObjectRef, key: &str) -> bool {
+        let mut cur = Some(id);
+        while let Some(c) = cur {
+            let o = self.obj(c);
+            if o.is_private_method(key) {
+                return true;
+            }
+            cur = o.proto;
+        }
+        false
     }
 
     /// Typeof with heap deref for Object/function discrimination.
@@ -10193,6 +10303,7 @@ impl Runtime {
             last_property_lookup: None,
             pending_method_name: None,
             pending_method_getprop_pc: None,
+            private_home: None,
             import_meta: None,
             new_target: None,
             strict: proto.strict,
@@ -11099,10 +11210,12 @@ impl Runtime {
                     let v = match &obj_v {
                         Value::Object(id) => {
                             if key.starts_with('#') {
-                                match self.object_get_private(*id, &key) {
+                                match self.object_get_private_for_frame(frame, *id, &key) {
                                     Some(v) => v,
                                     None => {
-                                        if let Some(getter) = self.find_getter(*id, &key) {
+                                        if let Some(getter) =
+                                            self.find_getter_for_frame(frame, *id, &key)
+                                        {
                                             self.call_function(getter, obj_v.clone(), Vec::new())?
                                         } else {
                                             return Err(RuntimeError::TypeError(format!(
@@ -11294,12 +11407,27 @@ impl Runtime {
                     let obj_v = frame.pop()?;
                     if let Value::Object(id) = &obj_v {
                         if key.starts_with('#') {
-                            if let Some(setter) = self.find_setter(*id, &key) {
+                            if let Some(setter) = self.find_setter_for_frame(frame, *id, &key) {
                                 self.call_function(
                                     setter,
                                     Value::Object(*id),
                                     vec![value.clone()],
                                 )?;
+                            } else if self.find_getter_for_frame(frame, *id, &key).is_some()
+                                || self.private_method_in_chain_for_frame(frame, *id, &key)
+                            {
+                                return Err(RuntimeError::TypeError(format!(
+                                    "Cannot write private member '{}'",
+                                    key
+                                )));
+                            } else if self
+                                .object_get_private_for_frame(frame, *id, &key)
+                                .is_none()
+                            {
+                                return Err(RuntimeError::TypeError(format!(
+                                    "Cannot write missing private field '{}'",
+                                    key
+                                )));
                             } else {
                                 self.obj_mut(*id).set_private(&key, value.clone());
                             }
@@ -11359,7 +11487,8 @@ impl Runtime {
                                     }
                                 }
                             }
-                            let can_add = self.obj(*id).has_own_str(&key) || self.obj(*id).extensible;
+                            let can_add =
+                                self.obj(*id).has_own_str(&key) || self.obj(*id).extensible;
                             if can_add {
                                 self.object_set(*id, key, value.clone());
                             } else if frame.strict {
@@ -11858,36 +11987,35 @@ impl Runtime {
                     } else {
                         None
                     };
-                    let result = if let Some(b) = hi_result {
-                        b
-                    } else {
-                        match (&obj_v, &ctor_v) {
-                            (Value::Object(obj_id), Value::Object(ctor_id)) => {
-                                let proto_v = self.object_get(*ctor_id, "prototype");
-                                match proto_v {
-                                    Value::Object(target_proto) => {
-                                        let mut cur = self.obj(*obj_id).proto;
-                                        let mut found = false;
-                                        while let Some(c) = cur {
-                                            if c == target_proto {
-                                                found = true;
-                                                break;
+                    let result =
+                        if let Some(b) = hi_result {
+                            b
+                        } else {
+                            match (&obj_v, &ctor_v) {
+                                (Value::Object(obj_id), Value::Object(ctor_id)) => {
+                                    let proto_v = self.object_get(*ctor_id, "prototype");
+                                    match proto_v {
+                                        Value::Object(target_proto) => {
+                                            let mut cur = self.obj(*obj_id).proto;
+                                            let mut found = false;
+                                            while let Some(c) = cur {
+                                                if c == target_proto {
+                                                    found = true;
+                                                    break;
+                                                }
+                                                cur = self.obj(c).proto;
                                             }
-                                            cur = self.obj(c).proto;
+                                            found
                                         }
-                                        found
-                                    }
-                                    _ => {
-                                        return Err(RuntimeError::TypeError(
+                                        _ => return Err(RuntimeError::TypeError(
                                             "Function has non-object prototype in instanceof check"
                                                 .into(),
-                                        ))
+                                        )),
                                     }
                                 }
+                                _ => false,
                             }
-                            _ => false,
-                        }
-                    };
+                        };
                     frame.push(Value::Boolean(result));
                 }
                 Op::SetIndex => {
@@ -11952,7 +12080,9 @@ impl Runtime {
                                 }
                             }
                             let has_own = match &key_pk {
-                                crate::value::PropertyKey::String(s) => self.obj(*id).has_own_str(s),
+                                crate::value::PropertyKey::String(s) => {
+                                    self.obj(*id).has_own_str(s)
+                                }
                                 crate::value::PropertyKey::Symbol(sym) => {
                                     self.obj(*id).get_own_symbol(sym).is_some()
                                 }
@@ -12013,6 +12143,7 @@ impl Runtime {
                     let display_name = proto_rc.display_name.clone();
                     let is_async = proto_rc.is_async;
                     let is_gen = proto_rc.is_generator;
+                    let is_strict_fn = proto_rc.strict;
                     // Tier-Ω.5.sss: arrow inherits `this` from current
                     // frame. Capture at MakeArrow time as a VALUE
                     // snapshot (bound_this) AND promote to a CELL
@@ -12065,6 +12196,26 @@ impl Runtime {
                             props,
                             &display_name,
                             fn_length as f64,
+                        );
+                    }
+                    if is_strict_fn && !is_arrow {
+                        let thrower =
+                            crate::intrinsics::make_native("%ThrowTypeError%", |_rt, _args| {
+                                Err(RuntimeError::TypeError(
+                                    "'caller' may not be accessed on a strict function".into(),
+                                ))
+                            });
+                        let thrower_id = self.alloc_object(thrower);
+                        self.obj_mut(id).dict_mut().insert(
+                            "caller".into(),
+                            crate::value::PropertyDescriptor {
+                                value: Value::Undefined,
+                                writable: false,
+                                enumerable: false,
+                                configurable: false,
+                                getter: Some(Value::Object(thrower_id)),
+                                setter: Some(Value::Object(thrower_id)),
+                            },
                         );
                     }
                     // Tier-Ω.5.ll: auto-create .prototype on non-arrow,
@@ -13050,8 +13201,9 @@ impl Runtime {
         // Standard dispatcher path follows.
         // Extract proto-or-native by inspecting the heap object once.
         // BoundFunction: rewrite to its target, prepending bound args.
-        let (proto_opt, native_opt, effective_this, effective_args) = {
+        let (proto_opt, native_opt, effective_this, effective_args, private_home) = {
             let o = self.obj(id);
+            let private_home = o.private_home;
             match &o.internal_kind {
                 crate::value::InternalKind::Closure(c) => {
                     // Ω.5.P04.E2.jit-runtime-dispatch + jit-deopt-disable:
@@ -13202,9 +13354,13 @@ impl Runtime {
                         let _ = deopt_fell_through; // (currently unused; future EXT can split metrics)
                         let o2 = self.obj(id);
                         match &o2.internal_kind {
-                            crate::value::InternalKind::Closure(c2) => {
-                                (Some(c2.proto.clone()), None, actual_this, args)
-                            }
+                            crate::value::InternalKind::Closure(c2) => (
+                                Some(c2.proto.clone()),
+                                None,
+                                actual_this,
+                                args,
+                                private_home,
+                            ),
                             _ => unreachable!("closure flipped kind mid-dispatch"),
                         }
                     } else {
@@ -13230,11 +13386,11 @@ impl Runtime {
                         // false) so external probes that read it stay
                         // valid; this branch no longer writes to it.
                         let _ = (count, proto_key);
-                        (Some(c.proto.clone()), None, actual_this, args)
+                        (Some(c.proto.clone()), None, actual_this, args, private_home)
                     }
                 }
                 crate::value::InternalKind::Function(f) => {
-                    (None, Some(f.native.clone()), this, args)
+                    (None, Some(f.native.clone()), this, args, private_home)
                 }
                 crate::value::InternalKind::Proxy(p) => {
                     // EXT 84: revoked-proxy guard per §10.5.{12,13}.
@@ -13401,24 +13557,12 @@ impl Runtime {
         let mut locals: Vec<Value> = Vec::new();
         let rest_slot = proto.rest_param_slot;
         let args_slot = proto.arguments_slot;
-        // Tier-Ω.5.zzz: allocate the `arguments` Array up-front so the
-        // slot-population loop can store it at args_slot.
-        let arguments_value: Option<Value> = if args_slot.is_some() {
-            let mut arr = crate::value::Object::new_array();
-            arr.set_own("length".into(), Value::Number(args.len() as f64));
-            for (k, v) in args.iter().enumerate() {
-                arr.set_own(k.to_string(), v.clone());
-            }
-            Some(Value::Object(self.alloc_object(arr)))
-        } else {
-            None
-        };
         // Tier-Ω.5.kkkkk: self-binding for named function expr/decl.
         let self_slot = proto.self_name_slot;
         for (i, _) in proto.locals.iter().enumerate() {
             let slot = i as u16;
             if Some(slot) == args_slot {
-                locals.push(arguments_value.clone().unwrap_or(Value::Undefined));
+                locals.push(Value::Undefined);
             } else if Some(slot) == self_slot {
                 locals.push(Value::Object(id));
             } else if Some(slot) == rest_slot {
@@ -13440,6 +13584,54 @@ impl Runtime {
                 locals.push(Value::Undefined);
             }
         }
+        let mut local_cells: Vec<Option<UpvalueCell>> = Vec::new();
+        if let Some(arguments_slot) = args_slot {
+            let mut arr = crate::value::Object::new_array();
+            arr.set_own("length".into(), Value::Number(args.len() as f64));
+            let mut parameter_map: indexmap::IndexMap<String, UpvalueCell> =
+                indexmap::IndexMap::new();
+            for (k, v) in args.iter().enumerate() {
+                arr.set_own(k.to_string(), v.clone());
+                if !proto.strict && k < locals.len() && (k as u16) != arguments_slot {
+                    while local_cells.len() <= k {
+                        local_cells.push(None);
+                    }
+                    let cell = if let Some(existing) = &local_cells[k] {
+                        existing.clone()
+                    } else {
+                        let cell = crate::value::new_upvalue_cell(locals[k].clone());
+                        locals[k] = Value::Undefined;
+                        local_cells[k] = Some(cell.clone());
+                        cell
+                    };
+                    parameter_map.insert(k.to_string(), cell);
+                }
+            }
+            if proto.strict {
+                let thrower = crate::intrinsics::make_native("%ThrowTypeError%", |_rt, _args| {
+                    Err(RuntimeError::TypeError(
+                        "'callee' may not be accessed on a strict arguments object".into(),
+                    ))
+                });
+                let thrower_id = self.alloc_object(thrower);
+                arr.dict_mut().insert(
+                    "callee".into(),
+                    crate::value::PropertyDescriptor {
+                        value: Value::Undefined,
+                        writable: false,
+                        enumerable: false,
+                        configurable: false,
+                        getter: Some(Value::Object(thrower_id)),
+                        setter: Some(Value::Object(thrower_id)),
+                    },
+                );
+            } else if !parameter_map.is_empty() {
+                arr.internal_kind = crate::value::InternalKind::MappedArguments { parameter_map };
+            }
+            if (arguments_slot as usize) < locals.len() {
+                locals[arguments_slot as usize] = Value::Object(self.alloc_object(arr));
+            }
+        }
         let mut inner = Frame {
             bytecode: &proto.bytecode,
             constants: &proto.constants,
@@ -13450,7 +13642,7 @@ impl Runtime {
             locals_names: &proto.locals,
             upvalue_names: &proto.upvalues,
             locals,
-            local_cells: Vec::new(),
+            local_cells,
             operand_stack: Vec::with_capacity(32),
             pc: 0,
             try_stack: Vec::new(),
@@ -13461,6 +13653,7 @@ impl Runtime {
             last_property_lookup: None,
             pending_method_name: None,
             pending_method_getprop_pc: None,
+            private_home,
             import_meta: None,
             new_target: nt_for_this_call.clone(),
             strict: proto.strict,
@@ -13562,11 +13755,7 @@ impl Runtime {
                 );
                 let pending_error = rt.object_get(this_id, "__gen_pending_error__");
                 if !matches!(pending_error, Value::Undefined) {
-                    rt.object_set(
-                        this_id,
-                        "__gen_pending_error__".into(),
-                        Value::Undefined,
-                    );
+                    rt.object_set(this_id, "__gen_pending_error__".into(), Value::Undefined);
                     if is_async_gen {
                         let p = crate::promise::new_promise(rt);
                         crate::promise::reject_promise(rt, p, pending_error);
@@ -13663,11 +13852,7 @@ impl Runtime {
                         Ok(Value::Object(async_iter))
                     });
                 let async_iter_fn_id = self.alloc_object(async_iter_fn);
-                self.set_engine_sentinel(
-                    it_id,
-                    "@@asyncIterator",
-                    Value::Object(async_iter_fn_id),
-                );
+                self.set_engine_sentinel(it_id, "@@asyncIterator", Value::Object(async_iter_fn_id));
             }
             return Ok(Value::Object(it_id));
         }
@@ -14090,6 +14275,10 @@ pub struct Frame<'a> {
     /// to Op::GetPropSkipForMethod. Cleared at the same sites that clear
     /// pending_method_name.
     pub pending_method_getprop_pc: Option<usize>,
+    /// Class home object for private-name resolution in class methods and
+    /// accessors. ECMA private names are fresh per class evaluation; this
+    /// bridges the current string-keyed private storage toward that identity.
+    pub private_home: Option<ObjectRef>,
     /// Tier-Ω.5.r: synthetic `import.meta` object for this module frame.
     /// Populated by `evaluate_module` (ESM path) with `{ url, dir }` keys.
     /// Frames that didn't enter through the module loader (raw run_module
@@ -14358,6 +14547,7 @@ impl<'a> Frame<'a> {
             last_property_lookup: None,
             pending_method_name: None,
             pending_method_getprop_pc: None,
+            private_home: None,
             import_meta: None,
             new_target: None,
             strict: m.strict,

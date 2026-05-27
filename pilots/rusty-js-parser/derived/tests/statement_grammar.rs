@@ -451,8 +451,21 @@ fn try_catch_finally() {
     } = first_stmt("try { f(); } catch (e) { g(e); } finally { h(); }")
     {
         let h = handler.expect("handler");
-        assert_eq!(h.param.unwrap().name, "e");
+        match h.param.unwrap() {
+            BindingPattern::Identifier(id) => assert_eq!(id.name, "e"),
+            other => panic!("expected identifier catch param, got {other:?}"),
+        }
         assert!(finalizer.is_some());
+    } else {
+        panic!("expected try");
+    }
+}
+
+#[test]
+fn try_catch_object_pattern_binding() {
+    if let Stmt::Try { handler, .. } = first_stmt("try { throw { x: 1 }; } catch ({ x }) { x; }") {
+        let h = handler.expect("handler");
+        assert!(matches!(h.param.unwrap(), BindingPattern::Object(_)));
     } else {
         panic!("expected try");
     }
