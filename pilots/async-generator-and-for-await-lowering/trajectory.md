@@ -87,3 +87,46 @@ so async-generator `.next()` Promise results were read directly for `done` and
 lowering. The surface has split: async-generator expression/statement protocol
 is now dominant, while the reduced for-await residual points at assignment
 pattern coverage and full AsyncFromSync abrupt-completion semantics.
+
+## AGFA-EXT 2 — async-generator reserved binding context (2026-05-26)
+
+**Target selected**: the remaining async-generator failures included a compact
+parser/static-semantics group where escaped `await` / `yield` identifiers were
+accepted in async-generator function code:
+
+- `language/expressions/async-generator/await-as-binding-identifier-escaped.js`
+- `language/expressions/async-generator/named-await-as-binding-identifier-escaped.js`
+- `language/expressions/async-generator/yield-as-label-identifier-escaped.js`
+- `language/statements/async-generator/await-as-binding-identifier-escaped.js`
+- related strict-mode `yield` binding cases
+
+**Substrate move**:
+
+- `rusty-js-parser` now tracks async-function context beside the existing
+  generator-context flag.
+- Function parameter and body parsing now receive the async-context directive
+  for async declarations, async expressions, async methods, and async arrows.
+- Binding-identifier validation rejects `await` while in async function code
+  and rejects `yield` in generator or strict contexts at the shared binding
+  target paths.
+
+**Verification**:
+
+- `cargo fmt -p rusty-js-parser` applied.
+- `cargo check -p rusty-js-parser` passed with existing warnings.
+- `cargo build --release --bin cruft -p cruftless` passed with existing
+  warnings.
+- `scripts/diff-prod/run-all.sh` remained `42/42 PASS`.
+- Exemplar suite moved from `PASS=58 FAIL=42 / 100 (58.0%)` to
+  `PASS=63 FAIL=37 / 100 (63.0%)`.
+
+**Residual split after move**:
+
+- 19 `language/expressions/async-generator`
+- 9 `language/statements/for-await-of`
+- 9 `language/statements/async-generator`
+
+**Next**: the cheap parser early-error group is mostly discharged. Remaining
+async-generator rows are dominated by destructuring abrupt-completion
+propagation and `yield*` async delegation; those are runtime/protocol rungs,
+not further parser reserved-word cleanups.

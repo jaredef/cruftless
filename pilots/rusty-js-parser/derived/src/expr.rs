@@ -204,7 +204,9 @@ impl<'src> Parser<'src> {
             // (parse_expression in the for-head) returns the LHS without
             // consuming `in`. The for-statement then sees `in` as the
             // ForIn/Of head keyword, as the spec intends.
-            TokenKind::Ident(s) if s == "in" && !self.in_disallowed => Some((BinaryOp::In, 10, false)),
+            TokenKind::Ident(s) if s == "in" && !self.in_disallowed => {
+                Some((BinaryOp::In, 10, false))
+            }
             // Shift
             TokenKind::Punct(Punct::Shl) => Some((BinaryOp::Shl, 11, false)),
             TokenKind::Punct(Punct::Shr) => Some((BinaryOp::Shr, 11, false)),
@@ -915,9 +917,12 @@ impl<'src> Parser<'src> {
                 let prop_start = self.lookahead_span().start;
                 self.bump()?; // consume `*`
                 let key = self.parse_object_key()?;
-                let params = self.parse_function_parameters_g(true)?;
-                let body =
-                    self.parse_function_body_gs(Some(true), Self::is_simple_param_list(&params))?;
+                let params = self.parse_function_parameters_ga(true, false)?;
+                let body = self.parse_function_body_gs(
+                    Some(true),
+                    Some(false),
+                    Self::is_simple_param_list(&params),
+                )?;
                 let end = self.last_span_end();
                 let func = Expr::Function {
                     name: None,
@@ -952,9 +957,10 @@ impl<'src> Parser<'src> {
                     false
                 };
                 let key = self.parse_object_key()?;
-                let params = self.parse_function_parameters_g(is_generator)?;
+                let params = self.parse_function_parameters_ga(is_generator, true)?;
                 let body = self.parse_function_body_gs(
                     Some(is_generator),
+                    Some(true),
                     Self::is_simple_param_list(&params),
                 )?;
                 let end = self.last_span_end();
@@ -991,8 +997,11 @@ impl<'src> Parser<'src> {
                 self.bump()?; // consume `get` or `set`
                 let key = self.parse_object_key()?;
                 let params = self.parse_function_parameters()?;
-                let body =
-                    self.parse_function_body_gs(Some(false), Self::is_simple_param_list(&params))?;
+                let body = self.parse_function_body_gs(
+                    Some(false),
+                    Some(false),
+                    Self::is_simple_param_list(&params),
+                )?;
                 let end = self.last_span_end();
                 let func = Expr::Function {
                     name: None,
@@ -1031,8 +1040,11 @@ impl<'src> Parser<'src> {
                     // an anonymous name (the method name is the property key,
                     // not the function's [[Name]] in v1).
                     let params = self.parse_function_parameters()?;
-                    let body = self
-                        .parse_function_body_gs(Some(false), Self::is_simple_param_list(&params))?;
+                    let body = self.parse_function_body_gs(
+                        Some(false),
+                        Some(false),
+                        Self::is_simple_param_list(&params),
+                    )?;
                     let end = self.last_span_end();
                     let func = Expr::Function {
                         name: None,
@@ -1549,9 +1561,12 @@ impl<'src> Parser<'src> {
         } else {
             None
         };
-        let params = self.parse_function_parameters_g(is_generator)?;
-        let body =
-            self.parse_function_body_gs(Some(is_generator), Self::is_simple_param_list(&params))?;
+        let params = self.parse_function_parameters_ga(is_generator, is_async)?;
+        let body = self.parse_function_body_gs(
+            Some(is_generator),
+            Some(is_async),
+            Self::is_simple_param_list(&params),
+        )?;
         let end = self.last_span_end();
         Ok(Expr::Function {
             name,
@@ -1674,6 +1689,12 @@ impl<'src> Parser<'src> {
             if let TokenKind::Ident(n) = self.current_kind().clone() {
                 // `Identifier =>` — single-parameter arrow.
                 let span = self.lookahead_span();
+                if is_async && n == "await" {
+                    return Err(self.err_at(
+                        span,
+                        "`await` is not a valid binding in async function code".into(),
+                    ));
+                }
                 self.bump()?;
                 vec![rusty_js_ast::Parameter {
                     target: rusty_js_ast::BindingPattern::Identifier(
@@ -1684,7 +1705,7 @@ impl<'src> Parser<'src> {
                     span,
                 }]
             } else if matches!(self.current_kind(), TokenKind::Punct(Punct::LParen)) {
-                self.parse_function_parameters()?
+                self.parse_function_parameters_ga(false, is_async)?
             } else {
                 return Err(self.err_here("expected arrow head".into()));
             };
@@ -1751,9 +1772,11 @@ impl<'src> Parser<'src> {
         // function ConciseBody is not [Yield]-parameterized). Force
         // in_generator=false for the body's duration.
         let body = if matches!(self.current_kind(), TokenKind::Punct(Punct::LBrace)) {
-            ArrowBody::Block(
-                self.parse_function_body_gs(Some(false), Self::is_simple_param_list(&params))?,
-            )
+            ArrowBody::Block(self.parse_function_body_gs(
+                Some(false),
+                Some(is_async),
+                Self::is_simple_param_list(&params),
+            )?)
         } else {
             self.function_body_depth += 1;
             let prior_gen = self.in_generator;

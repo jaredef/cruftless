@@ -56,6 +56,9 @@ pub struct Parser<'src> {
     /// word (SyntaxError at parse); in sloppy mode `yield` is an
     /// IdentifierReference.
     pub(crate) in_generator: bool,
+    /// AGFA-EXT 2: async-context flag tracking. `await` is reserved in
+    /// async function code, including async-generator bodies and params.
+    pub(crate) in_async: bool,
     /// YIFP-EXT 1: true while parsing a function/arrow formal parameter
     /// list. Yield-branch rejects YieldExpression here when in_generator
     /// is also true (per §15.3.1 ArrowFunction + §15.5.1 GeneratorDeclaration
@@ -102,6 +105,7 @@ impl<'src> Parser<'src> {
             function_body_depth: 0,
             strict_mode: false,
             in_generator: false,
+            in_async: false,
             in_function_params: false,
             current_lex_goal,
             in_disallowed: false,
@@ -125,7 +129,7 @@ impl<'src> Parser<'src> {
         // The import/export branches below promote to strict when seen.
         if self.peek_use_strict_directive() {
             self.strict_mode = true;
-            self.lx.set_strict(true);  // SLEC-EXT 1: push to lexer for legacy-escape rejection
+            self.lx.set_strict(true); // SLEC-EXT 1: push to lexer for legacy-escape rejection
         }
 
         while !self.at_eof() {
@@ -425,9 +429,12 @@ impl<'src> Parser<'src> {
         } else {
             None
         };
-        let params = self.parse_function_parameters_g(is_generator)?;
-        let body =
-            self.parse_function_body_gs(Some(is_generator), Self::is_simple_param_list(&params))?;
+        let params = self.parse_function_parameters_ga(is_generator, is_async)?;
+        let body = self.parse_function_body_gs(
+            Some(is_generator),
+            Some(is_async),
+            Self::is_simple_param_list(&params),
+        )?;
         Ok(DefaultExportBody::HoistableFunction {
             name,
             params,
@@ -530,6 +537,18 @@ impl<'src> Parser<'src> {
                         "Binding identifier '{}' is not allowed in strict mode",
                         name
                     ),
+                });
+            }
+            if (self.in_generator || self.strict_mode) && name == "yield" {
+                return Err(ParseError {
+                    span: tok.span,
+                    message: "`yield` is not a valid binding in this context".into(),
+                });
+            }
+            if self.in_async && name == "await" {
+                return Err(ParseError {
+                    span: tok.span,
+                    message: "`await` is not a valid binding in async function code".into(),
                 });
             }
             self.bump_regexp()?;
@@ -902,7 +921,9 @@ impl<'src> Parser<'src> {
         // correct goal for the immediately-next bump.
         let cur = std::mem::replace(
             &mut self.lookahead,
-            self.lx.next_token(self.current_lex_goal).map_err(lex_to_parse)?,
+            self.lx
+                .next_token(self.current_lex_goal)
+                .map_err(lex_to_parse)?,
         );
         self.current_lex_goal = derive_lex_goal_after(&self.lookahead.kind);
         Ok(cur)
@@ -1061,7 +1082,10 @@ impl<'src> Parser<'src> {
     pub(crate) fn enter_template_tail(&mut self) -> Result<(), ParseError> {
         let pos = self.lookahead.span.start;
         self.lx.set_pos(pos);
-        self.lookahead = self.lx.next_token(LexerGoal::TemplateTail).map_err(lex_to_parse)?;
+        self.lookahead = self
+            .lx
+            .next_token(LexerGoal::TemplateTail)
+            .map_err(lex_to_parse)?;
         self.current_lex_goal = derive_lex_goal_after(&self.lookahead.kind);
         Ok(())
     }
@@ -1317,6 +1341,18 @@ impl<'src> Parser<'src> {
                             "Binding identifier '{}' is not allowed in strict mode",
                             n
                         ),
+                    });
+                }
+                if (self.in_generator || self.strict_mode) && n == "yield" {
+                    return Err(ParseError {
+                        span,
+                        message: "`yield` is not a valid binding in this context".into(),
+                    });
+                }
+                if self.in_async && n == "await" {
+                    return Err(ParseError {
+                        span,
+                        message: "`await` is not a valid binding in async function code".into(),
                     });
                 }
                 self.bump()?;

@@ -267,6 +267,109 @@ fn intl_canonicalize_time_zone(raw: &str) -> String {
         .join("/")
 }
 
+fn install_temporal_availability(rt: &mut Runtime) {
+    let temporal = rt.alloc_object(Object::new_ordinary());
+    rt.obj_mut(temporal).dict_mut().insert(
+        crate::value::PropertyKey::String("@@toStringTag".into()),
+        PropertyDescriptor {
+            value: Value::String(Rc::new("Temporal".into())),
+            writable: false,
+            enumerable: false,
+            configurable: true,
+            getter: None,
+            setter: None,
+        },
+    );
+
+    for (ctor_name, ctor_len) in [
+        ("Duration", 0),
+        ("Instant", 1),
+        ("PlainDate", 3),
+        ("PlainDateTime", 6),
+        ("PlainMonthDay", 2),
+        ("PlainTime", 0),
+        ("PlainYearMonth", 2),
+        ("ZonedDateTime", 2),
+    ] {
+        let name = ctor_name.to_string();
+        let proto = rt.alloc_object(Object::new_ordinary());
+        rt.obj_mut(proto).dict_mut().insert(
+            crate::value::PropertyKey::String("@@toStringTag".into()),
+            PropertyDescriptor {
+                value: Value::String(Rc::new(format!("Temporal.{name}"))),
+                writable: false,
+                enumerable: false,
+                configurable: true,
+                getter: None,
+                setter: None,
+            },
+        );
+        let proto_for_closure = proto;
+        let kind = name.clone();
+        let ctor = make_native_with_length(&name, ctor_len, move |rt, _args| {
+            let mut o = Object::new_ordinary();
+            o.proto = match rt.current_new_target.clone() {
+                Some(Value::Object(nt)) => match rt.object_get(nt, "prototype") {
+                    Value::Object(pid) => Some(pid),
+                    _ => Some(proto_for_closure),
+                },
+                _ => Some(proto_for_closure),
+            };
+            o.set_own_internal(
+                "__temporal_kind".into(),
+                Value::String(Rc::new(kind.clone())),
+            );
+            Ok(Value::Object(rt.alloc_object(o)))
+        });
+        let ctor_id = rt.alloc_object(ctor);
+        rt.obj_mut(proto)
+            .set_own_internal("constructor".into(), Value::Object(ctor_id));
+        rt.obj_mut(ctor_id)
+            .set_own_frozen("prototype".into(), Value::Object(proto));
+        rt.obj_mut(temporal).dict_mut().insert(
+            crate::value::PropertyKey::String(name),
+            PropertyDescriptor {
+                value: Value::Object(ctor_id),
+                writable: true,
+                enumerable: false,
+                configurable: true,
+                getter: None,
+                setter: None,
+            },
+        );
+    }
+
+    let now = rt.alloc_object(Object::new_ordinary());
+    for method in [
+        "instant",
+        "plainDateISO",
+        "plainDateTimeISO",
+        "plainTimeISO",
+        "timeZoneId",
+        "zonedDateTimeISO",
+    ] {
+        register_intrinsic_method(rt, now, method, 0, |_rt, _args| {
+            Err(RuntimeError::TypeError(
+                "Temporal.Now method not implemented".into(),
+            ))
+        });
+    }
+    rt.obj_mut(temporal).dict_mut().insert(
+        crate::value::PropertyKey::String("Now".into()),
+        PropertyDescriptor {
+            value: Value::Object(now),
+            writable: true,
+            enumerable: false,
+            configurable: true,
+            getter: None,
+            setter: None,
+        },
+    );
+
+    rt.globals
+        .insert("Temporal".into(), Value::Object(temporal));
+}
+
 impl Runtime {
     pub fn install_intrinsics(&mut self) {
         // JIT-EXT 22: register the runtime-side GetPropOnObject helper
@@ -1366,6 +1469,7 @@ impl Runtime {
             Ok(Value::Object(id))
         });
         self.globals.insert("Intl".into(), Value::Object(intl));
+        install_temporal_availability(self);
         // Tier-Ω.5.iiii: TextEncoder / TextDecoder per WHATWG Encoding
         // spec. v1 deviation: only UTF-8 supported; encode returns a
         // Uint8Array-shaped object (length + indexed bytes); decode

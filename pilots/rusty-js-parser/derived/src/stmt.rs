@@ -420,9 +420,12 @@ impl<'src> Parser<'src> {
         } else {
             None
         };
-        let params = self.parse_function_parameters_g(is_generator)?;
-        let body =
-            self.parse_function_body_gs(Some(is_generator), Self::is_simple_param_list(&params))?;
+        let params = self.parse_function_parameters_ga(is_generator, is_async)?;
+        let body = self.parse_function_body_gs(
+            Some(is_generator),
+            Some(is_async),
+            Self::is_simple_param_list(&params),
+        )?;
         let end = self.last_span_end();
         Ok(Stmt::FunctionDecl {
             name,
@@ -450,16 +453,29 @@ impl<'src> Parser<'src> {
         &mut self,
         is_generator: bool,
     ) -> Result<Vec<rusty_js_ast::Parameter>, ParseError> {
+        self.parse_function_parameters_ga(is_generator, false)
+    }
+
+    pub(crate) fn parse_function_parameters_ga(
+        &mut self,
+        is_generator: bool,
+        is_async: bool,
+    ) -> Result<Vec<rusty_js_ast::Parameter>, ParseError> {
         self.expect_punct(Punct::LParen)?;
         let prior_in_params = self.in_function_params;
         let prior_in_generator = self.in_generator;
+        let prior_in_async = self.in_async;
         self.in_function_params = true;
         if is_generator {
             self.in_generator = true;
         }
+        if is_async {
+            self.in_async = true;
+        }
         let result = self.parse_function_parameters_inner();
         self.in_function_params = prior_in_params;
         self.in_generator = prior_in_generator;
+        self.in_async = prior_in_async;
         result
     }
 
@@ -530,7 +546,7 @@ impl<'src> Parser<'src> {
         &mut self,
         is_generator: Option<bool>,
     ) -> Result<Vec<Stmt>, ParseError> {
-        self.parse_function_body_gs(is_generator, true)
+        self.parse_function_body_gs(is_generator, None, true)
     }
 
     /// LABNL-EXT 1: §13.3.1.1 — BoundNames of a LexicalDeclaration must
@@ -573,6 +589,7 @@ impl<'src> Parser<'src> {
     pub(crate) fn parse_function_body_gs(
         &mut self,
         is_generator: Option<bool>,
+        is_async: Option<bool>,
         is_simple: bool,
     ) -> Result<Vec<Stmt>, ParseError> {
         let body_start = self.lookahead_span();
@@ -592,12 +609,16 @@ impl<'src> Parser<'src> {
                 });
             }
             self.strict_mode = true;
-            self.set_lexer_strict(true);  // SLEC-EXT 1: push to lexer for legacy-escape rejection
+            self.set_lexer_strict(true); // SLEC-EXT 1: push to lexer for legacy-escape rejection
         }
         // SMPT-EXT 3: generator-context propagation.
         let prior_gen = self.in_generator;
         if let Some(g) = is_generator {
             self.in_generator = g;
+        }
+        let prior_async = self.in_async;
+        if let Some(a) = is_async {
+            self.in_async = a;
         }
         let mut out = Vec::new();
         while !matches!(self.current_kind(), TokenKind::Punct(Punct::RBrace))
@@ -608,8 +629,9 @@ impl<'src> Parser<'src> {
         self.expect_punct(Punct::RBrace)?;
         self.function_body_depth = self.function_body_depth.saturating_sub(1);
         self.strict_mode = prior_strict;
-        self.set_lexer_strict(prior_strict);  // SLEC-EXT 1: restore lexer's view on body exit
+        self.set_lexer_strict(prior_strict); // SLEC-EXT 1: restore lexer's view on body exit
         self.in_generator = prior_gen;
+        self.in_async = prior_async;
         Ok(out)
     }
 
@@ -741,9 +763,10 @@ impl<'src> Parser<'src> {
 
             // Field or method?
             if matches!(self.current_kind(), TokenKind::Punct(Punct::LParen)) {
-                let params = self.parse_function_parameters_g(is_generator)?;
+                let params = self.parse_function_parameters_ga(is_generator, is_async)?;
                 let body = self.parse_function_body_gs(
                     Some(is_generator),
+                    Some(is_async),
                     Self::is_simple_param_list(&params),
                 )?;
                 let end = self.last_span_end();
@@ -809,7 +832,9 @@ impl<'src> Parser<'src> {
         }
         for m in members {
             match m {
-                ClassMember::Field { name, init, span, .. } => {
+                ClassMember::Field {
+                    name, init, span, ..
+                } => {
                     if let Some(init) = init {
                         if self.expr_contains_arguments(init) {
                             return Err(ParseError {
@@ -964,35 +989,43 @@ impl<'src> Parser<'src> {
         match expr {
             Expr::Member {
                 object, property, ..
-            } => self.first_unbound_private_name(object, private_names).or_else(|| {
-                if let MemberProperty::Private { name, .. } = property.as_ref() {
-                    if !private_names.contains(name.as_str()) {
-                        return Some(name.as_str());
+            } => self
+                .first_unbound_private_name(object, private_names)
+                .or_else(|| {
+                    if let MemberProperty::Private { name, .. } = property.as_ref() {
+                        if !private_names.contains(name.as_str()) {
+                            return Some(name.as_str());
+                        }
                     }
-                }
-                None
-            }),
+                    None
+                }),
             Expr::Call {
                 callee, arguments, ..
             }
             | Expr::New {
                 callee, arguments, ..
-            } => self.first_unbound_private_name(callee, private_names).or_else(|| {
-                arguments.iter().find_map(|a| match a {
-                    Argument::Expr(e) | Argument::Spread { expr: e, .. } => {
-                        self.first_unbound_private_name(e, private_names)
-                    }
-                })
-            }),
+            } => self
+                .first_unbound_private_name(callee, private_names)
+                .or_else(|| {
+                    arguments.iter().find_map(|a| match a {
+                        Argument::Expr(e) | Argument::Spread { expr: e, .. } => {
+                            self.first_unbound_private_name(e, private_names)
+                        }
+                    })
+                }),
             Expr::Parenthesized { expr, .. }
             | Expr::Update { argument: expr, .. }
             | Expr::Unary { argument: expr, .. } => {
                 self.first_unbound_private_name(expr, private_names)
             }
-            Expr::Binary { left, right, .. } | Expr::Assign { target: left, value: right, .. } => {
-                self.first_unbound_private_name(left, private_names)
-                    .or_else(|| self.first_unbound_private_name(right, private_names))
-            }
+            Expr::Binary { left, right, .. }
+            | Expr::Assign {
+                target: left,
+                value: right,
+                ..
+            } => self
+                .first_unbound_private_name(left, private_names)
+                .or_else(|| self.first_unbound_private_name(right, private_names)),
             Expr::Conditional {
                 test,
                 consequent,
@@ -1885,8 +1918,11 @@ impl<'src> Parser<'src> {
         self.collect_block_entries(body, false, &mut entries, &mut next_id);
 
         use std::collections::HashMap;
-        let mut by_name: HashMap<&str, Vec<&(String, Span, u32, bool, bool, bool)>> = HashMap::new();
-        for e in &entries { by_name.entry(&e.0).or_default().push(e); }
+        let mut by_name: HashMap<&str, Vec<&(String, Span, u32, bool, bool, bool)>> =
+            HashMap::new();
+        for e in &entries {
+            by_name.entry(&e.0).or_default().push(e);
+        }
         for (_, es) in by_name {
             // Dup-LDN: distinct decl_ids that contribute to LDN, where
             // not all such contributions are plain-function-non-strict.
@@ -1904,7 +1940,10 @@ impl<'src> Parser<'src> {
                     let bad = es.iter().find(|e| e.3).unwrap();
                     return Err(ParseError {
                         span: bad.1,
-                        message: format!("Identifier `{}` has already been declared in this block", bad.0),
+                        message: format!(
+                            "Identifier `{}` has already been declared in this block",
+                            bad.0
+                        ),
                     });
                 }
             }
@@ -1912,16 +1951,23 @@ impl<'src> Parser<'src> {
             // decl_ids, where NOT both sides are plain-function-non-strict
             // (Annex B B.3.2/B.3.3 lets multiple plain functions in
             // non-strict block coexist as both LDN and VDN without error).
-            let lex_pairs: Vec<(u32, bool)> = es.iter().filter(|e| e.3).map(|e| (e.2, e.5)).collect();
-            let var_pairs: Vec<(u32, bool)> = es.iter().filter(|e| e.4).map(|e| (e.2, e.5)).collect();
+            let lex_pairs: Vec<(u32, bool)> =
+                es.iter().filter(|e| e.3).map(|e| (e.2, e.5)).collect();
+            let var_pairs: Vec<(u32, bool)> =
+                es.iter().filter(|e| e.4).map(|e| (e.2, e.5)).collect();
             let cross = lex_pairs.iter().any(|(li, lpf)| {
-                var_pairs.iter().any(|(vi, vpf)| li != vi && !(*lpf && *vpf))
+                var_pairs
+                    .iter()
+                    .any(|(vi, vpf)| li != vi && !(*lpf && *vpf))
             });
             if cross {
                 let bad = es.iter().find(|e| e.3).unwrap();
                 return Err(ParseError {
                     span: bad.1,
-                    message: format!("Identifier `{}` cannot be redeclared (lexical/var conflict)", bad.0),
+                    message: format!(
+                        "Identifier `{}` cannot be redeclared (lexical/var conflict)",
+                        bad.0
+                    ),
                 });
             }
         }
@@ -1944,20 +1990,29 @@ impl<'src> Parser<'src> {
         for s in body {
             match s {
                 S::Variable(vs) => {
-                    let id = *next_id; *next_id += 1;
+                    let id = *next_id;
+                    *next_id += 1;
                     let (is_lex, is_var) = match vs.kind {
                         VariableKind::Let | VariableKind::Const => (!nested, false),
                         VariableKind::Var => (false, true),
                     };
-                    if !is_lex && !is_var { continue; }
+                    if !is_lex && !is_var {
+                        continue;
+                    }
                     for d in &vs.declarators {
                         for nm in d.target.collect_names() {
                             out.push((nm.name.clone(), nm.span, id, is_lex, is_var, false));
                         }
                     }
                 }
-                S::FunctionDecl { name: Some(n), is_async, is_generator, .. } => {
-                    let id = *next_id; *next_id += 1;
+                S::FunctionDecl {
+                    name: Some(n),
+                    is_async,
+                    is_generator,
+                    ..
+                } => {
+                    let id = *next_id;
+                    *next_id += 1;
                     let is_plain = !is_async && !is_generator;
                     let plain_func_nonstrict = is_plain && !self.strict_mode;
                     // At nested depth, only the var-side contribution
@@ -1972,12 +2027,20 @@ impl<'src> Parser<'src> {
                     } else {
                         let is_lex = true; // FunctionDecl is LDN in all modes
                         let is_var = plain_func_nonstrict;
-                        out.push((n.name.clone(), n.span, id, is_lex, is_var, plain_func_nonstrict));
+                        out.push((
+                            n.name.clone(),
+                            n.span,
+                            id,
+                            is_lex,
+                            is_var,
+                            plain_func_nonstrict,
+                        ));
                     }
                 }
                 S::ClassDecl { name: Some(n), .. } => {
                     if !nested {
-                        let id = *next_id; *next_id += 1;
+                        let id = *next_id;
+                        *next_id += 1;
                         out.push((n.name.clone(), n.span, id, true, false, false));
                     }
                 }
@@ -1986,12 +2049,21 @@ impl<'src> Parser<'src> {
                 S::Block { body: inner, .. } => {
                     self.collect_block_entries(inner, true, out, next_id);
                 }
-                S::If { consequent, alternate, .. } => {
+                S::If {
+                    consequent,
+                    alternate,
+                    ..
+                } => {
                     self.collect_stmt_entries(consequent, true, out, next_id);
-                    if let Some(a) = alternate { self.collect_stmt_entries(a, true, out, next_id); }
+                    if let Some(a) = alternate {
+                        self.collect_stmt_entries(a, true, out, next_id);
+                    }
                 }
-                S::For { body: b, .. } | S::ForIn { body: b, .. } | S::ForOf { body: b, .. }
-                | S::While { body: b, .. } | S::DoWhile { body: b, .. } => {
+                S::For { body: b, .. }
+                | S::ForIn { body: b, .. }
+                | S::ForOf { body: b, .. }
+                | S::While { body: b, .. }
+                | S::DoWhile { body: b, .. } => {
                     self.collect_stmt_entries(b, true, out, next_id);
                 }
                 S::Switch { cases, .. } => {
@@ -1999,12 +2071,19 @@ impl<'src> Parser<'src> {
                         self.collect_block_entries(&c.consequent, true, out, next_id);
                     }
                 }
-                S::Try { block, handler, finalizer, .. } => {
+                S::Try {
+                    block,
+                    handler,
+                    finalizer,
+                    ..
+                } => {
                     self.collect_stmt_entries(block, true, out, next_id);
                     if let Some(h) = handler {
                         self.collect_stmt_entries(&h.body, true, out, next_id);
                     }
-                    if let Some(f) = finalizer { self.collect_stmt_entries(f, true, out, next_id); }
+                    if let Some(f) = finalizer {
+                        self.collect_stmt_entries(f, true, out, next_id);
+                    }
                 }
                 S::Labelled { body: b, .. } => {
                     self.collect_stmt_entries(b, true, out, next_id);
