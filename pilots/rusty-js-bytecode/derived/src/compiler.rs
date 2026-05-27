@@ -3731,6 +3731,11 @@ impl Compiler {
                     encode_op(&mut self.bytecode, Op::Call);
                     encode_u8(&mut self.bytecode, 3);
                 } else {
+                    let is_direct_eval = !*call_optional
+                        && matches!(
+                            callee.as_ref(),
+                            Expr::Identifier { name, .. } if name == "eval"
+                        );
                     self.compile_expr(callee)?;
                     // ECMA-262 §13.3.7 OptionalChain: bare-callee optional
                     // call `f?.(args)` — if f is null/undefined, skip the
@@ -3758,7 +3763,14 @@ impl Compiler {
                             Argument::Spread { .. } => unreachable!(),
                         }
                     }
-                    encode_op(&mut self.bytecode, Op::Call);
+                    encode_op(
+                        &mut self.bytecode,
+                        if is_direct_eval {
+                            Op::DirectEval
+                        } else {
+                            Op::Call
+                        },
+                    );
                     encode_u8(&mut self.bytecode, n as u8);
                     if !opt_call_sinks.is_empty() {
                         let done = self.emit_jump(Op::Jump);

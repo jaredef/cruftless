@@ -115,6 +115,10 @@ pub struct Runtime {
     /// Inserted on first read; never invalidated (filesystem changes during
     /// runtime are out-of-scope for v1).
     pub pkg_json_cache: HashMap<std::path::PathBuf, std::rc::Rc<crate::module::ParsedPackageJson>>,
+    /// TTOB-EXT 2: realm-local tagged-template registry. Parser lowering
+    /// passes a stable source-site key into `__template_object__`; the
+    /// helper canonicalizes the frozen TemplateStringsArray here.
+    pub template_registry: HashMap<String, Value>,
     /// Ω.5.P54.E1 (Axis-M probe — Doc 729 §XII): resolution-decision
     /// trace keyed by resolved URL. Populated by resolve_entry_point
     /// when a bare specifier maps to a file under a node_modules pkg.
@@ -544,6 +548,7 @@ impl Runtime {
             host_hooks: crate::module::HostHooks::default(),
             modules: HashMap::new(),
             pkg_json_cache: HashMap::new(),
+            template_registry: HashMap::new(),
             module_resolution_trace: HashMap::new(),
             module_post_eval_trace: HashMap::new(),
             module_ns_synth_trace: HashMap::new(),
@@ -3206,9 +3211,10 @@ impl Runtime {
             },
         };
         let key = self.coerce_to_string(key_v)?;
-        // §10.4.2 Array exotic: length is always an own property with
-        // writable:true, enumerable:false, configurable:false. cruftless
-        // stores it lazily, but the descriptor shape is fixed.
+        // §10.4.2 Array exotic: length is always an own property. Most
+        // arrays synthesize it lazily as writable:true, but frozen template
+        // arrays install an explicit descriptor before Object.freeze flips
+        // writable/configurable; descriptor reflection must see that state.
         let is_array_length = key == "length"
             && matches!(
                 self.obj(id).internal_kind,
@@ -3216,7 +3222,19 @@ impl Runtime {
             );
         let (has, value, writable, enumerable, configurable, getter, setter) = if is_array_length {
             let len_v = self.object_get(id, "length");
-            (true, len_v, true, false, false, None, None)
+            if let Some(d) = self.obj(id).get_own("length") {
+                (
+                    true,
+                    len_v,
+                    d.writable,
+                    d.enumerable,
+                    d.configurable,
+                    d.getter.clone(),
+                    d.setter.clone(),
+                )
+            } else {
+                (true, len_v, true, false, false, None, None)
+            }
         } else {
             let o = self.obj(id);
             // CMig-EXT 13: shape-aware lookup. Shape-stored entries are
@@ -12559,6 +12577,26 @@ impl Runtime {
                     )?;
                     frame.push(result);
                 }
+                Op::DirectEval => {
+                    let n = frame.bytecode[frame.pc] as usize;
+                    frame.pc += 1;
+                    let mut args = Vec::with_capacity(n);
+                    for _ in 0..n {
+                        args.push(frame.pop()?);
+                    }
+                    args.reverse();
+                    let callee = frame.pop()?;
+                    // Integration: GBSU unified surface.
+                    let global_eval = self.global_get("eval");
+                    let result = if !matches!(global_eval, Value::Undefined)
+                        && global_eval == callee
+                    {
+                        self.direct_eval_from_frame(frame, args)?
+                    } else {
+                        self.call_function(callee, Value::Undefined, args)?
+                    };
+                    frame.push(result);
+                }
                 Op::CallMethod => {
                     let site_pc = frame.pc - 1; // IHI-EXT 7: Op byte's pc for cache key
                     let n = frame.bytecode[frame.pc] as usize;
@@ -13275,6 +13313,112 @@ impl Runtime {
     /// across nesting), and set as `Frame::this_value` for closure frames.
     /// BoundFunction unwraps once, prepending bound args and overriding the
     /// caller's `this` with the bound this.
+    pub(crate) fn eval_source_globalish(&mut self, source: String) -> Result<Value, RuntimeError> {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static EVAL_COUNTER: AtomicUsize = AtomicUsize::new(0);
+        let n = EVAL_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let url = format!("file://<eval:{}>", n);
+        crate::intrinsics::eval_global_declaration_instantiation_guard(self, &source)?;
+
+        // Integration: GBSU unified surface.
+        let stash_key = format!("__eval_out_{}", n);
+        let expr_source = format!("{} = ({});", stash_key, source);
+        let global_this = self.global_get("globalThis");
+        let saved_this = std::mem::replace(&mut self.current_this, global_this);
+        let expr_ok = self.evaluate_script(&expr_source, &url).is_ok();
+        if expr_ok {
+            self.current_this = saved_this;
+            let result = self.global_get(&stash_key);
+            if let Some(gt) = self.global_object {
+                self.obj_mut(gt).remove_str(&stash_key);
+            }
+            return Ok(result);
+        }
+
+        let stmt_url = format!("file://<eval:{}:stmt>", n);
+        let result = self.evaluate_script(&source, &stmt_url);
+        self.current_this = saved_this;
+        match result {
+            Ok(_) => Ok(Value::Undefined),
+            Err(RuntimeError::CompileError(msg)) => Err(RuntimeError::SyntaxError(msg)),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn direct_eval_from_frame(
+        &mut self,
+        caller: &mut Frame<'_>,
+        args: Vec<Value>,
+    ) -> Result<Value, RuntimeError> {
+        let source = match args.first() {
+            Some(Value::String(s)) => s.as_str().to_string(),
+            Some(v) => return Ok(v.clone()),
+            None => return Ok(Value::Undefined),
+        };
+
+        let mut overlay: Vec<(String, Value)> = Vec::new();
+        for (slot, desc) in caller.upvalue_names.iter().enumerate() {
+            if let Some(name) = Self::eval_overlay_binding_name(&desc.name) {
+                if let Some(cell) = caller.upvalues.get(slot) {
+                    overlay.push((name, cell.borrow().clone()));
+                }
+            }
+        }
+        for (slot, desc) in caller.locals_names.iter().enumerate() {
+            if let Some(name) = Self::eval_overlay_binding_name(&desc.name) {
+                overlay.push((name, caller.read_local(slot)));
+            }
+        }
+
+        // Integration: GBSU unified surface — overlay/restore over globalThis Object.
+        let mut saved: Vec<(String, Option<Value>)> = Vec::with_capacity(overlay.len());
+        for (name, value) in overlay {
+            let prev = if let Some(gt) = self.global_object {
+                if self.obj(gt).has_own_str(&name) {
+                    Some(self.object_get(gt, &name))
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            saved.push((name.clone(), prev));
+            self.define_global_property(&name, value);
+        }
+        let result = self.eval_source_globalish(source);
+        for (name, old) in saved.into_iter().rev() {
+            match old {
+                Some(value) => self.define_global_property(&name, value),
+                None => {
+                    if let Some(gt) = self.global_object {
+                        self.obj_mut(gt).remove_str(&name);
+                    }
+                }
+            }
+        }
+        result
+    }
+
+    fn eval_overlay_binding_name(name: &str) -> Option<String> {
+        let logical = if let Some(rest) = name.strip_prefix("<scoped@") {
+            rest.split_once('>').map(|(_, suffix)| suffix).unwrap_or(name)
+        } else {
+            name
+        };
+        let mut chars = logical.chars();
+        let Some(first) = chars.next() else {
+            return None;
+        };
+        if !(first == '_' || first == '$' || first.is_ascii_alphabetic()) {
+            return None;
+        }
+        if chars.all(|c| c == '_' || c == '$' || c.is_ascii_alphanumeric()) {
+            Some(logical.to_string())
+        } else {
+            None
+        }
+    }
+
     pub fn call_function(
         &mut self,
         callee: Value,

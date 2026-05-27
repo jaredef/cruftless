@@ -542,6 +542,10 @@ impl<'src> Parser<'src> {
                 TokenKind::Punct(Punct::LBracket) => {
                     callee = self.consume_computed_member(callee, false)?;
                 }
+                TokenKind::Template { .. } => {
+                    let tag_start = callee.span().start;
+                    callee = self.parse_tagged_template(callee, tag_start)?;
+                }
                 _ => break,
             }
         }
@@ -1198,43 +1202,41 @@ impl<'src> Parser<'src> {
     fn parse_tagged_template(&mut self, tag: Expr, start: usize) -> Result<Expr, ParseError> {
         use crate::token::TemplatePart;
         use rusty_js_ast::{Argument, ArrayElement};
-        let tpl = match self.current_kind().clone() {
-            TokenKind::Template { cooked, raw, part } => {
+        // Integration: take origin/main's tagged-template-object-boundary
+        // closure (commit f6eb17b2). Returns (cooked_quasis, raw_quasis,
+        // expressions, end) directly; cooked_quasis carries Option<String>
+        // for invalid template parts; a site_key arg threads stable identity
+        // through __template_object__.
+        let (cooked_quasis, raw_quasis, expressions, end) = match self.current_kind().clone() {
+            TokenKind::Template {
+                cooked, raw, part, ..
+            } => {
                 let tspan = self.lookahead_span();
                 match part {
                     TemplatePart::NoSubstitution => {
-                        let value = cooked.unwrap_or_default();
                         self.bump()?;
-                        Expr::TemplateLiteral {
-                            quasis: vec![std::rc::Rc::new(value)],
-                            raw_quasis: vec![std::rc::Rc::new(raw)],
-                            expressions: Vec::new(),
-                            span: tspan,
-                        }
+                        (vec![cooked], vec![raw], Vec::new(), tspan.end)
                     }
-                    TemplatePart::Head => self.parse_template_with_substitutions(tspan.start)?,
+                    TemplatePart::Head => {
+                        self.parse_tagged_template_with_substitutions(tspan.start)?
+                    }
                     _ => return Err(self.err_here("unexpected template part for tag".into())),
                 }
             }
             _ => return Err(self.err_here("expected template after tag".into())),
         };
-        let (quasis, raw_quasis, expressions, end) = match tpl {
-            Expr::TemplateLiteral {
-                quasis,
-                raw_quasis,
-                expressions,
-                span,
-            } => (quasis, raw_quasis, expressions, span.end),
-            _ => unreachable!(),
-        };
         let strings_arr = Expr::Array {
-            elements: quasis
+            elements: cooked_quasis
                 .iter()
-                .map(|q| {
-                    ArrayElement::Expr(Expr::StringLiteral {
-                        value: (**q).clone(),
+                .map(|q| match q {
+                    Some(value) => ArrayElement::Expr(Expr::StringLiteral {
+                        value: value.clone(),
                         span: Span::new(start, end),
-                    })
+                    }),
+                    None => ArrayElement::Expr(Expr::Identifier {
+                        name: "undefined".into(),
+                        span: Span::new(start, end),
+                    }),
                 })
                 .collect(),
             trailing_comma_after_spread: false,
@@ -1245,7 +1247,7 @@ impl<'src> Parser<'src> {
                 .iter()
                 .map(|q| {
                     ArrayElement::Expr(Expr::StringLiteral {
-                        value: (**q).clone(),
+                        value: q.clone(),
                         span: Span::new(start, end),
                     })
                 })
@@ -1253,12 +1255,20 @@ impl<'src> Parser<'src> {
             trailing_comma_after_spread: false,
             span: Span::new(start, end),
         };
+        let site_key = Expr::StringLiteral {
+            value: format!("{}:{}", start, end),
+            span: Span::new(start, end),
+        };
         let template_object = Expr::Call {
             callee: Box::new(Expr::Identifier {
                 name: "__template_object__".into(),
                 span: Span::new(start, end),
             }),
-            arguments: vec![Argument::Expr(strings_arr), Argument::Expr(raw_arr)],
+            arguments: vec![
+                Argument::Expr(strings_arr),
+                Argument::Expr(site_key),
+                Argument::Expr(raw_arr),
+            ],
             optional: false,
             span: Span::new(start, end),
         };
@@ -1272,6 +1282,65 @@ impl<'src> Parser<'src> {
             optional: false,
             span: Span::new(start, end),
         })
+    }
+
+    fn parse_tagged_template_with_substitutions(
+        &mut self,
+        start: usize,
+    ) -> Result<(Vec<Option<String>>, Vec<String>, Vec<Expr>, usize), ParseError> {
+        use crate::token::TemplatePart;
+        let mut cooked_quasis = Vec::new();
+        let mut raw_quasis = Vec::new();
+        let mut expressions = Vec::new();
+
+        match self.current_kind().clone() {
+            TokenKind::Template {
+                cooked,
+                raw,
+                part: TemplatePart::Head,
+                ..
+            } => {
+                cooked_quasis.push(cooked);
+                raw_quasis.push(raw);
+            }
+            _ => return Err(self.err_here("expected template head".into())),
+        }
+        self.bump()?;
+
+        loop {
+            expressions.push(self.parse_expression()?);
+            self.enter_template_tail()?;
+            match self.current_kind().clone() {
+                TokenKind::Template {
+                    cooked,
+                    raw,
+                    part: TemplatePart::Middle,
+                    ..
+                } => {
+                    cooked_quasis.push(cooked);
+                    raw_quasis.push(raw);
+                    self.bump()?;
+                }
+                TokenKind::Template {
+                    cooked,
+                    raw,
+                    part: TemplatePart::Tail,
+                    ..
+                } => {
+                    cooked_quasis.push(cooked);
+                    raw_quasis.push(raw);
+                    self.bump()?;
+                    break;
+                }
+                _ => {
+                    return Err(
+                        self.err_here("expected template middle/tail after substitution".into())
+                    )
+                }
+            }
+        }
+
+        Ok((cooked_quasis, raw_quasis, expressions, self.last_span_end().max(start)))
     }
 
     fn looks_like_async_method_shorthand(&self) -> bool {
