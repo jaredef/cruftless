@@ -721,3 +721,47 @@ Unicode SpecialCasing data, and the `language-tags-invalid.js` verifier
 interaction. The remaining exemplar mass is overwhelmingly Temporal-coupled.
 
 **Status**: I402-EXT 14 CLOSED.
+
+## I402-EXT 15 — DateTimeFormat timezone case canonicalization (2026-05-26)
+
+**Change**:
+
+- Extended the Intl timezone canonicalization shim with the bounded TZDB
+  casing coordinates exposed by `timezone-case-insensitive.js`.
+- Added exact handling for uppercase slashless links such as `EET`, `UTC`,
+  `GB-Eire`, and `NZ-CHAT`.
+- Added component-level casing exceptions for `Etc/GMT*`, historical camel
+  components such as `ComodRivadavia` and `McMurdo`, lowercase particles
+  such as `es` and `of`, and uppercase components such as `US`, `IN`, `ACT`,
+  `NSW`, and `LHI`.
+
+**Verification**:
+
+```text
+cargo build --release --workspace
+T262_TEST_PATH=$T262_ROOT/test/intl402/DateTimeFormat/timezone-case-insensitive.js \
+  T262_HARNESS_DIR=$T262_ROOT/harness \
+  $CRUFT_BIN legacy/host-rquickjs/tests/test262/runner.mjs
+pilots/intl402-availability/exemplars/run-exemplars.sh
+```
+
+**Exemplar movement**:
+
+```text
+After I402-EXT 14: PASS=31 FAIL=69 / 100 (31.0%)
+After I402-EXT 15: PASS=32 FAIL=68 / 100 (32.0%)
+```
+
+**Row newly closed**:
+
+```text
+PASS intl402/DateTimeFormat/timezone-case-insensitive.js
+```
+
+**Residual**:
+
+The visible core non-Temporal residuals are now Unicode SpecialCasing data,
+the `language-tags-invalid.js` verifier interaction, and one Temporal-coupled
+DateTimeFormat range-formatting row. The remaining exemplar mass is Temporal.
+
+**Status**: I402-EXT 15 CLOSED.

@@ -130,11 +130,19 @@ fn intl_supported_locales_of(rt: &Runtime, locales: &Value) -> Result<Vec<String
 }
 
 fn intl_canonicalize_time_zone(raw: &str) -> String {
+    const UPPERCASE_TZ_LINKS: &[&str] = &[
+        "CET", "CST6CDT", "EET", "EST", "EST5EDT", "GB", "GMT", "GMT+0", "GMT-0",
+        "GB-Eire", "GMT0", "HST", "MET", "MST", "MST7MDT", "NZ", "NZ-CHAT", "PRC",
+        "PST8PDT", "ROC", "ROK", "UCT", "UTC", "W-SU", "WET",
+    ];
+
+    for tz in UPPERCASE_TZ_LINKS {
+        if raw.eq_ignore_ascii_case(tz) {
+            return (*tz).into();
+        }
+    }
     if raw.eq_ignore_ascii_case("america/port-au-prince") {
         return "America/Port-au-Prince".into();
-    }
-    if raw.eq_ignore_ascii_case("cet") {
-        return "CET".into();
     }
     if !raw.contains('/') && raw.chars().any(|ch| ch.is_ascii_digit()) {
         return raw.to_ascii_uppercase();
@@ -146,8 +154,46 @@ fn intl_canonicalize_time_zone(raw: &str) -> String {
                     chunk
                         .split('-')
                         .map(|word| {
-                            if word == "au" {
-                                return "au".to_string();
+                            const CAMEL_TZ_COMPONENTS: &[&str] = &[
+                                "BajaNorte",
+                                "BajaSur",
+                                "ComodRivadavia",
+                                "DeNoronha",
+                                "DumontDUrville",
+                                "EasterIsland",
+                                "McMurdo",
+                            ];
+                            const UPPERCASE_TZ_COMPONENTS: &[&str] =
+                                &["ACT", "IN", "LHI", "NSW", "US"];
+
+                            for component in CAMEL_TZ_COMPONENTS {
+                                if word.eq_ignore_ascii_case(component) {
+                                    return (*component).into();
+                                }
+                            }
+                            for component in UPPERCASE_TZ_COMPONENTS {
+                                if word.eq_ignore_ascii_case(component) {
+                                    return (*component).into();
+                                }
+                            }
+                            if word.eq_ignore_ascii_case("gmt")
+                                || word.eq_ignore_ascii_case("utc")
+                                || word.eq_ignore_ascii_case("uct")
+                            {
+                                return word.to_ascii_uppercase();
+                            }
+                            let word_lower = word.to_ascii_lowercase();
+                            if let Some(rest) = word_lower.strip_prefix("gmt") {
+                                if rest.is_empty()
+                                    || rest == "0"
+                                    || rest.starts_with('+')
+                                    || rest.starts_with('-')
+                                {
+                                    return format!("GMT{}", rest);
+                                }
+                            }
+                            if word_lower == "au" || word_lower == "es" || word_lower == "of" {
+                                return word_lower;
                             }
                     let mut chars = word.chars();
                     match chars.next() {
