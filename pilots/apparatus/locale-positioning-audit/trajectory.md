@@ -155,3 +155,30 @@ pilots/locale-positioning-audit/ → pilots/apparatus/locale-positioning-audit/
 **Finding LPA.6 (recommended spawns + scope-extensions are well-shaped per the cluster-coherence multiplier)**: of the 3 recommended new spawns (`pinart-categorizer-refinement`, `intl402-availability`, `regexp-conformance`), the latter two satisfy multiple conditions of the cluster-coherence multiplier (per `docs/engagement/prospective/cluster-coherence-multiplier-as-sipe-t-instance.md`): subsystem-availability gates (Conditions 1+3+4 of the five-condition multiplier) producing high yield-per-locale. The 4 scope-extensions (Class D) are R4-disciplined extensions of existing locales' surface, not new spawns; the audit explicitly recommends extension over new-spawn for siblings to avoid apparatus-tax non-amortization (per BBND's findings §IV recommendation).
 
 **Status**: LPA-EXT 3 CLOSED. The three audit methodology rungs (stale-claim sweep / spinoff-chain mapping / positioning-gap detection) all have first-execution outputs. The locale itself is now **operationally complete** — future runs re-render the same documents per the triggers without needing additional methodology rungs.
+
+---
+
+## LPA-EXT 4 — resolution-layer composition snapshot (2026-05-26)
+
+**Trigger**: Keeper question after ECMA-262 gap survey: whether the current gaps/locales are recorded in a doc or manifest, with the proposed need to stratify current locales across resolution layers and capture a rough state-of-composition snapshot.
+
+**Produced**: `pilots/apparatus/locale-positioning-audit/findings/resolution-layer-snapshot.md`.
+
+**Read of existing apparatus**:
+
+- `apparatus/locales/manifest.json` is the authoritative generated inventory, but it is not the right place for hand-authored layer commentary.
+- `positioning-gaps.md` maps matrix coordinates to locales, but its latest rendered snapshot predates several current spawns and does not stratify the whole locale graph by resolver layer.
+- `spinoff-chains.md` maps composition edges, but not layer occupancy or current matrix pressure by layer.
+
+**Move**:
+
+- Added a new LPA finding document that treats the manifest as input and records the current layer-stratified composition view.
+- Stratified layers include apparatus, lexer/parser, AST-to-bytecode/language lowering, runtime ECMA-262 built-ins, typed-array/ArrayBuffer, RegExp, Atomics/agent-memory, object internals, array exotic, Promise/jobs, ECMA-402, Node/host APIs, and JIT/shapes/performance substrate.
+- Recorded the latest available full-suite matrix baseline and noted that it predates recent `intl402-availability` work.
+- Marked immediate apparatus gaps: nullable free-text manifest state, implicit layer taxonomy, stale LPA positioning gaps, over-broad AST-to-bytecode pressure, and under-localed Atomics/Promise-jobs pressure.
+
+**Finding LPA.7 (manifest is inventory, not composition-state)**: the generated manifest answers "what locales exist?" and stores free-text status where available. It does not answer "which resolution layer owns this coordinate?", "what is the current composition edge?", or "what is the next layer-level action?" Those are audit findings, not manifest facts. The right apparatus shape is therefore a derived snapshot under LPA, with a future generated `state`/`primary_layer` extension if the snapshot becomes recurring.
+
+**Finding LPA.8 (AST-to-bytecode is now the largest unstratified layer)**: after apparatus refinement and many tokenization/runtime spawns, the largest ECMA-262 pressure is not a missing subsystem but the 10,839-row language-lowering resolver bucket. Treating it as one candidate would violate the partition-before-rank discipline. The next useful apparatus move is a layer-internal partition table by syntactic family and projection class.
+
+**Status**: LPA-EXT 4 CLOSED. Snapshot established. Future LPA re-render should either refresh this document or promote its tabular core into a generated layer manifest.
