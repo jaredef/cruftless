@@ -7498,6 +7498,70 @@ impl Runtime {
         register_global_fn(self, "parseFloat", |rt, args| {
             crate::generated::parse_float(rt, rt.current_this(), args)
         });
+        // AnnexB §B.2.1.1 escape / §B.2.1.2 unescape (Annex B legacy
+        // string utilities). escape: keep [A-Za-z0-9@*_+-./], else
+        // %XX for code points ≤ 0xff, else %uXXXX. unescape: reverse.
+        register_global_fn(self, "escape", |_rt, args| {
+            let s = match args.first() {
+                Some(v) => crate::abstract_ops::to_string(v).as_str().to_string(),
+                None => "undefined".to_string(),
+            };
+            let mut out = String::with_capacity(s.len());
+            for c in s.encode_utf16() {
+                let cp = c as u32;
+                if (0x30..=0x39).contains(&cp)
+                    || (0x41..=0x5A).contains(&cp)
+                    || (0x61..=0x7A).contains(&cp)
+                    || matches!(cp, 0x40 | 0x2A | 0x5F | 0x2B | 0x2D | 0x2E | 0x2F)
+                {
+                    out.push(cp as u8 as char);
+                } else if cp <= 0xff {
+                    out.push_str(&format!("%{:02X}", cp));
+                } else {
+                    out.push_str(&format!("%u{:04X}", cp));
+                }
+            }
+            Ok(Value::String(Rc::new(out)))
+        });
+        register_global_fn(self, "unescape", |_rt, args| {
+            let s = match args.first() {
+                Some(v) => crate::abstract_ops::to_string(v).as_str().to_string(),
+                None => "undefined".to_string(),
+            };
+            let bytes: Vec<u16> = s.encode_utf16().collect();
+            let mut out_u16: Vec<u16> = Vec::with_capacity(bytes.len());
+            let mut i = 0usize;
+            while i < bytes.len() {
+                let c = bytes[i];
+                if c == b'%' as u16 {
+                    if i + 5 < bytes.len() && bytes[i + 1] == b'u' as u16 {
+                        let h: String = bytes[i + 2..i + 6]
+                            .iter()
+                            .filter_map(|u| char::from_u32(*u as u32))
+                            .collect();
+                        if let Ok(n) = u32::from_str_radix(&h, 16) {
+                            out_u16.push(n as u16);
+                            i += 6;
+                            continue;
+                        }
+                    }
+                    if i + 2 < bytes.len() {
+                        let h: String = bytes[i + 1..i + 3]
+                            .iter()
+                            .filter_map(|u| char::from_u32(*u as u32))
+                            .collect();
+                        if let Ok(n) = u32::from_str_radix(&h, 16) {
+                            out_u16.push(n as u16);
+                            i += 3;
+                            continue;
+                        }
+                    }
+                }
+                out_u16.push(c);
+                i += 1;
+            }
+            Ok(Value::String(Rc::new(String::from_utf16_lossy(&out_u16))))
+        });
         // ECMA-262 §19.2.6 URI handling. v1 uses Rust's percent-encoding
         // standard library mappings; the unreserved-character sets match
         // RFC 3986. encodeURI keeps reserved chars (`/`, `?`, `:`, `@`,
@@ -16050,6 +16114,11 @@ impl Runtime {
             crate::generated::date_prototype_to_time_string(rt, rt.current_this(), args)
         });
         register_intrinsic_method(self, proto, "toUTCString", 0, |rt, args| {
+            crate::generated::date_prototype_to_utc_string(rt, rt.current_this(), args)
+        });
+        // AnnexB §B.2.3.4: Date.prototype.toGMTString is the same function
+        // object as Date.prototype.toUTCString (legacy alias).
+        register_intrinsic_method(self, proto, "toGMTString", 0, |rt, args| {
             crate::generated::date_prototype_to_utc_string(rt, rt.current_this(), args)
         });
         // getYear / setYear per Annex B.2.4 (legacy). getYear returns
