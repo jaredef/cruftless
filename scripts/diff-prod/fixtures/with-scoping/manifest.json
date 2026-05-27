@@ -1,0 +1,8 @@
+{
+  "name": "with-scoping",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "with-statement scoping via sloppy-mode Function: HasBinding on object environment, prototype chain lookup, Symbol.unscopables, shadowing."
+}

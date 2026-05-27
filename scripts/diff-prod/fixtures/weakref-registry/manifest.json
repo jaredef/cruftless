@@ -1,0 +1,8 @@
+{
+  "name": "weakref-registry",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "WeakRef and FinalizationRegistry: API shape, deref while reachable, registry callback shape, unregister, Symbol as target."
+}

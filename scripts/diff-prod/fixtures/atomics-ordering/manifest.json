@@ -1,0 +1,8 @@
+{
+  "name": "atomics-ordering",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "SharedArrayBuffer + Atomics: load/store/add/sub/and/or/xor/exchange/compareExchange, isLockFree, Atomics.wait/notify shape."
+}

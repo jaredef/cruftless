@@ -1,0 +1,8 @@
+{
+  "name": "proxy-prototype-chain",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Proxy in prototype chain: get trap receives correct receiver, set trap receiver threading, has/in traversal through proxy, instanceof with proxy."
+}

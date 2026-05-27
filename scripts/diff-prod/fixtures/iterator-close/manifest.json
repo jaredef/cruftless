@@ -1,0 +1,8 @@
+{
+  "name": "iterator-close",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Iterator close/return protocol: for-of break/throw/return calls .return(), destructuring close, yield* delegation close, spread partial consumption."
+}

@@ -1,0 +1,8 @@
+{
+  "name": "property-key-order",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "OrdinaryOwnPropertyKeys ordering: integer-indexed ascending, then string insertion-order, then symbol insertion-order, under delete/re-add cycles and defineProperty."
+}

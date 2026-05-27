@@ -1,0 +1,8 @@
+{
+  "name": "proxy-invariants",
+  "categories": ["F"],
+  "deps": [],
+  "timeout-ms": 5000,
+  "gate2": true,
+  "description": "Proxy trap invariant enforcement per ECMA-262 10.5: get/set on non-configurable properties, defineProperty consistency, ownKeys completeness, isExtensible/preventExtensions agreement."
+}
