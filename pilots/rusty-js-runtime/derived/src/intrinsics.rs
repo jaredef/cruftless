@@ -16211,10 +16211,42 @@ impl Runtime {
             let mut o = Object::new_ordinary();
             o.set_own("length".into(), Value::Number(slice_len as f64));
             o.set_own_internal("__kind".into(), Value::String(Rc::new(kind)));
+            // TAMM-EXT 5: subarray shares the parent's underlying buffer
+            // per §23.2.3.31. Propagate .buffer + adjust byteOffset.
+            let parent_buf = rt.object_get(this_id, "buffer");
+            let parent_offset = match rt.object_get(this_id, "byteOffset") {
+                Value::Number(n) => n as usize,
+                _ => 0,
+            };
+            let bpe = rt
+                .typed_array_views
+                .get(&this_id)
+                .map(|v| v.bytes_per_element)
+                .unwrap_or(1);
+            let new_offset = parent_offset + start * bpe;
+            if let Value::Object(_) = parent_buf {
+                o.set_own("buffer".into(), parent_buf.clone());
+                o.set_own("byteOffset".into(), Value::Number(new_offset as f64));
+                o.set_own(
+                    "byteLength".into(),
+                    Value::Number((slice_len * bpe) as f64),
+                );
+            }
             let new_id = rt.alloc_object(o);
             for i in 0..slice_len {
                 let v = rt.object_get(this_id, &(start + i).to_string());
                 rt.object_set(new_id, i.to_string(), v);
+            }
+            if let Value::Object(buf_id) = parent_buf {
+                rt.typed_array_views.insert(
+                    new_id,
+                    crate::interp::TypedArrayViewRecord {
+                        buffer: buf_id,
+                        byte_offset: new_offset,
+                        fixed_length: Some(slice_len),
+                        bytes_per_element: bpe,
+                    },
+                );
             }
             // Inherit prototype from the source so subarray methods chain.
             let src_proto = rt.obj(this_id).proto;
@@ -17528,8 +17560,16 @@ impl Runtime {
             "BigUint64Array",
         ] {
             let n = (*name).to_string();
-            let proto_id = ta_proto;
-            let ctor_obj = make_native(name, move |rt, args| {
+            // TAMM-EXT 4: per-type prototype chaining to the shared ta_proto
+            // (which itself chains to ta_proto_proto / %TypedArray%.prototype).
+            // Hosts own BYTES_PER_ELEMENT + constructor per §23.2.6.
+            let per_type_proto = {
+                let mut o = Object::new_ordinary();
+                o.proto = Some(ta_proto);
+                self.alloc_object(o)
+            };
+            let proto_id = per_type_proto;
+            let ctor_obj = make_native_with_length(name, 3, move |rt, args| {
                 // Ω.5.P59.E6 byteLength correctness: bytes-per-element
                 // per typed-array kind. Pre-P59.E6 cruftless hardcoded
                 // `len * 4.0` which was wrong for every element type
@@ -17584,13 +17624,54 @@ impl Runtime {
                     }
                     _ => 0.0,
                 };
+                let byte_length = (len as usize) * bpe;
+                // TAMM-EXT 5: every TypedArray instance must own a `.buffer`
+                // that is a real ArrayBuffer per §23.2.5.1. Allocate a fresh
+                // ArrayBuffer object + record so harness flows like
+                // `new TA(arr).buffer.byteLength` resolve, and so `.buffer`
+                // chains to ArrayBuffer.prototype for accessor lookups.
+                let ab_proto = match rt.global_get("ArrayBuffer") {
+                    Value::Object(ab_ctor) => match rt.object_get(ab_ctor, "prototype") {
+                        Value::Object(p) => Some(p),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                let buf_id = {
+                    let mut bo = Object::new_ordinary();
+                    bo.set_own_internal(
+                        "__kind".into(),
+                        Value::String(Rc::new("ArrayBuffer".into())),
+                    );
+                    bo.proto = ab_proto;
+                    rt.alloc_object(bo)
+                };
+                rt.array_buffers.insert(
+                    buf_id,
+                    crate::interp::ArrayBufferRecord {
+                        byte_length,
+                        max_byte_length: byte_length,
+                        data: vec![Value::Number(0.0); byte_length],
+                    },
+                );
                 let mut o = Object::new_ordinary();
                 o.set_own("length".into(), Value::Number(len));
-                o.set_own("byteLength".into(), Value::Number(len * bpe as f64));
+                o.set_own("byteLength".into(), Value::Number(byte_length as f64));
+                o.set_own("buffer".into(), Value::Object(buf_id));
+                o.set_own("byteOffset".into(), Value::Number(0.0));
                 o.set_own_internal("__kind".into(), Value::String(Rc::new(n.clone())));
                 o.set_own_internal("__ta_kind".into(), Value::String(Rc::new(n.clone())));
                 o.proto = Some(proto_id);
                 let id = rt.alloc_object(o);
+                rt.typed_array_views.insert(
+                    id,
+                    crate::interp::TypedArrayViewRecord {
+                        buffer: buf_id,
+                        byte_offset: 0,
+                        fixed_length: Some(len as usize),
+                        bytes_per_element: bpe,
+                    },
+                );
                 // Copy from source if first arg was an object.
                 if let Some(Value::Object(src)) = args.first() {
                     let src_len = len as usize;
@@ -17617,11 +17698,17 @@ impl Runtime {
             };
             self.obj_mut(id)
                 .set_own_frozen("BYTES_PER_ELEMENT".into(), Value::Number(bpe));
+            // TAMM-EXT 4: BPE + constructor on the per-type prototype per
+            // §23.2.6.1 + §23.2.6.2. Mirrors the static ctor BPE.
+            self.obj_mut(per_type_proto)
+                .set_own_frozen("BYTES_PER_ELEMENT".into(), Value::Number(bpe));
+            self.obj_mut(per_type_proto)
+                .set_own_internal("constructor".into(), Value::Object(id));
             register_intrinsic_method(self, id, "isView", 1, |_rt, _args| {
                 Ok(Value::Boolean(false))
             });
-            let from_proto = ta_proto;
-            let of_proto = ta_proto;
+            let from_proto = per_type_proto;
+            let of_proto = per_type_proto;
             register_intrinsic_method(self, id, "of", 0, move |rt, args| {
                 // TypedArray.of(...items) per ECMA §23.2.2.2 — pack args.
                 let len = args.len();
@@ -17654,7 +17741,7 @@ impl Runtime {
                 Ok(Value::Object(new_id))
             });
             self.obj_mut(id)
-                .set_own_frozen("prototype".into(), Value::Object(ta_proto));
+                .set_own_frozen("prototype".into(), Value::Object(per_type_proto));
             self.define_global_property(name, Value::Object(id));
         }
 
@@ -17674,6 +17761,36 @@ impl Runtime {
         let ta_intrinsic_id = self.alloc_object(ta_intrinsic_ctor);
         self.obj_mut(ta_intrinsic_id)
             .set_own_frozen("prototype".into(), Value::Object(ta_proto_proto));
+        // TAMM-EXT 4: %TypedArray%.from / %TypedArray%.of per §23.2.2.1+§23.2.2.2.
+        // Concrete ctors inherit these via the [[Prototype]] chain wired below.
+        register_intrinsic_method(self, ta_intrinsic_id, "of", 0, |rt, args| {
+            let len = args.len();
+            let mut o = Object::new_ordinary();
+            o.set_own("length".into(), Value::Number(len as f64));
+            let new_id = rt.alloc_object(o);
+            for (i, v) in args.iter().enumerate() {
+                rt.object_set(new_id, i.to_string(), v.clone());
+            }
+            Ok(Value::Object(new_id))
+        });
+        register_intrinsic_method(self, ta_intrinsic_id, "from", 1, |rt, args| {
+            let src = args.first().cloned().unwrap_or(Value::Undefined);
+            let len: usize = match &src {
+                Value::Object(id) => rt.array_length(*id) as usize,
+                Value::String(s) => s.chars().count(),
+                _ => 0,
+            };
+            let mut o = Object::new_ordinary();
+            o.set_own("length".into(), Value::Number(len as f64));
+            let new_id = rt.alloc_object(o);
+            if let Value::Object(sid) = &src {
+                for i in 0..len {
+                    let v = rt.object_get(*sid, &i.to_string());
+                    rt.object_set(new_id, i.to_string(), v);
+                }
+            }
+            Ok(Value::Object(new_id))
+        });
         // TAMM-EXT 3 follow-up: TypedArray[Symbol.species] returns the ctor
         // itself per §23.2.2.4.
         let ta_species_id = ta_intrinsic_id;

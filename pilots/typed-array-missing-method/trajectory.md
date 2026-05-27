@@ -108,3 +108,41 @@ TAMM cluster POST-EXT 3: PASS=49 FAIL=51 / 100 (49.0%)
 **Standing rec TAMM.3 (level-2 prototype install)**: built-in prototype hierarchies with abstract-intrinsic parents (TypedArray, Error, Iterator) need explicit %X% ctor + .prototype installation, with each concrete child ctor's [[Prototype]] wired to %X%. Cruft has additional opportunities here: %Iterator% for the iterator-helpers proposal, %TypedArray% just done, %Error% for proper Error subclass identity. Each follows the same shape.
 
 **Status**: TAMM-EXT 3 CLOSED locally.
+
+## TAMM-EXT 4+5 — LANDED (2026-05-27) — per-type prototype + ctor.length=3 + %TypedArray% from/of + instance.buffer
+
+Per keeper directive Telegram 10077 ("continue with tamm").
+
+**EXT 4 substrate** (per-type prototype + abstract-intrinsic static rehoming):
+- Allocate a per-type prototype for each concrete TypedArray ctor that chains to the shared `ta_proto` (which itself chains to `ta_proto_proto` / %TypedArray%.prototype). Three-deep chain: instance → SubA.prototype → %TypedArray%.prototype → Object.prototype.
+- Hosts `BYTES_PER_ELEMENT` (per §23.2.6.1) + `constructor` (per §23.2.6.2) own on the per-type prototype, with values that differ per type (1/2/4/8).
+- Each ctor's `.prototype` slot now points at the per-type prototype (was: shared ta_proto).
+- Each ctor's `.length` set to 3 per §23.2.5 (was: 0 from `make_native` default).
+- `%TypedArray%.from` / `%TypedArray%.of` registered on the intrinsic ctor per §23.2.2.1+§23.2.2.2. Inherited by all concrete ctors via the [[Prototype]] chain wired in EXT 3.
+
+**EXT 5 substrate** (instance.buffer backing + subarray buffer-sharing):
+- Every TypedArray constructed from a length-or-arraylike now allocates a real backing ArrayBuffer (object + record + ArrayBuffer.prototype chain) per §23.2.5.1. Sets `.buffer`, `.byteOffset`, and `.byteLength` own on the instance and registers a TypedArrayViewRecord. Pre-EXT 5: `.buffer` was undefined for non-buffer-arg construction, which collapsed harness flows like `new TA(arr).buffer.byteLength` (used by `makeArrayBuffer`, `makeGrownArrayBuffer`, etc.).
+- `subarray` propagates the parent's buffer and adjusts byteOffset/byteLength per §23.2.3.31, so views share storage. Pre-EXT 5: both parent.buffer and child.buffer were undefined so they aliased trivially; once parent.buffer became a real buffer, child.buffer needed to point at the same buffer to preserve the `u.buffer === sub.buffer` invariant.
+
+**Yield**:
+```text
+TAMM cluster POST-EXT 3: PASS=49 FAIL=51 / 100 (49.0%)
+TAMM cluster POST-EXT 5: PASS=68 FAIL=32 / 100 (68.0%)
+```
+**+19 PASS** across the combined rung. TypedArrayConstructors family residual **24 → 13**. TypedArray family residual **14 → 7**.
+
+**Cumulative TAMM yield since EXT 0 baseline: 3 → 68 / 100 (+65 across five rungs)**.
+
+**Gates**: build clean; diff-prod 59/53 (parity preserved through subarray buffer-sharing fix).
+
+**Direct probes**:
+- `Int8Array.length === 3` ✅
+- `Int8Array.prototype.BYTES_PER_ELEMENT === 1` ✅
+- `Int8Array.prototype.constructor === Int8Array` ✅
+- `TypedArray.from / TypedArray.of` are functions on %TypedArray% ✅
+- `new Uint8Array(4).buffer instanceof ArrayBuffer` ✅
+- `u.buffer === u.subarray(1, 4).buffer` ✅ (preserved)
+
+**Standing rec TAMM.4 (per-type prototype + shared-buffer invariant)**: substrate rungs that allocate previously-absent per-instance state (here: real `.buffer` ArrayBuffer) must audit all derivation sites that propagate that state. The subarray buffer-sharing fix was uncovered by the diff-prod typed-arrays fixture's `sub_is_view: u.buffer === sub.buffer` check, which trivially held while both were undefined and silently broke once they became real. Standing instrument: when a TAM rung adds an instance own-slot, grep for all sites that copy/derive instance state and ensure the slot propagates.
+
+**Status**: TAMM-EXT 4+5 CLOSED locally.
