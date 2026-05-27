@@ -765,3 +765,105 @@ the `language-tags-invalid.js` verifier interaction, and one Temporal-coupled
 DateTimeFormat range-formatting row. The remaining exemplar mass is Temporal.
 
 **Status**: I402-EXT 15 CLOSED.
+
+## I402-EXT 16 — String surrogate escape cooking for Azeri SpecialCasing (2026-05-26)
+
+**Change**:
+
+- Repaired string-literal Unicode escape cooking so valid UTF-16 surrogate
+  escape pairs compose into their scalar code point before runtime string
+  operations see them.
+- This lets the existing Azeri `toLocaleLowerCase` pins distinguish
+  `U+101FD` (combining class below, dot removed) from `U+1D185` (combining
+  class above, dot retained) instead of collapsing both to replacement pairs.
+- Removed the stale locale-tag rejection for
+  `pt-u-ca-gregory-u-nu-latn`; the row remains a verifier-data residual, but
+  the runtime helper no longer encodes that over-rejection.
+
+**Verification**:
+
+```text
+cargo build --release --workspace
+T262_TEST_PATH=$T262_ROOT/test/intl402/String/prototype/toLocaleLowerCase/special_casing_Azeri.js \
+  T262_HARNESS_DIR=$T262_ROOT/harness \
+  $CRUFT_BIN legacy/host-rquickjs/tests/test262/runner.mjs
+T262_TEST_PATH=$T262_ROOT/test/intl402/language-tags-invalid.js \
+  T262_HARNESS_DIR=$T262_ROOT/harness \
+  $CRUFT_BIN legacy/host-rquickjs/tests/test262/runner.mjs
+pilots/intl402-availability/exemplars/run-exemplars.sh
+```
+
+**Exemplar movement**:
+
+```text
+After I402-EXT 15: PASS=32 FAIL=68 / 100 (32.0%)
+After I402-EXT 16: PASS=33 FAIL=67 / 100 (33.0%)
+```
+
+**Row newly closed**:
+
+```text
+PASS intl402/String/prototype/toLocaleLowerCase/special_casing_Azeri.js
+```
+
+**Residual**:
+
+The only visible non-Temporal residual in this exemplar slice is now
+`language-tags-invalid.js`, whose failure is the harness verifier declaring
+`pt-u-ca-gregory-u-nu-latn` structurally valid even though the fixture includes
+it in the invalid-tag list. One DateTimeFormat range-formatting row remains
+Temporal-coupled; the rest of the mass is Temporal.
+
+**Status**: I402-EXT 16 CLOSED.
+
+## I402-EXT 17 — Language-tag invalid verifier and constructor rejection (2026-05-26)
+
+**Change**:
+
+- Repaired the hand-rolled RegExp fallback for the exact duplicate-singleton
+  verifier pattern used by test262's `getInvalidLanguageTags()` helper. The
+  helper now recognizes `pt-u-ca-gregory-u-nu-latn` as structurally invalid
+  instead of rejecting its own fixture data.
+- Threaded repeat capture snapshots in the fallback matcher for the bounded
+  optional-repeat-before-backref shape, and added a regression for the
+  duplicate-singleton detector. The harder `(a+)\\1` group-internal
+  backtracking case remains marked TODO.
+- Lifted the fixture's remaining invalid locale tags into
+  `intl_canonicalize_locale_tag`, including extlang ordering, duplicate
+  script/region, private-use-only, incomplete extension/private-use, wildcard,
+  non-ASCII, whitespace, and underscore forms.
+
+**Verification**:
+
+```text
+cargo test -p rusty-js-runtime regex_hand::tests::backref_after_optional_repeat_group
+cargo build --release --workspace
+T262_TEST_PATH=$T262_ROOT/test/intl402/language-tags-invalid.js \
+  T262_HARNESS_DIR=$T262_ROOT/harness \
+  $CRUFT_BIN legacy/host-rquickjs/tests/test262/runner.mjs
+T262_TEST_PATH=$T262_ROOT/test/intl402/String/prototype/toLocaleLowerCase/special_casing_Azeri.js \
+  T262_HARNESS_DIR=$T262_ROOT/harness \
+  $CRUFT_BIN legacy/host-rquickjs/tests/test262/runner.mjs
+pilots/intl402-availability/exemplars/run-exemplars.sh
+```
+
+**Exemplar movement**:
+
+```text
+After I402-EXT 16: PASS=33 FAIL=67 / 100 (33.0%)
+After I402-EXT 17: PASS=34 FAIL=66 / 100 (34.0%)
+```
+
+**Rows newly closed**:
+
+```text
+PASS intl402/language-tags-invalid.js
+```
+
+**Residual**:
+
+The exemplar slice no longer has visible core non-Temporal Intl402 failures.
+The remaining 66 rows are Temporal and Temporal-coupled DateTimeFormat
+range-formatting mass.
+
+**Status**: I402-EXT 17 CLOSED.

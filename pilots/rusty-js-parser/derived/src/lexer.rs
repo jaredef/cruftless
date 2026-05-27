@@ -809,6 +809,21 @@ impl<'src> Lexer<'src> {
                 let cp = self.read_unicode_escape_inner().ok_or_else(|| {
                     self.err(LexErrorKind::InvalidEscape, start, "bad \\u escape")
                 })?;
+                if (0xD800..=0xDBFF).contains(&cp)
+                    && self.peek_byte() == Some(b'\\')
+                    && self.peek_byte_at(1) == Some(b'u')
+                {
+                    let save = self.pos;
+                    self.pos += 2;
+                    if let Some(low) = self.read_unicode_escape_inner() {
+                        if (0xDC00..=0xDFFF).contains(&low) {
+                            let scalar = 0x10000 + ((cp - 0xD800) << 10) + (low - 0xDC00);
+                            push_char(out, scalar);
+                            return Ok(());
+                        }
+                    }
+                    self.pos = save;
+                }
                 push_char(out, cp);
             }
             b'\n' => { /* line continuation — contributes nothing */ }

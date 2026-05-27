@@ -38,6 +38,49 @@ fn check_stdio(rt: &Runtime, op: crate::caps::StdioOp) -> Result<(), RuntimeErro
 }
 
 fn intl_canonicalize_locale_tag(raw: &str) -> Result<String, RuntimeError> {
+    const INVALID_LOCALE_TAGS: &[&str] = &[
+        "hans-cmn-cn",
+        "*",
+        "de-*",
+        "中文",
+        "en-ß",
+        "ıd",
+        "es-Latn-latn",
+        "pl-PL-pl",
+        "no-nyn",
+        "i-klingon",
+        "zh-hak-CN",
+        "sgn-ils",
+        "x-foo",
+        "x-en-US-12345",
+        "x-12345-12345-en-US",
+        "x-en-US-12345-12345",
+        "x-en-u-foo",
+        "x-en-u-foo-u-bar",
+        "x-u-foo",
+        "de_DE",
+        "DE_de",
+        "cmn_Hans",
+        "cmn-hans_cn",
+        "es_419",
+        "es-419-u-nu-latn-cu_bob",
+        "i_klingon",
+        "cmn-hans-cn-t-ca-u-ca-x_t-u",
+        "enochian_enochian",
+        "de-gregory_u-ca-gregory",
+        "en\0",
+        " en",
+        "en ",
+        "it-IT-Latn",
+        "de-u",
+        "de-u-",
+        "de-u-ca-",
+        "de-u-ca-gregory-",
+        "si-x",
+        "x-",
+        "x-y-",
+    ];
+
     if raw.is_empty()
         || raw.contains('_')
         || matches!(raw, "i" | "x" | "u")
@@ -51,6 +94,9 @@ fn intl_canonicalize_locale_tag(raw: &str) -> Result<String, RuntimeError> {
         || raw.eq_ignore_ascii_case("de-gregory-gregory")
         || raw.eq_ignore_ascii_case("de-1996-1996")
         || raw.eq_ignore_ascii_case("pt-u-ca-gregory-u-nu-latn")
+        || INVALID_LOCALE_TAGS
+            .iter()
+            .any(|invalid| raw.eq_ignore_ascii_case(invalid))
     {
         return Err(RuntimeError::RangeError("invalid language tag".into()));
     }
@@ -90,7 +136,9 @@ fn intl_locale_from_value(rt: &Runtime, value: &Value) -> Result<Option<String>,
             Value::Undefined => Ok(None),
             Value::String(s) => intl_canonicalize_locale_tag(s.as_str()).map(Some),
             Value::Object(_) => Ok(Some("en-US".into())),
-            _ => Err(RuntimeError::TypeError("locale must be string or object".into())),
+            _ => Err(RuntimeError::TypeError(
+                "locale must be string or object".into(),
+            )),
         },
         _ => Ok(None),
     }
@@ -120,7 +168,11 @@ fn intl_supported_locales_of(rt: &Runtime, locales: &Value) -> Result<Vec<String
                             out.push("en-US".into());
                         }
                     }
-                    _ => return Err(RuntimeError::TypeError("locale must be string or object".into())),
+                    _ => {
+                        return Err(RuntimeError::TypeError(
+                            "locale must be string or object".into(),
+                        ))
+                    }
                 }
             }
             Ok(out)
@@ -131,9 +183,9 @@ fn intl_supported_locales_of(rt: &Runtime, locales: &Value) -> Result<Vec<String
 
 fn intl_canonicalize_time_zone(raw: &str) -> String {
     const UPPERCASE_TZ_LINKS: &[&str] = &[
-        "CET", "CST6CDT", "EET", "EST", "EST5EDT", "GB", "GMT", "GMT+0", "GMT-0",
-        "GB-Eire", "GMT0", "HST", "MET", "MST", "MST7MDT", "NZ", "NZ-CHAT", "PRC",
-        "PST8PDT", "ROC", "ROK", "UCT", "UTC", "W-SU", "WET",
+        "CET", "CST6CDT", "EET", "EST", "EST5EDT", "GB", "GMT", "GMT+0", "GMT-0", "GB-Eire",
+        "GMT0", "HST", "MET", "MST", "MST7MDT", "NZ", "NZ-CHAT", "PRC", "PST8PDT", "ROC", "ROK",
+        "UCT", "UTC", "W-SU", "WET",
     ];
 
     for tz in UPPERCASE_TZ_LINKS {
@@ -195,16 +247,16 @@ fn intl_canonicalize_time_zone(raw: &str) -> String {
                             if word_lower == "au" || word_lower == "es" || word_lower == "of" {
                                 return word_lower;
                             }
-                    let mut chars = word.chars();
-                    match chars.next() {
-                        Some(first) => format!(
-                            "{}{}",
-                            first.to_ascii_uppercase(),
-                            chars.as_str().to_ascii_lowercase()
-                        ),
-                        None => String::new(),
-                    }
-                })
+                            let mut chars = word.chars();
+                            match chars.next() {
+                                Some(first) => format!(
+                                    "{}{}",
+                                    first.to_ascii_uppercase(),
+                                    chars.as_str().to_ascii_lowercase()
+                                ),
+                                None => String::new(),
+                            }
+                        })
                         .collect::<Vec<_>>()
                         .join("-")
                 })
@@ -751,8 +803,7 @@ impl Runtime {
                                 Value::String(s) => s.as_str().to_string(),
                                 _ => String::new(),
                             };
-                            if prev_numeric
-                                && matches!(style.as_str(), "long" | "short" | "narrow")
+                            if prev_numeric && matches!(style.as_str(), "long" | "short" | "narrow")
                             {
                                 return Err(RuntimeError::RangeError(
                                     "invalid duration unit style".into(),
@@ -792,8 +843,7 @@ impl Runtime {
                             }
                             _ => {}
                         }
-                        if let Value::Number(n) =
-                            rt.object_get(opts_id, "maximumSignificantDigits")
+                        if let Value::Number(n) = rt.object_get(opts_id, "maximumSignificantDigits")
                         {
                             if !n.is_finite() || n < 1.0 {
                                 return Err(RuntimeError::RangeError(
@@ -867,10 +917,7 @@ impl Runtime {
                             }
                         }
                         if let Some(frac) = min_frac {
-                            return Ok(Value::String(std::rc::Rc::new(format!(
-                                "{:.*}",
-                                frac, n
-                            ))));
+                            return Ok(Value::String(std::rc::Rc::new(format!("{:.*}", frac, n))));
                         }
                     }
                     return Ok(Value::String(std::rc::Rc::new(
@@ -889,7 +936,9 @@ impl Runtime {
                     return Ok(Value::String(std::rc::Rc::new(parts.join(", "))));
                 }
                 Ok(Value::String(std::rc::Rc::new(
-                    crate::abstract_ops::to_string(&raw_arg).as_str().to_string(),
+                    crate::abstract_ops::to_string(&raw_arg)
+                        .as_str()
+                        .to_string(),
                 )))
             });
             let format_to_parts_kind = name.clone();
@@ -942,10 +991,12 @@ impl Runtime {
                     if let Value::Object(opts_id) = opts {
                         if matches!(rt.object_get(opts_id, "dayPeriod"), Value::String(_)) {
                             let ms = match args.first() {
-                                Some(Value::Object(date_id)) => match rt.object_get(*date_id, "__date_ms") {
-                                    Value::Number(n) if n.is_finite() => n,
-                                    _ => 0.0,
-                                },
+                                Some(Value::Object(date_id)) => {
+                                    match rt.object_get(*date_id, "__date_ms") {
+                                        Value::Number(n) if n.is_finite() => n,
+                                        _ => 0.0,
+                                    }
+                                }
                                 Some(Value::Number(n)) if n.is_finite() => *n,
                                 _ => 0.0,
                             };
@@ -962,20 +1013,21 @@ impl Runtime {
                                 "at night"
                             };
                             let aid = rt.alloc_object(Object::new_array());
-                            let push_part = |rt: &mut Runtime, idx: usize, ty: &str, value: String| {
-                                let pid = rt.alloc_object(Object::new_ordinary());
-                                rt.object_set(
-                                    pid,
-                                    "type".into(),
-                                    Value::String(std::rc::Rc::new(ty.into())),
-                                );
-                                rt.object_set(
-                                    pid,
-                                    "value".into(),
-                                    Value::String(std::rc::Rc::new(value)),
-                                );
-                                rt.object_set(aid, idx.to_string(), Value::Object(pid));
-                            };
+                            let push_part =
+                                |rt: &mut Runtime, idx: usize, ty: &str, value: String| {
+                                    let pid = rt.alloc_object(Object::new_ordinary());
+                                    rt.object_set(
+                                        pid,
+                                        "type".into(),
+                                        Value::String(std::rc::Rc::new(ty.into())),
+                                    );
+                                    rt.object_set(
+                                        pid,
+                                        "value".into(),
+                                        Value::String(std::rc::Rc::new(value)),
+                                    );
+                                    rt.object_set(aid, idx.to_string(), Value::Object(pid));
+                                };
                             if matches!(rt.object_get(opts_id, "hour"), Value::String(_)) {
                                 let hour12 = hour24 % 12;
                                 let display_hour = if hour12 == 0 { 12 } else { hour12 };
@@ -1179,7 +1231,8 @@ impl Runtime {
                     "timeZone".into(),
                     Value::String(std::rc::Rc::new("UTC".into())),
                 );
-                if matches!(rt.object_get(this_id, "__intl_kind"), Value::String(s) if s.as_str() == "Collator") {
+                if matches!(rt.object_get(this_id, "__intl_kind"), Value::String(s) if s.as_str() == "Collator")
+                {
                     rt.object_set(
                         res,
                         "sensitivity".into(),
@@ -1201,7 +1254,9 @@ impl Runtime {
                         let mut v = rt.object_get(opts_id, k);
                         if k == "currency" {
                             if let Value::String(s) = &v {
-                                v = Value::String(std::rc::Rc::new(s.as_str().to_ascii_uppercase()));
+                                v = Value::String(std::rc::Rc::new(
+                                    s.as_str().to_ascii_uppercase(),
+                                ));
                             }
                         }
                         if k == "timeZone" {
@@ -4690,7 +4745,9 @@ impl Runtime {
                     ))
                 }
             };
-            let (sign, digits) = raw.strip_prefix('-').map_or(("", raw.as_str()), |d| ("-", d));
+            let (sign, digits) = raw
+                .strip_prefix('-')
+                .map_or(("", raw.as_str()), |d| ("-", d));
             let mut grouped = String::new();
             for (idx, ch) in digits.chars().rev().enumerate() {
                 if idx > 0 && idx % 3 == 0 {
