@@ -345,6 +345,56 @@ Single `Temporal` flag is too coarse. When first per-class ctor rung lands, RFSD
 
 ---
 
+## Tier M — post-Temporal-arc strategic gaps (2026-05-27)
+
+Identified during the Temporal arc landing review (keeper directive Telegram 9967). Candidates that competed against further Temporal rungs for next-substrate-work selection; recorded here so the apparatus retains the decision surface.
+
+### (TempO) `temporal-options-handling` — 🟢 RIPE
+**Telos**: cross-cutting options support across PT/PDT/Instant/Duration string-conversion + round + arithmetic methods. Adds smallestUnit / fractionalSecondDigits / roundingMode / roundingIncrement parsing. Closes ~70+ residuals identified in PTSC + PDTSC + ISC + DSC + IA + PTA + DA + PDTA trajectories.
+**LOC estimate**: ~300 LOC (one helper + per-method options-coercion).
+**R13 prospective**: C1 holds (Date-style options pattern); C2 holds (additive coerce-then-route); C3 holds (~70 records close); C4 holds (no engine-wide impact).
+**Status**: identified during PTSC residual decomposition (2026-05-26); standing rec from every per-class string + arithmetic trajectory.
+
+### (ESBC) `eval-scope-binding-chain` — 🟢 RIPE
+**Telos**: cruft's eval frame does not surface enclosing-scope bindings (harness `assert`, `fnGlobalObject`, user `var f` etc.) into the eval body. Identified in HDSB-EXT 1 residual analysis (Finding HDSB.2). Predicted pool: **200-400+ records engagement-wide**.
+**Substrate site**: cruft's indirect-eval lowering — the scope chain established for the eval body excludes the harness's top-level lexical bindings.
+**LOC estimate**: ~50-150 LOC depending on whether the fix is a single line in eval scope-init OR requires lexical-chain restructuring.
+**R13 prospective**: C1 weak (no exact sibling at this layer); C2 holds; C3 strong (predicted 200-400 records from a single mechanism); C4 holds.
+**Status**: identified 2026-05-26; standing rec recorded twice (HDSB.2 + post-Temporal arc summary). Untapped; warrants Rule 23 founding probe.
+
+### (WBMS-EXT 2) `with-runtime-semantics` — 🟡 PROBED
+**Telos**: real `with` statement runtime semantics — `Stmt::With` AST + bytecode emission + ScopeChain extension. Pool: ~270 records (WBMS direct 227 + CAR 44). Currently cruft's `Stmt::Opaque` makes `with` a parse-then-no-op.
+**Substrate sites**: 
+- `pilots/rusty-js-ast/src/lib.rs` — new `Stmt::With { object, body }` variant
+- `pilots/rusty-js-parser/derived/src/stmt.rs` — emit `Stmt::With` instead of `Stmt::Opaque`
+- `pilots/rusty-js-bytecode/derived/src/lib.rs` — emit ScopeChain push/pop opcodes
+- `pilots/rusty-js-runtime/derived/src/interp.rs` — runtime ScopeChain extension semantics
+**LOC estimate**: ~400-600 LOC. Multi-day substrate.
+**R13 prospective**: C1 strong (function-scope ScopeChain is the sibling); C2 holds; C3 strong (~270 records); C4 holds.
+**Status**: identified 2026-05-26 (WBMS-EXT 1 trajectory). Substantial; warrants its own multi-rung sub-program.
+
+### (DFEW) `dynamic-function-error-wrapping` — 🟢 RIPE
+**Telos**: cruft's `Function` ctor propagates inner `CompileError` instead of wrapping as user-catchable `SyntaxError`. Identified in HLCL-EXT 1 residual (1 record there) and predicted to generalize across every intrinsic-eval site (Function, eval, etc.).
+**Substrate site**: `pilots/rusty-js-runtime/derived/src/intrinsics.rs::install_globals` Function ctor catch arm.
+**LOC estimate**: ~30 LOC (catch + wrap as SyntaxError); cross-cutting if generalized to all intrinsic-eval sites.
+**R13 prospective**: C1 holds (every intrinsic that catches CompileError already does Err mapping); C2 holds; C3 modest (~5-20 records initially, may generalize); C4 holds.
+**Status**: identified 2026-05-26 (HLCL.2 standing-rec). Small, untapped.
+
+### (SKHB) `cruft-symbol-key-hasown-bridge` — 🟢 RIPE
+**Telos**: `Object.prototype.hasOwnProperty` does not bridge `Symbol.toStringTag` (and other well-known Symbol keys) to the `@@`-string storage convention. `Object.getOwnPropertyDescriptor` does bridge — the inconsistency was identified in TTSTD-EXT 1 (Finding TTSTD.2). Closes 3+ Temporal prop-desc tests + every Math/JSON/etc. `@@toStringTag` test that's exercised.
+**Substrate site**: `pilots/rusty-js-runtime/derived/src/intrinsics.rs::install_object_static` (Object.prototype.hasOwnProperty implementation) — needs the symbol → `@@name` bridge mirrored from `getOwnPropertyDescriptor`.
+**LOC estimate**: ~30 LOC (mirror existing bridge logic).
+**R13 prospective**: C1 strong (getOwnPropertyDescriptor's bridge is the sibling to mirror); C2 holds; C3 holds (~5-20 immediate records, likely more engagement-wide); C4 holds.
+**Status**: identified 2026-05-26 (TTSTD.2 standing-rec). Small, untapped. Would also activate the spec-correct @@toStringTag descriptor that TTSTD-EXT 1 already installed.
+
+### (MATRX) `post-temporal-matrix-rerun` — 🟢 RIPE
+**Telos**: apparatus rerun of the categorizer against a fresh test262 sample after the ~1400-record Temporal yield arc. The 2026-05-25-full matrix is now stale — substantial Tier-L closures have shifted the post-Temporal landscape. Re-categorize to inform the next substrate-prioritization decision (especially the value-semantics/wrong-result coordinate which is the largest non-binding pool at ~4771 records).
+**Substrate site**: apparatus only. Run `apparatus/benchmarks/test262/...` then `./target/release/t262-full-pinart` to refresh `pilots/pilots/test262-categorize/full-suite/results/`.
+**LOC estimate**: 0 LOC (apparatus rerun + matrix inspection).
+**Status**: standing rec; cheap to run; informs every subsequent prioritization decision.
+
+---
+
 ## Standing edits
 
 - When a locale is founded, **move its entry from this file to its own `pilots/<name>/seed.md`**; leave a one-line "**SPAWNED** as `pilots/<name>/` at YYYY-MM-DD" stub here for the audit trail.
