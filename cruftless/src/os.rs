@@ -278,7 +278,7 @@ pub fn install(rt: &mut Runtime) {
     // EOL — child_process / readline writers ask for it.
     set_constant(rt, os, "EOL", Value::String(Rc::new("\n".into())));
 
-    rt.globals.insert("os".into(), Value::Object(os));
+    rt.define_global_property("os", Value::Object(os));
 }
 
 fn detect_platform() -> &'static str {

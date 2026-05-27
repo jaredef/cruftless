@@ -422,5 +422,5 @@ pub fn install(rt: &mut Runtime) {
     register_method(rt, ctor, "listenerCount", |_rt, _args| {
         Ok(Value::Number(0.0))
     });
-    rt.globals.insert("events".into(), Value::Object(ctor));
+    rt.define_global_property("events", Value::Object(ctor));
 }

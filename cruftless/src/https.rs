@@ -38,5 +38,5 @@ pub fn install(rt: &mut Runtime) {
     });
 
     set_constant(rt, https, "default", Value::Object(https));
-    rt.globals.insert("https".into(), Value::Object(https));
+    rt.define_global_property("https", Value::Object(https));
 }

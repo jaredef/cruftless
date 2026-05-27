@@ -318,6 +318,14 @@ pub struct Compiler {
     /// and may upgrade itself to strict via a `"use strict"` directive
     /// prologue. Set before compiling the body; read at proto build time.
     strict: bool,
+    /// ES-EXT 2 (eval-scope-binding-chain): when true, top-level `var`
+    /// declarations route to `StoreGlobal` (against the realm's global
+    /// object) instead of `StoreLocal`. Per ECMA-262 §19.2.1.3 PerformEval
+    /// indirect-eval branch and §16.1 Scripts, a Script's variable env
+    /// IS the global env — `eval("var foo = 42")` must attach `foo` to
+    /// globalThis. Set via `set_script_mode(true)` before `compile_module`.
+    /// Default false (Module semantics). See is_script_top_var().
+    script_mode: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -459,7 +467,36 @@ impl Compiler {
             construct_tags: Vec::new(),
             strict: false,
             locals_snapshot: None,
+            script_mode: false,
         }
+    }
+
+    /// ES-EXT 2 (eval-scope-binding-chain): mark this Compiler as compiling
+    /// a Script (per ECMA-262 §16.1) rather than a Module (§16.2). The flag
+    /// is consulted at the top-level VariableStatement compile path; for
+    /// `var` declarations at module-top-level (block_depth == 0 and not
+    /// inside an enclosing function), Script mode skips local-slot
+    /// allocation and emits `StoreGlobal` so the binding attaches to the
+    /// realm's global object — matching §19.2.1.3 PerformEval's indirect-
+    /// eval branch where the global env IS the variable env.
+    ///
+    /// Only `var` is rerouted; `let`/`const` remain lexical (live in the
+    /// realm's Lexical Environment, not GlobalThis) per §16.1 ScriptBody.
+    /// Nested function bodies always get a fresh sub-Compiler with
+    /// script_mode default-false, so function-local `var` keeps its
+    /// standard semantics.
+    pub fn set_script_mode(&mut self, m: bool) {
+        self.script_mode = m;
+    }
+
+    /// ES-EXT 2 helper: at a Stmt::Variable compile site, does the
+    /// declaration qualify as a Script-top-level `var` that should
+    /// attach to globalThis instead of getting a local slot?
+    fn is_script_top_var(&self, kind: rusty_js_ast::VariableKind) -> bool {
+        self.script_mode
+            && self.enclosing.is_empty()
+            && self.block_depth == 0
+            && matches!(kind, rusty_js_ast::VariableKind::Var)
     }
 
     /// Ω.5.P03.E2.enclosing-locals-rc: get-or-build the shared snapshot of
@@ -762,6 +799,12 @@ impl Compiler {
                 _ => None,
             };
             if let Some(v) = v_opt {
+                // ES-EXT 2 v2 (post-GBSU): pre-allocation passes UNCHANGED in
+                // script_mode. IC.1 (top-level inner-function upvalue capture)
+                // requires the local slot to exist; the v1 skip violated this
+                // and caused the 33.2% regression. v2 keeps the local slot
+                // AND emits an additional StoreGlobal at declaration to attach
+                // the binding to globalThis per ECMA-262 §16.1.
                 for d in &v.declarators {
                     // Tier-Ω.5.dddd: pre-allocate every identifier the
                     // declarator's pattern binds, including destructure
@@ -859,6 +902,9 @@ impl Compiler {
         for item in &m.body {
             match item {
                 ModuleItem::Statement(Stmt::Variable(v)) => {
+                    // ES-EXT 2 v2: pre-allocation UNCHANGED in script_mode
+                    // (IC.1 protected). The global attachment is emitted
+                    // additionally at the Stmt::Variable identifier branch.
                     for d in &v.declarators {
                         if let rusty_js_ast::BindingPattern::Identifier(id) = &d.target {
                             if !self.pre_allocated_slots.contains_key(&id.name)
@@ -1232,9 +1278,21 @@ impl Compiler {
                 // 0, _iter = _isArr ? _iter : getIterator(_iter)`).
                 let mut local_slots: std::collections::HashMap<String, u16> =
                     std::collections::HashMap::new();
+                let script_top = self.is_script_top_var(v.kind);
                 for d in &v.declarators {
                     match &d.target {
                         rusty_js_ast::BindingPattern::Identifier(id) => {
+                            // ES-EXT 2 v2 (post-GBSU): pre-allocation +
+                            // StoreLocal is unchanged; an additional StoreGlobal
+                            // is emitted AFTER the StoreLocal to attach the
+                            // binding to globalThis. The mirror is one-shot at
+                            // declaration time — subsequent reassignments
+                            // (resolved as LoadLocal/StoreLocal via the local
+                            // slot) DON'T flow back to globalThis. This matches
+                            // common patterns (eval declares var, outer reads
+                            // via name or via globalThis.X) at declaration cost
+                            // of one extra LoadLocal+StoreGlobal pair per
+                            // top-level script var.
                             // Reuse pre-allocated slot if the H1 hoisting
                             // pass already created one; else reuse a slot
                             // from earlier-in-this-list; else alloc.
@@ -1287,6 +1345,17 @@ impl Compiler {
                             }
                             encode_op(&mut self.bytecode, Op::StoreLocal);
                             encode_u16(&mut self.bytecode, slot);
+                            // ES-EXT 2 v2: mirror to globalThis at declaration
+                            // time (script-top var only, per ECMA-262 §16.1).
+                            if script_top {
+                                encode_op(&mut self.bytecode, Op::LoadLocal);
+                                encode_u16(&mut self.bytecode, slot);
+                                let name_idx = self
+                                    .constants
+                                    .intern(Constant::String(id.name.clone()));
+                                encode_op(&mut self.bytecode, Op::StoreGlobal);
+                                encode_u16(&mut self.bytecode, name_idx);
+                            }
                         }
                         pat @ (rusty_js_ast::BindingPattern::Array(_)
                         | rusty_js_ast::BindingPattern::Object(_)) => {
@@ -3954,6 +4023,10 @@ impl Compiler {
             // body opens with a `"use strict"` directive prologue.
             strict: self.strict || directive_has_use_strict(body),
             locals_snapshot: None,
+            // ES-EXT 2: nested function bodies always have their own
+            // scope — `var` inside a function is function-local regardless
+            // of whether the enclosing top-level was Script or Module.
+            script_mode: false,
         };
         let param_count = params.len() as u16;
         // Tier-Ω.5.l: track the rest-parameter slot. Per spec only the
@@ -4526,6 +4599,27 @@ impl Compiler {
 
     fn emit_store_ident(&mut self, name: &str) {
         if let Some(s) = self.resolve_local(name) {
+            // CSC-EXT 2 (compartment-spec-conformance factor 8; also closes
+            // ESBC standing-rec ARC.M.7): when in script_mode and the
+            // resolved local is a top-level `var` slot, mirror the store
+            // to globalThis so subsequent reads via globalThis.X see the
+            // assigned value. Caller's outer Dup left one value on the
+            // stack for this fn to consume; an extra Dup here preserves
+            // the assignment-expression value AFTER both stores.
+            let mirror = self.script_mode
+                && self.enclosing.is_empty()
+                && self.locals.get(s as usize).map_or(false, |ld| {
+                    ld.depth == 0 && matches!(ld.kind, rusty_js_ast::VariableKind::Var)
+                });
+            if mirror {
+                encode_op(&mut self.bytecode, Op::Dup);
+                encode_op(&mut self.bytecode, Op::StoreLocal);
+                encode_u16(&mut self.bytecode, s);
+                let idx = self.constants.intern(Constant::String(name.to_string()));
+                encode_op(&mut self.bytecode, Op::StoreGlobal);
+                encode_u16(&mut self.bytecode, idx);
+                return;
+            }
             encode_op(&mut self.bytecode, Op::StoreLocal);
             encode_u16(&mut self.bytecode, s);
         } else if let Some(u) = self.resolve_upvalue(name) {

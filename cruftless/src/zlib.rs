@@ -178,5 +178,5 @@ pub fn install(rt: &mut Runtime) {
     }
     rt.object_set(z, "constants".into(), Value::Object(constants));
 
-    rt.globals.insert("zlib".into(), Value::Object(z));
+    rt.define_global_property("zlib", Value::Object(z));
 }

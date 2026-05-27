@@ -156,8 +156,7 @@ pub fn install(rt: &mut Runtime) {
         let id = register(cb, cb_args, delay, false);
         Ok(Value::Object(make_timeout_obj(rt, id)))
     });
-    rt.globals
-        .insert("setTimeout".into(), Value::Object(set_timeout));
+    rt.define_global_property("setTimeout", Value::Object(set_timeout));
 
     let set_interval = make_callable(rt, "setInterval", |rt, args| {
         let cb = args.first().cloned().unwrap_or(Value::Undefined);
@@ -175,8 +174,7 @@ pub fn install(rt: &mut Runtime) {
         let id = register(cb, cb_args, delay, true);
         Ok(Value::Object(make_timeout_obj(rt, id)))
     });
-    rt.globals
-        .insert("setInterval".into(), Value::Object(set_interval));
+    rt.define_global_property("setInterval", Value::Object(set_interval));
 
     let clear_t = make_callable(rt, "clearTimeout", |rt, args| {
         let id = timer_id_from(rt, args.first().cloned().unwrap_or(Value::Undefined));
@@ -185,8 +183,7 @@ pub fn install(rt: &mut Runtime) {
         }
         Ok(Value::Undefined)
     });
-    rt.globals
-        .insert("clearTimeout".into(), Value::Object(clear_t));
+    rt.define_global_property("clearTimeout", Value::Object(clear_t));
     let clear_i = make_callable(rt, "clearInterval", |rt, args| {
         let id = timer_id_from(rt, args.first().cloned().unwrap_or(Value::Undefined));
         if let Some(id) = id {
@@ -194,8 +191,7 @@ pub fn install(rt: &mut Runtime) {
         }
         Ok(Value::Undefined)
     });
-    rt.globals
-        .insert("clearInterval".into(), Value::Object(clear_i));
+    rt.define_global_property("clearInterval", Value::Object(clear_i));
 
     // queueMicrotask(cb) — direct microtask enqueue per HTML §8.1.5.6.
     let qmt = make_callable(rt, "queueMicrotask", |rt, args| {
@@ -206,8 +202,7 @@ pub fn install(rt: &mut Runtime) {
         });
         Ok(Value::Undefined)
     });
-    rt.globals
-        .insert("queueMicrotask".into(), Value::Object(qmt));
+    rt.define_global_property("queueMicrotask", Value::Object(qmt));
 
     // setImmediate(cb, ...args) — Node-flavored macrotask scheduling.
     // Implemented as setTimeout with 0ms delay.
@@ -217,8 +212,7 @@ pub fn install(rt: &mut Runtime) {
         let id = register(cb, cb_args, 0, false);
         Ok(Value::Object(make_timeout_obj(rt, id)))
     });
-    rt.globals
-        .insert("setImmediate".into(), Value::Object(set_immediate));
+    rt.define_global_property("setImmediate", Value::Object(set_immediate));
     let clear_im = make_callable(rt, "clearImmediate", |rt, args| {
         let id = timer_id_from(rt, args.first().cloned().unwrap_or(Value::Undefined));
         if let Some(id) = id {
@@ -226,8 +220,7 @@ pub fn install(rt: &mut Runtime) {
         }
         Ok(Value::Undefined)
     });
-    rt.globals
-        .insert("clearImmediate".into(), Value::Object(clear_im));
+    rt.define_global_property("clearImmediate", Value::Object(clear_im));
 }
 
 fn timer_id_from(rt: &Runtime, v: Value) -> Option<u64> {

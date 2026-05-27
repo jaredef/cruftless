@@ -828,9 +828,6 @@ pub fn install(rt: &mut Runtime) {
                 caps::Net::loopback_server(),
             )))
         });
-    rt.globals.insert(
-        "__cruftless_makeHttpFacade".into(),
-        Value::Object(facade_factory),
-    );
-    rt.globals.insert("http".into(), Value::Object(http));
+    rt.define_global_property("__cruftless_makeHttpFacade", Value::Object(facade_factory));
+    rt.define_global_property("http", Value::Object(http));
 }

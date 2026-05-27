@@ -211,9 +211,11 @@ pub unsafe extern "C" fn napi_get_global(env: napi_env, result: *mut napi_value)
     check_arg!(result);
     let env = env_mut!(env);
     let rt = &mut *env.rt;
-    let global = match rt.globals.get("globalThis").cloned() {
-        Some(v) => v,
-        None => Value::Undefined,
+    // GBSU-EXT 4b: canonical handle via Runtime.global_object; fall back to
+    // the legacy HashMap surface if not yet installed.
+    let global = match rt.global_object {
+        Some(id) => Value::Object(id),
+        None => rt.global_get("globalThis"),
     };
     *result = env.push_handle(global);
     napi_ok

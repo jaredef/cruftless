@@ -101,7 +101,8 @@ impl Runtime {
         // Tier-Ω.5.wwww: expose RegExp.prototype so libs that capture
         // RegExp.prototype.toString at module init (yup, validator, …)
         // see a real function rather than undefined.
-        if let Some(Value::Object(ctor_id)) = self.globals.get("RegExp").cloned() {
+        // GBSU-EXT 7b: canonical lookup via unified globalThis.
+        if let Value::Object(ctor_id) = self.global_get("RegExp") {
             self.obj_mut(ctor_id)
                 .set_own_frozen("prototype".into(), Value::Object(proto));
             // Ω.5.P58.E4: RegExp.prototype.constructor = RegExp per ECMA §10.2.12.
@@ -1717,5 +1718,9 @@ where
 {
     let fn_obj = make_native(name, f);
     let fn_id = rt.alloc_object(fn_obj);
-    rt.globals.insert(name.into(), Value::Object(fn_id));
+    // GBSU-EXT 7f.3: delegate to the canonical define_global_property
+    // helper on Runtime (interp.rs). The inline dict-insert + HashMap
+    // fallback that this fn used at rung 7b was duplicated logic; the
+    // helper now centralizes it.
+    rt.define_global_property(name, Value::Object(fn_id));
 }

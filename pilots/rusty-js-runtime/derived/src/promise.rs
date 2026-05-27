@@ -153,8 +153,7 @@ impl Runtime {
                 crate::generated::promise_prototype_finally(rt, rt.current_this(), &a)
             });
         }
-        self.globals
-            .insert("Promise".into(), Value::Object(promise_obj));
+        self.define_global_property("Promise", Value::Object(promise_obj));
     }
 }
 

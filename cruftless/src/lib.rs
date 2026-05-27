@@ -62,10 +62,10 @@ pub fn install_bun_host(rt: &mut Runtime, argv: Vec<String>) {
     // Done as a post-step rather than reordering events-before-stream
     // because earlier installs (http, crypto, etc.) depend on stream being
     // resolved at their times.
-    if let (Some(Value::Object(ee_ctor)), Some(Value::Object(stream_ns))) = (
-        rt.globals.get("events").cloned(),
-        rt.globals.get("stream").cloned(),
-    ) {
+    // GBSU-EXT 7f.2: canonical lookup via unified globalThis.
+    if let (Value::Object(ee_ctor), Value::Object(stream_ns)) =
+        (rt.global_get("events"), rt.global_get("stream"))
+    {
         rt.object_set(stream_ns, "EventEmitter".into(), Value::Object(ee_ctor));
         rt.object_set(
             stream_ns,
@@ -164,7 +164,7 @@ pub fn install_builtin_module_resolver(rt: &mut Runtime) {
             "node:repl" | "repl" => "events",
             // node:path/posix and node:path/win32 — resolve to subproperty of path module.
             "node:path/posix" | "path/posix" => {
-                if let Some(Value::Object(path_id)) = rt.globals.get("path").cloned() {
+                if let Value::Object(path_id) = rt.global_get("path") {
                     if let Value::Object(sub) = rt.object_get(path_id, "posix") {
                         return Ok(Some(sub));
                     }
@@ -172,7 +172,7 @@ pub fn install_builtin_module_resolver(rt: &mut Runtime) {
                 return Ok(None);
             }
             "node:path/win32" | "path/win32" => {
-                if let Some(Value::Object(path_id)) = rt.globals.get("path").cloned() {
+                if let Value::Object(path_id) = rt.global_get("path") {
                     if let Value::Object(sub) = rt.object_get(path_id, "win32") {
                         return Ok(Some(sub));
                     }
@@ -181,8 +181,8 @@ pub fn install_builtin_module_resolver(rt: &mut Runtime) {
             }
             _ => return Ok(None),
         };
-        match rt.globals.get(global_name) {
-            Some(Value::Object(id)) => Ok(Some(*id)),
+        match rt.global_get(global_name) {
+            Value::Object(id) => Ok(Some(id)),
             _ => Ok(None),
         }
     })));

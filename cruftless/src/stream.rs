@@ -159,12 +159,8 @@ pub fn install(rt: &mut Runtime) {
     // events.EventEmitter on node:stream for legacy compat. node-cron and
     // others do `const stream = require('stream'); class X extends
     // stream.EventEmitter`. Forward to the events global's ctor.
-    if let Value::Object(ee_ctor) = rt
-        .globals
-        .get("events")
-        .cloned()
-        .unwrap_or(Value::Undefined)
-    {
+    // GBSU-EXT 7f.4: canonical lookup via unified globalThis.
+    if let Value::Object(ee_ctor) = rt.global_get("events") {
         rt.object_set(stream, "EventEmitter".into(), Value::Object(ee_ctor));
         rt.object_set(
             stream,
@@ -228,5 +224,5 @@ pub fn install(rt: &mut Runtime) {
     }
 
     set_constant(rt, stream, "default", Value::Object(stream));
-    rt.globals.insert("stream".into(), Value::Object(stream));
+    rt.define_global_property("stream", Value::Object(stream));
 }

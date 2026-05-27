@@ -357,11 +357,9 @@ pub fn install(rt: &mut Runtime, argv: Vec<String>) {
             _ => return Ok(Value::Undefined),
         };
         let stripped = name.strip_prefix("node:").unwrap_or(&name);
-        match rt.globals.get(stripped).cloned() {
-            Some(v) => Ok(v),
-            None => Ok(Value::Undefined),
-        }
+        // GBSU-EXT 7f.2: canonical lookup via unified globalThis.
+        Ok(rt.global_get(stripped))
     });
 
-    rt.globals.insert("process".into(), Value::Object(process));
+    rt.define_global_property("process", Value::Object(process));
 }

@@ -17,5 +17,5 @@ pub fn install(rt: &mut Runtime) {
     register_method(rt, t, "isatty", |_rt, _args| Ok(Value::Boolean(false)));
     register_method(rt, t, "ReadStream", stub("ReadStream"));
     register_method(rt, t, "WriteStream", stub("WriteStream"));
-    rt.globals.insert("tty".into(), Value::Object(t));
+    rt.define_global_property("tty", Value::Object(t));
 }

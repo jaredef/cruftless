@@ -349,23 +349,14 @@ fn apply_node_fetch_shim(rt: &mut Runtime, ns: rusty_js_runtime::ObjectRef, url:
     if already {
         return;
     }
-    let error_proto = rt
-        .globals
-        .get("Error")
-        .and_then(|v| {
-            if let Value::Object(o) = v {
-                Some(*o)
-            } else {
-                None
-            }
-        })
-        .and_then(|eid| {
-            if let Value::Object(p) = rt.object_get(eid, "prototype") {
-                Some(p)
-            } else {
-                None
-            }
-        });
+    // GBSU-EXT 7f.4: canonical lookup via unified globalThis.
+    let error_proto = match rt.global_get("Error") {
+        Value::Object(eid) => match rt.object_get(eid, "prototype") {
+            Value::Object(p) => Some(p),
+            _ => None,
+        },
+        _ => None,
+    };
     let fbe_proto = rt.alloc_object(rusty_js_runtime::value::Object::new_ordinary());
     if let Some(ep) = error_proto {
         rt.obj_mut(fbe_proto).proto = Some(ep);

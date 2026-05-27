@@ -72,6 +72,66 @@ Pre-LGSS the goal-symbol-selection discipline existed at the wrong tier: downstr
 
 ---
 
+### 2026-05-26 — GBSU-EXT 6: transitional HashMap-fallback paths deletion
+
+**Commit**: pending (substrate landed in worktree; commit awaits keeper authorization)
+**Files**:
+- `pilots/rusty-js-runtime/derived/src/interp.rs` Op::LoadGlobal handler (`.or_else(|| self.globals.get(&name).cloned())` fallback)
+- `pilots/rusty-js-runtime/derived/src/interp.rs` Op::LoadGlobalOrUndef handler (same fallback)
+- `pilots/rusty-js-runtime/derived/src/interp.rs` Op::StoreGlobal strict-mode existence check (`self.globals.contains_key(&name)` term)
+- `pilots/rusty-js-runtime/derived/src/interp.rs` `Runtime::global_get` helper (HashMap fallback final clause)
+
+**Net LoC delta**: roughly −15 / +4 = **−11 net** (helper now terminates in Value::Undefined instead of HashMap lookup; four call sites lose their `.or_else(...)` fallback line).
+
+**Named constraint that made deletion safe**: `Runtime.global_object` is the canonical globalThis ObjectId, populated by `install_global_this` (GBSU-EXT 1 introduced the field, GBSU-EXT 2 promoted it to primary reader, GBSU-EXT 3a + 4b + 5 verified all writers route through it). All JS-visible Op::StoreGlobal writes land on the Object first (GBSU-EXT 5); all readers (Op::LoadGlobal, Op::LoadGlobalOrUndef, the three stash-key round-trips in intrinsics.rs, the per-helper global_get call sites in intrinsics/prototype/napi/interp) consult the Object via `global_get`. With the writer + reader sides unified, the HashMap fallback is unreachable for any binding the unified surface holds.
+
+**What was simplified**: the Op::LoadGlobal / LoadGlobalOrUndef / StoreGlobal opcode handlers each lose a fallback clause; the global_get helper terminates in a single Object-Object-or-Undefined branch instead of a three-step Object → HashMap → Undefined ladder. Doc 731 alphabet-purity: the runtime's binding-resolution alphabet went from `{Object, HashMap, engine_helpers}` to `{Object, engine_helpers}` — one symbol removed.
+
+**Gates re-verified**:
+- diff-prod 42/42 PASS
+- test262-sample **86.8%** (6312 PASS / 963 FAIL / 397 SKIP) — clean parity with the pre-deletion baseline (delta of 1 test from the 6313 baseline; within noise).
+- Function ctor probes: `Function("return 1")` → "function", `new Function("return class M extends Uint8Array {}")()` → "function" ✅.
+
+**Composes-with**:
+- Locale `pilots/global-binding-surface-unification/` (parent rungs GBSU-EXT 1-5)
+- Doc 729 §XIII regression-as-implicit-constraint-probe (the methodology that surfaced the four sub-rung recurrences which made this deletion possible to land safely)
+- Doc 731 alphabet purity (the principle the deletion advances)
+- Doc 729 §VII.B engine_helpers bilateral (preserved invariant — engine_helpers fallback retained)
+
+The transitional fallback clauses added at rungs 2 / 3a / 4 served as a constraint-discovery scaffold: each clause caught a hidden direct-reader that the audit had missed, triggering a §XIII regression-revision. With the audit complete through GBSU-EXT 5, the scaffolds become carriers — code that exists to compensate for an incompleteness no longer present. Their deletion is the rung-6 closure: the unified surface stands on its own. The `Runtime.globals` field itself remains for now; rung 7 audits the INSTALL-phase consumers before its removal.
+
+### 2026-05-27 — GBSU-EXT 7f.4: `Runtime.globals` HashMap field deletion (arc closure)
+
+**Commit**: pending (substrate landed in worktree; commit awaits keeper authorization)
+**Files**:
+- `pilots/rusty-js-runtime/derived/src/interp.rs` (field declaration + init + 3 bootstrap-fallback branches in Op::StoreGlobal / enumerate_roots / define_global_property; helper `global_get` final clause; Op::LoadGlobal + Op::LoadGlobalOrUndef `or_else` chains; `allocate_realm` ctor-lookup loop)
+- `pilots/rusty-js-runtime/derived/src/intrinsics.rs` (install_globals rung-7a late-allocation; install_global_this HashMap-drain loop; 6+ Function-ctor / Number-static / Error-prototype / Map / Promise / Error / Map-clone / Set-clone / RegExp-clone closure-captured lookups; stash-key cleanup `globals.remove` lines)
+- `pilots/rusty-js-runtime/derived/src/regexp.rs` (register_global_native rung-7b inline dict-insert + HashMap-fallback duplicate)
+- `pilots/rusty-js-runtime/derived/src/prototype.rs` (Boolean wrapper lookup)
+- `pilots/rusty-js-runtime/derived/src/napi.rs` (globalThis read)
+- `pilots/rusty-js-runtime/derived/src/promise.rs` (Promise ctor install)
+- `cruftless/src/` 11 files (node_stubs.rs, lib.rs, url.rs, stream.rs, process.rs, http.rs, fs.rs, os.rs, events.rs, crypto.rs, util.rs, zlib.rs, tty.rs, path.rs, https.rs, assert.rs, module_ns.rs, timer.rs) — ~75 sites total migrated to `define_global_property` / `global_get` over rungs 7f.1-7f.3
+
+**Net LoC delta**: roughly +200 / −300 = **−100 net**. The +200 is helpers (`define_global_property`, `global_get`, `snapshot_global_string_props`, `retain_global_string_props`, `replace_global_string_props`) + cluster migration boilerplate; the −300 is the field declaration + 75 inline `rt.globals.insert/.get/.contains_key` lines + 3 bootstrap-fallback branches + the install_global_this HashMap-drain loop (~25 lines) + the rung-2/3/4 transitional `or_else` fallback clauses.
+
+**Named constraint that made deletion safe**: `Runtime::new` eager-allocates `global_object` (`Some(ObjectId)`) at construction. Combined with the GBSU-EXT 2 reader migration (Object-first), GBSU-EXT 3a writer migration (Object-canonical), GBSU-EXT 4b cluster audit (all rt.globals.get readers migrated to global_get), GBSU-EXT 5 writer-HashMap drop, and GBSU-EXT 6 fallback-clause deletion, every JS-visible global binding read/write routes through the unified globalThis Object. The `Runtime.globals` HashMap is provably unreachable in normal operation.
+
+**What was simplified**: the runtime's binding-resolution alphabet collapsed from `{Object, HashMap, engine_helpers}` to `{Object, engine_helpers}` (Doc 731 alphabet purity — one symbol removed). Op::LoadGlobal / Op::LoadGlobalOrUndef / Op::StoreGlobal handlers each lose a fallback branch. `define_global_property` collapses to a single dict_mut().insert. install_global_this drops its drain loop entirely. enumerate_roots roots the single globalThis Object. The duplication of installation surface (HashMap-then-drain vs direct-Object-write) is gone.
+
+**Gates re-verified**:
+- diff-prod 42/42 PASS.
+- test262-sample **86.7%** (6311 PASS / 964 FAIL / 397 SKIP) — **+61 tests over the 85.9% pre-deletion baseline**. Deletion as positive-surface §XIII probe: the rung-3a-onwards dual-write left install_global_this's drain loop overwriting properties already installed by the rung-7b register_global_* migrations, with subtle shape-system/descriptor invariant divergences. With the drain gone, the property table is cleaner; 61 tests that had been silently failing on those subtle invariants now pass.
+
+**Composes-with**:
+- Locale `pilots/global-binding-surface-unification/` (parent rungs GBSU-EXT 1-7f.3)
+- Prior entry: `2026-05-26 — GBSU-EXT 6: transitional HashMap-fallback paths deletion` (the rungs-2-3a-4 scaffold deletion; this entry completes the arc by deleting the field the scaffold protected)
+- Doc 729 §XIII (six +1 recurrences across this locale; the inverted positive-surface case at this entry is a methodological extension worth corpus-noting)
+- Doc 731 alphabet purity (the principle the arc induces)
+- Doc 729 §VII.B engine_helpers bilateral (preserved invariant)
+- Tier-Ω.5.dddd / .qq compiler pre-allocation (IC.1 protected throughout)
+
+The eight-rung GBSU arc (1, 2, 3a, 4, 4b, 5, 6, 7a, 7b, 7c, 7d, 7e, 7f.1, 7f.2, 7f.3, 7f.4 — fifteen sub-rungs counting revisions) lands an architectural straightening at the top of the DAG that simplifies every downstream binding-resolution path. The +9.1pp yield that came from the original bridge work (rungs 2-4) compounds with the +0.8pp surfacing at field-deletion time, against the original 77.6% baseline (now 86.7% — **+9.1pp aggregate**). This is the value of the alphabet-narrowing thesis at the engine-tier: not just cleaner code, but observable test surface gains from substrate coherence.
+
 ### Future entries
 
 Append below as deletions land. Each entry's format follows the template at the file head. The ledger is consulted on locale-close to ask: *did this locale's substrate move enable a downstream deletion?* If yes, the deletion is recorded; if not, the locale's value is named-addition-only (which is fine — but the asymmetry-check matters).

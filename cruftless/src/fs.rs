@@ -1113,8 +1113,8 @@ pub fn install(rt: &mut Runtime) {
         let key = sync_name.to_string();
         register_method(rt, fs, async_name, move |rt, args| {
             let p = new_promise(rt);
-            let fs_global = match rt.globals.get("fs") {
-                Some(Value::Object(id)) => *id,
+            let fs_global = match rt.global_get("fs") {
+                Value::Object(id) => id,
                 _ => return Ok(Value::Object(p)),
             };
             let sync_fn = rt.object_get(fs_global, &key);
@@ -1371,8 +1371,8 @@ pub fn install(rt: &mut Runtime) {
     // approximation: delegate to utimesSync. Real impl needs libc::utimensat
     // with AT_SYMLINK_NOFOLLOW; deferred.
     register_method(rt, fs, "lutimesSync", |rt, args| {
-        let fs_global = match rt.globals.get("fs") {
-            Some(Value::Object(id)) => *id,
+        let fs_global = match rt.global_get("fs") {
+            Value::Object(id) => id,
             _ => return Ok(Value::Undefined),
         };
         let f = rt.object_get(fs_global, "utimesSync");
@@ -1691,7 +1691,7 @@ pub fn install(rt: &mut Runtime) {
     });
     rt.object_set(fs, "_toUnixTimestamp".into(), Value::Object(to_unix));
 
-    rt.globals.insert("fs".into(), Value::Object(fs));
+    rt.define_global_property("fs", Value::Object(fs));
 }
 
 // Ω.5.P35.E1.fs-blob: synthesize a Blob-shaped object from a byte vector.
@@ -2002,7 +2002,13 @@ mod tests {
     }
 
     fn recorded(rt: &Runtime) -> Option<Value> {
-        rt.globals.get("__last_recorded").cloned()
+        // GBSU-EXT 7f.2: canonical lookup via unified globalThis.
+        let v = rt.global_get("__last_recorded");
+        if matches!(v, Value::Undefined) {
+            None
+        } else {
+            Some(v)
+        }
     }
 
     #[test]
@@ -2010,10 +2016,7 @@ mod tests {
         let dir = tmpdir("rw-utf8");
         let path = dir.join("a.txt");
         let mut rt = fresh();
-        rt.globals.insert(
-            "PATH".into(),
-            Value::String(Rc::new(path.to_string_lossy().into_owned())),
-        );
+        rt.define_global_property("PATH", Value::String(Rc::new(path.to_string_lossy().into_owned())),);
         run_with(
             &mut rt,
             r#"fs.writeFileSync(PATH, "hello, world");
@@ -2032,10 +2035,7 @@ mod tests {
         let path = dir.join("b.bin");
         std::fs::write(&path, [0x68u8, 0x69]).unwrap();
         let mut rt = fresh();
-        rt.globals.insert(
-            "PATH".into(),
-            Value::String(Rc::new(path.to_string_lossy().into_owned())),
-        );
+        rt.define_global_property("PATH", Value::String(Rc::new(path.to_string_lossy().into_owned())),);
         run_with(
             &mut rt,
             r#"let b = fs.readFileSync(PATH); __record(b.length + ":" + b[0] + "," + b[1]);"#,
@@ -2054,14 +2054,8 @@ mod tests {
         std::fs::write(&present, "x").unwrap();
         let missing = dir.join("missing");
         let mut rt = fresh();
-        rt.globals.insert(
-            "P".into(),
-            Value::String(Rc::new(present.to_string_lossy().into_owned())),
-        );
-        rt.globals.insert(
-            "M".into(),
-            Value::String(Rc::new(missing.to_string_lossy().into_owned())),
-        );
+        rt.define_global_property("P", Value::String(Rc::new(present.to_string_lossy().into_owned())),);
+        rt.define_global_property("M", Value::String(Rc::new(missing.to_string_lossy().into_owned())),);
         run_with(
             &mut rt,
             "__record(fs.existsSync(P) + ',' + fs.existsSync(M));",
@@ -2079,10 +2073,7 @@ mod tests {
         let path = dir.join("s.txt");
         std::fs::write(&path, "abcd").unwrap();
         let mut rt = fresh();
-        rt.globals.insert(
-            "PATH".into(),
-            Value::String(Rc::new(path.to_string_lossy().into_owned())),
-        );
+        rt.define_global_property("PATH", Value::String(Rc::new(path.to_string_lossy().into_owned())),);
         run_with(&mut rt, "let s = fs.statSync(PATH); __record(s.size + ',' + s.isFile() + ',' + s.isDirectory());");
         match recorded(&rt) {
             Some(Value::String(s)) => assert_eq!(s.as_str(), "4,true,false"),
@@ -2097,10 +2088,7 @@ mod tests {
         std::fs::write(dir.join("a"), "").unwrap();
         std::fs::write(dir.join("b"), "").unwrap();
         let mut rt = fresh();
-        rt.globals.insert(
-            "D".into(),
-            Value::String(Rc::new(dir.to_string_lossy().into_owned())),
-        );
+        rt.define_global_property("D", Value::String(Rc::new(dir.to_string_lossy().into_owned())),);
         run_with(&mut rt, "let e = fs.readdirSync(D); __record(e.length);");
         assert!(matches!(recorded(&rt), Some(Value::Number(n)) if n == 2.0));
         let _ = std::fs::remove_dir_all(&dir);
@@ -2111,10 +2099,7 @@ mod tests {
         let dir = tmpdir("mkdir");
         let nested = dir.join("a/b/c");
         let mut rt = fresh();
-        rt.globals.insert(
-            "D".into(),
-            Value::String(Rc::new(nested.to_string_lossy().into_owned())),
-        );
+        rt.define_global_property("D", Value::String(Rc::new(nested.to_string_lossy().into_owned())),);
         run_with(
             &mut rt,
             "fs.mkdirSync(D, {recursive: true}); __record(fs.existsSync(D));",
@@ -2129,10 +2114,7 @@ mod tests {
         let path = dir.join("u");
         std::fs::write(&path, "x").unwrap();
         let mut rt = fresh();
-        rt.globals.insert(
-            "P".into(),
-            Value::String(Rc::new(path.to_string_lossy().into_owned())),
-        );
+        rt.define_global_property("P", Value::String(Rc::new(path.to_string_lossy().into_owned())),);
         run_with(&mut rt, "fs.unlinkSync(P); __record(fs.existsSync(P));");
         assert!(matches!(recorded(&rt), Some(Value::Boolean(false))));
         let _ = std::fs::remove_dir_all(&dir);
@@ -2143,10 +2125,7 @@ mod tests {
         let dir = tmpdir("byte-rt");
         let path = dir.join("r.bin");
         let mut rt = fresh();
-        rt.globals.insert(
-            "PATH".into(),
-            Value::String(Rc::new(path.to_string_lossy().into_owned())),
-        );
+        rt.define_global_property("PATH", Value::String(Rc::new(path.to_string_lossy().into_owned())),);
         // Write bytes via array-of-number, then read back as utf-8 to
         // confirm the byte path serialised correctly.
         run_with(
@@ -2170,10 +2149,7 @@ mod tests {
         let path = dir.join("a.txt");
         std::fs::write(&path, "async-payload").unwrap();
         let mut rt = fresh();
-        rt.globals.insert(
-            "PATH".into(),
-            Value::String(Rc::new(path.to_string_lossy().into_owned())),
-        );
+        rt.define_global_property("PATH", Value::String(Rc::new(path.to_string_lossy().into_owned())),);
         // The .then closure runs only if PollIo drained the queue and
         // the macrotask resolved the promise → microtask reaction fired.
         run_with(
@@ -2196,10 +2172,7 @@ mod tests {
         let path = dir.join("p");
         std::fs::write(&path, "x").unwrap();
         let mut rt = fresh();
-        rt.globals.insert(
-            "P".into(),
-            Value::String(Rc::new(path.to_string_lossy().into_owned())),
-        );
+        rt.define_global_property("P", Value::String(Rc::new(path.to_string_lossy().into_owned())),);
         run_with(
             &mut rt,
             r#"Promise.then(fs.exists(P), function(b) { __record(b ? "yes" : "no"); });"#,
@@ -2213,10 +2186,7 @@ mod tests {
         let dir = tmpdir("async-chain");
         let path = dir.join("c.txt");
         let mut rt = fresh();
-        rt.globals.insert(
-            "PATH".into(),
-            Value::String(Rc::new(path.to_string_lossy().into_owned())),
-        );
+        rt.define_global_property("PATH", Value::String(Rc::new(path.to_string_lossy().into_owned())),);
         run_with(
             &mut rt,
             r#"Promise.then(fs.writeFile(PATH, "chained"), function() {

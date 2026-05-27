@@ -440,8 +440,7 @@ impl Runtime {
             let stub_id = self.alloc_object(stub);
             self.object_set(wasm, name, Value::Object(stub_id));
         }
-        self.globals
-            .insert("WebAssembly".into(), Value::Object(wasm));
+        self.define_global_property("WebAssembly", Value::Object(wasm));
 
         self.install_iterator_helpers_and_recent_methods();
         self.install_global_this();
@@ -463,48 +462,19 @@ impl Runtime {
     }
 
     fn install_global_this(&mut self) {
-        let gt = self.alloc_object(Object::new_ordinary());
-        let entries: Vec<(String, Value)> = self
-            .globals
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
-        // GBNE-EXT 1: ECMA-262 §17 baseline — standard built-in properties
-        // on the global object are {w:t, e:f, c:t}. Use dict_mut().insert
-        // with explicit PropertyDescriptor instead of self.object_set
-        // (which silently installs enumerable). User-installed globals
-        // via Op::SetProperty continue to land enumerable per default
-        // CreateDataPropertyOrThrow.
-        for (k, v) in entries {
-            self.obj_mut(gt).dict_mut().insert(
-                crate::value::PropertyKey::String(k),
-                crate::value::PropertyDescriptor {
-                    value: v,
-                    writable: true,
-                    enumerable: false,
-                    configurable: true,
-                    getter: None,
-                    setter: None,
-                },
-            );
-        }
-        // globalThis self-reference: §19.1.1 — {w:t, e:f, c:t}.
-        // `global` (Node alias): same convention.
-        for k in &["globalThis", "global"] {
-            self.obj_mut(gt).dict_mut().insert(
-                crate::value::PropertyKey::String((*k).to_string()),
-                crate::value::PropertyDescriptor {
-                    value: Value::Object(gt),
-                    writable: true,
-                    enumerable: false,
-                    configurable: true,
-                    getter: None,
-                    setter: None,
-                },
-            );
-        }
-        self.globals.insert("globalThis".into(), Value::Object(gt));
-        self.globals.insert("global".into(), Value::Object(gt));
+        // GBSU-EXT 7f.4: global_object is always Some (eager-allocated in
+        // Runtime::new). Unwrap is provably safe.
+        let gt = self.global_object.expect("global_object eager-allocated in Runtime::new");
+        // GBSU-EXT 7f.4: the legacy HashMap-drain loop (entries → Object's
+        // dict with {w:t, e:f, c:t} descriptors) is gone. All install-time
+        // bindings now write to the Object directly via define_global_property
+        // (which uses the same descriptor shape), so there is nothing to drain.
+        //
+        // globalThis self-reference (§19.1.1) + `global` (Node alias): both
+        // {w:t, e:f, c:t}, mirroring the descriptor define_global_property
+        // would emit, so define_global_property is the canonical path here too.
+        self.define_global_property("globalThis", Value::Object(gt));
+        self.define_global_property("global", Value::Object(gt));
         // Tier-Ω.5.bbbb: Intl namespace with stub constructors. Real
         // locale-aware behavior is deferred; the stubs return objects
         // that survive shape probes and method existence checks. Lifts
@@ -647,7 +617,7 @@ impl Runtime {
             rt.object_set(id, "length".into(), Value::Number(0.0));
             Ok(Value::Object(id))
         });
-        self.globals.insert("Intl".into(), Value::Object(intl));
+        self.define_global_property("Intl", Value::Object(intl));
         // Tier-Ω.5.iiii: TextEncoder / TextDecoder per WHATWG Encoding
         // spec. v1 deviation: only UTF-8 supported; encode returns a
         // Uint8Array-shaped object (length + indexed bytes); decode
@@ -697,8 +667,7 @@ impl Runtime {
         });
         self.obj_mut(te_id)
             .set_own_frozen("prototype".into(), Value::Object(te_proto));
-        self.globals
-            .insert("TextEncoder".into(), Value::Object(te_id));
+        self.define_global_property("TextEncoder", Value::Object(te_id));
         let td = make_native("TextDecoder", |rt, args| {
             let encoding = match args.first() {
                 Some(Value::String(s)) => s.as_str().to_string(),
@@ -743,8 +712,7 @@ impl Runtime {
         });
         self.obj_mut(td_id)
             .set_own_frozen("prototype".into(), Value::Object(td_proto));
-        self.globals
-            .insert("TextDecoder".into(), Value::Object(td_id));
+        self.define_global_property("TextDecoder", Value::Object(td_id));
     }
 
     /// Tier-Ω.5.k: helpers the compiler emits LoadGlobal+Call into for
@@ -1302,31 +1270,59 @@ impl Runtime {
             let url = format!("file://<compartment:{}:eval:{}>", realm_idx, n);
             let stash_key = format!("__cp_out_{}", n);
             let expr_source = format!("{} = ({});", stash_key, source);
-            let prior = rt.enter_realm(realm_idx);
-            let expr_ok = rt.evaluate_module(&expr_source, &url).is_ok();
+            // CPF-EXT 1+2+3+4 (compartment-primitive audit-fix arc): close
+            // IC.CP2 + IC.CP3 by swapping the runtime's global_object to the
+            // compartment's pre-populated gt for the duration of the eval,
+            // and routing through evaluate_script (ESBC v2) instead of
+            // evaluate_module so top-level var declarations attach to the
+            // compartment's globalThis via the StoreLocal+StoreGlobal mirror.
+            // Replaces the previous enter_realm + evaluate_module path that
+            // ran against the primordial global_object filtered by allowlist.
+            let cp_gt = match rt.object_get(this_id, "__compartment_globalthis") {
+                Value::Object(id) => id,
+                _ => return Err(RuntimeError::TypeError(
+                    "Compartment.prototype.evaluate: missing __compartment_globalthis slot".into(),
+                )),
+            };
+            let prior_gt = rt.global_object;
+            rt.global_object = Some(cp_gt);
+            let prior_realm = rt.current_realm;
+            rt.current_realm = realm_idx;
+            // CSC-EXT 5 (compartment-spec-conformance factor 7): per ECMA-262
+            // §10.2.1.2, indirect-eval / Script top-level `this` is bound to
+            // the realm's global object. evaluate_module reads self.current_this
+            // and threads it into frame.this_value; for compartment.evaluate
+            // the right value is the compartment's globalThis (cp_gt), not
+            // whatever current_this the outer caller had. Save + swap + restore.
+            let prior_this = std::mem::replace(&mut rt.current_this, Value::Object(cp_gt));
+            let expr_ok = rt.evaluate_script(&expr_source, &url).is_ok();
             let result = if expr_ok {
-                let r = rt
-                    .globals
-                    .get(&stash_key)
-                    .cloned()
-                    .unwrap_or(Value::Undefined);
-                rt.globals.remove(&stash_key);
+                let r = rt.global_get(&stash_key);
+                rt.obj_mut(cp_gt).remove_str(&stash_key);
                 r
             } else {
                 let stmt_url = format!("file://<compartment:{}:stmt:{}>", realm_idx, n);
-                match rt.evaluate_module(&source, &stmt_url) {
+                match rt.evaluate_script(&source, &stmt_url) {
                     Ok(_) => Value::Undefined,
                     Err(RuntimeError::CompileError(msg)) => {
-                        rt.exit_realm(prior);
+                        rt.global_object = prior_gt;
+                        rt.current_realm = prior_realm;
+                        rt.current_this = prior_this;
                         return Err(RuntimeError::SyntaxError(msg));
                     }
                     Err(e) => {
-                        rt.exit_realm(prior);
+                        rt.global_object = prior_gt;
+                        rt.current_realm = prior_realm;
+                        rt.current_this = prior_this;
                         return Err(e);
                     }
                 }
             };
-            rt.exit_realm(prior);
+            rt.global_object = prior_gt;
+            rt.current_realm = prior_realm;
+            rt.current_this = prior_this;
+            // Touch realm index for borrow-checker (silenced unused warning).
+            let _ = realm_idx;
             Ok(result)
         });
 
@@ -1374,28 +1370,242 @@ impl Runtime {
                     ))
                 }
             };
+            // CSC-EXT 7 (compartment-spec-conformance factor 1): hook API.
+            // If specifier is in modules-map, use the registered source
+            // directly. Otherwise, if an importHook is registered on the
+            // compartment, call it with the specifier and use the returned
+            // `{source: ...}` record. Async importHook (returning a
+            // Promise) is deferred to CSC-EXT 8 — today we accept sync
+            // returns only; Promises are rejected with a documented error.
             let source_v = rt.object_get(modules_id, &spec);
             let source = match source_v {
                 Value::String(s) => s.as_str().to_string(),
                 _ => {
-                    // Specifier not in map — per proposal, rejected Promise.
-                    let p = crate::promise::new_promise(rt);
-                    let err = rt.alloc_object(Object::new_ordinary());
-                    rt.object_set(
-                        err,
-                        "message".into(),
-                        Value::String(Rc::new(format!(
-                            "Module '{}' not found in compartment",
-                            spec
-                        ))),
+                    let hook = rt.object_get(this_id, "__compartment_importhook");
+                    if matches!(hook, Value::Undefined) {
+                        let p = crate::promise::new_promise(rt);
+                        let err = rt.alloc_object(Object::new_ordinary());
+                        rt.object_set(
+                            err,
+                            "message".into(),
+                            Value::String(Rc::new(format!(
+                                "Module '{}' not found in compartment",
+                                spec
+                            ))),
+                        );
+                        rt.object_set(
+                            err,
+                            "name".into(),
+                            Value::String(Rc::new("TypeError".into())),
+                        );
+                        crate::promise::reject_promise(rt, p, Value::Object(err));
+                        return Ok(Value::Object(p));
+                    }
+                    let hook_result = rt.call_function(
+                        hook,
+                        Value::Object(this_id),
+                        vec![Value::String(Rc::new(spec.clone()))],
                     );
-                    rt.object_set(
-                        err,
-                        "name".into(),
-                        Value::String(Rc::new("TypeError".into())),
+                    let hook_value = match hook_result {
+                        Ok(v) => v,
+                        Err(e) => {
+                            let p = crate::promise::new_promise(rt);
+                            let err = rt.alloc_object(Object::new_ordinary());
+                            rt.object_set(
+                                err,
+                                "message".into(),
+                                Value::String(Rc::new(format!(
+                                    "Compartment importHook threw: {:?}",
+                                    e
+                                ))),
+                            );
+                            crate::promise::reject_promise(rt, p, Value::Object(err));
+                            return Ok(Value::Object(p));
+                        }
+                    };
+                    // Detect Promise return (has internal-kind PromiseLike or
+                    // a `.then` method). For now: walk a shallow path —
+                    // Object with internal Promise kind is treated as async
+                    // (rejected with CSC-EXT 8 deferral). Plain Object with
+                    // a `source` string property is the sync form.
+                    let record_id = match &hook_value {
+                        Value::Object(id) => *id,
+                        _ => {
+                            let p = crate::promise::new_promise(rt);
+                            let err = rt.alloc_object(Object::new_ordinary());
+                            rt.object_set(
+                                err,
+                                "message".into(),
+                                Value::String(Rc::new(
+                                    "Compartment importHook must return an Object record { source }".into(),
+                                )),
+                            );
+                            crate::promise::reject_promise(rt, p, Value::Object(err));
+                            return Ok(Value::Object(p));
+                        }
+                    };
+                    let is_promise = matches!(
+                        rt.obj(record_id).internal_kind,
+                        crate::value::InternalKind::Promise(_)
                     );
-                    crate::promise::reject_promise(rt, p, Value::Object(err));
-                    return Ok(Value::Object(p));
+                    if is_promise {
+                        // CSC-EXT 8 (compartment-spec-conformance factor 1
+                        // async-form closure): the hook returned a Promise
+                        // (e.g., `async (spec) => ({source: await ...})`).
+                        // Allocate the outer import-promise + two native
+                        // continuation functions; attach them as reactions
+                        // on the hook promise (or enqueue directly if
+                        // already settled). On hook resolution, evaluate
+                        // the record's source within the compartment realm
+                        // + resolve the outer promise. On hook rejection,
+                        // forward the rejection.
+                        let outer_p = crate::promise::new_promise(rt);
+                        let realm_idx_cap = realm_idx;
+                        let cp_gt_cap = match rt.object_get(this_id, "__compartment_globalthis") {
+                            Value::Object(id) => id,
+                            _ => return Err(RuntimeError::TypeError(
+                                "Compartment.prototype.import: missing __compartment_globalthis slot".into(),
+                            )),
+                        };
+                        let spec_cap = spec.clone();
+                        let on_resolve_native = make_native_non_ctor(
+                            "compartmentImportResolve",
+                            1,
+                            move |rt, args| {
+                                let record = args.first().cloned().unwrap_or(Value::Undefined);
+                                let source = match &record {
+                                    Value::Object(rid) => match rt.object_get(*rid, "source") {
+                                        Value::String(s) => s.as_str().to_string(),
+                                        _ => {
+                                            let err = rt.alloc_object(Object::new_ordinary());
+                                            rt.object_set(err, "message".into(), Value::String(Rc::new(format!(
+                                                "Compartment importHook for '{}' (async) resolved without string `source` field",
+                                                spec_cap
+                                            ))));
+                                            crate::promise::reject_promise(rt, outer_p, Value::Object(err));
+                                            return Ok(Value::Undefined);
+                                        }
+                                    },
+                                    _ => {
+                                        let err = rt.alloc_object(Object::new_ordinary());
+                                        rt.object_set(err, "message".into(), Value::String(Rc::new(
+                                            "Compartment importHook (async) resolved with non-Object value".into(),
+                                        )));
+                                        crate::promise::reject_promise(rt, outer_p, Value::Object(err));
+                                        return Ok(Value::Undefined);
+                                    }
+                                };
+                                let url = format!(
+                                    "file://<compartment:{}:module:{}>",
+                                    realm_idx_cap, spec_cap
+                                );
+                                let prior_realm = rt.current_realm;
+                                rt.current_realm = realm_idx_cap;
+                                let prior_gt = rt.global_object;
+                                rt.global_object = Some(cp_gt_cap);
+                                let result = rt.evaluate_module(&source, &url);
+                                rt.global_object = prior_gt;
+                                rt.current_realm = prior_realm;
+                                match result {
+                                    Ok(ns) => crate::promise::resolve_promise(
+                                        rt,
+                                        outer_p,
+                                        Value::Object(ns),
+                                    ),
+                                    Err(e) => {
+                                        let err = rt.alloc_object(Object::new_ordinary());
+                                        rt.object_set(err, "message".into(), Value::String(Rc::new(format!("{:?}", e))));
+                                        crate::promise::reject_promise(rt, outer_p, Value::Object(err));
+                                    }
+                                }
+                                Ok(Value::Undefined)
+                            },
+                        );
+                        let on_resolve_id = rt.alloc_object(on_resolve_native);
+                        let on_reject_native = make_native_non_ctor(
+                            "compartmentImportReject",
+                            1,
+                            move |rt, args| {
+                                let err = args.first().cloned().unwrap_or(Value::Undefined);
+                                crate::promise::reject_promise(rt, outer_p, err);
+                                Ok(Value::Undefined)
+                            },
+                        );
+                        let on_reject_id = rt.alloc_object(on_reject_native);
+                        // Wire reactions on the hook promise. PromiseReaction
+                        // chains expect a downstream Promise; we don't observe
+                        // it, so allocate throwaway chains.
+                        let hook_status =
+                            match &rt.obj(record_id).internal_kind {
+                                crate::value::InternalKind::Promise(ps) => ps.status,
+                                _ => unreachable!(),
+                            };
+                        match hook_status {
+                            crate::value::PromiseStatus::Pending => {
+                                let chain_a = crate::promise::new_promise(rt);
+                                let chain_b = crate::promise::new_promise(rt);
+                                if let crate::value::InternalKind::Promise(ps) =
+                                    &mut rt.obj_mut(record_id).internal_kind
+                                {
+                                    ps.fulfill_reactions.push(crate::value::PromiseReaction {
+                                        handler: Some(Value::Object(on_resolve_id)),
+                                        chain: chain_a,
+                                    });
+                                    ps.reject_reactions.push(crate::value::PromiseReaction {
+                                        handler: Some(Value::Object(on_reject_id)),
+                                        chain: chain_b,
+                                    });
+                                }
+                            }
+                            crate::value::PromiseStatus::Fulfilled => {
+                                let val = match &rt.obj(record_id).internal_kind {
+                                    crate::value::InternalKind::Promise(ps) => ps.value.clone(),
+                                    _ => Value::Undefined,
+                                };
+                                let chain = crate::promise::new_promise(rt);
+                                crate::promise::enqueue_reaction(
+                                    rt,
+                                    Some(Value::Object(on_resolve_id)),
+                                    val,
+                                    chain,
+                                    false,
+                                );
+                            }
+                            crate::value::PromiseStatus::Rejected => {
+                                let val = match &rt.obj(record_id).internal_kind {
+                                    crate::value::InternalKind::Promise(ps) => ps.value.clone(),
+                                    _ => Value::Undefined,
+                                };
+                                let chain = crate::promise::new_promise(rt);
+                                crate::promise::enqueue_reaction(
+                                    rt,
+                                    Some(Value::Object(on_reject_id)),
+                                    val,
+                                    chain,
+                                    true,
+                                );
+                            }
+                        }
+                        return Ok(Value::Object(outer_p));
+                    }
+                    let source_field = rt.object_get(record_id, "source");
+                    match source_field {
+                        Value::String(s) => s.as_str().to_string(),
+                        _ => {
+                            let p = crate::promise::new_promise(rt);
+                            let err = rt.alloc_object(Object::new_ordinary());
+                            rt.object_set(
+                                err,
+                                "message".into(),
+                                Value::String(Rc::new(format!(
+                                    "Compartment importHook for '{}' returned record without a string `source` field",
+                                    spec
+                                ))),
+                            );
+                            crate::promise::reject_promise(rt, p, Value::Object(err));
+                            return Ok(Value::Object(p));
+                        }
+                    }
                 }
             };
             let url = format!("file://<compartment:{}:module:{}>", realm_idx, spec);
@@ -1425,22 +1635,42 @@ impl Runtime {
             Ok(Value::Object(p))
         });
 
-        // Compartment.prototype.globalThis as a data property reader.
-        // Returns the compartment's globalThis object slot. (Spec
-        // mandates a getter; the simpler data-property reader is
-        // observationally equivalent for the probe surface and avoids
-        // accessor-property substrate cost.)
-        register_intrinsic_method(self, proto, "globalThis", 0, |rt, _args| {
+        // CSC-EXT 3 (compartment-spec-conformance factor 2): install
+        // Compartment.prototype.globalThis as an accessor (getter) on the
+        // prototype, per TC39 Compartments proposal §1.4. The getter reads
+        // the instance's __compartment_globalthis internal slot. This
+        // replaces the CPF-EXT 1 per-instance data property — the prototype
+        // getter is the spec-correct shape; the per-instance approach was
+        // an intermediate that worked for surface usage but failed
+        // Object.getOwnPropertyDescriptor(Compartment.prototype, 'globalThis')
+        // shape checks (returned MISSING).
+        let gt_getter = make_native_with_length("get globalThis", 0, |rt, _args| {
             let this_id = match rt.current_this() {
                 Value::Object(id) => id,
-                _ => {
-                    return Err(RuntimeError::TypeError(
-                        "Compartment.prototype.globalThis: this is not a Compartment".into(),
-                    ))
-                }
+                _ => return Err(RuntimeError::TypeError(
+                    "Compartment.prototype.globalThis getter: receiver is not a Compartment".into(),
+                )),
             };
-            Ok(rt.object_get(this_id, "__compartment_globalthis"))
+            let v = rt.object_get(this_id, "__compartment_globalthis");
+            if matches!(v, Value::Undefined) {
+                return Err(RuntimeError::TypeError(
+                    "Compartment.prototype.globalThis getter: receiver is not a Compartment".into(),
+                ));
+            }
+            Ok(v)
         });
+        let gt_getter_id = self.alloc_object(gt_getter);
+        self.obj_mut(proto).dict_mut().insert(
+            crate::value::PropertyKey::String("globalThis".to_string()),
+            crate::value::PropertyDescriptor {
+                value: Value::Undefined,
+                writable: false,
+                enumerable: false,
+                configurable: true,
+                getter: Some(Value::Object(gt_getter_id)),
+                setter: None,
+            },
+        );
 
         // Save proto for the ctor closure.
         let proto_for_ctor = proto;
@@ -1449,6 +1679,8 @@ impl Runtime {
             let opts = args.first().cloned().unwrap_or(Value::Undefined);
             let mut endowments: std::collections::HashMap<String, Value> =
                 std::collections::HashMap::new();
+            // CSC-EXT 7 (factor 1): capture importHook from options.
+            let mut import_hook: Value = Value::Undefined;
             if let Value::Object(opts_id) = &opts {
                 let globals_v = rt.object_get(*opts_id, "globals");
                 if let Value::Object(globals_id) = globals_v {
@@ -1458,6 +1690,10 @@ impl Runtime {
                         let v = rt.object_get(globals_id, &k);
                         endowments.insert(k, v);
                     }
+                }
+                let hook_v = rt.object_get(*opts_id, "importHook");
+                if matches!(hook_v, Value::Object(_)) {
+                    import_hook = hook_v;
                 }
                 // `modules` field stored as a slot for CP-EXT 4 import().
             }
@@ -1479,27 +1715,113 @@ impl Runtime {
                 }
             }
             let realm_idx = rt.allocate_compartment_realm(endowments.clone());
-            // Per-compartment globalThis: a fresh object pre-populated with
-            // the endowments (so `globalThis.x === x` inside the compartment).
+            // CPF-EXT 2+3 (audit-fix): pre-populate the compartment's
+            // globalThis with the §17 standard-built-in intrinsic allowlist
+            // (cloned by-reference from the primordial globalThis) and the
+            // user-supplied endowments. This Object becomes the runtime's
+            // global_object whenever compartment.evaluate is active (CPF-EXT
+            // 4 routes self.global_object to point here). Engine-internal
+            // bilateral helpers (§VII.B __apply, __await, __destr_*) are NOT
+            // copied — they live in Runtime.engine_helpers, structurally
+            // separate, NOT JS-visible on globalThis.
             let gt = rt.alloc_object(Object::new_ordinary());
-            for (k, v) in &endowments {
-                rt.object_set(gt, k.clone(), v.clone());
+            if let Some(primordial_gt) = rt.global_object {
+                for name in Runtime::intrinsic_name_allowlist() {
+                    let v = rt.object_get(primordial_gt, name);
+                    if !matches!(v, Value::Undefined) {
+                        rt.obj_mut(gt).dict_mut().insert(
+                            crate::value::PropertyKey::String((*name).to_string()),
+                            crate::value::PropertyDescriptor {
+                                value: v,
+                                writable: true,
+                                enumerable: false,
+                                configurable: true,
+                                getter: None,
+                                setter: None,
+                            },
+                        );
+                    }
+                }
             }
+            // Endowments override allowlist entries (user-supplied capability
+            // surface beats spec-default per Doc 736 discretion).
+            // CSC-EXT 4 (compartment-spec-conformance factor 4): install
+            // endowments with the ECMA §17 standard-built-in descriptor
+            // {writable: true, enumerable: false, configurable: true} so
+            // their property-descriptor shape matches the intrinsic
+            // allowlist entries. The earlier `object_set` path installed
+            // them as enumerable, producing a divergent shape that the
+            // factor-4 probe surfaced. Spec rationale: globalThis's
+            // standard built-ins are non-enumerable; endowments are
+            // augmentations of the same surface and should share the
+            // shape.
+            for (k, v) in &endowments {
+                rt.obj_mut(gt).dict_mut().insert(
+                    crate::value::PropertyKey::String(k.clone()),
+                    crate::value::PropertyDescriptor {
+                        value: v.clone(),
+                        writable: true,
+                        enumerable: false,
+                        configurable: true,
+                        getter: None,
+                        setter: None,
+                    },
+                );
+            }
+            // globalThis self-reference: per §19.1.1, {w:t, e:f, c:t}.
+            rt.obj_mut(gt).dict_mut().insert(
+                crate::value::PropertyKey::String("globalThis".to_string()),
+                crate::value::PropertyDescriptor {
+                    value: Value::Object(gt),
+                    writable: true,
+                    enumerable: false,
+                    configurable: true,
+                    getter: None,
+                    setter: None,
+                },
+            );
             // The Compartment instance.
             let inst_obj = Object::new_ordinary();
             let inst = rt.alloc_object(inst_obj);
             rt.obj_mut(inst).proto = Some(proto_for_ctor);
-            rt.object_set(
-                inst,
-                "__compartment_realm".into(),
-                Value::Number(realm_idx as f64),
+            // CSC-EXT 1 (compartment-spec-conformance factor 3): install
+            // the engine-internal compartment slots as non-enumerable +
+            // non-configurable own properties. They are spec-internal slots
+            // in TC39 Compartments parlance; cruftless represents them as
+            // String-keyed own properties for storage simplicity, but they
+            // MUST NOT appear in Object.keys / for-in / JSON.stringify. The
+            // user-visible `globalThis` property is also installed
+            // non-enumerable here (intermediate state until CSC-EXT 3
+            // moves it to a Compartment.prototype getter).
+            let internal_slot_descriptor = |value: Value| crate::value::PropertyDescriptor {
+                value,
+                writable: true,
+                enumerable: false,
+                configurable: false,
+                getter: None,
+                setter: None,
+            };
+            rt.obj_mut(inst).dict_mut().insert(
+                crate::value::PropertyKey::String("__compartment_realm".to_string()),
+                internal_slot_descriptor(Value::Number(realm_idx as f64)),
             );
-            rt.object_set(inst, "__compartment_globalthis".into(), Value::Object(gt));
-            rt.object_set(
-                inst,
-                "__compartment_modules".into(),
-                Value::Object(modules_slot),
+            rt.obj_mut(inst).dict_mut().insert(
+                crate::value::PropertyKey::String("__compartment_globalthis".to_string()),
+                internal_slot_descriptor(Value::Object(gt)),
             );
+            rt.obj_mut(inst).dict_mut().insert(
+                crate::value::PropertyKey::String("__compartment_modules".to_string()),
+                internal_slot_descriptor(Value::Object(modules_slot)),
+            );
+            // CSC-EXT 7 (factor 1): importHook slot. Undefined when none.
+            rt.obj_mut(inst).dict_mut().insert(
+                crate::value::PropertyKey::String("__compartment_importhook".to_string()),
+                internal_slot_descriptor(import_hook),
+            );
+            // CSC-EXT 3: globalThis is now installed as a getter on
+            // Compartment.prototype (see install_compartment body below);
+            // no per-instance data property here. The getter reads
+            // `this.__compartment_globalthis` on each access.
             Ok(Value::Object(inst))
         });
         let ctor = self.alloc_object(ctor_obj);
@@ -1507,8 +1829,7 @@ impl Runtime {
             .set_own_frozen("prototype".into(), Value::Object(proto));
         self.obj_mut(proto)
             .set_own_internal("constructor".into(), Value::Object(ctor));
-        self.globals
-            .insert("Compartment".to_string(), Value::Object(ctor));
+        self.define_global_property("Compartment", Value::Object(ctor));
     }
 
     fn install_destructure_iter_helpers(&mut self) {
@@ -1675,6 +1996,9 @@ impl Runtime {
     }
 
     fn install_globals(&mut self) {
+        // GBSU-EXT 7f.4: `global_object` is now eager-allocated in
+        // Runtime::new; the earlier rung-7a late-allocation here is no
+        // longer required.
         // Tier-Ω.5.P27.E1.global-hasOwnProperty: webpack-bundled CJS
         // packages reach for `hasOwnProperty` as a global identifier
         // (`hasOwnProperty.call(obj, key)`) rather than going through
@@ -1812,11 +2136,7 @@ impl Runtime {
             };
             let body_trim = body.trim();
             if body_trim == "return this" || body_trim == "return this;" {
-                let global_obj = rt
-                    .globals
-                    .get("globalThis")
-                    .cloned()
-                    .unwrap_or(Value::Undefined);
+                let global_obj = rt.global_get("globalThis");
                 let f_obj = make_native("<Function('return this')>", move |_rt, _args| {
                     Ok(global_obj.clone())
                 });
@@ -1858,15 +2178,13 @@ impl Runtime {
             );
             match rt.evaluate_module(&source, &url) {
                 Ok(_ns) => {
-                    let result = rt
-                        .globals
-                        .get(&stash_key)
-                        .cloned()
-                        .unwrap_or(Value::Undefined);
+                    // GBSU-EXT 4b: read via canonical surface (Object first).
+                    let result = rt.global_get(&stash_key);
                     // Clean up the stash key — it was a side-channel,
                     // not a JS-visible global.
-                    rt.globals.remove(&stash_key);
-                    Ok(result)
+                    if let Some(gt) = rt.global_object {
+                        rt.obj_mut(gt).remove_str(&stash_key);
+                    }                    Ok(result)
                 }
                 Err(e) => Err(e),
             }
@@ -2039,13 +2357,9 @@ impl Runtime {
             // which a number of test262 fixtures (S15.3.4.3_A3_T1.js et al.)
             // depend on when they read `this[\"field\"]` after an apply()
             // assigned to globalThis inside a sloppy function.
-            let saved_this = std::mem::replace(
-                &mut rt.current_this,
-                rt.globals
-                    .get("globalThis")
-                    .cloned()
-                    .unwrap_or(Value::Undefined),
-            );
+            // GBSU-EXT 7f.4: canonical lookup via unified globalThis.
+            let gt_val = rt.global_get("globalThis");
+            let saved_this = std::mem::replace(&mut rt.current_this, gt_val);
             // ES-EXT 1 (eval-scope-binding-chain): route indirect-eval
             // through evaluate_script (Script semantics). Currently
             // evaluate_script delegates to evaluate_module; ES-EXT 2/3
@@ -2054,13 +2368,11 @@ impl Runtime {
             let expr_ok = rt.evaluate_script(&expr_source, &url).is_ok();
             if expr_ok {
                 rt.current_this = saved_this;
-                let result = rt
-                    .globals
-                    .get(&stash_key)
-                    .cloned()
-                    .unwrap_or(Value::Undefined);
-                rt.globals.remove(&stash_key);
-                return Ok(result);
+                // GBSU-EXT 4b: read via canonical surface (Object first).
+                let result = rt.global_get(&stash_key);
+                if let Some(gt) = rt.global_object {
+                    rt.obj_mut(gt).remove_str(&stash_key);
+                }                return Ok(result);
             }
             // Statement form: run as-is, no captured result.
             let stmt_url = format!("file://<eval:{}:stmt>", n);
@@ -2083,7 +2395,8 @@ impl Runtime {
         // it here lets `Function.prototype.toString.call(f)` (object-
         // hash, immer-style native-function detection) resolve.
         if let Some(fp) = self.function_prototype {
-            if let Some(Value::Object(fn_global)) = self.globals.get("Function").cloned() {
+            // GBSU-EXT 7b: canonical lookup via unified globalThis.
+            if let Value::Object(fn_global) = self.global_get("Function") {
                 self.obj_mut(fn_global)
                     .set_own_frozen("prototype".into(), Value::Object(fp));
                 self.obj_mut(fp)
@@ -2277,7 +2590,7 @@ impl Runtime {
             "@@toStringTag".into(),
             Value::String(Rc::new("Math".into())),
         );
-        self.globals.insert("Math".into(), Value::Object(math));
+        self.define_global_property("Math", Value::Object(math));
     }
 
     fn install_temporal(&mut self) {
@@ -7467,7 +7780,7 @@ impl Runtime {
             };
             Ok(make_plain_date(rt, pd_for_pym_conv, y, m, day))
         });
-        self.globals.insert("Temporal".into(), Value::Object(temporal));
+        self.define_global_property("Temporal", Value::Object(temporal));
     }
 
     fn install_json(&mut self) {
@@ -7483,7 +7796,7 @@ impl Runtime {
             "@@toStringTag".into(),
             Value::String(Rc::new("JSON".into())),
         );
-        self.globals.insert("JSON".into(), Value::Object(json));
+        self.define_global_property("JSON", Value::Object(json));
     }
 
     fn install_test_record(&mut self) {
@@ -7492,7 +7805,8 @@ impl Runtime {
         // test harness to verify side effects from microtask reactions.
         register_global_fn(self, "__record", |rt, args| {
             let v = args.first().cloned().unwrap_or(Value::Undefined);
-            rt.globals.insert("__last_recorded".into(), v);
+            // GBSU-EXT 7f.3: canonical write via unified globalThis.
+            rt.define_global_property("__last_recorded", v);
             Ok(Value::Undefined)
         });
     }
@@ -8030,8 +8344,7 @@ impl Runtime {
             self.obj_mut(proto)
                 .set_own_internal("constructor".into(), Value::Object(obj_ctor));
         }
-        self.globals
-            .insert("Object".into(), Value::Object(obj_ctor));
+        self.define_global_property("Object", Value::Object(obj_ctor));
     }
 
     fn install_array_static(&mut self) {
@@ -8124,7 +8437,7 @@ impl Runtime {
             crate::value::PropertyKey::String("@@species".into()),
             species_desc,
         );
-        self.globals.insert("Array".into(), Value::Object(arr_ctor));
+        self.define_global_property("Array", Value::Object(arr_ctor));
     }
 
     /// Tier-Ω.5.s: Number static surface — constants + numeric predicates.
@@ -8154,8 +8467,9 @@ impl Runtime {
                 // EXT 83: tag [[NumberData]] internal slot so
                 // Object.prototype.toString reports "[object Number]".
                 obj.internal_kind = crate::value::InternalKind::NumberWrapper(Value::Number(n));
-                let proto = match rt.globals.get("Number").cloned() {
-                    Some(Value::Object(id)) => match rt.object_get(id, "prototype") {
+                // GBSU-EXT 4b: canonical lookup via unified globalThis.
+                let proto = match rt.global_get("Number") {
+                    Value::Object(id) => match rt.object_get(id, "prototype") {
                         Value::Object(p) => Some(p),
                         _ => None,
                     },
@@ -8196,10 +8510,9 @@ impl Runtime {
         // `for (var i=0, e=Infinity; i<e; ...)`; without the global,
         // i<undefined is false, the loop never runs, every numeric literal
         // fails to tokenize.
-        self.globals
-            .insert("Infinity".into(), Value::Number(f64::INFINITY));
-        self.globals.insert("NaN".into(), Value::Number(f64::NAN));
-        self.globals.insert("undefined".into(), Value::Undefined);
+        self.define_global_property("Infinity", Value::Number(f64::INFINITY));
+        self.define_global_property("NaN", Value::Number(f64::NAN));
+        self.define_global_property("undefined", Value::Undefined);
         // Predicates. Note: Number.isX (capital-N) differs from global
         // isX in NOT coercing — typeof check first, false otherwise.
         // Ω.5.P63.E8: Number.{isInteger, isFinite, isNaN, isSafeInteger}
@@ -8217,10 +8530,13 @@ impl Runtime {
             crate::generated::number_is_safe_integer(rt, Value::Undefined, args)
         });
         // Alias the global parseInt / parseFloat onto Number.
-        if let Some(pi) = self.globals.get("parseInt").cloned() {
+        // GBSU-EXT 7b: canonical lookup via unified globalThis.
+        let pi = self.global_get("parseInt");
+        if !matches!(pi, Value::Undefined) {
             self.object_set(num, "parseInt".into(), pi);
         }
-        if let Some(pf) = self.globals.get("parseFloat").cloned() {
+        let pf = self.global_get("parseFloat");
+        if !matches!(pf, Value::Undefined) {
             self.object_set(num, "parseFloat".into(), pf);
         }
         if let Some(proto) = self.number_prototype {
@@ -8236,7 +8552,7 @@ impl Runtime {
             self.obj_mut(proto)
                 .set_own_internal("__primitive__".into(), Value::Number(0.0));
         }
-        self.globals.insert("Number".into(), Value::Object(num));
+        self.define_global_property("Number", Value::Object(num));
         self.install_string_global();
         self.install_boolean_global();
     }
@@ -8278,8 +8594,9 @@ impl Runtime {
                     obj.set_own(i.to_string(), Value::String(Rc::new(ch.to_string())));
                 }
                 obj.set_own_frozen("length".into(), Value::Number(s_rc.chars().count() as f64));
-                let proto = match rt.globals.get("String").cloned() {
-                    Some(Value::Object(id)) => match rt.object_get(id, "prototype") {
+                // GBSU-EXT 4b: canonical lookup via unified globalThis.
+                let proto = match rt.global_get("String") {
+                    Value::Object(id) => match rt.object_get(id, "prototype") {
                         Value::Object(p) => Some(p),
                         _ => None,
                     },
@@ -8327,7 +8644,7 @@ impl Runtime {
                 Value::String(Rc::new(String::new())),
             );
         }
-        self.globals.insert("String".into(), Value::Object(str_id));
+        self.define_global_property("String", Value::Object(str_id));
     }
 
     /// Tier-Ω.5.z: `Boolean(x)` callable — coerces to boolean per ToBoolean.
@@ -8337,7 +8654,7 @@ impl Runtime {
             Ok(Value::Boolean(abstract_ops::to_boolean(&v)))
         });
         let b_id = self.alloc_object(b_obj);
-        self.globals.insert("Boolean".into(), Value::Object(b_id));
+        self.define_global_property("Boolean", Value::Object(b_id));
         // Tier-Ω.5.pp: Proxy as a stub constructor. v1 deviation: the
         // proxy doesn't actually intercept operations; it's a transparent
         // pass-through that returns the target as-is. This lets `new
@@ -8365,7 +8682,7 @@ impl Runtime {
             o.set_own("revoke".into(), Value::Object(revoke_id));
             Ok(Value::Object(rt.alloc_object(o)))
         });
-        self.globals.insert("Proxy".into(), Value::Object(proxy_id));
+        self.define_global_property("Proxy", Value::Object(proxy_id));
 
         // Tier-Ω.5.ccccc: minimal WHATWG URL global. Parses
         // scheme://[user:pass@]host[:port]/path?query#fragment and exposes
@@ -8505,7 +8822,7 @@ impl Runtime {
                 s.contains("://") || s.starts_with("file:") || s.starts_with("data:"),
             ))
         });
-        self.globals.insert("URL".into(), Value::Object(url_id));
+        self.define_global_property("URL", Value::Object(url_id));
 
         // Tier-Ω.5.AAAAAAA + diff-prod Rung-19: AbortController + AbortSignal
         // globals per WHATWG DOM §3.1. Signal instances carry an internal
@@ -8748,8 +9065,7 @@ impl Runtime {
             Ok(Value::Object(composite))
         });
 
-        self.globals
-            .insert("AbortSignal".into(), Value::Object(abort_signal_id));
+        self.define_global_property("AbortSignal", Value::Object(abort_signal_id));
 
         let abort_controller_proto = self.alloc_object(Object::new_ordinary());
         let asp_for_ctor = abort_signal_proto;
@@ -8806,8 +9122,7 @@ impl Runtime {
             }
             Ok(Value::Undefined)
         });
-        self.globals
-            .insert("AbortController".into(), Value::Object(abort_controller_id));
+        self.define_global_property("AbortController", Value::Object(abort_controller_id));
 
         // Tier-Ω.5.xxxxxx: URLSearchParams as a callable global Function with
         // .prototype. node-fetch's headers.js does `class Headers extends
@@ -8828,8 +9143,7 @@ impl Runtime {
             .set_own_frozen("prototype".into(), Value::Object(usp_proto));
         self.obj_mut(usp_proto)
             .set_own_internal("constructor".into(), Value::Object(usp_id));
-        self.globals
-            .insert("URLSearchParams".into(), Value::Object(usp_id));
+        self.define_global_property("URLSearchParams", Value::Object(usp_id));
 
         // Ω.5.P49.E3: Fetch-API constructor stubs as callable globals.
         // playwright-core's coreBundle aliases the global `Request` as
@@ -8877,7 +9191,7 @@ impl Runtime {
                 .set_own_frozen("prototype".into(), Value::Object(proto));
             self.obj_mut(proto)
                 .set_own_internal("constructor".into(), Value::Object(id));
-            self.globals.insert((*name).into(), Value::Object(id));
+            self.define_global_property(name, Value::Object(id));
         }
 
         // Ω.5.P53.E4: Headers ctor with populated prototype. ky and many
@@ -9065,8 +9379,7 @@ impl Runtime {
             }
             Ok(Value::Undefined)
         });
-        self.globals
-            .insert("Headers".into(), Value::Object(headers_ctor_id));
+        self.define_global_property("Headers", Value::Object(headers_ctor_id));
 
         // Ω.5.P53.E4: Request ctor populates .headers from opts.headers, plus
         // .url, .method, .body. Empty-instance pre-fix tripped consumers that
@@ -9099,8 +9412,9 @@ impl Runtime {
             rt.object_set(id, "method".into(), Value::String(Rc::new(method_s)));
             rt.object_set(id, "body".into(), body);
             // Synthesize a Headers via the global Headers ctor.
-            let h_inst = match rt.globals.get("Headers").cloned() {
-                Some(Value::Object(_)) => {
+            // GBSU-EXT 4b: canonical lookup via unified globalThis.
+            let h_inst = match rt.global_get("Headers") {
+                Value::Object(_) => {
                     // Inline: build a fresh Headers, fold headers_init.
                     let mut h_obj = Object::new_ordinary();
                     h_obj.proto = Some(headers_proto_for_closure);
@@ -9144,8 +9458,7 @@ impl Runtime {
             .set_own_frozen("prototype".into(), Value::Object(request_proto));
         self.obj_mut(request_proto)
             .set_own_internal("constructor".into(), Value::Object(request_ctor_id));
-        self.globals
-            .insert("Request".into(), Value::Object(request_ctor_id));
+        self.define_global_property("Request", Value::Object(request_ctor_id));
         // fetch() as a callable global that returns a rejected-Promise-shaped
         // value (host-v2 lacks real Promise scheduling for fetch; the call
         // surface exists for module-init read-shape probes).
@@ -9155,7 +9468,7 @@ impl Runtime {
             ))
         });
         let fetch_id = self.alloc_object(fetch_obj);
-        self.globals.insert("fetch".into(), Value::Object(fetch_id));
+        self.define_global_property("fetch", Value::Object(fetch_id));
 
         // Tier-Ω.5.ll: BigInt as callable global. zod uses `BigInt(x)`.
         // Tier-Ω.5.CCCCCCCC: backed by real JsBigInt arithmetic substrate.
@@ -9205,7 +9518,7 @@ impl Runtime {
         self.obj_mut(bi_id)
             .set_own_frozen("prototype".into(), Value::Object(bi_proto));
         self.bigint_prototype = Some(bi_proto);
-        self.globals.insert("BigInt".into(), Value::Object(bi_id));
+        self.define_global_property("BigInt", Value::Object(bi_id));
         // Boolean ctor with prototype.valueOf.
         let bool_obj = make_native("Boolean", |rt, args| {
             // Ω.5.P62.E1: `new Boolean(v)` per ECMA §20.3.1 produces a
@@ -9218,8 +9531,9 @@ impl Runtime {
                 obj.set_own_internal("__primitive__".into(), Value::Boolean(b));
                 // EXT 83: tag [[BooleanData]] for Object.prototype.toString brand.
                 obj.internal_kind = crate::value::InternalKind::BooleanWrapper(Value::Boolean(b));
-                let proto = match rt.globals.get("Boolean").cloned() {
-                    Some(Value::Object(id)) => match rt.object_get(id, "prototype") {
+                // GBSU-EXT 4b: canonical lookup via unified globalThis.
+                let proto = match rt.global_get("Boolean") {
+                    Value::Object(id) => match rt.object_get(id, "prototype") {
                         Value::Object(p) => Some(p),
                         _ => None,
                     },
@@ -9253,8 +9567,7 @@ impl Runtime {
         // [[BooleanData]] = false per §20.3.4.
         self.obj_mut(bool_proto)
             .set_own_internal("__primitive__".into(), Value::Boolean(false));
-        self.globals
-            .insert("Boolean".into(), Value::Object(bool_id));
+        self.define_global_property("Boolean", Value::Object(bool_id));
         // Tier-Ω.5.tttttt: EventTarget + Event + CustomEvent global stubs
         // (chai / web-platform-ish libs). v1: ordinary objects with the
         // standard surface; no actual dispatch.
@@ -9281,8 +9594,7 @@ impl Runtime {
         });
         self.obj_mut(et_id)
             .set_own_frozen("prototype".into(), Value::Object(et_proto));
-        self.globals
-            .insert("EventTarget".into(), Value::Object(et_id));
+        self.define_global_property("EventTarget", Value::Object(et_id));
         let ev = make_native("Event", |rt, args| {
             let mut o = Object::new_ordinary();
             let ty = match args.first() {
@@ -9299,7 +9611,7 @@ impl Runtime {
         let ev_proto = self.alloc_object(Object::new_ordinary());
         self.obj_mut(ev_id)
             .set_own_frozen("prototype".into(), Value::Object(ev_proto));
-        self.globals.insert("Event".into(), Value::Object(ev_id));
+        self.define_global_property("Event", Value::Object(ev_id));
         let ce = make_native("CustomEvent", |rt, args| {
             let mut o = Object::new_ordinary();
             let ty = match args.first() {
@@ -9318,8 +9630,7 @@ impl Runtime {
         let ce_proto = self.alloc_object(Object::new_ordinary());
         self.obj_mut(ce_id)
             .set_own_frozen("prototype".into(), Value::Object(ce_proto));
-        self.globals
-            .insert("CustomEvent".into(), Value::Object(ce_id));
+        self.define_global_property("CustomEvent", Value::Object(ce_id));
         // Ω.5.P58.E8: MessageEvent, ErrorEvent, CloseEvent, ProgressEvent,
         // BeforeUnloadEvent stubs. @mswjs/data does
         // `class X extends MessageEvent` at module-init; many web-ish
@@ -9355,8 +9666,7 @@ impl Runtime {
             .set_own_frozen("prototype".into(), Value::Object(bc_proto));
         self.obj_mut(bc_proto)
             .set_own_internal("constructor".into(), Value::Object(bc_id));
-        self.globals
-            .insert("BroadcastChannel".into(), Value::Object(bc_id));
+        self.define_global_property("BroadcastChannel", Value::Object(bc_id));
         for name in &[
             "MessageEvent",
             "ErrorEvent",
@@ -9385,7 +9695,7 @@ impl Runtime {
                 .set_own_frozen("prototype".into(), Value::Object(nm_proto));
             self.obj_mut(nm_proto)
                 .set_own_internal("constructor".into(), Value::Object(nm_id));
-            self.globals.insert((*name).into(), Value::Object(nm_id));
+            self.define_global_property(name, Value::Object(nm_id));
         }
         self.install_error_globals();
         self.install_reflect();
@@ -9481,7 +9791,7 @@ impl Runtime {
             result.set_own("revoke".into(), Value::Object(revoke_id));
             Ok(Value::Object(rt.alloc_object(result)))
         });
-        self.globals.insert("Proxy".into(), Value::Object(pid));
+        self.define_global_property("Proxy", Value::Object(pid));
     }
 
     /// Tier-Ω.5.dd: Map / Set / WeakMap / WeakSet as real implementations.
@@ -9768,8 +10078,7 @@ impl Runtime {
                 .set_own_frozen("prototype".into(), Value::Object(proto));
             self.obj_mut(proto)
                 .set_own_internal("constructor".into(), Value::Object(ctor));
-            self.globals
-                .insert((*collection).to_string(), Value::Object(ctor));
+            self.define_global_property(collection, Value::Object(ctor));
         }
         for collection in &["Set", "WeakSet"] {
             let proto = self.alloc_object(Object::new_ordinary());
@@ -10008,8 +10317,7 @@ impl Runtime {
                 .set_own_frozen("prototype".into(), Value::Object(proto));
             self.obj_mut(proto)
                 .set_own_internal("constructor".into(), Value::Object(ctor));
-            self.globals
-                .insert((*collection).to_string(), Value::Object(ctor));
+            self.define_global_property(collection, Value::Object(ctor));
         }
     }
 
@@ -10310,7 +10618,7 @@ impl Runtime {
             .set_own_frozen("prototype".into(), Value::Object(proto));
         self.obj_mut(proto)
             .set_own_internal("constructor".into(), Value::Object(ctor));
-        self.globals.insert("Date".into(), Value::Object(ctor));
+        self.define_global_property("Date", Value::Object(ctor));
     }
 
     /// Tier-Ω.5.dd: Uint8Array / ArrayBuffer / DataView / Int8Array etc.
@@ -11127,8 +11435,7 @@ impl Runtime {
         let ab_id = self.alloc_object(array_buffer_ctor);
         self.obj_mut(ab_id)
             .set_own_frozen("prototype".into(), Value::Object(array_buffer_proto));
-        self.globals
-            .insert("ArrayBuffer".into(), Value::Object(ab_id));
+        self.define_global_property("ArrayBuffer", Value::Object(ab_id));
 
         for name in &[
             "SharedArrayBuffer",
@@ -11273,7 +11580,7 @@ impl Runtime {
             });
             self.obj_mut(id)
                 .set_own_frozen("prototype".into(), Value::Object(ta_proto));
-            self.globals.insert((*name).to_string(), Value::Object(id));
+            self.define_global_property(name, Value::Object(id));
         }
     }
 
@@ -11303,7 +11610,7 @@ impl Runtime {
             .set_own_frozen("prototype".into(), Value::Object(weakref_proto));
         self.obj_mut(weakref_proto)
             .set_own_internal("constructor".into(), Value::Object(wr));
-        self.globals.insert("WeakRef".into(), Value::Object(wr));
+        self.define_global_property("WeakRef", Value::Object(wr));
 
         let fr_proto = self.alloc_object(Object::new_ordinary());
         register_intrinsic_method(self, fr_proto, "register", 1, |_rt, _args| {
@@ -11323,8 +11630,7 @@ impl Runtime {
             .set_own_frozen("prototype".into(), Value::Object(fr_proto));
         self.obj_mut(fr_proto)
             .set_own_internal("constructor".into(), Value::Object(fr));
-        self.globals
-            .insert("FinalizationRegistry".into(), Value::Object(fr));
+        self.define_global_property("FinalizationRegistry", Value::Object(fr));
     }
 
     /// Tier-Ω.5.cc: Reflect global — most methods route to existing Object
@@ -11648,7 +11954,7 @@ impl Runtime {
             }
             crate::generated::reflect_prevent_extensions(rt, Value::Undefined, args)
         });
-        self.globals.insert("Reflect".into(), Value::Object(r));
+        self.define_global_property("Reflect", Value::Object(r));
     }
 
     /// Tier-Ω.5.z: Error + TypeError + RangeError + SyntaxError + ReferenceError
@@ -11778,17 +12084,11 @@ impl Runtime {
                     //     obj.stack[0].getFileName();
                     // Build a 1-element framesArray with a stub CallSite that
                     // answers getFileName/getLineNumber/etc with placeholders.
-                    let prepare = rt
-                        .globals
-                        .get("Error")
-                        .and_then(|v| {
-                            if let Value::Object(eid) = v {
-                                Some(*eid)
-                            } else {
-                                None
-                            }
-                        })
-                        .map(|eid| rt.object_get(eid, "prepareStackTrace"));
+                    // GBSU-EXT 7f.4: canonical lookup via unified globalThis.
+                    let prepare = match rt.global_get("Error") {
+                        Value::Object(eid) => Some(rt.object_get(eid, "prepareStackTrace")),
+                        _ => None,
+                    };
                     if let Some(Value::Object(_)) = &prepare {
                         let call_site = rt.alloc_object(crate::value::Object::new_ordinary());
                         register_method(rt, call_site, "getFileName", |_rt, _a| {
@@ -11842,15 +12142,15 @@ impl Runtime {
             // Error.stackTraceLimit — Node default is 10; consumers occasionally
             // probe `Error.stackTraceLimit = Infinity` then set back.
             self.object_set(ctor_id, "stackTraceLimit".into(), Value::Number(10.0));
-            self.globals
-                .insert((*name).to_string(), Value::Object(ctor_id));
+            self.define_global_property(name, Value::Object(ctor_id));
         }
         // Chain Error-subclass prototypes through Error.prototype per
         // ECMA-262 §20.5.6 (each NativeError.prototype's [[Prototype]]
         // is %Error.prototype%). Without this, `e instanceof Error` is
         // false even when e is a TypeError / RangeError / etc.
-        let err_proto_id = match self.globals.get("Error").cloned() {
-            Some(Value::Object(eid)) => match self.object_get(eid, "prototype") {
+        // GBSU-EXT 7b: canonical lookup via unified globalThis.
+        let err_proto_id = match self.global_get("Error") {
+            Value::Object(eid) => match self.object_get(eid, "prototype") {
                 Value::Object(pid) => Some(pid),
                 _ => None,
             },
@@ -11866,7 +12166,8 @@ impl Runtime {
                 "EvalError",
                 "AggregateError",
             ] {
-                if let Some(Value::Object(sid)) = self.globals.get(*sub_name).cloned() {
+                // GBSU-EXT 7b: canonical lookup via unified globalThis.
+                if let Value::Object(sid) = self.global_get(sub_name) {
                     if let Value::Object(spid) = self.object_get(sid, "prototype") {
                         self.obj_mut(spid).proto = Some(epid);
                     }
@@ -12039,7 +12340,7 @@ impl Runtime {
         // Symbol.prototype.constructor = Symbol.
         self.obj_mut(sym_proto)
             .set_own_internal("constructor".into(), Value::Object(sym));
-        self.globals.insert("Symbol".into(), Value::Object(sym));
+        self.define_global_property("Symbol", Value::Object(sym));
         self.symbol_prototype = Some(sym_proto);
     }
 
@@ -12065,8 +12366,7 @@ impl Runtime {
             eprintln!("{}", out);
             Ok(Value::Undefined)
         });
-        self.globals
-            .insert("console".into(), Value::Object(console));
+        self.define_global_property("console", Value::Object(console));
     }
 
     // diff-prod Rung-19 continuation: Iterator Helpers (ES2025) +
@@ -12395,15 +12695,14 @@ impl Runtime {
             let items = drain_iterator(rt, Value::Object(inner))?;
             Ok(Value::Object(make_array_iterator(rt, ip_for_from, items)))
         });
-        self.globals
-            .insert("Iterator".into(), Value::Object(iter_id));
+        self.define_global_property("Iterator", Value::Object(iter_id));
 
         // ── Map.groupBy ───────────────────────────────────────────────────
         // §24.1.2.2: like Object.groupBy but returns a Map. Iterate items,
         // call callback for each, accumulate into a Map keyed by callback
         // return (SameValueZero — but our Map uses ToString-keys, so v1
         // matches Object.groupBy's string-key behavior with the same caveat).
-        if let Some(Value::Object(map_ctor)) = self.globals.get("Map").cloned() {
+        if let Value::Object(map_ctor) = self.global_get("Map") {
             let mc = map_ctor;
             register_intrinsic_method(self, map_ctor, "groupBy", 2, move |rt, args| {
                 let map_ctor = mc;
@@ -12481,7 +12780,7 @@ impl Runtime {
         // wraps return value in a resolved promise; catches sync throws into
         // a rejected promise. Async returns flow through promise_resolve_via
         // which handles thenable unwrapping.
-        if let Some(Value::Object(promise_ctor)) = self.globals.get("Promise").cloned() {
+        if let Value::Object(promise_ctor) = self.global_get("Promise") {
             register_intrinsic_method(self, promise_ctor, "try", 1, |rt, args| {
                 let fn_v = args.first().cloned().unwrap_or(Value::Undefined);
                 if !rt.is_callable(&fn_v) {
@@ -12504,7 +12803,7 @@ impl Runtime {
         // %Error.prototype% chain; the proto-chain walk is the durable
         // discriminator. Plain {message: "x"} objects without the chain
         // return false per spec.
-        if let Some(Value::Object(error_ctor)) = self.globals.get("Error").cloned() {
+        if let Value::Object(error_ctor) = self.global_get("Error") {
             let err_proto_v = self.object_get(error_ctor, "prototype");
             let err_proto = if let Value::Object(id) = err_proto_v {
                 Some(id)
@@ -12722,8 +13021,9 @@ pub(crate) fn make_error_instance(
     ctor_name: &str,
     message: &str,
 ) -> Option<rusty_js_gc::ObjectId> {
-    let ctor_id = match rt.globals.get(ctor_name).cloned() {
-        Some(Value::Object(id)) => id,
+    // GBSU-EXT 4b: canonical lookup via unified globalThis.
+    let ctor_id = match rt.global_get(ctor_name) {
+        Value::Object(id) => id,
         _ => return None,
     };
     let proto = match rt.object_get(ctor_id, "prototype") {
@@ -12837,7 +13137,7 @@ fn structured_clone_walk(
             }
             // Special-case Map.
             if !matches!(rt.object_get(*oid, "__map_data"), Value::Undefined) {
-                let dst_id = if let Some(Value::Object(ctor)) = rt.globals.get("Map").cloned() {
+                let dst_id = if let Value::Object(ctor) = rt.global_get("Map") {
                     let proto = match rt.object_get(ctor, "prototype") {
                         Value::Object(pid) => Some(pid),
                         _ => None,
@@ -12878,7 +13178,7 @@ fn structured_clone_walk(
             }
             // Special-case Set.
             if !matches!(rt.object_get(*oid, "__set_data"), Value::Undefined) {
-                let dst_id = if let Some(Value::Object(ctor)) = rt.globals.get("Set").cloned() {
+                let dst_id = if let Value::Object(ctor) = rt.global_get("Set") {
                     let proto = match rt.object_get(ctor, "prototype") {
                         Value::Object(pid) => Some(pid),
                         _ => None,
@@ -12935,7 +13235,7 @@ fn structured_clone_walk(
             if let InternalKind::RegExp(re) = &rt.obj(*oid).internal_kind {
                 let src = Value::String(re.source.clone());
                 let flags = Value::String(re.flags.clone());
-                if let Some(Value::Object(ctor)) = rt.globals.get("RegExp").cloned() {
+                if let Value::Object(ctor) = rt.global_get("RegExp") {
                     let prev = rt.pending_new_target.take();
                     rt.pending_new_target = Some(Value::Object(ctor));
                     let r =
@@ -13517,13 +13817,17 @@ pub(crate) fn register_intrinsic_method<F>(
 
 /// Register a global as a constructor-callable native. Use for §20.2.1
 /// Function and any other intrinsic that the spec marks `[[Construct]]`.
+fn define_global_property(rt: &mut Runtime, name: &str, value: Value) {
+    rt.define_global_property(name, value);
+}
+
 fn register_global_ctor<F>(rt: &mut Runtime, name: &str, f: F)
 where
     F: Fn(&mut Runtime, &[Value]) -> Result<Value, RuntimeError> + 'static,
 {
     let fn_obj = make_native(name, f);
     let fn_id = rt.alloc_object(fn_obj);
-    rt.globals.insert(name.into(), Value::Object(fn_id));
+    define_global_property(rt, name, Value::Object(fn_id));
 }
 
 fn register_global_fn<F>(rt: &mut Runtime, name: &str, f: F)
@@ -13536,7 +13840,7 @@ where
     // throws TypeError per spec.
     let fn_obj = make_native_non_ctor(name, 1, f);
     let fn_id = rt.alloc_object(fn_obj);
-    rt.globals.insert(name.into(), Value::Object(fn_id));
+    define_global_property(rt, name, Value::Object(fn_id));
 }
 
 /// Ω.5.P55.E1 (Doc 729 §VII.B): register a compiler-emitted lowering

@@ -105,7 +105,7 @@ A name whose prefix and install helper disagree (e.g., `__name` registered via `
 Two gates the engagement holds at every substrate move:
 
 - **diff-prod**: 42/42 PASS at the runtime-semantics probe. Fixtures at `scripts/diff-prod/fixtures/`; runner at `scripts/diff-prod/run-all.sh`. Each fixture runs under both `cruft` and `bun` and diffs stdout byte-for-byte. Failures categorized per Doc 730 §XVI (four-case engine-diff oracle).
-- **test262-sample**: 77.6% runnable pass rate (5,594 PASS / 1,611 FAIL / 384 SKIP on the curated representative sample). Runner at `scripts/test262-sample/run-sample.sh`; sample paths at `scripts/test262-sample/sample-paths.txt` target the surface real Node packages exercise.
+- **test262-sample**: 86.6% runnable pass rate (6,296 PASS / 978 FAIL / 397 SKIP on the curated representative sample, locked 2026-05-27 end-of-day post the engine-tier-substrate-readiness + GBSU + ESBC v2 + compartment-primitive-audit-fix + compartment-spec-conformance arc closures). Runner at `scripts/test262-sample/run-sample.sh`; sample paths at `scripts/test262-sample/sample-paths.txt` target the surface real Node packages exercise. Prior-baseline reference: 77.6% (5,594 PASS) at engagement-mid; the +9.0pp delta is attributable to the unified-binding-surface arc (GBSU) + indirect-eval Script-mode closure (ESBC v2).
 
 The two probes triangulate: each substrate fix that flips a diff-prod fixture should also flip a count of test262 entries.
 

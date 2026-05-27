@@ -3,9 +3,9 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 187,
-    "top_level": 105,
-    "nested": 82,
+    "locales": 189,
+    "top_level": 106,
+    "nested": 83,
     "warnings": 0
   },
   "locales": [
@@ -235,6 +235,15 @@
       "status": "**WORKSTREAM FOUNDED (CP-EXT 0)**."
     },
     {
+      "coord": "compartment-primitive/spec-conformance",
+      "tag": "L.compartment-primitive.spec-conformance",
+      "parent": "L.compartment-primitive",
+      "scope": "spec-conformance",
+      "depth": 2,
+      "rung_count": 10,
+      "status": null
+    },
+    {
       "coord": "console-log-inspect-formatter",
       "tag": "L.console-log-inspect-formatter",
       "parent": null,
@@ -303,7 +312,7 @@
       "parent": "L.eval-scope-binding-chain",
       "scope": "es-foundation",
       "depth": 2,
-      "rung_count": 1,
+      "rung_count": 5,
       "status": null
     },
     {
@@ -385,6 +394,15 @@
       "scope": "get-own-property-descriptor-accessor-shape",
       "depth": 1,
       "rung_count": 1,
+      "status": null
+    },
+    {
+      "coord": "global-binding-surface-unification",
+      "tag": "L.global-binding-surface-unification",
+      "parent": null,
+      "scope": "global-binding-surface-unification",
+      "depth": 1,
+      "rung_count": 14,
       "status": null
     },
     {

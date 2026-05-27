@@ -47,8 +47,10 @@ pub fn install(rt: &mut Runtime) {
     });
 
     // URL / URLSearchParams: re-expose globals if installed; else stub.
-    if let Some(g) = rt.globals.get("URL").cloned() {
-        set_constant(rt, url_ns, "URL", g);
+    // GBSU-EXT 7f.2: canonical lookup via unified globalThis.
+    let url_g = rt.global_get("URL");
+    if !matches!(url_g, Value::Undefined) {
+        set_constant(rt, url_ns, "URL", url_g);
     } else {
         register_method(rt, url_ns, "URL", |_rt, _args| {
             Err(RuntimeError::TypeError(
@@ -56,8 +58,9 @@ pub fn install(rt: &mut Runtime) {
             ))
         });
     }
-    if let Some(g) = rt.globals.get("URLSearchParams").cloned() {
-        set_constant(rt, url_ns, "URLSearchParams", g);
+    let usp_g = rt.global_get("URLSearchParams");
+    if !matches!(usp_g, Value::Undefined) {
+        set_constant(rt, url_ns, "URLSearchParams", usp_g);
     } else {
         register_method(rt, url_ns, "URLSearchParams", |_rt, _args| {
             Err(RuntimeError::TypeError(
@@ -67,5 +70,5 @@ pub fn install(rt: &mut Runtime) {
     }
 
     set_constant(rt, url_ns, "default", Value::Object(url_ns));
-    rt.globals.insert("url".into(), Value::Object(url_ns));
+    rt.define_global_property("url", Value::Object(url_ns));
 }

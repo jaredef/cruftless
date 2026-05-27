@@ -916,9 +916,23 @@ impl Runtime {
     /// semantic change. ES-EXT 2+ will implement Script-mode top-level
     /// scope (top-level var attaches to globalThis instead of module-local).
     pub fn evaluate_script(&mut self, source: &str, url: &str) -> Result<ObjectRef, RuntimeError> {
-        // ES-EXT 1 delegates; ES-EXT 3 will diverge here with a script-mode
-        // frame that uses the realm's global env as the top-level scope.
-        self.evaluate_module(source, url)
+        // ES-EXT 2 (eval-scope-binding-chain): set a one-shot flag that
+        // evaluate_module consults at the compile step to switch from
+        // compile_module_with_url to compile_script_with_url. The flag is
+        // cleared inside evaluate_module immediately after the compile call
+        // so nested ESM imports inside this script (statically impossible
+        // but defensively handled) revert to Module semantics.
+        // ES-EXT 2 v2 (2026-05-27): re-enable script_mode. v2 trial with just
+        // the unified surface (GBSU done) was IDENTICAL regression (33.2%) to
+        // v1 — confirmed empirically that IC.1's upvalue-capture path bypasses
+        // globalThis entirely. v2 substrate change at the compile-tier
+        // (compiler.rs Stmt::Variable script-top-var branch): emit StoreLocal
+        // AND StoreGlobal so both surfaces hold the value. Pre-allocation
+        // passes are UNCHANGED — IC.1 protected.
+        self.pending_script_mode = true;
+        let r = self.evaluate_module(source, url);
+        self.pending_script_mode = false;
+        r
     }
 
     pub fn evaluate_module(&mut self, source: &str, url: &str) -> Result<ObjectRef, RuntimeError> {
@@ -944,8 +958,13 @@ impl Runtime {
         } else {
             None
         };
-        let bytecode = rusty_js_bytecode::compile_module_with_url(source, url)
-            .map_err(|e| RuntimeError::CompileError(format!("compile: {}", e.message)))?;
+        let script_mode = std::mem::replace(&mut self.pending_script_mode, false);
+        let bytecode = if script_mode {
+            rusty_js_bytecode::compile_script_with_url(source, url)
+        } else {
+            rusty_js_bytecode::compile_module_with_url(source, url)
+        }
+        .map_err(|e| RuntimeError::CompileError(format!("compile: {}", e.message)))?;
         if let Some(t) = t1 {
             phase_profile::add(&phase_profile::COMPILE_NS, t.elapsed().as_nanos() as u64);
         }

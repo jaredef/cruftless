@@ -289,7 +289,7 @@ pub fn install(rt: &mut Runtime) {
     rt.object_set(path, "posix".into(), Value::Object(posix));
     rt.object_set(path, "win32".into(), Value::Object(win32));
 
-    rt.globals.insert("path".into(), Value::Object(path));
+    rt.define_global_property("path", Value::Object(path));
 }
 
 /// Glob matcher for path.matchesGlob (Ω.5.P56.E2). Recursive over (pat, s).

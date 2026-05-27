@@ -84,7 +84,6 @@ pub struct Runtime {
     /// the runtime attempts compile. Default 100; can be overridden for
     /// bench/test purposes.
     pub jit_threshold: u32,
-    pub globals: HashMap<String, Value>,
     /// Ω.5.P55.E1 (Doc 729 §VII.B — engine-internal bilateral boundary).
     /// Compiler-emitted lowerings (`__await`, `__dynamic_import`, `__apply`,
     /// `__construct`, `__install_accessor__`, `__yield_push__`,
@@ -375,6 +374,24 @@ pub struct Runtime {
     /// Effectful methods route through this; until CAPS-EXT 6+ wires
     /// the routes, the dispatcher exists but is not consulted.
     pub caps: std::sync::Arc<crate::caps::CapDispatcher>,
+    /// ES-EXT 2 (eval-scope-binding-chain): one-shot flag set by
+    /// `evaluate_script` and consumed at the next compile step inside
+    /// `evaluate_module`. When true, the compile call switches from
+    /// `compile_module_with_url` to `compile_script_with_url`, threading
+    /// Script semantics (top-level `var` attaches to globalThis per
+    /// ECMA-262 §19.2.1.3 PerformEval). Cleared via `mem::replace` at
+    /// the compile site so subsequent ESM compiles inside this Runtime
+    /// revert to Module semantics.
+    pub pending_script_mode: bool,
+    /// GBSU-EXT 1 (global-binding-surface-unification rung 1): direct
+    /// ObjectId handle to the globalThis Object — the spec's global Variable
+    /// Environment Record (ECMA-262 §9.1.1.4, §16.1). Today the substrate
+    /// also carries `self.globals: HashMap<String, Value>` as a parallel
+    /// surface; this handle is the migration target. Populated by
+    /// `install_global_this` (intrinsics.rs). None until install runs.
+    /// Doc 731 alphabet-purity: this is the single global-binding word the
+    /// downstream alphabet will speak after rungs 2-4 collapse the HashMap.
+    pub global_object: Option<rusty_js_gc::ObjectId>,
 }
 
 #[derive(Clone)]
@@ -510,7 +527,7 @@ impl Runtime {
     }
 
     pub fn new() -> Self {
-        Self {
+        let mut rt = Self {
             jit_cache: HashMap::new(),
             // Threshold defaults to 100 calls but is overridable via
             // CRUFTLESS_JIT_THRESHOLD env var for bench/test purposes.
@@ -522,7 +539,6 @@ impl Runtime {
                 .ok()
                 .and_then(|s| s.parse::<u32>().ok())
                 .unwrap_or(100),
-            globals: HashMap::new(),
             engine_helpers: HashMap::new(),
             last_value: Value::Undefined,
             host_hooks: crate::module::HostHooks::default(),
@@ -587,7 +603,20 @@ impl Runtime {
             )),
             napi_keepalive: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             caps: std::sync::Arc::new(crate::caps::CapDispatcher::compat()),
-        }
+            pending_script_mode: false,
+            global_object: None,
+        };
+        // GBSU-EXT 7f.4: eager-allocate the unified globalThis Object at
+        // Runtime construction so `global_object` is always `Some` for the
+        // lifetime of the Runtime. This is the precondition that lets every
+        // bootstrap-fallback branch in enumerate_roots / define_global_property
+        // / Op::StoreGlobal be deleted — global_object is provably set before
+        // any of those handlers fire. The Object starts empty; install_globals
+        // populates it (and install_global_this attaches the self-reference
+        // descriptor + the Intl namespace etc.).
+        let gt = rt.alloc_object(crate::value::Object::new_ordinary());
+        rt.global_object = Some(gt);
+        rt
     }
 
     /// CAPS-EXT 4: replace the capability dispatcher with one set to the
@@ -777,7 +806,8 @@ impl Runtime {
                 o.set_own_internal("__primitive__".into(), Value::Boolean(*b));
                 // EXT 83: [[BooleanData]] internal slot brand.
                 o.internal_kind = crate::value::InternalKind::BooleanWrapper(Value::Boolean(*b));
-                if let Some(Value::Object(bid)) = self.globals.get("Boolean").cloned() {
+                // GBSU-EXT 4: canonical lookup via unified globalThis.
+                if let Value::Object(bid) = self.global_get("Boolean") {
                     if let Value::Object(p) = self.object_get(bid, "prototype") {
                         o.proto = Some(p);
                     }
@@ -1714,8 +1744,9 @@ impl Runtime {
     }
 
     fn new_empty_set(&mut self) -> (crate::value::ObjectRef, crate::value::ObjectRef) {
-        let out_proto = match self.globals.get("Set").cloned() {
-            Some(Value::Object(cid)) => match self.object_get(cid, "prototype") {
+        // GBSU-EXT 4: canonical lookup via unified globalThis.
+        let out_proto = match self.global_get("Set") {
+            Value::Object(cid) => match self.object_get(cid, "prototype") {
                 Value::Object(p) => Some(p),
                 _ => None,
             },
@@ -3650,11 +3681,7 @@ impl Runtime {
     /// per-element [[AlreadyCalled]] resolve functions.
     pub fn promise_all_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let c = self.current_this();
-        let default_promise = self
-            .globals
-            .get("Promise")
-            .cloned()
-            .unwrap_or(Value::Undefined);
+        let default_promise = self.global_get("Promise");
         let ctor = if matches!(c, Value::Object(_)) && self.is_callable(&c) {
             c
         } else {
@@ -3739,11 +3766,7 @@ impl Runtime {
     /// resolve/reject elements with [[AlreadyCalled]].
     pub fn promise_all_settled_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let c = self.current_this();
-        let default_promise = self
-            .globals
-            .get("Promise")
-            .cloned()
-            .unwrap_or(Value::Undefined);
+        let default_promise = self.global_get("Promise");
         let ctor = if matches!(c, Value::Object(_)) && self.is_callable(&c) {
             c
         } else {
@@ -3828,11 +3851,7 @@ impl Runtime {
     /// AggregateError when all reject.
     pub fn promise_any_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let c = self.current_this();
-        let default_promise = self
-            .globals
-            .get("Promise")
-            .cloned()
-            .unwrap_or(Value::Undefined);
+        let default_promise = self.global_get("Promise");
         let ctor = if matches!(c, Value::Object(_)) && self.is_callable(&c) {
             c
         } else {
@@ -3915,11 +3934,7 @@ impl Runtime {
     /// constructs a C-shaped chain.
     pub fn promise_race_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let c = self.current_this();
-        let default_promise = self
-            .globals
-            .get("Promise")
-            .cloned()
-            .unwrap_or(Value::Undefined);
+        let default_promise = self.global_get("Promise");
         let ctor = if matches!(c, Value::Object(_)) && self.is_callable(&c) {
             c
         } else {
@@ -8485,8 +8500,9 @@ impl Runtime {
                 Value::Undefined => Value::Undefined,
                 Value::Object(cid) => {
                     // Default-Array intrinsic falls back to ArrayCreate.
-                    let is_plain_array_ctor = match self.globals.get("Array") {
-                        Some(Value::Object(arr_id)) => *arr_id == *cid,
+                    // GBSU-EXT 4: canonical lookup via unified globalThis.
+                    let is_plain_array_ctor = match self.global_get("Array") {
+                        Value::Object(arr_id) => arr_id == *cid,
                         _ => false,
                     };
                     if is_plain_array_ctor {
@@ -8798,7 +8814,17 @@ impl Runtime {
     /// frames living on Rust's stack).
     pub fn enumerate_roots(&self) -> Vec<rusty_js_gc::ObjectId> {
         let mut roots: Vec<rusty_js_gc::ObjectId> = Vec::new();
-        for v in self.globals.values() {
+        // GBSU-EXT 7f.4: globalThis Object is the canonical global
+        // VarEnvRec. Root it; the GC walks its property table to reach
+        // every reachable global binding. global_object is eager-allocated
+        // in Runtime::new, so unwrap is provably safe.
+        roots.push(
+            self.global_object
+                .expect("global_object eager-allocated in Runtime::new"),
+        );
+        // Doc 729 §VII.B engine-internal bilateral lowerings — NOT
+        // JS-visible, NOT on globalThis, must be rooted explicitly.
+        for v in self.engine_helpers.values() {
             if let Value::Object(id) = v {
                 roots.push(*id);
             }
@@ -8909,9 +8935,9 @@ impl Runtime {
             ("Promise", promise_p),
             ("String", string_p),
         ] {
-            if let (Some(global_ctor), Some(new_proto)) =
-                (self.globals.get(name).cloned(), new_proto)
-            {
+            // GBSU-EXT 7f.3: canonical lookup via unified globalThis.
+            let global_ctor = self.global_get(name);
+            if let (false, Some(new_proto)) = (matches!(global_ctor, Value::Undefined), new_proto) {
                 if let Value::Object(orig_ctor_id) = global_ctor {
                     let cloned_ctor = self.clone_intrinsic_proto(orig_ctor_id);
                     self.obj_mut(cloned_ctor)
@@ -8941,7 +8967,7 @@ impl Runtime {
     /// globals (process, console, require, fs, ...) are NOT in this
     /// set; they're available only when explicitly endowed via the
     /// compartment's globals option per Doc 736.
-    fn intrinsic_name_allowlist() -> &'static [&'static str] {
+    pub fn intrinsic_name_allowlist() -> &'static [&'static str] {
         &[
             // §19 Fundamental Objects
             "Object",
@@ -9038,14 +9064,18 @@ impl Runtime {
     pub fn enter_realm(&mut self, idx: usize) -> usize {
         let prior = self.current_realm;
         let ambient_denied = self.realms[idx].ambient_denied;
-        // CP-EXT 5: when ambient_denied is set, snapshot the full primordial
-        // globals and replace with intrinsic-only-plus-endowments view.
+        // GBSU-EXT 7e (global-binding-surface-unification rung 7e): realm
+        // snapshots/overrides operate on the unified globalThis Object's
+        // prop dict instead of the legacy `self.globals` HashMap. The
+        // Realm field types remain `HashMap<String, Value>` (snapshot is
+        // name → value); only the read/write site changes. Ambient-denied
+        // full-snapshot iterates the Object's String-keyed own properties.
         if ambient_denied {
-            let full = self.globals.clone();
-            self.realms[idx].primordial_full_snapshot = Some(full.clone());
+            let full = self.snapshot_global_string_props();
+            self.realms[idx].primordial_full_snapshot = Some(full);
             let allow: std::collections::HashSet<&'static str> =
                 Self::intrinsic_name_allowlist().iter().copied().collect();
-            self.globals.retain(|k, _| allow.contains(k.as_str()));
+            self.retain_global_string_props(&allow);
         }
         let (over_keys, over_values): (Vec<String>, Vec<Value>) = {
             let r = &self.realms[idx];
@@ -9056,10 +9086,11 @@ impl Runtime {
         };
         let mut snapshot = std::collections::HashMap::new();
         for (k, v) in over_keys.iter().zip(over_values.into_iter()) {
-            if let Some(prev) = self.globals.get(k).cloned() {
+            let prev = self.global_get(k);
+            if !matches!(prev, Value::Undefined) {
                 snapshot.insert(k.clone(), prev);
             }
-            self.globals.insert(k.clone(), v);
+            self.define_global_property(k, v);
         }
         self.realms[idx].primordial_snapshot = snapshot;
         self.current_realm = idx;
@@ -9079,12 +9110,13 @@ impl Runtime {
         // suppressed ambient (overwriting any intra-realm mutations to
         // primordial-host bindings — those would have been on snapshots,
         // not the live primordial map).
+        // GBSU-EXT 7e: restore via global_object's prop dict.
         if let Some(full) = self.realms[cur].primordial_full_snapshot.take() {
-            self.globals = full;
+            self.replace_global_string_props(full);
         } else {
             let snapshot = std::mem::take(&mut self.realms[cur].primordial_snapshot);
             for (k, v) in snapshot {
-                self.globals.insert(k, v);
+                self.define_global_property(&k, v);
             }
         }
         self.current_realm = prior;
@@ -9601,6 +9633,124 @@ impl Runtime {
     }
 
     /// OrdinaryDefineOwnProperty — own-key set on the named object.
+    /// GBSU-EXT 4 (global-binding-surface-unification rung 4): canonical
+    /// lookup of a global binding. Reads the unified globalThis Object
+    /// (`self.global_object`) first; falls through to the legacy
+    /// `self.globals` HashMap for the rung-4-to-rung-5 transition window
+    /// (the HashMap holds boot-time bindings that haven't yet been routed
+    /// through the Object via Op::StoreGlobal's dual-write). Rung 6 drops
+    /// the fallback once writers are Object-only and the field is removed.
+    ///
+    /// Returns `Value::Undefined` for an absent binding (mirrors HashMap
+    /// `.get().cloned().unwrap_or(Value::Undefined)` semantics so callers
+    /// can use the result directly). For "is the binding present at all"
+    /// queries, use `global_has` instead.
+    pub fn global_get(&self, name: &str) -> Value {
+        // GBSU-EXT 6: Object is canonical; HashMap fallback deleted.
+        // Pre-install_global_this paths still return Undefined here —
+        // those should be migrated to direct intrinsics-side state.
+        if let Some(gt) = self.global_object {
+            let v = self.object_get(gt, name);
+            if !matches!(v, Value::Undefined) {
+                return v;
+            }
+            if self.obj(gt).has_own_str(name) {
+                return Value::Undefined;
+            }
+        }
+        Value::Undefined
+    }
+
+    /// GBSU-EXT 7b/7c/7f.4: write a global binding to the unified
+    /// globalThis Object with the ECMA §17 standard built-in descriptor
+    /// `{writable:t, enumerable:f, configurable:t}`. Replaces the legacy
+    /// `self.globals.insert(name, value)` pattern at install_globals
+    /// call sites + register helpers. global_object is eager-allocated
+    /// in Runtime::new (rung 7f.4); the unwrap is provably safe.
+    pub fn define_global_property(&mut self, name: &str, value: Value) {
+        let gt = self
+            .global_object
+            .expect("global_object eager-allocated in Runtime::new");
+        self.obj_mut(gt).dict_mut().insert(
+            crate::value::PropertyKey::String(name.to_string()),
+            crate::value::PropertyDescriptor {
+                value,
+                writable: true,
+                enumerable: false,
+                configurable: true,
+                getter: None,
+                setter: None,
+            },
+        );
+    }
+
+    /// GBSU-EXT 7e: enumerate the globalThis Object's String-keyed own
+    /// properties as a `HashMap<String, Value>`. Used by realm enter/exit
+    /// to snapshot the primordial global env. Engine_helpers + Symbol-keyed
+    /// properties are excluded — the snapshot is JS-visible-only.
+    pub fn snapshot_global_string_props(&self) -> std::collections::HashMap<String, Value> {
+        let mut out = std::collections::HashMap::new();
+        if let Some(gt) = self.global_object {
+            for (k, desc) in self.obj(gt).properties.iter() {
+                if let crate::value::PropertyKey::String(s) = k {
+                    out.insert(s.clone(), desc.value.clone());
+                }
+            }
+        }
+        out
+    }
+
+    /// GBSU-EXT 7e: drop every String-keyed own property on the globalThis
+    /// Object whose name is NOT in `allow`. Used by realm enter to filter
+    /// the primordial env down to an intrinsic-only view under ambient-
+    /// denied capability mode. Symbol-keyed properties are preserved.
+    pub fn retain_global_string_props(&mut self, allow: &std::collections::HashSet<&'static str>) {
+        if let Some(gt) = self.global_object {
+            let to_remove: Vec<String> = self
+                .obj(gt)
+                .properties
+                .iter()
+                .filter_map(|(k, _)| match k {
+                    crate::value::PropertyKey::String(s) if !allow.contains(s.as_str()) => {
+                        Some(s.clone())
+                    }
+                    _ => None,
+                })
+                .collect();
+            for name in to_remove {
+                self.obj_mut(gt).remove_str(&name);
+            }
+        }
+    }
+
+    /// GBSU-EXT 7e: replace the globalThis Object's String-keyed own
+    /// properties with the given snapshot. Used by realm exit to restore
+    /// a primordial-full-snapshot. Symbol-keyed properties are preserved.
+    /// Existing String-keyed entries are dropped first, then the snapshot
+    /// is re-inserted via `define_global_property` (ECMA §17 descriptor).
+    pub fn replace_global_string_props(
+        &mut self,
+        snapshot: std::collections::HashMap<String, Value>,
+    ) {
+        if let Some(gt) = self.global_object {
+            let to_remove: Vec<String> = self
+                .obj(gt)
+                .properties
+                .iter()
+                .filter_map(|(k, _)| match k {
+                    crate::value::PropertyKey::String(s) => Some(s.clone()),
+                    _ => None,
+                })
+                .collect();
+            for name in to_remove {
+                self.obj_mut(gt).remove_str(&name);
+            }
+        }
+        for (k, v) in snapshot {
+            self.define_global_property(&k, v);
+        }
+    }
+
     pub fn object_set(&mut self, id: ObjectRef, key: String, value: Value) {
         // Lift (rung-18): String-keyed OrdinarySet routes through the
         // PropertyKey-typed primitive so non-writable / preserve-existing-
@@ -9994,10 +10144,22 @@ impl Runtime {
                     // §6.2.4.5 GetValue, an unresolvable reference at read
                     // throws ReferenceError. typeof/delete sites take the
                     // silent-undef path via Op::LoadGlobalOrUndef.
+                    // GBSU-EXT 6: globalThis Object is the canonical and
+                    // ONLY binding surface for JS-visible globals; the
+                    // transitional HashMap fallback added in rung 2 has
+                    // been deleted (deletions-ledger 2026-05-26 GBSU-EXT 6
+                    // entry). engine_helpers stays orthogonal per
+                    // §VII.B bilateral.
                     let v = self
-                        .globals
-                        .get(&name)
-                        .cloned()
+                        .global_object
+                        .and_then(|gt| {
+                            let v = self.object_get(gt, &name);
+                            if matches!(v, Value::Undefined) && !self.obj(gt).has_own_str(&name) {
+                                None
+                            } else {
+                                Some(v)
+                            }
+                        })
                         .or_else(|| self.engine_helpers.get(&name).cloned());
                     let v = match v {
                         Some(val) => val,
@@ -10015,10 +10177,20 @@ impl Runtime {
                     let idx = decode_u16(&frame.bytecode, frame.pc);
                     frame.pc += 2;
                     let name = self.constant_name(frame, idx)?;
+                    // GBSU-EXT 6: same primary-globalThis lookup as
+                    // Op::LoadGlobal, terminating in Undefined for the
+                    // typeof/delete silent-undef path. HashMap fallback
+                    // deleted.
                     let v = self
-                        .globals
-                        .get(&name)
-                        .cloned()
+                        .global_object
+                        .and_then(|gt| {
+                            let v = self.object_get(gt, &name);
+                            if matches!(v, Value::Undefined) && !self.obj(gt).has_own_str(&name) {
+                                None
+                            } else {
+                                Some(v)
+                            }
+                        })
                         .or_else(|| self.engine_helpers.get(&name).cloned())
                         .unwrap_or(Value::Undefined);
                     frame.last_property_lookup = Some(format!("<global>{}", name));
@@ -10040,13 +10212,45 @@ impl Runtime {
                     // declarations compile to StoreLocal, not StoreGlobal,
                     // so this check fires only on undeclared bare
                     // assignments.
-                    if frame.strict && !self.globals.contains_key(&name) {
-                        return Err(RuntimeError::ReferenceError(format!(
-                            "{} is not defined",
-                            name
-                        )));
+                    // GBSU-EXT 3 (global-binding-surface-unification rung 3):
+                    // the globalThis Object is now the canonical write surface;
+                    // the legacy HashMap is no longer updated at runtime. The
+                    // strict-mode "is this name declared" check consults both
+                    // surfaces for the rung-3-to-rung-4 transition window
+                    // (HashMap still holds boot-time bindings until rung 4
+                    // drains them). Engine_helpers stays orthogonal per
+                    // §VII.B bilateral.
+                    if frame.strict {
+                        // GBSU-EXT 6: Object is canonical; HashMap-contains
+                        // fallback removed.
+                        let declared_on_object = self
+                            .global_object
+                            .map(|gt| self.obj(gt).has_own_str(&name))
+                            .unwrap_or(false);
+                        let declared =
+                            declared_on_object || self.engine_helpers.contains_key(&name);
+                        if !declared {
+                            return Err(RuntimeError::ReferenceError(format!(
+                                "{} is not defined",
+                                name
+                            )));
+                        }
                     }
-                    self.globals.insert(name, v);
+                    // GBSU-EXT 5 retry (post-GBSU-EXT 4b expanded-audit):
+                    // ten RUNTIME closure-captured readers migrated to
+                    // global_get across intrinsics.rs / prototype.rs /
+                    // napi.rs / interp.rs Symbol.hasInstance fallback +
+                    // the typed-array helper at intrinsics.rs:12731.
+                    // With the broader audit landed, drop the HashMap
+                    // write — Op::StoreGlobal writes the unified globalThis
+                    // surface only. Bootstrap fallback retained for
+                    // pre-install_global_this code paths.
+                    if name != "globalThis" {
+                        let gt = self
+                            .global_object
+                            .expect("global_object eager-allocated in Runtime::new");
+                        self.object_set(gt, name, v);
+                    }
                 }
                 Op::LoadUpvalue => {
                     let slot = decode_u16(&frame.bytecode, frame.pc) as usize;
@@ -11267,8 +11471,9 @@ impl Runtime {
                         };
                         let hi = if matches!(hi, Value::Undefined) {
                             // Try Symbol.hasInstance's string form.
-                            let sym = self.globals.get("Symbol").cloned();
-                            if let Some(Value::Object(sym_id)) = sym {
+                            // GBSU-EXT 4b: canonical lookup via unified globalThis.
+                            let sym = self.global_get("Symbol");
+                            if let Value::Object(sym_id) = sym {
                                 let hi_sym = self.object_get(sym_id, "hasInstance");
                                 if let Value::String(s) = hi_sym {
                                     self.object_get(*ctor_id, &s)
@@ -12778,11 +12983,7 @@ impl Runtime {
             effective_this
         } else {
             match &effective_this {
-                Value::Null | Value::Undefined => self
-                    .globals
-                    .get("globalThis")
-                    .cloned()
-                    .unwrap_or(Value::Undefined),
+                Value::Null | Value::Undefined => self.global_get("globalThis"),
                 Value::Boolean(_)
                 | Value::Number(_)
                 | Value::String(_)

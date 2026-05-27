@@ -260,15 +260,15 @@ pub fn install(rt: &mut Runtime) {
     set_constant(rt, util, "types", Value::Object(types));
 
     set_constant(rt, util, "default", Value::Object(util));
-    rt.globals.insert("util".into(), Value::Object(util));
+    rt.define_global_property("util", Value::Object(util));
 }
 
 fn json_stringify_via_intrinsic(rt: &mut Runtime, v: &Value) -> Result<String, RuntimeError> {
-    let json = rt
-        .globals
-        .get("JSON")
-        .cloned()
-        .ok_or_else(|| RuntimeError::TypeError("JSON intrinsic missing".into()))?;
+    // GBSU-EXT 7f.4: canonical lookup via unified globalThis.
+    let json = match rt.global_get("JSON") {
+        Value::Undefined => return Err(RuntimeError::TypeError("JSON intrinsic missing".into())),
+        v => v,
+    };
     let json_id = match json {
         Value::Object(id) => id,
         _ => return Err(RuntimeError::TypeError("JSON is not an object".into())),

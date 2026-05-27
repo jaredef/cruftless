@@ -651,7 +651,7 @@ pub fn install(rt: &mut Runtime) {
     // round-trip honesty.
     set_constant(rt, crypto, "default", Value::Object(crypto));
 
-    rt.globals.insert("crypto".into(), Value::Object(crypto));
+    rt.define_global_property("crypto", Value::Object(crypto));
 }
 
 // Tier-Ω.5.hhh: xorshift64 PRNG seeded once from wall-clock + thread id.

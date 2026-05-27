@@ -49,10 +49,19 @@ pub fn compile_module_with_url(src: &str, url: &str) -> Result<CompiledModule, C
 /// without semantic change yet. ES-EXT 2 will flip top-level var emissions
 /// from StoreLocal to StoreGlobal at compile time.
 pub fn compile_script_with_url(src: &str, url: &str) -> Result<CompiledModule, CompileError> {
-    // ES-EXT 1 delegates; ES-EXT 2+ will diverge here with a `script_mode`
-    // flag threaded through Compiler that flips top-level var/function-decl
-    // emissions from local-slot stores to GlobalThis stores.
-    compile_module_with_url(src, url)
+    // ES-EXT 2: set script_mode on the Compiler so top-level `var`
+    // declarations route to StoreGlobal at compile time, attaching to the
+    // realm's global object per §19.2.1.3 PerformEval (indirect-eval) and
+    // §16.1 Scripts.
+    let ast = rusty_js_parser::parse_module(src).map_err(|e| CompileError {
+        span: e.span,
+        message: format!("parse: {} @byte{}", e.message, e.span.start),
+    })?;
+    let mut c = Compiler::new();
+    c.set_source_line_starts(compute_line_starts(src));
+    c.set_source_url(url.to_string());
+    c.set_script_mode(true);
+    c.compile_module(&ast)
 }
 
 /// Byte offsets of the start of each line in `src`. Index 0 is offset 0.

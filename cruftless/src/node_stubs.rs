@@ -116,7 +116,7 @@ pub fn install_child_process(rt: &mut Runtime) {
     ] {
         register_method(rt, ns, m, stub("child_process", m));
     }
-    rt.globals.insert("child_process".into(), Value::Object(ns));
+    rt.define_global_property("child_process", Value::Object(ns));
 }
 
 pub fn install_tls(rt: &mut Runtime) {
@@ -173,7 +173,7 @@ pub fn install_tls(rt: &mut Runtime) {
             .set_own_internal("constructor".into(), Value::Object(ctor));
         rt.object_set(ns, (*cls).into(), Value::Object(ctor));
     }
-    rt.globals.insert("tls".into(), Value::Object(ns));
+    rt.define_global_property("tls", Value::Object(ns));
 }
 
 pub fn install_readline(rt: &mut Runtime) {
@@ -189,7 +189,7 @@ pub fn install_readline(rt: &mut Runtime) {
     ] {
         register_method(rt, ns, m, stub("readline", m));
     }
-    rt.globals.insert("readline".into(), Value::Object(ns));
+    rt.define_global_property("readline", Value::Object(ns));
 }
 
 pub fn install_constants(rt: &mut Runtime) {
@@ -302,7 +302,7 @@ pub fn install_constants(rt: &mut Runtime) {
     rt.object_set(os_ns, "errno".into(), Value::Object(errno_ns));
     rt.object_set(ns, "os".into(), Value::Object(os_ns));
 
-    rt.globals.insert("constants".into(), Value::Object(ns));
+    rt.define_global_property("constants", Value::Object(ns));
 }
 
 pub fn install_string_decoder(rt: &mut Runtime) {
@@ -335,8 +335,7 @@ pub fn install_string_decoder(rt: &mut Runtime) {
         });
         Ok(Value::Object(id))
     });
-    rt.globals
-        .insert("string_decoder".into(), Value::Object(ns));
+    rt.define_global_property("string_decoder", Value::Object(ns));
 }
 
 // Tier-Ω.5.bbbbbb: rich Buffer-instance method surface — slice, toString,
@@ -1020,8 +1019,9 @@ pub fn install_buffer(rt: &mut Runtime) {
     register_method(rt, ns, "File", stub("buffer", "File"));
     register_method(rt, ns, "SlowBuffer", |rt, args| {
         // Legacy alias for Buffer.alloc(n). Delegate.
-        let buf_global = match rt.globals.get("Buffer") {
-            Some(Value::Object(id)) => *id,
+        // GBSU-EXT 7f.1: canonical lookup via unified globalThis.
+        let buf_global = match rt.global_get("Buffer") {
+            Value::Object(id) => id,
             _ => return Ok(Value::Undefined),
         };
         let from = rt.object_get(buf_global, "alloc");
@@ -1074,11 +1074,14 @@ pub fn install_buffer(rt: &mut Runtime) {
         Ok(Value::Boolean(std::str::from_utf8(&bytes).is_ok()))
     });
     // atob / btoa — re-exports of the globals (so `import {atob} from 'node:buffer'` works).
-    if let Some(v) = rt.globals.get("atob").cloned() {
-        rt.object_set(ns, "atob".into(), v);
+    // GBSU-EXT 7f.1: canonical lookup via unified globalThis.
+    let atob_v = rt.global_get("atob");
+    if !matches!(atob_v, Value::Undefined) {
+        rt.object_set(ns, "atob".into(), atob_v);
     }
-    if let Some(v) = rt.globals.get("btoa").cloned() {
-        rt.object_set(ns, "btoa".into(), v);
+    let btoa_v = rt.global_get("btoa");
+    if !matches!(btoa_v, Value::Undefined) {
+        rt.object_set(ns, "btoa".into(), btoa_v);
     }
     register_method(
         rt,
@@ -1091,11 +1094,11 @@ pub fn install_buffer(rt: &mut Runtime) {
     // without it. Match the Bun shape.
     rt.object_set(ns, "transcode".into(), Value::Undefined);
     rt.object_set(ns, "default".into(), Value::Object(ns));
-    rt.globals.insert("buffer".into(), Value::Object(ns));
+    rt.define_global_property("buffer", Value::Object(ns));
     // Tier-Ω.5.oo: Buffer also visible as a top-level global per Node
     // convention. csv-parse + csv-parser + many others call
     // `Buffer.from(...)` at module level without importing node:buffer.
-    rt.globals.insert("Buffer".into(), Value::Object(buf_ctor));
+    rt.define_global_property("Buffer", Value::Object(buf_ctor));
 }
 
 // Tier-Ω.5.nnnn: node:http2 stub (got advances here past dns).
@@ -1104,7 +1107,7 @@ pub fn install_http2(rt: &mut Runtime) {
     for m in &["connect", "createServer", "createSecureServer", "constants"] {
         register_method(rt, ns, m, stub("http2", m));
     }
-    rt.globals.insert("http2".into(), Value::Object(ns));
+    rt.define_global_property("http2", Value::Object(ns));
 }
 
 // Tier-Ω.5.kkkk: node:dns stub for `got` cluster.
@@ -1126,7 +1129,7 @@ pub fn install_dns(rt: &mut Runtime) {
         register_method(rt, promises, m, stub("dns/promises", m));
     }
     rt.object_set(ns, "promises".into(), Value::Object(promises));
-    rt.globals.insert("dns".into(), Value::Object(ns));
+    rt.define_global_property("dns", Value::Object(ns));
 }
 
 // Tier-Ω.5.llll: node:module stub for `yargs` cluster.
@@ -1172,8 +1175,7 @@ pub fn install_global_require(rt: &mut Runtime) {
         }
     });
     rt.object_set(require_obj, "resolve".into(), Value::Object(resolve_fn));
-    rt.globals
-        .insert("require".into(), Value::Object(require_obj));
+    rt.define_global_property("require", Value::Object(require_obj));
 }
 
 pub fn install_module(rt: &mut Runtime) {
@@ -1237,7 +1239,7 @@ pub fn install_module(rt: &mut Runtime) {
     let arr = RtObject::new_ordinary();
     let arr_id = rt.alloc_object(arr);
     rt.object_set(ns, "builtinModules".into(), Value::Object(arr_id));
-    rt.globals.insert("module".into(), Value::Object(ns));
+    rt.define_global_property("module", Value::Object(ns));
 }
 
 pub fn install_all(rt: &mut Runtime) {
@@ -1294,7 +1296,7 @@ pub fn install_domain(rt: &mut Runtime) {
     rt.object_set(ns, "active".into(), Value::Null);
     let dom_class = new_object(rt);
     rt.object_set(ns, "Domain".into(), Value::Object(dom_class));
-    rt.globals.insert("domain".into(), Value::Object(ns));
+    rt.define_global_property("domain", Value::Object(ns));
 }
 
 /// Tier-Ω.5.SSSSSSS: DOMException global. WHATWG WebIDL interface used
@@ -1356,8 +1358,7 @@ pub fn install_dom_exception(rt: &mut Runtime) {
         crate::register::set_constant(rt, ctor, name, Value::Number(*code as f64));
         crate::register::set_constant(rt, proto, name, Value::Number(*code as f64));
     }
-    rt.globals
-        .insert("DOMException".into(), Value::Object(ctor));
+    rt.define_global_property("DOMException", Value::Object(ctor));
 }
 
 /// Tier-Ω.5.SSSSSSS: global `performance` object — undici / fastify and
@@ -1408,7 +1409,7 @@ pub fn install_performance(rt: &mut Runtime) {
         rt.object_set(o, "utilization".into(), Value::Number(0.0));
         Ok(Value::Object(o))
     });
-    rt.globals.insert("performance".into(), Value::Object(perf));
+    rt.define_global_property("performance", Value::Object(perf));
 
     // Tier-Ω.5.VVVVVVV: global PerformanceObserver (WHATWG). nx / many
     // monitoring libs do `new PerformanceObserver(callback)` then
@@ -1439,8 +1440,7 @@ pub fn install_performance(rt: &mut Runtime) {
     }
     rt.object_set(st_arr, "length".into(), Value::Number(5.0));
     rt.object_set(po_ctor, "supportedEntryTypes".into(), Value::Object(st_arr));
-    rt.globals
-        .insert("PerformanceObserver".into(), Value::Object(po_ctor));
+    rt.define_global_property("PerformanceObserver", Value::Object(po_ctor));
 
     // node:perf_hooks namespace mirrors the relevant globals.
     let ph = new_object(rt);
@@ -1463,7 +1463,7 @@ pub fn install_performance(rt: &mut Runtime) {
         register_method(rt, h, "reset", |_rt, _a| Ok(Value::Undefined));
         Ok(Value::Object(h))
     });
-    rt.globals.insert("perf_hooks".into(), Value::Object(ph));
+    rt.define_global_property("perf_hooks", Value::Object(ph));
 }
 
 /// Tier-Ω.5.RRRRRRR: node:async_hooks stub with AsyncResource as a
@@ -1546,7 +1546,7 @@ pub fn install_async_hooks(rt: &mut Runtime) {
         Ok(Value::Object(hook))
     });
 
-    rt.globals.insert("async_hooks".into(), Value::Object(ns));
+    rt.define_global_property("async_hooks", Value::Object(ns));
 }
 
 /// Tier-Ω.5.PPPPPPP: node:punycode stub. Deprecated in Node 7+ but
@@ -1593,7 +1593,7 @@ pub fn install_punycode(rt: &mut Runtime) {
         Ok(args.first().cloned().unwrap_or(Value::Undefined))
     });
     crate::register::set_constant(rt, ns, "ucs2", Value::Object(ucs2));
-    rt.globals.insert("punycode".into(), Value::Object(ns));
+    rt.define_global_property("punycode", Value::Object(ns));
 }
 
 /// Tier-Ω.5.FFFFFFF: node:v8 stub. mlly / exsolve / local-pkg / prettier /
@@ -1639,7 +1639,7 @@ pub fn install_v8(rt: &mut Runtime) {
     ] {
         register_method(rt, ns, m, stub("v8", m));
     }
-    rt.globals.insert("v8".into(), Value::Object(ns));
+    rt.define_global_property("v8", Value::Object(ns));
 }
 
 /// Tier-Ω.5.FFFFFFF: node:inspector stub.
@@ -1648,7 +1648,7 @@ pub fn install_inspector(rt: &mut Runtime) {
     for m in &["open", "close", "url", "waitForDebugger"] {
         register_method(rt, ns, m, stub("inspector", m));
     }
-    rt.globals.insert("inspector".into(), Value::Object(ns));
+    rt.define_global_property("inspector", Value::Object(ns));
 }
 
 /// Tier-Ω.5.FFFFFFF: node:vm stub. Several packages do feature-probes
@@ -1690,7 +1690,7 @@ pub fn install_vm(rt: &mut Runtime) {
             .set_own_internal("constructor".into(), Value::Object(ctor));
         rt.object_set(ns, (*cls).into(), Value::Object(ctor));
     }
-    rt.globals.insert("vm".into(), Value::Object(ns));
+    rt.define_global_property("vm", Value::Object(ns));
 }
 
 /// Tier-Ω.5.CCCCCCC: node:diagnostics_channel stub. lru-cache /
@@ -1736,6 +1736,5 @@ pub fn install_diagnostics_channel(rt: &mut Runtime) {
     register_method(rt, ns, "hasSubscribers", |_rt, _args| {
         Ok(Value::Boolean(false))
     });
-    rt.globals
-        .insert("diagnostics_channel".into(), Value::Object(ns));
+    rt.define_global_property("diagnostics_channel", Value::Object(ns));
 }

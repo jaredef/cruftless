@@ -897,7 +897,8 @@ pub(crate) fn to_array_this(rt: &mut Runtime) -> Result<ObjectRef, RuntimeError>
             // shadowing the prototype's length.
             let mut o = Object::new_ordinary();
             o.set_own_internal("__primitive".into(), Value::Boolean(b));
-            if let Some(Value::Object(bid)) = rt.globals.get("Boolean").cloned() {
+            // GBSU-EXT 4b: canonical lookup via unified globalThis.
+            if let Value::Object(bid) = rt.global_get("Boolean") {
                 if let Value::Object(p) = rt.object_get(bid, "prototype") {
                     o.proto = Some(p);
                 }
