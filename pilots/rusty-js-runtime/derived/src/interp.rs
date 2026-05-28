@@ -4777,7 +4777,57 @@ impl Runtime {
     pub fn json_parse_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let text = args.first().cloned().unwrap_or(Value::Undefined);
         let s = self.to_string_strict(&text)?;
-        crate::intrinsics::json_parse(self, s.as_str())
+        let unfiltered = crate::intrinsics::json_parse(self, s.as_str())?;
+        let reviver = args.get(1).cloned().unwrap_or(Value::Undefined);
+        if !self.is_callable(&reviver) {
+            return Ok(unfiltered);
+        }
+        let root = Value::Object(self.alloc_object(crate::value::Object::new_ordinary()));
+        self.create_data_property_or_throw(&root, "", unfiltered)?;
+        self.internalize_json_property(root, "", reviver)
+    }
+
+    fn internalize_json_property(
+        &mut self,
+        holder: Value,
+        name: &str,
+        reviver: Value,
+    ) -> Result<Value, RuntimeError> {
+        let mut value = self.spec_get(&holder, name)?;
+        if let Value::Object(value_id) = value.clone() {
+            let keys = self.ordinary_own_enumerable_string_keys(value_id);
+            for key in keys {
+                let new_element =
+                    self.internalize_json_property(Value::Object(value_id), &key, reviver.clone())?;
+                if matches!(new_element, Value::Undefined) {
+                    let deleted = self.reflect_delete_property_via(
+                        &Value::Object(value_id),
+                        &Value::String(std::rc::Rc::new(key.clone())),
+                    )?;
+                    if !matches!(deleted, Value::Boolean(true)) {
+                        return Err(RuntimeError::TypeError(format!(
+                            "JSON.parse reviver: cannot delete property '{}'",
+                            key
+                        )));
+                    }
+                } else {
+                    self.create_data_property_or_throw(
+                        &Value::Object(value_id),
+                        &key,
+                        new_element,
+                    )?;
+                }
+            }
+            value = Value::Object(value_id);
+        }
+        self.call_function(
+            reviver,
+            holder,
+            vec![
+                Value::String(std::rc::Rc::new(name.to_string())),
+                value,
+            ],
+        )
     }
 
     /// Symbol.for(key) per ECMA §20.4.2.6 — interns a registry symbol.
@@ -8906,11 +8956,10 @@ impl Runtime {
 
     pub fn coerce_to_string(&mut self, v: &Value) -> Result<String, RuntimeError> {
         if let Value::Object(id) = v {
-            let id = *id;
             let mut tried = false;
             // (1) @@toPrimitive.
-            let tp = self.object_get(id, "@@toPrimitive");
-            if matches!(tp, Value::Object(_)) {
+            let tp = self.get_method(v, "@@toPrimitive")?;
+            if !matches!(tp, Value::Undefined) {
                 tried = true;
                 let r = self.call_function(
                     tp,
@@ -8922,8 +8971,8 @@ impl Runtime {
                 }
             }
             // (2) toString.
-            let ts = self.object_get(id, "toString");
-            if matches!(ts, Value::Object(_)) {
+            let ts = self.spec_get(v, "toString")?;
+            if self.is_callable(&ts) {
                 tried = true;
                 let r = self.call_function(ts, v.clone(), Vec::new())?;
                 if !matches!(r, Value::Object(_)) {
@@ -8931,8 +8980,8 @@ impl Runtime {
                 }
             }
             // (3) valueOf.
-            let vo = self.object_get(id, "valueOf");
-            if matches!(vo, Value::Object(_)) {
+            let vo = self.spec_get(v, "valueOf")?;
+            if self.is_callable(&vo) {
                 tried = true;
                 let r = self.call_function(vo, v.clone(), Vec::new())?;
                 if !matches!(r, Value::Object(_)) {

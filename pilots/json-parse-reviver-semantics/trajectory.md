@@ -108,3 +108,82 @@ Observed flips:
 stringification; it now points at the object-to-primitive interior, where a
 getter on `valueOf` must throw during method lookup after a non-callable
 `toString: null`.
+
+## JPRS-EXT 2 — TOSTRING METHOD LOOKUP USES SPEC GET (2026-05-28)
+
+**Move**: `Runtime::coerce_to_string` now reads `@@toPrimitive` through
+`GetMethod` and reads ordinary `toString` / `valueOf` through `spec_get`.
+This preserves the OrdinaryToPrimitive rule that non-callable `toString` /
+`valueOf` values are skipped, while accessor abrupt completions during method
+lookup are propagated.
+
+**Expected flip**: `text-object-abrupt.js` should now pass: the
+`get valueOf() { throw new Test262Error(); }` branch is observed during
+runtime `ToString` instead of falling through to parsing `"[object Object]"`.
+
+Validation:
+
+```text
+cargo build --bin cruft -p cruftless
+
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+CRUFT_BIN=/Users/jaredfoy/Developer/cruftless/target/debug/cruft \
+pilots/json-parse-reviver-semantics/exemplars/run-exemplars.sh
+
+JPRS exemplars: PASS=3 FAIL=17 SKIP=0 NOJSON=0 / 20
+```
+
+Observed flip:
+
+- `text-object-abrupt.js` PASS.
+
+**Status**: all three text-coercion exemplars now pass. The residual 17-row
+cluster is the reviver/internalize pipeline proper: root holder creation,
+post-order traversal, property-key enumeration, proxy/prototype-aware `Get`,
+`Delete`, and `CreateDataProperty` side effects.
+
+## JPRS-EXT 3 — MINIMAL INTERNALIZE SPINE (2026-05-28)
+
+**Move**: `JSON.parse` now detects callable `reviver`, creates the spec root
+holder with `CreateDataPropertyOrThrow(root, "", unfiltered)`, and routes
+through a recursive `internalize_json_property` helper. The helper performs
+own enumerable string-key traversal, recursively internalizes child values,
+deletes properties whose reviver result is `undefined`, writes replacement
+values with `CreateDataPropertyOrThrow`, and calls the reviver with
+`this = holder` plus `(name, value)`.
+
+**Expected flips**: this should close the root-wrapper and simple call-order
+rows. Remaining failures, if any, should now concentrate around source-text
+third-argument support, array length/proxy-specific internal methods, and
+prototype lookup edge behavior.
+
+Validation:
+
+```text
+cargo build --bin cruft -p cruftless
+
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+CRUFT_BIN=/Users/jaredfoy/Developer/cruftless/target/debug/cruft \
+pilots/json-parse-reviver-semantics/exemplars/run-exemplars.sh
+
+JPRS exemplars: PASS=8 FAIL=12 SKIP=0 NOJSON=0 / 20
+```
+
+Observed flips:
+
+- `reviver-array-get-prop-from-prototype.js` PASS.
+- `reviver-call-err.js` PASS.
+- `reviver-call-order.js` PASS.
+- `reviver-get-name-err.js` PASS.
+- `reviver-object-get-prop-from-prototype.js` PASS.
+
+Residual split:
+
+- `reviver-wrapper.js` now reaches the wrapper but exposes a generic
+  assignment-path gap: an inherited setter for `""` is still invoked by the
+  test helper's write probe even though the wrapper has an own data property.
+- `reviver-call-args-after-forward-modification.js` and
+  `reviver-forward-modifies-object.js` now fail on missing third `source`
+  reviver argument support.
+- Delete/define/ownKeys/array-length/proxy rows remain internal-method edge
+  work beyond the minimal spine.
