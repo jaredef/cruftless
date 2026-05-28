@@ -18,6 +18,15 @@ pub enum Op {
     /// via Rc::ptr_eq on Runtime::tdz_sentinel and throws ReferenceError.
     /// IR-EXT 23.
     PushTDZ = 0x0a,
+    /// INIT_LOCAL <u16> — Peer of StoreLocal that bypasses the TDZ
+    /// sentinel check. Used at variable-decl init sites (let/const
+    /// declaration line, destructure decl writes, for-head/for-iter
+    /// binding writes) where the slot may currently hold the TDZ
+    /// sentinel as a deliberate scope-entry init that the decl line
+    /// is now legitimately overwriting. StoreLocal at non-init sites
+    /// checks TDZ and throws ReferenceError per §13.3.1.1 for
+    /// assignment-to-uninitialized-binding. IR-EXT 25.
+    InitLocal = 0x0b,
     /// PUSH_I32 <i32>
     PushI32 = 0x05,
     /// PUSH_CONST <u16>
@@ -351,7 +360,7 @@ impl Op {
             | PropagateNewTarget | EnterWith | ExitWith | AddI64 | SubI64 | MulI64 | IncI64
             | DecI64 | LtI64 | LeI64 | GtI64 | GeI64 | EqI64 | NeI64 => 0,
             Call | New | CallMethod | DirectEval | CallMethodIcCached => 1,
-            PushConst | LoadLocal | StoreLocal | LoadArg | StoreArg | LoadGlobal
+            PushConst | LoadLocal | StoreLocal | InitLocal | LoadArg | StoreArg | LoadGlobal
             | LoadGlobalOrUndef | StoreGlobal | LoadUpvalue | StoreUpvalue | DefineLocal
             | ResetLocalCell | LoadWithName | StoreWithName | ResolveWithName | LoadWithNameRef
             | GetProp | GetPropOnObject | GetPropSkipForMethod | SetProp | NewArray | InitProp
@@ -407,6 +416,7 @@ pub fn op_from_byte(b: u8) -> Option<Op> {
         0x03 => PushTrue,
         0x04 => PushFalse,
         0x0a => PushTDZ,
+        0x0b => InitLocal,
         0x05 => PushI32,
         0x06 => PushConst,
         0x07 => Pop,

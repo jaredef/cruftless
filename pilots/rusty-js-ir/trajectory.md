@@ -2361,3 +2361,31 @@ Broader let/const cluster (120 paths): PRE 106/120 → POST 106/120 (unchanged)
 **Finding IR.23 (TDZ machinery composes across enforcement points)**: the PushTDZ + LoadLocal-Rc::ptr_eq pattern introduced at rung-23 was reused at rung-24 without any runtime changes — only compiler emit-site additions. The same shape will work for class-`this` TDZ (point iii.a) and for the unhandled compound-assign shape (point iii.c) without new opcodes; only the StoreLocal check needs to distinguish init-stores from assign-stores, which can use a new `Op::InitLocal` peer of `Op::StoreLocal` that overwrites the sentinel unconditionally.
 
 **Status**: IR-EXT 24 CLOSED locally. Cumulative IR rungs: 24. TDZ enforcement points (i), (ii) closed; (iii) for-head sub-shape closed; (iii) class-this, optional-chain, compound-assign, unscopables, block-fn-hoist sub-shapes remain.
+
+---
+
+## Rung-cluster-25 — Op::InitLocal substrate prep for TDZ-on-assign (negative-result; per rule 13) (2026-05-27)
+
+Per keeper directive Telegram 10108 ("Continue"). Attempted IR.20 point (iii.c) compound-assign-TDZ closure by adding a TDZ check on Op::StoreLocal so assignments to a still-TDZ slot (`x = 1; let x;`) throw ReferenceError per §13.3.1.1 step 26.b.
+
+**Attempted substrate**:
+- New Op::InitLocal = 0x0b (peer of StoreLocal that bypasses TDZ check).
+- StoreLocal handler grew a TDZ sentinel check via Rc::ptr_eq.
+- Compiler emit changes: variable-decl identifier-target StoreLocal → InitLocal; for-of iter binding write → InitLocal; for-in iter binding write → InitLocal.
+
+**Negative empirical result**: diff-prod regressed 60/52 → 56/56 (-4: destructuring-iterators, error-types, iteration-protocol, json-roundtrip). Direct probe: `for (let v of [10,20,30]) console.log(v)` threw "Cannot access '<scoped@1>v' before initialization" — the per-iter binding writes via emit_destructure and several other paths still use StoreLocal which now throws on the TDZ-seeded slot. Substrate enumeration shows 20+ StoreLocal sites in the compiler, several of which write to slots seeded by EXT 23/24's PushTDZ. Each needs InitLocal conversion + audit for correctness, which is out of scope for a single rung.
+
+**Disposition per standing rule 13 (revert-then-deeper-layer-closure)**: revert the runtime TDZ-on-StoreLocal check; keep the Op::InitLocal opcode + the InitLocal emit sites already wired (variable-decl identifier-target + for-of/for-in iter-binding writes). The opcode is currently semantically identical to StoreLocal (placeholder); when the deeper-layer closure lands (full emit-site audit + StoreLocal TDZ check), the existing InitLocal sites already bypass cleanly.
+
+**Yield (post-revert, restored EXT 24 state)**:
+```text
+TDZ-named cluster: 4/13 (unchanged)
+Broader let/const cluster: 106/120 (unchanged)
+diff-prod: 60/52 (parity restored)
+```
+
+**Cumulative LOC**: ~30 LOC kept (Op::InitLocal opcode + decoder + operand-size + 3 emit sites converted from StoreLocal). The TDZ-on-StoreLocal runtime check (~15 LOC) reverted.
+
+**Finding IR.24 (substrate-introduction-prefix without enumeration tax)**: when a runtime check is added that ALL existing emit sites need to opt out of, the rung either lands the full emit-site audit (high-LOC, high-test-coverage requirement) or stages the opcode/discriminator surface first and defers the runtime flip. The IR locale chose the latter at this rung per rule 13. The next rung to revisit the TDZ-on-assign close should enumerate emit sites via grep + categorize each as init vs assign + convert init→InitLocal + then re-flip the StoreLocal runtime check.
+
+**Status**: IR-EXT 25 CLOSED locally (substrate-prep-only). Cumulative IR rungs: 25. The opcode + 3 emit sites are landed but inert; rule-13 deferred to a future rung that completes the full init-vs-assign emit-site audit. Yield unchanged from EXT 24.

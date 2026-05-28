@@ -1437,7 +1437,12 @@ impl Compiler {
                             } else {
                                 encode_op(&mut self.bytecode, Op::PushUndef);
                             }
-                            encode_op(&mut self.bytecode, Op::StoreLocal);
+                            // IR-EXT 25: variable-decl init site uses
+                            // InitLocal so it can overwrite the TDZ
+                            // sentinel that scope-entry seeded. Var also
+                            // uses InitLocal — harmless since var slots
+                            // aren't TDZ-seeded.
+                            encode_op(&mut self.bytecode, Op::InitLocal);
                             encode_u16(&mut self.bytecode, slot);
                             // ES-EXT 2 v2: mirror to globalThis at declaration
                             // time (script-top var only, per ECMA-262 §16.1).
@@ -2003,7 +2008,9 @@ impl Compiler {
                         }
                     }
                 }
-                encode_op(&mut self.bytecode, Op::StoreLocal);
+                // IR-EXT 25: for-iter binding write uses InitLocal so it
+                // overwrites the TDZ sentinel seeded by IR-EXT 24.
+                encode_op(&mut self.bytecode, Op::InitLocal);
                 encode_u16(&mut self.bytecode, bind_slot);
                 if let Some(target) = &assign_target {
                     encode_op(&mut self.bytecode, Op::LoadLocal);
@@ -2604,7 +2611,9 @@ impl Compiler {
                 encode_op(&mut self.bytecode, Op::LoadLocal);
                 encode_u16(&mut self.bytecode, idx_slot);
                 encode_op(&mut self.bytecode, Op::GetIndex);
-                encode_op(&mut self.bytecode, Op::StoreLocal);
+                // IR-EXT 25: for-in iter binding write uses InitLocal so it
+                // overwrites the TDZ sentinel seeded by IR-EXT 24.
+                encode_op(&mut self.bytecode, Op::InitLocal);
                 encode_u16(&mut self.bytecode, bind_slot);
                 if let Some(target) = &assign_target {
                     encode_op(&mut self.bytecode, Op::LoadLocal);

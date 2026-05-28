@@ -10723,6 +10723,17 @@ impl Runtime {
                     let v = frame.pop()?;
                     frame.write_local(slot, v);
                 }
+                Op::InitLocal => {
+                    // IR-EXT 25: peer of StoreLocal reserved for variable-
+                    // decl init sites. Currently semantically identical to
+                    // StoreLocal; the distinction matters once StoreLocal
+                    // grows a TDZ-on-assign check that init sites must bypass
+                    // (deferred — see IR-EXT 25 trajectory entry).
+                    let slot = decode_u16(&frame.bytecode, frame.pc) as usize;
+                    frame.pc += 2;
+                    let v = frame.pop()?;
+                    frame.write_local(slot, v);
+                }
                 Op::ResetLocalCell => {
                     // Detach any prior upvalue cell at this slot so the next
                     // CaptureLocal promotes to a fresh cell. Existing closures
