@@ -289,6 +289,19 @@ fn call_with_args() {
 }
 
 #[test]
+fn direct_eval_call_emits_direct_eval() {
+    let d = disasm("eval('var x;');");
+    assert!(d.contains("DirectEval 1"), "{d}");
+}
+
+#[test]
+fn indirect_eval_call_remains_ordinary_call() {
+    let d = disasm("(0, eval)('var x;');");
+    assert!(!d.contains("DirectEval"), "{d}");
+    assert!(d.contains("Call 1"), "{d}");
+}
+
+#[test]
 fn new_expression() {
     let d = disasm("new Foo(1);");
     assert!(d.contains("New 1"));
