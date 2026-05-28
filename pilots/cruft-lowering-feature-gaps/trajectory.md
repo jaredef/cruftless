@@ -213,3 +213,76 @@ named in CLFG-EXT 0 baseline are now: super (super-reference-lowering child
 closed + super-direct-eval residual), for-in destructure (FIDH-EXT 1
 closed), update-target (CLFG-EXT 4 closed). One tail-cluster remains
 (complex-assignment-target, 1 cell).
+
+## CLFG-EXT 5 — complex-assignment-target close: parenthesized + NamedEvaluation in compound short-circuit (2026-05-28)
+
+Per keeper directive Telegram 10235. Final originally-named tail-cluster of the
+parent CLFG locale.
+
+**Phase 1 (Spawn)**:
+- **M** = `(a) ??= function(){}` and analogous `(a) ||=` / `(a) &&=` with
+  parenthesized identifier targets; also bare `a ??= function(){}` etc. where
+  NamedEvaluation should apply per ECMA-262 §13.15.4 step 1.f.
+- **T** = the compiler unwraps the ParenthesizedExpression cover for compound
+  short-circuit assignments. For bare-identifier targets, threads the
+  identifier name as a NamedEvaluation hint to the value expression so
+  anonymous function values receive the target's name. For parenthesized
+  targets, suppresses NamedEvaluation per spec (parens disqualify).
+- **I** = `compile_logical_assign` (compiler.rs:6463). Three changes:
+  1. Add Parenthesized unwrap at the top routing to a new
+     `compile_logical_assign_no_named_eval` variant.
+  2. In the Identifier arm (both `&&=`/`||=` and `??=` branches), replace
+     `self.compile_expr(value)` with
+     `self.compile_expr_with_name_hint(value, Some(name))`.
+  3. New `compile_logical_assign_no_named_eval` function: same lowering
+     shape as `compile_logical_assign` but passes `None` as the name hint,
+     so NamedEvaluation does not apply.
+- **R** = lattice with CLFG-EXT 4 (same Parenthesized-unwrap pattern at a
+  sibling expression handler); DAG ↑ `compile_expr_with_name_hint` helper
+  (line 3642) already used for `let a = ...` initializers.
+
+**Substrate** (~70 LOC in `pilots/rusty-js-bytecode/derived/src/compiler.rs`):
+Parenthesized unwrap + name-hint threading + parallel no-NamedEval variant
+function.
+
+**Yield**:
+```text
+PRE-CLFG-EXT 5:  staging/sm/expressions/short-circuit-compound-assignment-anon-fns.js FAIL
+POST-CLFG-EXT 5: PASS
+```
+Parent CLFG exemplar suite: 26/32 → 27/32 (+1).
+
+**Direct probe verifies all six sub-assertions**:
+- `a ??= function(){}` → `a.name === "a"` ✓
+- `(a) ??= function(){}` → `a.name === ""` ✓
+- `a ||= function(){}` → `a.name === "a"` ✓
+- `(a) ||= function(){}` → `a.name === ""` ✓
+- `a &&= function(){}` → `a.name === "a"` ✓
+- `(a) &&= function(){}` → `a.name === ""` ✓
+
+**Gates** (all unchanged): TAMM 82/100, TAWR 63/100, diff-prod 61/51, build
+clean, sanity intact.
+
+**Tag**: `cluster-complex-assignment-target-paren-and-namedeval-5`.
+
+**Standing observation (not a new rule)**: the apparent "1-cell" yield
+understates the substrate amortization. NamedEvaluation in compound short-
+circuit assignments is now functional engagement-wide; every future test or
+consumer-app that relies on `obj.method ||= function(){}` getting the
+method's name will benefit silently. The test262 sample's curated
+representative set may not exercise this directly; the full test262 surface
+likely has more cells under `availability/missing-lowering-feature` or
+`value-semantics/wrong-result` that this rung incidentally addresses.
+
+**Phase 6 (deferral emission)**: no new deferrals. The parent CLFG locale's
+three originally-named tail-clusters are now exhausted (super: super-
+reference-lowering child + 4f3bd525 partial + 5 super-direct-eval runtime
+cells DEFERRED per super-deferred-behind-eval-environment-arc; for-in
+destructure: FIDH-EXT 1 closed; update-target: CLFG-EXT 4 closed;
+complex-assignment-target: this rung closed). Parent locale telos
+substantially achieved; remaining residual is the deferred-by-policy
+super-direct-eval runtime cluster.
+
+**Status**: CLFG-EXT 5 CLOSED. Parent locale ready for chapter-close
+declaration pending the deferred super-direct-eval runtime cluster's
+disposition under the eval-environment arc.

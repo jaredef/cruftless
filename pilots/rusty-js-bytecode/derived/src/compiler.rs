@@ -6484,6 +6484,17 @@ impl Compiler {
         // pops; for ??= we instead route via an unconditional Jump on the
         // not-nullish branch (matching the existing ?? lowering above).
 
+        // CLFG-EXT 5: Parenthesized cover-grammar unwrap. Mirrors the
+        // CLFG-EXT 4 pattern at compile_update + the broader
+        // unwrap-Parenthesized convention elsewhere in this file. After
+        // unwrap, route through compile_logical_assign_no_named_eval so
+        // the inner identifier target still gets the short-circuit
+        // lowering but NamedEvaluation is suppressed per ECMA-262
+        // §13.15.4 RS:Evaluation step 1.f (only bare IdentifierReference
+        // qualifies; parens disqualify).
+        if let Expr::Parenthesized { expr, .. } = target {
+            return self.compile_logical_assign_no_named_eval(span, operator, expr, value);
+        }
         match target {
             Expr::Identifier { name, .. } => {
                 self.emit_load_ident(name);
@@ -6506,8 +6517,11 @@ impl Compiler {
                 if let Some(j) = j_end {
                     // assign branch: drop the kept x, evaluate value,
                     // store with one residual copy for the expression result.
+                    // CLFG-EXT 5: thread the bare-identifier name as a
+                    // NamedEvaluation hint per ECMA-262 §13.15.4 step 1.f
+                    // when the value is an anonymous function expression.
                     encode_op(&mut self.bytecode, Op::Pop);
-                    self.compile_expr(value)?;
+                    self.compile_expr_with_name_hint(value, Some(name))?;
                     encode_op(&mut self.bytecode, Op::Dup);
                     self.emit_store_ident(name);
                     self.patch_jump(j);
@@ -6526,7 +6540,61 @@ impl Compiler {
                     let j_end2 = self.emit_jump(Op::Jump);
                     self.patch_jump(j_assign);
                     encode_op(&mut self.bytecode, Op::Pop);
-                    self.compile_expr(value)?;
+                    // CLFG-EXT 5: NamedEvaluation hint as above.
+                    self.compile_expr_with_name_hint(value, Some(name))?;
+                    encode_op(&mut self.bytecode, Op::Dup);
+                    self.emit_store_ident(name);
+                    self.patch_jump(j_end2);
+                }
+            }
+            Expr::Member {
+                object, property, ..
+            } => {
+                self.compile_logical_assign_member(span, operator, object, property, value)?;
+            }
+            _ => return Err(self.err(span, "complex assignment target not yet supported")),
+        }
+        Ok(())
+    }
+
+    /// CLFG-EXT 5: parenthesized-target variant. Identical to
+    /// compile_logical_assign except the bare-identifier arm passes
+    /// `None` as the name hint, so NamedEvaluation does NOT apply
+    /// (paren-wrapped IdentifierReference disqualifies per §13.15.4
+    /// step 1.f). Recursion handles nested parens via the same
+    /// dispatcher.
+    fn compile_logical_assign_no_named_eval(
+        &mut self,
+        span: Span,
+        operator: AssignOp,
+        target: &Expr,
+        value: &Expr,
+    ) -> Result<(), CompileError> {
+        if let Expr::Parenthesized { expr, .. } = target {
+            return self.compile_logical_assign_no_named_eval(span, operator, expr, value);
+        }
+        match target {
+            Expr::Identifier { name, .. } => {
+                self.emit_load_ident(name);
+                let j_end = match operator {
+                    AssignOp::LogicalAndAssign => Some(self.emit_jump(Op::JumpIfFalseKeep)),
+                    AssignOp::LogicalOrAssign => Some(self.emit_jump(Op::JumpIfTrueKeep)),
+                    AssignOp::NullishAssign => None,
+                    _ => unreachable!(),
+                };
+                if let Some(j) = j_end {
+                    encode_op(&mut self.bytecode, Op::Pop);
+                    self.compile_expr(value)?; // no name hint
+                    encode_op(&mut self.bytecode, Op::Dup);
+                    self.emit_store_ident(name);
+                    self.patch_jump(j);
+                } else {
+                    encode_op(&mut self.bytecode, Op::Dup);
+                    let j_assign = self.emit_jump(Op::JumpIfNullish);
+                    let j_end2 = self.emit_jump(Op::Jump);
+                    self.patch_jump(j_assign);
+                    encode_op(&mut self.bytecode, Op::Pop);
+                    self.compile_expr(value)?; // no name hint
                     encode_op(&mut self.bytecode, Op::Dup);
                     self.emit_store_ident(name);
                     self.patch_jump(j_end2);
