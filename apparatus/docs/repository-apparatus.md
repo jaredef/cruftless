@@ -196,8 +196,8 @@ The discipline is recorded in artifacts that future substrate work must consult.
 
 | Artifact | Path | Role |
 |---|---|---|
-| **findings.md** | `pilots/rusty-js-jit/findings.md` | Canonical append-only ledger; 26 findings + 15 standing rules across 10 addenda |
-| **predictive-ruleset.md** | `apparatus/docs/predictive-ruleset.md` | Consolidated derived view of the 15 standing rules as falsifiable predictions |
+| **findings.md** | `pilots/rusty-js-jit/findings.md` | Canonical append-only ledger; 48 findings + 26 standing rules across 16 addenda |
+| **predictive-ruleset.md** | `apparatus/docs/predictive-ruleset.md` | Consolidated derived view of the 26 standing rules as falsifiable predictions (rules 1-15 + 23-26 articulated; 16-22 await consolidation pass) |
 | **standing-rule-13-prospective-application.md** | `apparatus/docs/standing-rule-13-prospective-application.md` | The revert-then-deeper-layer-closure thesis with 12 prospective corroborations |
 | **deletions-ledger.md** | `apparatus/docs/deletions-ledger.md` | Append-only record of constraint-induced deletions: what got removed, the named upstream constraint that made deletion safe, the tier/coordinate that became cleaner. Deletions are first-class substrate moves per keeper directive 2026-05-25; the ledger restores trajectory-binding for deleted code that git history alone cannot preserve. |
 

@@ -4,9 +4,9 @@ This document consolidates the engagement's standing rules into a single predict
 
 The ruleset compounds: rules higher-numbered build on prior rules + their predictions condition each other. The compounding is itself a load-bearing structural claim — see Doc 541 Appendix E (SIPE-T scale-invariance) and Doc 742 (resolver-instance boundary contract).
 
-**Authoritative source**: `pilots/rusty-js-jit/findings.md` (23 rules across 14 addenda, append-only per Doc 727 §X). This doc is a derived consolidated view; on disagreement, findings.md is canonical.
+**Authoritative source**: `pilots/rusty-js-jit/findings.md` (26 rules across 16 addenda, append-only per Doc 727 §X). This doc is a derived consolidated view; on disagreement, findings.md is canonical.
 
-**Status as of 2026-05-25**: **23 rules in findings.md; rules 1-15 + 23 articulated in this doc**. Rules 16-22 (Addenda XII + XIII) are in findings.md but not yet folded into this consolidated view; a full re-consolidation pass remains open work. Rule 23 (founding-baseline-inspection / locale-as-probe) was promoted at keeper directive 2026-05-25 from Finding NLC.1 (tokenization-above-IR arc).
+**Status as of 2026-05-28**: **26 rules in findings.md; rules 1-15 + 23 + 24 + 25 + 26 articulated in this doc**. Rules 16-22 (Addenda XII + XIII) are in findings.md but not yet folded into this consolidated view; a full re-consolidation pass remains open work. Rule 23 (founding-baseline-inspection / locale-as-probe) was promoted at keeper directive 2026-05-25 from Finding NLC.1 (tokenization-above-IR arc). Rules 24-26 promoted 2026-05-28 from findings IR.29/IR.32/IR.27 (rusty-js-ir locale Addendum XVI).
 
 ---
 
@@ -186,6 +186,42 @@ The ruleset compounds: rules higher-numbered build on prior rules + their predic
 
 ---
 
+## Rule 24 — Duplication-as-Pin-Art-signal
+
+**Statement**: when an emit pattern is duplicated across 3+ sites with the same shape and divergent failure modes, the duplication itself is a Pin-Art signal that a higher-tier coordinate (the abstraction the duplication is approximating) is the actual substrate move. Pause the per-site work, run a Pin-Art probe, surface the implicit constraint, then design from the tier-above coordinate downward.
+
+**Predicts**: per-site substrate moves on a duplicated emit pattern will keep producing per-site negative results or regressions; the per-site work pays an enumeration tax that the tier-above LIFT amortizes. Applying rule 24 prospectively at the first or second duplication-site recognizes the LIFT opportunity before paying the third site's negative-result tax.
+
+**Evidence**: rusty-js-ir EXT 23/24/29 (TDZ scope-entry emit duplicated across function-body, for-head, module-top, each requiring its own audit); IR-EXT 30 Pin-Art probe explicitly named the four implicit constraints (α/β/γ/δ) the duplication was approximating; EXT 31-34 absorbed the duplication incrementally via the block_pre_slots stack abstraction. Precedent: Rung-cluster-18 object_set / object_set_pk LIFT in the rusty-js-ir locale closed the same shape at the runtime-tier. Doc 727 §X basin-stability + Doc 729 §V resolver-instance contract both support the principle. Promoted to active 2026-05-28 from finding IR.29 (Constraint δ).
+
+**Composes with**: Rule 11 (5-axis pre-spawn — duplication-signal check is a sixth axis); Rule 13 (revert-then-deeper-layer-closure — when a per-site rung produces negative result on a duplicated pattern, the deeper-layer closure IS the LIFT to the tier-above coordinate); Rule 15 (chapter-close-inspect — after a successful per-site substrate move, check whether 2+ other sites share the shape; if yes, queue the LIFT).
+
+---
+
+## Rule 25 — Load/Store opcode symmetric TDZ-shaped checks
+
+**Statement**: any TDZ-shaped sentinel value that can flow through bytecode value-stack operations requires symmetric Load + Store checks at every frame-boundary semantic. Adding a new LoadX opcode that may carry a TDZ value mandates adding the corresponding StoreX TDZ check. Apply: when introducing a new value-flow opcode, immediately enumerate the symmetric counterpart and either implement or document the deferral.
+
+**Predicts**: an asymmetric implementation (only Load check OR only Store check) will leak the sentinel through the unchecked direction, surfacing as silent reads of the sentinel value (debugger inspection, JSON.stringify, equality compares) and assignment-to-uninitialized-binding cases that fail to throw. Per-opcode symmetric audit catches the leak at substrate landing.
+
+**Evidence**: rusty-js-ir EXT 23 LoadLocal-TDZ-check + EXT 26 StoreLocal-TDZ-check at same-frame; EXT 32 LoadUpvalue + EXT 33 StoreUpvalue at cross-frame closure capture. Both pairs closed substrate sub-shapes that only the symmetric pair could close: EXT 33 closed the closure-assign-to-TDZ shape (block-local-closure-set-before-initialization tests) that EXT 32's LoadUpvalue check alone did not. Generalizes to any future value-flow opcode (LoadGlobal/StoreGlobal, LoadWithName/StoreWithName, etc.) that can reach a TDZ slot. Promoted to active 2026-05-28 from finding IR.32.
+
+**Composes with**: Rule 6 (surface-completeness audit — Load/Store opcode pair is a surface-completeness instance); Rule 24 (duplication-as-Pin-Art-signal — the symmetric pair is a duplication discipline applied to opcode design).
+
+---
+
+## Rule 26 — Captured-slot TDZ uses compile-time guard, not runtime sentinel
+
+**Statement**: when a TDZ-target slot is captured by inner-closure upvalues during the enclosing construct's build, prefer the compile-time guard pattern (AST expr-walk + synthetic ReferenceError throw) over runtime PushTDZ + InitLocal seeding. Apply: at compile-class / compile-function-with-name / compile-generator / compile-async — check whether the binding slot is or will be captured; if yes, use expr-walk for any TDZ probes referencing the binding.
+
+**Predicts**: runtime TDZ-seeding of a captured slot interferes with downstream upvalue captures even when the slot is correctly overwritten by end-of-build (closures see the sentinel during build-time execution paths that don't complete the build first). Choosing compile-time guard for captured slots sidesteps the interference and is also cheaper at runtime (no per-call sentinel check).
+
+**Evidence**: rusty-js-ir EXT 27 negative result on TDZ-init'ing class self_name_slot (diff-prod 60/52 → 52/60, -8 fixtures regress: arrow-functions, class-inheritance, computed-property-order, error-types, node-events, node-stream, prototype-chain, reflect-api); EXT 28 compile-time guard via expr_refs_free closed the same class-name-in-extends shape with zero regression. Pattern recurs at rusty-js-ir EXT 21 (let self-init), EXT 22 (destructure self-init), EXT 28 (class extends). Promoted to active 2026-05-28 from finding IR.27.
+
+**Composes with**: Rule 5 (three probes before default-on — compile-time guard at captured-slot site is the conservative-by-default; runtime sentinel needs all three probe levels to validate); Rule 13 (revert-then-deeper-layer — the runtime-sentinel attempt at a captured-slot site is the kind of substrate-introduction prefix that benefits from compile-time-guard closure instead of substrate retry).
+
+---
+
 ## Standing instruments (rule-supporting apparatus)
 
 The ruleset is supported by standing instruments that rules 5, 10, 11, 14, 15 explicitly invoke:
@@ -231,6 +267,9 @@ Rules at higher levels compose with prior rules:
 - Rule 14 + Rule 15 — conservative-strip + chapter-close-inspect together produce the inspect-then-iterate compound-discovery pattern that Doc 541 Appendix E identifies as a SIPE-T instance.
 - Rule 11 + Rule 23 — rule 11 is BEFORE-spawn (where to spawn); rule 23 is AT-spawn (verify the spawned coordinate is the substrate target). Together they bracket the spawn moment with a pre- and post-check, catching mis-spawns at both ends of the founding boundary.
 - Rule 23 + Rule 15 — both are inspection-based; rule 23 inspects at founding, rule 15 at chapter-close. Together they constitute the "inspect-twice" discipline (founding + closing) that bookends the locale's lifecycle.
+- Rule 13 + Rule 24 — when a per-site negative result lands on a duplicated emit pattern, rule 24 reframes the deeper-layer closure of rule 13 as the LIFT to the tier-above coordinate (rather than retrying at a different per-site spot). Two complete trajectories validated this composition at rusty-js-ir EXT 25→26 and EXT 29→34.
+- Rule 24 + Rule 6 — duplication-as-Pin-Art-signal is a surface-completeness audit applied to emit patterns rather than data-structure storage shapes. Same discipline, different surface.
+- Rule 25 + Rule 26 — Load/Store symmetric checks are runtime substrate; captured-slot guard is compile-time substrate. Together they cover the full surface for sentinel-shaped value flow: runtime checks at every frame-boundary opcode + compile-time guards at every captured-slot site.
 
 ---
 
@@ -252,6 +291,9 @@ What the ruleset, taken together, claims to PREVENT:
 | Silent false-positive substrate regressions | 14 |
 | Premature chapter close | 15 |
 | Wrong-coordinate substrate work (locale at X, move-target at Y) | 23 |
+| Per-site enumeration tax on duplicated emit pattern | 24 |
+| Asymmetric sentinel-value Load/Store leak through unchecked direction | 25 |
+| Captured-slot TDZ interference (runtime sentinel breaks closure capture) | 26 |
 
 What the ruleset DOES NOT yet cover (open territory for future rules):
 - Cross-substrate-tier dispatch contracts (Doc 742's O1/O2/O3 — corpus-tier articulation, not yet a rule)
@@ -283,4 +325,4 @@ When adding a rule:
 
 ---
 
-*This doc is a consolidated view; `pilots/rusty-js-jit/findings.md` is canonical. Last full consolidation: 2026-05-24 post-Addendum X (15 rules). Last partial consolidation: 2026-05-25 post-Addendum XIV adds Rule 23 only; Rules 16-22 (Addenda XII + XIII) await consolidation pass.*
+*This doc is a consolidated view; `pilots/rusty-js-jit/findings.md` is canonical. Last full consolidation: 2026-05-24 post-Addendum X (15 rules). Partial consolidation 2026-05-25 added Rule 23. Partial consolidation 2026-05-28 (per keeper directive Telegram 10130) adds Rules 24, 25, 26 from findings.md Addendum XVI (rusty-js-ir TDZ session). Rules 16-22 (Addenda XII + XIII) still await consolidation pass.*

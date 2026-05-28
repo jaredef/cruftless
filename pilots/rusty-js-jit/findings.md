@@ -1312,8 +1312,12 @@ Rule 13 (revert-then-deeper-layer-closure) + Pin-Art probing form a reproducible
 ### Totals update
 
 - **48 findings** (45 + IR.24 + IR.26 + IR.27 + IR.28 + IR.29 + IR.30 + IR.31 + IR.32 + IR.33; IR.25 is the rule-13 validation rolled into the methodology consolidation).
-- **23 standing rules** (unchanged; rules 24/25/26 above are PROPOSED — awaiting keeper review per standing-rule promotion discipline).
+- **26 standing rules** (was 23; rules 24, 25, 26 promoted from PROPOSED to active per keeper directive Telegram 10130, 2026-05-28).
 - **16 addenda** (this).
 - Cumulative IR locale rungs at fold: 34.
 - Engagement-wide diff-prod: 61/51 (was 59/53 at IR session start; +2 from the IR + TAMM/ASU/AT collateral).
+
+### Promotion update (2026-05-28, per Telegram 10130)
+
+Rules 24, 25, 26 are now **active standing rules**. Their statements are above in Addendum XVI; the "(proposed)" qualifier is retracted. Promotion path: Pin-Art probe (IR-EXT 30) → finding articulation (IR.29/IR.32/IR.27) → addendum proposal (this Addendum XVI) → keeper approval (Telegram 10130) → consolidated-view update (predictive-ruleset.md, this commit).
 
