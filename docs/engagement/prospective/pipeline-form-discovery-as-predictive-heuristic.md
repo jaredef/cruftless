@@ -6,13 +6,15 @@
 
 **Empirical anchor**: rusty-js-ir locale TDZ session (2026-05-27 + 2026-05-28; EXT 20-40 across 21 rungs; findings.md Addendum XVI). Three complete rule-13 trajectories whose closure each landed via deeper-layer substrate work after the first round's negative result (EXT 25→26, EXT 29→34, EXT 38→39→40). Each trajectory's residual-narrowing at successive rounds — design gap → emission-site gap → timing edge — discloses the pipeline's mouth-to-terminus shape progressively rather than at the spawn moment.
 
+**Post-anchor amendment (2026-05-28, TTTC/EDIEE)**: `tagged-template-tail-call-boundary` (TTTC) exposed a fourth empirical shape: an apparent pipeline mouth can be gated by a neighboring pipeline's terminus. The TTTC locale's visible failure was initially `NOJSON` host abort; a call-depth guard converted the abort into ordinary failure signal, which revealed that test262's `tcoHelper.js` include had not materialized `$MAX_ITERATIONS` under strict indirect eval. That prerequisite belonged to `eval-declaration-instantiation-early-errors` (EDIEE), which closed it by splitting declaration-time `DefineGlobal` from strict assignment-time `StoreGlobal`. Only after EDIEE's terminus was available did TTTC's true residual surface as proper-tail-call stack growth. This adds "mouth-gating DAG prerequisite" and "diagnostic scaffold is not closure" to the heuristic.
+
 ---
 
 ## I. Thesis
 
 Every substrate-shaped problem implies a **resolution pipeline**: a substrate-tier-spanning trajectory from an **input shape** (the problem's mouth — what is asked of the engine) to a **terminal emission shape** (the pipeline's terminus — what the engine must produce in spec-correspondence). The pipeline's internal trajectory is the sequence of substrate steps that transform the input shape to the emission shape across tiers; its **interior contour** is the set of intermediate-tier value shapes the trajectory passes through.
 
-Three claims follow:
+Four claims follow:
 
 **Claim 1 (shape correspondence)**: the input shape and the terminal emission shape jointly determine the pipeline's interior contour. A pipeline whose mouth and terminus are correctly stated has a unique-up-to-implementation-freedom interior; a pipeline whose mouth and terminus disagree (or are mis-stated) has no consistent interior and surfaces as a regression class until the disagreement is named.
 
@@ -20,7 +22,9 @@ Three claims follow:
 
 **Claim 3 (pipeline-to-pipeline relation via DAG/Lattice/Alphabet)**: pipelines interact via one of three relational forms, each appropriate to a different shape of substrate dependency: **DAG** (strict tier-ordering when one pipeline's terminus is another's mouth), **lattice** (meets and joins when pipelines share substrate tiers but with distinct mouth-terminus pairs), **alphabet exchange** (when pipelines occupy the same tier but exchange typed primitives at a shared boundary). The relational form is discoverable from the pipelines' mouth-terminus shapes; choosing the wrong form produces the same regression class as mis-stating a single pipeline's mouth-terminus.
 
-The composition of these three claims is a **predictive heuristic**: given a substrate-shaped problem statement, the engagement can derive the implied pipeline's mouth, terminus, interior contour, and relation to neighboring pipelines before committing substrate work — and can predict which regression classes will surface if any of the four are mis-stated.
+**Claim 4 (observability scaffold distinction)**: a move that converts an unobservable failure (panic, abort, no-JSON, timeout) into an observable diagnostic is a pipeline-discovery move, not a closure move, unless it also produces the pipeline's terminus. Such a scaffold is valid Pin-Art apparatus when it names the next interior point or neighboring prerequisite; it becomes a substrate error if the trajectory counts the diagnostic as success or leaves the scaffold without a removal/bypass condition.
+
+The composition of these four claims is a **predictive heuristic**: given a substrate-shaped problem statement, the engagement can derive the implied pipeline's mouth, terminus, interior contour, relation to neighboring pipelines, and observability status before committing substrate work — and can predict which regression classes will surface if any of the four-tuple elements or the observability condition are mis-stated.
 
 This articulation elevates the engagement's operational discipline (standing rules 1-26; substrate-shaped-work pipeline per Doc 744 candidate) from procedural ("we follow this sequence") to methodological ("the sequence is discoverable from the pipeline shape implied by the problem's statement").
 
@@ -85,6 +89,36 @@ When a substrate round R targeting pipeline P regresses, the regression class pr
 
 The three classes recur across the engagement's negative-result history (Addendum XV's NLC.0-revised; the EXT 25→26 destructure-leaf StoreLocal; the EXT 29→34 script-mode globalThis-mirror). Each class identifies a specific kind of mis-statement of the pipeline's interior. The mapping `regression class → mis-stated I_k` is the predictive heuristic this articulation contributes.
 
+### III.4 No-JSON as observability failure, not pipeline terminus
+
+Some pipeline-discovery events are not ordinary regressions. They are
+**observability failures**: the runner cannot emit a diagnostic because the
+host process aborts, panics, loops, or times out before the apparatus can
+observe the interior point. In these cases, a narrow diagnostic scaffold can
+be the correct first move, but only under a stricter reading:
+
+- the scaffold's terminus is an apparatus artifact (a readable failure tag),
+  not the language pipeline's terminus;
+- the scaffold must be recorded as such in the trajectory;
+- the scaffold must name the next interior point or neighboring prerequisite;
+- the scaffold must carry an explicit sunset condition: removal, bypass by the
+  real closure path, or demotion to a general host-safety fallback that no
+  conforming path reaches.
+
+TTTC/EDIEE supplies the example. TTTC's seed mouth was tagged-template proper
+tail calls, but the first observed shape was `NOJSON`: Rust host stack
+overflow during the test262 runner. A temporary call-depth guard converted
+host abort into ordinary failure signal. That did not close TTTC. It revealed
+that the `tcoHelper.js` include's strict indirect-eval `var $MAX_ITERATIONS`
+was not materialized, so TTTC's apparent mouth was not yet executable. The
+valid substrate closure was therefore in EDIEE: split declaration-time
+`DefineGlobal` from strict assignment-time `StoreGlobal`. After that upstream
+terminus was available, TTTC's actual residual surfaced as `Maximum call stack
+size exceeded`, the intended control-flow boundary.
+
+The methodological reading: **observable failure is not success**. It is the
+apparatus becoming capable of seeing the next substrate constraint.
+
 ---
 
 ## IV. The DAG / Lattice / Alphabet relation between pipelines
@@ -98,6 +132,30 @@ Two pipelines `P_1 = (M_1, T_1, I_1)` and `P_2 = (M_2, T_2, I_2)` are in **DAG r
 DAG relations are the dominant form across the lowering-compiler stack (Doc 730 T1-T6): each tier's terminus feeds the next tier's mouth. Substrate work at one tier's terminus must respect the next tier's mouth-shape; misalignment surfaces as the cross-tier deviation pipeline (Doc 730 §XII).
 
 **Discriminator**: DAG when the pipelines are strictly ordered by substrate tier; no shared interior; no parallel paths.
+
+### IV.1.a Mouth-gating DAG prerequisites
+
+A special DAG case occurs when `T_1` does not merely feed `M_2`, but gates
+whether `M_2` is measurable at all. In this case, failures observed while
+probing `P_2` may initially name `P_1`, because the apparatus has not yet
+reached `P_2`'s real mouth.
+
+The operational test is:
+
+1. State `M_2`.
+2. Identify any required upstream artifact without which `M_2` cannot execute.
+3. Ask whether that artifact is `T_1` of a neighboring pipeline.
+4. If yes, prove or close `T_1` before treating `P_2`'s residual as its own
+   interior.
+
+TTTC/EDIEE is the concrete form. TTTC's `M_2` was a tagged-template call in
+tail position. But test262's probe requires `$MAX_ITERATIONS`, whose value is
+emitted by the eval/harness declaration-instantiation pipeline. While EDIEE's
+`T_1` was missing, TTTC's residual was blurred: first host abort, then
+`$MAX_ITERATIONS is not defined`. Once EDIEE emitted the required global var
+binding, TTTC's residual became the genuine proper-tail-call boundary. This is
+not a sibling lattice relation: the prerequisite is ordered. EDIEE's terminus
+is a condition of TTTC's mouth.
 
 ### IV.2 Lattice relation — meets and joins on shared interior
 
@@ -145,8 +203,10 @@ Before declaring the substrate move-shape:
 2. **Name the terminus T**: which spec-mandated emission shape must the pipeline produce? (For ECMA pipelines, cite the spec-mandated artifact. For meta-pipelines, cite the discipline artifact.)
 3. **Sketch the interior I**: which substrate tiers must the trajectory pass through? Use the substrate-tier alphabet (Doc 730 + Doc 731) to enumerate the alphabets `A_N, A_{N-1}, …, A_M`.
 4. **Identify neighbor pipelines and their relational forms (R)**: per §IV.4, list neighbor pipelines and discriminate DAG / lattice / alphabet-exchange.
+5. **Check mouth-gating prerequisites**: before interpreting residuals as belonging to this pipeline, prove that every upstream DAG prerequisite needed to make `M` executable has reached its terminus. If a prerequisite is missing, treat the locale as a probe that surfaced the upstream coordinate.
+6. **Classify observability**: if the initial failure is panic/abort/no-JSON/timeout, record any diagnostic scaffold as apparatus-bearing, not as closure, and name its sunset condition.
 
-If any of M, T, I, R cannot be named, the pipeline is mis-stated; the locale spawn surfaces a discovery probe (Rule 23 baseline-inspection) before substrate work begins.
+If any of M, T, I, R cannot be named, or if the mouth-gating/observability checks fail, the pipeline is mis-stated or not yet measurable; the locale spawn surfaces a discovery probe (Rule 23 baseline-inspection) before substrate work begins.
 
 ### V.2 At chapter-close (Phase 5 extension)
 
@@ -154,7 +214,8 @@ When a chapter folds:
 
 1. **Verify M-T-I correspondence**: did the closed pipeline's interior match the sketch from Phase 1? If divergence, name the implicit constraint that forced the divergence and record as a finding.
 2. **Verify R correspondence**: did the neighbor-pipeline interactions resolve per the predicted relational form? If a different form materialized, record as a finding for the standing-rule promotion path.
-3. **Promote pipeline-form discovery findings**: per the findings.md addendum protocol (Doc 727 §X), promote pipeline-form discoveries as findings with the four-tuple (M, T, I, R) recorded explicitly.
+3. **Verify scaffold disposition**: if any diagnostic scaffold was introduced to convert an unobservable failure into a signal, confirm it was removed, bypassed by the real closure path, or explicitly retained only as a general host-safety fallback.
+4. **Promote pipeline-form discovery findings**: per the findings.md addendum protocol (Doc 727 §X), promote pipeline-form discoveries as findings with the four-tuple (M, T, I, R) and observability disposition recorded explicitly.
 
 ### V.3 Predictive use
 
@@ -163,6 +224,8 @@ The articulation predicts:
 - **A new substrate-shaped problem with explicit M, T, sketched I, identified R closes in ≤ 3 rungs** (per IR.33's cumulative substrate amortization + the discipline pipeline's per-phase cost model). Cross-validates against the GPI / IPBR / TSR results of rule 13's prospective application (Addendum IX).
 - **A new substrate-shaped problem with one of M/T/I/R implicit incurs an additional rule-13 round per implicit element**, with the round's negative result discovering the implicit element. Validates against IR-EXT 25→26 (one implicit emit-site = one extra round), EXT 29→34 (one implicit constraint = four-round chain — EXT 30 probe + EXT 31/32/33 incremental + EXT 34 closure), EXT 38→39→40 (two implicit constraints = three rounds).
 - **A pipeline whose relational form (R) is mis-discriminated produces a class-3 regression (timing edge between rounds)** with high specificity to the wrong-form choice. The class-3 regression IS the discriminator's falsifier.
+- **A pipeline whose mouth is gated by an unclosed upstream DAG prerequisite first emits that prerequisite's failure shape**, even when the locale was spawned for the downstream pipeline. Once the upstream terminus closes, the downstream residual changes class.
+- **A diagnostic scaffold that converts no-JSON to ordinary failure predicts a second residual class after the scaffold lands**. If the second residual names an upstream prerequisite, close that prerequisite first; if it names the spawned pipeline's intended terminus, proceed at that pipeline's interior. Counting the scaffold itself as closure predicts false chapter-close.
 
 ---
 
@@ -176,14 +239,15 @@ The articulation predicts:
 | IR-EXT 25→26 (Op::InitLocal TDZ-on-assign) | 2 rounds | ~80 | T implicit (which init sites need bypass) | Class-1 (emit-site interaction with destructure-leaf) |
 | IR-EXT 29→34 (module-top TDZ) | 4 rounds + 1 probe | ~120 | I implicit at script-mode boundary | Class-1 + Class-2 (Phase-3 implicit-constraint identification at IR-EXT 30 probe) |
 | IR-EXT 38→39→40 (class-this TDZ) | 3 rounds | ~190 | I implicit at super-call setup + R implicit (class_stack inheritance trap) | Class-1 (super-call PushThis) + Class-2 (class_stack inheritance) + Class-3 (arrow-cell timing) |
+| TTTC/EDIEE (tagged-template TCO + eval declaration define) | 2 discovery rungs + upstream closure | small | R implicit (mouth-gating DAG prerequisite) + observability implicit (NOJSON) | No-JSON scaffold revealed EDIEE prerequisite; EDIEE closure exposed TTTC stack-growth residual |
 
-**Pattern**: rounds-to-closure ≈ count of implicit (M, T, I, R) elements at spawn + 1. The predictive heuristic's primary use is to *reduce* implicit elements at spawn so the chain converges in fewer rounds.
+**Pattern**: rounds-to-closure ≈ count of implicit (M, T, I, R) elements at spawn + 1, with mouth-gating prerequisites counted as implicit R and no-JSON/abort cases counted as implicit observability. The predictive heuristic's primary use is to *reduce* implicit elements at spawn so the chain converges in fewer rounds.
 
 ---
 
 ## VII. Falsifier
 
-The articulation's falsifier is a substrate-shaped problem with M, T, I, R explicit at spawn that nonetheless takes > 3 rounds to close, with no novel substrate-class-introduction. If such a case materializes, the four-tuple-discovery heuristic is partially falsified for that substrate class; the falsifier surfaces either a missing element (5th tuple component? — currently undeducted) or a heuristic gap in the (M, T, I, R) discrimination per §IV.4.
+The articulation's falsifier is a substrate-shaped problem with M, T, I, R explicit at spawn, all mouth-gating prerequisites proven closed, and ordinary observability established, that nonetheless takes > 3 rounds to close with no novel substrate-class-introduction. If such a case materializes, the four-tuple-plus-observability heuristic is partially falsified for that substrate class; the falsifier surfaces either a missing element (5th tuple component beyond observability?) or a heuristic gap in the (M, T, I, R) discrimination per §IV.4.
 
 Conversely, if a substrate-shaped problem spawned with all four elements explicit converges in ≤ 3 rounds across 5+ independent locales, the heuristic is corroborated as a predictive instrument.
 
@@ -211,4 +275,4 @@ Forward-derived prediction: subsequent IR locale rungs (post-Addendum XVI) that 
 
 ## IX. Status
 
-Working draft. Candidate for corpus promotion after keeper review. Located at `docs/engagement/prospective/pipeline-form-discovery-as-predictive-heuristic.md` per `apparatus/docs/repository-apparatus.md` §0 promotion path. On promotion: target corpus number Doc 745 (after Doc 744 candidate); mirror to `docs/corpus-ref/`; add cross-references from `apparatus/docs/predictive-ruleset.md` (introduce Rule 27 "Mouth-terminus completeness at spawn" derived from §V.1) + `pilots/rusty-js-jit/findings.md` Addendum XVII + `CLAUDE.md` §Substrate-shaped-work discipline (extend Phase 1 + Phase 5 per §V.1+V.2).
+Working draft. Candidate for corpus promotion after keeper review. Located at `docs/engagement/prospective/pipeline-form-discovery-as-predictive-heuristic.md` per `apparatus/docs/repository-apparatus.md` §0 promotion path. On promotion: target corpus number Doc 745 (after Doc 744 candidate); mirror to `docs/corpus-ref/`; add cross-references from `apparatus/docs/predictive-ruleset.md` (introduce Rule 27 "Mouth-terminus completeness at spawn" and include mouth-gating/observability checks derived from §V.1) + `pilots/rusty-js-jit/findings.md` Addendum XVII + `CLAUDE.md` §Substrate-shaped-work discipline (extend Phase 1 + Phase 5 per §V.1+V.2).
