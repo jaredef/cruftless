@@ -2904,8 +2904,15 @@ impl Compiler {
 
                 // Decide the per-iteration binding slot (and per_iter_fresh
                 // for let/const heads, mirroring Ω.5.g.1 for-of semantics).
-                let (bind_slot, per_iter_fresh, assign_target): (
+                // FIDH-EXT 1: destr_pat carries the head binding pattern when
+                // it is an Array/Object destructuring shape; body emission
+                // injects emit_destructure (Decl-mode) or
+                // emit_destructure_assign (Pattern-mode) after the per-iter
+                // key is written into the temp source slot. Mirrors the
+                // for-of pattern at compiler.rs:2140–2154 + 2332–2395.
+                let (bind_slot, destr_pat, per_iter_fresh, assign_target): (
                     u16,
+                    Option<rusty_js_ast::BindingPattern>,
                     bool,
                     Option<rusty_js_ast::Expr>,
                 ) =
@@ -2918,34 +2925,53 @@ impl Compiler {
                                     depth: 0,
                                 });
                                 let fresh = matches!(kind, VariableKind::Let | VariableKind::Const);
-                                (s, fresh, None)
+                                (s, None, fresh, None)
                             }
-                            _ => {
-                                return Err(self
-                                    .err(span, "for-in with destructure head not yet supported"))
+                            pat @ (rusty_js_ast::BindingPattern::Array(_)
+                            | rusty_js_ast::BindingPattern::Object(_)) => {
+                                // FIDH-EXT 1: Decl with destructure head.
+                                // Pre-allocate every bound name as a local
+                                // under kind; allocate hidden source slot
+                                // for the per-iter key string.
+                                for id in pat.collect_names() {
+                                    self.alloc_local(LocalDescriptor {
+                                        name: id.name.clone(),
+                                        kind: *kind,
+                                        depth: 0,
+                                    });
+                                }
+                                let s = self.alloc_temp("<forin.src>");
+                                let fresh = matches!(kind, VariableKind::Let | VariableKind::Const);
+                                (s, Some(pat.clone()), fresh, None)
                             }
                         },
                         rusty_js_ast::ForBinding::Pattern(pat) => match pat {
                             rusty_js_ast::BindingPattern::Identifier(id) => {
                                 if let Some(s) = self.resolve_local(&id.name) {
-                                    (s, false, None)
+                                    (s, None, false, None)
                                 } else {
                                     let s = self.alloc_local(LocalDescriptor {
                                         name: id.name.clone(),
                                         kind: VariableKind::Let,
                                         depth: 0,
                                     });
-                                    (s, false, None)
+                                    (s, None, false, None)
                                 }
                             }
-                            _ => {
-                                return Err(self
-                                    .err(span, "for-in with destructure head not yet supported"))
+                            other => {
+                                // FIDH-EXT 1: Pattern (no var/let/const)
+                                // destructure head. Per SMDR-EXT 1
+                                // precedent (for-of), bound names are
+                                // assignment-target REFERENCES; route
+                                // through emit_destructure_assign at body
+                                // emission. Allocate hidden source slot.
+                                let s = self.alloc_temp("<forin.src>");
+                                (s, Some(other.clone()), false, None)
                             }
                         },
                         rusty_js_ast::ForBinding::AssignmentTarget(target) => {
                             let s = self.alloc_temp("<forin.assignment>");
-                            (s, false, Some(target.clone()))
+                            (s, None, false, Some(target.clone()))
                         }
                     };
 
@@ -3020,6 +3046,18 @@ impl Compiler {
                 if per_iter_fresh {
                     encode_op(&mut self.bytecode, Op::ResetLocalCell);
                     encode_u16(&mut self.bytecode, bind_slot);
+                    // FIDH-EXT 1: when the head is a destructure pattern with
+                    // let/const, also reset each pre-allocated bound-name
+                    // slot per iter, mirroring the for-of pattern at
+                    // compiler.rs:2332–2339.
+                    if let Some(pat) = &destr_pat {
+                        for id in pat.collect_names() {
+                            if let Some(s) = self.resolve_local(&id.name) {
+                                encode_op(&mut self.bytecode, Op::ResetLocalCell);
+                                encode_u16(&mut self.bytecode, s);
+                            }
+                        }
+                    }
                 }
                 encode_op(&mut self.bytecode, Op::LoadLocal);
                 encode_u16(&mut self.bytecode, keys_slot);
@@ -3034,6 +3072,30 @@ impl Compiler {
                     encode_op(&mut self.bytecode, Op::LoadLocal);
                     encode_u16(&mut self.bytecode, bind_slot);
                     self.assign_target_from_stack(target)?;
+                }
+                // FIDH-EXT 1: destructure the per-iter key into the head's
+                // bound names (Decl-mode) or assignment targets (Pattern-
+                // mode), mirroring the for-of pattern at compiler.rs:2361–
+                // 2395. The bind_slot temp holds the key string written
+                // by Op::InitLocal above; emit_destructure walks the
+                // pattern using bind_slot as the source.
+                if let Some(pat) = &destr_pat {
+                    let is_assignment_pattern = matches!(
+                        left,
+                        rusty_js_ast::ForBinding::Pattern(rusty_js_ast::BindingPattern::Array(_))
+                            | rusty_js_ast::ForBinding::Pattern(
+                                rusty_js_ast::BindingPattern::Object(_)
+                            )
+                    );
+                    if is_assignment_pattern {
+                        let target_expr = binding_pattern_to_assignment_expr(pat);
+                        match target_expr {
+                            Some(expr) => self.emit_destructure_assign(&expr, bind_slot)?,
+                            None => self.emit_destructure(pat, bind_slot)?,
+                        }
+                    } else {
+                        self.emit_destructure(pat, bind_slot)?;
+                    }
                 }
 
                 self.compile_stmt(body)?;

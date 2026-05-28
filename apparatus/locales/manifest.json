@@ -1,12 +1,12 @@
 {
   "generated_by": "apparatus/locales/discover.sh",
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
-  "locale_root": "/Users/jaredfoy/Developer/cruftless/pilots",
+  "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 214,
+    "locales": 215,
     "top_level": 128,
-    "nested": 86,
-    "warnings": 0
+    "nested": 87,
+    "warnings": 1
   },
   "locales": [
     {
@@ -314,6 +314,15 @@
       "depth": 1,
       "rung_count": 3,
       "status": "FOUNDED 2026-05-28 under"
+    },
+    {
+      "coord": "cruft-lowering-feature-gaps/for-in-destructure-head",
+      "tag": "L.cruft-lowering-feature-gaps.for-in-destructure-head",
+      "parent": "L.cruft-lowering-feature-gaps",
+      "scope": "for-in-destructure-head",
+      "depth": 2,
+      "rung_count": 0,
+      "status": "FOUNDED 2026-05-28 as second sub-locale under `pilots/cruft-lowering-feature-gaps/`, parallel to `super-reference-lowering/`. Enrolled under arc `apparatus/arcs/2026-05-28-lowering-feature-gap-triage/`."
     },
     {
       "coord": "cruft-lowering-feature-gaps/super-reference-lowering",
@@ -1936,5 +1945,11 @@
       "status": null
     }
   ],
-  "warnings": []
+  "warnings": [
+    {
+      "coord": "cruft-lowering-feature-gaps/for-in-destructure-head",
+      "tag": "L.cruft-lowering-feature-gaps.for-in-destructure-head",
+      "warning": "seed.md present but trajectory.md missing"
+    }
+  ]
 }
