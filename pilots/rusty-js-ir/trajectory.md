@@ -2324,3 +2324,40 @@ TDZ-named cluster (13 paths): PRE 0/13 → POST 0/13 (unchanged — those probe 
 **Open**: IR.20 point (iii) for-head TDZ + cross-iteration freshness — needs block-scope-entry init plus per-iter ResetLocalCell ordering. Also: TDZ on `StoreLocal` (assigning to a TDZ slot via `x = 1; let x;` shape) currently silently succeeds — adding the check on StoreLocal would close this but requires distinguishing init-stores from assign-stores (the decl-line `StoreLocal` must NOT check; only later assignments check).
 
 **Status**: IR-EXT 23 CLOSED locally. Cumulative IR rungs: 23 (rungs 1-19 from prior session + rungs 20-23 this session). TDZ enforcement points (i) and (ii) from finding IR.20 both closed.
+
+---
+
+## Rung-cluster-24 — for-of / for-in head TDZ enforcement (point iii partial) (2026-05-27)
+
+Per keeper directive Telegram 10106 ("Press in"). Closes the for-of/for-in head-let/const sub-shape of IR.20 point (iii): the head-bound names are TDZ during evaluation of the iterable expression per §13.7.5.{5,6}, so `let x = 1; for (let x in { x }) {}` now throws ReferenceError instead of silently iterating with the inner `x` shadow.
+
+**Substrate** (~30 LOC across two for-loop branches in compiler.rs Stmt::ForOf + Stmt::ForIn):
+- After the head-binding slot allocation (which already happens before iterable compile), iterate `self.locals[scope_snapshot..]`, skip temps (`<…>`-prefixed), and for each Let/Const slot emit `Op::PushTDZ + Op::StoreLocal(slot)` to seed TDZ before the iterable expression compiles.
+- Reuses the PushTDZ + Runtime-side LoadLocal check from IR-EXT 23. No new opcodes or runtime changes.
+
+**Yield**:
+```text
+TDZ-named cluster (13 paths): PRE 0/13 → POST 4/13 (+4)
+Broader let/const cluster (120 paths): PRE 106/120 → POST 106/120 (unchanged)
+```
+**+4 PASS** on the explicit *tdz* paths. The 4 closed: `for-of/head-let`, `for-of/head-const`, `for-in/head-let`, `for-in/head-const` bound-names-fordecl-tdz fixtures.
+
+**Direct probes** (post-rung):
+- `let x = 1; for (let x in { x }) {}` → ReferenceError ✅
+- `let y = 1; for (const y in { y }) {}` → ReferenceError ✅
+- `let z = 1; for (let z of [z]) {}` → ReferenceError ✅
+
+**Gates**: build clean; diff-prod 60/52 (parity).
+
+**Tag**: `cluster-tdz-for-head-24`.
+
+**Remaining IR.20 point (iii) sub-shapes** (5 actual fails on TDZ-named, plus 4 SKIPped pending unrelated features):
+- constructor-this-tdz-during-initializers — derived-class constructor `this` is TDZ before `super()`. Needs class-instantiation TDZ machinery.
+- optional-chain-tdz — `a?.b` where `a` is TDZ.
+- short-circuit-compound-assignment-tdz — `x &&= 1` where `x` is TDZ. (TDZ check on StoreLocal — currently only LoadLocal checks.)
+- unscopables-tdz — Symbol.unscopables interaction with TDZ.
+- block-scoped-functions-hoisted-tdz — block-scoped function-decl hoisting precedence.
+
+**Finding IR.23 (TDZ machinery composes across enforcement points)**: the PushTDZ + LoadLocal-Rc::ptr_eq pattern introduced at rung-23 was reused at rung-24 without any runtime changes — only compiler emit-site additions. The same shape will work for class-`this` TDZ (point iii.a) and for the unhandled compound-assign shape (point iii.c) without new opcodes; only the StoreLocal check needs to distinguish init-stores from assign-stores, which can use a new `Op::InitLocal` peer of `Op::StoreLocal` that overwrites the sentinel unconditionally.
+
+**Status**: IR-EXT 24 CLOSED locally. Cumulative IR rungs: 24. TDZ enforcement points (i), (ii) closed; (iii) for-head sub-shape closed; (iii) class-this, optional-chain, compound-assign, unscopables, block-fn-hoist sub-shapes remain.

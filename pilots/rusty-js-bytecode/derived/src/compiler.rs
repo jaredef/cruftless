@@ -1864,6 +1864,25 @@ impl Compiler {
                         (s, None, false, Some(target.clone()))
                     }
                 };
+                // IR-EXT 24 (TDZ candidate A.iii — for-of head): the
+                // for-head let/const bound names are in TDZ during
+                // evaluation of the iterable expression per §13.7.5.5.
+                // Emit PushTDZ + StoreLocal for every head let/const slot
+                // allocated above so `let x = 1; for (let x in { x }) {}`
+                // throws ReferenceError when the inner `x` shorthand
+                // resolves to the head-binding (still in TDZ).
+                for i in scope_snapshot..self.locals.len() {
+                    let nm = self.locals[i].name.clone();
+                    let kind = self.locals[i].kind;
+                    if nm.starts_with('<') {
+                        continue;
+                    }
+                    if matches!(kind, VariableKind::Let | VariableKind::Const) {
+                        encode_op(&mut self.bytecode, Op::PushTDZ);
+                        encode_op(&mut self.bytecode, Op::StoreLocal);
+                        encode_u16(&mut self.bytecode, i as u16);
+                    }
+                }
                 // Compute iterable[@@iterator]() and store into iter_slot.
                 self.compile_expr(right)?;
                 encode_op(&mut self.bytecode, Op::Dup);
@@ -2508,6 +2527,21 @@ impl Compiler {
                         }
                     };
 
+                // IR-EXT 24 (TDZ candidate A.iii — for-in head): symmetric
+                // with for-of above; for-head let/const bindings are in TDZ
+                // during evaluation of the iterable expression per §13.7.5.6.
+                for i in scope_snapshot..self.locals.len() {
+                    let nm = self.locals[i].name.clone();
+                    let kind = self.locals[i].kind;
+                    if nm.starts_with('<') {
+                        continue;
+                    }
+                    if matches!(kind, VariableKind::Let | VariableKind::Const) {
+                        encode_op(&mut self.bytecode, Op::PushTDZ);
+                        encode_op(&mut self.bytecode, Op::StoreLocal);
+                        encode_u16(&mut self.bytecode, i as u16);
+                    }
+                }
                 // Ω.5.P04.E1.for-in-nullish-skip: route through
                 // __for_in_keys helper instead of Object.keys directly.
                 // The helper returns [] for undefined/null receivers per
