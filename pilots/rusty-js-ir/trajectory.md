@@ -2261,3 +2261,26 @@ Broader let/const cluster (120 paths): PRE 102/120 → POST 105/120 (+3 PASS)
 **Finding IR.20 (the TDZ surface decomposes into three independent enforcement points)**: (i) self-init within the declarator (`let y = y`) — closed by compile-time AST walk (this rung). (ii) Access before declaration line within the same scope (`function f() { return x; let x = 1; }`) — needs scope-entry hoist-to-uninit + runtime LoadLocal sentinel check (candidate A). (iii) For-head TDZ + cross-iteration freshness — needs (ii) plus per-iter-fresh bookkeeping in for/for-in/for-of. Closing (i) doesn't close (ii) or (iii); each needs its own substrate.
 
 **Status**: IR-EXT 21 CLOSED locally. Candidate A (function-body TDZ) remains the highest-yield deferred IR rung if pursued next.
+
+---
+
+## Rung-cluster-22 — TDZ self-init guard for destructure declarators (2026-05-27)
+
+Per keeper directive Telegram 10099 ("Continue as coherent") following IR-EXT 21's identifier-target self-init close. Coherent extension: the same TDZ self-init shape also applies to destructure declarators per §13.3.1.1 (the binding-pattern's bound names are in TDZ during init eval).
+
+**Substrate** (~25 LOC in compiler.rs Stmt::Variable BindingPattern::Array|Object branch):
+- For `let [a, b] = init` / `let {x, y} = init`, walk the init expression for free references to any of the pattern's collect_names() — if any match, emit `emit_throw_referenceerror`.
+- Reuses the `expr_refs_free` walker from IR-EXT 21.
+
+**Direct probes** (post-rung):
+- `let [a, b] = [a, 1]` → ReferenceError ✅ (was: `a=undefined, b=1`)
+- `let {x, y} = {x: x, y: 1}` → ReferenceError ✅ (was: silent pass)
+- `let y = y` → ReferenceError ✅ (unchanged from EXT 21)
+
+**Yield**: broader let/const cluster unchanged at 105/120 — the test262 fixtures don't appear to exercise the destructure-self-init shape on the 120-path probe set. The substrate is correct; the yield is in the long tail of test262 paths outside the sample. diff-prod 60/52 (parity).
+
+**Tag**: `cluster-tdz-destructure-self-init-22`.
+
+**Finding IR.21 (coherent micro-rung pattern)**: when a substrate move generalizes a single-shape fix (here: identifier-target self-init guard) to its sibling-shapes (here: destructure-target self-init guard) using already-built helpers, the rung is sub-noise on standard exemplars but closes the substrate's *internal coherence* — a future reviewer reads the fix and sees uniform TDZ-at-init-eval discipline across both binding-pattern shapes. The cost of NOT doing this rung is hidden complexity debt: the identifier-target case throws while the destructure-target case silently passes, which is a substrate inconsistency that would surface as a confusing bug at the first test262 fixture that probes destructure-self-init.
+
+**Status**: IR-EXT 22 CLOSED locally. The identifier + destructure self-init shapes are now uniformly handled at the TDZ-at-init-eval enforcement point (i) per finding IR.20. Points (ii) function-body TDZ + (iii) for-head TDZ remain candidate A territory.

@@ -1484,7 +1484,34 @@ impl Compiler {
                             }
                             let src_slot = self.alloc_temp("<destr.src>");
                             if let Some(init) = &d.init {
-                                self.compile_expr(init)?;
+                                // IR-EXT 22: TDZ self-init guard for destructure
+                                // bindings. For let/const, if the initializer
+                                // references any of the pattern's own bound
+                                // names, those bindings are in TDZ during init
+                                // eval per §13.3.1.1. Throws ReferenceError.
+                                let tdz_hit = if matches!(
+                                    v.kind,
+                                    VariableKind::Let | VariableKind::Const
+                                ) {
+                                    pat.collect_names().iter().find_map(|id| {
+                                        if self.expr_refs_free(init, &id.name) {
+                                            Some(id.name.clone())
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                } else {
+                                    None
+                                };
+                                if let Some(name) = tdz_hit {
+                                    self.emit_throw_referenceerror(&format!(
+                                        "Cannot access '{}' before initialization",
+                                        name
+                                    ));
+                                    encode_op(&mut self.bytecode, Op::PushUndef);
+                                } else {
+                                    self.compile_expr(init)?;
+                                }
                             } else {
                                 encode_op(&mut self.bytecode, Op::PushUndef);
                             }
