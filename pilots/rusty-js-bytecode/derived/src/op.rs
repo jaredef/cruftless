@@ -27,6 +27,12 @@ pub enum Op {
     /// checks TDZ and throws ReferenceError per §13.3.1.1 for
     /// assignment-to-uninitialized-binding. IR-EXT 25.
     InitLocal = 0x0b,
+    /// SET_THIS_TDZ — seed frame.this_value with the TDZ sentinel at
+    /// derived-class-constructor entry per ECMA-262 §15.4.5.4: `this`
+    /// is in TDZ until BindThisValue is called by super(). Subsequent
+    /// PushThis reads throw ReferenceError until Op::SetThis writes
+    /// the actual `this`. IR-EXT 38.
+    SetThisTDZ = 0x0c,
     /// PUSH_I32 <i32>
     PushI32 = 0x05,
     /// PUSH_CONST <u16>
@@ -351,7 +357,7 @@ impl Op {
     pub fn operand_size(self) -> usize {
         use Op::*;
         match self {
-            PushNull | PushUndef | PushTrue | PushFalse | PushTDZ | Pop | Dup | Swap | Add | Sub | Mul
+            PushNull | PushUndef | PushTrue | PushFalse | PushTDZ | SetThisTDZ | Pop | Dup | Swap | Add | Sub | Mul
             | Div | Mod | Pow | Neg | Pos | Inc | Dec | Lt | Gt | Le | Ge | Eq | Ne | StrictEq
             | StrictNe | In | Instanceof | BitAnd | BitOr | BitXor | BitNot | Shl | Shr | UShr
             | Not | Return | ReturnUndef | GetIndex | SetIndex | SetPrototype | NewObject
@@ -417,6 +423,7 @@ pub fn op_from_byte(b: u8) -> Option<Op> {
         0x04 => PushFalse,
         0x0a => PushTDZ,
         0x0b => InitLocal,
+        0x0c => SetThisTDZ,
         0x05 => PushI32,
         0x06 => PushConst,
         0x07 => Pop,

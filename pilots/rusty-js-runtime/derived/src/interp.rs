@@ -13118,15 +13118,22 @@ impl Runtime {
                     // the next op (LoadLocal iter_slot) unchanged.
                 }
                 Op::PushThis => {
-                    // Prefer the cell when present — arrow created
-                    // before super() may have updated the cell while
-                    // this_value also stays in sync, but the cell is
-                    // the canonical reference for lazy resolution.
                     let t = if let Some(cell) = &frame.this_cell {
                         cell.borrow().clone()
                     } else {
                         frame.this_value.clone()
                     };
+                    // IR-EXT 38 TDZ check on `this`: derived-class
+                    // constructors entered via Op::SetThisTDZ seed
+                    // this_value with the sentinel; reads before super()
+                    // throw ReferenceError per §15.4.5.4.
+                    if let Value::Symbol(ref s) = t {
+                        if std::rc::Rc::ptr_eq(s, &self.tdz_sentinel) {
+                            return Err(RuntimeError::ReferenceError(
+                                "Must call super constructor in derived class before accessing 'this' or returning from derived constructor".into(),
+                            ));
+                        }
+                    }
                     frame.push(t);
                 }
                 Op::PushImportMeta => {
@@ -13150,9 +13157,6 @@ impl Runtime {
                     // Tier-Ω.5.nnnnn: rebind this when super(...) returns
                     // an Object. Pops the top of stack; if Object, replaces
                     // this_value; otherwise leaves this_value unchanged.
-                    // If a cell was promoted (arrow created before super
-                    // resolved), write through it so the arrow's lazy
-                    // lookup sees the new value.
                     let v = frame.pop()?;
                     if matches!(&v, Value::Object(_)) {
                         if let Some(cell) = &frame.this_cell {
@@ -13160,6 +13164,16 @@ impl Runtime {
                         }
                         frame.this_value = v;
                     }
+                }
+                Op::SetThisTDZ => {
+                    // IR-EXT 38: seed this_value with TDZ sentinel at
+                    // derived-class ctor entry. Op::SetThis on super()
+                    // return overwrites with the real this.
+                    let sentinel = Value::Symbol(std::rc::Rc::clone(&self.tdz_sentinel));
+                    if let Some(cell) = &frame.this_cell {
+                        *cell.borrow_mut() = sentinel.clone();
+                    }
+                    frame.this_value = sentinel;
                 }
                 Op::EnterWith => {
                     let obj_expr = frame.pop()?;

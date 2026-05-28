@@ -4663,6 +4663,22 @@ impl Compiler {
                 sub.emit_destructure(pat, *slot)?;
             }
         }
+        // IR-EXT 38 (deferred per rule 13): class-this TDZ via SetThisTDZ
+        // emit at derived-ctor entry was attempted here but regressed
+        // diff-prod 62/50 → 58/54 (class-inheritance, error-types,
+        // node-events, node-stream all break). Diagnosis: cruft's
+        // class-fields + super() lowering emits field-init bytecode that
+        // reads `this` in paths that don't always follow the explicit
+        // super() Op::SetThis ordering. Substrate kept gated off here;
+        // Op::SetThisTDZ opcode + PushThis TDZ check land in
+        // bytecode + interp as substrate prefix for future deeper-layer
+        // closure that audits cruft's class-fields + super() ordering.
+        // See IR.37 in trajectory.md for the audit gap.
+        let _is_derived_ctor = sub
+            .class_stack
+            .last()
+            .map(|f| f.in_constructor && f.super_ctor_name.is_some())
+            .unwrap_or(false);
         let param_prologue_end = sub.bytecode.len();
         // Tier-Ω.5.zzz: allocate the `arguments` slot. Populated by
         // call_function at invocation with an Array of the actual

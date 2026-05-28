@@ -2820,3 +2820,39 @@ Per keeper directive Telegram 10140 ("Continue") + scope-bounded judgment that t
 **Finding IR.36 (TDZ chapter pattern distribution)**: TDZ enforcement decomposes into 3 substrate patterns (compile-time guard, scope-entry PushTDZ via shared block_pre_slots stack, Load/Store symmetric runtime checks). The patterns compose: compile-time guard for captured slots (4 sites); block_pre_slots stack for scope surfaces (3 surfaces); runtime checks (4 Load/Store pairs) support both compile-time and scope-entry patterns at execution time. The 2 remaining sub-shapes (class-this, unscopables) require new substrate patterns outside this composition — they are not 12th and 13th instances of the existing patterns.
 
 **Status**: IR-EXT 37 CLOSED locally (chapter fold rung; no substrate change). Cumulative IR rungs: 37. TDZ chapter folded at 11 of 13 sub-shapes closed. Remaining work explicitly named for future spawns; the IR locale's telos at ~50% (rate 84.3% / gap 14.9pp / target ≤10pp). The next IR rung should pick a coordinate from the post-rebaseline failure-table top rows — likely outside the TDZ surface unless keeper directs class-this or unscopables specifically.
+
+---
+
+## Rung-cluster-38 — class-this TDZ via SetThisTDZ (negative-result per rule 13) (2026-05-28)
+
+Per keeper directive Telegram 10142 ("A" — press into class-this with the substantial substrate work). Attempted IR.20 point (iii.class-this) per §15.4.5.4: in derived class constructor, `this` is in TDZ until BindThisValue is called by super(). Reads via `this` (or arrow capturing `this`) before super() throw ReferenceError.
+
+**Attempted substrate** (~80 LOC across three crates):
+- New Op::SetThisTDZ = 0x0c (op.rs): seeds frame.this_value with TDZ sentinel; no operand.
+- interp.rs handler: writes sentinel to frame.this_value AND to frame.this_cell if promoted (arrow capture coverage).
+- Op::PushThis (interp.rs) extended with TDZ sentinel check via Rc::ptr_eq; throws spec-shaped ReferenceError "Must call super constructor in derived class before accessing 'this' or returning from derived constructor".
+- compile_function_proto_with_name_hint (compiler.rs): emits Op::SetThisTDZ at body-prologue when sub.class_stack.last() indicates derived ctor (in_constructor + super_ctor_name.is_some()).
+
+**Direct probe initial success**:
+- `class C extends B { constructor() { var p = () => this; p(); super(); } }` — `p()` before super() correctly throws ReferenceError ✅.
+
+**Negative empirical result** (per Phase 5 chapter-close-inspect after substrate landing):
+- diff-prod: 62/50 → 58/54 (-4 fixtures regress: class-inheritance, error-types, node-events, node-stream).
+- Direct probe: post-super `console.log(typeof p())` in the same test also throws — the TDZ sentinel isn't being cleared after super() in all paths.
+- Diagnosis: cruft's class-fields + super() lowering emits InitializeInstanceFields bytecode that reads `this` along paths that don't always follow the explicit super() Op::SetThis ordering. The fields lower into the ctor body BEFORE super() is necessarily reached on every path, and the post-super Op::SetThis dispatch via cell may not update all readers.
+
+**Disposition per rule 13**: revert the compiler emit-site (the `if is_derived_ctor` gate). Keep the Op::SetThisTDZ opcode + Op::PushThis TDZ check as substrate prefix in bytecode/op.rs + runtime/interp.rs. The substrate prefix is inert (the emit site is gated off) but ready for the deeper-layer closure when the class-fields + super() emission audit lands.
+
+**Yield (post-revert)**:
+```text
+TDZ-named cluster: 8/13 (unchanged from EXT 36)
+diff-prod: 62/50 (parity restored)
+```
+
+**Tag**: `cluster-class-this-tdz-attempt-38`.
+
+**Finding IR.37 (class-fields + super() emission audit is the prerequisite for class-this TDZ closure)**: cruft's class-fields lowering inserts InitializeInstanceFields bytecode into the ctor body in a way that doesn't preserve the "this is bound only after super() returns" invariant. The TDZ-on-this substrate works AT runtime, but the compiler's emission order doesn't satisfy the spec invariant the runtime check assumes. Closing class-this requires either (a) a class-fields-and-super-ordering audit + emit-site updates, or (b) deferring the field-init bytecode to a post-super injection point. Either is its own substrate move outside this rung's scope.
+
+**Third rule-13 trajectory in IR session**: EXT 25→26 + EXT 29→34 + EXT 38→(future). Per finding IR.33's cumulative substrate amortization, the EXT 38 prefix (Op::SetThisTDZ + PushThis check) is now positioned for a future deeper-layer closure that audits the class-fields + super() ordering. The opcode + check land in this rung but the emit site is gated.
+
+**Status**: IR-EXT 38 CLOSED locally (negative-result; substrate prefix retained per rule 13). Cumulative IR rungs: 38. 11 of 13 TDZ sub-shapes closed; class-this prefix in place but deferred pending class-fields + super() audit.
