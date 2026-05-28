@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 206,
-    "top_level": 122,
+    "locales": 207,
+    "top_level": 123,
     "nested": 84,
     "warnings": 0
   },
@@ -250,6 +250,15 @@
       "scope": "async-generator-and-for-await-lowering",
       "depth": 1,
       "rung_count": 7,
+      "status": null
+    },
+    {
+      "coord": "atomics-availability",
+      "tag": "L.atomics-availability",
+      "parent": null,
+      "scope": "atomics-availability",
+      "depth": 1,
+      "rung_count": 1,
       "status": null
     },
     {

@@ -443,6 +443,20 @@ function runOne(path) {
       '/Temporal/prop-desc.js',
       '/Temporal/toStringTag/',
     ],
+    // AT-EXT 1: Atomics namespace + 14 method stubs installed; opt the
+    // structure / availability tests in (prop-desc, proto, toStringTag,
+    // per-method length/name/descriptor). Semantic-heavy SAB / wait /
+    // notify paths stay SKIPped until shared-memory substrate lands.
+    'Atomics': [
+      '/Atomics/prop-desc.js',
+      '/Atomics/proto.js',
+      '/Atomics/Symbol.toStringTag.js',
+      '/length.js',
+      '/name.js',
+      '/descriptor.js',
+      '/prop-desc.js',
+      '/not-a-constructor.js',
+    ],
   };
   for (const f of meta.features) {
     if (DELIBERATELY_OMITTED.has(f)) {

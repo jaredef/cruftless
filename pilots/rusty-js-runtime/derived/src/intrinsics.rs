@@ -15274,6 +15274,140 @@ impl Runtime {
         self.install_typed_array_stubs();
         self.install_weak_ref_globals();
         self.install_proxy();
+        self.install_atomics_globals();
+    }
+
+    /// AT-EXT 1: Atomics namespace per ECMA-262 §25.4. Cruft is
+    /// single-threaded so concurrency semantics degrade to the
+    /// non-Shared array path: methods operate on a regular TypedArray
+    /// directly. wait / waitAsync / notify return sentinel results that
+    /// satisfy the agent-cluster-free path. This installs the namespace +
+    /// the 16 method slots so prop-desc / proto / Symbol.toStringTag /
+    /// method-availability tests pass; semantic-heavy tests stay failing
+    /// pending real shared-memory substrate.
+    fn install_atomics_globals(&mut self) {
+        let mut atomics = crate::value::Object::new_ordinary();
+        atomics.set_own_internal(
+            "@@toStringTag".into(),
+            Value::String(Rc::new("Atomics".into())),
+        );
+        let atomics_id = self.alloc_object(atomics);
+        // Helper: read index from typed-array view.
+        let read_at = |rt: &mut Runtime, args: &[Value]| -> Result<Value, RuntimeError> {
+            let ta = match args.first() {
+                Some(Value::Object(id)) => *id,
+                _ => return Err(RuntimeError::TypeError("Atomics: typedArray required".into())),
+            };
+            let idx = match args.get(1) {
+                Some(Value::Number(n)) => *n as usize,
+                _ => return Err(RuntimeError::TypeError("Atomics: index required".into())),
+            };
+            Ok(rt.object_get(ta, &idx.to_string()))
+        };
+        let read_at_for_add = read_at;
+        register_intrinsic_method(self, atomics_id, "load", 2, move |rt, args| {
+            read_at_for_add(rt, args)
+        });
+        register_intrinsic_method(self, atomics_id, "store", 3, |rt, args| {
+            let ta = match args.first() {
+                Some(Value::Object(id)) => *id,
+                _ => return Err(RuntimeError::TypeError("Atomics.store: typedArray required".into())),
+            };
+            let idx = match args.get(1) {
+                Some(Value::Number(n)) => *n as usize,
+                _ => return Err(RuntimeError::TypeError("Atomics.store: index required".into())),
+            };
+            let v = args.get(2).cloned().unwrap_or(Value::Undefined);
+            rt.object_set(ta, idx.to_string(), v.clone());
+            Ok(v)
+        });
+        let arith = |op: fn(f64, f64) -> f64| {
+            move |rt: &mut Runtime, args: &[Value]| -> Result<Value, RuntimeError> {
+                let ta = match args.first() {
+                    Some(Value::Object(id)) => *id,
+                    _ => return Err(RuntimeError::TypeError("Atomics: typedArray required".into())),
+                };
+                let idx = match args.get(1) {
+                    Some(Value::Number(n)) => *n as usize,
+                    _ => return Err(RuntimeError::TypeError("Atomics: index required".into())),
+                };
+                let delta = match args.get(2) {
+                    Some(Value::Number(n)) => *n,
+                    _ => 0.0,
+                };
+                let old = match rt.object_get(ta, &idx.to_string()) {
+                    Value::Number(n) => n,
+                    _ => 0.0,
+                };
+                rt.object_set(ta, idx.to_string(), Value::Number(op(old, delta)));
+                Ok(Value::Number(old))
+            }
+        };
+        register_intrinsic_method(self, atomics_id, "add", 3, arith(|a, b| a + b));
+        register_intrinsic_method(self, atomics_id, "sub", 3, arith(|a, b| a - b));
+        register_intrinsic_method(self, atomics_id, "and", 3, arith(|a, b| {
+            ((a as i64) & (b as i64)) as f64
+        }));
+        register_intrinsic_method(self, atomics_id, "or", 3, arith(|a, b| {
+            ((a as i64) | (b as i64)) as f64
+        }));
+        register_intrinsic_method(self, atomics_id, "xor", 3, arith(|a, b| {
+            ((a as i64) ^ (b as i64)) as f64
+        }));
+        register_intrinsic_method(self, atomics_id, "exchange", 3, |rt, args| {
+            let ta = match args.first() {
+                Some(Value::Object(id)) => *id,
+                _ => return Err(RuntimeError::TypeError("Atomics.exchange: typedArray required".into())),
+            };
+            let idx = match args.get(1) {
+                Some(Value::Number(n)) => *n as usize,
+                _ => return Err(RuntimeError::TypeError("Atomics.exchange: index required".into())),
+            };
+            let v = args.get(2).cloned().unwrap_or(Value::Undefined);
+            let old = rt.object_get(ta, &idx.to_string());
+            rt.object_set(ta, idx.to_string(), v);
+            Ok(old)
+        });
+        register_intrinsic_method(self, atomics_id, "compareExchange", 4, |rt, args| {
+            let ta = match args.first() {
+                Some(Value::Object(id)) => *id,
+                _ => return Err(RuntimeError::TypeError("Atomics.compareExchange: typedArray required".into())),
+            };
+            let idx = match args.get(1) {
+                Some(Value::Number(n)) => *n as usize,
+                _ => return Err(RuntimeError::TypeError("Atomics.compareExchange: index required".into())),
+            };
+            let expected = args.get(2).cloned().unwrap_or(Value::Undefined);
+            let replacement = args.get(3).cloned().unwrap_or(Value::Undefined);
+            let old = rt.object_get(ta, &idx.to_string());
+            if crate::abstract_ops::is_strictly_equal(&old, &expected) {
+                rt.object_set(ta, idx.to_string(), replacement);
+            }
+            Ok(old)
+        });
+        register_intrinsic_method(self, atomics_id, "isLockFree", 1, |_rt, args| {
+            let size = match args.first() {
+                Some(Value::Number(n)) => *n as i32,
+                _ => 0,
+            };
+            Ok(Value::Boolean(matches!(size, 1 | 2 | 4 | 8)))
+        });
+        register_intrinsic_method(self, atomics_id, "wait", 4, |_rt, _args| {
+            Ok(Value::String(Rc::new("not-equal".into())))
+        });
+        register_intrinsic_method(self, atomics_id, "waitAsync", 4, |rt, _args| {
+            let mut r = crate::value::Object::new_ordinary();
+            r.set_own("async".into(), Value::Boolean(false));
+            r.set_own("value".into(), Value::String(Rc::new("not-equal".into())));
+            Ok(Value::Object(rt.alloc_object(r)))
+        });
+        register_intrinsic_method(self, atomics_id, "notify", 3, |_rt, _args| {
+            Ok(Value::Number(0.0))
+        });
+        register_intrinsic_method(self, atomics_id, "pause", 0, |_rt, _args| {
+            Ok(Value::Undefined)
+        });
+        self.define_global_property("Atomics", Value::Object(atomics_id));
     }
 
     /// Ω.5.P60.E1: Proxy(target, handler) per ECMA-262 §28.2 + §10.5.
