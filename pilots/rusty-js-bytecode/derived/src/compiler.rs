@@ -4611,19 +4611,53 @@ impl Compiler {
                 }
             }
         }
+        // IR-EXT 36 (TDZ point iii.param-expression): per-param sequential
+        // TDZ per §10.2.10. During eval of param i's default expr, params
+        // j > i are not yet initialized and must throw ReferenceError if
+        // referenced. Compile-time guard via expr_refs_free pattern
+        // (Rule 26 — params are captured by inner closures via upvalue
+        // chains in test fixtures like `(a = (b = expr), b) => ...`).
+        let later_param_names: Vec<Vec<String>> = (0..params.len())
+            .map(|i| {
+                let mut out = Vec::new();
+                for j in (i + 1)..params.len() {
+                    for id in params[j].target.collect_names() {
+                        out.push(id.name.clone());
+                    }
+                }
+                out
+            })
+            .collect();
         // Emit per-parameter default-application + destructure prologue.
         for (pat, slot, default) in &destr_prologue {
             if let Some(def_expr) = default {
-                // if args[slot] === undefined: args[slot] = default
-                encode_op(&mut sub.bytecode, Op::LoadLocal);
-                encode_u16(&mut sub.bytecode, *slot);
-                encode_op(&mut sub.bytecode, Op::PushUndef);
-                encode_op(&mut sub.bytecode, Op::StrictEq);
-                let j_skip = sub.emit_jump(Op::JumpIfFalse);
-                sub.compile_expr(def_expr)?;
-                encode_op(&mut sub.bytecode, Op::StoreLocal);
-                encode_u16(&mut sub.bytecode, *slot);
-                sub.patch_jump(j_skip);
+                // IR-EXT 36 compile-time TDZ guard on param default.
+                let pos = *slot as usize;
+                let later = later_param_names.get(pos).map(|v| v.as_slice()).unwrap_or(&[]);
+                let tdz_hit = later.iter().find(|name| sub.expr_refs_free(def_expr, name));
+                if let Some(name) = tdz_hit {
+                    sub.emit_throw_referenceerror(&format!(
+                        "Cannot access '{}' before initialization",
+                        name
+                    ));
+                    // Throw unwinds; the dead default-or-arg store path
+                    // still emits PushUndef + StoreLocal to keep bytecode
+                    // verifier-clean.
+                    encode_op(&mut sub.bytecode, Op::PushUndef);
+                    encode_op(&mut sub.bytecode, Op::StoreLocal);
+                    encode_u16(&mut sub.bytecode, *slot);
+                } else {
+                    // if args[slot] === undefined: args[slot] = default
+                    encode_op(&mut sub.bytecode, Op::LoadLocal);
+                    encode_u16(&mut sub.bytecode, *slot);
+                    encode_op(&mut sub.bytecode, Op::PushUndef);
+                    encode_op(&mut sub.bytecode, Op::StrictEq);
+                    let j_skip = sub.emit_jump(Op::JumpIfFalse);
+                    sub.compile_expr(def_expr)?;
+                    encode_op(&mut sub.bytecode, Op::StoreLocal);
+                    encode_u16(&mut sub.bytecode, *slot);
+                    sub.patch_jump(j_skip);
+                }
             }
             if !matches!(pat, rusty_js_ast::BindingPattern::Identifier(_)) {
                 sub.emit_destructure(pat, *slot)?;

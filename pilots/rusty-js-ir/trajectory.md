@@ -2734,3 +2734,38 @@ The +6.7pp delta is the engagement-wide cumulative reading; it spans:
 **Tag**: `cluster-sample-rebaseline-35`.
 
 **Status**: IR-EXT 35 CLOSED locally. Cumulative IR rungs: 35. Locale telos at ~50% of the ≤10pp target. Per the discipline's Phase 1 spawn rationale, the next rung should pick its coordinate based on the post-rebaseline failure-table top rows (Phase 5 inspection feeding Phase 1 spawn for the next rung).
+
+---
+
+## Rung-cluster-36 — param-expression TDZ via compile-time guard (2026-05-28)
+
+Per keeper directive Telegram 10138 ("B" — press into one of the 3 remaining TDZ sub-shapes). Closes IR.20 point (iii.param-expression): per §10.2.10, during eval of param i's default expression, params j > i are not yet initialized and references to them must throw ReferenceError.
+
+**Substrate** (~25 LOC in compile_function_proto_with_name_hint destr_prologue loop):
+- Build `later_param_names: Vec<Vec<String>>` indexed by param position: for each position i, list of names of params at positions > i.
+- In the destr_prologue per-param loop, before compiling default expr, run `expr_refs_free(def_expr, later_name)` for each later-param name. If any matches, emit `emit_throw_referenceerror` instead of compiling the default.
+- Reuses the EXT 21 expr_refs_free walker (Function/Arrow/Class body skip rules apply; closure-capture of later params is legitimate — the binding only needs to be initialized by the time the captured closure is called).
+- Reuses the EXT 21 emit_throw_referenceerror helper.
+
+**Discipline tracking**: per Rule 26 (captured-slot TDZ uses compile-time guard, not runtime sentinel), the param slots are captured by inner-closure upvalues in test fixtures shaped like `(a = (b = expr), b) => ...`. Compile-time guard sidesteps the IR.26 captured-slot interference; runtime PushTDZ-on-param-slots would conflict with call_function's arg-write semantics. Pattern recurs from EXT 21 (let self-init), EXT 22 (destructure self-init), EXT 28 (class extends), EXT 36 (param expression).
+
+**Yield**:
+```text
+TDZ-named cluster: PRE 7/13 → POST 8/13 (+1; short-circuit-compound-assignment-tdz finally closed — all its sub-cases (let self-init, destructure, param-expression, class-extends, compound-assign-on-TDZ-let) now throw correctly)
+diff-prod: 61/51 → 62/50 (+1 — typed-arrays-rest or similar destructure fixture gained from the substrate stability; likely collateral from EXT 36 not introducing new emit overhead)
+```
+**+2 across the cluster.**
+
+**Direct probes** (post-rung):
+- `((a = (b &&= 0), b) => {})()` → ReferenceError ✅
+- `((a = b, b) => {})()` → ReferenceError ✅ (simple later-param ref)
+- `((a = (b ??= 0), b) => {})()` → ReferenceError ✅
+- All EXT 21-34 probes intact; sanity (let/const/class/Promise/switch/for-of) all PASS.
+
+**Gates**: build clean; diff-prod 62/50 parity gain; sanity all PASS.
+
+**Tag**: `cluster-param-expr-tdz-36`.
+
+**Finding IR.35 (the compile-time-guard pattern is the workhorse for captured-slot TDZ)**: four of the eleven TDZ sub-shapes closed in this session use compile-time guards via the expr_refs_free walker rather than runtime sentinel machinery (EXT 21/22/28/36). The pattern compounds: each new captured-slot site adds ~10-25 LOC by reusing expr_refs_free + emit_throw_referenceerror. Rule 26 prospectively predicts when to choose the pattern.
+
+**Status**: IR-EXT 36 CLOSED locally. Cumulative IR rungs: 36. 11 TDZ enforcement sub-shapes closed. Remaining 2 fundamentally distinct: class-this during super-init (needs derived-class ctor super-init machinery), unscopables-tdz (needs Symbol.unscopables + with semantics).
