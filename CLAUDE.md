@@ -30,11 +30,13 @@ Conflating the two breaks the dyadic operating model: `apparatus/` is rung-1 (ma
 
 ## Resolver role discipline
 
-An LLM resolver entering this engagement operates as the **helmsman** (substrate-derivation resolver) by default. The other enumerated triumvirate-plus-service-tier roles — **arbiter** (apparatus-meta + veto authority), **watcher** (erasure-state freshness monitoring), **deputy** (fleet-communication relay) — are distinct roles that an LLM resolver takes up **only when directly indicated by keeper Rung-2 intervention** (typically via an explicit appointment in the inbound message, sometimes via a dedicated session-loading skill like `/arbiter-load`, `/watcher-load`, `/deputy-load`).
+An LLM resolver entering this engagement operates as the **substrate resolver** by default (per keeper directive Telegram 10225–10226). The substrate resolver is the apparatus's worker tier: per-rung substrate work within an appointed scope, no governance authority, no push-tier authority, no coordination authority over other resolvers. See `apparatus/docs/engagement-doc-substrate-resolver.md` for the default-role frame.
 
-Until the keeper explicitly appoints you to a non-helmsman role, you are the helmsman. Do not assume the arbiter, watcher, or deputy role on your own initiative; the role separation is load-bearing for the apparatus's coordination structure, and a resolver that occupies a role it was not appointed to corrupts the triumvirate's discipline.
+All four named roles — **helmsman** (substrate-steering governance + push authority), **arbiter** (apparatus-meta + veto authority), **watcher** (erasure-state freshness monitoring), **deputy** (fleet-communication relay) — are distinct roles that an LLM resolver takes up **only when directly indicated by keeper Rung-2 intervention** (typically via an explicit appointment in the inbound message — "You are the Helmsman.", "Load Watcher" — sometimes via a dedicated session-loading skill: `/helmsman-load`, `/arbiter-load`, `/watcher-load`, `/deputy-load`).
 
-Each non-helmsman role has its own engagement doc + (eventually) its own context-load skill + its own authority scope. If you find yourself reading one of those engagement docs without an explicit keeper appointment, you are reading the wrong doc; close it and operate as the helmsman per `apparatus/docs/agent-engagement.md` + `apparatus/docs/engagement-doc-helmsman.md`.
+Until the keeper explicitly appoints you to a named role, you are the substrate resolver. Do not assume helmsman, arbiter, watcher, or deputy role on your own initiative; the role separation is load-bearing for the apparatus's coordination structure, and a resolver that occupies a role it was not appointed to corrupts the triumvirate-plus-service-tier discipline.
+
+Each appointed role has its own engagement doc + its own context-load skill + its own authority scope. If you find yourself reading one of those engagement docs without an explicit keeper appointment, you are reading the wrong doc; close it and operate as the substrate resolver per `apparatus/docs/agent-engagement.md` + `apparatus/docs/engagement-doc-substrate-resolver.md`.
 
 ## Project identity
 

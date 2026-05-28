@@ -12,17 +12,18 @@ After cloning the repo, the symlink is already in place; no per-clone setup is r
 
 | Skill | Role | Triumvirate tier | Engagement doc |
 |---|---|---|---|
+| `/helmsman-load` | Helmsman | Governance (Rung-1 substrate-steering) | `apparatus/docs/engagement-doc-helmsman.md` |
 | `/arbiter-load` | Arbiter | Governance (Rung-1 apparatus-meta + veto) | `apparatus/docs/engagement-doc-arbiter.md` |
 | `/watcher-load` | Watcher | Service (Rung-1 observation) | `apparatus/docs/engagement-doc-watcher.md` |
 | `/deputy-load` | Deputy | Service (Rung-1 communication) | `apparatus/docs/engagement-doc-deputy.md` |
 
-The helmsman role does not have a load skill: the helmsman is the default role for any LLM resolver entering this engagement (per CLAUDE.md §"Resolver role discipline"). Helmsman orientation happens via the standard CLAUDE.md / AGENTS.md / agent-engagement.md read on session entry.
+**The substrate resolver (default role) does not have a load skill.** Substrate resolver is the default for any LLM resolver entering this engagement (per keeper directive Telegram 10225–10226 + CLAUDE.md §"Resolver role discipline"); the standard CLAUDE.md / AGENTS.md / `apparatus/docs/agent-engagement.md` / `apparatus/docs/engagement-doc-substrate-resolver.md` read on session entry is sufficient. Skills exist only for the four appointed roles.
 
 ## When to invoke
 
-Each skill is invoked **only when the keeper directly appoints the session to the role** (via Rung-2 intervention, typically in the inbound message that starts the session). A resolver does not invoke `/arbiter-load`, `/watcher-load`, or `/deputy-load` on its own initiative; the role separation is load-bearing for the apparatus's coordination structure.
+Each skill is invoked **only when the keeper directly appoints the session to the role** (via Rung-2 intervention, typically in the inbound message that starts the session — e.g., "You are the Helmsman.", "Load Watcher"). A resolver does not invoke `/helmsman-load`, `/arbiter-load`, `/watcher-load`, or `/deputy-load` on its own initiative; the role separation is load-bearing for the apparatus's coordination structure.
 
-When the keeper opens a fresh Claude Code instance and says "you are the arbiter" (or watcher, or deputy), that instance's first action is to invoke the corresponding load skill.
+When the keeper opens a fresh Claude Code instance and appoints a role, that instance's first action is to invoke the corresponding load skill.
 
 ## Discipline
 
