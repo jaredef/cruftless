@@ -1,10 +1,10 @@
 {
   "generated_by": "apparatus/locales/discover.sh",
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
-  "locale_root": "/home/jaredef/rusty-bun/pilots",
+  "locale_root": "/Users/jaredfoy/Developer/cruftless/pilots",
   "totals": {
-    "locales": 210,
-    "top_level": 126,
+    "locales": 212,
+    "top_level": 128,
     "nested": 84,
     "warnings": 0
   },
@@ -15,7 +15,7 @@
       "parent": null,
       "scope": "annexB-runtime-quirks",
       "depth": 1,
-      "rung_count": 1,
+      "rung_count": 2,
       "status": null
     },
     {
@@ -96,7 +96,7 @@
       "parent": "L.apparatus",
       "scope": "tokenizer-error-classification-refinement",
       "depth": 2,
-      "rung_count": 2,
+      "rung_count": 1,
       "status": null
     },
     {
@@ -105,7 +105,7 @@
       "parent": "L.apparatus",
       "scope": "ts-consumer-corpus",
       "depth": 2,
-      "rung_count": 2,
+      "rung_count": 1,
       "status": "**CHAPTER CLOSED at TCC-EXT 1 (1 implementation round; Pred-tcc.5 HELD)**. All five Pred-tcc.* HELD plus the discipline falsifier. Baseline parse-success = **37.7%** (141/374 files from rxjs + ajv + pino). Failure-frequency table operational; top-10 categories cover ~52% of corpus and set the sub-locale priority order. Substrate-bug priority finding (Finding TCC.3): TSR's strip step corrupts source inside string/template literals on ~11 files \u2014 highest-priority next sub-locale."
     },
     {
@@ -402,7 +402,7 @@
       "parent": null,
       "scope": "eval-var-function-env-instantiation",
       "depth": 1,
-      "rung_count": 1,
+      "rung_count": 2,
       "status": null
     },
     {
@@ -550,6 +550,15 @@
       "status": null
     },
     {
+      "coord": "ihi-array-entries",
+      "tag": "L.ihi-array-entries",
+      "parent": null,
+      "scope": "ihi-array-entries",
+      "depth": 1,
+      "rung_count": 2,
+      "status": "FOUNDED 2026-05-28. Spawned from"
+    },
+    {
       "coord": "interp-getprop-ic",
       "tag": "L.interp-getprop-ic",
       "parent": null,
@@ -620,6 +629,15 @@
       "depth": 1,
       "rung_count": 2,
       "status": "**CLOSED at IPEP-EXT 1** (1 implementation round; Doc 740 multi-tier closure)."
+    },
+    {
+      "coord": "json-parse-reviver-semantics",
+      "tag": "L.json-parse-reviver-semantics",
+      "parent": null,
+      "scope": "json-parse-reviver-semantics",
+      "depth": 1,
+      "rung_count": 1,
+      "status": "FOUNDED 2026-05-28 from the JSON carve-out search after applying"
     },
     {
       "coord": "length-of-array-like-propagate",

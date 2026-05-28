@@ -524,6 +524,13 @@ tagged-template surface to zero FAIL rows. This is a control-flow lowering
 locale, not a TemplateStringsArray object-boundary locale.
 **Status**: spawned as `pilots/tagged-template-tail-call-boundary/`.
 
+### (JPRS) `json-parse-reviver-semantics` — SPAWNED 2026-05-28
+**Telos**: close the 20-row `JSON.parse(text, reviver)` residual surfaced by
+the JSON carve-out search. Pipeline form: text coercion -> parse tree
+materialization -> root-holder InternalizeJSONProperty walk -> reviver
+call/delete/set side effects.
+**Status**: spawned as `pilots/json-parse-reviver-semantics/`.
+
 ---
 
 ## Standing edits
