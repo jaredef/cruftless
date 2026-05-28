@@ -2509,3 +2509,62 @@ diff-prod: 60/52 (parity preserved throughout)
 **Finding IR.28 (TDZ extension across surfaces requires per-surface emit-site audit)**: each new surface that gets TDZ enforcement (function-body, for-head, block, module-top) needs its own emit-site enumeration to catch the init writes that must use InitLocal. EXT 23 (function-body) was simple because the pre-allocated slots had no destructure/script-mirror complication; module-top hits the script-mode globalThis-mirror path AND the destructure-rest write path which aren't yet on InitLocal. The cost-per-surface is ~5-15 LOC of emit-site conversion per new surface; the runtime check itself is amortized.
 
 **Status**: IR-EXT 29 CLOSED locally (negative-result; substrate kept gated off via comment). Cumulative IR rungs: 29. The module-top-TDZ + block-scope-TDZ + class-this-TDZ + unscopables-TDZ + block-fn-hoist-TDZ sub-shapes remain open, each requiring its own emit-site or scope-machinery work.
+
+---
+
+## Rung-cluster-30 — Pin-Art probe of TDZ alphabet; implicit-constraint discovery (2026-05-27)
+
+Per keeper directive Telegram 10118: "If we are having to duplicate it means that there is an implicit constraint that we are neglecting to identify. The regressions also indicate implicit constraints. Use pin art probes at the top of the observed alphabet to begin finding implicit constraints."
+
+**Probe methodology**: enumerate every Op::StoreLocal emit site in `pilots/rusty-js-bytecode/derived/src/compiler.rs` (55 sites across 17 enclosing fns); classify each as init-context vs assign-context vs temp-write; cross-reference with the rungs that touched each (EXT 21/22/25/26/27/28/29). Cross-reference with the four negative-result rungs (EXT 25 first attempt, EXT 27 class-self-name, EXT 29 module-top first attempt) to surface what they share.
+
+**Site categorization** (sketched; full enumeration in /tmp/storeloc-context.txt + below by enclosing fn):
+
+| Enclosing fn | Count | Context |
+|---|---:|---|
+| compile_stmt | 15 | mixed: Stmt::Variable decl=INIT, Stmt::Switch disc temp=TEMP, for-loop bind=per-iter-INIT, etc. |
+| compile_update | 8 | post/pre inc/dec writeback = ASSIGN |
+| compile_compound_member | 5 | compound member assign source/temp = TEMP / target = ASSIGN |
+| emit_destructure | 3 | destructure-decl leaf write = INIT (converted in EXT 26 + 29) |
+| compile_logical_assign_member | 3 | tmp slot for member-target eval = TEMP |
+| compile_class_with_name_hint | 3 | self_name_slot, super_ctor_slot, proto_slot = mix INIT + TEMP |
+| compile_export | 2 | export binding mirror = INIT (declaration-bound) |
+| emit_store_ident | 2 | user identifier assignment = ASSIGN (THE TDZ-check site) |
+| compile_plain_assign | 2 | user plain assign = ASSIGN |
+| emit_destructure_assign | 2 | destructure-assignment write = ASSIGN |
+| assign_target_from_stack | 2 | tmp eval = TEMP |
+| (others) | 11 | per-fn temp / scratch |
+
+**Implicit constraints surfaced** (per probe + cross-rung negative-result reading):
+
+### Constraint α — Categorical write context
+
+Every slot-write has a binary categorical context: **INIT** (first write to a declared let/const binding at its declaration line / per-iter binding write / class-decl outer-slot write) vs **ASSIGN** (subsequent write via `=` operator). The category is determined at the AST + statement-form level, NOT at the bytecode emission level. The current architecture re-infers this category per emit site (via human inspection during rung implementation), which is why each new TDZ surface requires its own emit-site audit and is prone to miss sites (EXT 25 negative result: missed emit_destructure leaf write; EXT 29 negative result: missed script-mode globalThis-mirror + destructure-rest paths).
+
+**Operational implication**: introducing an `Op::InitLocal` peer of `Op::StoreLocal` partially addresses Constraint α at the bytecode level, but the compiler still needs to know at emission time which category to use. Without an explicit AST-level distinction between BindingTarget and AssignmentTarget (cruft's AST currently uses one `Identifier` Expr for both), the compiler infers from the surrounding Stmt/Expr shape — and the inference is incomplete.
+
+### Constraint β — Scope-bounded slot lifetime with TDZ horizon
+
+A let/const slot's lifetime is bounded by its enclosing scope, with the binding's declaration position splitting the lifetime into a **TDZ-region** (scope-entry to declaration line) and a **live-region** (declaration line to scope-exit). Currently the compiler tracks scope-entry (via `scope_snapshot` + `block_depth`) and slot allocation (via `self.locals`) but NOT the TDZ horizon per slot. Every TDZ-enforcement rung has had to re-derive this horizon from local context (function-body Phase H1.5; for-head allocation; etc.).
+
+**Operational implication**: a first-class `ScopeRecord { slots: Vec<SlotInfo>, tdz_horizons: HashMap<SlotIdx, BytecodePc> }` in the compiler would let TDZ machinery be defined once. Cost: ~200-500 LOC refactor across compiler.rs; benefit: single-point TDZ enforcement across every scope surface (function-body, module-top, block, for-head, switch, class, generator, async).
+
+### Constraint γ — Captured-slot TDZ-visibility coherence
+
+When a slot is captured by an inner closure during the enclosing construct's build (class methods, function self-name, generator yield, switch-case fallthrough), the slot's TDZ status during the build must be coherent with the closure-execution context. EXT 27 surfaced this: TDZ-init'ing the class self_name_slot for the duration of class build broke method bodies that captured-and-execute during build (the methods saw TDZ before the end-of-build InitLocal landed the ctor).
+
+**Operational implication**: TDZ probes for captured slots must use a separate scratch slot for the TDZ probe; the captured slot must hold a non-TDZ value (Undefined is the safe choice) throughout the build, then receive the InitLocal write at end-of-build. EXT 28 demonstrated the alternative pattern (compile-time guard via expr-walk + synthetic throw) which sidesteps captured-slot interference entirely. Standing rec per finding IR.27.
+
+### Constraint δ — Cross-tier duplication is the signal
+
+The fact that EXT 23 (function-body TDZ emit) + EXT 24 (for-head TDZ emit) + EXT 29 (module-top TDZ emit attempt) all carry the same shape (iterate slots; filter let/const; emit PushTDZ + StoreLocal) is the alphabet's way of indicating that a tier-above coordinate is missing. The duplication is rung-1 substrate evidence; the missing rung-1.5 coordinate is the `Scope` abstraction described in Constraint β.
+
+This pattern recurs in cruftless's prior history: the `object_set` / `object_set_pk` divergence (closed by Rung-cluster-18 LIFT) was the same shape — two emit paths doing the same work and drifting in incompatible ways until lifted. **Standing rec: when an emit pattern is duplicated across 3+ sites with the same shape and divergent failure modes, the duplication itself is a Pin-Art signal that a higher-tier coordinate (the abstraction the duplication is approximating) is the actual substrate move.**
+
+**Substrate disposition**: no substrate change this rung. The probe documents the implicit constraints so the next substrate rung (or a future structural-lift rung) can target Constraint β directly — introducing a ScopeRecord that absorbs the duplicated TDZ emit logic and the InitLocal categorization.
+
+**Tag**: `cluster-pin-art-probe-tdz-30`.
+
+**Finding IR.29 (the Pin-Art probe of the TDZ alphabet)**: four implicit constraints surface from the EXT 25/27/29 negative-result triad plus the emit-site enumeration: (α) categorical write context belongs at AST/Stmt level not bytecode level; (β) scope-bounded slot lifetime with TDZ horizon needs first-class compiler abstraction; (γ) captured slots can't be TDZ-seeded during the enclosing build; (δ) duplicated emit patterns are the alphabet's signal for a missing tier-above coordinate.
+
+**Status**: IR-EXT 30 CLOSED locally (Pin-Art probe rung; no substrate change). Cumulative IR rungs: 30. Future rungs should target Constraint β's ScopeRecord lift as the structural-LIFT closure that absorbs the deferred sub-shapes (module-top, block, switch-case, etc.) in one move rather than piecemeal per-surface audits.
