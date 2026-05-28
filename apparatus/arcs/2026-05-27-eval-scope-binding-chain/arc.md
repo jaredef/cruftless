@@ -61,3 +61,33 @@ Per arc-as-coordinate.md formal characteristics + Rule 23 founding discipline:
 ## Status
 
 CLOSED 2026-05-27. All four sub-rungs (ES-EXT 0+1+2+3+4) landed same-day. ~125 cumulative LOC. diff-prod 42/42 maintained throughout. Probes P1-P4, P6, P7 all green; P5 spec-correct fail. test262-sample direct yield measurement deferred per "No Auto Sweeps" memory (awaits keeper directive for canonical sweep).
+
+---
+
+## Roster extension 2026-05-28 (per Plan-agent back-fit; keeper directive Telegram 10158)
+
+Per the back-fit analysis applying Doc 744 + Doc 745 candidate to the locale-to-arc subsumption, the eval-scope-binding-chain arc's roster is extended to enroll five sibling locales whose mouth-terminus pairs fit the arc's (M, T, I, R) without requiring a separate arc. Original close-condition + close-date remain valid for the ES-EXT 0-4 chain; the extension formalizes sibling enrollment as the arc continues operating.
+
+### Extended roster
+
+| Locale | Role in arc | Status pre-extension |
+|---|---|---|
+| `eval-declaration-instantiation-early-errors` (EDIEE) | strict-eval declaration-instantiation early errors per §19.2.1.3 | LANDED (2026-05-28) per cruftless main e1247a8e |
+| `eval-function-arguments-binding-semantics` (EFAB) | eval-tier function-arguments binding semantics | OPEN |
+| `eval-var-function-env-instantiation` (EVFEI) | eval-tier var/function env instantiation per §19.2.1 | LANDED partially (2026-05-28) per cruftless main 38e24488; pipeline-form pickup recorded at cff663b3 |
+| `direct-eval-lexical-capture` (DELC) | direct-eval lexical capture from caller frame | LANDED (2026-05-27) per main dcc4b48e |
+| `lex-error-propagation-to-eval-surface` | lex-tier error propagation through indirect/direct eval | LANDED |
+
+### Extension rationale
+
+Per Doc 744 §IV.1.a mouth-gating: TTTC's apparent mouth (tagged-template TCO) was gated by EDIEE's terminus (strict-eval `var $MAX_ITERATIONS` materialization). The amendment to Doc 744 (corpus push 2026-05-28) recorded this empirical material as the empirical anchor for the Doc 744 §IV.1.a mouth-gating heuristic. Enrolling EDIEE + EVFEI + EFAB + DELC + lex-error-propagation under this arc captures the cross-locale findings that the eval-scope surface generates as a coherent multi-locale program, rather than treating each as an orphan locale.
+
+### Cross-arc relations (post-extension)
+
+- **DAG ↓ `2026-05-28-parser-early-error-conformance`** (proposed arc): early-error tier consumes eval-tier scope's BoundNames per §19.2.1.3 step 5.
+- **Mouth-gating DAG ↑ `tagged-template-tail-call-boundary` (TTTC) locale**: this arc's EDIEE terminus gates TTTC's measurable mouth. Worked example for Doc 744 §IV.1.a.
+- **Lattice with `2026-05-28-strict-mode-bound-names`** (proposed arc): strict-mode binding restrictions affect eval scope.
+
+### Extension status
+
+EXTENDED 2026-05-28. Original arc close-condition + 2026-05-27 close-date stand for ES-EXT 0-4. New sub-rungs (EDIEE, EVFEI, EFAB, DELC, lex-error-propagation) accumulate under this arc with their own per-locale chapter-closes; arc remains conceptually IN PROGRESS for the extended roster.
