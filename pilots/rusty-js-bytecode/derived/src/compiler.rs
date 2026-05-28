@@ -2345,7 +2345,10 @@ impl Compiler {
                 };
                 self.compile_class(*span, name.as_ref(), super_class.as_ref(), members)?;
                 if let Some(slot) = class_slot {
-                    encode_op(&mut self.bytecode, Op::StoreLocal);
+                    // IR-EXT 27: class-decl outer-slot write uses InitLocal
+                    // so it overwrites the TDZ sentinel that EXT 23's
+                    // function-body scope-entry seeded.
+                    encode_op(&mut self.bytecode, Op::InitLocal);
                     encode_u16(&mut self.bytecode, slot);
                 } else {
                     encode_op(&mut self.bytecode, Op::Pop);
@@ -6077,9 +6080,15 @@ impl Compiler {
                 kind: VariableKind::Const,
                 depth: 0,
             });
-            // Initialize to Undefined; final ctor written later.
+            // IR-EXT 27: TDZ-init reverted to Undefined-init at this site.
+            // The inner self_name_slot is captured by method-body upvalues
+            // during class build; TDZ-initing it broke the slot's resolution
+            // semantics during execution of class build. The class-name TDZ
+            // during extends is deferred to a future rung that uses a
+            // separate scratch slot for the extends-clause TDZ probe instead
+            // of repurposing the self_name_slot.
             encode_op(&mut self.bytecode, Op::PushUndef);
-            encode_op(&mut self.bytecode, Op::StoreLocal);
+            encode_op(&mut self.bytecode, Op::InitLocal);
             encode_u16(&mut self.bytecode, slot);
             Some(slot)
         } else {
@@ -6827,7 +6836,9 @@ impl Compiler {
         if let Some(slot) = self_name_slot {
             encode_op(&mut self.bytecode, Op::LoadLocal);
             encode_u16(&mut self.bytecode, ctor_slot);
-            encode_op(&mut self.bytecode, Op::StoreLocal);
+            // IR-EXT 27: InitLocal to overwrite the TDZ sentinel seeded
+            // at the start of class compile.
+            encode_op(&mut self.bytecode, Op::InitLocal);
             encode_u16(&mut self.bytecode, slot);
         }
         // ── result: leave the constructor on the stack ─────────────

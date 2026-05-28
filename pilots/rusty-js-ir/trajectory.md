@@ -2422,3 +2422,30 @@ diff-prod: 60/52 (parity preserved through the destructure InitLocal conversion)
 **Finding IR.25 (rule-13 in the IR locale)**: rule 13's prospective application worked across rungs 25 → 26. EXT 25's substrate-prep was the prefix; EXT 26's emit-site additions + runtime re-flip was the closure. Total LOC: ~80 across the two rungs. Lands the third TDZ enforcement point of IR.20 (the assign-to-TDZ-binding shape) at moderate cost.
 
 **Status**: IR-EXT 26 CLOSED locally. Cumulative IR rungs: 26. TDZ enforcement points (i), (ii), (iii.for-head), (iii.compound-assign) all closed. Remaining (iii): class-this TDZ during super-init, optional-chain-tdz (probably same root cause as compound-assign now closed; needs re-probe), unscopables-tdz, block-scoped-functions-hoisted-tdz.
+
+---
+
+## Rung-cluster-27 — class-name TDZ in extends (negative-result; substrate-prep retained) (2026-05-27)
+
+Per keeper directive Telegram 10112 ("Continue"). Attempted IR.20 point (iii) class-name-TDZ-in-extends sub-shape: `class a extends (a &&= 0) {}` should throw ReferenceError because the class binding is created at class evaluation but TDZ until class initialization completes (§15.7.14 step 12).
+
+**Attempted substrate**:
+- Init the class compile-internal `self_name_slot` to TDZ sentinel (via PushTDZ + InitLocal) at the start of compile_class_with_name_hint, replacing the prior PushUndef init.
+- End-of-class compile InitLocal's the ctor over the sentinel.
+- ClassDecl Stmt outer-slot write converted from StoreLocal to InitLocal.
+
+**Negative empirical result**: diff-prod 60/52 → 52/60 (-8 fixtures regress: arrow-functions, class-inheritance, computed-property-order, error-types, node-events, node-stream, prototype-chain, reflect-api). Minimal repro: even a bare `class Counter { constructor() { this.n = 0; } } console.log("x")` fails with "Cannot access 'Counter' before initialization" at the class line. Diagnosis: compile_class_with_name_hint allocates an inner self_name_slot named the same as the outer class binding. Method bodies that reference the class name resolve to this inner slot via resolve_local + capture it as upvalue. TDZ-initing the inner slot interferes with the capture semantics: method-body execution sees TDZ during paths that don't complete the class build first.
+
+**Disposition per rule 13**: revert the inner-slot TDZ-init back to PushUndef. Keep the ClassDecl outer-slot StoreLocal → InitLocal conversion (harmless — InitLocal acts like StoreLocal when the slot isn't TDZ; this is the substrate-prep prefix for when class-outer-TDZ machinery lands).
+
+**Yield (post-revert)**:
+```text
+TDZ-named cluster: 5/13 (unchanged from EXT 26)
+diff-prod: 60/52 (parity restored)
+```
+
+**Tag**: `cluster-class-name-tdz-attempt-27`.
+
+**Finding IR.26 (TDZ probe must not repurpose a captured upvalue slot)**: when a slot is captured by upvalues during the compile of a construct (class methods, function self-name, generator yields), TDZ-initing it for the duration of the construct's build breaks downstream captures even when the slot is correctly overwritten by end-of-build. The fix shape: use a separate scratch slot for the TDZ probe; mirror the resolved class value into the captured slot AFTER the TDZ probe completes. Deferred to a future rung that wants to invest in the scratch-slot architecture.
+
+**Status**: IR-EXT 27 CLOSED locally (negative-result; substrate-prep retained). Cumulative IR rungs: 27. The class-name-TDZ-in-extends sub-shape remains open.
