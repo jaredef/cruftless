@@ -18263,6 +18263,7 @@ impl Runtime {
                         Value::Undefined,
                         &new_args,
                     ) {
+                        Ok(Value::Boolean(false)) => Ok(Value::Boolean(false)),
                         Ok(_) => Ok(Value::Boolean(true)),
                         Err(RuntimeError::TypeError(msg))
                             if msg.contains("Cannot redefine")
@@ -18276,6 +18277,7 @@ impl Runtime {
                 }
             }
             match crate::generated::object_define_property(rt, Value::Undefined, args) {
+                Ok(Value::Boolean(false)) => Ok(Value::Boolean(false)),
                 Ok(_) => Ok(Value::Boolean(true)),
                 Err(RuntimeError::TypeError(msg))
                     if msg.contains("Cannot redefine")

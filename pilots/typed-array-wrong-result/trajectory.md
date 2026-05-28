@@ -55,3 +55,53 @@ TAWR cluster POST-EXT 1: PASS=47 FAIL=53 / 100 (47.0%)
 **Finding TAWR.1**: when an apparatus adds an intermediate substrate tier (here: ta_proto inserted between per_type_proto and ta_proto_proto) and ALSO mirrors the tier's methods onto the upstream tier (TAMM-EXT 3 mirror), the intermediate tier becomes redundant for method lookup but visible to spec-reflective queries (`Object.getPrototypeOf`). The mirror's purpose was substrate-correctness; the chain-shortening is the spec-shape that completes it. Standing rec: when introducing a method-mirror across two tiers, also consider whether the lower tier is still needed in the prototype chain; if not, drop it.
 
 **Status**: TAWR-EXT 1 CLOSED locally. Arc-tier accumulation: this is the first substrate rung enrolled under `2026-05-28-array-exotic-substrate` arc since scaffolding; per Doc 745 candidate §II's per-Phase emission protocol, this rung's six-section emission (header / baseline / no-duplication / single-round / close / substrate) is the canonical first instance of the structured emission shape in the arc.
+
+## TAWR-EXT 2 — LANDED (2026-05-28) — IntegerIndexedExotic [[DefineOwnProperty]] canonical-numeric-index discipline
+
+Per keeper directive Telegram 10172 ("continue development with your selected arc").
+
+**Phase 1 (Spawn)**:
+- **M** = `Object.defineProperty(ta, K, desc)` / `Reflect.defineProperty(ta, K, desc)` call at consumer code; key K is a string per §7.1.21 CanonicalNumericIndexString.
+- **T** = boolean false (per Reflect) or throw (per Object) when K is invalid for IntegerIndexedExotic per §10.4.5.3 step 3.b: IsInteger fails (NaN, fractional), K = "-0", K is negative, K is out-of-bounds, or descriptor attributes disagree with TA fixed shape (writable:true, enumerable:true, configurable:true). Boolean true when K is a valid in-bounds non-negative-integer index AND descriptor is shape-conformant; the underlying typed-element-slot is set.
+- **I** = key classification (per §7.1.21) → bounds check → attribute check → element store.
+- **R** = lattice with array-exotic arc + DAG ↓ Reflect.defineProperty boolean-wrapper.
+- **Observability** = ordinary (test262 sameValue assertion + Reflect's boolean return surface).
+- **Mouth-gating prerequisite**: TAMM-EXT 5 (typed_array_views registry) + the Reflect.defineProperty intrinsic.
+
+**Phase 2 (Baseline-inspect)**: post-TAWR-EXT 1 baseline 47/100. Sample inspection of remaining TypedArrayConstructors fails (11) showed `internals/DefineOwnProperty/key-is-minus-zero.js`-shape failures: `Reflect.defineProperty(ta, "-0", {value:42, configurable:false, ...})` should return false (cruft returned true). Out-of-bounds + non-integer + non-configurable-attribute disagreements all share the same root: cruft's [[DefineOwnProperty]] for TA didn't implement §10.4.5.3 step 3.b's classification.
+
+**Phase 3**: no duplication signal — single emit site (object_define_property_via data-descriptor branch).
+
+**Phase 4**: single-round, no negative.
+
+**Substrate** (~60 LOC across two files):
+
+`pilots/rusty-js-runtime/derived/src/interp.rs`:
+- New `NumericIndexClass` enum (ValidArrayIndex(usize) / InvalidNumericIndex) at module scope.
+- New `Runtime::classify_numeric_index_key(&str) -> Option<NumericIndexClass>` helper implementing §7.1.21 CanonicalNumericIndexString classification: "-0" → Invalid; canonical non-negative integer → ValidArrayIndex; canonical-but-not-integer-or-negative → Invalid; non-canonical (e.g. "foo", "01") → None.
+- `object_define_property_via` data-descriptor branch: when target is a TA AND key classifies, dispatch per `NumericIndexClass`. ValidArrayIndex: bounds-check (return false if oob); attribute-check (return false if writable=false, enumerable=false, or configurable=false); set element; return true. InvalidNumericIndex: return false.
+
+`pilots/rusty-js-runtime/derived/src/intrinsics.rs` Reflect.defineProperty wrapper (both non-Proxy and Proxy-fallback paths):
+- Match `Ok(Value::Boolean(false))` separately from `Ok(_)` so an inner-returned false propagates rather than being translated to true by the wrapper's blanket Ok→true rule.
+
+**Direct probes** (post-rung):
+- `Reflect.defineProperty(ta, "-0", {value:42, ...})` → false ✅ (was: true)
+- `Reflect.defineProperty(ta, "1.5", ...)` → false ✅
+- `Reflect.defineProperty(ta, "5", ...)` (oob on length-2 TA) → false ✅
+- `Reflect.defineProperty(ta, "0", ...)` (valid) → true; `ta[0]` updated ✅
+- `Reflect.defineProperty(ta, "foo", ...)` (non-canonical-numeric) → true; falls through to generic Object property ✅
+
+**Yield**:
+```text
+TAWR cluster PRE-EXT 2:  PASS=47 FAIL=53 / 100 (47.0%)
+TAWR cluster POST-EXT 2: PASS=49 FAIL=51 / 100 (49.0%)
+```
+**+2 PASS** this rung. TypedArrayConstructors family residual 11 → 9.
+
+**Gates**: build clean; diff-prod 61/51 (parity); sanity intact; TAMM cluster unchanged at 82/100.
+
+**Tag**: `cluster-typedarray-defineownproperty-canonical-numeric-index-2`.
+
+**Finding TAWR.2 (Reflect-wrapper translation trap)**: when a substrate move adds a "return false instead of throw" path inside a function whose wrapper translates `Ok(_) → Boolean(true)`, the substrate's false-return is silently swallowed unless the wrapper distinguishes `Ok(Value::Boolean(false))` explicitly. Pattern recurs across any IR-generated function whose user-facing wrapper coerces all-ok-to-true. Standing rec: when a function's spec-defined return type is Boolean (Reflect.X family), its IR-generated implementation should preserve the Boolean rather than relying on the wrapper's translation; the wrapper's role is to convert exception → false for ergonomic-throw semantics ONLY.
+
+**Status**: TAWR-EXT 2 CLOSED locally. Arc-tier accumulation: second rung in `2026-05-28-array-exotic-substrate`.

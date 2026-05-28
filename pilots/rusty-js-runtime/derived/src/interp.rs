@@ -424,12 +424,58 @@ pub struct TypedArrayViewRecord {
     pub bytes_per_element: usize,
 }
 
+/// TAWR-EXT 2: classification of a property-key string for
+/// IntegerIndexedExotic [[DefineOwnProperty]] / [[Set]] / [[GetOwnProperty]]
+/// per §7.1.21 CanonicalNumericIndexString + §10.4.5.{3,5}.
+#[derive(Clone, Debug)]
+pub enum NumericIndexClass {
+    ValidArrayIndex(usize),
+    InvalidNumericIndex,
+}
+
 impl Runtime {
     fn canonical_array_index_key(key: &str) -> Option<usize> {
         if key.is_empty() || (key.len() > 1 && key.starts_with('0')) {
             return None;
         }
         key.parse::<usize>().ok()
+    }
+
+    /// TAWR-EXT 2: classify a property-key string per §7.1.21
+    /// CanonicalNumericIndexString + §10.4.5.{3,5} IntegerIndexed
+    /// numeric-index discipline. Returns:
+    ///   - ValidArrayIndex(usize) when key is a canonical-numeric-index
+    ///     AND IsInteger AND >= 0 (callers still bounds-check).
+    ///   - InvalidNumericIndex when key is a canonical-numeric-index
+    ///     but fails IsInteger / equals -0 / is negative (callers should
+    ///     return false / undefined per the IntegerIndexed branch).
+    ///   - None when key is NOT a canonical-numeric-index string
+    ///     (string keys like "foo" — fall through to OrdinaryX path).
+    fn classify_numeric_index_key(key: &str) -> Option<NumericIndexClass> {
+        if key.is_empty() {
+            return None;
+        }
+        if key == "-0" {
+            return Some(NumericIndexClass::InvalidNumericIndex);
+        }
+        // Try parse as canonical non-negative integer first (the common
+        // valid-array-index case).
+        if let Some(idx) = Self::canonical_array_index_key(key) {
+            return Some(NumericIndexClass::ValidArrayIndex(idx));
+        }
+        // Try parse as f64; if ToString(f64) round-trips to key, it's
+        // a canonical-numeric-index per §7.1.21 step 3. Otherwise None.
+        let parsed: f64 = match key.parse() {
+            Ok(n) => n,
+            Err(_) => return None,
+        };
+        if format!("{}", parsed) != key && format!("{:?}", parsed) != key {
+            // Not canonical (e.g. "01", "1e0" don't round-trip).
+            return None;
+        }
+        // It IS a canonical-numeric-index but failed the integer-and-
+        // non-negative check (NaN / Infinity / fractional / negative).
+        Some(NumericIndexClass::InvalidNumericIndex)
     }
 
     fn typed_array_view_len(&self, id: ObjectRef) -> Option<usize> {
@@ -2857,21 +2903,46 @@ impl Runtime {
             let writable = read_bool_via(self, "writable")?;
             let enumerable = read_bool_via(self, "enumerable")?;
             let configurable = read_bool_via(self, "configurable")?;
-            if let Some(idx) = Self::canonical_array_index_key(&key) {
-                if self.typed_array_views.contains_key(&target) {
-                    let value = if has_value {
-                        self.read_property(desc_id, "value")?
-                    } else {
-                        self.typed_array_get_index(target, idx)
-                            .unwrap_or(Value::Undefined)
-                    };
-                    if idx >= self.typed_array_view_len(target).unwrap_or(0) {
-                        return Err(RuntimeError::TypeError(
-                            "Cannot define property outside TypedArray bounds".into(),
-                        ));
+            // TAWR-EXT 2: §10.4.5.3 [[DefineOwnProperty]] for
+            // IntegerIndexedExotic. Per spec, when key is a canonical-
+            // numeric-index string (CanonicalNumericIndexString returns
+            // not-undefined), return false (not throw) for:
+            //   (3.b.i) IsInteger(numericIndex) false  (e.g. "NaN", "1.5")
+            //   (3.b.iii) numericIndex === -0
+            //   (3.b.iv) numericIndex < 0 or >= length
+            //   (3.b.v) the descriptor's writable/enumerable/configurable
+            //          attribute disagrees with the IntegerIndexedExotic
+            //          fixed shape (writable:true, enumerable:true,
+            //          configurable:true since ES2023)
+            // Successful set: store value, return true.
+            if self.typed_array_views.contains_key(&target) {
+                if let Some(numeric_class) = Self::classify_numeric_index_key(&key) {
+                    match numeric_class {
+                        NumericIndexClass::ValidArrayIndex(idx) => {
+                            let len = self.typed_array_view_len(target).unwrap_or(0);
+                            if idx >= len {
+                                return Ok(Value::Boolean(false));
+                            }
+                            // §10.4.5.3 step 3.b.v attribute checks
+                            if configurable == Some(false)
+                                || enumerable == Some(false)
+                                || writable == Some(false)
+                            {
+                                return Ok(Value::Boolean(false));
+                            }
+                            let value = if has_value {
+                                self.read_property(desc_id, "value")?
+                            } else {
+                                self.typed_array_get_index(target, idx)
+                                    .unwrap_or(Value::Undefined)
+                            };
+                            self.typed_array_set_index(target, idx, value);
+                            return Ok(Value::Boolean(true));
+                        }
+                        NumericIndexClass::InvalidNumericIndex => {
+                            return Ok(Value::Boolean(false));
+                        }
                     }
-                    self.typed_array_set_index(target, idx, value);
-                    return Ok(Value::Object(target));
                 }
             }
             if is_generic {
