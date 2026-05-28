@@ -2478,3 +2478,34 @@ diff-prod: 60/52 (parity).
 **Finding IR.27 (compile-time guard vs runtime TDZ machinery)**: when a TDZ probe target is a slot that's captured by upvalues (class self-name, function self-name, generator yield slots), the compile-time guard pattern (expr-walk + synthetic throw) is preferable to runtime PushTDZ + InitLocal because it sidesteps the captured-upvalue interference identified in IR.26. The pattern recurs across EXT 21 (let self-init), EXT 22 (destructure self-init), EXT 28 (class extends). Standing rec: when a TDZ-target slot is also captured by inner closures during the enclosing construct's build, use the compile-time guard.
 
 **Status**: IR-EXT 28 CLOSED locally. Cumulative IR rungs: 28. TDZ enforcement points (i), (ii), (iii.for-head), (iii.compound-assign), (iii.class-name-in-extends) closed. Remaining (iii): class-this TDZ during super-init, unscopables-tdz, block-scoped-functions-hoisted-tdz.
+
+---
+
+## Rung-cluster-29 — module/script top-level TDZ (negative-result; deferred per rule 13) (2026-05-27)
+
+Per keeper directive Telegram 10116 ("Continue"). Attempted to extend EXT 23's function-body TDZ to module/script-top: at the start of module body execution, seed each pre-allocated let/const slot with TDZ sentinel so any read before declaration line throws ReferenceError.
+
+**Attempted substrate**: ~12-line loop in compile_module Phase A.7, iterating pre_allocated_slots + filtering let/const kind + emitting PushTDZ + StoreLocal.
+
+**Direct probe**: `console.log(z); let z = 1;` at module top now throws ReferenceError "z" ✅.
+
+**Negative empirical result**: broader let/const cluster regressed 106/120 → 104/120 (-2). Two regression shapes surfaced:
+- `obj-ptrn-rest-getter.js` etc. (generator destructure rest with getter): eval-mode let with rest destructure target — the rest write goes through a path that doesn't InitLocal, so reads after init see the TDZ sentinel and throw inappropriately.
+- `function-local-closure-get-before-initialization.js`: "Expected a ReferenceError but got a TypeError" — the test now throws an undefined-call TypeError because module-top let interacted with closure-set ordering.
+
+**Diagnosis**: the script-mode globalThis-mirror path at Stmt::Variable (emits `Op::Dup + StoreLocal + StoreGlobal`) and the destructure-rest write site need init-vs-assign audits similar to EXT 25's emit-site enumeration before module-top TDZ-init can land safely. The substrate work is parallel to EXT 25→26's deeper-layer closure but on a different surface.
+
+**Disposition per rule 13**: revert the module-top TDZ-init emit. Substrate is gated off with a comment pointer; the inert kept-context lets a future rung re-enable after the script-mode emit-site audit.
+
+**Yield (post-revert)**:
+```text
+TDZ-named cluster: 5/13 (unchanged from EXT 28)
+Broader let/const cluster: 106/120 (parity restored)
+diff-prod: 60/52 (parity preserved throughout)
+```
+
+**Tag**: `cluster-module-top-tdz-attempt-29`.
+
+**Finding IR.28 (TDZ extension across surfaces requires per-surface emit-site audit)**: each new surface that gets TDZ enforcement (function-body, for-head, block, module-top) needs its own emit-site enumeration to catch the init writes that must use InitLocal. EXT 23 (function-body) was simple because the pre-allocated slots had no destructure/script-mirror complication; module-top hits the script-mode globalThis-mirror path AND the destructure-rest write path which aren't yet on InitLocal. The cost-per-surface is ~5-15 LOC of emit-site conversion per new surface; the runtime check itself is amortized.
+
+**Status**: IR-EXT 29 CLOSED locally (negative-result; substrate kept gated off via comment). Cumulative IR rungs: 29. The module-top-TDZ + block-scope-TDZ + class-this-TDZ + unscopables-TDZ + block-fn-hoist-TDZ sub-shapes remain open, each requiring its own emit-site or scope-machinery work.

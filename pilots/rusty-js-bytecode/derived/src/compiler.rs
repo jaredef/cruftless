@@ -896,6 +896,14 @@ impl Compiler {
         }
         self.pre_allocated_slots
             .extend(fn_pre_slots.iter().map(|(k, v)| (k.clone(), *v)));
+        // IR-EXT 29 (deferred per rule 13): module/script top-level TDZ
+        // for let/const was attempted here but regressed -2 fixtures in
+        // the broader let/const cluster (generator destructure rest with
+        // getter; eval-mode let/const). The script-mode globalThis-mirror
+        // path + destructure-rest write site need init-vs-assign audits
+        // similar to EXT 25's emit-site enumeration before the
+        // module-top TDZ-init can land safely. See IR.28 note in
+        // trajectory rung-29.
         for item in &m.body {
             // Pull the inner FunctionDecl out (whether direct or
             // wrapped under `export function f(){}`).
