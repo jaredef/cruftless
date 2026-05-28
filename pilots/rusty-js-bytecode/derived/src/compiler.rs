@@ -2343,6 +2343,23 @@ impl Compiler {
                 } else {
                     None
                 };
+                // IR-EXT 28: class-name TDZ in extends (statement form).
+                // See Expr::Class branch for full rationale.
+                if let (Some(n), Some(sc)) = (name, super_class) {
+                    if self.expr_refs_free(sc, &n.name) {
+                        self.emit_throw_referenceerror(&format!(
+                            "Cannot access '{}' before initialization",
+                            n.name
+                        ));
+                        // Unreachable but keep stack/bytecode well-formed.
+                        if let Some(slot) = class_slot {
+                            encode_op(&mut self.bytecode, Op::PushUndef);
+                            encode_op(&mut self.bytecode, Op::InitLocal);
+                            encode_u16(&mut self.bytecode, slot);
+                        }
+                        return Ok(());
+                    }
+                }
                 self.compile_class(*span, name.as_ref(), super_class.as_ref(), members)?;
                 if let Some(slot) = class_slot {
                     // IR-EXT 27: class-decl outer-slot write uses InitLocal
@@ -4184,8 +4201,25 @@ impl Compiler {
                 members,
                 span,
             } => {
-                // Class expression: lower exactly like ClassDecl but leave
-                // the constructor on the stack as the expression's value.
+                // IR-EXT 28: class-name TDZ in extends per §15.7.14 step 12 —
+                // the class binding is created at class evaluation but TDZ
+                // until class initialization completes; reads of the class
+                // name in the extends expression throw ReferenceError.
+                // Compile-time guard: if the extends expression contains a
+                // free reference to the class name, emit a synthetic throw.
+                // Skips into Function/Arrow/Class bodies per expr_refs_free
+                // (closure capture is fine — the binding only needs to be
+                // initialized by the time the closure is called).
+                if let (Some(n), Some(sc)) = (name, super_class) {
+                    if self.expr_refs_free(sc, &n.name) {
+                        self.emit_throw_referenceerror(&format!(
+                            "Cannot access '{}' before initialization",
+                            n.name
+                        ));
+                        encode_op(&mut self.bytecode, Op::PushUndef);
+                        return Ok(());
+                    }
+                }
                 self.compile_class(
                     *span,
                     name.as_ref(),

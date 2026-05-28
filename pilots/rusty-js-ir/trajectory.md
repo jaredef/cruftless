@@ -2449,3 +2449,32 @@ diff-prod: 60/52 (parity restored)
 **Finding IR.26 (TDZ probe must not repurpose a captured upvalue slot)**: when a slot is captured by upvalues during the compile of a construct (class methods, function self-name, generator yields), TDZ-initing it for the duration of the construct's build breaks downstream captures even when the slot is correctly overwritten by end-of-build. The fix shape: use a separate scratch slot for the TDZ probe; mirror the resolved class value into the captured slot AFTER the TDZ probe completes. Deferred to a future rung that wants to invest in the scratch-slot architecture.
 
 **Status**: IR-EXT 27 CLOSED locally (negative-result; substrate-prep retained). Cumulative IR rungs: 27. The class-name-TDZ-in-extends sub-shape remains open.
+
+---
+
+## Rung-cluster-28 — class-name TDZ in extends via compile-time guard (2026-05-27)
+
+Per keeper directive Telegram 10114 ("Continue pressing through pipeline"). Closes the class-name-TDZ-in-extends sub-shape that EXT 27 deferred. Avoids the captured-upvalue-slot pitfall (finding IR.26) by using a compile-time guard like EXT 21/22 instead of runtime TDZ machinery for the class self-name slot.
+
+**Substrate** (~25 LOC across two class compile sites in compiler.rs):
+- For both `Stmt::ClassDecl` and `Expr::Class` with `name + super_class` present, before invoking `compile_class`, run `expr_refs_free(super_class, name.name)`. If true, the extends expression contains a free reference to the class binding — which is TDZ during extends-clause evaluation per §15.7.14 step 12. Emit `emit_throw_referenceerror("Cannot access '<name>' before initialization")` instead of compiling the class.
+- Reuses the `expr_refs_free` walker from EXT 21 (skips Function/Arrow/Class bodies — closure capture is legitimate; the binding only needs to be initialized by the time the closure is called).
+
+**Direct probes** (post-rung):
+- `class a extends (a &&= 0) {}` → ReferenceError ✅ (was: TypeError)
+- `class a extends a {}` → ReferenceError ✅
+- `class Counter { constructor() { this.n = 0; } }` → works ✅ (no regression from EXT 27)
+- All EXT 23/24/25/26 probes intact.
+
+**Yield**:
+```text
+TDZ-named cluster: 5/13 (unchanged — the compound-assignment-tdz fixture has additional sub-cases that fail before reaching the class-extends sub-case; the class fixture probes class-this TDZ which is a different sub-shape).
+diff-prod: 60/52 (parity).
+```
+**+0 measured PASS** at the test262 fixture granularity. The substrate is correct; the test262 yield is locked behind sibling sub-cases in the encompassing tests.
+
+**Tag**: `cluster-class-extends-tdz-compile-time-28`.
+
+**Finding IR.27 (compile-time guard vs runtime TDZ machinery)**: when a TDZ probe target is a slot that's captured by upvalues (class self-name, function self-name, generator yield slots), the compile-time guard pattern (expr-walk + synthetic throw) is preferable to runtime PushTDZ + InitLocal because it sidesteps the captured-upvalue interference identified in IR.26. The pattern recurs across EXT 21 (let self-init), EXT 22 (destructure self-init), EXT 28 (class extends). Standing rec: when a TDZ-target slot is also captured by inner closures during the enclosing construct's build, use the compile-time guard.
+
+**Status**: IR-EXT 28 CLOSED locally. Cumulative IR rungs: 28. TDZ enforcement points (i), (ii), (iii.for-head), (iii.compound-assign), (iii.class-name-in-extends) closed. Remaining (iii): class-this TDZ during super-init, unscopables-tdz, block-scoped-functions-hoisted-tdz.
