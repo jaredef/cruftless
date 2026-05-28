@@ -1,140 +1,78 @@
-# Cruftless
+# Cruft
 
-Cruftless is a micro JavaScript runtime that punches above its weight. Built with Fielding Constraint Accumulation as the governing principle of architectural derivation, Cruftless achieves compatibility with the majority of Node.js packages in 50k LoC or less.
+A world-first hand-rolled JavaScript engine and host, written in Rust, targeting plug-and-play execution of the Node.js package ecosystem. The runtime is **Cruft**; the development apparatus that produced it is **Cruftless**.
 
-A hand-derived JavaScript runtime in Rust, targeting **the Node.js package ecosystem** as its compatibility surface. Constructed under the resolver-instance discipline: each layer's directives are consumed at that layer's resolver; no layer's artifact carries residue from the layer above. The terminal property the design induces is *vertically-recursive directive consumption with stage-deterministic emission*.
+Cruft is not a port, not a transpilation target, and not a thin wrapper around an existing engine. Every layer — lexer, parser, bytecode compiler, interpreter, JIT, garbage collector, hidden classes, intrinsics, module loader, host bindings — has been hand-derived against ECMA-262, WHATWG, Node, and Bun specifications under the resolver-instance discipline articulated in the RESOLVE corpus.
 
-The repository was originally formulated as an AI-assisted source-translation apparatus reading Bun's Zig source for a Rust port — with the working repository name, `rusty-bun`, and the choice of Bun as the empirical oracle. The translation focus dissolved as the resolver-instance discipline crystallized; what remained is Cruftless: an independent runtime that uses Bun for measurement, not for inheritance.
+The engine implements the ECMAScript language; the host implements the Node and Web platform surface that real packages exercise (`node:*` builtins, `fetch`, `Buffer`, `URL`, `structuredClone`, streams, crypto, TLS, fs, http, sockets, …). The two halves ship together as a single binary, `cruft`, capable of installing and running unmodified packages from the npm registry.
 
-[Read more here](https://jaredfoy.com/resolve/doc/729-cruftless-a-primary-articulation-of-the-resolver-instance-pattern-as-the-comprehensive-design-toward-which-rusty-bun-morphs).
+---
 
-## What this is
+## Distinguishing elements
 
-A JavaScript runtime targeting **the Node.js package ecosystem** across ECMA-262 language semantics and the Node/Web platform surface that real packages depend on (`node:*` builtins, `fetch`, `Buffer`, `URL`, `structuredClone`, …). Bun is the **empirical oracle** for both the namespace-shape probe (`legacy/host-rquickjs/tools/parity-measure.sh`, a 1026-package top-500 + top-100 basket) and the runtime-semantics probe (`scripts/diff-prod/`, a curated fixture set diffed byte-for-byte against bun's stdout). Bun's role is instrumental: it correctly implements the union of Node + Web APIs that production packages exercise, which makes it a reliable yardstick against which Cruftless's compatibility can be measured. The engine itself is independent — built under [Pin-Art](https://jaredfoy.com/resolve/doc/581-the-resume-vector) discipline against ECMA-262 + WHATWG, not derived from any existing engine's code.
+### Cruft Compartments
 
-Two binaries:
+Cruft implements the TC39 Compartments proposal as a primitive of the runtime, not a polyfill atop it. A Compartment is a first-class realm boundary with its own globalThis, its own loader, and its own evaluator, exposed at the JavaScript surface as a constructor whose contract is observable from inside the program. Compartments compose with the engine's capability-passing module-load substrate to produce an execution environment in which supply-chain attacks are not merely difficult but architecturally impossible: a module cannot reach ambient authority it was not explicitly granted, and the grant graph is observable at load time and at run time.
 
-- **`cruftless/`** — the `cruft` CLI binary (and a legacy `cruftless` binary built from the same source for one-release backwards compatibility with engagement-internal scripts). Wraps the hand-rolled rusty-js engine (`pilots/rusty-js-{ast,parser,bytecode,gc,runtime}` crate family). The crate name remains `cruftless` (the architectural concept per Doc 729); the binary is the user-facing tool. Primary substrate target.
-- **`legacy/host-rquickjs/`** — `cruftless-rquickjs` binary (renamed from `host/` on 2026-05-21). Wraps rquickjs (Rust bindings over QuickJS). Above-engine substrate matured; retained as the parity ceiling reference per Doc 717 §VIII. No new feature work lands here.
+### Implementation pair with CruftScript
 
-Both binaries run the same parity sweeps; the migration-cost gap between them reads the rusty-js engine's maturity directly against the rquickjs ceiling.
+Cruft is the runtime half of an implementation pair. CruftScript is the source-language half: a TypeScript-superset surface with extensions specifically designed to operate over Cruft's substrate alphabet. The pair is symmetric in the sense that the language's design constrains the runtime's required substrate (alphabet purity upstream as the bound on engine complexity), and the runtime's substrate exposes the language's expressible primitives. CruftScript compiles to Cruft bytecode through Cruft's own resolver-instance pipeline; the language is a primary consumer of the engine, not an afterthought sitting on top of it.
 
-Cruftless is **not** a re-port of QuickJS, not a Bun source translation, and not a wrapper around any existing engine. It is a hand-derived terminal substrate that emerges from the resolver-instance discipline of Doc 729 — measured against Bun, not built from Bun.
+### TypeScript execution without transpilation overhead
 
-## The design
+Cruft executes `.ts` and `.tsx` source files directly. There is no `tsc` invocation, no Babel, no esbuild, no SWC, no source-map round-trip. TypeScript-only constructs (type annotations, interfaces, generics, enums, decorators, parameter-property shorthand, `import type`) are erased or lowered inside Cruft's resolver pipeline at parse time, with the runtime contract preserved at the same point where a JavaScript construct's runtime contract is set. The result is that a TypeScript package's first call is the same call cost as a JavaScript package's first call: no transpiler warm-up, no temp directory of erased outputs, no separate build step in the user's workflow.
 
-The runtime is composed of five vertically-stacked resolver-instances, each a `source-with-directives → resolver → directive-free artifact` step. Each can be analyzed on its own under the four bootstrap properties of [Doc 432 §2](https://jaredfoy.com/resolve/doc/432-server-an-architectural-style-for-engine-orchestration#the-bootstrap-as-resolver):
-
-| Layer | Source | Resolver | Artifact |
-|---|---|---|---|
-| Cargo build | `Cargo.toml` + source tree | rustc + cargo | `cruftless` binary |
-| Bootstrap | `cruftless/src/lib.rs::init()` | Runtime allocator + host-stub install | populated Runtime graph |
-| Module load | ESM source + imports | parser + bytecode compiler + linker | `ModuleRecord` with `Namespace` |
-| Execution | bytecode + constants | `interp.rs` dispatch loop | resolved JS values |
-| Job-queue drain | microtask + macrotask queues | `run_to_completion` | quiescent runtime |
-
-Each level's induced properties function as constraints on the level beneath it. The terminal property is preserved end-to-end only when each level respects the inherited constraint from above and emits a directive-free artifact to the level below.
-
-## About RESOLVE
-
-Cruftless is part of the **RESOLVE research program** — a long-running effort by [Jared Foy](https://jaredfoy.com) producing novel syntheses across AI-assisted philosophy of science, systems engineering, and computer science, with operational implications for how software is designed, derived, and implemented. The **RESOLVE corpus** is the program's primary artifact: a growing collection of numbered documents at [jaredfoy.com/resolve](https://jaredfoy.com/resolve/) that develop the program's concepts, architectural styles (SERVER, PRESTO, …), and disciplines (Pin-Art, Fielding Constraint Accumulation, …) in cross-referenced form.
-
-Each Cruftless substrate decision is dispatched against a specific corpus position and back-referenced in the round log. The result is a runtime whose architecture is legible as the operationalization of a research program, not as an isolated codebase.
-
-## Corpus references
-
-The design is articulated across the RESOLVE corpus:
-
-- [Doc 729 — Cruftless](https://jaredfoy.com/resolve/doc/729-cruftless-a-primary-articulation-of-the-resolver-instance-pattern-as-the-comprehensive-design-toward-which-rusty-bun-morphs) — the primary articulation; the resolver-instance pattern applied to this runtime.
-- [Doc 432 — SERVER: An Architectural Style for Engine Orchestration](https://jaredfoy.com/resolve/doc/432-server-an-architectural-style-for-engine-orchestration) — the orchestration-level constraint specification.
-- [Doc 426 — PRESTO: An Architectural Style for Representation Construction](https://jaredfoy.com/resolve/doc/426-presto-an-architectural-style-for-representation-construction) — the construction-level constraint specification.
-- [Doc 719 — The Pipeline Pattern Across Subjects](https://jaredfoy.com/resolve/doc/719-the-pipeline-pattern-across-subjects-presto-and-the-javascript-engine-as-two-realizations-of-the-same-derivation) — the structural correspondence between this runtime and PRESTO.
-- [Doc 717 — The Apparatus Above the Engine Boundary](https://jaredfoy.com/resolve/doc/717-the-apparatus-above-the-engine-boundary-the-three-projections-lifted-to-engine-substrate-and-the-pure-abstraction-point) — the cut-rung framework that places each resolver-instance's boundary.
-- [Doc 581 — Pin-Art and the Discipline of Near-Necessity Substrate Construction](https://jaredfoy.com/resolve/doc/581-the-resume-vector) — the discipline by which substrate work proceeds.
-- [Doc 725 — The Cluster-to-Walk Mode Transition](https://jaredfoy.com/resolve/doc/725-the-cluster-to-walk-mode-transition-soft-saturation-as-protocol-signal-in-substrate-introduction) — the walk-mode discipline for per-package fault chains.
-
-## Apparatus
-
-- `seed.md` — engagement-level resume vector and operative discipline.
-- `trajectory.md` — round log; latest anchor at the most recent EXT.
-- `legacy/host-rquickjs/tools/parity-measure.sh` — canonical namespace-shape sweep against the 1026-package basket; outputs JSON.
-- `legacy/host-rquickjs/tools/parity-fast.sh` — 43-package exemplar sweep for fast iteration during substrate moves.
-- `legacy/host-rquickjs/tools/parity-cluster.sh` — per-cluster targeted sweep extracted from the latest canonical reading.
-- `legacy/host-rquickjs/tools/select-cluster.py` / `legacy/host-rquickjs/tools/select-exemplars.py` — basket extractors for the targeted sweeps.
-- `scripts/diff-prod/` — differential prod-test harness. Runtime-semantics probe complementing the namespace-shape probe; each fixture runs under both engines and diffs byte-for-byte. Sandbox + results default to a mounted T7 drive; heavy work runs under `nice -n 19 ionice -c3`.
-- `specs/diff-prod-testing.md` — the diff-prod methodology (11 sections).
-- `pilots/diff-prod/` — the diff-prod Pin-Art locale (seed + trajectory + deferred substrate backlog).
-
-## test262 coverage
-
-[test262](https://github.com/tc39/test262) is TC39's official ECMA-262 conformance suite (~53k tests covering language semantics and the entire built-in surface).
-
-Cruftless runs test262 via `legacy/host-rquickjs/tests/test262/runner.mjs`, a per-test driver that parses the upstream YAML frontmatter, prepends the required harness scripts, evaluates the test through indirect eval, and emits one JSON line per result. The driver honors `module`, `async`, `noStrict`, `onlyStrict`, `raw`, and `negative.{phase,type}` flags from the frontmatter.
-
-Because running the full 53k suite in CI is impractical at this stage, conformance is reported against a **curated representative sample** at `scripts/test262-sample/sample-paths.txt` — directory paths that target the surface production Node packages actually exercise: core builtins (`JSON`, `Map`, `Set`, `WeakMap`, `WeakSet`, `Number`, `Math`, `Symbol`, `Error`, `Promise`), the most-used `Array`/`String` prototype methods, key `Object` statics, `RegExp.prototype.{exec,test}`, and the language constructs real code uses (`arrow-function`, `for-of`, `for-in`). The sample expands to ~7,800 individual tests.
-
-To reproduce:
-
-```sh
-cargo build --release --bin cruft
-./scripts/test262-sample/run-sample.sh        # writes $CRUFTLESS_TEST262_RESULTS_ROOT/test262-sample-<DATE>/{results.jsonl,summary.txt}
-```
-
-`PARALLEL=N` controls worker count (default 4); `T262_ROOT` points at an upstream test262 clone; `CRUFT_BIN` overrides the binary path (defaults to `target/release/cruft`; the legacy `RB_BIN` name is also accepted for one release of backwards compatibility). `CRUFTLESS_TEST262_RESULTS_ROOT` defaults to the external sidecar artifact root from `scripts/env.sh`, keeping generated sample output out of the repository.
-
-Latest sample, **2026-05-22**: **5,321 PASS / 1,882 FAIL / 384 SKIP** out of 7,587 results emitted across 7,750 sampled tests — **73.9% runnable pass rate** (`5321 / 7203`). SKIPs are tests whose frontmatter flags a feature the harness elects not to run (e.g. legacy `noStrict`-only fixtures, async-iterator features behind feature-flag gates).
-
-Per-area breakdown:
-
-| Area                          | PASS | FAIL | SKIP | Pass% |
-|-------------------------------|-----:|-----:|-----:|------:|
-| `built-ins/Number`            |  310 |   30 |    0 | 91.2% |
-| `built-ins/Math`              |  298 |   29 |    0 | 91.1% |
-| `built-ins/Object`            | 1563 |  204 |    0 | 88.5% |
-| `built-ins/WeakSet`           |   68 |   15 |    0 | 81.9% |
-| `built-ins/Array`             | 1264 |  286 |    0 | 81.5% |
-| `built-ins/String`            |  495 |  113 |    0 | 81.4% |
-| `built-ins/Set`               |  264 |  117 |    0 | 69.3% |
-| `built-ins/RegExp` (exec/test)|   84 |   40 |    0 | 67.7% |
-| `built-ins/Symbol`            |   66 |   32 |    0 | 67.3% |
-| `built-ins/WeakMap`           |   94 |   47 |    0 | 66.7% |
-| `built-ins/Map`               |  126 |   78 |    0 | 61.8% |
-| `built-ins/Promise`           |  163 |  110 |  381 | 59.7% |
-| `built-ins/JSON`              |   89 |   69 |    0 | 56.3% |
-| `language/expressions`        |  146 |  172 |    0 | 45.9% |
-| `built-ins/Error`             |   26 |   32 |    0 | 44.8% |
-| `language/statements`         |  265 |  508 |    3 | 34.3% |
-
-The high-90s rates on `Number`, `Math`, and `Object` reflect surfaces whose specs are tight loops over numeric or descriptor algorithms — exactly what the rusty-js-ir locale targets first. The low rates on `language/expressions` and `language/statements` reflect tests targeting subtle parser/eval edges (TDZ enforcement, hoisting cases, generator semantics) that diff-prod has documented as deferred substrate work.
-
-Head-to-head against the oracle on the same sample, same runner, same harness:
-
-| Engine               | PASS  | FAIL | SKIP | Runnable | Runnable pass% |
-|----------------------|------:|-----:|-----:|---------:|---------------:|
-| **Bun 1.3.11**       | 7,269 |   56 |  384 |    7,325 | **99.2%**      |
-| **Cruftless** (this) | 5,321 | 1,882|  384 |    7,203 | **73.9%**      |
-
-The 25.3-pp gap is the visible work remaining on the conformance axis. Bun's 56 FAILs are the upper-bound noise floor for the sample (proposals + edge cases where even the oracle disagrees with test262 head). Reproduce the bun column with `./scripts/test262-sample/run-sample-bun.sh`.
-
-The sample is the conformance baseline; the broader 53k suite is the eventual ceiling. Each substrate rung that flips a fixture in `pilots/diff-prod/` should also flip some count of test262 entries; the two probes triangulate together.
-
-## rusty-js-ir — spec-as-source-of-truth IR
-
-`pilots/rusty-js-ir/` is the locale that lifts spec-conformance work from hand-transcription to a stage-deterministic compilation. The hypothesis (from cruftless seed §A8.33 + `pilots/rusty-js-ir/IR-DESIGN.md` §9): **spec conformance becomes monotonically easier once an ECMA-262 algorithm is IR-encoded** — the linter enforces 1:1 IR-vs-spec correspondence, and the lowering compiler emits Rust against the existing `rusty-js-runtime` helper surface. Each new built-in passes through the linter once, then never drifts.
-
-Each ECMA-262 algorithm section becomes one `IRFunction`; the lint passes (`cargo run --example lint_all -p rusty-js-ir`) require zero diff against the parsed spec; the emitted Rust lands in `pilots/rusty-js-runtime/derived/src/generated.rs`. Sections currently encoded include `Array.prototype` iteration/mutator families, `Math` variadic operations, `JSON.serialize`, the property-descriptor cluster, and several global predicates.
-
-Status at locale's most recent close (IR-EXT 94b): **65 IR-alphabet nodes**, **33 sections IR-encoded** (28 wired into the runtime, 5 IR-only), linter ✓ on 33/33. Estimated 50–80 more sections to reach the bounded telos of "every cruftless `register_intrinsic_method` entry is either IR-encoded or explicitly carved out."
-
-The locale composes with the test262 sample above: IR-encoded sections regress at or above their prior test262 rate. Regression is a Tier-1.5 incompleteness signal (the runtime-helper surface needs expansion).
+---
 
 ## Status
 
-39 / 39 diff-prod fixtures PASS across L and F categories. Top-500 namespace-shape parity at 77.4% raw / 82.1% incl-agreed-errors. Top-100 at 99.1%. Migration-cost gap between the rquickjs ceiling (`legacy/host-rquickjs/`) and the hand-rolled engine (`cruftless/`) is ~4.1 percentage points on the 1026-package basket. The morph trajectory toward the Cruftless terminal-property design proceeds under the walk-mode discipline of Doc 725; each substrate round is dispatched per Pin-Art near-necessity (Doc 581) and locatable on the two architectural addresses of Doc 729 §VIII.
+Cruft passes a curated 7,663-test representative sample of test262 at 84.3% runnable, with a hand-derived prototype chain across the language and a hand-derived host platform across the Node and Web APIs that production packages exercise. The engineering surface and its parity baselines are documented in detail at the RESOLVE corpus reference (link below).
 
-## Origins
+The repository is organized as the Cruftless apparatus: a substrate-pilot directory tree where each substrate-shaped problem lives in a discoverable locale, and an arc-tier coordinate registry that subsumes locales under coherent multi-substrate programs. The apparatus is itself the engine's development environment; it is also the engine's discovery method.
 
-The repository began as an apparatus for AI-assisted cross-language code translation against Bun's Zig source, accompanying [Doc 702](https://jaredfoy.com/resolve/doc/702-ai-assisted-cross-language-code-translation-as-a-pin-art-bilateral-under-sipe-t-threshold-conditions-reading-the-bun-zig-to-rust-port) — with the working repository name, `rusty-bun`. The hand-derived JavaScript runtime that emerged through the engagement supplanted the original translation focus; the design crystallized through Doc 717's engine-cut framework and Doc 719's recognition of the structural correspondence with PRESTO. The Doc 729 articulation names the destination and renames the runtime: **Cruftless**, the substrate that remains when residue-carrying directives have been consumed at their resolver instances and only directive-free artifacts cross layer boundaries.
+---
+
+## Fielding Constraint Accumulation and the self-applying apparatus
+
+Cruft is constructed under **Fielding Constraint Accumulation** as the governing architectural principle. Each layer of the runtime emits artifacts that satisfy upstream constraints and impose downstream constraints; the discipline is that every constraint is named and the named constraints accumulate into the substrate's invariant set without the engine itself becoming an arbitrary aggregation of features. The architectural shape that emerges is described in the resolver-instance articulation of the corpus.
+
+The Cruftless apparatus that produced Cruft is **self-applying** in the tradition of Lahlouhi's *Validation of the Development Methodologies*. The discipline the apparatus uses to design and verify the runtime is the same discipline the apparatus uses to design and verify itself. Standing rules, predictive heuristics, and per-rung trajectories accumulate at the runtime tier and at the apparatus tier simultaneously; the apparatus's own structure is a substrate-shaped problem the apparatus solves with the same methodology it applies to the runtime's substrate-shaped problems. The validity of the methodology is read from the engine it produces; the engine's coherence is read from the methodology it instantiates.
+
+---
+
+## The RESOLVE corpus as primary motivation
+
+Cruft is the implementation half of a research program whose philosophical half is the **RESOLVE corpus**: a long-running synthesis across philosophy of science, systems engineering, and computer science authored by Jared Foy. The corpus develops a metaphysical position grounded in **Systems Induced Property Emergence** (SIPE): the thesis that properties of complex systems are not merely the sum of their parts but emerge from the discipline that constrains how parts compose. The corpus is structured as a Lakatosian Research Programme; its **metaphysical hard-core** is the SIPE thesis itself plus the resolver-instance pattern, the Pin-Art discipline of localized resume-vector work, and the substrate-shaped pipeline as a discoverable form.
+
+Cruft is the corpus's primary implementation: the engine where the corpus's architectural disciplines are tested under the constraint that the engine must actually run real production packages, not merely satisfy formal predicates. The corpus motivates the implementation; the implementation corroborates or falsifies the corpus's predictions; the two co-evolve.
+
+The corpus is published at [jaredfoy.com/resolve](https://jaredfoy.com/resolve/).
+
+---
+
+## Prior art
+
+Cruft is built in the lineage of, and gratefully draws on, the published designs and implementations of:
+
+- **ECMA-262** (TC39) — the ECMAScript language specification.
+- **WHATWG** — the Web platform specifications (URL, Fetch, Streams, Encoding, Structured Clone, ...).
+- **Node.js** — the runtime whose package ecosystem is Cruft's compatibility target and whose host API surface Cruft re-implements.
+- **Bun** (Jarred Sumner and the Bun team) — the runtime whose Node-compat engineering and ecosystem velocity demonstrated that a clean implementation of the Node platform on a non-V8 engine was tractable, and whose Zig codebase was studied during the early phase of this repository.
+- **V8** — the engine whose pioneering hidden-class, inline-cache, and bytecode-interpreter designs (Crankshaft, TurboFan, Ignition, Sparkplug, Maglev) inform Cruft's substrate work, though no V8 code is derived from.
+- **JavaScriptCore** — the engine whose interpreter-tier design and OSR architecture inform Cruft's JIT pillar.
+- **QuickJS** (Fabrice Bellard) — the compact JS engine whose source was read during Cruft's early bootstrapping and whose Rust binding (rquickjs) served as a reference-ceiling during the engagement.
+- **TypeScript** (Microsoft) — the type-system design whose syntactic surface CruftScript extends and whose erasure semantics Cruft implements.
+- **TC39 Compartments proposal** — the realm-substrate articulation Cruft Compartments implements.
+
+---
+
+## Thanks
+
+Particular thanks to **Jarred Sumner** and the **Bun team**. Bun was the inspiration for this research project's implementation phase: a hand-rolled non-V8 runtime, willing to re-engineer the Node platform from scratch when the engineering case justified it. Cruft's choice to take the same gamble — and to extend it through a different language (Rust) and a different design discipline (resolver-instance derivation) — would not have been undertaken without Bun's prior demonstration that the underlying engineering target was achievable.
+
+Cruft and Bun differ in architectural intent (Cruft is built under a derivation discipline; Bun is built for engineering velocity), in language (Rust vs Zig), and in surface (Cruft ships CruftScript and Compartments as primitive; Bun ships a fast bundler and a fast test runner). The intellectual debt is real and gladly acknowledged.
+
+---
 
 ## License
 
@@ -143,4 +81,13 @@ Dual-licensed at the user's option under either:
 - [MIT License](./LICENSE-MIT)
 - [Apache License, Version 2.0](./LICENSE-APACHE)
 
-Copyright (c) 2026 Jared Foy. Contributions submitted for inclusion shall be dual-licensed as above, without any additional terms or conditions.
+Copyright © 2026 Jared Foy. Contributions submitted for inclusion shall be dual-licensed as above, without any additional terms or conditions.
+
+---
+
+## Author
+
+**Jared Foy** — author of the RESOLVE corpus and the Cruft / Cruftless implementation pair.
+
+- 𝕏: [@jaredef](https://x.com/jaredef)
+- Corpus: [jaredfoy.com/resolve](https://jaredfoy.com/resolve)
