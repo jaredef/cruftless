@@ -2856,3 +2856,49 @@ diff-prod: 62/50 (parity restored)
 **Third rule-13 trajectory in IR session**: EXT 25→26 + EXT 29→34 + EXT 38→(future). Per finding IR.33's cumulative substrate amortization, the EXT 38 prefix (Op::SetThisTDZ + PushThis check) is now positioned for a future deeper-layer closure that audits the class-fields + super() ordering. The opcode + check land in this rung but the emit site is gated.
 
 **Status**: IR-EXT 38 CLOSED locally (negative-result; substrate prefix retained per rule 13). Cumulative IR rungs: 38. 11 of 13 TDZ sub-shapes closed; class-this prefix in place but deferred pending class-fields + super() audit.
+
+---
+
+## Rung-cluster-39 — class-this resolution pipeline: deeper substrate work (partial; second rule-13 round, retained prefix) (2026-05-28)
+
+Per keeper directive Telegram 10144 ("pivot to close the resolution pipeline we have discovered with deeper substrate work"). Second rule-13 round on the class-this surface that EXT 38 surfaced: the resolution pipeline EXT 38 named involved `compile_super_call`'s `PushThis` setup site reading the TDZ sentinel that `Op::SetThisTDZ` seeds at derived-ctor entry, defeating super()'s post-super this-binding. This rung dug into the deeper substrate (spec-shared `this` semantics) and built the substrate prefix; arrow-cell timing remains the residual blocker.
+
+**Substrate built** (~80 LOC across three crates; deeper-layer closure of EXT 38's prefix):
+
+1. **`Frame.derived_initial_this: Option<Value>`** (interp.rs): stash slot for the fresh `this` that `call_function` passes into derived ctor frames before SetThisTDZ seeds the sentinel. Initialized to None at all 3 Frame init sites.
+
+2. **`Op::SetThisTDZ` extended** (interp.rs): now does `frame.derived_initial_this = Some(frame.this_value.clone())` BEFORE writing the sentinel to `this_value` and `this_cell`. The spec-mandated [[ThisValue]] is preserved in the stash so super-call can pass it to the parent ctor.
+
+3. **`Op::PushThisRaw` = 0x0d** (op.rs + interp.rs): new opcode that reads `frame.derived_initial_this` (falling back to `this_value` / `this_cell` for non-derived-ctor frames). Used at super-call setup so the parent ctor receives the spec-correct shared `this`, bypassing the sentinel that user-level Op::PushThis throws on.
+
+4. **`compile_super_call`** (compiler.rs): both branches (non-spread + spread) attempted use of `Op::PushThisRaw` instead of `Op::PushThis` for the super-call's receiver setup. Now reverted to `Op::PushThis` since the SetThisTDZ emit is gated off per disposition below.
+
+5. **`compile_function_proto`** (compiler.rs): SetThisTDZ emit site for derived ctors. Attempted re-enable; reverted per disposition.
+
+**Validation of the spec-shared `this` chain** (with EXT 39 substrate FULLY enabled, before disposition revert):
+- `class B { constructor() {} } class C extends B { constructor() { super(); console.log("post-super this:", typeof this, this?.constructor?.name); } } new C();` → `post-super this: object C` ✅
+- Parent ctor sees the fresh `this`: `class B { constructor(n) { this.b = n; console.log("B this:", typeof this); } }` → `B this: object` ✅
+- `c.b === 1` post-construct ✅
+- Direct probe: `class C extends B { constructor() { var p = () => this; p(); super(); } }` correctly throws ReferenceError on `p()` before super() ✅
+
+**Residual blocker — arrow-cell timing**:
+- `class C extends B { constructor() { super(); var p = () => this; p(); } }` — `p()` post-super still throws TDZ ReferenceError despite `frame.this_value` correctly holding the fresh this at MakeArrow time.
+- Diagnosis attempted: cell allocated at MakeArrow time should hold `frame.this_value` (post-super = Object). Cell is shared with arrow's `bound_this_cell`. When arrow is called, `actual_this = cell.borrow()` should return Object. New frame's `this_value = actual_this`. PushThis returns it.
+- Observed: PushThis inside arrow throws — meaning arrow's frame.this_value is sentinel. Either cell holds sentinel (despite post-super state) OR there's a path I haven't traced where bound_this overrides bound_this_cell.
+- Suspicion: SetThisTDZ might be running multiple times via JIT recompilation OR there's a scope-snapshot interaction with the H2 hoist phase that pre-emits MakeArrow during a different frame state. Needs trace-instrumentation to pin down.
+
+**Disposition per rule 13 (round 2)**: revert the compiler emit-site (SetThisTDZ gate). Revert compile_super_call back to PushThis. Keep the runtime substrate (`Frame.derived_initial_this`, `Op::SetThisTDZ`, `Op::PushThisRaw`, Op::PushThis TDZ check) in place as the deeper substrate prefix. The next deeper-layer-closure attempt (rung-40 or later) can re-enable with the arrow-cell timing fix once traced.
+
+**Yield (post-revert)**:
+```text
+TDZ-named cluster: 8/13 (unchanged)
+diff-prod: 62/50 (parity preserved through revert)
+```
+
+**Tag**: `cluster-class-this-resolution-pipeline-39`.
+
+**Finding IR.38 (multi-round rule-13 trajectories accumulate substrate, not just rungs)**: EXT 38→39 is a multi-round rule-13 trajectory. EXT 38 left Op::SetThisTDZ + Op::PushThis TDZ check as prefix; EXT 39 added Frame.derived_initial_this + Op::PushThisRaw as deeper substrate. Each round narrows the residual blocker: EXT 38's blocker was "fresh this not preserved across SetThisTDZ"; EXT 39's residual is "arrow cell timing." The trajectory hasn't closed but has accumulated substrate that makes the closure progressively cheaper. Per finding IR.33's cumulative substrate amortization, expected closure cost is dropping.
+
+**Finding IR.39 (substrate-prep can have validation-level partial yield)**: even without landing the emit, this rung VALIDATED the spec-shared `this` chain (parent ctor sees fresh this; post-super console.log works; `new C()` returns proper instance). The substrate is correct; only the arrow-cell timing edge case blocks landing. A future rung that traces the arrow path closes the residual without needing to redesign the substrate.
+
+**Status**: IR-EXT 39 CLOSED locally (substrate prefix extended; emit gated off; second rule-13 round in the class-this trajectory). Cumulative IR rungs: 39. Class-this TDZ surface now has 2 rounds of accumulated substrate prefix awaiting an arrow-cell timing closure.

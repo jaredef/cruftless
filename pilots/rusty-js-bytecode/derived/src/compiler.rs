@@ -4663,17 +4663,15 @@ impl Compiler {
                 sub.emit_destructure(pat, *slot)?;
             }
         }
-        // IR-EXT 38 (deferred per rule 13): class-this TDZ via SetThisTDZ
-        // emit at derived-ctor entry was attempted here but regressed
-        // diff-prod 62/50 → 58/54 (class-inheritance, error-types,
-        // node-events, node-stream all break). Diagnosis: cruft's
-        // class-fields + super() lowering emits field-init bytecode that
-        // reads `this` in paths that don't always follow the explicit
-        // super() Op::SetThis ordering. Substrate kept gated off here;
-        // Op::SetThisTDZ opcode + PushThis TDZ check land in
-        // bytecode + interp as substrate prefix for future deeper-layer
-        // closure that audits cruft's class-fields + super() ordering.
-        // See IR.37 in trajectory.md for the audit gap.
+        // IR-EXT 39 (substrate retained, emit deferred per rule 13 round
+        // 2): SetThisTDZ + PushThisRaw + derived_initial_this stash now
+        // correctly thread the spec-shared fresh `this` through super-call.
+        // Basic `new C() extends B` works (post-super reads + parent
+        // ctor's this is correct). However arrows created post-super
+        // still observe sentinel via bound_this/bound_this_cell — a
+        // subtle interaction between MakeArrow's cell-allocation timing
+        // and SetThis's cell-write timing not yet diagnosed. Deferred
+        // pending deeper investigation; SetThisTDZ emit gated off.
         let _is_derived_ctor = sub
             .class_stack
             .last()
@@ -7085,13 +7083,19 @@ impl Compiler {
             encode_op(&mut self.bytecode, Op::LoadGlobal);
             encode_u16(&mut self.bytecode, apply_name);
             self.emit_load_ident(&super_ctor_name);
+            // IR-EXT 39: PushThis restored (was PushThisRaw during the
+            // EXT 38→39 attempt). SetThisTDZ emit is gated off pending
+            // arrow-cell timing fix; until then super-call uses the
+            // standard PushThis path which the EXT 38 PushThis TDZ check
+            // doesn't trip because this_value isn't seeded with the
+            // sentinel.
             encode_op(&mut self.bytecode, Op::PushThis);
             self.emit_args_array(arguments)?;
             encode_op(&mut self.bytecode, Op::PropagateNewTarget);
             encode_op(&mut self.bytecode, Op::Call);
             encode_u8(&mut self.bytecode, 3);
         } else {
-            // Receiver = current `this`.
+            // IR-EXT 39: PushThis restored (see spread branch comment).
             encode_op(&mut self.bytecode, Op::PushThis);
             // Method = parent constructor.
             self.emit_load_ident(&super_ctor_name);

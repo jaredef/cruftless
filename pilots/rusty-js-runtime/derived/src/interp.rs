@@ -10554,6 +10554,7 @@ impl Runtime {
             with_env_stack: Vec::new(),
             this_value,
             this_cell: None,
+            derived_initial_this: None,
             upvalues: Vec::new(),
             last_property_lookup: None,
             pending_method_name: None,
@@ -13165,10 +13166,40 @@ impl Runtime {
                         frame.this_value = v;
                     }
                 }
+                Op::PushThisRaw => {
+                    // IR-EXT 39: reads the stashed fresh `this` from
+                    // derived_initial_this (populated by SetThisTDZ).
+                    // Used by super-call lowering so the parent ctor
+                    // receives the spec-correct shared `this` that
+                    // call_function passed into the derived ctor frame.
+                    // Falls back to this_value (then this_cell) for
+                    // non-derived-ctor frames where derived_initial_this
+                    // is None.
+                    let t = frame
+                        .derived_initial_this
+                        .clone()
+                        .unwrap_or_else(|| {
+                            if let Some(cell) = &frame.this_cell {
+                                cell.borrow().clone()
+                            } else {
+                                frame.this_value.clone()
+                            }
+                        });
+                    frame.push(t);
+                }
                 Op::SetThisTDZ => {
-                    // IR-EXT 38: seed this_value with TDZ sentinel at
-                    // derived-class ctor entry. Op::SetThis on super()
-                    // return overwrites with the real this.
+                    // IR-EXT 38/39: stash the fresh `this` (the spec-
+                    // mandated [[ThisValue]] passed in by call_function
+                    // from the new-expression alloc) into
+                    // derived_initial_this so super-call's PushThisRaw
+                    // can pass it to the parent ctor. Then seed
+                    // this_value with TDZ sentinel so any user-level
+                    // PushThis before super() throws ReferenceError.
+                    // Op::SetThis on super() return overwrites this_value
+                    // with the post-super this (which may be the same
+                    // object or, per §15.4.5.4 step 9, a parent-returned
+                    // Object).
+                    frame.derived_initial_this = Some(frame.this_value.clone());
                     let sentinel = Value::Symbol(std::rc::Rc::clone(&self.tdz_sentinel));
                     if let Some(cell) = &frame.this_cell {
                         *cell.borrow_mut() = sentinel.clone();
@@ -14149,6 +14180,7 @@ impl Runtime {
             with_env_stack: Vec::new(),
             this_value: this,
             this_cell: None,
+            derived_initial_this: None,
             upvalues,
             last_property_lookup: None,
             pending_method_name: None,
@@ -14752,6 +14784,13 @@ pub struct Frame<'a> {
     /// `this` for the executing frame. Module frames default to Undefined;
     /// method-call frames receive the receiver. Tier-Ω.5.a.
     pub this_value: Value,
+    /// IR-EXT 39: in a derived-class constructor, SetThisTDZ stashes the
+    /// fresh `this` (passed in by call_function from the new-expression
+    /// alloc) here BEFORE overwriting this_value with the TDZ sentinel.
+    /// Op::PushThisRaw reads from here for super-call setup so the
+    /// parent ctor receives the spec-correct shared `this`. None for
+    /// non-derived-ctor frames.
+    pub derived_initial_this: Option<Value>,
     /// Cell-backed `this` binding. Lazily promoted when an arrow inside
     /// this frame captures `this`. Op::SetThis writes through the cell
     /// (if present) so arrows created BEFORE super() resolves see the
@@ -15043,6 +15082,7 @@ impl<'a> Frame<'a> {
             with_env_stack: Vec::new(),
             this_value: Value::Undefined,
             this_cell: None,
+            derived_initial_this: None,
             upvalues: Vec::new(),
             last_property_lookup: None,
             pending_method_name: None,
