@@ -1407,6 +1407,23 @@ impl Runtime {
         key: &str,
         val: Value,
     ) -> Result<(), RuntimeError> {
+        if self.create_data_property(v, key, val)? {
+            return Ok(());
+        }
+        Err(RuntimeError::TypeError(format!(
+            "CreateDataPropertyOrThrow: cannot define property '{}'",
+            key
+        )))
+    }
+
+    /// CreateDataProperty per ECMA §7.3.5. Returns the boolean result of
+    /// [[DefineOwnProperty]] instead of throwing when validation returns false.
+    pub fn create_data_property(
+        &mut self,
+        v: &Value,
+        key: &str,
+        val: Value,
+    ) -> Result<bool, RuntimeError> {
         let id = match v {
             Value::Object(id) => *id,
             _ => {
@@ -1415,12 +1432,9 @@ impl Runtime {
                 ))
             }
         };
-        // Non-extensible target where key doesn't already exist → throw.
+        // Non-extensible target where key doesn't already exist returns false.
         if !self.obj(id).has_own_str(key) && !self.obj(id).extensible {
-            return Err(RuntimeError::TypeError(format!(
-                "CreateDataPropertyOrThrow: cannot add property '{}': object is not extensible",
-                key
-            )));
+            return Ok(false);
         }
         if let Some((target, handler)) = self.proxy_target_handler_checked(id)? {
             let trap = self.object_get(handler, "defineProperty");
@@ -1440,23 +1454,17 @@ impl Runtime {
                     ],
                 )?;
                 if !crate::abstract_ops::to_boolean(&result) {
-                    return Err(RuntimeError::TypeError(format!(
-                        "CreateDataPropertyOrThrow: proxy defineProperty returned false for '{}'",
-                        key
-                    )));
+                    return Ok(false);
                 }
-                return Ok(());
+                return Ok(true);
             }
-            return self.create_data_property_or_throw(&Value::Object(target), key, val);
+            return self.create_data_property(&Value::Object(target), key, val);
         }
-        // Non-configurable existing property → throw (spec
-        // ValidateAndApplyPropertyDescriptor returns false → throw).
+        // Non-configurable existing property: ValidateAndApplyPropertyDescriptor
+        // returns false for the CreateDataProperty descriptor.
         if let Some(d) = self.obj(id).get_own(key) {
             if !d.configurable {
-                return Err(RuntimeError::TypeError(format!(
-                    "CreateDataPropertyOrThrow: cannot redefine non-configurable property '{}'",
-                    key
-                )));
+                return Ok(false);
             }
         }
         let desc = crate::value::PropertyDescriptor {
@@ -1469,7 +1477,7 @@ impl Runtime {
         };
         self.obj_mut(id).insert_str(key.to_string(), desc);
         self.bump_array_length_if_needed(id, key);
-        Ok(())
+        Ok(true)
     }
 
     /// String.prototype.repeat(count) per ECMA §22.1.3.21.
@@ -3004,7 +3012,16 @@ impl Runtime {
             if is_generic {
                 let existed = self.obj(target).has_own_str(&key);
                 if existed {
-                    let prev = self.obj(target).get_own(&key).unwrap().clone();
+                    let prev = self.obj(target).get_own(&key).cloned().unwrap_or_else(|| {
+                        crate::value::PropertyDescriptor {
+                            value: self.object_get(target, &key),
+                            writable: true,
+                            enumerable: true,
+                            configurable: true,
+                            getter: None,
+                            setter: None,
+                        }
+                    });
                     let new_e = enumerable.unwrap_or(prev.enumerable);
                     let new_c = configurable.unwrap_or(prev.configurable);
                     // §10.1.6.3 non-configurable invariants for generic
@@ -4942,18 +4959,12 @@ impl Runtime {
                     child_path,
                 )?;
                 if matches!(new_element, Value::Undefined) {
-                    let deleted = self.reflect_delete_property_via(
+                    let _ = self.reflect_delete_property_via(
                         &Value::Object(value_id),
                         &Value::String(std::rc::Rc::new(key.clone())),
                     )?;
-                    if !matches!(deleted, Value::Boolean(true)) {
-                        return Err(RuntimeError::TypeError(format!(
-                            "JSON.parse reviver: cannot delete property '{}'",
-                            key
-                        )));
-                    }
                 } else {
-                    self.create_data_property_or_throw(
+                    let _ = self.create_data_property(
                         &Value::Object(value_id),
                         &key,
                         new_element,

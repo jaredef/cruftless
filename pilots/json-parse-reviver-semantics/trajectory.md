@@ -342,3 +342,61 @@ Observed flips:
 search can decide whether to broaden this locale around the remaining
 `json-parse-with-source` test262 files or mark this partition complete and
 return to the wider JSON carve-out ledger.
+
+## JPRS-EXT 9 — CREATE DATA PROPERTY BOOLEAN BOUNDARY (2026-05-28)
+
+**Broadened inspection**: after the 20-row exemplar closure, the full
+`built-ins/JSON/parse/*.js` test262 slice showed 73 PASS, 2 FAIL, and 2
+panic/no-result rows. The residual cluster was not source-context related.
+It was the descriptor-persistence boundary inside
+`InternalizeJSONProperty`:
+
+- array non-configurable replacement returned false from
+  `CreateDataProperty` but was being thrown as `CreateDataPropertyOrThrow`;
+- array non-configurable deletion returned false from `[[Delete]]` but was
+  being thrown by the reviver loop;
+- object non-configurable rows exposed a shape/dictionary boundary where
+  `has_own_str` saw a shape-stored property but generic
+  `Object.defineProperty` tried to unwrap a missing dictionary descriptor.
+
+**Move**:
+
+- Split `Runtime::create_data_property` from
+  `Runtime::create_data_property_or_throw`. The former returns the boolean
+  `[[DefineOwnProperty]]` result and only propagates abrupt completions. The
+  latter remains the throwing wrapper for sites that require
+  `CreateDataPropertyOrThrow`.
+- Changed JSON reviver internalization to use the boolean
+  `CreateDataProperty` form and to ignore a false delete result while still
+  propagating abrupt completions.
+- Taught generic `Object.defineProperty` over an existing shape-stored
+  property to synthesize the default data descriptor instead of unwrapping a
+  dictionary descriptor that does not exist until migration.
+
+Validation:
+
+```text
+cargo build --bin cruft -p cruftless
+
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+CRUFT_BIN=/Users/jaredfoy/Developer/cruftless/target/debug/cruft \
+pilots/json-parse-reviver-semantics/exemplars/run-exemplars.sh
+
+JPRS exemplars: PASS=20 FAIL=0 SKIP=0 NOJSON=0 / 20
+
+# full built-ins/JSON/parse slice
+PASS 77
+FAILURES
+```
+
+Observed flips:
+
+- `reviver-array-non-configurable-prop-create.js` PASS.
+- `reviver-array-non-configurable-prop-delete.js` PASS.
+- `reviver-object-non-configurable-prop-create.js` PASS.
+- `reviver-object-non-configurable-prop-delete.js` PASS.
+
+**Status**: JPRS is closed for the complete local
+`built-ins/JSON/parse/*.js` slice (77/77 PASS). Remaining JSON work should
+move back to the wider JSON carve-out ledger rather than keep expanding this
+locale by adjacency.
